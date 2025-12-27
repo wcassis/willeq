@@ -1,0 +1,12 @@
+[
+  {
+    "host": "login.example.com",
+    "port": 5998,
+    "user": "yourusername",
+    "pass": "yourpassword",
+    "server": "ServerName",
+    "character": "CharacterName",
+    "navmesh_path": "/path/to/navmesh/files",
+    "maps_path": "/path/to/map/files"
+  }
+]

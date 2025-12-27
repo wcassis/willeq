@@ -1,0 +1,29 @@
+{
+  "channelFilters" : 
+  {
+    "0" : true,
+    "100" : true,
+    "101" : true,
+    "102" : true,
+    "103" : true,
+    "104" : true,
+    "105" : true,
+    "106" : true,
+    "107" : true,
+    "11" : true,
+    "15" : true,
+    "2" : true,
+    "22" : true,
+    "3" : true,
+    "4" : true,
+    "5" : true,
+    "6" : true,
+    "7" : true,
+    "8" : true
+  },
+  "height" : 172,
+  "showTimestamps" : false,
+  "width" : 651,
+  "x" : 10,
+  "y" : 418
+}

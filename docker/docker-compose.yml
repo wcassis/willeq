@@ -1,0 +1,75 @@
+# WillEQ Docker Compose
+#
+# Services:
+#   willeq     - X11 forwarding mode (requires host X11)
+#   willeq-vnc - VNC mode (connect via vnc://localhost:5900)
+#   builder    - Build only (outputs to ./dist)
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up willeq-vnc
+#   docker compose -f docker/docker-compose.yml run --rm builder
+
+services:
+  # Build service - creates build artifacts
+  builder:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: builder
+    volumes:
+      - ../dist:/dist
+    command: >
+      sh -c "cp -r /build/bin/* /dist/ && echo 'Build artifacts copied to ./dist'"
+
+  # X11 forwarding mode - requires host X11 display
+  willeq:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: runtime
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      # X11 socket for display forwarding
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # EverQuest client files
+      - ${EQ_CLIENT_PATH:-./eq}:/eq:ro
+      # Configuration
+      - ${EQ_CONFIG_PATH:-./config}:/config
+    # Required for X11
+    network_mode: host
+    # Allow X11 access
+    security_opt:
+      - seccomp:unconfined
+
+  # VNC mode - access via VNC client on port 5900
+  willeq-vnc:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: vnc
+    environment:
+      - VNC=1
+      - DISPLAY=:99
+      - VNC_PORT=5900
+      - RESOLUTION=${RESOLUTION:-800x600x24}
+    ports:
+      - "5900:5900"
+    volumes:
+      # EverQuest client files
+      - ${EQ_CLIENT_PATH:-./eq}:/eq:ro
+      # Configuration
+      - ${EQ_CONFIG_PATH:-./config}:/config
+
+  # Headless mode - no graphics
+  willeq-headless:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: runtime
+    volumes:
+      # EverQuest client files
+      - ${EQ_CLIENT_PATH:-./eq}:/eq:ro
+      # Configuration
+      - ${EQ_CONFIG_PATH:-./config}:/config
+    command: ["willeq", "-c", "/config/willeq.json", "--no-graphics"]

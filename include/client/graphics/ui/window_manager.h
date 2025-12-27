@@ -1,0 +1,395 @@
+#pragma once
+
+#include "inventory_window.h"
+#include "bag_window.h"
+#include "loot_window.h"
+#include "vendor_window.h"
+#include "chat_window.h"
+#include "spell_gem_panel.h"
+#include "spell_book_window.h"
+#include "buff_window.h"
+#include "group_window.h"
+#include "player_status_window.h"
+#include "casting_bar.h"
+#include "item_tooltip.h"
+#include "buff_tooltip.h"
+#include "item_icon_loader.h"
+#include "inventory_manager.h"
+#include "ui_settings.h"
+#include "client/spell/spell_data.h"
+#include <memory>
+
+namespace EQ {
+struct ActiveBuff;
+class SpellDatabase;
+}
+
+namespace EQT {
+namespace Graphics {
+class RaceModelLoader;
+class EquipmentModelLoader;
+struct EntityAppearance;
+}
+}
+#include <vector>
+#include <map>
+
+namespace eqt {
+namespace ui {
+
+// Confirmation dialog state
+enum class ConfirmDialogType {
+    None,
+    DestroyItem
+};
+
+class WindowManager {
+public:
+    WindowManager();
+    ~WindowManager();
+
+    // Initialize with Irrlicht components
+    void init(irr::video::IVideoDriver* driver,
+              irr::gui::IGUIEnvironment* gui,
+              inventory::InventoryManager* invManager,
+              int screenWidth, int screenHeight,
+              const std::string& eqClientPath = "");
+
+    // Get item icon texture
+    irr::video::ITexture* getItemIcon(uint32_t iconId);
+
+    // Screen resize
+    void onResize(int screenWidth, int screenHeight);
+
+    // UI Settings Management
+    void toggleUILock();
+    bool isUILocked() const;
+    bool saveUILayout(const std::string& path = "");
+    bool loadUILayout(const std::string& path = "");
+    void resetUIToDefaults();
+    void applyUISettings();
+
+    // Window management
+    void toggleInventory();
+    void openInventory();
+    void closeInventory();
+    void closeAllWindows();
+    InventoryWindow* getInventoryWindow() { return inventoryWindow_.get(); }
+    const InventoryWindow* getInventoryWindow() const { return inventoryWindow_.get(); }
+
+    // Bag window management
+    void toggleBagWindow(int16_t generalSlot);
+    void openBagWindow(int16_t generalSlot);
+    void closeBagWindow(int16_t generalSlot);
+    void closeAllBagWindows();
+    bool isBagWindowOpen(int16_t generalSlot) const;
+
+    // Loot window management
+    void openLootWindow(uint16_t corpseId, const std::string& corpseName);
+    void closeLootWindow();
+    bool isLootWindowOpen() const;
+    LootWindow* getLootWindow() { return lootWindow_.get(); }
+    const LootWindow* getLootWindow() const { return lootWindow_.get(); }
+
+    // Loot item management (called from packet handlers)
+    void addLootItem(int16_t slot, std::unique_ptr<inventory::ItemInstance> item);
+    void removeLootItem(int16_t slot);
+    void clearLootItems();
+
+    // Loot window callbacks (set by EverQuest class for packet handling)
+    void setOnLootItem(LootItemCallback callback);
+    void setOnLootAll(LootAllCallback callback);
+    void setOnDestroyAll(DestroyAllCallback callback);
+    void setOnLootClose(LootCloseCallback callback);
+
+    // Vendor window management
+    void openVendorWindow(uint16_t npcId, const std::string& vendorName, float sellRate);
+    void closeVendorWindow();
+    bool isVendorWindowOpen() const;
+    VendorWindow* getVendorWindow() { return vendorWindow_.get(); }
+    const VendorWindow* getVendorWindow() const { return vendorWindow_.get(); }
+
+    // Vendor item management (called from packet handlers)
+    void addVendorItem(uint32_t slot, std::unique_ptr<inventory::ItemInstance> item);
+    void removeVendorItem(uint32_t slot);
+    void clearVendorItems();
+
+    // Refresh sellable items from player inventory (for vendor sell mode)
+    void refreshVendorSellableItems();
+
+    // Vendor window callbacks (set by EverQuest class for packet handling)
+    void setOnVendorBuy(VendorBuyCallback callback);
+    void setOnVendorSell(VendorSellCallback callback);
+    void setOnVendorClose(VendorCloseCallback callback);
+
+    // Chat window management
+    ChatWindow* getChatWindow() { return chatWindow_.get(); }
+    const ChatWindow* getChatWindow() const { return chatWindow_.get(); }
+    bool isChatInputFocused() const;
+    void focusChatInput();
+    void unfocusChatInput();
+    void setChatSubmitCallback(ChatSubmitCallback callback);
+
+    // Spell gem panel management
+    void initSpellGemPanel(EQ::SpellManager* spellMgr);
+    SpellGemPanel* getSpellGemPanel() { return spellGemPanel_.get(); }
+    const SpellGemPanel* getSpellGemPanel() const { return spellGemPanel_.get(); }
+    void setGemCastCallback(GemCastCallback callback);
+    void setGemForgetCallback(GemForgetCallback callback);
+
+    // Spellbook window management
+    void toggleSpellbook();
+    void openSpellbook();
+    void closeSpellbook();
+    bool isSpellbookOpen() const;
+    SpellBookWindow* getSpellBookWindow() { return spellBookWindow_.get(); }
+    const SpellBookWindow* getSpellBookWindow() const { return spellBookWindow_.get(); }
+    void setSpellMemorizeCallback(SpellClickCallback callback);
+
+    // Buff window management
+    void initBuffWindow(EQ::BuffManager* buffMgr);
+    void toggleBuffWindow();
+    void openBuffWindow();
+    void closeBuffWindow();
+    bool isBuffWindowOpen() const;
+    BuffWindow* getBuffWindow() { return buffWindow_.get(); }
+    const BuffWindow* getBuffWindow() const { return buffWindow_.get(); }
+    void setBuffCancelCallback(BuffCancelCallback callback);
+
+    // Group window management
+    void initGroupWindow(EverQuest* eq);
+    void toggleGroupWindow();
+    void openGroupWindow();
+    void closeGroupWindow();
+    bool isGroupWindowOpen() const;
+    GroupWindow* getGroupWindow() { return groupWindow_.get(); }
+    const GroupWindow* getGroupWindow() const { return groupWindow_.get(); }
+    void setGroupInviteCallback(GroupInviteCallback callback);
+    void setGroupDisbandCallback(GroupDisbandCallback callback);
+    void setGroupAcceptCallback(GroupAcceptCallback callback);
+    void setGroupDeclineCallback(GroupDeclineCallback callback);
+
+    // Player status window management
+    void initPlayerStatusWindow(EverQuest* eq);
+    PlayerStatusWindow* getPlayerStatusWindow() { return playerStatusWindow_.get(); }
+    const PlayerStatusWindow* getPlayerStatusWindow() const { return playerStatusWindow_.get(); }
+
+    // Casting bar management (player's casting bar)
+    void initCastingBar();
+    void startCast(const std::string& spellName, uint32_t castTimeMs);
+    void cancelCast();
+    void completeCast();
+    bool isCastingBarActive() const;
+    CastingBar* getCastingBar() { return castingBar_.get(); }
+    const CastingBar* getCastingBar() const { return castingBar_.get(); }
+
+    // Target casting bar management (shows target's casting)
+    void startTargetCast(const std::string& casterName, const std::string& spellName, uint32_t castTimeMs);
+    void cancelTargetCast();
+    void completeTargetCast();
+    bool isTargetCastingBarActive() const;
+    CastingBar* getTargetCastingBar() { return targetCastingBar_.get(); }
+    const CastingBar* getTargetCastingBar() const { return targetCastingBar_.get(); }
+
+    // Input handling (returns true if input was consumed)
+    bool handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl = false);
+    bool handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl = false);
+    bool handleMouseUp(int x, int y, bool leftButton);
+    bool handleMouseMove(int x, int y);
+    bool handleMouseWheel(float delta);
+
+    // Rendering
+    void render();
+    void update(uint32_t currentTimeMs);
+
+    // State queries
+    bool isInventoryOpen() const;
+    bool hasOpenWindows() const;
+    bool hasCursorItem() const;
+    bool hasLootCursorItem() const;
+    bool hasAnyCursorItem() const;  // Either inventory or loot cursor
+
+    // Loot cursor operations (click-to-move from loot window)
+    void pickupLootItem(uint16_t corpseId, int16_t lootSlot);
+    void placeLootItem();  // Place loot item into inventory (triggers loot callback)
+    void cancelLootCursor();  // Cancel loot pickup
+
+    // Character info
+    void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);
+    void setCharacterDeity(const std::wstring& deity);
+    void updateCharacterStats(uint32_t curHp, uint32_t maxHp,
+                              uint32_t curMana, uint32_t maxMana,
+                              uint32_t curEnd, uint32_t maxEnd,
+                              int ac, int atk,
+                              int str, int sta, int agi, int dex, int wis, int intel, int cha,
+                              int pr, int mr, int dr, int fr, int cr,
+                              float weight, float maxWeight,
+                              uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+
+    // Character model view (3D preview in inventory)
+    void initModelView(irr::scene::ISceneManager* smgr,
+                       EQT::Graphics::RaceModelLoader* raceLoader,
+                       EQT::Graphics::EquipmentModelLoader* equipLoader);
+    void setPlayerAppearance(uint16_t raceId, uint8_t gender,
+                             const EQT::Graphics::EntityAppearance& appearance);
+
+    // Confirmation dialog
+    void showConfirmDialog(ConfirmDialogType type, const std::wstring& message);
+    void closeConfirmDialog();
+    bool isConfirmDialogOpen() const { return confirmDialogType_ != ConfirmDialogType::None; }
+
+    // Quantity slider (for shift+click on stacks)
+    bool isQuantitySliderOpen() const { return quantitySliderActive_; }
+
+    // Item tooltip for chat links
+    void showItemTooltip(const inventory::ItemInstance* item, int mouseX, int mouseY);
+
+    // Buff tooltip
+    void showBuffTooltip(const EQ::ActiveBuff* buff, int mouseX, int mouseY);
+    void hideBuffTooltip();
+
+private:
+    // Slot click handling
+    void handleSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleBagSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleSlotHover(int16_t slotId, int mouseX, int mouseY);
+    void handleDestroyClick();
+    void handleBagOpenClick(int16_t generalSlot);
+
+    // Cursor item handling
+    void pickupItem(int16_t slotId);
+    void placeItem(int16_t targetSlot);
+    void returnCursorItem();
+
+    // Window positioning
+    void positionInventoryWindow();
+    void positionLootWindow();
+    void positionVendorWindow();
+    void tileBagWindows();
+    void positionCastingBarAboveChat();
+    irr::core::recti getBagTilingArea() const;
+
+    // UI Settings helpers
+    void collectWindowPositions();
+    void applyWindowPositions();
+
+    // Window hover state tracking (for unlock highlighting)
+    void updateWindowHoverStates(int x, int y);
+
+    // Rendering helpers
+    void renderCursorItem();
+    void renderConfirmDialog();
+    void renderQuantitySlider();
+    void renderSpellTooltip();
+    void renderLockIndicator();
+
+    // Quantity slider helpers
+    void showQuantitySlider(int16_t slotId, int32_t maxQuantity);
+    void closeQuantitySlider();
+    void confirmQuantitySlider();
+
+    // Hit testing
+    WindowBase* getWindowAtPosition(int x, int y);
+
+    // Irrlicht components
+    irr::video::IVideoDriver* driver_ = nullptr;
+    irr::gui::IGUIEnvironment* gui_ = nullptr;
+
+    // Inventory manager
+    inventory::InventoryManager* invManager_ = nullptr;
+
+    // Screen dimensions
+    int screenWidth_ = 800;
+    int screenHeight_ = 600;
+
+    // Windows
+    std::unique_ptr<InventoryWindow> inventoryWindow_;
+    std::unique_ptr<LootWindow> lootWindow_;
+    std::unique_ptr<VendorWindow> vendorWindow_;
+    std::unique_ptr<ChatWindow> chatWindow_;
+    std::unique_ptr<SpellGemPanel> spellGemPanel_;
+    std::unique_ptr<SpellBookWindow> spellBookWindow_;
+    std::unique_ptr<BuffWindow> buffWindow_;
+    std::unique_ptr<GroupWindow> groupWindow_;
+    std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
+    std::unique_ptr<CastingBar> castingBar_;
+    std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
+    std::map<int16_t, std::unique_ptr<BagWindow>> bagWindows_;  // keyed by parent slot ID
+
+    // Loot window callbacks
+    LootItemCallback onLootItemCallback_;
+    LootAllCallback onLootAllCallback_;
+    DestroyAllCallback onDestroyAllCallback_;
+    LootCloseCallback onLootCloseCallback_;
+
+    // Vendor window callbacks
+    VendorBuyCallback onVendorBuyCallback_;
+    VendorSellCallback onVendorSellCallback_;
+    VendorCloseCallback onVendorCloseCallback_;
+
+    // Buff window callbacks
+    BuffCancelCallback buffCancelCallback_;
+
+    // Spellbook callbacks
+    SpellClickCallback spellMemorizeCallback_;
+
+    // Group window callbacks
+    GroupInviteCallback groupInviteCallback_;
+    GroupDisbandCallback groupDisbandCallback_;
+    GroupAcceptCallback groupAcceptCallback_;
+    GroupDeclineCallback groupDeclineCallback_;
+
+    // Tooltips
+    ItemTooltip tooltip_;
+    BuffTooltip buffTooltip_;
+
+    // Item icon loader
+    ItemIconLoader iconLoader_;
+
+    // Mouse state
+    int mouseX_ = 0;
+    int mouseY_ = 0;
+
+    // Loot cursor state (for click-to-move from loot window)
+    uint16_t lootCursorCorpseId_ = 0;
+    int16_t lootCursorSlot_ = inventory::SLOT_INVALID;
+    const inventory::ItemInstance* lootCursorItem_ = nullptr;
+
+    // Confirmation dialog
+    ConfirmDialogType confirmDialogType_ = ConfirmDialogType::None;
+    std::wstring confirmDialogMessage_;
+    irr::core::recti confirmDialogBounds_;
+    irr::core::recti confirmYesButtonBounds_;
+    irr::core::recti confirmNoButtonBounds_;
+    bool confirmYesHighlighted_ = false;
+    bool confirmNoHighlighted_ = false;
+
+    // Quantity slider state (for shift+click on stacks)
+    bool quantitySliderActive_ = false;
+    int16_t quantitySliderSlot_ = inventory::SLOT_INVALID;
+    int32_t quantitySliderMax_ = 1;
+    int32_t quantitySliderValue_ = 1;
+    irr::core::recti quantitySliderBounds_;
+    irr::core::recti quantitySliderTrackBounds_;
+    irr::core::recti quantitySliderOkBounds_;
+    irr::core::recti quantitySliderCancelBounds_;
+    bool quantitySliderOkHighlighted_ = false;
+    bool quantitySliderCancelHighlighted_ = false;
+    bool quantitySliderDragging_ = false;
+
+    // Spell tooltip for spell gem panel hover
+    EQ::SpellManager* spellMgr_ = nullptr;
+    uint32_t hoveredSpellId_ = 0xFFFFFFFF;  // EQ::SPELL_UNKNOWN
+    int hoveredSpellX_ = 0;
+    int hoveredSpellY_ = 0;
+
+    // Layout constants
+    static constexpr int INVENTORY_X = 50;
+    static constexpr int INVENTORY_Y = 50;
+    static constexpr int WINDOW_MARGIN = 10;
+    static constexpr int RESERVED_LOOT_WIDTH = 250;  // Space for future loot window
+    static constexpr int RESERVED_TRADE_HEIGHT = 200;  // Space for future trade window
+};
+
+} // namespace ui
+} // namespace eqt
