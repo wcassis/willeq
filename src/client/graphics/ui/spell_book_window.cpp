@@ -61,11 +61,15 @@ void SpellBookWindow::initializeLayout()
 
     // Navigation buttons at bottom (centered in window)
     int navY = windowHeight - getBorderWidth() - getContentPadding() - NAV_BUTTON_HEIGHT - 3;
-    int prevX = LEFT_PAGE_X;
-    int nextX = windowWidth - getBorderWidth() - NAV_BUTTON_WIDTH - 4;
+    int firstX = LEFT_PAGE_X;
+    int prevX = firstX + NAV_BUTTON_WIDTH + 4;  // "Prev" button to the right of "First"
+    int nextX = windowWidth - getBorderWidth() - NAV_BUTTON_WIDTH * 2 - 8;  // Shift left to make room for "Last"
+    int lastX = nextX + NAV_BUTTON_WIDTH + 4;  // "Last" button to the right of "Next"
 
+    firstButtonBounds_ = irr::core::recti(firstX, navY, firstX + NAV_BUTTON_WIDTH, navY + NAV_BUTTON_HEIGHT);
     prevButtonBounds_ = irr::core::recti(prevX, navY, prevX + NAV_BUTTON_WIDTH, navY + NAV_BUTTON_HEIGHT);
     nextButtonBounds_ = irr::core::recti(nextX, navY, nextX + NAV_BUTTON_WIDTH, navY + NAV_BUTTON_HEIGHT);
+    lastButtonBounds_ = irr::core::recti(lastX, navY, lastX + NAV_BUTTON_WIDTH, navY + NAV_BUTTON_HEIGHT);
 }
 
 void SpellBookWindow::refresh()
@@ -123,6 +127,29 @@ void SpellBookWindow::goToPage(int page)
     layoutPage();
 }
 
+int SpellBookWindow::getLastPopulatedPage() const
+{
+    if (!spellMgr_) {
+        return 0;
+    }
+
+    // Scan backwards from the end to find the last populated slot
+    for (int slot = EQ::MAX_SPELLBOOK_SLOTS - 1; slot >= 0; slot--) {
+        uint32_t spellId = spellMgr_->getSpellbookSpell(static_cast<uint16_t>(slot));
+        if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
+            // Found a populated slot, return its page
+            return slot / TOTAL_SLOTS;
+        }
+    }
+
+    return 0;  // No spells found, return first page
+}
+
+void SpellBookWindow::goToLastPopulated()
+{
+    goToPage(getLastPopulatedPage());
+}
+
 bool SpellBookWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl)
 {
     if (!visible_ || !leftButton) {
@@ -146,6 +173,11 @@ bool SpellBookWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
     int relY = y - bounds_.UpperLeftCorner.Y;
 
     // Check navigation buttons
+    if (firstButtonBounds_.isPointInside(irr::core::vector2di(relX, relY))) {
+        goToPage(0);
+        return true;
+    }
+
     if (prevButtonBounds_.isPointInside(irr::core::vector2di(relX, relY))) {
         prevPage();
         return true;
@@ -153,6 +185,11 @@ bool SpellBookWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
 
     if (nextButtonBounds_.isPointInside(irr::core::vector2di(relX, relY))) {
         nextPage();
+        return true;
+    }
+
+    if (lastButtonBounds_.isPointInside(irr::core::vector2di(relX, relY))) {
+        goToLastPopulated();
         return true;
     }
 
@@ -215,8 +252,10 @@ bool SpellBookWindow::handleMouseMove(int x, int y)
                 spellHoverEndCallback_();
             }
         }
+        firstButtonHovered_ = false;
         prevButtonHovered_ = false;
         nextButtonHovered_ = false;
+        lastButtonHovered_ = false;
         return false;
     }
 
@@ -225,8 +264,10 @@ bool SpellBookWindow::handleMouseMove(int x, int y)
     int relY = y - bounds_.UpperLeftCorner.Y;
 
     // Update button hover states
+    firstButtonHovered_ = firstButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
     prevButtonHovered_ = prevButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
     nextButtonHovered_ = nextButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
+    lastButtonHovered_ = lastButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
 
     // Update spell slot hover
     int newHoveredSlot = getSlotIndexAtPosition(relX, relY);
@@ -396,6 +437,17 @@ void SpellBookWindow::renderSpellSlot(irr::video::IVideoDriver* driver,
 void SpellBookWindow::renderNavigationButtons(irr::video::IVideoDriver* driver,
                                               irr::gui::IGUIEnvironment* gui)
 {
+    // First page button
+    irr::core::recti firstAbs(
+        bounds_.UpperLeftCorner.X + firstButtonBounds_.UpperLeftCorner.X,
+        bounds_.UpperLeftCorner.Y + firstButtonBounds_.UpperLeftCorner.Y,
+        bounds_.UpperLeftCorner.X + firstButtonBounds_.LowerRightCorner.X,
+        bounds_.UpperLeftCorner.Y + firstButtonBounds_.LowerRightCorner.Y
+    );
+
+    bool firstEnabled = (currentPage_ > 0);
+    drawButton(driver, gui, firstAbs, L"<<", firstButtonHovered_ && firstEnabled, !firstEnabled);
+
     // Previous button
     irr::core::recti prevAbs(
         bounds_.UpperLeftCorner.X + prevButtonBounds_.UpperLeftCorner.X,
@@ -417,6 +469,18 @@ void SpellBookWindow::renderNavigationButtons(irr::video::IVideoDriver* driver,
 
     bool nextEnabled = (currentPage_ < getTotalPages() - 1);
     drawButton(driver, gui, nextAbs, L">", nextButtonHovered_ && nextEnabled, !nextEnabled);
+
+    // Last populated page button (to the right of Next)
+    irr::core::recti lastAbs(
+        bounds_.UpperLeftCorner.X + lastButtonBounds_.UpperLeftCorner.X,
+        bounds_.UpperLeftCorner.Y + lastButtonBounds_.UpperLeftCorner.Y,
+        bounds_.UpperLeftCorner.X + lastButtonBounds_.LowerRightCorner.X,
+        bounds_.UpperLeftCorner.Y + lastButtonBounds_.LowerRightCorner.Y
+    );
+
+    int lastPopPage = getLastPopulatedPage();
+    bool lastEnabled = (currentPage_ != lastPopPage);
+    drawButton(driver, gui, lastAbs, L">>", lastButtonHovered_ && lastEnabled, !lastEnabled);
 }
 
 void SpellBookWindow::renderPageInfo(irr::video::IVideoDriver* driver,

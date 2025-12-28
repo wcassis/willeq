@@ -215,28 +215,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
                     colors,    // Corner colors
                     true);     // Use alpha
             }
-
-            // Draw mana cost in bottom-right corner
-            if (gui) {
-                irr::gui::IGUIFont* font = gui->getBuiltInFont();
-                if (font && spell->mana_cost > 0) {
-                    std::string manaStr = std::to_string(spell->mana_cost);
-                    std::wstring manaCostW(manaStr.begin(), manaStr.end());
-
-                    irr::core::dimension2du textSize = font->getDimension(manaCostW.c_str());
-                    int textX = absRect.LowerRightCorner.X - static_cast<int>(textSize.Width) - 2;
-                    int textY = absRect.LowerRightCorner.Y - static_cast<int>(textSize.Height) - 1;
-
-                    // Draw shadow
-                    font->draw(manaCostW.c_str(),
-                        irr::core::recti(textX + 1, textY + 1, textX + textSize.Width + 1, textY + textSize.Height + 1),
-                        irr::video::SColor(200, 0, 0, 0));
-                    // Draw text
-                    font->draw(manaCostW.c_str(),
-                        irr::core::recti(textX, textY, textX + textSize.Width, textY + textSize.Height),
-                        irr::video::SColor(255, 180, 180, 255));
-                }
-            }
         }
     }
 

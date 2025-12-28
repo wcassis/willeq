@@ -46,8 +46,10 @@ public:
     void nextPage();
     void prevPage();
     void goToPage(int page);
+    void goToLastPopulated();
     int getCurrentPage() const { return currentPage_; }
     int getTotalPages() const;
+    int getLastPopulatedPage() const;
 
     // Callbacks
     void setSpellClickCallback(SpellClickCallback cb) { spellClickCallback_ = std::move(cb); }
@@ -115,12 +117,16 @@ private:
     std::array<SpellSlot, TOTAL_SLOTS> spellSlots_;
 
     // Navigation button bounds (window-relative)
+    irr::core::recti firstButtonBounds_;
     irr::core::recti prevButtonBounds_;
     irr::core::recti nextButtonBounds_;
+    irr::core::recti lastButtonBounds_;
 
     // Button hover state
+    bool firstButtonHovered_ = false;
     bool prevButtonHovered_ = false;
     bool nextButtonHovered_ = false;
+    bool lastButtonHovered_ = false;
 
     // Currently hovered slot
     int hoveredSlotIndex_ = -1;
