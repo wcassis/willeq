@@ -82,7 +82,12 @@ The client connects through three stages, each with its own connection manager:
 - `RaycastMesh` - AABB tree for collision/LOS checks
 
 **Combat** (`include/client/combat.h`)
-- `CombatManager` - Auto-attack, targeting, looting
+- `CombatManager` - Auto-attack, targeting, looting, combat abilities
+
+**Skills** (`include/client/skill/`)
+- `SkillManager` - Tracks player skills, handles activation, cooldowns
+- `SkillData` - Skill properties (value, category, cooldown, requirements)
+- `skill_constants.h` - Skill IDs, names, categories, animation mappings
 
 **Graphics Rendering** (`include/client/graphics/`, `src/client/graphics/`)
 - `IrrlichtRenderer` - Main renderer using Irrlicht with software rendering (no GPU required)
@@ -99,6 +104,8 @@ The client connects through three stages, each with its own connection manager:
 - `BagWindow` - Container bag contents display
 - `LootWindow` - Corpse loot interface
 - `GroupWindow` - Group member display with HP/mana bars
+- `SkillsWindow` - Player skills list with activation and cooldown indicators
+- `SkillTooltip` - Skill details on hover (category, value, cooldown, requirements)
 - `ItemTooltip` - Item stat display on hover
 - `ItemIconLoader` - Loads item icons from EQ client files
 - `CommandRegistry` - Slash command registration and dispatch
@@ -209,6 +216,7 @@ The renderer has two modes, toggled with **F9**:
 | 1-8 | Cast spell from gem slot 1-8 |
 | ` (backtick) | Toggle auto-attack |
 | I | Toggle inventory |
+| K | Toggle skills window |
 | G | Toggle group window |
 | U | Interact with nearest door |
 | H | Hail (say "Hail" or "Hail, <target>") |
@@ -266,6 +274,9 @@ The renderer has two modes, toggled with **F9**:
 - `/gems` - Show memorized spells
 - `/interrupt` - Interrupt current cast
 - `/spellbook` - Open spellbook window
+
+**Skills:**
+- `/skills` - Toggle skills window
 
 **Utility:**
 - `/help [command]` - Show help
