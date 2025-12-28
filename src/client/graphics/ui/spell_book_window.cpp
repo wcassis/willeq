@@ -161,8 +161,13 @@ bool SpellBookWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
     if (slotIndex >= 0 && slotIndex < TOTAL_SLOTS) {
         const SpellSlot& slot = spellSlots_[slotIndex];
         if (!slot.is_empty && slot.spell_id != EQ::SPELL_UNKNOWN) {
-            if (spellClickCallback_) {
-                spellClickCallback_(slot.spell_id, targetGemSlot_);
+            // Set spell on cursor for drag-to-gem memorization
+            if (setSpellCursorCallback_ && spellMgr_ && iconLoader_) {
+                const EQ::SpellData* spell = spellMgr_->getSpell(slot.spell_id);
+                if (spell) {
+                    irr::video::ITexture* icon = iconLoader_->getIcon(spell->gem_icon);
+                    setSpellCursorCallback_(slot.spell_id, icon);
+                }
             }
             return true;
         }

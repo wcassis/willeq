@@ -631,6 +631,19 @@ struct CastSpell_Struct {
 };
 
 /*
+ * Memorize Spell structure
+ * Used for memorizing spells to gem slots and forgetting them
+ * Size: 16 bytes
+ */
+struct MemorizeSpell_Struct {
+/*00*/ uint32_t slot;       // Gem slot (0-7)
+/*04*/ uint32_t spell_id;   // Spell ID
+/*08*/ uint32_t scribing;   // 1=memorize, 2=forget, 3=spellbar
+/*12*/ uint32_t unknown0;   // 742 for memorize, 0 for forget
+/*16*/
+};
+
+/*
  * Mana Change structure
  * Size: 16 bytes
  */

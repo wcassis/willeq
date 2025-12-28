@@ -191,6 +191,20 @@ public:
     CastingBar* getTargetCastingBar() { return targetCastingBar_.get(); }
     const CastingBar* getTargetCastingBar() const { return targetCastingBar_.get(); }
 
+    // Memorizing bar management (shows spell memorization progress)
+    void startMemorize(const std::string& spellName, uint32_t durationMs);
+    void cancelMemorize();
+    void completeMemorize();
+    bool isMemorizingBarActive() const;
+    CastingBar* getMemorizingBar() { return memorizingBar_.get(); }
+    const CastingBar* getMemorizingBar() const { return memorizingBar_.get(); }
+
+    // Spell cursor management (for spellbook-to-spellbar memorization)
+    void setSpellOnCursor(uint32_t spellId, irr::video::ITexture* icon);
+    void clearSpellCursor();
+    bool hasSpellOnCursor() const;
+    uint32_t getSpellOnCursor() const;
+
     // Input handling (returns true if input was consumed)
     bool handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl = false);
     bool handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl = false);
@@ -278,6 +292,7 @@ private:
 
     // Rendering helpers
     void renderCursorItem();
+    void renderSpellCursor();
     void renderConfirmDialog();
     void renderQuantitySlider();
     void renderSpellTooltip();
@@ -314,6 +329,7 @@ private:
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
+    std::unique_ptr<CastingBar> memorizingBar_;     // For showing spell memorization progress
     std::map<int16_t, std::unique_ptr<BagWindow>> bagWindows_;  // keyed by parent slot ID
 
     // Loot window callbacks
@@ -382,6 +398,14 @@ private:
     uint32_t hoveredSpellId_ = 0xFFFFFFFF;  // EQ::SPELL_UNKNOWN
     int hoveredSpellX_ = 0;
     int hoveredSpellY_ = 0;
+
+    // Spell cursor state (for spellbook-to-spellbar memorization)
+    struct SpellCursorState {
+        bool active = false;
+        uint32_t spellId = 0xFFFFFFFF;  // EQ::SPELL_UNKNOWN
+        irr::video::ITexture* icon = nullptr;
+    };
+    SpellCursorState spellCursor_;
 
     // Layout constants
     static constexpr int INVENTORY_X = 50;

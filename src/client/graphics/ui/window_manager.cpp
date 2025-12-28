@@ -627,6 +627,12 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
         return true;  // Consume all keys when dialog is open
     }
 
+    // ESC clears spell cursor if active
+    if (key == irr::KEY_ESCAPE && spellCursor_.active) {
+        clearSpellCursor();
+        return true;
+    }
+
     // Route to chat window if chat input is focused
     if (chatWindow_ && chatWindow_->isInputFocused()) {
         // ESC unfocuses chat input
@@ -669,6 +675,12 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
 bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl) {
     mouseX_ = x;
     mouseY_ = y;
+
+    // Right-click clears spell cursor if active
+    if (!leftButton && spellCursor_.active) {
+        clearSpellCursor();
+        return true;
+    }
 
     if (!leftButton) {
         return false;
@@ -1110,6 +1122,11 @@ void WindowManager::render() {
         targetCastingBar_->render(driver_, gui_);
     }
 
+    // Render memorizing bar (above player casting bar)
+    if (memorizingBar_) {
+        memorizingBar_->render(driver_, gui_);
+    }
+
     // Render buff window
     if (buffWindow_ && buffWindow_->isVisible()) {
         buffWindow_->render(driver_, gui_);
@@ -1162,6 +1179,9 @@ void WindowManager::render() {
     // Render cursor item
     renderCursorItem();
 
+    // Render spell cursor (for spellbook-to-spellbar memorization)
+    renderSpellCursor();
+
     // Render confirmation dialog
     if (isConfirmDialogOpen()) {
         renderConfirmDialog();
@@ -1201,6 +1221,9 @@ void WindowManager::update(uint32_t currentTimeMs) {
         }
         if (targetCastingBar_) {
             targetCastingBar_->update(deltaTime);
+        }
+        if (memorizingBar_) {
+            memorizingBar_->update(deltaTime);
         }
     }
 }
@@ -1723,6 +1746,45 @@ void WindowManager::renderCursorItem() {
         irr::core::recti(x + CURSOR_ITEM_SIZE - 1, y, x + CURSOR_ITEM_SIZE, y + CURSOR_ITEM_SIZE));
 }
 
+void WindowManager::renderSpellCursor() {
+    if (!driver_ || !spellCursor_.active || !spellCursor_.icon) {
+        return;
+    }
+
+    // Draw spell icon centered on cursor with slight offset
+    const int CURSOR_SPELL_SIZE = 24;
+    const int OFFSET = 4;
+
+    int x = mouseX_ + OFFSET;
+    int y = mouseY_ + OFFSET;
+
+    irr::core::recti spellRect(x, y, x + CURSOR_SPELL_SIZE, y + CURSOR_SPELL_SIZE);
+
+    // Draw with slight transparency
+    irr::video::SColor colors[4] = {
+        irr::video::SColor(220, 255, 255, 255),
+        irr::video::SColor(220, 255, 255, 255),
+        irr::video::SColor(220, 255, 255, 255),
+        irr::video::SColor(220, 255, 255, 255)
+    };
+
+    irr::core::dimension2du iconSize = spellCursor_.icon->getOriginalSize();
+    driver_->draw2DImage(spellCursor_.icon, spellRect,
+        irr::core::recti(0, 0, iconSize.Width, iconSize.Height),
+        nullptr, colors, true);
+
+    // Draw purple/magical border to indicate it's a spell
+    irr::video::SColor borderColor(255, 180, 100, 255);
+    driver_->draw2DRectangle(borderColor,
+        irr::core::recti(x, y, x + CURSOR_SPELL_SIZE, y + 1));
+    driver_->draw2DRectangle(borderColor,
+        irr::core::recti(x, y, x + 1, y + CURSOR_SPELL_SIZE));
+    driver_->draw2DRectangle(borderColor,
+        irr::core::recti(x, y + CURSOR_SPELL_SIZE - 1, x + CURSOR_SPELL_SIZE, y + CURSOR_SPELL_SIZE));
+    driver_->draw2DRectangle(borderColor,
+        irr::core::recti(x + CURSOR_SPELL_SIZE - 1, y, x + CURSOR_SPELL_SIZE, y + CURSOR_SPELL_SIZE));
+}
+
 void WindowManager::renderConfirmDialog() {
     if (!isConfirmDialogOpen() || !driver_ || !gui_) {
         return;
@@ -1857,6 +1919,11 @@ void WindowManager::initSpellGemPanel(EQ::SpellManager* spellMgr) {
     spellBookWindow_->hide();  // Start hidden
     LOG_DEBUG(MOD_UI, "Spellbook window created");
 
+    // Connect spellbook spell click to set cursor for memorization
+    spellBookWindow_->setSetSpellCursorCallback([this](uint32_t spell_id, irr::video::ITexture* icon) {
+        setSpellOnCursor(spell_id, icon);
+    });
+
     // Connect spellbook button in gem panel to toggle spellbook window
     spellGemPanel_->setSpellbookCallback([this]() {
         toggleSpellbook();
@@ -1873,6 +1940,21 @@ void WindowManager::initSpellGemPanel(EQ::SpellManager* spellMgr) {
 
     spellGemPanel_->setGemHoverEndCallback([this]() {
         hoveredSpellId_ = EQ::SPELL_UNKNOWN;
+    });
+
+    // Connect cursor spell callbacks for spellbook-to-gem memorization
+    spellGemPanel_->setGetSpellCursorCallback([this]() -> uint32_t {
+        return getSpellOnCursor();
+    });
+
+    spellGemPanel_->setClearSpellCursorCallback([this]() {
+        clearSpellCursor();
+    });
+
+    spellGemPanel_->setMemorizeCallback([spellMgr](uint32_t spell_id, uint8_t gem_slot) {
+        if (spellMgr) {
+            spellMgr->memorizeSpell(spell_id, gem_slot);
+        }
     });
 }
 
@@ -2200,6 +2282,75 @@ void WindowManager::completeTargetCast() {
 
 bool WindowManager::isTargetCastingBarActive() const {
     return targetCastingBar_ && targetCastingBar_->isActive();
+}
+
+// ============================================================================
+// Memorizing Bar Management
+// ============================================================================
+
+void WindowManager::startMemorize(const std::string& spellName, uint32_t durationMs) {
+    if (!memorizingBar_) {
+        memorizingBar_ = std::make_unique<CastingBar>();
+        memorizingBar_->setScreenSize(screenWidth_, screenHeight_);
+        // Position memorizing bar above the player casting bar
+        int y;
+        if (chatWindow_) {
+            y = chatWindow_->getY() - 70;  // Higher than casting bar
+        } else {
+            y = screenHeight_ - 185;
+        }
+        memorizingBar_->setPosition(screenWidth_ / 2, y);
+        // Use yellow/gold tint for memorization
+        memorizingBar_->setBarColor(irr::video::SColor(255, 220, 200, 80));
+        memorizingBar_->setBackgroundColor(irr::video::SColor(200, 60, 60, 30));
+        LOG_DEBUG(MOD_UI, "Memorizing bar initialized");
+    }
+    std::string displayName = "Memorizing " + spellName;
+    memorizingBar_->startCast(displayName, durationMs);
+}
+
+void WindowManager::cancelMemorize() {
+    if (memorizingBar_) {
+        memorizingBar_->cancel();
+    }
+}
+
+void WindowManager::completeMemorize() {
+    if (memorizingBar_) {
+        memorizingBar_->complete();
+    }
+}
+
+bool WindowManager::isMemorizingBarActive() const {
+    return memorizingBar_ && memorizingBar_->isActive();
+}
+
+// ============================================================================
+// Spell Cursor Management
+// ============================================================================
+
+void WindowManager::setSpellOnCursor(uint32_t spellId, irr::video::ITexture* icon) {
+    spellCursor_.active = true;
+    spellCursor_.spellId = spellId;
+    spellCursor_.icon = icon;
+    LOG_DEBUG(MOD_UI, "Spell {} placed on cursor", spellId);
+}
+
+void WindowManager::clearSpellCursor() {
+    if (spellCursor_.active) {
+        LOG_DEBUG(MOD_UI, "Spell cursor cleared");
+    }
+    spellCursor_.active = false;
+    spellCursor_.spellId = 0xFFFFFFFF;
+    spellCursor_.icon = nullptr;
+}
+
+bool WindowManager::hasSpellOnCursor() const {
+    return spellCursor_.active;
+}
+
+uint32_t WindowManager::getSpellOnCursor() const {
+    return spellCursor_.spellId;
 }
 
 void WindowManager::renderSpellTooltip() {

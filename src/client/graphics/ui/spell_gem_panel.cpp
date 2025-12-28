@@ -34,7 +34,7 @@ void SpellGemPanel::initializeLayout()
         int y = PANEL_PADDING + i * (GEM_HEIGHT + GEM_SPACING);
 
         gems_[i].bounds = irr::core::recti(x, y, x + GEM_WIDTH, y + GEM_HEIGHT);
-        gems_[i].iconBounds = irr::core::recti(x + 2, y + 2, x + GEM_WIDTH - 2, y + GEM_HEIGHT - 2);
+        gems_[i].iconBounds = irr::core::recti(x, y, x + GEM_WIDTH, y + GEM_HEIGHT);
         gems_[i].isHovered = false;
     }
 
@@ -416,6 +416,30 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift)
     }
 
     if (leftButton) {
+        // Check if there's a spell on cursor - memorize it to this gem
+        if (getSpellCursorCallback_) {
+            uint32_t cursorSpell = getSpellCursorCallback_();
+            if (cursorSpell != EQ::SPELL_UNKNOWN && cursorSpell != 0xFFFFFFFF && cursorSpell != 0) {
+                // Memorize the cursor spell into this gem slot
+                if (memorizeCallback_) {
+                    memorizeCallback_(cursorSpell, static_cast<uint8_t>(gemIndex));
+                }
+                // Clear the cursor
+                if (clearSpellCursorCallback_) {
+                    clearSpellCursorCallback_();
+                }
+                return true;
+            }
+        }
+
+        // Shift+left-click to forget/un-memorize spell
+        if (shift) {
+            if (forgetCallback_) {
+                forgetCallback_(static_cast<uint8_t>(gemIndex));
+            }
+            return true;
+        }
+
         // Check if gem is clickable (not on cooldown or empty)
         if (spellMgr_) {
             EQ::GemState state = spellMgr_->getGemState(static_cast<uint8_t>(gemIndex));
