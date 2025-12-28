@@ -104,17 +104,14 @@ void SkillManager::updateAllSkills(const uint32_t* skills, size_t count) {
     size_t max_count = std::min(count, static_cast<size_t>(EQT::MAX_PP_SKILL));
 
     for (size_t i = 0; i < max_count; ++i) {
-        uint32_t old_value = m_skills[i].current_value;
         m_skills[i].current_value = skills[i];
 
         // If we got a value, assume skill is available
         if (skills[i] > 0 && m_skills[i].max_value == 0) {
             m_skills[i].max_value = skills[i];
         }
-
-        if (old_value != skills[i] && m_on_skill_update) {
-            m_on_skill_update(static_cast<uint8_t>(i), old_value, skills[i]);
-        }
+        // Note: Don't trigger callback here - this is bulk initial loading,
+        // not individual skill-up events. Use updateSkill() for skill-ups.
     }
 
     LOG_DEBUG(MOD_MAIN, "Updated {} skills from profile", max_count);

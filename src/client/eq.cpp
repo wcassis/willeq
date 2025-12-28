@@ -1961,6 +1961,74 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		// Cast interrupted - spell manager handles this via other packets
 		break;
 
+	// ========================================================================
+	// Skill Response Handlers
+	// ========================================================================
+	case HC_OP_Begging:
+		// Begging response - BeggingResponse_Struct (20 bytes after opcode)
+		if (p.Length() >= 22) {
+			uint32_t result = p.GetUInt32(14);  // offset 12 in struct + 2 for opcode
+			uint32_t amount = p.GetUInt32(18);  // offset 16 in struct + 2 for opcode
+			// Result: 0=Fail, 1=Plat, 2=Gold, 3=Silver, 4=Copper
+			if (result == 0) {
+				AddChatSystemMessage("You have been unable to convince your target to give you money.");
+			} else {
+				const char* coin_types[] = {"", "platinum", "gold", "silver", "copper"};
+				if (result <= 4) {
+					AddChatSystemMessage(fmt::format("You receive {} {}.", amount, coin_types[result]));
+				}
+			}
+		}
+		break;
+	case HC_OP_Hide:
+		// Hide skill response - typically no data, success indicated by SpawnAppearance
+		LOG_DEBUG(MOD_MAIN, "Hide response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Sneak:
+		// Sneak skill response
+		LOG_DEBUG(MOD_MAIN, "Sneak response received: {} bytes", p.Length());
+		break;
+	case HC_OP_SenseHeading:
+		// Sense Heading response - may contain heading info
+		LOG_DEBUG(MOD_MAIN, "SenseHeading response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Forage:
+		// Forage response - contains item found or failure
+		LOG_DEBUG(MOD_MAIN, "Forage response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Fishing:
+		// Fishing response
+		LOG_DEBUG(MOD_MAIN, "Fishing response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Mend:
+		// Mend response
+		LOG_DEBUG(MOD_MAIN, "Mend response received: {} bytes", p.Length());
+		break;
+	case HC_OP_FeignDeath:
+		// Feign Death response
+		LOG_DEBUG(MOD_MAIN, "FeignDeath response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Track:
+		// Track response - contains list of trackable entities
+		LOG_DEBUG(MOD_MAIN, "Track response received: {} bytes", p.Length());
+		break;
+	case HC_OP_PickPocket:
+		// Pick Pocket response
+		LOG_DEBUG(MOD_MAIN, "PickPocket response received: {} bytes", p.Length());
+		break;
+	case HC_OP_SenseTraps:
+		// Sense Traps response
+		LOG_DEBUG(MOD_MAIN, "SenseTraps response received: {} bytes", p.Length());
+		break;
+	case HC_OP_DisarmTraps:
+		// Disarm Traps response
+		LOG_DEBUG(MOD_MAIN, "DisarmTraps response received: {} bytes", p.Length());
+		break;
+	case HC_OP_InstillDoubt:
+		// Intimidation response
+		LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
+		break;
+
 	default:
 		if (s_debug_level >= 1) {
 			std::cout << fmt::format("Unhandled zone opcode: {}", GetOpcodeName(opcode)) << std::endl;

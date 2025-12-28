@@ -362,7 +362,7 @@
             "sectionSpacing" : 4
         }
     },
-    "uiLocked" : false,
+    "uiLocked" : true,
     "version" : 1,
     "windows" : 
     {
