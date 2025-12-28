@@ -57,9 +57,9 @@ void SpellGemPanel::setPosition(int x, int y)
 irr::core::recti SpellGemPanel::getBounds() const
 {
     int width = PANEL_PADDING * 2 + GEM_WIDTH;
-    int height = PANEL_PADDING * 2 + EQ::MAX_SPELL_GEMS * GEM_HEIGHT +
-                 (EQ::MAX_SPELL_GEMS - 1) * GEM_SPACING +
-                 SPELLBOOK_BUTTON_MARGIN + SPELLBOOK_BUTTON_SIZE;
+    // Height: top padding + gems with spacing + button margin + button + bottom padding
+    int height = PANEL_PADDING + EQ::MAX_SPELL_GEMS * (GEM_HEIGHT + GEM_SPACING) +
+                 SPELLBOOK_BUTTON_MARGIN + SPELLBOOK_BUTTON_SIZE + PANEL_PADDING;
     return irr::core::recti(position_.X, position_.Y,
                            position_.X + width, position_.Y + height);
 }
