@@ -7844,24 +7844,25 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 {
 	// Death packet indicates an entity has died
-	// Format typically includes: spawn_id of victim, spawn_id of killer, damage, spell_id
-	
-	if (p.Length() < 10) {
+	// Death_Struct layout (all uint32):
+	//   spawn_id, killer_id, corpseid, bindzoneid, spell_id, attack_skill, damage, unknown
+
+	if (p.Length() < 30) {  // Need at least through damage field
 		if (s_debug_level >= 1) {
 			std::cout << fmt::format("Death packet too small: {} bytes", p.Length()) << std::endl;
 		}
 		return;
 	}
-	
-	// Parse death information
-	uint16_t victim_id = p.GetUInt16(2);    // Who died
-	uint16_t killer_id = p.GetUInt16(4);    // Who killed them (0 = player character)
-	uint32_t damage = p.GetUInt32(6);       // Final damage amount
-	uint16_t spell_id = 0;
-	
-	if (p.Length() >= 12) {
-		spell_id = p.GetUInt16(10);         // Spell that killed (if any)
-	}
+
+	// Parse death information - Death_Struct uses uint32 fields
+	// Offsets include 2-byte opcode prefix
+	uint32_t victim_id = p.GetUInt32(2);    // spawn_id - Who died
+	uint32_t killer_id = p.GetUInt32(6);    // killer_id - Who killed them
+	// uint32_t corpse_id = p.GetUInt32(10);  // corpseid (unused)
+	// uint32_t bind_zone = p.GetUInt32(14);  // bindzoneid (unused)
+	uint32_t spell_id = p.GetUInt32(18);    // spell_id - Spell that killed (0 if melee)
+	// uint32_t attack_skill = p.GetUInt32(22);  // attack_skill (unused)
+	uint32_t damage = p.GetUInt32(26);      // damage - Final damage amount
 	
 	// Get entity names if we have them
 	std::string victim_name = "Unknown";
