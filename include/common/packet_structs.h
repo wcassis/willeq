@@ -407,6 +407,17 @@ struct CombatDamage_Struct {
 };
 
 /*
+ * Combat Ability structure (kick, bash, taunt, etc.)
+ * Size: 12 bytes
+ */
+struct CombatAbility_Struct {
+/*00*/ uint32_t target;      // Target entity ID
+/*04*/ uint32_t attack;      // Attack value (usually 0)
+/*08*/ uint32_t skill;       // Skill ID (e.g., SKILL_KICK, SKILL_BASH)
+/*12*/
+};
+
+/*
  * Money on Corpse structure
  * Size: 20 bytes
  */

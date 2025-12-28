@@ -10,6 +10,7 @@
 #include "buff_window.h"
 #include "group_window.h"
 #include "player_status_window.h"
+#include "skills_window.h"
 #include "casting_bar.h"
 #include "item_tooltip.h"
 #include "buff_tooltip.h"
@@ -22,6 +23,7 @@
 namespace EQ {
 struct ActiveBuff;
 class SpellDatabase;
+class SkillManager;
 }
 
 namespace EQT {
@@ -169,6 +171,17 @@ public:
     void setGroupAcceptCallback(GroupAcceptCallback callback);
     void setGroupDeclineCallback(GroupDeclineCallback callback);
 
+    // Skills window management
+    void initSkillsWindow(EQ::SkillManager* skillMgr);
+    void toggleSkillsWindow();
+    void openSkillsWindow();
+    void closeSkillsWindow();
+    bool isSkillsWindowOpen() const;
+    SkillsWindow* getSkillsWindow() { return skillsWindow_.get(); }
+    const SkillsWindow* getSkillsWindow() const { return skillsWindow_.get(); }
+    void setSkillActivateCallback(SkillActivateCallback callback);
+    void setHotbarCreateCallback(HotbarCreateCallback callback);
+
     // Player status window management
     void initPlayerStatusWindow(EverQuest* eq);
     PlayerStatusWindow* getPlayerStatusWindow() { return playerStatusWindow_.get(); }
@@ -311,6 +324,7 @@ private:
     std::unique_ptr<SpellBookWindow> spellBookWindow_;
     std::unique_ptr<BuffWindow> buffWindow_;
     std::unique_ptr<GroupWindow> groupWindow_;
+    std::unique_ptr<SkillsWindow> skillsWindow_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
@@ -338,6 +352,10 @@ private:
     GroupDisbandCallback groupDisbandCallback_;
     GroupAcceptCallback groupAcceptCallback_;
     GroupDeclineCallback groupDeclineCallback_;
+
+    // Skills window callbacks
+    SkillActivateCallback skillActivateCallback_;
+    HotbarCreateCallback hotbarCreateCallback_;
 
     // Tooltips
     ItemTooltip tooltip_;

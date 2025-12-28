@@ -6,6 +6,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
 #include "client/spell/spell_type_processor.h"
+#include "client/skill/skill_manager.h"
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -19,6 +20,7 @@
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
+#include "client/graphics/ui/hotbar_types.h"
 #endif
 #include <array>
 #include <iomanip>
@@ -642,6 +644,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 	// Initialize spell manager
 	m_spell_manager = std::make_unique<EQ::SpellManager>(this);
+
+	// Initialize skill manager
+	m_skill_manager = std::make_unique<EQ::SkillManager>(this);
 
 	// Direct connection without DNS lookup (assume host is already IP or will be resolved by OS)
 	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
@@ -1815,8 +1820,14 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_SkillUpdate:
 		// Skill level update
 		if (p.Length() >= 7) {
-			uint32_t skill_id = p.GetUInt8(2);
+			uint8_t skill_id = p.GetUInt8(2);
 			uint32_t value = p.GetUInt32(3);
+
+			// Update skill manager
+			if (m_skill_manager) {
+				m_skill_manager->updateSkill(skill_id, value);
+			}
+
 			if (s_debug_level >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", skill_id, value);
 			}
@@ -2370,6 +2381,33 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_silver = silver;
 	m_copper = copper;
 	m_last_name = last_name;
+
+	// Initialize skill manager with player info first
+	if (m_skill_manager) {
+		m_skill_manager->initialize(static_cast<uint8_t>(class_), static_cast<uint8_t>(race), level);
+
+		// Skills are stored as uint32_t[100] starting at offset 4460
+		// Reference: EQEmu titanium_structs.h PlayerProfile_Struct
+		const size_t skill_offset = 4460;
+		if (p.Length() >= base + skill_offset + (EQT::MAX_PP_SKILL * 4)) {
+			uint32_t skills[EQT::MAX_PP_SKILL];
+			int nonzero_count = 0;
+			for (size_t i = 0; i < EQT::MAX_PP_SKILL; ++i) {
+				skills[i] = p.GetUInt32(base + skill_offset + (i * 4));
+				if (skills[i] > 0) {
+					nonzero_count++;
+					if (s_debug_level >= 2) {
+						LOG_DEBUG(MOD_MAIN, "Skill[{}] = {}", i, skills[i]);
+					}
+				}
+			}
+			m_skill_manager->updateAllSkills(skills, EQT::MAX_PP_SKILL);
+			LOG_INFO(MOD_MAIN, "Loaded {} skills from PlayerProfile ({} non-zero)", EQT::MAX_PP_SKILL, nonzero_count);
+		} else {
+			LOG_WARN(MOD_MAIN, "PlayerProfile too small for skills: {} < {}",
+				p.Length(), base + skill_offset + (EQT::MAX_PP_SKILL * 4));
+		}
+	}
 
 #ifdef EQT_HAS_GRAPHICS
 	// Update inventory manager with player info for item restriction validation
@@ -4796,6 +4834,40 @@ void EverQuest::AddChatSystemMessage(const std::string &text)
 	LOG_INFO(MOD_MAIN, "{}", text);
 }
 
+// ============================================================================
+// Hotbar Button Management (Stub for future implementation)
+// ============================================================================
+
+void EverQuest::AddPendingHotbarButton(uint8_t skill_id)
+{
+#ifdef EQT_HAS_GRAPHICS
+	const char* skill_name = EQ::getSkillName(skill_id);
+	m_pending_hotbar_buttons.emplace_back(
+		eqt::ui::HotbarButtonType::Skill,
+		static_cast<uint32_t>(skill_id),
+		skill_name ? skill_name : "Unknown Skill"
+	);
+	LOG_INFO(MOD_MAIN, "Queued skill {} ({}) for hotbar (total pending: {})",
+		skill_id, skill_name ? skill_name : "Unknown", m_pending_hotbar_buttons.size());
+#endif
+}
+
+const std::vector<eqt::ui::PendingHotbarButton>& EverQuest::GetPendingHotbarButtons() const
+{
+	return m_pending_hotbar_buttons;
+}
+
+void EverQuest::ClearPendingHotbarButtons()
+{
+	m_pending_hotbar_buttons.clear();
+	LOG_DEBUG(MOD_MAIN, "Cleared pending hotbar buttons");
+}
+
+size_t EverQuest::GetPendingHotbarButtonCount() const
+{
+	return m_pending_hotbar_buttons.size();
+}
+
 void EverQuest::ProcessChatInput(const std::string &input)
 {
 	if (input.empty()) {
@@ -5661,6 +5733,24 @@ void EverQuest::RegisterCommands()
 		// TODO: Open spellbook window when UI is implemented
 	};
 	m_command_registry->registerCommand(spellbook);
+
+	Command skills;
+	skills.name = "skills";
+	skills.usage = "/skills";
+	skills.description = "Toggle skills window";
+	skills.category = "Utility";
+	skills.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		if (m_renderer && m_renderer->getWindowManager()) {
+			m_renderer->getWindowManager()->toggleSkillsWindow();
+		} else {
+			AddChatSystemMessage("Skills window requires graphics mode");
+		}
+#else
+		AddChatSystemMessage("Skills window requires graphics mode");
+#endif
+	};
+	m_command_registry->registerCommand(skills);
 
 	Command gems;
 	gems.name = "gems";
@@ -10528,6 +10618,41 @@ bool EverQuest::InitGraphics(int width, int height) {
 		auto* windowManager = m_renderer->getWindowManager();
 		windowManager->initGroupWindow(this);
 		windowManager->initPlayerStatusWindow(this);
+		windowManager->initSkillsWindow(m_skill_manager.get());
+
+		// Set up skills window callbacks
+		windowManager->setSkillActivateCallback([this](uint8_t skill_id) {
+			if (m_skill_manager) {
+				m_skill_manager->activateSkill(skill_id);
+			}
+		});
+
+		windowManager->setHotbarCreateCallback([this](uint8_t skill_id) {
+			// Store skill for future hotbar implementation
+			AddPendingHotbarButton(skill_id);
+			const char* skill_name = EQ::getSkillName(skill_id);
+			AddChatSystemMessage(fmt::format("Added {} to hotbar queue (hotbar not yet implemented)", skill_name));
+		});
+
+		// Set up skill activation feedback callback
+		if (m_skill_manager) {
+			m_skill_manager->setOnSkillActivated([this](uint8_t skill_id, bool success, const std::string& message) {
+				const char* skill_name = EQ::getSkillName(skill_id);
+				if (success) {
+					AddChatSystemMessage(fmt::format("You use {}!", skill_name));
+				} else {
+					AddChatSystemMessage(fmt::format("Cannot use {}: {}", skill_name, message));
+				}
+			});
+
+			// Set up skill-up notification callback
+			m_skill_manager->setOnSkillUpdate([this](uint8_t skill_id, uint32_t old_value, uint32_t new_value) {
+				if (new_value > old_value) {
+					const char* skill_name = EQ::getSkillName(skill_id);
+					AddChatSystemMessage(fmt::format("You have become better at {}! ({})", skill_name, new_value));
+				}
+			});
+		}
 
 		// Set up group window callbacks
 		windowManager->setGroupInviteCallback([this]() {

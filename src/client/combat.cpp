@@ -416,7 +416,31 @@ void CombatManager::MemorizeSpell(uint32_t spell_id, SpellSlot slot) {
 }
 
 void CombatManager::UseAbility(uint32_t ability_id, uint16_t target_id) {
-	// TODO: Implement ability usage
+	if (!m_eq) {
+		LOG_ERROR(MOD_COMBAT, "UseAbility: No EQ reference");
+		return;
+	}
+
+	// Use current target if none specified
+	uint16_t actual_target = target_id;
+	if (actual_target == 0) {
+		actual_target = m_current_target_id;
+	}
+
+	LOG_DEBUG(MOD_COMBAT, "UseAbility: skill={}, target={}", ability_id, actual_target);
+
+	// Build CombatAbility packet
+	// Structure: target (4 bytes), attack_value (4 bytes), skill_id (4 bytes)
+	// The attack_value is typically 100 based on packet captures from real client
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(12);  // CombatAbility_Struct is 12 bytes
+	packet.PutUInt32(0, actual_target);  // target entity ID
+	packet.PutUInt32(4, 100);            // attack value (real client sends 100)
+	packet.PutUInt32(8, ability_id);     // skill ID
+
+	m_eq->QueuePacket(HC_OP_CombatAbility, &packet);
+
+	LOG_DEBUG(MOD_COMBAT, "Sent CombatAbility packet: skill={}, target={}", ability_id, actual_target);
 }
 
 void CombatManager::UpdateCombatStats(const CombatStats& stats) {
