@@ -389,7 +389,7 @@ void SpellGemPanel::drawSpellbookButton(irr::video::IVideoDriver* driver)
     driver->draw2DRectangleOutline(absRect, borderColor);
 }
 
-bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift)
+bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl)
 {
     if (!visible_) {
         return false;
@@ -416,6 +416,21 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift)
     }
 
     if (leftButton) {
+        // Ctrl+click to pickup spell for hotbar
+        if (ctrl && !shift) {
+            if (spellMgr_ && hotbarPickupCallback_) {
+                uint32_t spellId = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(gemIndex));
+                if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
+                    const EQ::SpellData* spell = spellMgr_->getSpell(spellId);
+                    if (spell) {
+                        hotbarPickupCallback_(HotbarButtonType::Spell, spellId,
+                                             "", spell->gem_icon);
+                    }
+                }
+            }
+            return true;
+        }
+
         // Check if gem is clickable (not on cooldown or empty)
         if (spellMgr_) {
             EQ::GemState state = spellMgr_->getGemState(static_cast<uint8_t>(gemIndex));

@@ -111,8 +111,17 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 vendorToggleRequested_ = true;
             }
 
-            // Spell gem shortcuts (1-8 keys, not numpad)
-            if (event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_8) {
+            // Hotbar shortcuts (Ctrl+1-9 and Ctrl+0)
+            if (event.KeyInput.Control && !event.KeyInput.Shift) {
+                if (event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_9) {
+                    hotbarActivationRequest_ = static_cast<int8_t>(event.KeyInput.Key - irr::KEY_KEY_1);
+                } else if (event.KeyInput.Key == irr::KEY_KEY_0) {
+                    hotbarActivationRequest_ = 9;  // 10th button (index 9)
+                }
+            }
+
+            // Spell gem shortcuts (1-8 keys, not numpad) - only when Ctrl is not held
+            if (!event.KeyInput.Control && event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_8) {
                 spellGemCastRequest_ = static_cast<int8_t>(event.KeyInput.Key - irr::KEY_KEY_1);
             }
 
@@ -2244,6 +2253,18 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             if (spellGemCastCallback_) {
                 LOG_DEBUG(MOD_GRAPHICS, "Spell gem {} pressed (key {})", spellGemRequest + 1, spellGemRequest + 1);
                 spellGemCastCallback_(static_cast<uint8_t>(spellGemRequest));
+            }
+        }
+    }
+
+    // Handle hotbar shortcuts (Ctrl+1-9, Ctrl+0) - only in Player mode, and only if chat is not focused
+    int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
+    if (hotbarRequest >= 0 && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            if (windowManager_ && windowManager_->getHotbarWindow()) {
+                LOG_DEBUG(MOD_GRAPHICS, "Hotbar button {} activated (Ctrl+{})", hotbarRequest + 1,
+                         hotbarRequest == 9 ? 0 : hotbarRequest + 1);
+                windowManager_->getHotbarWindow()->activateButton(hotbarRequest);
             }
         }
     }

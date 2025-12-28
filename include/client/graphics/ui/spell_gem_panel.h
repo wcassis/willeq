@@ -3,8 +3,10 @@
 #include <irrlicht.h>
 #include <array>
 #include <functional>
+#include <string>
 #include "client/spell/spell_constants.h"
 #include "client/graphics/ui/ui_settings.h"
+#include "client/graphics/ui/hotbar_window.h"  // For HotbarButtonType
 
 namespace EQ {
 class SpellManager;
@@ -21,6 +23,10 @@ using GemForgetCallback = std::function<void(uint8_t gem_slot)>;
 using GemHoverCallback = std::function<void(uint8_t gem_slot, uint32_t spell_id, int mouseX, int mouseY)>;
 using GemHoverEndCallback = std::function<void()>;
 using SpellbookButtonCallback = std::function<void()>;
+
+// Callback for Ctrl+click pickup to hotbar cursor
+using SpellHotbarPickupCallback = std::function<void(HotbarButtonType type, uint32_t id,
+                                                      const std::string& emoteText, uint32_t iconId)>;
 
 // Individual gem slot layout data
 struct GemSlotLayout {
@@ -44,7 +50,7 @@ public:
     void render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui);
 
     // Input handling
-    bool handleMouseDown(int x, int y, bool leftButton, bool shift);
+    bool handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl = false);
     bool handleMouseUp(int x, int y, bool leftButton);
     bool handleMouseMove(int x, int y);
     bool handleRightClick(int x, int y);
@@ -71,6 +77,7 @@ public:
     void setGemHoverCallback(GemHoverCallback cb) { hoverCallback_ = std::move(cb); }
     void setGemHoverEndCallback(GemHoverEndCallback cb) { hoverEndCallback_ = std::move(cb); }
     void setSpellbookCallback(SpellbookButtonCallback cb) { spellbookCallback_ = std::move(cb); }
+    void setHotbarPickupCallback(SpellHotbarPickupCallback cb) { hotbarPickupCallback_ = std::move(cb); }
 
 private:
     void initializeLayout();
@@ -112,6 +119,7 @@ private:
     GemHoverCallback hoverCallback_;
     GemHoverEndCallback hoverEndCallback_;
     SpellbookButtonCallback spellbookCallback_;
+    SpellHotbarPickupCallback hotbarPickupCallback_;
 
     // Spellbook button
     irr::core::recti spellbookButtonBounds_;

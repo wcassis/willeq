@@ -81,6 +81,9 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     // Create chat window (visible by default)
     chatWindow_ = std::make_unique<ChatWindow>();
     chatWindow_->init(screenWidth, screenHeight);
+
+    // Create hotbar window (visible by default)
+    initHotbarWindow();
 }
 
 void WindowManager::onResize(int screenWidth, int screenHeight) {
@@ -757,7 +760,7 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
 
     // Check spell gem panel (high priority for casting)
     if (spellGemPanel_ && spellGemPanel_->isVisible()) {
-        if (spellGemPanel_->handleMouseDown(x, y, leftButton, shift)) {
+        if (spellGemPanel_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
             return true;
         }
     }
@@ -797,6 +800,48 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check hotbar window - handle cursor placement/swap
+    if (hotbarWindow_ && hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y)) {
+        if (leftButton && hotbarCursor_.hasItem()) {
+            // Get button at position
+            irr::core::recti contentArea = hotbarWindow_->getHotbarContentArea();
+            int relX = x - contentArea.UpperLeftCorner.X;
+            int relY = y - contentArea.UpperLeftCorner.Y;
+            int buttonIndex = hotbarWindow_->getButtonAtPosition(relX, relY);
+
+            if (buttonIndex >= 0) {
+                const HotbarButton& targetButton = hotbarWindow_->getButton(buttonIndex);
+                if (targetButton.type != HotbarButtonType::Empty) {
+                    // Swap: save old button, place cursor, put old on cursor
+                    HotbarButtonType oldType = targetButton.type;
+                    uint32_t oldId = targetButton.id;
+                    std::string oldEmoteText = targetButton.emoteText;
+                    uint32_t oldIconId = targetButton.iconId;
+
+                    // Place cursor on button
+                    hotbarWindow_->setButton(buttonIndex, hotbarCursor_.getType(),
+                                              hotbarCursor_.getId(), hotbarCursor_.getEmoteText(),
+                                              hotbarCursor_.getIconId());
+
+                    // Put old button on cursor
+                    setHotbarCursor(oldType, oldId, oldEmoteText, oldIconId);
+                } else {
+                    // Empty slot: just place cursor item
+                    hotbarWindow_->setButton(buttonIndex, hotbarCursor_.getType(),
+                                              hotbarCursor_.getId(), hotbarCursor_.getEmoteText(),
+                                              hotbarCursor_.getIconId());
+                    clearHotbarCursor();
+                }
+                return true;
+            }
+        }
+
+        // Let hotbar window handle other clicks
+        if (hotbarWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+            return true;
+        }
+    }
+
     // Check bag windows (they're on top of inventory)
     for (auto& [slotId, bagWindow] : bagWindows_) {
         if (bagWindow->handleMouseDown(x, y, leftButton, shift, ctrl)) {
@@ -820,6 +865,33 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
     // Check chat window (behind other windows)
     if (chatWindow_ && chatWindow_->isVisible()) {
         if (chatWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Clear hotbar cursor when clicking outside all windows with cursor active
+    if (leftButton && hotbarCursor_.hasItem()) {
+        // Check if click was on any hotbar-related source (spell panel, inventory)
+        bool clickedSource = false;
+        if (spellGemPanel_ && spellGemPanel_->isVisible() && spellGemPanel_->containsPoint(x, y)) {
+            clickedSource = true;
+        }
+        if (inventoryWindow_ && inventoryWindow_->isVisible() && inventoryWindow_->containsPoint(x, y)) {
+            clickedSource = true;
+        }
+        for (auto& [slotId, bagWindow] : bagWindows_) {
+            if (bagWindow->containsPoint(x, y)) {
+                clickedSource = true;
+                break;
+            }
+        }
+        if (hotbarWindow_ && hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y)) {
+            clickedSource = true;
+        }
+
+        // If clicked outside all hotbar-related windows, clear cursor
+        if (!clickedSource) {
+            clearHotbarCursor();
             return true;
         }
     }
@@ -882,6 +954,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check chat window
     if (chatWindow_ && chatWindow_->isVisible()) {
         if (chatWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check hotbar window (for drag release)
+    if (hotbarWindow_ && hotbarWindow_->isVisible()) {
+        if (hotbarWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1008,6 +1087,13 @@ bool WindowManager::handleMouseMove(int x, int y) {
         }
     }
 
+    // Check hotbar window (for drag movement and button hover)
+    if (hotbarWindow_ && hotbarWindow_->isVisible()) {
+        if (hotbarWindow_->handleMouseMove(x, y)) {
+            // Don't return true - allow hover states to update
+        }
+    }
+
     // Clear tooltips if not over any slot
     tooltip_.clear();
     buffTooltip_.clear();
@@ -1029,6 +1115,7 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
         if (buffWindow_) buffWindow_->setHovered(false);
         if (groupWindow_) groupWindow_->setHovered(false);
         if (spellBookWindow_) spellBookWindow_->setHovered(false);
+        if (hotbarWindow_) hotbarWindow_->setHovered(false);
         for (auto& [slotId, bagWindow] : bagWindows_) {
             bagWindow->setHovered(false);
         }
@@ -1056,6 +1143,9 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
     }
     if (spellBookWindow_) {
         spellBookWindow_->setHovered(spellBookWindow_->isVisible() && spellBookWindow_->containsPoint(x, y));
+    }
+    if (hotbarWindow_) {
+        hotbarWindow_->setHovered(hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y));
     }
     for (auto& [slotId, bagWindow] : bagWindows_) {
         bagWindow->setHovered(bagWindow->containsPoint(x, y));
@@ -1120,6 +1210,11 @@ void WindowManager::render() {
         groupWindow_->render(driver_, gui_);
     }
 
+    // Render hotbar window
+    if (hotbarWindow_ && hotbarWindow_->isVisible()) {
+        hotbarWindow_->render(driver_, gui_);
+    }
+
     // Render player status window (upper left)
     if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
         playerStatusWindow_->render(driver_, gui_);
@@ -1161,6 +1256,11 @@ void WindowManager::render() {
 
     // Render cursor item
     renderCursorItem();
+
+    // Render hotbar cursor (if dragging a hotbar item)
+    if (hotbarCursor_.hasItem()) {
+        hotbarCursor_.render(driver_, gui_, &iconLoader_, mouseX_, mouseY_);
+    }
 
     // Render confirmation dialog
     if (isConfirmDialogOpen()) {
@@ -1391,6 +1491,17 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
         return;
     }
 
+    // Ctrl+click without shift and without inventory cursor = pickup for hotbar
+    if (ctrl && !shift && !invManager_->hasCursorItem()) {
+        const inventory::ItemInstance* item = invManager_->getItem(slotId);
+        if (item) {
+            LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up item for hotbar, itemId={}, icon={}",
+                     item->itemId, item->icon);
+            setHotbarCursor(HotbarButtonType::Item, item->itemId, "", item->icon);
+            return;
+        }
+    }
+
     if (invManager_->hasCursorItem()) {
         // Try to place item - check for auto-stacking
         const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
@@ -1452,6 +1563,17 @@ void WindowManager::handleBagSlotClick(int16_t slotId, bool shift, bool ctrl) {
     LOG_DEBUG(MOD_UI, "WindowManager handleBagSlotClick: slotId={} shift={} ctrl={}", slotId, shift, ctrl);
     if (slotId == inventory::SLOT_INVALID) {
         return;
+    }
+
+    // Ctrl+click without shift and without inventory cursor = pickup for hotbar
+    if (ctrl && !shift && !invManager_->hasCursorItem()) {
+        const inventory::ItemInstance* item = invManager_->getItem(slotId);
+        if (item) {
+            LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up bag item for hotbar, itemId={}, icon={}",
+                     item->itemId, item->icon);
+            setHotbarCursor(HotbarButtonType::Item, item->itemId, "", item->icon);
+            return;
+        }
     }
 
     if (invManager_->hasCursorItem()) {
@@ -1874,6 +1996,12 @@ void WindowManager::initSpellGemPanel(EQ::SpellManager* spellMgr) {
     spellGemPanel_->setGemHoverEndCallback([this]() {
         hoveredSpellId_ = EQ::SPELL_UNKNOWN;
     });
+
+    // Connect Ctrl+click pickup for hotbar
+    spellGemPanel_->setHotbarPickupCallback([this](HotbarButtonType type, uint32_t id,
+                                                    const std::string& emoteText, uint32_t iconId) {
+        setHotbarCursor(type, id, emoteText, iconId);
+    });
 }
 
 void WindowManager::setGemCastCallback(GemCastCallback callback) {
@@ -2072,6 +2200,105 @@ void WindowManager::setGroupDeclineCallback(GroupDeclineCallback callback) {
     if (groupWindow_) {
         groupWindow_->setDeclineCallback(callback);
     }
+}
+
+// ============================================================================
+// Hotbar Window Management
+// ============================================================================
+
+void WindowManager::initHotbarWindow() {
+    hotbarWindow_ = std::make_unique<HotbarWindow>();
+    hotbarWindow_->setIconLoader(&iconLoader_);
+    hotbarWindow_->setHotbarCursor(&hotbarCursor_);
+    hotbarWindow_->positionDefault(screenWidth_, screenHeight_);
+
+    // Load button configuration from settings
+    const auto& hotbarSettings = UISettings::instance().hotbar();
+    hotbarWindow_->setButtonCount(hotbarSettings.buttonCount);
+
+    for (size_t i = 0; i < 10; i++) {
+        const auto& btnData = hotbarSettings.buttons[i];
+        if (btnData.type != 0) {
+            hotbarWindow_->setButton(
+                static_cast<int>(i),
+                static_cast<HotbarButtonType>(btnData.type),
+                btnData.id,
+                btnData.emoteText,
+                btnData.iconId
+            );
+        }
+    }
+
+    // Set up callbacks
+    hotbarWindow_->setActivateCallback([this](int index, const HotbarButton& button) {
+        if (hotbarActivateCallback_) {
+            hotbarActivateCallback_(index, button);
+        }
+    });
+
+    hotbarWindow_->setPickupCallback([this](int index, const HotbarButton& button) {
+        // Pickup from hotbar to cursor
+        setHotbarCursor(button.type, button.id, button.emoteText, button.iconId);
+        hotbarWindow_->clearButton(index);
+    });
+
+    hotbarWindow_->setEmoteDialogCallback([this](int index) {
+        // For now, open emote input state
+        // A full implementation would show a modal text input dialog
+        // For Phase 2, we set up the callback infrastructure
+        emoteDialogSlot_ = index;
+        emoteDialogActive_ = true;
+        emoteDialogText_.clear();
+        LOG_DEBUG(MOD_UI, "Emote dialog opened for hotbar slot {}", index);
+    });
+
+    hotbarWindow_->show();  // Hotbar visible by default
+
+    LOG_DEBUG(MOD_UI, "Hotbar window initialized");
+}
+
+void WindowManager::toggleHotbar() {
+    if (!hotbarWindow_) return;
+    if (hotbarWindow_->isVisible()) {
+        closeHotbar();
+    } else {
+        openHotbar();
+    }
+}
+
+void WindowManager::openHotbar() {
+    if (hotbarWindow_) {
+        hotbarWindow_->show();
+    }
+}
+
+void WindowManager::closeHotbar() {
+    if (hotbarWindow_) {
+        hotbarWindow_->hide();
+    }
+}
+
+bool WindowManager::isHotbarOpen() const {
+    return hotbarWindow_ && hotbarWindow_->isVisible();
+}
+
+void WindowManager::setHotbarActivateCallback(HotbarActivateCallback callback) {
+    hotbarActivateCallback_ = std::move(callback);
+}
+
+void WindowManager::startHotbarCooldown(int buttonIndex, uint32_t durationMs) {
+    if (hotbarWindow_) {
+        hotbarWindow_->startCooldown(buttonIndex, durationMs);
+    }
+}
+
+void WindowManager::setHotbarCursor(HotbarButtonType type, uint32_t id,
+                                     const std::string& emoteText, uint32_t iconId) {
+    hotbarCursor_.setItem(type, id, emoteText, iconId);
+}
+
+void WindowManager::clearHotbarCursor() {
+    hotbarCursor_.clear();
 }
 
 // ============================================================================

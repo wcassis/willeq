@@ -518,6 +518,34 @@ const ItemInstance* InventoryManager::getItemById(uint32_t itemId) const {
     return nullptr;
 }
 
+int16_t InventoryManager::findItemSlotByItemId(uint32_t itemId) const {
+    // Search equipment slots first (0-21) as these are typically clickable items
+    for (int16_t slot = 0; slot < EQUIPMENT_COUNT; slot++) {
+        auto it = items_.find(slot);
+        if (it != items_.end() && it->second && it->second->itemId == itemId) {
+            return slot;
+        }
+    }
+
+    // Search general inventory slots (22-29)
+    for (int16_t slot = GENERAL_BEGIN; slot <= GENERAL_END; slot++) {
+        auto it = items_.find(slot);
+        if (it != items_.end() && it->second && it->second->itemId == itemId) {
+            return slot;
+        }
+    }
+
+    // Search bag contents (251-330)
+    for (int16_t slot = GENERAL_BAGS_BEGIN; slot <= GENERAL_BAGS_END; slot++) {
+        auto it = items_.find(slot);
+        if (it != items_.end() && it->second && it->second->itemId == itemId) {
+            return slot;
+        }
+    }
+
+    return SLOT_INVALID;
+}
+
 bool InventoryManager::addQuantityToExistingStack(uint32_t itemId, int32_t quantity) {
     // Search inventory slots for a stackable item with this ID
     for (auto& [slotId, item] : items_) {

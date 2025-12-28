@@ -210,6 +210,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/buff_window.cpp
         src/client/graphics/ui/buff_tooltip.cpp
         src/client/graphics/ui/group_window.cpp
+        src/client/graphics/ui/hotbar_window.cpp
+        src/client/graphics/ui/hotbar_cursor.cpp
         src/client/graphics/ui/player_status_window.cpp
         src/client/graphics/ui/casting_bar.cpp
         src/client/graphics/ui/character_model_view.cpp

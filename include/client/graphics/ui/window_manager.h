@@ -10,6 +10,8 @@
 #include "buff_window.h"
 #include "group_window.h"
 #include "player_status_window.h"
+#include "hotbar_window.h"
+#include "hotbar_cursor.h"
 #include "casting_bar.h"
 #include "item_tooltip.h"
 #include "buff_tooltip.h"
@@ -169,6 +171,24 @@ public:
     void setGroupAcceptCallback(GroupAcceptCallback callback);
     void setGroupDeclineCallback(GroupDeclineCallback callback);
 
+    // Hotbar window management
+    void initHotbarWindow();
+    void toggleHotbar();
+    void openHotbar();
+    void closeHotbar();
+    bool isHotbarOpen() const;
+    HotbarWindow* getHotbarWindow() { return hotbarWindow_.get(); }
+    const HotbarWindow* getHotbarWindow() const { return hotbarWindow_.get(); }
+    void setHotbarActivateCallback(HotbarActivateCallback callback);
+    void startHotbarCooldown(int buttonIndex, uint32_t durationMs);
+
+    // Hotbar cursor operations
+    bool hasHotbarCursor() const { return hotbarCursor_.hasItem(); }
+    void setHotbarCursor(HotbarButtonType type, uint32_t id,
+                         const std::string& emoteText, uint32_t iconId);
+    void clearHotbarCursor();
+    const HotbarCursor& getHotbarCursor() const { return hotbarCursor_; }
+
     // Player status window management
     void initPlayerStatusWindow(EverQuest* eq);
     PlayerStatusWindow* getPlayerStatusWindow() { return playerStatusWindow_.get(); }
@@ -311,6 +331,8 @@ private:
     std::unique_ptr<SpellBookWindow> spellBookWindow_;
     std::unique_ptr<BuffWindow> buffWindow_;
     std::unique_ptr<GroupWindow> groupWindow_;
+    std::unique_ptr<HotbarWindow> hotbarWindow_;
+    HotbarCursor hotbarCursor_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
@@ -338,6 +360,9 @@ private:
     GroupDisbandCallback groupDisbandCallback_;
     GroupAcceptCallback groupAcceptCallback_;
     GroupDeclineCallback groupDeclineCallback_;
+
+    // Hotbar callbacks
+    HotbarActivateCallback hotbarActivateCallback_;
 
     // Tooltips
     ItemTooltip tooltip_;
@@ -382,6 +407,17 @@ private:
     uint32_t hoveredSpellId_ = 0xFFFFFFFF;  // EQ::SPELL_UNKNOWN
     int hoveredSpellX_ = 0;
     int hoveredSpellY_ = 0;
+
+    // Emote dialog state (for hotbar right-click)
+    bool emoteDialogActive_ = false;
+    int emoteDialogSlot_ = -1;
+    std::string emoteDialogText_;
+    irr::core::recti emoteDialogBounds_;
+    irr::core::recti emoteDialogInputBounds_;
+    irr::core::recti emoteDialogOkBounds_;
+    irr::core::recti emoteDialogCancelBounds_;
+    bool emoteDialogOkHighlighted_ = false;
+    bool emoteDialogCancelHighlighted_ = false;
 
     // Layout constants
     static constexpr int INVENTORY_X = 50;

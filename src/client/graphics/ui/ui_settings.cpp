@@ -82,6 +82,13 @@ UISettings::CastingBarSettings::CastingBarSettings() {
     targetBar.y = 80;
 }
 
+UISettings::HotbarSettings::HotbarSettings() {
+    window.x = -1;  // Centered
+    window.y = -1;  // Above chat
+    window.visible = true;
+    window.showTitleBar = false;
+}
+
 // ============================================================================
 // Singleton
 // ============================================================================
@@ -156,6 +163,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
         }
+        if (windows.isMember("hotbar")) {
+            loadHotbarSettings(windows["hotbar"]);
+        }
     }
 
     // Load tooltip settings
@@ -202,6 +212,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveSpellGemSettings(windows["spellGems"]);
     saveSpellBookSettings(windows["spellbook"]);
     saveCastingBarSettings(windows["castingBar"]);
+    saveHotbarSettings(windows["hotbar"]);
 
     // Save tooltip settings
     saveTooltipSettings(root["tooltips"]);
@@ -271,6 +282,9 @@ void UISettings::applyOverrides(const Json::Value& overrides) {
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
         }
+        if (windows.isMember("hotbar")) {
+            loadHotbarSettings(windows["hotbar"]);
+        }
     }
 
     if (overrides.isMember("tooltips")) {
@@ -303,6 +317,7 @@ void UISettings::resetToDefaults() {
     m_playerStatus = PlayerStatusSettings{};
     m_spellGems = SpellGemSettings{};
     m_spellBook = SpellBookSettings{};
+    m_hotbar = HotbarSettings{};
     m_castingBar = CastingBarSettings{};
     m_itemTooltip = ItemTooltipSettings{};
     m_buffTooltip = BuffTooltipSettings{};
@@ -855,6 +870,57 @@ void UISettings::saveSpellBookSettings(Json::Value& json) const {
     layout["navButtonWidth"] = m_spellBook.navButtonWidth;
     layout["navButtonHeight"] = m_spellBook.navButtonHeight;
     json["layout"] = layout;
+}
+
+// ============================================================================
+// Hotbar Settings Serialization
+// ============================================================================
+
+void UISettings::loadHotbarSettings(const Json::Value& json) {
+    loadWindowSettings(m_hotbar.window, json);
+
+    if (json.isMember("layout")) {
+        const Json::Value& layout = json["layout"];
+        if (layout.isMember("buttonSize")) m_hotbar.buttonSize = layout["buttonSize"].asInt();
+        if (layout.isMember("buttonSpacing")) m_hotbar.buttonSpacing = layout["buttonSpacing"].asInt();
+        if (layout.isMember("padding")) m_hotbar.padding = layout["padding"].asInt();
+        if (layout.isMember("buttonCount")) m_hotbar.buttonCount = layout["buttonCount"].asInt();
+    }
+
+    // Load button data
+    if (json.isMember("buttons")) {
+        const Json::Value& buttons = json["buttons"];
+        for (Json::ArrayIndex i = 0; i < buttons.size() && i < 10; i++) {
+            const Json::Value& btn = buttons[i];
+            if (btn.isMember("type")) m_hotbar.buttons[i].type = btn["type"].asInt();
+            if (btn.isMember("id")) m_hotbar.buttons[i].id = btn["id"].asUInt();
+            if (btn.isMember("emoteText")) m_hotbar.buttons[i].emoteText = btn["emoteText"].asString();
+            if (btn.isMember("iconId")) m_hotbar.buttons[i].iconId = btn["iconId"].asUInt();
+        }
+    }
+}
+
+void UISettings::saveHotbarSettings(Json::Value& json) const {
+    saveWindowSettings(m_hotbar.window, json);
+
+    Json::Value layout;
+    layout["buttonSize"] = m_hotbar.buttonSize;
+    layout["buttonSpacing"] = m_hotbar.buttonSpacing;
+    layout["padding"] = m_hotbar.padding;
+    layout["buttonCount"] = m_hotbar.buttonCount;
+    json["layout"] = layout;
+
+    // Save button data
+    Json::Value buttons(Json::arrayValue);
+    for (size_t i = 0; i < 10; i++) {
+        Json::Value btn;
+        btn["type"] = m_hotbar.buttons[i].type;
+        btn["id"] = m_hotbar.buttons[i].id;
+        btn["emoteText"] = m_hotbar.buttons[i].emoteText;
+        btn["iconId"] = m_hotbar.buttons[i].iconId;
+        buttons.append(btn);
+    }
+    json["buttons"] = buttons;
 }
 
 // ============================================================================

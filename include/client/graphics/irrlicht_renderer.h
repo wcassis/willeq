@@ -188,6 +188,7 @@ public:
     bool hailRequested() { bool r = hailRequested_; hailRequested_ = false; return r; }
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
+    int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
     float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
     float getStepHeightDelta() { float d = stepHeightDelta_; stepHeightDelta_ = 0; return d; }
 
@@ -291,6 +292,7 @@ private:
     bool hailRequested_ = false;
     bool vendorToggleRequested_ = false;
     int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
+    int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
     float collisionHeightDelta_ = 0.0f;
     float stepHeightDelta_ = 0.0f;
     float offsetXDelta_ = 0.0f;

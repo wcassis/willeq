@@ -108,6 +108,11 @@ public:
     // Item access by ID (for item link tooltips)
     const ItemInstance* getItemById(uint32_t itemId) const;
 
+    // Find slot containing item by item ID (for hotbar item activation)
+    // Searches equipment slots first, then general/bag slots
+    // Returns SLOT_INVALID if not found
+    int16_t findItemSlotByItemId(uint32_t itemId) const;
+
     // Stack quantity updates (for vendor purchases that stack onto existing items)
     bool addQuantityToExistingStack(uint32_t itemId, int32_t quantity);
 

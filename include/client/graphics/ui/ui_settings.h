@@ -2,6 +2,7 @@
 
 #include <irrlicht.h>
 #include <json/json.h>
+#include <array>
 #include <string>
 #include <map>
 #include <set>
@@ -286,6 +287,30 @@ public:
     };
 
     // =========================================================================
+    // Hotbar Window Settings
+    // =========================================================================
+    struct HotbarSettings {
+        WindowSettings window;
+
+        // Layout
+        int buttonSize = 32;
+        int buttonSpacing = 2;
+        int padding = 4;
+        int buttonCount = 10;
+
+        // Per-button saved data (10 buttons max)
+        struct ButtonData {
+            int type = 0;           // HotbarButtonType as int
+            uint32_t id = 0;
+            std::string emoteText;
+            uint32_t iconId = 0;
+        };
+        std::array<ButtonData, 10> buttons;
+
+        HotbarSettings();
+    };
+
+    // =========================================================================
     // Casting Bar Settings
     // =========================================================================
     struct CastingBarSettings {
@@ -427,6 +452,9 @@ public:
     SpellBookSettings& spellBook() { return m_spellBook; }
     const SpellBookSettings& spellBook() const { return m_spellBook; }
 
+    HotbarSettings& hotbar() { return m_hotbar; }
+    const HotbarSettings& hotbar() const { return m_hotbar; }
+
     CastingBarSettings& castingBar() { return m_castingBar; }
     const CastingBarSettings& castingBar() const { return m_castingBar; }
 
@@ -484,6 +512,9 @@ private:
     void loadSpellBookSettings(const Json::Value& json);
     void saveSpellBookSettings(Json::Value& json) const;
 
+    void loadHotbarSettings(const Json::Value& json);
+    void saveHotbarSettings(Json::Value& json) const;
+
     void loadCastingBarSettings(const Json::Value& json);
     void saveCastingBarSettings(Json::Value& json) const;
 
@@ -515,6 +546,7 @@ private:
     PlayerStatusSettings m_playerStatus;
     SpellGemSettings m_spellGems;
     SpellBookSettings m_spellBook;
+    HotbarSettings m_hotbar;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;
     BuffTooltipSettings m_buffTooltip;

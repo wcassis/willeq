@@ -679,27 +679,38 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
     // If this is our cast, confirm it
     if (caster_id == m_eq->GetEntityID()) {
         if (m_is_casting && m_current_spell_id == spell_id) {
+            // Spell gem cast confirmed by server
             m_waiting_for_server_confirm = false;
             m_cast_duration_ms = cast_time_ms;  // Use server's cast time
             m_cast_start_time = std::chrono::steady_clock::now();  // Reset timer
 
             LOG_INFO(MOD_SPELL, "Server confirmed cast of '{}'", spell_name);
+        } else {
+            // Item click or other cast source - start tracking it now
+            m_is_casting = true;
+            m_current_spell_id = spell_id;
+            m_cast_duration_ms = cast_time_ms;
+            m_cast_start_time = std::chrono::steady_clock::now();
+            m_waiting_for_server_confirm = false;
+            m_current_gem_slot = 255;  // No gem (item cast)
+
+            LOG_INFO(MOD_SPELL, "Item/other cast started: '{}'", spell_name);
+        }
 
 #ifdef EQT_HAS_GRAPHICS
-            auto* renderer = m_eq->GetRenderer();
-            if (renderer) {
-                // Show player's casting bar
-                if (renderer->getWindowManager()) {
-                    renderer->getWindowManager()->startCast(spell_name, cast_time_ms);
-                }
-
-                // Create cast glow effect for the player too
-                if (renderer->getSpellVisualFX()) {
-                    renderer->getSpellVisualFX()->createCastGlow(caster_id, spell_id, cast_time_ms);
-                }
+        auto* renderer = m_eq->GetRenderer();
+        if (renderer) {
+            // Show player's casting bar
+            if (renderer->getWindowManager()) {
+                renderer->getWindowManager()->startCast(spell_name, cast_time_ms);
             }
-#endif
+
+            // Create cast glow effect for the player too
+            if (renderer->getSpellVisualFX()) {
+                renderer->getSpellVisualFX()->createCastGlow(caster_id, spell_id, cast_time_ms);
+            }
         }
+#endif
     } else {
         // NPC or other player casting
         // Show chat message

@@ -16,6 +16,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/ui/window_manager.h"
+#include "client/graphics/ui/hotbar_window.h"
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
@@ -10563,6 +10564,101 @@ bool EverQuest::InitGraphics(int width, int height) {
 		});
 
 		LOG_DEBUG(MOD_MAIN, "Group window initialized");
+	}
+
+	// Set up hotbar activate callback
+	if (m_renderer && m_renderer->getWindowManager()) {
+		auto* windowManager = m_renderer->getWindowManager();
+
+		windowManager->setHotbarActivateCallback([this, windowManager](int index, const eqt::ui::HotbarButton& button) {
+			switch (button.type) {
+				case eqt::ui::HotbarButtonType::Spell: {
+					// Cast spell by ID (find gem slot and cast)
+					if (m_spell_manager) {
+						// Find which gem slot has this spell
+						for (uint8_t gem = 0; gem < EQ::MAX_SPELL_GEMS; gem++) {
+							if (m_spell_manager->getMemorizedSpell(gem) == button.id) {
+								uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+								EQ::CastResult result = m_spell_manager->beginCastFromGem(gem, targetId);
+								if (result == EQ::CastResult::Success) {
+									const EQ::SpellData* spell = m_spell_manager->getSpell(button.id);
+									if (spell) {
+										AddChatSystemMessage(fmt::format("Casting {}", spell->name));
+									}
+								} else if (result == EQ::CastResult::NotEnoughMana) {
+									AddChatSystemMessage("Insufficient mana");
+								} else if (result == EQ::CastResult::GemCooldown) {
+									AddChatSystemMessage("Spell not ready");
+								} else if (result == EQ::CastResult::AlreadyCasting) {
+									AddChatSystemMessage("Already casting");
+								}
+								return;
+							}
+						}
+						AddChatSystemMessage("Spell not memorized");
+					}
+					break;
+				}
+				case eqt::ui::HotbarButtonType::Item: {
+					// Use item by ID - find in inventory and cast click effect
+					if (m_inventory_manager) {
+						int16_t slot = m_inventory_manager->findItemSlotByItemId(button.id);
+						if (slot == eqt::inventory::SLOT_INVALID) {
+							AddChatSystemMessage("Item not found in inventory");
+							break;
+						}
+
+						const eqt::inventory::ItemInstance* item = m_inventory_manager->getItem(slot);
+						if (!item) {
+							AddChatSystemMessage("Item not found");
+							break;
+						}
+
+						// Check if item has a click effect
+						if (item->clickEffect.effectId == 0) {
+							AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
+							break;
+						}
+
+						// Check if item must be equipped for click effect (type 5 = must be equipped)
+						if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
+							AddChatSystemMessage("You must equip this item to use its effect");
+							break;
+						}
+
+						// Send CastSpell packet with item slot
+						EQ::Net::DynamicPacket packet;
+						packet.Resize(20);  // CastSpell_Struct size
+						packet.PutUInt32(0, 10);  // slot = 10 for item clicks
+						packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));  // spell_id
+						packet.PutUInt32(8, static_cast<uint32_t>(slot));  // inventoryslot
+						uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+						packet.PutUInt32(12, targetId);  // target_id
+						packet.PutUInt32(16, 0);  // cs_unknown
+
+						QueuePacket(HC_OP_CastSpell, &packet);
+						AddChatSystemMessage(fmt::format("Using {}", item->name));
+
+						// Start cooldown on the hotbar button
+						if (item->clickEffect.recastDelay > 0) {
+							windowManager->startHotbarCooldown(index, item->clickEffect.recastDelay);
+						}
+					}
+					break;
+				}
+				case eqt::ui::HotbarButtonType::Emote: {
+					// Send emote text
+					if (!button.emoteText.empty()) {
+						ProcessChatInput(button.emoteText);
+					}
+					break;
+				}
+				default:
+					break;
+			}
+		});
+
+		LOG_DEBUG(MOD_MAIN, "Hotbar window callbacks initialized");
 	}
 
 	// Set up chat submit callback
