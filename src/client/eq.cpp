@@ -2326,6 +2326,11 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	if (s_debug_level >= 1) {
 		LOG_INFO(MOD_ZONE, "[ZONE-IN] PlayerProfile position: server=({:.2f},{:.2f},{:.2f}) heading={:.2f} -> client=({:.2f},{:.2f},{:.2f}) heading={:.2f}",
 		         server_x, server_y, z, heading, m_x, m_y, m_z, m_heading);
+		// Additional logging in consistent format for position debugging
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] server_heading={:.2f}deg (float) -> m_heading={:.2f}deg (mirrored)",
+			heading, m_heading);
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> client_pos=({:.2f},{:.2f},{:.2f})",
+			server_x, server_y, z, m_x, m_y, m_z);
 	}
 
 #ifdef EQT_HAS_GRAPHICS
@@ -3411,6 +3416,15 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 		}
 
+		// Debug logging for current player at level 1+
+		if (s_debug_level >= 1 && entity.name == m_character) {
+			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] spawn_id={} name='{}'", entity.spawn_id, entity.name);
+			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] raw_heading={} -> server_heading={:.2f}deg -> entity.heading={:.2f}deg (isNPC={})",
+				raw_heading, server_heading, entity.heading, isNPC);
+			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> entity_pos=({:.2f},{:.2f},{:.2f})",
+				server_x, server_y, entity.z, entity.x, entity.y, entity.z);
+		}
+
 		// race is at offset 284 (uint32)
 		entity.race_id = p.GetUInt32(offset + 284);
 
@@ -4028,6 +4042,15 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 		if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 	}
 
+	// Debug logging for current player at level 1+
+	if (s_debug_level >= 1 && entity.name == m_character) {
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] spawn_id={} name='{}'", entity.spawn_id, entity.name);
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] raw_heading={} -> server_heading={:.2f}deg -> entity.heading={:.2f}deg (isNPC={})",
+			raw_heading, server_heading, entity.heading, isNPC);
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> entity_pos=({:.2f},{:.2f},{:.2f})",
+			server_x, server_y, static_cast<float>(z_raw), entity.x, entity.y, entity.z);
+	}
+
 	// race is at offset 284 (uint32)
 	entity.race_id = p.GetUInt32(offset + 284);
 
@@ -4306,14 +4329,22 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	if (h_npc >= 360.0f) h_npc -= 360.0f;
 
 	// Debug: log position updates
-	// Level 1: only current target or tracked targets
+	// Level 1: current player, current target, or tracked targets
 	// Level 2+: all entities
 	uint16_t currentTargetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+	bool isCurrentPlayer = (spawn_id == m_my_character_id);
 	bool shouldLogPosition = (s_debug_level >= 2) ||
-	                         (s_debug_level >= 1 && (spawn_id == currentTargetId || IsTrackedTarget(spawn_id)));
+	                         (s_debug_level >= 1 && (isCurrentPlayer || spawn_id == currentTargetId || IsTrackedTarget(spawn_id)));
 	if (shouldLogPosition) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C spawn_id={} pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} delta=({:.2f}, {:.2f}, {:.2f}) (my_id={})",
 			spawn_id, x, y, z, server_h, animation, dx, dy, dz, m_my_character_id);
+	}
+	// Additional detailed logging for current player at debug level 1+
+	if (s_debug_level >= 1 && isCurrentPlayer) {
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C [SELF] raw_heading={} (12-bit field={}) -> server_h={:.2f}deg -> h_player={:.2f}deg",
+			raw_heading, heading, server_h, h_player);
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> client_pos=({:.2f},{:.2f},{:.2f})",
+			server_x, server_y, z, x, y, z);
 	}
 
 	// Check if this is an update for our own character
@@ -6798,15 +6829,18 @@ void EverQuest::SendPositionUpdate()
 	// This simplifies to: degrees = raw * 360 / 2048
 	// So to convert degrees to raw: raw = degrees * 2048 / 360
 	//
-	// Adjust heading: internal coords are swapped, causing 90° offset and reflection
-	float server_heading = 90.0f - m_heading;
+	// S->C transformation for players is: h_player = 360 - server_h
+	// So the inverse (C->S) is: server_heading = 360 - m_heading
+	float server_heading = 360.0f - m_heading;
 	if (server_heading < 0.0f) server_heading += 360.0f;
+	if (server_heading >= 360.0f) server_heading -= 360.0f;
 	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);
 	// FloatToEQ12 does modulo 2048, so values wrap
 	uint16_t heading_scaled = heading_raw % 2048;
 	
 	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MAIN, "SendPositionUpdate: heading={:.1f}° -> scaled={} (12-bit)", m_heading, heading_scaled);
+		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] m_heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
+			m_heading, server_heading, heading_scaled);
 	}
 	
 	// Build PlayerPositionUpdateClient_Struct
@@ -6900,12 +6934,13 @@ void EverQuest::SendPositionUpdate()
 		// 	update.spawn_id, packet_spawn_id);
 	}
 	
-	// Log C->S position updates at debug level 2+ OR when we have a tracked target
-	// (useful for comparing our outgoing updates with target's incoming updates)
-	if (s_debug_level >= 2 || GetTrackedTargetId() != 0) {
+	// Log C->S position updates at debug level 2+
+	if (s_debug_level >= 2) {
 		// Log server coordinates (x_pos, y_pos) = (m_y, m_x) due to coordinate swap
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
 			m_my_character_id, update.x_pos, update.y_pos, update.z_pos, m_heading, m_animation, update.delta_x, update.delta_y, update.delta_z);
+		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
+			m_x, m_y, m_z, update.x_pos, update.y_pos, update.z_pos);
 	}
 
 	DumpPacket("C->S", HC_OP_ClientUpdate, p);
