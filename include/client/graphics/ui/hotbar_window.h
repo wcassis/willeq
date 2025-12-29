@@ -19,8 +19,11 @@ class HotbarCursor;
 enum class HotbarButtonType {
     Empty,      // No action assigned
     Spell,      // Spell from spellbook (by spell_id)
+    Skill,      // Combat skill (kick, bash, etc.)
     Item,       // Item use (by item_id)
-    Emote       // Custom emote string (right-click to set)
+    Emote,      // Custom emote string (right-click to set)
+    Macro,      // Custom macro (future use)
+    Combat      // Combat action like auto-attack (future use)
 };
 
 // Individual hotbar button data
@@ -56,6 +59,7 @@ struct HotbarButton {
 using HotbarActivateCallback = std::function<void(int index, const HotbarButton& button)>;
 using HotbarPickupCallback = std::function<void(int index, const HotbarButton& button)>;
 using HotbarEmoteDialogCallback = std::function<void(int index)>;
+using HotbarChangedCallback = std::function<void()>;  // Called when any button assignment changes
 
 class HotbarWindow : public WindowBase {
 public:
@@ -86,6 +90,7 @@ public:
     void setActivateCallback(HotbarActivateCallback cb) { activateCallback_ = std::move(cb); }
     void setPickupCallback(HotbarPickupCallback cb) { pickupCallback_ = std::move(cb); }
     void setEmoteDialogCallback(HotbarEmoteDialogCallback cb) { emoteDialogCallback_ = std::move(cb); }
+    void setChangedCallback(HotbarChangedCallback cb) { changedCallback_ = std::move(cb); }
 
     // Icon loader reference (required for rendering icons)
     void setIconLoader(ItemIconLoader* loader) { iconLoader_ = loader; }
@@ -135,6 +140,7 @@ private:
     HotbarActivateCallback activateCallback_;
     HotbarPickupCallback pickupCallback_;
     HotbarEmoteDialogCallback emoteDialogCallback_;
+    HotbarChangedCallback changedCallback_;
 
     // Emote icon constant (using a speech bubble from spell icons)
     static constexpr uint32_t EMOTE_ICON_ID = 89;  // Chat/speech icon

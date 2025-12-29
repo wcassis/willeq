@@ -670,6 +670,7 @@ int main(int argc, char *argv[]) {
 			if (!eq_client_path.empty()) {
 				eq->SetEQClientPath(eq_client_path);
 			}
+			eq->SetConfigPath(config_file);
 #endif
 
 			eq_list.push_back(std::move(eq));
@@ -986,6 +987,9 @@ int main(int argc, char *argv[]) {
 					LOG_INFO(MOD_GRAPHICS, "Zone connected, loading zone graphics");
 					eq_list[0]->OnZoneLoadedGraphics();
 					LOG_DEBUG(MOD_GRAPHICS, "Zone graphics loaded");
+
+					// Load hotbar config from per-character config file
+					eq_list[0]->LoadHotbarConfig();
 				}
 #endif
 			}

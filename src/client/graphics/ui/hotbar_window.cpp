@@ -87,6 +87,11 @@ void HotbarWindow::setButton(int index, HotbarButtonType type, uint32_t id,
     buttons_[index].id = id;
     buttons_[index].emoteText = emoteText;
     buttons_[index].iconId = iconId;
+
+    // Notify that hotbar configuration changed
+    if (changedCallback_) {
+        changedCallback_();
+    }
 }
 
 void HotbarWindow::clearButton(int index)
@@ -97,6 +102,11 @@ void HotbarWindow::clearButton(int index)
     buttons_[index].id = 0;
     buttons_[index].emoteText.clear();
     buttons_[index].iconId = 0;
+
+    // Notify that hotbar configuration changed
+    if (changedCallback_) {
+        changedCallback_();
+    }
 }
 
 const HotbarButton& HotbarWindow::getButton(int index) const
@@ -116,6 +126,11 @@ void HotbarWindow::swapButtons(int indexA, int indexB)
     std::swap(buttons_[indexA].id, buttons_[indexB].id);
     std::swap(buttons_[indexA].emoteText, buttons_[indexB].emoteText);
     std::swap(buttons_[indexA].iconId, buttons_[indexB].iconId);
+
+    // Notify that hotbar configuration changed
+    if (changedCallback_) {
+        changedCallback_();
+    }
 }
 
 void HotbarWindow::activateButton(int index)

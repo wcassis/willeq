@@ -74,6 +74,13 @@ public:
     bool containsPoint(int x, int y) const;
     int getGemAtPosition(int x, int y) const;
 
+    // Drag state (for UI unlock mode)
+    bool isDragging() const { return dragging_; }
+
+    // Hover state (for unlock highlight)
+    void setHovered(bool hovered) { hovered_ = hovered; }
+    bool isHovered() const { return hovered_; }
+
     // Callbacks
     void setGemCastCallback(GemCastCallback cb) { castCallback_ = std::move(cb); }
     void setGemForgetCallback(GemForgetCallback cb) { forgetCallback_ = std::move(cb); }
@@ -133,6 +140,11 @@ private:
     // Spellbook button
     irr::core::recti spellbookButtonBounds_;
     bool spellbookButtonHovered_ = false;
+
+    // Dragging state (when UI is unlocked)
+    bool dragging_ = false;
+    irr::core::vector2di dragOffset_;
+    bool hovered_ = false;
 };
 
 } // namespace ui

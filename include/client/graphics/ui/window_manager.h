@@ -20,6 +20,7 @@
 #include "inventory_manager.h"
 #include "ui_settings.h"
 #include "client/spell/spell_data.h"
+#include <json/json.h>
 #include <memory>
 
 namespace EQ {
@@ -182,7 +183,12 @@ public:
     HotbarWindow* getHotbarWindow() { return hotbarWindow_.get(); }
     const HotbarWindow* getHotbarWindow() const { return hotbarWindow_.get(); }
     void setHotbarActivateCallback(HotbarActivateCallback callback);
+    void setHotbarChangedCallback(HotbarChangedCallback callback);
     void startHotbarCooldown(int buttonIndex, uint32_t durationMs);
+
+    // Hotbar data persistence (for saving to per-character config)
+    Json::Value collectHotbarData() const;
+    void loadHotbarData(const Json::Value& data);
 
     // Hotbar cursor operations
     bool hasHotbarCursor() const { return hotbarCursor_.hasItem(); }
@@ -393,6 +399,7 @@ private:
 
     // Hotbar callbacks
     HotbarActivateCallback hotbarActivateCallback_;
+    HotbarChangedCallback hotbarChangedCallback_;
 
     // Skills window callbacks
     SkillActivateCallback skillActivateCallback_;

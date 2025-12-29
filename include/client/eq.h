@@ -147,6 +147,7 @@ enum TitaniumZoneOpcodes {
 	HC_OP_Action = 0x497c,
 	HC_OP_CastSpell = 0x304b,
 	HC_OP_InterruptCast = 0x0b97,
+	HC_OP_ColoredText = 0x0b2d,
 	HC_OP_Buff = 0x6a53,
 	HC_OP_Damage = 0x5c78,
 	HC_OP_LootRequest = 0x6f90,
@@ -586,6 +587,10 @@ public:
 	bool UpdateGraphics(float deltaTime);
 	void SetEQClientPath(const std::string& path) { m_eq_client_path = path; }
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
+	void SetConfigPath(const std::string& path) { m_config_path = path; }
+	const std::string& GetConfigPath() const { return m_config_path; }
+	void SaveHotbarConfig();  // Save hotbar assignments to config file
+	void LoadHotbarConfig();  // Load hotbar assignments from config file
 	EQT::Graphics::IrrlichtRenderer* GetRenderer() { return m_renderer.get(); }
 	const std::string& GetCurrentZoneName() const { return m_current_zone_name; }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_time_hour; minute = m_time_minute; }
@@ -746,6 +751,7 @@ private:
 	void ZoneProcessBeginCast(const EQ::Net::Packet &p);
 	void ZoneProcessManaChange(const EQ::Net::Packet &p);
 	void ZoneProcessBuff(const EQ::Net::Packet &p);
+	void ZoneProcessColoredText(const EQ::Net::Packet &p);
 	void ZoneProcessFormattedMessage(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p);
 	void ZoneProcessDeath(const EQ::Net::Packet &p);
@@ -1022,6 +1028,7 @@ private:
 	// Graphics renderer
 	std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
 	std::string m_eq_client_path;
+	std::string m_config_path;  // Path to per-character config file
 	bool m_graphics_initialized = false;
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
 

@@ -97,6 +97,38 @@ void SpellGemPanel::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvir
     driver->draw2DRectangle(irr::video::SColor(200, 20, 20, 30), panelBounds);
     driver->draw2DRectangleOutline(panelBounds, irr::video::SColor(255, 60, 60, 80));
 
+    // Draw unlock highlight when UI is unlocked and hovered/dragging
+    bool canMove = !UISettings::instance().isUILocked();
+    if (canMove && (hovered_ || dragging_)) {
+        irr::video::SColor highlightColor(200, 255, 200, 0);  // Semi-transparent yellow
+        const int highlightWidth = 2;
+
+        // Top
+        driver->draw2DRectangle(highlightColor,
+            irr::core::recti(panelBounds.UpperLeftCorner.X - highlightWidth,
+                            panelBounds.UpperLeftCorner.Y - highlightWidth,
+                            panelBounds.LowerRightCorner.X + highlightWidth,
+                            panelBounds.UpperLeftCorner.Y));
+        // Bottom
+        driver->draw2DRectangle(highlightColor,
+            irr::core::recti(panelBounds.UpperLeftCorner.X - highlightWidth,
+                            panelBounds.LowerRightCorner.Y,
+                            panelBounds.LowerRightCorner.X + highlightWidth,
+                            panelBounds.LowerRightCorner.Y + highlightWidth));
+        // Left
+        driver->draw2DRectangle(highlightColor,
+            irr::core::recti(panelBounds.UpperLeftCorner.X - highlightWidth,
+                            panelBounds.UpperLeftCorner.Y,
+                            panelBounds.UpperLeftCorner.X,
+                            panelBounds.LowerRightCorner.Y));
+        // Right
+        driver->draw2DRectangle(highlightColor,
+            irr::core::recti(panelBounds.LowerRightCorner.X,
+                            panelBounds.UpperLeftCorner.Y,
+                            panelBounds.LowerRightCorner.X + highlightWidth,
+                            panelBounds.LowerRightCorner.Y));
+    }
+
     // Draw each gem
     for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
         drawGem(driver, gui, static_cast<uint8_t>(i), gems_[i]);
@@ -373,6 +405,19 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         return false;
     }
 
+    if (!containsPoint(x, y)) {
+        return false;
+    }
+
+    // Check if UI is unlocked - allow dragging the entire panel
+    bool canMove = !UISettings::instance().isUILocked();
+    if (canMove && leftButton) {
+        dragging_ = true;
+        dragOffset_.X = x - position_.X;
+        dragOffset_.Y = y - position_.Y;
+        return true;
+    }
+
     // Check spellbook button click first
     irr::core::recti spellbookAbs(
         position_.X + spellbookButtonBounds_.UpperLeftCorner.X,
@@ -452,6 +497,11 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
 
 bool SpellGemPanel::handleMouseUp(int x, int y, bool leftButton)
 {
+    if (dragging_ && leftButton) {
+        dragging_ = false;
+        LOG_INFO(MOD_UI, "SpellGemPanel moved to position ({}, {})", position_.X, position_.Y);
+        return true;
+    }
     return false;
 }
 
@@ -459,6 +509,14 @@ bool SpellGemPanel::handleMouseMove(int x, int y)
 {
     if (!visible_) {
         return false;
+    }
+
+    // Handle dragging when UI is unlocked
+    if (dragging_) {
+        int newX = x - dragOffset_.X;
+        int newY = y - dragOffset_.Y;
+        setPosition(newX, newY);
+        return true;
     }
 
     // Update spellbook button hover state

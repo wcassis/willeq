@@ -146,6 +146,14 @@ bool WindowBase::handleMouseDown(int x, int y, bool leftButton, bool shift, bool
         return true;  // Consume click on title bar even if locked
     }
 
+    // For windows without title bar, allow dragging anywhere when UI is unlocked
+    if (!showTitleBar_ && canMove()) {
+        dragging_ = true;
+        dragOffset_.X = x - bounds_.UpperLeftCorner.X;
+        dragOffset_.Y = y - bounds_.UpperLeftCorner.Y;
+        return true;
+    }
+
     // Return false to allow derived classes to handle content area clicks
     return false;
 }

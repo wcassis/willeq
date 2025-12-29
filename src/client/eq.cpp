@@ -22,6 +22,7 @@
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/graphics/ui/hotbar_types.h"
+#include "common/util/json_config.h"
 #endif
 #include <array>
 #include <iomanip>
@@ -176,6 +177,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_AutoAttack2: return "HC_OP_AutoAttack2";
 		case HC_OP_CastSpell: return "HC_OP_CastSpell";
 		case HC_OP_InterruptCast: return "HC_OP_InterruptCast";
+		case HC_OP_ColoredText: return "HC_OP_ColoredText";
 		case HC_OP_LootRequest: return "HC_OP_LootRequest";
 		case HC_OP_LootItem: return "HC_OP_LootItem";
 		case HC_OP_LootComplete: return "HC_OP_LootComplete";
@@ -1631,6 +1633,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_Buff:
 		ZoneProcessBuff(p);
+		break;
+	case HC_OP_ColoredText:
+		ZoneProcessColoredText(p);
 		break;
 	case HC_OP_FormattedMessage:
 		ZoneProcessFormattedMessage(p);
@@ -7662,6 +7667,52 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	}
 }
 
+void EverQuest::ZoneProcessColoredText(const EQ::Net::Packet &p)
+{
+	// ColoredText_Struct: uint32 color, char msg[variable]
+	// Used for spell fade messages and other colored text
+	if (p.Length() < 6) {  // 2 byte opcode + 4 byte color minimum
+		LOG_WARN(MOD_ZONE, "ColoredText packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	uint32_t color = p.GetUInt32(2);
+
+	// Extract message starting at offset 6
+	std::string message;
+	if (p.Length() > 6) {
+		const char* msg_ptr = reinterpret_cast<const char*>(static_cast<const uint8_t*>(p.Data()) + 6);
+		size_t max_len = p.Length() - 6;
+		// Find null terminator or use full length
+		size_t len = strnlen(msg_ptr, max_len);
+		message = std::string(msg_ptr, len);
+	}
+
+	LOG_DEBUG(MOD_ZONE, "ColoredText: color={}, message='{}'", color, message);
+
+	// Display in chat window
+	if (!message.empty()) {
+#ifdef EQT_HAS_GRAPHICS
+		if (m_renderer && m_renderer->getWindowManager()) {
+			auto* chatWindow = m_renderer->getWindowManager()->getChatWindow();
+			if (chatWindow) {
+				// Create a ChatMessage for the spell fade text
+				eqt::ui::ChatMessage msg;
+				msg.text = message;
+				msg.channel = eqt::ui::ChatChannel::Spell;
+				msg.isSystemMessage = true;
+				msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
+				msg.color = eqt::ui::getChannelColor(eqt::ui::ChatChannel::Spell);
+				chatWindow->addMessage(msg);
+			}
+		}
+#endif
+		if (s_debug_level >= 1) {
+			std::cout << message << std::endl;
+		}
+	}
+}
+
 void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 {
 	// FormattedMessage is used for various system messages
@@ -11114,6 +11165,15 @@ void EverQuest::OnZoneLoadedGraphics() {
 			                       initiallyOpen);
 		}
 		LOG_DEBUG(MOD_GRAPHICS, "Recreated {} doors after zone load", m_doors.size());
+
+		// Set up hotbar changed callback to auto-save
+		auto* windowMgr = m_renderer->getWindowManager();
+		if (windowMgr) {
+			windowMgr->setHotbarChangedCallback([this]() {
+				SaveHotbarConfig();
+			});
+			LOG_DEBUG(MOD_UI, "Hotbar changed callback registered");
+		}
 	} else {
 		LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", m_current_zone_name);
 	}
@@ -11501,6 +11561,77 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	// Close the loot window in the UI
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeLootWindow();
+	}
+}
+
+void EverQuest::SaveHotbarConfig() {
+	if (m_config_path.empty() || !m_renderer) return;
+	auto* windowMgr = m_renderer->getWindowManager();
+	if (!windowMgr) return;
+
+	auto config = EQ::JsonConfigFile::Load(m_config_path);
+	Json::Value& root = config.RawHandle();
+
+	// Migrate old config format to new format if needed
+	// Old format: array of clients at top level
+	// New format: object with "clients" array
+	if (root.isArray()) {
+		Json::Value newRoot;
+		newRoot["clients"] = root;
+		root = newRoot;
+		LOG_INFO(MOD_CONFIG, "Migrated config from legacy array format to new object format");
+	}
+
+	// Now root should be an object - find or create the client config
+	Json::Value* clientConfig = nullptr;
+	if (root.isObject()) {
+		if (root.isMember("clients") && root["clients"].isArray() && root["clients"].size() > 0) {
+			clientConfig = &root["clients"][0];
+		} else if (!root.isMember("clients")) {
+			// Single client object at top level - wrap it in clients array
+			Json::Value clientsCopy = root;
+			root = Json::Value(Json::objectValue);
+			root["clients"] = Json::Value(Json::arrayValue);
+			root["clients"].append(clientsCopy);
+			clientConfig = &root["clients"][0];
+			LOG_INFO(MOD_CONFIG, "Migrated single client config to clients array format");
+		}
+	}
+
+	if (clientConfig && clientConfig->isObject()) {
+		(*clientConfig)["hotbar"] = windowMgr->collectHotbarData();
+		config.Save(m_config_path);
+		LOG_DEBUG(MOD_CONFIG, "Saved hotbar config to {}", m_config_path);
+	} else {
+		LOG_WARN(MOD_CONFIG, "Could not save hotbar config - invalid config format");
+	}
+}
+
+void EverQuest::LoadHotbarConfig() {
+	if (m_config_path.empty() || !m_renderer) return;
+	auto* windowMgr = m_renderer->getWindowManager();
+	if (!windowMgr) return;
+
+	auto config = EQ::JsonConfigFile::Load(m_config_path);
+	Json::Value& root = config.RawHandle();
+
+	// Find the client config object to load hotbar from
+	const Json::Value* clientConfig = nullptr;
+	if (root.isArray() && root.size() > 0) {
+		clientConfig = &root[0];
+	} else if (root.isObject()) {
+		if (root.isMember("clients") && root["clients"].isArray() && root["clients"].size() > 0) {
+			clientConfig = &root["clients"][0];
+		} else {
+			clientConfig = &root;
+		}
+	}
+
+	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("hotbar")) {
+		windowMgr->loadHotbarData((*clientConfig)["hotbar"]);
+		LOG_DEBUG(MOD_CONFIG, "Loaded hotbar config from {}", m_config_path);
+	} else {
+		LOG_DEBUG(MOD_CONFIG, "No hotbar config found in {}", m_config_path);
 	}
 }
 

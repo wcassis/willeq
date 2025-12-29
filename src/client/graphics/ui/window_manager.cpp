@@ -108,17 +108,18 @@ void WindowManager::toggleUILock() {
     LOG_INFO(MOD_UI, "UI {} - windows {}", locked ? "locked" : "unlocked",
              locked ? "cannot be moved" : "can be moved");
 
+    // Auto-save layout when locking
+    if (locked) {
+        saveUILayout();
+        updateWindowHoverStates(mouseX_, mouseY_);
+    }
+
     // Show status message in chat window
     if (chatWindow_) {
         std::string message = locked ?
-            "UI Locked - Press Ctrl+L to unlock and move windows" :
-            "UI Unlocked - Drag windows to reposition, Ctrl+S to save layout";
+            "UI Locked - Layout saved" :
+            "UI Unlocked - Drag windows to reposition";
         chatWindow_->addSystemMessage(message, ChatChannel::System);
-    }
-
-    // Clear hover states when locking
-    if (locked) {
-        updateWindowHoverStates(mouseX_, mouseY_);
     }
 }
 
@@ -244,6 +245,20 @@ void WindowManager::collectWindowPositions() {
         settings.spellBook().window.visible = spellBookWindow_->isVisible();
     }
 
+    // Hotbar window
+    if (hotbarWindow_) {
+        settings.hotbar().window.x = hotbarWindow_->getX();
+        settings.hotbar().window.y = hotbarWindow_->getY();
+        settings.hotbar().window.visible = hotbarWindow_->isVisible();
+    }
+
+    // Skills window
+    if (skillsWindow_) {
+        settings.skills().window.x = skillsWindow_->getX();
+        settings.skills().window.y = skillsWindow_->getY();
+        settings.skills().window.visible = skillsWindow_->isVisible();
+    }
+
     LOG_DEBUG(MOD_UI, "Collected window positions for saving");
 }
 
@@ -316,6 +331,22 @@ void WindowManager::applyWindowPositions() {
         int x = UISettings::resolvePosition(settings.spellBook().window.x, screenWidth_, 106);
         int y = UISettings::resolvePosition(settings.spellBook().window.y, screenHeight_, 131);
         spellBookWindow_->setPosition(x, y);
+    }
+
+    // Hotbar window
+    if (hotbarWindow_) {
+        const auto& hotbarSettings = settings.hotbar();
+        if (hotbarSettings.window.x >= 0 && hotbarSettings.window.y >= 0) {
+            hotbarWindow_->setPosition(hotbarSettings.window.x, hotbarSettings.window.y);
+        }
+    }
+
+    // Skills window
+    if (skillsWindow_) {
+        const auto& skillsSettings = settings.skills();
+        if (skillsSettings.window.x >= 0 && skillsSettings.window.y >= 0) {
+            skillsWindow_->setPosition(skillsSettings.window.x, skillsSettings.window.y);
+        }
     }
 
     LOG_DEBUG(MOD_UI, "Applied window positions from UISettings");
@@ -992,6 +1023,27 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         }
     }
 
+    // Check group window
+    if (groupWindow_ && groupWindow_->isVisible()) {
+        if (groupWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check player status window
+    if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
+        if (playerStatusWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check spell gem panel
+    if (spellGemPanel_ && spellGemPanel_->isVisible()) {
+        if (spellGemPanel_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -1052,6 +1104,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
     // Check group window
     if (groupWindow_ && groupWindow_->isVisible()) {
         groupWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
+    // Check player status window (for dragging when UI unlocked)
+    if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
+        playerStatusWindow_->handleMouseMove(x, y);
         // Don't return true - allow other windows to update their hover state
     }
 
@@ -1150,6 +1208,8 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
         if (skillsWindow_) skillsWindow_->setHovered(false);
         if (spellBookWindow_) spellBookWindow_->setHovered(false);
         if (hotbarWindow_) hotbarWindow_->setHovered(false);
+        if (playerStatusWindow_) playerStatusWindow_->setHovered(false);
+        if (spellGemPanel_) spellGemPanel_->setHovered(false);
         for (auto& [slotId, bagWindow] : bagWindows_) {
             bagWindow->setHovered(false);
         }
@@ -1183,6 +1243,12 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
     }
     if (hotbarWindow_) {
         hotbarWindow_->setHovered(hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y));
+    }
+    if (playerStatusWindow_) {
+        playerStatusWindow_->setHovered(playerStatusWindow_->isVisible() && playerStatusWindow_->containsPoint(x, y));
+    }
+    if (spellGemPanel_) {
+        spellGemPanel_->setHovered(spellGemPanel_->isVisible() && spellGemPanel_->containsPoint(x, y));
     }
     for (auto& [slotId, bagWindow] : bagWindows_) {
         bagWindow->setHovered(bagWindow->containsPoint(x, y));
@@ -2331,22 +2397,12 @@ void WindowManager::initHotbarWindow() {
     hotbarWindow_->setHotbarCursor(&hotbarCursor_);
     hotbarWindow_->positionDefault(screenWidth_, screenHeight_);
 
-    // Load button configuration from settings
+    // Load layout configuration from UISettings (not button assignments)
     const auto& hotbarSettings = UISettings::instance().hotbar();
     hotbarWindow_->setButtonCount(hotbarSettings.buttonCount);
 
-    for (size_t i = 0; i < 10; i++) {
-        const auto& btnData = hotbarSettings.buttons[i];
-        if (btnData.type != 0) {
-            hotbarWindow_->setButton(
-                static_cast<int>(i),
-                static_cast<HotbarButtonType>(btnData.type),
-                btnData.id,
-                btnData.emoteText,
-                btnData.iconId
-            );
-        }
-    }
+    // Note: Button assignments are loaded from main config via loadHotbarData()
+    // This allows per-character hotbar configurations
 
     // Set up callbacks
     hotbarWindow_->setActivateCallback([this](int index, const HotbarButton& button) {
@@ -2370,6 +2426,11 @@ void WindowManager::initHotbarWindow() {
         emoteDialogText_.clear();
         LOG_DEBUG(MOD_UI, "Emote dialog opened for hotbar slot {}", index);
     });
+
+    // Wire up the changed callback if already set
+    if (hotbarChangedCallback_) {
+        hotbarWindow_->setChangedCallback(hotbarChangedCallback_);
+    }
 
     hotbarWindow_->show();  // Hotbar visible by default
 
@@ -2403,6 +2464,58 @@ bool WindowManager::isHotbarOpen() const {
 
 void WindowManager::setHotbarActivateCallback(HotbarActivateCallback callback) {
     hotbarActivateCallback_ = std::move(callback);
+}
+
+void WindowManager::setHotbarChangedCallback(HotbarChangedCallback callback) {
+    hotbarChangedCallback_ = std::move(callback);
+    if (hotbarWindow_) {
+        hotbarWindow_->setChangedCallback(hotbarChangedCallback_);
+    }
+}
+
+Json::Value WindowManager::collectHotbarData() const {
+    Json::Value hotbar;
+    Json::Value buttons(Json::arrayValue);
+
+    if (hotbarWindow_) {
+        for (int i = 0; i < HotbarWindow::MAX_BUTTONS; i++) {
+            const auto& btn = hotbarWindow_->getButton(i);
+            Json::Value buttonData;
+            buttonData["type"] = static_cast<int>(btn.type);
+            buttonData["id"] = btn.id;
+            buttonData["emoteText"] = btn.emoteText;
+            buttonData["iconId"] = btn.iconId;
+            buttons.append(buttonData);
+        }
+    }
+
+    hotbar["buttons"] = buttons;
+    return hotbar;
+}
+
+void WindowManager::loadHotbarData(const Json::Value& data) {
+    if (!hotbarWindow_ || !data.isObject()) {
+        return;
+    }
+
+    if (data.isMember("buttons") && data["buttons"].isArray()) {
+        const auto& buttons = data["buttons"];
+        for (Json::ArrayIndex i = 0; i < buttons.size() && i < HotbarWindow::MAX_BUTTONS; i++) {
+            const auto& btnData = buttons[i];
+            int type = btnData.get("type", 0).asInt();
+            if (type != 0) {  // Skip empty buttons
+                hotbarWindow_->setButton(
+                    static_cast<int>(i),
+                    static_cast<HotbarButtonType>(type),
+                    btnData.get("id", 0).asUInt(),
+                    btnData.get("emoteText", "").asString(),
+                    btnData.get("iconId", 0).asUInt()
+                );
+            }
+        }
+    }
+
+    LOG_DEBUG(MOD_UI, "Loaded hotbar data from config");
 }
 
 void WindowManager::startHotbarCooldown(int buttonIndex, uint32_t durationMs) {
