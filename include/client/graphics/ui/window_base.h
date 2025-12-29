@@ -87,6 +87,10 @@ public:
     void setHovered(bool hovered) { hovered_ = hovered; }
     bool isHovered() const { return hovered_; }
 
+    // Settings key (identifies this window in config file)
+    void setSettingsKey(const std::string& key) { settingsKey_ = key; }
+    const std::string& getSettingsKey() const { return settingsKey_; }
+
 protected:
     // Subclass rendering
     virtual void renderContent(irr::video::IVideoDriver* driver,
@@ -164,6 +168,9 @@ protected:
 
     // Hover state (for unlock highlighting)
     bool hovered_ = false;
+
+    // Settings key for config file persistence
+    std::string settingsKey_;
 
     // Callbacks
     WindowCloseCallback closeCallback_;

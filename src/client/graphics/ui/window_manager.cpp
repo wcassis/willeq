@@ -2,6 +2,7 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
+#include "client/skill/skill_manager.h"
 #include <algorithm>
 #include <iostream>
 #include "common/logging.h"
@@ -795,6 +796,13 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check skills window
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        if (skillsWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
     // Check loot window first (if open)
     if (lootWindow_ && lootWindow_->isOpen()) {
         if (lootWindow_->handleMouseDown(x, y, leftButton, shift)) {
@@ -873,6 +881,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check vendor window
     if (vendorWindow_ && vendorWindow_->isOpen()) {
         if (vendorWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check skills window
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        if (skillsWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -961,6 +976,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
         // Don't return true - allow other windows to update their hover state
     }
 
+    // Check skills window
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        skillsWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
     // Check loot window
     if (lootWindow_ && lootWindow_->isOpen()) {
         if (lootWindow_->handleMouseMove(x, y)) {
@@ -1040,6 +1061,7 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
         if (vendorWindow_) vendorWindow_->setHovered(false);
         if (buffWindow_) buffWindow_->setHovered(false);
         if (groupWindow_) groupWindow_->setHovered(false);
+        if (skillsWindow_) skillsWindow_->setHovered(false);
         if (spellBookWindow_) spellBookWindow_->setHovered(false);
         for (auto& [slotId, bagWindow] : bagWindows_) {
             bagWindow->setHovered(false);
@@ -1066,6 +1088,9 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
     if (groupWindow_) {
         groupWindow_->setHovered(groupWindow_->isVisible() && groupWindow_->containsPoint(x, y));
     }
+    if (skillsWindow_) {
+        skillsWindow_->setHovered(skillsWindow_->isVisible() && skillsWindow_->containsPoint(x, y));
+    }
     if (spellBookWindow_) {
         spellBookWindow_->setHovered(spellBookWindow_->isVisible() && spellBookWindow_->containsPoint(x, y));
     }
@@ -1091,6 +1116,13 @@ bool WindowManager::handleMouseWheel(float delta) {
     if (vendorWindow_ && vendorWindow_->isOpen()) {
         if (vendorWindow_->containsPoint(mouseX_, mouseY_)) {
             return vendorWindow_->handleMouseWheel(delta);
+        }
+    }
+
+    // Route mouse wheel to skills window if visible and mouse is over it
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        if (skillsWindow_->containsPoint(mouseX_, mouseY_)) {
+            return skillsWindow_->handleMouseWheel(delta);
         }
     }
 
@@ -1135,6 +1167,11 @@ void WindowManager::render() {
     // Render group window
     if (groupWindow_ && groupWindow_->isVisible()) {
         groupWindow_->render(driver_, gui_);
+    }
+
+    // Render skills window
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        skillsWindow_->render(driver_, gui_);
     }
 
     // Render player status window (upper left)
@@ -2153,6 +2190,79 @@ void WindowManager::setGroupDeclineCallback(GroupDeclineCallback callback) {
     groupDeclineCallback_ = callback;
     if (groupWindow_) {
         groupWindow_->setDeclineCallback(callback);
+    }
+}
+
+// ============================================================================
+// Skills Window Management
+// ============================================================================
+
+void WindowManager::initSkillsWindow(EQ::SkillManager* skillMgr) {
+    if (!skillMgr) {
+        LOG_WARN(MOD_UI, "Cannot initialize skills window - SkillManager is null");
+        return;
+    }
+
+    skillsWindow_ = std::make_unique<SkillsWindow>();
+    skillsWindow_->setSkillManager(skillMgr);
+    skillsWindow_->setSettingsKey("skills");
+
+    // Load position from settings or use default
+    const auto& settings = UISettings::instance().skills();
+    if (settings.window.x >= 0 && settings.window.y >= 0) {
+        skillsWindow_->setPosition(settings.window.x, settings.window.y);
+    } else {
+        skillsWindow_->positionDefault(screenWidth_, screenHeight_);
+    }
+
+    // Set up callbacks
+    if (skillActivateCallback_) {
+        skillsWindow_->setActivateCallback(skillActivateCallback_);
+    }
+    if (hotbarCreateCallback_) {
+        skillsWindow_->setHotbarCallback(hotbarCreateCallback_);
+    }
+
+    LOG_DEBUG(MOD_UI, "Skills window initialized");
+}
+
+void WindowManager::toggleSkillsWindow() {
+    if (!skillsWindow_) return;
+    if (skillsWindow_->isVisible()) {
+        closeSkillsWindow();
+    } else {
+        openSkillsWindow();
+    }
+}
+
+void WindowManager::openSkillsWindow() {
+    if (skillsWindow_) {
+        skillsWindow_->refresh();
+        skillsWindow_->show();
+    }
+}
+
+void WindowManager::closeSkillsWindow() {
+    if (skillsWindow_) {
+        skillsWindow_->hide();
+    }
+}
+
+bool WindowManager::isSkillsWindowOpen() const {
+    return skillsWindow_ && skillsWindow_->isVisible();
+}
+
+void WindowManager::setSkillActivateCallback(SkillActivateCallback callback) {
+    skillActivateCallback_ = callback;
+    if (skillsWindow_) {
+        skillsWindow_->setActivateCallback(callback);
+    }
+}
+
+void WindowManager::setHotbarCreateCallback(HotbarCreateCallback callback) {
+    hotbarCreateCallback_ = callback;
+    if (skillsWindow_) {
+        skillsWindow_->setHotbarCallback(callback);
     }
 }
 

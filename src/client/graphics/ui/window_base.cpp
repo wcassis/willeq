@@ -146,7 +146,8 @@ bool WindowBase::handleMouseDown(int x, int y, bool leftButton, bool shift, bool
         return true;  // Consume click on title bar even if locked
     }
 
-    return true;  // Consume click even if not on title bar
+    // Return false to allow derived classes to handle content area clicks
+    return false;
 }
 
 bool WindowBase::handleMouseUp(int x, int y, bool leftButton) {
@@ -157,6 +158,13 @@ bool WindowBase::handleMouseUp(int x, int y, bool leftButton) {
                  bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y,
                  bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y,
                  bounds_.LowerRightCorner.X, bounds_.LowerRightCorner.Y);
+
+        // Save position to settings if this window has a settings key
+        if (!settingsKey_.empty()) {
+            UISettings::instance().updateWindowPosition(settingsKey_,
+                bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y);
+            UISettings::instance().saveIfNeeded();
+        }
         return true;
     }
     return false;

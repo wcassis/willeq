@@ -26,6 +26,7 @@ namespace EQ {
     class BuffManager;
     class SpellEffects;
     class SpellTypeProcessor;
+    class SkillManager;
 }
 
 namespace EQT {
@@ -45,6 +46,7 @@ namespace inventory {
 }
 namespace ui {
     class CommandRegistry;
+    struct PendingHotbarButton;
 }
 }
 #endif
@@ -180,6 +182,31 @@ enum TitaniumZoneOpcodes {
 	HC_OP_LinkedReuse = 0x6a00,
 	HC_OP_MemorizeSpell = 0x308e,
 	HC_OP_Illusion = 0x448d,     // Illusion/disguise spell effect
+	// Combat ability opcodes
+	HC_OP_CombatAbility = 0x5ee8,  // Combat ability use (kick, bash, round kick, etc.)
+	HC_OP_Taunt = 0x5e48,          // Taunt skill
+	HC_OP_Disarm = 0x17d9,         // Disarm skill
+	HC_OP_FeignDeath = 0x7489,     // Feign Death
+	HC_OP_Mend = 0x14ef,           // Mend (monk)
+	HC_OP_InstillDoubt = 0x389e,   // Intimidation
+	// Rogue skill opcodes
+	HC_OP_Hide = 0x4312,           // Hide
+	HC_OP_Sneak = 0x74e1,          // Sneak
+	HC_OP_PickPocket = 0x2ad8,     // Pick Pocket
+	HC_OP_SenseTraps = 0x5666,     // Sense Traps
+	HC_OP_DisarmTraps = 0x1241,    // Disarm Traps
+	HC_OP_ApplyPoison = 0x0c2c,    // Apply Poison
+	HC_OP_CancelSneakHide = 0x48c2, // Cancel Sneak/Hide
+	// Utility/Trade skill opcodes
+	HC_OP_SenseHeading = 0x05ac,   // Sense Heading
+	HC_OP_Begging = 0x13e7,        // Begging
+	HC_OP_Forage = 0x4796,         // Forage
+	HC_OP_Fishing = 0x0b36,        // Fishing
+	HC_OP_BindWound = 0x601d,      // Bind Wound
+	HC_OP_Track = 0x5d11,          // Track
+	HC_OP_TrackTarget = 0x7085,    // Track Target
+	// Auto Fire opcode (AutoAttack/AutoAttack2 already defined above)
+	HC_OP_AutoFire = 0x6c53,       // Auto Fire (ranged)
 	// Misc opcodes
 	HC_OP_SpecialMesg = 0x2372,   // Special message (skill-ups, NPC reactions, etc.)
 	// Vendor/Merchant opcodes
@@ -439,6 +466,14 @@ public:
 	EQ::BuffManager* GetBuffManager() { return m_buff_manager.get(); }
 	EQ::SpellEffects* GetSpellEffects() { return m_spell_effects.get(); }
 	EQ::SpellTypeProcessor* GetSpellTypeProcessor() { return m_spell_type_processor.get(); }
+	EQ::SkillManager* GetSkillManager() { return m_skill_manager.get(); }
+
+	// Hotbar button management (stub for future implementation)
+	void AddPendingHotbarButton(uint8_t skill_id);
+	const std::vector<eqt::ui::PendingHotbarButton>& GetPendingHotbarButtons() const;
+	void ClearPendingHotbarButtons();
+	size_t GetPendingHotbarButtonCount() const;
+
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
 	uint16_t GetEntityID() const { return m_my_spawn_id; }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
@@ -890,6 +925,12 @@ private:
 
 	// Spell type processor (handles targeting and multi-target spells)
 	std::unique_ptr<EQ::SpellTypeProcessor> m_spell_type_processor;
+
+	// Skill manager
+	std::unique_ptr<EQ::SkillManager> m_skill_manager;
+
+	// Pending hotbar buttons (stub for future hotbar implementation)
+	std::vector<eqt::ui::PendingHotbarButton> m_pending_hotbar_buttons;
 
 	// Group state
 	bool m_in_group = false;
