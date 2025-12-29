@@ -23,6 +23,9 @@ using GemForgetCallback = std::function<void(uint8_t gem_slot)>;
 using GemHoverCallback = std::function<void(uint8_t gem_slot, uint32_t spell_id, int mouseX, int mouseY)>;
 using GemHoverEndCallback = std::function<void()>;
 using SpellbookButtonCallback = std::function<void()>;
+using MemorizeSpellCallback = std::function<void(uint32_t spell_id, uint8_t gem_slot)>;
+using GetSpellCursorCallback = std::function<uint32_t()>;
+using ClearSpellCursorCallback = std::function<void()>;
 
 // Callback for Ctrl+click pickup to hotbar cursor
 using SpellHotbarPickupCallback = std::function<void(HotbarButtonType type, uint32_t id,
@@ -78,6 +81,9 @@ public:
     void setGemHoverEndCallback(GemHoverEndCallback cb) { hoverEndCallback_ = std::move(cb); }
     void setSpellbookCallback(SpellbookButtonCallback cb) { spellbookCallback_ = std::move(cb); }
     void setHotbarPickupCallback(SpellHotbarPickupCallback cb) { hotbarPickupCallback_ = std::move(cb); }
+    void setMemorizeCallback(MemorizeSpellCallback cb) { memorizeCallback_ = std::move(cb); }
+    void setGetSpellCursorCallback(GetSpellCursorCallback cb) { getSpellCursorCallback_ = std::move(cb); }
+    void setClearSpellCursorCallback(ClearSpellCursorCallback cb) { clearSpellCursorCallback_ = std::move(cb); }
 
 private:
     void initializeLayout();
@@ -120,6 +126,9 @@ private:
     GemHoverEndCallback hoverEndCallback_;
     SpellbookButtonCallback spellbookCallback_;
     SpellHotbarPickupCallback hotbarPickupCallback_;
+    MemorizeSpellCallback memorizeCallback_;
+    GetSpellCursorCallback getSpellCursorCallback_;
+    ClearSpellCursorCallback clearSpellCursorCallback_;
 
     // Spellbook button
     irr::core::recti spellbookButtonBounds_;

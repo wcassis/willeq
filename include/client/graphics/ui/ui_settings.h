@@ -38,9 +38,18 @@ public:
 
     // Load/save operations
     bool loadFromFile(const std::string& path = "config/ui_settings.json");
-    bool saveToFile(const std::string& path = "config/ui_settings.json");
-    void applyOverrides(const Json::Value& overrides);
+    bool saveToFile(const std::string& path = "");  // Empty = use loaded path
+    void applyOverrides(const Json::Value& overrides, const std::string& overrideSourcePath = "");
     void resetToDefaults();
+
+    // Get/set the config file path (for saving)
+    const std::string& getConfigPath() const { return m_configPath; }
+    void setConfigPath(const std::string& path) { m_configPath = path; }
+
+    // Called when a window is moved/resized - updates settings and auto-saves
+    void updateWindowPosition(const std::string& windowName, int x, int y);
+    void updateWindowSize(const std::string& windowName, int width, int height);
+    void saveIfNeeded();  // Debounced save
 
     // UI Lock state
     bool isUILocked() const { return m_uiLocked; }
@@ -264,6 +273,15 @@ public:
     };
 
     // =========================================================================
+    // Skills Window Settings
+    // =========================================================================
+    struct SkillsSettings {
+        WindowSettings window;
+
+        SkillsSettings();
+    };
+
+    // =========================================================================
     // Spellbook Window Settings
     // =========================================================================
     struct SpellBookSettings {
@@ -449,6 +467,9 @@ public:
     SpellGemSettings& spellGems() { return m_spellGems; }
     const SpellGemSettings& spellGems() const { return m_spellGems; }
 
+    SkillsSettings& skills() { return m_skills; }
+    const SkillsSettings& skills() const { return m_skills; }
+
     SpellBookSettings& spellBook() { return m_spellBook; }
     const SpellBookSettings& spellBook() const { return m_spellBook; }
 
@@ -509,6 +530,9 @@ private:
     void loadSpellGemSettings(const Json::Value& json);
     void saveSpellGemSettings(Json::Value& json) const;
 
+    void loadSkillsSettings(const Json::Value& json);
+    void saveSkillsSettings(Json::Value& json) const;
+
     void loadSpellBookSettings(const Json::Value& json);
     void saveSpellBookSettings(Json::Value& json) const;
 
@@ -534,6 +558,10 @@ private:
     static irr::video::SColor jsonToColor(const Json::Value& json, const irr::video::SColor& defaultColor);
     static Json::Value colorToJson(const irr::video::SColor& color);
 
+    // Config file path (for saving)
+    std::string m_configPath = "config/ui_settings.json";
+    bool m_dirty = false;  // True if settings have changed since last save
+
     // Settings data
     bool m_uiLocked = true;
 
@@ -545,6 +573,7 @@ private:
     GroupSettings m_group;
     PlayerStatusSettings m_playerStatus;
     SpellGemSettings m_spellGems;
+    SkillsSettings m_skills;
     SpellBookSettings m_spellBook;
     HotbarSettings m_hotbar;
     CastingBarSettings m_castingBar;

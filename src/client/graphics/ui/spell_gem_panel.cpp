@@ -34,7 +34,7 @@ void SpellGemPanel::initializeLayout()
         int y = PANEL_PADDING + i * (GEM_HEIGHT + GEM_SPACING);
 
         gems_[i].bounds = irr::core::recti(x, y, x + GEM_WIDTH, y + GEM_HEIGHT);
-        gems_[i].iconBounds = irr::core::recti(x + 2, y + 2, x + GEM_WIDTH - 2, y + GEM_HEIGHT - 2);
+        gems_[i].iconBounds = irr::core::recti(x, y, x + GEM_WIDTH, y + GEM_HEIGHT);
         gems_[i].isHovered = false;
     }
 
@@ -57,9 +57,9 @@ void SpellGemPanel::setPosition(int x, int y)
 irr::core::recti SpellGemPanel::getBounds() const
 {
     int width = PANEL_PADDING * 2 + GEM_WIDTH;
-    int height = PANEL_PADDING * 2 + EQ::MAX_SPELL_GEMS * GEM_HEIGHT +
-                 (EQ::MAX_SPELL_GEMS - 1) * GEM_SPACING +
-                 SPELLBOOK_BUTTON_MARGIN + SPELLBOOK_BUTTON_SIZE;
+    // Height: top padding + gems with spacing + button margin + button + bottom padding
+    int height = PANEL_PADDING + EQ::MAX_SPELL_GEMS * (GEM_HEIGHT + GEM_SPACING) +
+                 SPELLBOOK_BUTTON_MARGIN + SPELLBOOK_BUTTON_SIZE + PANEL_PADDING;
     return irr::core::recti(position_.X, position_.Y,
                            position_.X + width, position_.Y + height);
 }
@@ -214,28 +214,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
                     nullptr,   // No clip rect
                     colors,    // Corner colors
                     true);     // Use alpha
-            }
-
-            // Draw mana cost in bottom-right corner
-            if (gui) {
-                irr::gui::IGUIFont* font = gui->getBuiltInFont();
-                if (font && spell->mana_cost > 0) {
-                    std::string manaStr = std::to_string(spell->mana_cost);
-                    std::wstring manaCostW(manaStr.begin(), manaStr.end());
-
-                    irr::core::dimension2du textSize = font->getDimension(manaCostW.c_str());
-                    int textX = absRect.LowerRightCorner.X - static_cast<int>(textSize.Width) - 2;
-                    int textY = absRect.LowerRightCorner.Y - static_cast<int>(textSize.Height) - 1;
-
-                    // Draw shadow
-                    font->draw(manaCostW.c_str(),
-                        irr::core::recti(textX + 1, textY + 1, textX + textSize.Width + 1, textY + textSize.Height + 1),
-                        irr::video::SColor(200, 0, 0, 0));
-                    // Draw text
-                    font->draw(manaCostW.c_str(),
-                        irr::core::recti(textX, textY, textX + textSize.Width, textY + textSize.Height),
-                        irr::video::SColor(255, 180, 180, 255));
-                }
             }
         }
     }
@@ -416,6 +394,22 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
     }
 
     if (leftButton) {
+        // Check if there's a spell on cursor - memorize it to this gem
+        if (getSpellCursorCallback_) {
+            uint32_t cursorSpell = getSpellCursorCallback_();
+            if (cursorSpell != EQ::SPELL_UNKNOWN && cursorSpell != 0xFFFFFFFF && cursorSpell != 0) {
+                // Memorize the cursor spell into this gem slot
+                if (memorizeCallback_) {
+                    memorizeCallback_(cursorSpell, static_cast<uint8_t>(gemIndex));
+                }
+                // Clear the cursor
+                if (clearSpellCursorCallback_) {
+                    clearSpellCursorCallback_();
+                }
+                return true;
+            }
+        }
+
         // Ctrl+click to pickup spell for hotbar
         if (ctrl && !shift) {
             if (spellMgr_ && hotbarPickupCallback_) {
@@ -427,6 +421,14 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
                                              "", spell->gem_icon);
                     }
                 }
+            }
+            return true;
+        }
+
+        // Shift+left-click to forget/un-memorize spell
+        if (shift) {
+            if (forgetCallback_) {
+                forgetCallback_(static_cast<uint8_t>(gemIndex));
             }
             return true;
         }

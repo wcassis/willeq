@@ -66,6 +66,15 @@ UISettings::PlayerStatusSettings::PlayerStatusSettings() {
     barHeight = 10;  // Tall enough for text overlay
 }
 
+UISettings::SkillsSettings::SkillsSettings() {
+    window.x = 50;
+    window.y = 50;
+    window.width = 340;
+    window.height = 400;
+    window.visible = false;
+    window.showTitleBar = true;
+}
+
 UISettings::SpellBookSettings::SpellBookSettings() {
     window.x = 106;
     window.y = 131;
@@ -157,6 +166,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("spellGems")) {
             loadSpellGemSettings(windows["spellGems"]);
         }
+        if (windows.isMember("skills")) {
+            loadSkillsSettings(windows["skills"]);
+        }
         if (windows.isMember("spellbook")) {
             loadSpellBookSettings(windows["spellbook"]);
         }
@@ -172,6 +184,10 @@ bool UISettings::loadFromFile(const std::string& path) {
     if (root.isMember("tooltips")) {
         loadTooltipSettings(root["tooltips"]);
     }
+
+    // Store the config path for future saves
+    m_configPath = path;
+    m_dirty = false;
 
     // Load slot settings
     if (root.isMember("slots")) {
@@ -193,6 +209,12 @@ bool UISettings::loadFromFile(const std::string& path) {
 }
 
 bool UISettings::saveToFile(const std::string& path) {
+    // Use provided path or fall back to stored config path
+    std::string savePath = path.empty() ? m_configPath : path;
+    if (savePath.empty()) {
+        savePath = "config/ui_settings.json";
+    }
+
     Json::Value root;
 
     root["version"] = 1;
@@ -210,6 +232,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveGroupSettings(windows["group"]);
     savePlayerStatusSettings(windows["playerStatus"]);
     saveSpellGemSettings(windows["spellGems"]);
+    saveSkillsSettings(windows["skills"]);
     saveSpellBookSettings(windows["spellbook"]);
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
@@ -227,9 +250,9 @@ bool UISettings::saveToFile(const std::string& path) {
     saveScrollbarSettings(root["scrollbar"]);
 
     // Write to file
-    std::ofstream file(path);
+    std::ofstream file(savePath);
     if (!file.is_open()) {
-        LOG_ERROR(MOD_UI, "[UISettings] Failed to open {} for writing", path);
+        LOG_ERROR(MOD_UI, "[UISettings] Failed to open {} for writing", savePath);
         return false;
     }
 
@@ -238,11 +261,17 @@ bool UISettings::saveToFile(const std::string& path) {
     std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
     writer->write(root, &file);
 
-    LOG_INFO(MOD_UI, "[UISettings] Saved settings to {}", path);
+    m_dirty = false;
+    LOG_INFO(MOD_UI, "[UISettings] Saved settings to {}", savePath);
     return true;
 }
 
-void UISettings::applyOverrides(const Json::Value& overrides) {
+void UISettings::applyOverrides(const Json::Value& overrides, const std::string& overrideSourcePath) {
+    // If overrides come from command-line config, use that path for saving
+    if (!overrideSourcePath.empty()) {
+        m_configPath = overrideSourcePath;
+    }
+
     // Apply overrides in the same manner as loadFromFile
     if (overrides.isMember("uiLocked")) {
         m_uiLocked = overrides["uiLocked"].asBool();
@@ -275,6 +304,9 @@ void UISettings::applyOverrides(const Json::Value& overrides) {
         }
         if (windows.isMember("spellGems")) {
             loadSpellGemSettings(windows["spellGems"]);
+        }
+        if (windows.isMember("skills")) {
+            loadSkillsSettings(windows["skills"]);
         }
         if (windows.isMember("spellbook")) {
             loadSpellBookSettings(windows["spellbook"]);
@@ -830,6 +862,18 @@ void UISettings::saveSpellGemSettings(Json::Value& json) const {
 }
 
 // ============================================================================
+// Skills Settings Serialization
+// ============================================================================
+
+void UISettings::loadSkillsSettings(const Json::Value& json) {
+    loadWindowSettings(m_skills.window, json);
+}
+
+void UISettings::saveSkillsSettings(Json::Value& json) const {
+    saveWindowSettings(m_skills.window, json);
+}
+
+// ============================================================================
 // Spellbook Settings Serialization
 // ============================================================================
 
@@ -1175,6 +1219,56 @@ void UISettings::saveScrollbarSettings(Json::Value& json) const {
     colors["buttonHoverColor"] = colorToJson(m_scrollbar.buttonHoverColor);
     colors["arrowColor"] = colorToJson(m_scrollbar.arrowColor);
     json["colors"] = colors;
+}
+
+// ============================================================================
+// Window Position/Size Update Methods
+// ============================================================================
+
+void UISettings::updateWindowPosition(const std::string& windowName, int x, int y) {
+    WindowSettings* settings = nullptr;
+
+    if (windowName == "chat") settings = &m_chat.window;
+    else if (windowName == "inventory") settings = &m_inventory.window;
+    else if (windowName == "loot") settings = &m_loot.window;
+    else if (windowName == "buff") settings = &m_buff.window;
+    else if (windowName == "group") settings = &m_group.window;
+    else if (windowName == "playerStatus") settings = &m_playerStatus.window;
+    else if (windowName == "skills") settings = &m_skills.window;
+    else if (windowName == "spellbook") settings = &m_spellBook.window;
+
+    if (settings) {
+        settings->x = x;
+        settings->y = y;
+        m_dirty = true;
+        LOG_DEBUG(MOD_UI, "[UISettings] Window '{}' position updated to ({}, {})", windowName, x, y);
+    }
+}
+
+void UISettings::updateWindowSize(const std::string& windowName, int width, int height) {
+    WindowSettings* settings = nullptr;
+
+    if (windowName == "chat") settings = &m_chat.window;
+    else if (windowName == "inventory") settings = &m_inventory.window;
+    else if (windowName == "loot") settings = &m_loot.window;
+    else if (windowName == "buff") settings = &m_buff.window;
+    else if (windowName == "group") settings = &m_group.window;
+    else if (windowName == "playerStatus") settings = &m_playerStatus.window;
+    else if (windowName == "skills") settings = &m_skills.window;
+    else if (windowName == "spellbook") settings = &m_spellBook.window;
+
+    if (settings) {
+        settings->width = width;
+        settings->height = height;
+        m_dirty = true;
+        LOG_DEBUG(MOD_UI, "[UISettings] Window '{}' size updated to ({} x {})", windowName, width, height);
+    }
+}
+
+void UISettings::saveIfNeeded() {
+    if (m_dirty) {
+        saveToFile();
+    }
 }
 
 } // namespace ui

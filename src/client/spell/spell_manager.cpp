@@ -121,6 +121,13 @@ void SpellManager::updateMemorization(float delta_time)
         const SpellData* spell = m_spell_db.getSpell(m_memorize_spell_id);
         LOG_INFO(MOD_SPELL, "Memorized spell '{}' in gem {}",
             spell ? spell->name : "Unknown", m_memorize_slot + 1);
+
+#ifdef EQT_HAS_GRAPHICS
+        auto* renderer = m_eq->GetRenderer();
+        if (renderer && renderer->getWindowManager()) {
+            renderer->getWindowManager()->completeMemorize();
+        }
+#endif
     }
 }
 
@@ -443,6 +450,13 @@ bool SpellManager::memorizeSpell(uint32_t spell_id, uint8_t gem_slot)
 
     LOG_INFO(MOD_SPELL, "Starting memorization of '{}' in gem {} ({}ms)",
         spell->name, gem_slot + 1, m_memorize_duration_ms);
+
+#ifdef EQT_HAS_GRAPHICS
+    auto* renderer = m_eq->GetRenderer();
+    if (renderer && renderer->getWindowManager()) {
+        renderer->getWindowManager()->startMemorize(spell->name, m_memorize_duration_ms);
+    }
+#endif
 
     return true;
 }
@@ -960,11 +974,19 @@ void SpellManager::sendInterruptPacket()
 
 void SpellManager::sendMemorizePacket(uint32_t spell_id, uint8_t gem_slot, bool memorize)
 {
-    // TODO: Determine correct packet format for memorize/forget
-    // For now, this is handled server-side via sitting and time
+    EQ::Net::DynamicPacket packet;
+    packet.Resize(sizeof(EQT::MemorizeSpell_Struct));
 
-    LOG_DEBUG(MOD_SPELL, "Would send {} packet for spell {} in gem {}",
-        memorize ? "memorize" : "forget", spell_id, gem_slot);
+    EQT::MemorizeSpell_Struct* mem = reinterpret_cast<EQT::MemorizeSpell_Struct*>(packet.Data());
+    mem->slot = static_cast<uint32_t>(gem_slot);
+    mem->spell_id = spell_id;
+    mem->scribing = memorize ? 1 : 2;  // 1=memorize, 2=forget
+    mem->unknown0 = memorize ? 742 : 0;  // Match working client behavior
+
+    m_eq->QueuePacket(HC_OP_MemorizeSpell, &packet);
+
+    LOG_DEBUG(MOD_SPELL, "Sent MemorizeSpell packet: spell={}, gem={}, action={}",
+        spell_id, gem_slot, memorize ? "memorize" : "forget");
 }
 
 // ============================================================================

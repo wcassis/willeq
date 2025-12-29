@@ -120,6 +120,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 }
             }
 
+            // Skills window toggle on K key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_K) {
+                skillsToggleRequested_ = true;
+            }
+
             // Spell gem shortcuts (1-8 keys, not numpad) - only when Ctrl is not held
             if (!event.KeyInput.Control && event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_8) {
                 spellGemCastRequest_ = static_cast<int8_t>(event.KeyInput.Key - irr::KEY_KEY_1);
@@ -2221,6 +2226,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (eventReceiver_->groupToggleRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
             windowManager_->toggleGroupWindow();
+        }
+    }
+
+    // Handle skills window toggle (K key) - only in Player mode, and only if chat is not focused
+    if (eventReceiver_->skillsToggleRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            windowManager_->toggleSkillsWindow();
         }
     }
 

@@ -6,6 +6,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
 #include "client/spell/spell_type_processor.h"
+#include "client/skill/skill_manager.h"
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -20,6 +21,7 @@
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
+#include "client/graphics/ui/hotbar_types.h"
 #endif
 #include <array>
 #include <iomanip>
@@ -643,6 +645,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 	// Initialize spell manager
 	m_spell_manager = std::make_unique<EQ::SpellManager>(this);
+
+	// Initialize skill manager
+	m_skill_manager = std::make_unique<EQ::SkillManager>(this);
 
 	// Direct connection without DNS lookup (assume host is already IP or will be resolved by OS)
 	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
@@ -1816,8 +1821,14 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_SkillUpdate:
 		// Skill level update
 		if (p.Length() >= 7) {
-			uint32_t skill_id = p.GetUInt8(2);
+			uint8_t skill_id = p.GetUInt8(2);
 			uint32_t value = p.GetUInt32(3);
+
+			// Update skill manager
+			if (m_skill_manager) {
+				m_skill_manager->updateSkill(skill_id, value);
+			}
+
 			if (s_debug_level >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", skill_id, value);
 			}
@@ -1949,6 +1960,74 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_InterruptCast:
 		// Cast interrupted - spell manager handles this via other packets
+		break;
+
+	// ========================================================================
+	// Skill Response Handlers
+	// ========================================================================
+	case HC_OP_Begging:
+		// Begging response - BeggingResponse_Struct (20 bytes after opcode)
+		if (p.Length() >= 22) {
+			uint32_t result = p.GetUInt32(14);  // offset 12 in struct + 2 for opcode
+			uint32_t amount = p.GetUInt32(18);  // offset 16 in struct + 2 for opcode
+			// Result: 0=Fail, 1=Plat, 2=Gold, 3=Silver, 4=Copper
+			if (result == 0) {
+				AddChatSystemMessage("You have been unable to convince your target to give you money.");
+			} else {
+				const char* coin_types[] = {"", "platinum", "gold", "silver", "copper"};
+				if (result <= 4) {
+					AddChatSystemMessage(fmt::format("You receive {} {}.", amount, coin_types[result]));
+				}
+			}
+		}
+		break;
+	case HC_OP_Hide:
+		// Hide skill response - typically no data, success indicated by SpawnAppearance
+		LOG_DEBUG(MOD_MAIN, "Hide response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Sneak:
+		// Sneak skill response
+		LOG_DEBUG(MOD_MAIN, "Sneak response received: {} bytes", p.Length());
+		break;
+	case HC_OP_SenseHeading:
+		// Sense Heading response - may contain heading info
+		LOG_DEBUG(MOD_MAIN, "SenseHeading response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Forage:
+		// Forage response - contains item found or failure
+		LOG_DEBUG(MOD_MAIN, "Forage response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Fishing:
+		// Fishing response
+		LOG_DEBUG(MOD_MAIN, "Fishing response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Mend:
+		// Mend response
+		LOG_DEBUG(MOD_MAIN, "Mend response received: {} bytes", p.Length());
+		break;
+	case HC_OP_FeignDeath:
+		// Feign Death response
+		LOG_DEBUG(MOD_MAIN, "FeignDeath response received: {} bytes", p.Length());
+		break;
+	case HC_OP_Track:
+		// Track response - contains list of trackable entities
+		LOG_DEBUG(MOD_MAIN, "Track response received: {} bytes", p.Length());
+		break;
+	case HC_OP_PickPocket:
+		// Pick Pocket response
+		LOG_DEBUG(MOD_MAIN, "PickPocket response received: {} bytes", p.Length());
+		break;
+	case HC_OP_SenseTraps:
+		// Sense Traps response
+		LOG_DEBUG(MOD_MAIN, "SenseTraps response received: {} bytes", p.Length());
+		break;
+	case HC_OP_DisarmTraps:
+		// Disarm Traps response
+		LOG_DEBUG(MOD_MAIN, "DisarmTraps response received: {} bytes", p.Length());
+		break;
+	case HC_OP_InstillDoubt:
+		// Intimidation response
+		LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
 		break;
 
 	default:
@@ -2371,6 +2450,33 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_silver = silver;
 	m_copper = copper;
 	m_last_name = last_name;
+
+	// Initialize skill manager with player info first
+	if (m_skill_manager) {
+		m_skill_manager->initialize(static_cast<uint8_t>(class_), static_cast<uint8_t>(race), level);
+
+		// Skills are stored as uint32_t[100] starting at offset 4460
+		// Reference: EQEmu titanium_structs.h PlayerProfile_Struct
+		const size_t skill_offset = 4460;
+		if (p.Length() >= base + skill_offset + (EQT::MAX_PP_SKILL * 4)) {
+			uint32_t skills[EQT::MAX_PP_SKILL];
+			int nonzero_count = 0;
+			for (size_t i = 0; i < EQT::MAX_PP_SKILL; ++i) {
+				skills[i] = p.GetUInt32(base + skill_offset + (i * 4));
+				if (skills[i] > 0) {
+					nonzero_count++;
+					if (s_debug_level >= 2) {
+						LOG_DEBUG(MOD_MAIN, "Skill[{}] = {}", i, skills[i]);
+					}
+				}
+			}
+			m_skill_manager->updateAllSkills(skills, EQT::MAX_PP_SKILL);
+			LOG_INFO(MOD_MAIN, "Loaded {} skills from PlayerProfile ({} non-zero)", EQT::MAX_PP_SKILL, nonzero_count);
+		} else {
+			LOG_WARN(MOD_MAIN, "PlayerProfile too small for skills: {} < {}",
+				p.Length(), base + skill_offset + (EQT::MAX_PP_SKILL * 4));
+		}
+	}
 
 #ifdef EQT_HAS_GRAPHICS
 	// Update inventory manager with player info for item restriction validation
@@ -4797,6 +4903,40 @@ void EverQuest::AddChatSystemMessage(const std::string &text)
 	LOG_INFO(MOD_MAIN, "{}", text);
 }
 
+// ============================================================================
+// Hotbar Button Management (Stub for future implementation)
+// ============================================================================
+
+void EverQuest::AddPendingHotbarButton(uint8_t skill_id)
+{
+#ifdef EQT_HAS_GRAPHICS
+	const char* skill_name = EQ::getSkillName(skill_id);
+	m_pending_hotbar_buttons.emplace_back(
+		eqt::ui::HotbarButtonType::Skill,
+		static_cast<uint32_t>(skill_id),
+		skill_name ? skill_name : "Unknown Skill"
+	);
+	LOG_INFO(MOD_MAIN, "Queued skill {} ({}) for hotbar (total pending: {})",
+		skill_id, skill_name ? skill_name : "Unknown", m_pending_hotbar_buttons.size());
+#endif
+}
+
+const std::vector<eqt::ui::PendingHotbarButton>& EverQuest::GetPendingHotbarButtons() const
+{
+	return m_pending_hotbar_buttons;
+}
+
+void EverQuest::ClearPendingHotbarButtons()
+{
+	m_pending_hotbar_buttons.clear();
+	LOG_DEBUG(MOD_MAIN, "Cleared pending hotbar buttons");
+}
+
+size_t EverQuest::GetPendingHotbarButtonCount() const
+{
+	return m_pending_hotbar_buttons.size();
+}
+
 void EverQuest::ProcessChatInput(const std::string &input)
 {
 	if (input.empty()) {
@@ -5662,6 +5802,24 @@ void EverQuest::RegisterCommands()
 		// TODO: Open spellbook window when UI is implemented
 	};
 	m_command_registry->registerCommand(spellbook);
+
+	Command skills;
+	skills.name = "skills";
+	skills.usage = "/skills";
+	skills.description = "Toggle skills window";
+	skills.category = "Utility";
+	skills.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		if (m_renderer && m_renderer->getWindowManager()) {
+			m_renderer->getWindowManager()->toggleSkillsWindow();
+		} else {
+			AddChatSystemMessage("Skills window requires graphics mode");
+		}
+#else
+		AddChatSystemMessage("Skills window requires graphics mode");
+#endif
+	};
+	m_command_registry->registerCommand(skills);
 
 	Command gems;
 	gems.name = "gems";
@@ -7687,24 +7845,25 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 {
 	// Death packet indicates an entity has died
-	// Format typically includes: spawn_id of victim, spawn_id of killer, damage, spell_id
-	
-	if (p.Length() < 10) {
+	// Death_Struct layout (all uint32):
+	//   spawn_id, killer_id, corpseid, bindzoneid, spell_id, attack_skill, damage, unknown
+
+	if (p.Length() < 30) {  // Need at least through damage field
 		if (s_debug_level >= 1) {
 			std::cout << fmt::format("Death packet too small: {} bytes", p.Length()) << std::endl;
 		}
 		return;
 	}
-	
-	// Parse death information
-	uint16_t victim_id = p.GetUInt16(2);    // Who died
-	uint16_t killer_id = p.GetUInt16(4);    // Who killed them (0 = player character)
-	uint32_t damage = p.GetUInt32(6);       // Final damage amount
-	uint16_t spell_id = 0;
-	
-	if (p.Length() >= 12) {
-		spell_id = p.GetUInt16(10);         // Spell that killed (if any)
-	}
+
+	// Parse death information - Death_Struct uses uint32 fields
+	// Offsets include 2-byte opcode prefix
+	uint32_t victim_id = p.GetUInt32(2);    // spawn_id - Who died
+	uint32_t killer_id = p.GetUInt32(6);    // killer_id - Who killed them
+	// uint32_t corpse_id = p.GetUInt32(10);  // corpseid (unused)
+	// uint32_t bind_zone = p.GetUInt32(14);  // bindzoneid (unused)
+	uint32_t spell_id = p.GetUInt32(18);    // spell_id - Spell that killed (0 if melee)
+	// uint32_t attack_skill = p.GetUInt32(22);  // attack_skill (unused)
+	uint32_t damage = p.GetUInt32(26);      // damage - Final damage amount
 	
 	// Get entity names if we have them
 	std::string victim_name = "Unknown";
@@ -10529,6 +10688,41 @@ bool EverQuest::InitGraphics(int width, int height) {
 		auto* windowManager = m_renderer->getWindowManager();
 		windowManager->initGroupWindow(this);
 		windowManager->initPlayerStatusWindow(this);
+		windowManager->initSkillsWindow(m_skill_manager.get());
+
+		// Set up skills window callbacks
+		windowManager->setSkillActivateCallback([this](uint8_t skill_id) {
+			if (m_skill_manager) {
+				m_skill_manager->activateSkill(skill_id);
+			}
+		});
+
+		windowManager->setHotbarCreateCallback([this](uint8_t skill_id) {
+			// Store skill for future hotbar implementation
+			AddPendingHotbarButton(skill_id);
+			const char* skill_name = EQ::getSkillName(skill_id);
+			AddChatSystemMessage(fmt::format("Added {} to hotbar queue (hotbar not yet implemented)", skill_name));
+		});
+
+		// Set up skill activation feedback callback
+		if (m_skill_manager) {
+			m_skill_manager->setOnSkillActivated([this](uint8_t skill_id, bool success, const std::string& message) {
+				const char* skill_name = EQ::getSkillName(skill_id);
+				if (success) {
+					AddChatSystemMessage(fmt::format("You use {}!", skill_name));
+				} else {
+					AddChatSystemMessage(fmt::format("Cannot use {}: {}", skill_name, message));
+				}
+			});
+
+			// Set up skill-up notification callback
+			m_skill_manager->setOnSkillUpdate([this](uint8_t skill_id, uint32_t old_value, uint32_t new_value) {
+				if (new_value > old_value) {
+					const char* skill_name = EQ::getSkillName(skill_id);
+					AddChatSystemMessage(fmt::format("You have become better at {}! ({})", skill_name, new_value));
+				}
+			});
+		}
 
 		// Set up group window callbacks
 		windowManager->setGroupInviteCallback([this]() {

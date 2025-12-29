@@ -21,6 +21,7 @@ class ItemIconLoader;
 using SpellClickCallback = std::function<void(uint32_t spell_id, uint8_t gem_slot)>;
 using SpellHoverCallback = std::function<void(uint32_t spell_id, int mouseX, int mouseY)>;
 using SpellHoverEndCallback = std::function<void()>;
+using SetSpellCursorCallback = std::function<void(uint32_t spell_id, irr::video::ITexture* icon)>;
 
 // Individual spell slot in the spellbook
 struct SpellSlot {
@@ -45,13 +46,16 @@ public:
     void nextPage();
     void prevPage();
     void goToPage(int page);
+    void goToLastPopulated();
     int getCurrentPage() const { return currentPage_; }
     int getTotalPages() const;
+    int getLastPopulatedPage() const;
 
     // Callbacks
     void setSpellClickCallback(SpellClickCallback cb) { spellClickCallback_ = std::move(cb); }
     void setSpellHoverCallback(SpellHoverCallback cb) { spellHoverCallback_ = std::move(cb); }
     void setSpellHoverEndCallback(SpellHoverEndCallback cb) { spellHoverEndCallback_ = std::move(cb); }
+    void setSetSpellCursorCallback(SetSpellCursorCallback cb) { setSpellCursorCallback_ = std::move(cb); }
 
     // Set target gem slot for memorization (1-8, 0 = none)
     void setTargetGemSlot(uint8_t slot) { targetGemSlot_ = slot; }
@@ -113,12 +117,16 @@ private:
     std::array<SpellSlot, TOTAL_SLOTS> spellSlots_;
 
     // Navigation button bounds (window-relative)
+    irr::core::recti firstButtonBounds_;
     irr::core::recti prevButtonBounds_;
     irr::core::recti nextButtonBounds_;
+    irr::core::recti lastButtonBounds_;
 
     // Button hover state
+    bool firstButtonHovered_ = false;
     bool prevButtonHovered_ = false;
     bool nextButtonHovered_ = false;
+    bool lastButtonHovered_ = false;
 
     // Currently hovered slot
     int hoveredSlotIndex_ = -1;
@@ -134,6 +142,7 @@ private:
     SpellClickCallback spellClickCallback_;
     SpellHoverCallback spellHoverCallback_;
     SpellHoverEndCallback spellHoverEndCallback_;
+    SetSpellCursorCallback setSpellCursorCallback_;
 };
 
 } // namespace ui

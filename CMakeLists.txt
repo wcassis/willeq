@@ -149,6 +149,8 @@ SET(CLIENT_SOURCES
     src/client/spell/spell_effects.cpp
     src/client/spell/spell_type_processor.cpp
     src/client/spell/spell_animations.cpp
+    # Skill system sources
+    src/client/skill/skill_manager.cpp
 )
 
 # Navmesh pathfinding (optional)
@@ -209,9 +211,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/spell_gem_panel.cpp
         src/client/graphics/ui/buff_window.cpp
         src/client/graphics/ui/buff_tooltip.cpp
+        src/client/graphics/ui/skill_tooltip.cpp
         src/client/graphics/ui/group_window.cpp
         src/client/graphics/ui/hotbar_window.cpp
         src/client/graphics/ui/hotbar_cursor.cpp
+        src/client/graphics/ui/skills_window.cpp
         src/client/graphics/ui/player_status_window.cpp
         src/client/graphics/ui/casting_bar.cpp
         src/client/graphics/ui/character_model_view.cpp

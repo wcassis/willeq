@@ -407,6 +407,17 @@ struct CombatDamage_Struct {
 };
 
 /*
+ * Combat Ability structure (kick, bash, taunt, etc.)
+ * Size: 12 bytes
+ */
+struct CombatAbility_Struct {
+/*00*/ uint32_t target;      // Target entity ID
+/*04*/ uint32_t attack;      // Attack value (usually 0)
+/*08*/ uint32_t skill;       // Skill ID (e.g., SKILL_KICK, SKILL_BASH)
+/*12*/
+};
+
+/*
  * Money on Corpse structure
  * Size: 20 bytes
  */
@@ -628,6 +639,19 @@ struct CastSpell_Struct {
 /*12*/ uint32_t target_id;
 /*16*/ uint8_t  cs_unknown[4];
 /*20*/
+};
+
+/*
+ * Memorize Spell structure
+ * Used for memorizing spells to gem slots and forgetting them
+ * Size: 16 bytes
+ */
+struct MemorizeSpell_Struct {
+/*00*/ uint32_t slot;       // Gem slot (0-7)
+/*04*/ uint32_t spell_id;   // Spell ID
+/*08*/ uint32_t scribing;   // 1=memorize, 2=forget, 3=spellbar
+/*12*/ uint32_t unknown0;   // 742 for memorize, 0 for forget
+/*16*/
 };
 
 /*
