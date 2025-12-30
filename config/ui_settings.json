@@ -1,298 +1,953 @@
 {
-    "version": 1,
-    "uiLocked": true,
-
-    "globalTheme": {
-        "colors": {
-            "windowBackground": [64, 64, 64, 255],
-            "titleBarBackground": [48, 48, 48, 255],
-            "titleBarText": [200, 180, 140, 255],
-            "borderLight": [100, 100, 100, 255],
-            "borderDark": [32, 32, 32, 255],
-            "buttonBackground": [72, 72, 72, 255],
-            "buttonHighlight": [96, 96, 96, 255],
-            "buttonText": [200, 200, 200, 255],
-            "buttonDisabledBg": [48, 48, 48, 255],
-            "buttonDisabledText": [100, 100, 100, 255]
+    "chatInput" : 
+    {
+        "blinkIntervalMs" : 500,
+        "colors" : 
+        {
+            "background" : 
+            [
+                0,
+                0,
+                0,
+                200
+            ],
+            "cursor" : 
+            [
+                255,
+                255,
+                255,
+                255
+            ],
+            "prompt" : 
+            [
+                200,
+                200,
+                200,
+                255
+            ],
+            "text" : 
+            [
+                255,
+                255,
+                255,
+                255
+            ]
         },
-        "layout": {
-            "titleBarHeight": 20,
-            "borderWidth": 2,
-            "buttonHeight": 22,
-            "buttonPadding": 4,
-            "contentPadding": 4
+        "maxHistory" : 100
+    },
+    "globalTheme" : 
+    {
+        "colors" : 
+        {
+            "borderDark" : 
+            [
+                32,
+                32,
+                32,
+                255
+            ],
+            "borderLight" : 
+            [
+                100,
+                100,
+                100,
+                255
+            ],
+            "buttonBackground" : 
+            [
+                72,
+                72,
+                72,
+                255
+            ],
+            "buttonDisabledBg" : 
+            [
+                48,
+                48,
+                48,
+                255
+            ],
+            "buttonDisabledText" : 
+            [
+                100,
+                100,
+                100,
+                255
+            ],
+            "buttonHighlight" : 
+            [
+                96,
+                96,
+                96,
+                255
+            ],
+            "buttonText" : 
+            [
+                200,
+                200,
+                200,
+                255
+            ],
+            "titleBarBackground" : 
+            [
+                48,
+                48,
+                48,
+                255
+            ],
+            "titleBarText" : 
+            [
+                200,
+                180,
+                140,
+                255
+            ],
+            "windowBackground" : 
+            [
+                64,
+                64,
+                64,
+                255
+            ]
+        },
+        "layout" : 
+        {
+            "borderWidth" : 2,
+            "buttonHeight" : 22,
+            "buttonPadding" : 4,
+            "contentPadding" : 4,
+            "titleBarHeight" : 20
         }
     },
-
-    "windows": {
-        "chat": {
-            "position": { "x": 10, "y": -182 },
-            "size": { "width": 651, "height": 172 },
-            "minSize": { "width": 200, "height": 80 },
-            "maxSize": { "width": 1920, "height": 600 },
-            "visible": true,
-            "showTitleBar": false,
-            "alwaysLocked": false,
-            "showTimestamps": false,
-            "layout": {
-                "inputFieldHeight": 20,
-                "scrollbarWidth": 14,
-                "scrollButtonHeight": 14,
-                "resizeEdgeWidth": 6
-            },
-            "colors": {
-                "linkNpc": [0, 255, 255, 255],
-                "linkItem": [0, 200, 255, 255]
-            },
-            "channelFilters": {
-                "0": true,
-                "1": true,
-                "2": true,
-                "3": true,
-                "4": true,
-                "5": true,
-                "6": true,
-                "7": true,
-                "8": true,
-                "9": true,
-                "10": true,
-                "11": true,
-                "12": true,
-                "13": true,
-                "14": true,
-                "15": true,
-                "100": true,
-                "101": true,
-                "269": true
-            }
-        },
-
-        "inventory": {
-            "position": { "x": 50, "y": 50 },
-            "size": { "width": 365, "height": 340 },
-            "minSize": { "width": 50, "height": 50 },
-            "maxSize": { "width": 1920, "height": 1080 },
-            "visible": false,
-            "showTitleBar": true,
-            "alwaysLocked": false,
-            "layout": {
-                "slotSize": 32,
-                "slotSpacing": 2,
-                "equipmentStartX": 80,
-                "equipmentStartY": 25,
-                "generalStartX": 272,
-                "generalStartY": 25,
-                "statsWidth": 70
-            }
-        },
-
-        "loot": {
-            "position": { "x": -1, "y": -1 },
-            "size": { "width": -1, "height": -1 },
-            "minSize": { "width": 50, "height": 50 },
-            "maxSize": { "width": 1920, "height": 1080 },
-            "visible": false,
-            "showTitleBar": true,
-            "alwaysLocked": false,
-            "layout": {
-                "columns": 4,
-                "rows": 2,
-                "slotSize": 36,
-                "slotSpacing": 4,
-                "padding": 8,
-                "buttonWidth": 70,
-                "buttonSpacing": 8,
-                "scrollbarWidth": 16,
-                "scrollButtonHeight": 16,
-                "topButtonRowHeight": 26,
-                "bottomButtonRowHeight": 26
-            }
-        },
-
-        "buff": {
-            "position": { "x": 650, "y": 53 },
-            "size": { "width": -1, "height": -1 },
-            "minSize": { "width": 50, "height": 50 },
-            "maxSize": { "width": 1920, "height": 1080 },
-            "visible": true,
-            "showTitleBar": false,
-            "alwaysLocked": false,
-            "layout": {
-                "columns": 5,
-                "rows": 3,
-                "iconSize": 24,
-                "spacing": 2,
-                "padding": 1
-            },
-            "colors": {
-                "buffBackground": [30, 50, 30, 200],
-                "buffBorder": [80, 140, 80, 255],
-                "debuffBorder": [140, 50, 50, 255],
-                "emptySlot": [40, 40, 40, 150],
-                "durationBackground": [0, 0, 0, 180],
-                "durationText": [220, 220, 220, 255]
-            }
-        },
-
-        "group": {
-            "position": { "x": -1, "y": 210 },
-            "size": { "width": -1, "height": -1 },
-            "minSize": { "width": 50, "height": 50 },
-            "maxSize": { "width": 1920, "height": 1080 },
-            "visible": false,
-            "showTitleBar": false,
-            "alwaysLocked": false,
-            "layout": {
-                "nameHeight": 12,
-                "barHeight": 2,
-                "barSpacing": 1,
-                "memberSpacing": 2,
-                "buttonWidth": 55,
-                "buttonHeight": 18,
-                "padding": 1,
-                "buttonPadding": 2
-            },
-            "colors": {
-                "hpBackground": [40, 0, 0, 200],
-                "hpHigh": [0, 180, 0, 255],
-                "hpMedium": [180, 180, 0, 255],
-                "hpLow": [180, 0, 0, 255],
-                "manaBackground": [0, 0, 40, 200],
-                "manaFill": [0, 80, 180, 255],
-                "memberBackground": [30, 30, 30, 100],
-                "nameInZone": [255, 255, 255, 255],
-                "nameOutOfZone": [128, 128, 128, 255],
-                "leaderMarker": [255, 215, 0, 255]
-            }
-        },
-
-        "spellGems": {
-            "position": { "x": 10, "y": -1 },
-            "visible": true,
-            "layout": {
-                "gemWidth": 20,
-                "gemHeight": 20,
-                "gemSpacing": 2,
-                "panelPadding": 2,
-                "spellbookButtonSize": 16,
-                "spellbookButtonMargin": 3
-            }
-        },
-
-        "spellbook": {
-            "position": { "x": 106, "y": 131 },
-            "size": { "width": 352, "height": 280 },
-            "minSize": { "width": 50, "height": 50 },
-            "maxSize": { "width": 1920, "height": 1080 },
-            "visible": false,
-            "showTitleBar": true,
-            "alwaysLocked": false,
-            "layout": {
-                "pageWidth": 160,
-                "pageSpacing": 16,
-                "spellsPerPage": 8,
-                "iconSize": 20,
-                "rowHeight": 22,
-                "rowSpacing": 2,
-                "leftPageX": 8,
-                "slotsStartY": 28,
-                "nameOffsetX": 24,
-                "nameMaxWidth": 130,
-                "navButtonWidth": 30,
-                "navButtonHeight": 20
-            }
-        },
-
-        "castingBar": {
-            "playerBar": {
-                "position": { "x": -1, "y": -1 },
-                "size": { "width": 200, "height": 16 }
-            },
-            "targetBar": {
-                "position": { "x": -1, "y": 80 },
-                "size": { "width": 200, "height": 16 }
-            },
-            "colors": {
-                "barFill": [100, 150, 255, 255],
-                "background": [40, 40, 60, 200],
-                "border": [150, 150, 180, 255],
-                "text": [255, 255, 255, 255],
-                "interrupted": [255, 80, 80, 255]
-            }
+    "scrollbar" : 
+    {
+        "colors" : 
+        {
+            "arrowColor" : 
+            [
+                180,
+                180,
+                180,
+                255
+            ],
+            "buttonColor" : 
+            [
+                70,
+                70,
+                70,
+                255
+            ],
+            "buttonHoverColor" : 
+            [
+                100,
+                100,
+                100,
+                255
+            ],
+            "thumbColor" : 
+            [
+                100,
+                100,
+                100,
+                255
+            ],
+            "thumbHoverColor" : 
+            [
+                130,
+                130,
+                130,
+                255
+            ],
+            "trackColor" : 
+            [
+                40,
+                40,
+                40,
+                255
+            ]
         }
     },
-
-    "tooltips": {
-        "item": {
-            "minWidth": 250,
-            "maxWidth": 350,
-            "lineHeight": 14,
-            "padding": 8,
-            "sectionSpacing": 4,
-            "mouseOffset": 16,
-            "colors": {
-                "background": [24, 24, 24, 240],
-                "border": [80, 80, 80, 255],
-                "title": [240, 220, 180, 255],
-                "magic": [100, 149, 237, 255],
-                "flags": [200, 200, 200, 255],
-                "restrictions": [180, 180, 180, 255],
-                "stats": [200, 200, 200, 255],
-                "statsValue": [255, 255, 255, 255],
-                "effect": [180, 220, 180, 255],
-                "effectDesc": [160, 200, 160, 255],
-                "lore": [180, 160, 140, 255]
+    "slots" : 
+    {
+        "colors" : 
+        {
+            "background" : 
+            [
+                32,
+                32,
+                32,
+                255
+            ],
+            "border" : 
+            [
+                64,
+                64,
+                64,
+                255
+            ],
+            "highlight" : 
+            [
+                128,
+                128,
+                64,
+                255
+            ],
+            "invalid" : 
+            [
+                128,
+                32,
+                32,
+                255
+            ],
+            "itemBackground" : 
+            [
+                48,
+                48,
+                48,
+                255
+            ],
+            "labelText" : 
+            [
+                160,
+                160,
+                160,
+                255
+            ],
+            "stackText" : 
+            [
+                255,
+                255,
+                255,
+                255
+            ]
+        },
+        "defaultSize" : 32,
+        "iconPadding" : 2
+    },
+    "tooltips" : 
+    {
+        "buff" : 
+        {
+            "colors" : 
+            {
+                "background" : 
+                [
+                    20,
+                    20,
+                    30,
+                    230
+                ],
+                "border" : 
+                [
+                    80,
+                    80,
+                    100,
+                    255
+                ],
+                "duration" : 
+                [
+                    200,
+                    200,
+                    200,
+                    255
+                ],
+                "info" : 
+                [
+                    180,
+                    180,
+                    180,
+                    255
+                ],
+                "spellName" : 
+                [
+                    255,
+                    255,
+                    100,
+                    255
+                ]
+            },
+            "lineHeight" : 14,
+            "maxWidth" : 280,
+            "minWidth" : 180,
+            "mouseOffset" : 12,
+            "padding" : 6
+        },
+        "item" : 
+        {
+            "colors" : 
+            {
+                "background" : 
+                [
+                    24,
+                    24,
+                    24,
+                    240
+                ],
+                "border" : 
+                [
+                    80,
+                    80,
+                    80,
+                    255
+                ],
+                "effect" : 
+                [
+                    180,
+                    220,
+                    180,
+                    255
+                ],
+                "effectDesc" : 
+                [
+                    160,
+                    200,
+                    160,
+                    255
+                ],
+                "flags" : 
+                [
+                    200,
+                    200,
+                    200,
+                    255
+                ],
+                "lore" : 
+                [
+                    180,
+                    160,
+                    140,
+                    255
+                ],
+                "magic" : 
+                [
+                    100,
+                    149,
+                    237,
+                    255
+                ],
+                "restrictions" : 
+                [
+                    180,
+                    180,
+                    180,
+                    255
+                ],
+                "stats" : 
+                [
+                    200,
+                    200,
+                    200,
+                    255
+                ],
+                "statsValue" : 
+                [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "title" : 
+                [
+                    240,
+                    220,
+                    180,
+                    255
+                ]
+            },
+            "lineHeight" : 14,
+            "maxWidth" : 350,
+            "minWidth" : 250,
+            "mouseOffset" : 16,
+            "padding" : 8,
+            "sectionSpacing" : 4
+        }
+    },
+    "uiLocked" : true,
+    "version" : 1,
+    "windows" : 
+    {
+        "buff" : 
+        {
+            "alwaysLocked" : false,
+            "colors" : 
+            {
+                "buffBackground" : 
+                [
+                    30,
+                    50,
+                    30,
+                    200
+                ],
+                "buffBorder" : 
+                [
+                    80,
+                    140,
+                    80,
+                    255
+                ],
+                "debuffBorder" : 
+                [
+                    140,
+                    50,
+                    50,
+                    255
+                ],
+                "durationBackground" : 
+                [
+                    0,
+                    0,
+                    0,
+                    180
+                ],
+                "durationText" : 
+                [
+                    220,
+                    220,
+                    220,
+                    255
+                ],
+                "emptySlot" : 
+                [
+                    40,
+                    40,
+                    40,
+                    150
+                ]
+            },
+            "layout" : 
+            {
+                "columns" : 5,
+                "iconSize" : 24,
+                "padding" : 1,
+                "rows" : 3,
+                "spacing" : 2
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 650,
+                "y" : 53
+            },
+            "showTitleBar" : false,
+            "size" : 
+            {
+                "height" : -1,
+                "width" : -1
+            },
+            "visible" : true
+        },
+        "castingBar" : 
+        {
+            "colors" : 
+            {
+                "background" : 
+                [
+                    40,
+                    40,
+                    60,
+                    200
+                ],
+                "barFill" : 
+                [
+                    100,
+                    150,
+                    255,
+                    255
+                ],
+                "border" : 
+                [
+                    150,
+                    150,
+                    180,
+                    255
+                ],
+                "interrupted" : 
+                [
+                    255,
+                    80,
+                    80,
+                    255
+                ],
+                "text" : 
+                [
+                    255,
+                    255,
+                    255,
+                    255
+                ]
+            },
+            "playerBar" : 
+            {
+                "position" : 
+                {
+                    "x" : -1,
+                    "y" : -1
+                },
+                "size" : 
+                {
+                    "height" : 16,
+                    "width" : 200
+                }
+            },
+            "targetBar" : 
+            {
+                "position" : 
+                {
+                    "x" : -1,
+                    "y" : 80
+                },
+                "size" : 
+                {
+                    "height" : 16,
+                    "width" : 200
+                }
             }
         },
-        "buff": {
-            "minWidth": 180,
-            "maxWidth": 280,
-            "lineHeight": 14,
-            "padding": 6,
-            "mouseOffset": 12,
-            "colors": {
-                "background": [20, 20, 30, 230],
-                "border": [80, 80, 100, 255],
-                "spellName": [255, 255, 100, 255],
-                "duration": [200, 200, 200, 255],
-                "info": [180, 180, 180, 255]
-            }
-        }
-    },
-
-    "slots": {
-        "defaultSize": 32,
-        "iconPadding": 2,
-        "colors": {
-            "background": [32, 32, 32, 255],
-            "border": [64, 64, 64, 255],
-            "highlight": [128, 128, 64, 255],
-            "invalid": [128, 32, 32, 255],
-            "itemBackground": [48, 48, 48, 255],
-            "stackText": [255, 255, 255, 255],
-            "labelText": [160, 160, 160, 255]
-        }
-    },
-
-    "chatInput": {
-        "blinkIntervalMs": 500,
-        "maxHistory": 100,
-        "colors": {
-            "background": [0, 0, 0, 200],
-            "text": [255, 255, 255, 255],
-            "cursor": [255, 255, 255, 255],
-            "prompt": [200, 200, 200, 255]
-        }
-    },
-
-    "scrollbar": {
-        "colors": {
-            "trackColor": [40, 40, 40, 255],
-            "thumbColor": [100, 100, 100, 255],
-            "thumbHoverColor": [130, 130, 130, 255],
-            "buttonColor": [70, 70, 70, 255],
-            "buttonHoverColor": [100, 100, 100, 255],
-            "arrowColor": [180, 180, 180, 255]
+        "chat" : 
+        {
+            "alwaysLocked" : false,
+            "channelFilters" : 
+            {
+                "0" : true,
+                "1" : true,
+                "10" : true,
+                "100" : true,
+                "101" : true,
+                "11" : true,
+                "12" : true,
+                "13" : true,
+                "14" : true,
+                "15" : true,
+                "2" : true,
+                "269" : true,
+                "3" : true,
+                "4" : true,
+                "5" : true,
+                "6" : true,
+                "7" : true,
+                "8" : true,
+                "9" : true
+            },
+            "colors" : 
+            {
+                "linkItem" : 
+                [
+                    0,
+                    200,
+                    255,
+                    255
+                ],
+                "linkNpc" : 
+                [
+                    0,
+                    255,
+                    255,
+                    255
+                ]
+            },
+            "layout" : 
+            {
+                "inputFieldHeight" : 20,
+                "resizeEdgeWidth" : 6,
+                "scrollButtonHeight" : 14,
+                "scrollbarWidth" : 14
+            },
+            "maxSize" : 
+            {
+                "height" : 600,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 80,
+                "width" : 200
+            },
+            "position" : 
+            {
+                "x" : 10,
+                "y" : 418
+            },
+            "showTimestamps" : false,
+            "showTitleBar" : false,
+            "size" : 
+            {
+                "height" : 172,
+                "width" : 651
+            },
+            "visible" : true
+        },
+        "group" : 
+        {
+            "alwaysLocked" : false,
+            "colors" : 
+            {
+                "hpBackground" : 
+                [
+                    40,
+                    0,
+                    0,
+                    200
+                ],
+                "hpHigh" : 
+                [
+                    0,
+                    180,
+                    0,
+                    255
+                ],
+                "hpLow" : 
+                [
+                    180,
+                    0,
+                    0,
+                    255
+                ],
+                "hpMedium" : 
+                [
+                    180,
+                    180,
+                    0,
+                    255
+                ],
+                "leaderMarker" : 
+                [
+                    255,
+                    215,
+                    0,
+                    255
+                ],
+                "manaBackground" : 
+                [
+                    0,
+                    0,
+                    40,
+                    200
+                ],
+                "manaFill" : 
+                [
+                    0,
+                    80,
+                    180,
+                    255
+                ],
+                "memberBackground" : 
+                [
+                    30,
+                    30,
+                    30,
+                    100
+                ],
+                "nameInZone" : 
+                [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "nameOutOfZone" : 
+                [
+                    128,
+                    128,
+                    128,
+                    255
+                ]
+            },
+            "layout" : 
+            {
+                "barHeight" : 2,
+                "barSpacing" : 1,
+                "buttonHeight" : 18,
+                "buttonPadding" : 2,
+                "buttonWidth" : 55,
+                "memberSpacing" : 2,
+                "nameHeight" : 12,
+                "padding" : 1
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 666,
+                "y" : 210
+            },
+            "showTitleBar" : false,
+            "size" : 
+            {
+                "height" : -1,
+                "width" : -1
+            },
+            "visible" : true
+        },
+        "inventory" : 
+        {
+            "alwaysLocked" : false,
+            "layout" : 
+            {
+                "equipmentStartX" : 80,
+                "equipmentStartY" : 25,
+                "generalStartX" : 272,
+                "generalStartY" : 25,
+                "slotSize" : 32,
+                "slotSpacing" : 2,
+                "statsWidth" : 70
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 50,
+                "y" : 50
+            },
+            "showTitleBar" : true,
+            "size" : 
+            {
+                "height" : 340,
+                "width" : 365
+            },
+            "visible" : true
+        },
+        "loot" : 
+        {
+            "alwaysLocked" : false,
+            "layout" : 
+            {
+                "bottomButtonRowHeight" : 26,
+                "buttonSpacing" : 8,
+                "buttonWidth" : 70,
+                "columns" : 4,
+                "padding" : 8,
+                "rows" : 2,
+                "scrollButtonHeight" : 16,
+                "scrollbarWidth" : 16,
+                "slotSize" : 36,
+                "slotSpacing" : 4,
+                "topButtonRowHeight" : 26
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 425,
+                "y" : 50
+            },
+            "showTitleBar" : true,
+            "size" : 
+            {
+                "height" : -1,
+                "width" : -1
+            },
+            "visible" : false
+        },
+        "playerStatus" : 
+        {
+            "alwaysLocked" : true,
+            "colors" : 
+            {
+                "barText" : 
+                [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "hpBackground" : 
+                [
+                    40,
+                    0,
+                    0,
+                    200
+                ],
+                "hpFill" : 
+                [
+                    200,
+                    0,
+                    0,
+                    255
+                ],
+                "manaBackground" : 
+                [
+                    0,
+                    0,
+                    40,
+                    200
+                ],
+                "manaFill" : 
+                [
+                    0,
+                    80,
+                    200,
+                    255
+                ],
+                "nameText" : 
+                [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "staminaBackground" : 
+                [
+                    40,
+                    40,
+                    0,
+                    200
+                ],
+                "staminaFill" : 
+                [
+                    200,
+                    200,
+                    0,
+                    255
+                ]
+            },
+            "layout" : 
+            {
+                "barHeight" : 10,
+                "barLabelWidth" : 50,
+                "barSpacing" : 2,
+                "nameHeight" : 14,
+                "padding" : 4
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 10,
+                "y" : 10
+            },
+            "showTitleBar" : false,
+            "size" : 
+            {
+                "height" : 110,
+                "width" : 90
+            },
+            "visible" : true
+        },
+        "spellGems" : 
+        {
+            "layout" : 
+            {
+                "gemHeight" : 20,
+                "gemSpacing" : 2,
+                "gemWidth" : 20,
+                "panelPadding" : 2,
+                "spellbookButtonMargin" : 3,
+                "spellbookButtonSize" : 16
+            },
+            "position" : 
+            {
+                "x" : 10,
+                "y" : 210
+            },
+            "visible" : true
+        },
+        "spellbook" : 
+        {
+            "alwaysLocked" : false,
+            "layout" : 
+            {
+                "iconSize" : 20,
+                "leftPageX" : 8,
+                "nameMaxWidth" : 130,
+                "nameOffsetX" : 24,
+                "navButtonHeight" : 20,
+                "navButtonWidth" : 30,
+                "pageSpacing" : 16,
+                "pageWidth" : 160,
+                "rowHeight" : 22,
+                "rowSpacing" : 2,
+                "slotsStartY" : 28,
+                "spellsPerPage" : 8
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 0,
+                "y" : 0
+            },
+            "showTitleBar" : true,
+            "size" : 
+            {
+                "height" : 280,
+                "width" : 352
+            },
+            "visible" : false
+        },
+        "trade" : 
+        {
+            "alwaysLocked" : false,
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 427,
+                "y" : 62
+            },
+            "showTitleBar" : true,
+            "size" : 
+            {
+                "height" : -1,
+                "width" : -1
+            },
+            "visible" : true
         }
     }
 }
