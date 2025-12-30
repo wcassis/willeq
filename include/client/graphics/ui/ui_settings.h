@@ -286,6 +286,15 @@ public:
     };
 
     // =========================================================================
+    // Trade Window Settings
+    // =========================================================================
+    struct TradeSettings {
+        WindowSettings window;
+
+        TradeSettings();
+    };
+
+    // =========================================================================
     // Casting Bar Settings
     // =========================================================================
     struct CastingBarSettings {
@@ -427,6 +436,9 @@ public:
     SpellBookSettings& spellBook() { return m_spellBook; }
     const SpellBookSettings& spellBook() const { return m_spellBook; }
 
+    TradeSettings& trade() { return m_trade; }
+    const TradeSettings& trade() const { return m_trade; }
+
     CastingBarSettings& castingBar() { return m_castingBar; }
     const CastingBarSettings& castingBar() const { return m_castingBar; }
 
@@ -484,6 +496,9 @@ private:
     void loadSpellBookSettings(const Json::Value& json);
     void saveSpellBookSettings(Json::Value& json) const;
 
+    void loadTradeSettings(const Json::Value& json);
+    void saveTradeSettings(Json::Value& json) const;
+
     void loadCastingBarSettings(const Json::Value& json);
     void saveCastingBarSettings(Json::Value& json) const;
 
@@ -515,6 +530,7 @@ private:
     PlayerStatusSettings m_playerStatus;
     SpellGemSettings m_spellGems;
     SpellBookSettings m_spellBook;
+    TradeSettings m_trade;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;
     BuffTooltipSettings m_buffTooltip;

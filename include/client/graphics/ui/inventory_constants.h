@@ -254,6 +254,10 @@ inline bool isCursorSlot(int16_t slotId) {
     return slotId == CURSOR_SLOT || slotId == SERVER_CURSOR_SLOT;
 }
 
+inline bool isTradeSlot(int16_t slotId) {
+    return slotId >= TRADE_BEGIN && slotId <= TRADE_END;
+}
+
 // Get the parent general slot for a bag slot
 inline int16_t getParentGeneralSlot(int16_t bagSlot) {
     if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {

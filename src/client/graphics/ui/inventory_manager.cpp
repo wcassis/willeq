@@ -109,6 +109,11 @@ std::unique_ptr<ItemInstance> TitaniumItemParser::parseItem(const std::string& d
 
     // Parse instance data (before first quote)
     std::string_view instanceSection(data.data(), firstQuote);
+
+    // Debug: log what's before the quote
+    std::string instancePreview(instanceSection.substr(0, std::min(size_t(80), instanceSection.size())));
+    LOG_INFO(MOD_UI, "TitaniumItemParser BEFORE QUOTE (first 80 chars): '{}' (quote at pos {})", instancePreview, firstQuote);
+
     auto instanceFields = splitByPipe(instanceSection);
 
     if (!parseInstanceData(instanceFields, *item, slotId)) {
@@ -118,6 +123,11 @@ std::unique_ptr<ItemInstance> TitaniumItemParser::parseItem(const std::string& d
 
     // Parse static data (between quotes)
     std::string_view staticSection(data.data() + firstQuote + 1, secondQuote - firstQuote - 1);
+
+    // Debug: log raw static section (first 100 chars)
+    std::string rawPreview(staticSection.substr(0, std::min(size_t(100), staticSection.size())));
+    LOG_INFO(MOD_UI, "TitaniumItemParser RAW STATIC (first 100 chars): '{}'", rawPreview);
+
     if (!parseStaticData(staticSection, *item)) {
         LOG_DEBUG(MOD_UI, "Failed to parse static data");
         return nullptr;
@@ -157,14 +167,15 @@ bool TitaniumItemParser::parseInstanceData(const std::vector<std::string_view>& 
     int32_t count = toInt(fields[4]);
     item.quantity = std::max(1, stackCount > 0 ? stackCount : count);
     item.charges = toInt(fields[8]);
+    int32_t attuned = toInt(fields[9]);
 
-    // Debug: log instance data parsing
-    if (stackCount > 1 || count > 1) {
-        LOG_DEBUG(MOD_UI, "TitaniumItemParser Instance: stackCount={} count={} -> quantity={}", stackCount, count, item.quantity);
-    }
-
-    // Attuned flag at index 9
-    // We don't have an attuned field, but could add it if needed
+    // Debug: log ALL instance data fields for debugging NO_DROP issue
+    LOG_INFO(MOD_UI, "TitaniumItemParser INSTANCE: slot={} stackCount={} count={} price={} charges={} attuned={} [fields: 0='{}' 1='{}' 2='{}' 3='{}' 4='{}' 5='{}' 6='{}' 7='{}' 8='{}' 9='{}' 10='{}']",
+        slotId, stackCount, count, item.price, item.charges, attuned,
+        std::string(fields[0]), std::string(fields[1]), std::string(fields[2]),
+        std::string(fields[3]), std::string(fields[4]), std::string(fields[5]),
+        std::string(fields[6]), std::string(fields[7]), std::string(fields[8]),
+        std::string(fields[9]), fields.size() > 10 ? std::string(fields[10]) : "N/A");
 
     return true;
 }
@@ -197,14 +208,17 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
         std::string(fields[8]), std::string(fields[9]), std::string(fields[10]), std::string(fields[11]),
         std::string(fields[12]), std::string(fields[13]), std::string(fields[14]));
 
-    item.noRent = toInt(fields[6]) != 0;
-    item.noDrop = toInt(fields[7]) != 0;
+    // EQEmu convention: 0 = cannot drop/trade (IS nodrop), non-zero = can drop/trade (NOT nodrop)
+    item.noRent = toInt(fields[6]) == 0;
+    item.noDrop = toInt(fields[7]) == 0;
     item.size = static_cast<uint8_t>(toInt(fields[8]));
     item.slots = static_cast<uint32_t>(toInt(fields[9]));  // Equipment slots bitmask
     // fields[10] = vendor price (already have from instance)
     item.icon = static_cast<uint32_t>(toInt(fields[11]));
-    LOG_DEBUG(MOD_UI, "TitaniumItemParser Item '{}' icon={} noRent={} noDrop={} (fields[6]='{}' fields[7]='{}')",
-        item.name, item.icon, item.noRent, item.noDrop, std::string(fields[6]), std::string(fields[7]));
+
+    // Log item with emphasis on noDrop field for debugging
+    LOG_INFO(MOD_UI, "TitaniumItemParser STATIC: '{}' itemId={} noRent={} noDrop={} (field[6]='{}' field[7]='{}')",
+        item.name, item.itemId, item.noRent, item.noDrop, std::string(fields[6]), std::string(fields[7]));
     // fields[12-13] = 0, 0
     // fields[14] = BenefitFlag
     // fields[15] = Tradeskills
@@ -341,11 +355,22 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
     // fields[122] = AugDistiller
     // fields[123-128] = various unknowns, Attuneable, NoPet, PointType
 
-    // Stack info (129-133)
-    // fields[129-130] = PotionBelt, PotionBeltSlots
-    item.stackSize = toInt(fields[130]);
-    item.noDrop = item.noDrop || (toInt(fields[131]) != 0);  // NoTransfer
+    // Stack info (129-133) - from titanium.cpp SerializeItem:
+    // fields[129] = PotionBelt
+    // fields[130] = PotionBeltSlots
+    // fields[131] = StackSize
+    // fields[132] = NoTransfer
+    // fields[133] = Stackable
+    item.stackSize = toInt(fields[131]);
+    bool noDropFromField7 = item.noDrop;  // Already set from field[7]
+    int32_t noTransferField132 = toInt(fields[132]);
+    item.noDrop = item.noDrop || (noTransferField132 != 0);  // NoTransfer
     item.stackable = toInt(fields[133]) != 0;
+
+    // Log NoTransfer field and final noDrop status
+    LOG_INFO(MOD_UI, "TitaniumItemParser FINAL: '{}' noDrop={} (field[7]={}, field[132]/NoTransfer={}, field[124]/Attuneable='{}')",
+        item.name, item.noDrop, noDropFromField7 ? 1 : 0, noTransferField132,
+        fields.size() > 124 ? std::string(fields[124]) : "N/A");
 
     // Effects (134-158) - Click, Proc, Worn, Focus, Scroll (5 fields each)
     if (fields.size() >= 154) {
@@ -643,6 +668,14 @@ void InventoryManager::clearAll() {
     itemCacheById_.clear();
 }
 
+void InventoryManager::clearTradeSlots() {
+    // Clear items in trade slots (3000-3007)
+    for (int16_t slot = TRADE_BEGIN; slot <= TRADE_END; slot++) {
+        items_.erase(slot);
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager Cleared trade slots {}-{}", TRADE_BEGIN, TRADE_END);
+}
+
 bool InventoryManager::pickupItem(int16_t slotId) {
     // Can't pick up if already holding something on cursor
     if (!cursorQueue_.empty()) {
@@ -656,14 +689,14 @@ bool InventoryManager::pickupItem(int16_t slotId) {
 
     // Move item to cursor (push to front since this becomes active)
     LOG_DEBUG(MOD_UI, "InventoryManager Picked up '{}' from slot {}", it->second->name, slotId);
-    uint32_t quantity = it->second->quantity;
     cursorQueue_.push_front(std::move(it->second));
     cursorSourceSlot_ = slotId;
     items_.erase(it);
 
     // Notify server of pickup (move from slot to cursor)
+    // quantity = 0 means move entire item/stack
     if (moveItemCallback_) {
-        moveItemCallback_(slotId, CURSOR_SLOT, quantity);
+        moveItemCallback_(slotId, CURSOR_SLOT, 0);
     }
 
     return true;
@@ -719,9 +752,10 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // until the user places the cursor item (the bag) somewhere else
 
         // Notify server of swap - use CURSOR_SLOT as source since item is on cursor
+        // quantity = 0 means move entire item/stack
         LOG_DEBUG(MOD_UI, "InventoryManager Swapped items: cursor(from {}) <-> {}", cursorSourceSlot_, targetSlot);
         if (moveItemCallback_) {
-            moveItemCallback_(CURSOR_SLOT, targetSlot, placedQuantity);
+            moveItemCallback_(CURSOR_SLOT, targetSlot, 0);
         }
     } else {
         // Slot is empty - just place
@@ -741,8 +775,9 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         }
 
         // Notify server - use CURSOR_SLOT as source since item is on cursor
+        // quantity = 0 means move entire item/stack
         if (moveItemCallback_) {
-            moveItemCallback_(CURSOR_SLOT, targetSlot, items_[targetSlot]->quantity);
+            moveItemCallback_(CURSOR_SLOT, targetSlot, 0);
         }
 
         // If queue still has items, send pop notification to server
@@ -924,6 +959,27 @@ size_t InventoryManager::getCursorQueueSize() const {
     return cursorQueue_.size();
 }
 
+void InventoryManager::pickupMoney(CursorMoneyType type, uint32_t amount) {
+    if (amount == 0 || type == CursorMoneyType::None) {
+        return;
+    }
+    cursorMoneyType_ = type;
+    cursorMoneyAmount_ = amount;
+    LOG_DEBUG(MOD_UI, "InventoryManager picked up {} of money type {}",
+              amount, static_cast<int>(type));
+}
+
+void InventoryManager::clearCursorMoney() {
+    cursorMoneyType_ = CursorMoneyType::None;
+    cursorMoneyAmount_ = 0;
+}
+
+void InventoryManager::returnCursorMoney() {
+    // Money is returned by simply clearing it - the callback to update
+    // player money should be handled by WindowManager
+    clearCursorMoney();
+}
+
 bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
     auto fromIt = items_.find(fromSlot);
     auto toIt = items_.find(toSlot);
@@ -955,9 +1011,9 @@ bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
         items_[toSlot] = std::move(item);
     }
 
-    // Notify server
+    // Notify server - quantity = 0 means move entire item/stack
     if (moveItemCallback_) {
-        moveItemCallback_(fromSlot, toSlot, 1);
+        moveItemCallback_(fromSlot, toSlot, 0);
     }
 
     return true;
@@ -987,6 +1043,11 @@ bool InventoryManager::canPlaceItemInSlot(const ItemInstance* item, int16_t targ
     // Bag slots - check container constraints
     if (isBagSlot(targetSlot)) {
         return canPlaceInBag(item, targetSlot);
+    }
+
+    // Trade slots - can place any tradeable item
+    if (isTradeSlot(targetSlot)) {
+        return !item->noDrop;  // Only non-nodrop items can be traded
     }
 
     // Cursor slot

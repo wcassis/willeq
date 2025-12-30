@@ -950,8 +950,82 @@ static_assert(sizeof(MoneyUpdate_Struct) == 16, "MoneyUpdate_Struct must be 16 b
 
 // Item packet type constants (first 4 bytes of OP_ItemPacket)
 enum ItemPacketType : uint32_t {
-    ITEM_PACKET_MERCHANT = 100,    // Item from merchant inventory
-    ITEM_PACKET_INVENTORY = 103    // Item in player inventory
+    ITEM_PACKET_MERCHANT = 100,     // Item from merchant inventory
+    ITEM_PACKET_TRADE_VIEW = 101,   // Item in partner's trade window (slot 0-3)
+    ITEM_PACKET_INVENTORY = 103     // Item in player inventory
+};
+
+/*
+ * Trade packet structures
+ * Used for player-to-player trading
+ */
+
+// OP_TradeRequest - Initiate a trade request
+// Size: 8 bytes
+struct TradeRequest_Struct {
+    uint32_t target_spawn_id;  // Who to trade with
+    uint32_t from_spawn_id;    // Who is requesting the trade
+};
+
+// OP_TradeRequestAck - Accept a trade request
+// Size: 8 bytes
+// NOTE: Server uses same struct as TradeRequest_Struct - first field is recipient
+struct TradeRequestAck_Struct {
+    uint32_t target_spawn_id;  // Who initiated the trade (packet forwarded to them)
+    uint32_t from_spawn_id;    // Who is accepting
+};
+
+// Coin type constants for MoveCoin_Struct
+static const int32_t COINTYPE_CP = 0;  // Copper
+static const int32_t COINTYPE_SP = 1;  // Silver
+static const int32_t COINTYPE_GP = 2;  // Gold
+static const int32_t COINTYPE_PP = 3;  // Platinum
+
+// Coin slot constants for MoveCoin_Struct
+static const int32_t COINSLOT_CURSOR = 0;
+static const int32_t COINSLOT_INVENTORY = 1;
+static const int32_t COINSLOT_BANK = 2;
+static const int32_t COINSLOT_TRADE = 3;
+static const int32_t COINSLOT_SHAREDBANK = 4;
+
+// OP_MoveCoin - Move coins between locations (cursor, inventory, trade, etc.)
+// Size: 20 bytes
+struct MoveCoin_Struct {
+    int32_t from_slot;    // Source: 0=cursor, 1=inventory, 2=bank, 3=trade, 4=shared bank
+    int32_t to_slot;      // Destination: same as above
+    int32_t cointype1;    // Source coin type: 0=copper, 1=silver, 2=gold, 3=platinum
+    int32_t cointype2;    // Destination coin type (usually same as cointype1)
+    int32_t amount;       // Amount of coins to move
+};
+
+// OP_TradeCoins - Set coin amounts in trade window (Server->Client notification)
+// Size: 12 bytes
+struct TradeCoins_Struct {
+    uint32_t spawn_id;         // Player modifying coins
+    uint8_t  slot;             // Coin type: 0=copper, 1=silver, 2=gold, 3=platinum
+    uint8_t  unknown[3];       // Magic bytes: must be {0xD2, 0x4F, 0x00} for server to accept
+    uint32_t amount;           // Amount of this coin type
+};
+
+// OP_TradeAcceptClick - Click accept button in trade
+// Size: 8 bytes
+struct TradeAcceptClick_Struct {
+    uint32_t spawn_id;         // Player clicking accept
+    uint8_t  accepted;         // 1 = accepted, 0 = not accepted
+    uint8_t  unknown[3];       // Possibly trade ID or padding
+};
+
+// OP_FinishTrade - Trade completed signal
+// Size: 2 bytes
+struct FinishTrade_Struct {
+    uint8_t  unknown[2];       // Signal only, no meaningful data
+};
+
+// OP_CancelTrade - Cancel or reject a trade
+// Size: 8 bytes
+struct CancelTrade_Struct {
+    uint32_t spawn_id;         // Player canceling/rejecting
+    uint32_t action;           // Action code (0x07 observed for cancel)
 };
 
 #pragma pack(pop)

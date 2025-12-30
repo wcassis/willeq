@@ -1,4 +1,5 @@
 #include "client/graphics/ui/inventory_window.h"
+#include "client/graphics/ui/money_input_dialog.h"  // For CurrencyType definition
 #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/entity_renderer.h"
 #include <sstream>
@@ -229,6 +230,26 @@ bool InventoryWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
             }
             return true;
         }
+    }
+
+    // Check currency click
+    bool currencyFound = false;
+    CurrencyType currencyType = getCurrencyAtPosition(relX, relY, currencyFound);
+    if (currencyFound) {
+        uint32_t maxAmount = 0;
+        switch (currencyType) {
+            case CurrencyType::Platinum: maxAmount = platinum_; break;
+            case CurrencyType::Gold: maxAmount = gold_; break;
+            case CurrencyType::Silver: maxAmount = silver_; break;
+            case CurrencyType::Copper: maxAmount = copper_; break;
+        }
+        LOG_DEBUG(MOD_UI, "InventoryWindow Currency clicked: type={} maxAmount={}",
+                  static_cast<int>(currencyType), maxAmount);
+        // Always call callback - even with maxAmount=0 to allow placing back cursor money
+        if (currencyClickCallback_) {
+            currencyClickCallback_(currencyType, maxAmount);
+        }
+        return true;
     }
 
     return true;  // Consume click even if not on a slot
@@ -610,9 +631,16 @@ void InventoryWindow::renderCurrency(irr::video::IVideoDriver* driver,
 
     // Position below the general inventory slots (2x4 grid)
     const int slotStep = SLOT_SIZE + SLOT_SPACING;
-    int x = GENERAL_START_X + offsetX;
-    int y = GENERAL_START_Y + slotStep * 4 + 8 + offsetY;  // Below the 4 rows of slots
+    int relX = GENERAL_START_X;  // Relative to window
+    int relY = GENERAL_START_Y + slotStep * 4 + 8;  // Below the 4 rows of slots
     int lineHeight = 10;
+    int currencyWidth = 70;
+
+    // Store bounds relative to window for click detection
+    platinumBounds_ = irr::core::recti(relX, relY, relX + currencyWidth, relY + lineHeight);
+    goldBounds_ = irr::core::recti(relX, relY + lineHeight, relX + currencyWidth, relY + lineHeight * 2);
+    silverBounds_ = irr::core::recti(relX, relY + lineHeight * 2, relX + currencyWidth, relY + lineHeight * 3);
+    copperBounds_ = irr::core::recti(relX, relY + lineHeight * 3, relX + currencyWidth, relY + lineHeight * 4);
 
     // Currency colors
     irr::video::SColor platColor(255, 180, 180, 220);  // Light blue/silver
@@ -620,12 +648,15 @@ void InventoryWindow::renderCurrency(irr::video::IVideoDriver* driver,
     irr::video::SColor silverColor(255, 192, 192, 192); // Silver
     irr::video::SColor copperColor(255, 184, 115, 51);  // Copper
 
+    int x = relX + offsetX;
+    int y = relY + offsetY;
+
     // Platinum
     {
         std::wstringstream ss;
         ss << L"PP " << platinum_;
         font->draw(ss.str().c_str(),
-                  irr::core::recti(x, y, x + 70, y + lineHeight),
+                  irr::core::recti(x, y, x + currencyWidth, y + lineHeight),
                   platColor);
         y += lineHeight;
     }
@@ -635,7 +666,7 @@ void InventoryWindow::renderCurrency(irr::video::IVideoDriver* driver,
         std::wstringstream ss;
         ss << L"GP " << gold_;
         font->draw(ss.str().c_str(),
-                  irr::core::recti(x, y, x + 70, y + lineHeight),
+                  irr::core::recti(x, y, x + currencyWidth, y + lineHeight),
                   goldColor);
         y += lineHeight;
     }
@@ -645,7 +676,7 @@ void InventoryWindow::renderCurrency(irr::video::IVideoDriver* driver,
         std::wstringstream ss;
         ss << L"SP " << silver_;
         font->draw(ss.str().c_str(),
-                  irr::core::recti(x, y, x + 70, y + lineHeight),
+                  irr::core::recti(x, y, x + currencyWidth, y + lineHeight),
                   silverColor);
         y += lineHeight;
     }
@@ -655,9 +686,33 @@ void InventoryWindow::renderCurrency(irr::video::IVideoDriver* driver,
         std::wstringstream ss;
         ss << L"CP " << copper_;
         font->draw(ss.str().c_str(),
-                  irr::core::recti(x, y, x + 70, y + lineHeight),
+                  irr::core::recti(x, y, x + currencyWidth, y + lineHeight),
                   copperColor);
     }
+}
+
+CurrencyType InventoryWindow::getCurrencyAtPosition(int relX, int relY, bool& found) const {
+    found = false;
+    irr::core::vector2di point(relX, relY);
+
+    if (platinumBounds_.isPointInside(point)) {
+        found = true;
+        return CurrencyType::Platinum;
+    }
+    if (goldBounds_.isPointInside(point)) {
+        found = true;
+        return CurrencyType::Gold;
+    }
+    if (silverBounds_.isPointInside(point)) {
+        found = true;
+        return CurrencyType::Silver;
+    }
+    if (copperBounds_.isPointInside(point)) {
+        found = true;
+        return CurrencyType::Copper;
+    }
+
+    return CurrencyType::Platinum;  // Default, but found will be false
 }
 
 void InventoryWindow::initModelView(irr::scene::ISceneManager* smgr,

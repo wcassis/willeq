@@ -2273,16 +2273,18 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             }
         } else {
             // Chat not focused - handle Ctrl+key shortcuts for UI management
+            // Also route keys when money input dialog is shown
+            bool moneyDialogShown = windowManager_->isMoneyInputDialogShown();
             while (eventReceiver_->hasPendingKeyEvents()) {
                 auto keyEvent = eventReceiver_->popKeyEvent();
-                if (keyEvent.ctrl) {
-                    // Route Ctrl+key combinations through WindowManager
+                if (keyEvent.ctrl || moneyDialogShown) {
+                    // Route Ctrl+key combinations and money dialog input through WindowManager
                     windowManager_->handleKeyPress(keyEvent.key, keyEvent.shift, keyEvent.ctrl);
                 }
             }
 
-            // Enter focuses chat
-            if (eventReceiver_->enterKeyPressed()) {
+            // Enter focuses chat (but not if money dialog is handling input)
+            if (eventReceiver_->enterKeyPressed() && !moneyDialogShown) {
                 windowManager_->focusChatInput();
             }
 
@@ -2296,7 +2298,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             }
 
             // Escape: close vendor window if open, otherwise clear target
-            if (eventReceiver_->escapeKeyPressed()) {
+            // (but not if money dialog is handling ESC)
+            if (eventReceiver_->escapeKeyPressed() && !moneyDialogShown) {
                 if (windowManager_->isVendorWindowOpen()) {
                     // Close vendor window - the callback will send the close packet
                     if (vendorToggleCallback_) {

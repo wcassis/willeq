@@ -134,6 +134,7 @@ SET(CLIENT_SOURCES
     src/client/eq.cpp
     src/client/main.cpp
     src/client/combat.cpp
+    src/client/trade_manager.cpp
     src/client/ucs.cpp
     src/client/position.cpp
     src/client/formatted_message.cpp
@@ -199,6 +200,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/bag_window.cpp
         src/client/graphics/ui/loot_window.cpp
         src/client/graphics/ui/vendor_window.cpp
+        src/client/graphics/ui/trade_window.cpp
+        src/client/graphics/ui/trade_request_dialog.cpp
+        src/client/graphics/ui/money_input_dialog.cpp
         src/client/graphics/ui/window_manager.cpp
         src/client/graphics/ui/chat_message_buffer.cpp
         src/client/graphics/ui/chat_input_field.cpp

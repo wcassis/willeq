@@ -3,6 +3,7 @@
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
 #include "common/event/timer.h"
+#include "common/packet_structs.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -20,6 +21,7 @@
 class IPathfinder;
 class HCMap;
 class CombatManager;
+class TradeManager;
 
 namespace EQ {
     class SpellManager;
@@ -30,6 +32,13 @@ namespace EQ {
 
 namespace EQT {
     class ZoneLines;
+    // Trade packet structures (forward declarations)
+    struct TradeRequest_Struct;
+    struct TradeRequestAck_Struct;
+    struct TradeCoins_Struct;
+    struct TradeAcceptClick_Struct;
+    struct FinishTrade_Struct;
+    struct CancelTrade_Struct;
 }
 
 #ifdef EQT_HAS_GRAPHICS
@@ -160,6 +169,13 @@ enum TitaniumZoneOpcodes {
 	HC_OP_TargetHoTT = 0x6a12,
 	HC_OP_SkillUpdate = 0x6a93,
 	HC_OP_CancelTrade = 0x2dc1,
+	// Trade opcodes
+	HC_OP_TradeRequest = 0x372f,      // Initiate trade request
+	HC_OP_TradeRequestAck = 0x4048,   // Accept trade request
+	HC_OP_TradeCoins = 0x34c1,        // Server->Client: coin amounts in trade
+	HC_OP_MoveCoin = 0x7657,          // Client->Server: move coins to/from trade
+	HC_OP_TradeAcceptClick = 0x0065,  // Click accept button in trade
+	HC_OP_FinishTrade = 0x6014,       // Trade completed
 	HC_OP_PreLogoutReply = 0x711e,
 	HC_OP_MobRename = 0x0498,
 	HC_OP_Stun = 0x1e51,
@@ -435,6 +451,7 @@ public:
 
 	// Combat and entity access
 	CombatManager* GetCombatManager() { return m_combat_manager.get(); }
+	TradeManager* GetTradeManager() { return m_trade_manager.get(); }
 	EQ::SpellManager* GetSpellManager() { return m_spell_manager.get(); }
 	EQ::BuffManager* GetBuffManager() { return m_buff_manager.get(); }
 	EQ::SpellEffects* GetSpellEffects() { return m_spell_effects.get(); }
@@ -541,8 +558,9 @@ public:
 	bool m_turn_left = false;
 	bool m_turn_right = false;
 
-	// Friend class for combat system access
+	// Friend classes for system access
 	friend class CombatManager;
+	friend class TradeManager;
 
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer methods
@@ -879,6 +897,9 @@ private:
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;
 
+	// Trade manager
+	std::unique_ptr<TradeManager> m_trade_manager;
+
 	// Spell manager
 	std::unique_ptr<EQ::SpellManager> m_spell_manager;
 
@@ -1026,6 +1047,17 @@ private:
 	void ZoneProcessVendorItemToUI(const EQ::Net::Packet& p);
 	void ZoneProcessMoneyUpdate(const EQ::Net::Packet& p);
 	void SetupVendorCallbacks();
+
+	// Trade packet handlers and send functions
+	void SetupTradeManagerCallbacks();
+	void SetupTradeWindowCallbacks();
+	bool ZoneProcessTradePartnerItem(const EQ::Net::Packet& p);
+	void SendTradeRequest(const EQT::TradeRequest_Struct& req);
+	void SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack);
+	void SendTradeCoins(const EQT::TradeCoins_Struct& coins);
+	void SendMoveCoin(const EQT::MoveCoin_Struct& move);
+	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
+	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
 
 public:
 	// Save entity data to JSON file for debugging

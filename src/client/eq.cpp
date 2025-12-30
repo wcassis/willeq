@@ -2,6 +2,7 @@
 #include "client/pathfinder_interface.h"
 #include "client/hc_map.h"
 #include "client/combat.h"
+#include "client/trade_manager.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
@@ -163,6 +164,12 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_TargetHoTT: return "HC_OP_TargetHoTT";
 		case HC_OP_SkillUpdate: return "HC_OP_SkillUpdate";
 		case HC_OP_CancelTrade: return "HC_OP_CancelTrade";
+		case HC_OP_TradeRequest: return "HC_OP_TradeRequest";
+		case HC_OP_TradeRequestAck: return "HC_OP_TradeRequestAck";
+		case HC_OP_TradeCoins: return "HC_OP_TradeCoins";
+		case HC_OP_MoveCoin: return "HC_OP_MoveCoin";
+		case HC_OP_TradeAcceptClick: return "HC_OP_TradeAcceptClick";
+		case HC_OP_FinishTrade: return "HC_OP_FinishTrade";
 		case HC_OP_PreLogoutReply: return "HC_OP_PreLogoutReply";
 		case HC_OP_FloatListThing: return "HC_OP_FloatListThing";
 		case HC_OP_MobRename: return "HC_OP_MobRename";
@@ -639,6 +646,10 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	
 	// Initialize combat manager
 	m_combat_manager = std::make_unique<CombatManager>(this);
+
+	// Initialize trade manager
+	m_trade_manager = std::make_unique<TradeManager>();
+	SetupTradeManagerCallbacks();
 
 	// Initialize spell manager
 	m_spell_manager = std::make_unique<EQ::SpellManager>(this);
@@ -1722,14 +1733,21 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 				// Headless mode looting
 				ZoneProcessLootItem(p);
 			} else {
-				// Regular inventory item packet - pass to inventory manager
+				// Check if this is a trade partner item
 #ifdef EQT_HAS_GRAPHICS
-				if (m_inventory_manager) {
-					m_inventory_manager->processItemPacket(p);
-					// Refresh sellable items if vendor window is open
-					if (m_renderer && m_renderer->getWindowManager() &&
-					    m_renderer->getWindowManager()->isVendorWindowOpen()) {
-						m_renderer->getWindowManager()->refreshVendorSellableItems();
+				bool handled_as_trade = false;
+				if (m_trade_manager && m_trade_manager->isTrading()) {
+					handled_as_trade = ZoneProcessTradePartnerItem(p);
+				}
+				if (!handled_as_trade) {
+					// Regular inventory item packet - pass to inventory manager
+					if (m_inventory_manager) {
+						m_inventory_manager->processItemPacket(p);
+						// Refresh sellable items if vendor window is open
+						if (m_renderer && m_renderer->getWindowManager() &&
+						    m_renderer->getWindowManager()->isVendorWindowOpen()) {
+							m_renderer->getWindowManager()->refreshVendorSellableItems();
+						}
 					}
 				}
 #endif
@@ -1824,8 +1842,85 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_CancelTrade:
 		// Trade cancelled
-		if (s_debug_level >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Trade cancelled");
+		if (p.Length() >= 2 + sizeof(EQT::CancelTrade_Struct)) {
+			const EQT::CancelTrade_Struct* cancel = reinterpret_cast<const EQT::CancelTrade_Struct*>(p.Data() + 2);
+			if (m_trade_manager) {
+				m_trade_manager->handleCancelTrade(*cancel);
+			}
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Trade cancelled by spawn {}", cancel->spawn_id);
+			}
+		}
+		break;
+	case HC_OP_TradeRequest:
+		// Trade request from another player
+		if (p.Length() >= 2 + sizeof(EQT::TradeRequest_Struct)) {
+			const EQT::TradeRequest_Struct* req = reinterpret_cast<const EQT::TradeRequest_Struct*>(p.Data() + 2);
+			if (m_trade_manager) {
+				// Look up the name of the requesting player
+				std::string from_name = "Unknown";
+				auto it = m_entities.find(static_cast<uint16_t>(req->from_spawn_id));
+				if (it != m_entities.end()) {
+					from_name = it->second.name;
+				}
+				m_trade_manager->handleTradeRequest(*req, from_name);
+			}
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Trade request from spawn {} to spawn {}",
+				         req->from_spawn_id, req->target_spawn_id);
+			}
+		}
+		break;
+	case HC_OP_TradeRequestAck:
+		// Trade request accepted
+		if (p.Length() >= 2 + sizeof(EQT::TradeRequestAck_Struct)) {
+			const EQT::TradeRequestAck_Struct* ack = reinterpret_cast<const EQT::TradeRequestAck_Struct*>(p.Data() + 2);
+			if (m_trade_manager) {
+				m_trade_manager->handleTradeRequestAck(*ack);
+			}
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Trade request ack from spawn {} to spawn {}",
+				         ack->from_spawn_id, ack->target_spawn_id);
+			}
+		}
+		break;
+	case HC_OP_TradeCoins:
+		// Trade partner changed money
+		if (p.Length() >= 2 + sizeof(EQT::TradeCoins_Struct)) {
+			const EQT::TradeCoins_Struct* coins = reinterpret_cast<const EQT::TradeCoins_Struct*>(p.Data() + 2);
+			if (m_trade_manager) {
+				m_trade_manager->handleTradeCoins(*coins);
+			}
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Trade coins from spawn {}: slot {} amount {}",
+				         coins->spawn_id, coins->slot, coins->amount);
+			}
+		}
+		break;
+	case HC_OP_TradeAcceptClick:
+		// Trade partner clicked accept
+		if (p.Length() >= 2 + sizeof(EQT::TradeAcceptClick_Struct)) {
+			const EQT::TradeAcceptClick_Struct* accept = reinterpret_cast<const EQT::TradeAcceptClick_Struct*>(p.Data() + 2);
+			if (m_trade_manager) {
+				m_trade_manager->handleTradeAcceptClick(*accept);
+			}
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Trade accept click from spawn {}: accepted={}",
+				         accept->spawn_id, accept->accepted);
+			}
+		}
+		break;
+	case HC_OP_FinishTrade:
+		// Trade completed - server may send with or without struct data
+		{
+			EQT::FinishTrade_Struct finish = {};
+			if (p.Length() >= 2 + sizeof(EQT::FinishTrade_Struct)) {
+				finish = *reinterpret_cast<const EQT::FinishTrade_Struct*>(p.Data() + 2);
+			}
+			if (m_trade_manager) {
+				m_trade_manager->handleFinishTrade(finish);
+			}
+			LOG_INFO(MOD_MAIN, "Trade finished");
 		}
 		break;
 	case HC_OP_PreLogoutReply:
@@ -1942,9 +2037,22 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		// Spell memorization confirmation - ignore for now
 		break;
 	case HC_OP_SpecialMesg:
-		// Special messages (skill-ups, NPC reactions, etc.) - handled similar to FormattedMessage
-		// For now just log at debug level
-		LOG_DEBUG(MOD_ZONE, "SpecialMesg: {} bytes", p.Length());
+		{
+			// Special messages (trade notifications, skill-ups, etc.)
+			// Format: 2 bytes opcode + 24 bytes header + null-terminated message
+			constexpr size_t HEADER_SIZE = 24;
+			constexpr size_t MSG_OFFSET = 2 + HEADER_SIZE;  // After opcode and header
+
+			if (p.Length() > MSG_OFFSET) {
+				const char* msgStart = reinterpret_cast<const char*>(p.Data()) + MSG_OFFSET;
+				size_t maxLen = p.Length() - MSG_OFFSET;
+				std::string message(msgStart, strnlen(msgStart, maxLen));
+
+				if (!message.empty()) {
+					AddChatSystemMessage(message);
+				}
+			}
+		}
 		break;
 	case HC_OP_InterruptCast:
 		// Cast interrupted - spell manager handles this via other packets
@@ -2665,18 +2773,17 @@ void EverQuest::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity
 	// MoveItem_Struct is 12 bytes: from_slot(4), to_slot(4), number_in_stack(4)
 	// Packet format: opcode(2) + data(12) = 14 bytes
 	//
-	// IMPORTANT: The quantity field should be 0 when moving an entire item/stack.
-	// A non-zero quantity is only used when splitting a stack (not yet supported).
-	// The working Titanium client always sends qty=0 for item moves.
+	// When quantity is 0, the entire item/stack is moved.
+	// When quantity > 0, only that many items are split from the stack.
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(14);
 
 	packet.PutUInt16(0, HC_OP_MoveItem);                   // opcode
 	packet.PutUInt32(2, static_cast<uint32_t>(fromSlot));  // from_slot
 	packet.PutUInt32(6, static_cast<uint32_t>(toSlot));    // to_slot
-	packet.PutUInt32(10, 0);                               // number_in_stack (0 = move entire item)
+	packet.PutUInt32(10, quantity);                        // number_in_stack (0 = move entire item)
 
-	LOG_DEBUG(MOD_INVENTORY, "Sending MoveItem packet: {} -> {} (qty: 0, moving entire item)", fromSlot, toSlot);
+	LOG_DEBUG(MOD_INVENTORY, "Sending MoveItem packet: {} -> {} (qty: {})", fromSlot, toSlot, quantity);
 
 	DumpPacket("C->S", HC_OP_MoveItem, packet);
 	m_zone_connection->QueuePacket(packet);
@@ -2705,6 +2812,349 @@ void EverQuest::SendDeleteItem(int16_t slot)
 
 	DumpPacket("C->S", HC_OP_DeleteItem, packet);
 	m_zone_connection->QueuePacket(packet);
+}
+
+// Trade send functions
+
+void EverQuest::SendTradeRequest(const EQT::TradeRequest_Struct& req)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeRequest");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::TradeRequest_Struct));
+	packet.PutUInt16(0, HC_OP_TradeRequest);
+	memcpy(packet.Data() + 2, &req, sizeof(EQT::TradeRequest_Struct));
+
+	DumpPacket("C->S", HC_OP_TradeRequest, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeRequestAck");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::TradeRequestAck_Struct));
+	packet.PutUInt16(0, HC_OP_TradeRequestAck);
+	memcpy(packet.Data() + 2, &ack, sizeof(EQT::TradeRequestAck_Struct));
+
+	DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::SendTradeCoins(const EQT::TradeCoins_Struct& coins)
+{
+	LOG_DEBUG(MOD_MAIN, "SendTradeCoins called: spawn_id={} slot={} amount={} (m_my_spawn_id={} m_my_character_id={})",
+		coins.spawn_id, coins.slot, coins.amount, m_my_spawn_id, m_my_character_id);
+
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeCoins");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::TradeCoins_Struct));
+	packet.PutUInt16(0, HC_OP_TradeCoins);
+	memcpy(packet.Data() + 2, &coins, sizeof(EQT::TradeCoins_Struct));
+
+	LOG_DEBUG(MOD_MAIN, "Queueing TradeCoins packet, size={}", packet.Length());
+	DumpPacket("C->S", HC_OP_TradeCoins, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::SendMoveCoin(const EQT::MoveCoin_Struct& move)
+{
+	LOG_DEBUG(MOD_MAIN, "SendMoveCoin called: from_slot={} to_slot={} cointype1={} cointype2={} amount={}",
+		move.from_slot, move.to_slot, move.cointype1, move.cointype2, move.amount);
+
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending MoveCoin");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::MoveCoin_Struct));
+	packet.PutUInt16(0, HC_OP_MoveCoin);
+	memcpy(packet.Data() + 2, &move, sizeof(EQT::MoveCoin_Struct));
+
+	LOG_DEBUG(MOD_MAIN, "Queueing MoveCoin packet, size={}", packet.Length());
+	DumpPacket("C->S", HC_OP_MoveCoin, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeAcceptClick");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::TradeAcceptClick_Struct));
+	packet.PutUInt16(0, HC_OP_TradeAcceptClick);
+	memcpy(packet.Data() + 2, &accept, sizeof(EQT::TradeAcceptClick_Struct));
+
+	DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::SendCancelTrade(const EQT::CancelTrade_Struct& cancel)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending CancelTrade");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::CancelTrade_Struct));
+	packet.PutUInt16(0, HC_OP_CancelTrade);
+	memcpy(packet.Data() + 2, &cancel, sizeof(EQT::CancelTrade_Struct));
+
+	DumpPacket("C->S", HC_OP_CancelTrade, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+bool EverQuest::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
+{
+	// Check if this is a partner trade item (ItemPacketTradeView = 101)
+	// Partner items are sent with packet type 101 and slot 0-3 (relative)
+	// Returns true if handled as trade item, false if should be processed normally
+
+	if (p.Length() < 10) {
+		return false;
+	}
+
+	// Get packet type (4 bytes after 2-byte opcode)
+	uint32_t packetType = p.GetUInt32(2);
+
+	// Only handle ItemPacketTradeView (101) packets
+	if (packetType != EQT::ITEM_PACKET_TRADE_VIEW) {
+		return false;
+	}
+
+	// Skip opcode (2 bytes) and packet type (4 bytes)
+	const char* itemData = reinterpret_cast<const char*>(p.Data()) + 2 + 4;
+	size_t itemLen = p.Length() - 2 - 4;
+
+	// Remove trailing nulls
+	while (itemLen > 0 && itemData[itemLen - 1] == '\0') {
+		itemLen--;
+	}
+
+	if (itemLen == 0) {
+		return false;
+	}
+
+	// Quick parse to get slot ID - it's the first pipe-delimited field
+	// For trade view packets, slot is 0-3 (relative)
+	int16_t slotId = eqt::inventory::SLOT_INVALID;
+	std::string slotStr;
+	for (size_t i = 0; i < itemLen && itemData[i] != '|'; i++) {
+		slotStr += itemData[i];
+	}
+	if (!slotStr.empty()) {
+		try {
+			slotId = static_cast<int16_t>(std::stoi(slotStr));
+		} catch (...) {
+			return false;
+		}
+	}
+
+	// Validate slot is 0-7 (partner trade slots)
+	if (slotId < 0 || slotId > 7) {
+		LOG_WARN(MOD_MAIN, "Invalid partner trade slot: {}", slotId);
+		return true;  // Still consumed - don't pass to inventory
+	}
+
+	// Parse the full item
+	std::map<int16_t, std::unique_ptr<eqt::inventory::ItemInstance>> subItems;
+	auto item = eqt::inventory::TitaniumItemParser::parseItem(itemData, itemLen, slotId, &subItems);
+
+	if (!item) {
+		LOG_WARN(MOD_MAIN, "Failed to parse trade partner item for slot {}", slotId);
+		return true;  // Still consumed - don't pass to inventory
+	}
+
+	LOG_INFO(MOD_MAIN, "Received trade partner item: {} in slot {}", item->name, slotId);
+
+	// Show chat message about the offered item
+	if (m_trade_manager) {
+		std::string partnerName = m_trade_manager->getPartnerName();
+		std::string itemName = item->name;
+		AddChatSystemMessage(fmt::format("{} has offered you a {}.",
+			EQT::toDisplayName(partnerName), itemName));
+	}
+
+	// Pass to trade manager
+	if (m_trade_manager) {
+		m_trade_manager->handlePartnerItemPacket(slotId, std::move(item));
+	}
+
+	return true;  // Handled as trade item
+}
+
+void EverQuest::SetupTradeManagerCallbacks()
+{
+	if (!m_trade_manager) {
+		return;
+	}
+
+	// Set up network callbacks
+	m_trade_manager->setSendTradeRequest([this](const EQT::TradeRequest_Struct& req) {
+		SendTradeRequest(req);
+	});
+
+	m_trade_manager->setSendTradeRequestAck([this](const EQT::TradeRequestAck_Struct& ack) {
+		SendTradeRequestAck(ack);
+	});
+
+	m_trade_manager->setSendMoveCoin([this](const EQT::MoveCoin_Struct& move) {
+		SendMoveCoin(move);
+	});
+
+	m_trade_manager->setSendTradeAcceptClick([this](const EQT::TradeAcceptClick_Struct& accept) {
+		SendTradeAcceptClick(accept);
+	});
+
+	m_trade_manager->setSendCancelTrade([this](const EQT::CancelTrade_Struct& cancel) {
+		SendCancelTrade(cancel);
+	});
+
+#ifdef EQT_HAS_GRAPHICS
+	// Set up UI callbacks
+	m_trade_manager->setOnRequestReceived([this](uint32_t spawnId, const std::string& name) {
+		if (m_renderer && m_renderer->getWindowManager()) {
+			m_renderer->getWindowManager()->showTradeRequest(spawnId, name);
+		}
+	});
+
+	m_trade_manager->setOnStateChanged([this](TradeState state) {
+		if (!m_renderer || !m_renderer->getWindowManager()) {
+			return;
+		}
+		auto* wm = m_renderer->getWindowManager();
+		if (state == TradeState::Active) {
+			wm->openTradeWindow(m_trade_manager->getPartnerSpawnId(),
+			                    m_trade_manager->getPartnerName(),
+			                    m_trade_manager->isNpcTrade());
+		} else if (state == TradeState::None) {
+			// Only close on None state (cancel) - Completed is handled by m_on_completed
+			wm->closeTradeWindow();
+		}
+	});
+
+	m_trade_manager->setOnItemUpdated([this](bool isOwn, int slot) {
+		if (!m_renderer || !m_renderer->getWindowManager()) {
+			return;
+		}
+		auto* wm = m_renderer->getWindowManager();
+		if (!isOwn) {
+			// Partner item updated - get from trade manager
+			const auto* item = m_trade_manager->getPartnerItem(slot);
+			if (item) {
+				// Make a copy for the UI
+				auto itemCopy = std::make_unique<eqt::inventory::ItemInstance>(*item);
+				wm->setTradePartnerItem(slot, std::move(itemCopy));
+			} else {
+				wm->clearTradePartnerItem(slot);
+			}
+		}
+		// Own items are displayed from inventory trade slots
+	});
+
+	m_trade_manager->setOnMoneyUpdated([this](bool isOwn) {
+		if (!m_renderer || !m_renderer->getWindowManager()) {
+			return;
+		}
+		auto* wm = m_renderer->getWindowManager();
+		if (isOwn) {
+			wm->setTradeOwnMoney(m_trade_manager->getOwnMoney().platinum,
+			                     m_trade_manager->getOwnMoney().gold,
+			                     m_trade_manager->getOwnMoney().silver,
+			                     m_trade_manager->getOwnMoney().copper);
+		} else {
+			wm->setTradePartnerMoney(m_trade_manager->getPartnerMoney().platinum,
+			                         m_trade_manager->getPartnerMoney().gold,
+			                         m_trade_manager->getPartnerMoney().silver,
+			                         m_trade_manager->getPartnerMoney().copper);
+		}
+	});
+
+	m_trade_manager->setOnAcceptStateChanged([this](bool ownAccepted, bool partnerAccepted) {
+		if (m_renderer && m_renderer->getWindowManager()) {
+			m_renderer->getWindowManager()->setTradeOwnAccepted(ownAccepted);
+			m_renderer->getWindowManager()->setTradePartnerAccepted(partnerAccepted);
+		}
+	});
+
+	m_trade_manager->setOnCompleted([this]() {
+		// Generate chat messages for what was exchanged
+		std::string partnerName = EQT::toDisplayName(m_trade_manager->getPartnerName());
+		const auto& partnerMoney = m_trade_manager->getPartnerMoney();
+		const auto& ownMoney = m_trade_manager->getOwnMoney();
+
+		// Report money received from partner
+		if (partnerMoney.platinum > 0) {
+			AddChatSystemMessage(fmt::format("You receive {} platinum from {}.", partnerMoney.platinum, partnerName));
+		}
+		if (partnerMoney.gold > 0) {
+			AddChatSystemMessage(fmt::format("You receive {} gold from {}.", partnerMoney.gold, partnerName));
+		}
+		if (partnerMoney.silver > 0) {
+			AddChatSystemMessage(fmt::format("You receive {} silver from {}.", partnerMoney.silver, partnerName));
+		}
+		if (partnerMoney.copper > 0) {
+			AddChatSystemMessage(fmt::format("You receive {} copper from {}.", partnerMoney.copper, partnerName));
+		}
+
+		// Report items received from partner
+		for (int i = 0; i < 8; i++) {
+			const auto* item = m_trade_manager->getPartnerItem(i);
+			if (item) {
+				AddChatSystemMessage(fmt::format("You receive {} from {}.", item->name, partnerName));
+			}
+		}
+
+		// Report money given to partner
+		if (ownMoney.platinum > 0) {
+			AddChatSystemMessage(fmt::format("You give {} platinum to {}.", ownMoney.platinum, partnerName));
+		}
+		if (ownMoney.gold > 0) {
+			AddChatSystemMessage(fmt::format("You give {} gold to {}.", ownMoney.gold, partnerName));
+		}
+		if (ownMoney.silver > 0) {
+			AddChatSystemMessage(fmt::format("You give {} silver to {}.", ownMoney.silver, partnerName));
+		}
+		if (ownMoney.copper > 0) {
+			AddChatSystemMessage(fmt::format("You give {} copper to {}.", ownMoney.copper, partnerName));
+		}
+
+		// Report items given to partner
+		for (int i = 0; i < 8; i++) {
+			const auto* item = m_trade_manager->getOwnItem(i);
+			if (item) {
+				AddChatSystemMessage(fmt::format("You give {} to {}.", item->name, partnerName));
+			}
+		}
+
+		if (m_renderer && m_renderer->getWindowManager()) {
+			m_renderer->getWindowManager()->closeTradeWindow(false);  // Don't send cancel on completion
+		}
+	});
+
+	m_trade_manager->setOnCancelled([this]() {
+		AddChatSystemMessage("Trade cancelled.");
+		if (m_renderer && m_renderer->getWindowManager()) {
+			m_renderer->getWindowManager()->closeTradeWindow(true);  // Send cancel
+		}
+	});
+#endif
 }
 
 void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
@@ -2907,6 +3357,53 @@ void EverQuest::SetupVendorCallbacks()
 	}
 }
 
+void EverQuest::SetupTradeWindowCallbacks()
+{
+	if (!m_renderer || !m_renderer->getWindowManager()) {
+		return;
+	}
+
+	auto* windowManager = m_renderer->getWindowManager();
+
+	// Initialize trade window with trade manager
+	windowManager->initTradeWindow(m_trade_manager.get());
+
+	// Set callback for when player clicks Accept in trade window
+	windowManager->setOnTradeAccept([this]() {
+		if (m_trade_manager) {
+			m_trade_manager->clickAccept();
+		}
+	});
+
+	// Set callback for when player clicks Cancel in trade window
+	windowManager->setOnTradeCancel([this]() {
+		if (m_trade_manager) {
+			m_trade_manager->cancelTrade();
+		}
+	});
+
+	// Set callback for when player accepts trade request
+	windowManager->setOnTradeRequestAccept([this]() {
+		if (m_trade_manager) {
+			m_trade_manager->acceptTradeRequest();
+		}
+	});
+
+	// Set callback for when player declines trade request
+	windowManager->setOnTradeRequestDecline([this]() {
+		if (m_trade_manager) {
+			m_trade_manager->rejectTradeRequest();
+		}
+	});
+
+	// Set callback for trade error messages
+	windowManager->setOnTradeError([this](const std::string& message) {
+		AddChatSystemMessage(message);
+	});
+
+	LOG_DEBUG(MOD_MAIN, "Trade window callbacks set up");
+}
+
 void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 {
 	// Server response to our shop request
@@ -3097,8 +3594,12 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 		m_platinum, m_gold, m_silver, m_copper);
 
 #ifdef EQT_HAS_GRAPHICS
-	// Update vendor window money display
 	if (m_renderer && m_renderer->getWindowManager()) {
+		// Update base currency in window manager (for inventory display)
+		m_renderer->getWindowManager()->updateBaseCurrency(
+			m_platinum, m_gold, m_silver, m_copper);
+
+		// Update vendor window money display
 		auto* vendorWindow = m_renderer->getWindowManager()->getVendorWindow();
 		if (vendorWindow && vendorWindow->isOpen()) {
 			vendorWindow->setPlayerMoney(
@@ -3481,6 +3982,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			// Check if this is our own character and update our position
 			if (entity.name == m_character) {
 				m_my_spawn_id = entity.spawn_id;
+				if (m_trade_manager) {
+					m_trade_manager->setMySpawnId(m_my_spawn_id);
+				}
 
 				// Debug: Zone-in position tracking at level 1
 				if (s_debug_level >= 1) {
@@ -4107,6 +4611,9 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 		// Check if this is our own spawn by comparing name
 		if (entity.name == m_character) {
 			m_my_spawn_id = entity.spawn_id;
+			if (m_trade_manager) {
+				m_trade_manager->setMySpawnId(m_my_spawn_id);
+			}
 			if (s_debug_level >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Found our own spawn in NewSpawn! Name: {}, Spawn ID: {}, updating position to ({:.2f}, {:.2f}, {:.2f})", entity.name, m_my_spawn_id, entity.x, entity.y, entity.z);
 			}
@@ -4357,6 +4864,9 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		// Also update our spawn ID if not set
 		if (m_my_spawn_id == 0) {
 			m_my_spawn_id = spawn_id;
+			if (m_trade_manager) {
+				m_trade_manager->setMySpawnId(m_my_spawn_id);
+			}
 			LOG_INFO(MOD_MOVEMENT, "Set our spawn ID to {} from ClientUpdate", m_my_spawn_id);
 
 #ifdef EQT_HAS_GRAPHICS
@@ -4470,6 +4980,14 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 		}
 
 		LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) despawned", spawn_id, it->second.name);
+
+		// Cancel trade if partner despawned
+		if (m_trade_manager && m_trade_manager->isTrading() &&
+			m_trade_manager->getPartnerSpawnId() == spawn_id) {
+			LOG_DEBUG(MOD_MAIN, "Trade partner despawned, canceling trade");
+			m_trade_manager->cancelTrade();
+			AddChatSystemMessage("Trade cancelled - partner is no longer available");
+		}
 
 #ifdef EQT_HAS_GRAPHICS
 		OnSpawnRemovedGraphics(spawn_id);
@@ -5046,6 +5564,160 @@ void EverQuest::RegisterCommands()
 		DeclineGroupInvite();
 	};
 	m_command_registry->registerCommand(decline_cmd);
+
+	// === Trade Commands ===
+
+	Command trade_cmd;
+	trade_cmd.name = "trade";
+	trade_cmd.usage = "/trade [name]";
+	trade_cmd.description = "Initiate trade with target or named player";
+	trade_cmd.category = "Social";
+	trade_cmd.handler = [this](const std::string& args) {
+		if (!m_trade_manager) {
+			AddChatSystemMessage("Trade not available");
+			return;
+		}
+		if (m_trade_manager->isTrading()) {
+			AddChatSystemMessage("You are already trading");
+			return;
+		}
+		// Cannot trade while in combat
+		if (m_combat_manager && m_combat_manager->GetCombatState() == COMBAT_STATE_ENGAGED) {
+			AddChatSystemMessage("You cannot trade while in combat");
+			return;
+		}
+
+		uint32_t target_spawn_id = 0;
+		std::string target_name;
+
+		if (args.empty()) {
+			// Use current target
+			if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
+				target_spawn_id = m_combat_manager->GetTargetId();
+				auto it = m_entities.find(target_spawn_id);
+				if (it != m_entities.end()) {
+					target_name = it->second.name;
+				}
+			}
+			if (target_spawn_id == 0) {
+				AddChatSystemMessage("No target - use /trade <name> or target a player");
+				return;
+			}
+		} else {
+			// Find player by name
+			std::string searchName = args;
+			std::transform(searchName.begin(), searchName.end(), searchName.begin(), ::tolower);
+
+			for (const auto& [id, entity] : m_entities) {
+				// Only trade with players (not corpses, class_id > 0 indicates player class)
+				if (entity.class_id == 0 || entity.is_corpse) continue;
+
+				std::string entityName = entity.name;
+				std::transform(entityName.begin(), entityName.end(), entityName.begin(), ::tolower);
+				if (entityName.find(searchName) != std::string::npos) {
+					target_spawn_id = entity.spawn_id;
+					target_name = entity.name;
+					break;
+				}
+			}
+			if (target_spawn_id == 0) {
+				AddChatSystemMessage(fmt::format("No player found matching '{}'", args));
+				return;
+			}
+		}
+
+		// Cannot trade with self
+		if (target_spawn_id == m_my_spawn_id) {
+			AddChatSystemMessage("You cannot trade with yourself");
+			return;
+		}
+
+		// Check distance to target (max trade range ~150 units)
+		constexpr float MAX_TRADE_DISTANCE = 150.0f;
+		bool isNpc = false;
+		auto target_it = m_entities.find(target_spawn_id);
+		if (target_it != m_entities.end()) {
+			const auto& target_entity = target_it->second;
+			isNpc = (target_entity.npc_type == 1);
+			float dx = m_x - target_entity.x;
+			float dy = m_y - target_entity.y;
+			float dz = m_z - target_entity.z;
+			float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+			if (distance > MAX_TRADE_DISTANCE) {
+				AddChatSystemMessage("You are too far away to trade");
+				return;
+			}
+		}
+
+		m_trade_manager->requestTrade(target_spawn_id, target_name, isNpc);
+		AddChatSystemMessage(fmt::format("Requesting trade with {}", EQT::toDisplayName(target_name)));
+	};
+	m_command_registry->registerCommand(trade_cmd);
+
+	Command accept_cmd;
+	accept_cmd.name = "accept";
+	accept_cmd.usage = "/accept";
+	accept_cmd.description = "Accept pending trade request";
+	accept_cmd.category = "Social";
+	accept_cmd.handler = [this](const std::string& args) {
+		if (!m_trade_manager) {
+			AddChatSystemMessage("Trade not available");
+			return;
+		}
+		if (m_trade_manager->getState() != TradeState::PendingAccept) {
+			AddChatSystemMessage("No pending trade request");
+			return;
+		}
+		// Cannot accept trade while in combat
+		if (m_combat_manager && m_combat_manager->GetCombatState() == COMBAT_STATE_ENGAGED) {
+			AddChatSystemMessage("You cannot trade while in combat");
+			return;
+		}
+		m_trade_manager->acceptTradeRequest();
+		AddChatSystemMessage(fmt::format("Accepting trade with {}", EQT::toDisplayName(m_trade_manager->getPartnerName())));
+	};
+	m_command_registry->registerCommand(accept_cmd);
+
+	Command tradedecline_cmd;
+	tradedecline_cmd.name = "tradedecline";
+	tradedecline_cmd.aliases = {"rejecttrade"};
+	tradedecline_cmd.usage = "/tradedecline";
+	tradedecline_cmd.description = "Decline pending trade request";
+	tradedecline_cmd.category = "Social";
+	tradedecline_cmd.handler = [this](const std::string& args) {
+		if (!m_trade_manager) {
+			AddChatSystemMessage("Trade not available");
+			return;
+		}
+		if (m_trade_manager->getState() != TradeState::PendingAccept) {
+			AddChatSystemMessage("No pending trade request");
+			return;
+		}
+		std::string partner_name = m_trade_manager->getPartnerName();
+		m_trade_manager->rejectTradeRequest();
+		AddChatSystemMessage(fmt::format("Declined trade request from {}", EQT::toDisplayName(partner_name)));
+	};
+	m_command_registry->registerCommand(tradedecline_cmd);
+
+	Command canceltrade_cmd;
+	canceltrade_cmd.name = "canceltrade";
+	canceltrade_cmd.aliases = {"stoptrade"};
+	canceltrade_cmd.usage = "/canceltrade";
+	canceltrade_cmd.description = "Cancel active trade";
+	canceltrade_cmd.category = "Social";
+	canceltrade_cmd.handler = [this](const std::string& args) {
+		if (!m_trade_manager) {
+			AddChatSystemMessage("Trade not available");
+			return;
+		}
+		if (m_trade_manager->getState() != TradeState::Active) {
+			AddChatSystemMessage("You are not trading");
+			return;
+		}
+		m_trade_manager->cancelTrade();
+		AddChatSystemMessage("Trade cancelled");
+	};
+	m_command_registry->registerCommand(canceltrade_cmd);
 
 	// === Movement Commands ===
 
@@ -7765,6 +8437,19 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 			}
 		}
 #endif
+		// Cancel trade if we died
+		if (m_trade_manager && m_trade_manager->isTrading()) {
+			LOG_DEBUG(MOD_MAIN, "Player died during trade, canceling trade");
+			m_trade_manager->cancelTrade();
+		}
+	}
+
+	// Cancel trade if trade partner died
+	if (m_trade_manager && m_trade_manager->isTrading() &&
+		m_trade_manager->getPartnerSpawnId() == victim_id) {
+		LOG_DEBUG(MOD_MAIN, "Trade partner died, canceling trade");
+		m_trade_manager->cancelTrade();
+		AddChatSystemMessage("Trade cancelled - partner died");
 	}
 
 	// If the vendor NPC died, close vendor window
@@ -9833,6 +10518,14 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	uint16_t spell_id = dmg->spellid;
 	int32_t damage_amount = dmg->damage;
 
+	// Cancel trade if player takes damage (entering combat)
+	if (target_id == m_my_spawn_id && damage_amount > 0 &&
+		m_trade_manager && m_trade_manager->isTrading()) {
+		LOG_DEBUG(MOD_MAIN, "Player took damage during trade, canceling trade");
+		m_trade_manager->cancelTrade();
+		AddChatSystemMessage("Trade cancelled - you entered combat");
+	}
+
 	if (s_debug_level >= 2) {
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
 		if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Damage packet raw bytes (first 12): ");
@@ -10258,6 +10951,29 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// Set up target selection callback for mouse click targeting
 	m_renderer->setTargetCallback([this](uint16_t spawnId) {
+		// Check if we have a cursor item or cursor money and clicked on a player - initiate trade
+		if (m_inventory_manager && m_trade_manager) {
+			const auto* cursorItem = m_inventory_manager->getItem(eqt::inventory::CURSOR_SLOT);
+			bool hasCursorMoney = m_inventory_manager->hasCursorMoney();
+			if (cursorItem || hasCursorMoney) {
+				// We have an item or money on cursor - check if target is a player or NPC
+				auto it = m_entities.find(spawnId);
+				if (it != m_entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
+					// Target is a player (0) or NPC (1) - initiate trade request
+					bool isNpc = (it->second.npc_type == 1);
+					if (cursorItem) {
+						LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor item: {}, isNpc={})",
+						         it->second.name, cursorItem->name, isNpc);
+					} else {
+						LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor money, isNpc={})",
+						         it->second.name, isNpc);
+					}
+					m_trade_manager->requestTrade(spawnId, it->second.name, isNpc);
+					return;  // Don't target, we're initiating trade
+				}
+			}
+		}
+
 		if (m_combat_manager) {
 			if (m_combat_manager->SetTarget(spawnId)) {
 				// Set tracked target for debug logging
@@ -10440,6 +11156,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// Set up vendor window callbacks
 	SetupVendorCallbacks();
+
+	// Set up trade window callbacks
+	SetupTradeWindowCallbacks();
 
 	// Initialize spell database if not already done
 	if (m_spell_manager && !m_spell_manager->isInitialized()) {
