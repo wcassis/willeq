@@ -4,6 +4,9 @@
 #include "bag_window.h"
 #include "loot_window.h"
 #include "vendor_window.h"
+#include "trade_window.h"
+#include "trade_request_dialog.h"
+#include "money_input_dialog.h"
 #include "chat_window.h"
 #include "spell_gem_panel.h"
 #include "spell_book_window.h"
@@ -22,6 +25,8 @@
 #include "client/spell/spell_data.h"
 #include <json/json.h>
 #include <memory>
+
+class TradeManager;
 
 namespace EQ {
 struct ActiveBuff;
@@ -126,6 +131,41 @@ public:
     void setOnVendorBuy(VendorBuyCallback callback);
     void setOnVendorSell(VendorSellCallback callback);
     void setOnVendorClose(VendorCloseCallback callback);
+
+    // Trade window management
+    void initTradeWindow(TradeManager* tradeMgr);
+    void openTradeWindow(uint32_t partnerSpawnId, const std::string& partnerName, bool isNpcTrade = false);
+    void closeTradeWindow(bool sendCancel = true);
+    bool isTradeWindowOpen() const;
+    TradeWindow* getTradeWindow() { return tradeWindow_.get(); }
+    const TradeWindow* getTradeWindow() const { return tradeWindow_.get(); }
+
+    // Trade request dialog
+    void showTradeRequest(uint32_t spawnId, const std::string& playerName);
+    void dismissTradeRequest();
+    bool isTradeRequestShown() const;
+
+    // Money input dialog
+    bool isMoneyInputDialogShown() const;
+
+    // Trade partner item management (called from packet handlers)
+    void setTradePartnerItem(int slot, std::unique_ptr<inventory::ItemInstance> item);
+    void clearTradePartnerItem(int slot);
+
+    // Trade money display
+    void setTradeOwnMoney(uint32_t pp, uint32_t gp, uint32_t sp, uint32_t cp);
+    void setTradePartnerMoney(uint32_t pp, uint32_t gp, uint32_t sp, uint32_t cp);
+
+    // Trade accept state display
+    void setTradeOwnAccepted(bool accepted);
+    void setTradePartnerAccepted(bool accepted);
+
+    // Trade window callbacks (set by EverQuest class for packet handling)
+    void setOnTradeAccept(TradeAcceptCallback callback);
+    void setOnTradeCancel(TradeCancelCallback callback);
+    void setOnTradeRequestAccept(TradeRequestAcceptCallback callback);
+    void setOnTradeRequestDecline(TradeRequestDeclineCallback callback);
+    void setOnTradeError(TradeErrorCallback callback);
 
     // Chat window management
     ChatWindow* getChatWindow() { return chatWindow_.get(); }
@@ -279,6 +319,9 @@ public:
                               float weight, float maxWeight,
                               uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
 
+    // Update just the base currency values (called when server sends money update)
+    void updateBaseCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+
     // Character model view (3D preview in inventory)
     void initModelView(irr::scene::ISceneManager* smgr,
                        EQT::Graphics::RaceModelLoader* raceLoader,
@@ -305,9 +348,14 @@ private:
     // Slot click handling
     void handleSlotClick(int16_t slotId, bool shift, bool ctrl);
     void handleBagSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctrl);
+    void handleTradeMoneyAreaClick();
     void handleSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleDestroyClick();
     void handleBagOpenClick(int16_t generalSlot);
+    void handleCurrencyClick(CurrencyType type, uint32_t maxAmount);
+    void handleMoneyInputConfirm(CurrencyType type, uint32_t amount);
+    void refreshCurrencyDisplay();  // Update inventory currency display accounting for cursor money
 
     // Cursor item handling
     void pickupItem(int16_t slotId);
@@ -331,6 +379,7 @@ private:
 
     // Rendering helpers
     void renderCursorItem();
+    void renderCursorMoney();
     void renderSpellCursor();
     void renderConfirmDialog();
     void renderQuantitySlider();
@@ -352,14 +401,26 @@ private:
     // Inventory manager
     inventory::InventoryManager* invManager_ = nullptr;
 
+    // Trade manager
+    TradeManager* tradeManager_ = nullptr;
+
     // Screen dimensions
     int screenWidth_ = 800;
     int screenHeight_ = 600;
+
+    // Base currency values (before cursor money is deducted)
+    uint32_t basePlatinum_ = 0;
+    uint32_t baseGold_ = 0;
+    uint32_t baseSilver_ = 0;
+    uint32_t baseCopper_ = 0;
 
     // Windows
     std::unique_ptr<InventoryWindow> inventoryWindow_;
     std::unique_ptr<LootWindow> lootWindow_;
     std::unique_ptr<VendorWindow> vendorWindow_;
+    std::unique_ptr<TradeWindow> tradeWindow_;
+    std::unique_ptr<TradeRequestDialog> tradeRequestDialog_;
+    std::unique_ptr<MoneyInputDialog> moneyInputDialog_;
     std::unique_ptr<ChatWindow> chatWindow_;
     std::unique_ptr<SpellGemPanel> spellGemPanel_;
     std::unique_ptr<SpellBookWindow> spellBookWindow_;
@@ -384,6 +445,13 @@ private:
     VendorBuyCallback onVendorBuyCallback_;
     VendorSellCallback onVendorSellCallback_;
     VendorCloseCallback onVendorCloseCallback_;
+
+    // Trade window callbacks
+    TradeAcceptCallback onTradeAcceptCallback_;
+    TradeCancelCallback onTradeCancelCallback_;
+    TradeRequestAcceptCallback onTradeRequestAcceptCallback_;
+    TradeRequestDeclineCallback onTradeRequestDeclineCallback_;
+    TradeErrorCallback onTradeErrorCallback_;
 
     // Buff window callbacks
     BuffCancelCallback buffCancelCallback_;

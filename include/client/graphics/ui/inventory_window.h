@@ -22,12 +22,16 @@ struct EntityAppearance;
 namespace eqt {
 namespace ui {
 
+// Forward declare CurrencyType (defined in money_input_dialog.h)
+enum class CurrencyType;
+
 // Callback types
 using BagClickCallback = std::function<void(int16_t generalSlot)>;
 using SlotClickCallback = std::function<void(int16_t slotId, bool shift, bool ctrl)>;
 using SlotHoverCallback = std::function<void(int16_t slotId, int mouseX, int mouseY)>;
 using DestroyClickCallback = std::function<void()>;
 using IconLookupCallback = std::function<irr::video::ITexture*(uint32_t iconId)>;
+using CurrencyClickCallback = std::function<void(CurrencyType type, uint32_t maxAmount)>;
 
 class InventoryWindow : public WindowBase {
 public:
@@ -44,6 +48,7 @@ public:
     void setSlotHoverCallback(SlotHoverCallback callback) { slotHoverCallback_ = callback; }
     void setDestroyClickCallback(DestroyClickCallback callback) { destroyClickCallback_ = callback; }
     void setIconLookupCallback(IconLookupCallback callback) { iconLookupCallback_ = callback; }
+    void setCurrencyClickCallback(CurrencyClickCallback callback) { currencyClickCallback_ = callback; }
 
     // Get slot at position
     int16_t getSlotAtPosition(int x, int y) const;
@@ -134,6 +139,7 @@ private:
     SlotHoverCallback slotHoverCallback_;
     DestroyClickCallback destroyClickCallback_;
     IconLookupCallback iconLookupCallback_;
+    CurrencyClickCallback currencyClickCallback_;
 
     // Highlighted slot
     int16_t highlightedSlot_ = inventory::SLOT_INVALID;
@@ -168,6 +174,15 @@ private:
     uint32_t gold_ = 0;
     uint32_t silver_ = 0;
     uint32_t copper_ = 0;
+
+    // Currency click bounds (relative to window)
+    irr::core::recti platinumBounds_;
+    irr::core::recti goldBounds_;
+    irr::core::recti silverBounds_;
+    irr::core::recti copperBounds_;
+
+    // Helper to check if point is on currency
+    CurrencyType getCurrencyAtPosition(int relX, int relY, bool& found) const;
 
     // Layout accessors - read from UISettings
     int getSlotSize() const { return UISettings::instance().inventory().slotSize; }

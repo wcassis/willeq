@@ -121,6 +121,7 @@ public:
     void setItem(int16_t slotId, std::unique_ptr<ItemInstance> item);
     void removeItem(int16_t slotId);
     void clearAll();
+    void clearTradeSlots();  // Clear items in trade slots (3000-3007)
 
     // Cursor operations
     bool pickupItem(int16_t slotId);
@@ -133,6 +134,15 @@ public:
     void returnCursorItem();  // Return cursor item to original slot
     void popCursorItem();     // Pop front item from cursor queue and notify server
     size_t getCursorQueueSize() const;  // Get number of items in cursor queue
+
+    // Cursor money operations
+    enum class CursorMoneyType { None, Platinum, Gold, Silver, Copper };
+    bool hasCursorMoney() const { return cursorMoneyAmount_ > 0 && cursorMoneyType_ != CursorMoneyType::None; }
+    CursorMoneyType getCursorMoneyType() const { return cursorMoneyType_; }
+    uint32_t getCursorMoneyAmount() const { return cursorMoneyAmount_; }
+    void pickupMoney(CursorMoneyType type, uint32_t amount);
+    void clearCursorMoney();
+    void returnCursorMoney();  // Return cursor money to player's coin
 
     // Swap items between slots
     bool swapItems(int16_t fromSlot, int16_t toSlot);
@@ -199,6 +209,10 @@ private:
     // Front item is the "active" cursor item shown to user
     std::deque<std::unique_ptr<ItemInstance>> cursorQueue_;
     int16_t cursorSourceSlot_ = SLOT_INVALID;  // Source slot of the front cursor item
+
+    // Cursor money - separate from cursor items
+    CursorMoneyType cursorMoneyType_ = CursorMoneyType::None;
+    uint32_t cursorMoneyAmount_ = 0;
 
     // Player info for validation
     uint32_t playerRace_ = 0;

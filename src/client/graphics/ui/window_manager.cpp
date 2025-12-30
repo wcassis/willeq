@@ -3,6 +3,7 @@
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
+#include "client/trade_manager.h"
 #include <algorithm>
 #include <iostream>
 #include "common/logging.h"
@@ -64,6 +65,16 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
 
     inventoryWindow_->setCloseCallback([this]() {
         closeAllBagWindows();
+    });
+
+    inventoryWindow_->setCurrencyClickCallback([this](CurrencyType type, uint32_t maxAmount) {
+        handleCurrencyClick(type, maxAmount);
+    });
+
+    // Create money input dialog
+    moneyInputDialog_ = std::make_unique<MoneyInputDialog>();
+    moneyInputDialog_->setOnConfirm([this](CurrencyType type, uint32_t amount) {
+        handleMoneyInputConfirm(type, amount);
     });
 
     // Create loot window (initially hidden)
@@ -259,6 +270,13 @@ void WindowManager::collectWindowPositions() {
         settings.skills().window.visible = skillsWindow_->isVisible();
     }
 
+    // Trade window
+    if (tradeWindow_) {
+        settings.trade().window.x = tradeWindow_->getX();
+        settings.trade().window.y = tradeWindow_->getY();
+        settings.trade().window.visible = tradeWindow_->isOpen();
+    }
+
     LOG_DEBUG(MOD_UI, "Collected window positions for saving");
 }
 
@@ -347,6 +365,16 @@ void WindowManager::applyWindowPositions() {
         if (skillsSettings.window.x >= 0 && skillsSettings.window.y >= 0) {
             skillsWindow_->setPosition(skillsSettings.window.x, skillsSettings.window.y);
         }
+    }
+
+    // Trade window
+    if (tradeWindow_) {
+        // Default position is centered
+        int defaultX = (screenWidth_ - tradeWindow_->getWidth()) / 2;
+        int defaultY = (screenHeight_ - tradeWindow_->getHeight()) / 2;
+        int x = UISettings::resolvePosition(settings.trade().window.x, screenWidth_, defaultX);
+        int y = UISettings::resolvePosition(settings.trade().window.y, screenHeight_, defaultY);
+        tradeWindow_->setPosition(x, y);
     }
 
     LOG_DEBUG(MOD_UI, "Applied window positions from UISettings");
@@ -614,6 +642,231 @@ void WindowManager::setOnVendorClose(VendorCloseCallback callback) {
     }
 }
 
+// ============================================================================
+// Trade Window Management
+// ============================================================================
+
+void WindowManager::initTradeWindow(TradeManager* tradeMgr) {
+    tradeManager_ = tradeMgr;
+    tradeWindow_ = std::make_unique<TradeWindow>(invManager_, this);
+    tradeWindow_->setTradeManager(tradeMgr);
+    tradeWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+        return iconLoader_.getIcon(iconId);
+    });
+    tradeWindow_->setSlotClickCallback([this](int16_t tradeSlot, bool shift, bool ctrl) {
+        handleTradeSlotClick(tradeSlot, shift, ctrl);
+    });
+    tradeWindow_->setMoneyAreaClickCallback([this]() {
+        handleTradeMoneyAreaClick();
+    });
+
+    // Create trade request dialog
+    tradeRequestDialog_ = std::make_unique<TradeRequestDialog>();
+
+    LOG_DEBUG(MOD_UI, "Trade window and request dialog initialized");
+}
+
+void WindowManager::openTradeWindow(uint32_t partnerSpawnId, const std::string& partnerName, bool isNpcTrade) {
+    if (!tradeWindow_) {
+        LOG_WARN(MOD_UI, "Trade window not initialized");
+        return;
+    }
+
+    // Set up callbacks before opening
+    tradeWindow_->setOnAccept(onTradeAcceptCallback_);
+    tradeWindow_->setOnCancel(onTradeCancelCallback_);
+
+    tradeWindow_->open(partnerSpawnId, partnerName, isNpcTrade);
+
+    // Use saved position if available, otherwise center on screen
+    const auto& settings = UISettings::instance();
+    int defaultX = (screenWidth_ - tradeWindow_->getWidth()) / 2;
+    int defaultY = (screenHeight_ - tradeWindow_->getHeight()) / 2;
+    int x = UISettings::resolvePosition(settings.trade().window.x, screenWidth_, defaultX);
+    int y = UISettings::resolvePosition(settings.trade().window.y, screenHeight_, defaultY);
+    tradeWindow_->setPosition(x, y);
+
+    // If player has an item on cursor, automatically add it to the first trade slot
+    if (invManager_ && invManager_->hasCursorItem()) {
+        const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
+        if (cursorItem && !cursorItem->noDrop) {
+            // Find first empty trade slot
+            int16_t firstEmptySlot = inventory::SLOT_INVALID;
+            for (int i = 0; i < 8; i++) {
+                int16_t tradeSlot = inventory::TRADE_BEGIN + i;
+                if (!invManager_->hasItem(tradeSlot)) {
+                    firstEmptySlot = tradeSlot;
+                    break;
+                }
+            }
+
+            if (firstEmptySlot != inventory::SLOT_INVALID) {
+                int tradeSlotIndex = firstEmptySlot - inventory::TRADE_BEGIN;
+                int16_t sourceSlot = invManager_->getCursorSourceSlot();
+                LOG_DEBUG(MOD_UI, "Auto-placing cursor item (from slot {}) in trade slot {} on window open",
+                          sourceSlot, firstEmptySlot);
+
+                // Notify TradeManager about the item being added to trade
+                if (tradeManager_) {
+                    tradeManager_->addItemToTrade(sourceSlot, tradeSlotIndex);
+                }
+
+                placeItem(firstEmptySlot);
+            }
+        } else if (cursorItem && cursorItem->noDrop) {
+            LOG_DEBUG(MOD_UI, "Cursor item '{}' is NO_DROP, not auto-adding to trade", cursorItem->name);
+        }
+    }
+    // If player has money on cursor, automatically add it to the trade
+    else if (invManager_ && invManager_->hasCursorMoney() && tradeManager_) {
+        uint32_t amount = invManager_->getCursorMoneyAmount();
+        auto cursorType = invManager_->getCursorMoneyType();
+
+        uint32_t pp = 0, gp = 0, sp = 0, cp = 0;
+        switch (cursorType) {
+            case inventory::InventoryManager::CursorMoneyType::Platinum:
+                pp = amount;
+                LOG_DEBUG(MOD_UI, "Auto-placing {} platinum in trade on window open", amount);
+                break;
+            case inventory::InventoryManager::CursorMoneyType::Gold:
+                gp = amount;
+                LOG_DEBUG(MOD_UI, "Auto-placing {} gold in trade on window open", amount);
+                break;
+            case inventory::InventoryManager::CursorMoneyType::Silver:
+                sp = amount;
+                LOG_DEBUG(MOD_UI, "Auto-placing {} silver in trade on window open", amount);
+                break;
+            case inventory::InventoryManager::CursorMoneyType::Copper:
+                cp = amount;
+                LOG_DEBUG(MOD_UI, "Auto-placing {} copper in trade on window open", amount);
+                break;
+            default:
+                break;
+        }
+
+        if (pp > 0 || gp > 0 || sp > 0 || cp > 0) {
+            tradeManager_->setOwnMoney(pp, gp, sp, cp);
+            invManager_->clearCursorMoney();
+            refreshCurrencyDisplay();
+        }
+    }
+
+    // Dismiss trade request dialog if open
+    dismissTradeRequest();
+}
+
+void WindowManager::closeTradeWindow(bool sendCancel) {
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        tradeWindow_->close(sendCancel);
+    }
+}
+
+bool WindowManager::isTradeWindowOpen() const {
+    return tradeWindow_ && tradeWindow_->isOpen();
+}
+
+void WindowManager::showTradeRequest(uint32_t spawnId, const std::string& playerName) {
+    if (!tradeRequestDialog_) {
+        LOG_WARN(MOD_UI, "Trade request dialog not initialized");
+        return;
+    }
+
+    // Set up callbacks
+    tradeRequestDialog_->setOnAccept(onTradeRequestAcceptCallback_);
+    tradeRequestDialog_->setOnDecline(onTradeRequestDeclineCallback_);
+
+    tradeRequestDialog_->show(spawnId, playerName);
+
+    // Position in center of screen
+    int dialogWidth = tradeRequestDialog_->getWidth();
+    int dialogHeight = tradeRequestDialog_->getHeight();
+    int x = (screenWidth_ - dialogWidth) / 2;
+    int y = (screenHeight_ - dialogHeight) / 2;
+    tradeRequestDialog_->setPosition(x, y);
+}
+
+void WindowManager::dismissTradeRequest() {
+    if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
+        tradeRequestDialog_->dismiss();
+    }
+}
+
+bool WindowManager::isTradeRequestShown() const {
+    return tradeRequestDialog_ && tradeRequestDialog_->isShown();
+}
+
+bool WindowManager::isMoneyInputDialogShown() const {
+    return moneyInputDialog_ && moneyInputDialog_->isShown();
+}
+
+void WindowManager::setTradePartnerItem(int slot, std::unique_ptr<inventory::ItemInstance> item) {
+    if (tradeWindow_) {
+        tradeWindow_->setPartnerItem(slot, std::move(item));
+    }
+}
+
+void WindowManager::clearTradePartnerItem(int slot) {
+    if (tradeWindow_) {
+        tradeWindow_->clearPartnerSlot(slot);
+    }
+}
+
+void WindowManager::setTradeOwnMoney(uint32_t pp, uint32_t gp, uint32_t sp, uint32_t cp) {
+    if (tradeWindow_) {
+        tradeWindow_->setOwnMoney(pp, gp, sp, cp);
+    }
+}
+
+void WindowManager::setTradePartnerMoney(uint32_t pp, uint32_t gp, uint32_t sp, uint32_t cp) {
+    if (tradeWindow_) {
+        tradeWindow_->setPartnerMoney(pp, gp, sp, cp);
+    }
+}
+
+void WindowManager::setTradeOwnAccepted(bool accepted) {
+    if (tradeWindow_) {
+        tradeWindow_->setOwnAccepted(accepted);
+    }
+}
+
+void WindowManager::setTradePartnerAccepted(bool accepted) {
+    if (tradeWindow_) {
+        tradeWindow_->setPartnerAccepted(accepted);
+    }
+}
+
+void WindowManager::setOnTradeAccept(TradeAcceptCallback callback) {
+    onTradeAcceptCallback_ = callback;
+    if (tradeWindow_) {
+        tradeWindow_->setOnAccept(callback);
+    }
+}
+
+void WindowManager::setOnTradeCancel(TradeCancelCallback callback) {
+    onTradeCancelCallback_ = callback;
+    if (tradeWindow_) {
+        tradeWindow_->setOnCancel(callback);
+    }
+}
+
+void WindowManager::setOnTradeRequestAccept(TradeRequestAcceptCallback callback) {
+    onTradeRequestAcceptCallback_ = callback;
+    if (tradeRequestDialog_) {
+        tradeRequestDialog_->setOnAccept(callback);
+    }
+}
+
+void WindowManager::setOnTradeRequestDecline(TradeRequestDeclineCallback callback) {
+    onTradeRequestDeclineCallback_ = callback;
+    if (tradeRequestDialog_) {
+        tradeRequestDialog_->setOnDecline(callback);
+    }
+}
+
+void WindowManager::setOnTradeError(TradeErrorCallback callback) {
+    onTradeErrorCallback_ = callback;
+}
+
 bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
     // Handle UI management key bindings (Ctrl+key)
     if (ctrl) {
@@ -666,6 +919,29 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
     if (key == irr::KEY_ESCAPE && spellCursor_.active) {
         clearSpellCursor();
         return true;
+    }
+
+    // Route to money input dialog if it's shown
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        // Handle numeric input, backspace, enter, and escape
+        bool isBackspace = (key == irr::KEY_BACK);
+        bool isEnter = (key == irr::KEY_RETURN);
+        bool isEscape = (key == irr::KEY_ESCAPE);
+        wchar_t keyChar = 0;
+        if (key >= irr::KEY_KEY_0 && key <= irr::KEY_KEY_9) {
+            keyChar = L'0' + (key - irr::KEY_KEY_0);
+        } else if (key >= irr::KEY_NUMPAD0 && key <= irr::KEY_NUMPAD9) {
+            keyChar = L'0' + (key - irr::KEY_NUMPAD0);
+        }
+        if (keyChar != 0 || isBackspace || isEnter || isEscape) {
+            bool handled = moneyInputDialog_->handleKeyInput(keyChar, isBackspace, isEnter, isEscape);
+            // If ESC wasn't handled (input wasn't focused), dismiss the dialog
+            if (isEscape && !handled) {
+                moneyInputDialog_->dismiss();
+            }
+            return true;
+        }
+        return true;  // Consume all keys when dialog is open
     }
 
     // Route to chat window if chat input is focused
@@ -851,6 +1127,27 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check trade request dialog first (modal)
+    if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
+        if (tradeRequestDialog_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Check money input dialog (modal)
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        if (moneyInputDialog_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Check trade window (if open)
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        if (tradeWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
     // Check hotbar window - handle cursor placement/swap
     if (hotbarWindow_ && hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y)) {
         if (leftButton && hotbarCursor_.hasItem()) {
@@ -906,11 +1203,8 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
             return true;
         }
 
-        // Click outside inventory with cursor item - return item
-        if (invManager_->hasCursorItem()) {
-            invManager_->returnCursorItem();
-            return true;
-        }
+        // Don't return cursor item here - let click pass through to world
+        // so targeting callback can check if we clicked on a player to trade
     }
 
     // Check chat window (behind other windows)
@@ -991,6 +1285,20 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         if (skillsWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check trade window
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check money input dialog
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        if (moneyInputDialog_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1145,6 +1453,40 @@ bool WindowManager::handleMouseMove(int x, int y) {
             int32_t highlightedSlot = vendorWindow_->getHighlightedSlot();
             if (highlightedSlot >= 0) {
                 const inventory::ItemInstance* item = vendorWindow_->getHighlightedItem();
+                if (item) {
+                    tooltip_.setItem(item, x, y);
+                } else {
+                    tooltip_.clear();
+                }
+            } else {
+                tooltip_.clear();
+            }
+            return true;
+        }
+    }
+
+    // Check trade request dialog
+    if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
+        if (tradeRequestDialog_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check money input dialog
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        if (moneyInputDialog_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check trade window
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        if (tradeWindow_->handleMouseMove(x, y)) {
+            // Update tooltip for trade window items
+            int16_t highlightedSlot = tradeWindow_->getHighlightedSlot();
+            if (highlightedSlot != inventory::SLOT_INVALID) {
+                bool isOwn = tradeWindow_->isHighlightedSlotOwn();
+                const inventory::ItemInstance* item = tradeWindow_->getDisplayedItem(highlightedSlot, isOwn);
                 if (item) {
                     tooltip_.setItem(item, x, y);
                 } else {
@@ -1360,6 +1702,21 @@ void WindowManager::render() {
         vendorWindow_->render(driver_, gui_);
     }
 
+    // Render trade window
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        tradeWindow_->render(driver_, gui_);
+    }
+
+    // Render trade request dialog (on top of other windows)
+    if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
+        tradeRequestDialog_->render(driver_, gui_);
+    }
+
+    // Render money input dialog
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        moneyInputDialog_->render(driver_, gui_);
+    }
+
     // Render bag windows
     for (auto& [slotId, bagWindow] : bagWindows_) {
         bagWindow->render(driver_, gui_);
@@ -1381,6 +1738,9 @@ void WindowManager::render() {
     if (hotbarCursor_.hasItem()) {
         hotbarCursor_.render(driver_, gui_, &iconLoader_, mouseX_, mouseY_);
     }
+
+    // Render cursor money
+    renderCursorMoney();
 
     // Render spell cursor (for spellbook-to-spellbar memorization)
     renderSpellCursor();
@@ -1523,6 +1883,12 @@ void WindowManager::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
                                           int pr, int mr, int dr, int fr, int cr,
                                           float weight, float maxWeight,
                                           uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    // Store base currency values
+    basePlatinum_ = platinum;
+    baseGold_ = gold;
+    baseSilver_ = silver;
+    baseCopper_ = copper;
+
     if (inventoryWindow_) {
         inventoryWindow_->setHP(static_cast<int>(curHp), static_cast<int>(maxHp));
         inventoryWindow_->setMana(static_cast<int>(curMana), static_cast<int>(maxMana));
@@ -1532,8 +1898,19 @@ void WindowManager::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
         inventoryWindow_->setStats(str, sta, agi, dex, wis, intel, cha);
         inventoryWindow_->setResists(pr, mr, dr, fr, cr);
         inventoryWindow_->setWeight(weight, maxWeight);
-        inventoryWindow_->setCurrency(platinum, gold, silver, copper);
+        // Update currency display accounting for any money on cursor
+        refreshCurrencyDisplay();
     }
+}
+
+void WindowManager::updateBaseCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    basePlatinum_ = platinum;
+    baseGold_ = gold;
+    baseSilver_ = silver;
+    baseCopper_ = copper;
+
+    // Update display accounting for any money on cursor
+    refreshCurrencyDisplay();
 }
 
 void WindowManager::initModelView(irr::scene::ISceneManager* smgr,
@@ -1744,6 +2121,110 @@ void WindowManager::handleBagSlotClick(int16_t slotId, bool shift, bool ctrl) {
     }
 }
 
+void WindowManager::handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctrl) {
+    LOG_DEBUG(MOD_UI, "WindowManager handleTradeSlotClick: tradeSlot={} shift={} ctrl={}", tradeSlot, shift, ctrl);
+    if (tradeSlot == inventory::SLOT_INVALID) {
+        return;
+    }
+
+    // Validate it's a valid trade slot (3000-3003)
+    if (tradeSlot < inventory::TRADE_BEGIN || tradeSlot > inventory::TRADE_BEGIN + 3) {
+        LOG_WARN(MOD_UI, "Invalid trade slot {}", tradeSlot);
+        return;
+    }
+
+    // Convert to trade slot index (0-3)
+    int tradeSlotIndex = tradeSlot - inventory::TRADE_BEGIN;
+
+    if (invManager_->hasCursorItem()) {
+        // Check if item can be traded (not NO_DROP)
+        const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
+        if (cursorItem && cursorItem->noDrop) {
+            LOG_DEBUG(MOD_UI, "Cannot trade NO_DROP item: {}", cursorItem->name);
+            if (onTradeErrorCallback_) {
+                onTradeErrorCallback_("You cannot trade that item.");
+            }
+            return;
+        }
+
+        // Place item from cursor into trade slot
+        int16_t sourceSlot = invManager_->getCursorSourceSlot();
+        LOG_DEBUG(MOD_UI, "WindowManager Placing cursor item (from slot {}) in trade slot {}", sourceSlot, tradeSlot);
+
+        // Notify TradeManager about the item being added to trade
+        if (tradeManager_) {
+            tradeManager_->addItemToTrade(sourceSlot, tradeSlotIndex);
+        }
+
+        placeItem(tradeSlot);
+    } else {
+        // Pick up item from trade slot
+        if (invManager_->hasItem(tradeSlot)) {
+            LOG_DEBUG(MOD_UI, "WindowManager Picking up from trade slot {}", tradeSlot);
+
+            // Notify TradeManager about the item being removed from trade
+            if (tradeManager_) {
+                tradeManager_->removeItemFromTrade(tradeSlotIndex);
+            }
+
+            pickupItem(tradeSlot);
+        }
+    }
+}
+
+void WindowManager::handleTradeMoneyAreaClick() {
+    LOG_DEBUG(MOD_UI, "Trade money area clicked");
+
+    if (!invManager_ || !tradeManager_) {
+        return;
+    }
+
+    // Check if we have cursor money to add to trade
+    if (!invManager_->hasCursorMoney()) {
+        LOG_DEBUG(MOD_UI, "No cursor money to add to trade");
+        return;
+    }
+
+    // Get current trade money amounts
+    const TradeMoney& currentMoney = tradeManager_->getOwnMoney();
+    uint32_t pp = currentMoney.platinum;
+    uint32_t gp = currentMoney.gold;
+    uint32_t sp = currentMoney.silver;
+    uint32_t cp = currentMoney.copper;
+
+    // Add cursor money to appropriate type
+    uint32_t amount = invManager_->getCursorMoneyAmount();
+    auto cursorType = invManager_->getCursorMoneyType();
+
+    switch (cursorType) {
+        case inventory::InventoryManager::CursorMoneyType::Platinum:
+            pp += amount;
+            LOG_DEBUG(MOD_UI, "Adding {} platinum to trade, new total: {}", amount, pp);
+            break;
+        case inventory::InventoryManager::CursorMoneyType::Gold:
+            gp += amount;
+            LOG_DEBUG(MOD_UI, "Adding {} gold to trade, new total: {}", amount, gp);
+            break;
+        case inventory::InventoryManager::CursorMoneyType::Silver:
+            sp += amount;
+            LOG_DEBUG(MOD_UI, "Adding {} silver to trade, new total: {}", amount, sp);
+            break;
+        case inventory::InventoryManager::CursorMoneyType::Copper:
+            cp += amount;
+            LOG_DEBUG(MOD_UI, "Adding {} copper to trade, new total: {}", amount, cp);
+            break;
+        default:
+            LOG_WARN(MOD_UI, "Unknown cursor money type");
+            return;
+    }
+
+    // Update trade money
+    tradeManager_->setOwnMoney(pp, gp, sp, cp);
+
+    // Clear cursor money
+    invManager_->clearCursorMoney();
+}
+
 void WindowManager::handleSlotHover(int16_t slotId, int mouseX, int mouseY) {
     if (slotId == inventory::SLOT_INVALID) {
         tooltip_.clear();
@@ -1787,6 +2268,99 @@ void WindowManager::handleBagOpenClick(int16_t generalSlot) {
     }
 
     toggleBagWindow(generalSlot);
+}
+
+void WindowManager::handleCurrencyClick(CurrencyType type, uint32_t maxAmount) {
+    // If holding cursor money, return it to inventory
+    if (invManager_->hasCursorMoney()) {
+        invManager_->returnCursorMoney();
+        refreshCurrencyDisplay();  // Update display after returning money
+        LOG_DEBUG(MOD_UI, "Returned cursor money to inventory");
+        return;
+    }
+
+    // Can't pick up money if already holding an item
+    if (invManager_->hasCursorItem()) {
+        return;
+    }
+
+    if (maxAmount == 0) {
+        return;
+    }
+
+    // Show money input dialog
+    if (moneyInputDialog_) {
+        // Center the dialog on screen
+        int x = (screenWidth_ - 250) / 2;
+        int y = (screenHeight_ - 130) / 2;
+        moneyInputDialog_->setPosition(x, y);
+        moneyInputDialog_->show(type, maxAmount);
+    }
+}
+
+void WindowManager::refreshCurrencyDisplay() {
+    if (!inventoryWindow_ || !invManager_) {
+        return;
+    }
+
+    // Start with base currency values
+    uint32_t displayPlatinum = basePlatinum_;
+    uint32_t displayGold = baseGold_;
+    uint32_t displaySilver = baseSilver_;
+    uint32_t displayCopper = baseCopper_;
+
+    // Subtract any money currently on cursor
+    if (invManager_->hasCursorMoney()) {
+        uint32_t cursorAmount = invManager_->getCursorMoneyAmount();
+        switch (invManager_->getCursorMoneyType()) {
+            case inventory::InventoryManager::CursorMoneyType::Platinum:
+                displayPlatinum = (displayPlatinum >= cursorAmount) ? displayPlatinum - cursorAmount : 0;
+                break;
+            case inventory::InventoryManager::CursorMoneyType::Gold:
+                displayGold = (displayGold >= cursorAmount) ? displayGold - cursorAmount : 0;
+                break;
+            case inventory::InventoryManager::CursorMoneyType::Silver:
+                displaySilver = (displaySilver >= cursorAmount) ? displaySilver - cursorAmount : 0;
+                break;
+            case inventory::InventoryManager::CursorMoneyType::Copper:
+                displayCopper = (displayCopper >= cursorAmount) ? displayCopper - cursorAmount : 0;
+                break;
+            default:
+                break;
+        }
+    }
+
+    inventoryWindow_->setCurrency(displayPlatinum, displayGold, displaySilver, displayCopper);
+}
+
+void WindowManager::handleMoneyInputConfirm(CurrencyType type, uint32_t amount) {
+    if (amount == 0) {
+        return;
+    }
+
+    // Convert CurrencyType to CursorMoneyType
+    inventory::InventoryManager::CursorMoneyType cursorType;
+    switch (type) {
+        case CurrencyType::Platinum:
+            cursorType = inventory::InventoryManager::CursorMoneyType::Platinum;
+            break;
+        case CurrencyType::Gold:
+            cursorType = inventory::InventoryManager::CursorMoneyType::Gold;
+            break;
+        case CurrencyType::Silver:
+            cursorType = inventory::InventoryManager::CursorMoneyType::Silver;
+            break;
+        case CurrencyType::Copper:
+            cursorType = inventory::InventoryManager::CursorMoneyType::Copper;
+            break;
+        default:
+            return;
+    }
+
+    // Pick up the money onto cursor
+    invManager_->pickupMoney(cursorType, amount);
+    refreshCurrencyDisplay();  // Update display after picking up money
+    LOG_DEBUG(MOD_UI, "Money picked up: {} of type {}", amount, static_cast<int>(type));
 }
 
 void WindowManager::pickupItem(int16_t slotId) {
@@ -1969,6 +2543,62 @@ void WindowManager::renderCursorItem() {
         irr::core::recti(x, y + CURSOR_ITEM_SIZE - 1, x + CURSOR_ITEM_SIZE, y + CURSOR_ITEM_SIZE));
     driver_->draw2DRectangle(borderColor,
         irr::core::recti(x + CURSOR_ITEM_SIZE - 1, y, x + CURSOR_ITEM_SIZE, y + CURSOR_ITEM_SIZE));
+}
+
+void WindowManager::renderCursorMoney() {
+    if (!driver_ || !gui_ || !invManager_->hasCursorMoney()) {
+        return;
+    }
+
+    const int CURSOR_SIZE = 32;
+    const int OFFSET = 8;
+
+    int x = mouseX_ + OFFSET;
+    int y = mouseY_ + OFFSET;
+
+    // Get currency color based on type
+    irr::video::SColor coinColor;
+    std::wstring coinLabel;
+    switch (invManager_->getCursorMoneyType()) {
+        case inventory::InventoryManager::CursorMoneyType::Platinum:
+            coinColor = irr::video::SColor(255, 180, 180, 220);
+            coinLabel = L"PP";
+            break;
+        case inventory::InventoryManager::CursorMoneyType::Gold:
+            coinColor = irr::video::SColor(255, 255, 215, 0);
+            coinLabel = L"GP";
+            break;
+        case inventory::InventoryManager::CursorMoneyType::Silver:
+            coinColor = irr::video::SColor(255, 192, 192, 192);
+            coinLabel = L"SP";
+            break;
+        case inventory::InventoryManager::CursorMoneyType::Copper:
+            coinColor = irr::video::SColor(255, 184, 115, 51);
+            coinLabel = L"CP";
+            break;
+        default:
+            return;
+    }
+
+    // Draw coin background
+    irr::core::recti coinRect(x, y, x + CURSOR_SIZE, y + CURSOR_SIZE);
+    driver_->draw2DRectangle(coinColor, coinRect);
+
+    // Draw border
+    driver_->draw2DRectangleOutline(coinRect, irr::video::SColor(255, 255, 255, 255));
+
+    // Draw amount text
+    irr::gui::IGUIFont* font = gui_->getBuiltInFont();
+    if (font) {
+        std::wstringstream ss;
+        ss << invManager_->getCursorMoneyAmount();
+        irr::core::recti textRect(x, y + CURSOR_SIZE + 2, x + CURSOR_SIZE + 20, y + CURSOR_SIZE + 14);
+        font->draw(ss.str().c_str(), textRect, irr::video::SColor(255, 255, 255, 255));
+
+        // Draw coin type label
+        irr::core::recti labelRect(x, y + 2, x + CURSOR_SIZE, y + 14);
+        font->draw(coinLabel.c_str(), labelRect, irr::video::SColor(255, 0, 0, 0), true, true);
+    }
 }
 
 void WindowManager::renderSpellCursor() {

@@ -84,6 +84,13 @@ UISettings::SpellBookSettings::SpellBookSettings() {
     window.showTitleBar = true;
 }
 
+UISettings::TradeSettings::TradeSettings() {
+    window.x = -1;  // Centered by default
+    window.y = -1;
+    window.visible = false;
+    window.showTitleBar = true;
+}
+
 UISettings::CastingBarSettings::CastingBarSettings() {
     playerBar.x = -1;  // Centered
     playerBar.y = -1;  // Above chat
@@ -172,6 +179,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("spellbook")) {
             loadSpellBookSettings(windows["spellbook"]);
         }
+        if (windows.isMember("trade")) {
+            loadTradeSettings(windows["trade"]);
+        }
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
         }
@@ -234,6 +244,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveSpellGemSettings(windows["spellGems"]);
     saveSkillsSettings(windows["skills"]);
     saveSpellBookSettings(windows["spellbook"]);
+    saveTradeSettings(windows["trade"]);
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
 
@@ -310,6 +321,9 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
         }
         if (windows.isMember("spellbook")) {
             loadSpellBookSettings(windows["spellbook"]);
+        }
+        if (windows.isMember("trade")) {
+            loadTradeSettings(windows["trade"]);
         }
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
@@ -965,6 +979,18 @@ void UISettings::saveHotbarSettings(Json::Value& json) const {
         buttons.append(btn);
     }
     json["buttons"] = buttons;
+}
+
+// ============================================================================
+// Trade Settings Serialization
+// ============================================================================
+
+void UISettings::loadTradeSettings(const Json::Value& json) {
+    loadWindowSettings(m_trade.window, json);
+}
+
+void UISettings::saveTradeSettings(Json::Value& json) const {
+    saveWindowSettings(m_trade.window, json);
 }
 
 // ============================================================================
