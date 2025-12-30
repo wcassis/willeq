@@ -2142,6 +2142,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		// Intimidation response
 		LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
 		break;
+	case HC_OP_ReadBook:
+		ZoneProcessReadBook(p);
+		break;
 
 	default:
 		if (s_debug_level >= 1) {
@@ -3031,6 +3034,78 @@ void EverQuest::SendCancelTrade(const EQT::CancelTrade_Struct& cancel)
 	DumpPacket("C->S", HC_OP_CancelTrade, packet);
 	m_zone_connection->QueuePacket(packet);
 }
+
+// Book/Note reading methods
+
+void EverQuest::SendReadBookRequest(uint8_t window, uint8_t type, const std::string& filename)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_MAIN, "No zone connection, not sending ReadBook request");
+		return;
+	}
+
+	// Packet format from server titanium_structs.h BookRequest_Struct:
+	// Offset 0-1: opcode (2 bytes)
+	// Offset 2: window (1 byte) - 0xFF = new window
+	// Offset 3: type (1 byte) - 0=scroll, 1=book, 2=item info
+	// Offset 4+: txtfile (null-terminated string)
+	size_t packetSize = 2 + 2 + filename.length() + 1;  // opcode + window/type + filename + null
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(packetSize);
+
+	packet.PutUInt16(0, HC_OP_ReadBook);    // opcode
+	packet.PutUInt8(2, window);              // window
+	packet.PutUInt8(3, type);                // type
+	// txtfile at offset 4
+	memcpy((char*)packet.Data() + 4, filename.c_str(), filename.length() + 1);
+
+	LOG_DEBUG(MOD_MAIN, "Sending ReadBook request: window={} type={} filename='{}'", window, type, filename);
+
+	DumpPacket("C->S", HC_OP_ReadBook, packet);
+	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
+{
+	// Response packet format:
+	// Offset 0-1: opcode (2 bytes)
+	// Offset 2: window (1 byte)
+	// Offset 3: type (1 byte)
+	// Offset 4+: booktext (null-terminated string with '^' as newline)
+
+	if (p.Length() < 4) {
+		LOG_WARN(MOD_MAIN, "ReadBook response too short: {} bytes", p.Length());
+		return;
+	}
+
+	uint8_t window = p.GetUInt8(2);
+	uint8_t type = p.GetUInt8(3);
+
+	// Extract the book text (starts at offset 4)
+	std::string bookText;
+	if (p.Length() > 4) {
+		bookText = p.GetCString(4);
+	}
+
+	LOG_DEBUG(MOD_MAIN, "ReadBook response: window={} type={} textLen={}", window, type, bookText.length());
+	LOG_TRACE(MOD_MAIN, "Book text: '{}'", bookText);
+
+#ifdef EQT_HAS_GRAPHICS
+	// Show the note window in the renderer
+	if (m_renderer) {
+		m_renderer->showNoteWindow(bookText, type);
+	}
+#endif
+}
+
+#ifdef EQT_HAS_GRAPHICS
+void EverQuest::RequestReadBook(const std::string& filename, uint8_t type)
+{
+	// Send read book request with new window flag (0xFF)
+	SendReadBookRequest(0xFF, type, filename);
+}
+#endif
 
 bool EverQuest::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
 {
@@ -11628,6 +11703,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Set up chat submit callback
 	m_renderer->setChatSubmitCallback([this](const std::string& text) {
 		ProcessChatInput(text);
+	});
+
+	// Set up read item callback for book/note reading
+	m_renderer->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+		RequestReadBook(bookText, bookType);
 	});
 
 	// Set up auto-completion for chat window

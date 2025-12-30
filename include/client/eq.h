@@ -232,7 +232,9 @@ enum TitaniumZoneOpcodes {
 	HC_OP_ShopPlayerSell = 0x0e13,   // Sell item to vendor / sell confirmation
 	HC_OP_ShopEnd = 0x7e03,          // Close vendor window
 	HC_OP_ShopEndConfirm = 0x20b2,   // Server confirms vendor session ended
-	HC_OP_MoneyUpdate = 0x267c       // Update player money after transaction
+	HC_OP_MoneyUpdate = 0x267c,      // Update player money after transaction
+	// Book/Note reading opcode
+	HC_OP_ReadBook = 0x1496          // Read note/book item text
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -1107,6 +1109,10 @@ private:
 	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
 	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
 
+	// Book/Note reading packet handlers
+	void ZoneProcessReadBook(const EQ::Net::Packet& p);
+	void SendReadBookRequest(uint8_t window, uint8_t type, const std::string& filename);
+
 public:
 	// Save entity data to JSON file for debugging
 	void SaveEntityDataToFile(const std::string& filename);
@@ -1128,5 +1134,8 @@ public:
 	void CloseVendorWindow();
 	bool IsVendorWindowOpen() const { return m_vendor_npc_id != 0; }
 	uint16_t GetVendorNpcId() const { return m_vendor_npc_id; }
+
+	// Book/Note reading methods (Player mode with graphics)
+	void RequestReadBook(const std::string& filename, uint8_t type = 0);
 #endif
 };

@@ -512,6 +512,10 @@ public:
     using VendorToggleCallback = std::function<void()>;
     void setVendorToggleCallback(VendorToggleCallback callback) { vendorToggleCallback_ = callback; }
 
+    // Read item callback (called when right-clicking a readable book/note item)
+    using ReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
+    void setReadItemCallback(ReadItemCallback callback);
+
     // Chat submit callback (called when user submits chat input)
     using ChatSubmitCallback = std::function<void(const std::string& text)>;
     void setChatSubmitCallback(ChatSubmitCallback callback);
@@ -538,6 +542,9 @@ public:
     void toggleInventory();
     void openInventory();
     void closeInventory();
+
+    // Note/Book reading UI
+    void showNoteWindow(const std::string& text, uint8_t type);
 
     // Zone ready state - controls whether to show loading screen
     void setZoneReady(bool ready) { zoneReady_ = ready; }

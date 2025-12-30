@@ -324,12 +324,12 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
                   std::string(fields[96]), std::string(fields[97]), std::string(fields[98]));
     }
 
-    // Book (100-101)
+    // Book (100-102)
     item.bookType = static_cast<uint32_t>(toInt(fields[100]));
-    // fields[101] = BookType
-
-    // Filename (102)
-    // fields[102] = Filename
+    // fields[101] = BookType (alternative/legacy?)
+    if (fields.size() > 102 && !fields[102].empty()) {
+        item.bookText = std::string(fields[102]);
+    }
 
     // More flags (103-108)
     // fields[103] = BaneDmgRaceAmt

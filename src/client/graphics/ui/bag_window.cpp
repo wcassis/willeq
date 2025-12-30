@@ -60,11 +60,20 @@ void BagWindow::initializeSlots() {
 }
 
 bool BagWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl) {
-    if (!visible_ || !leftButton) {
+    if (!visible_) {
         return false;
     }
 
     if (!containsPoint(x, y)) {
+        return false;
+    }
+
+    // Convert to window-relative coordinates
+    int relX = x - bounds_.UpperLeftCorner.X;
+    int relY = y - bounds_.UpperLeftCorner.Y;
+
+    // Right-click not handled here
+    if (!leftButton) {
         return false;
     }
 
@@ -76,14 +85,18 @@ bool BagWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool 
         return true;
     }
 
-    // Convert to window-relative coordinates
-    int relX = x - bounds_.UpperLeftCorner.X;
-    int relY = y - bounds_.UpperLeftCorner.Y;
-
     // Check slots
     for (const auto& slot : slots_) {
         if (slot.containsPoint(relX, relY)) {
             int16_t slotId = slot.getSlotId();
+            const inventory::ItemInstance* item = manager_->getItem(slotId);
+
+            // Ctrl+click on readable item = read it
+            if (ctrl && item && !item->bookText.empty() && readItemCallback_) {
+                readItemCallback_(item->bookText, static_cast<uint8_t>(item->bookType));
+                return true;
+            }
+
             if (slotClickCallback_) {
                 slotClickCallback_(slotId, shift, ctrl);
             }

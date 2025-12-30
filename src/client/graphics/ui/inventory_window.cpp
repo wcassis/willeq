@@ -152,11 +152,20 @@ void InventoryWindow::initializeSlots() {
 }
 
 bool InventoryWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl) {
-    if (!visible_ || !leftButton) {
+    if (!visible_) {
         return false;
     }
 
     if (!containsPoint(x, y)) {
+        return false;
+    }
+
+    // Convert to window-relative coordinates
+    int relX = x - bounds_.UpperLeftCorner.X;
+    int relY = y - bounds_.UpperLeftCorner.Y;
+
+    // Right-click not handled here
+    if (!leftButton) {
         return false;
     }
 
@@ -167,10 +176,6 @@ bool InventoryWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
         dragOffset_.Y = y - bounds_.UpperLeftCorner.Y;
         return true;
     }
-
-    // Convert to window-relative coordinates
-    int relX = x - bounds_.UpperLeftCorner.X;
-    int relY = y - bounds_.UpperLeftCorner.Y;
 
     // Check model view area for drag rotation
     if (modelView_ && modelViewBounds_.isPointInside(irr::core::vector2di(relX, relY))) {
@@ -200,6 +205,14 @@ bool InventoryWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
     for (int i = 0; i < inventory::EQUIPMENT_COUNT; i++) {
         if (equipmentSlots_[i].containsPoint(relX, relY)) {
             int16_t slotId = equipmentSlots_[i].getSlotId();
+            const inventory::ItemInstance* item = manager_->getItem(slotId);
+
+            // Ctrl+click on readable item = read it
+            if (ctrl && item && !item->bookText.empty() && readItemCallback_) {
+                readItemCallback_(item->bookText, static_cast<uint8_t>(item->bookType));
+                return true;
+            }
+
             if (slotClickCallback_) {
                 slotClickCallback_(slotId, shift, ctrl);
             }
@@ -213,8 +226,15 @@ bool InventoryWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
             int16_t slotId = generalSlots_[i].getSlotId();
             LOG_DEBUG(MOD_UI, "InventoryWindow General slot {} clicked, slotId={}", i, slotId);
 
-            // Check if this is a bag and handle accordingly
             const inventory::ItemInstance* item = manager_->getItem(slotId);
+
+            // Ctrl+click on readable item = read it
+            if (ctrl && item && !item->bookText.empty() && readItemCallback_) {
+                readItemCallback_(item->bookText, static_cast<uint8_t>(item->bookType));
+                return true;
+            }
+
+            // Check if this is a bag and handle accordingly
             if (item && item->isContainer() && !shift && !ctrl) {
                 // Single click on bag = open/close bag window
                 LOG_DEBUG(MOD_UI, "InventoryWindow Opening bag at slot {}", slotId);

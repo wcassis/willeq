@@ -4141,6 +4141,12 @@ void IrrlichtRenderer::closeInventory() {
     }
 }
 
+void IrrlichtRenderer::showNoteWindow(const std::string& text, uint8_t type) {
+    if (windowManager_) {
+        windowManager_->showNoteWindow(text, type);
+    }
+}
+
 bool IrrlichtRenderer::isInventoryOpen() const {
     return windowManager_ && windowManager_->isInventoryOpen();
 }
@@ -4194,6 +4200,12 @@ void IrrlichtRenderer::setChatSubmitCallback(ChatSubmitCallback callback) {
     chatSubmitCallback_ = callback;
     if (windowManager_) {
         windowManager_->setChatSubmitCallback(callback);
+    }
+}
+
+void IrrlichtRenderer::setReadItemCallback(ReadItemCallback callback) {
+    if (windowManager_) {
+        windowManager_->setOnReadItem(callback);
     }
 }
 

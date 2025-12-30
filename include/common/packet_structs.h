@@ -1039,6 +1039,22 @@ struct CancelTrade_Struct {
     uint32_t action;           // Action code (0x07 observed for cancel)
 };
 
+// OP_ReadBook - Request to read a book/note item (C->S)
+// Variable length - txtfile is null-terminated string
+struct BookRequest_Struct {
+    uint8_t window;            // Display window (0xFF = new window)
+    uint8_t type;              // 0=scroll, 1=book, 2=item info
+    char txtfile[1];           // Variable length - text file name from items table
+};
+
+// OP_ReadBook - Book/note text response (S->C)
+// Variable length - booktext is null-terminated string
+struct BookText_Struct {
+    uint8_t window;            // Display window (0xFF = new window)
+    uint8_t type;              // 0=scroll, 1=book, 2=item info
+    char booktext[1];          // Variable length - text content (use '^' for newlines)
+};
+
 #pragma pack(pop)
 
 // Helper functions for position bitfield extraction

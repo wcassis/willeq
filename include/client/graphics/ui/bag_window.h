@@ -14,6 +14,7 @@ namespace ui {
 using BagSlotClickCallback = std::function<void(int16_t slotId, bool shift, bool ctrl)>;
 using BagSlotHoverCallback = std::function<void(int16_t slotId, int mouseX, int mouseY)>;
 using BagIconLookupCallback = std::function<irr::video::ITexture*(uint32_t iconId)>;
+using BagReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
 
 class BagWindow : public WindowBase {
 public:
@@ -31,6 +32,7 @@ public:
     void setSlotClickCallback(BagSlotClickCallback callback) { slotClickCallback_ = callback; }
     void setSlotHoverCallback(BagSlotHoverCallback callback) { slotHoverCallback_ = callback; }
     void setIconLookupCallback(BagIconLookupCallback callback) { iconLookupCallback_ = callback; }
+    void setReadItemCallback(BagReadItemCallback callback) { readItemCallback_ = callback; }
 
     // Get slot at position
     int16_t getSlotAtPosition(int x, int y) const;
@@ -71,6 +73,7 @@ private:
     BagSlotClickCallback slotClickCallback_;
     BagSlotHoverCallback slotHoverCallback_;
     BagIconLookupCallback iconLookupCallback_;
+    BagReadItemCallback readItemCallback_;
 
     // Highlighted slot
     int16_t highlightedSlot_ = inventory::SLOT_INVALID;

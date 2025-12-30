@@ -32,6 +32,7 @@ using SlotHoverCallback = std::function<void(int16_t slotId, int mouseX, int mou
 using DestroyClickCallback = std::function<void()>;
 using IconLookupCallback = std::function<irr::video::ITexture*(uint32_t iconId)>;
 using CurrencyClickCallback = std::function<void(CurrencyType type, uint32_t maxAmount)>;
+using ReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
 
 class InventoryWindow : public WindowBase {
 public:
@@ -49,6 +50,7 @@ public:
     void setDestroyClickCallback(DestroyClickCallback callback) { destroyClickCallback_ = callback; }
     void setIconLookupCallback(IconLookupCallback callback) { iconLookupCallback_ = callback; }
     void setCurrencyClickCallback(CurrencyClickCallback callback) { currencyClickCallback_ = callback; }
+    void setReadItemCallback(ReadItemCallback callback) { readItemCallback_ = callback; }
 
     // Get slot at position
     int16_t getSlotAtPosition(int x, int y) const;
@@ -140,6 +142,7 @@ private:
     DestroyClickCallback destroyClickCallback_;
     IconLookupCallback iconLookupCallback_;
     CurrencyClickCallback currencyClickCallback_;
+    ReadItemCallback readItemCallback_;
 
     // Highlighted slot
     int16_t highlightedSlot_ = inventory::SLOT_INVALID;

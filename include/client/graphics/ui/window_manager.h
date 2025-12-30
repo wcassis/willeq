@@ -16,6 +16,7 @@
 #include "hotbar_window.h"
 #include "hotbar_cursor.h"
 #include "skills_window.h"
+#include "note_window.h"
 #include "casting_bar.h"
 #include "item_tooltip.h"
 #include "buff_tooltip.h"
@@ -248,6 +249,16 @@ public:
     void setSkillActivateCallback(SkillActivateCallback callback);
     void setHotbarCreateCallback(HotbarCreateCallback callback);
 
+    // Note window management (for reading books/notes)
+    void showNoteWindow(const std::string& text, uint8_t type);
+    void closeNoteWindow();
+    bool isNoteWindowOpen() const;
+    NoteWindow* getNoteWindow() { return noteWindow_.get(); }
+    const NoteWindow* getNoteWindow() const { return noteWindow_.get(); }
+
+    // Read item callback (set by EverQuest to handle book/note reading requests)
+    void setOnReadItem(ReadItemCallback callback);
+
     // Player status window management
     void initPlayerStatusWindow(EverQuest* eq);
     PlayerStatusWindow* getPlayerStatusWindow() { return playerStatusWindow_.get(); }
@@ -429,6 +440,7 @@ private:
     std::unique_ptr<HotbarWindow> hotbarWindow_;
     HotbarCursor hotbarCursor_;
     std::unique_ptr<SkillsWindow> skillsWindow_;
+    std::unique_ptr<NoteWindow> noteWindow_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
@@ -472,6 +484,9 @@ private:
     // Skills window callbacks
     SkillActivateCallback skillActivateCallback_;
     HotbarCreateCallback hotbarCreateCallback_;
+
+    // Read item callback (for book/note reading)
+    ReadItemCallback readItemCallback_;
 
     // Tooltips
     ItemTooltip tooltip_;

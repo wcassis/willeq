@@ -71,6 +71,12 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
         handleCurrencyClick(type, maxAmount);
     });
 
+    inventoryWindow_->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+        if (readItemCallback_) {
+            readItemCallback_(bookText, bookType);
+        }
+    });
+
     // Create money input dialog
     moneyInputDialog_ = std::make_unique<MoneyInputDialog>();
     moneyInputDialog_->setOnConfirm([this](CurrencyType type, uint32_t amount) {
@@ -444,6 +450,12 @@ void WindowManager::openBagWindow(int16_t generalSlot) {
 
     bagWindow->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
         return iconLoader_.getIcon(iconId);
+    });
+
+    bagWindow->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+        if (readItemCallback_) {
+            readItemCallback_(bookText, bookType);
+        }
     });
 
     bagWindow->show();
@@ -1113,6 +1125,13 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check note window
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        if (noteWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
     // Check loot window first (if open)
     if (lootWindow_ && lootWindow_->isOpen()) {
         if (lootWindow_->handleMouseDown(x, y, leftButton, shift)) {
@@ -1289,6 +1308,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         }
     }
 
+    // Check note window
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        if (noteWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
     // Check trade window
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
@@ -1424,6 +1450,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
     // Check skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         skillsWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
+    // Check note window
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        noteWindow_->handleMouseMove(x, y);
         // Don't return true - allow other windows to update their hover state
     }
 
@@ -1624,6 +1656,13 @@ bool WindowManager::handleMouseWheel(float delta) {
         }
     }
 
+    // Route mouse wheel to note window if visible and mouse is over it
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        if (noteWindow_->containsPoint(mouseX_, mouseY_)) {
+            return noteWindow_->handleMouseWheel(delta);
+        }
+    }
+
     return false;
 }
 
@@ -1720,6 +1759,11 @@ void WindowManager::render() {
     // Render bag windows
     for (auto& [slotId, bagWindow] : bagWindows_) {
         bagWindow->render(driver_, gui_);
+    }
+
+    // Render note window (on top of inventory/bags)
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        noteWindow_->render(driver_, gui_);
     }
 
     // Render tooltip
@@ -3234,6 +3278,35 @@ void WindowManager::setHotbarCreateCallback(HotbarCreateCallback callback) {
     if (skillsWindow_) {
         skillsWindow_->setHotbarCallback(callback);
     }
+}
+
+// ============================================================================
+// Note Window Management
+// ============================================================================
+
+void WindowManager::showNoteWindow(const std::string& text, uint8_t type) {
+    if (!noteWindow_) {
+        noteWindow_ = std::make_unique<NoteWindow>();
+        noteWindow_->setSettingsKey("note");
+        noteWindow_->positionDefault(screenWidth_, screenHeight_);
+    }
+
+    noteWindow_->open(text, type);
+    LOG_DEBUG(MOD_UI, "Note window opened: type={} textLen={}", type, text.length());
+}
+
+void WindowManager::closeNoteWindow() {
+    if (noteWindow_) {
+        noteWindow_->close();
+    }
+}
+
+bool WindowManager::isNoteWindowOpen() const {
+    return noteWindow_ && noteWindow_->isVisible();
+}
+
+void WindowManager::setOnReadItem(ReadItemCallback callback) {
+    readItemCallback_ = callback;
 }
 
 // ============================================================================
