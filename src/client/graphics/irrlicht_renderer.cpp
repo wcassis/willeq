@@ -1823,9 +1823,30 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
         bool shouldHide = (rendererMode_ == RendererMode::Player && cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerEntityVisible(!shouldHide);
 
-        // Debug: Log player model info at zone-in
-        float modelYOffset = entityRenderer_->getPlayerModelYOffset();
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: modelYOffset={:.2f} visible={}", modelYOffset, !shouldHide);
+        // Get player model info now that the model is loaded
+        float eyeHeight = entityRenderer_->getPlayerEyeHeightFromFeet();
+        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeHeightFromFeet={:.2f} visible={}", eyeHeight, !shouldHide);
+
+        // Fix first-person camera height now that we have the player model
+        // playerZ_ is feet position, so camera Z = feet + eye height + user adjustment
+        if (cameraMode_ == CameraMode::FirstPerson && camera_ && eyeHeight > 0.0f) {
+            float camZ = playerZ_ + eyeHeight + playerConfig_.eyeHeight;
+
+            // Update camera position with correct height
+            float headingRad = playerHeading_ / 512.0f * 2.0f * irr::core::PI;
+            irr::core::vector3df camPos(playerX_, camZ, playerY_);
+            irr::core::vector3df target(
+                playerX_ + std::sin(headingRad) * 100.0f,
+                camZ,
+                playerY_ + std::cos(headingRad) * 100.0f
+            );
+
+            camera_->setPosition(camPos);
+            camera_->setTarget(target);
+
+            LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] First-person camera: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}",
+                     playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ);
+        }
     }
 }
 
@@ -1860,15 +1881,16 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
         cameraController_->enableZoneInLogging();  // Enable one-time detailed logging
         cameraController_->setFollowPosition(x, y, z, heading);
     } else if (cameraMode_ == CameraMode::FirstPerson && camera_ && playerInBounds) {
-        // Position camera at player location (fallback - main update is in updatePlayerMovement)
-        // Server Z is model center, so approximate head height using |modelYOffset|
-        float camZ = z + 5.0f;  // Default fallback
-        float modelYOffset = 0.0f;
+        // Position camera at player location
+        // z is feet position, so camera = feet + eye height
+        float eyeHeight = 6.0f;  // Default fallback for human-sized entity
         if (entityRenderer_) {
-            modelYOffset = entityRenderer_->getPlayerModelYOffset();
-            camZ = z + std::abs(modelYOffset);  // Head is at top of model
+            float modelEyeHeight = entityRenderer_->getPlayerEyeHeightFromFeet();
+            if (modelEyeHeight > 0.0f) {
+                eyeHeight = modelEyeHeight;
+            }
         }
-        camZ += playerConfig_.eyeHeight;
+        float camZ = z + eyeHeight + playerConfig_.eyeHeight;
 
         // Set camera direction based on heading
         // EQ heading: 0=North(+Y), 128=West(-X), 256=South(-Y), 384=East(+X)
@@ -1881,8 +1903,8 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
             y + std::cos(headingRad) * 100.0f
         );
 
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera mode=FirstPerson: modelYOffset={:.2f} eyeHeight={:.2f}",
-                 modelYOffset, playerConfig_.eyeHeight);
+        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera mode=FirstPerson: z(feet)={:.2f} eyeHeight={:.2f} adjust={:.2f}",
+                 z, eyeHeight, playerConfig_.eyeHeight);
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: pos=({:.2f},{:.2f},{:.2f}) -> Irrlicht(x={:.2f},y={:.2f},z={:.2f})",
                  x, y, camZ, camPos.X, camPos.Y, camPos.Z);
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: heading={:.2f} -> radians={:.4f} -> target({:.2f},{:.2f},{:.2f})",
@@ -3265,18 +3287,17 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 }
             }
 
-            // If no head bone, compute approximate head height from model offset
-            // Server Z (playerZ_) is model center, |modelYOffset| is half-height of model
-            // Head is at top of model = serverZ + |modelYOffset|
+            // If no head bone, compute eye height from model bounding box
+            // playerZ_ is feet position, so camera is at feet + eye height
             if (!gotHeadBone && entityRenderer_) {
-                float modelYOffset = entityRenderer_->getPlayerModelYOffset();
-                camZ = playerZ_ + std::abs(modelYOffset);  // Approximate head height
+                float eyeHeightFromFeet = entityRenderer_->getPlayerEyeHeightFromFeet();
+                camZ = playerZ_ + eyeHeightFromFeet;
 
                 // Debug logging
                 static int fallbackLogCount = 0;
                 if (fallbackLogCount++ % 500 == 0) {
-                    LOG_DEBUG(MOD_GRAPHICS, "Camera fallback: playerZ={:.2f} modelYOffset={:.2f} => camZ={:.2f} (before eyeHeight)",
-                              playerZ_, modelYOffset, camZ);
+                    LOG_DEBUG(MOD_GRAPHICS, "Camera fallback: playerZ(feet)={:.2f} + eyeHeight={:.2f} => camZ={:.2f} (before adjust)",
+                              playerZ_, eyeHeightFromFeet, camZ);
                 }
             }
 

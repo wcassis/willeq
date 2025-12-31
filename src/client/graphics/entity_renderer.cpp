@@ -1366,6 +1366,21 @@ float EntityRenderer::getPlayerModelYOffset() const {
     return 0.0f;
 }
 
+float EntityRenderer::getPlayerEyeHeightFromFeet() const {
+    // Find the player entity
+    for (const auto& [id, visual] : entities_) {
+        if (visual.isPlayer && visual.isAnimated && visual.animatedNode) {
+            irr::core::aabbox3df bbox = visual.animatedNode->getBoundingBox();
+            // Eye level is near the top of the model, minus a small offset for the top of head
+            // Feet are at bbox.MinEdge.Y, eyes are near bbox.MaxEdge.Y - 0.3
+            float eyeHeightFromFeet = (bbox.MaxEdge.Y - 0.3f) - bbox.MinEdge.Y;
+            return eyeHeightFromFeet;
+        }
+    }
+    // Default fallback for human-sized entity
+    return 6.0f;
+}
+
 void EntityRenderer::setCurrentZone(const std::string& zoneName) {
     if (raceModelLoader_) {
         raceModelLoader_->setCurrentZone(zoneName);
@@ -2071,7 +2086,8 @@ void EntityRenderer::cycleHeadVariant(int direction) {
 
             // Restore rotation (EQ heading to Irrlicht Y rotation)
             // Heading is stored in degrees (0-360) from eq.cpp 11-bit conversion
-            float visualHeading = visual.lastHeading;
+            // Must negate to convert between coordinate systems
+            float visualHeading = -visual.lastHeading;
             animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
 
             // Create name tag (text node above entity)

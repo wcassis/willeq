@@ -2512,9 +2512,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_x = server_y;
 	m_y = server_x;
 	m_z = z;
-	// Apply player heading transformation (same as spawn processing for players)
-	// Player headings need mirroring: 360 - server_heading
-	m_heading = 360.0f - heading;
+	// Use heading directly (same as NPCs)
+	m_heading = heading;
 	if (m_heading >= 360.0f) m_heading -= 360.0f;
 	if (m_heading < 0.0f) m_heading += 360.0f;
 
@@ -4094,15 +4093,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		// Server uses 512 EQ units = 360 degrees, so multiply by 360/512
 		uint32_t raw_heading = (field4 >> 13) & 0x7FF;
 		float server_heading = (static_cast<float>(raw_heading) / 4.0f) * 360.0f / 512.0f;
-		// NPCs: use heading directly
-		// Players: mirror with 360 - h
-		if (isNPC) {
-			entity.heading = server_heading;
-			if (entity.heading >= 360.0f) entity.heading -= 360.0f;
-		} else {
-			entity.heading = 360.0f - server_heading;
-			if (entity.heading >= 360.0f) entity.heading -= 360.0f;
-		}
+		// Use heading directly for all entities (NPCs and players)
+		entity.heading = server_heading;
+		if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 
 		// Debug logging for current player at level 1+
 		if (s_debug_level >= 1 && entity.name == m_character) {
@@ -4204,14 +4197,24 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				// Update our position to match server spawn position
 				m_x = entity.x;
 				m_y = entity.y;
-				m_z = entity.z;
 				m_size = entity.size;
+				// Server Z is model center. Convert to feet position for internal use.
+				// SendPositionUpdate will add m_size/2 to convert back to model center.
+				m_z = entity.z - (entity.size / 2.0f);
 				// Don't update heading from spawn data as it may be scaled differently
 
 				if (s_debug_level >= 1) {
-					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) heading unchanged={:.2f}",
-					         m_x, m_y, m_z, m_heading);
+					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) (feet Z, server Z was {:.2f}) heading unchanged={:.2f}",
+					         m_x, m_y, m_z, entity.z, m_heading);
 				}
+
+#ifdef EQT_HAS_GRAPHICS
+				// Update renderer with corrected feet Z position
+				if (m_renderer) {
+					float heading512 = m_heading * 512.0f / 360.0f;
+					m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
+				}
+#endif
 			}
 			
 			// Add to entity list
@@ -4722,15 +4725,9 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 	// Server uses 512 EQ units = 360 degrees, so multiply by 360/2048
 	uint32_t raw_heading = (field4 >> 13) & 0x7FF;
 	float server_heading = static_cast<float>(raw_heading) * 360.0f / 2048.0f;
-	// NPCs: use heading directly
-	// Players: mirror with 360 - h
-	if (isNPC) {
-		entity.heading = server_heading;
-		if (entity.heading >= 360.0f) entity.heading -= 360.0f;
-	} else {
-		entity.heading = 360.0f - server_heading;
-		if (entity.heading >= 360.0f) entity.heading -= 360.0f;
-	}
+	// Use heading directly for all entities (NPCs and players)
+	entity.heading = server_heading;
+	if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 
 	// Debug logging for current player at level 1+
 	if (s_debug_level >= 1 && entity.name == m_character) {
@@ -4801,12 +4798,29 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 				m_trade_manager->setMySpawnId(m_my_spawn_id);
 			}
 			if (s_debug_level >= 1) {
-				LOG_DEBUG(MOD_MAIN, "Found our own spawn in NewSpawn! Name: {}, Spawn ID: {}, updating position to ({:.2f}, {:.2f}, {:.2f})", entity.name, m_my_spawn_id, entity.x, entity.y, entity.z);
+				LOG_DEBUG(MOD_MAIN, "Found our own spawn in NewSpawn! Name: {}, Spawn ID: {}, server pos=({:.2f}, {:.2f}, {:.2f}) size={:.2f}",
+					entity.name, m_my_spawn_id, entity.x, entity.y, entity.z, entity.size);
 			}
 			// Update our position to match server spawn position
 			m_x = entity.x;
 			m_y = entity.y;
-			m_z = entity.z;
+			m_size = entity.size;
+			// Server Z is model center. Convert to feet position for internal use.
+			// SendPositionUpdate will add m_size/2 to convert back to model center.
+			m_z = entity.z - (entity.size / 2.0f);
+
+			if (s_debug_level >= 1) {
+				LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from NewSpawn: ({:.2f},{:.2f},{:.2f}) (feet Z, server Z was {:.2f})",
+					m_x, m_y, m_z, entity.z);
+			}
+
+#ifdef EQT_HAS_GRAPHICS
+			// Update renderer with corrected feet Z position
+			if (m_renderer) {
+				float heading512 = m_heading * 512.0f / 360.0f;
+				m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
+			}
+#endif
 		}
 
 		// Add to entity list
@@ -5016,9 +5030,10 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	// Convert heading to degrees: 512 EQ units = 360 degrees
 	uint32_t raw_heading = heading & 0x7FF;  // Lower 11 bits
 	float server_h = static_cast<float>(raw_heading) * 360.0f / 2048.0f;
-	float h_player = 360.0f - server_h;  // For players: mirror
+	// Use heading directly for all entities (no mirroring)
+	float h_player = server_h;
 	if (h_player >= 360.0f) h_player -= 360.0f;
-	float h_npc = server_h;              // For NPCs: use directly
+	float h_npc = server_h;
 	if (h_npc >= 360.0f) h_npc -= 360.0f;
 
 	// Debug: log position updates
@@ -5046,7 +5061,10 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		m_x = x;
 		m_y = y;
 		m_z = z;
-		m_heading = h_player;
+		// S->C transformation for our player: inverse of C->S (server_heading = 90 - m_heading)
+		m_heading = 90.0f - server_h;
+		if (m_heading < 0.0f) m_heading += 360.0f;
+		if (m_heading >= 360.0f) m_heading -= 360.0f;
 		// Also update our spawn ID if not set
 		if (m_my_spawn_id == 0) {
 			m_my_spawn_id = spawn_id;
@@ -5112,8 +5130,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	// Update entity position in our list
 	auto it = m_entities.find(spawn_id);
 	if (it != m_entities.end()) {
-		// NPCs need 90° adjustment (h_npc = 90 - h)
-		// Players need mirroring (h_player = 360 - h)
+		// Use heading directly for all entity types
 		bool isNPC = (it->second.npc_type == 1 || it->second.npc_type == 3);
 		float entity_heading = isNPC ? h_npc : h_player;
 
@@ -7739,10 +7756,9 @@ void EverQuest::SendPositionUpdate()
 	// This simplifies to: degrees = raw * 360 / 2048
 	// So to convert degrees to raw: raw = degrees * 2048 / 360
 	//
-	// S->C transformation for players is: h_player = 360 - server_h
-	// So the inverse (C->S) is: server_heading = 360 - m_heading
-	// Apply additional 90 degree rotation for C->S
-	float server_heading = 360.0f - m_heading + 90.0f;
+	// C->S transformation: -m_heading + 90 to match server convention
+	// Inverse of S->C transformation (m_heading = 90 - server_h)
+	float server_heading = 90.0f - m_heading;
 	if (server_heading < 0.0f) server_heading += 360.0f;
 	if (server_heading >= 360.0f) server_heading -= 360.0f;
 	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);

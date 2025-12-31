@@ -661,7 +661,7 @@ private:
     bool fogEnabled_ = true;
     bool lightingEnabled_ = false;
     bool zoneLightsEnabled_ = false;
-    CameraMode cameraMode_ = CameraMode::Follow;
+    CameraMode cameraMode_ = CameraMode::FirstPerson;
 
     // Player position (for Follow and FirstPerson modes)
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;

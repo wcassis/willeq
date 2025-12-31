@@ -215,6 +215,11 @@ public:
     // Returns 0.0f if player entity not found
     float getPlayerModelYOffset() const;
 
+    // Get the player's eye height from feet (for first-person camera positioning)
+    // Returns the height from ground level to approximate eye position
+    // Returns 0.0f if player entity not found
+    float getPlayerEyeHeightFromFeet() const;
+
     // Entity casting management (for showing casting bars above other entities)
     void startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs);
     void cancelEntityCast(uint16_t spawnId);
