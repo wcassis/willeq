@@ -338,7 +338,10 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
         // Set rotation (EQ heading to Irrlicht Y rotation)
         // Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
-        float visualHeading = heading;
+        // EQ heading: 0=North(+Y), increases clockwise
+        // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
+        // Must negate to convert between coordinate systems
+        float visualHeading = -heading;
         animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
 
         // Scale is already set in createAnimatedNode, but apply adjustments
@@ -455,7 +458,10 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
     // Set rotation (EQ heading to Irrlicht Y rotation)
     // Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
-    float visualHeading = heading;
+    // EQ heading: 0=North(+Y), increases clockwise
+    // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
+    // Must negate to convert between coordinate systems
+    float visualHeading = -heading;
     visual.meshNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
 
     // Apply scale based on race (scale was already calculated above)
@@ -667,7 +673,10 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
 
         // Convert EQ heading to Irrlicht Y rotation
         // Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
-        float visualHeading = heading;
+        // EQ heading: 0=North(+Y), increases clockwise
+        // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
+        // Must negate to convert between coordinate systems
+        float visualHeading = -heading;
         visual.sceneNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
 
         // Debug: Compare rotation vs velocity direction for targeted NPC

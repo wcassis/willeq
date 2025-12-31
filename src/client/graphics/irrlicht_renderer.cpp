@@ -923,6 +923,23 @@ void IrrlichtRenderer::setupHUD() {
         hotkeysText_->setOverrideColor(irr::video::SColor(255, 200, 200, 200));  // Slightly dimmer
         hotkeysText_->setTextAlignment(irr::gui::EGUIA_LOWERRIGHT, irr::gui::EGUIA_UPPERLEFT);
     }
+
+    // Heading debug info centered at top (for Player mode)
+    int centerX = screenWidth / 2;
+    headingDebugText_ = guienv_->addStaticText(
+        L"",
+        irr::core::rect<irr::s32>(centerX - 175, 10, centerX + 175, 150),
+        false,
+        true,
+        nullptr,
+        -1,
+        false
+    );
+
+    if (headingDebugText_) {
+        headingDebugText_->setOverrideColor(irr::video::SColor(255, 255, 255, 0));  // Yellow for visibility
+        headingDebugText_->setTextAlignment(irr::gui::EGUIA_CENTER, irr::gui::EGUIA_UPPERLEFT);
+    }
 }
 
 void IrrlichtRenderer::updateHUD() {
@@ -931,10 +948,38 @@ void IrrlichtRenderer::updateHUD() {
     std::wstringstream text;
     std::wstringstream hotkeys;
 
+    // Heading debug text (right side, used in Player mode)
+    std::wstringstream headingDebug;
+
     if (rendererMode_ == RendererMode::Player) {
         // === PLAYER MODE HUD ===
-        // No HUD text in player mode - UI windows handle player/target info
-        // F2 toggles HUD which would show debug info in admin mode
+        // Show heading debug info for current target (on right side)
+        if (currentTargetId_ != 0 && entityRenderer_) {
+            const auto& entities = entityRenderer_->getEntities();
+            auto it = entities.find(currentTargetId_);
+            if (it != entities.end()) {
+                const EntityVisual& visual = it->second;
+                headingDebug << L"--- TARGET HEADING DEBUG ---\n";
+                // Entity position (EQ coords: x, y, z)
+                headingDebug << L"Pos: (" << static_cast<int>(visual.serverX)
+                     << L", " << static_cast<int>(visual.serverY)
+                     << L", " << static_cast<int>(visual.serverZ) << L")\n";
+                // Server heading (from entity data, degrees 0-360)
+                wchar_t hdgBuf[64];
+                swprintf(hdgBuf, 64, L"Server Heading: %.1f deg\n", visual.serverHeading);
+                headingDebug << hdgBuf;
+                // Model rotation (from Irrlicht scene node)
+                if (visual.sceneNode) {
+                    irr::core::vector3df rot = visual.sceneNode->getRotation();
+                    swprintf(hdgBuf, 64, L"Model Rotation: (%.1f, %.1f, %.1f)\n",
+                             rot.X, rot.Y, rot.Z);
+                    headingDebug << hdgBuf;
+                }
+                // Interpolated heading (visual.lastHeading)
+                swprintf(hdgBuf, 64, L"Interp Heading: %.1f deg\n", visual.lastHeading);
+                headingDebug << hdgBuf;
+            }
+        }
     } else if (rendererMode_ == RendererMode::Repair) {
         // === REPAIR MODE HUD ===
         text << L"[REPAIR MODE]\n";
@@ -1125,6 +1170,33 @@ void IrrlichtRenderer::updateHUD() {
                     }
                     text << L"\n";
                 }
+
+                // Heading debug info - get real-time data from EntityRenderer
+                if (entityRenderer_) {
+                    const auto& entities = entityRenderer_->getEntities();
+                    auto it = entities.find(currentTargetId_);
+                    if (it != entities.end()) {
+                        const EntityVisual& visual = it->second;
+                        // Entity position (EQ coords: x, y, z)
+                        text << L"Pos: (" << static_cast<int>(visual.serverX)
+                             << L", " << static_cast<int>(visual.serverY)
+                             << L", " << static_cast<int>(visual.serverZ) << L")\n";
+                        // Server heading (from entity data, degrees 0-360)
+                        wchar_t hdgBuf[64];
+                        swprintf(hdgBuf, 64, L"Server Heading: %.1f deg\n", visual.serverHeading);
+                        text << hdgBuf;
+                        // Model rotation (from Irrlicht scene node)
+                        if (visual.sceneNode) {
+                            irr::core::vector3df rot = visual.sceneNode->getRotation();
+                            swprintf(hdgBuf, 64, L"Model Rotation: (%.1f, %.1f, %.1f)\n",
+                                     rot.X, rot.Y, rot.Z);
+                            text << hdgBuf;
+                        }
+                        // Interpolated heading (visual.lastHeading)
+                        swprintf(hdgBuf, 64, L"Interp Heading: %.1f deg\n", visual.lastHeading);
+                        text << hdgBuf;
+                    }
+                }
             }
         }
 
@@ -1143,6 +1215,9 @@ void IrrlichtRenderer::updateHUD() {
     hudText_->setText(text.str().c_str());
     if (hotkeysText_) {
         hotkeysText_->setText(hotkeys.str().c_str());
+    }
+    if (headingDebugText_) {
+        headingDebugText_->setText(headingDebug.str().c_str());
     }
 }
 
@@ -1418,16 +1493,37 @@ void IrrlichtRenderer::createObjectMeshes() {
         irr::core::aabbox3df bbox = mesh->getBoundingBox();
         heightOffset = -bbox.MinEdge.Y * scaleZ;  // scaleZ is EQ's Z (height) -> Irrlicht Y
 
+        // Calculate attachment offset - the model should be positioned so its
+        // attachment point (MaxEdge.X, assumed to be wall-mount side) is at spawn point.
+        // bbox.X in Irrlicht = EQ X, bbox.Z in Irrlicht = EQ Y
+        float attachOffsetX = bbox.MaxEdge.X;  // Offset to place +X edge at spawn
+        float attachOffsetZ = (bbox.MinEdge.Z + bbox.MaxEdge.Z) / 2.0f;  // Center in Z
+
         // Apply transforms (EQ Z-up to Irrlicht Y-up)
         float x = objInstance.placeable->getX();
         float y = objInstance.placeable->getY();
         float z = objInstance.placeable->getZ();
-        node->setPosition(irr::core::vector3df(x, z + heightOffset, y));
+
+        float rotZ = objInstance.placeable->getRotateZ();
+
+        // Rotate the attachment offset by the object's rotation to get world-space offset
+        // Use -rotZ because Irrlicht rotation is counter-clockwise
+        float radians = -rotZ * 3.14159265f / 180.0f;
+        float cosR = std::cos(radians);
+        float sinR = std::sin(radians);
+        // Rotate (attachOffsetX, attachOffsetZ) by radians
+        // In Irrlicht: X stays X, Z stays Z (both horizontal)
+        float rotatedOffsetX = (attachOffsetX * cosR - attachOffsetZ * sinR) * scaleX;
+        float rotatedOffsetZ = (attachOffsetX * sinR + attachOffsetZ * cosR) * scaleY;
+
+        // Position with rotated attachment offset to place attachment point at spawn point
+        node->setPosition(irr::core::vector3df(x - rotatedOffsetX, z + heightOffset, y - rotatedOffsetZ));
 
         float rotX = objInstance.placeable->getRotateX();
         float rotY = objInstance.placeable->getRotateY();
-        float rotZ = objInstance.placeable->getRotateZ();
-        node->setRotation(irr::core::vector3df(rotX, rotZ, rotY));
+        // EQ Z rotation (yaw) increases clockwise, Irrlicht Y rotation increases counter-clockwise
+        // Must negate rotZ when mapping to Irrlicht Y rotation
+        node->setRotation(irr::core::vector3df(rotX, -rotZ, rotY));
 
         for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
             node->getMaterial(i).Lighting = lightingEnabled_;
@@ -2679,9 +2775,14 @@ void IrrlichtRenderer::setRendererMode(RendererMode mode) {
         if (cameraMode_ == CameraMode::Free) {
             cameraMode_ = CameraMode::FirstPerson;
         }
-        // Show player entity
+        // Reset movement state and pitch (same as Player mode)
+        playerMovement_ = PlayerMovementState();
+        playerPitch_ = 0;
+        // Show player entity (visible in Repair mode for positioning reference)
         if (entityRenderer_) {
-            entityRenderer_->setPlayerEntityVisible(true);
+            entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
+            // Update player entity position to current player position
+            entityRenderer_->updatePlayerEntityPosition(playerX_, playerY_, playerZ_, playerHeading_);
         }
         // Clear any repair target when entering mode
         repairTargetNode_ = nullptr;
@@ -2732,7 +2833,8 @@ std::string IrrlichtRenderer::getRendererModeString() const {
 // --- Player Mode Movement Implementation ---
 
 void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
-    if (rendererMode_ != RendererMode::Player) {
+    // Allow movement in both Player and Repair modes
+    if (rendererMode_ != RendererMode::Player && rendererMode_ != RendererMode::Repair) {
         return;
     }
 

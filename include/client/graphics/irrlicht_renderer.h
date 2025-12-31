@@ -50,6 +50,9 @@ struct TargetInfo {
     uint8_t npcType = 0;  // 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
     uint32_t equipment[9] = {0};      // Equipment material IDs
     uint32_t equipmentTint[9] = {0};  // Equipment tint colors (ARGB)
+    // Position and heading for debug display
+    float x = 0, y = 0, z = 0;        // Entity position (EQ coords)
+    float heading = 0;                 // Entity heading from server (degrees 0-360)
 };
 
 // Object light source (torch, lantern, etc.) for distance-based culling
@@ -668,6 +671,7 @@ private:
     // HUD elements
     irr::gui::IGUIStaticText* hudText_ = nullptr;
     irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
+    irr::gui::IGUIStaticText* headingDebugText_ = nullptr;  // Heading debug info (right side)
     HUDCallback hudCallback_;
     SaveEntitiesCallback saveEntitiesCallback_;
     float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)

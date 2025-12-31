@@ -4091,9 +4091,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 
 		// Extract heading (11 bits to match C->S format)
-		// Server uses 512 EQ units = 360 degrees, so multiply by 360/2048
+		// Server uses 512 EQ units = 360 degrees, so multiply by 360/512
 		uint32_t raw_heading = (field4 >> 13) & 0x7FF;
-		float server_heading = static_cast<float>(raw_heading) * 360.0f / 2048.0f;
+		float server_heading = (static_cast<float>(raw_heading) / 4.0f) * 360.0f / 512.0f;
 		// NPCs: use heading directly
 		// Players: mirror with 360 - h
 		if (isNPC) {
@@ -4226,11 +4226,10 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				LOG_DEBUG(MOD_ENTITY, "Loaded spawn {}: {} (ID: {}) Level {} Race {} Size {:.2f} at ({:.2f}, {:.2f}, {:.2f})",
 					spawn_count, entity.name, entity.spawn_id, entity.level,
 					entity.race_id, entity.size, entity.x, entity.y, entity.z);
-			} else {
-				LOG_TRACE(MOD_ENTITY, "Loaded spawn {}: {} (ID: {}) Level {} Race {} at ({:.2f}, {:.2f}, {:.2f})",
-					spawn_count, entity.name, entity.spawn_id, entity.level,
-					entity.race_id, entity.x, entity.y, entity.z);
 			}
+			// Log all spawns with position and heading at debug level 3+
+			LOG_WARN(MOD_ENTITY, "ZoneSpawn: {} (ID:{}) pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} npc_type={}",
+				entity.name, entity.spawn_id, entity.x, entity.y, entity.z, entity.heading, entity.npc_type);
 		} else {
 			LOG_DEBUG(MOD_ENTITY, "Skipping invalid spawn at offset {}: ID={}, Name='{}'",
 				offset, entity.spawn_id, entity.name);
@@ -6248,7 +6247,7 @@ void EverQuest::RegisterCommands()
 
 	Command debug;
 	debug.name = "debug";
-	debug.usage = "/debug <0-3>";
+	debug.usage = "/debug <0-6>";
 	debug.description = "Set debug level";
 	debug.category = "Utility";
 	debug.handler = [this](const std::string& args) {
@@ -6260,7 +6259,7 @@ void EverQuest::RegisterCommands()
 				SetDebugLevel(level);
 				AddChatSystemMessage(fmt::format("Debug level set to {}", level));
 			} catch (...) {
-				AddChatSystemMessage("Usage: /debug <0-3>");
+				AddChatSystemMessage("Usage: /debug <0-6>");
 			}
 		}
 	};
@@ -7742,7 +7741,8 @@ void EverQuest::SendPositionUpdate()
 	//
 	// S->C transformation for players is: h_player = 360 - server_h
 	// So the inverse (C->S) is: server_heading = 360 - m_heading
-	float server_heading = 360.0f - m_heading;
+	// Apply additional 90 degree rotation for C->S
+	float server_heading = 360.0f - m_heading + 90.0f;
 	if (server_heading < 0.0f) server_heading += 360.0f;
 	if (server_heading >= 360.0f) server_heading -= 360.0f;
 	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);
@@ -11282,6 +11282,10 @@ bool EverQuest::InitGraphics(int width, int height) {
 					info.showHelm = e.showhelm;
 					info.texture = e.equip_chest2;
 					info.npcType = e.npc_type;
+					info.x = e.x;
+					info.y = e.y;
+					info.z = e.z;
+					info.heading = e.heading;
 					for (int i = 0; i < 9; ++i) {
 						info.equipment[i] = e.equipment[i];
 						info.equipmentTint[i] = e.equipment_tint[i];
@@ -11809,9 +11813,9 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 
 	try {
 		// Update player position in renderer (only in Admin mode)
-		// In Player mode, the renderer drives position via OnGraphicsMovement callback
+		// In Player/Repair mode, the renderer drives position via OnGraphicsMovement callback
 		// Convert m_heading from degrees (0-360) to EQ format (0-512)
-		if (m_renderer->getRendererMode() != EQT::Graphics::RendererMode::Player) {
+		if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Admin) {
 			float heading512 = m_heading * 512.0f / 360.0f;
 			m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
 		}
