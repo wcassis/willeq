@@ -720,7 +720,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                 }
 
                 if (!character->parts.empty()) {
-                    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader: Filtered {} meshes for race code '{}'",
+                    LOG_TRACE(MOD_GRAPHICS, "S3DLoader: Filtered {} meshes for race code '{}'",
                         character->parts.size(), raceCode);
                 }
             }
@@ -839,11 +839,11 @@ void S3DLoader::applySkinning(std::shared_ptr<ZoneGeometry>& mesh,
     const auto& parentIndices = skeleton->parentIndices;
 
     if (allBones.empty()) {
-        LOG_DEBUG(MOD_GRAPHICS, "applySkinning: No bones in skeleton");
+        LOG_TRACE(MOD_GRAPHICS, "applySkinning: No bones in skeleton");
         return;
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "applySkinning: Skeleton has {} bones total", allBones.size());
+    LOG_TRACE(MOD_GRAPHICS, "applySkinning: Skeleton has {} bones total", allBones.size());
 
     // Build bone world matrices indexed by original bone order
     std::vector<Mat4> boneMatrices(allBones.size());
@@ -887,7 +887,7 @@ void S3DLoader::applySkinning(std::shared_ptr<ZoneGeometry>& mesh,
 
         if (i < 10 || (i >= 40 && i <= 55)) {
             std::string boneName = bone ? bone->name : "(null)";
-            LOG_DEBUG(MOD_GRAPHICS, "  Bone[{}] '{}' parent={} trans=({},{},{}) quat=({},{},{},{}) scale={}",
+            LOG_TRACE(MOD_GRAPHICS, "  Bone[{}] '{}' parent={} trans=({},{},{}) quat=({},{},{},{}) scale={}",
                 i, boneName, parentIdx, tx, ty, tz, qx, qy, qz, qw, scale);
         }
     }
@@ -898,7 +898,7 @@ void S3DLoader::applySkinning(std::shared_ptr<ZoneGeometry>& mesh,
         maxBoneIndex = std::max(maxBoneIndex, static_cast<int>(piece.boneIndex));
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "applySkinning: {} vertex pieces, max bone index {}, {} bone matrices",
+    LOG_TRACE(MOD_GRAPHICS, "applySkinning: {} vertex pieces, max bone index {}, {} bone matrices",
         mesh->vertexPieces.size(), maxBoneIndex, boneMatrices.size());
 
     // Apply bone transforms to vertices based on vertex pieces
@@ -949,7 +949,7 @@ void S3DLoader::applySkinning(std::shared_ptr<ZoneGeometry>& mesh,
         mesh->maxZ = std::max(mesh->maxZ, v.z);
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "applySkinning: bounds after skinning X[{},{}] Y[{},{}] Z[{},{}]",
+    LOG_TRACE(MOD_GRAPHICS, "applySkinning: bounds after skinning X[{},{}] Y[{},{}] Z[{},{}]",
         mesh->minX, mesh->maxX, mesh->minY, mesh->maxY, mesh->minZ, mesh->maxZ);
 }
 
@@ -1109,12 +1109,12 @@ std::shared_ptr<CharacterSkeleton> S3DLoader::buildAnimatedSkeleton(
     animSkel->animations = animations;
 
     if (poseTracksFound > 0 || animTracksFound > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "S3DLoader: Built animated skeleton for '{}' with {} bones, {} pose tracks, {} animation tracks, {} unique animations",
+        LOG_TRACE(MOD_GRAPHICS, "S3DLoader: Built animated skeleton for '{}' with {} bones, {} pose tracks, {} animation tracks, {} unique animations",
             modelCode, animSkel->bones.size(), poseTracksFound, animTracksFound, animations.size());
 
         // List animations found
         for (const auto& [animCode, anim] : animations) {
-            LOG_DEBUG(MOD_GRAPHICS, "  Animation '{}': {} frames, {}ms{}",
+            LOG_TRACE(MOD_GRAPHICS, "  Animation '{}': {} frames, {}ms{}",
                 animCode, anim->frameCount, anim->animationTimeMs, (anim->isLooped ? " (looped)" : ""));
         }
     }

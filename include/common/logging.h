@@ -232,6 +232,10 @@ inline int& GetDebugLevel() {
 
 inline void SetDebugLevel(int level) {
     GetDebugLevel() = level;
+    // Sync LogManager level: maps debug level 0-6 to log levels
+    // 0=NONE, 1=FATAL, 2=ERROR, 3=WARN, 4=INFO, 5=DEBUG, 6=TRACE
+    int logLevel = std::min(level, static_cast<int>(LOG_TRACE));
+    LogManager::Instance().SetGlobalLevel(logLevel);
 }
 
 inline bool IsDebugEnabled() {

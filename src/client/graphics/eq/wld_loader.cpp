@@ -1423,8 +1423,8 @@ void WldLoader::parseFragment21(const char* fragBuffer, uint32_t fragLength, uin
     uint32_t nodeCount = *reinterpret_cast<const uint32_t*>(ptr);
     ptr += sizeof(uint32_t);
 
-    LOG_DEBUG(MOD_MAP, "[BSP] Fragment 0x21: fragLength={} Loading {} BSP tree nodes", fragLength, nodeCount);
-    LOG_DEBUG(MOD_MAP, "[BSP] Expected size: {} bytes", 4 + nodeCount * 28);
+    LOG_TRACE(MOD_MAP, "[BSP] Fragment 0x21: fragLength={} Loading {} BSP tree nodes", fragLength, nodeCount);
+    LOG_TRACE(MOD_MAP, "[BSP] Expected size: {} bytes", 4 + nodeCount * 28);
     if (fragLength != 4 + nodeCount * 28) {
         LOG_WARN(MOD_MAP, "[BSP] WARNING: Size mismatch! Off by {} bytes", (int)(fragLength - (4 + nodeCount * 28)));
     }
@@ -1468,7 +1468,7 @@ void WldLoader::parseFragment21(const char* fragBuffer, uint32_t fragLength, uin
         bspTree_->nodes.push_back(node);
     }
 
-    LOG_DEBUG(MOD_MAP, "[BSP] Fragment 0x21: {} nodes have regionId > 0", nodesWithRegions);
+    LOG_TRACE(MOD_MAP, "[BSP] Fragment 0x21: {} nodes have regionId > 0", nodesWithRegions);
 }
 
 void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
@@ -1641,10 +1641,10 @@ void WldLoader::parseFragment29(const char* fragBuffer, uint32_t fragLength, uin
             // Debug output for zone lines
             for (auto type : types) {
                 if (type == RegionType::Zoneline) {
-                    LOG_DEBUG(MOD_MAP, "[BSP] Fragment 0x29: Region {} marked as zone line (regionTypeString='{}')",
+                    LOG_TRACE(MOD_MAP, "[BSP] Fragment 0x29: Region {} marked as zone line (regionTypeString='{}')",
                         regionIdx, regionTypeString);
                     if (zoneLineInfo) {
-                        LOG_DEBUG(MOD_MAP, "[BSP]   -> type={} zoneId={} zonePointIdx={} coords=({}, {}, {}) heading={}",
+                        LOG_TRACE(MOD_MAP, "[BSP]   -> type={} zoneId={} zonePointIdx={} coords=({}, {}, {}) heading={}",
                             (zoneLineInfo->type == ZoneLineType::Absolute ? "Absolute" : "Reference"),
                             zoneLineInfo->zoneId, zoneLineInfo->zonePointIndex,
                             zoneLineInfo->x, zoneLineInfo->y, zoneLineInfo->z, zoneLineInfo->heading);
