@@ -2512,18 +2512,20 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_x = server_y;
 	m_y = server_x;
 	m_z = z;
-	// Use heading directly (same as NPCs)
-	m_heading = heading;
-	if (m_heading >= 360.0f) m_heading -= 360.0f;
+	// PlayerProfile heading is stored as (12-bit scaled value / 4)
+	// Convert back: server_heading_deg = heading * 360 / 512, then m_heading = 90 - server_heading_deg
+	float server_heading_deg = heading * 360.0f / 512.0f;
+	m_heading = 90.0f - server_heading_deg;
 	if (m_heading < 0.0f) m_heading += 360.0f;
+	if (m_heading >= 360.0f) m_heading -= 360.0f;
 
 	// Debug: Zone-in position tracking
 	if (s_debug_level >= 1) {
 		LOG_INFO(MOD_ZONE, "[ZONE-IN] PlayerProfile position: server=({:.2f},{:.2f},{:.2f}) heading={:.2f} -> client=({:.2f},{:.2f},{:.2f}) heading={:.2f}",
 		         server_x, server_y, z, heading, m_x, m_y, m_z, m_heading);
 		// Additional logging in consistent format for position debugging
-		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] server_heading={:.2f}deg (float) -> m_heading={:.2f}deg (mirrored)",
-			heading, m_heading);
+		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] profile_heading={:.2f} -> server_heading_deg={:.2f} -> m_heading={:.2f}deg",
+			heading, server_heading_deg, m_heading);
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> client_pos=({:.2f},{:.2f},{:.2f})",
 			server_x, server_y, z, m_x, m_y, m_z);
 	}
@@ -7816,23 +7818,8 @@ void EverQuest::SendPositionUpdate()
 	// So to send back: server's y_pos = m_x, server's x_pos = m_y
 	update.y_pos = m_x;  // m_x holds server's original y
 	update.x_pos = m_y;  // m_y holds server's original x
-	// Server expects Z at model center, not feet. Add half the model size as offset.
-	// NPCs show this pattern: Size 6.0 -> Z ~3.75, larger NPCs -> higher Z
-	float z_offset = m_size / 2.0f;
-	update.z_pos = m_z + z_offset;
-
-	// Debug: Show Z calculation breakdown on first position update
-	static bool first_pos_update = true;
-	if (first_pos_update && s_debug_level >= 2) {
-		first_pos_update = false;
-		LOG_DEBUG(MOD_MOVEMENT, "=== FIRST POSITION UPDATE ===");
-		LOG_DEBUG(MOD_MOVEMENT, "m_z (internal) = {:.2f}", m_z);
-		LOG_DEBUG(MOD_MOVEMENT, "m_size = {:.2f}", m_size);
-		LOG_DEBUG(MOD_MOVEMENT, "z_offset (m_size/2) = {:.2f}", z_offset);
-		LOG_DEBUG(MOD_MOVEMENT, "update.z_pos = m_z + z_offset = {:.2f} + {:.2f} = {:.2f}",
-			m_z, z_offset, update.z_pos);
-		LOG_DEBUG(MOD_MOVEMENT, "=================================");
-	}
+	// Send Z position directly without offset - server stores the actual position
+	update.z_pos = m_z;
 	// Deltas follow the same transformation:
 	// Internal delta_x (change in m_x) = change in server's y = server's delta_y
 	// Internal delta_y (change in m_y) = change in server's x = server's delta_x
