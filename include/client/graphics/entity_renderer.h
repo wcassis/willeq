@@ -86,6 +86,12 @@ struct EntityVisual {
     uint32_t castDurationMs = 0;              // Total cast time in milliseconds
     std::chrono::steady_clock::time_point castStartTime;  // When cast started
     irr::scene::IBillboardSceneNode* castBarBillboard = nullptr;  // Casting bar billboard
+
+    // Corpse decay/fade state
+    bool isFading = false;                    // True if corpse is fading out
+    float fadeAlpha = 1.0f;                   // Current opacity (1.0 = visible, 0.0 = invisible)
+    float fadeTimer = 0.0f;                   // Time since fade started
+    static constexpr float FADE_DURATION = 3.0f;  // Duration of fade-out in seconds
 };
 
 // Manages rendering of game entities (NPCs, players, mobs)
@@ -166,6 +172,9 @@ public:
 
     // Mark an entity as a corpse (plays death animation and prevents further animation updates)
     void markEntityAsCorpse(uint16_t spawnId);
+
+    // Start corpse decay animation (fade out over a few seconds, then remove)
+    void startCorpseDecay(uint16_t spawnId);
 
     // Set entity pose state (sitting, standing, etc.) - prevents movement updates from overriding pose
     void setEntityPoseState(uint16_t spawnId, EntityVisual::PoseState pose);

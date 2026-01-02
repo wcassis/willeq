@@ -161,7 +161,8 @@ enum TitaniumZoneOpcodes {
 	HC_OP_Damage = 0x5c78,
 	HC_OP_LootRequest = 0x6f90,
 	HC_OP_LootItem = 0x7081,
-	HC_OP_LootComplete = 0x0a94,
+	HC_OP_EndLootRequest = 0x2316,  // Client sends to end loot session
+	HC_OP_LootComplete = 0x0a94,    // Server sends to client
 	HC_OP_ItemPacket = 0x3397,
 	HC_OP_MoneyOnCorpse = 0x7fe4,
 	HC_OP_FloatListThing = 0x6a1b,
@@ -773,6 +774,7 @@ private:
 	void ZoneProcessBuff(const EQ::Net::Packet &p);
 	void ZoneProcessColoredText(const EQ::Net::Packet &p);
 	void ZoneProcessFormattedMessage(const EQ::Net::Packet &p);
+	void ZoneProcessSimpleMessage(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p);
 	void ZoneProcessDeath(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p);
@@ -903,6 +905,9 @@ private:
 	float m_combat_stop_distance = 0.0f;
 	bool m_in_combat_movement = false;
 	std::chrono::steady_clock::time_point m_last_combat_movement_update;
+
+	// Last slain entity (for SimpleMessage "You have slain %1!" substitution)
+	std::string m_last_slain_entity_name;
 
 	// Pathfinding
 	std::unique_ptr<IPathfinder> m_pathfinder;
@@ -1065,6 +1070,9 @@ private:
 	// Player mode loot state
 	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted in Player mode (0 = not looting)
 	std::vector<int16_t> m_pending_loot_slots;  // Corpse slots waiting for server confirmation
+	bool m_loot_all_in_progress = false;         // True if we're in the middle of a loot-all operation
+	std::vector<int16_t> m_loot_all_remaining_slots;  // Remaining slots to loot in loot-all
+	uint16_t m_loot_complete_corpse_id = 0;  // Corpse ID for which looting was completed (ready for deletion)
 
 	// Player mode vendor state
 	uint16_t m_vendor_npc_id = 0;     // NPC being traded with (0 = not trading)

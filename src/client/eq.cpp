@@ -187,6 +187,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_ColoredText: return "HC_OP_ColoredText";
 		case HC_OP_LootRequest: return "HC_OP_LootRequest";
 		case HC_OP_LootItem: return "HC_OP_LootItem";
+		case HC_OP_EndLootRequest: return "HC_OP_EndLootRequest";
 		case HC_OP_LootComplete: return "HC_OP_LootComplete";
 		case HC_OP_ItemPacket: return "HC_OP_ItemPacket";
 		case HC_OP_MoneyOnCorpse: return "HC_OP_MoneyOnCorpse";
@@ -1682,6 +1683,26 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_MoneyOnCorpse:
 		ZoneProcessMoneyOnCorpse(p);
 		break;
+	case HC_OP_LootRequest:
+		// Server responds to our loot request - confirms we can loot the corpse
+		// The actual loot items come via ItemPacket (type 102) BEFORE this response
+		if (p.Length() >= 6) {
+			uint32_t corpse_id = p.GetUInt32(2);
+			LOG_DEBUG(MOD_INVENTORY, "LootRequest response: corpseId={}", corpse_id);
+
+			// Check if loot window is empty (no items to loot)
+			// If empty, auto-complete the loot session immediately
+#ifdef EQT_HAS_GRAPHICS
+			if (m_player_looting_corpse_id != 0 && m_renderer && m_renderer->getWindowManager()) {
+				auto* lootWindow = m_renderer->getWindowManager()->getLootWindow();
+				if (lootWindow && lootWindow->getLootItems().empty()) {
+					LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
+					CloseLootWindow(static_cast<uint16_t>(corpse_id));
+				}
+			}
+#endif
+		}
+		break;
 	case HC_OP_LootItem:
 		// Server echoes OP_LootItem back as acknowledgment
 		if (p.Length() >= 16) {
@@ -1705,14 +1726,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		}
 		break;
 	case HC_OP_LootComplete:
-		// Server signals end of loot session
-		// Note: In Titanium, server sends LootComplete after EACH item looted,
-		// which means "Loot All" won't work in a single click - items must be
-		// looted one at a time. This is expected behavior.
-		if (!m_pending_loot_slots.empty()) {
-			// Clear pending slots - will need to re-request remaining items
-			m_pending_loot_slots.clear();
-		}
+		// Server signals end of loot session (rarely sent by P1999/Titanium servers)
+		LOG_DEBUG(MOD_INVENTORY, "LootComplete received from server");
+		m_pending_loot_slots.clear();
 		break;
 	case HC_OP_ItemPacket:
 		// Item packets can be: vendor items (100), inventory items (103), or loot items
@@ -1815,21 +1831,7 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		ZoneProcessZoneChange(p);
 		break;
 	case HC_OP_SimpleMessage:
-		// Simple text message from server
-		// SimpleMessage_Struct: color(4), string_id(4), unknown8(4)
-		if (p.Length() >= 10) {
-			uint32_t type = p.GetUInt32(2);      // color/type
-			uint32_t string_id = p.GetUInt32(6); // string_id
-			
-			// Get the message text for known string IDs
-			std::string message_text = GetStringMessage(string_id);
-			
-			// Get the chat type name
-			std::string type_name = GetChatTypeName(type);
-			
-			// Always display SimpleMessage content regardless of debug level
-			std::cout << fmt::format("[{}] {}", type_name, message_text) << std::endl;
-		}
+		ZoneProcessSimpleMessage(p);
 		break;
 	case HC_OP_TargetHoTT:
 		// Target's target information
@@ -3423,6 +3425,19 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 					LOG_TRACE(MOD_INVENTORY, "  itemId={} (from field[15])", item->itemId);
 				} catch (...) {}
 
+				// Parse stackSize from static data field[131] (absolute field[142])
+				// and stackable from static data field[133] (absolute field[144])
+				try {
+					if (fields.size() > 144) {
+						item->stackSize = std::stoi(fields[142]);
+						item->stackable = std::stoi(fields[144]) != 0;
+						LOG_TRACE(MOD_INVENTORY, "  stackSize={} stackable={} (from fields[142], [144])",
+							item->stackSize, item->stackable);
+					}
+				} catch (...) {
+					LOG_DEBUG(MOD_INVENTORY, "  stackSize/stackable parsing failed");
+				}
+
 				m_renderer->getWindowManager()->addLootItem(slot_num, std::move(item));
 			} else {
 				LOG_WARN(MOD_INVENTORY, "Cannot add loot item: renderer={} windowManager={} invManager={}",
@@ -3481,6 +3496,19 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 		if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
 			m_renderer->getWindowManager()->refreshVendorSellableItems();
 		}
+	}
+
+	// Continue loot-all operation if there are more items to loot
+	if (m_loot_all_in_progress && !m_loot_all_remaining_slots.empty() && m_player_looting_corpse_id != 0) {
+		uint16_t corpseId = m_player_looting_corpse_id;
+		int16_t nextSlot = m_loot_all_remaining_slots.front();
+		m_loot_all_remaining_slots.erase(m_loot_all_remaining_slots.begin());
+		LOG_DEBUG(MOD_INVENTORY, "LootAll continuation: next slot={} remaining={}", nextSlot, m_loot_all_remaining_slots.size());
+		LootItemFromCorpse(corpseId, nextSlot, true);
+	} else if (m_loot_all_in_progress && m_loot_all_remaining_slots.empty()) {
+		// Finished looting all items
+		LOG_DEBUG(MOD_INVENTORY, "LootAll complete, all items looted");
+		m_loot_all_in_progress = false;
 	}
 }
 
@@ -5178,10 +5206,32 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 	
 	auto it = m_entities.find(spawn_id);
 	if (it != m_entities.end()) {
-		// Don't delete corpses - they stay in the world for looting
+		// Handle corpse deletion - only delete corpses we've finished looting
 		if (it->second.is_corpse) {
-			LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({})", spawn_id, it->second.name);
-			return;
+			// If we're actively looting this corpse, close the loot window first
+			if (m_player_looting_corpse_id == spawn_id) {
+				LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) being deleted while looting, closing loot window", spawn_id, it->second.name);
+#ifdef EQT_HAS_GRAPHICS
+				if (m_renderer && m_renderer->getWindowManager()) {
+					m_renderer->getWindowManager()->closeLootWindow();
+				}
+#endif
+				m_player_looting_corpse_id = 0;
+				m_loot_all_in_progress = false;
+				m_loot_all_remaining_slots.clear();
+				// Mark as ready for deletion
+				m_loot_complete_corpse_id = spawn_id;
+			}
+
+			// Only delete corpses we've completed looting
+			// This prevents corpses from being deleted when NPCs die (server sends DeleteSpawn(0))
+			if (m_loot_complete_corpse_id != spawn_id) {
+				LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({}) - not finished looting", spawn_id, it->second.name);
+				return;
+			}
+
+			LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) removed by server after looting", spawn_id, it->second.name);
+			m_loot_complete_corpse_id = 0;  // Clear the flag
 		}
 
 		LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) despawned", spawn_id, it->second.name);
@@ -8510,6 +8560,21 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 						eqt::ui::ChatMessage chatMsg;
 						chatMsg.links = std::move(parsed.links);
 
+						// Handle different message types based on string_id
+						// string_id=467 with type=286 = Loot message (item link)
+						// string_id=1032 = NPC says
+						// string_id=1034 = NPC shouts
+						if (string_id == 467) {
+							// Loot message - display as system message with item link
+							chatMsg.channel = eqt::ui::ChatChannel::Loot;
+							chatMsg.sender = "";
+							chatMsg.text = "You have looted " + parsed.displayText;
+							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
+								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
+							chatWindow->addMessage(chatMsg);
+							return;
+						}
+
 						// Parse NPC name (first two words) and message from displayText
 						// Format: "Firstname Lastname message text here"
 						std::string npcName;
@@ -8617,11 +8682,94 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 	}
 }
 
+void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
+{
+	// SimpleMessage is used for system messages that use string templates
+	// SimpleMessage_Struct: color(4), string_id(4), unknown8(4)
+	// Total: 12 bytes + 2 byte opcode = 14 bytes minimum
+
+	if (p.Length() < 14) {
+		LOG_WARN(MOD_ZONE, "SimpleMessage packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	uint32_t color_type = p.GetUInt32(2);   // color/type
+	uint32_t string_id = p.GetUInt32(6);    // string_id
+
+	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}", color_type, string_id);
+
+	// Get the message template for this string ID
+	std::string message_text = GetStringMessage(string_id);
+
+	// Substitute placeholders (%1, %2, etc.) with entity names
+	// %1 is typically the target (for "You have slain %1!")
+	if (message_text.find("%1") != std::string::npos) {
+		std::string target_name = "something";
+
+		// For "slain" messages (string_id 303), use the last slain entity name
+		if (string_id == 303 && !m_last_slain_entity_name.empty()) {
+			target_name = m_last_slain_entity_name;
+		}
+		// Otherwise try current combat target
+		else if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
+			auto it = m_entities.find(m_combat_manager->GetTargetId());
+			if (it != m_entities.end()) {
+				target_name = EQT::toDisplayName(it->second.name);
+			}
+		}
+
+		size_t pos = message_text.find("%1");
+		if (pos != std::string::npos) {
+			message_text.replace(pos, 2, target_name);
+		}
+	}
+
+	// Map color_type to chat channel
+	eqt::ui::ChatChannel channel = eqt::ui::ChatChannel::System;
+	switch (color_type) {
+		case 124:  // YouSlain
+			channel = eqt::ui::ChatChannel::Combat;
+			break;
+		case 138:  // ExpGain
+			channel = eqt::ui::ChatChannel::Experience;
+			break;
+		default:
+			channel = eqt::ui::ChatChannel::System;
+			break;
+	}
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		auto* windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto* chatWindow = windowManager->getChatWindow();
+			if (chatWindow) {
+				eqt::ui::ChatMessage chatMsg;
+				chatMsg.channel = channel;
+				chatMsg.sender = "";
+				chatMsg.text = message_text;
+				chatMsg.color = eqt::ui::getChannelColor(channel);
+				chatMsg.isSystemMessage = true;
+
+				LOG_DEBUG(MOD_ZONE, "[SimpleMessage] Adding to chat: channel={}, text='{}'",
+					static_cast<int>(channel), message_text);
+				chatWindow->addMessage(std::move(chatMsg));
+				return;
+			}
+		}
+	}
+#endif
+
+	// Fallback: print to console if no chat window
+	std::string type_name = GetChatTypeName(color_type);
+	std::cout << fmt::format("[{}] {}", type_name, message_text) << std::endl;
+}
+
 void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 {
 	// PlayerStateAdd adds a state/buff to a player
 	// This could be buffs, debuffs, or other state changes
-	
+
 	if (p.Length() < 4) {
 		if (s_debug_level >= 1) {
 			std::cout << fmt::format("PlayerStateAdd packet too small: {} bytes", p.Length()) << std::endl;
@@ -8706,6 +8854,12 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		}
 	}
 	
+	// Track the last entity we killed for SimpleMessage substitution
+	// Store the display name now before it gets modified to include "'s corpse"
+	if (killer_id == m_my_spawn_id) {
+		m_last_slain_entity_name = EQT::toDisplayName(victim_name);
+	}
+
 	// Notify combat manager if this was our target
 	if (m_combat_manager && victim_id == m_combat_manager->GetTargetId()) {
 		// Target died - combat manager should handle looting if enabled
@@ -9495,6 +9649,9 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 
 void EverQuest::CheckZoneLine()
 {
+	// TODO: Automatic zoning disabled - needs fixing
+	return;
+
 	// Skip if not fully zoned in or no zone lines loaded
 	if (!IsFullyZonedIn() || !m_zone_lines || !m_zone_lines->hasZoneLines()) {
 #ifdef EQT_HAS_GRAPHICS
@@ -10737,47 +10894,8 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 		m_spell_manager->handleAction(spellAction);
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Trigger attack animation on source entity if it's not a spell cast
-	if (m_graphics_initialized && m_renderer && action->spell == 0xFFFF) {
-		// Physical attack - play attack animation on source
-		// Action type determines the specific attack animation
-		std::string animCode = "c01";  // Default primary attack
-
-		// Type values indicate specific attack types
-		// We don't have exact mappings but most physical attacks use c01-c05
-		switch (action->type) {
-		case 0:   // Primary hand melee
-		case 1:   // Offhand melee
-		case 23:  // Primary hand hit
-		case 24:  // Offhand hit
-			animCode = (action->type == 1 || action->type == 24) ? "c02" : "c01";
-			break;
-		case 7:   // Kick
-		case 30:  // Kick (hit)
-			animCode = "t02";  // Kick animation
-			break;
-		case 11:  // Bash
-		case 36:  // Bash (hit)
-			animCode = "c05";  // Bash animation
-			break;
-		case 21:  // Flying kick
-		case 38:  // Flying kick (hit)
-			animCode = "t03";  // Flying kick
-			break;
-		default:
-			animCode = "c01";  // Default attack
-			break;
-		}
-
-		m_renderer->setEntityAnimation(action->source, animCode, false, true);
-
-		if (s_debug_level >= 2 || IsTrackedTarget(action->source)) {
-			std::cout << fmt::format("[ACTION] Attack animation '{}' on source={}",
-				animCode, action->source) << std::endl;
-		}
-	}
-#endif
+	// Note: Attack animations are NOT triggered here - they come from animation updates
+	// when the entity initiates an attack. The Action packet is for spell/ability effects.
 }
 
 void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
@@ -10843,6 +10961,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 
 #ifdef EQT_HAS_GRAPHICS
 	// Trigger damage reaction animation on target (if damage > 0 and not a miss)
+	// Note: Attack animations on source are triggered via ZoneProcessAction
 	if (m_graphics_initialized && m_renderer && damage_amount > 0) {
 		// Play damage reaction animation (d01 or d02) on target
 		// Don't play on dead entities
@@ -12115,7 +12234,13 @@ void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 		}
 	}
 
-	m_renderer->removeEntity(spawn_id);
+	// Check if this is a corpse - corpses should fade out instead of vanishing instantly
+	auto it = m_entities.find(spawn_id);
+	if (it != m_entities.end() && it->second.is_corpse) {
+		m_renderer->startCorpseDecay(spawn_id);
+	} else {
+		m_renderer->removeEntity(spawn_id);
+	}
 }
 
 void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
@@ -12333,12 +12458,27 @@ void EverQuest::LootAllFromCorpse(uint16_t corpseId) {
 		return;
 	}
 
-	// Loot each item with auto_loot=true to place directly in inventory
+	// Get items to loot - in Titanium, server closes loot session after each item,
+	// so we must loot one item at a time and re-request loot for remaining items
 	const auto& items = lootWindow->getLootItems();
-	LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Looting {} items", items.size());
-	for (const auto& [slot, item] : items) {
-		LootItemFromCorpse(corpseId, slot, true);  // autoLoot=true for Loot All
+	if (items.empty()) {
+		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: No items to loot");
+		return;
 	}
+
+	// Store remaining slots for sequential looting
+	m_loot_all_remaining_slots.clear();
+	for (const auto& [slot, item] : items) {
+		m_loot_all_remaining_slots.push_back(slot);
+	}
+
+	LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Queued {} items for sequential looting", m_loot_all_remaining_slots.size());
+
+	// Start loot-all operation - loot first item only
+	m_loot_all_in_progress = true;
+	int16_t firstSlot = m_loot_all_remaining_slots.front();
+	m_loot_all_remaining_slots.erase(m_loot_all_remaining_slots.begin());
+	LootItemFromCorpse(corpseId, firstSlot, true);  // autoLoot=true for Loot All
 }
 
 void EverQuest::DestroyAllCorpseLoot(uint16_t corpseId) {
@@ -12353,16 +12493,26 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: corpseId={} m_player_looting_corpse_id={}",
 		corpseId, m_player_looting_corpse_id);
 
+	// Use passed corpseId, or fall back to m_player_looting_corpse_id if 0
+	uint16_t targetCorpseId = (corpseId != 0) ? corpseId : m_player_looting_corpse_id;
+
 	// Clear the looting state
 	m_player_looting_corpse_id = 0;
 	m_pending_loot_slots.clear();
-	LOG_TRACE(MOD_INVENTORY, "CloseLootWindow: Cleared looting state, sending HC_OP_LootComplete");
+	m_loot_all_in_progress = false;
+	m_loot_all_remaining_slots.clear();
 
-	// Send end loot packet
+	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
+	m_loot_complete_corpse_id = targetCorpseId;
+
+	// Send end loot request to server (OP_EndLootRequest, not OP_LootComplete)
+	// Server expects 4 bytes with corpse entity ID as uint16 at offset 0
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(4);
-	packet.PutUInt32(0, m_my_spawn_id);
-	QueuePacket(HC_OP_LootComplete, &packet);
+	packet.PutUInt16(0, targetCorpseId);
+	packet.PutUInt16(2, 0);  // padding
+	QueuePacket(HC_OP_EndLootRequest, &packet);
+	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId={}", targetCorpseId);
 
 	// Close the loot window in the UI
 	if (m_renderer && m_renderer->getWindowManager()) {

@@ -1755,6 +1755,12 @@ void IrrlichtRenderer::removeEntity(uint16_t spawnId) {
     }
 }
 
+void IrrlichtRenderer::startCorpseDecay(uint16_t spawnId) {
+    if (entityRenderer_) {
+        entityRenderer_->startCorpseDecay(spawnId);
+    }
+}
+
 void IrrlichtRenderer::clearEntities() {
     if (entityRenderer_) {
         entityRenderer_->clearEntities();

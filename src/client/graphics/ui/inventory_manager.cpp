@@ -896,7 +896,7 @@ bool InventoryManager::placeOnMatchingStack(int16_t targetSlot) {
     }
 
     // Check stack size limits
-    int32_t targetMax = targetItem->stackSize > 0 ? targetItem->stackSize : 20;  // Default max
+    int32_t targetMax = targetItem->stackSize;  // stackSize of 0 means not stackable
     int32_t availableSpace = targetMax - targetItem->quantity;
 
     if (availableSpace <= 0) {
@@ -1440,8 +1440,10 @@ bool InventoryManager::destroyCursorItem() {
         return false;
     }
 
+    LOG_DEBUG(MOD_UI, "InventoryManager destroyCursorItem: {} (cursorSourceSlot={})",
+              cursorItem->name, cursorSourceSlot_);
+
     // If it's a bag, it should be empty (bags on cursor can't have contents)
-    int16_t sourceSlot = cursorSourceSlot_;
     cursorQueue_.pop_front();
 
     // Update source slot for next item (if any)
@@ -1455,9 +1457,9 @@ bool InventoryManager::destroyCursorItem() {
         cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
     }
 
-    // Notify server
-    if (deleteItemCallback_ && sourceSlot != SLOT_INVALID) {
-        deleteItemCallback_(sourceSlot);
+    // Notify server - item is on CURSOR_SLOT, not the original source slot
+    if (deleteItemCallback_) {
+        deleteItemCallback_(CURSOR_SLOT);
     }
 
     return true;

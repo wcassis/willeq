@@ -411,13 +411,9 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
                 // Force immediate mesh update so corpse appears lying down
                 animNode->forceAnimationUpdate();
 
-                // Adjust corpse position to compensate for death animation
-                // Death animations drop the model ~3 units below origin (tested empirically)
-                const float CORPSE_Z_OFFSET = 3.0f;
-                irr::core::vector3df currentPos = animNode->getPosition();
-                animNode->setPosition(irr::core::vector3df(currentPos.X, currentPos.Y + CORPSE_Z_OFFSET, currentPos.Z));
+                // Mark corpse position as adjusted (no Z offset needed)
                 entities_[spawnId].corpsePositionAdjusted = true;
-                entities_[spawnId].corpseYOffset = CORPSE_Z_OFFSET;
+                entities_[spawnId].corpseYOffset = 0.0f;
 
                 entities_[spawnId].currentAnimation = deathAnim;
             }
@@ -861,6 +857,71 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
             continue;
         }
 
+        // Handle fading entities (corpses decaying)
+        if (visual.isFading) {
+            visual.fadeTimer += deltaTime;
+            visual.fadeAlpha = 1.0f - (visual.fadeTimer / EntityVisual::FADE_DURATION);
+
+            if (visual.fadeAlpha <= 0.0f) {
+                // Fade complete - mark for removal (can't remove during iteration)
+                visual.fadeAlpha = 0.0f;
+                // We'll collect and remove these after the loop
+            }
+
+            // Apply fade using additive transparency (fades to transparent/dark)
+            // This works better with textured meshes than vertex alpha
+            irr::u8 colorVal = static_cast<irr::u8>(visual.fadeAlpha * 255);
+            irr::video::SColor fadeColor(255, colorVal, colorVal, colorVal);
+
+            if (visual.sceneNode) {
+                if (visual.animatedNode) {
+                    for (irr::u32 i = 0; i < visual.animatedNode->getMaterialCount(); ++i) {
+                        irr::video::SMaterial& mat = visual.animatedNode->getMaterial(i);
+                        // Use additive blending which fades to transparent as color approaches black
+                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                        mat.AmbientColor = fadeColor;
+                        mat.DiffuseColor = fadeColor;
+                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                    }
+                } else if (visual.meshNode) {
+                    for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
+                        irr::video::SMaterial& mat = visual.meshNode->getMaterial(i);
+                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                        mat.AmbientColor = fadeColor;
+                        mat.DiffuseColor = fadeColor;
+                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                    }
+                }
+
+                // Also fade equipment
+                if (visual.primaryEquipNode) {
+                    for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
+                        irr::video::SMaterial& mat = visual.primaryEquipNode->getMaterial(i);
+                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                        mat.AmbientColor = fadeColor;
+                        mat.DiffuseColor = fadeColor;
+                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                    }
+                }
+                if (visual.secondaryEquipNode) {
+                    for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
+                        irr::video::SMaterial& mat = visual.secondaryEquipNode->getMaterial(i);
+                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                        mat.AmbientColor = fadeColor;
+                        mat.DiffuseColor = fadeColor;
+                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                    }
+                }
+
+                // Fade name tag
+                if (visual.nameNode) {
+                    irr::video::SColor nameColor(colorVal, 255, 255, 255);
+                    visual.nameNode->setTextColor(nameColor);
+                }
+            }
+            continue;  // Skip normal interpolation for fading entities
+        }
+
         // Check if corpse needs position adjustment (mid-game death animation just finished)
         if (visual.isCorpse && !visual.corpsePositionAdjusted && visual.isAnimated && visual.animatedNode) {
             // Increment corpse timer
@@ -874,12 +935,9 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
                 // Still waiting for animation to play
             } else if (animator.getState() == AnimationState::Stopped ||
                        (animator.getState() == AnimationState::Playing && !animator.isPlayingThrough())) {
-                // Animation finished or was never a playThrough - apply fixed offset
-                const float CORPSE_Z_OFFSET = 3.0f;
-                irr::core::vector3df currentPos = visual.animatedNode->getPosition();
-                visual.animatedNode->setPosition(irr::core::vector3df(currentPos.X, currentPos.Y + CORPSE_Z_OFFSET, currentPos.Z));
+                // Animation finished - mark as adjusted (no Z offset needed)
                 visual.corpsePositionAdjusted = true;
-                visual.corpseYOffset = CORPSE_Z_OFFSET;
+                visual.corpseYOffset = 0.0f;
             }
         }
 
@@ -1053,6 +1111,18 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         // Update equipment positions to follow bone attachment points
         updateEquipmentTransforms(visual);
     }
+
+    // Remove fully faded entities (can't remove during iteration above)
+    std::vector<uint16_t> toRemove;
+    for (const auto& [spawnId, visual] : entities_) {
+        if (visual.isFading && visual.fadeAlpha <= 0.0f) {
+            toRemove.push_back(spawnId);
+        }
+    }
+    for (uint16_t spawnId : toRemove) {
+        LOG_DEBUG(MOD_ENTITY, "Removing fully faded corpse {}", spawnId);
+        removeEntity(spawnId);
+    }
 }
 
 void EntityRenderer::removeEntity(uint16_t spawnId) {
@@ -1087,6 +1157,31 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
     }
 
     entities_.erase(it);
+}
+
+void EntityRenderer::startCorpseDecay(uint16_t spawnId) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return;
+    }
+
+    EntityVisual& visual = it->second;
+
+    // Only start decay for corpses, and only if not already fading
+    if (!visual.isCorpse || visual.isFading) {
+        // Not a corpse or already fading - just remove immediately
+        if (!visual.isCorpse) {
+            removeEntity(spawnId);
+        }
+        return;
+    }
+
+    LOG_DEBUG(MOD_ENTITY, "Starting corpse decay for {} ({})", spawnId, visual.name);
+
+    // Start the fade-out animation
+    visual.isFading = true;
+    visual.fadeTimer = 0.0f;
+    visual.fadeAlpha = 1.0f;
 }
 
 void EntityRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,
@@ -1712,6 +1807,18 @@ void EntityRenderer::markEntityAsCorpse(uint16_t spawnId) {
     EntityVisual& visual = it->second;
     visual.isCorpse = true;
     visual.corpseTime = 0.0f;  // Reset corpse timer
+
+    // Update name to include "'s corpse" suffix
+    if (visual.name.find("'s corpse") == std::string::npos &&
+        visual.name.find("'s_corpse") == std::string::npos) {
+        visual.name += "'s corpse";
+
+        // Update the name tag text node
+        if (visual.nameNode) {
+            std::wstring wname = EQT::toDisplayNameW(visual.name);
+            visual.nameNode->setText(wname.c_str());
+        }
+    }
 
     // Play death animation if animated - d05 is the actual death animation
     if (visual.isAnimated && visual.animatedNode) {

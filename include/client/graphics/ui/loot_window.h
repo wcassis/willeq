@@ -26,6 +26,7 @@ using LootAllCallback = std::function<void(uint16_t corpseId)>;
 using DestroyAllCallback = std::function<void(uint16_t corpseId)>;
 using LootCloseCallback = std::function<void(uint16_t corpseId)>;
 using LootIconLookupCallback = std::function<irr::video::ITexture*(uint32_t iconId)>;
+using LootSlotHoverCallback = std::function<void(int16_t slotId, int mouseX, int mouseY)>;
 
 class LootWindow : public WindowBase {
 public:
@@ -66,9 +67,13 @@ public:
     void setOnDestroyAll(DestroyAllCallback callback) { onDestroyAll_ = callback; }
     void setOnClose(LootCloseCallback callback) { onClose_ = callback; }
     void setIconLookupCallback(LootIconLookupCallback callback) { iconLookupCallback_ = callback; }
+    void setSlotHoverCallback(LootSlotHoverCallback callback) { slotHoverCallback_ = callback; }
 
-    // Get slot at screen position
+    // Get slot at screen position (returns display index, not corpse slot)
     int16_t getSlotAtPosition(int x, int y) const;
+
+    // Convert display index to actual corpse slot ID
+    int16_t getCorpseSlotFromDisplayIndex(int16_t displayIndex) const;
 
     // Highlighting
     void setHighlightedSlot(int16_t slotId);
@@ -136,6 +141,7 @@ private:
     DestroyAllCallback onDestroyAll_;
     LootCloseCallback onClose_;
     LootIconLookupCallback iconLookupCallback_;
+    LootSlotHoverCallback slotHoverCallback_;
 
     // Layout constants - initialized from UISettings
     int COLUMNS;

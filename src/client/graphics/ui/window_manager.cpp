@@ -88,6 +88,9 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     lootWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
         return iconLoader_.getIcon(iconId);
     });
+    lootWindow_->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+        handleLootSlotHover(slotId, mouseX, mouseY);
+    });
     positionLootWindow();
 
     // Create vendor window (initially hidden)
@@ -1072,6 +1075,23 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
 
         if (clickedOnInventory || clickedOnBag) {
+            // Determine target slot from click position
+            int16_t targetSlot = inventory::SLOT_INVALID;
+            if (clickedOnInventory && inventoryWindow_) {
+                targetSlot = inventoryWindow_->getSlotAtPosition(x, y);
+            } else if (clickedOnBag) {
+                for (auto& [slotId, bagWindow] : bagWindows_) {
+                    if (bagWindow->containsPoint(x, y)) {
+                        targetSlot = bagWindow->getSlotAtPosition(x, y);
+                        break;
+                    }
+                }
+            }
+
+            // Store target slot for auto-placement when item arrives on cursor
+            pendingLootTargetSlot_ = targetSlot;
+            LOG_DEBUG(MOD_UI, "Loot UI Setting pending target slot: {}", pendingLootTargetSlot_);
+
             // Place the loot item (triggers loot request to server)
             placeLootItem();
             return true;
@@ -1463,9 +1483,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
     if (lootWindow_ && lootWindow_->isOpen()) {
         if (lootWindow_->handleMouseMove(x, y)) {
             // Update tooltip for loot window items
-            int16_t highlightedSlot = lootWindow_->getHighlightedSlot();
-            if (highlightedSlot != inventory::SLOT_INVALID) {
-                const inventory::ItemInstance* item = lootWindow_->getItem(highlightedSlot);
+            // Note: getHighlightedSlot returns display index, need to convert to corpse slot
+            int16_t displayIndex = lootWindow_->getHighlightedSlot();
+            if (displayIndex != inventory::SLOT_INVALID) {
+                int16_t corpseSlot = lootWindow_->getCorpseSlotFromDisplayIndex(displayIndex);
+                const inventory::ItemInstance* item = (corpseSlot != inventory::SLOT_INVALID)
+                    ? lootWindow_->getItem(corpseSlot) : nullptr;
                 if (item && !invManager_->hasCursorItem()) {
                     tooltip_.setItem(item, x, y);
                 } else {
@@ -1669,6 +1692,36 @@ bool WindowManager::handleMouseWheel(float delta) {
 void WindowManager::render() {
     if (!driver_ || !gui_) {
         return;
+    }
+
+    // Check for pending loot auto-placement
+    // When user clicks inventory with loot cursor, we send loot request and store target slot.
+    // When item arrives on cursor, we auto-place it to avoid requiring a second click.
+    if (pendingLootTargetSlot_ != inventory::SLOT_INVALID && invManager_ && invManager_->hasCursorItem()) {
+        LOG_DEBUG(MOD_UI, "Auto-placing looted item to pending slot {}", pendingLootTargetSlot_);
+        int16_t targetSlot = pendingLootTargetSlot_;
+        pendingLootTargetSlot_ = inventory::SLOT_INVALID;  // Clear before placing to avoid recursion
+
+        // Check if we should stack instead of swap
+        const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
+        const inventory::ItemInstance* targetItem = invManager_->getItem(targetSlot);
+
+        if (cursorItem && targetItem && cursorItem->stackable && targetItem->stackable &&
+            cursorItem->itemId == targetItem->itemId) {
+            // Same stackable item - try to add to stack
+            if (targetItem->stackSize > 0 && targetItem->quantity < targetItem->stackSize) {
+                LOG_DEBUG(MOD_UI, "Auto-stacking looted item onto slot {}", targetSlot);
+                invManager_->placeOnMatchingStack(targetSlot);
+            } else {
+                // Stack is full or stackSize is 0 (not stackable), do normal placement (will swap)
+                invManager_->placeItem(targetSlot);
+            }
+        } else {
+            // Not stackable or different items - normal placement
+            if (!invManager_->placeItem(targetSlot)) {
+                LOG_DEBUG(MOD_UI, "Target slot {} occupied, item may have swapped", targetSlot);
+            }
+        }
     }
 
     // Render spell gem panel (always visible when initialized)
@@ -1903,6 +1956,8 @@ void WindowManager::cancelLootCursor() {
     lootCursorCorpseId_ = 0;
     lootCursorSlot_ = inventory::SLOT_INVALID;
     lootCursorItem_ = nullptr;
+    // Note: Don't clear pendingLootTargetSlot_ here - we want the auto-place to work
+    // even after the loot cursor display is cleared
 }
 
 void WindowManager::setCharacterInfo(const std::wstring& name, int level, const std::wstring& className) {
@@ -2056,8 +2111,8 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
 
         // Check if we can stack onto an existing item of the same type
         if (cursorItem && targetItem && cursorItem->stackable && targetItem->stackable &&
-            cursorItem->itemId == targetItem->itemId && targetItem->stackSize > 0 &&
-            targetItem->quantity < targetItem->stackSize) {
+            cursorItem->itemId == targetItem->itemId &&
+            targetItem->stackSize > 0 && targetItem->quantity < targetItem->stackSize) {
             // Auto-stack: move items from cursor to target stack
             LOG_DEBUG(MOD_UI, "WindowManager Auto-stacking cursor item onto slot {}", slotId);
             invManager_->placeOnMatchingStack(slotId);
@@ -2130,8 +2185,8 @@ void WindowManager::handleBagSlotClick(int16_t slotId, bool shift, bool ctrl) {
 
         // Check if we can stack onto an existing item of the same type
         if (cursorItem && targetItem && cursorItem->stackable && targetItem->stackable &&
-            cursorItem->itemId == targetItem->itemId && targetItem->stackSize > 0 &&
-            targetItem->quantity < targetItem->stackSize) {
+            cursorItem->itemId == targetItem->itemId &&
+            targetItem->stackSize > 0 && targetItem->quantity < targetItem->stackSize) {
             // Auto-stack: move items from cursor to target stack
             LOG_DEBUG(MOD_UI, "WindowManager Auto-stacking cursor item onto bag slot {}", slotId);
             invManager_->placeOnMatchingStack(slotId);
@@ -2288,6 +2343,27 @@ void WindowManager::handleSlotHover(int16_t slotId, int mouseX, int mouseY) {
         if (!invManager_->canPlaceItemInSlot(cursorItem, slotId)) {
             inventoryWindow_->setInvalidDropSlot(slotId);
         }
+    }
+}
+
+void WindowManager::handleLootSlotHover(int16_t displayIndex, int mouseX, int mouseY) {
+    if (displayIndex == inventory::SLOT_INVALID || !lootWindow_) {
+        tooltip_.clear();
+        return;
+    }
+
+    // Convert display index to actual corpse slot ID
+    int16_t corpseSlot = lootWindow_->getCorpseSlotFromDisplayIndex(displayIndex);
+    if (corpseSlot == inventory::SLOT_INVALID) {
+        tooltip_.clear();
+        return;
+    }
+
+    const inventory::ItemInstance* item = lootWindow_->getItem(corpseSlot);
+    if (item) {
+        tooltip_.setItem(item, mouseX, mouseY);
+    } else {
+        tooltip_.clear();
     }
 }
 

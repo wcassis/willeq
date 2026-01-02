@@ -382,6 +382,7 @@ public:
     void updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                       float dx = 0, float dy = 0, float dz = 0, uint32_t animation = 0);
     void removeEntity(uint16_t spawnId);
+    void startCorpseDecay(uint16_t spawnId);  // Start fade-out animation for corpse
     void clearEntities();
 
     // Door management

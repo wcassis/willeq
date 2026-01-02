@@ -643,14 +643,21 @@ void CombatManager::LootAll() {
 }
 
 void CombatManager::CloseLootWindow() {
+	// Save corpse ID before clearing
+	uint16_t corpseId = m_current_corpse_id;
 	m_current_corpse_id = 0;
 	m_loot_items.clear();
 
-	// Send end loot packet
+	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
+	m_eq->m_loot_complete_corpse_id = corpseId;
+
+	// Send end loot request to server (OP_EndLootRequest, not OP_LootComplete)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(4);
-	packet.PutUInt32(0, m_eq->GetEntityID());
-	m_eq->QueuePacket(HC_OP_LootComplete, &packet);
+	packet.PutUInt16(0, corpseId);
+	packet.PutUInt16(2, 0);  // padding
+	m_eq->QueuePacket(HC_OP_EndLootRequest, &packet);
+	LOG_DEBUG(MOD_COMBAT, "CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId={}", corpseId);
 
 	// If we were looting, transition back to appropriate state
 	if (m_combat_state == COMBAT_STATE_LOOTING) {

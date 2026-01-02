@@ -187,31 +187,12 @@ bool LootWindow::canLootAll() const {
         return false;
     }
 
-    // Count available slots in player inventory
-    int availableSlots = 0;
-
-    // Check general inventory slots (22-29)
-    for (int16_t slot = inventory::GENERAL_BEGIN; slot <= inventory::GENERAL_END; slot++) {
-        if (!inventoryManager_->hasItem(slot)) {
-            availableSlots++;
-        } else if (inventoryManager_->isBag(slot)) {
-            // Also count empty slots in bags
-            auto bagSlots = inventoryManager_->getBagContentsSlots(slot);
-            for (int16_t bagSlot : bagSlots) {
-                if (!inventoryManager_->hasItem(bagSlot)) {
-                    availableSlots++;
-                }
-            }
-        }
-    }
-
-    int itemsToLoot = static_cast<int>(lootItems_.size());
-
-    if (itemsToLoot > availableSlots) {
+    // Can't loot if there's already an item on the cursor
+    if (inventoryManager_->hasCursorItem()) {
         return false;
     }
 
-    // Check for lore conflicts
+    // Check for lore conflicts first
     for (const auto& [slot, item] : lootItems_) {
         if (item && item->hasFlag(inventory::ITEM_FLAG_LORE)) {
             if (inventoryManager_->hasLoreConflict(item.get())) {
@@ -220,7 +201,86 @@ bool LootWindow::canLootAll() const {
         }
     }
 
-    return true;
+    // Build a map of available stack space per item ID and count empty slots
+    // stackSpace[itemId] = total available space across all stacks of that item
+    std::map<uint32_t, int32_t> stackSpace;
+    int emptySlots = 0;
+
+    // Check general inventory slots and bags
+    for (int16_t slot = inventory::GENERAL_BEGIN; slot <= inventory::GENERAL_END; slot++) {
+        const inventory::ItemInstance* invItem = inventoryManager_->getItem(slot);
+        if (!invItem) {
+            emptySlots++;
+        } else if (inventoryManager_->isBag(slot)) {
+            // Check bag contents
+            auto bagSlots = inventoryManager_->getBagContentsSlots(slot);
+            for (int16_t bagSlot : bagSlots) {
+                const inventory::ItemInstance* bagItem = inventoryManager_->getItem(bagSlot);
+                if (!bagItem) {
+                    emptySlots++;
+                } else if (bagItem->stackable && bagItem->itemId != 0 && bagItem->stackSize > 0) {
+                    int32_t space = bagItem->stackSize - bagItem->quantity;
+                    if (space > 0) {
+                        stackSpace[bagItem->itemId] += space;
+                    }
+                }
+            }
+        } else if (invItem->stackable && invItem->itemId != 0 && invItem->stackSize > 0) {
+            // Stackable item in general slot - count available space
+            int32_t space = invItem->stackSize - invItem->quantity;
+            if (space > 0) {
+                stackSpace[invItem->itemId] += space;
+            }
+        }
+    }
+
+    // Now check if all loot items can fit
+    // Group loot items by item ID and sum quantities for stackables
+    std::map<uint32_t, int32_t> lootQuantities;  // For stackable items
+    int nonStackableLootCount = 0;
+
+    for (const auto& [slot, item] : lootItems_) {
+        if (!item) continue;
+
+        if (item->stackable && item->itemId != 0) {
+            lootQuantities[item->itemId] += item->quantity;
+        } else {
+            nonStackableLootCount++;
+        }
+    }
+
+    // Calculate how many empty slots we need
+    int slotsNeeded = nonStackableLootCount;
+
+    for (const auto& [itemId, quantity] : lootQuantities) {
+        int32_t remaining = quantity;
+
+        // First use any available stack space
+        auto it = stackSpace.find(itemId);
+        if (it != stackSpace.end()) {
+            remaining -= it->second;
+        }
+
+        // If there's still items left, we need empty slots for new stacks
+        if (remaining > 0) {
+            // Get actual stack size from loot items
+            int32_t stackSize = 0;
+            for (const auto& [slot, item] : lootItems_) {
+                if (item && item->itemId == itemId && item->stackSize > 0) {
+                    stackSize = item->stackSize;
+                    break;
+                }
+            }
+            if (stackSize > 0) {
+                slotsNeeded += (remaining + stackSize - 1) / stackSize;  // Ceiling division
+            } else {
+                // No valid stack size found - each item needs its own slot
+                slotsNeeded += remaining;
+            }
+        }
+    }
+
+    return slotsNeeded <= emptySlots;
 }
 
 bool LootWindow::canLootItem(int16_t slot) const {
@@ -230,6 +290,11 @@ bool LootWindow::canLootItem(int16_t slot) const {
     }
 
     if (!inventoryManager_) {
+        return false;
+    }
+
+    // Can't loot if there's already an item on the cursor
+    if (inventoryManager_->hasCursorItem()) {
         return false;
     }
 
@@ -275,6 +340,11 @@ std::string LootWindow::getLootAllError() const {
         return "Inventory not available";
     }
 
+    // Check cursor first
+    if (inventoryManager_->hasCursorItem()) {
+        return "You have an item on your cursor";
+    }
+
     // Check for lore conflicts first
     for (const auto& [slot, item] : lootItems_) {
         if (item && item->hasFlag(inventory::ITEM_FLAG_LORE)) {
@@ -284,26 +354,9 @@ std::string LootWindow::getLootAllError() const {
         }
     }
 
-    // Count available slots in player inventory
-    int availableSlots = 0;
-
-    // Check general inventory slots (22-29) and bags
-    for (int16_t slot = inventory::GENERAL_BEGIN; slot <= inventory::GENERAL_END; slot++) {
-        if (!inventoryManager_->hasItem(slot)) {
-            availableSlots++;
-        } else if (inventoryManager_->isBag(slot)) {
-            auto bagSlots = inventoryManager_->getBagContentsSlots(slot);
-            for (int16_t bagSlot : bagSlots) {
-                if (!inventoryManager_->hasItem(bagSlot)) {
-                    availableSlots++;
-                }
-            }
-        }
-    }
-
-    int itemsToLoot = static_cast<int>(lootItems_.size());
-
-    if (itemsToLoot > availableSlots) {
+    // Use the same logic as canLootAll to check if all items can fit
+    // (accounting for stackable items and partial stacks)
+    if (!canLootAll()) {
         return "Insufficient inventory space";
     }
 
@@ -318,6 +371,11 @@ std::string LootWindow::getLootItemError(int16_t slot) const {
 
     if (!inventoryManager_) {
         return "Inventory not available";
+    }
+
+    // Check cursor first
+    if (inventoryManager_->hasCursorItem()) {
+        return "You have an item on your cursor";
     }
 
     const auto& item = it->second;
@@ -483,6 +541,10 @@ bool LootWindow::handleMouseMove(int x, int y) {
     if (!visible_ || !containsPoint(x, y)) {
         clearHighlights();
         hoveredButton_ = ButtonId::None;
+        // Notify tooltip to hide
+        if (slotHoverCallback_) {
+            slotHoverCallback_(inventory::SLOT_INVALID, x, y);
+        }
         return false;
     }
 
@@ -494,6 +556,11 @@ bool LootWindow::handleMouseMove(int x, int y) {
     clearHighlights();
     if (hoveredSlot != inventory::SLOT_INVALID) {
         setHighlightedSlot(hoveredSlot);
+    }
+
+    // Notify about hover for tooltip
+    if (slotHoverCallback_) {
+        slotHoverCallback_(hoveredSlot, x, y);
     }
 
     return true;
@@ -513,6 +580,23 @@ int16_t LootWindow::getSlotAtPosition(int x, int y) const {
                 return static_cast<int16_t>(i);
             }
         }
+    }
+
+    return inventory::SLOT_INVALID;
+}
+
+int16_t LootWindow::getCorpseSlotFromDisplayIndex(int16_t displayIndex) const {
+    if (displayIndex == inventory::SLOT_INVALID) {
+        return inventory::SLOT_INVALID;
+    }
+
+    int targetIndex = scrollOffset_ + displayIndex;
+    int currentIndex = 0;
+    for (const auto& [corpseSlot, item] : lootItems_) {
+        if (currentIndex == targetIndex) {
+            return corpseSlot;
+        }
+        currentIndex++;
     }
 
     return inventory::SLOT_INVALID;

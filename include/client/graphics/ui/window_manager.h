@@ -362,6 +362,7 @@ private:
     void handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctrl);
     void handleTradeMoneyAreaClick();
     void handleSlotHover(int16_t slotId, int mouseX, int mouseY);
+    void handleLootSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleDestroyClick();
     void handleBagOpenClick(int16_t generalSlot);
     void handleCurrencyClick(CurrencyType type, uint32_t maxAmount);
@@ -503,6 +504,7 @@ private:
     uint16_t lootCursorCorpseId_ = 0;
     int16_t lootCursorSlot_ = inventory::SLOT_INVALID;
     const inventory::ItemInstance* lootCursorItem_ = nullptr;
+    int16_t pendingLootTargetSlot_ = inventory::SLOT_INVALID;  // Auto-place looted item here
 
     // Confirmation dialog
     ConfirmDialogType confirmDialogType_ = ConfirmDialogType::None;
