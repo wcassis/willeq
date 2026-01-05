@@ -97,49 +97,78 @@ void CameraController::update(float deltaTime, bool forward, bool backward, bool
 void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float eqHeading) {
     if (!camera_) return;
 
-    // Calculate zoom factor (0 = zoomed all the way in, 1 = zoomed all the way out)
-    float zoomFactor = (followDistance_ - MIN_FOLLOW_DISTANCE) /
-                       (MAX_FOLLOW_DISTANCE - MIN_FOLLOW_DISTANCE);
+    // Debug: Log heading values (throttled)
+    static float lastLoggedHeading = 0;
+    static int camLogCounter = 0;
+    if (std::abs(eqHeading - lastLoggedHeading) > 1.5f && ++camLogCounter % 10 == 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[ROT-CAMERA] setFollowPosition: heading={:.1f} followDist={:.1f}",
+                  eqHeading, followDistance_);
+        lastLoggedHeading = eqHeading;
+    }
 
-    // Height offset scales with distance for diagonal camera angle
-    // At min zoom: just above player's head (~8 units)
-    // At max zoom: high above (~200 units for steep diagonal angle)
-    float minHeight = 8.0f;
-    float maxHeight = 200.0f;
-    float heightOffset = minHeight + zoomFactor * (maxHeight - minHeight);
+    // Track orbit angle for potential future use (mouse orbit control)
+    orbitAngle_ = eqHeading;
+    orbitAngleInitialized_ = true;
 
     // Convert EQ heading (0-512) to radians
     // EQ heading: 0=North, increases clockwise
     float headingRad = eqHeading / 512.0f * 2.0f * irr::core::PI;
 
-    // Calculate camera position behind character using current follow distance
-    // EQ: (x, y, z) -> Irrlicht: (x, z, y)
-    irr::core::vector3df pos(
-        eqX - std::sin(headingRad) * followDistance_,
-        eqZ + heightOffset,
-        eqY - std::cos(headingRad) * followDistance_
-    );
+    // Eye height for first-person (human scale)
+    const float eyeHeight = 6.0f;
 
-    // Look target: at close zoom, look ahead of player (over-the-shoulder view)
-    // At far zoom, look at the player
-    float lookAheadDistance = (1.0f - zoomFactor) * 80.0f;
-    float targetHeight = eqZ + 5.0f;  // Look at roughly head height
+    irr::core::vector3df pos;
+    irr::core::vector3df target;
 
-    irr::core::vector3df target(
-        eqX + std::sin(headingRad) * lookAheadDistance,
-        targetHeight,
-        eqY + std::cos(headingRad) * lookAheadDistance
-    );
+    if (followDistance_ <= 1.0f) {
+        // First-person mode: camera at player's eye level, looking forward
+        pos = irr::core::vector3df(
+            eqX,
+            eqZ + eyeHeight,
+            eqY
+        );
+
+        // Look 100 units ahead in the direction the player is facing
+        target = irr::core::vector3df(
+            eqX + std::sin(headingRad) * 100.0f,
+            eqZ + eyeHeight,
+            eqY + std::cos(headingRad) * 100.0f
+        );
+    } else {
+        // Third-person mode: camera behind and above player
+        // Camera follows player heading - always shows player's back
+        // Fixed height offset - camera maintains consistent forward-looking angle regardless of zoom
+        float heightAboveEye = 4.0f;  // Fixed height above eye level
+        float heightOffset = eyeHeight + heightAboveEye;
+
+        // Calculate camera position behind character
+        // EQ: (x, y, z) -> Irrlicht: (x, z, y)
+        pos = irr::core::vector3df(
+            eqX - std::sin(headingRad) * followDistance_,
+            eqZ + heightOffset,
+            eqY - std::cos(headingRad) * followDistance_
+        );
+
+        // Look slightly ahead of the player, not directly at them
+        // This creates a more over-the-shoulder view
+        float lookAheadDist = std::min(followDistance_ * 0.5f, 20.0f);
+        target = irr::core::vector3df(
+            eqX + std::sin(headingRad) * lookAheadDist,
+            eqZ + eyeHeight,
+            eqY + std::cos(headingRad) * lookAheadDist
+        );
+    }
 
     if (logZoneIn_) {
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] CameraController::setFollowPosition: EQ({:.2f},{:.2f},{:.2f}) heading={:.2f}",
                  eqX, eqY, eqZ, eqHeading);
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   headingRad={:.4f} followDist={:.2f} heightOffset={:.2f}",
-                 headingRad, followDistance_, heightOffset);
+        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   followDist={:.2f} firstPerson={} orbitAngle={:.2f}",
+                 followDistance_, followDistance_ <= 1.0f, orbitAngle_);
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   Camera pos: Irrlicht({:.2f},{:.2f},{:.2f})",
                  pos.X, pos.Y, pos.Z);
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   Camera target: Irrlicht({:.2f},{:.2f},{:.2f})",
                  target.X, target.Y, target.Z);
+        logZoneIn_ = false;  // Only log once per zone-in
     }
 
     camera_->setPosition(pos);
@@ -147,11 +176,6 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
 
     // Update internal yaw based on EQ heading
     yaw_ = (eqHeading / 512.0f * 360.0f) - 180.0f;
-
-    if (logZoneIn_) {
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   Calculated yaw: {:.2f} degrees", yaw_);
-        logZoneIn_ = false;  // Only log once per zone-in
-    }
 }
 
 void CameraController::getPositionEQ(float& x, float& y, float& z) const {
@@ -182,6 +206,21 @@ void CameraController::setFollowDistance(float distance) {
 
 void CameraController::adjustFollowDistance(float delta) {
     setFollowDistance(followDistance_ + delta);
+}
+
+void CameraController::setOrbitAngle(float eqHeading) {
+    orbitAngle_ = eqHeading;
+    // Normalize to 0-512 range
+    while (orbitAngle_ < 0) orbitAngle_ += 512.0f;
+    while (orbitAngle_ >= 512.0f) orbitAngle_ -= 512.0f;
+    orbitAngleInitialized_ = true;
+}
+
+void CameraController::adjustOrbitAngle(float delta) {
+    orbitAngle_ += delta;
+    // Normalize to 0-512 range
+    while (orbitAngle_ < 0) orbitAngle_ += 512.0f;
+    while (orbitAngle_ >= 512.0f) orbitAngle_ -= 512.0f;
 }
 
 } // namespace Graphics

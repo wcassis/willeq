@@ -3,12 +3,14 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/skeletal_animator.h"
+#include "client/animation_constants.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
 #include <set>
+#include <chrono>
 
 namespace EQT {
 namespace Graphics {
@@ -318,20 +320,21 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         visual.isAnimated = true;
         visual.usesPlaceholder = false;
 
-        // Calculate height offset to center the model at server Z
-        // Server Z represents the CENTER of the model, not the feet/ground
-        irr::core::aabbox3df bbox = animNode->getBoundingBox();
-        float bboxCenterY = (bbox.MinEdge.Y + bbox.MaxEdge.Y) / 2.0f;
-        float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-        visual.modelYOffset = -bboxCenterY * scale;
+        // Force animation update to get correct bounding box
+        // The initial bounding box is from bind/T-pose, but we need the animated pose
+        animNode->forceAnimationUpdate();
 
-        // Debug: log bounding box info for player entity
-        if (isPlayer) {
-            LOG_INFO(MOD_GRAPHICS, "Player model bbox: min=({:.2f},{:.2f},{:.2f}) max=({:.2f},{:.2f},{:.2f}) centerY={:.2f} height={:.2f} modelYOffset={:.2f}",
-                     bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                     bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z,
-                     bboxCenterY, bboxHeight, visual.modelYOffset);
-        }
+        // Calculate height offset to place feet at ground level (server Z)
+        // Server Z is the feet/ground position, not the model center
+        // MinEdge.Y is the bottom of the bounding box (feet) relative to model origin
+        irr::core::aabbox3df bbox = animNode->getBoundingBox();
+        float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+        // Offset so that MinEdge.Y (feet) aligns with ground level
+        visual.modelYOffset = -bbox.MinEdge.Y * scale;
+
+        // Debug: log bounding box info for entity creation
+        LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox.MinY={:.2f} scale={:.3f} modelYOffset={:.2f}",
+                 name, raceId, bbox.MinEdge.Y, scale, visual.modelYOffset);
 
         // Set position (convert EQ Z-up to Irrlicht Y-up) with center offset
         animNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
@@ -343,6 +346,10 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         // Must negate to convert between coordinate systems
         float visualHeading = -heading;
         animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
+        if (isPlayer) {
+            LOG_DEBUG(MOD_GRAPHICS, "[ROT-CREATE] createEntity PLAYER: spawnId={} heading={:.1f} visualHeading={:.1f} node={}",
+                      spawnId, heading, visualHeading, (void*)animNode);
+        }
 
         // Scale is already set in createAnimatedNode, but apply adjustments
         animNode->setScale(irr::core::vector3df(scale, scale, scale));
@@ -441,13 +448,11 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     }
     visual.sceneNode = visual.meshNode;
 
-    // Calculate height offset to center the model at server Z
-    // Server Z represents the CENTER of the model, not the feet/ground
-    // We need to offset so the model's bounding box center aligns with server Z
+    // Calculate height offset to place feet at ground level (server Z)
+    // Server Z is the feet/ground position, not the model center
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
-    // Calculate offset to move model so its center is at the given position
-    float bboxCenterY = (bbox.MinEdge.Y + bbox.MaxEdge.Y) / 2.0f;
-    visual.modelYOffset = -bboxCenterY * scale;
+    // Offset so that MinEdge.Y (feet) aligns with ground level
+    visual.modelYOffset = -bbox.MinEdge.Y * scale;
 
     // Set position (convert EQ Z-up to Irrlicht Y-up) with center offset
     visual.meshNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
@@ -545,12 +550,21 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
         return;
     }
 
+    EntityVisual& visual = it->second;
+
+    // Log when processing the player's spawn ID
+    if (update.spawnId == playerSpawnId_) {
+        static int processPlayerCounter = 0;
+        if (++processPlayerCounter % 30 == 0) {
+            LOG_TRACE(MOD_GRAPHICS, "[PROCESS-PLAYER] processUpdate called for player spawn={} heading={:.1f}",
+                     update.spawnId, update.heading);
+        }
+    }
+
     uint16_t spawnId = update.spawnId;
     float x = update.x, y = update.y, z = update.z, heading = update.heading;
     float dx = update.dx, dy = update.dy, dz = update.dz;
     int32_t animation = update.animation;
-
-    EntityVisual& visual = it->second;
 
     // Check if position actually changed (ignore heading-only updates)
     float serverDeltaX = x - visual.serverX;
@@ -675,6 +689,15 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
         float visualHeading = -heading;
         visual.sceneNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
 
+        // Log rotation for player
+        if (spawnId == playerSpawnId_) {
+            static int rotLogCounter = 0;
+            if (++rotLogCounter % 30 == 0) {
+                LOG_TRACE(MOD_GRAPHICS, "[PROCESS-ROT] Player setRotation: spawn={} heading={:.1f} visualHeading={:.1f}",
+                          spawnId, heading, visualHeading);
+            }
+        }
+
         // Debug: Compare rotation vs velocity direction for targeted NPC
         if (isDebugTarget && visual.isNPC) {
             float velAngle = std::atan2(visual.velocityY, visual.velocityX) * 180.0f / 3.14159265f;
@@ -695,7 +718,8 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
     if (visual.isCorpse && spawnId == debugTargetId_) {
         LOG_TRACE(MOD_ENTITY, "TARGET CORPSE Skipping animation update for corpse spawn={} currentAnim='{}'", spawnId, visual.currentAnimation);
     }
-    if (visual.isAnimated && visual.animatedNode && !visual.isCorpse) {
+    // Skip animation updates for the local player - controlled by setPlayerEntityAnimation()
+    if (visual.isAnimated && visual.animatedNode && !visual.isCorpse && !visual.isPlayer) {
         std::string targetAnim;
         bool playThrough = false;  // True for one-shot animations (jumps, attacks, emotes)
         bool loopAnim = true;
@@ -769,10 +793,25 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
             uint32_t effectiveAnim = (animation != 0) ? animation : visual.lastNonZeroAnimation;
             bool isMoving = (std::abs(visual.velocityX) > 0.5f || std::abs(visual.velocityY) > 0.5f);
 
+            // Player Animation IDs to Animation Codes mapping:
+            // 0 = idle/stand -> o01
+            // 1 = walk -> l01
+            // 3 = crouch walk -> l06 (sneaking)
+            // 5/6 = attack -> weapon-based
+            // 16 = death -> d05
+            // 17 = looting -> p05
+            // 20 = jump -> l04 (standing) or l03 (running) based on movement
+            // 22 = fly/swim -> l09 (swim treading)
+            // 27 = run -> l02
+
             // Check for playThrough animations (one-shot animations that must complete)
             if (animation == 20) {
-                // Jump animation - playThrough, don't loop
-                targetAnim = "l05";  // l05 = Falling/Jump
+                // Jump animation - use l04 (standing jump) or l03 (running jump)
+                if (isMoving) {
+                    targetAnim = "l03";  // l03 = Jump (Running)
+                } else {
+                    targetAnim = "l04";  // l04 = Jump (Standing)
+                }
                 playThrough = true;
                 loopAnim = false;
             } else if (animation == 16) {
@@ -781,20 +820,39 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
                 playThrough = true;
                 loopAnim = false;
             } else if (animation == 5 || animation == 6) {
-                // Attack animations - playThrough, don't loop
-                targetAnim = "c01";  // Combat attack
+                // Attack animations - use weapon-based animation, playThrough, don't loop
+                targetAnim = EQ::getWeaponAttackAnimation(visual.primaryWeaponSkill, false, false);
+                playThrough = true;
+                loopAnim = false;
+
+                // Phase 6.2: Match attack animation speed to weapon delay (if available)
+                // Default weapon delay is ~30 (3.0 seconds), adjust animation to match
+                // Note: weaponDelay in EQ is 10ths of a second, so delay 30 = 3000ms
+                if (visual.animatedNode) {
+                    float weaponDelayMs = visual.weaponDelayMs > 0 ? visual.weaponDelayMs : 3000.0f;
+                    // We'll set duration after animation starts
+                }
+            } else if (animation == 17) {
+                // Looting animation - kneeling
+                targetAnim = "p05";  // p05 = Kneel (Loot)
                 playThrough = true;
                 loopAnim = false;
             } else if (!isMoving && animation == 0) {
                 // Entity is NOT moving and animation is 0 - return to idle
                 // This takes priority over effectiveAnim (lastNonZeroAnimation)
                 targetAnim = "o01";
-            } else if (isMoving && (effectiveAnim == 27 || effectiveAnim == 22)) {
+            } else if (isMoving && effectiveAnim == 22) {
+                // Swim/fly animation (only if actually moving)
+                targetAnim = "l09";  // l09 = Swim Treading
+            } else if (isMoving && effectiveAnim == 27) {
                 // Run animation (only if actually moving)
-                targetAnim = "l02";
-            } else if (isMoving && (effectiveAnim == 1 || effectiveAnim == 3)) {
-                // Walk or crouch walk (only if actually moving)
-                targetAnim = "l01";
+                targetAnim = "l02";  // l02 = Run
+            } else if (isMoving && effectiveAnim == 3) {
+                // Crouch walk (sneaking) - only if actually moving
+                targetAnim = "l06";  // l06 = Crouch Walk
+            } else if (isMoving && effectiveAnim == 1) {
+                // Walk animation (only if actually moving)
+                targetAnim = "l01";  // l01 = Walk
             } else if (isMoving) {
                 // Moving but no specific animation - use velocity to determine
                 float speed = std::sqrt(visual.velocityX*visual.velocityX + visual.velocityY*visual.velocityY);
@@ -803,6 +861,16 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
                 } else {
                     targetAnim = "l01";  // Walk
                 }
+
+                // Phase 6.2: Match animation speed to movement speed
+                if (visual.animatedNode) {
+                    // Base speeds: walk ~10, run ~23
+                    float baseSpeed = (speed > 15.0f) ? 23.0f : 10.0f;
+                    visual.animatedNode->getAnimator().matchMovementSpeed(baseSpeed, speed);
+                }
+            } else if (effectiveAnim == 22 && !isMoving) {
+                // Swimming but not moving - treading water
+                targetAnim = "l09";  // l09 = Swim Treading
             } else if (animation != 0) {
                 // Some other animation - default to idle for now
                 targetAnim = "o01";
@@ -818,6 +886,11 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
             if (visual.animatedNode->hasAnimation(targetAnim)) {
                 if (visual.animatedNode->playAnimation(targetAnim, loopAnim, playThrough)) {
                     visual.currentAnimation = targetAnim;
+
+                    // Phase 6.2: Set attack animation speed to match weapon delay
+                    if ((animation == 5 || animation == 6) && visual.weaponDelayMs > 0) {
+                        visual.animatedNode->getAnimator().setTargetDuration(visual.weaponDelayMs * 0.5f);
+                    }
                 }
             }
         }
@@ -853,6 +926,13 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         // Skip player entity position interpolation - controlled by camera/input
         // But still update equipment transforms
         if (visual.isPlayer) {
+            // Debug: Log player rotation at interpolation time (throttled to ~1/sec at 60fps)
+            static int interpLogCounter = 0;
+            if (visual.sceneNode && ++interpLogCounter % 60 == 0) {
+                irr::core::vector3df rot = visual.sceneNode->getRotation();
+                LOG_DEBUG(MOD_GRAPHICS, "[ROT-INTERP] updateInterpolation PLAYER: rotation=({:.1f},{:.1f},{:.1f}) lastHeading={:.1f} node={}",
+                          rot.X, rot.Y, rot.Z, visual.lastHeading, (void*)visual.sceneNode);
+            }
             updateEquipmentTransforms(visual);
             continue;
         }
@@ -1304,19 +1384,23 @@ void EntityRenderer::setNameTagsVisible(bool visible) {
 }
 
 void EntityRenderer::setPlayerEntityVisible(bool visible) {
+    bool foundPlayer = false;
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
-            // Hide/show the mesh node (animated or static)
+            foundPlayer = true;
+            // Show/hide the mesh node (animated or static)
             if (visual.animatedNode) {
                 visual.animatedNode->setVisible(visible);
+                LOG_DEBUG(MOD_GRAPHICS, "setPlayerEntityVisible: visible={} spawnId={} animatedNode={} IsVisible={}",
+                          visible, spawnId, (void*)visual.animatedNode, visual.animatedNode->isVisible());
             } else if (visual.meshNode) {
                 visual.meshNode->setVisible(visible);
             }
-            // Hide/show the name tag
+            // Show/hide the name tag
             if (visual.nameNode) {
                 visual.nameNode->setVisible(visible);
             }
-            // Hide/show equipment
+            // Show/hide equipment
             if (visual.primaryEquipNode) {
                 visual.primaryEquipNode->setVisible(visible);
             }
@@ -1326,42 +1410,138 @@ void EntityRenderer::setPlayerEntityVisible(bool visible) {
             break; // Only one player entity
         }
     }
+    if (!foundPlayer) {
+        LOG_DEBUG(MOD_GRAPHICS, "setPlayerEntityVisible: No player entity found!");
+    }
 }
 
-void EntityRenderer::updatePlayerEntityPosition(float x, float y, float z, float heading) {
-    for (auto& [spawnId, visual] : entities_) {
+void EntityRenderer::debugLogPlayerVisibility() const {
+    static int frameCounter = 0;
+    if (++frameCounter % 60 != 0) return;  // Log once per second at 60fps
+
+    for (const auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
-            // Update stored position
-            visual.lastX = x;
-            visual.lastY = y;
-            visual.lastZ = z;
-            visual.lastHeading = heading;
+            bool nodeVisible = false;
+            bool parentVisible = true;
+            irr::scene::ISceneNode* parent = nullptr;
 
-            // Convert EQ coordinates to Irrlicht: EQ (x, y, z) -> Irrlicht (x, z, y)
-            irr::core::vector3df irrPos(x, z + visual.modelYOffset, y);
-
-            // Update scene node position and rotation
             if (visual.animatedNode) {
-                visual.animatedNode->setPosition(irrPos);
-                // Update rotation - EQ heading to Irrlicht rotation
-                // EQ heading: 0=North(+Y), increases clockwise
-                // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
-                float irrRotation = -heading * 360.0f / 512.0f;
-                visual.animatedNode->setRotation(irr::core::vector3df(0, irrRotation, 0));
-            } else if (visual.meshNode) {
-                visual.meshNode->setPosition(irrPos);
-                float irrRotation = -heading * 360.0f / 512.0f;
-                visual.meshNode->setRotation(irr::core::vector3df(0, irrRotation, 0));
+                nodeVisible = visual.animatedNode->isVisible();
+                parent = visual.animatedNode->getParent();
+                if (parent) {
+                    parentVisible = parent->isVisible();
+                }
             }
 
-            // Update equipment transforms
-            updateEquipmentTransforms(visual);
-            break; // Only one player entity
+            LOG_DEBUG(MOD_GRAPHICS, "debugLogPlayerVisibility: spawnId={} animatedNode={} nodeVisible={} parent={} parentVisible={} isFirstPersonMode={}",
+                      spawnId, (void*)visual.animatedNode, nodeVisible, (void*)parent, parentVisible, visual.isFirstPersonMode);
+            return;
+        }
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "debugLogPlayerVisibility: No player entity found!");
+}
+
+void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.isPlayer) {
+            visual.isFirstPersonMode = enabled;
+            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={}", enabled);
+
+            // Set first-person mode on the animated mesh node
+            // This will show only arms while hiding body/head
+            if (visual.animatedNode) {
+                visual.animatedNode->setFirstPersonMode(enabled);
+                // Keep the node visible - the mesh itself handles hiding non-arm parts
+                visual.animatedNode->setVisible(true);
+
+            } else if (visual.meshNode) {
+                // Static meshes don't support first-person mode, just hide
+                visual.meshNode->setVisible(!enabled);
+            }
+
+            // Always hide name tag in first-person
+            if (visual.nameNode) {
+                visual.nameNode->setVisible(!enabled);
+            }
+
+            // Equipment stays attached to hand bones (visible with arms)
+            // Equipment transforms are updated by updateEquipmentTransforms()
+
+            break;
         }
     }
 }
 
-void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool loop) {
+void EntityRenderer::updateFirstPersonWeapons(const irr::core::vector3df& cameraPos,
+                                               const irr::core::vector3df& cameraTarget,
+                                               float deltaTime) {
+    // In proper first-person mode, weapons stay attached to the character's hands
+    // via the skeleton bone system. No camera-relative positioning needed.
+    // The arms and equipment animate together through the normal skeletal animation.
+
+    // Update equipment transforms as usual (they follow hand bones)
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.isPlayer && visual.isFirstPersonMode) {
+            updateEquipmentTransforms(visual);
+            break;
+        }
+    }
+}
+
+void EntityRenderer::triggerFirstPersonAttack() {
+    // In proper first-person mode, attack animations are played on the full character
+    // model (only arms visible). The animation system handles the weapon movement.
+    // This method is kept for compatibility but the actual attack animation
+    // is triggered via setEntityAnimation() from ZoneProcessDamage.
+    LOG_DEBUG(MOD_GRAPHICS, "triggerFirstPersonAttack: Attack anim via skeleton");
+}
+
+bool EntityRenderer::isPlayerInFirstPersonMode() const {
+    for (const auto& [spawnId, visual] : entities_) {
+        if (visual.isPlayer) {
+            return visual.isFirstPersonMode;
+        }
+    }
+    return false;
+}
+
+void EntityRenderer::updatePlayerEntityPosition(float x, float y, float z, float heading) {
+    // Convert heading from 0-512 to degrees (0-360) for processUpdate
+    float headingDegrees = heading * 360.0f / 512.0f;
+
+    // Use stored playerSpawnId_ instead of searching for isPlayer flag
+    uint16_t playerSpawnId = playerSpawnId_;
+
+    if (playerSpawnId != 0 && entities_.find(playerSpawnId) != entities_.end()) {
+        // Queue update to go through processUpdate() like NPCs do
+        PendingUpdate update;
+        update.spawnId = playerSpawnId;
+        update.x = x;
+        update.y = y;
+        update.z = z;
+        update.heading = headingDegrees;
+        update.dx = 0;
+        update.dy = 0;
+        update.dz = 0;
+        update.animation = 0;
+
+        // Log player position updates
+        static int playerUpdateCounter = 0;
+        if (++playerUpdateCounter % 60 == 0) {
+            LOG_TRACE(MOD_GRAPHICS, "[PLAYER-UPDATE] processUpdate for spawn={} pos=({:.1f},{:.1f},{:.1f}) heading={:.1f}",
+                     playerSpawnId, x, y, z, headingDegrees);
+        }
+
+        processUpdate(update);
+    } else {
+        static int notFoundCounter = 0;
+        if (++notFoundCounter % 60 == 0) {
+            LOG_WARN(MOD_GRAPHICS, "[PLAYER-UPDATE] Player entity not found! spawnId={}", playerSpawnId);
+        }
+    }
+}
+
+void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool loop, float movementSpeed) {
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
             if (visual.isAnimated && visual.animatedNode) {
@@ -1371,6 +1551,13 @@ void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool 
                         visual.animatedNode->playAnimation(animCode, loop);
                         visual.currentAnimation = animCode;
                     }
+                }
+
+                // Match animation speed to movement speed (like NPCs)
+                // Base speeds: walk animation ~10 units/sec, run animation ~23 units/sec
+                if (movementSpeed > 0.0f && (animCode == "l01" || animCode == "l02")) {
+                    float baseSpeed = (animCode == "l02") ? 23.0f : 10.0f;
+                    visual.animatedNode->getAnimator().matchMovementSpeed(baseSpeed, movementSpeed);
                 }
             }
             break; // Only one player entity
@@ -1386,24 +1573,26 @@ void EntityRenderer::setPlayerSpawnId(uint16_t spawnId) {
     for (auto& [id, visual] : entities_) {
         if (visual.isPlayer) {
             visual.isPlayer = false;
+            // Also unmark the node for debug logging
+            if (visual.animatedNode) {
+                visual.animatedNode->setIsPlayerNode(false);
+            }
         }
     }
 
     // Now mark the new entity as player
     auto it = entities_.find(spawnId);
     if (it != entities_.end()) {
+        // Mark entity as player
         it->second.isPlayer = true;
-
-        // Debug: log bounding box info for player entity
+        // Also mark the node for debug logging
         if (it->second.animatedNode) {
-            irr::core::aabbox3df bbox = it->second.animatedNode->getBoundingBox();
-            float bboxCenterY = (bbox.MinEdge.Y + bbox.MaxEdge.Y) / 2.0f;
-            float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-            LOG_INFO(MOD_GRAPHICS, "Player model bbox: min=({:.2f},{:.2f},{:.2f}) max=({:.2f},{:.2f},{:.2f}) centerY={:.2f} height={:.2f} modelYOffset={:.2f}",
-                     bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                     bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z,
-                     bboxCenterY, bboxHeight, it->second.modelYOffset);
+            it->second.animatedNode->setIsPlayerNode(true);
         }
+
+        LOG_DEBUG(MOD_GRAPHICS, "setPlayerSpawnId: spawn={} name={} modelYOffset={:.2f} sceneNode={} animatedNode={}",
+                  spawnId, it->second.name, it->second.modelYOffset,
+                  (void*)it->second.sceneNode, (void*)it->second.animatedNode);
     }
 }
 
@@ -1421,31 +1610,33 @@ bool EntityRenderer::getPlayerHeadBonePosition(float& eqX, float& eqY, float& eq
         return false;
     }
 
-    // Use the bounding box to get approximate eye level.
-    // Bone transforms are delta/relative from animation, not absolute positions.
-    irr::core::aabbox3df bbox = playerVisual->animatedNode->getBoundingBox();
+    // Use the BASE mesh bounding box (not instance mesh) for camera height.
+    // In first-person mode, the instance mesh has collapsed vertices (Y=-10000),
+    // which would corrupt the bounding box. The base mesh is unmodified.
+    EQAnimatedMesh* eqMesh = playerVisual->animatedNode->getEQMesh();
+    if (!eqMesh) {
+        return false;
+    }
+    irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
 
-    // Eye level is the full height from feet to eyes.
-    // Feet are at bbox.MinEdge.Y (negative, below model origin)
-    // Eyes are near bbox.MaxEdge.Y minus small offset
-    // Total eye height from feet = (bbox.MaxEdge.Y - 0.3) - bbox.MinEdge.Y
-    float eyeHeightFromFeet = (bbox.MaxEdge.Y - 0.3f) - bbox.MinEdge.Y;
+    // Camera should be at the TOP of the bounding box, looking straight ahead.
+    // User requested: "looking out from the top of a bounding box over the model"
+    // Use full bbox height, no offset for "eyes" - just top of model.
+    float cameraHeightFromFeet = bbox.MaxEdge.Y - bbox.MinEdge.Y;
 
     // X and Y use entity position
     eqX = playerVisual->lastX;
     eqY = playerVisual->lastY;
 
     // For Z: The collision system should have placed feet at ground level.
-    // After collision, the ground is at lastZ (where collision found ground and adjusted to).
-    // Eye level = lastZ + eyeHeightFromFeet
-    // Note: We use lastZ directly because collision should have positioned us with feet at ground.
-    eqZ = playerVisual->lastZ + eyeHeightFromFeet;
+    // Camera Z = lastZ (feet) + full model height
+    eqZ = playerVisual->lastZ + cameraHeightFromFeet;
 
     // Debug logging
     static int logCount = 0;
     if (logCount++ % 100 == 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "HeadPos: lastZ={:.2f} eyeHeightFromFeet={:.2f} => eqZ={:.2f}",
-                  playerVisual->lastZ, eyeHeightFromFeet, eqZ);
+        LOG_DEBUG(MOD_GRAPHICS, "HeadPos: lastZ={:.2f} cameraHeight={:.2f} => eqZ={:.2f} (bbox Y: {:.2f} to {:.2f})",
+                  playerVisual->lastZ, cameraHeightFromFeet, eqZ, bbox.MinEdge.Y, bbox.MaxEdge.Y);
     }
 
     return true;
@@ -1465,11 +1656,17 @@ float EntityRenderer::getPlayerEyeHeightFromFeet() const {
     // Find the player entity
     for (const auto& [id, visual] : entities_) {
         if (visual.isPlayer && visual.isAnimated && visual.animatedNode) {
-            irr::core::aabbox3df bbox = visual.animatedNode->getBoundingBox();
-            // Eye level is near the top of the model, minus a small offset for the top of head
-            // Feet are at bbox.MinEdge.Y, eyes are near bbox.MaxEdge.Y - 0.3
-            float eyeHeightFromFeet = (bbox.MaxEdge.Y - 0.3f) - bbox.MinEdge.Y;
-            return eyeHeightFromFeet;
+            // Use BASE mesh bounding box (not instance mesh) to avoid corruption
+            // from first-person mode collapsed vertices
+            EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
+            if (!eqMesh) {
+                continue;
+            }
+            irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
+            // Camera height = full model height (top of bounding box)
+            // No offset for "eyes" - user wants camera at top of bbox looking straight ahead
+            float cameraHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+            return cameraHeight;
         }
     }
     // Default fallback for human-sized entity
@@ -1783,11 +1980,15 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
 bool EntityRenderer::setEntityAnimation(uint16_t spawnId, const std::string& animCode, bool loop, bool playThrough) {
     auto it = entities_.find(spawnId);
     if (it == entities_.end()) {
+        LOG_DEBUG(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} not found in entities_ (size={})",
+                  spawnId, entities_.size());
         return false;
     }
 
     EntityVisual& visual = it->second;
     if (!visual.isAnimated || !visual.animatedNode) {
+        LOG_DEBUG(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} isAnimated={} animatedNode={}",
+                  spawnId, visual.isAnimated, (visual.animatedNode ? "yes" : "no"));
         return false;
     }
 
@@ -1795,6 +1996,8 @@ bool EntityRenderer::setEntityAnimation(uint16_t spawnId, const std::string& ani
         visual.currentAnimation = animCode;
         return true;
     }
+    LOG_DEBUG(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} playAnimation('{}') returned false",
+              spawnId, animCode);
     return false;
 }
 
@@ -1876,6 +2079,42 @@ EntityVisual::PoseState EntityRenderer::getEntityPoseState(uint16_t spawnId) con
         return EntityVisual::PoseState::Standing;
     }
     return it->second.poseState;
+}
+
+void EntityRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return;
+    }
+    it->second.primaryWeaponSkill = primaryWeaponSkill;
+    it->second.secondaryWeaponSkill = secondaryWeaponSkill;
+    LOG_DEBUG(MOD_ENTITY, "Set weapon skills for spawn {}: primary={}, secondary={}",
+              spawnId, primaryWeaponSkill, secondaryWeaponSkill);
+}
+
+void EntityRenderer::setEntityWeaponDelay(uint16_t spawnId, float delayMs) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return;
+    }
+    it->second.weaponDelayMs = delayMs;
+    LOG_DEBUG(MOD_ENTITY, "Set weapon delay for spawn {}: {}ms", spawnId, delayMs);
+}
+
+uint8_t EntityRenderer::getEntityPrimaryWeaponSkill(uint16_t spawnId) const {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return 255;  // WEAPON_NONE
+    }
+    return it->second.primaryWeaponSkill;
+}
+
+uint8_t EntityRenderer::getEntitySecondaryWeaponSkill(uint16_t spawnId) const {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return 255;  // WEAPON_NONE
+    }
+    return it->second.secondaryWeaponSkill;
 }
 
 bool EntityRenderer::isEntityPlayingThrough(uint16_t spawnId) const {
@@ -2178,12 +2417,15 @@ void EntityRenderer::cycleHeadVariant(int direction) {
             visual.isAnimated = true;
             visual.usesPlaceholder = false;
 
-            // Calculate height offset to center the model at server Z
-            // Server Z represents the CENTER of the model, not the feet/ground
+            // Force animation update to get correct bounding box
+            animNode->forceAnimationUpdate();
+
+            // Calculate height offset to place feet at ground level (server Z)
+            // Server Z is the feet/ground position, not the model center
             float scale = raceModelLoader_ ? raceModelLoader_->getRaceScale(visual.raceId) : 1.0f;
             irr::core::aabbox3df bbox = animNode->getBoundingBox();
-            float bboxCenterY = (bbox.MinEdge.Y + bbox.MaxEdge.Y) / 2.0f;
-            visual.modelYOffset = -bboxCenterY * scale;
+            // Offset so that MinEdge.Y (feet) aligns with ground level
+            visual.modelYOffset = -bbox.MinEdge.Y * scale;
 
             // Restore position with center offset
             float irrlichtX = visual.lastX;
@@ -2196,6 +2438,10 @@ void EntityRenderer::cycleHeadVariant(int direction) {
             // Must negate to convert between coordinate systems
             float visualHeading = -visual.lastHeading;
             animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
+            if (visual.isPlayer) {
+                LOG_DEBUG(MOD_GRAPHICS, "[ROT-HEADVAR] cycleHeadVariant PLAYER: lastHeading={:.1f} visualHeading={:.1f} node={}",
+                          visual.lastHeading, visualHeading, (void*)animNode);
+            }
 
             // Create name tag (text node above entity)
             // scale was already calculated above for modelYOffset
@@ -2359,6 +2605,17 @@ void EntityRenderer::startEntityCast(uint16_t spawnId, uint32_t spellId, const s
     visual.castSpellName = spellName;
     visual.castDurationMs = castTimeMs;
     visual.castStartTime = std::chrono::steady_clock::now();
+
+    // Phase 6.2: Match casting animation speed to cast time
+    // Play cast animation (t04 = cast start, t05 = channeling loop)
+    if (visual.animatedNode) {
+        // Start with cast pullback animation, then it will loop on t05
+        if (visual.animatedNode->hasAnimation("t04")) {
+            visual.animatedNode->playAnimation("t04", false, true);  // playThrough, no loop
+            // Set duration to roughly match cast time (cast start is quick, most time in loop)
+            visual.animatedNode->getAnimator().setTargetDuration(static_cast<float>(castTimeMs) * 0.2f);
+        }
+    }
 
     LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) started casting '{}' ({}ms)",
               spawnId, visual.name, spellName, castTimeMs);

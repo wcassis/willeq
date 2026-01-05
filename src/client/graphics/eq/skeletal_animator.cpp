@@ -15,7 +15,13 @@ SkeletalAnimator::SkeletalAnimator()
     , playbackSpeed_(1.0f)
     , playThroughActive_(false)
     , holdOnComplete_(false)
-    , queuedLoop_(true) {
+    , queuedLoop_(true)
+    , blendingEnabled_(true)
+    , blendDurationMs_(100.0f)
+    , blendTimeMs_(0.0f)
+    , isBlending_(false)
+    , nextTriggerId_(0)
+    , lastReportedFrame_(-1) {
 }
 
 void SkeletalAnimator::setSkeleton(std::shared_ptr<CharacterSkeleton> skeleton) {
@@ -39,8 +45,24 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     // Find the animation
     auto it = skeleton_->animations.find(animCode);
     if (it == skeleton_->animations.end()) {
-        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' not found", animCode);
+        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' not found (have {} animations)",
+                  animCode, skeleton_->animations.size());
         return false;
+    }
+
+    // Check if any bones have animation tracks for this animation
+    int bonesWithTracks = 0;
+    for (const auto& bone : skeleton_->bones) {
+        if (bone.animationTracks.find(animCode) != bone.animationTracks.end()) {
+            bonesWithTracks++;
+        }
+    }
+    if (bonesWithTracks == 0) {
+        LOG_WARN(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' exists but no bones have tracks for it! ({} bones total) model={}",
+                 animCode, skeleton_->bones.size(), skeleton_->modelCode);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' tracks={}/{} model={}",
+                  animCode, bonesWithTracks, skeleton_->bones.size(), skeleton_->modelCode);
     }
 
     // Redundancy check: if already playing this animation (and not playThrough), skip
@@ -52,8 +74,25 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     if (playThroughActive_ && state_ == AnimationState::Playing) {
         queuedAnimCode_ = animCode;
         queuedLoop_ = loop;
-        LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - queued '{}' (playThrough active)", animCode);
-        return true;  // Queued successfully
+        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - QUEUED '{}' (playThrough '{}' active) model={}",
+                  animCode, currentAnimCode_, (skeleton_ ? skeleton_->modelCode : "?"));
+        return false;  // Return false to indicate animation wasn't started, just queued
+    }
+
+    // ========================================================================
+    // Animation Blending (Phase 6.1)
+    // Capture current bone states for blending before switching animations
+    // ========================================================================
+    if (blendingEnabled_ && state_ == AnimationState::Playing && !boneStates_.empty()) {
+        // Store current bone states to blend from
+        blendFromStates_ = boneStates_;
+        blendTimeMs_ = 0.0f;
+        isBlending_ = true;
+        LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - starting blend from '{}' to '{}'",
+                  currentAnimCode_, animCode);
+    } else {
+        isBlending_ = false;
+        blendTimeMs_ = blendDurationMs_;  // Skip blending
     }
 
     // Start the animation
@@ -67,12 +106,21 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     // When not looping, hold on the last frame instead of resetting
     holdOnComplete_ = !looping_;
 
-    // Use TRACE level for frequent animation logs to reduce noise at debug level 1
-    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - playing '{}' frameCount={} animTimeMs={} looping={} playThrough={}",
-              animCode, (currentAnim_ ? currentAnim_->frameCount : 0), (currentAnim_ ? currentAnim_->animationTimeMs : 0),
-              looping_, playThrough);
+    // Reset frame trigger tracking
+    lastReportedFrame_ = -1;
+
+    // Log animation details when starting playThrough animations (combat, damage, etc.)
+    if (playThrough) {
+        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - STARTED '{}' frames={} duration={}ms model={}",
+                  animCode, (currentAnim_ ? currentAnim_->frameCount : 0),
+                  (currentAnim_ ? currentAnim_->animationTimeMs : 0), skeleton_->modelCode);
+    }
 
     computeBoneTransforms();
+
+    // Fire Started event (Phase 6.3)
+    fireEvent(AnimationEvent::Started);
+
     return true;
 }
 
@@ -84,6 +132,12 @@ void SkeletalAnimator::stopAnimation() {
     state_ = AnimationState::Stopped;
     playThroughActive_ = false;
     queuedAnimCode_.clear();
+
+    // Reset blending state
+    isBlending_ = false;
+    blendTimeMs_ = blendDurationMs_;
+    blendFromStates_.clear();
+    lastReportedFrame_ = -1;
 
     // Return to default pose
     computeBoneTransforms();
@@ -106,6 +160,21 @@ void SkeletalAnimator::update(float deltaMs) {
         return;
     }
 
+    // ========================================================================
+    // Update blend timer (Phase 6.1)
+    // ========================================================================
+    if (isBlending_ && blendTimeMs_ < blendDurationMs_) {
+        blendTimeMs_ += deltaMs;
+        if (blendTimeMs_ >= blendDurationMs_) {
+            isBlending_ = false;
+            blendFromStates_.clear();
+            LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::update - blend complete");
+        }
+    }
+
+    // Track previous frame for trigger detection
+    int previousFrame = currentFrame_;
+
     // Advance time
     currentTimeMs_ += deltaMs * playbackSpeed_;
 
@@ -124,7 +193,14 @@ void SkeletalAnimator::update(float deltaMs) {
             // Loop back to start (only if not a playThrough animation)
             currentTimeMs_ = std::fmod(currentTimeMs_, static_cast<float>(currentAnim_->animationTimeMs));
             currentFrame_ = currentFrame_ % currentAnim_->frameCount;
+
+            // Fire Looped event (Phase 6.3)
+            fireEvent(AnimationEvent::Looped);
+            lastReportedFrame_ = -1;  // Reset trigger tracking on loop
         } else {
+            // Animation completed - fire Completed event first
+            fireEvent(AnimationEvent::Completed);
+
             // Animation completed - check for queued animation
             std::string nextAnim = queuedAnimCode_;
             bool nextLoop = queuedLoop_;
@@ -167,6 +243,11 @@ void SkeletalAnimator::update(float deltaMs) {
     }
 
     computeBoneTransforms();
+
+    // ========================================================================
+    // Check frame triggers (Phase 6.3)
+    // ========================================================================
+    checkFrameTriggers();
 }
 
 bool SkeletalAnimator::hasAnimation(const std::string& animCode) const {
@@ -254,6 +335,25 @@ void SkeletalAnimator::computeBoneTransforms() {
         } else {
             // Root bone - world = local
             boneStates_[i].worldTransform = boneStates_[i].localTransform;
+        }
+    }
+
+    // ========================================================================
+    // Apply Animation Blending (Phase 6.1)
+    // Interpolate between old and new bone transforms during blend period
+    // ========================================================================
+    if (isBlending_ && !blendFromStates_.empty() && blendFromStates_.size() == boneStates_.size()) {
+        float blendFactor = getBlendProgress();
+
+        for (size_t i = 0; i < boneStates_.size(); ++i) {
+            // Blend world transforms (simpler and more stable than blending locals)
+            BoneMat4& curr = boneStates_[i].worldTransform;
+            const BoneMat4& prev = blendFromStates_[i].worldTransform;
+
+            // Linear interpolation of matrix elements (works well for small changes)
+            for (int j = 0; j < 16; ++j) {
+                curr.m[j] = prev.m[j] + (curr.m[j] - prev.m[j]) * blendFactor;
+            }
         }
     }
 }
@@ -355,6 +455,140 @@ void SkeletalAnimator::slerp(float ax, float ay, float az, float aw,
     ry = ay * wa + by * wb;
     rz = az * wa + bz * wb;
     rw = aw * wa + bw * wb;
+}
+
+// ============================================================================
+// Phase 6.1: Animation Blending
+// ============================================================================
+
+float SkeletalAnimator::getBlendProgress() const {
+    if (!isBlending_ || blendDurationMs_ <= 0.0f) {
+        return 1.0f;  // Fully at new animation
+    }
+    return std::min(1.0f, blendTimeMs_ / blendDurationMs_);
+}
+
+// ============================================================================
+// Phase 6.2: Animation Speed Matching
+// ============================================================================
+
+void SkeletalAnimator::setTargetDuration(float targetDurationMs) {
+    if (!currentAnim_ || currentAnim_->animationTimeMs <= 0 || targetDurationMs <= 0) {
+        return;
+    }
+
+    // Calculate speed multiplier to make animation complete in target duration
+    float animDuration = static_cast<float>(currentAnim_->animationTimeMs);
+    playbackSpeed_ = animDuration / targetDurationMs;
+
+    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::setTargetDuration - animDuration={}ms target={}ms speed={}",
+              animDuration, targetDurationMs, playbackSpeed_);
+}
+
+void SkeletalAnimator::matchMovementSpeed(float baseSpeed, float actualSpeed) {
+    if (baseSpeed <= 0.0f) {
+        playbackSpeed_ = 1.0f;
+        return;
+    }
+
+    // Scale animation speed proportionally to movement speed
+    playbackSpeed_ = actualSpeed / baseSpeed;
+
+    // Clamp to reasonable range (0.5x to 2.0x)
+    playbackSpeed_ = std::max(0.5f, std::min(2.0f, playbackSpeed_));
+
+    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::matchMovementSpeed - base={} actual={} speed={}",
+              baseSpeed, actualSpeed, playbackSpeed_);
+}
+
+// ============================================================================
+// Phase 6.3: Animation Callbacks/Events
+// ============================================================================
+
+int SkeletalAnimator::addFrameTrigger(int frameIndex) {
+    int id = nextTriggerId_++;
+    frameTriggers_.push_back({id, frameIndex});
+    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::addFrameTrigger - added trigger {} for frame {}", id, frameIndex);
+    return id;
+}
+
+void SkeletalAnimator::removeFrameTrigger(int triggerId) {
+    auto it = std::remove_if(frameTriggers_.begin(), frameTriggers_.end(),
+                             [triggerId](const std::pair<int, int>& p) { return p.first == triggerId; });
+    frameTriggers_.erase(it, frameTriggers_.end());
+}
+
+void SkeletalAnimator::clearFrameTriggers() {
+    frameTriggers_.clear();
+    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::clearFrameTriggers - cleared all triggers");
+}
+
+void SkeletalAnimator::addHitFrameTrigger() {
+    if (!currentAnim_ || currentAnim_->frameCount <= 0) {
+        return;
+    }
+    // Add trigger at approximately 50% of the animation (typical hit point)
+    int hitFrame = currentAnim_->frameCount / 2;
+    addFrameTrigger(hitFrame);
+    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::addHitFrameTrigger - added hit trigger at frame {}", hitFrame);
+}
+
+void SkeletalAnimator::addFootstepTriggers() {
+    if (!currentAnim_ || currentAnim_->frameCount < 4) {
+        return;
+    }
+    // Add triggers at 25% and 75% of animation (typical footstep points for walk/run)
+    int step1 = currentAnim_->frameCount / 4;
+    int step2 = (currentAnim_->frameCount * 3) / 4;
+    addFrameTrigger(step1);
+    addFrameTrigger(step2);
+    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::addFootstepTriggers - added footstep triggers at frames {} and {}", step1, step2);
+}
+
+void SkeletalAnimator::fireEvent(AnimationEvent event) {
+    if (!eventCallback_) {
+        return;
+    }
+
+    AnimationEventData data;
+    data.event = event;
+    data.animCode = currentAnimCode_;
+    data.currentFrame = currentFrame_;
+    data.totalFrames = currentAnim_ ? currentAnim_->frameCount : 0;
+    data.progress = getProgress();
+
+    eventCallback_(data);
+}
+
+void SkeletalAnimator::checkFrameTriggers() {
+    if (frameTriggers_.empty() || !eventCallback_ || !currentAnim_) {
+        return;
+    }
+
+    // Don't fire triggers for frames we've already reported
+    if (currentFrame_ <= lastReportedFrame_) {
+        return;
+    }
+
+    for (const auto& [triggerId, triggerFrame] : frameTriggers_) {
+        // Handle -1 as "last frame"
+        int actualFrame = (triggerFrame < 0) ? (currentAnim_->frameCount - 1) : triggerFrame;
+
+        // Check if we crossed this trigger frame since last check
+        if (actualFrame > lastReportedFrame_ && actualFrame <= currentFrame_) {
+            AnimationEventData data;
+            data.event = AnimationEvent::FrameReached;
+            data.animCode = currentAnimCode_;
+            data.currentFrame = actualFrame;
+            data.totalFrames = currentAnim_->frameCount;
+            data.progress = static_cast<float>(actualFrame) / static_cast<float>(currentAnim_->frameCount);
+
+            eventCallback_(data);
+            LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::checkFrameTriggers - fired trigger {} for frame {}", triggerId, actualFrame);
+        }
+    }
+
+    lastReportedFrame_ = currentFrame_;
 }
 
 } // namespace Graphics

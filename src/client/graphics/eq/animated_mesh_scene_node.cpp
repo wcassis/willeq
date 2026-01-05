@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <set>
 
 namespace EQT {
 namespace Graphics {
@@ -488,8 +489,89 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
         return;
     }
 
+    // TRACE: Log bone transform info for player to verify animation isn't overriding node rotation
+    if (isPlayerNode_) {
+        static int animTraceCounter = 0;
+        if (++animTraceCounter % 60 == 0) {  // Every second at 60fps
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] === Player applyAnimation Debug ===");
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] vertexPieces={} boneStates={} originalVerts={}",
+                     vertexPieces.size(), boneStates.size(), originalVertices.size());
+
+            // Log first bone (usually root) transform
+            if (!boneStates.empty()) {
+                const BoneMat4& rootBone = boneStates[0].worldTransform;
+                float boneRotY = std::atan2(rootBone.m[8], rootBone.m[0]) * 180.0f / 3.14159f;
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] worldTransform rotY~{:.1f}", boneRotY);
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] row0: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]",
+                         rootBone.m[0], rootBone.m[1], rootBone.m[2], rootBone.m[3]);
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] row2: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]",
+                         rootBone.m[8], rootBone.m[9], rootBone.m[10], rootBone.m[11]);
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] translation: ({:.2f}, {:.2f}, {:.2f})",
+                         rootBone.m[12], rootBone.m[13], rootBone.m[14]);
+            }
+
+            // Log a sample original vertex before transform
+            if (!originalVertices.empty()) {
+                const auto& v0 = originalVertices[0];
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] OrigVertex[0] BEFORE bone transform: ({:.2f}, {:.2f}, {:.2f})",
+                         v0.Pos.X, v0.Pos.Y, v0.Pos.Z);
+            }
+        }
+    }
+
     // Check if we're using multi-buffer mode (with vertex mapping) or single-buffer mode
     bool useMultiBuffer = !originalVertices.empty() && !vertexMapping.empty();
+
+    // Get node rotation for vertex baking
+    irr::core::vector3df nodeRot = getRotation();
+
+    // Enable vertex baking for player, disable for NPCs
+    // NPCs work with world transform, player doesn't - so try baking for player
+    float rotRadians = 0.0f;
+    float cosRot = 1.0f;
+    float sinRot = 0.0f;
+
+    // FIX: Enable vertex baking for player to compensate for VIEW/WORLD rotation cancellation.
+    // When camera follows player, VIEW (camera orientation) and WORLD (model rotation) are both
+    // based on the same heading, causing them to cancel in ETS_CURRENT = VIEW * WORLD.
+    // Pre-baking rotation into vertices (+90° offset) ensures the model's back faces the camera.
+    if (isPlayerNode_) {
+        rotRadians = (nodeRot.Y + 90.0f) * 3.14159f / 180.0f;
+        cosRot = std::cos(rotRadians);
+        sinRot = std::sin(rotRadians);
+    }
+
+    // Track rotation application for debugging
+    if (isPlayerNode_) {
+        static int frameNum = 0;
+        static float lastAppliedRotY = -9999.0f;
+        static int lastLogFrame = -10;
+        frameNum++;
+
+        bool rotChanged = std::abs(nodeRot.Y - lastAppliedRotY) > 0.5f;
+        bool shouldLog = (frameNum <= 10) || rotChanged || (frameNum - lastLogFrame >= 60);
+        if (shouldLog) {
+            LOG_TRACE(MOD_GRAPHICS, "[ROT-WARP] frame={} nodeRot.Y={:.1f} lastApplied={:.1f} changed={} cos={:.3f} sin={:.3f}",
+                     frameNum, nodeRot.Y, lastAppliedRotY, rotChanged ? "YES" : "no", cosRot, sinRot);
+            lastLogFrame = frameNum;
+        }
+        lastAppliedRotY = nodeRot.Y;
+    }
+
+    // Log mesh buffer info for debugging
+    if (isPlayerNode_) {
+        static int bufPtrLogCounter = 0;
+        if (++bufPtrLogCounter % 60 == 0 && instanceMesh_) {
+            irr::u32 bufCount = instanceMesh_->getMeshBufferCount();
+            irr::u32 totalVerts = 0;
+            for (irr::u32 i = 0; i < bufCount; ++i) {
+                irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(i);
+                if (mb) totalVerts += mb->getVertexCount();
+            }
+            LOG_TRACE(MOD_GRAPHICS, "[ROT-BUFFER] applyAnimation: instanceMesh_={} bufferCount={} totalVerts={} useMultiBuf={}",
+                     (void*)instanceMesh_, bufCount, totalVerts, useMultiBuffer ? "yes" : "no");
+        }
+    }
 
     if (useMultiBuffer) {
         // Multi-buffer mode: transform original vertices and copy to mapped buffer locations
@@ -513,6 +595,15 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
                 size_t vIdx = vertexIdx + i;
                 if (vIdx >= totalOrigVerts || vIdx >= vertexMapping.size()) break;
 
+                // Get the destination buffer and local index
+                const auto& mapping = vertexMapping[vIdx];
+                if (mapping.bufferIndex >= instanceMesh_->getMeshBufferCount()) continue;
+
+                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
+                    instanceMesh_->getMeshBuffer(mapping.bufferIndex));
+                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
+
+
                 // Get original vertex position and normal (in EQ Z-up coordinates)
                 const auto& srcVert = originalVertices[vIdx];
                 float px = srcVert.Pos.X;
@@ -526,10 +617,23 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
                 // Transform position using bone matrix (in EQ coordinate space)
                 boneMat.transformPoint(px, py, pz);
 
-                // Transform normal (rotation only)
+                // Transform normal (rotation only, from bone)
                 float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
                 float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
                 float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+
+                // Apply node's Y-rotation to vertices (for player with follow camera)
+                // In EQ coordinates (Z-up), Y-rotation = rotation around Z axis
+                // Rotate position: new_x = x*cos - y*sin, new_y = x*sin + y*cos
+                float rx = px * cosRot - py * sinRot;
+                float ry = px * sinRot + py * cosRot;
+                px = rx;
+                py = ry;
+                // Also rotate normal
+                float rnx = tnx * cosRot - tny * sinRot;
+                float rny = tnx * sinRot + tny * cosRot;
+                tnx = rnx;
+                tny = rny;
 
                 // Normalize
                 float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
@@ -538,14 +642,6 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
                     tny /= nlen;
                     tnz /= nlen;
                 }
-
-                // Get the destination buffer and local index
-                const auto& mapping = vertexMapping[vIdx];
-                if (mapping.bufferIndex >= instanceMesh_->getMeshBufferCount()) continue;
-
-                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
-                    instanceMesh_->getMeshBuffer(mapping.bufferIndex));
-                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
 
                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
                 dstBuffer->Vertices[mapping.localIndex].Pos.X = px;
@@ -610,10 +706,23 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
                 // Transform position using bone matrix (in EQ coordinate space)
                 boneMat.transformPoint(px, py, pz);
 
-                // Transform normal (rotation only)
+                // Transform normal (rotation only, from bone)
                 float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
                 float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
                 float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+
+                // WORKAROUND: Apply node's Y-rotation here instead of relying on world transform
+                // In EQ coordinates (Z-up), Y-rotation = rotation around Z axis
+                // Rotate position: new_x = x*cos - y*sin, new_y = x*sin + y*cos
+                float rx = px * cosRot - py * sinRot;
+                float ry = px * sinRot + py * cosRot;
+                px = rx;
+                py = ry;
+                // Also rotate normal
+                float rnx = tnx * cosRot - tny * sinRot;
+                float rny = tnx * sinRot + tny * cosRot;
+                tnx = rnx;
+                tny = rny;
 
                 // Normalize
                 float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
@@ -644,6 +753,20 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
 }
 
 void EQAnimatedMeshSceneNode::OnRegisterSceneNode() {
+    // Debug: Log registration status (throttled)
+    static int regLogCounter = 0;
+    if (++regLogCounter % 600 == 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode::OnRegisterSceneNode: IsVisible={} node={}", IsVisible, (void*)this);
+    }
+
+    // Debug: Log player node specifically
+    if (isPlayerNode_) {
+        static int playerRegCounter = 0;
+        if (++playerRegCounter % 60 == 0) {
+            LOG_DEBUG(MOD_GRAPHICS, "PLAYER OnRegisterSceneNode: IsVisible={} node={}", IsVisible, (void*)this);
+        }
+    }
+
     if (IsVisible) {
         SceneManager->registerNodeForRendering(this);
     }
@@ -656,8 +779,100 @@ void EQAnimatedMeshSceneNode::render() {
     irr::video::IVideoDriver* driver = SceneManager->getVideoDriver();
     if (!driver) return;
 
+    // TRACE: Comprehensive transform pipeline logging for player node
+    if (isPlayerNode_) {
+        static int traceLogCounter = 0;
+        if (++traceLogCounter % 60 == 0) {  // Every second at 60fps
+            // === 1. Scene Node Hierarchy ===
+            irr::scene::ISceneNode* parentNode = getParent();
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] === Player Node Transform Debug ===");
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Parent: ptr={} name='{}'",
+                     (void*)parentNode, parentNode ? parentNode->getName() : "null");
+            if (parentNode) {
+                irr::core::vector3df parentRot = parentNode->getRotation();
+                irr::core::vector3df parentPos = parentNode->getPosition();
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Parent rot=({:.1f},{:.1f},{:.1f}) pos=({:.1f},{:.1f},{:.1f})",
+                         parentRot.X, parentRot.Y, parentRot.Z, parentPos.X, parentPos.Y, parentPos.Z);
+            }
+
+            // === 2. Node's Own Transforms ===
+            irr::core::vector3df relPos = getPosition();
+            irr::core::vector3df relRot = getRotation();
+            irr::core::vector3df relScale = getScale();
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] RelativePos=({:.1f},{:.1f},{:.1f}) RelativeRot=({:.1f},{:.1f},{:.1f}) Scale=({:.2f},{:.2f},{:.2f})",
+                     relPos.X, relPos.Y, relPos.Z, relRot.X, relRot.Y, relRot.Z, relScale.X, relScale.Y, relScale.Z);
+
+            // === 3. Absolute Transformation Matrix ===
+            const irr::core::matrix4& absM = AbsoluteTransformation;
+            float absRotY = std::atan2(absM[8], absM[0]) * 180.0f / 3.14159f;
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsoluteTransform rotY~{:.1f} (from matrix)", absRotY);
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row0: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[0], absM[1], absM[2], absM[3]);
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row1: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[4], absM[5], absM[6], absM[7]);
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row2: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[8], absM[9], absM[10], absM[11]);
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row3: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[12], absM[13], absM[14], absM[15]);
+
+            // === 4. Sample Vertex from Mesh Buffer ===
+            if (instanceMesh_->getMeshBufferCount() > 0) {
+                irr::scene::IMeshBuffer* mb0 = instanceMesh_->getMeshBuffer(0);
+                if (mb0 && mb0->getVertexCount() > 0) {
+                    irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(mb0->getVertices());
+                    // Log first 3 vertices (model space)
+                    for (int vi = 0; vi < 3 && vi < (int)mb0->getVertexCount(); ++vi) {
+                        LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Vertex[{}] model-space: ({:.2f}, {:.2f}, {:.2f})",
+                                 vi, verts[vi].Pos.X, verts[vi].Pos.Y, verts[vi].Pos.Z);
+
+                        // Manually transform vertex by AbsoluteTransformation to show expected world pos
+                        irr::core::vector3df modelPos = verts[vi].Pos;
+                        irr::core::vector3df worldPos;
+                        absM.transformVect(worldPos, modelPos);
+                        LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Vertex[{}] world-space (expected): ({:.2f}, {:.2f}, {:.2f})",
+                                 vi, worldPos.X, worldPos.Y, worldPos.Z);
+                    }
+                }
+            }
+
+            // === 5. Driver's Current World Transform BEFORE we set it ===
+            irr::core::matrix4 driverWorldBefore = driver->getTransform(irr::video::ETS_WORLD);
+            float driverRotYBefore = std::atan2(driverWorldBefore[8], driverWorldBefore[0]) * 180.0f / 3.14159f;
+            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Driver ETS_WORLD BEFORE setTransform: rotY~{:.1f}", driverRotYBefore);
+        }
+    }
+
+    // Check if AbsoluteTransformation matches getRotation() for debugging
+    if (isPlayerNode_) {
+        static int absCheckCounter = 0;
+        if (++absCheckCounter % 30 == 0) {
+            float absRotY = std::atan2(AbsoluteTransformation[8], AbsoluteTransformation[0]) * 180.0f / 3.14159f;
+            float nodeRotY = getRotation().Y;
+            LOG_TRACE(MOD_GRAPHICS, "[ROT-ABS] AbsoluteTransformation rotY={:.1f} vs getRotation().Y={:.1f} match={}",
+                     absRotY, nodeRotY, (std::abs(absRotY - nodeRotY) < 1.0f) ? "YES" : "NO!");
+        }
+    }
+
+    // Log right before setTransform for debugging
+    {
+        static int setTransformLogCounter = 0;
+        int logFrequency = isPlayerNode_ ? 30 : 120;
+        if (++setTransformLogCounter % logFrequency == 0) {
+            irr::core::vector3df pos = AbsoluteTransformation.getTranslation();
+            irr::core::vector3df rot = AbsoluteTransformation.getRotationDegrees();
+            LOG_TRACE(MOD_GRAPHICS, "[ROT-PRE] {} pos=({:.1f},{:.1f},{:.1f}) rot=({:.1f},{:.1f},{:.1f})",
+                     isPlayerNode_ ? "PLAYER" : "NPC", pos.X, pos.Y, pos.Z, rot.X, rot.Y, rot.Z);
+        }
+    }
+
     // Set transformation
-    driver->setTransform(irr::video::ETS_WORLD, AbsoluteTransformation);
+    // For player: use position-only transform since rotation is baked into vertices
+    // For NPCs: use full AbsoluteTransformation
+    if (isPlayerNode_) {
+        // Create a position-only transform (no rotation) for player
+        // The rotation is already baked into the vertices in applyAnimation()
+        irr::core::matrix4 posOnlyTransform;
+        posOnlyTransform.setTranslation(AbsoluteTransformation.getTranslation());
+        driver->setTransform(irr::video::ETS_WORLD, posOnlyTransform);
+    } else {
+        driver->setTransform(irr::video::ETS_WORLD, AbsoluteTransformation);
+    }
 
     // Render each mesh buffer from our per-instance mesh
     for (irr::u32 i = 0; i < instanceMesh_->getMeshBufferCount(); ++i) {
@@ -669,6 +884,39 @@ void EQAnimatedMeshSceneNode::render() {
             driver->setMaterial(materials_[i]);
         } else {
             driver->setMaterial(mb->getMaterial());
+        }
+
+        // TRACE: Check if setMaterial modified the world transform (for first buffer only)
+        if (isPlayerNode_ && i == 0) {
+            static int drawLoopCounter = 0;
+            if (++drawLoopCounter % 60 == 0) {
+                irr::core::matrix4 worldAtDraw = driver->getTransform(irr::video::ETS_WORLD);
+                irr::core::matrix4 viewAtDraw = driver->getTransform(irr::video::ETS_VIEW);
+                float drawRotY = std::atan2(worldAtDraw[8], worldAtDraw[0]) * 180.0f / 3.14159f;
+                float viewRotY = std::atan2(viewAtDraw[8], viewAtDraw[0]) * 180.0f / 3.14159f;
+                float expectedRotY = std::atan2(AbsoluteTransformation[8], AbsoluteTransformation[0]) * 180.0f / 3.14159f;
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-DRAW] WORLD rotY~{:.1f} VIEW rotY~{:.1f} (expected WORLD {:.1f}) match={}",
+                         drawRotY, viewRotY, expectedRotY, (std::abs(drawRotY - expectedRotY) < 0.1f) ? "YES" : "NO!");
+                // Calculate net rotation after VIEW*WORLD
+                float netRotY = drawRotY - viewRotY;  // Approximate net rotation
+                LOG_TRACE(MOD_GRAPHICS, "[TRACE-DRAW] Net rotation (WORLD-VIEW)~{:.1f} deg - if ~0, camera follows model",
+                         netRotY);
+
+                // Also log the first vertex from this specific buffer we're about to draw
+                irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(mb->getVertices());
+                if (mb->getVertexCount() > 0) {
+                    // Store last vertex position to detect if vertices are changing between frames
+                    static irr::core::vector3df lastVert0Pos(0,0,0);
+                    irr::core::vector3df currentVert0 = verts[0].Pos;
+                    bool vertexChanged = (lastVert0Pos.X != 0 || lastVert0Pos.Y != 0 || lastVert0Pos.Z != 0) &&
+                                        (std::abs(currentVert0.X - lastVert0Pos.X) > 0.001f ||
+                                         std::abs(currentVert0.Y - lastVert0Pos.Y) > 0.001f ||
+                                         std::abs(currentVert0.Z - lastVert0Pos.Z) > 0.001f);
+                    LOG_TRACE(MOD_GRAPHICS, "[TRACE-DRAW] Buffer0 Vert0: ({:.3f},{:.3f},{:.3f}) changed_since_last={}",
+                             currentVert0.X, currentVert0.Y, currentVert0.Z, vertexChanged ? "YES" : "NO");
+                    lastVert0Pos = currentVert0;
+                }
+            }
         }
 
         // Draw the mesh buffer
@@ -723,7 +971,18 @@ void EQAnimatedMeshSceneNode::OnAnimate(irr::u32 timeMs) {
         applyAnimation();
     }
 
-    IAnimatedMeshSceneNode::OnAnimate(timeMs);
+    // Debug: Check if parent's OnAnimate modifies rotation
+    if (isPlayerNode_) {
+        irr::core::vector3df rotBefore = getRotation();
+        IAnimatedMeshSceneNode::OnAnimate(timeMs);
+        irr::core::vector3df rotAfter = getRotation();
+        if (std::abs(rotBefore.Y - rotAfter.Y) > 0.1f) {
+            LOG_DEBUG(MOD_GRAPHICS, "[ROT-ANIMATE] PLAYER OnAnimate ROTATION CHANGED! before.Y={:.1f} after.Y={:.1f}",
+                      rotBefore.Y, rotAfter.Y);
+        }
+    } else {
+        IAnimatedMeshSceneNode::OnAnimate(timeMs);
+    }
 }
 
 void EQAnimatedMeshSceneNode::setCurrentFrame(irr::f32 frame) {
@@ -1044,6 +1303,130 @@ int EQAnimatedMeshSceneNode::findLeftHandBoneIndex() const {
     }
 
     return -1;
+}
+
+void EQAnimatedMeshSceneNode::setFirstPersonMode(bool enabled) {
+    if (firstPersonMode_ == enabled) {
+        return;  // No change
+    }
+
+    firstPersonMode_ = enabled;
+
+    // Build arm bone indices on first enable
+    if (enabled && !armBonesBuilt_) {
+        buildArmBoneIndices();
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode::setFirstPersonMode: enabled={} armBones={}",
+              enabled, armBoneIndices_.size());
+}
+
+void EQAnimatedMeshSceneNode::buildArmBoneIndices() {
+    armBoneIndices_.clear();
+    armBonesBuilt_ = true;
+
+    auto skeleton = animator_.getSkeleton();
+    if (!skeleton) {
+        LOG_WARN(MOD_GRAPHICS, "buildArmBoneIndices: No skeleton available");
+        return;
+    }
+
+    // First, find the arm root bones and all their children
+    // EQ bone naming conventions:
+    // - Arms: contains "ARM" (e.g., HUFRARMVIS, HUFLARMVIS, RARM, LARM)
+    // - Hand attachment points: contains "POINT" (e.g., R_POINT, L_POINT, SHIELD_POINT)
+    // - Weapon/shield related: contains "DAG", "SHIELD"
+    // We want to show any bone that is part of the arm hierarchy
+
+    // Build a map of bone indices that are arm-related
+    std::set<int> armBones;
+
+    // Log all bone names for diagnostics
+    LOG_DEBUG(MOD_GRAPHICS, "buildArmBoneIndices: Skeleton has {} bones:", skeleton->bones.size());
+    for (size_t i = 0; i < skeleton->bones.size(); ++i) {
+        LOG_DEBUG(MOD_GRAPHICS, "  bone[{}] = '{}'", i, skeleton->bones[i].name);
+    }
+
+    // Pass 1: Find bones with arm-related names
+    for (size_t i = 0; i < skeleton->bones.size(); ++i) {
+        const std::string& name = skeleton->bones[i].name;
+
+        // Convert to uppercase for case-insensitive matching
+        std::string upperName = name;
+        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+
+        // Check for arm-related keywords (check ALL conditions, not mutually exclusive)
+        bool isArmBone = false;
+
+        // Primary arm bones (explicit ARM in name)
+        if (upperName.find("ARM") != std::string::npos) {
+            isArmBone = true;
+        }
+        // Hand attachment points for weapons
+        if (upperName.find("POINT") != std::string::npos) {
+            isArmBone = true;
+        }
+        // Weapon-related bones
+        if (upperName.find("DAG") != std::string::npos) {
+            isArmBone = true;
+        }
+        // Shield bones
+        if (upperName.find("SHIELD") != std::string::npos) {
+            isArmBone = true;
+        }
+        // Hand/wrist bones
+        if (upperName.find("HAND") != std::string::npos ||
+            upperName.find("WRIST") != std::string::npos ||
+            upperName.find("FINGER") != std::string::npos) {
+            isArmBone = true;
+        }
+        // Forearm bones (some models use FA suffix)
+        if (upperName.find("FOREARM") != std::string::npos) {
+            isArmBone = true;
+        }
+        // EQ-specific arm bone naming: BI (bicep/upper arm), FO (forearm), FI (fingers)
+        // Format: {race_code}BI_R, {race_code}FO_R, {race_code}FI_R, etc.
+        // e.g., HUMBI_R, HUMFO_R, HUMFI_R for human right arm
+        if (upperName.find("BI_R") != std::string::npos ||
+            upperName.find("BI_L") != std::string::npos ||
+            upperName.find("FO_R") != std::string::npos ||
+            upperName.find("FO_L") != std::string::npos ||
+            upperName.find("FI_R") != std::string::npos ||
+            upperName.find("FI_L") != std::string::npos) {
+            isArmBone = true;
+        }
+
+        if (isArmBone) {
+            armBones.insert(static_cast<int>(i));
+            LOG_DEBUG(MOD_GRAPHICS, "buildArmBoneIndices: Found arm bone[{}] '{}'", i, name);
+        }
+    }
+
+    // Pass 2: Add all children of arm bones (to get full arm hierarchy)
+    // This ensures we get forearms, hands, fingers, etc.
+    bool addedChild = true;
+    while (addedChild) {
+        addedChild = false;
+        for (size_t i = 0; i < skeleton->bones.size(); ++i) {
+            if (armBones.count(static_cast<int>(i)) > 0) {
+                continue;  // Already in the set
+            }
+
+            int parentIdx = skeleton->bones[i].parentIndex;
+            if (parentIdx >= 0 && armBones.count(parentIdx) > 0) {
+                armBones.insert(static_cast<int>(i));
+                addedChild = true;
+                LOG_DEBUG(MOD_GRAPHICS, "buildArmBoneIndices: Added child bone[{}] '{}' (parent={})",
+                          i, skeleton->bones[i].name, parentIdx);
+            }
+        }
+    }
+
+    // Convert set to vector
+    armBoneIndices_.assign(armBones.begin(), armBones.end());
+
+    LOG_INFO(MOD_GRAPHICS, "buildArmBoneIndices: Found {} arm-related bones out of {} total",
+             armBoneIndices_.size(), skeleton->bones.size());
 }
 
 } // namespace Graphics

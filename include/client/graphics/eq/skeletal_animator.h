@@ -7,6 +7,7 @@
 #include <vector>
 #include <memory>
 #include <cmath>
+#include <functional>
 
 namespace EQT {
 namespace Graphics {
@@ -92,6 +93,27 @@ enum class AnimationState {
     Paused
 };
 
+// Animation event types for callbacks
+enum class AnimationEvent {
+    Started,        // Animation just started
+    FrameReached,   // Specific frame was reached (for hit/cast/footstep events)
+    Completed,      // Animation finished (for non-looping or playThrough)
+    Looped,         // Animation looped back to start
+    Blending        // Currently blending between animations
+};
+
+// Animation event callback data
+struct AnimationEventData {
+    AnimationEvent event;
+    std::string animCode;       // Current animation code
+    int currentFrame;           // Current frame number
+    int totalFrames;            // Total frames in animation
+    float progress;             // 0.0 to 1.0 progress through animation
+};
+
+// Animation callback function type
+using AnimationCallback = std::function<void(const AnimationEventData&)>;
+
 // Skeletal animation controller
 class SkeletalAnimator {
 public:
@@ -160,6 +182,65 @@ public:
     void setPlaybackSpeed(float speed) { playbackSpeed_ = speed; }
     float getPlaybackSpeed() const { return playbackSpeed_; }
 
+    // ========================================================================
+    // Animation Blending (Phase 6.1)
+    // ========================================================================
+
+    // Enable/disable animation blending (smooth transitions between animations)
+    void setBlendingEnabled(bool enabled) { blendingEnabled_ = enabled; }
+    bool isBlendingEnabled() const { return blendingEnabled_; }
+
+    // Set blend duration in milliseconds (default 100ms)
+    void setBlendDuration(float durationMs) { blendDurationMs_ = durationMs; }
+    float getBlendDuration() const { return blendDurationMs_; }
+
+    // Check if currently blending between animations
+    bool isBlending() const { return blendTimeMs_ < blendDurationMs_ && blendDurationMs_ > 0; }
+
+    // Get blend progress (0.0 = fully old animation, 1.0 = fully new animation)
+    float getBlendProgress() const;
+
+    // ========================================================================
+    // Animation Speed Matching (Phase 6.2)
+    // ========================================================================
+
+    // Set animation duration to match a specific time (e.g., weapon delay, cast time)
+    // This adjusts playback speed so animation completes in targetDurationMs
+    void setTargetDuration(float targetDurationMs);
+
+    // Match animation speed to movement speed
+    // baseSpeed: reference movement speed (e.g., walk = 10, run = 23)
+    // actualSpeed: current movement speed
+    void matchMovementSpeed(float baseSpeed, float actualSpeed);
+
+    // Reset to default playback speed
+    void resetPlaybackSpeed() { playbackSpeed_ = 1.0f; }
+
+    // ========================================================================
+    // Animation Callbacks/Events (Phase 6.3)
+    // ========================================================================
+
+    // Set callback for animation events
+    void setEventCallback(AnimationCallback callback) { eventCallback_ = callback; }
+
+    // Clear the event callback
+    void clearEventCallback() { eventCallback_ = nullptr; }
+
+    // Register a frame trigger (callback fires when this frame is reached)
+    // frameIndex: specific frame number to trigger on (-1 for last frame)
+    // Returns trigger ID for removal
+    int addFrameTrigger(int frameIndex);
+
+    // Remove a frame trigger by ID
+    void removeFrameTrigger(int triggerId);
+
+    // Clear all frame triggers
+    void clearFrameTriggers();
+
+    // Common frame trigger helpers
+    void addHitFrameTrigger();      // Adds trigger at ~50% of animation (typical hit point)
+    void addFootstepTriggers();     // Adds triggers for walk/run footstep frames
+
 private:
     // Compute bone transforms for the current frame
     void computeBoneTransforms();
@@ -193,6 +274,29 @@ private:
     bool queuedLoop_;          // Loop setting for queued animation
 
     std::vector<AnimatedBoneState> boneStates_;  // Current bone transforms
+
+    // ========================================================================
+    // Animation Blending State (Phase 6.1)
+    // ========================================================================
+    bool blendingEnabled_ = true;           // Whether blending is enabled
+    float blendDurationMs_ = 100.0f;        // Duration of blend in milliseconds
+    float blendTimeMs_ = 0.0f;              // Current time into blend (0 = just started)
+    std::vector<AnimatedBoneState> blendFromStates_;  // Bone states at start of blend
+    bool isBlending_ = false;               // Currently blending between animations
+
+    // ========================================================================
+    // Animation Callbacks State (Phase 6.3)
+    // ========================================================================
+    AnimationCallback eventCallback_;       // User callback for animation events
+    std::vector<std::pair<int, int>> frameTriggers_;  // (triggerId, frameIndex) pairs
+    int nextTriggerId_ = 0;                 // ID counter for triggers
+    int lastReportedFrame_ = -1;            // Last frame we fired triggers for
+
+    // Fire animation event callback
+    void fireEvent(AnimationEvent event);
+
+    // Check and fire frame triggers
+    void checkFrameTriggers();
 };
 
 } // namespace Graphics

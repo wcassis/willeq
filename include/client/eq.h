@@ -399,6 +399,10 @@ struct Entity
 	uint32_t equipment[9] = {0};      // Material IDs from TextureProfile (offset 197)
 	uint32_t equipment_tint[9] = {0}; // Tint colors from TintProfile (offset 348)
 
+	// Weapon skill types for combat animations (255 = unknown/none)
+	uint8_t primary_weapon_skill = 255;    // Weapon skill type of primary weapon (7 = H2H default)
+	uint8_t secondary_weapon_skill = 255;  // Weapon skill type of secondary weapon
+
 	// Movement tracking
 	float delta_x = 0, delta_y = 0, delta_z = 0;
 	float delta_heading = 0;

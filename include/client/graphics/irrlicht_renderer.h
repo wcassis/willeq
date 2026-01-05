@@ -222,6 +222,9 @@ public:
     // Animation speed adjustment (returns delta value, 0 if no change)
     float getAnimSpeedDelta() { float d = animSpeedDelta_; animSpeedDelta_ = 0; return d; }
 
+    // Camera zoom adjustment for Player mode (+ to zoom in, - to zoom out)
+    float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
+
     // Ambient light adjustment (returns delta value, 0 if no change)
     float getAmbientLightDelta() { float d = ambientLightDelta_; ambientLightDelta_ = 0; return d; }
 
@@ -307,6 +310,7 @@ private:
     float rotationYDelta_ = 0.0f;
     float rotationZDelta_ = 0.0f;
     float animSpeedDelta_ = 0.0f;
+    float cameraZoomDelta_ = 0.0f;
     float ambientLightDelta_ = 0.0f;
     float corpseZOffsetDelta_ = 0.0f;
     float eyeHeightDelta_ = 0.0f;
@@ -413,6 +417,20 @@ public:
     // Set entity pose state (sitting, standing, crouching) - prevents movement updates from overriding
     enum class EntityPoseState : uint8_t { Standing = 0, Sitting = 1, Crouching = 2, Lying = 3 };
     void setEntityPoseState(uint16_t spawnId, EntityPoseState pose);
+
+    // Set entity weapon skill types for combat animation selection
+    void setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill);
+
+    // Get entity weapon skill type (for animation selection)
+    uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
+    uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
+
+    // First-person mode methods
+    // Trigger first-person attack animation (weapon swing)
+    void triggerFirstPersonAttack();
+
+    // Check if in first-person mode
+    bool isFirstPersonMode() const { return cameraMode_ == CameraMode::FirstPerson; }
 
     // Set the player's spawn ID (marks that entity as the player and handles visibility)
     void setPlayerSpawnId(uint16_t spawnId);
@@ -662,7 +680,7 @@ private:
     bool fogEnabled_ = true;
     bool lightingEnabled_ = false;
     bool zoneLightsEnabled_ = false;
-    CameraMode cameraMode_ = CameraMode::FirstPerson;
+    CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
     // Player position (for Follow and FirstPerson modes)
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;

@@ -17,6 +17,7 @@
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/ui/inventory_manager.h"
+#include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/hotbar_window.h"
 #include "client/graphics/ui/item_instance.h"
@@ -25,6 +26,7 @@
 #include "client/graphics/ui/hotbar_types.h"
 #include "common/util/json_config.h"
 #endif
+#include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
 #include <sstream>
@@ -4578,84 +4580,173 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		bool loop = false;
 		bool playThrough = true;  // Most emotes/attacks should play through
 
+		// Get entity's weapon skill types for weapon-based attack animations
+		uint8_t primaryWeaponSkill = m_renderer->getEntityPrimaryWeaponSkill(spawn_id);
+		uint8_t secondaryWeaponSkill = m_renderer->getEntitySecondaryWeaponSkill(spawn_id);
+
 		// Map common animation IDs to EQ model animation codes
 		// Combat animations (these are the key ones for NPC combat)
 		switch (anim_id) {
-		// Combat attack animations
+		// Combat attack animations - use weapon-based animation
 		case 1:  // Primary hand attack
 		case 5:  // Attack
 		case 6:  // Attack2
-			animCode = "c01";  // Primary attack
+			// Use weapon skill type to determine correct animation
+			animCode = EQ::getWeaponAttackAnimation(primaryWeaponSkill, false, false);
 			break;
 		case 2:  // Secondary hand attack
-			animCode = "c02";  // Secondary attack
+			// Use secondary weapon skill type
+			animCode = EQ::getWeaponAttackAnimation(secondaryWeaponSkill, true, false);
+			break;
+
+		// Combat skill animations (use correct animation codes from reference)
+		case 10: // Round kick
+			animCode = EQ::ANIM_ROUND_KICK;  // c11
 			break;
 		case 11: // ANIM_KICK
-			animCode = "t02";  // Kick
+			animCode = EQ::ANIM_KICK;  // c01 - basic kick
 			break;
-		case 12: // ANIM_BASH (when not walking)
-			animCode = "c05";  // Bash/Shield bash
-			break;
-		case 10: // Round kick
-			animCode = "t01";  // Roundhouse kick
+		case 12: // ANIM_BASH
+			animCode = EQ::ANIM_BASH;  // c07 - Shield bash
 			break;
 		case 14: // Flying kick
-			animCode = "t03";  // Flying kick
+			animCode = EQ::ANIM_FLYING_KICK;  // t07
 			break;
 
 		// Damage/hit reaction
 		case 3:  // Damage from front
 		case 4:  // Damage from back
-			animCode = "d01";  // Damage reaction
+			animCode = EQ::ANIM_DAMAGE_MINOR;  // d01
 			break;
 
 		// Death
 		case 16: // ANIM_DEATH
-			animCode = "d05";  // Death animation
+			animCode = EQ::ANIM_DEATH;  // d05
 			break;
 
-		// Social/Emote animations
-		case 18: // ANIM_CRY
-			animCode = "s01";  // Cry
+		// Social/Emote animations (s01-s28)
+		// EQ Titanium animation IDs mapped to pre-Luclin animation codes
+		case 18: // ANIM_CHEER
+			animCode = EQ::ANIM_EMOTE_CHEER;  // s01 - Cheer
 			break;
 		case 19: // ANIM_KNEEL
-			animCode = "l08";  // Kneel/crouch
+			animCode = EQ::ANIM_CROUCHING;  // l08 - Crouching
 			loop = true;
 			playThrough = false;
 			break;
 		case 20: // ANIM_JUMP
-			animCode = "l05";  // Jump
+			animCode = EQ::ANIM_FALLING;  // l05 - Falling/jump
+			break;
+		case 21: // ANIM_CRY / ANIM_MOURN
+			animCode = EQ::ANIM_EMOTE_MOURN;  // s02 - Mourn/Disappointed
+			break;
+		case 23: // ANIM_RUDE
+			animCode = EQ::ANIM_EMOTE_RUDE;  // s04 - Rude
+			break;
+		case 24: // ANIM_YAWN
+			animCode = EQ::ANIM_EMOTE_YAWN;  // s05 - Yawn
+			break;
+		case 26: // ANIM_NOD
+			animCode = EQ::ANIM_EMOTE_NOD;  // s06 - Nod
+			break;
+		case 27: // ANIM_AMAZED
+			animCode = EQ::ANIM_EMOTE_AMAZED;  // s07 - Amazed
+			break;
+		case 28: // ANIM_PLEAD
+			animCode = EQ::ANIM_EMOTE_PLEAD;  // s08 - Plead
 			break;
 		case 29: // ANIM_WAVE
-			animCode = "s02";  // Wave
+			animCode = EQ::ANIM_EMOTE_WAVE;  // s03 - Wave
+			break;
+		case 30: // ANIM_CLAP
+			animCode = EQ::ANIM_EMOTE_CLAP;  // s09 - Clap
+			break;
+		case 31: // ANIM_DISTRESS
+			animCode = EQ::ANIM_EMOTE_DISTRESS;  // s10 - Distress/Hungry
+			break;
+		case 32: // ANIM_BLUSH
+			animCode = EQ::ANIM_EMOTE_BLUSH;  // s11 - Blush
+			break;
+		case 33: // ANIM_CHUCKLE
+			animCode = EQ::ANIM_EMOTE_CHUCKLE;  // s12 - Chuckle
+			break;
+		case 34: // ANIM_COUGH / ANIM_BURP
+			animCode = EQ::ANIM_EMOTE_BURP;  // s13 - Burp/Cough
+			break;
+		case 35: // ANIM_DUCK
+			animCode = EQ::ANIM_EMOTE_DUCK;  // s14 - Duck
+			break;
+		case 36: // ANIM_PUZZLE / ANIM_LOOK_AROUND
+			animCode = EQ::ANIM_EMOTE_PUZZLE;  // s15 - Look Around/Puzzle
 			break;
 		case 58: // ANIM_DANCE
-			animCode = "s03";  // Dance
+			animCode = EQ::ANIM_EMOTE_DANCE;  // s16 - Dance
 			loop = true;
 			playThrough = false;
 			break;
+		case 59: // ANIM_BLINK
+			animCode = EQ::ANIM_EMOTE_BLINK;  // s17 - Blink
+			break;
+		case 60: // ANIM_GLARE
+			animCode = EQ::ANIM_EMOTE_GLARE;  // s18 - Glare
+			break;
+		case 61: // ANIM_DROOL
+			animCode = EQ::ANIM_EMOTE_DROOL;  // s19 - Drool
+			break;
+		case 62: // ANIM_KNEEL_EMOTE
+			animCode = EQ::ANIM_EMOTE_KNEEL;  // s20 - Kneel (emote)
+			break;
 		case 63: // ANIM_LAUGH
-			animCode = "s04";  // Laugh
+			animCode = EQ::ANIM_EMOTE_LAUGH;  // s21 - Laugh
 			break;
 		case 64: // ANIM_POINT
-			animCode = "s05";  // Point
+			animCode = EQ::ANIM_EMOTE_POINT;  // s22 - Point
 			break;
-		case 65: // ANIM_SHRUG
-			animCode = "s06";  // Shrug
+		case 65: // ANIM_SHRUG / ANIM_PONDER
+			animCode = EQ::ANIM_EMOTE_SHRUG;  // s23 - Ponder/Shrug
+			break;
+		case 66: // ANIM_READY
+			animCode = EQ::ANIM_EMOTE_READY;  // s24 - Ready
 			break;
 		case 67: // ANIM_SALUTE
-			animCode = "s07";  // Salute
+			animCode = EQ::ANIM_EMOTE_SALUTE;  // s25 - Salute
+			break;
+		case 68: // ANIM_SHIVER
+			animCode = EQ::ANIM_EMOTE_SHIVER;  // s26 - Shiver
+			break;
+		case 69: // ANIM_TAP_FOOT
+			animCode = EQ::ANIM_EMOTE_TAP_FOOT;  // s27 - Tap Foot
+			break;
+		case 70: // ANIM_BOW
+			animCode = EQ::ANIM_EMOTE_BOW;  // s28 - Bow
+			break;
+
+		// Bard instrument animations
+		case 43: // ANIM_STRINGED_INSTRUMENT
+			animCode = EQ::ANIM_STRINGED_INST;  // t02 - Stringed Instrument
+			loop = true;
+			playThrough = false;
+			break;
+		case 44: // ANIM_WIND_INSTRUMENT
+			animCode = EQ::ANIM_WIND_INST;  // t03 - Wind Instrument
+			loop = true;
+			playThrough = false;
+			break;
+
+		// Casting animations (when triggered via emote packet)
+		case 42: // ANIM_CAST
+			animCode = EQ::ANIM_CAST_PULLBACK;  // t04 - Cast Pull Back
 			break;
 
 		// Special animations
 		case 105: // ANIM_LOOT
-			animCode = "t07";  // Looting
+			animCode = EQ::ANIM_POSE_KNEEL;  // p05 - kneeling/looting
 			break;
 
 		default:
-			// Unknown animation - try to play c01 for combat-range IDs
+			// Unknown animation - use weapon-based attack for combat-range IDs
 			if (anim_id >= 1 && anim_id <= 15) {
-				animCode = "c01";  // Default combat animation
+				animCode = EQ::getWeaponAttackAnimation(primaryWeaponSkill, false, false);
 			}
 			break;
 		}
@@ -4663,8 +4754,8 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		if (!animCode.empty()) {
 			m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
 			if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-				std::cout << fmt::format("[EMOTE] Set animation '{}' on spawn_id={} (anim_id={})",
-					animCode, spawn_id, anim_id) << std::endl;
+				std::cout << fmt::format("[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
+					animCode, spawn_id, anim_id, primaryWeaponSkill) << std::endl;
 			}
 		}
 	}
@@ -10963,14 +11054,49 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	// Trigger damage reaction animation on target (if damage > 0 and not a miss)
 	// Note: Attack animations on source are triggered via ZoneProcessAction
 	if (m_graphics_initialized && m_renderer && damage_amount > 0) {
-		// Play damage reaction animation (d01 or d02) on target
+		// Play damage reaction animation on target
 		// Don't play on dead entities
 		auto it = m_entities.find(target_id);
 		if (it != m_entities.end() && it->second.hp_percent > 0) {
-			m_renderer->setEntityAnimation(target_id, "d01", false, true);
-			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
-				LOG_DEBUG(MOD_COMBAT, "Damage reaction animation on target={}", target_id);
+			// Calculate damage percentage to determine animation type
+			float damagePercent = 0.0f;
+
+			// For player, use actual max HP
+			if (target_id == m_my_spawn_id && m_max_hp > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
+			} else {
+				// For NPCs, estimate based on level
+				// Rough HP estimate: level * 10-20 for most NPCs
+				// Use conservative estimate (level * 15) for damage percentage calc
+				uint8_t level = it->second.level > 0 ? it->second.level : 1;
+				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
+				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
 			}
+
+			// Determine damage animation based on damage type and percentage
+			// EQ damage types:
+			// - 0-79: Melee damage (type is skill ID)
+			// - 231: Spell damage (lifetap)
+			// - 252: DoT damage
+			// - 253: Environmental damage (lava, drowning)
+			// - 254: Trap damage
+			// - 255: Fall damage
+			const char* damageAnim = nullptr;
+			bool isDrowning = (damage_type == 253);  // Environmental
+			bool isTrap = (damage_type == 254);      // Trap damage
+
+			damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
+
+			m_renderer->setEntityAnimation(target_id, damageAnim, false, true);
+			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
+				LOG_DEBUG(MOD_COMBAT, "Damage reaction '{}' on target={} (dmg={}, pct={:.1f}%, type={})",
+					damageAnim, target_id, damage_amount, damagePercent, damage_type);
+			}
+		}
+
+		// Trigger first-person attack animation when player deals damage
+		if (source_id == m_my_spawn_id && m_renderer->isFirstPersonMode()) {
+			m_renderer->triggerFirstPersonAttack();
 		}
 	}
 #endif
@@ -12034,8 +12160,8 @@ void EverQuest::OnZoneLoadedGraphics() {
 
 		// Set camera mode based on renderer mode
 		if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Player) {
-			// Player mode: use FirstPerson camera that follows player
-			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::FirstPerson);
+			// Player mode: use Follow camera (third-person behind player)
+			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
 		} else {
 			// Admin mode: use Free camera for debugging
 			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Free);
@@ -12249,6 +12375,14 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 		return;
 	}
 
+	// If this is our player entity, update the renderer's local player position/heading
+	// so the camera follows the server-authoritative position
+	if (spawn_id == m_my_spawn_id) {
+		// Convert heading from degrees (0-360) to EQ format (0-512) for setPlayerPosition
+		float heading_512 = heading * 512.0f / 360.0f;
+		m_renderer->setPlayerPosition(x, y, z, heading_512);
+	}
+
 	m_renderer->updateEntity(spawn_id, x, y, z, heading, dx, dy, dz, animation);
 }
 
@@ -12317,9 +12451,35 @@ void EverQuest::UpdateInventoryStats() {
 	eqt::inventory::EquipmentStats equipStats;
 	float totalWeight = 0.0f;
 
+	// Track weapon skill types for combat animations
+	uint8_t primaryWeaponSkill = EQ::WEAPON_HAND_TO_HAND;  // Default to H2H (unarmed)
+	uint8_t secondaryWeaponSkill = EQ::WEAPON_NONE;
+
 	if (m_inventory_manager) {
 		equipStats = m_inventory_manager->calculateEquipmentStats();
 		totalWeight = m_inventory_manager->calculateTotalWeight();
+
+		// Get weapon skill types from equipped items
+		using namespace eqt::inventory;
+		const eqt::inventory::ItemInstance* primaryItem = m_inventory_manager->getItem(SLOT_PRIMARY);
+		const eqt::inventory::ItemInstance* secondaryItem = m_inventory_manager->getItem(SLOT_SECONDARY);
+
+		if (primaryItem && primaryItem->itemId != 0) {
+			primaryWeaponSkill = primaryItem->skillType;
+		}
+		if (secondaryItem && secondaryItem->itemId != 0) {
+			secondaryWeaponSkill = secondaryItem->skillType;
+		}
+
+		// Update our entity's weapon skill types
+		auto it = m_entities.find(m_my_spawn_id);
+		if (it != m_entities.end()) {
+			it->second.primary_weapon_skill = primaryWeaponSkill;
+			it->second.secondary_weapon_skill = secondaryWeaponSkill;
+		}
+
+		// Propagate weapon skill types to renderer
+		m_renderer->setEntityWeaponSkills(m_my_spawn_id, primaryWeaponSkill, secondaryWeaponSkill);
 	}
 
 	// Calculate total stats (base + equipment)

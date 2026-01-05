@@ -8,6 +8,10 @@
 #include "common/logging.h"
 #include "common/net/packet.h"
 
+#ifdef EQT_HAS_GRAPHICS
+#include "client/graphics/irrlicht_renderer.h"
+#endif
+
 namespace EQ {
 
 // ============================================================================
@@ -479,11 +483,33 @@ void SkillManager::playSkillAnimation(uint8_t skill_id) {
         return;
     }
 
+    // Get the skill-specific animation code (e.g., "t07" for Flying Kick)
+    const char* animCode = getSkillAnimationCode(skill_id);
+
+    // Also get the generic animation ID to send to server
     uint8_t anim_id = getSkillAnimationId(skill_id);
+
+    // Send animation ID to server (server may echo this back)
     if (anim_id != 0) {
         m_eq->SendAnimation(anim_id);
-        LOG_DEBUG(MOD_MAIN, "Playing animation {} for skill {}", anim_id, skill_id);
     }
+
+#ifdef EQT_HAS_GRAPHICS
+    // Play the skill-specific animation locally for immediate visual feedback
+    // This ensures monk skills (t07, t08, t09) and other skill-specific animations
+    // are played correctly, rather than relying on the server's generic attack animation
+    if (animCode != nullptr) {
+        auto* renderer = m_eq->GetRenderer();
+        if (renderer) {
+            uint16_t playerSpawnId = m_eq->GetMySpawnID();
+            if (playerSpawnId != 0) {
+                renderer->setEntityAnimation(playerSpawnId, animCode, false, true);
+                LOG_DEBUG(MOD_MAIN, "Playing skill animation '{}' for skill {} on player {}",
+                          animCode, skill_id, playerSpawnId);
+            }
+        }
+    }
+#endif
 }
 
 bool SkillManager::checkCombatRequirement(uint8_t skill_id) const {

@@ -79,6 +79,11 @@ struct EntityVisual {
     uint32_t currentPrimaryId = 0;    // Current primary equipment item ID
     uint32_t currentSecondaryId = 0;  // Current secondary equipment item ID
 
+    // Weapon skill types for combat animations (255 = unknown/none, 7 = hand-to-hand)
+    uint8_t primaryWeaponSkill = 255;    // Weapon skill type of primary weapon
+    uint8_t secondaryWeaponSkill = 255;  // Weapon skill type of secondary weapon
+    float weaponDelayMs = 3000.0f;       // Primary weapon delay in ms (for attack animation speed)
+
     // Casting state (for other entities - shows casting bar above head)
     bool isCasting = false;                   // True if entity is currently casting
     uint32_t castSpellId = 0;                 // Spell being cast
@@ -92,6 +97,12 @@ struct EntityVisual {
     float fadeAlpha = 1.0f;                   // Current opacity (1.0 = visible, 0.0 = invisible)
     float fadeTimer = 0.0f;                   // Time since fade started
     static constexpr float FADE_DURATION = 3.0f;  // Duration of fade-out in seconds
+
+    // First-person view state (for player entity only)
+    bool isFirstPersonMode = false;           // True if player is in first-person view
+    float fpAttackTimer = 0.0f;               // Timer for first-person attack animation
+    float fpAttackDuration = 0.5f;            // Duration of attack animation in seconds
+    bool fpIsAttacking = false;               // True if attack animation is playing
 };
 
 // Manages rendering of game entities (NPCs, players, mobs)
@@ -180,6 +191,15 @@ public:
     void setEntityPoseState(uint16_t spawnId, EntityVisual::PoseState pose);
     EntityVisual::PoseState getEntityPoseState(uint16_t spawnId) const;
 
+    // Set/get entity weapon skill types for combat animation selection
+    void setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill);
+    uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
+    uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
+
+    // Set weapon delay for attack animation speed matching (Phase 6.2)
+    // delayMs: weapon delay in milliseconds (EQ delay * 100, e.g., delay 30 = 3000ms)
+    void setEntityWeaponDelay(uint16_t spawnId, float delayMs);
+
     // Check if entity is playing a playThrough animation
     bool isEntityPlayingThrough(uint16_t spawnId) const;
     std::string getEntityAnimation(uint16_t spawnId) const;
@@ -203,13 +223,35 @@ public:
     uint16_t getDebugTargetId() const { return debugTargetId_; }
 
     // Show/hide the player entity (used in first-person mode)
+    // In first-person mode (visible=false), weapons are shown but body is hidden
     void setPlayerEntityVisible(bool visible);
+
+    // Debug: log player visibility status (call before drawAll to diagnose render issues)
+    void debugLogPlayerVisibility() const;
+
+    // Set first-person mode for the player (shows only weapons)
+    // When enabled, weapons are positioned relative to camera instead of skeleton
+    void setPlayerFirstPersonMode(bool enabled);
+
+    // Update first-person weapon positions relative to camera
+    // Call this each frame when in first-person mode
+    // cameraPos/cameraTarget: Irrlicht world coordinates
+    void updateFirstPersonWeapons(const irr::core::vector3df& cameraPos,
+                                   const irr::core::vector3df& cameraTarget,
+                                   float deltaTime);
+
+    // Trigger a first-person attack animation (weapon swing)
+    void triggerFirstPersonAttack();
+
+    // Check if player is in first-person mode
+    bool isPlayerInFirstPersonMode() const;
 
     // Update the player entity's position (used in player mode for third-person view)
     void updatePlayerEntityPosition(float x, float y, float z, float heading);
 
     // Set the player entity's animation (used in player mode)
-    void setPlayerEntityAnimation(const std::string& animCode, bool loop = true);
+    // movementSpeed is used to scale walk/run animation speed to match actual movement
+    void setPlayerEntityAnimation(const std::string& animCode, bool loop = true, float movementSpeed = 0.0f);
 
     // Set the player's spawn ID (marks that entity as the player)
     void setPlayerSpawnId(uint16_t spawnId);

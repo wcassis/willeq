@@ -280,12 +280,14 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             if (event.KeyInput.Key == irr::KEY_PERIOD) {
                 helmVScaleDelta_ = scaleStep;
             }
-            // Rotation: -/= keys (minus/equals)
+            // Rotation: -/= keys (minus/equals) - also used for zoom in Player mode
             if (event.KeyInput.Key == irr::KEY_MINUS) {
                 helmRotationDelta_ = -rotStep;
+                cameraZoomDelta_ = 2.0f;  // Zoom out (increase distance)
             }
             if (event.KeyInput.Key == irr::KEY_PLUS) {
                 helmRotationDelta_ = rotStep;
+                cameraZoomDelta_ = -2.0f;  // Zoom in (decrease distance)
             }
             // F8: Print state
             if (event.KeyInput.Key == irr::KEY_F8) {
@@ -2201,6 +2203,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle camera zoom adjustments (+/- keys) - only in Player/Repair mode with Follow camera
+    if (!chatInputFocused && (rendererMode_ == RendererMode::Player || rendererMode_ == RendererMode::Repair)) {
+        float zoomDelta = eventReceiver_->getCameraZoomDelta();
+        if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
+            cameraController_->adjustFollowDistance(zoomDelta);
+            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
+        }
+    }
+
     // Handle helm debug mode toggle (F7 is OK even when chat focused - it's a function key)
     if (eventReceiver_->helmDebugToggleRequested() && entityRenderer_) {
         bool newState = !entityRenderer_->isHelmDebugEnabled();
@@ -2223,8 +2234,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
-    // Handle helm debug adjustments - not when chat focused (uses letter/number keys)
-    if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled() && !chatInputFocused) {
+    // Handle helm debug adjustments - only in Admin mode, not when chat focused (uses letter/number keys)
+    if (rendererMode_ == RendererMode::Admin && entityRenderer_ && entityRenderer_->isHelmDebugEnabled() && !chatInputFocused) {
         float uDelta = eventReceiver_->getHelmUOffsetDelta();
         float vDelta = eventReceiver_->getHelmVOffsetDelta();
         float uScaleDelta = eventReceiver_->getHelmUScaleDelta();
@@ -2769,9 +2780,9 @@ void IrrlichtRenderer::setRendererMode(RendererMode mode) {
 
     if (mode == RendererMode::Player) {
         // Switch to Player mode
-        // Default to FirstPerson camera if not already in FirstPerson or Follow
+        // Default to Follow camera (third-person) if coming from Free mode
         if (cameraMode_ == CameraMode::Free) {
-            cameraMode_ = CameraMode::FirstPerson;
+            cameraMode_ = CameraMode::Follow;
         }
         // Reset movement state and pitch
         playerMovement_ = PlayerMovementState();
@@ -2799,9 +2810,9 @@ void IrrlichtRenderer::setRendererMode(RendererMode mode) {
         }
     } else if (mode == RendererMode::Repair) {
         // Switch to Repair mode - similar to Player mode but for object adjustment
-        // Keep current camera mode
+        // Default to Follow camera if coming from Free mode
         if (cameraMode_ == CameraMode::Free) {
-            cameraMode_ = CameraMode::FirstPerson;
+            cameraMode_ = CameraMode::Follow;
         }
         // Reset movement state and pitch (same as Player mode)
         playerMovement_ = PlayerMovementState();
@@ -3065,11 +3076,21 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     float currentFeetZ = playerZ_ + modelYOffset;
                     float stepHeight = groundZ - currentFeetZ;
 
-                    // Only limit stepping UP (positive step height) - player can always walk down/off edges
-                    if (stepHeight <= playerConfig_.collisionStepHeight) {
+                    // Limit both stepping UP and stepping DOWN
+                    // Small steps down (e.g., stairs) are OK, but large drops should trigger falling
+                    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
+                    if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
                         // Snap feet to ground (server Z = groundZ - modelYOffset)
                         newZ = groundZ - modelYOffset;
                         positionChanged = true;
+                    } else if (stepHeight < -maxStepDown) {
+                        // Large drop detected - start falling instead of snapping
+                        playerMovement_.isJumping = true;
+                        playerMovement_.verticalVelocity = 0.0f;  // Start with 0 velocity (just walked off edge)
+                        positionChanged = true;
+                        if (playerConfig_.collisionDebug) {
+                            LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Walked off edge, drop={}, starting fall", -stepHeight);
+                        }
                     } else if (playerConfig_.collisionDebug) {
                         LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Step up too high: {}", stepHeight);
                     }
@@ -3173,8 +3194,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
                 LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
 
-                // Only limit stepping UP - player can always walk down/off edges
-                if (stepHeight <= playerConfig_.collisionStepHeight) {
+                // Limit both stepping UP and stepping DOWN
+                float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+                if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
                     bool losCheck = checkMovementCollision(playerX_, playerY_, playerZ_, newX, newY, targetGroundZ);
 
                     LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
@@ -3187,7 +3209,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                         float xGroundZ = findGroundZ(newX, playerY_, playerZ_);
                         float xStepHeight = xGroundZ - currentFeetZ;
                         if (xGroundZ != BEST_Z_INVALID &&
-                            xStepHeight <= playerConfig_.collisionStepHeight &&
+                            xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
                             checkMovementCollision(playerX_, playerY_, playerZ_, newX, playerY_, xGroundZ)) {
                             newY = playerY_;
                             newZ = xGroundZ - modelYOffset;
@@ -3196,13 +3218,21 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                             float yGroundZ = findGroundZ(playerX_, newY, playerZ_);
                             float yStepHeight = yGroundZ - currentFeetZ;
                             if (yGroundZ != BEST_Z_INVALID &&
-                                yStepHeight <= playerConfig_.collisionStepHeight &&
+                                yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
                                 checkMovementCollision(playerX_, playerY_, playerZ_, playerX_, newY, yGroundZ)) {
                                 newX = playerX_;
                                 newZ = yGroundZ - modelYOffset;
                                 positionChanged = true;
                             }
                         }
+                    }
+                } else if (stepHeight < -maxStepDown) {
+                    // Large drop detected - start falling instead of snapping
+                    playerMovement_.isJumping = true;
+                    playerMovement_.verticalVelocity = 0.0f;
+                    positionChanged = true;
+                    if (playerConfig_.collisionDebug) {
+                        LOG_INFO(MOD_GRAPHICS, "[HCMap] Walked off edge, drop={}, starting fall", -stepHeight);
                     }
                 } else {
                     LOG_TRACE(MOD_MOVEMENT, "HCMap Step up too high ({}) - blocked", stepHeight);
@@ -3377,10 +3407,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     if (entityRenderer_) {
         if (isMoving) {
             // Use run animation for forward movement when running, walk for everything else
+            // Pass movement speed to match animation speed to actual movement
+            float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
             if (playerMovement_.moveForward && playerMovement_.isRunning) {
-                entityRenderer_->setPlayerEntityAnimation("l02", true);  // Run
+                entityRenderer_->setPlayerEntityAnimation("l02", true, speed);  // Run
             } else {
-                entityRenderer_->setPlayerEntityAnimation("l01", true);  // Walk
+                entityRenderer_->setPlayerEntityAnimation("l01", true, speed);  // Walk
             }
         } else {
             entityRenderer_->setPlayerEntityAnimation("p01", true);  // Idle
@@ -3442,6 +3474,38 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
         return currentZ;
     }
 
+    float maxStepUp = playerConfig_.collisionStepHeight;
+    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+
+    // PHASE 1: Short raycast to find ground near current level
+    // This prevents falling through mesh gaps by looking for nearby ground first
+    // Start from max step-up above current position
+    glm::vec3 nearPos(x, y, currentZ + maxStepUp);
+    glm::vec3 nearResult;
+    float nearGroundZ = collisionMap_->FindBestZ(nearPos, &nearResult);
+
+    // Check if we found ground within the nearby range (max step-up to max step-down)
+    if (nearGroundZ != BEST_Z_INVALID) {
+        float heightDiff = nearGroundZ - currentZ;
+        if (heightDiff >= -maxStepDown && heightDiff <= maxStepUp) {
+            // Found nearby ground - use it
+            if (playerConfig_.collisionDebug) {
+                // Green line showing nearby ground hit (preferred)
+                irr::core::vector3df irrFrom(x, currentZ + maxStepUp, y);
+                irr::core::vector3df irrTo(x, nearGroundZ, y);
+                addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 0, 255, 128), 0.2f);
+                float markerSize = 0.5f;
+                addCollisionDebugLine(
+                    irr::core::vector3df(irrTo.X - markerSize, irrTo.Y, irrTo.Z),
+                    irr::core::vector3df(irrTo.X + markerSize, irrTo.Y, irrTo.Z),
+                    irr::video::SColor(255, 0, 255, 128), 0.2f);
+            }
+            return nearGroundZ;
+        }
+    }
+
+    // PHASE 2: Full raycast if no nearby ground found
+    // This handles cases like jumping off ledges, falling, etc.
     glm::vec3 pos(x, y, currentZ + 10.0f);  // Start slightly above
     glm::vec3 result;
     float groundZ = collisionMap_->FindBestZ(pos, &result);
@@ -3547,15 +3611,43 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
     float feetZ = currentZ + modelYOffset;
     float headZ = currentZ - modelYOffset;  // Approximate head position (mirror of feet offset)
     float maxStepUp = playerConfig_.collisionStepHeight;
+    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
 
-    // Cast ray downward from above the head to find ground
     // Irrlicht coords: (x, y, z) where Y is up
     // Input is EQ coords where Z is up, so we convert: EQ(x,y,z) -> Irr(x,z,y)
-    irr::core::vector3df rayStart(x, headZ + 2.0f, y);  // Start slightly above head
-    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);  // Cast down from below feet
 
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
+
+    // PHASE 1: Short raycast to find ground near current level
+    // This prevents falling through mesh gaps by looking for nearby ground first
+    irr::core::vector3df nearStart(x, feetZ + maxStepUp, y);  // Start at max step-up above feet
+    irr::core::vector3df nearEnd(x, feetZ - maxStepDown, y);  // Look down to max step-down below feet
+
+    bool nearHit = checkCollisionIrrlicht(nearStart, nearEnd, hitPoint, hitTriangle);
+
+    if (nearHit) {
+        float floorZ = hitPoint.Y;
+        // Check if this is valid ground (not a ceiling)
+        if (floorZ <= feetZ + maxStepUp + 0.1f) {
+            // Found nearby ground - use it
+            if (playerConfig_.collisionDebug) {
+                // Green line showing nearby ground hit (preferred)
+                addCollisionDebugLine(nearStart, hitPoint, irr::video::SColor(255, 0, 255, 128), 0.2f);
+                float markerSize = 0.5f;
+                addCollisionDebugLine(
+                    irr::core::vector3df(hitPoint.X - markerSize, hitPoint.Y, hitPoint.Z),
+                    irr::core::vector3df(hitPoint.X + markerSize, hitPoint.Y, hitPoint.Z),
+                    irr::video::SColor(255, 0, 255, 128), 0.2f);
+            }
+            return floorZ;
+        }
+    }
+
+    // PHASE 2: Full raycast if no nearby ground found
+    // This handles cases like jumping off ledges, falling, etc.
+    irr::core::vector3df rayStart(x, headZ + 2.0f, y);  // Start slightly above head
+    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);  // Cast down far below feet
 
     bool hit = checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
 
@@ -4388,6 +4480,32 @@ void IrrlichtRenderer::drawZoneLineOverlay() {
                            irr::video::SColor(255, 255, 200, 255));  // Light pink text
             }
         }
+    }
+}
+
+void IrrlichtRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill) {
+    if (entityRenderer_) {
+        entityRenderer_->setEntityWeaponSkills(spawnId, primaryWeaponSkill, secondaryWeaponSkill);
+    }
+}
+
+uint8_t IrrlichtRenderer::getEntityPrimaryWeaponSkill(uint16_t spawnId) const {
+    if (entityRenderer_) {
+        return entityRenderer_->getEntityPrimaryWeaponSkill(spawnId);
+    }
+    return 0;
+}
+
+uint8_t IrrlichtRenderer::getEntitySecondaryWeaponSkill(uint16_t spawnId) const {
+    if (entityRenderer_) {
+        return entityRenderer_->getEntitySecondaryWeaponSkill(spawnId);
+    }
+    return 0;
+}
+
+void IrrlichtRenderer::triggerFirstPersonAttack() {
+    if (entityRenderer_) {
+        entityRenderer_->triggerFirstPersonAttack();
     }
 }
 
