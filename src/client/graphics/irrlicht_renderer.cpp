@@ -3057,11 +3057,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
                 if (playerMovement_.isJumping) {
                     // While jumping, check if we've landed
-                    // Compare feet position (serverZ + modelYOffset) with ground
-                    float feetZ = newZ + modelYOffset;
+                    // Compare feet position (centerZ - modelYOffset) with ground
+                    float feetZ = newZ - modelYOffset;
                     if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
-                        // Landed - snap feet to ground (server Z = groundZ - modelYOffset)
-                        newZ = groundZ - modelYOffset;
+                        // Landed - snap center to be modelYOffset above ground
+                        newZ = groundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3073,15 +3073,15 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 } else {
                     // Normal ground movement - check step height
                     // Compare feet positions: current feet vs target ground
-                    float currentFeetZ = playerZ_ + modelYOffset;
+                    float currentFeetZ = playerZ_ - modelYOffset;
                     float stepHeight = groundZ - currentFeetZ;
 
                     // Limit both stepping UP and stepping DOWN
                     // Small steps down (e.g., stairs) are OK, but large drops should trigger falling
                     float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
                     if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
-                        // Snap feet to ground (server Z = groundZ - modelYOffset)
-                        newZ = groundZ - modelYOffset;
+                        // Snap center to be modelYOffset above ground
+                        newZ = groundZ + modelYOffset;
                         positionChanged = true;
                     } else if (stepHeight < -maxStepDown) {
                         // Large drop detected - start falling instead of snapping
@@ -3100,10 +3100,10 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 if (playerMovement_.isJumping) {
                     // Even if horizontal is blocked, continue vertical jump movement
                     float groundZ = findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
-                    float feetZ = newZ + modelYOffset;
+                    float feetZ = newZ - modelYOffset;
                     if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
-                        // Landed - snap feet to ground
-                        newZ = groundZ - modelYOffset;
+                        // Landed - snap center to be modelYOffset above ground
+                        newZ = groundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3119,12 +3119,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     irr::core::vector3df rayEndX(newX, playerZ_ + checkHeight, playerY_);
                     if (!checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle)) {
                         float groundZ = findGroundZIrrlicht(newX, playerY_, playerZ_, modelYOffset);
-                        float currentFeetZ = playerZ_ + modelYOffset;
+                        float currentFeetZ = playerZ_ - modelYOffset;
                         float stepHeight = groundZ - currentFeetZ;
                         // Only limit stepping UP - can always step down
                         if (stepHeight <= playerConfig_.collisionStepHeight) {
                             newY = playerY_;
-                            newZ = groundZ - modelYOffset;
+                            newZ = groundZ + modelYOffset;
                             positionChanged = true;
                             LOG_TRACE(MOD_MOVEMENT, "Wall slide X");
                         }
@@ -3134,12 +3134,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                         irr::core::vector3df rayEndY(playerX_, playerZ_ + checkHeight, newY);
                         if (!checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle)) {
                             float groundZ = findGroundZIrrlicht(playerX_, newY, playerZ_, modelYOffset);
-                            float currentFeetZ = playerZ_ + modelYOffset;
+                            float currentFeetZ = playerZ_ - modelYOffset;
                             float stepHeight = groundZ - currentFeetZ;
                             // Only limit stepping UP - can always step down
                             if (stepHeight <= playerConfig_.collisionStepHeight) {
                                 newX = playerX_;
-                                newZ = groundZ - modelYOffset;
+                                newZ = groundZ + modelYOffset;
                                 positionChanged = true;
                                 LOG_TRACE(MOD_MOVEMENT, "Wall slide Y");
                             }
@@ -3161,9 +3161,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 bool losCheck = checkMovementCollision(playerX_, playerY_, playerZ_, newX, newY, newZ);
                 if (losCheck) {
                     // Check if we've landed (compare feet position with ground)
-                    float feetZ = newZ + modelYOffset;
+                    float feetZ = newZ - modelYOffset;
                     if (targetGroundZ != BEST_Z_INVALID && feetZ <= targetGroundZ && playerMovement_.verticalVelocity <= 0) {
-                        newZ = targetGroundZ - modelYOffset;
+                        newZ = targetGroundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3176,9 +3176,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     newX = playerX_;
                     newY = playerY_;
                     float currentGroundZ = findGroundZ(playerX_, playerY_, newZ);
-                    float feetZ = newZ + modelYOffset;
+                    float feetZ = newZ - modelYOffset;
                     if (currentGroundZ != BEST_Z_INVALID && feetZ <= currentGroundZ && playerMovement_.verticalVelocity <= 0) {
-                        newZ = currentGroundZ - modelYOffset;
+                        newZ = currentGroundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3189,7 +3189,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 }
             } else if (targetGroundZ != BEST_Z_INVALID) {
                 // Compare feet positions for step height
-                float currentFeetZ = playerZ_ + modelYOffset;
+                float currentFeetZ = playerZ_ - modelYOffset;
                 float stepHeight = targetGroundZ - currentFeetZ;
 
                 LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
@@ -3202,7 +3202,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
 
                     if (losCheck) {
-                        newZ = targetGroundZ - modelYOffset;
+                        newZ = targetGroundZ + modelYOffset;
                         positionChanged = true;
                     } else {
                         // Wall sliding for HCMap
@@ -3212,7 +3212,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                             xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
                             checkMovementCollision(playerX_, playerY_, playerZ_, newX, playerY_, xGroundZ)) {
                             newY = playerY_;
-                            newZ = xGroundZ - modelYOffset;
+                            newZ = xGroundZ + modelYOffset;
                             positionChanged = true;
                         } else {
                             float yGroundZ = findGroundZ(playerX_, newY, playerZ_);
@@ -3221,7 +3221,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                                 yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
                                 checkMovementCollision(playerX_, playerY_, playerZ_, playerX_, newY, yGroundZ)) {
                                 newX = playerX_;
-                                newZ = yGroundZ - modelYOffset;
+                                newZ = yGroundZ + modelYOffset;
                                 positionChanged = true;
                             }
                         }
@@ -3293,7 +3293,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         playerHeading_ = heading;
     }
 
-    // Update camera if anything changed
+    // Update camera and entity position if anything changed
     if (positionChanged || headingChanged) {
         LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", playerX_, playerY_, playerZ_, playerHeading_);
 
@@ -3358,54 +3358,64 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
             // Follow mode: third-person camera behind player
             cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_);
         }
+    }
 
-        // Compute movement state for server sync and local animation
-        bool isMoving = playerMovement_.moveForward || playerMovement_.moveBackward ||
-                       playerMovement_.strafeLeft || playerMovement_.strafeRight;
+    // Movement state tracking and server sync - runs every frame to detect stops
+    // This must be OUTSIDE the position/heading changed block to detect when player stops
+    bool hasMovementInput = playerMovement_.moveForward || playerMovement_.moveBackward ||
+                            playerMovement_.strafeLeft || playerMovement_.strafeRight;
 
-        // Track movement state transitions to detect when player stops
-        static bool wasMoving = false;
-        bool stoppedMoving = wasMoving && !isMoving;
-        wasMoving = isMoving;
+    // Track movement state transitions to detect when player stops
+    static bool hadMovementInput = false;
+    bool stoppedMoving = hadMovementInput && !hasMovementInput;
+    hadMovementInput = hasMovementInput;
 
-        // Track previous position for velocity calculation
-        static float prevX = playerX_, prevY = playerY_, prevZ = playerZ_;
+    // Track previous position for velocity calculation
+    static float prevX = playerX_, prevY = playerY_, prevZ = playerZ_;
 
-        // Throttle callback invocations to ~250ms to match working client behavior
-        // This prevents jerky motion when viewed by other players
-        static auto lastCallbackTime = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
+    // Throttle callback invocations to ~250ms to match working client behavior
+    // This prevents jerky motion when viewed by other players
+    static auto lastCallbackTime = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
 
-        // Notify EverQuest class of position/heading change (for server sync)
-        // Throttle to 250ms minimum between callbacks (working client averages ~275ms)
-        // Exception: allow immediate callback when player stops (so others see us stop promptly)
-        bool shouldCallback = movementCallback_ &&
-                              (positionChanged || headingChanged || stoppedMoving) &&
-                              (stoppedMoving || elapsed.count() >= 250);
+    // Notify EverQuest class of position/heading change (for server sync)
+    // Throttle to 250ms minimum between callbacks (working client averages ~275ms)
+    // Exception: allow immediate callback when player stops (so others see us stop promptly)
+    bool shouldCallback = movementCallback_ &&
+                          (positionChanged || headingChanged || stoppedMoving) &&
+                          (stoppedMoving || elapsed.count() >= 250);
 
-        if (shouldCallback) {
-            PlayerPositionUpdate update;
-            update.x = playerX_;
-            update.y = playerY_;
-            update.z = playerZ_;
-            update.heading = heading;  // EQ format (0-512)
+    if (shouldCallback) {
+        PlayerPositionUpdate update;
+        update.x = playerX_;
+        update.y = playerY_;
+        update.z = playerZ_;
+        update.heading = heading;  // EQ format (0-512)
+
+        // When player stops, send zero deltas to ensure server knows we've stopped
+        // This triggers anim=0 in OnGraphicsMovement
+        if (stoppedMoving) {
+            update.dx = 0.0f;
+            update.dy = 0.0f;
+            update.dz = 0.0f;
+        } else {
             update.dx = playerX_ - prevX;
             update.dy = playerY_ - prevY;
             update.dz = playerZ_ - prevZ;
-            movementCallback_(update);
-            lastCallbackTime = now;
-
-            // Update previous position only when we actually send an update
-            prevX = playerX_;
-            prevY = playerY_;
-            prevZ = playerZ_;
         }
+        movementCallback_(update);
+        lastCallbackTime = now;
+
+        // Update previous position only when we actually send an update
+        prevX = playerX_;
+        prevY = playerY_;
+        prevZ = playerZ_;
     }
 
     // Update player entity animation based on movement state (runs every frame)
     if (entityRenderer_) {
-        if (isMoving) {
+        if (hasMovementInput) {
             // Use run animation for forward movement when running, walk for everything else
             // Pass movement speed to match animation speed to actual movement
             float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
@@ -3602,14 +3612,14 @@ bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,
 
 float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
     if (!collisionManager_ || !zoneTriangleSelector_) {
-        return currentZ + modelYOffset;  // Return current feet position
+        return currentZ - modelYOffset;  // Return current feet position
     }
 
-    // currentZ is the model center (server Z), modelYOffset is offset from center to feet (typically negative)
-    // Feet position = currentZ + modelYOffset
-    // Head position = currentZ - modelYOffset (approximately, assuming symmetric model)
-    float feetZ = currentZ + modelYOffset;
-    float headZ = currentZ - modelYOffset;  // Approximate head position (mirror of feet offset)
+    // currentZ is the model center (server Z), modelYOffset is the POSITIVE distance from center to feet
+    // Feet position = currentZ - modelYOffset (feet are BELOW center)
+    // Head position = currentZ + modelYOffset (approximately, assuming symmetric model)
+    float feetZ = currentZ - modelYOffset;
+    float headZ = currentZ + modelYOffset;  // Approximate head position (mirror of feet offset)
     float maxStepUp = playerConfig_.collisionStepHeight;
     float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
 

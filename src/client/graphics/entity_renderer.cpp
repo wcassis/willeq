@@ -324,19 +324,21 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         // The initial bounding box is from bind/T-pose, but we need the animated pose
         animNode->forceAnimationUpdate();
 
-        // Calculate height offset to place feet at ground level (server Z)
-        // Server Z is the feet/ground position, not the model center
-        // MinEdge.Y is the bottom of the bounding box (feet) relative to model origin
+        // Calculate model offset for collision calculations
+        // Server Z is the geometric MODEL CENTER, not the feet/ground position
+        // modelYOffset is the distance from model center to feet (half the model height)
         irr::core::aabbox3df bbox = animNode->getBoundingBox();
         float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-        // Offset so that MinEdge.Y (feet) aligns with ground level
-        visual.modelYOffset = -bbox.MinEdge.Y * scale;
+        // Use half the bounding box height as the center-to-feet distance
+        // This is more accurate than -MinEdge.Y when the model origin isn't at the geometric center
+        visual.modelYOffset = (bboxHeight / 2.0f) * scale;
 
         // Debug: log bounding box info for entity creation
-        LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox.MinY={:.2f} scale={:.3f} modelYOffset={:.2f}",
-                 name, raceId, bbox.MinEdge.Y, scale, visual.modelYOffset);
+        LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox Y=[{:.2f},{:.2f}] height={:.2f} scale={:.3f} modelYOffset={:.2f} (half-height)",
+                 name, raceId, bbox.MinEdge.Y, bbox.MaxEdge.Y, bboxHeight, scale, visual.modelYOffset);
 
-        // Set position (convert EQ Z-up to Irrlicht Y-up) with center offset
+        // Set position (convert EQ Z-up to Irrlicht Y-up)
+        // Server Z is the model center, add modelYOffset to position model correctly
         animNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
         // Set rotation (EQ heading to Irrlicht Y rotation)
@@ -448,13 +450,15 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     }
     visual.sceneNode = visual.meshNode;
 
-    // Calculate height offset to place feet at ground level (server Z)
-    // Server Z is the feet/ground position, not the model center
+    // Calculate model offset for collision calculations
+    // Server Z is the geometric MODEL CENTER, not the feet/ground position
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
-    // Offset so that MinEdge.Y (feet) aligns with ground level
-    visual.modelYOffset = -bbox.MinEdge.Y * scale;
+    float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+    // Use half the bounding box height as the center-to-feet distance
+    visual.modelYOffset = (bboxHeight / 2.0f) * scale;
 
-    // Set position (convert EQ Z-up to Irrlicht Y-up) with center offset
+    // Set position (convert EQ Z-up to Irrlicht Y-up)
+    // Server Z is model center, add modelYOffset for correct positioning
     visual.meshNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
     // Set rotation (EQ heading to Irrlicht Y rotation)
@@ -678,7 +682,7 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
     }
 
     if (visual.sceneNode) {
-        // Convert EQ Z-up to Irrlicht Y-up, apply model height offset
+        // Convert EQ Z-up to Irrlicht Y-up, add modelYOffset for correct positioning
         visual.sceneNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
         // Convert EQ heading to Irrlicht Y rotation
@@ -2420,12 +2424,12 @@ void EntityRenderer::cycleHeadVariant(int direction) {
             // Force animation update to get correct bounding box
             animNode->forceAnimationUpdate();
 
-            // Calculate height offset to place feet at ground level (server Z)
-            // Server Z is the feet/ground position, not the model center
+            // Calculate height offset - server Z is the geometric MODEL CENTER
             float scale = raceModelLoader_ ? raceModelLoader_->getRaceScale(visual.raceId) : 1.0f;
             irr::core::aabbox3df bbox = animNode->getBoundingBox();
-            // Offset so that MinEdge.Y (feet) aligns with ground level
-            visual.modelYOffset = -bbox.MinEdge.Y * scale;
+            float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+            // Use half the bounding box height as the center-to-feet distance
+            visual.modelYOffset = (bboxHeight / 2.0f) * scale;
 
             // Restore position with center offset
             float irrlichtX = visual.lastX;
