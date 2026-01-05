@@ -1549,6 +1549,12 @@ void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool 
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
             if (visual.isAnimated && visual.animatedNode) {
+                // Don't interrupt playThrough animations (combat, skills, etc.)
+                // They must complete before returning to movement/idle animations
+                if (visual.animatedNode->isPlayingThrough()) {
+                    break;  // Let the playThrough animation finish
+                }
+
                 // Only change animation if it's different from current
                 if (visual.currentAnimation != animCode) {
                     if (visual.animatedNode->hasAnimation(animCode)) {
