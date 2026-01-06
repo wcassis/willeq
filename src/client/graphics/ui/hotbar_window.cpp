@@ -2,6 +2,9 @@
 #include "client/graphics/ui/hotbar_cursor.h"
 #include "client/graphics/ui/item_icon_loader.h"
 #include <fmt/format.h>
+#include <sstream>
+#include <algorithm>
+#include <cctype>
 
 namespace eqt {
 namespace ui {
@@ -338,31 +341,111 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
     }
     driver->draw2DRectangle(bgColor, absBounds);
 
-    // Draw icon if button has content
-    if (button.type != HotbarButtonType::Empty && iconLoader_) {
-        uint32_t iconId = button.iconId;
+    // Draw icon or text if button has content
+    if (button.type != HotbarButtonType::Empty) {
+        // For skills, draw skill name text instead of icon (supports multiple lines)
+        if (button.type == HotbarButtonType::Skill && gui && !button.emoteText.empty()) {
+            irr::gui::IGUIFont* font = gui->getBuiltInFont();
+            if (font) {
+                std::string skillName = button.emoteText;
+                int buttonWidth = absBounds.getWidth() - 4;  // 2px margin each side
+                int buttonHeight = absBounds.getHeight() - 14;  // Leave room for number label
+                int lineHeight = 10;  // Built-in font is ~10px tall
 
-        // Use emote icon for emote type if no icon specified
-        if (button.type == HotbarButtonType::Emote && iconId == 0) {
-            iconId = EMOTE_ICON_ID;
-        }
+                // Convert skill name to uppercase for display
+                std::transform(skillName.begin(), skillName.end(), skillName.begin(), ::toupper);
 
-        if (iconId > 0) {
-            irr::video::ITexture* iconTex = iconLoader_->getIcon(iconId);
-            if (iconTex) {
-                // Draw icon centered in button with small margin
-                int margin = 2;
-                irr::core::recti iconRect(
-                    absBounds.UpperLeftCorner.X + margin,
-                    absBounds.UpperLeftCorner.Y + margin,
-                    absBounds.LowerRightCorner.X - margin,
-                    absBounds.LowerRightCorner.Y - margin
-                );
+                // Split skill name into words and arrange into lines that fit
+                std::vector<std::string> lines;
+                std::string currentLine;
+                std::istringstream wordStream(skillName);
+                std::string word;
 
-                irr::core::dimension2du texSize = iconTex->getOriginalSize();
-                irr::core::recti srcRect(0, 0, texSize.Width, texSize.Height);
+                while (wordStream >> word) {
+                    std::wstring testLine(currentLine.begin(), currentLine.end());
+                    if (!currentLine.empty()) {
+                        testLine += L" ";
+                    }
+                    std::wstring wWord(word.begin(), word.end());
+                    testLine += wWord;
 
-                driver->draw2DImage(iconTex, iconRect, srcRect, nullptr, nullptr, true);
+                    irr::core::dimension2du testSize = font->getDimension(testLine.c_str());
+                    if (static_cast<int>(testSize.Width) <= buttonWidth) {
+                        // Word fits on current line
+                        if (!currentLine.empty()) currentLine += " ";
+                        currentLine += word;
+                    } else if (currentLine.empty()) {
+                        // Single word too long - truncate it
+                        while (!word.empty()) {
+                            std::wstring wTrunc(word.begin(), word.end());
+                            if (static_cast<int>(font->getDimension(wTrunc.c_str()).Width) <= buttonWidth) {
+                                break;
+                            }
+                            word = word.substr(0, word.length() - 1);
+                        }
+                        lines.push_back(word);
+                    } else {
+                        // Start new line with this word
+                        lines.push_back(currentLine);
+                        currentLine = word;
+                    }
+                }
+                if (!currentLine.empty()) {
+                    lines.push_back(currentLine);
+                }
+
+                // Limit lines to fit in button height
+                int maxLines = buttonHeight / lineHeight;
+                if (static_cast<int>(lines.size()) > maxLines && maxLines > 0) {
+                    lines.resize(maxLines);
+                }
+
+                // Calculate total text block height and starting Y position (centered)
+                int totalHeight = static_cast<int>(lines.size()) * lineHeight;
+                int startY = absBounds.UpperLeftCorner.Y + (buttonHeight - totalHeight) / 2 + 2;
+
+                // Draw each line centered horizontally
+                for (size_t i = 0; i < lines.size(); i++) {
+                    std::wstring wLine(lines[i].begin(), lines[i].end());
+                    irr::core::dimension2du lineSize = font->getDimension(wLine.c_str());
+                    int textX = absBounds.UpperLeftCorner.X + (absBounds.getWidth() - lineSize.Width) / 2;
+                    int textY = startY + static_cast<int>(i) * lineHeight;
+
+                    // Draw shadow
+                    irr::core::recti shadowRect(textX + 1, textY + 1, textX + lineSize.Width + 1, textY + lineSize.Height + 1);
+                    font->draw(wLine.c_str(), shadowRect, irr::video::SColor(200, 0, 0, 0));
+
+                    // Draw text in gold/yellow color
+                    irr::core::recti textRect(textX, textY, textX + lineSize.Width, textY + lineSize.Height);
+                    font->draw(wLine.c_str(), textRect, irr::video::SColor(255, 255, 215, 0));
+                }
+            }
+        } else if (iconLoader_) {
+            // Draw icon for other button types
+            uint32_t iconId = button.iconId;
+
+            // Use default icons for types without specific icons
+            if (iconId == 0 && button.type == HotbarButtonType::Emote) {
+                iconId = EMOTE_ICON_ID;
+            }
+
+            if (iconId > 0) {
+                irr::video::ITexture* iconTex = iconLoader_->getIcon(iconId);
+                if (iconTex) {
+                    // Draw icon centered in button with small margin
+                    int margin = 2;
+                    irr::core::recti iconRect(
+                        absBounds.UpperLeftCorner.X + margin,
+                        absBounds.UpperLeftCorner.Y + margin,
+                        absBounds.LowerRightCorner.X - margin,
+                        absBounds.LowerRightCorner.Y - margin
+                    );
+
+                    irr::core::dimension2du texSize = iconTex->getOriginalSize();
+                    irr::core::recti srcRect(0, 0, texSize.Width, texSize.Height);
+
+                    driver->draw2DImage(iconTex, iconRect, srcRect, nullptr, nullptr, true);
+                }
             }
         }
     }

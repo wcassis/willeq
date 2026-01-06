@@ -753,20 +753,6 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
 }
 
 void EQAnimatedMeshSceneNode::OnRegisterSceneNode() {
-    // Debug: Log registration status (throttled)
-    static int regLogCounter = 0;
-    if (++regLogCounter % 600 == 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode::OnRegisterSceneNode: IsVisible={} node={}", IsVisible, (void*)this);
-    }
-
-    // Debug: Log player node specifically
-    if (isPlayerNode_) {
-        static int playerRegCounter = 0;
-        if (++playerRegCounter % 60 == 0) {
-            LOG_DEBUG(MOD_GRAPHICS, "PLAYER OnRegisterSceneNode: IsVisible={} node={}", IsVisible, (void*)this);
-        }
-    }
-
     if (IsVisible) {
         SceneManager->registerNodeForRendering(this);
     }

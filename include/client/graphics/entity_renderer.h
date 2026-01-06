@@ -403,7 +403,7 @@ private:
     float rotationX_ = 0.0f;  // Rotation around X axis (degrees)
     float rotationY_ = 0.0f;  // Rotation around Y axis (degrees)
     float rotationZ_ = 0.0f;  // Rotation around Z axis (degrees)
-    float globalAnimationSpeed_ = 1.0f;  // Global animation speed multiplier (1.0 = default)
+    float globalAnimationSpeed_ = 1.0f;  // Global animation speed multiplier (1.0 = normal speed)
     float corpseZOffset_ = 0.0f;         // Global Z offset for corpse positioning (debug/tuning)
 
     // Helm texture debugging parameters

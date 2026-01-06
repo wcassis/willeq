@@ -930,13 +930,6 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         // Skip player entity position interpolation - controlled by camera/input
         // But still update equipment transforms
         if (visual.isPlayer) {
-            // Debug: Log player rotation at interpolation time (throttled to ~1/sec at 60fps)
-            static int interpLogCounter = 0;
-            if (visual.sceneNode && ++interpLogCounter % 60 == 0) {
-                irr::core::vector3df rot = visual.sceneNode->getRotation();
-                LOG_DEBUG(MOD_GRAPHICS, "[ROT-INTERP] updateInterpolation PLAYER: rotation=({:.1f},{:.1f},{:.1f}) lastHeading={:.1f} node={}",
-                          rot.X, rot.Y, rot.Z, visual.lastHeading, (void*)visual.sceneNode);
-            }
             updateEquipmentTransforms(visual);
             continue;
         }

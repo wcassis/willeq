@@ -313,7 +313,7 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 335: return "You gained raid experience!";
 		case 336: return "You gained group leadership experience!";
 		case 337: return "You gained raid leadership experience!";
-		default: return fmt::format("String ID {}", string_id);
+		default: return fmt::format("[Unknown message #{}]", string_id);
 	}
 }
 
@@ -1999,8 +1999,8 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 							it->second.name = new_name;
 							it->second.is_corpse = true;
 							if (s_debug_level >= 1) {
-								std::cout << fmt::format("[INFO] Mob {} renamed from '{}' to '{}' (corpse)", 
-									entity_id, old_name, new_name) << std::endl;
+								LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
+									entity_id, old_name, new_name);
 							}
 						}
 					}
@@ -4563,8 +4563,7 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 	uint8_t anim_id = p.GetUInt8(5);
 
 	if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-		std::cout << fmt::format("[EMOTE] spawn_id={}, speed={}, anim_id={}",
-			spawn_id, anim_speed, anim_id) << std::endl;
+		LOG_DEBUG(MOD_ENTITY, "[EMOTE] spawn_id={}, speed={}, anim_id={}", spawn_id, anim_speed, anim_id);
 	}
 
 	// Update entity animation state
@@ -4754,8 +4753,8 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		if (!animCode.empty()) {
 			m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
 			if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-				std::cout << fmt::format("[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
-					animCode, spawn_id, anim_id, primaryWeaponSkill) << std::endl;
+				LOG_DEBUG(MOD_ENTITY, "[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
+					animCode, spawn_id, anim_id, primaryWeaponSkill);
 			}
 		}
 	}
@@ -5367,8 +5366,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		uint8_t old_hp = it->second.hp_percent;
 		it->second.hp_percent = hp_percent;
 		if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-			std::cout << fmt::format("[HP] Entity {} ({}) health: {}% -> {}%",
-				spawn_id, it->second.name, old_hp, hp_percent) << std::endl;
+			LOG_DEBUG(MOD_ENTITY, "[HP] Entity {} ({}) health: {}% -> {}%", spawn_id, it->second.name, old_hp, hp_percent);
 		}
 #ifdef EQT_HAS_GRAPHICS
 		// Update renderer target HP if this is our current target
@@ -8787,10 +8785,11 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 	uint32_t color_type = p.GetUInt32(2);   // color/type
 	uint32_t string_id = p.GetUInt32(6);    // string_id
 
-	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}", color_type, string_id);
-
 	// Get the message template for this string ID
 	std::string message_text = GetStringMessage(string_id);
+
+	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}, template='{}'",
+		color_type, string_id, message_text);
 
 	// Substitute placeholders (%1, %2, etc.) with entity names
 	// %1 is typically the target (for "You have slain %1!")
@@ -8868,17 +8867,13 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 		return;
 	}
 	
-	// The exact structure depends on the state being added
-	// For now, just log that we received it
-	if (s_debug_level >= 2) {
-		std::cout << fmt::format("PlayerStateAdd received, size: {} bytes", p.Length()) << std::endl;
-		
-		// Dump first few bytes for analysis
-		if (s_debug_level >= 3 && p.Length() >= 6) {
-			uint16_t value1 = p.GetUInt16(2);
-			uint16_t value2 = p.GetUInt16(4);
-			std::cout << fmt::format("  Values: {:#06x}, {:#06x}", value1, value2) << std::endl;
-		}
+	// The exact structure depends on the state being added (buff/debuff/state change)
+	// Parse what we can from the packet
+	if (s_debug_level >= 2 && p.Length() >= 6) {
+		uint16_t stateType = p.GetUInt16(2);
+		uint16_t stateValue = p.GetUInt16(4);
+		LOG_DEBUG(MOD_ZONE, "[PlayerStateAdd] State added: type={:#06x}, value={:#06x}, size={} bytes",
+			stateType, stateValue, p.Length());
 	}
 }
 
@@ -8936,12 +8931,14 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	}
 	
 	if (s_debug_level >= 1) {
-		if (spell_id > 0) {
-			std::cout << fmt::format("{} ({}) was killed by {} ({}) for {} damage (spell: {})",
-				victim_name, victim_id, killer_name, killer_id, damage, spell_id) << std::endl;
+		// spell_id of 0, 0xFFFF (65535), or 0xFFFFFFFF means no spell was used
+		bool hasValidSpell = spell_id > 0 && spell_id != 0xFFFF && spell_id != 0xFFFFFFFF;
+		if (hasValidSpell) {
+			LOG_INFO(MOD_COMBAT, "{} ({}) was killed by {} ({}) for {} damage (spell: {})",
+				victim_name, victim_id, killer_name, killer_id, damage, spell_id);
 		} else {
-			std::cout << fmt::format("{} ({}) was killed by {} ({}) for {} damage",
-				victim_name, victim_id, killer_name, killer_id, damage) << std::endl;
+			LOG_INFO(MOD_COMBAT, "{} ({}) was killed by {} ({}) for {} damage",
+				victim_name, victim_id, killer_name, killer_id, damage);
 		}
 	}
 	
@@ -9010,17 +9007,13 @@ void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 		return;
 	}
 	
-	// The exact structure depends on the state being removed
-	// For now, just log that we received it
-	if (s_debug_level >= 2) {
-		std::cout << fmt::format("PlayerStateRemove received, size: {} bytes", p.Length()) << std::endl;
-		
-		// Dump first few bytes for analysis
-		if (s_debug_level >= 3 && p.Length() >= 6) {
-			uint16_t value1 = p.GetUInt16(2);
-			uint16_t value2 = p.GetUInt16(4);
-			std::cout << fmt::format("  Values: {:#06x}, {:#06x}", value1, value2) << std::endl;
-		}
+	// The exact structure depends on the state being removed (buff/debuff/state change)
+	// Parse what we can from the packet
+	if (s_debug_level >= 2 && p.Length() >= 6) {
+		uint16_t stateType = p.GetUInt16(2);
+		uint16_t stateValue = p.GetUInt16(4);
+		LOG_DEBUG(MOD_ZONE, "[PlayerStateRemove] State removed: type={:#06x}, value={:#06x}, size={} bytes",
+			stateType, stateValue, p.Length());
 	}
 }
 
@@ -11024,17 +11017,15 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		AddChatSystemMessage("Trade cancelled - you entered combat");
 	}
 
-	if (s_debug_level >= 2) {
+	if (s_debug_level >= 3) {
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
-		if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Damage packet raw bytes (first 12): ");
+		std::string hexBytes;
 		for (int i = 0; i < 12 && i < static_cast<int>(p.Length()) - 2; ++i) {
-			std::cout << fmt::format("{:02x} ", data[i]);
+			hexBytes += fmt::format("{:02x} ", data[i]);
 		}
-		std::cout << std::endl;
-		LOG_DEBUG(MOD_MAIN, "target={} ({:04x}), source={} ({:04x}), type={} ({:02x}), spell={} ({:04x})", target_id, target_id, source_id, source_id, damage_type, damage_type, spell_id, spell_id);
-
-		// Show damage bytes specifically
-		LOG_DEBUG(MOD_MAIN, "Damage bytes at offset 7: {:02x} {:02x} {:02x} {:02x}", data[7], data[8], data[9], data[10]);
+		LOG_TRACE(MOD_COMBAT, "Damage packet raw bytes (first 12): {}", hexBytes);
+		LOG_DEBUG(MOD_COMBAT, "Damage target={} ({:04x}), source={} ({:04x}), type={} ({:02x}), spell={} ({:04x})", target_id, target_id, source_id, source_id, damage_type, damage_type, spell_id, spell_id);
+		LOG_TRACE(MOD_COMBAT, "Damage bytes at offset 7: {:02x} {:02x} {:02x} {:02x}", data[7], data[8], data[9], data[10]);
 	}
 
 	if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
@@ -11794,11 +11785,16 @@ bool EverQuest::InitGraphics(int width, int height) {
 			}
 		});
 
-		windowManager->setHotbarCreateCallback([this](uint8_t skill_id) {
-			// Store skill for future hotbar implementation
-			AddPendingHotbarButton(skill_id);
+		windowManager->setHotbarCreateCallback([this, windowManager](uint8_t skill_id) {
+			// Put skill on cursor for placement in hotbar
 			const char* skill_name = EQ::getSkillName(skill_id);
-			AddChatSystemMessage(fmt::format("Added {} to hotbar queue (hotbar not yet implemented)", skill_name));
+			windowManager->setHotbarCursor(
+				eqt::ui::HotbarButtonType::Skill,
+				static_cast<uint32_t>(skill_id),
+				skill_name ? skill_name : "Unknown Skill",
+				0  // No icon ID for skills - will use text label
+			);
+			AddChatSystemMessage(fmt::format("Drag {} to a hotbar slot", skill_name ? skill_name : "skill"));
 		});
 
 		// Set up skill activation feedback callback
@@ -11941,6 +11937,13 @@ bool EverQuest::InitGraphics(int width, int height) {
 					// Send emote text
 					if (!button.emoteText.empty()) {
 						ProcessChatInput(button.emoteText);
+					}
+					break;
+				}
+				case eqt::ui::HotbarButtonType::Skill: {
+					// Activate skill by ID
+					if (m_skill_manager) {
+						m_skill_manager->activateSkill(static_cast<uint8_t>(button.id));
 					}
 					break;
 				}

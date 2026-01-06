@@ -142,7 +142,7 @@ private:
     HotbarEmoteDialogCallback emoteDialogCallback_;
     HotbarChangedCallback changedCallback_;
 
-    // Emote icon constant (using a speech bubble from spell icons)
+    // Default icon constant for emotes (using spell icons)
     static constexpr uint32_t EMOTE_ICON_ID = 89;  // Chat/speech icon
 };
 
