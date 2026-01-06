@@ -34,6 +34,8 @@ struct ZonePointWithSource {
     float targetZ = 0.0f;          // Destination Z
     float heading = 0.0f;          // Destination heading
     uint16_t targetZoneId = 0;     // Destination zone ID
+    bool extendX = false;          // True if sourceX was 999999 (extend box to zone bounds)
+    bool extendY = false;          // True if sourceY was 999999 (extend box to zone bounds)
 };
 
 // Result of checking if a position is in a zone line
@@ -48,6 +50,26 @@ struct ZoneLineResult {
     uint32_t zonePointIndex = 0;     // Zone point index if needsServerLookup is true
 };
 
+// Bounding box for zone line visualization
+struct ZoneLineBoundingBox {
+    float minX = 0.0f, minY = 0.0f, minZ = 0.0f;
+    float maxX = 0.0f, maxY = 0.0f, maxZ = 0.0f;
+    uint16_t targetZoneId = 0;
+    uint32_t zonePointIndex = 0;     // For reference types
+    bool isProximityBased = false;   // True if derived from proximity zone point
+};
+
+// Pre-extracted zone line with trigger box and destination
+struct ExtractedZoneLine {
+    uint32_t zonePointIndex = 0;
+    std::string destinationZone;
+    uint16_t destinationZoneId = 0;
+    float minX = 0.0f, minY = 0.0f, minZ = 0.0f;
+    float maxX = 0.0f, maxY = 0.0f, maxZ = 0.0f;
+    float destX = 0.0f, destY = 0.0f, destZ = 0.0f;
+    float destHeading = 0.0f;
+};
+
 // Container for zone line data
 class ZoneLines {
 public:
@@ -57,6 +79,10 @@ public:
     // Load zone lines from the zone's S3D/WLD file
     // Returns true if any zone lines were found
     bool loadFromZone(const std::string& zoneName, const std::string& eqClientPath);
+
+    // Load pre-extracted zone lines from zone_lines.json
+    // This is the preferred method - uses pre-computed trigger boxes
+    bool loadFromExtractedJson(const std::string& zoneName, const std::string& jsonPath);
 
     // Load zone points with source coordinates from JSON file
     // Used for proximity-based detection when BSP zone lines aren't available
@@ -84,10 +110,16 @@ public:
     // Get a zone point by index (for resolving reference-type zone lines)
     std::optional<ZonePoint> getZonePoint(uint32_t index) const;
 
-    // Check if we have zone line data loaded (BSP or proximity-based)
+    // Check if we have zone line data loaded (extracted, BSP, or proximity-based)
     bool hasZoneLines() const {
-        return (bspTree_ != nullptr && !bspTree_->regions.empty()) ||
+        return !extractedZoneLines_.empty() ||
+               (bspTree_ != nullptr && !bspTree_->regions.empty()) ||
                !proximityZonePoints_.empty();
+    }
+
+    // Check if we have pre-extracted zone lines loaded
+    bool hasExtractedZoneLines() const {
+        return !extractedZoneLines_.empty();
     }
 
     // Check if we have BSP-based zone lines
@@ -95,6 +127,10 @@ public:
 
     // Get the number of zone lines
     size_t getZoneLineCount() const;
+
+    // Get bounding boxes for zone line visualization
+    // Calculates approximate bounds for BSP zone lines and exact bounds for proximity zone points
+    std::vector<ZoneLineBoundingBox> getZoneLineBoundingBoxes() const;
 
     // Debug: test all coordinate mappings to find which reaches zone line regions
     void debugTestCoordinateMappings(float serverX, float serverY, float serverZ) const;
@@ -108,12 +144,24 @@ private:
     ZoneLineResult resolveZoneLine(const Graphics::ZoneLineInfo& info,
                                     float currentX, float currentY, float currentZ) const;
 
+    // Check extracted zone lines (trigger box detection)
+    ZoneLineResult checkExtractedZoneLines(float x, float y, float z,
+                                            float currentX, float currentY, float currentZ) const;
+
     // Check proximity-based zone points (fallback when no BSP zone lines)
     ZoneLineResult checkProximityZonePoints(float x, float y, float z,
                                              float currentX, float currentY, float currentZ) const;
 
-    // BSP tree from WLD file (for zone line detection)
+    // Pre-extracted zone lines from zone_lines.json (preferred)
+    std::vector<ExtractedZoneLine> extractedZoneLines_;
+
+    // BSP tree from WLD file (fallback for zone line detection)
     std::shared_ptr<Graphics::BspTree> bspTree_;
+
+    // Zone geometry bounds (used for BSP region bounds computation)
+    float zoneMinX_ = -10000.0f, zoneMinY_ = -10000.0f, zoneMinZ_ = -1000.0f;
+    float zoneMaxX_ = 10000.0f, zoneMaxY_ = 10000.0f, zoneMaxZ_ = 1000.0f;
+    bool hasZoneBounds_ = false;
 
     // Zone points from server (keyed by zone point number)
     std::map<uint32_t, ZonePoint> serverZonePoints_;

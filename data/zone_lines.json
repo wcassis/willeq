@@ -1,0 +1,143 @@
+{
+  "qeynos2" : 
+  {
+    "coordinate_transform" : 
+    {
+      "bsp_center_x" : 870.140625,
+      "bsp_center_y" : 0.0,
+      "offset_x" : 870.140625,
+      "offset_y" : -870.140625,
+      "offset_z" : 0.0,
+      "world_center_x" : 870.140625,
+      "world_center_y" : 0.0
+    },
+    "geometry_bounds" : 
+    {
+      "max_x" : 1999.1875,
+      "max_y" : 1099.5625,
+      "max_z" : 79.96875,
+      "min_x" : -258.90625,
+      "min_y" : -1099.5625,
+      "min_z" : -390.84375
+    },
+    "zone_lines" : 
+    [
+      {
+        "bsp_region_count" : 2,
+        "destination" : 
+        {
+          "heading" : 462.0,
+          "x" : 105.0,
+          "y" : 637.0,
+          "z" : -38.0
+        },
+        "destination_zone" : "qcat",
+        "destination_zone_id" : 45,
+        "trigger_box" : 
+        {
+          "max_x" : 525.0531005859375,
+          "max_y" : 391.84307861328125,
+          "max_z" : -14.993968963623047,
+          "min_x" : 167.93280029296875,
+          "min_y" : 351.85931396484375,
+          "min_z" : -41.983112335205078
+        },
+        "type" : "reference",
+        "zone_point_index" : 5
+      },
+      {
+        "bsp_region_count" : 5,
+        "destination" : 
+        {
+          "heading" : 462.0,
+          "x" : 217.0,
+          "y" : 889.0,
+          "z" : -50.0
+        },
+        "destination_zone" : "qcat",
+        "destination_zone_id" : 45,
+        "trigger_box" : 
+        {
+          "max_x" : 201.83602905273438,
+          "max_y" : 328.8682861328125,
+          "max_z" : -14.993968963623047,
+          "min_x" : 181.92715454101562,
+          "min_y" : 279.88809204101562,
+          "min_z" : -22.989809036254883
+        },
+        "type" : "reference",
+        "zone_point_index" : 6
+      },
+      {
+        "bsp_region_count" : 5,
+        "destination" : 
+        {
+          "heading" : 259.0,
+          "x" : -442.0,
+          "y" : 464.0,
+          "z" : 1.5
+        },
+        "destination_zone" : "qeynos",
+        "destination_zone_id" : 1,
+        "trigger_box" : 
+        {
+          "max_x" : 220.91143798828125,
+          "max_y" : 351.85931396484375,
+          "max_z" : -14.993968963623047,
+          "min_x" : 176.70726013183594,
+          "min_y" : 223.91046142578125,
+          "min_z" : -35.087497711181641
+        },
+        "type" : "reference",
+        "zone_point_index" : 7
+      },
+      {
+        "bsp_region_count" : 9,
+        "destination" : 
+        {
+          "heading" : 259.0,
+          "x" : -80.0,
+          "y" : 586.0,
+          "z" : 1.5
+        },
+        "destination_zone" : "qeynos",
+        "destination_zone_id" : 1,
+        "trigger_box" : 
+        {
+          "max_x" : 525.0531005859375,
+          "max_y" : 1099.5625,
+          "max_z" : -14.993968963623047,
+          "min_x" : 175.9296875,
+          "min_y" : 327.4244384765625,
+          "min_z" : -41.983112335205078
+        },
+        "type" : "reference",
+        "zone_point_index" : 8
+      },
+      {
+        "bsp_region_count" : 1,
+        "destination" : 
+        {
+          "heading" : 2.5999999046325684,
+          "x" : 999999.0,
+          "y" : -220.0,
+          "z" : 4.0
+        },
+        "destination_zone" : "qeytoqrg",
+        "destination_zone_id" : 4,
+        "trigger_box" : 
+        {
+          "max_x" : 181.92715454101562,
+          "max_y" : 391.84307861328125,
+          "max_z" : -14.993968963623047,
+          "min_x" : 178.9283447265625,
+          "min_y" : 356.85708618164062,
+          "min_z" : -22.989809036254883
+        },
+        "type" : "reference",
+        "zone_point_index" : 9
+      }
+    ],
+    "zone_name" : "qeynos2"
+  }
+}

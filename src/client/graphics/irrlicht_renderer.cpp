@@ -5,6 +5,7 @@
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "client/zone_lines.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
@@ -123,6 +124,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             // Skills window toggle on K key (Player mode)
             if (event.KeyInput.Key == irr::KEY_KEY_K) {
                 skillsToggleRequested_ = true;
+            }
+
+            // Zone line visualization toggle on Z key
+            if (event.KeyInput.Key == irr::KEY_KEY_Z) {
+                zoneLineVisualizationToggleRequested_ = true;
             }
 
             // Spell gem shortcuts (1-8 keys, not numpad) - only when Ctrl is not held
@@ -1367,6 +1373,9 @@ void IrrlichtRenderer::unloadZone() {
     // Clear vertex animated meshes (they reference freed zone mesh buffers)
     vertexAnimatedMeshes_.clear();
 
+    // Clear zone line visualization boxes
+    clearZoneLineBoundingBoxes();
+
     currentZone_.reset();
     currentZoneName_.clear();
 }
@@ -2371,6 +2380,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle zone line visualization toggle (Z key) - works in any mode, but only if chat is not focused
+    if (eventReceiver_->zoneLineVisualizationToggleRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            toggleZoneLineVisualization();
+        }
+    }
+
     // Handle door interaction (U key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->doorInteractRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
@@ -2597,6 +2613,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // Draw zone line overlay (pink border when in zone line)
     drawZoneLineOverlay();
+
+    // Draw zone line bounding box labels
+    drawZoneLineBoxLabels();
 
     driver_->endScene();
 
@@ -4499,6 +4518,187 @@ void IrrlichtRenderer::drawZoneLineOverlay() {
                            irr::video::SColor(255, 255, 200, 255));  // Light pink text
             }
         }
+    }
+}
+
+void IrrlichtRenderer::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) {
+    // Clear existing boxes first
+    clearZoneLineBoundingBoxes();
+
+    if (!smgr_ || !driver_) {
+        LOG_WARN(MOD_GRAPHICS, "Cannot create zone line boxes - renderer not initialized");
+        return;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Creating {} zone line visualization boxes", boxes.size());
+
+    for (const auto& box : boxes) {
+        createZoneLineBoxMesh(box);
+    }
+}
+
+void IrrlichtRenderer::clearZoneLineBoundingBoxes() {
+    for (auto& boxNode : zoneLineBoxNodes_) {
+        if (boxNode.node) {
+            boxNode.node->remove();
+        }
+    }
+    zoneLineBoxNodes_.clear();
+}
+
+void IrrlichtRenderer::toggleZoneLineVisualization() {
+    showZoneLineBoxes_ = !showZoneLineBoxes_;
+
+    // Update visibility of all zone line box nodes
+    for (auto& boxNode : zoneLineBoxNodes_) {
+        if (boxNode.node) {
+            boxNode.node->setVisible(showZoneLineBoxes_);
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Zone line visualization {}", showZoneLineBoxes_ ? "enabled" : "disabled");
+}
+
+void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box) {
+    if (!smgr_ || !driver_) return;
+
+    // Convert EQ coordinates to Irrlicht coordinates
+    // EQ uses Z-up: (x, y, z) -> Irrlicht Y-up: (x, z, y)
+    float irrMinX = box.minX;
+    float irrMinY = box.minZ;  // EQ Z -> Irrlicht Y
+    float irrMinZ = box.minY;  // EQ Y -> Irrlicht Z
+    float irrMaxX = box.maxX;
+    float irrMaxY = box.maxZ;
+    float irrMaxZ = box.maxY;
+
+    // Calculate box dimensions and center
+    float width = irrMaxX - irrMinX;
+    float height = irrMaxY - irrMinY;
+    float depth = irrMaxZ - irrMinZ;
+    float centerX = (irrMinX + irrMaxX) / 2.0f;
+    float centerY = (irrMinY + irrMaxY) / 2.0f;
+    float centerZ = (irrMinZ + irrMaxZ) / 2.0f;
+
+    // Create a cube mesh using geometry creator
+    const irr::scene::IGeometryCreator* geomCreator = smgr_->getGeometryCreator();
+    if (!geomCreator) {
+        LOG_WARN(MOD_GRAPHICS, "No geometry creator available");
+        return;
+    }
+
+    // Create a unit cube mesh and scale it
+    irr::scene::IMesh* cubeMesh = geomCreator->createCubeMesh(irr::core::vector3df(width, height, depth));
+    if (!cubeMesh) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to create cube mesh");
+        return;
+    }
+
+    // Create scene node for the box
+    irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(cubeMesh);
+    cubeMesh->drop();  // Scene manager now owns it
+
+    if (!node) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to create mesh scene node");
+        return;
+    }
+
+    // Position the box
+    node->setPosition(irr::core::vector3df(centerX, centerY, centerZ));
+
+    // Set up semi-transparent material
+    // Use different colors for BSP vs proximity-based boxes
+    irr::video::SColor color;
+    if (box.isProximityBased) {
+        // Cyan for proximity-based zone points
+        color = irr::video::SColor(80, 0, 255, 255);
+    } else {
+        // Magenta/purple for BSP-based zone lines
+        color = irr::video::SColor(80, 255, 0, 255);
+    }
+
+    // Apply semi-transparent material to all mesh buffers
+    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+        irr::video::SMaterial& mat = node->getMaterial(i);
+        mat.MaterialType = irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
+        mat.Lighting = false;
+        mat.BackfaceCulling = false;
+        mat.ZWriteEnable = false;  // Don't write to depth buffer
+        mat.AmbientColor = color;
+        mat.DiffuseColor = color;
+    }
+
+    // Also modify the mesh vertex colors directly for vertex alpha transparency
+    irr::scene::IMeshBuffer* meshBuffer = node->getMesh()->getMeshBuffer(0);
+    if (meshBuffer) {
+        irr::video::S3DVertex* vertices = static_cast<irr::video::S3DVertex*>(meshBuffer->getVertices());
+        irr::u32 vertexCount = meshBuffer->getVertexCount();
+        for (irr::u32 i = 0; i < vertexCount; ++i) {
+            vertices[i].Color = color;
+        }
+    }
+
+    node->setVisible(showZoneLineBoxes_);
+
+    // Store the node
+    ZoneLineBoxNode boxNode;
+    boxNode.node = node;
+    boxNode.targetZoneId = box.targetZoneId;
+    boxNode.isProximityBased = box.isProximityBased;
+    zoneLineBoxNodes_.push_back(boxNode);
+
+    LOG_TRACE(MOD_GRAPHICS, "Created zone line box for zone {} at ({},{},{}) size ({},{},{})",
+        box.targetZoneId, centerX, centerY, centerZ, width, height, depth);
+}
+
+void IrrlichtRenderer::drawZoneLineBoxLabels() {
+    if (!showZoneLineBoxes_ || !driver_ || !guienv_ || !camera_) {
+        return;
+    }
+
+    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    if (!font) return;
+
+    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+
+    for (const auto& boxNode : zoneLineBoxNodes_) {
+        if (!boxNode.node || !boxNode.node->isVisible()) continue;
+
+        // Get 3D position of box center
+        irr::core::vector3df boxPos = boxNode.node->getAbsolutePosition();
+
+        // Convert 3D position to 2D screen position
+        irr::core::position2d<irr::s32> screenPos = smgr_->getSceneCollisionManager()->getScreenCoordinatesFrom3DPosition(
+            boxPos, camera_);
+
+        // Check if on screen
+        if (screenPos.X < 0 || screenPos.X >= (irr::s32)screenSize.Width ||
+            screenPos.Y < 0 || screenPos.Y >= (irr::s32)screenSize.Height) {
+            continue;
+        }
+
+        // Create label text
+        std::wstring label = L"Zone " + std::to_wstring(boxNode.targetZoneId);
+        if (boxNode.isProximityBased) {
+            label += L" (prox)";
+        }
+
+        // Draw label
+        irr::core::dimension2d<irr::u32> textSize = font->getDimension(label.c_str());
+        int textX = screenPos.X - textSize.Width / 2;
+        int textY = screenPos.Y - textSize.Height / 2;
+
+        // Background rectangle
+        irr::video::SColor bgColor(150, 0, 0, 0);
+        driver_->draw2DRectangle(bgColor, irr::core::rect<irr::s32>(
+            textX - 2, textY - 2, textX + textSize.Width + 2, textY + textSize.Height + 2));
+
+        // Text color based on type
+        irr::video::SColor textColor = boxNode.isProximityBased ?
+            irr::video::SColor(255, 0, 255, 255) :  // Cyan
+            irr::video::SColor(255, 255, 0, 255);   // Magenta
+
+        font->draw(label.c_str(), irr::core::rect<irr::s32>(
+            textX, textY, textX + textSize.Width, textY + textSize.Height), textColor);
     }
 }
 

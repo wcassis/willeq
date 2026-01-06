@@ -1382,11 +1382,15 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_ZONE, "Zone transition detected - disconnecting from current zone");
 
 		// Set player position to pending zone coordinates if we have them
+		// IMPORTANT: pending coordinates are in SERVER format (x=server_x, y=server_y)
+		// but m_x/m_y are in CLIENT DISPLAY format (m_x=server_y, m_y=server_x)
+		// So we need to swap X and Y when assigning
 		if (m_pending_zone_id != 0) {
-			LOG_DEBUG(MOD_ZONE, "Setting spawn position to ({:.1f}, {:.1f}, {:.1f})",
-				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z);
-			m_x = m_pending_zone_x;
-			m_y = m_pending_zone_y;
+			LOG_DEBUG(MOD_ZONE, "Setting spawn position: server coords ({:.1f}, {:.1f}, {:.1f}) -> client (m_x={:.1f}, m_y={:.1f})",
+				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z,
+				m_pending_zone_y, m_pending_zone_x);
+			m_x = m_pending_zone_y;  // client x (m_x) = server y
+			m_y = m_pending_zone_x;  // client y (m_y) = server x
 			m_z = m_pending_zone_z;
 			if (m_pending_zone_heading > 0) {
 				m_heading = m_pending_zone_heading;
@@ -9729,13 +9733,14 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	} else {
 		LOG_DEBUG(MOD_MAP, "LoadZoneLines: No EQ client path set, zone lines from WLD unavailable");
 	}
+
+	// NOTE: Zone line visualization boxes are sent to the renderer in OnZoneLoadedGraphics()
+	// AFTER loadZone() completes. If done here, the boxes get cleared when loadZone()
+	// calls unloadZone() internally.
 }
 
 void EverQuest::CheckZoneLine()
 {
-	// TODO: Automatic zoning disabled - needs fixing
-	return;
-
 	// Skip if not fully zoned in or no zone lines loaded
 	if (!IsFullyZonedIn() || !m_zone_lines || !m_zone_lines->hasZoneLines()) {
 #ifdef EQT_HAS_GRAPHICS
@@ -9791,18 +9796,27 @@ void EverQuest::CheckZoneLine()
 	}
 
 	// Check if currently in a zone line region
-	// BSP tree uses (server_y, server_x, server_z) based on testing with bsp_region_finder
+	// The extracted zone lines use BSP coordinates which need to be checked against player position
 	// m_x = server_y, m_y = server_x (from spawn struct)
-	// Zone lines at BSP x >= 1400 correspond to high server_y (north direction)
-	float bsp_x = m_x;   // server_y (north/south)
-	float bsp_y = m_y;   // server_x (east/west)
-	float bsp_z = m_z;
-	EQT::ZoneLineResult result = m_zone_lines->checkPosition(bsp_x, bsp_y, bsp_z, bsp_x, bsp_y, bsp_z);
+	// Testing with player position directly (coordinates may need adjustment based on zone)
+	float check_x = m_x;
+	float check_y = m_y;
+	float check_z = m_z;
+
+	// Debug: log position being checked
+	static int posLogCount = 0;
+	posLogCount++;
+	if (posLogCount % 100 == 1) {
+		LOG_DEBUG(MOD_ZONE, "CheckZoneLine: m_x={:.1f} m_y={:.1f} m_z={:.1f} (server: x={:.1f} y={:.1f})",
+			m_x, m_y, m_z, m_y, m_x);
+	}
+
+	EQT::ZoneLineResult result = m_zone_lines->checkPosition(check_x, check_y, check_z, check_x, check_y, check_z);
 
 	// Debug output for every position check (throttled)
 	if (checkCount % 50 == 0) {
-		LOG_TRACE(MOD_ZONE, "Zone line check: bsp=({:.1f}, {:.1f}, {:.1f}) server=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
-			bsp_x, bsp_y, bsp_z, m_y, m_x, m_z, result.isZoneLine ? "YES" : "no");
+		LOG_TRACE(MOD_ZONE, "Zone line check: check=({:.1f}, {:.1f}, {:.1f}) m_pos=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
+			check_x, check_y, check_z, m_x, m_y, m_z, result.isZoneLine ? "YES" : "no");
 	}
 
 	if (result.isZoneLine) {
@@ -12159,6 +12173,17 @@ void EverQuest::OnZoneLoadedGraphics() {
 		if (m_zone_map) {
 			m_renderer->setCollisionMap(m_zone_map.get());
 			LOG_TRACE(MOD_GRAPHICS, "Collision map set for Player Mode");
+		}
+
+		// Send zone line bounding boxes to renderer for visualization
+		// NOTE: This must be done AFTER loadZone() completes because loadZone()
+		// calls unloadZone() which clears any existing boxes
+		if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+			auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
+			if (!boxes.empty()) {
+				m_renderer->setZoneLineBoundingBoxes(boxes);
+				LOG_DEBUG(MOD_GRAPHICS, "Sent {} zone line boxes to renderer after zone load", boxes.size());
+			}
 		}
 
 		// Set camera mode based on renderer mode
