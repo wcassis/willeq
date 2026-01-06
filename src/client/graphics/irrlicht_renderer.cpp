@@ -3415,7 +3415,16 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
     // Update player entity animation based on movement state (runs every frame)
     if (entityRenderer_) {
-        if (hasMovementInput) {
+        // Jump animation takes priority (playThrough)
+        if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0) {
+            // Only trigger jump animation on the way up (ascending)
+            // Use l03 for running jump, l04 for standing jump
+            if (hasMovementInput) {
+                entityRenderer_->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
+            } else {
+                entityRenderer_->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
+            }
+        } else if (hasMovementInput) {
             // Use run animation for forward movement when running, walk for everything else
             // Pass movement speed to match animation speed to actual movement
             float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;

@@ -1538,20 +1538,21 @@ void EntityRenderer::updatePlayerEntityPosition(float x, float y, float z, float
     }
 }
 
-void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool loop, float movementSpeed) {
+void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool loop, float movementSpeed, bool playThrough) {
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
             if (visual.isAnimated && visual.animatedNode) {
-                // Don't interrupt playThrough animations (combat, skills, etc.)
+                // Don't interrupt playThrough animations (combat, skills, jump, etc.)
                 // They must complete before returning to movement/idle animations
-                if (visual.animatedNode->isPlayingThrough()) {
+                // Exception: a new playThrough animation CAN interrupt an existing one
+                if (visual.animatedNode->isPlayingThrough() && !playThrough) {
                     break;  // Let the playThrough animation finish
                 }
 
                 // Only change animation if it's different from current
                 if (visual.currentAnimation != animCode) {
                     if (visual.animatedNode->hasAnimation(animCode)) {
-                        visual.animatedNode->playAnimation(animCode, loop);
+                        visual.animatedNode->playAnimation(animCode, loop, playThrough);
                         visual.currentAnimation = animCode;
                     }
                 }
@@ -1561,6 +1562,9 @@ void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool 
                 if (movementSpeed > 0.0f && (animCode == "l01" || animCode == "l02")) {
                     float baseSpeed = (animCode == "l02") ? 23.0f : 10.0f;
                     visual.animatedNode->getAnimator().matchMovementSpeed(baseSpeed, movementSpeed);
+                } else {
+                    // Reset to normal speed for non-movement animations (jump, idle, etc.)
+                    visual.animatedNode->getAnimator().matchMovementSpeed(0.0f, 0.0f);
                 }
             }
             break; // Only one player entity

@@ -251,7 +251,8 @@ public:
 
     // Set the player entity's animation (used in player mode)
     // movementSpeed is used to scale walk/run animation speed to match actual movement
-    void setPlayerEntityAnimation(const std::string& animCode, bool loop = true, float movementSpeed = 0.0f);
+    // playThrough animations (like jump, combat) must complete before other animations can play
+    void setPlayerEntityAnimation(const std::string& animCode, bool loop = true, float movementSpeed = 0.0f, bool playThrough = false);
 
     // Set the player's spawn ID (marks that entity as the player)
     void setPlayerSpawnId(uint16_t spawnId);
