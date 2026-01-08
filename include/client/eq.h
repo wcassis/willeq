@@ -474,6 +474,8 @@ public:
 	bool IsMoving() const { return m_is_moving; }
 	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent; }
 	bool IsZoneChangeApproved() const { return m_zone_change_approved; }
+	void SetZoningEnabled(bool enabled) { m_zoning_enabled = enabled; }
+	bool IsZoningEnabled() const { return m_zoning_enabled; }
 	void ListEntities(const std::string& search = "") const;
 	void DumpEntityAppearance(uint16_t spawn_id) const;
 	void DumpEntityAppearance(const std::string& name) const;
@@ -933,6 +935,7 @@ private:
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
 
 	// Zone line detection state
+	bool m_zoning_enabled = true;                                    // Whether zone line detection triggers zoning (matches visualization default)
 	bool m_zone_line_triggered = false;                              // Currently in a zone line
 	std::chrono::steady_clock::time_point m_zone_line_trigger_time;  // When zone line was triggered
 	float m_last_zone_check_x = 0.0f;                                // Last position checked for zone line
