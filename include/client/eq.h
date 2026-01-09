@@ -427,6 +427,11 @@ struct Door
 // Maximum group size (leader + 5 members)
 static constexpr int MAX_GROUP_MEMBERS = 6;
 
+// Interaction distance for vendors, bankers, tradeskill containers, etc.
+// Player must be within this distance to interact with NPCs/objects
+static constexpr float NPC_INTERACTION_DISTANCE = 15.0f;
+static constexpr float NPC_INTERACTION_DISTANCE_SQUARED = NPC_INTERACTION_DISTANCE * NPC_INTERACTION_DISTANCE;
+
 // Group member information (tracked locally for UI display)
 struct GroupMember
 {
@@ -592,6 +597,10 @@ public:
 	uint32_t GetGold() const { return m_gold; }
 	uint32_t GetSilver() const { return m_silver; }
 	uint32_t GetCopper() const { return m_copper; }
+	uint32_t GetBankPlatinum() const { return m_bank_platinum; }
+	uint32_t GetBankGold() const { return m_bank_gold; }
+	uint32_t GetBankSilver() const { return m_bank_silver; }
+	uint32_t GetBankCopper() const { return m_bank_copper; }
 	float GetWeight() const { return m_weight; }
 	float GetMaxWeight() const { return m_max_weight; }
 
@@ -871,6 +880,12 @@ private:
 	uint32_t m_silver = 0;
 	uint32_t m_copper = 0;
 
+	// Bank currency
+	uint32_t m_bank_platinum = 0;
+	uint32_t m_bank_gold = 0;
+	uint32_t m_bank_silver = 0;
+	uint32_t m_bank_copper = 0;
+
 	// Weight
 	float m_weight = 0.0f;
 	float m_max_weight = 0.0f;
@@ -1083,6 +1098,9 @@ private:
 	float m_vendor_sell_rate = 1.0f;  // Price multiplier for this vendor
 	std::string m_vendor_name;        // Vendor NPC name
 
+	// Player mode bank state
+	uint16_t m_banker_npc_id = 0;     // Banker NPC being interacted with (0 = bank closed)
+
 	// Graphics callbacks (OnZoneLoadedGraphics is public, others are private)
 	void OnSpawnAddedGraphics(const Entity& entity);
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
@@ -1109,6 +1127,7 @@ private:
 	void ZoneProcessVendorItemToUI(const EQ::Net::Packet& p);
 	void ZoneProcessMoneyUpdate(const EQ::Net::Packet& p);
 	void SetupVendorCallbacks();
+	void SetupBankCallbacks();
 
 	// Trade packet handlers and send functions
 	void SetupTradeManagerCallbacks();
@@ -1146,6 +1165,12 @@ public:
 	void CloseVendorWindow();
 	bool IsVendorWindowOpen() const { return m_vendor_npc_id != 0; }
 	uint16_t GetVendorNpcId() const { return m_vendor_npc_id; }
+
+	// Bank window methods (Player mode with graphics)
+	void OpenBankWindow(uint16_t bankerNpcId = 0);
+	void CloseBankWindow();
+	bool IsBankWindowOpen() const { return m_banker_npc_id != 0; }
+	uint16_t GetBankerNpcId() const { return m_banker_npc_id; }
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);

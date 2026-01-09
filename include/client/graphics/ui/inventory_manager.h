@@ -122,6 +122,7 @@ public:
     void removeItem(int16_t slotId);
     void clearAll();
     void clearTradeSlots();  // Clear items in trade slots (3000-3007)
+    void clearBankSlots();   // Clear items in bank slots (2000-2190, 2500-2550)
 
     // Cursor operations
     bool pickupItem(int16_t slotId);
@@ -160,6 +161,15 @@ public:
     std::vector<int16_t> getBagContentsSlots(int16_t generalSlot) const;
     bool isBagEmpty(int16_t generalSlot) const;
     void relocateBagContents(int16_t fromGeneralSlot, int16_t toGeneralSlot);
+
+    // Bank utilities
+    bool isBankBag(int16_t slotId) const;           // Check if bank/shared bank slot contains a bag
+    int getBankBagSize(int16_t slotId) const;       // Get bag capacity for bank container
+    std::vector<int16_t> getBankBagContentsSlots(int16_t bankSlot) const;  // Get slots inside bank bag
+    bool isBankBagEmpty(int16_t bankSlot) const;    // Check if bank bag is empty
+    bool canPlaceInBankSlot(const ItemInstance* item, int16_t targetSlot) const;  // Validate bank placement
+    std::vector<std::pair<int16_t, const ItemInstance*>> getBankItems() const;    // Get all bank items
+    std::vector<std::pair<int16_t, const ItemInstance*>> getSharedBankItems() const;  // Get shared bank items
 
     // Get all items in a slot range
     std::vector<std::pair<int16_t, const ItemInstance*>> getEquipmentItems() const;
@@ -225,7 +235,8 @@ private:
 
     // Internal helpers
     bool isValidSlot(int16_t slotId) const;
-    const ItemInstance* getBagAtSlot(int16_t bagSlot) const;
+    const ItemInstance* getBagAtSlot(int16_t bagSlot) const;       // Get container for general/cursor bag slots
+    const ItemInstance* getContainerAtSlot(int16_t bagSlot) const; // Get container for any bag slot (general, bank, trade)
 };
 
 } // namespace inventory

@@ -2,6 +2,7 @@
 
 #include "inventory_window.h"
 #include "bag_window.h"
+#include "bank_window.h"
 #include "loot_window.h"
 #include "vendor_window.h"
 #include "trade_window.h"
@@ -94,6 +95,25 @@ public:
     void closeBagWindow(int16_t generalSlot);
     void closeAllBagWindows();
     bool isBagWindowOpen(int16_t generalSlot) const;
+
+    // Bank window management
+    void openBankWindow();
+    void closeBankWindow();
+    void toggleBankWindow();
+    bool isBankWindowOpen() const;
+    BankWindow* getBankWindow() { return bankWindow_.get(); }
+    const BankWindow* getBankWindow() const { return bankWindow_.get(); }
+
+    // Bank bag window management
+    void openBankBagWindow(int16_t bankSlot);
+    void closeBankBagWindow(int16_t bankSlot);
+    void closeAllBankBagWindows();
+    bool isBankBagWindowOpen(int16_t bankSlot) const;
+
+    // Bank window callbacks (set by EverQuest class for packet handling)
+    void setOnBankClose(BankCloseCallback callback);
+    void setOnBankCurrencyMove(BankCurrencyMoveCallback callback);
+    void setOnBankCurrencyConvert(BankCurrencyConvertCallback callback);
 
     // Loot window management
     void openLootWindow(uint16_t corpseId, const std::string& corpseName);
@@ -333,6 +353,9 @@ public:
     // Update just the base currency values (called when server sends money update)
     void updateBaseCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
 
+    // Update bank currency values (called when bank window is opened or currency changes)
+    void updateBankCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+
     // Character model view (3D preview in inventory)
     void initModelView(irr::scene::ISceneManager* smgr,
                        EQT::Graphics::RaceModelLoader* raceLoader,
@@ -359,12 +382,14 @@ private:
     // Slot click handling
     void handleSlotClick(int16_t slotId, bool shift, bool ctrl);
     void handleBagSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleBankSlotClick(int16_t slotId, bool shift, bool ctrl);
     void handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctrl);
     void handleTradeMoneyAreaClick();
     void handleSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleLootSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleDestroyClick();
     void handleBagOpenClick(int16_t generalSlot);
+    void handleBankBagOpenClick(int16_t bankSlot);
     void handleCurrencyClick(CurrencyType type, uint32_t maxAmount);
     void handleMoneyInputConfirm(CurrencyType type, uint32_t amount);
     void refreshCurrencyDisplay();  // Update inventory currency display accounting for cursor money
@@ -378,7 +403,9 @@ private:
     void positionInventoryWindow();
     void positionLootWindow();
     void positionVendorWindow();
+    void positionBankWindow();
     void tileBagWindows();
+    void tileBankBagWindows();
     void positionCastingBarAboveChat();
     irr::core::recti getBagTilingArea() const;
 
@@ -426,6 +453,12 @@ private:
     uint32_t baseSilver_ = 0;
     uint32_t baseCopper_ = 0;
 
+    // Bank currency values
+    uint32_t bankPlatinum_ = 0;
+    uint32_t bankGold_ = 0;
+    uint32_t bankSilver_ = 0;
+    uint32_t bankCopper_ = 0;
+
     // Windows
     std::unique_ptr<InventoryWindow> inventoryWindow_;
     std::unique_ptr<LootWindow> lootWindow_;
@@ -447,6 +480,19 @@ private:
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
     std::unique_ptr<CastingBar> memorizingBar_;     // For showing spell memorization progress
     std::map<int16_t, std::unique_ptr<BagWindow>> bagWindows_;  // keyed by parent slot ID
+
+    // Bank window
+    std::unique_ptr<BankWindow> bankWindow_;
+    std::map<int16_t, std::unique_ptr<BagWindow>> bankBagWindows_;  // keyed by bank slot ID
+
+    // Bank window callbacks
+    BankCloseCallback onBankCloseCallback_;
+    BankCurrencyMoveCallback onBankCurrencyMoveCallback_;
+    BankCurrencyConvertCallback onBankCurrencyConvertCallback_;
+
+    // Currency click source tracking (for bank currency movement)
+    enum class CurrencyClickSource { None, Inventory, Bank };
+    CurrencyClickSource currencyClickSource_ = CurrencyClickSource::None;
 
     // Loot window callbacks
     LootItemCallback onLootItemCallback_;

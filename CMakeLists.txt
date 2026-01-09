@@ -202,6 +202,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/bag_window.cpp
         src/client/graphics/ui/loot_window.cpp
         src/client/graphics/ui/vendor_window.cpp
+        src/client/graphics/ui/bank_window.cpp
         src/client/graphics/ui/trade_window.cpp
         src/client/graphics/ui/trade_request_dialog.cpp
         src/client/graphics/ui/money_input_dialog.cpp

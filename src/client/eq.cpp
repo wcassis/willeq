@@ -2495,6 +2495,13 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	uint32_t silver = p.GetUInt32(base + 4436);    // offset 4436
 	uint32_t copper = p.GetUInt32(base + 4440);    // offset 4440
 
+	// Bank currency - money stored in bank
+	// From titanium_structs.h: platinum_bank at 13136, gold_bank at 13140, etc.
+	uint32_t bank_platinum = p.GetUInt32(base + 13136);  // offset 13136
+	uint32_t bank_gold = p.GetUInt32(base + 13140);      // offset 13140
+	uint32_t bank_silver = p.GetUInt32(base + 13144);    // offset 13144
+	uint32_t bank_copper = p.GetUInt32(base + 13148);    // offset 13148
+
 	// Character identity
 	char name[64] = {0};
 	char last_name[32] = {0};
@@ -2570,6 +2577,10 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_gold = gold;
 	m_silver = silver;
 	m_copper = copper;
+	m_bank_platinum = bank_platinum;
+	m_bank_gold = bank_gold;
+	m_bank_silver = bank_silver;
+	m_bank_copper = bank_copper;
 	m_last_name = last_name;
 
 	// Initialize skill manager with player info first
@@ -2646,6 +2657,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_MAIN, "STR:{} STA:{} CHA:{} DEX:{} INT:{} AGI:{} WIS:{}",
 			STR, STA, CHA, DEX, INT, AGI, WIS);
 		LOG_DEBUG(MOD_MAIN, "Currency: {}pp {}gp {}sp {}cp", platinum, gold, silver, copper);
+		LOG_DEBUG(MOD_MAIN, "Bank Currency: {}pp {}gp {}sp {}cp", bank_platinum, bank_gold, bank_silver, bank_copper);
 		LOG_DEBUG(MOD_MAIN, "Entity ID: {} (from offset 14384)", entity_id);
 		LOG_DEBUG(MOD_MAIN, "===========================");
 	}
@@ -3575,6 +3587,157 @@ void EverQuest::SetupVendorCallbacks()
 	}
 }
 
+void EverQuest::SetupBankCallbacks()
+{
+	if (!m_renderer || !m_renderer->getWindowManager()) {
+		return;
+	}
+
+	auto* windowManager = m_renderer->getWindowManager();
+
+	// Set callback for when player closes the bank window
+	windowManager->setOnBankClose([this]() {
+		CloseBankWindow();
+	});
+
+	// Set callback for currency movement between bank and inventory
+	windowManager->setOnBankCurrencyMove([this, windowManager](int32_t coinType, int32_t amount, bool fromBank) {
+		// Build and send MoveCoin packet
+		EQT::MoveCoin_Struct move;
+		if (fromBank) {
+			// Moving from bank to inventory
+			move.from_slot = EQT::COINSLOT_BANK;
+			move.to_slot = EQT::COINSLOT_INVENTORY;
+		} else {
+			// Moving from inventory to bank
+			move.from_slot = EQT::COINSLOT_INVENTORY;
+			move.to_slot = EQT::COINSLOT_BANK;
+		}
+		move.cointype1 = coinType;
+		move.cointype2 = coinType;
+		move.amount = amount;
+
+		SendMoveCoin(move);
+
+		// Update local currency values (server will confirm, but update locally for responsiveness)
+		uint32_t* srcPlatinum = fromBank ? &m_bank_platinum : &m_platinum;
+		uint32_t* srcGold = fromBank ? &m_bank_gold : &m_gold;
+		uint32_t* srcSilver = fromBank ? &m_bank_silver : &m_silver;
+		uint32_t* srcCopper = fromBank ? &m_bank_copper : &m_copper;
+
+		uint32_t* dstPlatinum = fromBank ? &m_platinum : &m_bank_platinum;
+		uint32_t* dstGold = fromBank ? &m_gold : &m_bank_gold;
+		uint32_t* dstSilver = fromBank ? &m_silver : &m_bank_silver;
+		uint32_t* dstCopper = fromBank ? &m_copper : &m_bank_copper;
+
+		switch (coinType) {
+			case EQT::COINTYPE_PP:
+				if (*srcPlatinum >= static_cast<uint32_t>(amount)) {
+					*srcPlatinum -= amount;
+					*dstPlatinum += amount;
+				}
+				break;
+			case EQT::COINTYPE_GP:
+				if (*srcGold >= static_cast<uint32_t>(amount)) {
+					*srcGold -= amount;
+					*dstGold += amount;
+				}
+				break;
+			case EQT::COINTYPE_SP:
+				if (*srcSilver >= static_cast<uint32_t>(amount)) {
+					*srcSilver -= amount;
+					*dstSilver += amount;
+				}
+				break;
+			case EQT::COINTYPE_CP:
+				if (*srcCopper >= static_cast<uint32_t>(amount)) {
+					*srcCopper -= amount;
+					*dstCopper += amount;
+				}
+				break;
+		}
+
+		// Update UI displays
+		windowManager->updateBaseCurrency(m_platinum, m_gold, m_silver, m_copper);
+		windowManager->updateBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+		LOG_DEBUG(MOD_INVENTORY, "Bank currency move: type={} amount={} fromBank={}, bank now: {}pp {}gp {}sp {}cp, inv now: {}pp {}gp {}sp {}cp",
+			coinType, amount, fromBank,
+			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
+			m_platinum, m_gold, m_silver, m_copper);
+	});
+
+	// Set callback for currency conversion in bank (cp->sp->gp->pp)
+	windowManager->setOnBankCurrencyConvert([this, windowManager](int32_t fromCoinType, int32_t amount) {
+		// Conversion is always 10:1 ratio: 10 cp -> 1 sp, 10 sp -> 1 gp, 10 gp -> 1 pp
+		// fromCoinType: 0=copper, 1=silver, 2=gold (platinum can't be converted further)
+		// amount: number of source coins to convert (must be multiple of 10)
+
+		if (amount < 10 || (amount % 10) != 0) {
+			LOG_WARN(MOD_INVENTORY, "Invalid conversion amount: {} (must be multiple of 10)", amount);
+			return;
+		}
+
+		// Determine destination coin type (one tier higher)
+		int32_t toCoinType = fromCoinType + 1;
+		if (toCoinType > EQT::COINTYPE_PP) {
+			LOG_WARN(MOD_INVENTORY, "Cannot convert platinum further");
+			return;
+		}
+
+		// Build and send MoveCoin packet for conversion
+		// Server handles conversion automatically when cointype1 != cointype2
+		EQT::MoveCoin_Struct move;
+		move.from_slot = EQT::COINSLOT_BANK;
+		move.to_slot = EQT::COINSLOT_BANK;
+		move.cointype1 = fromCoinType;   // Source coin type
+		move.cointype2 = toCoinType;     // Destination coin type (one tier higher)
+		move.amount = amount;
+
+		SendMoveCoin(move);
+
+		LOG_DEBUG(MOD_INVENTORY, "Sent bank currency conversion: {} {} -> {} (cointype {} -> {})",
+			amount, (fromCoinType == EQT::COINTYPE_CP ? "copper" :
+			         fromCoinType == EQT::COINTYPE_SP ? "silver" : "gold"),
+			(toCoinType == EQT::COINTYPE_SP ? "silver" :
+			 toCoinType == EQT::COINTYPE_GP ? "gold" : "platinum"),
+			fromCoinType, toCoinType);
+
+		// Update local values for UI responsiveness (server will confirm)
+		uint32_t convertedAmount = amount / 10;
+		switch (fromCoinType) {
+			case EQT::COINTYPE_CP:  // Copper -> Silver
+				if (m_bank_copper >= static_cast<uint32_t>(amount)) {
+					m_bank_copper -= amount;
+					m_bank_silver += convertedAmount;
+				}
+				break;
+			case EQT::COINTYPE_SP:  // Silver -> Gold
+				if (m_bank_silver >= static_cast<uint32_t>(amount)) {
+					m_bank_silver -= amount;
+					m_bank_gold += convertedAmount;
+				}
+				break;
+			case EQT::COINTYPE_GP:  // Gold -> Platinum
+				if (m_bank_gold >= static_cast<uint32_t>(amount)) {
+					m_bank_gold -= amount;
+					m_bank_platinum += convertedAmount;
+				}
+				break;
+		}
+
+		// Update UI
+		windowManager->updateBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+		LOG_DEBUG(MOD_INVENTORY, "Bank currency after conversion: {}pp {}gp {}sp {}cp",
+			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+	});
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_INVENTORY, "Bank callbacks set up");
+	}
+}
+
 void EverQuest::SetupTradeWindowCallbacks()
 {
 	if (!m_renderer || !m_renderer->getWindowManager()) {
@@ -3991,6 +4154,49 @@ void EverQuest::CloseVendorWindow()
 	m_vendor_npc_id = 0;
 	m_vendor_sell_rate = 1.0f;
 	m_vendor_name.clear();
+}
+
+void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
+{
+	if (m_banker_npc_id != 0) {
+		// Already have bank open, close it first
+		CloseBankWindow();
+	}
+
+	// Use a dummy NPC ID if none provided (for /bank command testing)
+	// In real use, this would be the banker NPC's spawn ID
+	m_banker_npc_id = (bankerNpcId != 0) ? bankerNpcId : 1;
+
+	LOG_DEBUG(MOD_INVENTORY, "Opening bank window (banker NPC: {})", m_banker_npc_id);
+
+	// Open the bank window UI
+	if (m_renderer && m_renderer->getWindowManager()) {
+		// Update bank currency before opening window
+		m_renderer->getWindowManager()->updateBankCurrency(
+			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+		m_renderer->getWindowManager()->openBankWindow();
+	}
+
+	AddChatSystemMessage("Bank window opened");
+}
+
+void EverQuest::CloseBankWindow()
+{
+	if (m_banker_npc_id == 0) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_INVENTORY, "Closing bank window (banker NPC: {})", m_banker_npc_id);
+
+	// Close the bank window UI and all bank bag windows
+	if (m_renderer && m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->closeBankWindow();
+	}
+
+	// Clear bank state
+	m_banker_npc_id = 0;
+
+	AddChatSystemMessage("Bank window closed");
 }
 #endif
 
@@ -6730,6 +6936,24 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(skills);
 
+	Command bank;
+	bank.name = "bank";
+	bank.usage = "/bank";
+	bank.description = "Toggle bank window";
+	bank.category = "Utility";
+	bank.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		if (IsBankWindowOpen()) {
+			CloseBankWindow();
+		} else {
+			OpenBankWindow();
+		}
+#else
+		AddChatSystemMessage("Bank window requires graphics mode");
+#endif
+	};
+	m_command_registry->registerCommand(bank);
+
 	Command gems;
 	gems.name = "gems";
 	gems.usage = "/gems";
@@ -7431,6 +7655,24 @@ void EverQuest::UpdateMovement()
 
 	// Update camp timer
 	UpdateCampTimer();
+
+	// Check distance to banker NPC - close bank if player moved too far
+	if (IsBankWindowOpen() && m_banker_npc_id != 0) {
+		auto it = m_entities.find(m_banker_npc_id);
+		if (it == m_entities.end()) {
+			// Banker NPC no longer exists (despawned, etc.)
+			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", m_banker_npc_id);
+			CloseBankWindow();
+		} else {
+			float dist = CalculateDistance2D(m_x, m_y, it->second.x, it->second.y);
+			if (dist > NPC_INTERACTION_DISTANCE) {
+				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
+					dist, NPC_INTERACTION_DISTANCE);
+				CloseBankWindow();
+				AddChatSystemMessage("You have moved too far from the banker.");
+			}
+		}
+	}
 
 	// Debug: Log target at start of UpdateMovement
 	static auto last_update_debug = std::chrono::steady_clock::now();
@@ -11644,6 +11886,50 @@ bool EverQuest::InitGraphics(int width, int height) {
 		RequestOpenVendor(target_id);
 	});
 
+	// Set up banker interact callback (Ctrl+click on NPC in Player Mode)
+	m_renderer->setBankerInteractCallback([this](uint16_t npcId) {
+		// If bank window is already open, ignore
+		if (IsBankWindowOpen()) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Bank already open");
+			return;
+		}
+
+		auto it = m_entities.find(npcId);
+		if (it == m_entities.end()) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: NPC {} not found in entities", npcId);
+			return;
+		}
+
+		const Entity& target = it->second;
+
+		// Check if target is an NPC (not player, not corpse)
+		if (target.npc_type != 1) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not an NPC (type={})", target.name, target.npc_type);
+			return;
+		}
+
+		// Check distance to NPC
+		float distSq = CalculateDistance2D(m_x, m_y, target.x, target.y);
+		distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
+		if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
+			AddChatSystemMessage("You are too far away to interact with this NPC.");
+			return;
+		}
+
+		// Check if target is a banker (class 40 = GM_Banker in EQ)
+		constexpr uint8_t CLASS_BANKER = 40;
+		if (target.class_id != CLASS_BANKER) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
+			AddChatSystemMessage("This NPC is not a banker.");
+			return;
+		}
+
+		// Open the bank window
+		LOG_INFO(MOD_INVENTORY, "Opening bank window for {} (id={})", target.name, npcId);
+		OpenBankWindow(npcId);
+	});
+
 	// Set up door interaction callback (left-click on door or U key in Player Mode)
 	m_renderer->setDoorInteractCallback([this](uint8_t doorId) {
 		SendClickDoor(doorId);
@@ -11685,6 +11971,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// Set up vendor window callbacks
 	SetupVendorCallbacks();
+
+	// Set up bank window callbacks
+	SetupBankCallbacks();
 
 	// Set up trade window callbacks
 	SetupTradeWindowCallbacks();

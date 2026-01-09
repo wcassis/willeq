@@ -534,6 +534,10 @@ public:
     using VendorToggleCallback = std::function<void()>;
     void setVendorToggleCallback(VendorToggleCallback callback) { vendorToggleCallback_ = callback; }
 
+    // Banker interact callback (called when Ctrl+click on NPC in Player Mode)
+    using BankerInteractCallback = std::function<void(uint16_t npcId)>;
+    void setBankerInteractCallback(BankerInteractCallback callback) { bankerInteractCallback_ = callback; }
+
     // Read item callback (called when right-clicking a readable book/note item)
     using ReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
     void setReadItemCallback(ReadItemCallback callback);
@@ -727,6 +731,7 @@ private:
     AutoAttackStatusCallback autoAttackStatusCallback_;
     HailCallback hailCallback_;
     VendorToggleCallback vendorToggleCallback_;
+    BankerInteractCallback bankerInteractCallback_;
     ChatSubmitCallback chatSubmitCallback_;
     DoorInteractCallback doorInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;

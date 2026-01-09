@@ -4171,6 +4171,7 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
     }
 
     bool shiftHeld = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+    bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
 
     // Get entity at click position
     uint16_t targetId = getEntityAtScreenPos(clickX, clickY);
@@ -4192,6 +4193,12 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
                 if (shiftHeld && visual.isCorpse) {
                     if (lootCorpseCallback_) {
                         lootCorpseCallback_(targetId);
+                    }
+                } else if (ctrlHeld && visual.isNPC && !visual.isCorpse) {
+                    // Ctrl+click on NPC - banker interaction
+                    LOG_INFO(MOD_GRAPHICS, "Ctrl+click on NPC: {} (ID: {})", visual.name, targetId);
+                    if (bankerInteractCallback_) {
+                        bankerInteractCallback_(targetId);
                     }
                 } else {
                     // Entity is visible - set as target

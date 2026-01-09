@@ -91,6 +91,13 @@ UISettings::TradeSettings::TradeSettings() {
     window.showTitleBar = true;
 }
 
+UISettings::BankSettings::BankSettings() {
+    window.x = 100;  // Default position
+    window.y = 150;
+    window.visible = false;
+    window.showTitleBar = true;
+}
+
 UISettings::CastingBarSettings::CastingBarSettings() {
     playerBar.x = -1;  // Centered
     playerBar.y = -1;  // Above chat
@@ -182,6 +189,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("trade")) {
             loadTradeSettings(windows["trade"]);
         }
+        if (windows.isMember("bank")) {
+            loadBankSettings(windows["bank"]);
+        }
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
         }
@@ -245,6 +255,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveSkillsSettings(windows["skills"]);
     saveSpellBookSettings(windows["spellbook"]);
     saveTradeSettings(windows["trade"]);
+    saveBankSettings(windows["bank"]);
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
 
@@ -324,6 +335,9 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
         }
         if (windows.isMember("trade")) {
             loadTradeSettings(windows["trade"]);
+        }
+        if (windows.isMember("bank")) {
+            loadBankSettings(windows["bank"]);
         }
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
@@ -991,6 +1005,31 @@ void UISettings::loadTradeSettings(const Json::Value& json) {
 
 void UISettings::saveTradeSettings(Json::Value& json) const {
     saveWindowSettings(m_trade.window, json);
+}
+
+// ============================================================================
+// Bank Settings Serialization
+// ============================================================================
+
+void UISettings::loadBankSettings(const Json::Value& json) {
+    loadWindowSettings(m_bank.window, json);
+
+    if (json.isMember("layout")) {
+        const Json::Value& layout = json["layout"];
+        if (layout.isMember("slotSize")) m_bank.slotSize = layout["slotSize"].asInt();
+        if (layout.isMember("slotSpacing")) m_bank.slotSpacing = layout["slotSpacing"].asInt();
+        if (layout.isMember("padding")) m_bank.padding = layout["padding"].asInt();
+    }
+}
+
+void UISettings::saveBankSettings(Json::Value& json) const {
+    saveWindowSettings(m_bank.window, json);
+
+    Json::Value layout;
+    layout["slotSize"] = m_bank.slotSize;
+    layout["slotSpacing"] = m_bank.slotSpacing;
+    layout["padding"] = m_bank.padding;
+    json["layout"] = layout;
 }
 
 // ============================================================================

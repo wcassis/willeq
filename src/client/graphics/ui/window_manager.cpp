@@ -68,6 +68,7 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     });
 
     inventoryWindow_->setCurrencyClickCallback([this](CurrencyType type, uint32_t maxAmount) {
+        currencyClickSource_ = CurrencyClickSource::Inventory;
         handleCurrencyClick(type, maxAmount);
     });
 
@@ -481,6 +482,285 @@ void WindowManager::closeAllBagWindows() {
 
 bool WindowManager::isBagWindowOpen(int16_t generalSlot) const {
     return bagWindows_.find(generalSlot) != bagWindows_.end();
+}
+
+// ============================================================================
+// Bank window management
+// ============================================================================
+
+void WindowManager::openBankWindow() {
+    if (!invManager_) {
+        return;
+    }
+
+    // Create bank window if it doesn't exist
+    if (!bankWindow_) {
+        bankWindow_ = std::make_unique<BankWindow>(invManager_);
+
+        // Set up callbacks
+        bankWindow_->setBagClickCallback([this](int16_t bankSlot) {
+            handleBankBagOpenClick(bankSlot);
+        });
+
+        bankWindow_->setSlotClickCallback([this](int16_t slotId, bool shift, bool ctrl) {
+            handleBankSlotClick(slotId, shift, ctrl);
+        });
+
+        bankWindow_->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+            handleSlotHover(slotId, mouseX, mouseY);
+        });
+
+        bankWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+            return iconLoader_.getIcon(iconId);
+        });
+
+        bankWindow_->setCurrencyClickCallback([this](CurrencyType type, uint32_t maxAmount) {
+            currencyClickSource_ = CurrencyClickSource::Bank;
+            handleCurrencyClick(type, maxAmount);
+        });
+
+        bankWindow_->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+            if (readItemCallback_) {
+                readItemCallback_(bookText, bookType);
+            }
+        });
+
+        bankWindow_->setCloseCallback([this]() {
+            closeAllBankBagWindows();
+            if (onBankCloseCallback_) {
+                onBankCloseCallback_();
+            }
+        });
+
+        bankWindow_->setCurrencyConvertCallback([this](int32_t fromCoinType, int32_t amount) {
+            if (onBankCurrencyConvertCallback_) {
+                onBankCurrencyConvertCallback_(fromCoinType, amount);
+            }
+        });
+    }
+
+    // Update currency display with bank currency (not inventory currency)
+    bankWindow_->setCurrency(bankPlatinum_, bankGold_, bankSilver_, bankCopper_);
+
+    positionBankWindow();
+    bankWindow_->show();
+
+    LOG_DEBUG(MOD_UI, "Bank window opened");
+}
+
+void WindowManager::closeBankWindow() {
+    closeAllBankBagWindows();
+
+    if (bankWindow_) {
+        bankWindow_->hide();
+    }
+
+    tooltip_.clear();
+    LOG_DEBUG(MOD_UI, "Bank window closed");
+}
+
+void WindowManager::toggleBankWindow() {
+    if (isBankWindowOpen()) {
+        closeBankWindow();
+    } else {
+        openBankWindow();
+    }
+}
+
+bool WindowManager::isBankWindowOpen() const {
+    return bankWindow_ && bankWindow_->isVisible();
+}
+
+void WindowManager::openBankBagWindow(int16_t bankSlot) {
+    // Validate this is a bank or shared bank slot
+    if (!inventory::isBankSlot(bankSlot) && !inventory::isSharedBankSlot(bankSlot)) {
+        return;
+    }
+
+    // Check if slot contains a bag
+    const inventory::ItemInstance* item = invManager_->getItem(bankSlot);
+    if (!item || !item->isContainer()) {
+        return;
+    }
+
+    // Don't open if already open
+    if (isBankBagWindowOpen(bankSlot)) {
+        return;
+    }
+
+    // Create bag window for bank container
+    auto bagWindow = std::make_unique<BagWindow>(bankSlot, item->bagSlots, invManager_);
+
+    // Set up callbacks
+    bagWindow->setSlotClickCallback([this](int16_t slotId, bool shift, bool ctrl) {
+        handleBankSlotClick(slotId, shift, ctrl);
+    });
+
+    bagWindow->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+        handleSlotHover(slotId, mouseX, mouseY);
+    });
+
+    bagWindow->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+        return iconLoader_.getIcon(iconId);
+    });
+
+    bagWindow->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+        if (readItemCallback_) {
+            readItemCallback_(bookText, bookType);
+        }
+    });
+
+    bagWindow->show();
+    bankBagWindows_[bankSlot] = std::move(bagWindow);
+
+    tileBankBagWindows();
+}
+
+void WindowManager::closeBankBagWindow(int16_t bankSlot) {
+    auto it = bankBagWindows_.find(bankSlot);
+    if (it != bankBagWindows_.end()) {
+        bankBagWindows_.erase(it);
+        tileBankBagWindows();
+    }
+}
+
+void WindowManager::closeAllBankBagWindows() {
+    bankBagWindows_.clear();
+}
+
+bool WindowManager::isBankBagWindowOpen(int16_t bankSlot) const {
+    return bankBagWindows_.find(bankSlot) != bankBagWindows_.end();
+}
+
+void WindowManager::setOnBankClose(BankCloseCallback callback) {
+    onBankCloseCallback_ = callback;
+    if (bankWindow_) {
+        bankWindow_->setCloseCallback([this]() {
+            closeAllBankBagWindows();
+            if (onBankCloseCallback_) {
+                onBankCloseCallback_();
+            }
+        });
+    }
+}
+
+void WindowManager::setOnBankCurrencyMove(BankCurrencyMoveCallback callback) {
+    onBankCurrencyMoveCallback_ = callback;
+}
+
+void WindowManager::setOnBankCurrencyConvert(BankCurrencyConvertCallback callback) {
+    onBankCurrencyConvertCallback_ = callback;
+    if (bankWindow_) {
+        bankWindow_->setCurrencyConvertCallback([this](int32_t fromCoinType, int32_t amount) {
+            if (onBankCurrencyConvertCallback_) {
+                onBankCurrencyConvertCallback_(fromCoinType, amount);
+            }
+        });
+    }
+}
+
+void WindowManager::positionBankWindow() {
+    if (!bankWindow_) {
+        return;
+    }
+
+    // Position bank window on the left side of the screen
+    // (opposite side from inventory which is typically on the right)
+    int x = 50;
+    int y = 50;
+
+    bankWindow_->setPosition(x, y);
+}
+
+void WindowManager::tileBankBagWindows() {
+    if (bankBagWindows_.empty() || !bankWindow_) {
+        return;
+    }
+
+    // Position bank bag windows below the bank window
+    int startX = bankWindow_->getX();
+    int startY = bankWindow_->getY() + bankWindow_->getHeight() + 10;
+    int curX = startX;
+    int curY = startY;
+    int maxRowHeight = 0;
+
+    for (auto& [slot, window] : bankBagWindows_) {
+        // Check if we need to wrap to next row
+        if (curX + window->getWidth() > screenWidth_ - 50) {
+            curX = startX;
+            curY += maxRowHeight + 5;
+            maxRowHeight = 0;
+        }
+
+        window->setPosition(curX, curY);
+        curX += window->getWidth() + 5;
+        maxRowHeight = std::max(maxRowHeight, window->getHeight());
+    }
+}
+
+void WindowManager::handleBankSlotClick(int16_t slotId, bool shift, bool ctrl) {
+    LOG_DEBUG(MOD_UI, "WindowManager handleBankSlotClick: slotId={} shift={} ctrl={}", slotId, shift, ctrl);
+
+    if (slotId == inventory::SLOT_INVALID) {
+        return;
+    }
+
+    // Check if we're holding a cursor item
+    if (invManager_->hasCursorItem()) {
+        // Try to place item in bank slot
+        if (invManager_->canPlaceItemInSlot(invManager_->getCursorItem(), slotId)) {
+            LOG_DEBUG(MOD_UI, "WindowManager Placing cursor item in bank slot {}", slotId);
+            invManager_->placeItem(slotId);
+            tooltip_.clear();
+        } else {
+            LOG_DEBUG(MOD_UI, "WindowManager Cannot place item in bank slot {}", slotId);
+        }
+        return;
+    }
+
+    // No cursor item - try to pick up from bank
+    const inventory::ItemInstance* item = invManager_->getItem(slotId);
+    if (item) {
+        // Handle stackable items
+        if (item->stackable && item->quantity > 1) {
+            if (ctrl) {
+                // Ctrl+click: pick up just 1 item from the stack
+                LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up 1 from bank stack of {} at slot {}", item->quantity, slotId);
+                invManager_->pickupPartialStack(slotId, 1);
+                tooltip_.clear();
+                return;
+            } else if (shift) {
+                // Shift+click: show quantity slider
+                LOG_DEBUG(MOD_UI, "WindowManager Shift+click: showing quantity slider for bank stack of {} at slot {}", item->quantity, slotId);
+                showQuantitySlider(slotId, item->quantity);
+                return;
+            }
+        }
+
+        // If picking up a bag from bank, close its window
+        if (item->isContainer()) {
+            closeBankBagWindow(slotId);
+        }
+
+        LOG_DEBUG(MOD_UI, "WindowManager Picking up item from bank slot {}", slotId);
+        pickupItem(slotId);
+    } else {
+        LOG_DEBUG(MOD_UI, "WindowManager No item in bank slot {}", slotId);
+    }
+}
+
+void WindowManager::handleBankBagOpenClick(int16_t bankSlot) {
+    // Can't open bags while holding an item
+    if (invManager_->hasCursorItem()) {
+        return;
+    }
+
+    // Toggle bank bag window
+    if (isBankBagWindowOpen(bankSlot)) {
+        closeBankBagWindow(bankSlot);
+    } else {
+        openBankBagWindow(bankSlot);
+    }
 }
 
 // Loot window management
@@ -1187,6 +1467,20 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check bank bag windows (on top of bank window)
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+            return true;
+        }
+    }
+
+    // Check bank window (if open)
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+            return true;
+        }
+    }
+
     // Check hotbar window - handle cursor placement/swap
     if (hotbarWindow_ && hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y)) {
         if (leftButton && hotbarCursor_.hasItem()) {
@@ -1338,6 +1632,20 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check trade window
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1550,6 +1858,20 @@ bool WindowManager::handleMouseMove(int x, int y) {
             } else {
                 tooltip_.clear();
             }
+            return true;
+        }
+    }
+
+    // Check bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseMove(x, y)) {
             return true;
         }
     }
@@ -1799,6 +2121,16 @@ void WindowManager::render() {
         tradeWindow_->render(driver_, gui_);
     }
 
+    // Render bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        bankWindow_->render(driver_, gui_);
+    }
+
+    // Render bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        bagWindow->render(driver_, gui_);
+    }
+
     // Render trade request dialog (on top of other windows)
     if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
         tradeRequestDialog_->render(driver_, gui_);
@@ -2010,6 +2342,18 @@ void WindowManager::updateBaseCurrency(uint32_t platinum, uint32_t gold, uint32_
 
     // Update display accounting for any money on cursor
     refreshCurrencyDisplay();
+}
+
+void WindowManager::updateBankCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    bankPlatinum_ = platinum;
+    bankGold_ = gold;
+    bankSilver_ = silver;
+    bankCopper_ = copper;
+
+    // Update bank window currency display if open
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        bankWindow_->setCurrency(bankPlatinum_, bankGold_, bankSilver_, bankCopper_);
+    }
 }
 
 void WindowManager::initModelView(irr::scene::ISceneManager* smgr,
@@ -2337,11 +2681,52 @@ void WindowManager::handleSlotHover(int16_t slotId, int mouseX, int mouseY) {
         tooltip_.clear();
     }
 
-    // Update slot highlighting for cursor item
-    if (invManager_->hasCursorItem() && inventoryWindow_) {
+    // Update slot highlighting for cursor item validation feedback
+    if (invManager_->hasCursorItem()) {
         const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
-        if (!invManager_->canPlaceItemInSlot(cursorItem, slotId)) {
-            inventoryWindow_->setInvalidDropSlot(slotId);
+        bool canPlace = invManager_->canPlaceItemInSlot(cursorItem, slotId);
+
+        // Determine which window the slot belongs to and update its invalid drop highlighting
+        if (inventory::isEquipmentSlot(slotId) || inventory::isGeneralSlot(slotId)) {
+            // Inventory window slot
+            if (inventoryWindow_) {
+                if (!canPlace) {
+                    inventoryWindow_->setInvalidDropSlot(slotId);
+                } else {
+                    inventoryWindow_->clearHighlights();
+                }
+            }
+        } else if (inventory::isBankSlot(slotId) || inventory::isSharedBankSlot(slotId)) {
+            // Bank window slot
+            if (bankWindow_) {
+                if (!canPlace) {
+                    bankWindow_->setInvalidDropSlot(slotId);
+                } else {
+                    bankWindow_->clearHighlights();
+                }
+            }
+        } else if (inventory::isBagSlot(slotId)) {
+            // Inventory bag slot
+            int16_t parentSlot = inventory::getParentGeneralSlot(slotId);
+            auto it = bagWindows_.find(parentSlot);
+            if (it != bagWindows_.end()) {
+                if (!canPlace) {
+                    it->second->setInvalidDropSlot(slotId);
+                } else {
+                    it->second->clearHighlights();
+                }
+            }
+        } else if (inventory::isBankBagSlot(slotId) || inventory::isSharedBankBagSlot(slotId)) {
+            // Bank bag slot
+            int16_t parentSlot = inventory::getParentBankSlotAny(slotId);
+            auto it = bankBagWindows_.find(parentSlot);
+            if (it != bankBagWindows_.end()) {
+                if (!canPlace) {
+                    it->second->setInvalidDropSlot(slotId);
+                } else {
+                    it->second->clearHighlights();
+                }
+            }
         }
     }
 }
@@ -2458,7 +2843,41 @@ void WindowManager::handleMoneyInputConfirm(CurrencyType type, uint32_t amount) 
         return;
     }
 
-    // Convert CurrencyType to CursorMoneyType
+    // Convert CurrencyType to coin type constant (matches COINTYPE_* in packet_structs.h)
+    int32_t coinType;
+    switch (type) {
+        case CurrencyType::Copper:
+            coinType = 0;  // COINTYPE_CP
+            break;
+        case CurrencyType::Silver:
+            coinType = 1;  // COINTYPE_SP
+            break;
+        case CurrencyType::Gold:
+            coinType = 2;  // COINTYPE_GP
+            break;
+        case CurrencyType::Platinum:
+            coinType = 3;  // COINTYPE_PP
+            break;
+        default:
+            return;
+    }
+
+    // Check if this is a bank currency movement
+    if (isBankWindowOpen() && currencyClickSource_ != CurrencyClickSource::None) {
+        bool fromBank = (currencyClickSource_ == CurrencyClickSource::Bank);
+
+        if (onBankCurrencyMoveCallback_) {
+            onBankCurrencyMoveCallback_(coinType, static_cast<int32_t>(amount), fromBank);
+            LOG_DEBUG(MOD_UI, "Bank currency move: {} of type {} (fromBank={})",
+                      amount, coinType, fromBank);
+        }
+
+        // Clear the source tracker
+        currencyClickSource_ = CurrencyClickSource::None;
+        return;
+    }
+
+    // Original behavior: pick up money onto cursor (for trading)
     inventory::InventoryManager::CursorMoneyType cursorType;
     switch (type) {
         case CurrencyType::Platinum:
@@ -2481,6 +2900,9 @@ void WindowManager::handleMoneyInputConfirm(CurrencyType type, uint32_t amount) 
     invManager_->pickupMoney(cursorType, amount);
     refreshCurrencyDisplay();  // Update display after picking up money
     LOG_DEBUG(MOD_UI, "Money picked up: {} of type {}", amount, static_cast<int>(type));
+
+    // Clear the source tracker
+    currencyClickSource_ = CurrencyClickSource::None;
 }
 
 void WindowManager::pickupItem(int16_t slotId) {

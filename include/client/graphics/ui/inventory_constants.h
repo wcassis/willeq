@@ -258,6 +258,10 @@ inline bool isTradeSlot(int16_t slotId) {
     return slotId >= TRADE_BEGIN && slotId <= TRADE_END;
 }
 
+inline bool isTradeBagSlot(int16_t slotId) {
+    return slotId >= TRADE_BAGS_BEGIN && slotId <= TRADE_BAGS_END;
+}
+
 // Get the parent general slot for a bag slot
 inline int16_t getParentGeneralSlot(int16_t bagSlot) {
     if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {
@@ -278,6 +282,252 @@ inline int16_t getBagIndex(int16_t bagSlot) {
         return bagSlot - CURSOR_BAG_BEGIN;
     }
     return SLOT_INVALID;
+}
+
+// ============================================================================
+// Bank slot utilities
+// ============================================================================
+
+// Check if slot is a main bank slot (2000-2015)
+inline bool isBankSlot(int16_t slotId) {
+    return slotId >= BANK_BEGIN && slotId <= BANK_END;
+}
+
+// Check if slot is a shared bank slot (2500-2501)
+inline bool isSharedBankSlot(int16_t slotId) {
+    return slotId >= SHARED_BANK_BEGIN && slotId <= SHARED_BANK_END;
+}
+
+// Check if slot is any bank slot (main or shared)
+inline bool isAnyBankSlot(int16_t slotId) {
+    return isBankSlot(slotId) || isSharedBankSlot(slotId);
+}
+
+// Check if slot is inside a bank bag (2031-2190)
+inline bool isBankBagSlot(int16_t slotId) {
+    return slotId >= BANK_BAGS_BEGIN && slotId <= BANK_BAGS_END;
+}
+
+// Check if slot is inside a shared bank bag (2531-2550)
+inline bool isSharedBankBagSlot(int16_t slotId) {
+    return slotId >= SHARED_BANK_BAGS_BEGIN && slotId <= SHARED_BANK_BAGS_END;
+}
+
+// Check if slot is inside any bank bag (main or shared)
+inline bool isAnyBankBagSlot(int16_t slotId) {
+    return isBankBagSlot(slotId) || isSharedBankBagSlot(slotId);
+}
+
+// Calculate bag slot ID for an item inside a bank container
+// bankSlot: the bank slot containing the bag (2000-2015)
+// bagIndex: index within the bag (0-9)
+// Returns: the calculated bag slot ID (2031-2190), or SLOT_INVALID if invalid
+inline int16_t calcBankBagSlotId(int16_t bankSlot, int16_t bagIndex) {
+    if (bankSlot < BANK_BEGIN || bankSlot > BANK_END) {
+        return SLOT_INVALID;
+    }
+    if (bagIndex < 0 || bagIndex >= BAG_SLOT_COUNT) {
+        return SLOT_INVALID;
+    }
+    return BANK_BAGS_BEGIN + (bankSlot - BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+}
+
+// Calculate bag slot ID for an item inside a shared bank container
+// sharedBankSlot: the shared bank slot containing the bag (2500-2501)
+// bagIndex: index within the bag (0-9)
+// Returns: the calculated bag slot ID (2531-2550), or SLOT_INVALID if invalid
+inline int16_t calcSharedBankBagSlotId(int16_t sharedBankSlot, int16_t bagIndex) {
+    if (sharedBankSlot < SHARED_BANK_BEGIN || sharedBankSlot > SHARED_BANK_END) {
+        return SLOT_INVALID;
+    }
+    if (bagIndex < 0 || bagIndex >= BAG_SLOT_COUNT) {
+        return SLOT_INVALID;
+    }
+    return SHARED_BANK_BAGS_BEGIN + (sharedBankSlot - SHARED_BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+}
+
+// Get the parent bank slot for a bank bag slot
+// bagSlot: a slot inside a bank bag (2031-2190)
+// Returns: the parent bank slot (2000-2015), or SLOT_INVALID if not a bank bag slot
+inline int16_t getParentBankSlot(int16_t bagSlot) {
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return BANK_BEGIN + (bagSlot - BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the parent shared bank slot for a shared bank bag slot
+// bagSlot: a slot inside a shared bank bag (2531-2550)
+// Returns: the parent shared bank slot (2500-2501), or SLOT_INVALID if not a shared bank bag slot
+inline int16_t getParentSharedBankSlot(int16_t bagSlot) {
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return SHARED_BANK_BEGIN + (bagSlot - SHARED_BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the parent slot for any bank bag slot (main or shared)
+// Returns the parent bank/shared bank slot, or SLOT_INVALID if not a bank bag slot
+inline int16_t getParentBankSlotAny(int16_t bagSlot) {
+    int16_t parent = getParentBankSlot(bagSlot);
+    if (parent != SLOT_INVALID) {
+        return parent;
+    }
+    return getParentSharedBankSlot(bagSlot);
+}
+
+// Get the index within a bank bag (0-9)
+// bagSlot: a slot inside a bank bag (2031-2190)
+// Returns: the index within the bag (0-9), or SLOT_INVALID if not a bank bag slot
+inline int16_t getBankBagIndex(int16_t bagSlot) {
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return (bagSlot - BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the index within a shared bank bag (0-9)
+// bagSlot: a slot inside a shared bank bag (2531-2550)
+// Returns: the index within the bag (0-9), or SLOT_INVALID if not a shared bank bag slot
+inline int16_t getSharedBankBagIndex(int16_t bagSlot) {
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return (bagSlot - SHARED_BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the index within any bank bag (main or shared)
+// Returns the bag index (0-9), or SLOT_INVALID if not a bank bag slot
+inline int16_t getBankBagIndexAny(int16_t bagSlot) {
+    int16_t index = getBankBagIndex(bagSlot);
+    if (index != SLOT_INVALID) {
+        return index;
+    }
+    return getSharedBankBagIndex(bagSlot);
+}
+
+// ============================================================================
+// Universal container slot utilities
+// ============================================================================
+
+// Calculate the slot ID for an item inside any container type
+// parentSlot: the slot containing the container (general, bank, shared bank, or cursor)
+// bagIndex: index within the container (0-9)
+// Returns: the calculated slot ID, or SLOT_INVALID if invalid parent or index
+inline int16_t calcContainerSlotId(int16_t parentSlot, int16_t bagIndex) {
+    // Validate bag index
+    if (bagIndex < 0 || bagIndex >= BAG_SLOT_COUNT) {
+        return SLOT_INVALID;
+    }
+
+    // General inventory slots (22-29)
+    if (parentSlot >= GENERAL_BEGIN && parentSlot <= GENERAL_END) {
+        return GENERAL_BAGS_BEGIN + (parentSlot - GENERAL_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    // Cursor slot (30)
+    if (parentSlot == CURSOR_SLOT) {
+        return CURSOR_BAG_BEGIN + bagIndex;
+    }
+
+    // Bank slots (2000-2015)
+    if (parentSlot >= BANK_BEGIN && parentSlot <= BANK_END) {
+        return BANK_BAGS_BEGIN + (parentSlot - BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    // Shared bank slots (2500-2501)
+    if (parentSlot >= SHARED_BANK_BEGIN && parentSlot <= SHARED_BANK_END) {
+        return SHARED_BANK_BAGS_BEGIN + (parentSlot - SHARED_BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    // Trade slots (3000-3007)
+    if (parentSlot >= TRADE_BEGIN && parentSlot <= TRADE_END) {
+        return TRADE_BAGS_BEGIN + (parentSlot - TRADE_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    return SLOT_INVALID;
+}
+
+// Get the parent container slot for any bag slot
+// bagSlot: a slot inside any container
+// Returns: the parent container slot, or SLOT_INVALID if not a bag slot
+inline int16_t getParentContainerSlot(int16_t bagSlot) {
+    // General bag slots (251-330)
+    if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {
+        return GENERAL_BEGIN + (bagSlot - GENERAL_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    // Cursor bag slots (331-340)
+    if (bagSlot >= CURSOR_BAG_BEGIN && bagSlot <= CURSOR_BAG_END) {
+        return CURSOR_SLOT;
+    }
+
+    // Bank bag slots (2031-2190)
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return BANK_BEGIN + (bagSlot - BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    // Shared bank bag slots (2531-2550)
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return SHARED_BANK_BEGIN + (bagSlot - SHARED_BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    // Trade bag slots (3031-3110)
+    if (bagSlot >= TRADE_BAGS_BEGIN && bagSlot <= TRADE_BAGS_END) {
+        return TRADE_BEGIN + (bagSlot - TRADE_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    return SLOT_INVALID;
+}
+
+// Get the index within any container (0-9)
+// bagSlot: a slot inside any container
+// Returns: the index within the container (0-9), or SLOT_INVALID if not a bag slot
+inline int16_t getContainerIndex(int16_t bagSlot) {
+    // General bag slots (251-330)
+    if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {
+        return (bagSlot - GENERAL_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    // Cursor bag slots (331-340)
+    if (bagSlot >= CURSOR_BAG_BEGIN && bagSlot <= CURSOR_BAG_END) {
+        return bagSlot - CURSOR_BAG_BEGIN;
+    }
+
+    // Bank bag slots (2031-2190)
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return (bagSlot - BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    // Shared bank bag slots (2531-2550)
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return (bagSlot - SHARED_BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    // Trade bag slots (3031-3110)
+    if (bagSlot >= TRADE_BAGS_BEGIN && bagSlot <= TRADE_BAGS_END) {
+        return (bagSlot - TRADE_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    return SLOT_INVALID;
+}
+
+// Check if a slot is inside any container (bag slot of any type)
+inline bool isContainerSlot(int16_t slotId) {
+    return (slotId >= GENERAL_BAGS_BEGIN && slotId <= GENERAL_BAGS_END) ||
+           (slotId >= CURSOR_BAG_BEGIN && slotId <= CURSOR_BAG_END) ||
+           (slotId >= BANK_BAGS_BEGIN && slotId <= BANK_BAGS_END) ||
+           (slotId >= SHARED_BANK_BAGS_BEGIN && slotId <= SHARED_BANK_BAGS_END) ||
+           (slotId >= TRADE_BAGS_BEGIN && slotId <= TRADE_BAGS_END);
+}
+
+// Check if a slot can contain items (is a container slot like general, bank, cursor, trade)
+inline bool isContainerParentSlot(int16_t slotId) {
+    return isGeneralSlot(slotId) ||
+           isCursorSlot(slotId) ||
+           isBankSlot(slotId) ||
+           isSharedBankSlot(slotId) ||
+           isTradeSlot(slotId);
 }
 
 // Get human-readable slot name
