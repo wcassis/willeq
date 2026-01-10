@@ -68,6 +68,7 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     });
 
     inventoryWindow_->setCurrencyClickCallback([this](CurrencyType type, uint32_t maxAmount) {
+        currencyClickSource_ = CurrencyClickSource::Inventory;
         handleCurrencyClick(type, maxAmount);
     });
 
@@ -102,6 +103,18 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     // Create chat window (visible by default)
     chatWindow_ = std::make_unique<ChatWindow>();
     chatWindow_->init(screenWidth, screenHeight);
+
+    // Create tradeskill container window (initially hidden)
+    tradeskillWindow_ = std::make_unique<TradeskillContainerWindow>(invManager_);
+    tradeskillWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+        return iconLoader_.getIcon(iconId);
+    });
+    tradeskillWindow_->setSlotClickCallback([this](int16_t slotId, bool shift, bool ctrl) {
+        handleTradeskillSlotClick(slotId, shift, ctrl);
+    });
+    tradeskillWindow_->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+        handleTradeskillSlotHover(slotId, mouseX, mouseY);
+    });
 
     // Create hotbar window (visible by default)
     initHotbarWindow();
@@ -286,6 +299,13 @@ void WindowManager::collectWindowPositions() {
         settings.trade().window.visible = tradeWindow_->isOpen();
     }
 
+    // Skill trainer window
+    if (skillTrainerWindow_) {
+        settings.skillTrainer().window.x = skillTrainerWindow_->getX();
+        settings.skillTrainer().window.y = skillTrainerWindow_->getY();
+        settings.skillTrainer().window.visible = skillTrainerWindow_->isOpen();
+    }
+
     LOG_DEBUG(MOD_UI, "Collected window positions for saving");
 }
 
@@ -386,6 +406,16 @@ void WindowManager::applyWindowPositions() {
         tradeWindow_->setPosition(x, y);
     }
 
+    // Skill trainer window
+    if (skillTrainerWindow_) {
+        // Default position is centered
+        int defaultX = (screenWidth_ - skillTrainerWindow_->getWidth()) / 2;
+        int defaultY = (screenHeight_ - skillTrainerWindow_->getHeight()) / 2;
+        int x = UISettings::resolvePosition(settings.skillTrainer().window.x, screenWidth_, defaultX);
+        int y = UISettings::resolvePosition(settings.skillTrainer().window.y, screenHeight_, defaultY);
+        skillTrainerWindow_->setPosition(x, y);
+    }
+
     LOG_DEBUG(MOD_UI, "Applied window positions from UISettings");
 }
 
@@ -417,9 +447,28 @@ void WindowManager::closeAllWindows() {
     closeInventory();
     closeLootWindow();
     closeVendorWindow();
+    closeTradeskillContainer();
 }
 
 void WindowManager::toggleBagWindow(int16_t generalSlot) {
+    // Check if this is a tradeskill container
+    const inventory::ItemInstance* item = invManager_->getItem(generalSlot);
+    if (item && item->isContainer() && inventory::isTradeskillContainerType(item->bagType)) {
+        // For tradeskill containers, check if this specific one is already open
+        if (isTradeskillContainerOpen() && tradeskillWindow_ &&
+            !tradeskillWindow_->isWorldContainer() &&
+            tradeskillWindow_->getContainerSlot() == generalSlot) {
+            // Close it
+            LOG_DEBUG(MOD_UI, "Toggling tradeskill container closed for slot {}", generalSlot);
+            closeTradeskillContainer();
+        } else {
+            // Open it (openBagWindow handles tradeskill containers)
+            openBagWindow(generalSlot);
+        }
+        return;
+    }
+
+    // Regular bag toggle
     if (isBagWindowOpen(generalSlot)) {
         closeBagWindow(generalSlot);
     } else {
@@ -431,6 +480,21 @@ void WindowManager::openBagWindow(int16_t generalSlot) {
     // Check if slot contains a bag
     const inventory::ItemInstance* item = invManager_->getItem(generalSlot);
     if (!item || !item->isContainer()) {
+        return;
+    }
+
+    // Check if this is a tradeskill container
+    if (inventory::isTradeskillContainerType(item->bagType)) {
+        // Open tradeskill container window instead of regular bag window
+        LOG_DEBUG(MOD_UI, "Opening tradeskill container for inventory item at slot {} (bagType={})",
+                  generalSlot, item->bagType);
+
+        // Close any existing tradeskill window first
+        closeTradeskillContainer();
+
+        // Open the tradeskill container window for this inventory item
+        openTradeskillContainerForItem(generalSlot, item->name,
+                                       item->bagType, item->bagSlots);
         return;
     }
 
@@ -481,6 +545,285 @@ void WindowManager::closeAllBagWindows() {
 
 bool WindowManager::isBagWindowOpen(int16_t generalSlot) const {
     return bagWindows_.find(generalSlot) != bagWindows_.end();
+}
+
+// ============================================================================
+// Bank window management
+// ============================================================================
+
+void WindowManager::openBankWindow() {
+    if (!invManager_) {
+        return;
+    }
+
+    // Create bank window if it doesn't exist
+    if (!bankWindow_) {
+        bankWindow_ = std::make_unique<BankWindow>(invManager_);
+
+        // Set up callbacks
+        bankWindow_->setBagClickCallback([this](int16_t bankSlot) {
+            handleBankBagOpenClick(bankSlot);
+        });
+
+        bankWindow_->setSlotClickCallback([this](int16_t slotId, bool shift, bool ctrl) {
+            handleBankSlotClick(slotId, shift, ctrl);
+        });
+
+        bankWindow_->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+            handleSlotHover(slotId, mouseX, mouseY);
+        });
+
+        bankWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+            return iconLoader_.getIcon(iconId);
+        });
+
+        bankWindow_->setCurrencyClickCallback([this](CurrencyType type, uint32_t maxAmount) {
+            currencyClickSource_ = CurrencyClickSource::Bank;
+            handleCurrencyClick(type, maxAmount);
+        });
+
+        bankWindow_->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+            if (readItemCallback_) {
+                readItemCallback_(bookText, bookType);
+            }
+        });
+
+        bankWindow_->setCloseCallback([this]() {
+            closeAllBankBagWindows();
+            if (onBankCloseCallback_) {
+                onBankCloseCallback_();
+            }
+        });
+
+        bankWindow_->setCurrencyConvertCallback([this](int32_t fromCoinType, int32_t amount) {
+            if (onBankCurrencyConvertCallback_) {
+                onBankCurrencyConvertCallback_(fromCoinType, amount);
+            }
+        });
+    }
+
+    // Update currency display with bank currency (not inventory currency)
+    bankWindow_->setCurrency(bankPlatinum_, bankGold_, bankSilver_, bankCopper_);
+
+    positionBankWindow();
+    bankWindow_->show();
+
+    LOG_DEBUG(MOD_UI, "Bank window opened");
+}
+
+void WindowManager::closeBankWindow() {
+    closeAllBankBagWindows();
+
+    if (bankWindow_) {
+        bankWindow_->hide();
+    }
+
+    tooltip_.clear();
+    LOG_DEBUG(MOD_UI, "Bank window closed");
+}
+
+void WindowManager::toggleBankWindow() {
+    if (isBankWindowOpen()) {
+        closeBankWindow();
+    } else {
+        openBankWindow();
+    }
+}
+
+bool WindowManager::isBankWindowOpen() const {
+    return bankWindow_ && bankWindow_->isVisible();
+}
+
+void WindowManager::openBankBagWindow(int16_t bankSlot) {
+    // Validate this is a bank or shared bank slot
+    if (!inventory::isBankSlot(bankSlot) && !inventory::isSharedBankSlot(bankSlot)) {
+        return;
+    }
+
+    // Check if slot contains a bag
+    const inventory::ItemInstance* item = invManager_->getItem(bankSlot);
+    if (!item || !item->isContainer()) {
+        return;
+    }
+
+    // Don't open if already open
+    if (isBankBagWindowOpen(bankSlot)) {
+        return;
+    }
+
+    // Create bag window for bank container
+    auto bagWindow = std::make_unique<BagWindow>(bankSlot, item->bagSlots, invManager_);
+
+    // Set up callbacks
+    bagWindow->setSlotClickCallback([this](int16_t slotId, bool shift, bool ctrl) {
+        handleBankSlotClick(slotId, shift, ctrl);
+    });
+
+    bagWindow->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+        handleSlotHover(slotId, mouseX, mouseY);
+    });
+
+    bagWindow->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+        return iconLoader_.getIcon(iconId);
+    });
+
+    bagWindow->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
+        if (readItemCallback_) {
+            readItemCallback_(bookText, bookType);
+        }
+    });
+
+    bagWindow->show();
+    bankBagWindows_[bankSlot] = std::move(bagWindow);
+
+    tileBankBagWindows();
+}
+
+void WindowManager::closeBankBagWindow(int16_t bankSlot) {
+    auto it = bankBagWindows_.find(bankSlot);
+    if (it != bankBagWindows_.end()) {
+        bankBagWindows_.erase(it);
+        tileBankBagWindows();
+    }
+}
+
+void WindowManager::closeAllBankBagWindows() {
+    bankBagWindows_.clear();
+}
+
+bool WindowManager::isBankBagWindowOpen(int16_t bankSlot) const {
+    return bankBagWindows_.find(bankSlot) != bankBagWindows_.end();
+}
+
+void WindowManager::setOnBankClose(BankCloseCallback callback) {
+    onBankCloseCallback_ = callback;
+    if (bankWindow_) {
+        bankWindow_->setCloseCallback([this]() {
+            closeAllBankBagWindows();
+            if (onBankCloseCallback_) {
+                onBankCloseCallback_();
+            }
+        });
+    }
+}
+
+void WindowManager::setOnBankCurrencyMove(BankCurrencyMoveCallback callback) {
+    onBankCurrencyMoveCallback_ = callback;
+}
+
+void WindowManager::setOnBankCurrencyConvert(BankCurrencyConvertCallback callback) {
+    onBankCurrencyConvertCallback_ = callback;
+    if (bankWindow_) {
+        bankWindow_->setCurrencyConvertCallback([this](int32_t fromCoinType, int32_t amount) {
+            if (onBankCurrencyConvertCallback_) {
+                onBankCurrencyConvertCallback_(fromCoinType, amount);
+            }
+        });
+    }
+}
+
+void WindowManager::positionBankWindow() {
+    if (!bankWindow_) {
+        return;
+    }
+
+    // Position bank window on the left side of the screen
+    // (opposite side from inventory which is typically on the right)
+    int x = 50;
+    int y = 50;
+
+    bankWindow_->setPosition(x, y);
+}
+
+void WindowManager::tileBankBagWindows() {
+    if (bankBagWindows_.empty() || !bankWindow_) {
+        return;
+    }
+
+    // Position bank bag windows below the bank window
+    int startX = bankWindow_->getX();
+    int startY = bankWindow_->getY() + bankWindow_->getHeight() + 10;
+    int curX = startX;
+    int curY = startY;
+    int maxRowHeight = 0;
+
+    for (auto& [slot, window] : bankBagWindows_) {
+        // Check if we need to wrap to next row
+        if (curX + window->getWidth() > screenWidth_ - 50) {
+            curX = startX;
+            curY += maxRowHeight + 5;
+            maxRowHeight = 0;
+        }
+
+        window->setPosition(curX, curY);
+        curX += window->getWidth() + 5;
+        maxRowHeight = std::max(maxRowHeight, window->getHeight());
+    }
+}
+
+void WindowManager::handleBankSlotClick(int16_t slotId, bool shift, bool ctrl) {
+    LOG_DEBUG(MOD_UI, "WindowManager handleBankSlotClick: slotId={} shift={} ctrl={}", slotId, shift, ctrl);
+
+    if (slotId == inventory::SLOT_INVALID) {
+        return;
+    }
+
+    // Check if we're holding a cursor item
+    if (invManager_->hasCursorItem()) {
+        // Try to place item in bank slot
+        if (invManager_->canPlaceItemInSlot(invManager_->getCursorItem(), slotId)) {
+            LOG_DEBUG(MOD_UI, "WindowManager Placing cursor item in bank slot {}", slotId);
+            invManager_->placeItem(slotId);
+            tooltip_.clear();
+        } else {
+            LOG_DEBUG(MOD_UI, "WindowManager Cannot place item in bank slot {}", slotId);
+        }
+        return;
+    }
+
+    // No cursor item - try to pick up from bank
+    const inventory::ItemInstance* item = invManager_->getItem(slotId);
+    if (item) {
+        // Handle stackable items
+        if (item->stackable && item->quantity > 1) {
+            if (ctrl) {
+                // Ctrl+click: pick up just 1 item from the stack
+                LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up 1 from bank stack of {} at slot {}", item->quantity, slotId);
+                invManager_->pickupPartialStack(slotId, 1);
+                tooltip_.clear();
+                return;
+            } else if (shift) {
+                // Shift+click: show quantity slider
+                LOG_DEBUG(MOD_UI, "WindowManager Shift+click: showing quantity slider for bank stack of {} at slot {}", item->quantity, slotId);
+                showQuantitySlider(slotId, item->quantity);
+                return;
+            }
+        }
+
+        // If picking up a bag from bank, close its window
+        if (item->isContainer()) {
+            closeBankBagWindow(slotId);
+        }
+
+        LOG_DEBUG(MOD_UI, "WindowManager Picking up item from bank slot {}", slotId);
+        pickupItem(slotId);
+    } else {
+        LOG_DEBUG(MOD_UI, "WindowManager No item in bank slot {}", slotId);
+    }
+}
+
+void WindowManager::handleBankBagOpenClick(int16_t bankSlot) {
+    // Can't open bags while holding an item
+    if (invManager_->hasCursorItem()) {
+        return;
+    }
+
+    // Toggle bank bag window
+    if (isBankBagWindowOpen(bankSlot)) {
+        closeBankBagWindow(bankSlot);
+    } else {
+        openBankBagWindow(bankSlot);
+    }
 }
 
 // Loot window management
@@ -1138,9 +1481,23 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        if (petWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
     // Check skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         if (skillsWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->handleMouseDown(x, y, leftButton, shift)) {
             return true;
         }
     }
@@ -1183,6 +1540,27 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
     // Check trade window (if open)
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         if (tradeWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Check bank bag windows (on top of bank window)
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+            return true;
+        }
+    }
+
+    // Check bank window (if open)
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+            return true;
+        }
+    }
+
+    // Check tradeskill container window (if open)
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
             return true;
         }
     }
@@ -1328,6 +1706,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         }
     }
 
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
     // Check note window
     if (noteWindow_ && noteWindow_->isVisible()) {
         if (noteWindow_->handleMouseUp(x, y, leftButton)) {
@@ -1338,6 +1723,27 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check trade window
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1461,6 +1867,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
         // Don't return true - allow other windows to update their hover state
     }
 
+    // Check pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        petWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
     // Check player status window (for dragging when UI unlocked)
     if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
         playerStatusWindow_->handleMouseMove(x, y);
@@ -1470,6 +1882,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
     // Check skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         skillsWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        skillTrainerWindow_->handleMouseMove(x, y);
         // Don't return true - allow other windows to update their hover state
     }
 
@@ -1554,6 +1972,27 @@ bool WindowManager::handleMouseMove(int x, int y) {
         }
     }
 
+    // Check bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
     // Check bag windows
     for (auto& [slotId, bagWindow] : bagWindows_) {
         if (bagWindow->handleMouseMove(x, y)) {
@@ -1603,6 +2042,7 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
         if (buffWindow_) buffWindow_->setHovered(false);
         if (groupWindow_) groupWindow_->setHovered(false);
         if (skillsWindow_) skillsWindow_->setHovered(false);
+        if (skillTrainerWindow_) skillTrainerWindow_->setHovered(false);
         if (spellBookWindow_) spellBookWindow_->setHovered(false);
         if (hotbarWindow_) hotbarWindow_->setHovered(false);
         if (playerStatusWindow_) playerStatusWindow_->setHovered(false);
@@ -1634,6 +2074,9 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
     }
     if (skillsWindow_) {
         skillsWindow_->setHovered(skillsWindow_->isVisible() && skillsWindow_->containsPoint(x, y));
+    }
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setHovered(skillTrainerWindow_->isVisible() && skillTrainerWindow_->containsPoint(x, y));
     }
     if (spellBookWindow_) {
         spellBookWindow_->setHovered(spellBookWindow_->isVisible() && spellBookWindow_->containsPoint(x, y));
@@ -1676,6 +2119,13 @@ bool WindowManager::handleMouseWheel(float delta) {
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         if (skillsWindow_->containsPoint(mouseX_, mouseY_)) {
             return skillsWindow_->handleMouseWheel(delta);
+        }
+    }
+
+    // Route mouse wheel to skill trainer window if visible and mouse is over it
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->containsPoint(mouseX_, mouseY_)) {
+            return skillTrainerWindow_->handleMouseWheel(delta);
         }
     }
 
@@ -1759,6 +2209,11 @@ void WindowManager::render() {
         groupWindow_->render(driver_, gui_);
     }
 
+    // Render pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        petWindow_->render(driver_, gui_);
+    }
+
     // Render hotbar window
     if (hotbarWindow_ && hotbarWindow_->isVisible()) {
         hotbarWindow_->render(driver_, gui_);
@@ -1767,6 +2222,11 @@ void WindowManager::render() {
     // Render skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         skillsWindow_->render(driver_, gui_);
+    }
+
+    // Render skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        skillTrainerWindow_->render(driver_, gui_);
     }
 
     // Render player status window (upper left)
@@ -1797,6 +2257,21 @@ void WindowManager::render() {
     // Render trade window
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         tradeWindow_->render(driver_, gui_);
+    }
+
+    // Render bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        bankWindow_->render(driver_, gui_);
+    }
+
+    // Render bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        bagWindow->render(driver_, gui_);
+    }
+
+    // Render tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        tradeskillWindow_->render(driver_, gui_);
     }
 
     // Render trade request dialog (on top of other windows)
@@ -1865,6 +2340,10 @@ void WindowManager::update(uint32_t currentTimeMs) {
     // Update group window (refreshes member data from EverQuest)
     if (groupWindow_) {
         groupWindow_->update();
+    }
+    // Update pet window (refreshes pet data from EverQuest)
+    if (petWindow_) {
+        petWindow_->update();
     }
     // Update player status window (refreshes HP/mana/stamina from EverQuest)
     if (playerStatusWindow_) {
@@ -2012,6 +2491,18 @@ void WindowManager::updateBaseCurrency(uint32_t platinum, uint32_t gold, uint32_
     refreshCurrencyDisplay();
 }
 
+void WindowManager::updateBankCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    bankPlatinum_ = platinum;
+    bankGold_ = gold;
+    bankSilver_ = silver;
+    bankCopper_ = copper;
+
+    // Update bank window currency display if open
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        bankWindow_->setCurrency(bankPlatinum_, bankGold_, bankSilver_, bankCopper_);
+    }
+}
+
 void WindowManager::initModelView(irr::scene::ISceneManager* smgr,
                                    EQT::Graphics::RaceModelLoader* raceLoader,
                                    EQT::Graphics::EquipmentModelLoader* equipLoader) {
@@ -2093,13 +2584,68 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
         return;
     }
 
-    // Ctrl+click without shift and without inventory cursor = pickup for hotbar
+    // Ctrl+click without shift and without inventory cursor = pickup for hotbar or spell scribing
     if (ctrl && !shift && !invManager_->hasCursorItem()) {
         const inventory::ItemInstance* item = invManager_->getItem(slotId);
         if (item) {
+            // Check if this is a spell scroll - if so, start scribing flow
+            if (item->isSpellScroll()) {
+                uint32_t spellId = item->getScrollSpellId();
+
+                // Fallback: if scrollEffect wasn't populated, try to look up by name
+                if (spellId == 0 && spellMgr_ && item->name.size() > 7) {
+                    // Extract spell name after "Spell: " prefix
+                    std::string spellName = item->name.substr(7);
+                    const EQ::SpellData* spellData = spellMgr_->getDatabase().getSpellByName(spellName);
+                    if (spellData) {
+                        spellId = spellData->id;
+                        LOG_DEBUG(MOD_UI, "WindowManager Found spell by name lookup: '{}' -> id={}",
+                                 spellName, spellId);
+                    }
+                }
+
+                if (spellId != 0) {
+                    LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click on spell scroll: spell={} slot={}",
+                             spellId, slotId);
+                    // Set scribing state and notify callback
+                    invManager_->setSpellForScribe(spellId, slotId);
+                    if (spellScrollPickupCallback_) {
+                        spellScrollPickupCallback_(spellId, slotId);
+                    }
+                    // Enable scribing mode on spellbook and open it
+                    if (spellBookWindow_) {
+                        spellBookWindow_->setScribingMode(true, spellId);
+                    }
+                    openSpellbook();
+                    return;
+                } else {
+                    LOG_WARN(MOD_UI, "WindowManager Spell scroll '{}' has no spell ID", item->name);
+                }
+            }
+
+            // Not a spell scroll - pickup for hotbar
             LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up item for hotbar, itemId={}, icon={}",
                      item->itemId, item->icon);
             setHotbarCursor(HotbarButtonType::Item, item->itemId, "", item->icon);
+            return;
+        }
+    }
+
+    // Left click (no modifiers, no cursor item) on tradeskill container = toggle open/close
+    if (!shift && !ctrl && !invManager_->hasCursorItem()) {
+        const inventory::ItemInstance* item = invManager_->getItem(slotId);
+        if (item && item->isContainer() && inventory::isTradeskillContainerType(item->bagType)) {
+            LOG_DEBUG(MOD_UI, "WindowManager Left-click on tradeskill container at slot {}", slotId);
+            // Check if this specific container is already open
+            if (isTradeskillContainerOpen() && tradeskillWindow_ &&
+                !tradeskillWindow_->isWorldContainer() &&
+                tradeskillWindow_->getContainerSlot() == slotId) {
+                // Close it
+                closeTradeskillContainer();
+            } else {
+                // Open it (this will close any existing one)
+                openBagWindow(slotId);
+            }
             return;
         }
     }
@@ -2148,9 +2694,18 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
                 }
             }
 
-            // If picking up a bag, close its window
+            // If picking up a container, close its window
             if (item && item->isContainer()) {
-                closeBagWindow(slotId);
+                if (inventory::isTradeskillContainerType(item->bagType)) {
+                    // Close tradeskill container window if this container is open
+                    if (isTradeskillContainerOpen() && tradeskillWindow_ &&
+                        !tradeskillWindow_->isWorldContainer() &&
+                        tradeskillWindow_->getContainerSlot() == slotId) {
+                        closeTradeskillContainer();
+                    }
+                } else {
+                    closeBagWindow(slotId);
+                }
             }
 
             LOG_DEBUG(MOD_UI, "WindowManager Picking up item from slot {}", slotId);
@@ -2167,10 +2722,46 @@ void WindowManager::handleBagSlotClick(int16_t slotId, bool shift, bool ctrl) {
         return;
     }
 
-    // Ctrl+click without shift and without inventory cursor = pickup for hotbar
+    // Ctrl+click without shift and without inventory cursor = pickup for hotbar or spell scribing
     if (ctrl && !shift && !invManager_->hasCursorItem()) {
         const inventory::ItemInstance* item = invManager_->getItem(slotId);
         if (item) {
+            // Check if this is a spell scroll - if so, start scribing flow
+            if (item->isSpellScroll()) {
+                uint32_t spellId = item->getScrollSpellId();
+
+                // Fallback: if scrollEffect wasn't populated, try to look up by name
+                if (spellId == 0 && spellMgr_ && item->name.size() > 7) {
+                    // Extract spell name after "Spell: " prefix
+                    std::string spellName = item->name.substr(7);
+                    const EQ::SpellData* spellData = spellMgr_->getDatabase().getSpellByName(spellName);
+                    if (spellData) {
+                        spellId = spellData->id;
+                        LOG_DEBUG(MOD_UI, "WindowManager Found spell by name lookup in bag: '{}' -> id={}",
+                                 spellName, spellId);
+                    }
+                }
+
+                if (spellId != 0) {
+                    LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click on spell scroll in bag: spell={} slot={}",
+                             spellId, slotId);
+                    // Set scribing state and notify callback
+                    invManager_->setSpellForScribe(spellId, slotId);
+                    if (spellScrollPickupCallback_) {
+                        spellScrollPickupCallback_(spellId, slotId);
+                    }
+                    // Enable scribing mode on spellbook and open it
+                    if (spellBookWindow_) {
+                        spellBookWindow_->setScribingMode(true, spellId);
+                    }
+                    openSpellbook();
+                    return;
+                } else {
+                    LOG_WARN(MOD_UI, "WindowManager Spell scroll in bag '{}' has no spell ID", item->name);
+                }
+            }
+
+            // Not a spell scroll - pickup for hotbar
             LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up bag item for hotbar, itemId={}, icon={}",
                      item->itemId, item->icon);
             setHotbarCursor(HotbarButtonType::Item, item->itemId, "", item->icon);
@@ -2337,11 +2928,52 @@ void WindowManager::handleSlotHover(int16_t slotId, int mouseX, int mouseY) {
         tooltip_.clear();
     }
 
-    // Update slot highlighting for cursor item
-    if (invManager_->hasCursorItem() && inventoryWindow_) {
+    // Update slot highlighting for cursor item validation feedback
+    if (invManager_->hasCursorItem()) {
         const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
-        if (!invManager_->canPlaceItemInSlot(cursorItem, slotId)) {
-            inventoryWindow_->setInvalidDropSlot(slotId);
+        bool canPlace = invManager_->canPlaceItemInSlot(cursorItem, slotId);
+
+        // Determine which window the slot belongs to and update its invalid drop highlighting
+        if (inventory::isEquipmentSlot(slotId) || inventory::isGeneralSlot(slotId)) {
+            // Inventory window slot
+            if (inventoryWindow_) {
+                if (!canPlace) {
+                    inventoryWindow_->setInvalidDropSlot(slotId);
+                } else {
+                    inventoryWindow_->clearHighlights();
+                }
+            }
+        } else if (inventory::isBankSlot(slotId) || inventory::isSharedBankSlot(slotId)) {
+            // Bank window slot
+            if (bankWindow_) {
+                if (!canPlace) {
+                    bankWindow_->setInvalidDropSlot(slotId);
+                } else {
+                    bankWindow_->clearHighlights();
+                }
+            }
+        } else if (inventory::isBagSlot(slotId)) {
+            // Inventory bag slot
+            int16_t parentSlot = inventory::getParentGeneralSlot(slotId);
+            auto it = bagWindows_.find(parentSlot);
+            if (it != bagWindows_.end()) {
+                if (!canPlace) {
+                    it->second->setInvalidDropSlot(slotId);
+                } else {
+                    it->second->clearHighlights();
+                }
+            }
+        } else if (inventory::isBankBagSlot(slotId) || inventory::isSharedBankBagSlot(slotId)) {
+            // Bank bag slot
+            int16_t parentSlot = inventory::getParentBankSlotAny(slotId);
+            auto it = bankBagWindows_.find(parentSlot);
+            if (it != bankBagWindows_.end()) {
+                if (!canPlace) {
+                    it->second->setInvalidDropSlot(slotId);
+                } else {
+                    it->second->clearHighlights();
+                }
+            }
         }
     }
 }
@@ -2458,7 +3090,41 @@ void WindowManager::handleMoneyInputConfirm(CurrencyType type, uint32_t amount) 
         return;
     }
 
-    // Convert CurrencyType to CursorMoneyType
+    // Convert CurrencyType to coin type constant (matches COINTYPE_* in packet_structs.h)
+    int32_t coinType;
+    switch (type) {
+        case CurrencyType::Copper:
+            coinType = 0;  // COINTYPE_CP
+            break;
+        case CurrencyType::Silver:
+            coinType = 1;  // COINTYPE_SP
+            break;
+        case CurrencyType::Gold:
+            coinType = 2;  // COINTYPE_GP
+            break;
+        case CurrencyType::Platinum:
+            coinType = 3;  // COINTYPE_PP
+            break;
+        default:
+            return;
+    }
+
+    // Check if this is a bank currency movement
+    if (isBankWindowOpen() && currencyClickSource_ != CurrencyClickSource::None) {
+        bool fromBank = (currencyClickSource_ == CurrencyClickSource::Bank);
+
+        if (onBankCurrencyMoveCallback_) {
+            onBankCurrencyMoveCallback_(coinType, static_cast<int32_t>(amount), fromBank);
+            LOG_DEBUG(MOD_UI, "Bank currency move: {} of type {} (fromBank={})",
+                      amount, coinType, fromBank);
+        }
+
+        // Clear the source tracker
+        currencyClickSource_ = CurrencyClickSource::None;
+        return;
+    }
+
+    // Original behavior: pick up money onto cursor (for trading)
     inventory::InventoryManager::CursorMoneyType cursorType;
     switch (type) {
         case CurrencyType::Platinum:
@@ -2481,6 +3147,9 @@ void WindowManager::handleMoneyInputConfirm(CurrencyType type, uint32_t amount) 
     invManager_->pickupMoney(cursorType, amount);
     refreshCurrencyDisplay();  // Update display after picking up money
     LOG_DEBUG(MOD_UI, "Money picked up: {} of type {}", amount, static_cast<int>(type));
+
+    // Clear the source tracker
+    currencyClickSource_ = CurrencyClickSource::None;
 }
 
 void WindowManager::pickupItem(int16_t slotId) {
@@ -2899,6 +3568,23 @@ void WindowManager::initSpellGemPanel(EQ::SpellManager* spellMgr) {
         setSpellOnCursor(spell_id, icon);
     });
 
+    // Connect scribe spell callback - called when user clicks empty slot in scribing mode
+    spellBookWindow_->setScribeSpellCallback([this](uint32_t spell_id, uint16_t book_slot) {
+        if (!invManager_) return;
+
+        int16_t sourceSlot = invManager_->getScribeSourceSlot();
+        LOG_DEBUG(MOD_UI, "WindowManager: Scribe request - spell={} book_slot={} source_slot={}",
+                 spell_id, book_slot, sourceSlot);
+
+        // Call the scribe request callback to send packets
+        if (scribeSpellRequestCallback_) {
+            scribeSpellRequestCallback_(spell_id, book_slot, sourceSlot);
+        }
+
+        // Clear the scribing state
+        invManager_->clearSpellForScribe();
+    });
+
     // Connect spellbook button in gem panel to toggle spellbook window
     spellGemPanel_->setSpellbookCallback([this]() {
         toggleSpellbook();
@@ -2977,6 +3663,11 @@ void WindowManager::openSpellbook() {
         spellBookWindow_->show();
         spellBookWindow_->refresh();
         LOG_DEBUG(MOD_UI, "Spellbook opened at ({}, {})", x, y);
+
+        // Notify server that spellbook is open (triggers sitting animation)
+        if (spellbookStateCallback_) {
+            spellbookStateCallback_(true);
+        }
     }
 }
 
@@ -2984,6 +3675,22 @@ void WindowManager::closeSpellbook() {
     if (spellBookWindow_) {
         spellBookWindow_->hide();
         LOG_DEBUG(MOD_UI, "Spellbook closed");
+
+        // Clear scribing mode on spellbook
+        if (spellBookWindow_->isScribingMode()) {
+            spellBookWindow_->setScribingMode(false);
+        }
+
+        // Clear any pending spell scribing state
+        if (invManager_ && invManager_->isHoldingSpellForScribe()) {
+            LOG_DEBUG(MOD_UI, "Clearing spell scribing state on spellbook close");
+            invManager_->clearSpellForScribe();
+        }
+
+        // Notify server that spellbook is closed (triggers standing animation)
+        if (spellbookStateCallback_) {
+            spellbookStateCallback_(false);
+        }
     }
 }
 
@@ -2996,6 +3703,18 @@ void WindowManager::setSpellMemorizeCallback(SpellClickCallback callback) {
     if (spellBookWindow_) {
         spellBookWindow_->setSpellClickCallback(callback);
     }
+}
+
+void WindowManager::setSpellbookStateCallback(SpellbookStateCallback callback) {
+    spellbookStateCallback_ = std::move(callback);
+}
+
+void WindowManager::setSpellScrollPickupCallback(SpellScrollPickupCallback callback) {
+    spellScrollPickupCallback_ = std::move(callback);
+}
+
+void WindowManager::setScribeSpellRequestCallback(ScribeSpellRequestCallback callback) {
+    scribeSpellRequestCallback_ = std::move(callback);
 }
 
 // ============================================================================
@@ -3134,6 +3853,62 @@ void WindowManager::setGroupDeclineCallback(GroupDeclineCallback callback) {
     groupDeclineCallback_ = callback;
     if (groupWindow_) {
         groupWindow_->setDeclineCallback(callback);
+    }
+}
+
+// ============================================================================
+// Pet Window Management
+// ============================================================================
+
+void WindowManager::initPetWindow(EverQuest* eq) {
+    if (!eq) {
+        LOG_WARN(MOD_UI, "Cannot initialize pet window - EverQuest is null");
+        return;
+    }
+
+    petWindow_ = std::make_unique<PetWindow>();
+    petWindow_->setEQ(eq);
+    petWindow_->positionDefault(screenWidth_, screenHeight_);
+    // Pet window starts hidden - shown when pet is created
+    petWindow_->hide();
+
+    // Set up callback
+    if (petCommandCallback_) {
+        petWindow_->setCommandCallback(petCommandCallback_);
+    }
+
+    LOG_DEBUG(MOD_UI, "Pet window initialized");
+}
+
+void WindowManager::togglePetWindow() {
+    if (!petWindow_) return;
+    if (petWindow_->isVisible()) {
+        closePetWindow();
+    } else {
+        openPetWindow();
+    }
+}
+
+void WindowManager::openPetWindow() {
+    if (petWindow_) {
+        petWindow_->show();
+    }
+}
+
+void WindowManager::closePetWindow() {
+    if (petWindow_) {
+        petWindow_->hide();
+    }
+}
+
+bool WindowManager::isPetWindowOpen() const {
+    return petWindow_ && petWindow_->isVisible();
+}
+
+void WindowManager::setPetCommandCallback(PetCommandCallback callback) {
+    petCommandCallback_ = callback;
+    if (petWindow_) {
+        petWindow_->setCommandCallback(callback);
     }
 }
 
@@ -3357,6 +4132,98 @@ void WindowManager::setHotbarCreateCallback(HotbarCreateCallback callback) {
 }
 
 // ============================================================================
+// Skill Trainer Window Management
+// ============================================================================
+
+void WindowManager::initSkillTrainerWindow() {
+    skillTrainerWindow_ = std::make_unique<SkillTrainerWindow>();
+    skillTrainerWindow_->setSettingsKey("skill_trainer");
+
+    // Apply saved position from settings, or use default
+    const auto& settings = UISettings::instance().skillTrainer();
+    if (settings.window.x >= 0 && settings.window.y >= 0) {
+        skillTrainerWindow_->setPosition(settings.window.x, settings.window.y);
+    } else {
+        skillTrainerWindow_->positionDefault(screenWidth_, screenHeight_);
+    }
+
+    // Set up callbacks
+    if (skillTrainCallback_) {
+        skillTrainerWindow_->setTrainCallback(skillTrainCallback_);
+    }
+    if (trainerCloseCallback_) {
+        skillTrainerWindow_->setCloseCallback(trainerCloseCallback_);
+    }
+
+    LOG_DEBUG(MOD_UI, "Skill trainer window initialized");
+}
+
+void WindowManager::openSkillTrainerWindow(uint32_t trainerId, const std::wstring& trainerName,
+                                           const std::vector<TrainerSkillEntry>& skills) {
+    if (!skillTrainerWindow_) {
+        initSkillTrainerWindow();
+    }
+
+    // Update money display
+    skillTrainerWindow_->setPlayerMoney(basePlatinum_, baseGold_, baseSilver_, baseCopper_);
+
+    // Open with trainer data
+    skillTrainerWindow_->open(trainerId, trainerName, skills);
+
+    LOG_DEBUG(MOD_UI, "Skill trainer window opened: trainerId={} skillCount={}",
+              trainerId, skills.size());
+}
+
+void WindowManager::closeSkillTrainerWindow() {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->hide();
+    }
+}
+
+bool WindowManager::isSkillTrainerWindowOpen() const {
+    return skillTrainerWindow_ && skillTrainerWindow_->isVisible();
+}
+
+void WindowManager::updateSkillTrainerSkill(uint8_t skillId, uint32_t newValue) {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->updateSkill(skillId, newValue);
+    }
+}
+
+void WindowManager::updateSkillTrainerMoney(uint32_t platinum, uint32_t gold,
+                                            uint32_t silver, uint32_t copper) {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setPlayerMoney(platinum, gold, silver, copper);
+    }
+}
+
+void WindowManager::updateSkillTrainerPracticePoints(uint32_t points) {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setPracticePoints(points);
+    }
+}
+
+void WindowManager::decrementSkillTrainerPracticePoints() {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->decrementPracticePoints();
+    }
+}
+
+void WindowManager::setSkillTrainCallback(SkillTrainCallback callback) {
+    skillTrainCallback_ = callback;
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setTrainCallback(callback);
+    }
+}
+
+void WindowManager::setTrainerCloseCallback(TrainerCloseCallback callback) {
+    trainerCloseCallback_ = callback;
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setCloseCallback(callback);
+    }
+}
+
+// ============================================================================
 // Note Window Management
 // ============================================================================
 
@@ -3383,6 +4250,187 @@ bool WindowManager::isNoteWindowOpen() const {
 
 void WindowManager::setOnReadItem(ReadItemCallback callback) {
     readItemCallback_ = callback;
+}
+
+// ============================================================================
+// Tradeskill Container Window Management
+// ============================================================================
+
+void WindowManager::openTradeskillContainer(uint32_t dropId, const std::string& name,
+                                             uint8_t objectType, int slotCount) {
+    if (!tradeskillWindow_) {
+        LOG_WARN(MOD_UI, "Tradeskill container window not initialized");
+        return;
+    }
+
+    // Set up callbacks before opening
+    tradeskillWindow_->setCombineCallback([this]() {
+        if (tradeskillCombineCallback_) {
+            tradeskillCombineCallback_();
+        }
+    });
+    tradeskillWindow_->setCloseCallback([this]() {
+        if (tradeskillCloseCallback_) {
+            tradeskillCloseCallback_();
+        }
+    });
+
+    tradeskillWindow_->openForWorldObject(dropId, name, objectType, slotCount);
+
+    // Center on screen
+    int windowWidth = tradeskillWindow_->getWidth();
+    int windowHeight = tradeskillWindow_->getHeight();
+    int x = (screenWidth_ - windowWidth) / 2;
+    int y = (screenHeight_ - windowHeight) / 2;
+    tradeskillWindow_->setPosition(x, y);
+
+    LOG_DEBUG(MOD_UI, "Tradeskill container opened for world object: dropId={} name='{}' type={} slots={}",
+              dropId, name, objectType, slotCount);
+}
+
+void WindowManager::openTradeskillContainerForItem(int16_t containerSlot, const std::string& name,
+                                                    uint8_t bagType, int slotCount) {
+    if (!tradeskillWindow_) {
+        LOG_WARN(MOD_UI, "Tradeskill container window not initialized");
+        return;
+    }
+
+    // Set up callbacks before opening
+    tradeskillWindow_->setCombineCallback([this]() {
+        if (tradeskillCombineCallback_) {
+            tradeskillCombineCallback_();
+        }
+    });
+    tradeskillWindow_->setCloseCallback([this]() {
+        if (tradeskillCloseCallback_) {
+            tradeskillCloseCallback_();
+        }
+    });
+
+    tradeskillWindow_->openForInventoryItem(containerSlot, name, bagType, slotCount);
+
+    // Center on screen
+    int windowWidth = tradeskillWindow_->getWidth();
+    int windowHeight = tradeskillWindow_->getHeight();
+    int x = (screenWidth_ - windowWidth) / 2;
+    int y = (screenHeight_ - windowHeight) / 2;
+    tradeskillWindow_->setPosition(x, y);
+
+    LOG_DEBUG(MOD_UI, "Tradeskill container opened for inventory item: slot={} name='{}' type={} slots={}",
+              containerSlot, name, bagType, slotCount);
+}
+
+void WindowManager::closeTradeskillContainer() {
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        // If closing a world container, clear the world container slots from inventory
+        if (tradeskillWindow_->isWorldContainer() && invManager_) {
+            invManager_->clearWorldContainerSlots();
+        }
+        tradeskillWindow_->close();
+        LOG_DEBUG(MOD_UI, "Tradeskill container window closed");
+    }
+}
+
+bool WindowManager::isTradeskillContainerOpen() const {
+    return tradeskillWindow_ && tradeskillWindow_->isOpen();
+}
+
+void WindowManager::setOnTradeskillCombine(TradeskillCombineCallback callback) {
+    tradeskillCombineCallback_ = callback;
+}
+
+void WindowManager::setOnTradeskillClose(TradeskillCloseCallback callback) {
+    tradeskillCloseCallback_ = callback;
+}
+
+void WindowManager::handleTradeskillSlotClick(int16_t slotId, bool shift, bool ctrl) {
+    LOG_DEBUG(MOD_UI, "WindowManager handleTradeskillSlotClick: slotId={} shift={} ctrl={}", slotId, shift, ctrl);
+
+    if (slotId == inventory::SLOT_INVALID) {
+        return;
+    }
+
+    // Check if this is a world container slot or inventory container slot
+    bool isWorldSlot = inventory::isWorldContainerSlot(slotId);
+
+    if (invManager_->hasCursorItem()) {
+        // Place item in container
+        const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
+        const inventory::ItemInstance* targetItem = nullptr;
+
+        if (isWorldSlot) {
+            // For world containers, check the tradeskill window's cached items
+            targetItem = tradeskillWindow_->getContainerItem(slotId);
+        } else {
+            // For inventory containers, check the inventory manager
+            targetItem = invManager_->getItem(slotId);
+        }
+
+        // Check if we can stack onto an existing item of the same type
+        if (cursorItem && targetItem && cursorItem->stackable && targetItem->stackable &&
+            cursorItem->itemId == targetItem->itemId &&
+            targetItem->stackSize > 0 && targetItem->quantity < targetItem->stackSize) {
+            LOG_DEBUG(MOD_UI, "Auto-stacking cursor item onto tradeskill slot {}", slotId);
+            invManager_->placeOnMatchingStack(slotId);
+        } else {
+            LOG_DEBUG(MOD_UI, "Placing cursor item at tradeskill slot {}", slotId);
+            placeItem(slotId);
+        }
+    } else {
+        // Try to pick up item from container
+        const inventory::ItemInstance* item = nullptr;
+
+        if (isWorldSlot) {
+            item = tradeskillWindow_->getContainerItem(slotId);
+        } else {
+            item = invManager_->getItem(slotId);
+        }
+
+        if (item) {
+            // Handle stackable items with modifiers
+            if (item->stackable && item->quantity > 1) {
+                if (ctrl) {
+                    LOG_DEBUG(MOD_UI, "Ctrl+click: picking up 1 from tradeskill stack of {} at slot {}",
+                              item->quantity, slotId);
+                    invManager_->pickupPartialStack(slotId, 1);
+                    tooltip_.clear();
+                    return;
+                } else if (shift) {
+                    LOG_DEBUG(MOD_UI, "Shift+click: showing quantity slider for tradeskill stack of {} at slot {}",
+                              item->quantity, slotId);
+                    showQuantitySlider(slotId, item->quantity);
+                    return;
+                }
+            }
+
+            LOG_DEBUG(MOD_UI, "Picking up item from tradeskill slot {}", slotId);
+            pickupItem(slotId);
+        }
+    }
+}
+
+void WindowManager::handleTradeskillSlotHover(int16_t slotId, int mouseX, int mouseY) {
+    if (slotId == inventory::SLOT_INVALID) {
+        tooltip_.clear();
+        return;
+    }
+
+    const inventory::ItemInstance* item = nullptr;
+
+    // Check if world container slot or inventory container slot
+    if (inventory::isWorldContainerSlot(slotId)) {
+        if (tradeskillWindow_) {
+            item = tradeskillWindow_->getContainerItem(slotId);
+        }
+    } else {
+        item = invManager_->getItem(slotId);
+    }
+
+    if (item) {
+        tooltip_.setItem(item, mouseX, mouseY);
+    } else {
+        tooltip_.clear();
+    }
 }
 
 // ============================================================================

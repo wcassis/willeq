@@ -5,6 +5,7 @@
 #include "common/event/timer.h"
 #include "common/packet_structs.h"
 #include "client/state/game_state.h"
+#include "client/pet_constants.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -23,6 +24,10 @@ class IPathfinder;
 class HCMap;
 class CombatManager;
 class TradeManager;
+
+namespace eqt {
+    struct WorldObject;
+}
 
 namespace EQ {
     class SpellManager;
@@ -236,7 +241,18 @@ enum TitaniumZoneOpcodes {
 	HC_OP_ShopEndConfirm = 0x20b2,   // Server confirms vendor session ended
 	HC_OP_MoneyUpdate = 0x267c,      // Update player money after transaction
 	// Book/Note reading opcode
-	HC_OP_ReadBook = 0x1496          // Read note/book item text
+	HC_OP_ReadBook = 0x1496,         // Read note/book item text
+	// Tradeskill/Object opcodes
+	HC_OP_ClickObject = 0x3bc2,          // Client->Server: click world object (forge, groundspawn, etc.)
+	HC_OP_ClickObjectAction = 0x6937,    // Server->Client: object action response (open tradeskill container)
+	HC_OP_TradeSkillCombine = 0x0b40,    // Bidirectional: tradeskill combine request/result
+// Skill training opcodes
+	HC_OP_GMTraining = 0x238f,           // Skill training initiation/data (bidirectional)
+	HC_OP_GMTrainSkill = 0x11d2,         // Request to train a specific skill (client -> server)
+	HC_OP_GMEndTraining = 0x613d,        // End training session (client -> server)
+	HC_OP_GMEndTrainingResponse = 0x0000, // Server ack for end training (unused in Titanium)
+	// Pet opcodes
+	HC_OP_PetCommands = 0x10a1           // C->S: Pet command from client
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -400,10 +416,18 @@ struct Entity
 	uint32_t equipment[9] = {0};      // Material IDs from TextureProfile (offset 197)
 	uint32_t equipment_tint[9] = {0}; // Tint colors from TintProfile (offset 348)
 
+	// Weapon skill types for combat animations (255 = unknown/none)
+	uint8_t primary_weapon_skill = 255;    // Weapon skill type of primary weapon (7 = H2H default)
+	uint8_t secondary_weapon_skill = 255;  // Weapon skill type of secondary weapon
+
 	// Movement tracking
 	float delta_x = 0, delta_y = 0, delta_z = 0;
 	float delta_heading = 0;
 	uint32_t last_update_time = 0;
+
+	// Pet tracking
+	uint8_t is_pet = 0;           // Non-zero if this entity is a pet (offset 329)
+	uint32_t pet_owner_id = 0;    // Spawn ID of pet's owner (offset 189)
 };
 
 // Door state information (parsed from Door_Struct packets)
@@ -423,6 +447,11 @@ struct Door
 
 // Maximum group size (leader + 5 members)
 static constexpr int MAX_GROUP_MEMBERS = 6;
+
+// Interaction distance for vendors, bankers, tradeskill containers, etc.
+// Player must be within this distance to interact with NPCs/objects
+static constexpr float NPC_INTERACTION_DISTANCE = 15.0f;
+static constexpr float NPC_INTERACTION_DISTANCE_SQUARED = NPC_INTERACTION_DISTANCE * NPC_INTERACTION_DISTANCE;
 
 // Group member information (tracked locally for UI display)
 struct GroupMember
@@ -471,6 +500,8 @@ public:
 	bool IsMoving() const { return m_is_moving; }
 	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent; }
 	bool IsZoneChangeApproved() const { return m_zone_change_approved; }
+	void SetZoningEnabled(bool enabled) { m_zoning_enabled = enabled; }
+	bool IsZoningEnabled() const { return m_zoning_enabled; }
 	void ListEntities(const std::string& search = "") const;
 	void DumpEntityAppearance(uint16_t spawn_id) const;
 	void DumpEntityAppearance(const std::string& name) const;
@@ -504,6 +535,15 @@ public:
 	void SendClickDoor(uint8_t door_id, uint32_t item_id = 0);
 	const std::map<uint8_t, Door>& GetDoors() const { return m_doors; }
 
+	// World object / Tradeskill interaction
+	void SendClickObject(uint32_t drop_id);
+	void SendTradeSkillCombine(int16_t container_slot);
+	void SendCloseContainer(uint32_t drop_id);
+	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
+	const eqt::WorldObject* GetWorldObject(uint32_t drop_id) const;
+	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
+	void ClearWorldObjects();
+
 	// Group queries
 	bool IsInGroup() const { return m_in_group; }
 	bool IsGroupLeader() const { return m_is_group_leader; }
@@ -525,6 +565,19 @@ public:
 	const std::string& GetPendingInviterName() const { return m_pending_inviter_name; }
 	void AcceptGroupInvite();
 	void DeclineGroupInvite();
+
+	// Pet queries
+	bool HasPet() const { return m_pet_spawn_id != 0; }
+	uint16_t GetPetSpawnId() const { return m_pet_spawn_id; }
+	const Entity* GetPetEntity() const;
+	uint8_t GetPetHpPercent() const;
+	std::string GetPetName() const;
+	uint8_t GetPetLevel() const;
+	bool GetPetButtonState(EQT::PetButton button) const;
+
+	// Pet commands
+	void SendPetCommand(EQT::PetCommand command, uint16_t target_id = 0);
+	void DismissPet();
 
 	// Movement state and behavior methods
 	void SetMovementMode(MovementMode mode);
@@ -593,6 +646,11 @@ public:
 	uint32_t GetGold() const { return m_gold; }
 	uint32_t GetSilver() const { return m_silver; }
 	uint32_t GetCopper() const { return m_copper; }
+	uint32_t GetBankPlatinum() const { return m_bank_platinum; }
+	uint32_t GetBankGold() const { return m_bank_gold; }
+	uint32_t GetBankSilver() const { return m_bank_silver; }
+	uint32_t GetBankCopper() const { return m_bank_copper; }
+	uint32_t GetPracticePoints() const { return m_practice_points; }
 	float GetWeight() const { return m_weight; }
 	float GetMaxWeight() const { return m_max_weight; }
 
@@ -759,6 +817,8 @@ private:
 	void ZoneProcessSendGuildTributes(const EQ::Net::Packet &p);
 	void ZoneProcessSpawnDoor(const EQ::Net::Packet &p);
 	void ZoneProcessGroundSpawn(const EQ::Net::Packet &p);
+	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
+	void ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p);
 	void ZoneProcessSendZonepoints(const EQ::Net::Packet &p);
 	void ZoneProcessSendAAStats(const EQ::Net::Packet &p);
 	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);
@@ -846,9 +906,18 @@ private:
 	std::map<uint16_t, Entity> m_entities;
 	uint16_t m_my_spawn_id = 0;
 
+	// Pet tracking
+	uint16_t m_pet_spawn_id = 0;                                      // Our pet's spawn ID (0 = no pet)
+	bool m_pet_button_states[EQT::PET_BUTTON_COUNT] = {};             // Current button states
+
 	// Door tracking
 	std::map<uint8_t, Door> m_doors;
 	std::set<uint8_t> m_pending_door_clicks;  // Doors clicked by user, awaiting server response
+
+	// World object tracking (forges, looms, groundspawns, etc.)
+	std::map<uint32_t, eqt::WorldObject> m_world_objects;
+	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
+
 	uint16_t m_my_character_id = 0;
 	int m_character_select_index = -1;
 
@@ -877,6 +946,15 @@ private:
 	uint32_t m_gold = 0;
 	uint32_t m_silver = 0;
 	uint32_t m_copper = 0;
+
+	// Bank currency
+	uint32_t m_bank_platinum = 0;
+	uint32_t m_bank_gold = 0;
+	uint32_t m_bank_silver = 0;
+	uint32_t m_bank_copper = 0;
+
+	// Training/Practice points
+	uint32_t m_practice_points = 0;
 
 	// Weight
 	float m_weight = 0.0f;
@@ -940,6 +1018,7 @@ private:
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
 
 	// Zone line detection state
+	bool m_zoning_enabled = true;                                    // Whether zone line detection triggers zoning (matches visualization default)
 	bool m_zone_line_triggered = false;                              // Currently in a zone line
 	std::chrono::steady_clock::time_point m_zone_line_trigger_time;  // When zone line was triggered
 	float m_last_zone_check_x = 0.0f;                                // Last position checked for zone line
@@ -970,6 +1049,11 @@ private:
 
 	// Spell type processor (handles targeting and multi-target spells)
 	std::unique_ptr<EQ::SpellTypeProcessor> m_spell_type_processor;
+
+	// Pending spell scribe state (for handling server confirmation)
+	uint32_t m_pending_scribe_spell_id = 0;
+	uint16_t m_pending_scribe_book_slot = 0;
+	int16_t m_pending_scribe_source_slot = -1;
 
 	// Skill manager
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
@@ -1090,11 +1174,23 @@ private:
 	float m_vendor_sell_rate = 1.0f;  // Price multiplier for this vendor
 	std::string m_vendor_name;        // Vendor NPC name
 
+	// Player mode bank state
+	uint16_t m_banker_npc_id = 0;     // Banker NPC being interacted with (0 = bank closed)
+
+	// Player mode trainer state
+	uint16_t m_trainer_npc_id = 0;    // Trainer NPC being trained with (0 = not training)
+	std::string m_trainer_name;       // Trainer NPC name
+
 	// Graphics callbacks (OnZoneLoadedGraphics is public, others are private)
 	void OnSpawnAddedGraphics(const Entity& entity);
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
 	void OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
 	                          float dx, float dy, float dz, int32_t animation);
+
+	// Pet graphics callbacks
+	void OnPetCreated(const Entity& pet);
+	void OnPetRemoved();
+	void OnPetButtonStateChanged(EQT::PetButton button, bool state);
 
 	// Inventory packet handlers
 	void ZoneProcessMoveItem(const EQ::Net::Packet& p);
@@ -1102,6 +1198,9 @@ private:
 	void SetupInventoryCallbacks();
 	void SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity);
 	void SendDeleteItem(int16_t slot);
+
+	// Spell scribing from scroll
+	void ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot);
 
 	// Loot packet handlers (Player mode)
 	void ZoneProcessLootItemToUI(const EQ::Net::Packet& p);
@@ -1116,6 +1215,11 @@ private:
 	void ZoneProcessVendorItemToUI(const EQ::Net::Packet& p);
 	void ZoneProcessMoneyUpdate(const EQ::Net::Packet& p);
 	void SetupVendorCallbacks();
+	void SetupBankCallbacks();
+
+	// Skill trainer packet handlers and send functions
+	void ZoneProcessGMTraining(const EQ::Net::Packet& p);
+	void SetupTrainerCallbacks();
 
 	// Trade packet handlers and send functions
 	void SetupTradeManagerCallbacks();
@@ -1127,6 +1231,9 @@ private:
 	void SendMoveCoin(const EQT::MoveCoin_Struct& move);
 	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
 	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
+
+	// Tradeskill container callbacks
+	void SetupTradeskillCallbacks();
 
 	// Book/Note reading packet handlers
 	void ZoneProcessReadBook(const EQ::Net::Packet& p);
@@ -1153,6 +1260,19 @@ public:
 	void CloseVendorWindow();
 	bool IsVendorWindowOpen() const { return m_vendor_npc_id != 0; }
 	uint16_t GetVendorNpcId() const { return m_vendor_npc_id; }
+
+	// Bank window methods (Player mode with graphics)
+	void OpenBankWindow(uint16_t bankerNpcId = 0);
+	void CloseBankWindow();
+	bool IsBankWindowOpen() const { return m_banker_npc_id != 0; }
+	uint16_t GetBankerNpcId() const { return m_banker_npc_id; }
+
+	// Skill trainer window methods (Player mode with graphics)
+	void RequestTrainerWindow(uint16_t npcId);
+	void TrainSkill(uint8_t skillId);
+	void CloseTrainerWindow();
+	bool IsTrainerWindowOpen() const { return m_trainer_npc_id != 0; }
+	uint16_t GetTrainerNpcId() const { return m_trainer_npc_id; }
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);

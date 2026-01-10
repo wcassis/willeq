@@ -3,6 +3,7 @@
 #include "client/hc_map.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
+#include "client/world_object.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
@@ -13,18 +14,22 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "common/performance_metrics.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/ui/inventory_manager.h"
+#include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/hotbar_window.h"
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/graphics/ui/hotbar_types.h"
+#include "client/graphics/ui/spell_book_window.h"
 #include "common/util/json_config.h"
 #endif
+#include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
 #include <sstream>
@@ -123,6 +128,9 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_ZoneChange: return "HC_OP_ZoneChange";
 		case HC_OP_SetServerFilter: return "HC_OP_SetServerFilter";
 		case HC_OP_GroundSpawn: return "HC_OP_GroundSpawn";
+		case HC_OP_ClickObject: return "HC_OP_ClickObject";
+		case HC_OP_ClickObjectAction: return "HC_OP_ClickObjectAction";
+		case HC_OP_TradeSkillCombine: return "HC_OP_TradeSkillCombine";
 		case HC_OP_Weather: return "HC_OP_Weather";
 		case HC_OP_ClientUpdate: return "HC_OP_ClientUpdate";
 		case HC_OP_SpawnAppearance: return "HC_OP_SpawnAppearance";
@@ -205,6 +213,9 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_ShopEnd: return "HC_OP_ShopEnd";
 		case HC_OP_ShopEndConfirm: return "HC_OP_ShopEndConfirm";
 		case HC_OP_MoneyUpdate: return "HC_OP_MoneyUpdate";
+		case HC_OP_GMTraining: return "HC_OP_GMTraining";
+		case HC_OP_GMTrainSkill: return "HC_OP_GMTrainSkill";
+		case HC_OP_GMEndTraining: return "HC_OP_GMEndTraining";
 		default: return fmt::format("OP_Unknown_{:#06x}", opcode);
 	}
 }
@@ -311,7 +322,7 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 335: return "You gained raid experience!";
 		case 336: return "You gained group leadership experience!";
 		case 337: return "You gained raid leadership experience!";
-		default: return fmt::format("String ID {}", string_id);
+		default: return fmt::format("[Unknown message #{}]", string_id);
 	}
 }
 
@@ -675,6 +686,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 EverQuest::~EverQuest()
 {
+	// Output final performance metrics
+	LOG_INFO(MOD_MAIN, "{}", EQT::PerformanceMetrics::instance().generateReport());
+
 	// Stop the update loop before destroying
 	StopUpdateLoop();
 	
@@ -1380,11 +1394,15 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_ZONE, "Zone transition detected - disconnecting from current zone");
 
 		// Set player position to pending zone coordinates if we have them
+		// IMPORTANT: pending coordinates are in SERVER format (x=server_x, y=server_y)
+		// but m_x/m_y are in CLIENT DISPLAY format (m_x=server_y, m_y=server_x)
+		// So we need to swap X and Y when assigning
 		if (m_pending_zone_id != 0) {
-			LOG_DEBUG(MOD_ZONE, "Setting spawn position to ({:.1f}, {:.1f}, {:.1f})",
-				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z);
-			m_x = m_pending_zone_x;
-			m_y = m_pending_zone_y;
+			LOG_DEBUG(MOD_ZONE, "Setting spawn position: server coords ({:.1f}, {:.1f}, {:.1f}) -> client (m_x={:.1f}, m_y={:.1f})",
+				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z,
+				m_pending_zone_y, m_pending_zone_x);
+			m_x = m_pending_zone_y;  // client x (m_x) = server y
+			m_y = m_pending_zone_x;  // client y (m_y) = server x
 			m_z = m_pending_zone_z;
 			if (m_pending_zone_heading > 0) {
 				m_heading = m_pending_zone_heading;
@@ -1576,6 +1594,12 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_GroundSpawn:
 		ZoneProcessGroundSpawn(p);
+		break;
+	case HC_OP_ClickObjectAction:
+		ZoneProcessClickObjectAction(p);
+		break;
+	case HC_OP_TradeSkillCombine:
+		ZoneProcessTradeSkillCombine(p);
 		break;
 	case HC_OP_SendZonepoints:
 		ZoneProcessSendZonepoints(p);
@@ -1806,6 +1830,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_MoneyUpdate:
 		ZoneProcessMoneyUpdate(p);
 		break;
+	case HC_OP_GMTraining:
+		ZoneProcessGMTraining(p);
+		break;
 #endif
 	case 0x61f9: // OP_TargetCommand response
 		// Server may reject our target
@@ -1845,17 +1872,32 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_SkillUpdate:
 		// Skill level update
-		if (p.Length() >= 7) {
-			uint8_t skill_id = p.GetUInt8(2);
-			uint32_t value = p.GetUInt32(3);
+		// SkillUpdate_Struct: skillId (uint32) + value (uint32) = 8 bytes + 2 byte header
+		if (p.Length() >= 10) {
+			uint32_t skill_id_32 = p.GetUInt32(2);  // 4-byte skillId at offset 2
+			uint32_t value = p.GetUInt32(6);        // 4-byte value at offset 6
+			uint8_t skill_id = static_cast<uint8_t>(skill_id_32);  // Cast to uint8_t for skill manager
 
 			// Update skill manager
 			if (m_skill_manager) {
 				m_skill_manager->updateSkill(skill_id, value);
 			}
 
+#ifdef EQT_HAS_GRAPHICS
+			// Update trainer window if open
+			if (m_renderer && m_renderer->getWindowManager() &&
+				m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
+				m_renderer->getWindowManager()->updateSkillTrainerSkill(skill_id, value);
+				// Decrement practice points since training succeeded
+				m_renderer->getWindowManager()->decrementSkillTrainerPracticePoints();
+				if (m_practice_points > 0) {
+					--m_practice_points;
+				}
+			}
+#endif
+
 			if (s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", skill_id, value);
+				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
 			}
 		}
 		break;
@@ -1997,8 +2039,8 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 							it->second.name = new_name;
 							it->second.is_corpse = true;
 							if (s_debug_level >= 1) {
-								std::cout << fmt::format("[INFO] Mob {} renamed from '{}' to '{}' (corpse)", 
-									entity_id, old_name, new_name) << std::endl;
+								LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
+									entity_id, old_name, new_name);
 							}
 						}
 					}
@@ -2053,7 +2095,62 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		// Linked spell reuse timer - ignore for now
 		break;
 	case HC_OP_MemorizeSpell:
-		// Spell memorization confirmation - ignore for now
+		{
+			// MemorizeSpell_Struct: slot(4), spell_id(4), scribing(4), unknown0(4)
+			// Total: 16 bytes after opcode (2 bytes)
+			if (p.Length() < 18) {
+				LOG_WARN(MOD_SPELL, "MemorizeSpell packet too short: {} bytes", p.Length());
+				break;
+			}
+
+			uint32_t slot = p.GetUInt32(2);
+			uint32_t spell_id = p.GetUInt32(6);
+			uint32_t scribing = p.GetUInt32(10);
+
+			LOG_DEBUG(MOD_SPELL, "MemorizeSpell response: slot={} spell_id={} scribing={}",
+				slot, spell_id, scribing);
+
+			// Check if this is a scribe confirmation (scribing flag cleared to 0)
+			if (m_pending_scribe_spell_id != 0 &&
+				m_pending_scribe_spell_id == spell_id &&
+				scribing == 0) {
+
+				// Add spell to spellbook
+				if (m_spell_manager->scribeSpell(spell_id, static_cast<uint16_t>(slot))) {
+					// Get spell name for message
+					const EQ::SpellData* spellData = m_spell_manager->getSpell(spell_id);
+					std::string spellName = spellData ? spellData->name : "spell";
+
+					AddChatSystemMessage(fmt::format("You have learned {}!", spellName));
+					LOG_INFO(MOD_SPELL, "Successfully scribed spell {} ({}) to slot {}",
+						spellName, spell_id, slot);
+
+					// Refresh spellbook UI if open
+					if (m_renderer) {
+						auto* windowManager = m_renderer->getWindowManager();
+						if (windowManager) {
+							auto* spellBookWindow = windowManager->getSpellBookWindow();
+							if (spellBookWindow) {
+								spellBookWindow->refresh();
+							}
+						}
+					}
+				} else {
+					LOG_WARN(MOD_SPELL, "Failed to add spell {} to spellbook slot {}",
+						spell_id, slot);
+				}
+
+				// Clear pending scribe state
+				m_pending_scribe_spell_id = 0;
+				m_pending_scribe_book_slot = 0;
+				m_pending_scribe_source_slot = -1;
+			}
+			// Handle gem slot memorization confirmations (slot < MAX_SPELL_GEMS)
+			else if (slot < EQ::MAX_SPELL_GEMS && scribing == 0) {
+				// Existing gem memorization - SpellManager handles this via other mechanisms
+				LOG_DEBUG(MOD_SPELL, "Gem memorization confirmation: gem={} spell={}", slot, spell_id);
+			}
+		}
 		break;
 	case HC_OP_SpecialMesg:
 		{
@@ -2487,11 +2584,21 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	uint32_t AGI = p.GetUInt32(base + 2256);     // offset 2256
 	uint32_t WIS = p.GetUInt32(base + 2260);     // offset 2260
 
+	// Practice points (unspent training points)
+	uint32_t practice_points = p.GetUInt32(base + 2224);  // offset 2224
+
 	// Currency - player's on-person money
 	uint32_t platinum = p.GetUInt32(base + 4428);  // offset 4428
 	uint32_t gold = p.GetUInt32(base + 4432);      // offset 4432
 	uint32_t silver = p.GetUInt32(base + 4436);    // offset 4436
 	uint32_t copper = p.GetUInt32(base + 4440);    // offset 4440
+
+	// Bank currency - money stored in bank
+	// From titanium_structs.h: platinum_bank at 13136, gold_bank at 13140, etc.
+	uint32_t bank_platinum = p.GetUInt32(base + 13136);  // offset 13136
+	uint32_t bank_gold = p.GetUInt32(base + 13140);      // offset 13140
+	uint32_t bank_silver = p.GetUInt32(base + 13144);    // offset 13144
+	uint32_t bank_copper = p.GetUInt32(base + 13148);    // offset 13148
 
 	// Character identity
 	char name[64] = {0};
@@ -2568,6 +2675,11 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_gold = gold;
 	m_silver = silver;
 	m_copper = copper;
+	m_bank_platinum = bank_platinum;
+	m_bank_gold = bank_gold;
+	m_bank_silver = bank_silver;
+	m_bank_copper = bank_copper;
+	m_practice_points = practice_points;
 	m_last_name = last_name;
 
 	// Initialize skill manager with player info first
@@ -2644,6 +2756,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_MAIN, "STR:{} STA:{} CHA:{} DEX:{} INT:{} AGI:{} WIS:{}",
 			STR, STA, CHA, DEX, INT, AGI, WIS);
 		LOG_DEBUG(MOD_MAIN, "Currency: {}pp {}gp {}sp {}cp", platinum, gold, silver, copper);
+		LOG_DEBUG(MOD_MAIN, "Bank Currency: {}pp {}gp {}sp {}cp", bank_platinum, bank_gold, bank_silver, bank_copper);
+		LOG_DEBUG(MOD_MAIN, "Practice points (training sessions): {}", practice_points);
 		LOG_DEBUG(MOD_MAIN, "Entity ID: {} (from offset 14384)", entity_id);
 		LOG_DEBUG(MOD_MAIN, "===========================");
 	}
@@ -2930,6 +3044,82 @@ void EverQuest::SendDeleteItem(int16_t slot)
 
 	DumpPacket("C->S", HC_OP_DeleteItem, packet);
 	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_SPELL, "No zone connection, cannot scribe spell");
+		return;
+	}
+
+	if (!m_spell_manager) {
+		LOG_WARN(MOD_SPELL, "No spell manager, cannot scribe spell");
+		return;
+	}
+
+	// Check if spell is already scribed
+	if (m_spell_manager->hasSpellScribed(spellId)) {
+		AddChatSystemMessage("You already have this spell scribed in your spellbook.");
+		LOG_DEBUG(MOD_SPELL, "Spell {} already scribed, not sending packets", spellId);
+		return;
+	}
+
+	// Check level/class requirements
+	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
+	if (spellData) {
+		uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(m_class));
+		if (reqLevel == 255) {
+			AddChatSystemMessage("Your class cannot use this spell.");
+			LOG_DEBUG(MOD_SPELL, "Class {} cannot use spell {}", m_class, spellId);
+			return;
+		}
+		if (m_level < reqLevel) {
+			AddChatSystemMessage(fmt::format("You must be level {} to scribe this spell.", reqLevel));
+			LOG_DEBUG(MOD_SPELL, "Level {} too low to scribe spell {} (requires {})",
+				m_level, spellId, reqLevel);
+			return;
+		}
+	}
+
+	LOG_INFO(MOD_SPELL, "Scribing spell {} to spellbook slot {} (scroll already on cursor)",
+		spellId, bookSlot);
+
+	// Note: The scroll was already moved to cursor slot when Ctrl+clicked
+	// (InventoryManager::setSpellForScribe sends MoveItem to cursor)
+	// We only need to send OP_MemorizeSpell here
+
+	// Send OP_MemorizeSpell with scribing action
+	// MemorizeSpell_Struct:
+	// - slot (4 bytes): spellbook slot (0-399) when scribing
+	// - spell_id (4 bytes): spell ID
+	// - scribing (4 bytes): action type (0=scribe from scroll, 1=memorize, 2=forget, 3=spellbar)
+	// - reduction (4 bytes): reuse timer reduction
+	{
+		EQ::Net::DynamicPacket memPacket;
+		memPacket.Resize(18);  // opcode(2) + struct(16)
+
+		constexpr uint32_t SCRIBING_FROM_SCROLL = 0;
+
+		memPacket.PutUInt16(0, HC_OP_MemorizeSpell);
+		memPacket.PutUInt32(2, bookSlot);    // spellbook slot (0-399)
+		memPacket.PutUInt32(6, spellId);     // spell ID
+		memPacket.PutUInt32(10, SCRIBING_FROM_SCROLL);  // scribing action = 0
+		memPacket.PutUInt32(14, 0);          // reduction
+
+		LOG_DEBUG(MOD_SPELL, "Sending MemorizeSpell: spell={} book_slot={} scribing=0 (scribe from scroll)",
+			spellId, bookSlot);
+		DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
+		m_zone_connection->QueuePacket(memPacket);
+	}
+
+	// Store pending scribe state for confirmation handling
+	m_pending_scribe_spell_id = spellId;
+	m_pending_scribe_book_slot = bookSlot;
+	m_pending_scribe_source_slot = sourceSlot;
+
+	AddChatSystemMessage(fmt::format("Scribing {}...",
+		spellData ? spellData->name : "spell"));
 }
 
 // Trade send functions
@@ -3573,6 +3763,157 @@ void EverQuest::SetupVendorCallbacks()
 	}
 }
 
+void EverQuest::SetupBankCallbacks()
+{
+	if (!m_renderer || !m_renderer->getWindowManager()) {
+		return;
+	}
+
+	auto* windowManager = m_renderer->getWindowManager();
+
+	// Set callback for when player closes the bank window
+	windowManager->setOnBankClose([this]() {
+		CloseBankWindow();
+	});
+
+	// Set callback for currency movement between bank and inventory
+	windowManager->setOnBankCurrencyMove([this, windowManager](int32_t coinType, int32_t amount, bool fromBank) {
+		// Build and send MoveCoin packet
+		EQT::MoveCoin_Struct move;
+		if (fromBank) {
+			// Moving from bank to inventory
+			move.from_slot = EQT::COINSLOT_BANK;
+			move.to_slot = EQT::COINSLOT_INVENTORY;
+		} else {
+			// Moving from inventory to bank
+			move.from_slot = EQT::COINSLOT_INVENTORY;
+			move.to_slot = EQT::COINSLOT_BANK;
+		}
+		move.cointype1 = coinType;
+		move.cointype2 = coinType;
+		move.amount = amount;
+
+		SendMoveCoin(move);
+
+		// Update local currency values (server will confirm, but update locally for responsiveness)
+		uint32_t* srcPlatinum = fromBank ? &m_bank_platinum : &m_platinum;
+		uint32_t* srcGold = fromBank ? &m_bank_gold : &m_gold;
+		uint32_t* srcSilver = fromBank ? &m_bank_silver : &m_silver;
+		uint32_t* srcCopper = fromBank ? &m_bank_copper : &m_copper;
+
+		uint32_t* dstPlatinum = fromBank ? &m_platinum : &m_bank_platinum;
+		uint32_t* dstGold = fromBank ? &m_gold : &m_bank_gold;
+		uint32_t* dstSilver = fromBank ? &m_silver : &m_bank_silver;
+		uint32_t* dstCopper = fromBank ? &m_copper : &m_bank_copper;
+
+		switch (coinType) {
+			case EQT::COINTYPE_PP:
+				if (*srcPlatinum >= static_cast<uint32_t>(amount)) {
+					*srcPlatinum -= amount;
+					*dstPlatinum += amount;
+				}
+				break;
+			case EQT::COINTYPE_GP:
+				if (*srcGold >= static_cast<uint32_t>(amount)) {
+					*srcGold -= amount;
+					*dstGold += amount;
+				}
+				break;
+			case EQT::COINTYPE_SP:
+				if (*srcSilver >= static_cast<uint32_t>(amount)) {
+					*srcSilver -= amount;
+					*dstSilver += amount;
+				}
+				break;
+			case EQT::COINTYPE_CP:
+				if (*srcCopper >= static_cast<uint32_t>(amount)) {
+					*srcCopper -= amount;
+					*dstCopper += amount;
+				}
+				break;
+		}
+
+		// Update UI displays
+		windowManager->updateBaseCurrency(m_platinum, m_gold, m_silver, m_copper);
+		windowManager->updateBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+		LOG_DEBUG(MOD_INVENTORY, "Bank currency move: type={} amount={} fromBank={}, bank now: {}pp {}gp {}sp {}cp, inv now: {}pp {}gp {}sp {}cp",
+			coinType, amount, fromBank,
+			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
+			m_platinum, m_gold, m_silver, m_copper);
+	});
+
+	// Set callback for currency conversion in bank (cp->sp->gp->pp)
+	windowManager->setOnBankCurrencyConvert([this, windowManager](int32_t fromCoinType, int32_t amount) {
+		// Conversion is always 10:1 ratio: 10 cp -> 1 sp, 10 sp -> 1 gp, 10 gp -> 1 pp
+		// fromCoinType: 0=copper, 1=silver, 2=gold (platinum can't be converted further)
+		// amount: number of source coins to convert (must be multiple of 10)
+
+		if (amount < 10 || (amount % 10) != 0) {
+			LOG_WARN(MOD_INVENTORY, "Invalid conversion amount: {} (must be multiple of 10)", amount);
+			return;
+		}
+
+		// Determine destination coin type (one tier higher)
+		int32_t toCoinType = fromCoinType + 1;
+		if (toCoinType > EQT::COINTYPE_PP) {
+			LOG_WARN(MOD_INVENTORY, "Cannot convert platinum further");
+			return;
+		}
+
+		// Build and send MoveCoin packet for conversion
+		// Server handles conversion automatically when cointype1 != cointype2
+		EQT::MoveCoin_Struct move;
+		move.from_slot = EQT::COINSLOT_BANK;
+		move.to_slot = EQT::COINSLOT_BANK;
+		move.cointype1 = fromCoinType;   // Source coin type
+		move.cointype2 = toCoinType;     // Destination coin type (one tier higher)
+		move.amount = amount;
+
+		SendMoveCoin(move);
+
+		LOG_DEBUG(MOD_INVENTORY, "Sent bank currency conversion: {} {} -> {} (cointype {} -> {})",
+			amount, (fromCoinType == EQT::COINTYPE_CP ? "copper" :
+			         fromCoinType == EQT::COINTYPE_SP ? "silver" : "gold"),
+			(toCoinType == EQT::COINTYPE_SP ? "silver" :
+			 toCoinType == EQT::COINTYPE_GP ? "gold" : "platinum"),
+			fromCoinType, toCoinType);
+
+		// Update local values for UI responsiveness (server will confirm)
+		uint32_t convertedAmount = amount / 10;
+		switch (fromCoinType) {
+			case EQT::COINTYPE_CP:  // Copper -> Silver
+				if (m_bank_copper >= static_cast<uint32_t>(amount)) {
+					m_bank_copper -= amount;
+					m_bank_silver += convertedAmount;
+				}
+				break;
+			case EQT::COINTYPE_SP:  // Silver -> Gold
+				if (m_bank_silver >= static_cast<uint32_t>(amount)) {
+					m_bank_silver -= amount;
+					m_bank_gold += convertedAmount;
+				}
+				break;
+			case EQT::COINTYPE_GP:  // Gold -> Platinum
+				if (m_bank_gold >= static_cast<uint32_t>(amount)) {
+					m_bank_gold -= amount;
+					m_bank_platinum += convertedAmount;
+				}
+				break;
+		}
+
+		// Update UI
+		windowManager->updateBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+		LOG_DEBUG(MOD_INVENTORY, "Bank currency after conversion: {}pp {}gp {}sp {}cp",
+			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+	});
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_INVENTORY, "Bank callbacks set up");
+	}
+}
+
 void EverQuest::SetupTradeWindowCallbacks()
 {
 	if (!m_renderer || !m_renderer->getWindowManager()) {
@@ -3618,6 +3959,58 @@ void EverQuest::SetupTradeWindowCallbacks()
 	});
 
 	LOG_DEBUG(MOD_MAIN, "Trade window callbacks set up");
+}
+
+void EverQuest::SetupTradeskillCallbacks()
+{
+	auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+	if (!windowManager) {
+		LOG_WARN(MOD_MAIN, "Cannot set up tradeskill callbacks - window manager not available");
+		return;
+	}
+
+	// Set callback for when player clicks Combine in tradeskill container
+	windowManager->setOnTradeskillCombine([this]() {
+		// Get the tradeskill window to determine if it's a world container or inventory container
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (!windowManager) return;
+
+		auto* tradeskillWindow = windowManager->getTradeskillContainerWindow();
+		if (!tradeskillWindow || !tradeskillWindow->isOpen()) return;
+
+		if (tradeskillWindow->isWorldContainer()) {
+			// For world containers, send combine to the world container slot
+			SendTradeSkillCombine(eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE);
+			LOG_DEBUG(MOD_INVENTORY, "Sent tradeskill combine for world container");
+		} else {
+			// For inventory containers, send combine to the container's slot
+			int16_t containerSlot = tradeskillWindow->getContainerSlot();
+			SendTradeSkillCombine(containerSlot);
+			LOG_DEBUG(MOD_INVENTORY, "Sent tradeskill combine for inventory container at slot {}", containerSlot);
+		}
+	});
+
+	// Set callback for when tradeskill container window is closed
+	windowManager->setOnTradeskillClose([this]() {
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (!windowManager) return;
+
+		auto* tradeskillWindow = windowManager->getTradeskillContainerWindow();
+		if (!tradeskillWindow) return;
+
+		if (tradeskillWindow->isWorldContainer()) {
+			// For world containers, notify server that we're closing
+			uint32_t dropId = tradeskillWindow->getWorldObjectId();
+			if (dropId != 0) {
+				SendCloseContainer(dropId);
+				LOG_DEBUG(MOD_INVENTORY, "Sent close container for world object dropId={}", dropId);
+			}
+			m_active_tradeskill_object_id = 0;
+		}
+		// For inventory containers, nothing special needed - items are already in inventory
+	});
+
+	LOG_DEBUG(MOD_MAIN, "Tradeskill container callbacks set up");
 }
 
 void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
@@ -3824,6 +4217,12 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 				static_cast<int32_t>(m_silver),
 				static_cast<int32_t>(m_copper));
 		}
+
+		// Update trainer window money display
+		if (m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
+			m_renderer->getWindowManager()->updateSkillTrainerMoney(
+				m_platinum, m_gold, m_silver, m_copper);
+		}
 	}
 #endif
 }
@@ -3989,6 +4388,234 @@ void EverQuest::CloseVendorWindow()
 	m_vendor_npc_id = 0;
 	m_vendor_sell_rate = 1.0f;
 	m_vendor_name.clear();
+}
+
+void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
+{
+	if (m_banker_npc_id != 0) {
+		// Already have bank open, close it first
+		CloseBankWindow();
+	}
+
+	// Use a dummy NPC ID if none provided (for /bank command testing)
+	// In real use, this would be the banker NPC's spawn ID
+	m_banker_npc_id = (bankerNpcId != 0) ? bankerNpcId : 1;
+
+	LOG_DEBUG(MOD_INVENTORY, "Opening bank window (banker NPC: {})", m_banker_npc_id);
+
+	// Open the bank window UI
+	if (m_renderer && m_renderer->getWindowManager()) {
+		// Update bank currency before opening window
+		m_renderer->getWindowManager()->updateBankCurrency(
+			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+		m_renderer->getWindowManager()->openBankWindow();
+	}
+
+	AddChatSystemMessage("Bank window opened");
+}
+
+void EverQuest::CloseBankWindow()
+{
+	if (m_banker_npc_id == 0) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_INVENTORY, "Closing bank window (banker NPC: {})", m_banker_npc_id);
+
+	// Close the bank window UI and all bank bag windows
+	if (m_renderer && m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->closeBankWindow();
+	}
+
+	// Clear bank state
+	m_banker_npc_id = 0;
+
+	AddChatSystemMessage("Bank window closed");
+}
+// ============================================================================
+// Skill Trainer Window Methods
+// ============================================================================
+
+void EverQuest::SetupTrainerCallbacks()
+{
+	if (!m_renderer || !m_renderer->getWindowManager()) {
+		return;
+	}
+
+	auto* windowManager = m_renderer->getWindowManager();
+
+	// Set callback for when player clicks Train button
+	windowManager->setSkillTrainCallback([this](uint8_t skillId) {
+		TrainSkill(skillId);
+	});
+
+	// Set callback for when player closes the trainer window
+	windowManager->setTrainerCloseCallback([this]() {
+		CloseTrainerWindow();
+	});
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Trainer callbacks set up");
+	}
+}
+
+void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
+{
+	// Server response to our training request
+	// GMTrainee_Struct: npcid(4), playerid(4), skills[100](400), unknown408[40](40) = 448 bytes
+	if (p.Length() < sizeof(EQT::GMTrainee_Struct) + 2) {
+		LOG_WARN(MOD_MAIN, "GMTraining packet too short: {} bytes", p.Length());
+		return;
+	}
+
+	const auto* trainee = reinterpret_cast<const EQT::GMTrainee_Struct*>(
+		static_cast<const char*>(p.Data()) + 2);
+
+	uint32_t npc_id = trainee->npcid;
+	uint32_t player_id = trainee->playerid;
+
+	LOG_DEBUG(MOD_MAIN, "GMTraining response: npc_id={} player_id={}", npc_id, player_id);
+
+	// Store trainer state
+	m_trainer_npc_id = static_cast<uint16_t>(npc_id);
+
+	// Get trainer name from entity if available
+	auto it = m_entities.find(m_trainer_npc_id);
+	if (it != m_entities.end()) {
+		m_trainer_name = EQT::toDisplayName(it->second.name);
+	} else {
+		m_trainer_name = "Trainer";
+	}
+
+	// Build list of trainable skills
+	std::vector<eqt::ui::TrainerSkillEntry> skillEntries;
+
+	for (uint8_t skill_id = 0; skill_id < EQT::MAX_PP_SKILL; ++skill_id) {
+		uint32_t max_trainable = trainee->skills[skill_id];
+
+		// Skip skills with max_trainable = 0 (not trainable at this trainer)
+		if (max_trainable == 0) {
+			continue;
+		}
+
+		// Get current skill value
+		uint32_t current_value = 0;
+		if (m_skill_manager) {
+			current_value = m_skill_manager->getSkillValue(skill_id);
+		}
+
+		// Skip skills already at or above max
+		if (current_value >= max_trainable) {
+			continue;
+		}
+
+		// Get skill name
+		const char* skill_name = EQ::getSkillName(skill_id);
+		std::wstring name_wstr(skill_name, skill_name + strlen(skill_name));
+
+		// Calculate training cost
+		// EQ training cost formula: (current_value + 1) * 10 copper per point
+		// For simplicity, we'll use the cost for training one point
+		uint32_t cost = (current_value + 1) * 10;
+
+		eqt::ui::TrainerSkillEntry entry;
+		entry.skill_id = skill_id;
+		entry.name = name_wstr;
+		entry.current_value = current_value;
+		entry.max_trainable = max_trainable;
+		entry.cost = cost;
+
+		skillEntries.push_back(entry);
+
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "  Skill {}: {} cur={} max={} cost={}",
+				skill_id, skill_name, current_value, max_trainable, cost);
+		}
+	}
+
+	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={}) with {} trainable skills",
+		m_trainer_name, m_trainer_npc_id, skillEntries.size());
+
+	// Open the trainer window
+	if (m_renderer && m_renderer->getWindowManager()) {
+		std::wstring trainer_name_wstr(m_trainer_name.begin(), m_trainer_name.end());
+		m_renderer->getWindowManager()->openSkillTrainerWindow(
+			m_trainer_npc_id, trainer_name_wstr, skillEntries);
+
+		// Update player money in trainer window
+		m_renderer->getWindowManager()->updateSkillTrainerMoney(
+			GetPlatinum(), GetGold(), GetSilver(), GetCopper());
+
+		// Update practice points (free training sessions)
+		m_renderer->getWindowManager()->updateSkillTrainerPracticePoints(
+			GetPracticePoints());
+	}
+}
+
+void EverQuest::RequestTrainerWindow(uint16_t npcId)
+{
+	if (m_trainer_npc_id != 0) {
+		LOG_DEBUG(MOD_MAIN, "Already in trainer session with NPC {}", m_trainer_npc_id);
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Requesting trainer window for NPC {}", npcId);
+
+	// Send GMTrainee_Struct
+	EQ::Net::DynamicPacket pkt;
+	EQT::GMTrainee_Struct req;
+	memset(&req, 0, sizeof(req));
+	req.npcid = npcId;
+	req.playerid = m_my_spawn_id;
+	pkt.PutData(0, &req, sizeof(req));
+	QueuePacket(HC_OP_GMTraining, &pkt);
+}
+
+void EverQuest::TrainSkill(uint8_t skillId)
+{
+	if (m_trainer_npc_id == 0) {
+		LOG_WARN(MOD_MAIN, "TrainSkill: Not in trainer session");
+		AddChatSystemMessage("You are not interacting with a trainer.");
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Training skill {} with trainer {}", skillId, m_trainer_npc_id);
+
+	// Send GMSkillChange_Struct
+	EQ::Net::DynamicPacket pkt;
+	EQT::GMSkillChange_Struct train;
+	memset(&train, 0, sizeof(train));
+	train.npcid = static_cast<uint16_t>(m_trainer_npc_id);
+	train.skillbank = 0;  // 0 = normal skills, 1 = languages
+	train.skill_id = skillId;
+	pkt.PutData(0, &train, sizeof(train));
+	QueuePacket(HC_OP_GMTrainSkill, &pkt);
+}
+
+void EverQuest::CloseTrainerWindow()
+{
+	if (m_trainer_npc_id == 0) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Closing trainer window for NPC {}", m_trainer_npc_id);
+
+	// Send GMTrainEnd_Struct
+	EQ::Net::DynamicPacket pkt;
+	EQT::GMTrainEnd_Struct end;
+	end.npcid = m_trainer_npc_id;
+	end.playerid = m_my_spawn_id;
+	pkt.PutData(0, &end, sizeof(end));
+	QueuePacket(HC_OP_GMEndTraining, &pkt);
+
+	// Close the UI immediately (don't wait for server confirmation)
+	if (m_renderer && m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->closeSkillTrainerWindow();
+	}
+
+	// Clear trainer state
+	m_trainer_npc_id = 0;
+	m_trainer_name.clear();
 }
 #endif
 
@@ -4187,6 +4814,10 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		entity.delta_heading = 0;
 		entity.last_update_time = std::time(nullptr);
 
+		// Store pet info (for deferred pet detection after our spawn ID is known)
+		entity.is_pet = p.GetUInt8(offset + 329);
+		entity.pet_owner_id = p.GetUInt32(offset + 189);
+
 		// Validate the spawn data before adding
 		if (entity.spawn_id > 0 && entity.spawn_id < 100000 && !entity.name.empty()) {
 			// Check if this is our own character and update our position
@@ -4273,6 +4904,26 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 	}
 	
 	LOG_INFO(MOD_ZONE, "Loaded {} spawns in zone", spawn_count);
+
+	// Second pass: Check for pet after all spawns are loaded (if we know our spawn ID)
+	// This handles the case where our character is in ZoneSpawns. If not, deferred
+	// pet detection in ClientUpdate will find the pet when our spawn ID is set.
+	if (m_my_spawn_id != 0 && m_pet_spawn_id == 0) {
+		for (const auto& pair : m_entities) {
+			const Entity& ent = pair.second;
+			if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
+				m_pet_spawn_id = ent.spawn_id;
+				std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+				m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+				LOG_INFO(MOD_MAIN, "Pet detected in ZoneSpawns: {} (ID: {}) Level {} owned by us (ID: {})",
+					ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
+#ifdef EQT_HAS_GRAPHICS
+				OnPetCreated(ent);
+#endif
+				break;
+			}
+		}
+	}
 }
 
 void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
@@ -4561,8 +5212,7 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 	uint8_t anim_id = p.GetUInt8(5);
 
 	if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-		std::cout << fmt::format("[EMOTE] spawn_id={}, speed={}, anim_id={}",
-			spawn_id, anim_speed, anim_id) << std::endl;
+		LOG_DEBUG(MOD_ENTITY, "[EMOTE] spawn_id={}, speed={}, anim_id={}", spawn_id, anim_speed, anim_id);
 	}
 
 	// Update entity animation state
@@ -4578,84 +5228,173 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		bool loop = false;
 		bool playThrough = true;  // Most emotes/attacks should play through
 
+		// Get entity's weapon skill types for weapon-based attack animations
+		uint8_t primaryWeaponSkill = m_renderer->getEntityPrimaryWeaponSkill(spawn_id);
+		uint8_t secondaryWeaponSkill = m_renderer->getEntitySecondaryWeaponSkill(spawn_id);
+
 		// Map common animation IDs to EQ model animation codes
 		// Combat animations (these are the key ones for NPC combat)
 		switch (anim_id) {
-		// Combat attack animations
+		// Combat attack animations - use weapon-based animation
 		case 1:  // Primary hand attack
 		case 5:  // Attack
 		case 6:  // Attack2
-			animCode = "c01";  // Primary attack
+			// Use weapon skill type to determine correct animation
+			animCode = EQ::getWeaponAttackAnimation(primaryWeaponSkill, false, false);
 			break;
 		case 2:  // Secondary hand attack
-			animCode = "c02";  // Secondary attack
+			// Use secondary weapon skill type
+			animCode = EQ::getWeaponAttackAnimation(secondaryWeaponSkill, true, false);
+			break;
+
+		// Combat skill animations (use correct animation codes from reference)
+		case 10: // Round kick
+			animCode = EQ::ANIM_ROUND_KICK;  // c11
 			break;
 		case 11: // ANIM_KICK
-			animCode = "t02";  // Kick
+			animCode = EQ::ANIM_KICK;  // c01 - basic kick
 			break;
-		case 12: // ANIM_BASH (when not walking)
-			animCode = "c05";  // Bash/Shield bash
-			break;
-		case 10: // Round kick
-			animCode = "t01";  // Roundhouse kick
+		case 12: // ANIM_BASH
+			animCode = EQ::ANIM_BASH;  // c07 - Shield bash
 			break;
 		case 14: // Flying kick
-			animCode = "t03";  // Flying kick
+			animCode = EQ::ANIM_FLYING_KICK;  // t07
 			break;
 
 		// Damage/hit reaction
 		case 3:  // Damage from front
 		case 4:  // Damage from back
-			animCode = "d01";  // Damage reaction
+			animCode = EQ::ANIM_DAMAGE_MINOR;  // d01
 			break;
 
 		// Death
 		case 16: // ANIM_DEATH
-			animCode = "d05";  // Death animation
+			animCode = EQ::ANIM_DEATH;  // d05
 			break;
 
-		// Social/Emote animations
-		case 18: // ANIM_CRY
-			animCode = "s01";  // Cry
+		// Social/Emote animations (s01-s28)
+		// EQ Titanium animation IDs mapped to pre-Luclin animation codes
+		case 18: // ANIM_CHEER
+			animCode = EQ::ANIM_EMOTE_CHEER;  // s01 - Cheer
 			break;
 		case 19: // ANIM_KNEEL
-			animCode = "l08";  // Kneel/crouch
+			animCode = EQ::ANIM_CROUCHING;  // l08 - Crouching
 			loop = true;
 			playThrough = false;
 			break;
 		case 20: // ANIM_JUMP
-			animCode = "l05";  // Jump
+			animCode = EQ::ANIM_FALLING;  // l05 - Falling/jump
+			break;
+		case 21: // ANIM_CRY / ANIM_MOURN
+			animCode = EQ::ANIM_EMOTE_MOURN;  // s02 - Mourn/Disappointed
+			break;
+		case 23: // ANIM_RUDE
+			animCode = EQ::ANIM_EMOTE_RUDE;  // s04 - Rude
+			break;
+		case 24: // ANIM_YAWN
+			animCode = EQ::ANIM_EMOTE_YAWN;  // s05 - Yawn
+			break;
+		case 26: // ANIM_NOD
+			animCode = EQ::ANIM_EMOTE_NOD;  // s06 - Nod
+			break;
+		case 27: // ANIM_AMAZED
+			animCode = EQ::ANIM_EMOTE_AMAZED;  // s07 - Amazed
+			break;
+		case 28: // ANIM_PLEAD
+			animCode = EQ::ANIM_EMOTE_PLEAD;  // s08 - Plead
 			break;
 		case 29: // ANIM_WAVE
-			animCode = "s02";  // Wave
+			animCode = EQ::ANIM_EMOTE_WAVE;  // s03 - Wave
+			break;
+		case 30: // ANIM_CLAP
+			animCode = EQ::ANIM_EMOTE_CLAP;  // s09 - Clap
+			break;
+		case 31: // ANIM_DISTRESS
+			animCode = EQ::ANIM_EMOTE_DISTRESS;  // s10 - Distress/Hungry
+			break;
+		case 32: // ANIM_BLUSH
+			animCode = EQ::ANIM_EMOTE_BLUSH;  // s11 - Blush
+			break;
+		case 33: // ANIM_CHUCKLE
+			animCode = EQ::ANIM_EMOTE_CHUCKLE;  // s12 - Chuckle
+			break;
+		case 34: // ANIM_COUGH / ANIM_BURP
+			animCode = EQ::ANIM_EMOTE_BURP;  // s13 - Burp/Cough
+			break;
+		case 35: // ANIM_DUCK
+			animCode = EQ::ANIM_EMOTE_DUCK;  // s14 - Duck
+			break;
+		case 36: // ANIM_PUZZLE / ANIM_LOOK_AROUND
+			animCode = EQ::ANIM_EMOTE_PUZZLE;  // s15 - Look Around/Puzzle
 			break;
 		case 58: // ANIM_DANCE
-			animCode = "s03";  // Dance
+			animCode = EQ::ANIM_EMOTE_DANCE;  // s16 - Dance
 			loop = true;
 			playThrough = false;
 			break;
+		case 59: // ANIM_BLINK
+			animCode = EQ::ANIM_EMOTE_BLINK;  // s17 - Blink
+			break;
+		case 60: // ANIM_GLARE
+			animCode = EQ::ANIM_EMOTE_GLARE;  // s18 - Glare
+			break;
+		case 61: // ANIM_DROOL
+			animCode = EQ::ANIM_EMOTE_DROOL;  // s19 - Drool
+			break;
+		case 62: // ANIM_KNEEL_EMOTE
+			animCode = EQ::ANIM_EMOTE_KNEEL;  // s20 - Kneel (emote)
+			break;
 		case 63: // ANIM_LAUGH
-			animCode = "s04";  // Laugh
+			animCode = EQ::ANIM_EMOTE_LAUGH;  // s21 - Laugh
 			break;
 		case 64: // ANIM_POINT
-			animCode = "s05";  // Point
+			animCode = EQ::ANIM_EMOTE_POINT;  // s22 - Point
 			break;
-		case 65: // ANIM_SHRUG
-			animCode = "s06";  // Shrug
+		case 65: // ANIM_SHRUG / ANIM_PONDER
+			animCode = EQ::ANIM_EMOTE_SHRUG;  // s23 - Ponder/Shrug
+			break;
+		case 66: // ANIM_READY
+			animCode = EQ::ANIM_EMOTE_READY;  // s24 - Ready
 			break;
 		case 67: // ANIM_SALUTE
-			animCode = "s07";  // Salute
+			animCode = EQ::ANIM_EMOTE_SALUTE;  // s25 - Salute
+			break;
+		case 68: // ANIM_SHIVER
+			animCode = EQ::ANIM_EMOTE_SHIVER;  // s26 - Shiver
+			break;
+		case 69: // ANIM_TAP_FOOT
+			animCode = EQ::ANIM_EMOTE_TAP_FOOT;  // s27 - Tap Foot
+			break;
+		case 70: // ANIM_BOW
+			animCode = EQ::ANIM_EMOTE_BOW;  // s28 - Bow
+			break;
+
+		// Bard instrument animations
+		case 43: // ANIM_STRINGED_INSTRUMENT
+			animCode = EQ::ANIM_STRINGED_INST;  // t02 - Stringed Instrument
+			loop = true;
+			playThrough = false;
+			break;
+		case 44: // ANIM_WIND_INSTRUMENT
+			animCode = EQ::ANIM_WIND_INST;  // t03 - Wind Instrument
+			loop = true;
+			playThrough = false;
+			break;
+
+		// Casting animations (when triggered via emote packet)
+		case 42: // ANIM_CAST
+			animCode = EQ::ANIM_CAST_PULLBACK;  // t04 - Cast Pull Back
 			break;
 
 		// Special animations
 		case 105: // ANIM_LOOT
-			animCode = "t07";  // Looting
+			animCode = EQ::ANIM_POSE_KNEEL;  // p05 - kneeling/looting
 			break;
 
 		default:
-			// Unknown animation - try to play c01 for combat-range IDs
+			// Unknown animation - use weapon-based attack for combat-range IDs
 			if (anim_id >= 1 && anim_id <= 15) {
-				animCode = "c01";  // Default combat animation
+				animCode = EQ::getWeaponAttackAnimation(primaryWeaponSkill, false, false);
 			}
 			break;
 		}
@@ -4663,8 +5402,8 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		if (!animCode.empty()) {
 			m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
 			if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-				std::cout << fmt::format("[EMOTE] Set animation '{}' on spawn_id={} (anim_id={})",
-					animCode, spawn_id, anim_id) << std::endl;
+				LOG_DEBUG(MOD_ENTITY, "[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
+					animCode, spawn_id, anim_id, primaryWeaponSkill);
 			}
 		}
 	}
@@ -4673,7 +5412,52 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 {
-	LOG_TRACE(MOD_ENTITY, "Ground spawn received");
+	// Parse Object_Struct from packet (skip 2-byte opcode)
+	if (p.Length() < 2 + sizeof(EQT::Object_Struct)) {
+		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need {})",
+			p.Length(), 2 + sizeof(EQT::Object_Struct));
+		return;
+	}
+
+	const auto* obj = reinterpret_cast<const EQT::Object_Struct*>(p.Data() + 2);
+
+	// Create WorldObject from parsed data
+	eqt::WorldObject worldObj;
+	worldObj.drop_id = obj->drop_id;
+	worldObj.name = std::string(obj->object_name, strnlen(obj->object_name, sizeof(obj->object_name)));
+	worldObj.x = obj->x;
+	worldObj.y = obj->y;
+	worldObj.z = obj->z;
+	worldObj.heading = obj->heading;
+	worldObj.size = obj->size;
+	worldObj.object_type = obj->object_type;
+	worldObj.zone_id = obj->zone_id;
+	worldObj.zone_instance = obj->zone_instance;
+	worldObj.incline = obj->incline;
+	worldObj.tilt_x = obj->tilt_x;
+	worldObj.tilt_y = obj->tilt_y;
+	worldObj.solid_type = obj->solid_type;
+
+	// Store the world object
+	m_world_objects[worldObj.drop_id] = worldObj;
+
+	// Add tradeskill containers to renderer for click detection
+#ifdef EQT_HAS_GRAPHICS
+	if (worldObj.isTradeskillContainer() && m_renderer) {
+		m_renderer->addWorldObject(worldObj.drop_id, worldObj.x, worldObj.y, worldObj.z,
+			worldObj.object_type, worldObj.name);
+	}
+#endif
+
+	if (worldObj.isTradeskillContainer()) {
+		LOG_DEBUG(MOD_ENTITY, "Tradeskill object spawned: id={} name='{}' type={} ({}) at ({:.1f}, {:.1f}, {:.1f})",
+			worldObj.drop_id, worldObj.name, worldObj.object_type,
+			worldObj.getTradeskillName(), worldObj.x, worldObj.y, worldObj.z);
+	} else {
+		LOG_TRACE(MOD_ENTITY, "Ground object spawned: id={} name='{}' type={} at ({:.1f}, {:.1f}, {:.1f})",
+			worldObj.drop_id, worldObj.name, worldObj.object_type,
+			worldObj.x, worldObj.y, worldObj.z);
+	}
 }
 
 void EverQuest::ZoneProcessWeather(const EQ::Net::Packet &p)
@@ -4853,6 +5637,13 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 #endif
 		}
 
+		// Store pet info in entity (for deferred pet detection)
+		// is_pet is at offset 329 in Spawn_Struct (uint8_t)
+		// petOwnerId is at offset 189 in Spawn_Struct (uint32_t)
+		// MUST be set BEFORE adding to m_entities
+		entity.is_pet = p.GetUInt8(offset + 329);
+		entity.pet_owner_id = p.GetUInt32(offset + 189);
+
 		// Add to entity list
 		m_entities[entity.spawn_id] = entity;
 
@@ -4863,6 +5654,22 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			m_renderer->setPlayerSpawnId(m_my_spawn_id);
 		}
 #endif
+
+		// Check if this spawn is our pet (if we already know our spawn ID)
+		if (entity.is_pet != 0 && entity.pet_owner_id == m_my_spawn_id && m_my_spawn_id != 0) {
+			m_pet_spawn_id = entity.spawn_id;
+
+			// Initialize default button states (Follow=ON, others=OFF per server behavior)
+			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+			m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+
+			LOG_INFO(MOD_MAIN, "Pet detected: {} (ID: {}) Level {} owned by us (ID: {})",
+				entity.name, entity.spawn_id, entity.level, m_my_spawn_id);
+
+#ifdef EQT_HAS_GRAPHICS
+			OnPetCreated(entity);
+#endif
+		}
 
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_ENTITY, "New spawn: {} (ID: {}) Level {} {} Race {} at ({:.2f}, {:.2f}, {:.2f})",
@@ -4979,6 +5786,8 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 
 #ifdef EQT_HAS_GRAPHICS
 		// Signal renderer that zone is ready for display
+		// Note: Player entity creation is deferred to when we receive the first ClientUpdate
+		// with our spawn_id, since m_my_spawn_id isn't set yet at this point
 		if (m_renderer) {
 			m_renderer->setLoadingProgress(1.0f, L"Zone ready!");
 			m_renderer->setZoneReady(true);
@@ -5103,12 +5912,29 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			}
 			LOG_INFO(MOD_MOVEMENT, "Set our spawn ID to {} from ClientUpdate", m_my_spawn_id);
 
+			// Deferred pet detection: now that we know our spawn ID, check if any
+			// existing entity is our pet (spawns arrive before we know our ID)
+			if (m_pet_spawn_id == 0) {
+				for (const auto& pair : m_entities) {
+					const Entity& ent = pair.second;
+					if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
+						m_pet_spawn_id = ent.spawn_id;
+						std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+						m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+						LOG_INFO(MOD_MAIN, "Pet detected (deferred): {} (ID: {}) Level {} owned by us (ID: {})",
+							ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
 #ifdef EQT_HAS_GRAPHICS
-			// Notify renderer of player spawn ID
-			if (m_graphics_initialized && m_renderer) {
-				m_renderer->setPlayerSpawnId(m_my_spawn_id);
+						OnPetCreated(ent);
+#endif
+						break;
+					}
+				}
+			}
 
-				// Also update the inventory model view with player appearance
+#ifdef EQT_HAS_GRAPHICS
+			// Now create the player entity - this is deferred from OnZoneLoadedGraphics
+			// to ensure all player data (inventory, appearance, position) has been received
+			if (m_graphics_initialized && m_renderer) {
 				auto playerIt = m_entities.find(m_my_spawn_id);
 				if (playerIt != m_entities.end()) {
 					const Entity& entity = playerIt->second;
@@ -5124,7 +5950,23 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 						appearance.equipment[i] = entity.equipment[i];
 						appearance.equipment_tint[i] = entity.equipment_tint[i];
 					}
+
+					LOG_INFO(MOD_ENTITY, "Creating player entity {} ({}) from ClientUpdate - equipment: primary={} secondary={}",
+					         m_my_spawn_id, entity.name, appearance.equipment[7], appearance.equipment[8]);
+
+					// Create the player entity with current position from ClientUpdate
+					m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
+					                         x, y, z, h_player,
+					                         true, entity.gender, appearance, false, false);
+
+					// Set player spawn ID AFTER entity is created so the animated node
+					// can be marked for the player rotation fix
+					m_renderer->setPlayerSpawnId(m_my_spawn_id);
+
+					// Update inventory model view with player appearance
 					m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+				} else {
+					LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", m_my_spawn_id);
 				}
 			}
 #endif
@@ -5244,6 +6086,16 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 			AddChatSystemMessage("Trade cancelled - partner is no longer available");
 		}
 
+		// Check if our pet despawned
+		if (spawn_id == m_pet_spawn_id) {
+			LOG_INFO(MOD_MAIN, "Pet {} ({}) despawned", spawn_id, it->second.name);
+			m_pet_spawn_id = 0;
+			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+#ifdef EQT_HAS_GRAPHICS
+			OnPetRemoved();
+#endif
+		}
+
 #ifdef EQT_HAS_GRAPHICS
 		OnSpawnRemovedGraphics(spawn_id);
 #endif
@@ -5276,8 +6128,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		uint8_t old_hp = it->second.hp_percent;
 		it->second.hp_percent = hp_percent;
 		if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-			std::cout << fmt::format("[HP] Entity {} ({}) health: {}% -> {}%",
-				spawn_id, it->second.name, old_hp, hp_percent) << std::endl;
+			LOG_DEBUG(MOD_ENTITY, "[HP] Entity {} ({}) health: {}% -> {}%", spawn_id, it->second.name, old_hp, hp_percent);
 		}
 #ifdef EQT_HAS_GRAPHICS
 		// Update renderer target HP if this is our current target
@@ -6080,6 +6931,87 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(moveto);
 
+	Command warp;
+	warp.name = "warp";
+	warp.usage = "/warp [x y z | entity_name]";
+	warp.description = "Instantly teleport to coordinates, entity, or current target";
+	warp.category = "Movement";
+	warp.handler = [this](const std::string& args) {
+		float x, y, z;
+		bool found_destination = false;
+
+		std::string trimmed = args;
+		while (!trimmed.empty() && trimmed[0] == ' ') {
+			trimmed = trimmed.substr(1);
+		}
+
+		if (trimmed.empty()) {
+			// No args - use current target if we have one
+			if (m_combat_manager && m_combat_manager->HasTarget()) {
+				uint16_t target_id = m_combat_manager->GetTargetId();
+				auto it = m_entities.find(target_id);
+				if (it != m_entities.end()) {
+					x = it->second.x;
+					y = it->second.y;
+					z = it->second.z;
+					found_destination = true;
+					AddChatSystemMessage(fmt::format("Warping to target: {}", it->second.name));
+				}
+			}
+			if (!found_destination) {
+				AddChatSystemMessage("Usage: /warp [x y z | entity_name] (or target an entity first)");
+				return;
+			}
+		} else {
+			// Try to parse as coordinates first
+			std::istringstream iss(trimmed);
+			if (iss >> x >> y >> z) {
+				found_destination = true;
+			} else {
+				// Try to find entity by name
+				Entity* entity = FindEntityByName(trimmed);
+				if (entity) {
+					x = entity->x;
+					y = entity->y;
+					z = entity->z;
+					found_destination = true;
+					AddChatSystemMessage(fmt::format("Warping to entity: {}", entity->name));
+				} else {
+					AddChatSystemMessage(fmt::format("Entity '{}' not found", trimmed));
+					return;
+				}
+			}
+		}
+
+		if (found_destination) {
+			// Instantly set position
+			m_x = x;
+			m_y = y;
+			m_z = z;
+
+			// Update our entity in the entity list
+			auto it = m_entities.find(m_my_spawn_id);
+			if (it != m_entities.end()) {
+				it->second.x = x;
+				it->second.y = y;
+				it->second.z = z;
+			}
+
+			// Send position update to server
+			SendPositionUpdate();
+
+#ifdef EQT_HAS_GRAPHICS
+			// Update graphics position
+			if (m_renderer) {
+				m_renderer->setPlayerPosition(x, y, z, m_heading);
+			}
+#endif
+
+			AddChatSystemMessage(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+		}
+	};
+	m_command_registry->registerCommand(warp);
+
 	Command follow;
 	follow.name = "follow";
 	follow.usage = "/follow <entity_name>";
@@ -6354,6 +7286,32 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(timestamp);
+
+	Command perf;
+	perf.name = "perf";
+	perf.aliases = {"performance", "metrics"};
+	perf.usage = "/perf";
+	perf.description = "Show performance metrics report";
+	perf.category = "Utility";
+	perf.handler = [this](const std::string& args) {
+		std::string report = EQT::PerformanceMetrics::instance().generateReport();
+		// Output to console
+		LOG_INFO(MOD_MAIN, "{}", report);
+		// Also show summary in chat
+		auto stats = EQT::PerformanceMetrics::instance().getStats("Frame Time");
+		if (stats.count > 0) {
+			double avgFps = stats.avgMs() > 0 ? 1000.0 / stats.avgMs() : 0;
+			AddChatSystemMessage(fmt::format("=== Performance Metrics ==="));
+			AddChatSystemMessage(fmt::format("Startup: {} ms", EQT::PerformanceMetrics::instance().getCategoryTotalMs(EQT::MetricCategory::Startup)));
+			AddChatSystemMessage(fmt::format("Zoning: {} ms", EQT::PerformanceMetrics::instance().getCategoryTotalMs(EQT::MetricCategory::Zoning)));
+			AddChatSystemMessage(fmt::format("Avg FPS: {:.1f} (avg frame: {:.1f} ms)", avgFps, stats.avgMs()));
+			AddChatSystemMessage(fmt::format("Frame time: min {} ms, max {} ms", stats.minMs, stats.maxMs));
+			AddChatSystemMessage("Full report written to console.");
+		} else {
+			AddChatSystemMessage("No performance data collected yet.");
+		}
+	};
+	m_command_registry->registerCommand(perf);
 
 	Command filter;
 	filter.name = "filter";
@@ -6641,6 +7599,70 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(skills);
 
+	Command bank;
+	bank.name = "bank";
+	bank.usage = "/bank";
+	bank.description = "Toggle bank window";
+	bank.category = "Utility";
+	bank.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		if (IsBankWindowOpen()) {
+			CloseBankWindow();
+		} else {
+			OpenBankWindow();
+		}
+#else
+		AddChatSystemMessage("Bank window requires graphics mode");
+#endif
+	};
+	m_command_registry->registerCommand(bank);
+
+	Command train;
+	train.name = "train";
+	train.usage = "/train";
+	train.description = "Open trainer window with current target";
+	train.category = "Skills";
+	train.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		// Check if we have a target
+		uint16_t target_id = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+		if (target_id == 0) {
+			AddChatSystemMessage("You must have a trainer targeted.");
+			return;
+		}
+
+		// Check if target exists
+		auto it = m_entities.find(target_id);
+		if (it == m_entities.end()) {
+			AddChatSystemMessage("Target not found.");
+			return;
+		}
+
+		const Entity& target = it->second;
+
+		// Check if target is an NPC (not player, not corpse)
+		if (target.npc_type != 1) {
+			AddChatSystemMessage("That is not an NPC.");
+			return;
+		}
+
+		// Check if target is a guildmaster trainer (class 20-35)
+		// Reference: EQEmu classes.h - WarriorGM=20 through BerserkerGM=35
+		constexpr uint8_t CLASS_WARRIOR_GM = 20;
+		constexpr uint8_t CLASS_BERSERKER_GM = 35;
+		if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
+			AddChatSystemMessage("That is not a trainer.");
+			return;
+		}
+
+		// Request trainer window from server
+		RequestTrainerWindow(target_id);
+#else
+		AddChatSystemMessage("Training requires graphics mode.");
+#endif
+	};
+	m_command_registry->registerCommand(train);
+
 	Command gems;
 	gems.name = "gems";
 	gems.usage = "/gems";
@@ -6700,6 +7722,111 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(interrupt);
+
+	Command pet_cmd;
+	pet_cmd.name = "pet";
+	pet_cmd.usage = "/pet <command> [target]";
+	pet_cmd.description = "Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)";
+	pet_cmd.category = "Pet";
+	pet_cmd.handler = [this](const std::string& args) {
+		if (!HasPet()) {
+			AddChatSystemMessage("You do not have a pet.");
+			return;
+		}
+
+		std::string subcommand;
+		std::string target_name;
+
+		// Parse subcommand and optional target
+		std::istringstream iss(args);
+		iss >> subcommand;
+		std::getline(iss >> std::ws, target_name);
+
+		// Convert to lowercase for comparison
+		std::transform(subcommand.begin(), subcommand.end(), subcommand.begin(), ::tolower);
+
+		uint16_t target_id = 0;
+
+		// For attack command, resolve target
+		if (subcommand == "attack") {
+			if (!target_name.empty()) {
+				// Find entity by name
+				for (const auto& pair : m_entities) {
+					std::string entity_name = pair.second.name;
+					std::transform(entity_name.begin(), entity_name.end(), entity_name.begin(), ::tolower);
+					std::string search_name = target_name;
+					std::transform(search_name.begin(), search_name.end(), search_name.begin(), ::tolower);
+					if (entity_name.find(search_name) != std::string::npos) {
+						target_id = pair.first;
+						break;
+					}
+				}
+				if (target_id == 0) {
+					AddChatSystemMessage(fmt::format("Could not find target: {}", target_name));
+					return;
+				}
+			} else if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
+				target_id = m_combat_manager->GetTargetId();
+			} else {
+				AddChatSystemMessage("You must specify a target or have one selected.");
+				return;
+			}
+			SendPetCommand(EQT::PET_ATTACK, target_id);
+			AddChatSystemMessage("Commanding pet to attack.");
+		} else if (subcommand == "back" || subcommand == "stop") {
+			SendPetCommand(EQT::PET_BACKOFF);
+			AddChatSystemMessage("Commanding pet to back off.");
+		} else if (subcommand == "follow") {
+			SendPetCommand(EQT::PET_FOLLOWME);
+			AddChatSystemMessage("Commanding pet to follow.");
+		} else if (subcommand == "guard") {
+			SendPetCommand(EQT::PET_GUARDHERE);
+			AddChatSystemMessage("Commanding pet to guard here.");
+		} else if (subcommand == "sit" || subcommand == "sitdown") {
+			SendPetCommand(EQT::PET_SIT);
+			AddChatSystemMessage("Commanding pet to sit.");
+		} else if (subcommand == "stand" || subcommand == "standup") {
+			SendPetCommand(EQT::PET_STANDUP);
+			AddChatSystemMessage("Commanding pet to stand.");
+		} else if (subcommand == "taunt") {
+			SendPetCommand(EQT::PET_TAUNT);
+			AddChatSystemMessage("Toggling pet taunt.");
+		} else if (subcommand == "notaunt") {
+			SendPetCommand(EQT::PET_TAUNT_OFF);
+			AddChatSystemMessage("Disabling pet taunt.");
+		} else if (subcommand == "hold") {
+			SendPetCommand(EQT::PET_HOLD);
+			AddChatSystemMessage("Toggling pet hold.");
+		} else if (subcommand == "nohold" || subcommand == "unhold") {
+			SendPetCommand(EQT::PET_HOLD_OFF);
+			AddChatSystemMessage("Disabling pet hold.");
+		} else if (subcommand == "focus") {
+			SendPetCommand(EQT::PET_FOCUS);
+			AddChatSystemMessage("Toggling pet focus.");
+		} else if (subcommand == "nofocus") {
+			SendPetCommand(EQT::PET_FOCUS_OFF);
+			AddChatSystemMessage("Disabling pet focus.");
+		} else if (subcommand == "health" || subcommand == "report") {
+			SendPetCommand(EQT::PET_HEALTHREPORT);
+			AddChatSystemMessage("Requesting pet health report.");
+		} else if (subcommand == "dismiss" || subcommand == "getlost" || subcommand == "leave") {
+			DismissPet();
+		} else if (subcommand == "leader") {
+			SendPetCommand(EQT::PET_LEADER);
+			AddChatSystemMessage("Commanding pet to become leader.");
+		} else if (subcommand == "spellhold" || subcommand == "ghold") {
+			SendPetCommand(EQT::PET_SPELLHOLD);
+			AddChatSystemMessage("Toggling pet spell hold.");
+		} else if (subcommand == "nospellhold" || subcommand == "noghold") {
+			SendPetCommand(EQT::PET_SPELLHOLD_OFF);
+			AddChatSystemMessage("Disabling pet spell hold.");
+		} else if (subcommand.empty()) {
+			AddChatSystemMessage("Pet commands: attack, back, follow, guard, sit, stand, taunt, hold, focus, health, dismiss");
+		} else {
+			AddChatSystemMessage(fmt::format("Unknown pet command: {}. Use /pet for a list of commands.", subcommand));
+		}
+	};
+	m_command_registry->registerCommand(pet_cmd);
 }
 #endif
 
@@ -7342,6 +8469,24 @@ void EverQuest::UpdateMovement()
 
 	// Update camp timer
 	UpdateCampTimer();
+
+	// Check distance to banker NPC - close bank if player moved too far
+	if (IsBankWindowOpen() && m_banker_npc_id != 0) {
+		auto it = m_entities.find(m_banker_npc_id);
+		if (it == m_entities.end()) {
+			// Banker NPC no longer exists (despawned, etc.)
+			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", m_banker_npc_id);
+			CloseBankWindow();
+		} else {
+			float dist = CalculateDistance2D(m_x, m_y, it->second.x, it->second.y);
+			if (dist > NPC_INTERACTION_DISTANCE) {
+				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
+					dist, NPC_INTERACTION_DISTANCE);
+				CloseBankWindow();
+				AddChatSystemMessage("You have moved too far from the banker.");
+			}
+		}
+	}
 
 	// Debug: Log target at start of UpdateMovement
 	static auto last_update_debug = std::chrono::steady_clock::now();
@@ -8562,6 +9707,7 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 
 						// Handle different message types based on string_id
 						// string_id=467 with type=286 = Loot message (item link)
+						// string_id=339 = Tradeskill success (item created)
 						// string_id=1032 = NPC says
 						// string_id=1034 = NPC shouts
 						if (string_id == 467) {
@@ -8569,6 +9715,17 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 							chatMsg.channel = eqt::ui::ChatChannel::Loot;
 							chatMsg.sender = "";
 							chatMsg.text = "You have looted " + parsed.displayText;
+							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
+								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
+							chatWindow->addMessage(chatMsg);
+							return;
+						}
+
+						if (string_id == 339) {
+							// Tradeskill success message - item name is in displayText
+							chatMsg.channel = eqt::ui::ChatChannel::System;
+							chatMsg.sender = "";
+							chatMsg.text = "You create a " + parsed.displayText + "!";
 							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
 								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
 							chatWindow->addMessage(chatMsg);
@@ -8696,10 +9853,11 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 	uint32_t color_type = p.GetUInt32(2);   // color/type
 	uint32_t string_id = p.GetUInt32(6);    // string_id
 
-	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}", color_type, string_id);
-
 	// Get the message template for this string ID
 	std::string message_text = GetStringMessage(string_id);
+
+	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}, template='{}'",
+		color_type, string_id, message_text);
 
 	// Substitute placeholders (%1, %2, etc.) with entity names
 	// %1 is typically the target (for "You have slain %1!")
@@ -8777,17 +9935,13 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 		return;
 	}
 	
-	// The exact structure depends on the state being added
-	// For now, just log that we received it
-	if (s_debug_level >= 2) {
-		std::cout << fmt::format("PlayerStateAdd received, size: {} bytes", p.Length()) << std::endl;
-		
-		// Dump first few bytes for analysis
-		if (s_debug_level >= 3 && p.Length() >= 6) {
-			uint16_t value1 = p.GetUInt16(2);
-			uint16_t value2 = p.GetUInt16(4);
-			std::cout << fmt::format("  Values: {:#06x}, {:#06x}", value1, value2) << std::endl;
-		}
+	// The exact structure depends on the state being added (buff/debuff/state change)
+	// Parse what we can from the packet
+	if (s_debug_level >= 2 && p.Length() >= 6) {
+		uint16_t stateType = p.GetUInt16(2);
+		uint16_t stateValue = p.GetUInt16(4);
+		LOG_DEBUG(MOD_ZONE, "[PlayerStateAdd] State added: type={:#06x}, value={:#06x}, size={} bytes",
+			stateType, stateValue, p.Length());
 	}
 }
 
@@ -8845,12 +9999,14 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	}
 	
 	if (s_debug_level >= 1) {
-		if (spell_id > 0) {
-			std::cout << fmt::format("{} ({}) was killed by {} ({}) for {} damage (spell: {})",
-				victim_name, victim_id, killer_name, killer_id, damage, spell_id) << std::endl;
+		// spell_id of 0, 0xFFFF (65535), or 0xFFFFFFFF means no spell was used
+		bool hasValidSpell = spell_id > 0 && spell_id != 0xFFFF && spell_id != 0xFFFFFFFF;
+		if (hasValidSpell) {
+			LOG_INFO(MOD_COMBAT, "{} ({}) was killed by {} ({}) for {} damage (spell: {})",
+				victim_name, victim_id, killer_name, killer_id, damage, spell_id);
 		} else {
-			std::cout << fmt::format("{} ({}) was killed by {} ({}) for {} damage",
-				victim_name, victim_id, killer_name, killer_id, damage) << std::endl;
+			LOG_INFO(MOD_COMBAT, "{} ({}) was killed by {} ({}) for {} damage",
+				victim_name, victim_id, killer_name, killer_id, damage);
 		}
 	}
 	
@@ -8919,17 +10075,13 @@ void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 		return;
 	}
 	
-	// The exact structure depends on the state being removed
-	// For now, just log that we received it
-	if (s_debug_level >= 2) {
-		std::cout << fmt::format("PlayerStateRemove received, size: {} bytes", p.Length()) << std::endl;
-		
-		// Dump first few bytes for analysis
-		if (s_debug_level >= 3 && p.Length() >= 6) {
-			uint16_t value1 = p.GetUInt16(2);
-			uint16_t value2 = p.GetUInt16(4);
-			std::cout << fmt::format("  Values: {:#06x}, {:#06x}", value1, value2) << std::endl;
-		}
+	// The exact structure depends on the state being removed (buff/debuff/state change)
+	// Parse what we can from the packet
+	if (s_debug_level >= 2 && p.Length() >= 6) {
+		uint16_t stateType = p.GetUInt16(2);
+		uint16_t stateValue = p.GetUInt16(4);
+		LOG_DEBUG(MOD_ZONE, "[PlayerStateRemove] State removed: type={:#06x}, value={:#06x}, size={} bytes",
+			stateType, stateValue, p.Length());
 	}
 }
 
@@ -9235,22 +10387,24 @@ void EverQuest::CleanupZone()
 	m_follow_target.clear();
 	m_in_combat_movement = false;
 
-	// Clear entity map (keep only self for now - will be re-populated by new zone)
-	uint16_t my_id = m_my_spawn_id;
-	Entity my_entity;
-	bool have_self = false;
-	auto it = m_entities.find(my_id);
-	if (it != m_entities.end()) {
-		my_entity = it->second;
-		have_self = true;
-	}
+	// Clear entity map completely - server will re-send all entity data for the new zone
+	// (including the player with a fresh spawn_id)
 	m_entities.clear();
-	if (have_self) {
-		m_entities[my_id] = my_entity;
-	}
 
 	// Clear door data
 	m_doors.clear();
+
+	// Clear pet state (pet won't exist in new zone)
+	if (m_pet_spawn_id != 0) {
+		m_pet_spawn_id = 0;
+		std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+#ifdef EQT_HAS_GRAPHICS
+		OnPetRemoved();
+#endif
+	}
+
+	// Clear world objects (forges, looms, groundspawns)
+	ClearWorldObjects();
 
 	// Clear pathfinding data
 	m_pathfinder.reset();
@@ -9645,13 +10799,14 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	} else {
 		LOG_DEBUG(MOD_MAP, "LoadZoneLines: No EQ client path set, zone lines from WLD unavailable");
 	}
+
+	// NOTE: Zone line visualization boxes are sent to the renderer in OnZoneLoadedGraphics()
+	// AFTER loadZone() completes. If done here, the boxes get cleared when loadZone()
+	// calls unloadZone() internally.
 }
 
 void EverQuest::CheckZoneLine()
 {
-	// TODO: Automatic zoning disabled - needs fixing
-	return;
-
 	// Skip if not fully zoned in or no zone lines loaded
 	if (!IsFullyZonedIn() || !m_zone_lines || !m_zone_lines->hasZoneLines()) {
 #ifdef EQT_HAS_GRAPHICS
@@ -9707,18 +10862,27 @@ void EverQuest::CheckZoneLine()
 	}
 
 	// Check if currently in a zone line region
-	// BSP tree uses (server_y, server_x, server_z) based on testing with bsp_region_finder
+	// The extracted zone lines use BSP coordinates which need to be checked against player position
 	// m_x = server_y, m_y = server_x (from spawn struct)
-	// Zone lines at BSP x >= 1400 correspond to high server_y (north direction)
-	float bsp_x = m_x;   // server_y (north/south)
-	float bsp_y = m_y;   // server_x (east/west)
-	float bsp_z = m_z;
-	EQT::ZoneLineResult result = m_zone_lines->checkPosition(bsp_x, bsp_y, bsp_z, bsp_x, bsp_y, bsp_z);
+	// Testing with player position directly (coordinates may need adjustment based on zone)
+	float check_x = m_x;
+	float check_y = m_y;
+	float check_z = m_z;
+
+	// Debug: log position being checked
+	static int posLogCount = 0;
+	posLogCount++;
+	if (posLogCount % 100 == 1) {
+		LOG_DEBUG(MOD_ZONE, "CheckZoneLine: m_x={:.1f} m_y={:.1f} m_z={:.1f} (server: x={:.1f} y={:.1f})",
+			m_x, m_y, m_z, m_y, m_x);
+	}
+
+	EQT::ZoneLineResult result = m_zone_lines->checkPosition(check_x, check_y, check_z, check_x, check_y, check_z);
 
 	// Debug output for every position check (throttled)
 	if (checkCount % 50 == 0) {
-		LOG_TRACE(MOD_ZONE, "Zone line check: bsp=({:.1f}, {:.1f}, {:.1f}) server=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
-			bsp_x, bsp_y, bsp_z, m_y, m_x, m_z, result.isZoneLine ? "YES" : "no");
+		LOG_TRACE(MOD_ZONE, "Zone line check: check=({:.1f}, {:.1f}, {:.1f}) m_pos=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
+			check_x, check_y, check_z, m_x, m_y, m_z, result.isZoneLine ? "YES" : "no");
 	}
 
 	if (result.isZoneLine) {
@@ -9732,6 +10896,11 @@ void EverQuest::CheckZoneLine()
 			m_renderer->setZoneLineDebug(true, result.targetZoneId, debugText);
 		}
 #endif
+
+		// Skip actual zone trigger if zoning is disabled (visual indicator still shows)
+		if (!m_zoning_enabled) {
+			return;
+		}
 
 		// Debounce: require 500ms cooldown after a trigger before allowing another
 		if (m_zone_line_triggered) {
@@ -10029,6 +11198,164 @@ void EverQuest::SendClickDoor(uint8_t door_id, uint32_t item_id)
 }
 
 // ============================================================================
+// World Object / Tradeskill Methods
+// ============================================================================
+
+void EverQuest::SendClickObject(uint32_t drop_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot click object - not fully zoned in");
+		return;
+	}
+
+	// Check if object exists
+	auto it = m_world_objects.find(drop_id);
+	if (it == m_world_objects.end()) {
+		LOG_WARN(MOD_ENTITY, "Attempted to click unknown object {}", drop_id);
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Clicking object {} ('{}') type={} ({})",
+		drop_id, it->second.name, it->second.object_type,
+		it->second.getTradeskillName());
+
+	// Build ClickObject packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickObject_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickObject);
+	p.PutUInt32(2, drop_id);           // drop_id
+	p.PutUInt32(6, m_my_spawn_id);     // player_id
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+void EverQuest::SendTradeSkillCombine(int16_t container_slot)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot combine - not fully zoned in");
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Sending tradeskill combine for container slot {}", container_slot);
+
+	// Build TradeSkillCombine packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::NewCombine_Struct));
+
+	p.PutUInt16(0, HC_OP_TradeSkillCombine);
+	p.PutInt16(2, container_slot);     // container_slot
+	p.PutInt16(4, 0);                  // guildtribute_slot (usually 0)
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+void EverQuest::SendCloseContainer(uint32_t drop_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot close container - not fully zoned in");
+		return;
+	}
+
+	LOG_DEBUG(MOD_ENTITY, "Closing tradeskill container {}", drop_id);
+
+	// Build ClickObjectAction packet to close the container
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickObjectAction_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickObjectAction);
+	p.PutUInt32(2, m_my_spawn_id);     // player_id
+	p.PutUInt32(6, drop_id);           // drop_id
+	p.PutUInt32(10, 0);                // open = 0 (closing)
+	p.PutUInt32(14, 0);                // type
+	p.PutUInt32(18, 0);                // unknown16
+	p.PutUInt32(22, 0);                // icon
+	p.PutUInt32(26, 0);                // unknown24
+	// object_name is 64 bytes of zeros (not needed for close)
+	for (int i = 0; i < 64; i++) {
+		p.PutUInt8(30 + i, 0);
+	}
+
+	m_zone_connection->QueuePacket(p, 0, true);
+
+	// Clear active tradeskill object
+	m_active_tradeskill_object_id = 0;
+}
+
+const eqt::WorldObject* EverQuest::GetWorldObject(uint32_t drop_id) const
+{
+	auto it = m_world_objects.find(drop_id);
+	if (it != m_world_objects.end()) {
+		return &it->second;
+	}
+	return nullptr;
+}
+
+void EverQuest::ClearWorldObjects()
+{
+	LOG_DEBUG(MOD_ENTITY, "Clearing {} world objects", m_world_objects.size());
+	m_world_objects.clear();
+	m_active_tradeskill_object_id = 0;
+}
+
+void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
+{
+	// Parse ClickObjectAction_Struct from packet (skip 2-byte opcode)
+	if (p.Length() < 2 + sizeof(EQT::ClickObjectAction_Struct)) {
+		LOG_WARN(MOD_ENTITY, "ClickObjectAction packet too small: {} bytes (need {})",
+			p.Length(), 2 + sizeof(EQT::ClickObjectAction_Struct));
+		return;
+	}
+
+	const auto* action = reinterpret_cast<const EQT::ClickObjectAction_Struct*>(p.Data() + 2);
+
+	std::string objectName(action->object_name, strnlen(action->object_name, sizeof(action->object_name)));
+
+	if (action->open == 1) {
+		// Server is telling us to open a tradeskill container
+		LOG_INFO(MOD_ENTITY, "Opening tradeskill container: drop_id={} type={} icon={} name='{}'",
+			action->drop_id, action->type, action->icon, objectName);
+
+		// Store the active tradeskill object ID
+		m_active_tradeskill_object_id = action->drop_id;
+
+		// Tell WindowManager to open the tradeskill window
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (windowManager) {
+			// World containers have 10 slots (WORLD_BEGIN to WORLD_END)
+			windowManager->openTradeskillContainer(action->drop_id, objectName,
+				static_cast<uint8_t>(action->type), eqt::inventory::WORLD_COUNT);
+		}
+	} else {
+		// Server is confirming container is closed
+		LOG_DEBUG(MOD_ENTITY, "Tradeskill container closed: drop_id={}", action->drop_id);
+		m_active_tradeskill_object_id = 0;
+
+		// Close the window if it's open
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (windowManager) {
+			windowManager->closeTradeskillContainer();
+		}
+	}
+}
+
+void EverQuest::ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p)
+{
+	// This is the server response to a combine attempt
+	// The server will send item updates via OP_ItemPacket for the result
+	// and skill updates via OP_SkillUpdate for skill-ups
+
+	LOG_DEBUG(MOD_ENTITY, "TradeSkillCombine response received ({} bytes)", p.Length());
+
+	// The packet format for the result may vary - typically the server
+	// handles the item consumption and creation, then sends inventory updates.
+	// For now, just log that we received a response.
+
+	// TODO: Parse combine result and show success/failure message
+	// The result information may come via OP_SpecialMesg or OP_FormattedMessage
+}
+
+// ============================================================================
 // Group Methods
 // ============================================================================
 
@@ -10149,6 +11476,79 @@ void EverQuest::DeclineGroupInvite()
 		SendGroupDecline(m_pending_inviter_name);
 		AddChatSystemMessage("Group invite declined");
 	}
+}
+
+// ============================================================================
+// Pet Methods
+// ============================================================================
+
+const Entity* EverQuest::GetPetEntity() const
+{
+	if (m_pet_spawn_id == 0) {
+		return nullptr;
+	}
+	auto it = m_entities.find(m_pet_spawn_id);
+	if (it != m_entities.end()) {
+		return &it->second;
+	}
+	return nullptr;
+}
+
+uint8_t EverQuest::GetPetHpPercent() const
+{
+	const Entity* pet = GetPetEntity();
+	return pet ? pet->hp_percent : 0;
+}
+
+std::string EverQuest::GetPetName() const
+{
+	const Entity* pet = GetPetEntity();
+	return pet ? pet->name : "";
+}
+
+uint8_t EverQuest::GetPetLevel() const
+{
+	const Entity* pet = GetPetEntity();
+	return pet ? pet->level : 0;
+}
+
+bool EverQuest::GetPetButtonState(EQT::PetButton button) const
+{
+	if (button >= EQT::PET_BUTTON_COUNT) {
+		return false;
+	}
+	return m_pet_button_states[button];
+}
+
+void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
+{
+	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+		LOG_WARN(MOD_MAIN, "Cannot send pet command - not connected to zone");
+		return;
+	}
+
+	if (!HasPet()) {
+		LOG_WARN(MOD_MAIN, "Cannot send pet command - no pet");
+		AddChatSystemMessage("You do not have a pet.");
+		return;
+	}
+
+	EQT::PetCommand_Struct packet = {};
+	packet.command = static_cast<uint32_t>(command);
+	packet.target = target_id;
+
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::PetCommand_Struct));
+	p.PutUInt16(0, HC_OP_PetCommands);
+	p.PutData(2, &packet, sizeof(packet));
+
+	m_zone_connection->QueuePacket(p, 0, true);
+	LOG_DEBUG(MOD_MAIN, "Sent pet command: {} (target={})", EQT::GetPetCommandName(command), target_id);
+}
+
+void EverQuest::DismissPet()
+{
+	SendPetCommand(EQT::PET_GETLOST);
 }
 
 void EverQuest::ClearGroup()
@@ -10933,17 +12333,15 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		AddChatSystemMessage("Trade cancelled - you entered combat");
 	}
 
-	if (s_debug_level >= 2) {
+	if (s_debug_level >= 3) {
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
-		if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Damage packet raw bytes (first 12): ");
+		std::string hexBytes;
 		for (int i = 0; i < 12 && i < static_cast<int>(p.Length()) - 2; ++i) {
-			std::cout << fmt::format("{:02x} ", data[i]);
+			hexBytes += fmt::format("{:02x} ", data[i]);
 		}
-		std::cout << std::endl;
-		LOG_DEBUG(MOD_MAIN, "target={} ({:04x}), source={} ({:04x}), type={} ({:02x}), spell={} ({:04x})", target_id, target_id, source_id, source_id, damage_type, damage_type, spell_id, spell_id);
-
-		// Show damage bytes specifically
-		LOG_DEBUG(MOD_MAIN, "Damage bytes at offset 7: {:02x} {:02x} {:02x} {:02x}", data[7], data[8], data[9], data[10]);
+		LOG_TRACE(MOD_COMBAT, "Damage packet raw bytes (first 12): {}", hexBytes);
+		LOG_DEBUG(MOD_COMBAT, "Damage target={} ({:04x}), source={} ({:04x}), type={} ({:02x}), spell={} ({:04x})", target_id, target_id, source_id, source_id, damage_type, damage_type, spell_id, spell_id);
+		LOG_TRACE(MOD_COMBAT, "Damage bytes at offset 7: {:02x} {:02x} {:02x} {:02x}", data[7], data[8], data[9], data[10]);
 	}
 
 	if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
@@ -10963,14 +12361,49 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	// Trigger damage reaction animation on target (if damage > 0 and not a miss)
 	// Note: Attack animations on source are triggered via ZoneProcessAction
 	if (m_graphics_initialized && m_renderer && damage_amount > 0) {
-		// Play damage reaction animation (d01 or d02) on target
+		// Play damage reaction animation on target
 		// Don't play on dead entities
 		auto it = m_entities.find(target_id);
 		if (it != m_entities.end() && it->second.hp_percent > 0) {
-			m_renderer->setEntityAnimation(target_id, "d01", false, true);
-			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
-				LOG_DEBUG(MOD_COMBAT, "Damage reaction animation on target={}", target_id);
+			// Calculate damage percentage to determine animation type
+			float damagePercent = 0.0f;
+
+			// For player, use actual max HP
+			if (target_id == m_my_spawn_id && m_max_hp > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
+			} else {
+				// For NPCs, estimate based on level
+				// Rough HP estimate: level * 10-20 for most NPCs
+				// Use conservative estimate (level * 15) for damage percentage calc
+				uint8_t level = it->second.level > 0 ? it->second.level : 1;
+				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
+				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
 			}
+
+			// Determine damage animation based on damage type and percentage
+			// EQ damage types:
+			// - 0-79: Melee damage (type is skill ID)
+			// - 231: Spell damage (lifetap)
+			// - 252: DoT damage
+			// - 253: Environmental damage (lava, drowning)
+			// - 254: Trap damage
+			// - 255: Fall damage
+			const char* damageAnim = nullptr;
+			bool isDrowning = (damage_type == 253);  // Environmental
+			bool isTrap = (damage_type == 254);      // Trap damage
+
+			damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
+
+			m_renderer->setEntityAnimation(target_id, damageAnim, false, true);
+			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
+				LOG_DEBUG(MOD_COMBAT, "Damage reaction '{}' on target={} (dmg={}, pct={:.1f}%, type={})",
+					damageAnim, target_id, damage_amount, damagePercent, damage_type);
+			}
+		}
+
+		// Trigger first-person attack animation when player deals damage
+		if (source_id == m_my_spawn_id && m_renderer->isFirstPersonMode()) {
+			m_renderer->triggerFirstPersonAttack();
 		}
 	}
 #endif
@@ -11485,6 +12918,12 @@ bool EverQuest::InitGraphics(int width, int height) {
 		ZoneSendChannelMessage(message, CHAT_CHANNEL_SAY, "");
 	});
 
+	// Set up zoning enabled callback (Z key toggles zone line visualization and zoning)
+	m_renderer->setZoningEnabledCallback([this](bool enabled) {
+		SetZoningEnabled(enabled);
+		LOG_INFO(MOD_ZONE, "Zoning {}", enabled ? "enabled" : "disabled");
+	});
+
 	// Set up vendor toggle callback (V key in Player Mode)
 	m_renderer->setVendorToggleCallback([this]() {
 		// If vendor window is open, close it
@@ -11527,9 +12966,111 @@ bool EverQuest::InitGraphics(int width, int height) {
 		RequestOpenVendor(target_id);
 	});
 
+	// Set up banker interact callback (Ctrl+click on NPC in Player Mode)
+	m_renderer->setBankerInteractCallback([this](uint16_t npcId) {
+		// If bank window is already open, ignore
+		if (IsBankWindowOpen()) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Bank already open");
+			return;
+		}
+
+		auto it = m_entities.find(npcId);
+		if (it == m_entities.end()) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: NPC {} not found in entities", npcId);
+			return;
+		}
+
+		const Entity& target = it->second;
+
+		// Check if target is an NPC (not player, not corpse)
+		if (target.npc_type != 1) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not an NPC (type={})", target.name, target.npc_type);
+			return;
+		}
+
+		// Check distance to NPC
+		float distSq = CalculateDistance2D(m_x, m_y, target.x, target.y);
+		distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
+		if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
+			AddChatSystemMessage("You are too far away to interact with this NPC.");
+			return;
+		}
+
+		// Check if target is a banker (class 40 = GM_Banker in EQ)
+		constexpr uint8_t CLASS_BANKER = 40;
+		if (target.class_id != CLASS_BANKER) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
+			AddChatSystemMessage("This NPC is not a banker.");
+			return;
+		}
+
+		// Open the bank window
+		LOG_INFO(MOD_INVENTORY, "Opening bank window for {} (id={})", target.name, npcId);
+		OpenBankWindow(npcId);
+	});
+
+	// Set up trainer toggle callback (T key in Player Mode)
+	m_renderer->setTrainerToggleCallback([this]() {
+		// If trainer window is open, close it
+		if (IsTrainerWindowOpen()) {
+			CloseTrainerWindow();
+			return;
+		}
+
+		// Check if we have a target
+		if (!m_combat_manager || !m_combat_manager->HasTarget()) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: No target selected");
+			return;
+		}
+
+		uint16_t target_id = m_combat_manager->GetTargetId();
+		auto it = m_entities.find(target_id);
+		if (it == m_entities.end()) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} not found in entities", target_id);
+			return;
+		}
+
+		const Entity& target = it->second;
+
+		// Check if target is an NPC (not player, not corpse)
+		if (target.npc_type != 1) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not an NPC (type={})", target.name, target.npc_type);
+			return;
+		}
+
+		// Check if target is a guildmaster trainer (class 20-35)
+		// Reference: EQEmu classes.h - WarriorGM=20 through BerserkerGM=35
+		constexpr uint8_t CLASS_WARRIOR_GM = 20;
+		constexpr uint8_t CLASS_BERSERKER_GM = 35;
+		if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not a trainer (class={})", target.name, target.class_id);
+			AddChatSystemMessage("That is not a trainer.");
+			return;
+		}
+
+		// Request trainer window from server
+		LOG_DEBUG(MOD_MAIN, "Trainer toggle: Requesting trainer {} (id={}, class={})", target.name, target_id, target.class_id);
+		RequestTrainerWindow(target_id);
+	});
+
 	// Set up door interaction callback (left-click on door or U key in Player Mode)
 	m_renderer->setDoorInteractCallback([this](uint8_t doorId) {
 		SendClickDoor(doorId);
+	});
+
+	// Set up world object (tradeskill container) interaction callback (left-click on object or O key)
+	m_renderer->setWorldObjectInteractCallback([this](uint32_t dropId) {
+		// Find the world object to check if it's a tradeskill container
+		auto it = m_world_objects.find(dropId);
+		if (it != m_world_objects.end() && it->second.isTradeskillContainer()) {
+			LOG_INFO(MOD_INVENTORY, "Clicking tradeskill container: dropId={} name='{}' type={}",
+				dropId, it->second.name, it->second.object_type);
+			SendClickObject(dropId);
+		} else if (it != m_world_objects.end()) {
+			LOG_DEBUG(MOD_ENTITY, "World object {} is not a tradeskill container (type={})",
+				dropId, it->second.object_type);
+		}
 	});
 
 	// Set up spell gem cast callback (1-8 keys in Player Mode)
@@ -11569,8 +13110,17 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Set up vendor window callbacks
 	SetupVendorCallbacks();
 
+	// Set up bank window callbacks
+	SetupBankCallbacks();
+
+	// Set up trainer window callbacks
+	SetupTrainerCallbacks();
+
 	// Set up trade window callbacks
 	SetupTradeWindowCallbacks();
+
+	// Set up tradeskill container callbacks
+	SetupTradeskillCallbacks();
 
 	// Initialize spell database if not already done
 	if (m_spell_manager && !m_spell_manager->isInitialized()) {
@@ -11634,6 +13184,21 @@ bool EverQuest::InitGraphics(int width, int height) {
 			}
 		});
 
+		// Set up spellbook open/close callback to send appearance animation
+		windowManager->setSpellbookStateCallback([this](bool isOpen) {
+			// Send spawn appearance to server: animation 110 = sitting/spellbook, 100 = standing
+			SendSpawnAppearance(AT_ANIMATION, isOpen ? 110 : 100);
+			LOG_DEBUG(MOD_SPELL, "Spellbook {} - sent appearance animation {}",
+				isOpen ? "opened" : "closed", isOpen ? 110 : 100);
+		});
+
+		// Set up scribe spell request callback
+		windowManager->setScribeSpellRequestCallback(
+			[this](uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot) {
+				ScribeSpellFromScroll(spellId, bookSlot, sourceSlot);
+			}
+		);
+
 		LOG_DEBUG(MOD_SPELL, "Spell gem panel initialized");
 	}
 
@@ -11668,11 +13233,16 @@ bool EverQuest::InitGraphics(int width, int height) {
 			}
 		});
 
-		windowManager->setHotbarCreateCallback([this](uint8_t skill_id) {
-			// Store skill for future hotbar implementation
-			AddPendingHotbarButton(skill_id);
+		windowManager->setHotbarCreateCallback([this, windowManager](uint8_t skill_id) {
+			// Put skill on cursor for placement in hotbar
 			const char* skill_name = EQ::getSkillName(skill_id);
-			AddChatSystemMessage(fmt::format("Added {} to hotbar queue (hotbar not yet implemented)", skill_name));
+			windowManager->setHotbarCursor(
+				eqt::ui::HotbarButtonType::Skill,
+				static_cast<uint32_t>(skill_id),
+				skill_name ? skill_name : "Unknown Skill",
+				0  // No icon ID for skills - will use text label
+			);
+			AddChatSystemMessage(fmt::format("Drag {} to a hotbar slot", skill_name ? skill_name : "skill"));
 		});
 
 		// Set up skill activation feedback callback
@@ -11729,6 +13299,19 @@ bool EverQuest::InitGraphics(int width, int height) {
 		});
 
 		LOG_DEBUG(MOD_MAIN, "Group window initialized");
+	}
+
+	// Set up pet window
+	if (m_renderer && m_renderer->getWindowManager()) {
+		auto* windowManager = m_renderer->getWindowManager();
+		windowManager->initPetWindow(this);
+
+		// Set up pet command callback
+		windowManager->setPetCommandCallback([this](EQT::PetCommand command, uint16_t targetId) {
+			SendPetCommand(command, targetId);
+		});
+
+		LOG_DEBUG(MOD_MAIN, "Pet window initialized");
 	}
 
 	// Set up hotbar activate callback
@@ -11815,6 +13398,13 @@ bool EverQuest::InitGraphics(int width, int height) {
 					// Send emote text
 					if (!button.emoteText.empty()) {
 						ProcessChatInput(button.emoteText);
+					}
+					break;
+				}
+				case eqt::ui::HotbarButtonType::Skill: {
+					// Activate skill by ID
+					if (m_skill_manager) {
+						m_skill_manager->activateSkill(static_cast<uint8_t>(button.id));
 					}
 					break;
 				}
@@ -12032,10 +13622,27 @@ void EverQuest::OnZoneLoadedGraphics() {
 			LOG_TRACE(MOD_GRAPHICS, "Collision map set for Player Mode");
 		}
 
+		// Expand zone line trigger boxes to fill passages using collision detection
+		// This must be done BEFORE sending boxes to renderer, and requires the zone map
+		if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map) {
+			m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
+		}
+
+		// Send zone line bounding boxes to renderer for visualization
+		// NOTE: This must be done AFTER loadZone() completes because loadZone()
+		// calls unloadZone() which clears any existing boxes
+		if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+			auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
+			if (!boxes.empty()) {
+				m_renderer->setZoneLineBoundingBoxes(boxes);
+				LOG_DEBUG(MOD_GRAPHICS, "Sent {} zone line boxes to renderer after zone load", boxes.size());
+			}
+		}
+
 		// Set camera mode based on renderer mode
 		if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Player) {
-			// Player mode: use FirstPerson camera that follows player
-			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::FirstPerson);
+			// Player mode: use Follow camera (third-person behind player)
+			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
 		} else {
 			// Admin mode: use Free camera for debugging
 			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Free);
@@ -12046,8 +13653,17 @@ void EverQuest::OnZoneLoadedGraphics() {
 		// Note: Server Z is the middle of the character model, not ground level.
 		// The renderer should adjust model positioning internally - don't sync Z back.
 
-		// Create entities for all current spawns
+		// Create entities for all current spawns EXCEPT our own player
+		// The player entity will be created later in ZoneProcessGuildMOTD after
+		// all player data (inventory, appearance, etc.) has been received
 		for (const auto& [spawn_id, entity] : m_entities) {
+			// Skip our own player - will be created after fully connected
+			if (entity.name == m_character) {
+				LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) in OnZoneLoadedGraphics - will create after fully connected",
+				          spawn_id, entity.name);
+				continue;
+			}
+
 			// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 			bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 			bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
@@ -12074,12 +13690,7 @@ void EverQuest::OnZoneLoadedGraphics() {
 
 			m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
 			                         entity.x, entity.y, entity.z, entity.heading,
-			                         spawn_id == m_my_spawn_id, entity.gender, appearance, isNPC, isCorpse);
-
-			// If this is our player, also update the inventory model view
-			if (spawn_id == m_my_spawn_id) {
-				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-			}
+			                         false, entity.gender, appearance, isNPC, isCorpse);
 		}
 
 		// Recreate doors from stored data (they were cleared during zone load)
@@ -12109,6 +13720,14 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		return;
 	}
 
+	// Skip our own player - will be created in ZoneProcessGuildMOTD after fully connected
+	// This ensures all player data (inventory, appearance, etc.) has been received first
+	if (entity.name == m_character) {
+		LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) in OnSpawnAddedGraphics - will create after fully connected",
+		          entity.spawn_id, entity.name);
+		return;
+	}
+
 	// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 	bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 	bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
@@ -12135,7 +13754,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 
 	m_renderer->createEntity(entity.spawn_id, entity.race_id, entity.name,
 	                         entity.x, entity.y, entity.z, entity.heading,
-	                         entity.spawn_id == m_my_spawn_id, entity.gender, appearance, isNPC, isCorpse);
+	                         false, entity.gender, appearance, isNPC, isCorpse);
 
 	// Set initial pose state from spawn animation value
 	// The animation field in spawn data may indicate sitting/standing/etc.
@@ -12171,6 +13790,45 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	if (entity.spawn_id == m_my_spawn_id) {
 		m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 	}
+}
+
+void EverQuest::OnPetCreated(const Entity& pet) {
+	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Pet window: Pet created - {} (ID: {}) Level {}",
+	          pet.name, pet.spawn_id, pet.level);
+
+	// Open pet window when pet is created
+	if (m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->openPetWindow();
+	}
+}
+
+void EverQuest::OnPetRemoved() {
+	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Pet window: Pet removed");
+
+	// Close pet window when pet is removed
+	if (m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->closePetWindow();
+	}
+}
+
+void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
+	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Pet window: Button {} state changed to {}",
+	          EQT::GetPetButtonName(button), state ? "ON" : "OFF");
+
+	// Pet window button states will be updated by WindowManager when it's implemented
+	// TODO: m_renderer->getWindowManager()->updatePetButtonState(button, state);
 }
 
 void EverQuest::SaveEntityDataToFile(const std::string& filename) {
@@ -12249,6 +13907,14 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 		return;
 	}
 
+	// If this is our player entity, update the renderer's local player position/heading
+	// so the camera follows the server-authoritative position
+	if (spawn_id == m_my_spawn_id) {
+		// Convert heading from degrees (0-360) to EQ format (0-512) for setPlayerPosition
+		float heading_512 = heading * 512.0f / 360.0f;
+		m_renderer->setPlayerPosition(x, y, z, heading_512);
+	}
+
 	m_renderer->updateEntity(spawn_id, x, y, z, heading, dx, dy, dz, animation);
 }
 
@@ -12317,9 +13983,35 @@ void EverQuest::UpdateInventoryStats() {
 	eqt::inventory::EquipmentStats equipStats;
 	float totalWeight = 0.0f;
 
+	// Track weapon skill types for combat animations
+	uint8_t primaryWeaponSkill = EQ::WEAPON_HAND_TO_HAND;  // Default to H2H (unarmed)
+	uint8_t secondaryWeaponSkill = EQ::WEAPON_NONE;
+
 	if (m_inventory_manager) {
 		equipStats = m_inventory_manager->calculateEquipmentStats();
 		totalWeight = m_inventory_manager->calculateTotalWeight();
+
+		// Get weapon skill types from equipped items
+		using namespace eqt::inventory;
+		const eqt::inventory::ItemInstance* primaryItem = m_inventory_manager->getItem(SLOT_PRIMARY);
+		const eqt::inventory::ItemInstance* secondaryItem = m_inventory_manager->getItem(SLOT_SECONDARY);
+
+		if (primaryItem && primaryItem->itemId != 0) {
+			primaryWeaponSkill = primaryItem->skillType;
+		}
+		if (secondaryItem && secondaryItem->itemId != 0) {
+			secondaryWeaponSkill = secondaryItem->skillType;
+		}
+
+		// Update our entity's weapon skill types
+		auto it = m_entities.find(m_my_spawn_id);
+		if (it != m_entities.end()) {
+			it->second.primary_weapon_skill = primaryWeaponSkill;
+			it->second.secondary_weapon_skill = secondaryWeaponSkill;
+		}
+
+		// Propagate weapon skill types to renderer
+		m_renderer->setEntityWeaponSkills(m_my_spawn_id, primaryWeaponSkill, secondaryWeaponSkill);
 	}
 
 	// Calculate total stats (base + equipment)

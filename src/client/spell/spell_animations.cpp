@@ -15,28 +15,29 @@ void SpellAnimations::initAnimationMaps()
 {
     // ========================================================================
     // Casting Animations
-    // Based on EQ client animation data
+    // Based on EQ pre-Luclin animation reference
+    // Correct sequence: t04 (start) -> t05 (channel/loop) -> t06 (finish)
     // ========================================================================
 
-    // Standard casting animations (arms raised, magic gestures)
-    m_cast_anims[0] = ANIM_CAST_STANDARD;   // Default cast
-    m_cast_anims[44] = ANIM_CAST_STANDARD;  // Standard cast (arms raised)
-    m_cast_anims[45] = ANIM_CAST_CHANNEL;   // Channel cast (sustained)
-    m_cast_anims[46] = ANIM_CAST_COMBAT;    // Combat cast (aggressive)
-    m_cast_anims[47] = ANIM_CAST_STANDARD;  // Alternative standard
-    m_cast_anims[48] = ANIM_CAST_CHANNEL;   // Alternative channel
-    m_cast_anims[49] = ANIM_CAST_PRAYER;    // Prayer/meditation cast
-    m_cast_anims[50] = ANIM_CAST_SUMMON;    // Summoning animation
+    // Standard casting animations - use t04 (cast pullback/start)
+    m_cast_anims[0] = ANIM_CAST_START;      // Default cast -> t04
+    m_cast_anims[44] = ANIM_CAST_START;     // Standard cast -> t04
+    m_cast_anims[45] = ANIM_CAST_LOOP;      // Channel cast (sustained) -> t05
+    m_cast_anims[46] = ANIM_CAST_START;     // Combat cast -> t04
+    m_cast_anims[47] = ANIM_CAST_START;     // Alternative standard -> t04
+    m_cast_anims[48] = ANIM_CAST_LOOP;      // Alternative channel -> t05
+    m_cast_anims[49] = ANIM_CAST_START;     // Prayer/meditation cast -> t04
+    m_cast_anims[50] = ANIM_CAST_START;     // Summoning animation -> t04
 
-    // Bard song animations
-    m_cast_anims[70] = "s01";  // Singing/playing
-    m_cast_anims[71] = "s02";  // Instrumental
-    m_cast_anims[72] = "s03";  // Drum/percussion
+    // Bard song animations - use correct instrument animations
+    m_cast_anims[70] = ANIM_STRINGED_INSTRUMENT;  // Singing/playing stringed -> t02
+    m_cast_anims[71] = ANIM_WIND_INSTRUMENT;      // Wind/brass instrument -> t03
+    m_cast_anims[72] = ANIM_STRINGED_INSTRUMENT;  // Percussion (uses stringed) -> t02
 
     // Special casting animations
-    m_cast_anims[100] = ANIM_CAST_COMBAT;   // Offensive spell
-    m_cast_anims[101] = ANIM_CAST_PRAYER;   // Defensive spell
-    m_cast_anims[102] = ANIM_CAST_SUMMON;   // Summoning spell
+    m_cast_anims[100] = ANIM_CAST_START;    // Offensive spell -> t04
+    m_cast_anims[101] = ANIM_CAST_START;    // Defensive spell -> t04
+    m_cast_anims[102] = ANIM_CAST_START;    // Summoning spell -> t04
 
     // ========================================================================
     // Target/Impact Animations
@@ -57,22 +58,18 @@ void SpellAnimations::initAnimationMaps()
     // Animation Durations (in milliseconds)
     // ========================================================================
 
-    // Casting animations - typically 1-3 seconds
-    m_anim_durations[ANIM_CAST_STANDARD] = 1500;
-    m_anim_durations[ANIM_CAST_CHANNEL] = 0;     // Looping/variable
-    m_anim_durations[ANIM_CAST_COMBAT] = 1200;
-    m_anim_durations[ANIM_CAST_PRAYER] = 2000;
-    m_anim_durations[ANIM_CAST_SUMMON] = 2500;
+    // Casting animations - t04/t05/t06 sequence
+    m_anim_durations[ANIM_CAST_START] = 500;     // t04 - quick pullback
+    m_anim_durations[ANIM_CAST_LOOP] = 0;        // t05 - looping/variable duration
+    m_anim_durations[ANIM_CAST_END] = 400;       // t06 - quick finish
 
     // Impact animations - short
-    m_anim_durations[ANIM_HIT_LIGHT] = 300;
-    m_anim_durations[ANIM_HIT_HEAVY] = 500;
-    m_anim_durations[ANIM_FLINCH] = 250;
+    m_anim_durations[ANIM_HIT_LIGHT] = 300;      // d01
+    m_anim_durations[ANIM_HIT_HEAVY] = 500;      // d02
 
-    // Bard songs - looping
-    m_anim_durations["s01"] = 0;
-    m_anim_durations["s02"] = 0;
-    m_anim_durations["s03"] = 0;
+    // Bard instrument animations - looping
+    m_anim_durations[ANIM_STRINGED_INSTRUMENT] = 0;  // t02 - looping
+    m_anim_durations[ANIM_WIND_INSTRUMENT] = 0;      // t03 - looping
 }
 
 std::string SpellAnimations::getCastAnimation(uint16_t cast_anim_id) const

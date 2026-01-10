@@ -52,7 +52,8 @@ void BagWindow::initializeSlots() {
         int y = startY + row * (SLOT_SIZE + SLOT_SPACING);
 
         // Calculate the actual slot ID for this bag slot
-        int16_t slotId = inventory::calcBagSlotId(parentSlotId_, i);
+        // Uses calcContainerSlotId which handles general, bank, shared bank, cursor, and trade bags
+        int16_t slotId = inventory::calcContainerSlotId(parentSlotId_, i);
 
         ItemSlot slot(slotId, SlotType::Bag, x, y, SLOT_SIZE);
         slots_.push_back(slot);

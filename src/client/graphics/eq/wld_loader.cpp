@@ -1741,6 +1741,161 @@ std::optional<ZoneLineInfo> WldLoader::decodeZoneLineString(const std::string& r
 
 // BspTree implementation
 
+BspBounds BspTree::clipBoundsByPlane(const BspBounds& bounds,
+                                      float nx, float ny, float nz, float dist,
+                                      bool frontSide) {
+    if (!bounds.valid) return bounds;
+
+    // For each corner of the AABB, compute which side of the plane it's on
+    // Then find the extent of corners on the desired side
+    float corners[8][3] = {
+        {bounds.minX, bounds.minY, bounds.minZ},
+        {bounds.maxX, bounds.minY, bounds.minZ},
+        {bounds.minX, bounds.maxY, bounds.minZ},
+        {bounds.maxX, bounds.maxY, bounds.minZ},
+        {bounds.minX, bounds.minY, bounds.maxZ},
+        {bounds.maxX, bounds.minY, bounds.maxZ},
+        {bounds.minX, bounds.maxY, bounds.maxZ},
+        {bounds.maxX, bounds.maxY, bounds.maxZ}
+    };
+
+    // Check which corners are on the desired side
+    bool anyOnSide = false;
+    bool allOnSide = true;
+    for (int i = 0; i < 8; ++i) {
+        float dot = corners[i][0] * nx + corners[i][1] * ny + corners[i][2] * nz + dist;
+        bool onFront = (dot >= 0);
+        bool onDesiredSide = (frontSide == onFront);
+        if (onDesiredSide) anyOnSide = true;
+        else allOnSide = false;
+    }
+
+    // If no corners on desired side, the bounds are empty
+    if (!anyOnSide) {
+        return BspBounds();
+    }
+
+    // If all corners on desired side, return original bounds
+    if (allOnSide) {
+        return bounds;
+    }
+
+    // Plane intersects the AABB - compute clipped bounds
+    // For each axis, find where the plane constrains the bounds
+    BspBounds result = bounds;
+
+    // For axis-aligned clipping approximation:
+    // If normal has significant component in an axis, adjust that axis's bounds
+    const float EPSILON = 0.001f;
+
+    if (std::abs(nx) > EPSILON) {
+        // Plane has X component: x = -(ny*y + nz*z + dist) / nx
+        // Find the X value at the center of YZ bounds
+        float centerY = (bounds.minY + bounds.maxY) / 2.0f;
+        float centerZ = (bounds.minZ + bounds.maxZ) / 2.0f;
+        float xAtPlane = -(ny * centerY + nz * centerZ + dist) / nx;
+
+        if (xAtPlane > bounds.minX && xAtPlane < bounds.maxX) {
+            if ((nx > 0) == frontSide) {
+                // Front side means X >= xAtPlane (approximately)
+                result.minX = std::max(result.minX, xAtPlane);
+            } else {
+                // Back side means X < xAtPlane (approximately)
+                result.maxX = std::min(result.maxX, xAtPlane);
+            }
+        }
+    }
+
+    if (std::abs(ny) > EPSILON) {
+        float centerX = (bounds.minX + bounds.maxX) / 2.0f;
+        float centerZ = (bounds.minZ + bounds.maxZ) / 2.0f;
+        float yAtPlane = -(nx * centerX + nz * centerZ + dist) / ny;
+
+        if (yAtPlane > bounds.minY && yAtPlane < bounds.maxY) {
+            if ((ny > 0) == frontSide) {
+                result.minY = std::max(result.minY, yAtPlane);
+            } else {
+                result.maxY = std::min(result.maxY, yAtPlane);
+            }
+        }
+    }
+
+    if (std::abs(nz) > EPSILON) {
+        float centerX = (bounds.minX + bounds.maxX) / 2.0f;
+        float centerY = (bounds.minY + bounds.maxY) / 2.0f;
+        float zAtPlane = -(nx * centerX + ny * centerY + dist) / nz;
+
+        if (zAtPlane > bounds.minZ && zAtPlane < bounds.maxZ) {
+            if ((nz > 0) == frontSide) {
+                result.minZ = std::max(result.minZ, zAtPlane);
+            } else {
+                result.maxZ = std::min(result.maxZ, zAtPlane);
+            }
+        }
+    }
+
+    // Validate result
+    if (result.minX >= result.maxX || result.minY >= result.maxY || result.minZ >= result.maxZ) {
+        return BspBounds();
+    }
+
+    return result;
+}
+
+BspBounds BspTree::computeRegionBoundsRecursive(int nodeIdx, size_t targetRegionIndex,
+                                                 const BspBounds& currentBounds) const {
+    // Base case: invalid node or empty bounds
+    if (nodeIdx < 0 || static_cast<size_t>(nodeIdx) >= nodes.size() || !currentBounds.valid) {
+        return BspBounds();
+    }
+
+    const BspNode& node = nodes[nodeIdx];
+
+    // Check if this node has our target region
+    if (node.regionId > 0) {
+        size_t thisRegionIndex = static_cast<size_t>(node.regionId - 1);
+        if (thisRegionIndex == targetRegionIndex) {
+            // Found it! Return current bounds
+            return currentBounds;
+        }
+        // This is a different region, not what we're looking for
+        return BspBounds();
+    }
+
+    // Interior node - need to traverse children
+    BspBounds result;
+
+    // Clip bounds for left child (front side: dot >= 0)
+    if (node.left >= 0) {
+        BspBounds leftBounds = clipBoundsByPlane(currentBounds,
+            node.normalX, node.normalY, node.normalZ, node.splitDistance, true);
+        if (leftBounds.valid) {
+            BspBounds leftResult = computeRegionBoundsRecursive(node.left, targetRegionIndex, leftBounds);
+            result.merge(leftResult);
+        }
+    }
+
+    // Clip bounds for right child (back side: dot < 0)
+    if (node.right >= 0) {
+        BspBounds rightBounds = clipBoundsByPlane(currentBounds,
+            node.normalX, node.normalY, node.normalZ, node.splitDistance, false);
+        if (rightBounds.valid) {
+            BspBounds rightResult = computeRegionBoundsRecursive(node.right, targetRegionIndex, rightBounds);
+            result.merge(rightResult);
+        }
+    }
+
+    return result;
+}
+
+BspBounds BspTree::computeRegionBounds(size_t regionIndex, const BspBounds& initialBounds) const {
+    if (nodes.empty() || regionIndex >= regions.size()) {
+        return BspBounds();
+    }
+
+    return computeRegionBoundsRecursive(0, regionIndex, initialBounds);
+}
+
 std::shared_ptr<BspRegion> BspTree::findRegionForPoint(float x, float y, float z) const {
     if (nodes.empty()) {
         return nullptr;

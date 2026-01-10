@@ -150,6 +150,14 @@ void SpellBookWindow::goToLastPopulated()
     goToPage(getLastPopulatedPage());
 }
 
+void SpellBookWindow::setScribingMode(bool enabled, uint32_t spellId)
+{
+    scribingMode_ = enabled;
+    scribingSpellId_ = enabled ? spellId : 0;
+    LOG_DEBUG(MOD_UI, "SpellBookWindow scribing mode: {} (spell_id={})",
+              enabled ? "enabled" : "disabled", scribingSpellId_);
+}
+
 bool SpellBookWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl)
 {
     if (!visible_ || !leftButton) {
@@ -197,6 +205,20 @@ bool SpellBookWindow::handleMouseDown(int x, int y, bool leftButton, bool shift,
     int slotIndex = getSlotIndexAtPosition(relX, relY);
     if (slotIndex >= 0 && slotIndex < TOTAL_SLOTS) {
         const SpellSlot& slot = spellSlots_[slotIndex];
+
+        // Check if we're in scribing mode and clicked an empty slot
+        if (scribingMode_ && slot.is_empty && scribingSpellId_ != 0) {
+            LOG_DEBUG(MOD_UI, "SpellBookWindow: Scribe click on empty slot {} (book_slot={})",
+                     slotIndex, slot.book_slot);
+            if (scribeSpellCallback_) {
+                scribeSpellCallback_(scribingSpellId_, slot.book_slot);
+            }
+            // Clear scribing mode after the click
+            setScribingMode(false);
+            return true;
+        }
+
+        // Normal click on a spell slot
         if (!slot.is_empty && slot.spell_id != EQ::SPELL_UNKNOWN) {
             // Set spell on cursor for drag-to-gem memorization
             if (setSpellCursorCallback_ && spellMgr_ && iconLoader_) {
@@ -373,7 +395,15 @@ void SpellBookWindow::renderSpellSlot(irr::video::IVideoDriver* driver,
     // Background color for the row
     irr::video::SColor bgColor;
     if (slot.is_empty) {
-        return;  // Don't draw empty slots
+        // In scribing mode, highlight empty slots as valid drop targets
+        if (scribingMode_) {
+            // Green highlight for available scribing slots
+            bgColor = irr::video::SColor(100, 50, 150, 50);
+            driver->draw2DRectangle(bgColor, absRect);
+            // Draw a subtle border
+            driver->draw2DRectangleOutline(absRect, irr::video::SColor(180, 80, 180, 80));
+        }
+        return;  // Don't draw icon/name for empty slots
     } else if (slot.is_hovered) {
         bgColor = irr::video::SColor(255, 70, 70, 100);  // Highlighted
         driver->draw2DRectangle(bgColor, absRect);

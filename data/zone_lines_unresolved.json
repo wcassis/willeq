@@ -1,0 +1,61 @@
+{
+  "_comment": "Zone lines excluded from zone_lines.json - either post-Velious or BSP bounds computation failed",
+
+  "post_velious_connections": {
+    "_note": "These zone lines connect to expansion zones after Velious",
+    "entries": [
+      {"source": "blackburrow", "zone_point_index": 7, "dest_zone_id": 181, "dest_guess": "jaggedpine (Luclin)"},
+      {"source": "chardok", "zone_point_index": 2, "dest_zone_id": 277, "dest_guess": "chardokb (PoP)"},
+      {"source": "grobb", "zone_point_index": 1, "dest_zone_id": 413, "dest_guess": "gukta (LDoN)"},
+      {"source": "highkeep", "zone_point_index": 1, "dest_zone_id": 407, "dest_guess": "highkeepb (DoN)"},
+      {"source": "kithicor", "zone_point_index": 1, "dest_zone_id": 407, "dest_guess": "highkeepb (DoN)"},
+      {"source": "soldungb", "zone_point_index": 9, "dest_zone_id": 278, "dest_guess": "nagafenlair (PoP)"}
+    ]
+  },
+
+  "bsp_bounds_computation_failed": {
+    "_note": "These zones have valid zone line data but BSP bounds computation failed for the specific regions. May need manual trigger box coordinates.",
+    "entries": [
+      {
+        "zone": "guktop",
+        "expected_connections": ["gukbottom (#1,#2,#4,#5)", "innothule (#6)"],
+        "issue": "BSP regions for zone_point_indexes 1,2,4,5,6 have no computed bounds"
+      },
+      {
+        "zone": "hole",
+        "expected_connections": ["paineel (#1)"],
+        "issue": "BSP region for zone_point_index 1 has no computed bounds"
+      },
+      {
+        "zone": "skyshrine",
+        "expected_connections": ["wakening (#30)"],
+        "issue": "BSP region for zone_point_index 30 has no computed bounds"
+      },
+      {
+        "zone": "velketor",
+        "expected_connections": ["greatdivide (#1)"],
+        "issue": "BSP region for zone_point_index 1 has no computed bounds"
+      },
+      {
+        "zone": "nurga",
+        "expected_connections": ["frontiermtns (#2)"],
+        "issue": "BSP region for zone_point_index 2 has no computed bounds"
+      },
+      {
+        "zone": "charasis",
+        "expected_connections": ["overthere (#4,#5)"],
+        "issue": "BSP regions have no computed bounds"
+      },
+      {
+        "zone": "crushbone",
+        "expected_connections": ["gfaydark (#1)"],
+        "issue": "BSP region has no computed bounds"
+      },
+      {
+        "zone": "erudnext",
+        "expected_connections": ["erudnint (#4)", "erudsxing"],
+        "issue": "BSP regions have no computed bounds"
+      }
+    ]
+  }
+}

@@ -169,7 +169,18 @@ public:
     int findRightHandBoneIndex() const;
     int findLeftHandBoneIndex() const;
 
+    // First-person mode: only show arms and hands, hide body/head/legs
+    // When enabled, vertices belonging to non-arm bones are collapsed (hidden)
+    void setFirstPersonMode(bool enabled);
+    bool isFirstPersonMode() const { return firstPersonMode_; }
+
+    // Mark this node as the player node (for debug logging)
+    void setIsPlayerNode(bool isPlayer) { isPlayerNode_ = isPlayer; }
+    bool isPlayerNode() const { return isPlayerNode_; }
+
 private:
+    // Build list of arm-related bone indices from skeleton
+    void buildArmBoneIndices();
     // Apply animation to the per-instance mesh buffer
     void applyAnimation();
     // Create per-instance animated mesh from base mesh
@@ -191,6 +202,18 @@ private:
     bool looping_;
     bool readOnlyMaterials_;
     irr::scene::IAnimationEndCallBack* animationEndCallback_;
+
+    // First-person mode state
+    bool firstPersonMode_ = false;
+    std::vector<int> armBoneIndices_;  // Bone indices that should be visible in first-person
+    bool armBonesBuilt_ = false;       // Whether arm bone list has been built
+
+    // Debug: mark this node as the player for targeted logging
+    bool isPlayerNode_ = false;
+
+    // Performance: track last applied animation frame to skip redundant transforms
+    int lastAppliedFrame_ = -1;
+    float lastAppliedRotY_ = -9999.0f;  // Track rotation for player baking
 };
 
 } // namespace Graphics

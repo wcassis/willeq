@@ -45,6 +45,13 @@ public:
     float getFollowDistance() const { return followDistance_; }
     void adjustFollowDistance(float delta);
 
+    // Camera orbit control (for third-person mode)
+    // The orbit angle determines where the camera is positioned around the player
+    // Independent of player heading so player can rotate without camera following
+    void setOrbitAngle(float eqHeading);
+    float getOrbitAngle() const { return orbitAngle_; }
+    void adjustOrbitAngle(float delta);  // delta in EQ heading units (0-512)
+
     // Enable one-time zone-in logging (for debugging)
     void enableZoneInLogging() { logZoneIn_ = true; }
 
@@ -61,10 +68,15 @@ private:
     static constexpr float MIN_PITCH = -89.0f;
     static constexpr float MAX_PITCH = 89.0f;
 
-    // Follow mode distance (zoom)
-    float followDistance_ = 150.0f;
-    static constexpr float MIN_FOLLOW_DISTANCE = 10.0f;
-    static constexpr float MAX_FOLLOW_DISTANCE = 500.0f;
+    // Follow mode distance (zoom) - 0 = first person, >0 = third person
+    float followDistance_ = 20.0f;  // Default to a comfortable third-person view
+    static constexpr float MIN_FOLLOW_DISTANCE = 0.0f;
+    static constexpr float MAX_FOLLOW_DISTANCE = 300.0f;
+
+    // Camera orbit angle in EQ heading units (0-512)
+    // This is independent of player heading - player can rotate without camera following
+    float orbitAngle_ = 0.0f;
+    bool orbitAngleInitialized_ = false;  // Set to true after first setFollowPosition
 
     // One-time zone-in logging flag
     bool logZoneIn_ = false;

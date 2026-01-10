@@ -127,6 +127,7 @@ SET(COMMON_SOURCES
     src/common/net/daybreak_connection.cpp
     src/common/net/crc32.cpp
     src/common/event/timer.cpp
+    src/common/performance_metrics.cpp
 )
 
 # Client sources
@@ -137,6 +138,7 @@ SET(CLIENT_SOURCES
     src/client/trade_manager.cpp
     src/client/ucs.cpp
     src/client/position.cpp
+    src/client/world_object.cpp
     src/client/formatted_message.cpp
     src/client/pathfinder_interface.cpp
     src/client/pathfinder_null.cpp
@@ -234,7 +236,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/bag_window.cpp
         src/client/graphics/ui/loot_window.cpp
         src/client/graphics/ui/vendor_window.cpp
+        src/client/graphics/ui/bank_window.cpp
         src/client/graphics/ui/trade_window.cpp
+        src/client/graphics/ui/tradeskill_container_window.cpp
         src/client/graphics/ui/trade_request_dialog.cpp
         src/client/graphics/ui/money_input_dialog.cpp
         src/client/graphics/ui/window_manager.cpp
@@ -249,9 +253,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/buff_tooltip.cpp
         src/client/graphics/ui/skill_tooltip.cpp
         src/client/graphics/ui/group_window.cpp
+        src/client/graphics/ui/pet_window.cpp
         src/client/graphics/ui/hotbar_window.cpp
         src/client/graphics/ui/hotbar_cursor.cpp
         src/client/graphics/ui/skills_window.cpp
+        src/client/graphics/ui/skill_trainer_window.cpp
         src/client/graphics/ui/note_window.cpp
         src/client/graphics/ui/player_status_window.cpp
         src/client/graphics/ui/casting_bar.cpp
@@ -337,6 +343,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/common/performance_metrics.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -468,6 +475,46 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(test_animation
         ${ZLIB_LIBRARIES}
+        fmt::fmt
+    )
+
+    # Zone Line Extraction tool (for extracting zone line bounding boxes to JSON)
+    ADD_EXECUTABLE(extract_zone_lines
+        tools/extract_zone_lines.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(extract_zone_lines PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(extract_zone_lines
+        ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
+
+    # BSP Coordinate Finder tool (for diagnosing BSP coordinate systems)
+    ADD_EXECUTABLE(bsp_coordinate_finder
+        tools/bsp_coordinate_finder.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(bsp_coordinate_finder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(bsp_coordinate_finder
+        ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
 ENDIF()

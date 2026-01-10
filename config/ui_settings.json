@@ -366,6 +366,38 @@
     "version" : 1,
     "windows" : 
     {
+        "bank" : 
+        {
+            "alwaysLocked" : false,
+            "layout" : 
+            {
+                "padding" : 8,
+                "slotSize" : 36,
+                "slotSpacing" : 4
+            },
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : 100,
+                "y" : 150
+            },
+            "showTitleBar" : true,
+            "size" : 
+            {
+                "height" : -1,
+                "width" : -1
+            },
+            "visible" : false
+        },
         "buff" : 
         {
             "alwaysLocked" : false,
@@ -434,8 +466,8 @@
             },
             "position" : 
             {
-                "x" : 650,
-                "y" : 53
+                "x" : 654,
+                "y" : 40
             },
             "showTitleBar" : false,
             "size" : 
@@ -571,14 +603,14 @@
                 "height" : 80,
                 "width" : 200
             },
-            "position" :
+            "position" : 
             {
                 "x" : 6,
                 "y" : 416
             },
             "showTimestamps" : false,
             "showTitleBar" : false,
-            "size" :
+            "size" : 
             {
                 "height" : 180,
                 "width" : 425
@@ -682,23 +714,23 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" :
+            "position" : 
             {
-                "x" : 672,
-                "y" : 400
+                "x" : 666,
+                "y" : 210
             },
             "showTitleBar" : false,
-            "size" :
+            "size" : 
             {
                 "height" : -1,
                 "width" : -1
             },
             "visible" : true
         },
-        "hotbar" :
+        "hotbar" : 
         {
             "alwaysLocked" : false,
-            "buttons" :
+            "buttons" : 
             [
                 {
                     "emoteText" : "",
@@ -761,24 +793,24 @@
                     "type" : 0
                 }
             ],
-            "layout" :
+            "layout" : 
             {
                 "buttonCount" : 10,
                 "buttonSize" : 32,
                 "buttonSpacing" : 2,
                 "padding" : 4
             },
-            "maxSize" :
+            "maxSize" : 
             {
                 "height" : 1080,
                 "width" : 1920
             },
-            "minSize" :
+            "minSize" : 
             {
                 "height" : 50,
                 "width" : 50
             },
-            "position" :
+            "position" : 
             {
                 "x" : 438,
                 "y" : 542
@@ -816,8 +848,8 @@
             },
             "position" : 
             {
-                "x" : 50,
-                "y" : 50
+                "x" : 125,
+                "y" : 61
             },
             "showTitleBar" : true,
             "size" : 
@@ -825,7 +857,7 @@
                 "height" : 340,
                 "width" : 365
             },
-            "visible" : false
+            "visible" : true
         },
         "loot" : 
         {
@@ -867,61 +899,61 @@
             },
             "visible" : false
         },
-        "playerStatus" :
+        "playerStatus" : 
         {
             "alwaysLocked" : true,
-            "colors" :
+            "colors" : 
             {
-                "barText" :
+                "barText" : 
                 [
                     255,
                     255,
                     255,
                     255
                 ],
-                "hpBackground" :
+                "hpBackground" : 
                 [
                     40,
                     0,
                     0,
                     200
                 ],
-                "hpFill" :
+                "hpFill" : 
                 [
                     200,
                     0,
                     0,
                     255
                 ],
-                "manaBackground" :
+                "manaBackground" : 
                 [
                     0,
                     0,
                     40,
                     200
                 ],
-                "manaFill" :
+                "manaFill" : 
                 [
                     0,
                     80,
                     200,
                     255
                 ],
-                "nameText" :
+                "nameText" : 
                 [
                     255,
                     255,
                     255,
                     255
                 ],
-                "staminaBackground" :
+                "staminaBackground" : 
                 [
                     40,
                     40,
                     0,
                     200
                 ],
-                "staminaFill" :
+                "staminaFill" : 
                 [
                     200,
                     200,
@@ -929,7 +961,7 @@
                     255
                 ]
             },
-            "layout" :
+            "layout" : 
             {
                 "barHeight" : 10,
                 "barLabelWidth" : 50,
@@ -937,49 +969,49 @@
                 "nameHeight" : 14,
                 "padding" : 4
             },
-            "maxSize" :
+            "maxSize" : 
             {
                 "height" : 1080,
                 "width" : 1920
             },
-            "minSize" :
+            "minSize" : 
             {
                 "height" : 50,
                 "width" : 50
             },
-            "position" :
+            "position" : 
             {
                 "x" : 10,
                 "y" : 10
             },
             "showTitleBar" : false,
-            "size" :
+            "size" : 
             {
                 "height" : 110,
                 "width" : 90
             },
             "visible" : true
         },
-        "skills" :
+        "skills" : 
         {
             "alwaysLocked" : false,
-            "maxSize" :
+            "maxSize" : 
             {
                 "height" : 1080,
                 "width" : 1920
             },
-            "minSize" :
+            "minSize" : 
             {
                 "height" : 50,
                 "width" : 50
             },
-            "position" :
+            "position" : 
             {
                 "x" : 106,
                 "y" : 10
             },
             "showTitleBar" : true,
-            "size" :
+            "size" : 
             {
                 "height" : 400,
                 "width" : 340
@@ -1045,26 +1077,26 @@
             },
             "visible" : false
         },
-        "trade" :
+        "trade" : 
         {
             "alwaysLocked" : false,
-            "maxSize" :
+            "maxSize" : 
             {
                 "height" : 1080,
                 "width" : 1920
             },
-            "minSize" :
+            "minSize" : 
             {
                 "height" : 50,
                 "width" : 50
             },
-            "position" :
+            "position" : 
             {
-                "x" : 427,
-                "y" : 62
+                "x" : 0,
+                "y" : 0
             },
             "showTitleBar" : true,
-            "size" :
+            "size" : 
             {
                 "height" : -1,
                 "width" : -1

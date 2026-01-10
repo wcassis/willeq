@@ -122,6 +122,8 @@ public:
     void removeItem(int16_t slotId);
     void clearAll();
     void clearTradeSlots();  // Clear items in trade slots (3000-3007)
+    void clearBankSlots();   // Clear items in bank slots (2000-2190, 2500-2550)
+    void clearWorldContainerSlots();  // Clear items in world container slots (4000-4009)
 
     // Cursor operations
     bool pickupItem(int16_t slotId);
@@ -144,6 +146,14 @@ public:
     void clearCursorMoney();
     void returnCursorMoney();  // Return cursor money to player's coin
 
+    // Spell scroll scribing cursor state
+    // When a player Ctrl+clicks a spell scroll, we track it here until they click a spellbook slot
+    bool isHoldingSpellForScribe() const { return scribeSpellId_ != 0; }
+    uint32_t getScribeSpellId() const { return scribeSpellId_; }
+    int16_t getScribeSourceSlot() const { return scribeSourceSlot_; }
+    void setSpellForScribe(uint32_t spellId, int16_t sourceSlot);
+    void clearSpellForScribe();
+
     // Swap items between slots
     bool swapItems(int16_t fromSlot, int16_t toSlot);
 
@@ -151,6 +161,7 @@ public:
     bool canPlaceItemInSlot(const ItemInstance* item, int16_t targetSlot) const;
     bool canEquipItem(const ItemInstance* item, int16_t equipSlot) const;
     bool canPlaceInBag(const ItemInstance* item, int16_t bagSlot) const;
+    bool canPlaceInWorldContainer(const ItemInstance* item, int16_t slot) const;
     bool meetsRestrictions(const ItemInstance* item) const;
     bool hasLoreConflict(const ItemInstance* item, int16_t excludeSlot = SLOT_INVALID) const;
 
@@ -160,6 +171,15 @@ public:
     std::vector<int16_t> getBagContentsSlots(int16_t generalSlot) const;
     bool isBagEmpty(int16_t generalSlot) const;
     void relocateBagContents(int16_t fromGeneralSlot, int16_t toGeneralSlot);
+
+    // Bank utilities
+    bool isBankBag(int16_t slotId) const;           // Check if bank/shared bank slot contains a bag
+    int getBankBagSize(int16_t slotId) const;       // Get bag capacity for bank container
+    std::vector<int16_t> getBankBagContentsSlots(int16_t bankSlot) const;  // Get slots inside bank bag
+    bool isBankBagEmpty(int16_t bankSlot) const;    // Check if bank bag is empty
+    bool canPlaceInBankSlot(const ItemInstance* item, int16_t targetSlot) const;  // Validate bank placement
+    std::vector<std::pair<int16_t, const ItemInstance*>> getBankItems() const;    // Get all bank items
+    std::vector<std::pair<int16_t, const ItemInstance*>> getSharedBankItems() const;  // Get shared bank items
 
     // Get all items in a slot range
     std::vector<std::pair<int16_t, const ItemInstance*>> getEquipmentItems() const;
@@ -214,6 +234,10 @@ private:
     CursorMoneyType cursorMoneyType_ = CursorMoneyType::None;
     uint32_t cursorMoneyAmount_ = 0;
 
+    // Spell scroll scribing state
+    uint32_t scribeSpellId_ = 0;       // Spell ID being scribed (0 = not scribing)
+    int16_t scribeSourceSlot_ = SLOT_INVALID;  // Inventory slot containing the scroll
+
     // Player info for validation
     uint32_t playerRace_ = 0;
     uint32_t playerClass_ = 0;
@@ -225,7 +249,8 @@ private:
 
     // Internal helpers
     bool isValidSlot(int16_t slotId) const;
-    const ItemInstance* getBagAtSlot(int16_t bagSlot) const;
+    const ItemInstance* getBagAtSlot(int16_t bagSlot) const;       // Get container for general/cursor bag slots
+    const ItemInstance* getContainerAtSlot(int16_t bagSlot) const; // Get container for any bag slot (general, bank, trade)
 };
 
 } // namespace inventory

@@ -803,6 +803,86 @@ struct ClickDoor_Struct {
 static_assert(sizeof(ClickDoor_Struct) == 16, "ClickDoor_Struct must be 16 bytes");
 
 // ============================================================================
+// World Object / Tradeskill Structures (from titanium_structs.h)
+// ============================================================================
+
+/**
+ * Object Struct
+ * Used for forges, ovens, ground spawns, items dropped to ground, etc.
+ * Size: 100 bytes (Titanium)
+ * Used in: OP_GroundSpawn packet (server->client)
+ */
+struct Object_Struct {
+/*0000*/ uint32_t linked_list_addr[2];  // Prev and next pointers (client-side linked list)
+/*0008*/ float    size;                  // Object scale
+/*0012*/ uint16_t solid_type;            // Collision type
+/*0014*/ uint16_t padding014;            // Padding
+/*0016*/ uint32_t drop_id;               // Unique object id for zone
+/*0020*/ uint16_t zone_id;               // Zone the object appears in
+/*0022*/ uint16_t zone_instance;         // Zone instance
+/*0024*/ uint32_t incline;               // Rotation/incline
+/*0028*/ uint32_t unknown024;            // Unknown
+/*0032*/ float    tilt_x;                // X-axis tilt
+/*0036*/ float    tilt_y;                // Y-axis tilt
+/*0040*/ float    heading;               // Heading/rotation (0-360)
+/*0044*/ float    z;                     // Z coordinate
+/*0048*/ float    x;                     // X coordinate
+/*0052*/ float    y;                     // Y coordinate
+/*0056*/ char     object_name[32];       // Object name (e.g., "IT63_ACTORDEF")
+/*0088*/ uint32_t unknown076;            // Unknown
+/*0092*/ uint32_t object_type;           // Type of object (tradeskill type, etc.)
+/*0096*/ uint32_t unknown084;            // Set to 0xFF for tradeskill containers
+/*0100*/
+};
+static_assert(sizeof(Object_Struct) == 100, "Object_Struct must be 100 bytes");
+
+/**
+ * Click Object Struct
+ * Client clicking on a zone object (forge, groundspawn, etc.)
+ * Size: 8 bytes
+ * Used in: OP_ClickObject packet (client->server)
+ */
+struct ClickObject_Struct {
+/*0000*/ uint32_t drop_id;      // Unique object id for zone (from Object_Struct)
+/*0004*/ uint32_t player_id;    // Player's spawn ID
+/*0008*/
+};
+static_assert(sizeof(ClickObject_Struct) == 8, "ClickObject_Struct must be 8 bytes");
+
+/**
+ * Click Object Action Struct
+ * Server response to client clicking on a World Container (forge, loom, etc.)
+ * Also sent by client when they close the container.
+ * Size: 92 bytes
+ * Used in: OP_ClickObjectAction packet (server->client, client->server for close)
+ */
+struct ClickObjectAction_Struct {
+/*0000*/ uint32_t player_id;        // Entity ID of player who clicked object
+/*0004*/ uint32_t drop_id;          // Zone-specified unique object identifier
+/*0008*/ uint32_t open;             // 1=opening, 0=closing
+/*0012*/ uint32_t type;             // Object type (see TradeskillContainerType)
+/*0016*/ uint32_t unknown16;        // Set to 0xA
+/*0020*/ uint32_t icon;             // Icon to display for tradeskill containers
+/*0024*/ uint32_t unknown24;        // Unknown
+/*0028*/ char     object_name[64];  // Object name to display
+/*0092*/
+};
+static_assert(sizeof(ClickObjectAction_Struct) == 92, "ClickObjectAction_Struct must be 92 bytes");
+
+/**
+ * New Combine Struct
+ * Client requesting to perform a tradeskill combine
+ * Size: 4 bytes
+ * Used in: OP_TradeSkillCombine packet (client->server)
+ */
+struct NewCombine_Struct {
+/*0000*/ int16_t container_slot;     // 1000 for world container, or bag slot ID
+/*0002*/ int16_t guildtribute_slot;  // Usually 0
+/*0004*/
+};
+static_assert(sizeof(NewCombine_Struct) == 4, "NewCombine_Struct must be 4 bytes");
+
+// ============================================================================
 // Group Structures (from titanium_structs.h)
 // ============================================================================
 
@@ -1054,6 +1134,70 @@ struct BookText_Struct {
     uint8_t type;              // 0=scroll, 1=book, 2=item info
     char booktext[1];          // Variable length - text content (use '^' for newlines)
 };
+
+/*
+ * Skill Training packet structures
+ * Used for GM/class trainer skill training
+ */
+
+// OP_GMTraining - Skill training request/response (bidirectional)
+// Client sends to request training window, server responds with skill caps
+// Size: 448 bytes
+struct GMTrainee_Struct {
+/*0000*/ uint32_t npcid;                   // Trainer NPC entity ID
+/*0004*/ uint32_t playerid;                // Player entity ID
+/*0008*/ uint32_t skills[MAX_PP_SKILL];    // Array of max trainable skill values (100 skills)
+/*0408*/ uint8_t  unknown408[40];          // Unknown padding/data
+/*0448*/
+};
+static_assert(sizeof(GMTrainee_Struct) == 448, "GMTrainee_Struct must be 448 bytes");
+
+// OP_GMEndTraining - End training session (client -> server)
+// Size: 8 bytes
+struct GMTrainEnd_Struct {
+/*0000*/ uint32_t npcid;                   // Trainer NPC entity ID
+/*0004*/ uint32_t playerid;                // Player entity ID
+/*0008*/
+};
+static_assert(sizeof(GMTrainEnd_Struct) == 8, "GMTrainEnd_Struct must be 8 bytes");
+
+// OP_GMTrainSkill - Request to train a specific skill (client -> server)
+// Size: 12 bytes
+struct GMSkillChange_Struct {
+/*0000*/ uint16_t npcid;                   // Trainer NPC entity ID (truncated to 16-bit)
+/*0002*/ uint8_t  unknown1[2];             // Session identifier or padding
+/*0004*/ uint16_t skillbank;               // 0 = normal skills, 1 = languages
+/*0006*/ uint8_t  unknown2[2];             // Padding
+/*0008*/ uint16_t skill_id;                // Skill ID to train
+/*0010*/ uint8_t  unknown3[2];             // Padding
+/*0012*/
+};
+static_assert(sizeof(GMSkillChange_Struct) == 12, "GMSkillChange_Struct must be 12 bytes");
+
+// ============================================================================
+// Pet Command Structures
+// ============================================================================
+
+// OP_PetCommands - Pet command sent from client to server
+// Size: 8 bytes
+// Used in: OP_PetCommands packet (client->server)
+struct PetCommand_Struct {
+/*0000*/ uint32_t command;     // Pet command ID (see pet_constants.h PetCommand enum)
+/*0004*/ uint32_t target;      // Target spawn ID (for attack commands, 0 otherwise)
+/*0008*/
+};
+static_assert(sizeof(PetCommand_Struct) == 8, "PetCommand_Struct must be 8 bytes");
+
+// OP_PetCommandState - Pet button state update from server
+// Size: 8 bytes
+// Used in: OP_PetCommandState packet (server->client)
+// Note: This opcode may be unmapped for Titanium (shows 0x0000 in some captures)
+struct PetCommandState_Struct {
+/*0000*/ uint32_t button_id;   // Pet button ID (see pet_constants.h PetButton enum)
+/*0004*/ uint32_t state;       // Button state: 0 = off/unpressed, 1 = on/pressed
+/*0008*/
+};
+static_assert(sizeof(PetCommandState_Struct) == 8, "PetCommandState_Struct must be 8 bytes");
 
 #pragma pack(pop)
 

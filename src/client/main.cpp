@@ -2,6 +2,7 @@
 #include "common/util/json_config.h"  // Must be before logging.h for InitLoggingFromJson
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
+#include "common/performance_metrics.h"
 #include "client/eq.h"
 #include "client/combat.h"
 
@@ -580,6 +581,8 @@ int main(int argc, char *argv[]) {
 		debug_level, config_file, pathfinding_enabled ? "enabled" : "disabled");
 	LOG_INFO(MOD_MAIN, "Log level: {} (use --log-level=LEVEL to change)", GetLevelName(static_cast<LogLevel>(GetLogLevel())));
 
+	// Start tracking startup metrics
+	EQT::PerformanceMetrics::instance().startTimer("Config Loading", EQT::MetricCategory::Startup);
 	auto config = EQ::JsonConfigFile::Load(config_file);
 	auto config_handle = config.RawHandle();
 
@@ -624,8 +627,11 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	EQT::PerformanceMetrics::instance().stopTimer("Config Loading");
+
 	std::vector<std::unique_ptr<EverQuest>> eq_list;
 
+	EQT::PerformanceMetrics::instance().startTimer("Client Creation", EQT::MetricCategory::Startup);
 	try {
 		for (int i = 0; i < (int)clients_config.size(); ++i) {
 			auto c = clients_config[i];
@@ -680,6 +686,7 @@ int main(int argc, char *argv[]) {
 		std::cout << fmt::format("Error parsing config file: {}\n", ex.what());
 		return 1;
 	}
+	EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
 
 	if (eq_list.empty()) {
 		std::cout << "No client configurations found in config file.\n";
@@ -691,6 +698,7 @@ int main(int argc, char *argv[]) {
 	bool graphics_initialized = false;
 	if (graphics_enabled && !eq_list.empty() && !eq_list[0]->GetEQClientPath().empty()) {
 		LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics early for loading screen...");
+		EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
 		if (eq_list[0]->InitGraphics(graphics_width, graphics_height)) {
 			graphics_initialized = true;
 			LOG_INFO(MOD_GRAPHICS, "Graphics initialized - showing loading screen");
@@ -704,6 +712,7 @@ int main(int argc, char *argv[]) {
 			LOG_WARN(MOD_GRAPHICS, "Failed to initialize graphics - running headless");
 			graphics_enabled = false;
 		}
+		EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
 	} else if (graphics_enabled && !eq_list.empty() && eq_list[0]->GetEQClientPath().empty()) {
 		LOG_INFO(MOD_GRAPHICS, "No eq_client_path in config - running headless");
 		graphics_enabled = false;
@@ -968,7 +977,13 @@ int main(int argc, char *argv[]) {
 				          loop_counter, graphics_initialized, running.load(), zone_change_happening);
 			}
 
+			auto eventLoopStart = std::chrono::steady_clock::now();
 			EQ::EventLoop::Get().Process();
+			auto eventLoopEnd = std::chrono::steady_clock::now();
+			auto eventLoopMs = std::chrono::duration_cast<std::chrono::milliseconds>(eventLoopEnd - eventLoopStart).count();
+			if (eventLoopMs > 50) {
+				LOG_WARN(MOD_MAIN, "PERF: EventLoop::Process() took {} ms", eventLoopMs);
+			}
 
 			// Debug: Check if we're still alive after event processing
 			if (loop_counter % 100 == 1 || zone_change_happening) {
@@ -999,12 +1014,18 @@ int main(int argc, char *argv[]) {
 
 			auto now = std::chrono::steady_clock::now();
 			if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_update).count() >= 16) {
+				auto movementStart = std::chrono::steady_clock::now();
 				for (auto& eq : eq_list) {
 					try {
 						eq->UpdateMovement();
 					} catch (const std::exception& e) {
 						std::cerr << "[ERROR] Exception in UpdateMovement: " << e.what() << std::endl;
 					}
+				}
+				auto movementEnd = std::chrono::steady_clock::now();
+				auto movementMs = std::chrono::duration_cast<std::chrono::milliseconds>(movementEnd - movementStart).count();
+				if (movementMs > 50) {
+					LOG_WARN(MOD_MAIN, "PERF: UpdateMovement() took {} ms", movementMs);
 				}
 				last_update = now;
 

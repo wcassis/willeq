@@ -389,6 +389,14 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
         item.focusEffect.type = toInt(fields[150]);
     }
 
+    // Scroll effect (154-158)
+    if (fields.size() >= 159) {
+        item.scrollEffect.effectId = toInt(fields[154]);
+        item.scrollEffect.type = toInt(fields[155]);
+        LOG_DEBUG(MOD_UI, "TitaniumItemParser Scroll effect for '{}': effectId={} type={}",
+            item.name, item.scrollEffect.effectId, item.scrollEffect.type);
+    }
+
     return true;
 }
 
@@ -454,7 +462,8 @@ void TitaniumItemParser::parseSubItems(std::string_view data, size_t afterQuoteP
                 }
 
                 // Calculate the bag slot ID for this sub-item
-                int16_t bagSlotId = calcBagSlotId(parentSlot, slotIndex);
+                // Uses calcContainerSlotId which handles general, bank, shared bank, cursor, and trade bags
+                int16_t bagSlotId = calcContainerSlotId(parentSlot, slotIndex);
 
                 // Parse the sub-item (don't recurse into sub-sub-items)
                 int16_t parsedSlot = SLOT_INVALID;
@@ -702,6 +711,34 @@ void InventoryManager::clearTradeSlots() {
         items_.erase(slot);
     }
     LOG_DEBUG(MOD_UI, "InventoryManager Cleared trade slots {}-{}", TRADE_BEGIN, TRADE_END);
+}
+
+void InventoryManager::clearBankSlots() {
+    // Clear items in main bank slots (2000-2015) and bank bag slots (2031-2190)
+    for (int16_t slot = BANK_BEGIN; slot <= BANK_END; slot++) {
+        items_.erase(slot);
+    }
+    for (int16_t slot = BANK_BAGS_BEGIN; slot <= BANK_BAGS_END; slot++) {
+        items_.erase(slot);
+    }
+
+    // Clear shared bank slots (2500-2501) and shared bank bag slots (2531-2550)
+    for (int16_t slot = SHARED_BANK_BEGIN; slot <= SHARED_BANK_END; slot++) {
+        items_.erase(slot);
+    }
+    for (int16_t slot = SHARED_BANK_BAGS_BEGIN; slot <= SHARED_BANK_BAGS_END; slot++) {
+        items_.erase(slot);
+    }
+
+    LOG_DEBUG(MOD_UI, "InventoryManager Cleared bank slots");
+}
+
+void InventoryManager::clearWorldContainerSlots() {
+    // Clear items in world container slots (4000-4009)
+    for (int16_t slot = WORLD_BEGIN; slot <= WORLD_END; slot++) {
+        items_.erase(slot);
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager Cleared world container slots {}-{}", WORLD_BEGIN, WORLD_END);
 }
 
 bool InventoryManager::pickupItem(int16_t slotId) {
@@ -1008,6 +1045,29 @@ void InventoryManager::returnCursorMoney() {
     clearCursorMoney();
 }
 
+void InventoryManager::setSpellForScribe(uint32_t spellId, int16_t sourceSlot) {
+    scribeSpellId_ = spellId;
+    scribeSourceSlot_ = sourceSlot;
+    LOG_DEBUG(MOD_UI, "InventoryManager: Set spell {} from slot {} for scribing",
+              spellId, sourceSlot);
+
+    // Move the scroll to cursor slot - this sends MoveItem to server
+    // The server expects the scroll to be on cursor when we send OP_MemorizeSpell
+    if (!pickupItem(sourceSlot)) {
+        LOG_WARN(MOD_UI, "InventoryManager: Failed to pick up scroll from slot {} for scribing",
+                 sourceSlot);
+    }
+}
+
+void InventoryManager::clearSpellForScribe() {
+    if (scribeSpellId_ != 0) {
+        LOG_DEBUG(MOD_UI, "InventoryManager: Cleared spell scribing state (was spell {})",
+                  scribeSpellId_);
+    }
+    scribeSpellId_ = 0;
+    scribeSourceSlot_ = SLOT_INVALID;
+}
+
 bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
     auto fromIt = items_.find(fromSlot);
     auto toIt = items_.find(toSlot);
@@ -1073,9 +1133,32 @@ bool InventoryManager::canPlaceItemInSlot(const ItemInstance* item, int16_t targ
         return canPlaceInBag(item, targetSlot);
     }
 
+    // Bank slots (main and shared, plus bag slots within)
+    if (isBankSlot(targetSlot) || isSharedBankSlot(targetSlot) ||
+        isBankBagSlot(targetSlot) || isSharedBankBagSlot(targetSlot)) {
+        return canPlaceInBankSlot(item, targetSlot);
+    }
+
     // Trade slots - can place any tradeable item
     if (isTradeSlot(targetSlot)) {
         return !item->noDrop;  // Only non-nodrop items can be traded
+    }
+
+    // Trade bag slots - check container constraints and tradeability
+    if (isTradeBagSlot(targetSlot)) {
+        if (item->noDrop || item->isContainer()) {
+            return false;
+        }
+        const ItemInstance* container = getContainerAtSlot(targetSlot);
+        if (!container) {
+            return false;
+        }
+        return item->canFitInContainer(container->bagSize);
+    }
+
+    // World container slots (tradeskill containers like forges, looms)
+    if (isWorldContainerItemSlot(targetSlot)) {
+        return canPlaceInWorldContainer(item, targetSlot);
     }
 
     // Cursor slot
@@ -1124,6 +1207,29 @@ bool InventoryManager::canPlaceInBag(const ItemInstance* item, int16_t bagSlot) 
     if (!item->canFitInContainer(bag->bagSize)) {
         return false;
     }
+
+    return true;
+}
+
+bool InventoryManager::canPlaceInWorldContainer(const ItemInstance* item, int16_t slot) const {
+    if (!item) {
+        return false;
+    }
+
+    // Can't put containers in world containers (no nested containers)
+    if (item->isContainer()) {
+        LOG_DEBUG(MOD_UI, "Cannot place container in world container slot {}", slot);
+        return false;
+    }
+
+    // Can't put no-drop items in world containers (they're shared with the world)
+    if (item->noDrop) {
+        LOG_DEBUG(MOD_UI, "Cannot place no-drop item '{}' in world container slot {}", item->name, slot);
+        return false;
+    }
+
+    // World containers don't have size restrictions like bags do
+    // The server will validate if the item is appropriate for the tradeskill
 
     return true;
 }
@@ -1266,6 +1372,149 @@ void InventoryManager::relocateBagContents(int16_t fromGeneralSlot, int16_t toGe
     }
 }
 
+bool InventoryManager::isBankBag(int16_t slotId) const {
+    // Check if slot is a bank slot (main or shared) containing a container
+    if (!isBankSlot(slotId) && !isSharedBankSlot(slotId)) {
+        return false;
+    }
+    const ItemInstance* item = getItem(slotId);
+    return item && item->isContainer();
+}
+
+int InventoryManager::getBankBagSize(int16_t slotId) const {
+    if (!isBankSlot(slotId) && !isSharedBankSlot(slotId)) {
+        return 0;
+    }
+    const ItemInstance* item = getItem(slotId);
+    if (item && item->isContainer()) {
+        return item->bagSlots;
+    }
+    return 0;
+}
+
+std::vector<int16_t> InventoryManager::getBankBagContentsSlots(int16_t bankSlot) const {
+    std::vector<int16_t> slots;
+
+    // Must be a bank or shared bank slot
+    if (!isBankSlot(bankSlot) && !isSharedBankSlot(bankSlot)) {
+        return slots;
+    }
+
+    const ItemInstance* bag = getItem(bankSlot);
+    if (!bag || !bag->isContainer()) {
+        return slots;
+    }
+
+    int bagSize = bag->bagSlots;
+    for (int i = 0; i < bagSize; i++) {
+        int16_t bagSlot = calcContainerSlotId(bankSlot, i);
+        if (bagSlot != SLOT_INVALID) {
+            slots.push_back(bagSlot);
+        }
+    }
+
+    return slots;
+}
+
+bool InventoryManager::isBankBagEmpty(int16_t bankSlot) const {
+    auto slots = getBankBagContentsSlots(bankSlot);
+    for (int16_t slot : slots) {
+        if (hasItem(slot)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool InventoryManager::canPlaceInBankSlot(const ItemInstance* item, int16_t targetSlot) const {
+    if (!item) {
+        return false;
+    }
+
+    // Check if this is a main bank slot
+    if (isBankSlot(targetSlot)) {
+        return true;  // Any item can go in main bank slots
+    }
+
+    // Check if this is a shared bank slot
+    if (isSharedBankSlot(targetSlot)) {
+        // Only non-nodrop items can go in shared bank (account-wide storage)
+        return !item->noDrop;
+    }
+
+    // Check if this is a bank bag slot
+    if (isBankBagSlot(targetSlot) || isSharedBankBagSlot(targetSlot)) {
+        // Can't put bags in bags
+        if (item->isContainer()) {
+            return false;
+        }
+
+        // Get the parent bank slot to find the container
+        const ItemInstance* container = getContainerAtSlot(targetSlot);
+        if (!container) {
+            return false;  // No container at this location
+        }
+
+        // Check size constraint
+        if (!item->canFitInContainer(container->bagSize)) {
+            return false;
+        }
+
+        // For shared bank bag slots, check nodrop
+        if (isSharedBankBagSlot(targetSlot) && item->noDrop) {
+            return false;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+std::vector<std::pair<int16_t, const ItemInstance*>> InventoryManager::getBankItems() const {
+    std::vector<std::pair<int16_t, const ItemInstance*>> result;
+
+    // Main bank slots (2000-2015)
+    for (int16_t slot = BANK_BEGIN; slot <= BANK_END; slot++) {
+        const ItemInstance* item = getItem(slot);
+        if (item) {
+            result.emplace_back(slot, item);
+        }
+    }
+
+    // Bank bag contents (2031-2190)
+    for (int16_t slot = BANK_BAGS_BEGIN; slot <= BANK_BAGS_END; slot++) {
+        const ItemInstance* item = getItem(slot);
+        if (item) {
+            result.emplace_back(slot, item);
+        }
+    }
+
+    return result;
+}
+
+std::vector<std::pair<int16_t, const ItemInstance*>> InventoryManager::getSharedBankItems() const {
+    std::vector<std::pair<int16_t, const ItemInstance*>> result;
+
+    // Shared bank slots (2500-2501)
+    for (int16_t slot = SHARED_BANK_BEGIN; slot <= SHARED_BANK_END; slot++) {
+        const ItemInstance* item = getItem(slot);
+        if (item) {
+            result.emplace_back(slot, item);
+        }
+    }
+
+    // Shared bank bag contents (2531-2550)
+    for (int16_t slot = SHARED_BANK_BAGS_BEGIN; slot <= SHARED_BANK_BAGS_END; slot++) {
+        const ItemInstance* item = getItem(slot);
+        if (item) {
+            result.emplace_back(slot, item);
+        }
+    }
+
+    return result;
+}
+
 std::vector<std::pair<int16_t, const ItemInstance*>> InventoryManager::getEquipmentItems() const {
     std::vector<std::pair<int16_t, const ItemInstance*>> result;
     for (int16_t slot = EQUIPMENT_BEGIN; slot <= EQUIPMENT_END; slot++) {
@@ -1400,7 +1649,22 @@ bool InventoryManager::isValidSlot(int16_t slotId) const {
     return isEquipmentSlot(slotId) ||
            isGeneralSlot(slotId) ||
            isBagSlot(slotId) ||
-           isCursorSlot(slotId);
+           isCursorSlot(slotId) ||
+           isBankSlot(slotId) ||
+           isSharedBankSlot(slotId) ||
+           isBankBagSlot(slotId) ||
+           isSharedBankBagSlot(slotId) ||
+           isTradeSlot(slotId) ||
+           isTradeBagSlot(slotId);
+}
+
+const ItemInstance* InventoryManager::getContainerAtSlot(int16_t bagSlot) const {
+    // Use the universal helper to get the parent container slot
+    int16_t parentSlot = getParentContainerSlot(bagSlot);
+    if (parentSlot == SLOT_INVALID) {
+        return nullptr;
+    }
+    return getItem(parentSlot);
 }
 
 bool InventoryManager::destroyItem(int16_t slotId) {
@@ -1549,12 +1813,43 @@ void InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
 }
 
 void InventoryManager::processMoveItemResponse(const EQ::Net::Packet& packet) {
-    // Server sends back MoveItem_Struct to confirm the move
-    // If the move was rejected, the server will send the item back to original slot
+    // Server sends back MoveItem_Struct to confirm the move or indicate server-side changes
+    // MoveItem_Struct: from_slot(4), to_slot(4), number_in_stack(4) = 12 bytes
+    // Packet: opcode(2) + data(12) = 14 bytes
     LOG_DEBUG(MOD_UI, "InventoryManager Received MoveItem response, size: {}", packet.Length());
 
-    // For now, we trust our client-side validation and don't need to do anything
-    // The server will send OP_ItemPacket if it needs to correct our state
+    if (packet.Length() < 14) {
+        LOG_WARN(MOD_UI, "MoveItem response too short: {} bytes", packet.Length());
+        return;
+    }
+
+    // Parse the MoveItem struct (after 2-byte opcode)
+    int32_t fromSlot = static_cast<int32_t>(packet.GetUInt32(2));
+    int32_t toSlot = static_cast<int32_t>(packet.GetUInt32(6));
+    uint32_t quantity = packet.GetUInt32(10);
+
+    LOG_DEBUG(MOD_UI, "InventoryManager MoveItem: from={} to={} qty={}", fromSlot, toSlot, quantity);
+
+    // Check for item deletion (to_slot == -1 / 0xFFFFFFFF)
+    // This happens when:
+    // 1. A spell scroll is consumed after successful scribing
+    // 2. Tradeskill combine consumes ingredients
+    // 3. Server explicitly deletes an item
+    if (toSlot == -1) {
+        int16_t slot = static_cast<int16_t>(fromSlot);
+        LOG_INFO(MOD_UI, "Item deleted from slot {} via MoveItem (to=-1)", slot);
+
+        // Check if this deletion is related to our pending scribe
+        if (isHoldingSpellForScribe() && getScribeSourceSlot() == slot) {
+            LOG_DEBUG(MOD_UI, "Scroll consumed after scribing from slot {}", slot);
+            clearSpellForScribe();
+        }
+
+        // Remove the item from inventory
+        removeItem(slot);
+    }
+    // Normal move operations are handled client-side
+    // Server will send OP_ItemPacket if it needs to correct our state
 }
 
 void InventoryManager::processDeleteItemResponse(const EQ::Net::Packet& packet) {

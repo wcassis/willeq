@@ -7,8 +7,10 @@
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/entity_renderer.h"  // For EntityAppearance
 #include "common/logging.h"
+#include "common/performance_metrics.h"
 #include <algorithm>
 #include <iostream>
+#include <chrono>
 
 namespace EQT {
 namespace Graphics {
@@ -93,6 +95,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
 
                         // For each bone, merge animation tracks (only add missing track entries)
                         int mappedBones = 0;
+                        int unmappedBones = 0;
                         for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
                             std::string ourBoneName = ourSkel->bones[i].name;
                             std::string mappedName = ourBoneName;
@@ -104,12 +107,24 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
                             int sourceIdx = sourceSkel->getBoneIndex(mappedName);
                             if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
                                 // Merge animation tracks - only add missing ones
+                                int addedTracks = 0;
                                 for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
                                     if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
                                         ourSkel->bones[i].animationTracks[trackCode] = trackDef;
+                                        addedTracks++;
                                     }
                                 }
                                 mappedBones++;
+                                if (i < 3) {
+                                    LOG_TRACE(MOD_GRAPHICS, "  Bone[{}] '{}' -> '{}' matched source[{}], added {} tracks",
+                                              i, ourBoneName, mappedName, sourceIdx, addedTracks);
+                                }
+                            } else {
+                                unmappedBones++;
+                                if (unmappedBones <= 3) {
+                                    LOG_TRACE(MOD_GRAPHICS, "  Bone[{}] '{}' -> '{}' NOT FOUND in source skeleton",
+                                              i, ourBoneName, mappedName);
+                                }
                             }
                         }
 

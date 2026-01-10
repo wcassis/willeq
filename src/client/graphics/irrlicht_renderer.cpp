@@ -5,9 +5,11 @@
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "client/zone_lines.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
+#include "common/performance_metrics.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -101,6 +103,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 doorInteractRequested_ = true;
             }
 
+            // World object (tradeskill container) interaction on O key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_O) {
+                worldObjectInteractRequested_ = true;
+            }
+
             // Hail on H key (Player mode)
             if (event.KeyInput.Key == irr::KEY_KEY_H) {
                 hailRequested_ = true;
@@ -109,6 +116,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             // Vendor window toggle on V key (Player mode)
             if (event.KeyInput.Key == irr::KEY_KEY_V) {
                 vendorToggleRequested_ = true;
+            }
+
+            // Trainer window toggle on T key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_T && !event.KeyInput.Control) {
+                trainerToggleRequested_ = true;
             }
 
             // Hotbar shortcuts (Ctrl+1-9 and Ctrl+0)
@@ -123,6 +135,16 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             // Skills window toggle on K key (Player mode)
             if (event.KeyInput.Key == irr::KEY_KEY_K) {
                 skillsToggleRequested_ = true;
+            }
+
+// Zone line visualization toggle on Z key
+            if (event.KeyInput.Key == irr::KEY_KEY_Z) {
+                zoneLineVisualizationToggleRequested_ = true;
+            }
+
+            // Pet window toggle on P key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_P) {
+                petToggleRequested_ = true;
             }
 
             // Spell gem shortcuts (1-8 keys, not numpad) - only when Ctrl is not held
@@ -280,12 +302,14 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             if (event.KeyInput.Key == irr::KEY_PERIOD) {
                 helmVScaleDelta_ = scaleStep;
             }
-            // Rotation: -/= keys (minus/equals)
+            // Rotation: -/= keys (minus/equals) - also used for zoom in Player mode
             if (event.KeyInput.Key == irr::KEY_MINUS) {
                 helmRotationDelta_ = -rotStep;
+                cameraZoomDelta_ = 2.0f;  // Zoom out (increase distance)
             }
             if (event.KeyInput.Key == irr::KEY_PLUS) {
                 helmRotationDelta_ = rotStep;
+                cameraZoomDelta_ = -2.0f;  // Zoom in (decrease distance)
             }
             // F8: Print state
             if (event.KeyInput.Key == irr::KEY_F8) {
@@ -945,6 +969,52 @@ void IrrlichtRenderer::setupHUD() {
 void IrrlichtRenderer::updateHUD() {
     if (!hudText_ || !hudEnabled_) return;
 
+    // Performance optimization: check if HUD state has changed
+    // Build current state snapshot for comparison
+    HudCachedState currentState;
+    currentState.rendererMode = rendererMode_;
+    currentState.fps = currentFps_;
+    currentState.playerX = static_cast<int>(playerX_);
+    currentState.playerY = static_cast<int>(playerY_);
+    currentState.playerZ = static_cast<int>(playerZ_);
+    if (entityRenderer_) {
+        currentState.entityCount = entityRenderer_->getEntityCount();
+        currentState.modeledEntityCount = entityRenderer_->getModeledEntityCount();
+        currentState.animSpeed = entityRenderer_->getGlobalAnimationSpeed();
+        currentState.corpseZ = entityRenderer_->getCorpseZOffset();
+    }
+    currentState.targetId = currentTargetId_;
+    currentState.targetHpPercent = currentTargetHpPercent_;
+    currentState.wireframeMode = wireframeMode_;
+    currentState.oldModels = isUsingOldModels();
+    currentState.cameraMode = getCameraModeString();
+    currentState.zoneName = currentZoneName_;
+
+    // Check if state has changed
+    bool stateChanged = (currentState.rendererMode != hudCachedState_.rendererMode ||
+                         currentState.fps != hudCachedState_.fps ||
+                         currentState.playerX != hudCachedState_.playerX ||
+                         currentState.playerY != hudCachedState_.playerY ||
+                         currentState.playerZ != hudCachedState_.playerZ ||
+                         currentState.entityCount != hudCachedState_.entityCount ||
+                         currentState.modeledEntityCount != hudCachedState_.modeledEntityCount ||
+                         currentState.targetId != hudCachedState_.targetId ||
+                         currentState.targetHpPercent != hudCachedState_.targetHpPercent ||
+                         currentState.animSpeed != hudCachedState_.animSpeed ||
+                         currentState.corpseZ != hudCachedState_.corpseZ ||
+                         currentState.wireframeMode != hudCachedState_.wireframeMode ||
+                         currentState.oldModels != hudCachedState_.oldModels ||
+                         currentState.cameraMode != hudCachedState_.cameraMode ||
+                         currentState.zoneName != hudCachedState_.zoneName);
+
+    // Skip rebuild if nothing changed
+    if (!stateChanged) {
+        return;
+    }
+
+    // Update cached state
+    hudCachedState_ = currentState;
+
     std::wstringstream text;
     std::wstringstream hotkeys;
 
@@ -1227,6 +1297,9 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         return false;
     }
 
+    // Start zone load timing
+    EQT::PerformanceMetrics::instance().markZoneLoadStart(zoneName);
+
     // Helper to scale internal progress (0.0-1.0) to the caller's specified range
     auto scaleProgress = [progressStart, progressEnd](float internalProgress) {
         return progressStart + internalProgress * (progressEnd - progressStart);
@@ -1246,11 +1319,14 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 
     drawLoadingScreen(scaleProgress(0.05f), L"Loading zone archive...");
 
+    EQT::PerformanceMetrics::instance().startTimer("S3D Archive Load", EQT::MetricCategory::Zoning);
     S3DLoader loader;
     if (!loader.loadZone(zonePath)) {
         LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", loader.getError());
+        EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
         return false;
     }
+    EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
 
     drawLoadingScreen(scaleProgress(0.30f), L"Processing zone data...");
 
@@ -1268,13 +1344,19 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     }
 
     drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
+    EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
     createZoneMesh();
+    EQT::PerformanceMetrics::instance().stopTimer("Zone Mesh Creation");
 
     drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
+    EQT::PerformanceMetrics::instance().startTimer("Object Mesh Creation", EQT::MetricCategory::Zoning);
     createObjectMeshes();
+    EQT::PerformanceMetrics::instance().stopTimer("Object Mesh Creation");
 
     drawLoadingScreen(scaleProgress(0.85f), L"Setting up zone lights...");
+    EQT::PerformanceMetrics::instance().startTimer("Zone Lights Setup", EQT::MetricCategory::Zoning);
     createZoneLights();
+    EQT::PerformanceMetrics::instance().stopTimer("Zone Lights Setup");
 
     drawLoadingScreen(scaleProgress(0.95f), L"Configuring camera...");
 
@@ -1304,6 +1386,8 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     setupFog();
 
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
+
+    EQT::PerformanceMetrics::instance().markZoneLoadEnd();
 
     return true;
 }
@@ -1354,6 +1438,9 @@ void IrrlichtRenderer::unloadZone() {
         doorManager_->setZone(nullptr);
     }
 
+    // Clear world objects (tradeskill containers)
+    clearWorldObjects();
+
     // Clear object lights (they reference freed zone data)
     for (auto& objLight : objectLights_) {
         if (objLight.node) {
@@ -1364,6 +1451,9 @@ void IrrlichtRenderer::unloadZone() {
 
     // Clear vertex animated meshes (they reference freed zone mesh buffers)
     vertexAnimatedMeshes_.clear();
+
+    // Clear zone line visualization boxes
+    clearZoneLineBoundingBoxes();
 
     currentZone_.reset();
     currentZoneName_.clear();
@@ -1789,6 +1879,112 @@ void IrrlichtRenderer::clearDoors() {
     }
 }
 
+// ============================================================================
+// World Object Management (for tradeskill container click detection)
+// ============================================================================
+
+void IrrlichtRenderer::addWorldObject(uint32_t dropId, float x, float y, float z,
+                                       uint32_t objectType, const std::string& name) {
+    WorldObjectVisual obj;
+    obj.dropId = dropId;
+    obj.x = x;
+    obj.y = y;
+    obj.z = z;
+    obj.objectType = objectType;
+    obj.name = name;
+
+    // Create bounding box for click detection
+    // EQ coords: x, y are horizontal, z is vertical
+    // Irrlicht coords: x, z are horizontal, y is vertical
+    // Transform: EQ (x, y, z) -> Irrlicht (x, z, y)
+    float irrX = x;
+    float irrY = z;  // EQ z -> Irrlicht y
+    float irrZ = y;  // EQ y -> Irrlicht z
+
+    // Default object size - most tradeskill containers are roughly 3x3x3 units
+    float halfSize = 3.0f;
+    obj.boundingBox = irr::core::aabbox3df(
+        irrX - halfSize, irrY - halfSize, irrZ - halfSize,
+        irrX + halfSize, irrY + halfSize * 2, irrZ + halfSize  // Extend upward more
+    );
+
+    worldObjects_[dropId] = obj;
+    LOG_DEBUG(MOD_GRAPHICS, "Added world object: dropId={} type={} name='{}' at ({:.1f}, {:.1f}, {:.1f})",
+              dropId, objectType, name, x, y, z);
+}
+
+void IrrlichtRenderer::removeWorldObject(uint32_t dropId) {
+    auto it = worldObjects_.find(dropId);
+    if (it != worldObjects_.end()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Removed world object: dropId={}", dropId);
+        worldObjects_.erase(it);
+    }
+}
+
+void IrrlichtRenderer::clearWorldObjects() {
+    LOG_DEBUG(MOD_GRAPHICS, "Clearing {} world objects", worldObjects_.size());
+    worldObjects_.clear();
+}
+
+uint32_t IrrlichtRenderer::getWorldObjectAtScreenPos(int screenX, int screenY) const {
+    if (!camera_ || !collisionManager_) {
+        return 0;
+    }
+
+    // Get ray from camera through screen position
+    irr::core::line3df ray = collisionManager_->getRayFromScreenCoordinates(
+        irr::core::position2di(screenX, screenY), camera_);
+
+    uint32_t closestObjectId = 0;
+    float closestDist = std::numeric_limits<float>::max();
+
+    for (const auto& [id, obj] : worldObjects_) {
+        // Expand box slightly for easier clicking
+        irr::core::aabbox3df expandedBox = obj.boundingBox;
+        expandedBox.MinEdge -= irr::core::vector3df(1.0f, 1.0f, 1.0f);
+        expandedBox.MaxEdge += irr::core::vector3df(1.0f, 1.0f, 1.0f);
+
+        if (expandedBox.intersectsWithLine(ray)) {
+            // Calculate distance to object center
+            irr::core::vector3df objCenter = expandedBox.getCenter();
+            float dist = ray.start.getDistanceFrom(objCenter);
+
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestObjectId = id;
+            }
+        }
+    }
+
+    return closestObjectId;
+}
+
+uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, float playerZ,
+                                                   float maxDistance) const {
+    uint32_t nearestId = 0;
+    float nearestDistSq = maxDistance * maxDistance;
+
+    for (const auto& [id, obj] : worldObjects_) {
+        // Calculate 3D distance
+        float dx = obj.x - playerX;
+        float dy = obj.y - playerY;
+        float dz = obj.z - playerZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq < nearestDistSq) {
+            nearestDistSq = distSq;
+            nearestId = id;
+        }
+    }
+
+    if (nearestId != 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "getNearestWorldObject: found dropId={} at distance {:.1f}",
+                  nearestId, std::sqrt(nearestDistSq));
+    }
+
+    return nearestId;
+}
+
 void IrrlichtRenderer::playEntityDeathAnimation(uint16_t spawnId) {
     if (entityRenderer_) {
         // Mark entity as corpse and play death animation
@@ -1967,7 +2163,19 @@ std::string IrrlichtRenderer::getCameraModeString() const {
 }
 
 bool IrrlichtRenderer::processFrame(float deltaTime) {
+    auto frameStart = std::chrono::steady_clock::now();
     LOG_TRACE(MOD_GRAPHICS, "processFrame: entered");
+
+    // Record frame time for gameplay statistics (deltaTime is in seconds)
+    int64_t frameTimeMs = static_cast<int64_t>(deltaTime * 1000.0f);
+    if (frameTimeMs > 0) {
+        EQT::PerformanceMetrics::instance().recordSample("Frame Time", frameTimeMs);
+    }
+
+    // Log warning if previous frame was slow (deltaTime > 100ms = <10 FPS)
+    if (deltaTime > 0.1f) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: Previous frame took {} ms (slow!)", static_cast<int>(deltaTime * 1000.0f));
+    }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checking isRunning...");
 
@@ -2128,6 +2336,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle trainer toggle (T key) - only in Player mode, not when chat focused
+    if (eventReceiver_->trainerToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
+        if (trainerToggleCallback_) {
+            trainerToggleCallback_();
+        }
+    }
+
     // Handle collision debug controls - only in Player mode, not when chat focused
     if (rendererMode_ == RendererMode::Player && !chatInputFocused) {
         if (eventReceiver_->collisionToggleRequested()) {
@@ -2201,6 +2416,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle camera zoom adjustments (+/- keys) - only in Player/Repair mode with Follow camera
+    if (!chatInputFocused && (rendererMode_ == RendererMode::Player || rendererMode_ == RendererMode::Repair)) {
+        float zoomDelta = eventReceiver_->getCameraZoomDelta();
+        if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
+            cameraController_->adjustFollowDistance(zoomDelta);
+            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
+        }
+    }
+
     // Handle helm debug mode toggle (F7 is OK even when chat focused - it's a function key)
     if (eventReceiver_->helmDebugToggleRequested() && entityRenderer_) {
         bool newState = !entityRenderer_->isHelmDebugEnabled();
@@ -2223,8 +2447,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
-    // Handle helm debug adjustments - not when chat focused (uses letter/number keys)
-    if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled() && !chatInputFocused) {
+    // Handle helm debug adjustments - only in Admin mode, not when chat focused (uses letter/number keys)
+    if (rendererMode_ == RendererMode::Admin && entityRenderer_ && entityRenderer_->isHelmDebugEnabled() && !chatInputFocused) {
         float uDelta = eventReceiver_->getHelmUOffsetDelta();
         float vDelta = eventReceiver_->getHelmVOffsetDelta();
         float uScaleDelta = eventReceiver_->getHelmUScaleDelta();
@@ -2360,6 +2584,20 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+// Handle zone line visualization toggle (Z key) - works in any mode, but only if chat is not focused
+    if (eventReceiver_->zoneLineVisualizationToggleRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            toggleZoneLineVisualization();
+        }
+    }
+
+    // Handle pet window toggle (P key) - only in Player mode, and only if chat is not focused
+    if (eventReceiver_->petToggleRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            windowManager_->togglePetWindow();
+        }
+    }
+
     // Handle door interaction (U key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->doorInteractRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
@@ -2377,6 +2615,25 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                     doorInteractCallback_(doorId);
                 } else {
                     LOG_DEBUG(MOD_GRAPHICS, "U key: No door found in range or facing wrong direction");
+                }
+            }
+        }
+    }
+
+    // Handle world object (tradeskill container) interaction (O key) - only in Player mode
+    if (eventReceiver_->worldObjectInteractRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            if (worldObjectInteractCallback_) {
+                LOG_DEBUG(MOD_GRAPHICS, "O key pressed: pos=({:.1f}, {:.1f}, {:.1f})",
+                    playerX_, playerY_, playerZ_);
+
+                // Find nearest world object (tradeskill container)
+                uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
+                if (objectId != 0) {
+                    LOG_INFO(MOD_GRAPHICS, "World object interaction (O key): dropId {}", objectId);
+                    worldObjectInteractCallback_(objectId);
+                } else {
+                    LOG_DEBUG(MOD_GRAPHICS, "O key: No world object found in range");
                 }
             }
         }
@@ -2498,10 +2755,16 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint E (before entity update)");
 
     // Update entity interpolation (smooth NPC movement between server updates)
+    auto entityUpdateStart = std::chrono::steady_clock::now();
     if (entityRenderer_) {
         entityRenderer_->updateInterpolation(deltaTime);
         // Update entity casting bars (timeout checks, etc.)
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
+    }
+    auto entityUpdateEnd = std::chrono::steady_clock::now();
+    auto entityUpdateMs = std::chrono::duration_cast<std::chrono::milliseconds>(entityUpdateEnd - entityUpdateStart).count();
+    if (entityUpdateMs > 50) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: Entity update took {} ms", entityUpdateMs);
     }
 
     // Update door animations
@@ -2553,7 +2816,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // Render
     driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+    auto drawAllStart = std::chrono::steady_clock::now();
     smgr_->drawAll();
+    auto drawAllEnd = std::chrono::steady_clock::now();
+    auto drawAllMs = std::chrono::duration_cast<std::chrono::milliseconds>(drawAllEnd - drawAllStart).count();
+    if (drawAllMs > 50) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", drawAllMs);
+    }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint K (after drawAll)");
 
@@ -2577,6 +2846,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     guienv_->drawAll();
 
+    // Draw FPS counter at top center
+    drawFPSCounter();
+
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint L (after GUI)");
 
     // Render inventory UI windows (on top of HUD)
@@ -2586,6 +2858,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // Draw zone line overlay (pink border when in zone line)
     drawZoneLineOverlay();
+
+    // Draw zone line bounding box labels
+    drawZoneLineBoxLabels();
 
     driver_->endScene();
 
@@ -2603,8 +2878,14 @@ void IrrlichtRenderer::run() {
 
     while (isRunning()) {
         irr::u32 currentTime = device_->getTimer()->getTime();
-        float deltaTime = (currentTime - lastTime) / 1000.0f;
+        irr::u32 frameTimeMs = currentTime - lastTime;
+        float deltaTime = frameTimeMs / 1000.0f;
         lastTime = currentTime;
+
+        // Record frame time for gameplay statistics
+        if (frameTimeMs > 0) {
+            EQT::PerformanceMetrics::instance().recordSample("Frame Time", static_cast<int64_t>(frameTimeMs));
+        }
 
         if (!processFrame(deltaTime)) {
             break;
@@ -2769,9 +3050,9 @@ void IrrlichtRenderer::setRendererMode(RendererMode mode) {
 
     if (mode == RendererMode::Player) {
         // Switch to Player mode
-        // Default to FirstPerson camera if not already in FirstPerson or Follow
+        // Default to Follow camera (third-person) if coming from Free mode
         if (cameraMode_ == CameraMode::Free) {
-            cameraMode_ = CameraMode::FirstPerson;
+            cameraMode_ = CameraMode::Follow;
         }
         // Reset movement state and pitch
         playerMovement_ = PlayerMovementState();
@@ -2799,9 +3080,9 @@ void IrrlichtRenderer::setRendererMode(RendererMode mode) {
         }
     } else if (mode == RendererMode::Repair) {
         // Switch to Repair mode - similar to Player mode but for object adjustment
-        // Keep current camera mode
+        // Default to Follow camera if coming from Free mode
         if (cameraMode_ == CameraMode::Free) {
-            cameraMode_ = CameraMode::FirstPerson;
+            cameraMode_ = CameraMode::Follow;
         }
         // Reset movement state and pitch (same as Player mode)
         playerMovement_ = PlayerMovementState();
@@ -3046,11 +3327,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
                 if (playerMovement_.isJumping) {
                     // While jumping, check if we've landed
-                    // Compare feet position (serverZ + modelYOffset) with ground
-                    float feetZ = newZ + modelYOffset;
+                    // Compare feet position (centerZ - modelYOffset) with ground
+                    float feetZ = newZ - modelYOffset;
                     if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
-                        // Landed - snap feet to ground (server Z = groundZ - modelYOffset)
-                        newZ = groundZ - modelYOffset;
+                        // Landed - snap center to be modelYOffset above ground
+                        newZ = groundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3062,14 +3343,24 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 } else {
                     // Normal ground movement - check step height
                     // Compare feet positions: current feet vs target ground
-                    float currentFeetZ = playerZ_ + modelYOffset;
+                    float currentFeetZ = playerZ_ - modelYOffset;
                     float stepHeight = groundZ - currentFeetZ;
 
-                    // Only limit stepping UP (positive step height) - player can always walk down/off edges
-                    if (stepHeight <= playerConfig_.collisionStepHeight) {
-                        // Snap feet to ground (server Z = groundZ - modelYOffset)
-                        newZ = groundZ - modelYOffset;
+                    // Limit both stepping UP and stepping DOWN
+                    // Small steps down (e.g., stairs) are OK, but large drops should trigger falling
+                    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
+                    if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
+                        // Snap center to be modelYOffset above ground
+                        newZ = groundZ + modelYOffset;
                         positionChanged = true;
+                    } else if (stepHeight < -maxStepDown) {
+                        // Large drop detected - start falling instead of snapping
+                        playerMovement_.isJumping = true;
+                        playerMovement_.verticalVelocity = 0.0f;  // Start with 0 velocity (just walked off edge)
+                        positionChanged = true;
+                        if (playerConfig_.collisionDebug) {
+                            LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Walked off edge, drop={}, starting fall", -stepHeight);
+                        }
                     } else if (playerConfig_.collisionDebug) {
                         LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Step up too high: {}", stepHeight);
                     }
@@ -3079,10 +3370,10 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 if (playerMovement_.isJumping) {
                     // Even if horizontal is blocked, continue vertical jump movement
                     float groundZ = findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
-                    float feetZ = newZ + modelYOffset;
+                    float feetZ = newZ - modelYOffset;
                     if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
-                        // Landed - snap feet to ground
-                        newZ = groundZ - modelYOffset;
+                        // Landed - snap center to be modelYOffset above ground
+                        newZ = groundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3098,12 +3389,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     irr::core::vector3df rayEndX(newX, playerZ_ + checkHeight, playerY_);
                     if (!checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle)) {
                         float groundZ = findGroundZIrrlicht(newX, playerY_, playerZ_, modelYOffset);
-                        float currentFeetZ = playerZ_ + modelYOffset;
+                        float currentFeetZ = playerZ_ - modelYOffset;
                         float stepHeight = groundZ - currentFeetZ;
                         // Only limit stepping UP - can always step down
                         if (stepHeight <= playerConfig_.collisionStepHeight) {
                             newY = playerY_;
-                            newZ = groundZ - modelYOffset;
+                            newZ = groundZ + modelYOffset;
                             positionChanged = true;
                             LOG_TRACE(MOD_MOVEMENT, "Wall slide X");
                         }
@@ -3113,12 +3404,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                         irr::core::vector3df rayEndY(playerX_, playerZ_ + checkHeight, newY);
                         if (!checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle)) {
                             float groundZ = findGroundZIrrlicht(playerX_, newY, playerZ_, modelYOffset);
-                            float currentFeetZ = playerZ_ + modelYOffset;
+                            float currentFeetZ = playerZ_ - modelYOffset;
                             float stepHeight = groundZ - currentFeetZ;
                             // Only limit stepping UP - can always step down
                             if (stepHeight <= playerConfig_.collisionStepHeight) {
                                 newX = playerX_;
-                                newZ = groundZ - modelYOffset;
+                                newZ = groundZ + modelYOffset;
                                 positionChanged = true;
                                 LOG_TRACE(MOD_MOVEMENT, "Wall slide Y");
                             }
@@ -3140,9 +3431,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 bool losCheck = checkMovementCollision(playerX_, playerY_, playerZ_, newX, newY, newZ);
                 if (losCheck) {
                     // Check if we've landed (compare feet position with ground)
-                    float feetZ = newZ + modelYOffset;
+                    float feetZ = newZ - modelYOffset;
                     if (targetGroundZ != BEST_Z_INVALID && feetZ <= targetGroundZ && playerMovement_.verticalVelocity <= 0) {
-                        newZ = targetGroundZ - modelYOffset;
+                        newZ = targetGroundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3155,9 +3446,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     newX = playerX_;
                     newY = playerY_;
                     float currentGroundZ = findGroundZ(playerX_, playerY_, newZ);
-                    float feetZ = newZ + modelYOffset;
+                    float feetZ = newZ - modelYOffset;
                     if (currentGroundZ != BEST_Z_INVALID && feetZ <= currentGroundZ && playerMovement_.verticalVelocity <= 0) {
-                        newZ = currentGroundZ - modelYOffset;
+                        newZ = currentGroundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
                         if (playerConfig_.collisionDebug) {
@@ -3168,41 +3459,50 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 }
             } else if (targetGroundZ != BEST_Z_INVALID) {
                 // Compare feet positions for step height
-                float currentFeetZ = playerZ_ + modelYOffset;
+                float currentFeetZ = playerZ_ - modelYOffset;
                 float stepHeight = targetGroundZ - currentFeetZ;
 
                 LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
 
-                // Only limit stepping UP - player can always walk down/off edges
-                if (stepHeight <= playerConfig_.collisionStepHeight) {
+                // Limit both stepping UP and stepping DOWN
+                float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+                if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
                     bool losCheck = checkMovementCollision(playerX_, playerY_, playerZ_, newX, newY, targetGroundZ);
 
                     LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
 
                     if (losCheck) {
-                        newZ = targetGroundZ - modelYOffset;
+                        newZ = targetGroundZ + modelYOffset;
                         positionChanged = true;
                     } else {
                         // Wall sliding for HCMap
                         float xGroundZ = findGroundZ(newX, playerY_, playerZ_);
                         float xStepHeight = xGroundZ - currentFeetZ;
                         if (xGroundZ != BEST_Z_INVALID &&
-                            xStepHeight <= playerConfig_.collisionStepHeight &&
+                            xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
                             checkMovementCollision(playerX_, playerY_, playerZ_, newX, playerY_, xGroundZ)) {
                             newY = playerY_;
-                            newZ = xGroundZ - modelYOffset;
+                            newZ = xGroundZ + modelYOffset;
                             positionChanged = true;
                         } else {
                             float yGroundZ = findGroundZ(playerX_, newY, playerZ_);
                             float yStepHeight = yGroundZ - currentFeetZ;
                             if (yGroundZ != BEST_Z_INVALID &&
-                                yStepHeight <= playerConfig_.collisionStepHeight &&
+                                yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
                                 checkMovementCollision(playerX_, playerY_, playerZ_, playerX_, newY, yGroundZ)) {
                                 newX = playerX_;
-                                newZ = yGroundZ - modelYOffset;
+                                newZ = yGroundZ + modelYOffset;
                                 positionChanged = true;
                             }
                         }
+                    }
+                } else if (stepHeight < -maxStepDown) {
+                    // Large drop detected - start falling instead of snapping
+                    playerMovement_.isJumping = true;
+                    playerMovement_.verticalVelocity = 0.0f;
+                    positionChanged = true;
+                    if (playerConfig_.collisionDebug) {
+                        LOG_INFO(MOD_GRAPHICS, "[HCMap] Walked off edge, drop={}, starting fall", -stepHeight);
                     }
                 } else {
                     LOG_TRACE(MOD_MOVEMENT, "HCMap Step up too high ({}) - blocked", stepHeight);
@@ -3263,7 +3563,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         playerHeading_ = heading;
     }
 
-    // Update camera if anything changed
+    // Update camera and entity position if anything changed
     if (positionChanged || headingChanged) {
         LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", playerX_, playerY_, playerZ_, playerHeading_);
 
@@ -3328,59 +3628,80 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
             // Follow mode: third-person camera behind player
             cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_);
         }
+    }
 
-        // Compute movement state for server sync and local animation
-        bool isMoving = playerMovement_.moveForward || playerMovement_.moveBackward ||
-                       playerMovement_.strafeLeft || playerMovement_.strafeRight;
+    // Movement state tracking and server sync - runs every frame to detect stops
+    // This must be OUTSIDE the position/heading changed block to detect when player stops
+    bool hasMovementInput = playerMovement_.moveForward || playerMovement_.moveBackward ||
+                            playerMovement_.strafeLeft || playerMovement_.strafeRight;
 
-        // Track movement state transitions to detect when player stops
-        static bool wasMoving = false;
-        bool stoppedMoving = wasMoving && !isMoving;
-        wasMoving = isMoving;
+    // Track movement state transitions to detect when player stops
+    static bool hadMovementInput = false;
+    bool stoppedMoving = hadMovementInput && !hasMovementInput;
+    hadMovementInput = hasMovementInput;
 
-        // Track previous position for velocity calculation
-        static float prevX = playerX_, prevY = playerY_, prevZ = playerZ_;
+    // Track previous position for velocity calculation
+    static float prevX = playerX_, prevY = playerY_, prevZ = playerZ_;
 
-        // Throttle callback invocations to ~250ms to match working client behavior
-        // This prevents jerky motion when viewed by other players
-        static auto lastCallbackTime = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
+    // Throttle callback invocations to ~250ms to match working client behavior
+    // This prevents jerky motion when viewed by other players
+    static auto lastCallbackTime = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
 
-        // Notify EverQuest class of position/heading change (for server sync)
-        // Throttle to 250ms minimum between callbacks (working client averages ~275ms)
-        // Exception: allow immediate callback when player stops (so others see us stop promptly)
-        bool shouldCallback = movementCallback_ &&
-                              (positionChanged || headingChanged || stoppedMoving) &&
-                              (stoppedMoving || elapsed.count() >= 250);
+    // Notify EverQuest class of position/heading change (for server sync)
+    // Throttle to 250ms minimum between callbacks (working client averages ~275ms)
+    // Exception: allow immediate callback when player stops (so others see us stop promptly)
+    bool shouldCallback = movementCallback_ &&
+                          (positionChanged || headingChanged || stoppedMoving) &&
+                          (stoppedMoving || elapsed.count() >= 250);
 
-        if (shouldCallback) {
-            PlayerPositionUpdate update;
-            update.x = playerX_;
-            update.y = playerY_;
-            update.z = playerZ_;
-            update.heading = heading;  // EQ format (0-512)
+    if (shouldCallback) {
+        PlayerPositionUpdate update;
+        update.x = playerX_;
+        update.y = playerY_;
+        update.z = playerZ_;
+        update.heading = heading;  // EQ format (0-512)
+
+        // When player stops, send zero deltas to ensure server knows we've stopped
+        // This triggers anim=0 in OnGraphicsMovement
+        if (stoppedMoving) {
+            update.dx = 0.0f;
+            update.dy = 0.0f;
+            update.dz = 0.0f;
+        } else {
             update.dx = playerX_ - prevX;
             update.dy = playerY_ - prevY;
             update.dz = playerZ_ - prevZ;
-            movementCallback_(update);
-            lastCallbackTime = now;
-
-            // Update previous position only when we actually send an update
-            prevX = playerX_;
-            prevY = playerY_;
-            prevZ = playerZ_;
         }
+        movementCallback_(update);
+        lastCallbackTime = now;
+
+        // Update previous position only when we actually send an update
+        prevX = playerX_;
+        prevY = playerY_;
+        prevZ = playerZ_;
     }
 
     // Update player entity animation based on movement state (runs every frame)
     if (entityRenderer_) {
-        if (isMoving) {
-            // Use run animation for forward movement when running, walk for everything else
-            if (playerMovement_.moveForward && playerMovement_.isRunning) {
-                entityRenderer_->setPlayerEntityAnimation("l02", true);  // Run
+        // Jump animation takes priority (playThrough)
+        if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0) {
+            // Only trigger jump animation on the way up (ascending)
+            // Use l03 for running jump, l04 for standing jump
+            if (hasMovementInput) {
+                entityRenderer_->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
             } else {
-                entityRenderer_->setPlayerEntityAnimation("l01", true);  // Walk
+                entityRenderer_->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
+            }
+        } else if (hasMovementInput) {
+            // Use run animation for forward movement when running, walk for everything else
+            // Pass movement speed to match animation speed to actual movement
+            float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
+            if (playerMovement_.moveForward && playerMovement_.isRunning) {
+                entityRenderer_->setPlayerEntityAnimation("l02", true, speed);  // Run
+            } else {
+                entityRenderer_->setPlayerEntityAnimation("l01", true, speed);  // Walk
             }
         } else {
             entityRenderer_->setPlayerEntityAnimation("p01", true);  // Idle
@@ -3442,6 +3763,38 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
         return currentZ;
     }
 
+    float maxStepUp = playerConfig_.collisionStepHeight;
+    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+
+    // PHASE 1: Short raycast to find ground near current level
+    // This prevents falling through mesh gaps by looking for nearby ground first
+    // Start from max step-up above current position
+    glm::vec3 nearPos(x, y, currentZ + maxStepUp);
+    glm::vec3 nearResult;
+    float nearGroundZ = collisionMap_->FindBestZ(nearPos, &nearResult);
+
+    // Check if we found ground within the nearby range (max step-up to max step-down)
+    if (nearGroundZ != BEST_Z_INVALID) {
+        float heightDiff = nearGroundZ - currentZ;
+        if (heightDiff >= -maxStepDown && heightDiff <= maxStepUp) {
+            // Found nearby ground - use it
+            if (playerConfig_.collisionDebug) {
+                // Green line showing nearby ground hit (preferred)
+                irr::core::vector3df irrFrom(x, currentZ + maxStepUp, y);
+                irr::core::vector3df irrTo(x, nearGroundZ, y);
+                addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 0, 255, 128), 0.2f);
+                float markerSize = 0.5f;
+                addCollisionDebugLine(
+                    irr::core::vector3df(irrTo.X - markerSize, irrTo.Y, irrTo.Z),
+                    irr::core::vector3df(irrTo.X + markerSize, irrTo.Y, irrTo.Z),
+                    irr::video::SColor(255, 0, 255, 128), 0.2f);
+            }
+            return nearGroundZ;
+        }
+    }
+
+    // PHASE 2: Full raycast if no nearby ground found
+    // This handles cases like jumping off ledges, falling, etc.
     glm::vec3 pos(x, y, currentZ + 10.0f);  // Start slightly above
     glm::vec3 result;
     float groundZ = collisionMap_->FindBestZ(pos, &result);
@@ -3538,24 +3891,52 @@ bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,
 
 float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
     if (!collisionManager_ || !zoneTriangleSelector_) {
-        return currentZ + modelYOffset;  // Return current feet position
+        return currentZ - modelYOffset;  // Return current feet position
     }
 
-    // currentZ is the model center (server Z), modelYOffset is offset from center to feet (typically negative)
-    // Feet position = currentZ + modelYOffset
-    // Head position = currentZ - modelYOffset (approximately, assuming symmetric model)
-    float feetZ = currentZ + modelYOffset;
-    float headZ = currentZ - modelYOffset;  // Approximate head position (mirror of feet offset)
+    // currentZ is the model center (server Z), modelYOffset is the POSITIVE distance from center to feet
+    // Feet position = currentZ - modelYOffset (feet are BELOW center)
+    // Head position = currentZ + modelYOffset (approximately, assuming symmetric model)
+    float feetZ = currentZ - modelYOffset;
+    float headZ = currentZ + modelYOffset;  // Approximate head position (mirror of feet offset)
     float maxStepUp = playerConfig_.collisionStepHeight;
+    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
 
-    // Cast ray downward from above the head to find ground
     // Irrlicht coords: (x, y, z) where Y is up
     // Input is EQ coords where Z is up, so we convert: EQ(x,y,z) -> Irr(x,z,y)
-    irr::core::vector3df rayStart(x, headZ + 2.0f, y);  // Start slightly above head
-    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);  // Cast down from below feet
 
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
+
+    // PHASE 1: Short raycast to find ground near current level
+    // This prevents falling through mesh gaps by looking for nearby ground first
+    irr::core::vector3df nearStart(x, feetZ + maxStepUp, y);  // Start at max step-up above feet
+    irr::core::vector3df nearEnd(x, feetZ - maxStepDown, y);  // Look down to max step-down below feet
+
+    bool nearHit = checkCollisionIrrlicht(nearStart, nearEnd, hitPoint, hitTriangle);
+
+    if (nearHit) {
+        float floorZ = hitPoint.Y;
+        // Check if this is valid ground (not a ceiling)
+        if (floorZ <= feetZ + maxStepUp + 0.1f) {
+            // Found nearby ground - use it
+            if (playerConfig_.collisionDebug) {
+                // Green line showing nearby ground hit (preferred)
+                addCollisionDebugLine(nearStart, hitPoint, irr::video::SColor(255, 0, 255, 128), 0.2f);
+                float markerSize = 0.5f;
+                addCollisionDebugLine(
+                    irr::core::vector3df(hitPoint.X - markerSize, hitPoint.Y, hitPoint.Z),
+                    irr::core::vector3df(hitPoint.X + markerSize, hitPoint.Y, hitPoint.Z),
+                    irr::video::SColor(255, 0, 255, 128), 0.2f);
+            }
+            return floorZ;
+        }
+    }
+
+    // PHASE 2: Full raycast if no nearby ground found
+    // This handles cases like jumping off ledges, falling, etc.
+    irr::core::vector3df rayStart(x, headZ + 2.0f, y);  // Start slightly above head
+    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);  // Cast down far below feet
 
     bool hit = checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
 
@@ -4060,6 +4441,7 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
     }
 
     bool shiftHeld = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+    bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
 
     // Get entity at click position
     uint16_t targetId = getEntityAtScreenPos(clickX, clickY);
@@ -4082,6 +4464,12 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
                     if (lootCorpseCallback_) {
                         lootCorpseCallback_(targetId);
                     }
+                } else if (ctrlHeld && visual.isNPC && !visual.isCorpse) {
+                    // Ctrl+click on NPC - banker interaction
+                    LOG_INFO(MOD_GRAPHICS, "Ctrl+click on NPC: {} (ID: {})", visual.name, targetId);
+                    if (bankerInteractCallback_) {
+                        bankerInteractCallback_(targetId);
+                    }
                 } else {
                     // Entity is visible - set as target
                     LOG_INFO(MOD_GRAPHICS, "Target selected: {} (ID: {})", visual.name, targetId);
@@ -4097,11 +4485,22 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
         }
     } else {
         // No entity found - check for door click
+        bool handledClick = false;
         if (doorManager_ && doorInteractCallback_) {
             uint8_t doorId = doorManager_->getDoorAtScreenPos(clickX, clickY, camera_, collisionManager_);
             if (doorId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "Door clicked: ID {}", doorId);
                 doorInteractCallback_(doorId);
+                handledClick = true;
+            }
+        }
+
+        // Check for world object (tradeskill container) click
+        if (!handledClick && worldObjectInteractCallback_) {
+            uint32_t objectId = getWorldObjectAtScreenPos(clickX, clickY);
+            if (objectId != 0) {
+                LOG_INFO(MOD_GRAPHICS, "World object clicked: dropId {}", objectId);
+                worldObjectInteractCallback_(objectId);
             }
         }
     }
@@ -4388,6 +4787,255 @@ void IrrlichtRenderer::drawZoneLineOverlay() {
                            irr::video::SColor(255, 255, 200, 255));  // Light pink text
             }
         }
+    }
+}
+
+void IrrlichtRenderer::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) {
+    // Clear existing boxes first
+    clearZoneLineBoundingBoxes();
+
+    if (!smgr_ || !driver_) {
+        LOG_WARN(MOD_GRAPHICS, "Cannot create zone line boxes - renderer not initialized");
+        return;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Creating {} zone line visualization boxes", boxes.size());
+
+    for (const auto& box : boxes) {
+        createZoneLineBoxMesh(box);
+    }
+}
+
+void IrrlichtRenderer::clearZoneLineBoundingBoxes() {
+    for (auto& boxNode : zoneLineBoxNodes_) {
+        if (boxNode.node) {
+            boxNode.node->remove();
+        }
+    }
+    zoneLineBoxNodes_.clear();
+}
+
+void IrrlichtRenderer::toggleZoneLineVisualization() {
+    showZoneLineBoxes_ = !showZoneLineBoxes_;
+
+    // Update visibility of all zone line box nodes
+    for (auto& boxNode : zoneLineBoxNodes_) {
+        if (boxNode.node) {
+            boxNode.node->setVisible(showZoneLineBoxes_);
+        }
+    }
+
+    // Notify EverQuest to enable/disable zoning when zone lines are toggled
+    if (zoningEnabledCallback_) {
+        zoningEnabledCallback_(showZoneLineBoxes_);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");
+}
+
+void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box) {
+    if (!smgr_ || !driver_) return;
+
+    // Convert EQ coordinates to Irrlicht coordinates
+    // EQ uses Z-up: (x, y, z) -> Irrlicht Y-up: (x, z, y)
+    float irrMinX = box.minX;
+    float irrMinY = box.minZ;  // EQ Z -> Irrlicht Y
+    float irrMinZ = box.minY;  // EQ Y -> Irrlicht Z
+    float irrMaxX = box.maxX;
+    float irrMaxY = box.maxZ;
+    float irrMaxZ = box.maxY;
+
+    // Calculate box dimensions and center
+    float width = irrMaxX - irrMinX;
+    float height = irrMaxY - irrMinY;
+    float depth = irrMaxZ - irrMinZ;
+    float centerX = (irrMinX + irrMaxX) / 2.0f;
+    float centerY = (irrMinY + irrMaxY) / 2.0f;
+    float centerZ = (irrMinZ + irrMaxZ) / 2.0f;
+
+    LOG_INFO(MOD_GRAPHICS, "Zone line box -> zone {}: EQ({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}) => Irr center({:.1f},{:.1f},{:.1f}) size({:.1f},{:.1f},{:.1f})",
+        box.targetZoneId, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+        centerX, centerY, centerZ, width, height, depth);
+
+    // Create a cube mesh using geometry creator
+    const irr::scene::IGeometryCreator* geomCreator = smgr_->getGeometryCreator();
+    if (!geomCreator) {
+        LOG_WARN(MOD_GRAPHICS, "No geometry creator available");
+        return;
+    }
+
+    // Create a unit cube mesh and scale it
+    irr::scene::IMesh* cubeMesh = geomCreator->createCubeMesh(irr::core::vector3df(width, height, depth));
+    if (!cubeMesh) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to create cube mesh");
+        return;
+    }
+
+    // Create scene node for the box
+    irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(cubeMesh);
+    cubeMesh->drop();  // Scene manager now owns it
+
+    if (!node) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to create mesh scene node");
+        return;
+    }
+
+    // Position the box
+    node->setPosition(irr::core::vector3df(centerX, centerY, centerZ));
+
+    // Set up semi-transparent material
+    // Use different colors for BSP vs proximity-based boxes
+    irr::video::SColor color;
+    if (box.isProximityBased) {
+        // Cyan for proximity-based zone points
+        color = irr::video::SColor(80, 0, 255, 255);
+    } else {
+        // Magenta/purple for BSP-based zone lines
+        color = irr::video::SColor(80, 255, 0, 255);
+    }
+
+    // Apply semi-transparent material to all mesh buffers
+    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+        irr::video::SMaterial& mat = node->getMaterial(i);
+        mat.MaterialType = irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
+        mat.Lighting = false;
+        mat.BackfaceCulling = false;
+        mat.ZWriteEnable = false;  // Don't write to depth buffer
+        mat.AmbientColor = color;
+        mat.DiffuseColor = color;
+    }
+
+    // Also modify the mesh vertex colors directly for vertex alpha transparency
+    irr::scene::IMeshBuffer* meshBuffer = node->getMesh()->getMeshBuffer(0);
+    if (meshBuffer) {
+        irr::video::S3DVertex* vertices = static_cast<irr::video::S3DVertex*>(meshBuffer->getVertices());
+        irr::u32 vertexCount = meshBuffer->getVertexCount();
+        for (irr::u32 i = 0; i < vertexCount; ++i) {
+            vertices[i].Color = color;
+        }
+    }
+
+    node->setVisible(showZoneLineBoxes_);
+
+    // Store the node
+    ZoneLineBoxNode boxNode;
+    boxNode.node = node;
+    boxNode.targetZoneId = box.targetZoneId;
+    boxNode.isProximityBased = box.isProximityBased;
+    zoneLineBoxNodes_.push_back(boxNode);
+
+    LOG_TRACE(MOD_GRAPHICS, "Created zone line box for zone {} at ({},{},{}) size ({},{},{})",
+        box.targetZoneId, centerX, centerY, centerZ, width, height, depth);
+}
+
+void IrrlichtRenderer::drawZoneLineBoxLabels() {
+    if (!showZoneLineBoxes_ || !driver_ || !guienv_ || !camera_) {
+        return;
+    }
+
+    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    if (!font) return;
+
+    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+
+    for (const auto& boxNode : zoneLineBoxNodes_) {
+        if (!boxNode.node || !boxNode.node->isVisible()) continue;
+
+        // Get 3D position of box center
+        irr::core::vector3df boxPos = boxNode.node->getAbsolutePosition();
+
+        // Convert 3D position to 2D screen position
+        irr::core::position2d<irr::s32> screenPos = smgr_->getSceneCollisionManager()->getScreenCoordinatesFrom3DPosition(
+            boxPos, camera_);
+
+        // Check if on screen
+        if (screenPos.X < 0 || screenPos.X >= (irr::s32)screenSize.Width ||
+            screenPos.Y < 0 || screenPos.Y >= (irr::s32)screenSize.Height) {
+            continue;
+        }
+
+        // Create label text
+        std::wstring label = L"Zone " + std::to_wstring(boxNode.targetZoneId);
+        if (boxNode.isProximityBased) {
+            label += L" (prox)";
+        }
+
+        // Draw label
+        irr::core::dimension2d<irr::u32> textSize = font->getDimension(label.c_str());
+        int textX = screenPos.X - textSize.Width / 2;
+        int textY = screenPos.Y - textSize.Height / 2;
+
+        // Background rectangle
+        irr::video::SColor bgColor(150, 0, 0, 0);
+        driver_->draw2DRectangle(bgColor, irr::core::rect<irr::s32>(
+            textX - 2, textY - 2, textX + textSize.Width + 2, textY + textSize.Height + 2));
+
+        // Text color based on type
+        irr::video::SColor textColor = boxNode.isProximityBased ?
+            irr::video::SColor(255, 0, 255, 255) :  // Cyan
+            irr::video::SColor(255, 255, 0, 255);   // Magenta
+
+        font->draw(label.c_str(), irr::core::rect<irr::s32>(
+            textX, textY, textX + textSize.Width, textY + textSize.Height), textColor);
+    }
+}
+
+void IrrlichtRenderer::drawFPSCounter() {
+    if (!driver_ || !guienv_) {
+        return;
+    }
+
+    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    if (!font) {
+        return;
+    }
+
+    // Build FPS text
+    std::wstring fpsText = L"FPS: " + std::to_wstring(currentFps_);
+
+    // Get screen dimensions and text size for centering
+    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+    irr::core::dimension2d<irr::u32> textSize = font->getDimension(fpsText.c_str());
+
+    // Position at top center with small padding from top edge
+    int textX = (screenSize.Width - textSize.Width) / 2;
+    int textY = 5;
+
+    // Draw with a semi-transparent black background for readability
+    irr::core::rect<irr::s32> bgRect(textX - 4, textY - 2,
+                                      textX + textSize.Width + 4,
+                                      textY + textSize.Height + 2);
+    driver_->draw2DRectangle(irr::video::SColor(128, 0, 0, 0), bgRect);
+
+    // Draw FPS text in white
+    font->draw(fpsText.c_str(),
+               irr::core::rect<irr::s32>(textX, textY, textX + textSize.Width, textY + textSize.Height),
+               irr::video::SColor(255, 255, 255, 255));
+}
+
+void IrrlichtRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill) {
+    if (entityRenderer_) {
+        entityRenderer_->setEntityWeaponSkills(spawnId, primaryWeaponSkill, secondaryWeaponSkill);
+    }
+}
+
+uint8_t IrrlichtRenderer::getEntityPrimaryWeaponSkill(uint16_t spawnId) const {
+    if (entityRenderer_) {
+        return entityRenderer_->getEntityPrimaryWeaponSkill(spawnId);
+    }
+    return 0;
+}
+
+uint8_t IrrlichtRenderer::getEntitySecondaryWeaponSkill(uint16_t spawnId) const {
+    if (entityRenderer_) {
+        return entityRenderer_->getEntitySecondaryWeaponSkill(spawnId);
+    }
+    return 0;
+}
+
+void IrrlichtRenderer::triggerFirstPersonAttack() {
+    if (entityRenderer_) {
+        entityRenderer_->triggerFirstPersonAttack();
     }
 }
 

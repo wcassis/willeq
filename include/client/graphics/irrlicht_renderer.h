@@ -15,6 +15,9 @@
 // Forward declaration for collision map
 class HCMap;
 
+// Forward declaration for zone lines
+namespace EQT { struct ZoneLineBoundingBox; }
+
 // Forward declarations for inventory UI
 namespace eqt {
 namespace ui { class WindowManager; }
@@ -188,9 +191,13 @@ public:
     bool inventoryToggleRequested() { bool r = inventoryToggleRequested_; inventoryToggleRequested_ = false; return r; }
     bool groupToggleRequested() { bool r = groupToggleRequested_; groupToggleRequested_ = false; return r; }
     bool doorInteractRequested() { bool r = doorInteractRequested_; doorInteractRequested_ = false; return r; }
+    bool worldObjectInteractRequested() { bool r = worldObjectInteractRequested_; worldObjectInteractRequested_ = false; return r; }
     bool hailRequested() { bool r = hailRequested_; hailRequested_ = false; return r; }
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
+    bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
+bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
+    bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
     float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
@@ -221,6 +228,9 @@ public:
 
     // Animation speed adjustment (returns delta value, 0 if no change)
     float getAnimSpeedDelta() { float d = animSpeedDelta_; animSpeedDelta_ = 0; return d; }
+
+    // Camera zoom adjustment for Player mode (+ to zoom in, - to zoom out)
+    float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
 
     // Ambient light adjustment (returns delta value, 0 if no change)
     float getAmbientLightDelta() { float d = ambientLightDelta_; ambientLightDelta_ = 0; return d; }
@@ -293,9 +303,13 @@ private:
     bool inventoryToggleRequested_ = false;
     bool groupToggleRequested_ = false;
     bool doorInteractRequested_ = false;
+    bool worldObjectInteractRequested_ = false;
     bool hailRequested_ = false;
     bool vendorToggleRequested_ = false;
+    bool trainerToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
+bool zoneLineVisualizationToggleRequested_ = false;
+    bool petToggleRequested_ = false;
     int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
     int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
     float collisionHeightDelta_ = 0.0f;
@@ -307,6 +321,7 @@ private:
     float rotationYDelta_ = 0.0f;
     float rotationZDelta_ = 0.0f;
     float animSpeedDelta_ = 0.0f;
+    float cameraZoomDelta_ = 0.0f;
     float ambientLightDelta_ = 0.0f;
     float corpseZOffsetDelta_ = 0.0f;
     float eyeHeightDelta_ = 0.0f;
@@ -397,6 +412,15 @@ public:
     using DoorInteractCallback = std::function<void(uint8_t doorId)>;
     void setDoorInteractCallback(DoorInteractCallback callback) { doorInteractCallback_ = callback; }
 
+    // World object interaction callback (called when player clicks tradeskill container or presses O key)
+    using WorldObjectInteractCallback = std::function<void(uint32_t dropId)>;
+    void setWorldObjectInteractCallback(WorldObjectInteractCallback callback) { worldObjectInteractCallback_ = callback; }
+
+    // World object management (for click detection on tradeskill containers)
+    void addWorldObject(uint32_t dropId, float x, float y, float z, uint32_t objectType, const std::string& name);
+    void removeWorldObject(uint32_t dropId);
+    void clearWorldObjects();
+
     // Spell gem cast callback (called when player presses 1-8 keys)
     using SpellGemCastCallback = std::function<void(uint8_t gemSlot)>;
     void setSpellGemCastCallback(SpellGemCastCallback callback) { spellGemCastCallback_ = callback; }
@@ -413,6 +437,20 @@ public:
     // Set entity pose state (sitting, standing, crouching) - prevents movement updates from overriding
     enum class EntityPoseState : uint8_t { Standing = 0, Sitting = 1, Crouching = 2, Lying = 3 };
     void setEntityPoseState(uint16_t spawnId, EntityPoseState pose);
+
+    // Set entity weapon skill types for combat animation selection
+    void setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill);
+
+    // Get entity weapon skill type (for animation selection)
+    uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
+    uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
+
+    // First-person mode methods
+    // Trigger first-person attack animation (weapon swing)
+    void triggerFirstPersonAttack();
+
+    // Check if in first-person mode
+    bool isFirstPersonMode() const { return cameraMode_ == CameraMode::FirstPerson; }
 
     // Set the player's spawn ID (marks that entity as the player and handles visibility)
     void setPlayerSpawnId(uint16_t spawnId);
@@ -516,6 +554,14 @@ public:
     using VendorToggleCallback = std::function<void()>;
     void setVendorToggleCallback(VendorToggleCallback callback) { vendorToggleCallback_ = callback; }
 
+    // Banker interact callback (called when Ctrl+click on NPC in Player Mode)
+    using BankerInteractCallback = std::function<void(uint16_t npcId)>;
+    void setBankerInteractCallback(BankerInteractCallback callback) { bankerInteractCallback_ = callback; }
+
+    // Trainer toggle callback (called when T key is pressed in Player Mode)
+    using TrainerToggleCallback = std::function<void()>;
+    void setTrainerToggleCallback(TrainerToggleCallback callback) { trainerToggleCallback_ = callback; }
+
     // Read item callback (called when right-clicking a readable book/note item)
     using ReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
     void setReadItemCallback(ReadItemCallback callback);
@@ -523,6 +569,10 @@ public:
     // Chat submit callback (called when user submits chat input)
     using ChatSubmitCallback = std::function<void(const std::string& text)>;
     void setChatSubmitCallback(ChatSubmitCallback callback);
+
+    // Zoning enabled callback (called when zone line visualization is toggled)
+    using ZoningEnabledCallback = std::function<void(bool enabled)>;
+    void setZoningEnabledCallback(ZoningEnabledCallback callback) { zoningEnabledCallback_ = callback; }
 
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
@@ -568,6 +618,12 @@ public:
     // Zone line debugging
     void setZoneLineDebug(bool inZoneLine, uint16_t targetZoneId = 0, const std::string& debugText = "");
     bool isInZoneLine() const { return inZoneLine_; }
+
+    // Zone line bounding box visualization
+    void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes);
+    void clearZoneLineBoundingBoxes();
+    void toggleZoneLineVisualization();
+    bool isZoneLineVisualizationEnabled() const { return showZoneLineBoxes_; }
     bool isInventoryOpen() const;
     void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);
     void setCharacterDeity(const std::wstring& deity);
@@ -662,7 +718,7 @@ private:
     bool fogEnabled_ = true;
     bool lightingEnabled_ = false;
     bool zoneLightsEnabled_ = false;
-    CameraMode cameraMode_ = CameraMode::FirstPerson;
+    CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
     // Player position (for Follow and FirstPerson modes)
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;
@@ -676,6 +732,29 @@ private:
     HUDCallback hudCallback_;
     SaveEntitiesCallback saveEntitiesCallback_;
     float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)
+
+    // Performance: HUD dirty tracking to avoid rebuilding every frame
+    // Cached HUD text for comparison
+    std::wstring cachedHudText_;
+    std::wstring cachedHotkeysText_;
+    std::wstring cachedHeadingDebugText_;
+    // Cached state values to detect changes
+    struct HudCachedState {
+        RendererMode rendererMode = RendererMode::Player;
+        int fps = 0;
+        int playerX = 0, playerY = 0, playerZ = 0;
+        size_t entityCount = 0;
+        size_t modeledEntityCount = 0;
+        uint16_t targetId = 0;
+        uint8_t targetHpPercent = 0;
+        float animSpeed = 1.0f;
+        float corpseZ = 0.0f;
+        bool wireframeMode = false;
+        bool oldModels = true;
+        std::string cameraMode;
+        std::string zoneName;
+    };
+    HudCachedState hudCachedState_;
 
     // FPS tracking
     int currentFps_ = 0;
@@ -709,9 +788,13 @@ private:
     AutoAttackStatusCallback autoAttackStatusCallback_;
     HailCallback hailCallback_;
     VendorToggleCallback vendorToggleCallback_;
+    BankerInteractCallback bankerInteractCallback_;
+    TrainerToggleCallback trainerToggleCallback_;
     ChatSubmitCallback chatSubmitCallback_;
     DoorInteractCallback doorInteractCallback_;
+    WorldObjectInteractCallback worldObjectInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
+    ZoningEnabledCallback zoningEnabledCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
     uint8_t currentTargetHpPercent_ = 100;
@@ -765,6 +848,20 @@ private:
     std::string zoneLineDebugText_;
     void drawZoneLineOverlay();
 
+    // Zone line bounding box visualization
+    struct ZoneLineBoxNode {
+        irr::scene::IMeshSceneNode* node = nullptr;
+        uint16_t targetZoneId = 0;
+        bool isProximityBased = false;
+    };
+    std::vector<ZoneLineBoxNode> zoneLineBoxNodes_;
+    bool showZoneLineBoxes_ = true;  // Enabled by default to help debug
+    void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
+    void drawZoneLineBoxLabels();
+
+    // FPS counter (centered at top of screen)
+    void drawFPSCounter();
+
     // Inventory UI
     std::unique_ptr<eqt::ui::WindowManager> windowManager_;
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;
@@ -772,6 +869,18 @@ private:
 
     // Spell visual effects
     std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
+
+    // World objects for click detection (tradeskill containers, etc.)
+    struct WorldObjectVisual {
+        uint32_t dropId;
+        float x, y, z;           // EQ coordinates
+        uint32_t objectType;
+        std::string name;
+        irr::core::aabbox3df boundingBox;  // For click detection
+    };
+    std::map<uint32_t, WorldObjectVisual> worldObjects_;
+    uint32_t getWorldObjectAtScreenPos(int screenX, int screenY) const;
+    uint32_t getNearestWorldObject(float playerX, float playerY, float playerZ, float maxDistance = 50.0f) const;
 };
 
 } // namespace Graphics

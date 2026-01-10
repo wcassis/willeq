@@ -467,5 +467,55 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
     return mesh;
 }
 
+// ============================================================================
+// Performance: Lazy Texture Loading (Phase 3)
+// ============================================================================
+
+void ZoneMeshBuilder::registerLazyTexture(const std::string& name, std::shared_ptr<TextureInfo> texInfo) {
+    if (name.empty() || !texInfo || texInfo->data.empty()) {
+        return;
+    }
+
+    // Don't register if already loaded
+    if (textureCache_.find(name) != textureCache_.end()) {
+        return;
+    }
+
+    // Register for lazy loading
+    pendingTextures_[name] = texInfo;
+}
+
+irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name) {
+    if (name.empty()) {
+        return nullptr;
+    }
+
+    // Check if already loaded
+    auto cacheIt = textureCache_.find(name);
+    if (cacheIt != textureCache_.end()) {
+        return cacheIt->second;
+    }
+
+    // Check if pending (lazy load now)
+    auto pendingIt = pendingTextures_.find(name);
+    if (pendingIt != pendingTextures_.end() && pendingIt->second && !pendingIt->second->data.empty()) {
+        // Load the texture now
+        irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data);
+
+        // Remove from pending (data no longer needed)
+        pendingTextures_.erase(pendingIt);
+
+        return texture;
+    }
+
+    // Not found
+    return nullptr;
+}
+
+bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
+    return textureCache_.find(name) != textureCache_.end() ||
+           pendingTextures_.find(name) != pendingTextures_.end();
+}
+
 } // namespace Graphics
 } // namespace EQT

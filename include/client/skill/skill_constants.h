@@ -283,58 +283,121 @@ inline bool isActivatableSkill(uint8_t skill_id) {
 // Skill Animation IDs
 // ============================================================================
 
+// Animation IDs used by the server emote system
+// These map to animation codes in ZoneProcessEmote
+enum SkillAnimationId : uint8_t {
+    ANIM_ID_ATTACK_PRIMARY = 1,   // Primary attack (weapon-based)
+    ANIM_ID_ATTACK_SECONDARY = 2, // Secondary attack (offhand)
+    ANIM_ID_DAMAGE_FRONT = 3,     // Damage from front
+    ANIM_ID_DAMAGE_BACK = 4,      // Damage from back
+    ANIM_ID_ATTACK = 5,           // Generic attack
+    ANIM_ID_ATTACK2 = 6,          // Generic attack 2
+    ANIM_ID_ROUND_KICK = 10,      // Round kick → c11
+    ANIM_ID_KICK = 11,            // Kick → c01
+    ANIM_ID_BASH = 12,            // Bash → c07
+    ANIM_ID_FLYING_KICK = 14,     // Flying kick → t07
+    ANIM_ID_DEATH = 16,           // Death → d05
+    ANIM_ID_LOOT = 105,           // Looting → p05
+};
+
 // Returns the animation ID to play when activating a skill
 // Returns 0 if no animation should be played
 inline uint8_t getSkillAnimationId(uint8_t skill_id) {
     switch (skill_id) {
-        case 8:  // Backstab
-            return 5;   // Attack animation
-        case 10: // Bash
-            return 12;  // ANIM_BASH
-        case 21: // DragonPunch
-            return 5;   // Attack animation
-        case 23: // EagleStrike
-            return 5;   // Attack animation
-        case 25: // FeignDeath
-            return 16;  // ANIM_DEATH
-        case 26: // FlyingKick
-            return 11;  // Flying kick animation
+        // Monk special attacks
+        case 21: // DragonPunch - uses custom animation (t09)
+        case 23: // EagleStrike - uses custom animation (t08)
+        case 52: // TigerClaw - uses custom animation (t08)
+            return ANIM_ID_ATTACK;  // Server sends attack, client overrides with skill-specific anim
+
+        // Kick skills
         case 30: // Kick
-            return 11;  // ANIM_KICK
+            return ANIM_ID_KICK;     // 11 → c01
+        case 26: // FlyingKick
+            return ANIM_ID_FLYING_KICK;  // 14 → t07
         case 38: // RoundKick
-            return 11;  // Kick animation
-        case 52: // TigerClaw
-            return 5;   // Attack animation
+            return ANIM_ID_ROUND_KICK;   // 10 → c11
+
+        // Weapon skills
+        case 8:  // Backstab
+            return ANIM_ID_ATTACK;  // Uses weapon attack animation (c02 piercing)
+        case 10: // Bash
+            return ANIM_ID_BASH;    // 12 → c07
+
+        // Other combat skills
         case 73: // Taunt
-            return 5;   // Attack animation
+            return ANIM_ID_KICK;    // Uses kick animation as taunt gesture
+
+        // Death/Feign
+        case 25: // FeignDeath
+            return ANIM_ID_DEATH;   // 16 → d05
+
         default:
             return 0;   // No animation
     }
 }
 
-// Returns the skeletal animation code for a skill (e.g., "t02" for kick)
+// Returns the skeletal animation code for a skill
+// Animation codes are based on eq_old_model_animations.md reference
 inline const char* getSkillAnimationCode(uint8_t skill_id) {
     switch (skill_id) {
-        case 8:  // Backstab
-            return "c01";  // Primary attack
-        case 10: // Bash
-            return "c05";  // Bash animation
+        // Combat skills - Monk special attacks
         case 21: // DragonPunch
-            return "c01";  // Combat attack
+            return "t09";  // Dragon Punch / Large Punch
         case 23: // EagleStrike
-            return "c01";  // Combat attack
+            return "t08";  // Tiger Strike / Rapid Punches (similar rapid strike)
+        case 26: // FlyingKick
+            return "t07";  // Flying Kick
+        case 52: // TigerClaw
+            return "t08";  // Tiger Strike / Rapid Punches
+
+        // Combat skills - Basic kicks
+        case 30: // Kick
+            return "c01";  // Kick (c01 is specifically the kick animation)
+        case 38: // RoundKick
+            return "c11";  // Round Kick
+
+        // Combat skills - Weapon-based
+        case 8:  // Backstab
+            return "c02";  // 1H Piercing attack
+        case 10: // Bash
+            return "c07";  // Bash (Shield)
+
+        // Combat skills - Other
+        case 73: // Taunt
+            return "c01";  // Combat gesture (kick motion works for taunt)
+
+        // Death/Feign
         case 25: // FeignDeath
             return "d05";  // Death/lying animation
-        case 26: // FlyingKick
-            return "t03";  // Flying kick
-        case 30: // Kick
-            return "t02";  // Kick
-        case 38: // RoundKick
-            return "t01";  // Roundhouse kick
-        case 52: // TigerClaw
-            return "c01";  // Combat attack
-        case 73: // Taunt
-            return "c01";  // Combat gesture
+
+        // Bard instrument animations
+        case 12: // BrassInstruments
+            return "t03";  // Wind Instrument (brass uses same animation)
+        case 49: // StringedInstruments
+            return "t02";  // Stringed Instrument
+        case 54: // WindInstruments
+            return "t03";  // Wind Instrument
+        case 70: // PercussionInstruments
+            return "t02";  // Stringed Instrument (closest available)
+        case 41: // Singing
+        case 74: // SingingSkill
+            return "t02";  // Stringed Instrument (vocal performance pose)
+
+        // Social/utility skill animations
+        case 67: // Begging
+            return "s08";  // Plead
+        case 71: // Intimidation
+            return "s18";  // Glare
+
+        // Utility skills with animations
+        case 29: // Hide
+            return "l08";  // Crouching
+        case 42: // Sneak
+            return "l06";  // Crouch Walk
+        case 31: // Meditate
+            return "p07";  // Sitting (meditation pose)
+
         default:
             return nullptr;  // No animation
     }

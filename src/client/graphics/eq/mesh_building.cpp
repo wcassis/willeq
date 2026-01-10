@@ -10,6 +10,11 @@ namespace EQT {
 namespace Graphics {
 
 std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTextures() {
+    // Performance optimization: return cached result if valid
+    if (mergedTexturesCacheValid_) {
+        return cachedMergedTextures_;
+    }
+
     // Build a merged texture map from all sources, matching model viewer behavior:
     // Order: global_chr.s3d -> global2-7_chr.s3d -> armor textures -> zone_chr.s3d (overrides)
 
@@ -49,7 +54,11 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
         merged[name] = tex;
     }
 
-    return merged;
+    // Cache the result
+    cachedMergedTextures_ = merged;
+    mergedTexturesCacheValid_ = true;
+
+    return cachedMergedTextures_;
 }
 
 irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
@@ -187,24 +196,37 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     }
                 }
 
-                auto texIt = textures.find(finalTexName);
-                if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                    texture = meshBuilder_->loadTextureFromBMP(finalTexName, texIt->second->data);
-                    LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded texture \"{}\"{}",
-                              bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
-                } else {
-                    // If equipment variant not found, try the original texture
-                    if (overrideApplied) {
-                        texIt = textures.find(lowerTexName);
-                        if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                            texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texIt->second->data);
-                            LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded fallback texture \"{}\"", bufferIndex, lowerTexName);
-                        } else {
-                            LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\" or fallback \"{}\"", bufferIndex, finalTexName, lowerTexName);
-                        }
+                // Performance: Try cache first via getOrLoadTexture, then lazy load if needed
+                texture = meshBuilder_->getOrLoadTexture(finalTexName);
+                if (!texture) {
+                    // Not in cache, register for lazy loading and load now
+                    auto texIt = textures.find(finalTexName);
+                    if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texIt->second->data);
+                        LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded texture \"{}\"{}",
+                                  bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
                     } else {
-                        LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\"", bufferIndex, lowerTexName);
+                        // If equipment variant not found, try the original texture
+                        if (overrideApplied) {
+                            texture = meshBuilder_->getOrLoadTexture(lowerTexName);
+                            if (!texture) {
+                                texIt = textures.find(lowerTexName);
+                                if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                                    texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texIt->second->data);
+                                    LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded fallback texture \"{}\"", bufferIndex, lowerTexName);
+                                } else {
+                                    LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\" or fallback \"{}\"", bufferIndex, finalTexName, lowerTexName);
+                                }
+                            } else {
+                                LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Using cached fallback texture \"{}\"", bufferIndex, lowerTexName);
+                            }
+                        } else {
+                            LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\"", bufferIndex, lowerTexName);
+                        }
                     }
+                } else {
+                    LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Using cached texture \"{}\"{}",
+                              bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
                 }
             }
         }

@@ -22,6 +22,8 @@ using SpellClickCallback = std::function<void(uint32_t spell_id, uint8_t gem_slo
 using SpellHoverCallback = std::function<void(uint32_t spell_id, int mouseX, int mouseY)>;
 using SpellHoverEndCallback = std::function<void()>;
 using SetSpellCursorCallback = std::function<void(uint32_t spell_id, irr::video::ITexture* icon)>;
+// Callback for scribing a spell to a spellbook slot (spell_id, book_slot)
+using ScribeSpellCallback = std::function<void(uint32_t spell_id, uint16_t book_slot)>;
 
 // Individual spell slot in the spellbook
 struct SpellSlot {
@@ -56,6 +58,12 @@ public:
     void setSpellHoverCallback(SpellHoverCallback cb) { spellHoverCallback_ = std::move(cb); }
     void setSpellHoverEndCallback(SpellHoverEndCallback cb) { spellHoverEndCallback_ = std::move(cb); }
     void setSetSpellCursorCallback(SetSpellCursorCallback cb) { setSpellCursorCallback_ = std::move(cb); }
+    void setScribeSpellCallback(ScribeSpellCallback cb) { scribeSpellCallback_ = std::move(cb); }
+
+    // Scribing mode - when true, empty slots are highlighted and clickable for scribing
+    void setScribingMode(bool enabled, uint32_t spellId = 0);
+    bool isScribingMode() const { return scribingMode_; }
+    uint32_t getScribingSpellId() const { return scribingSpellId_; }
 
     // Set target gem slot for memorization (1-8, 0 = none)
     void setTargetGemSlot(uint8_t slot) { targetGemSlot_ = slot; }
@@ -138,11 +146,16 @@ private:
     // Target gem slot for memorization (1-8, 0 = none selected)
     uint8_t targetGemSlot_ = 0;
 
+    // Scribing mode state
+    bool scribingMode_ = false;
+    uint32_t scribingSpellId_ = 0;
+
     // Callbacks
     SpellClickCallback spellClickCallback_;
     SpellHoverCallback spellHoverCallback_;
     SpellHoverEndCallback spellHoverEndCallback_;
     SetSpellCursorCallback setSpellCursorCallback_;
+    ScribeSpellCallback scribeSpellCallback_;
 };
 
 } // namespace ui

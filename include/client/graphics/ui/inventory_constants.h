@@ -78,8 +78,213 @@ constexpr int16_t WORLD_BEGIN = 4000;
 constexpr int16_t WORLD_END = 4009;
 constexpr int16_t WORLD_COUNT = 10;
 
+// Tradeskill world container slot (used when combining in a world object like a forge)
+// This is the slot used in OP_TradeSkillCombine when using a world container
+constexpr int16_t SLOT_TRADESKILL_EXPERIMENT_COMBINE = 1000;
+
 // Invalid slot
 constexpr int16_t SLOT_INVALID = -1;
+
+// ============================================================================
+// Tradeskill Container Types (bagType values)
+// These correspond to EQEmu's ObjectType namespace values
+// Used to identify what type of tradeskill a container supports
+// ============================================================================
+enum TradeskillContainerType : uint8_t {
+    CONTAINER_SMALL_BAG = 0,
+    CONTAINER_LARGE_BAG = 1,
+    CONTAINER_QUIVER = 2,
+    CONTAINER_BELT_POUCH = 3,
+    CONTAINER_WRIST_POUCH = 4,
+    CONTAINER_BACKPACK = 5,
+    CONTAINER_SMALL_CHEST = 6,
+    CONTAINER_LARGE_CHEST = 7,
+    CONTAINER_BANDOLIER = 8,
+    CONTAINER_MEDICINE = 9,
+    CONTAINER_TINKERING = 10,
+    CONTAINER_LEXICON = 11,
+    CONTAINER_POISON_MAKING = 12,
+    CONTAINER_QUEST = 13,
+    CONTAINER_MIXING_BOWL = 14,
+    CONTAINER_BAKING = 15,
+    CONTAINER_TAILORING = 16,
+    CONTAINER_BLACKSMITHING = 17,
+    CONTAINER_FLETCHING = 18,
+    CONTAINER_BREWING = 19,
+    CONTAINER_JEWELRY_MAKING = 20,
+    CONTAINER_POTTERY = 21,
+    CONTAINER_KILN = 22,
+    CONTAINER_KEY_MAKER = 23,
+    CONTAINER_RESEARCH_WIZ = 24,
+    CONTAINER_RESEARCH_MAG = 25,
+    CONTAINER_RESEARCH_NEC = 26,
+    CONTAINER_RESEARCH_ENC = 27,
+    CONTAINER_UNKNOWN = 28,
+    CONTAINER_RESEARCH_PRACTICE = 29,
+    CONTAINER_ALCHEMY = 30,
+    CONTAINER_HIGH_ELF_FORGE = 31,
+    CONTAINER_DARK_ELF_FORGE = 32,
+    CONTAINER_OGRE_FORGE = 33,
+    CONTAINER_DWARF_FORGE = 34,
+    CONTAINER_GNOME_FORGE = 35,
+    CONTAINER_BARBARIAN_FORGE = 36,
+    CONTAINER_IKSAR_FORGE = 37,
+    CONTAINER_HUMAN_FORGE_1 = 38,
+    CONTAINER_HUMAN_FORGE_2 = 39,
+    CONTAINER_HALFLING_TAILORING_1 = 40,
+    CONTAINER_HALFLING_TAILORING_2 = 41,
+    CONTAINER_ERUDITE_TAILORING = 42,
+    CONTAINER_WOOD_ELF_TAILORING = 43,
+    CONTAINER_WOOD_ELF_FLETCHING = 44,
+    CONTAINER_IKSAR_POTTERY = 45,
+    CONTAINER_FISHING = 46,
+    CONTAINER_TROLL_FORGE = 47,
+    CONTAINER_WOOD_ELF_FORGE = 48,
+    CONTAINER_HALFLING_FORGE = 49,
+    CONTAINER_ERUDITE_FORGE = 50,
+    CONTAINER_MERCHANT = 51,
+    CONTAINER_FROGLOK_FORGE = 52,
+    CONTAINER_AUGMENTER = 53,
+    CONTAINER_CHURN = 54,
+    CONTAINER_TRANSFORMATION_MOLD = 55,
+    CONTAINER_DETRANSFORMATION_MOLD = 56,
+    CONTAINER_UNATTUNER = 57,
+    CONTAINER_TRADESKILL_BAG = 58,
+    CONTAINER_COLLECTIBLE_BAG = 59,
+    CONTAINER_NO_DEPOSIT = 60
+};
+
+// Check if a container type is a tradeskill container (not a regular bag)
+// Tradeskill containers start at type 10 (tinkering) and go up
+// Regular bag types are 0-9
+inline bool isTradeskillContainerType(uint8_t containerType) {
+    // Regular bags are types 0-9
+    // Tradeskill containers start at 10 (tinkering)
+    // But some special types like quest(13), merchant(51), etc. are not tradeskill
+    switch (containerType) {
+        case CONTAINER_TINKERING:
+        case CONTAINER_LEXICON:
+        case CONTAINER_POISON_MAKING:
+        case CONTAINER_MIXING_BOWL:
+        case CONTAINER_BAKING:
+        case CONTAINER_TAILORING:
+        case CONTAINER_BLACKSMITHING:
+        case CONTAINER_FLETCHING:
+        case CONTAINER_BREWING:
+        case CONTAINER_JEWELRY_MAKING:
+        case CONTAINER_POTTERY:
+        case CONTAINER_KILN:
+        case CONTAINER_KEY_MAKER:
+        case CONTAINER_RESEARCH_WIZ:
+        case CONTAINER_RESEARCH_MAG:
+        case CONTAINER_RESEARCH_NEC:
+        case CONTAINER_RESEARCH_ENC:
+        case CONTAINER_RESEARCH_PRACTICE:
+        case CONTAINER_ALCHEMY:
+        case CONTAINER_HIGH_ELF_FORGE:
+        case CONTAINER_DARK_ELF_FORGE:
+        case CONTAINER_OGRE_FORGE:
+        case CONTAINER_DWARF_FORGE:
+        case CONTAINER_GNOME_FORGE:
+        case CONTAINER_BARBARIAN_FORGE:
+        case CONTAINER_IKSAR_FORGE:
+        case CONTAINER_HUMAN_FORGE_1:
+        case CONTAINER_HUMAN_FORGE_2:
+        case CONTAINER_HALFLING_TAILORING_1:
+        case CONTAINER_HALFLING_TAILORING_2:
+        case CONTAINER_ERUDITE_TAILORING:
+        case CONTAINER_WOOD_ELF_TAILORING:
+        case CONTAINER_WOOD_ELF_FLETCHING:
+        case CONTAINER_IKSAR_POTTERY:
+        case CONTAINER_FISHING:
+        case CONTAINER_TROLL_FORGE:
+        case CONTAINER_WOOD_ELF_FORGE:
+        case CONTAINER_HALFLING_FORGE:
+        case CONTAINER_ERUDITE_FORGE:
+        case CONTAINER_FROGLOK_FORGE:
+        case CONTAINER_CHURN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Check if a slot is a world container item slot (4000-4009)
+inline bool isWorldContainerItemSlot(int16_t slotId) {
+    return slotId >= WORLD_BEGIN && slotId <= WORLD_END;
+}
+
+// Check if a slot is any world container slot (combine slot 1000 or item slots 4000-4009)
+inline bool isWorldContainerSlot(int16_t slotId) {
+    return slotId == SLOT_TRADESKILL_EXPERIMENT_COMBINE || isWorldContainerItemSlot(slotId);
+}
+
+// Get the tradeskill name for a container type
+inline const char* getTradeskillContainerName(uint8_t containerType) {
+    switch (containerType) {
+        case CONTAINER_SMALL_BAG: return "Small Bag";
+        case CONTAINER_LARGE_BAG: return "Large Bag";
+        case CONTAINER_QUIVER: return "Quiver";
+        case CONTAINER_BELT_POUCH: return "Belt Pouch";
+        case CONTAINER_WRIST_POUCH: return "Wrist Pouch";
+        case CONTAINER_BACKPACK: return "Backpack";
+        case CONTAINER_SMALL_CHEST: return "Small Chest";
+        case CONTAINER_LARGE_CHEST: return "Large Chest";
+        case CONTAINER_BANDOLIER: return "Bandolier";
+        case CONTAINER_MEDICINE: return "Medicine Bag";
+        case CONTAINER_TINKERING: return "Tinkering";
+        case CONTAINER_LEXICON: return "Lexicon";
+        case CONTAINER_POISON_MAKING: return "Mortar and Pestle";
+        case CONTAINER_QUEST: return "Quest Container";
+        case CONTAINER_MIXING_BOWL: return "Mixing Bowl";
+        case CONTAINER_BAKING: return "Oven";
+        case CONTAINER_TAILORING: return "Loom";
+        case CONTAINER_BLACKSMITHING: return "Forge";
+        case CONTAINER_FLETCHING: return "Fletching Kit";
+        case CONTAINER_BREWING: return "Brew Barrel";
+        case CONTAINER_JEWELRY_MAKING: return "Jeweler's Kit";
+        case CONTAINER_POTTERY: return "Pottery Wheel";
+        case CONTAINER_KILN: return "Kiln";
+        case CONTAINER_KEY_MAKER: return "Key Maker";
+        case CONTAINER_RESEARCH_WIZ: return "Wizard Lexicon";
+        case CONTAINER_RESEARCH_MAG: return "Mage Lexicon";
+        case CONTAINER_RESEARCH_NEC: return "Necromancer Lexicon";
+        case CONTAINER_RESEARCH_ENC: return "Enchanter Lexicon";
+        case CONTAINER_RESEARCH_PRACTICE: return "Practice Lexicon";
+        case CONTAINER_ALCHEMY: return "Alchemy Table";
+        case CONTAINER_HIGH_ELF_FORGE: return "High Elf Forge";
+        case CONTAINER_DARK_ELF_FORGE: return "Dark Elf Forge";
+        case CONTAINER_OGRE_FORGE: return "Ogre Forge";
+        case CONTAINER_DWARF_FORGE: return "Dwarf Forge";
+        case CONTAINER_GNOME_FORGE: return "Gnome Forge";
+        case CONTAINER_BARBARIAN_FORGE: return "Barbarian Forge";
+        case CONTAINER_IKSAR_FORGE: return "Iksar Forge";
+        case CONTAINER_HUMAN_FORGE_1: return "Human Forge";
+        case CONTAINER_HUMAN_FORGE_2: return "Human Forge";
+        case CONTAINER_HALFLING_TAILORING_1: return "Halfling Loom";
+        case CONTAINER_HALFLING_TAILORING_2: return "Halfling Loom";
+        case CONTAINER_ERUDITE_TAILORING: return "Erudite Loom";
+        case CONTAINER_WOOD_ELF_TAILORING: return "Wood Elf Loom";
+        case CONTAINER_WOOD_ELF_FLETCHING: return "Wood Elf Fletching Kit";
+        case CONTAINER_IKSAR_POTTERY: return "Iksar Pottery Wheel";
+        case CONTAINER_FISHING: return "Tackle Box";
+        case CONTAINER_TROLL_FORGE: return "Troll Forge";
+        case CONTAINER_WOOD_ELF_FORGE: return "Wood Elf Forge";
+        case CONTAINER_HALFLING_FORGE: return "Halfling Forge";
+        case CONTAINER_ERUDITE_FORGE: return "Erudite Forge";
+        case CONTAINER_MERCHANT: return "Merchant";
+        case CONTAINER_FROGLOK_FORGE: return "Froglok Forge";
+        case CONTAINER_AUGMENTER: return "Augmenter";
+        case CONTAINER_CHURN: return "Churn";
+        case CONTAINER_TRANSFORMATION_MOLD: return "Transformation Mold";
+        case CONTAINER_DETRANSFORMATION_MOLD: return "Detransformation Mold";
+        case CONTAINER_UNATTUNER: return "Unattuner";
+        case CONTAINER_TRADESKILL_BAG: return "Tradeskill Bag";
+        case CONTAINER_COLLECTIBLE_BAG: return "Collectible Bag";
+        case CONTAINER_NO_DEPOSIT: return "No Deposit";
+        default: return "Unknown Container";
+    }
+}
 
 // Item sizes
 enum ItemSize : uint8_t {
@@ -258,6 +463,10 @@ inline bool isTradeSlot(int16_t slotId) {
     return slotId >= TRADE_BEGIN && slotId <= TRADE_END;
 }
 
+inline bool isTradeBagSlot(int16_t slotId) {
+    return slotId >= TRADE_BAGS_BEGIN && slotId <= TRADE_BAGS_END;
+}
+
 // Get the parent general slot for a bag slot
 inline int16_t getParentGeneralSlot(int16_t bagSlot) {
     if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {
@@ -278,6 +487,252 @@ inline int16_t getBagIndex(int16_t bagSlot) {
         return bagSlot - CURSOR_BAG_BEGIN;
     }
     return SLOT_INVALID;
+}
+
+// ============================================================================
+// Bank slot utilities
+// ============================================================================
+
+// Check if slot is a main bank slot (2000-2015)
+inline bool isBankSlot(int16_t slotId) {
+    return slotId >= BANK_BEGIN && slotId <= BANK_END;
+}
+
+// Check if slot is a shared bank slot (2500-2501)
+inline bool isSharedBankSlot(int16_t slotId) {
+    return slotId >= SHARED_BANK_BEGIN && slotId <= SHARED_BANK_END;
+}
+
+// Check if slot is any bank slot (main or shared)
+inline bool isAnyBankSlot(int16_t slotId) {
+    return isBankSlot(slotId) || isSharedBankSlot(slotId);
+}
+
+// Check if slot is inside a bank bag (2031-2190)
+inline bool isBankBagSlot(int16_t slotId) {
+    return slotId >= BANK_BAGS_BEGIN && slotId <= BANK_BAGS_END;
+}
+
+// Check if slot is inside a shared bank bag (2531-2550)
+inline bool isSharedBankBagSlot(int16_t slotId) {
+    return slotId >= SHARED_BANK_BAGS_BEGIN && slotId <= SHARED_BANK_BAGS_END;
+}
+
+// Check if slot is inside any bank bag (main or shared)
+inline bool isAnyBankBagSlot(int16_t slotId) {
+    return isBankBagSlot(slotId) || isSharedBankBagSlot(slotId);
+}
+
+// Calculate bag slot ID for an item inside a bank container
+// bankSlot: the bank slot containing the bag (2000-2015)
+// bagIndex: index within the bag (0-9)
+// Returns: the calculated bag slot ID (2031-2190), or SLOT_INVALID if invalid
+inline int16_t calcBankBagSlotId(int16_t bankSlot, int16_t bagIndex) {
+    if (bankSlot < BANK_BEGIN || bankSlot > BANK_END) {
+        return SLOT_INVALID;
+    }
+    if (bagIndex < 0 || bagIndex >= BAG_SLOT_COUNT) {
+        return SLOT_INVALID;
+    }
+    return BANK_BAGS_BEGIN + (bankSlot - BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+}
+
+// Calculate bag slot ID for an item inside a shared bank container
+// sharedBankSlot: the shared bank slot containing the bag (2500-2501)
+// bagIndex: index within the bag (0-9)
+// Returns: the calculated bag slot ID (2531-2550), or SLOT_INVALID if invalid
+inline int16_t calcSharedBankBagSlotId(int16_t sharedBankSlot, int16_t bagIndex) {
+    if (sharedBankSlot < SHARED_BANK_BEGIN || sharedBankSlot > SHARED_BANK_END) {
+        return SLOT_INVALID;
+    }
+    if (bagIndex < 0 || bagIndex >= BAG_SLOT_COUNT) {
+        return SLOT_INVALID;
+    }
+    return SHARED_BANK_BAGS_BEGIN + (sharedBankSlot - SHARED_BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+}
+
+// Get the parent bank slot for a bank bag slot
+// bagSlot: a slot inside a bank bag (2031-2190)
+// Returns: the parent bank slot (2000-2015), or SLOT_INVALID if not a bank bag slot
+inline int16_t getParentBankSlot(int16_t bagSlot) {
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return BANK_BEGIN + (bagSlot - BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the parent shared bank slot for a shared bank bag slot
+// bagSlot: a slot inside a shared bank bag (2531-2550)
+// Returns: the parent shared bank slot (2500-2501), or SLOT_INVALID if not a shared bank bag slot
+inline int16_t getParentSharedBankSlot(int16_t bagSlot) {
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return SHARED_BANK_BEGIN + (bagSlot - SHARED_BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the parent slot for any bank bag slot (main or shared)
+// Returns the parent bank/shared bank slot, or SLOT_INVALID if not a bank bag slot
+inline int16_t getParentBankSlotAny(int16_t bagSlot) {
+    int16_t parent = getParentBankSlot(bagSlot);
+    if (parent != SLOT_INVALID) {
+        return parent;
+    }
+    return getParentSharedBankSlot(bagSlot);
+}
+
+// Get the index within a bank bag (0-9)
+// bagSlot: a slot inside a bank bag (2031-2190)
+// Returns: the index within the bag (0-9), or SLOT_INVALID if not a bank bag slot
+inline int16_t getBankBagIndex(int16_t bagSlot) {
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return (bagSlot - BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the index within a shared bank bag (0-9)
+// bagSlot: a slot inside a shared bank bag (2531-2550)
+// Returns: the index within the bag (0-9), or SLOT_INVALID if not a shared bank bag slot
+inline int16_t getSharedBankBagIndex(int16_t bagSlot) {
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return (bagSlot - SHARED_BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+    return SLOT_INVALID;
+}
+
+// Get the index within any bank bag (main or shared)
+// Returns the bag index (0-9), or SLOT_INVALID if not a bank bag slot
+inline int16_t getBankBagIndexAny(int16_t bagSlot) {
+    int16_t index = getBankBagIndex(bagSlot);
+    if (index != SLOT_INVALID) {
+        return index;
+    }
+    return getSharedBankBagIndex(bagSlot);
+}
+
+// ============================================================================
+// Universal container slot utilities
+// ============================================================================
+
+// Calculate the slot ID for an item inside any container type
+// parentSlot: the slot containing the container (general, bank, shared bank, or cursor)
+// bagIndex: index within the container (0-9)
+// Returns: the calculated slot ID, or SLOT_INVALID if invalid parent or index
+inline int16_t calcContainerSlotId(int16_t parentSlot, int16_t bagIndex) {
+    // Validate bag index
+    if (bagIndex < 0 || bagIndex >= BAG_SLOT_COUNT) {
+        return SLOT_INVALID;
+    }
+
+    // General inventory slots (22-29)
+    if (parentSlot >= GENERAL_BEGIN && parentSlot <= GENERAL_END) {
+        return GENERAL_BAGS_BEGIN + (parentSlot - GENERAL_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    // Cursor slot (30)
+    if (parentSlot == CURSOR_SLOT) {
+        return CURSOR_BAG_BEGIN + bagIndex;
+    }
+
+    // Bank slots (2000-2015)
+    if (parentSlot >= BANK_BEGIN && parentSlot <= BANK_END) {
+        return BANK_BAGS_BEGIN + (parentSlot - BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    // Shared bank slots (2500-2501)
+    if (parentSlot >= SHARED_BANK_BEGIN && parentSlot <= SHARED_BANK_END) {
+        return SHARED_BANK_BAGS_BEGIN + (parentSlot - SHARED_BANK_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    // Trade slots (3000-3007)
+    if (parentSlot >= TRADE_BEGIN && parentSlot <= TRADE_END) {
+        return TRADE_BAGS_BEGIN + (parentSlot - TRADE_BEGIN) * BAG_SLOT_COUNT + bagIndex;
+    }
+
+    return SLOT_INVALID;
+}
+
+// Get the parent container slot for any bag slot
+// bagSlot: a slot inside any container
+// Returns: the parent container slot, or SLOT_INVALID if not a bag slot
+inline int16_t getParentContainerSlot(int16_t bagSlot) {
+    // General bag slots (251-330)
+    if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {
+        return GENERAL_BEGIN + (bagSlot - GENERAL_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    // Cursor bag slots (331-340)
+    if (bagSlot >= CURSOR_BAG_BEGIN && bagSlot <= CURSOR_BAG_END) {
+        return CURSOR_SLOT;
+    }
+
+    // Bank bag slots (2031-2190)
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return BANK_BEGIN + (bagSlot - BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    // Shared bank bag slots (2531-2550)
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return SHARED_BANK_BEGIN + (bagSlot - SHARED_BANK_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    // Trade bag slots (3031-3110)
+    if (bagSlot >= TRADE_BAGS_BEGIN && bagSlot <= TRADE_BAGS_END) {
+        return TRADE_BEGIN + (bagSlot - TRADE_BAGS_BEGIN) / BAG_SLOT_COUNT;
+    }
+
+    return SLOT_INVALID;
+}
+
+// Get the index within any container (0-9)
+// bagSlot: a slot inside any container
+// Returns: the index within the container (0-9), or SLOT_INVALID if not a bag slot
+inline int16_t getContainerIndex(int16_t bagSlot) {
+    // General bag slots (251-330)
+    if (bagSlot >= GENERAL_BAGS_BEGIN && bagSlot <= GENERAL_BAGS_END) {
+        return (bagSlot - GENERAL_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    // Cursor bag slots (331-340)
+    if (bagSlot >= CURSOR_BAG_BEGIN && bagSlot <= CURSOR_BAG_END) {
+        return bagSlot - CURSOR_BAG_BEGIN;
+    }
+
+    // Bank bag slots (2031-2190)
+    if (bagSlot >= BANK_BAGS_BEGIN && bagSlot <= BANK_BAGS_END) {
+        return (bagSlot - BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    // Shared bank bag slots (2531-2550)
+    if (bagSlot >= SHARED_BANK_BAGS_BEGIN && bagSlot <= SHARED_BANK_BAGS_END) {
+        return (bagSlot - SHARED_BANK_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    // Trade bag slots (3031-3110)
+    if (bagSlot >= TRADE_BAGS_BEGIN && bagSlot <= TRADE_BAGS_END) {
+        return (bagSlot - TRADE_BAGS_BEGIN) % BAG_SLOT_COUNT;
+    }
+
+    return SLOT_INVALID;
+}
+
+// Check if a slot is inside any container (bag slot of any type)
+inline bool isContainerSlot(int16_t slotId) {
+    return (slotId >= GENERAL_BAGS_BEGIN && slotId <= GENERAL_BAGS_END) ||
+           (slotId >= CURSOR_BAG_BEGIN && slotId <= CURSOR_BAG_END) ||
+           (slotId >= BANK_BAGS_BEGIN && slotId <= BANK_BAGS_END) ||
+           (slotId >= SHARED_BANK_BAGS_BEGIN && slotId <= SHARED_BANK_BAGS_END) ||
+           (slotId >= TRADE_BAGS_BEGIN && slotId <= TRADE_BAGS_END);
+}
+
+// Check if a slot can contain items (is a container slot like general, bank, cursor, trade)
+inline bool isContainerParentSlot(int16_t slotId) {
+    return isGeneralSlot(slotId) ||
+           isCursorSlot(slotId) ||
+           isBankSlot(slotId) ||
+           isSharedBankSlot(slotId) ||
+           isTradeSlot(slotId);
 }
 
 // Get human-readable slot name

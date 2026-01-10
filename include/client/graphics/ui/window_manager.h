@@ -2,6 +2,7 @@
 
 #include "inventory_window.h"
 #include "bag_window.h"
+#include "bank_window.h"
 #include "loot_window.h"
 #include "vendor_window.h"
 #include "trade_window.h"
@@ -12,12 +13,15 @@
 #include "spell_book_window.h"
 #include "buff_window.h"
 #include "group_window.h"
+#include "pet_window.h"
 #include "player_status_window.h"
 #include "hotbar_window.h"
 #include "hotbar_cursor.h"
 #include "skills_window.h"
+#include "skill_trainer_window.h"
 #include "note_window.h"
 #include "casting_bar.h"
+#include "tradeskill_container_window.h"
 #include "item_tooltip.h"
 #include "buff_tooltip.h"
 #include "item_icon_loader.h"
@@ -94,6 +98,25 @@ public:
     void closeBagWindow(int16_t generalSlot);
     void closeAllBagWindows();
     bool isBagWindowOpen(int16_t generalSlot) const;
+
+    // Bank window management
+    void openBankWindow();
+    void closeBankWindow();
+    void toggleBankWindow();
+    bool isBankWindowOpen() const;
+    BankWindow* getBankWindow() { return bankWindow_.get(); }
+    const BankWindow* getBankWindow() const { return bankWindow_.get(); }
+
+    // Bank bag window management
+    void openBankBagWindow(int16_t bankSlot);
+    void closeBankBagWindow(int16_t bankSlot);
+    void closeAllBankBagWindows();
+    bool isBankBagWindowOpen(int16_t bankSlot) const;
+
+    // Bank window callbacks (set by EverQuest class for packet handling)
+    void setOnBankClose(BankCloseCallback callback);
+    void setOnBankCurrencyMove(BankCurrencyMoveCallback callback);
+    void setOnBankCurrencyConvert(BankCurrencyConvertCallback callback);
 
     // Loot window management
     void openLootWindow(uint16_t corpseId, const std::string& corpseName);
@@ -191,6 +214,9 @@ public:
     SpellBookWindow* getSpellBookWindow() { return spellBookWindow_.get(); }
     const SpellBookWindow* getSpellBookWindow() const { return spellBookWindow_.get(); }
     void setSpellMemorizeCallback(SpellClickCallback callback);
+    void setSpellbookStateCallback(SpellbookStateCallback callback);
+    void setSpellScrollPickupCallback(SpellScrollPickupCallback callback);
+    void setScribeSpellRequestCallback(ScribeSpellRequestCallback callback);
 
     // Buff window management
     void initBuffWindow(EQ::BuffManager* buffMgr);
@@ -214,6 +240,16 @@ public:
     void setGroupDisbandCallback(GroupDisbandCallback callback);
     void setGroupAcceptCallback(GroupAcceptCallback callback);
     void setGroupDeclineCallback(GroupDeclineCallback callback);
+
+    // Pet window management
+    void initPetWindow(EverQuest* eq);
+    void togglePetWindow();
+    void openPetWindow();
+    void closePetWindow();
+    bool isPetWindowOpen() const;
+    PetWindow* getPetWindow() { return petWindow_.get(); }
+    const PetWindow* getPetWindow() const { return petWindow_.get(); }
+    void setPetCommandCallback(PetCommandCallback callback);
 
     // Hotbar window management
     void initHotbarWindow();
@@ -249,6 +285,22 @@ public:
     void setSkillActivateCallback(SkillActivateCallback callback);
     void setHotbarCreateCallback(HotbarCreateCallback callback);
 
+    // Skill trainer window management
+    void initSkillTrainerWindow();
+    void openSkillTrainerWindow(uint32_t trainerId, const std::wstring& trainerName,
+                                const std::vector<TrainerSkillEntry>& skills);
+    void closeSkillTrainerWindow();
+    bool isSkillTrainerWindowOpen() const;
+    void updateSkillTrainerSkill(uint8_t skillId, uint32_t newValue);
+    void updateSkillTrainerMoney(uint32_t platinum, uint32_t gold,
+                                 uint32_t silver, uint32_t copper);
+    void updateSkillTrainerPracticePoints(uint32_t points);
+    void decrementSkillTrainerPracticePoints();
+    SkillTrainerWindow* getSkillTrainerWindow() { return skillTrainerWindow_.get(); }
+    const SkillTrainerWindow* getSkillTrainerWindow() const { return skillTrainerWindow_.get(); }
+    void setSkillTrainCallback(SkillTrainCallback callback);
+    void setTrainerCloseCallback(TrainerCloseCallback callback);
+
     // Note window management (for reading books/notes)
     void showNoteWindow(const std::string& text, uint8_t type);
     void closeNoteWindow();
@@ -258,6 +310,20 @@ public:
 
     // Read item callback (set by EverQuest to handle book/note reading requests)
     void setOnReadItem(ReadItemCallback callback);
+
+    // Tradeskill container window management
+    void openTradeskillContainer(uint32_t dropId, const std::string& name,
+                                  uint8_t objectType, int slotCount);
+    void openTradeskillContainerForItem(int16_t containerSlot, const std::string& name,
+                                        uint8_t bagType, int slotCount);
+    void closeTradeskillContainer();
+    bool isTradeskillContainerOpen() const;
+    TradeskillContainerWindow* getTradeskillContainerWindow() { return tradeskillWindow_.get(); }
+    const TradeskillContainerWindow* getTradeskillContainerWindow() const { return tradeskillWindow_.get(); }
+
+    // Tradeskill container callbacks (set by EverQuest for packet handling)
+    void setOnTradeskillCombine(TradeskillCombineCallback callback);
+    void setOnTradeskillClose(TradeskillCloseCallback callback);
 
     // Player status window management
     void initPlayerStatusWindow(EverQuest* eq);
@@ -333,6 +399,9 @@ public:
     // Update just the base currency values (called when server sends money update)
     void updateBaseCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
 
+    // Update bank currency values (called when bank window is opened or currency changes)
+    void updateBankCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+
     // Character model view (3D preview in inventory)
     void initModelView(irr::scene::ISceneManager* smgr,
                        EQT::Graphics::RaceModelLoader* raceLoader,
@@ -359,12 +428,16 @@ private:
     // Slot click handling
     void handleSlotClick(int16_t slotId, bool shift, bool ctrl);
     void handleBagSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleBankSlotClick(int16_t slotId, bool shift, bool ctrl);
     void handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctrl);
     void handleTradeMoneyAreaClick();
+    void handleTradeskillSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleTradeskillSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleLootSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleDestroyClick();
     void handleBagOpenClick(int16_t generalSlot);
+    void handleBankBagOpenClick(int16_t bankSlot);
     void handleCurrencyClick(CurrencyType type, uint32_t maxAmount);
     void handleMoneyInputConfirm(CurrencyType type, uint32_t amount);
     void refreshCurrencyDisplay();  // Update inventory currency display accounting for cursor money
@@ -378,7 +451,9 @@ private:
     void positionInventoryWindow();
     void positionLootWindow();
     void positionVendorWindow();
+    void positionBankWindow();
     void tileBagWindows();
+    void tileBankBagWindows();
     void positionCastingBarAboveChat();
     irr::core::recti getBagTilingArea() const;
 
@@ -426,6 +501,12 @@ private:
     uint32_t baseSilver_ = 0;
     uint32_t baseCopper_ = 0;
 
+    // Bank currency values
+    uint32_t bankPlatinum_ = 0;
+    uint32_t bankGold_ = 0;
+    uint32_t bankSilver_ = 0;
+    uint32_t bankCopper_ = 0;
+
     // Windows
     std::unique_ptr<InventoryWindow> inventoryWindow_;
     std::unique_ptr<LootWindow> lootWindow_;
@@ -438,15 +519,31 @@ private:
     std::unique_ptr<SpellBookWindow> spellBookWindow_;
     std::unique_ptr<BuffWindow> buffWindow_;
     std::unique_ptr<GroupWindow> groupWindow_;
+    std::unique_ptr<PetWindow> petWindow_;
     std::unique_ptr<HotbarWindow> hotbarWindow_;
     HotbarCursor hotbarCursor_;
     std::unique_ptr<SkillsWindow> skillsWindow_;
+    std::unique_ptr<SkillTrainerWindow> skillTrainerWindow_;
     std::unique_ptr<NoteWindow> noteWindow_;
+    std::unique_ptr<TradeskillContainerWindow> tradeskillWindow_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
     std::unique_ptr<CastingBar> memorizingBar_;     // For showing spell memorization progress
     std::map<int16_t, std::unique_ptr<BagWindow>> bagWindows_;  // keyed by parent slot ID
+
+    // Bank window
+    std::unique_ptr<BankWindow> bankWindow_;
+    std::map<int16_t, std::unique_ptr<BagWindow>> bankBagWindows_;  // keyed by bank slot ID
+
+    // Bank window callbacks
+    BankCloseCallback onBankCloseCallback_;
+    BankCurrencyMoveCallback onBankCurrencyMoveCallback_;
+    BankCurrencyConvertCallback onBankCurrencyConvertCallback_;
+
+    // Currency click source tracking (for bank currency movement)
+    enum class CurrencyClickSource { None, Inventory, Bank };
+    CurrencyClickSource currencyClickSource_ = CurrencyClickSource::None;
 
     // Loot window callbacks
     LootItemCallback onLootItemCallback_;
@@ -471,12 +568,18 @@ private:
 
     // Spellbook callbacks
     SpellClickCallback spellMemorizeCallback_;
+    SpellbookStateCallback spellbookStateCallback_;
+    SpellScrollPickupCallback spellScrollPickupCallback_;
+    ScribeSpellRequestCallback scribeSpellRequestCallback_;
 
     // Group window callbacks
     GroupInviteCallback groupInviteCallback_;
     GroupDisbandCallback groupDisbandCallback_;
     GroupAcceptCallback groupAcceptCallback_;
     GroupDeclineCallback groupDeclineCallback_;
+
+    // Pet window callback
+    PetCommandCallback petCommandCallback_;
 
     // Hotbar callbacks
     HotbarActivateCallback hotbarActivateCallback_;
@@ -486,8 +589,16 @@ private:
     SkillActivateCallback skillActivateCallback_;
     HotbarCreateCallback hotbarCreateCallback_;
 
+    // Skill trainer window callbacks
+    SkillTrainCallback skillTrainCallback_;
+    TrainerCloseCallback trainerCloseCallback_;
+
     // Read item callback (for book/note reading)
     ReadItemCallback readItemCallback_;
+
+    // Tradeskill container callbacks
+    TradeskillCombineCallback tradeskillCombineCallback_;
+    TradeskillCloseCallback tradeskillCloseCallback_;
 
     // Tooltips
     ItemTooltip tooltip_;

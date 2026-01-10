@@ -338,6 +338,29 @@ public:
     };
 
     // =========================================================================
+    // Bank Window Settings
+    // =========================================================================
+    struct BankSettings {
+        WindowSettings window;
+
+        // Layout
+        int slotSize = 36;
+        int slotSpacing = 4;
+        int padding = 8;
+
+        BankSettings();
+    };
+
+    // =========================================================================
+    // Skill Trainer Window Settings
+    // =========================================================================
+    struct SkillTrainerSettings {
+        WindowSettings window;
+
+        SkillTrainerSettings();
+    };
+
+    // =========================================================================
     // Casting Bar Settings
     // =========================================================================
     struct CastingBarSettings {
@@ -488,6 +511,12 @@ public:
     TradeSettings& trade() { return m_trade; }
     const TradeSettings& trade() const { return m_trade; }
 
+    BankSettings& bank() { return m_bank; }
+    const BankSettings& bank() const { return m_bank; }
+
+    SkillTrainerSettings& skillTrainer() { return m_skillTrainer; }
+    const SkillTrainerSettings& skillTrainer() const { return m_skillTrainer; }
+
     CastingBarSettings& castingBar() { return m_castingBar; }
     const CastingBarSettings& castingBar() const { return m_castingBar; }
 
@@ -554,6 +583,12 @@ private:
     void loadTradeSettings(const Json::Value& json);
     void saveTradeSettings(Json::Value& json) const;
 
+    void loadBankSettings(const Json::Value& json);
+    void saveBankSettings(Json::Value& json) const;
+
+    void loadSkillTrainerSettings(const Json::Value& json);
+    void saveSkillTrainerSettings(Json::Value& json) const;
+
     void loadCastingBarSettings(const Json::Value& json);
     void saveCastingBarSettings(Json::Value& json) const;
 
@@ -592,6 +627,8 @@ private:
     SpellBookSettings m_spellBook;
     HotbarSettings m_hotbar;
     TradeSettings m_trade;
+    BankSettings m_bank;
+    SkillTrainerSettings m_skillTrainer;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;
     BuffTooltipSettings m_buffTooltip;

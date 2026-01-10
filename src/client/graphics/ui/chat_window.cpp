@@ -162,6 +162,9 @@ void ChatWindow::onResize(int screenWidth, int screenHeight) {
 
     // Recalculate visible lines
     visibleLines_ = calculateVisibleLines();
+
+    // Invalidate wrapped line cache (width may have changed)
+    invalidateWrappedLineCache();
 }
 
 void ChatWindow::render(irr::video::IVideoDriver* driver,
@@ -256,8 +259,42 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
     visibleLines_ = availableHeight / lineHeight;
     if (visibleLines_ <= 0) return;
 
-    // Build a list of all wrapped lines with their colors
-    // Each entry is: {wrapped line text, message color, has links, message index}
+    // Performance optimization: check if we need to rebuild the wrapped line cache
+    bool cacheValid = (wrappedLineCacheWidth_ == maxWidth &&
+                       wrappedLineCacheMessageCount_ == messages.size() &&
+                       wrappedLineCacheShowTimestamps_ == showTimestamps_);
+
+    if (!cacheValid) {
+        // Rebuild wrapped line cache
+        wrappedLineCache_.clear();
+        wrappedLineCache_.reserve(messages.size());
+
+        for (const auto& msg : messages) {
+            if (isChannelEnabled(msg.channel)) {
+                std::string displayText = formatMessageForDisplay(msg, showTimestamps_);
+                CachedWrappedMessage cached;
+                cached.color = msg.color;
+                cached.hasLinks = !msg.links.empty();
+                cached.msg = &msg;
+
+                if (msg.links.empty()) {
+                    // Wrap text for messages without links
+                    cached.lines = wrapText(displayText, font, maxWidth);
+                } else {
+                    // For messages with links, keep as single line (link rendering handles overflow)
+                    std::wstring textW(displayText.begin(), displayText.end());
+                    cached.lines.push_back(textW);
+                }
+                wrappedLineCache_.push_back(std::move(cached));
+            }
+        }
+
+        wrappedLineCacheWidth_ = maxWidth;
+        wrappedLineCacheMessageCount_ = messages.size();
+        wrappedLineCacheShowTimestamps_ = showTimestamps_;
+    }
+
+    // Build flat list of lines for rendering (using cached data)
     struct WrappedLine {
         std::wstring text;
         irr::video::SColor color;
@@ -266,23 +303,12 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
         const ChatMessage* msg;
     };
     std::vector<WrappedLine> allLines;
+    allLines.reserve(wrappedLineCache_.size() * 2);  // Rough estimate
 
     size_t msgIdx = 0;
-    for (const auto& msg : messages) {
-        if (isChannelEnabled(msg.channel)) {
-            std::string displayText = formatMessageForDisplay(msg, showTimestamps_);
-
-            if (msg.links.empty()) {
-                // Wrap text for messages without links
-                std::vector<std::wstring> wrappedLines = wrapText(displayText, font, maxWidth);
-                for (const auto& line : wrappedLines) {
-                    allLines.push_back({line, msg.color, false, msgIdx, &msg});
-                }
-            } else {
-                // For messages with links, keep as single line (link rendering handles overflow)
-                std::wstring textW(displayText.begin(), displayText.end());
-                allLines.push_back({textW, msg.color, true, msgIdx, &msg});
-            }
+    for (const auto& cached : wrappedLineCache_) {
+        for (const auto& line : cached.lines) {
+            allLines.push_back({line, cached.color, cached.hasLinks, msgIdx, cached.msg});
         }
         msgIdx++;
     }
@@ -466,6 +492,9 @@ bool ChatWindow::handleMouseMove(int x, int y) {
 
         // Recalculate visible lines
         visibleLines_ = calculateVisibleLines();
+
+        // Invalidate wrapped line cache (width may have changed)
+        invalidateWrappedLineCache();
 
         return true;
     }
@@ -938,6 +967,8 @@ void ChatWindow::setChannelEnabled(ChatChannel channel, bool enabled) {
     } else {
         enabledChannels_.erase(channel);
     }
+    // Invalidate cache since visible messages changed
+    invalidateWrappedLineCache();
 }
 
 bool ChatWindow::isChannelEnabled(ChatChannel channel) const {
@@ -950,10 +981,14 @@ void ChatWindow::toggleChannel(ChatChannel channel) {
     } else {
         enabledChannels_.insert(channel);
     }
+    // Invalidate cache since visible messages changed
+    invalidateWrappedLineCache();
 }
 
 void ChatWindow::enableAllChannels() {
     initDefaultChannels();
+    // Invalidate cache since visible messages changed
+    invalidateWrappedLineCache();
 }
 
 void ChatWindow::disableAllChannels() {
@@ -961,6 +996,8 @@ void ChatWindow::disableAllChannels() {
     // Always keep system and error messages visible
     enabledChannels_.insert(ChatChannel::System);
     enabledChannels_.insert(ChatChannel::Error);
+    // Invalidate cache since visible messages changed
+    invalidateWrappedLineCache();
 }
 
 void ChatWindow::renderMessageWithLinks(irr::video::IVideoDriver* driver,

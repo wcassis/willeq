@@ -57,6 +57,32 @@ struct BspRegion {
     std::optional<ZoneLineInfo> zoneLineInfo;
 };
 
+// Axis-aligned bounding box for BSP region bounds calculation
+struct BspBounds {
+    float minX, minY, minZ;
+    float maxX, maxY, maxZ;
+    bool valid = false;
+
+    BspBounds() : minX(0), minY(0), minZ(0), maxX(0), maxY(0), maxZ(0), valid(false) {}
+    BspBounds(float x1, float y1, float z1, float x2, float y2, float z2)
+        : minX(x1), minY(y1), minZ(z1), maxX(x2), maxY(y2), maxZ(z2), valid(true) {}
+
+    // Merge with another bounds (union)
+    void merge(const BspBounds& other) {
+        if (!other.valid) return;
+        if (!valid) {
+            *this = other;
+            return;
+        }
+        minX = std::min(minX, other.minX);
+        minY = std::min(minY, other.minY);
+        minZ = std::min(minZ, other.minZ);
+        maxX = std::max(maxX, other.maxX);
+        maxY = std::max(maxY, other.maxY);
+        maxZ = std::max(maxZ, other.maxZ);
+    }
+};
+
 // BSP tree structure for zone
 struct BspTree {
     std::vector<BspNode> nodes;
@@ -69,6 +95,24 @@ struct BspTree {
     // Check if a point is in a zone line region
     // Returns the zone line info if in a zone line, nullopt otherwise
     std::optional<ZoneLineInfo> checkZoneLine(float x, float y, float z) const;
+
+    // Compute bounding box for a specific region by traversing the BSP tree
+    // regionIndex is 0-based index into the regions vector
+    // initialBounds provides the starting search area (typically zone geometry bounds)
+    BspBounds computeRegionBounds(size_t regionIndex, const BspBounds& initialBounds) const;
+
+private:
+    // Recursive helper for computeRegionBounds
+    // Returns bounds for the target region found in this subtree
+    BspBounds computeRegionBoundsRecursive(int nodeIdx, size_t targetRegionIndex,
+                                            const BspBounds& currentBounds) const;
+
+    // Clip bounds by a plane, returning the portion on the specified side
+    // frontSide=true: return portion where dot >= 0
+    // frontSide=false: return portion where dot < 0
+    static BspBounds clipBoundsByPlane(const BspBounds& bounds,
+                                        float nx, float ny, float nz, float dist,
+                                        bool frontSide);
 };
 
 // WLD file structures (packed)
