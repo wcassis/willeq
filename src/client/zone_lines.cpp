@@ -1,4 +1,5 @@
 #include "client/zone_lines.h"
+#include "client/hc_map.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <iostream>
@@ -14,28 +15,9 @@ static constexpr float SAME_COORD_MARKER = 999999.0f;
 bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqClientPath) {
     clear();
 
-    // Store zone name for proximity-based detection
-    currentZoneName_ = zoneName;
-
     bool loadedAny = false;
 
-    // Load proximity zone points from zone_points.json (primary method)
-    // These use source coordinates that are verified to match actual player positions
-    std::vector<std::string> zonePointsPaths = {
-        "data/zone_points.json",                      // Relative to CWD (project root)
-        "../data/zone_points.json",                   // Relative to CWD (build directory)
-        eqClientPath + "/../data/zone_points.json"   // Relative to EQ client path
-    };
-    for (const auto& jsonPath : zonePointsPaths) {
-        if (loadZonePointsFromJson(jsonPath)) {
-            LOG_INFO(MOD_MAP, "Loaded {} proximity zone points for {} from {}",
-                     proximityZonePoints_.size(), zoneName, jsonPath);
-            loadedAny = true;
-            break;
-        }
-    }
-
-    // Also try to load from pre-extracted zone_lines.json (for trigger box visualization)
+    // Load from pre-extracted zone_lines.json (trigger boxes from WLD)
     std::vector<std::string> zoneLinesJsonPaths = {
         "data/zone_lines.json",                      // Relative to CWD (project root)
         "../data/zone_lines.json",                   // Relative to CWD (build directory)
@@ -50,6 +32,9 @@ bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqC
         }
     }
 
+    // TEMPORARILY DISABLED: BSP tree loading
+    // TODO: Re-enable when coordinate issues are resolved
+#if 0
     // Also load BSP tree and geometry bounds from WLD
     Graphics::WldLoader loader;
     std::string archivePath = eqClientPath + "/" + zoneName + ".s3d";
@@ -77,81 +62,13 @@ bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqC
             }
         }
     }
+#endif
 
     if (!loadedAny) {
-        LOG_WARN(MOD_MAP, "No zone line data found for '{}' - checked zone_points.json and zone_lines.json", zoneName);
+        LOG_WARN(MOD_MAP, "No zone line data found for '{}' - checked zone_lines.json", zoneName);
     }
 
     return loadedAny;
-}
-
-bool ZoneLines::loadZonePointsFromJson(const std::string& jsonPath) {
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) {
-        LOG_TRACE(MOD_MAP, "Could not open zone points JSON: {}", jsonPath);
-        return false;
-    }
-
-    Json::Value root;
-    Json::CharReaderBuilder builder;
-    std::string errors;
-
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_ERROR(MOD_MAP, "Failed to parse zone points JSON: {}", errors);
-        return false;
-    }
-
-    if (!root.isArray()) {
-        LOG_ERROR(MOD_MAP, "Zone points JSON is not an array");
-        return false;
-    }
-
-    proximityZonePoints_.clear();
-    size_t totalCount = 0;
-    size_t matchCount = 0;
-
-    for (const auto& entry : root) {
-        totalCount++;
-        std::string zone = entry["zone"].asString();
-
-        // Only load zone points for the current zone
-        if (zone != currentZoneName_) {
-            continue;
-        }
-
-        ZonePointWithSource zp;
-        zp.zoneName = zone;
-        zp.number = entry["number"].asUInt();
-        zp.sourceX = entry["source_x"].asFloat();
-        zp.sourceY = entry["source_y"].asFloat();
-        zp.sourceZ = entry["source_z"].asFloat();
-        zp.targetZoneId = static_cast<uint16_t>(entry["target_zone_id"].asUInt());
-        zp.targetX = entry["target_x"].asFloat();
-        zp.targetY = entry["target_y"].asFloat();
-        zp.targetZ = entry["target_z"].asFloat();
-        zp.heading = entry["target_heading"].asFloat();
-
-        // Check for "any position" markers in source coordinates
-        // These create extended zone lines that span the entire axis
-        zp.extendX = (std::abs(zp.sourceX) >= SAME_COORD_MARKER - 1.0f);
-        zp.extendY = (std::abs(zp.sourceY) >= SAME_COORD_MARKER - 1.0f);
-
-        proximityZonePoints_.push_back(zp);
-        matchCount++;
-
-        if (zp.extendX || zp.extendY) {
-            LOG_TRACE(MOD_MAP, "Loaded extended zone point {}: source=({}, {}, {}) extendX={} extendY={} -> zone {}",
-                zp.number, zp.sourceX, zp.sourceY, zp.sourceZ, zp.extendX, zp.extendY, zp.targetZoneId);
-        } else {
-            LOG_TRACE(MOD_MAP, "Loaded proximity zone point {}: source=({}, {}, {}) -> zone {} at ({}, {}, {})",
-                zp.number, zp.sourceX, zp.sourceY, zp.sourceZ, zp.targetZoneId, zp.targetX, zp.targetY, zp.targetZ);
-        }
-    }
-
-    LOG_TRACE(MOD_MAP, "Loaded {} proximity zone points for {} (from {} total entries)",
-        matchCount, currentZoneName_, totalCount);
-
-    return matchCount > 0;
 }
 
 bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::string& jsonPath) {
@@ -190,6 +107,19 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
     extractedZoneLines_.clear();
     const Json::Value& zoneLines = zoneData["zone_lines"];
 
+    // Load coordinate transform if available
+    // BSP coords -> world coords: world_x = BSP_y + offset_x, world_y = BSP_x + offset_y
+    float offsetX = 0.0f, offsetY = 0.0f, offsetZ = 0.0f;
+    bool hasTransform = false;
+    if (zoneData.isMember("coordinate_transform")) {
+        const Json::Value& transform = zoneData["coordinate_transform"];
+        offsetX = transform["offset_x"].asFloat();
+        offsetY = transform["offset_y"].asFloat();
+        offsetZ = transform.get("offset_z", 0.0f).asFloat();
+        hasTransform = true;
+        LOG_DEBUG(MOD_MAP, "Zone {} coordinate transform: offset=({}, {}, {})", zoneName, offsetX, offsetY, offsetZ);
+    }
+
     for (const auto& zl : zoneLines) {
         ExtractedZoneLine ezl;
         ezl.zonePointIndex = zl["zone_point_index"].asUInt();
@@ -198,12 +128,33 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
 
         if (zl.isMember("trigger_box")) {
             const Json::Value& box = zl["trigger_box"];
-            ezl.minX = box["min_x"].asFloat();
-            ezl.minY = box["min_y"].asFloat();
-            ezl.minZ = box["min_z"].asFloat();
-            ezl.maxX = box["max_x"].asFloat();
-            ezl.maxY = box["max_y"].asFloat();
-            ezl.maxZ = box["max_z"].asFloat();
+            float bspMinX = box["min_x"].asFloat();
+            float bspMinY = box["min_y"].asFloat();
+            float bspMinZ = box["min_z"].asFloat();
+            float bspMaxX = box["max_x"].asFloat();
+            float bspMaxY = box["max_y"].asFloat();
+            float bspMaxZ = box["max_z"].asFloat();
+
+            if (hasTransform) {
+                // Transform BSP coords to world coords:
+                // world_x = BSP_y + offset_x (axes swapped)
+                // world_y = BSP_x + offset_y (axes swapped)
+                // world_z = BSP_z + offset_z
+                ezl.minX = bspMinY + offsetX;
+                ezl.maxX = bspMaxY + offsetX;
+                ezl.minY = bspMinX + offsetY;
+                ezl.maxY = bspMaxX + offsetY;
+                ezl.minZ = bspMinZ + offsetZ;
+                ezl.maxZ = bspMaxZ + offsetZ;
+            } else {
+                // No transform - use raw coords
+                ezl.minX = bspMinX;
+                ezl.minY = bspMinY;
+                ezl.minZ = bspMinZ;
+                ezl.maxX = bspMaxX;
+                ezl.maxY = bspMaxY;
+                ezl.maxZ = bspMaxZ;
+            }
         }
 
         if (zl.isMember("destination")) {
@@ -216,7 +167,7 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
 
         extractedZoneLines_.push_back(ezl);
 
-        LOG_TRACE(MOD_MAP, "Loaded extracted zone line: #{} -> {} (id {}) box ({},{},{}) to ({},{},{})",
+        LOG_DEBUG(MOD_MAP, "Loaded zone line: #{} -> {} (id {}) world box ({:.1f},{:.1f},{:.1f}) to ({:.1f},{:.1f},{:.1f})",
             ezl.zonePointIndex, ezl.destinationZone, ezl.destinationZoneId,
             ezl.minX, ezl.minY, ezl.minZ, ezl.maxX, ezl.maxY, ezl.maxZ);
     }
@@ -237,66 +188,10 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
 }
 
 void ZoneLines::debugTestCoordinateMappings(float serverX, float serverY, float serverZ) const {
-    if (!bspTree_) {
-        LOG_TRACE(MOD_MAP, "No BSP tree for coordinate test");
-        return;
-    }
-
-    LOG_TRACE(MOD_MAP, "=== COORDINATE MAPPING TEST ===");
-    LOG_TRACE(MOD_MAP, "Server position: ({}, {}, {})", serverX, serverY, serverZ);
-
-    // First, find sample coordinates that DO reach zone line regions
-    LOG_TRACE(MOD_MAP, "--- Finding coords that reach zone 4 (qeynos hills) regions ---");
-    bool foundExample = false;
-    for (float x = -500; x <= 500 && !foundExample; x += 25) {
-        for (float y = -2000; y <= 2000 && !foundExample; y += 100) {
-            for (float z = -50; z <= 100 && !foundExample; z += 50) {
-                auto info = bspTree_->checkZoneLine(x, y, z);
-                if (info && info->zoneId == 4) {  // Zone 4 = qeynos hills
-                    LOG_TRACE(MOD_MAP, "Found zone 4 region at BSP coords: ({}, {}, {})", x, y, z);
-                    foundExample = true;
-                }
-            }
-        }
-    }
-
-    // Test all 8 coordinate mappings
-    struct CoordMapping {
-        float x, y, z;
-        const char* name;
-    };
-    CoordMapping mappings[] = {
-        {serverX, serverY, serverZ, "(x, y, z)"},
-        {serverY, serverX, serverZ, "(y, x, z)"},
-        {-serverX, serverY, serverZ, "(-x, y, z)"},
-        {serverX, -serverY, serverZ, "(x, -y, z)"},
-        {-serverX, -serverY, serverZ, "(-x, -y, z)"},
-        {-serverY, serverX, serverZ, "(-y, x, z)"},
-        {serverY, -serverX, serverZ, "(y, -x, z)"},
-        {-serverY, -serverX, serverZ, "(-y, -x, z)"},
-    };
-
-    LOG_TRACE(MOD_MAP, "--- Testing coordinate mappings ---");
-    for (const auto& m : mappings) {
-        auto region = bspTree_->findRegionForPoint(m.x, m.y, m.z);
-        if (region) {
-            bool isZoneLine = false;
-            for (auto type : region->regionTypes) {
-                if (type == Graphics::RegionType::Zoneline) {
-                    isZoneLine = true;
-                    break;
-                }
-            }
-            if (isZoneLine && region->zoneLineInfo) {
-                LOG_TRACE(MOD_MAP, "{} = ({}, {}, {}) -> ZONE LINE! zoneId={}", m.name, m.x, m.y, m.z, region->zoneLineInfo->zoneId);
-            } else {
-                LOG_TRACE(MOD_MAP, "{} = ({}, {}, {}) -> region (not zone line)", m.name, m.x, m.y, m.z);
-            }
-        } else {
-            LOG_TRACE(MOD_MAP, "{} = ({}, {}, {}) -> NO REGION", m.name, m.x, m.y, m.z);
-        }
-    }
-    LOG_TRACE(MOD_MAP, "=== END COORDINATE TEST ===");
+    // BSP-based coordinate mapping test is disabled - only bounding boxes from zone_lines.json are used
+    (void)serverX;
+    (void)serverY;
+    (void)serverZ;
 }
 
 void ZoneLines::clear() {
@@ -304,22 +199,134 @@ void ZoneLines::clear() {
     bspTree_.reset();
     serverZonePoints_.clear();
     wldZonePoints_.clear();
-    proximityZonePoints_.clear();
-    currentZoneName_.clear();
+}
+
+void ZoneLines::expandZoneLinesToGeometry(HCMap* collisionMap) {
+    if (!collisionMap || !collisionMap->IsLoaded()) {
+        LOG_INFO(MOD_MAP, "No collision map available for zone line expansion");
+        return;
+    }
+
+    LOG_INFO(MOD_MAP, "Expanding {} zone lines to fill passages...", extractedZoneLines_.size());
+
+    const float MAX_EXPANSION = 200.0f;  // Maximum expansion distance
+    const float RAY_STEP = 2.0f;         // Step size for expansion
+    const float WALL_MARGIN = 1.0f;      // Margin from wall
+
+    for (auto& ezl : extractedZoneLines_) {
+        // Calculate center of current box
+        float centerX = (ezl.minX + ezl.maxX) / 2.0f;
+        float centerY = (ezl.minY + ezl.maxY) / 2.0f;
+        float centerZ = (ezl.minZ + ezl.maxZ) / 2.0f;
+
+        // Determine which axis is the "depth" axis (thin dimension = direction of travel)
+        float widthX = ezl.maxX - ezl.minX;
+        float widthY = ezl.maxY - ezl.minY;
+
+        // If both dimensions are small (seed box), expand both
+        // If one dimension is large (continuous), only expand the small one
+        bool expandX = widthX < 50.0f;
+        bool expandY = widthY < 50.0f;
+
+        // Convert display coords to server coords for HCMap
+        // HCMap uses server coords: server_x = display_y, server_y = display_x
+        float serverCenterX = centerY;  // display m_y -> server x
+        float serverCenterY = centerX;  // display m_x -> server y
+        float serverCenterZ = centerZ;
+
+        LOG_DEBUG(MOD_MAP, "Zone line #{} center: display({:.1f},{:.1f},{:.1f}) server({:.1f},{:.1f},{:.1f}) expandX={} expandY={}",
+            ezl.zonePointIndex, centerX, centerY, centerZ, serverCenterX, serverCenterY, serverCenterZ, expandX, expandY);
+
+        if (expandX) {
+            // Expand in +X direction (display m_x)
+            // display m_x = server_y, so expanding +X means checking +server_y
+            float newMaxX = ezl.maxX;
+            for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
+                float testDisplayX = centerX + dist;
+                // Cast ray from center to test position (horizontal)
+                glm::vec3 start(serverCenterX, serverCenterY, serverCenterZ);
+                glm::vec3 end(serverCenterX, serverCenterY + dist, serverCenterZ);  // +server_y = +display_x
+
+                if (!collisionMap->CheckLOS(start, end)) {
+                    // Hit a wall, stop here
+                    newMaxX = centerX + dist - WALL_MARGIN;
+                    LOG_TRACE(MOD_MAP, "  +X hit wall at dist={:.1f}, newMaxX={:.1f}", dist, newMaxX);
+                    break;
+                }
+                newMaxX = testDisplayX;
+            }
+            if (newMaxX > ezl.maxX) {
+                ezl.maxX = newMaxX;
+            }
+
+            // Expand in -X direction (display m_x)
+            float newMinX = ezl.minX;
+            for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
+                float testDisplayX = centerX - dist;
+                glm::vec3 start(serverCenterX, serverCenterY, serverCenterZ);
+                glm::vec3 end(serverCenterX, serverCenterY - dist, serverCenterZ);  // -server_y = -display_x
+
+                if (!collisionMap->CheckLOS(start, end)) {
+                    newMinX = centerX - dist + WALL_MARGIN;
+                    LOG_TRACE(MOD_MAP, "  -X hit wall at dist={:.1f}, newMinX={:.1f}", dist, newMinX);
+                    break;
+                }
+                newMinX = testDisplayX;
+            }
+            if (newMinX < ezl.minX) {
+                ezl.minX = newMinX;
+            }
+        }
+
+        if (expandY) {
+            // Expand in +Y direction (display m_y)
+            // display m_y = server_x, so expanding +Y means checking +server_x
+            float newMaxY = ezl.maxY;
+            for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
+                float testDisplayY = centerY + dist;
+                glm::vec3 start(serverCenterX, serverCenterY, serverCenterZ);
+                glm::vec3 end(serverCenterX + dist, serverCenterY, serverCenterZ);  // +server_x = +display_y
+
+                if (!collisionMap->CheckLOS(start, end)) {
+                    newMaxY = centerY + dist - WALL_MARGIN;
+                    LOG_TRACE(MOD_MAP, "  +Y hit wall at dist={:.1f}, newMaxY={:.1f}", dist, newMaxY);
+                    break;
+                }
+                newMaxY = testDisplayY;
+            }
+            if (newMaxY > ezl.maxY) {
+                ezl.maxY = newMaxY;
+            }
+
+            // Expand in -Y direction (display m_y)
+            float newMinY = ezl.minY;
+            for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
+                float testDisplayY = centerY - dist;
+                glm::vec3 start(serverCenterX, serverCenterY, serverCenterZ);
+                glm::vec3 end(serverCenterX - dist, serverCenterY, serverCenterZ);  // -server_x = -display_y
+
+                if (!collisionMap->CheckLOS(start, end)) {
+                    newMinY = centerY - dist + WALL_MARGIN;
+                    LOG_TRACE(MOD_MAP, "  -Y hit wall at dist={:.1f}, newMinY={:.1f}", dist, newMinY);
+                    break;
+                }
+                newMinY = testDisplayY;
+            }
+            if (newMinY < ezl.minY) {
+                ezl.minY = newMinY;
+            }
+        }
+
+        LOG_DEBUG(MOD_MAP, "Expanded zone line #{} -> {} to box ({:.1f},{:.1f}) - ({:.1f},{:.1f})",
+            ezl.zonePointIndex, ezl.destinationZone,
+            ezl.minX, ezl.minY, ezl.maxX, ezl.maxY);
+    }
+
+    LOG_INFO(MOD_MAP, "Zone line expansion complete");
 }
 
 bool ZoneLines::hasBspZoneLines() const {
-    if (!bspTree_) {
-        return false;
-    }
-
-    for (const auto& region : bspTree_->regions) {
-        for (auto type : region->regionTypes) {
-            if (type == Graphics::RegionType::Zoneline) {
-                return true;
-            }
-        }
-    }
+    // BSP-based zone line detection is disabled - only bounding boxes from zone_lines.json are used
     return false;
 }
 
@@ -348,20 +355,9 @@ ZoneLineResult ZoneLines::checkPosition(float x, float y, float z,
     float server_x = y;
     float server_y = x;
 
-    // FIRST: Check proximity-based zone points (including extended zone lines)
-    // This must happen before BSP check because extended zone lines span the entire
-    // axis and BSP may only detect them at specific spots
-    if (!proximityZonePoints_.empty()) {
-        // Use server coords (which match zone_points.json format)
-        // IMPORTANT: Pass server coords for "current" position as well, since zone_points.json
-        // target coordinates (including 999999 "same as current" markers) are in server format
-        result = checkProximityZonePoints(server_x, server_y, z, server_x, server_y, z);
-        if (result.isZoneLine) {
-            LOG_INFO(MOD_MAP, "Proximity zone point matched at server coords ({:.1f},{:.1f},{:.1f})", server_x, server_y, z);
-            return result;
-        }
-    }
-
+    // TEMPORARILY DISABLED: BSP tree check
+    // TODO: Re-enable when coordinate issues are resolved
+#if 0
     // SECOND: BSP tree check - try multiple coordinate mappings
     if (bspTree_) {
         // Define all coordinate mappings to test
@@ -427,25 +423,19 @@ ZoneLineResult ZoneLines::checkPosition(float x, float y, float z,
             }
         }
     }
+#endif
 
-    // Fallback: Check pre-extracted zone lines (trigger boxes may have coordinate issues)
+    // Check pre-extracted zone lines from zone_lines.json
+    // zone_lines.json uses display coordinates (m_x, m_y, m_z) format
     if (!extractedZoneLines_.empty()) {
-        // Try server coords (which match zone_points.json format)
-        result = checkExtractedZoneLines(server_x, server_y, z, currentX, currentY, currentZ);
-        if (result.isZoneLine) {
-            LOG_INFO(MOD_MAP, "Extracted zone line matched with SERVER coords ({:.1f},{:.1f},{:.1f})", server_x, server_y, z);
-            return result;
-        }
-
-        // Try client coords as fallback
         result = checkExtractedZoneLines(x, y, z, currentX, currentY, currentZ);
         if (result.isZoneLine) {
-            LOG_INFO(MOD_MAP, "Extracted zone line matched with CLIENT coords ({:.1f},{:.1f},{:.1f})", x, y, z);
+            LOG_INFO(MOD_MAP, "Extracted zone line matched at display coords ({:.1f},{:.1f},{:.1f})", x, y, z);
             return result;
         }
     }
 
-    if (callCount % 100 == 0 && extractedZoneLines_.empty() && proximityZonePoints_.empty()) {
+    if (callCount % 100 == 0 && extractedZoneLines_.empty()) {
         LOG_WARN(MOD_MAP, "checkPosition called but no zone line data for this zone!");
     }
 
@@ -498,89 +488,6 @@ ZoneLineResult ZoneLines::checkExtractedZoneLines(float x, float y, float z,
     return result;
 }
 
-ZoneLineResult ZoneLines::checkProximityZonePoints(float x, float y, float z,
-                                                    float currentX, float currentY, float currentZ) const {
-    ZoneLineResult result;
-    result.isZoneLine = false;
-
-    for (const auto& zp : proximityZonePoints_) {
-        bool inZoneLine = false;
-
-        if (zp.extendX || zp.extendY) {
-            // Extended zone point - check if player is within the extended bounds
-            // For extended axis: use zone geometry bounds
-            // For non-extended axis: use proximity radius around source coordinate
-            bool xInRange = false;
-            bool yInRange = false;
-
-            if (zp.extendX && hasZoneBounds_) {
-                // X axis extends across entire zone
-                xInRange = (x >= zoneMinX_ && x <= zoneMaxX_);
-            } else {
-                // X axis uses proximity radius
-                float dx = x - zp.sourceX;
-                xInRange = (std::abs(dx) <= DEFAULT_PROXIMITY_RADIUS);
-            }
-
-            if (zp.extendY && hasZoneBounds_) {
-                // Y axis extends across entire zone
-                yInRange = (y >= zoneMinY_ && y <= zoneMaxY_);
-            } else {
-                // Y axis uses proximity radius
-                float dy = y - zp.sourceY;
-                yInRange = (std::abs(dy) <= DEFAULT_PROXIMITY_RADIUS);
-            }
-
-            // Check Z height
-            float dz = z - zp.sourceZ;
-            bool zInRange = (dz >= -10.0f && dz <= DEFAULT_PROXIMITY_HEIGHT);
-
-            inZoneLine = xInRange && yInRange && zInRange;
-
-            if (inZoneLine) {
-                LOG_INFO(MOD_MAP, "Extended zone line detected! Point {} (extendX={} extendY={}) pos=({:.1f},{:.1f},{:.1f}) -> zone {}",
-                    zp.number, zp.extendX, zp.extendY, x, y, z, zp.targetZoneId);
-            }
-        } else {
-            // Regular proximity-based zone point
-            // Calculate horizontal distance (X/Y plane)
-            float dx = x - zp.sourceX;
-            float dy = y - zp.sourceY;
-            float horizontalDist = std::sqrt(dx * dx + dy * dy);
-
-            // Check if within proximity radius
-            if (horizontalDist <= DEFAULT_PROXIMITY_RADIUS) {
-                // Check Z height (more lenient)
-                float dz = z - zp.sourceZ;
-                if (dz >= -10.0f && dz <= DEFAULT_PROXIMITY_HEIGHT) {
-                    inZoneLine = true;
-                    LOG_INFO(MOD_MAP, "Proximity zone line detected! Point {} at distance {} (radius={}) -> zone {}",
-                        zp.number, horizontalDist, DEFAULT_PROXIMITY_RADIUS, zp.targetZoneId);
-                }
-            }
-        }
-
-        if (inZoneLine) {
-            result.isZoneLine = true;
-            result.targetZoneId = zp.targetZoneId;
-
-            // Handle "same as current" marker (999999)
-            result.targetX = (std::abs(zp.targetX) >= SAME_COORD_MARKER - 1.0f) ? currentX : zp.targetX;
-            result.targetY = (std::abs(zp.targetY) >= SAME_COORD_MARKER - 1.0f) ? currentY : zp.targetY;
-            result.targetZ = (std::abs(zp.targetZ) >= SAME_COORD_MARKER - 1.0f) ? currentZ : zp.targetZ;
-            result.heading = zp.heading;
-            result.needsServerLookup = false;
-
-            LOG_INFO(MOD_MAP, "Zone point {} triggered -> zone {} at ({}, {}, {})",
-                zp.number, result.targetZoneId, result.targetX, result.targetY, result.targetZ);
-
-            return result;
-        }
-    }
-
-    return result;
-}
-
 std::optional<ZoneLineResult> ZoneLines::checkMovement(float oldX, float oldY, float oldZ,
                                                         float newX, float newY, float newZ) const {
     // Simple approach: check if new position is in a zone line
@@ -605,128 +512,39 @@ std::optional<ZonePoint> ZoneLines::getZonePoint(uint32_t index) const {
         return it->second;
     }
 
-    // Fall back to proximity zone points from JSON
-    for (const auto& zp : proximityZonePoints_) {
-        if (zp.number == index) {
-            ZonePoint point;
-            point.number = zp.number;
-            point.targetZoneId = zp.targetZoneId;
-            point.targetX = zp.targetX;
-            point.targetY = zp.targetY;
-            point.targetZ = zp.targetZ;
-            point.heading = zp.heading;
-            return point;
-        }
-    }
-
     return std::nullopt;
 }
 
 size_t ZoneLines::getZoneLineCount() const {
-    // Prefer extracted zone lines count
-    if (!extractedZoneLines_.empty()) {
-        return extractedZoneLines_.size();
-    }
-
-    size_t count = 0;
-
-    // Count BSP zone lines
-    if (bspTree_) {
-        for (const auto& region : bspTree_->regions) {
-            for (auto type : region->regionTypes) {
-                if (type == Graphics::RegionType::Zoneline) {
-                    count++;
-                    break;
-                }
-            }
-        }
-    }
-
-    // Add proximity zone points
-    count += proximityZonePoints_.size();
-
-    return count;
+    // Only count extracted zone lines from zone_lines.json (BSP detection disabled)
+    return extractedZoneLines_.size();
 }
 
 std::vector<ZoneLineBoundingBox> ZoneLines::getZoneLineBoundingBoxes() const {
     std::vector<ZoneLineBoundingBox> boxes;
 
-    // First priority: proximity zone points (verified correct coordinates from zone_points.json)
-    // zone_points.json uses server coordinates: (server_x, server_y, server_z)
-    // Renderer uses client display coordinates: (m_x, m_y, m_z) where m_x=server_y, m_y=server_x
-    // So we swap X and Y for visualization
-    for (const auto& zp : proximityZonePoints_) {
+    // Use pre-extracted zone lines from zone_lines.json
+    for (const auto& ezl : extractedZoneLines_) {
         ZoneLineBoundingBox box;
-        box.isProximityBased = true;
-        box.targetZoneId = zp.targetZoneId;
-        box.zonePointIndex = zp.number;
-
-        // Create a box around the source point
-        // Swap coordinates for client display format: client_x = server_y, client_y = server_x
-        float clientZ = zp.sourceZ;  // Z stays the same
-
-        // For extended zone lines (999999 source coords), use zone geometry bounds
-        // Zone bounds are also in server format, so we swap them too
-        if (zp.extendY && hasZoneBounds_) {
-            // Extended in server Y direction -> extended in client X direction
-            // Server Y bounds -> Client X bounds (swap)
-            box.minX = zoneMinY_;  // client minX = server minY
-            box.maxX = zoneMaxY_;  // client maxX = server maxY
-        } else {
-            float clientX = zp.sourceY;  // m_x = server_y
-            box.minX = clientX - DEFAULT_PROXIMITY_RADIUS;
-            box.maxX = clientX + DEFAULT_PROXIMITY_RADIUS;
-        }
-
-        if (zp.extendX && hasZoneBounds_) {
-            // Extended in server X direction -> extended in client Y direction
-            // Server X bounds -> Client Y bounds (swap)
-            box.minY = zoneMinX_;  // client minY = server minX
-            box.maxY = zoneMaxX_;  // client maxY = server maxX
-        } else {
-            float clientY = zp.sourceX;  // m_y = server_x
-            box.minY = clientY - DEFAULT_PROXIMITY_RADIUS;
-            box.maxY = clientY + DEFAULT_PROXIMITY_RADIUS;
-        }
-
-        box.minZ = clientZ - 10.0f;
-        box.maxZ = clientZ + DEFAULT_PROXIMITY_HEIGHT;
+        box.isProximityBased = false;
+        box.targetZoneId = ezl.destinationZoneId;
+        box.zonePointIndex = ezl.zonePointIndex;
+        box.minX = ezl.minX;
+        box.minY = ezl.minY;
+        box.minZ = ezl.minZ;
+        box.maxX = ezl.maxX;
+        box.maxY = ezl.maxY;
+        box.maxZ = ezl.maxZ;
 
         boxes.push_back(box);
-
-        if (zp.extendX || zp.extendY) {
-            LOG_DEBUG(MOD_MAP, "Zone line box {}: EXTENDED #{} -> zone {} extendX={} extendY={} bounds X[{:.1f},{:.1f}] Y[{:.1f},{:.1f}]",
-                boxes.size() - 1, zp.number, box.targetZoneId, zp.extendX, zp.extendY,
-                box.minX, box.maxX, box.minY, box.maxY);
-        } else {
-            LOG_TRACE(MOD_MAP, "Zone line box {}: proximity #{} -> zone {} server({},{},{}) radius={}",
-                boxes.size() - 1, zp.number, box.targetZoneId,
-                zp.sourceX, zp.sourceY, zp.sourceZ, DEFAULT_PROXIMITY_RADIUS);
-        }
+        LOG_TRACE(MOD_MAP, "Zone line box {}: extracted #{} -> zone {} bounds ({},{},{}) to ({},{},{})",
+            boxes.size() - 1, ezl.zonePointIndex, box.targetZoneId,
+            box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // Second priority: pre-extracted zone lines (may have coordinate issues with BSP bounds)
-    // Only use if no proximity zone points available
-    if (boxes.empty()) {
-        for (const auto& ezl : extractedZoneLines_) {
-            ZoneLineBoundingBox box;
-            box.isProximityBased = false;
-            box.targetZoneId = ezl.destinationZoneId;
-            box.zonePointIndex = ezl.zonePointIndex;
-            box.minX = ezl.minX;
-            box.minY = ezl.minY;
-            box.minZ = ezl.minZ;
-            box.maxX = ezl.maxX;
-            box.maxY = ezl.maxY;
-            box.maxZ = ezl.maxZ;
-
-            boxes.push_back(box);
-            LOG_TRACE(MOD_MAP, "Zone line box {}: extracted #{} -> zone {} bounds ({},{},{}) to ({},{},{})",
-                boxes.size() - 1, ezl.zonePointIndex, box.targetZoneId,
-                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
-        }
-    }
-
+    // TEMPORARILY DISABLED: BSP-based computation
+    // TODO: Re-enable when coordinate issues are resolved
+#if 0
     // Third priority: BSP-based computation (has coordinate system issues, for debugging only)
     if (boxes.empty() && bspTree_) {
         // Create initial bounds from zone geometry
@@ -773,6 +591,7 @@ std::vector<ZoneLineBoundingBox> ZoneLines::getZoneLineBoundingBoxes() const {
             }
         }
     }
+#endif
 
     LOG_INFO(MOD_MAP, "Generated {} zone line bounding boxes", boxes.size());
     return boxes;

@@ -4556,7 +4556,12 @@ void IrrlichtRenderer::toggleZoneLineVisualization() {
         }
     }
 
-    LOG_INFO(MOD_GRAPHICS, "Zone line visualization {}", showZoneLineBoxes_ ? "enabled" : "disabled");
+    // Notify EverQuest to enable/disable zoning when zone lines are toggled
+    if (zoningEnabledCallback_) {
+        zoningEnabledCallback_(showZoneLineBoxes_);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");
 }
 
 void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box) {
@@ -4578,6 +4583,10 @@ void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box
     float centerX = (irrMinX + irrMaxX) / 2.0f;
     float centerY = (irrMinY + irrMaxY) / 2.0f;
     float centerZ = (irrMinZ + irrMaxZ) / 2.0f;
+
+    LOG_INFO(MOD_GRAPHICS, "Zone line box -> zone {}: EQ({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}) => Irr center({:.1f},{:.1f},{:.1f}) size({:.1f},{:.1f},{:.1f})",
+        box.targetZoneId, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+        centerX, centerY, centerZ, width, height, depth);
 
     // Create a cube mesh using geometry creator
     const irr::scene::IGeometryCreator* geomCreator = smgr_->getGeometryCreator();

@@ -9,6 +9,9 @@
 #include <optional>
 #include "client/graphics/eq/wld_loader.h"
 
+// Forward declaration
+class HCMap;
+
 namespace EQT {
 
 // Zone point data received from server (or stored for fallback)
@@ -19,23 +22,6 @@ struct ZonePoint {
     float targetZ = 0.0f;          // Destination Z
     float heading = 0.0f;          // Destination heading
     uint16_t targetZoneId = 0;     // Destination zone ID
-};
-
-// Zone point with source coordinates for proximity-based detection
-// Used when BSP zone line regions aren't available
-struct ZonePointWithSource {
-    std::string zoneName;          // Source zone short name
-    uint32_t number = 0;           // Zone point ID
-    float sourceX = 0.0f;          // Source/trigger X
-    float sourceY = 0.0f;          // Source/trigger Y
-    float sourceZ = 0.0f;          // Source/trigger Z
-    float targetX = 0.0f;          // Destination X
-    float targetY = 0.0f;          // Destination Y
-    float targetZ = 0.0f;          // Destination Z
-    float heading = 0.0f;          // Destination heading
-    uint16_t targetZoneId = 0;     // Destination zone ID
-    bool extendX = false;          // True if sourceX was 999999 (extend box to zone bounds)
-    bool extendY = false;          // True if sourceY was 999999 (extend box to zone bounds)
 };
 
 // Result of checking if a position is in a zone line
@@ -84,10 +70,6 @@ public:
     // This is the preferred method - uses pre-computed trigger boxes
     bool loadFromExtractedJson(const std::string& zoneName, const std::string& jsonPath);
 
-    // Load zone points with source coordinates from JSON file
-    // Used for proximity-based detection when BSP zone lines aren't available
-    bool loadZonePointsFromJson(const std::string& jsonPath);
-
     // Clear all loaded zone line data
     void clear();
 
@@ -110,11 +92,9 @@ public:
     // Get a zone point by index (for resolving reference-type zone lines)
     std::optional<ZonePoint> getZonePoint(uint32_t index) const;
 
-    // Check if we have zone line data loaded (extracted, BSP, or proximity-based)
+    // Check if we have zone line data loaded (only extracted bounding boxes)
     bool hasZoneLines() const {
-        return !extractedZoneLines_.empty() ||
-               (bspTree_ != nullptr && !bspTree_->regions.empty()) ||
-               !proximityZonePoints_.empty();
+        return !extractedZoneLines_.empty();
     }
 
     // Check if we have pre-extracted zone lines loaded
@@ -135,9 +115,9 @@ public:
     // Debug: test all coordinate mappings to find which reaches zone line regions
     void debugTestCoordinateMappings(float serverX, float serverY, float serverZ) const;
 
-    // Default proximity radius for zone point detection (in game units)
-    static constexpr float DEFAULT_PROXIMITY_RADIUS = 50.0f;
-    static constexpr float DEFAULT_PROXIMITY_HEIGHT = 30.0f;
+    // Expand zone line trigger boxes to fill passages using collision detection
+    // This should be called after loading zone lines and setting the collision map
+    void expandZoneLinesToGeometry(HCMap* collisionMap);
 
 private:
     // Resolve a zone line info to a concrete result
@@ -147,10 +127,6 @@ private:
     // Check extracted zone lines (trigger box detection)
     ZoneLineResult checkExtractedZoneLines(float x, float y, float z,
                                             float currentX, float currentY, float currentZ) const;
-
-    // Check proximity-based zone points (fallback when no BSP zone lines)
-    ZoneLineResult checkProximityZonePoints(float x, float y, float z,
-                                             float currentX, float currentY, float currentZ) const;
 
     // Pre-extracted zone lines from zone_lines.json (preferred)
     std::vector<ExtractedZoneLine> extractedZoneLines_;
@@ -168,13 +144,6 @@ private:
 
     // Zone points parsed from WLD (fallback if server doesn't send them)
     std::map<uint32_t, ZonePoint> wldZonePoints_;
-
-    // Zone points with source coordinates for proximity-based detection
-    // Loaded from zone_points.json, filtered by current zone
-    std::vector<ZonePointWithSource> proximityZonePoints_;
-
-    // Current zone name (for filtering proximity zone points)
-    std::string currentZoneName_;
 };
 
 } // namespace EQT

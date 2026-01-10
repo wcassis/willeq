@@ -547,6 +547,10 @@ public:
     using ChatSubmitCallback = std::function<void(const std::string& text)>;
     void setChatSubmitCallback(ChatSubmitCallback callback);
 
+    // Zoning enabled callback (called when zone line visualization is toggled)
+    using ZoningEnabledCallback = std::function<void(bool enabled)>;
+    void setZoningEnabledCallback(ZoningEnabledCallback callback) { zoningEnabledCallback_ = callback; }
+
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
     void setCurrentTargetInfo(const TargetInfo& info);
@@ -741,6 +745,7 @@ private:
     ChatSubmitCallback chatSubmitCallback_;
     DoorInteractCallback doorInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
+    ZoningEnabledCallback zoningEnabledCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
     uint8_t currentTargetHpPercent_ = 100;
