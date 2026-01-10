@@ -190,6 +190,22 @@ private:
     };
     std::vector<RenderedLink> renderedLinks_;
 
+    // Performance: cached wrapped lines per message
+    // Key is message index, value is the wrapped lines
+    struct CachedWrappedMessage {
+        std::vector<std::wstring> lines;
+        irr::video::SColor color;
+        bool hasLinks;
+        const ChatMessage* msg;  // Pointer to original message (for link rendering)
+    };
+    mutable std::vector<CachedWrappedMessage> wrappedLineCache_;
+    mutable int wrappedLineCacheWidth_ = -1;  // Width used for caching
+    mutable size_t wrappedLineCacheMessageCount_ = 0;  // Number of messages when cache was built
+    mutable bool wrappedLineCacheShowTimestamps_ = false;  // Timestamp setting when cache was built
+
+    // Invalidate wrapped line cache (called on resize)
+    void invalidateWrappedLineCache() { wrappedLineCacheWidth_ = -1; }
+
     // Hovered link tracking for visual feedback
     int hoveredLinkIndex_ = -1;  // Index into renderedLinks_, -1 means none
     int lastMouseX_ = 0;

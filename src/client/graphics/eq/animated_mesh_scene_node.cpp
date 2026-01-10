@@ -9,6 +9,214 @@ namespace EQT {
 namespace Graphics {
 
 // ============================================================================
+// Shared Vertex Transformation Helper (Phase 4 Consolidation)
+// ============================================================================
+
+// Apply bone transforms to mesh vertices - shared implementation used by both
+// EQAnimatedMesh and EQAnimatedMeshSceneNode to avoid code duplication.
+//
+// Parameters:
+//   destMesh - Destination mesh to write transformed vertices
+//   boneStates - Current bone world transforms from animator
+//   vertexPieces - Vertex-to-bone mapping (which vertices belong to which bone)
+//   originalVertices - Original vertex positions (for multi-buffer mode)
+//   vertexMapping - Vertex-to-buffer mapping (for multi-buffer mode)
+//   baseMesh - Source mesh for single-buffer mode (may be nullptr)
+//   extraRotCos, extraRotSin - Extra Y rotation for player (1.0/0.0 for no rotation)
+//
+static void applyBoneTransformsToMeshImpl(
+    irr::scene::SMesh* destMesh,
+    const std::vector<AnimatedBoneState>& boneStates,
+    const std::vector<VertexPiece>& vertexPieces,
+    const std::vector<irr::video::S3DVertex>& originalVertices,
+    const std::vector<VertexMapping>& vertexMapping,
+    irr::scene::IMesh* baseMesh,
+    float extraRotCos,
+    float extraRotSin)
+{
+    if (!destMesh || vertexPieces.empty() || boneStates.empty()) {
+        return;
+    }
+
+    // Check if we're using multi-buffer mode (with vertex mapping) or single-buffer mode
+    bool useMultiBuffer = !originalVertices.empty() && !vertexMapping.empty();
+
+    if (useMultiBuffer) {
+        // Multi-buffer mode: transform original vertices and copy to mapped buffer locations
+        size_t totalOrigVerts = originalVertices.size();
+
+        // Apply bone transforms to vertices based on vertex pieces
+        size_t vertexIdx = 0;
+        for (const auto& piece : vertexPieces) {
+            int boneIdx = piece.boneIndex;
+
+            // Validate bone index
+            if (boneIdx < 0 || boneIdx >= static_cast<int>(boneStates.size())) {
+                vertexIdx += piece.count;
+                continue;
+            }
+
+            const BoneMat4& boneMat = boneStates[boneIdx].worldTransform;
+
+            // Transform each vertex in this piece
+            for (int i = 0; i < piece.count; ++i) {
+                size_t vIdx = vertexIdx + i;
+                if (vIdx >= totalOrigVerts || vIdx >= vertexMapping.size()) break;
+
+                // Get the destination buffer and local index
+                const auto& mapping = vertexMapping[vIdx];
+                if (mapping.bufferIndex >= destMesh->getMeshBufferCount()) continue;
+
+                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
+                    destMesh->getMeshBuffer(mapping.bufferIndex));
+                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
+
+                // Get original vertex position and normal (in EQ Z-up coordinates)
+                const auto& srcVert = originalVertices[vIdx];
+                float px = srcVert.Pos.X;
+                float py = srcVert.Pos.Y;
+                float pz = srcVert.Pos.Z;
+
+                float nx = srcVert.Normal.X;
+                float ny = srcVert.Normal.Y;
+                float nz = srcVert.Normal.Z;
+
+                // Transform position using bone matrix (in EQ coordinate space)
+                boneMat.transformPoint(px, py, pz);
+
+                // Transform normal (rotation only, from bone)
+                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
+                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
+                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+
+                // Apply extra Y-rotation if requested (for player with follow camera)
+                // In EQ coordinates (Z-up), Y-rotation = rotation around Z axis
+                if (extraRotCos != 1.0f || extraRotSin != 0.0f) {
+                    float rx = px * extraRotCos - py * extraRotSin;
+                    float ry = px * extraRotSin + py * extraRotCos;
+                    px = rx;
+                    py = ry;
+                    float rnx = tnx * extraRotCos - tny * extraRotSin;
+                    float rny = tnx * extraRotSin + tny * extraRotCos;
+                    tnx = rnx;
+                    tny = rny;
+                }
+
+                // Normalize
+                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
+                if (nlen > 0.0001f) {
+                    tnx /= nlen;
+                    tny /= nlen;
+                    tnz /= nlen;
+                }
+
+                // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
+                dstBuffer->Vertices[mapping.localIndex].Pos.X = px;
+                dstBuffer->Vertices[mapping.localIndex].Pos.Y = pz;  // EQ Z -> Irrlicht Y
+                dstBuffer->Vertices[mapping.localIndex].Pos.Z = py;  // EQ Y -> Irrlicht Z
+                dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
+                dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
+                dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
+            }
+
+            vertexIdx += piece.count;
+        }
+
+        // Mark all buffers as dirty and recalculate bounds
+        for (irr::u32 b = 0; b < destMesh->getMeshBufferCount(); ++b) {
+            irr::scene::SMeshBuffer* buf = static_cast<irr::scene::SMeshBuffer*>(
+                destMesh->getMeshBuffer(b));
+            if (buf) {
+                buf->recalculateBoundingBox();
+                buf->setDirty();
+            }
+        }
+    } else {
+        // Single-buffer mode (legacy): vertices are in order in buffer 0
+        irr::scene::IMeshBuffer* srcBuffer = baseMesh ? baseMesh->getMeshBuffer(0) : nullptr;
+        irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
+            destMesh->getMeshBuffer(0));
+
+        if (!srcBuffer || !dstBuffer) return;
+
+        irr::video::S3DVertex* srcVerts = static_cast<irr::video::S3DVertex*>(srcBuffer->getVertices());
+        irr::u32 vertCount = srcBuffer->getVertexCount();
+
+        // Apply bone transforms to vertices based on vertex pieces
+        size_t vertexIdx = 0;
+        for (const auto& piece : vertexPieces) {
+            int boneIdx = piece.boneIndex;
+
+            // Validate bone index
+            if (boneIdx < 0 || boneIdx >= static_cast<int>(boneStates.size())) {
+                vertexIdx += piece.count;
+                continue;
+            }
+
+            const BoneMat4& boneMat = boneStates[boneIdx].worldTransform;
+
+            // Transform each vertex in this piece
+            for (int i = 0; i < piece.count; ++i) {
+                size_t vIdx = vertexIdx + i;
+                if (vIdx >= vertCount) break;
+
+                // Get original vertex position and normal (in EQ Z-up coordinates)
+                float px = srcVerts[vIdx].Pos.X;
+                float py = srcVerts[vIdx].Pos.Y;
+                float pz = srcVerts[vIdx].Pos.Z;
+
+                float nx = srcVerts[vIdx].Normal.X;
+                float ny = srcVerts[vIdx].Normal.Y;
+                float nz = srcVerts[vIdx].Normal.Z;
+
+                // Transform position using bone matrix (in EQ coordinate space)
+                boneMat.transformPoint(px, py, pz);
+
+                // Transform normal (rotation only, from bone)
+                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
+                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
+                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+
+                // Apply extra Y-rotation if requested (for player with follow camera)
+                if (extraRotCos != 1.0f || extraRotSin != 0.0f) {
+                    float rx = px * extraRotCos - py * extraRotSin;
+                    float ry = px * extraRotSin + py * extraRotCos;
+                    px = rx;
+                    py = ry;
+                    float rnx = tnx * extraRotCos - tny * extraRotSin;
+                    float rny = tnx * extraRotSin + tny * extraRotCos;
+                    tnx = rnx;
+                    tny = rny;
+                }
+
+                // Normalize
+                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
+                if (nlen > 0.0001f) {
+                    tnx /= nlen;
+                    tny /= nlen;
+                    tnz /= nlen;
+                }
+
+                // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
+                dstBuffer->Vertices[vIdx].Pos.X = px;
+                dstBuffer->Vertices[vIdx].Pos.Y = pz;  // EQ Z -> Irrlicht Y
+                dstBuffer->Vertices[vIdx].Pos.Z = py;  // EQ Y -> Irrlicht Z
+                dstBuffer->Vertices[vIdx].Normal.X = tnx;
+                dstBuffer->Vertices[vIdx].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
+                dstBuffer->Vertices[vIdx].Normal.Z = tny;  // EQ Y -> Irrlicht Z
+            }
+
+            vertexIdx += piece.count;
+        }
+
+        dstBuffer->recalculateBoundingBox();
+        dstBuffer->setDirty();
+    }
+
+    destMesh->recalculateBoundingBox();
+}
+
+// ============================================================================
 // EQAnimatedMesh Implementation
 // ============================================================================
 
@@ -196,154 +404,18 @@ void EQAnimatedMesh::applyAnimation() {
         debugOnce = false;
     }
 
-    if (useMultiBuffer) {
-        // Multi-buffer mode: transform original vertices and copy to mapped buffer locations
-        size_t totalOrigVerts = originalVertices_.size();
+    // Use shared helper - no extra rotation for EQAnimatedMesh (shared mesh, not player-specific)
+    applyBoneTransformsToMeshImpl(
+        animatedMesh_,
+        boneStates,
+        vertexPieces_,
+        originalVertices_,
+        vertexMapping_,
+        baseMesh_,
+        1.0f,  // extraRotCos = 1.0 (no rotation)
+        0.0f   // extraRotSin = 0.0 (no rotation)
+    );
 
-        // Apply bone transforms to vertices based on vertex pieces
-        size_t vertexIdx = 0;
-        for (const auto& piece : vertexPieces_) {
-            int boneIdx = piece.boneIndex;
-
-            // Validate bone index
-            if (boneIdx < 0 || boneIdx >= static_cast<int>(boneStates.size())) {
-                vertexIdx += piece.count;
-                continue;
-            }
-
-            const BoneMat4& boneMat = boneStates[boneIdx].worldTransform;
-
-            // Transform each vertex in this piece
-            for (int i = 0; i < piece.count; ++i) {
-                size_t vIdx = vertexIdx + i;
-                if (vIdx >= totalOrigVerts || vIdx >= vertexMapping_.size()) break;
-
-                // Get original vertex position and normal (in EQ Z-up coordinates)
-                const auto& srcVert = originalVertices_[vIdx];
-                float px = srcVert.Pos.X;
-                float py = srcVert.Pos.Y;
-                float pz = srcVert.Pos.Z;
-
-                float nx = srcVert.Normal.X;
-                float ny = srcVert.Normal.Y;
-                float nz = srcVert.Normal.Z;
-
-                // Transform position using bone matrix (in EQ coordinate space)
-                boneMat.transformPoint(px, py, pz);
-
-                // Transform normal (rotation only)
-                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
-                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
-                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
-
-                // Normalize
-                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
-                if (nlen > 0.0001f) {
-                    tnx /= nlen;
-                    tny /= nlen;
-                    tnz /= nlen;
-                }
-
-                // Get the destination buffer and local index
-                const auto& mapping = vertexMapping_[vIdx];
-                if (mapping.bufferIndex >= animatedMesh_->getMeshBufferCount()) continue;
-
-                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
-                    animatedMesh_->getMeshBuffer(mapping.bufferIndex));
-                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
-
-                // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
-                dstBuffer->Vertices[mapping.localIndex].Pos.X = px;
-                dstBuffer->Vertices[mapping.localIndex].Pos.Y = pz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[mapping.localIndex].Pos.Z = py;  // EQ Y -> Irrlicht Z
-                dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
-                dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
-            }
-
-            vertexIdx += piece.count;
-        }
-
-        // Mark all buffers as dirty and recalculate bounds
-        for (irr::u32 b = 0; b < animatedMesh_->getMeshBufferCount(); ++b) {
-            irr::scene::SMeshBuffer* buf = static_cast<irr::scene::SMeshBuffer*>(
-                animatedMesh_->getMeshBuffer(b));
-            if (buf) {
-                buf->recalculateBoundingBox();
-                buf->setDirty();
-            }
-        }
-    } else {
-        // Single-buffer mode (legacy): vertices are in order in buffer 0
-        irr::scene::IMeshBuffer* srcBuffer = baseMesh_ ? baseMesh_->getMeshBuffer(0) : nullptr;
-        irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
-            animatedMesh_->getMeshBuffer(0));
-
-        if (!srcBuffer || !dstBuffer) return;
-
-        irr::video::S3DVertex* srcVerts = static_cast<irr::video::S3DVertex*>(srcBuffer->getVertices());
-        irr::u32 vertCount = srcBuffer->getVertexCount();
-
-        // Apply bone transforms to vertices based on vertex pieces
-        size_t vertexIdx = 0;
-        for (const auto& piece : vertexPieces_) {
-            int boneIdx = piece.boneIndex;
-
-            // Validate bone index
-            if (boneIdx < 0 || boneIdx >= static_cast<int>(boneStates.size())) {
-                vertexIdx += piece.count;
-                continue;
-            }
-
-            const BoneMat4& boneMat = boneStates[boneIdx].worldTransform;
-
-            // Transform each vertex in this piece
-            for (int i = 0; i < piece.count; ++i) {
-                size_t vIdx = vertexIdx + i;
-                if (vIdx >= vertCount) break;
-
-                // Get original vertex position and normal (in EQ Z-up coordinates)
-                float px = srcVerts[vIdx].Pos.X;
-                float py = srcVerts[vIdx].Pos.Y;
-                float pz = srcVerts[vIdx].Pos.Z;
-
-                float nx = srcVerts[vIdx].Normal.X;
-                float ny = srcVerts[vIdx].Normal.Y;
-                float nz = srcVerts[vIdx].Normal.Z;
-
-                // Transform position using bone matrix (in EQ coordinate space)
-                boneMat.transformPoint(px, py, pz);
-
-                // Transform normal (rotation only)
-                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
-                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
-                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
-
-                // Normalize
-                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
-                if (nlen > 0.0001f) {
-                    tnx /= nlen;
-                    tny /= nlen;
-                    tnz /= nlen;
-                }
-
-                // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
-                dstBuffer->Vertices[vIdx].Pos.X = px;
-                dstBuffer->Vertices[vIdx].Pos.Y = pz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[vIdx].Pos.Z = py;  // EQ Y -> Irrlicht Z
-                dstBuffer->Vertices[vIdx].Normal.X = tnx;
-                dstBuffer->Vertices[vIdx].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[vIdx].Normal.Z = tny;  // EQ Y -> Irrlicht Z
-            }
-
-            vertexIdx += piece.count;
-        }
-
-        dstBuffer->recalculateBoundingBox();
-        dstBuffer->setDirty();
-    }
-
-    animatedMesh_->recalculateBoundingBox();
     boundingBox_ = animatedMesh_->getBoundingBox();
 }
 
@@ -489,267 +561,54 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
         return;
     }
 
-    // TRACE: Log bone transform info for player to verify animation isn't overriding node rotation
+    // Performance optimization: skip if animation frame hasn't changed
+    int currentFrame = animator_.getCurrentFrame();
+    irr::core::vector3df nodeRot = getRotation();
+
     if (isPlayerNode_) {
-        static int animTraceCounter = 0;
-        if (++animTraceCounter % 60 == 0) {  // Every second at 60fps
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] === Player applyAnimation Debug ===");
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] vertexPieces={} boneStates={} originalVerts={}",
-                     vertexPieces.size(), boneStates.size(), originalVertices.size());
-
-            // Log first bone (usually root) transform
-            if (!boneStates.empty()) {
-                const BoneMat4& rootBone = boneStates[0].worldTransform;
-                float boneRotY = std::atan2(rootBone.m[8], rootBone.m[0]) * 180.0f / 3.14159f;
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] worldTransform rotY~{:.1f}", boneRotY);
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] row0: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]",
-                         rootBone.m[0], rootBone.m[1], rootBone.m[2], rootBone.m[3]);
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] row2: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]",
-                         rootBone.m[8], rootBone.m[9], rootBone.m[10], rootBone.m[11]);
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] Bone[0] translation: ({:.2f}, {:.2f}, {:.2f})",
-                         rootBone.m[12], rootBone.m[13], rootBone.m[14]);
-            }
-
-            // Log a sample original vertex before transform
-            if (!originalVertices.empty()) {
-                const auto& v0 = originalVertices[0];
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-ANIM] OrigVertex[0] BEFORE bone transform: ({:.2f}, {:.2f}, {:.2f})",
-                         v0.Pos.X, v0.Pos.Y, v0.Pos.Z);
-            }
+        // For player: also check rotation since we bake it into vertices
+        bool frameChanged = (currentFrame != lastAppliedFrame_);
+        bool rotChanged = (std::abs(nodeRot.Y - lastAppliedRotY_) > 0.1f);
+        if (!frameChanged && !rotChanged) {
+            return;  // Nothing changed, skip vertex transforms
+        }
+    } else {
+        // For NPCs: only check frame (rotation handled by node transform)
+        if (currentFrame == lastAppliedFrame_) {
+            return;  // Frame unchanged, skip vertex transforms
         }
     }
 
-    // Check if we're using multi-buffer mode (with vertex mapping) or single-buffer mode
-    bool useMultiBuffer = !originalVertices.empty() && !vertexMapping.empty();
-
-    // Get node rotation for vertex baking
-    irr::core::vector3df nodeRot = getRotation();
-
-    // Enable vertex baking for player, disable for NPCs
-    // NPCs work with world transform, player doesn't - so try baking for player
-    float rotRadians = 0.0f;
-    float cosRot = 1.0f;
-    float sinRot = 0.0f;
-
+    // Calculate rotation for player vertex baking
     // FIX: Enable vertex baking for player to compensate for VIEW/WORLD rotation cancellation.
     // When camera follows player, VIEW (camera orientation) and WORLD (model rotation) are both
     // based on the same heading, causing them to cancel in ETS_CURRENT = VIEW * WORLD.
     // Pre-baking rotation into vertices (+90° offset) ensures the model's back faces the camera.
+    float cosRot = 1.0f;
+    float sinRot = 0.0f;
     if (isPlayerNode_) {
-        rotRadians = (nodeRot.Y + 90.0f) * 3.14159f / 180.0f;
+        float rotRadians = (nodeRot.Y + 90.0f) * 3.14159f / 180.0f;
         cosRot = std::cos(rotRadians);
         sinRot = std::sin(rotRadians);
     }
 
-    // Track rotation application for debugging
-    if (isPlayerNode_) {
-        static int frameNum = 0;
-        static float lastAppliedRotY = -9999.0f;
-        static int lastLogFrame = -10;
-        frameNum++;
+    // Use shared helper for vertex transformation
+    applyBoneTransformsToMeshImpl(
+        instanceMesh_,
+        boneStates,
+        vertexPieces,
+        originalVertices,
+        vertexMapping,
+        eqMesh_->getBaseMesh(),
+        cosRot,
+        sinRot
+    );
 
-        bool rotChanged = std::abs(nodeRot.Y - lastAppliedRotY) > 0.5f;
-        bool shouldLog = (frameNum <= 10) || rotChanged || (frameNum - lastLogFrame >= 60);
-        if (shouldLog) {
-            LOG_TRACE(MOD_GRAPHICS, "[ROT-WARP] frame={} nodeRot.Y={:.1f} lastApplied={:.1f} changed={} cos={:.3f} sin={:.3f}",
-                     frameNum, nodeRot.Y, lastAppliedRotY, rotChanged ? "YES" : "no", cosRot, sinRot);
-            lastLogFrame = frameNum;
-        }
-        lastAppliedRotY = nodeRot.Y;
-    }
-
-    // Log mesh buffer info for debugging
-    if (isPlayerNode_) {
-        static int bufPtrLogCounter = 0;
-        if (++bufPtrLogCounter % 60 == 0 && instanceMesh_) {
-            irr::u32 bufCount = instanceMesh_->getMeshBufferCount();
-            irr::u32 totalVerts = 0;
-            for (irr::u32 i = 0; i < bufCount; ++i) {
-                irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(i);
-                if (mb) totalVerts += mb->getVertexCount();
-            }
-            LOG_TRACE(MOD_GRAPHICS, "[ROT-BUFFER] applyAnimation: instanceMesh_={} bufferCount={} totalVerts={} useMultiBuf={}",
-                     (void*)instanceMesh_, bufCount, totalVerts, useMultiBuffer ? "yes" : "no");
-        }
-    }
-
-    if (useMultiBuffer) {
-        // Multi-buffer mode: transform original vertices and copy to mapped buffer locations
-        size_t totalOrigVerts = originalVertices.size();
-
-        // Apply bone transforms to vertices based on vertex pieces
-        size_t vertexIdx = 0;
-        for (const auto& piece : vertexPieces) {
-            int boneIdx = piece.boneIndex;
-
-            // Validate bone index
-            if (boneIdx < 0 || boneIdx >= static_cast<int>(boneStates.size())) {
-                vertexIdx += piece.count;
-                continue;
-            }
-
-            const BoneMat4& boneMat = boneStates[boneIdx].worldTransform;
-
-            // Transform each vertex in this piece
-            for (int i = 0; i < piece.count; ++i) {
-                size_t vIdx = vertexIdx + i;
-                if (vIdx >= totalOrigVerts || vIdx >= vertexMapping.size()) break;
-
-                // Get the destination buffer and local index
-                const auto& mapping = vertexMapping[vIdx];
-                if (mapping.bufferIndex >= instanceMesh_->getMeshBufferCount()) continue;
-
-                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
-                    instanceMesh_->getMeshBuffer(mapping.bufferIndex));
-                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
-
-
-                // Get original vertex position and normal (in EQ Z-up coordinates)
-                const auto& srcVert = originalVertices[vIdx];
-                float px = srcVert.Pos.X;
-                float py = srcVert.Pos.Y;
-                float pz = srcVert.Pos.Z;
-
-                float nx = srcVert.Normal.X;
-                float ny = srcVert.Normal.Y;
-                float nz = srcVert.Normal.Z;
-
-                // Transform position using bone matrix (in EQ coordinate space)
-                boneMat.transformPoint(px, py, pz);
-
-                // Transform normal (rotation only, from bone)
-                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
-                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
-                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
-
-                // Apply node's Y-rotation to vertices (for player with follow camera)
-                // In EQ coordinates (Z-up), Y-rotation = rotation around Z axis
-                // Rotate position: new_x = x*cos - y*sin, new_y = x*sin + y*cos
-                float rx = px * cosRot - py * sinRot;
-                float ry = px * sinRot + py * cosRot;
-                px = rx;
-                py = ry;
-                // Also rotate normal
-                float rnx = tnx * cosRot - tny * sinRot;
-                float rny = tnx * sinRot + tny * cosRot;
-                tnx = rnx;
-                tny = rny;
-
-                // Normalize
-                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
-                if (nlen > 0.0001f) {
-                    tnx /= nlen;
-                    tny /= nlen;
-                    tnz /= nlen;
-                }
-
-                // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
-                dstBuffer->Vertices[mapping.localIndex].Pos.X = px;
-                dstBuffer->Vertices[mapping.localIndex].Pos.Y = pz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[mapping.localIndex].Pos.Z = py;  // EQ Y -> Irrlicht Z
-                dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
-                dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
-            }
-
-            vertexIdx += piece.count;
-        }
-
-        // Mark all buffers as dirty and recalculate bounds
-        for (irr::u32 b = 0; b < instanceMesh_->getMeshBufferCount(); ++b) {
-            irr::scene::SMeshBuffer* buf = static_cast<irr::scene::SMeshBuffer*>(
-                instanceMesh_->getMeshBuffer(b));
-            if (buf) {
-                buf->recalculateBoundingBox();
-                buf->setDirty();
-            }
-        }
-    } else {
-        // Single-buffer mode (legacy): vertices are in order in buffer 0
-        irr::scene::IMesh* baseMesh = eqMesh_->getBaseMesh();
-        irr::scene::IMeshBuffer* srcBuffer = baseMesh ? baseMesh->getMeshBuffer(0) : nullptr;
-        irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
-            instanceMesh_->getMeshBuffer(0));
-
-        if (!srcBuffer || !dstBuffer) return;
-
-        irr::video::S3DVertex* srcVerts = static_cast<irr::video::S3DVertex*>(srcBuffer->getVertices());
-        irr::u32 vertCount = srcBuffer->getVertexCount();
-
-        // Apply bone transforms to vertices based on vertex pieces
-        size_t vertexIdx = 0;
-        for (const auto& piece : vertexPieces) {
-            int boneIdx = piece.boneIndex;
-
-            // Validate bone index
-            if (boneIdx < 0 || boneIdx >= static_cast<int>(boneStates.size())) {
-                vertexIdx += piece.count;
-                continue;
-            }
-
-            const BoneMat4& boneMat = boneStates[boneIdx].worldTransform;
-
-            // Transform each vertex in this piece
-            for (int i = 0; i < piece.count; ++i) {
-                size_t vIdx = vertexIdx + i;
-                if (vIdx >= vertCount) break;
-
-                // Get original vertex position and normal (in EQ Z-up coordinates)
-                float px = srcVerts[vIdx].Pos.X;
-                float py = srcVerts[vIdx].Pos.Y;
-                float pz = srcVerts[vIdx].Pos.Z;
-
-                float nx = srcVerts[vIdx].Normal.X;
-                float ny = srcVerts[vIdx].Normal.Y;
-                float nz = srcVerts[vIdx].Normal.Z;
-
-                // Transform position using bone matrix (in EQ coordinate space)
-                boneMat.transformPoint(px, py, pz);
-
-                // Transform normal (rotation only, from bone)
-                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
-                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
-                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
-
-                // WORKAROUND: Apply node's Y-rotation here instead of relying on world transform
-                // In EQ coordinates (Z-up), Y-rotation = rotation around Z axis
-                // Rotate position: new_x = x*cos - y*sin, new_y = x*sin + y*cos
-                float rx = px * cosRot - py * sinRot;
-                float ry = px * sinRot + py * cosRot;
-                px = rx;
-                py = ry;
-                // Also rotate normal
-                float rnx = tnx * cosRot - tny * sinRot;
-                float rny = tnx * sinRot + tny * cosRot;
-                tnx = rnx;
-                tny = rny;
-
-                // Normalize
-                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
-                if (nlen > 0.0001f) {
-                    tnx /= nlen;
-                    tny /= nlen;
-                    tnz /= nlen;
-                }
-
-                // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
-                dstBuffer->Vertices[vIdx].Pos.X = px;
-                dstBuffer->Vertices[vIdx].Pos.Y = pz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[vIdx].Pos.Z = py;  // EQ Y -> Irrlicht Z
-                dstBuffer->Vertices[vIdx].Normal.X = tnx;
-                dstBuffer->Vertices[vIdx].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[vIdx].Normal.Z = tny;  // EQ Y -> Irrlicht Z
-            }
-
-            vertexIdx += piece.count;
-        }
-
-        dstBuffer->recalculateBoundingBox();
-        dstBuffer->setDirty();
-    }
-
-    instanceMesh_->recalculateBoundingBox();
     boundingBox_ = instanceMesh_->getBoundingBox();
+
+    // Update tracking for frame caching optimization
+    lastAppliedFrame_ = currentFrame;
+    lastAppliedRotY_ = nodeRot.Y;
 }
 
 void EQAnimatedMeshSceneNode::OnRegisterSceneNode() {
@@ -764,88 +623,6 @@ void EQAnimatedMeshSceneNode::render() {
 
     irr::video::IVideoDriver* driver = SceneManager->getVideoDriver();
     if (!driver) return;
-
-    // TRACE: Comprehensive transform pipeline logging for player node
-    if (isPlayerNode_) {
-        static int traceLogCounter = 0;
-        if (++traceLogCounter % 60 == 0) {  // Every second at 60fps
-            // === 1. Scene Node Hierarchy ===
-            irr::scene::ISceneNode* parentNode = getParent();
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] === Player Node Transform Debug ===");
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Parent: ptr={} name='{}'",
-                     (void*)parentNode, parentNode ? parentNode->getName() : "null");
-            if (parentNode) {
-                irr::core::vector3df parentRot = parentNode->getRotation();
-                irr::core::vector3df parentPos = parentNode->getPosition();
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Parent rot=({:.1f},{:.1f},{:.1f}) pos=({:.1f},{:.1f},{:.1f})",
-                         parentRot.X, parentRot.Y, parentRot.Z, parentPos.X, parentPos.Y, parentPos.Z);
-            }
-
-            // === 2. Node's Own Transforms ===
-            irr::core::vector3df relPos = getPosition();
-            irr::core::vector3df relRot = getRotation();
-            irr::core::vector3df relScale = getScale();
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] RelativePos=({:.1f},{:.1f},{:.1f}) RelativeRot=({:.1f},{:.1f},{:.1f}) Scale=({:.2f},{:.2f},{:.2f})",
-                     relPos.X, relPos.Y, relPos.Z, relRot.X, relRot.Y, relRot.Z, relScale.X, relScale.Y, relScale.Z);
-
-            // === 3. Absolute Transformation Matrix ===
-            const irr::core::matrix4& absM = AbsoluteTransformation;
-            float absRotY = std::atan2(absM[8], absM[0]) * 180.0f / 3.14159f;
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsoluteTransform rotY~{:.1f} (from matrix)", absRotY);
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row0: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[0], absM[1], absM[2], absM[3]);
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row1: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[4], absM[5], absM[6], absM[7]);
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row2: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[8], absM[9], absM[10], absM[11]);
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] AbsMatrix row3: [{:.3f}, {:.3f}, {:.3f}, {:.3f}]", absM[12], absM[13], absM[14], absM[15]);
-
-            // === 4. Sample Vertex from Mesh Buffer ===
-            if (instanceMesh_->getMeshBufferCount() > 0) {
-                irr::scene::IMeshBuffer* mb0 = instanceMesh_->getMeshBuffer(0);
-                if (mb0 && mb0->getVertexCount() > 0) {
-                    irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(mb0->getVertices());
-                    // Log first 3 vertices (model space)
-                    for (int vi = 0; vi < 3 && vi < (int)mb0->getVertexCount(); ++vi) {
-                        LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Vertex[{}] model-space: ({:.2f}, {:.2f}, {:.2f})",
-                                 vi, verts[vi].Pos.X, verts[vi].Pos.Y, verts[vi].Pos.Z);
-
-                        // Manually transform vertex by AbsoluteTransformation to show expected world pos
-                        irr::core::vector3df modelPos = verts[vi].Pos;
-                        irr::core::vector3df worldPos;
-                        absM.transformVect(worldPos, modelPos);
-                        LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Vertex[{}] world-space (expected): ({:.2f}, {:.2f}, {:.2f})",
-                                 vi, worldPos.X, worldPos.Y, worldPos.Z);
-                    }
-                }
-            }
-
-            // === 5. Driver's Current World Transform BEFORE we set it ===
-            irr::core::matrix4 driverWorldBefore = driver->getTransform(irr::video::ETS_WORLD);
-            float driverRotYBefore = std::atan2(driverWorldBefore[8], driverWorldBefore[0]) * 180.0f / 3.14159f;
-            LOG_TRACE(MOD_GRAPHICS, "[TRACE-RENDER] Driver ETS_WORLD BEFORE setTransform: rotY~{:.1f}", driverRotYBefore);
-        }
-    }
-
-    // Check if AbsoluteTransformation matches getRotation() for debugging
-    if (isPlayerNode_) {
-        static int absCheckCounter = 0;
-        if (++absCheckCounter % 30 == 0) {
-            float absRotY = std::atan2(AbsoluteTransformation[8], AbsoluteTransformation[0]) * 180.0f / 3.14159f;
-            float nodeRotY = getRotation().Y;
-            LOG_TRACE(MOD_GRAPHICS, "[ROT-ABS] AbsoluteTransformation rotY={:.1f} vs getRotation().Y={:.1f} match={}",
-                     absRotY, nodeRotY, (std::abs(absRotY - nodeRotY) < 1.0f) ? "YES" : "NO!");
-        }
-    }
-
-    // Log right before setTransform for debugging
-    {
-        static int setTransformLogCounter = 0;
-        int logFrequency = isPlayerNode_ ? 30 : 120;
-        if (++setTransformLogCounter % logFrequency == 0) {
-            irr::core::vector3df pos = AbsoluteTransformation.getTranslation();
-            irr::core::vector3df rot = AbsoluteTransformation.getRotationDegrees();
-            LOG_TRACE(MOD_GRAPHICS, "[ROT-PRE] {} pos=({:.1f},{:.1f},{:.1f}) rot=({:.1f},{:.1f},{:.1f})",
-                     isPlayerNode_ ? "PLAYER" : "NPC", pos.X, pos.Y, pos.Z, rot.X, rot.Y, rot.Z);
-        }
-    }
 
     // Set transformation
     // For player: use position-only transform since rotation is baked into vertices
@@ -870,39 +647,6 @@ void EQAnimatedMeshSceneNode::render() {
             driver->setMaterial(materials_[i]);
         } else {
             driver->setMaterial(mb->getMaterial());
-        }
-
-        // TRACE: Check if setMaterial modified the world transform (for first buffer only)
-        if (isPlayerNode_ && i == 0) {
-            static int drawLoopCounter = 0;
-            if (++drawLoopCounter % 60 == 0) {
-                irr::core::matrix4 worldAtDraw = driver->getTransform(irr::video::ETS_WORLD);
-                irr::core::matrix4 viewAtDraw = driver->getTransform(irr::video::ETS_VIEW);
-                float drawRotY = std::atan2(worldAtDraw[8], worldAtDraw[0]) * 180.0f / 3.14159f;
-                float viewRotY = std::atan2(viewAtDraw[8], viewAtDraw[0]) * 180.0f / 3.14159f;
-                float expectedRotY = std::atan2(AbsoluteTransformation[8], AbsoluteTransformation[0]) * 180.0f / 3.14159f;
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-DRAW] WORLD rotY~{:.1f} VIEW rotY~{:.1f} (expected WORLD {:.1f}) match={}",
-                         drawRotY, viewRotY, expectedRotY, (std::abs(drawRotY - expectedRotY) < 0.1f) ? "YES" : "NO!");
-                // Calculate net rotation after VIEW*WORLD
-                float netRotY = drawRotY - viewRotY;  // Approximate net rotation
-                LOG_TRACE(MOD_GRAPHICS, "[TRACE-DRAW] Net rotation (WORLD-VIEW)~{:.1f} deg - if ~0, camera follows model",
-                         netRotY);
-
-                // Also log the first vertex from this specific buffer we're about to draw
-                irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(mb->getVertices());
-                if (mb->getVertexCount() > 0) {
-                    // Store last vertex position to detect if vertices are changing between frames
-                    static irr::core::vector3df lastVert0Pos(0,0,0);
-                    irr::core::vector3df currentVert0 = verts[0].Pos;
-                    bool vertexChanged = (lastVert0Pos.X != 0 || lastVert0Pos.Y != 0 || lastVert0Pos.Z != 0) &&
-                                        (std::abs(currentVert0.X - lastVert0Pos.X) > 0.001f ||
-                                         std::abs(currentVert0.Y - lastVert0Pos.Y) > 0.001f ||
-                                         std::abs(currentVert0.Z - lastVert0Pos.Z) > 0.001f);
-                    LOG_TRACE(MOD_GRAPHICS, "[TRACE-DRAW] Buffer0 Vert0: ({:.3f},{:.3f},{:.3f}) changed_since_last={}",
-                             currentVert0.X, currentVert0.Y, currentVert0.Z, vertexChanged ? "YES" : "NO");
-                    lastVert0Pos = currentVert0;
-                }
-            }
         }
 
         // Draw the mesh buffer
@@ -957,18 +701,7 @@ void EQAnimatedMeshSceneNode::OnAnimate(irr::u32 timeMs) {
         applyAnimation();
     }
 
-    // Debug: Check if parent's OnAnimate modifies rotation
-    if (isPlayerNode_) {
-        irr::core::vector3df rotBefore = getRotation();
-        IAnimatedMeshSceneNode::OnAnimate(timeMs);
-        irr::core::vector3df rotAfter = getRotation();
-        if (std::abs(rotBefore.Y - rotAfter.Y) > 0.1f) {
-            LOG_DEBUG(MOD_GRAPHICS, "[ROT-ANIMATE] PLAYER OnAnimate ROTATION CHANGED! before.Y={:.1f} after.Y={:.1f}",
-                      rotBefore.Y, rotAfter.Y);
-        }
-    } else {
-        IAnimatedMeshSceneNode::OnAnimate(timeMs);
-    }
+    IAnimatedMeshSceneNode::OnAnimate(timeMs);
 }
 
 void EQAnimatedMeshSceneNode::setCurrentFrame(irr::f32 frame) {

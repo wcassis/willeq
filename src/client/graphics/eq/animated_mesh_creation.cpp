@@ -7,8 +7,10 @@
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/entity_renderer.h"  // For EntityAppearance
 #include "common/logging.h"
+#include "common/performance_metrics.h"
 #include <algorithm>
 #include <iostream>
+#include <chrono>
 
 namespace EQT {
 namespace Graphics {

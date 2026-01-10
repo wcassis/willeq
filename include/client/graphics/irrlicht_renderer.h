@@ -695,6 +695,29 @@ private:
     SaveEntitiesCallback saveEntitiesCallback_;
     float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)
 
+    // Performance: HUD dirty tracking to avoid rebuilding every frame
+    // Cached HUD text for comparison
+    std::wstring cachedHudText_;
+    std::wstring cachedHotkeysText_;
+    std::wstring cachedHeadingDebugText_;
+    // Cached state values to detect changes
+    struct HudCachedState {
+        RendererMode rendererMode = RendererMode::Player;
+        int fps = 0;
+        int playerX = 0, playerY = 0, playerZ = 0;
+        size_t entityCount = 0;
+        size_t modeledEntityCount = 0;
+        uint16_t targetId = 0;
+        uint8_t targetHpPercent = 0;
+        float animSpeed = 1.0f;
+        float corpseZ = 0.0f;
+        bool wireframeMode = false;
+        bool oldModels = true;
+        std::string cameraMode;
+        std::string zoneName;
+    };
+    HudCachedState hudCachedState_;
+
     // FPS tracking
     int currentFps_ = 0;
     int frameCount_ = 0;
@@ -782,6 +805,9 @@ private:
     uint16_t zoneLineTargetZoneId_ = 0;
     std::string zoneLineDebugText_;
     void drawZoneLineOverlay();
+
+    // FPS counter (centered at top of screen)
+    void drawFPSCounter();
 
     // Inventory UI
     std::unique_ptr<eqt::ui::WindowManager> windowManager_;

@@ -61,32 +61,8 @@ void ItemSlot::renderBackground(irr::video::IVideoDriver* driver) {
     // Draw slot background
     driver->draw2DRectangle(getSlotBackground(), bounds_);
 
-    // Draw border
-    irr::video::SColor borderColor = getSlotBorder();
-    // Top
-    driver->draw2DRectangle(borderColor,
-        irr::core::recti(bounds_.UpperLeftCorner.X,
-                        bounds_.UpperLeftCorner.Y,
-                        bounds_.LowerRightCorner.X,
-                        bounds_.UpperLeftCorner.Y + 1));
-    // Left
-    driver->draw2DRectangle(borderColor,
-        irr::core::recti(bounds_.UpperLeftCorner.X,
-                        bounds_.UpperLeftCorner.Y,
-                        bounds_.UpperLeftCorner.X + 1,
-                        bounds_.LowerRightCorner.Y));
-    // Bottom
-    driver->draw2DRectangle(borderColor,
-        irr::core::recti(bounds_.UpperLeftCorner.X,
-                        bounds_.LowerRightCorner.Y - 1,
-                        bounds_.LowerRightCorner.X,
-                        bounds_.LowerRightCorner.Y));
-    // Right
-    driver->draw2DRectangle(borderColor,
-        irr::core::recti(bounds_.LowerRightCorner.X - 1,
-                        bounds_.UpperLeftCorner.Y,
-                        bounds_.LowerRightCorner.X,
-                        bounds_.LowerRightCorner.Y));
+    // Draw border - use draw2DRectangleOutline for single draw call instead of 4 separate rectangles
+    driver->draw2DRectangleOutline(bounds_, getSlotBorder());
 }
 
 void ItemSlot::renderItem(irr::video::IVideoDriver* driver,
@@ -132,24 +108,12 @@ void ItemSlot::renderItem(irr::video::IVideoDriver* driver,
 
         driver->draw2DRectangle(itemColor, iconRect);
 
-        // Draw a simple border around the item
+        // Draw a simple border around the item - single draw call
         irr::video::SColor borderColor(255,
             std::min(255u, itemColor.getRed() + 40),
             std::min(255u, itemColor.getGreen() + 40),
             std::min(255u, itemColor.getBlue() + 40));
-
-        // Top
-        driver->draw2DRectangle(borderColor,
-            irr::core::recti(iconRect.UpperLeftCorner.X,
-                            iconRect.UpperLeftCorner.Y,
-                            iconRect.LowerRightCorner.X,
-                            iconRect.UpperLeftCorner.Y + 1));
-        // Left
-        driver->draw2DRectangle(borderColor,
-            irr::core::recti(iconRect.UpperLeftCorner.X,
-                            iconRect.UpperLeftCorner.Y,
-                            iconRect.UpperLeftCorner.X + 1,
-                            iconRect.LowerRightCorner.Y));
+        driver->draw2DRectangleOutline(iconRect, borderColor);
     }
 }
 
@@ -216,33 +180,16 @@ void ItemSlot::renderStackCount(irr::gui::IGUIEnvironment* gui,
 void ItemSlot::renderHighlight(irr::video::IVideoDriver* driver) {
     irr::video::SColor color = invalidDrop_ ? getSlotInvalid() : getSlotHighlight();
 
-    // Draw highlight border (thicker than normal border)
-    const int thickness = 2;
-
-    // Top
-    driver->draw2DRectangle(color,
-        irr::core::recti(bounds_.UpperLeftCorner.X,
-                        bounds_.UpperLeftCorner.Y,
-                        bounds_.LowerRightCorner.X,
-                        bounds_.UpperLeftCorner.Y + thickness));
-    // Left
-    driver->draw2DRectangle(color,
-        irr::core::recti(bounds_.UpperLeftCorner.X,
-                        bounds_.UpperLeftCorner.Y,
-                        bounds_.UpperLeftCorner.X + thickness,
-                        bounds_.LowerRightCorner.Y));
-    // Bottom
-    driver->draw2DRectangle(color,
-        irr::core::recti(bounds_.UpperLeftCorner.X,
-                        bounds_.LowerRightCorner.Y - thickness,
-                        bounds_.LowerRightCorner.X,
-                        bounds_.LowerRightCorner.Y));
-    // Right
-    driver->draw2DRectangle(color,
-        irr::core::recti(bounds_.LowerRightCorner.X - thickness,
-                        bounds_.UpperLeftCorner.Y,
-                        bounds_.LowerRightCorner.X,
-                        bounds_.LowerRightCorner.Y));
+    // Draw highlight border (thicker than normal border) using 2 outline calls instead of 4 rectangles
+    // Outer outline
+    driver->draw2DRectangleOutline(bounds_, color);
+    // Inner outline (1 pixel in from bounds)
+    irr::core::recti innerBounds(
+        bounds_.UpperLeftCorner.X + 1,
+        bounds_.UpperLeftCorner.Y + 1,
+        bounds_.LowerRightCorner.X - 1,
+        bounds_.LowerRightCorner.Y - 1);
+    driver->draw2DRectangleOutline(innerBounds, color);
 }
 
 } // namespace ui

@@ -176,6 +176,9 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     zoneTextures_.clear();
     zoneModelsLoaded_ = false;
 
+    // Invalidate merged textures cache (zone textures are part of the merge)
+    mergedTexturesCacheValid_ = false;
+
     // Clear model caches - models will be re-loaded on demand with new zone textures
     loadedModels_.clear();
     meshCache_.clear();

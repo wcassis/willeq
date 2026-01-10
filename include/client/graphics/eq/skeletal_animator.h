@@ -276,6 +276,14 @@ private:
     std::vector<AnimatedBoneState> boneStates_;  // Current bone transforms
 
     // ========================================================================
+    // Performance: Cached Animation Track Pointers (Phase 3)
+    // Direct pointer access instead of map lookup per bone per frame
+    // ========================================================================
+    std::vector<TrackDef*> cachedTrackPtrs_;  // One per bone, nullptr if no track for current anim
+    std::string cachedTrackAnimCode_;                   // Animation code the cache was built for
+    void updateTrackPointerCache();                     // Rebuild cache when animation changes
+
+    // ========================================================================
     // Animation Blending State (Phase 6.1)
     // ========================================================================
     bool blendingEnabled_ = true;           // Whether blending is enabled

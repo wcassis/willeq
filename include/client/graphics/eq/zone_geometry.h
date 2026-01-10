@@ -36,6 +36,16 @@ public:
     // Load a texture from raw BMP/DDS data
     irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data);
 
+    // Performance: Lazy texture loading
+    // Register texture data for deferred loading (doesn't create Irrlicht texture yet)
+    void registerLazyTexture(const std::string& name, std::shared_ptr<TextureInfo> texInfo);
+
+    // Get texture, loading lazily if needed
+    irr::video::ITexture* getOrLoadTexture(const std::string& name);
+
+    // Check if a texture is registered (either loaded or pending)
+    bool hasTexture(const std::string& name) const;
+
 private:
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
@@ -43,6 +53,9 @@ private:
 
     // Cache of loaded textures
     std::map<std::string, irr::video::ITexture*> textureCache_;
+
+    // Performance: Pending textures for lazy loading (registered but not yet loaded)
+    std::map<std::string, std::shared_ptr<TextureInfo>> pendingTextures_;
 
     // Track which textures have alpha transparency
     std::set<std::string> texturesWithAlpha_;
