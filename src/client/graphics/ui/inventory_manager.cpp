@@ -389,6 +389,14 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
         item.focusEffect.type = toInt(fields[150]);
     }
 
+    // Scroll effect (154-158)
+    if (fields.size() >= 159) {
+        item.scrollEffect.effectId = toInt(fields[154]);
+        item.scrollEffect.type = toInt(fields[155]);
+        LOG_DEBUG(MOD_UI, "TitaniumItemParser Scroll effect for '{}': effectId={} type={}",
+            item.name, item.scrollEffect.effectId, item.scrollEffect.type);
+    }
+
     return true;
 }
 
@@ -1008,6 +1016,29 @@ void InventoryManager::returnCursorMoney() {
     clearCursorMoney();
 }
 
+void InventoryManager::setSpellForScribe(uint32_t spellId, int16_t sourceSlot) {
+    scribeSpellId_ = spellId;
+    scribeSourceSlot_ = sourceSlot;
+    LOG_DEBUG(MOD_UI, "InventoryManager: Set spell {} from slot {} for scribing",
+              spellId, sourceSlot);
+
+    // Move the scroll to cursor slot - this sends MoveItem to server
+    // The server expects the scroll to be on cursor when we send OP_MemorizeSpell
+    if (!pickupItem(sourceSlot)) {
+        LOG_WARN(MOD_UI, "InventoryManager: Failed to pick up scroll from slot {} for scribing",
+                 sourceSlot);
+    }
+}
+
+void InventoryManager::clearSpellForScribe() {
+    if (scribeSpellId_ != 0) {
+        LOG_DEBUG(MOD_UI, "InventoryManager: Cleared spell scribing state (was spell {})",
+                  scribeSpellId_);
+    }
+    scribeSpellId_ = 0;
+    scribeSourceSlot_ = SLOT_INVALID;
+}
+
 bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
     auto fromIt = items_.find(fromSlot);
     auto toIt = items_.find(toSlot);
@@ -1550,11 +1581,38 @@ void InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
 
 void InventoryManager::processMoveItemResponse(const EQ::Net::Packet& packet) {
     // Server sends back MoveItem_Struct to confirm the move
-    // If the move was rejected, the server will send the item back to original slot
+    // Format: opcode(2) + from_slot(4) + to_slot(4) + number_in_stack(4)
     LOG_DEBUG(MOD_UI, "InventoryManager Received MoveItem response, size: {}", packet.Length());
 
-    // For now, we trust our client-side validation and don't need to do anything
-    // The server will send OP_ItemPacket if it needs to correct our state
+    if (packet.Length() < 14) {
+        LOG_WARN(MOD_UI, "MoveItem packet too short: {} bytes", packet.Length());
+        return;
+    }
+
+    uint32_t fromSlot = packet.GetUInt32(2);
+    uint32_t toSlot = packet.GetUInt32(6);
+
+    LOG_DEBUG(MOD_UI, "MoveItem: from={} to={}", fromSlot, toSlot);
+
+    // Check for item deletion (to_slot == -1 / 0xFFFFFFFF)
+    // This happens when:
+    // 1. A spell scroll is consumed after successful scribing
+    // 2. Server explicitly deletes an item
+    if (toSlot == 0xFFFFFFFF) {
+        int16_t slot = static_cast<int16_t>(fromSlot);
+        LOG_INFO(MOD_UI, "Item deleted from slot {} via MoveItem (to=-1)", slot);
+
+        // Check if this deletion is related to our pending scribe
+        if (isHoldingSpellForScribe() && getScribeSourceSlot() == slot) {
+            LOG_DEBUG(MOD_UI, "Scroll consumed after scribing from slot {}", slot);
+            clearSpellForScribe();
+        }
+
+        // Remove the item from inventory
+        removeItem(slot);
+    }
+    // Normal move operations are handled client-side
+    // Server will send OP_ItemPacket if it needs to correct our state
 }
 
 void InventoryManager::processDeleteItemResponse(const EQ::Net::Packet& packet) {

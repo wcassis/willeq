@@ -273,6 +273,35 @@ struct ItemInstance {
         }
         return count;
     }
+
+    // Check if this item is a spell scroll that can be scribed
+    // EQ spell scrolls have "Spell:" prefix in name and a scroll effect with spell ID
+    bool isSpellScroll() const {
+        // Check for "Spell:" prefix in name (case insensitive)
+        if (name.size() >= 6) {
+            std::string prefix = name.substr(0, 6);
+            // Case-insensitive compare
+            if ((prefix[0] == 'S' || prefix[0] == 's') &&
+                (prefix[1] == 'P' || prefix[1] == 'p') &&
+                (prefix[2] == 'E' || prefix[2] == 'e') &&
+                (prefix[3] == 'L' || prefix[3] == 'l') &&
+                (prefix[4] == 'L' || prefix[4] == 'l') &&
+                prefix[5] == ':') {
+                return true;
+            }
+        }
+        // Also check if scroll effect has a valid spell ID
+        return scrollEffect.effectId > 0;
+    }
+
+    // Get the spell ID this scroll teaches
+    // Returns 0 if not a spell scroll or spell ID cannot be determined
+    uint32_t getScrollSpellId() const {
+        if (scrollEffect.effectId > 0) {
+            return static_cast<uint32_t>(scrollEffect.effectId);
+        }
+        return 0;
+    }
 };
 
 } // namespace inventory

@@ -191,6 +191,9 @@ public:
     SpellBookWindow* getSpellBookWindow() { return spellBookWindow_.get(); }
     const SpellBookWindow* getSpellBookWindow() const { return spellBookWindow_.get(); }
     void setSpellMemorizeCallback(SpellClickCallback callback);
+    void setSpellbookStateCallback(SpellbookStateCallback callback);
+    void setSpellScrollPickupCallback(SpellScrollPickupCallback callback);
+    void setScribeSpellRequestCallback(ScribeSpellRequestCallback callback);
 
     // Buff window management
     void initBuffWindow(EQ::BuffManager* buffMgr);
@@ -471,6 +474,9 @@ private:
 
     // Spellbook callbacks
     SpellClickCallback spellMemorizeCallback_;
+    SpellbookStateCallback spellbookStateCallback_;
+    SpellScrollPickupCallback spellScrollPickupCallback_;
+    ScribeSpellRequestCallback scribeSpellRequestCallback_;
 
     // Group window callbacks
     GroupInviteCallback groupInviteCallback_;
