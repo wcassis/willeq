@@ -3,9 +3,12 @@
 
 #include <irrlicht.h>
 #include <chrono>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
@@ -333,14 +336,47 @@ private:
         int32_t animation;  // Signed: negative = reverse playback
     };
 
-    // Queue of pending updates (processed in reverse order when flushed)
-    std::vector<PendingUpdate> pendingUpdates_;
+    // Performance optimization: use map instead of vector for pending updates
+    // This automatically deduplicates updates - only the latest update per entity is kept
+    std::unordered_map<uint16_t, PendingUpdate> pendingUpdates_;
 
     // Process a single update (internal, called by flushPendingUpdates)
     void processUpdate(const PendingUpdate& update);
 
     // Flush all pending updates in reverse order
     void flushPendingUpdates();
+
+    // Performance optimization: track entities that need interpolation updates
+    // Entities are added when they receive position updates with non-zero velocity,
+    // and removed when they become stationary
+    std::unordered_set<uint16_t> activeEntities_;
+
+    // Performance optimization: spatial grid for O(1) visibility queries
+    // Grid cells are ~500 EQ units, covering typical render distances
+    static constexpr float GRID_CELL_SIZE = 500.0f;
+
+    // Convert EQ position to grid cell key
+    int64_t positionToGridKey(float x, float y) const {
+        int32_t cellX = static_cast<int32_t>(std::floor(x / GRID_CELL_SIZE));
+        int32_t cellY = static_cast<int32_t>(std::floor(y / GRID_CELL_SIZE));
+        return (static_cast<int64_t>(cellX) << 32) | static_cast<uint32_t>(cellY);
+    }
+
+    // Spatial grid: maps cell key -> set of entity spawn IDs in that cell
+    std::unordered_map<int64_t, std::unordered_set<uint16_t>> spatialGrid_;
+
+    // Track which cell each entity is currently in
+    std::unordered_map<uint16_t, int64_t> entityGridCell_;
+
+    // Update entity's position in the spatial grid
+    void updateEntityGridPosition(uint16_t spawnId, float x, float y);
+
+    // Remove entity from spatial grid
+    void removeEntityFromGrid(uint16_t spawnId);
+
+    // Get entities within distance of a point (uses spatial grid)
+    void getEntitiesInRange(float centerX, float centerY, float range,
+                            std::vector<uint16_t>& outEntities) const;
 
 public:
     // Set render distance for entities

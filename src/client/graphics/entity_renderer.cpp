@@ -6,6 +6,7 @@
 #include "client/animation_constants.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
+#include "common/performance_metrics.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -258,6 +259,8 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
                                    float x, float y, float z, float heading, bool isPlayer,
                                    uint8_t gender, const EntityAppearance& appearance, bool isNPC,
                                    bool isCorpse) {
+    auto createStart = std::chrono::steady_clock::now();
+
     if (!smgr_ || hasEntity(spawnId)) {
         return false;
     }
@@ -292,9 +295,14 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     visual.timeSinceUpdate = 0;
     visual.appearance = appearance;
 
+    // Add to spatial grid for efficient visibility queries
+    updateEntityGridPosition(spawnId, x, y);
+
     // Try to create an animated mesh node first
     EQAnimatedMeshSceneNode* animNode = nullptr;
     if (raceModelLoader_) {
+        auto nodeStart = std::chrono::steady_clock::now();
+
         // Check if any equipment is set
         bool hasEquipment = false;
         for (int i = 0; i < 9; i++) {
@@ -310,6 +318,13 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
                 raceId, gender, appearance, smgr_->getRootSceneNode());
         } else {
             animNode = raceModelLoader_->createAnimatedNode(raceId, gender, smgr_->getRootSceneNode());
+        }
+
+        auto nodeEnd = std::chrono::steady_clock::now();
+        auto nodeMs = std::chrono::duration_cast<std::chrono::milliseconds>(nodeEnd - nodeStart).count();
+        if (nodeMs > 50) {
+            LOG_WARN(MOD_GRAPHICS, "PERF: createAnimatedNode for race {} took {} ms", raceId, nodeMs);
+            EQT::PerformanceMetrics::instance().recordSample("Slow Entity Node", nodeMs);
         }
     }
 
@@ -427,6 +442,14 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
                 entities_[spawnId].currentAnimation = deathAnim;
             }
         }
+
+        // Log total entity creation time if slow
+        auto createEnd = std::chrono::steady_clock::now();
+        auto createMs = std::chrono::duration_cast<std::chrono::milliseconds>(createEnd - createStart).count();
+        if (createMs > 50) {
+            LOG_WARN(MOD_GRAPHICS, "PERF: createEntity (animated) for {} race {} took {} ms", name, raceId, createMs);
+            EQT::PerformanceMetrics::instance().recordSample("Slow Entity Create", createMs);
+        }
         return true;
     }
 
@@ -513,13 +536,22 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         LOG_DEBUG(MOD_ENTITY, "Created entity {} ({}) with race {} placeholder (no model found)", spawnId, name, raceId);
     }
 
+    // Log total entity creation time if slow
+    auto createEnd = std::chrono::steady_clock::now();
+    auto createMs = std::chrono::duration_cast<std::chrono::milliseconds>(createEnd - createStart).count();
+    if (createMs > 50) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: createEntity (static) for {} race {} took {} ms", name, raceId, createMs);
+        EQT::PerformanceMetrics::instance().recordSample("Slow Entity Create", createMs);
+    }
+
     return true;
 }
 
 void EntityRenderer::updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                                    float dx, float dy, float dz, int32_t animation) {
     // Queue the update for batched processing
-    pendingUpdates_.push_back({spawnId, x, y, z, heading, dx, dy, dz, animation});
+    // Using map automatically deduplicates - only keeps the latest update per entity
+    pendingUpdates_[spawnId] = {spawnId, x, y, z, heading, dx, dy, dz, animation};
 }
 
 void EntityRenderer::flushPendingUpdates() {
@@ -527,21 +559,13 @@ void EntityRenderer::flushPendingUpdates() {
         return;
     }
 
-    // Debug: Count updates per entity for targeted entity
-    if (debugTargetId_ != 0) {
-        int targetUpdateCount = 0;
-        for (const auto& update : pendingUpdates_) {
-            if (update.spawnId == debugTargetId_) {
-                targetUpdateCount++;
-            }
-        }
-        if (targetUpdateCount > 1) {
-            LOG_TRACE(MOD_ENTITY, "TARGET ANIM BATCH: {} updates queued", targetUpdateCount);
-        }
+    // Debug: Check if target entity has an update
+    if (debugTargetId_ != 0 && pendingUpdates_.count(debugTargetId_) > 0) {
+        LOG_TRACE(MOD_ENTITY, "TARGET ANIM BATCH: processing update for target");
     }
 
-    // Process updates in order received
-    for (const auto& update : pendingUpdates_) {
+    // Process all pending updates (one per entity due to deduplication)
+    for (const auto& [spawnId, update] : pendingUpdates_) {
         processUpdate(update);
     }
 
@@ -663,6 +687,11 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
     visual.serverZ = z;
     visual.serverHeading = heading;
 
+    // Update spatial grid position if position changed significantly
+    if (positionChanged) {
+        updateEntityGridPosition(update.spawnId, x, y);
+    }
+
     // Snap interpolated position to server position on update
     visual.lastX = x;
     visual.lastY = y;
@@ -675,6 +704,14 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
     }
     visual.timeSinceUpdate = 0;
     visual.serverAnimation = animation;
+
+    // Performance optimization: track entities that need interpolation updates
+    // Add to active set if entity has velocity (will be removed when stationary)
+    if (std::abs(visual.velocityX) > 0.01f ||
+        std::abs(visual.velocityY) > 0.01f ||
+        std::abs(visual.velocityZ) > 0.01f) {
+        activeEntities_.insert(update.spawnId);
+    }
 
     // Track last non-zero animation (0 means "no change" from server)
     if (animation != 0) {
@@ -921,11 +958,21 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
 
     static int targetDebugCounter = 0;
 
+    // Performance optimization: only iterate active entities for interpolation
+    // First pass: update time tracking for all entities (cheap operation)
     for (auto& [spawnId, visual] : entities_) {
-        bool isDebugTarget = (spawnId == debugTargetId_);
-
-        // Track time since last server update
         visual.timeSinceUpdate += deltaTime;
+    }
+
+    // Second pass: process only active entities (entities with velocity or special states)
+    // Also process player entity and fading entities
+    std::vector<uint16_t> toDeactivate;  // Entities that became stationary
+
+    for (uint16_t spawnId : activeEntities_) {
+        auto it = entities_.find(spawnId);
+        if (it == entities_.end()) continue;
+        EntityVisual& visual = it->second;
+        bool isDebugTarget = (spawnId == debugTargetId_);
 
         // Skip player entity position interpolation - controlled by camera/input
         // But still update equipment transforms
@@ -1018,7 +1065,7 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
             }
         }
 
-        // Skip if no velocity (stationary)
+        // Skip if no velocity (stationary) - mark for deactivation
         if (std::abs(visual.velocityX) < 0.01f &&
             std::abs(visual.velocityY) < 0.01f &&
             std::abs(visual.velocityZ) < 0.01f) {
@@ -1048,6 +1095,8 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
             }
             // Still update equipment transforms for stationary entities (they still animate)
             updateEquipmentTransforms(visual);
+            // Mark for deactivation (can't modify set during iteration)
+            toDeactivate.push_back(spawnId);
             continue;
         }
 
@@ -1093,6 +1142,9 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
                 visual.velocityX = 0;
                 visual.velocityY = 0;
                 visual.velocityZ = 0;
+
+                // Mark for deactivation since velocity is now zero
+                toDeactivate.push_back(spawnId);
 
                 // Determine if we should switch to idle or keep current animation
                 bool keepMovingAnim = false;
@@ -1200,6 +1252,11 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         LOG_DEBUG(MOD_ENTITY, "Removing fully faded corpse {}", spawnId);
         removeEntity(spawnId);
     }
+
+    // Remove deactivated entities from active set (they became stationary)
+    for (uint16_t spawnId : toDeactivate) {
+        activeEntities_.erase(spawnId);
+    }
 }
 
 void EntityRenderer::removeEntity(uint16_t spawnId) {
@@ -1207,6 +1264,12 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
     if (it == entities_.end()) {
         return;
     }
+
+    // Remove from active entities tracking
+    activeEntities_.erase(spawnId);
+
+    // Remove from spatial grid
+    removeEntityFromGrid(spawnId);
 
     EntityVisual& visual = it->second;
 
@@ -1259,6 +1322,9 @@ void EntityRenderer::startCorpseDecay(uint16_t spawnId) {
     visual.isFading = true;
     visual.fadeTimer = 0.0f;
     visual.fadeAlpha = 1.0f;
+
+    // Add to active entities - fading entities need per-frame updates
+    activeEntities_.insert(spawnId);
 }
 
 void EntityRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,
@@ -1352,20 +1418,60 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
 
     irr::core::vector3df cameraPos = camera->getPosition();
 
-    for (auto& [spawnId, visual] : entities_) {
-        // Calculate distance from camera to entity
-        // Entity position is stored in EQ coords, but meshNode position is in Irrlicht coords
+    // Pre-compute squared distances to avoid sqrt in hot loop
+    float renderDistanceSq = renderDistance_ * renderDistance_;
+    float nameTagDistanceSq = nameTagDistance_ * nameTagDistance_;
+
+    // Use spatial grid to only check entities potentially in range
+    // Camera pos is in Irrlicht coords (X, Y, Z) where Y is up
+    // Entity positions are in EQ coords (x, y, z) where z is up
+    // Grid uses EQ X, Y (horizontal plane)
+    float eqCameraX = cameraPos.X;
+    float eqCameraY = cameraPos.Z;  // EQ Y = Irrlicht Z
+
+    // Get entities potentially within render distance
+    std::vector<uint16_t> nearbyEntities;
+    getEntitiesInRange(eqCameraX, eqCameraY, renderDistance_, nearbyEntities);
+
+    // Track which entities we've processed (those not nearby should be hidden)
+    std::unordered_set<uint16_t> processedEntities;
+
+    // Process nearby entities
+    for (uint16_t spawnId : nearbyEntities) {
+        processedEntities.insert(spawnId);
+
+        auto it = entities_.find(spawnId);
+        if (it == entities_.end()) continue;
+
+        EntityVisual& visual = it->second;
+
+        // Calculate squared distance from camera to entity (avoids sqrt)
         irr::core::vector3df entityPos(visual.lastX, visual.lastZ, visual.lastY);
-        float distance = cameraPos.getDistanceFrom(entityPos);
+        float distanceSq = cameraPos.getDistanceFromSQ(entityPos);
 
         // Update mesh visibility based on render distance
         if (visual.meshNode) {
-            visual.meshNode->setVisible(distance <= renderDistance_);
+            visual.meshNode->setVisible(distanceSq <= renderDistanceSq);
         }
 
         // Update name tag visibility based on name tag distance and global toggle
         if (visual.nameNode) {
-            visual.nameNode->setVisible(nameTagsVisible_ && distance <= nameTagDistance_);
+            visual.nameNode->setVisible(nameTagsVisible_ && distanceSq <= nameTagDistanceSq);
+        }
+    }
+
+    // Hide entities that weren't in range (optimization: only if we have many entities)
+    if (entities_.size() > nearbyEntities.size() * 2) {
+        for (auto& [spawnId, visual] : entities_) {
+            if (processedEntities.find(spawnId) == processedEntities.end()) {
+                // Entity not in nearby set - hide it
+                if (visual.meshNode) {
+                    visual.meshNode->setVisible(false);
+                }
+                if (visual.nameNode) {
+                    visual.nameNode->setVisible(false);
+                }
+            }
         }
     }
 }
@@ -1596,6 +1702,9 @@ void EntityRenderer::setPlayerSpawnId(uint16_t spawnId) {
         if (it->second.animatedNode) {
             it->second.animatedNode->setIsPlayerNode(true);
         }
+
+        // Player always needs to be in active set for equipment transform updates
+        activeEntities_.insert(spawnId);
 
         LOG_DEBUG(MOD_GRAPHICS, "setPlayerSpawnId: spawn={} name={} modelYOffset={:.2f} sceneNode={} animatedNode={}",
                   spawnId, it->second.name, it->second.modelYOffset,
@@ -2812,6 +2921,83 @@ void EntityRenderer::renderEntityCastingBars(irr::video::IVideoDriver* driver, i
             int textY = barBottom + 2;
             irr::core::recti textRect(barLeft - 30, textY, barRight + 30, textY + 12);
             font->draw(spellNameW.c_str(), textRect, TEXT_COLOR, true, false);
+        }
+    }
+}
+
+// ============================================================================
+// Spatial Grid Functions - for efficient O(1) visibility queries
+// ============================================================================
+
+void EntityRenderer::updateEntityGridPosition(uint16_t spawnId, float x, float y) {
+    int64_t newCellKey = positionToGridKey(x, y);
+
+    // Check if entity is already in this cell
+    auto cellIt = entityGridCell_.find(spawnId);
+    if (cellIt != entityGridCell_.end()) {
+        if (cellIt->second == newCellKey) {
+            // Already in correct cell, nothing to do
+            return;
+        }
+
+        // Remove from old cell
+        int64_t oldCellKey = cellIt->second;
+        auto oldCellIt = spatialGrid_.find(oldCellKey);
+        if (oldCellIt != spatialGrid_.end()) {
+            oldCellIt->second.erase(spawnId);
+            if (oldCellIt->second.empty()) {
+                spatialGrid_.erase(oldCellIt);
+            }
+        }
+    }
+
+    // Add to new cell
+    spatialGrid_[newCellKey].insert(spawnId);
+    entityGridCell_[spawnId] = newCellKey;
+}
+
+void EntityRenderer::removeEntityFromGrid(uint16_t spawnId) {
+    auto cellIt = entityGridCell_.find(spawnId);
+    if (cellIt == entityGridCell_.end()) {
+        return;
+    }
+
+    // Remove from spatial grid cell
+    int64_t cellKey = cellIt->second;
+    auto gridIt = spatialGrid_.find(cellKey);
+    if (gridIt != spatialGrid_.end()) {
+        gridIt->second.erase(spawnId);
+        if (gridIt->second.empty()) {
+            spatialGrid_.erase(gridIt);
+        }
+    }
+
+    // Remove from cell tracking
+    entityGridCell_.erase(cellIt);
+}
+
+void EntityRenderer::getEntitiesInRange(float centerX, float centerY, float range,
+                                         std::vector<uint16_t>& outEntities) const {
+    outEntities.clear();
+
+    // Calculate which grid cells are within range
+    // Need to check all cells that could contain entities within 'range' distance
+    int32_t minCellX = static_cast<int32_t>(std::floor((centerX - range) / GRID_CELL_SIZE));
+    int32_t maxCellX = static_cast<int32_t>(std::floor((centerX + range) / GRID_CELL_SIZE));
+    int32_t minCellY = static_cast<int32_t>(std::floor((centerY - range) / GRID_CELL_SIZE));
+    int32_t maxCellY = static_cast<int32_t>(std::floor((centerY + range) / GRID_CELL_SIZE));
+
+    // Iterate over potentially relevant cells
+    for (int32_t cellX = minCellX; cellX <= maxCellX; ++cellX) {
+        for (int32_t cellY = minCellY; cellY <= maxCellY; ++cellY) {
+            int64_t cellKey = (static_cast<int64_t>(cellX) << 32) | static_cast<uint32_t>(cellY);
+            auto it = spatialGrid_.find(cellKey);
+            if (it != spatialGrid_.end()) {
+                // Add all entities in this cell - fine-grained distance check done by caller
+                for (uint16_t spawnId : it->second) {
+                    outEntities.push_back(spawnId);
+                }
+            }
         }
     }
 }

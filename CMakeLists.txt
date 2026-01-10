@@ -127,6 +127,7 @@ SET(COMMON_SOURCES
     src/common/net/daybreak_connection.cpp
     src/common/net/crc32.cpp
     src/common/event/timer.cpp
+    src/common/performance_metrics.cpp
 )
 
 # Client sources
@@ -310,6 +311,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/common/performance_metrics.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include

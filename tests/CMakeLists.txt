@@ -192,6 +192,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
+        ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY})

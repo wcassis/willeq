@@ -9,6 +9,7 @@
 #include "client/hc_map.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
+#include "common/performance_metrics.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -968,6 +969,52 @@ void IrrlichtRenderer::setupHUD() {
 void IrrlichtRenderer::updateHUD() {
     if (!hudText_ || !hudEnabled_) return;
 
+    // Performance optimization: check if HUD state has changed
+    // Build current state snapshot for comparison
+    HudCachedState currentState;
+    currentState.rendererMode = rendererMode_;
+    currentState.fps = currentFps_;
+    currentState.playerX = static_cast<int>(playerX_);
+    currentState.playerY = static_cast<int>(playerY_);
+    currentState.playerZ = static_cast<int>(playerZ_);
+    if (entityRenderer_) {
+        currentState.entityCount = entityRenderer_->getEntityCount();
+        currentState.modeledEntityCount = entityRenderer_->getModeledEntityCount();
+        currentState.animSpeed = entityRenderer_->getGlobalAnimationSpeed();
+        currentState.corpseZ = entityRenderer_->getCorpseZOffset();
+    }
+    currentState.targetId = currentTargetId_;
+    currentState.targetHpPercent = currentTargetHpPercent_;
+    currentState.wireframeMode = wireframeMode_;
+    currentState.oldModels = isUsingOldModels();
+    currentState.cameraMode = getCameraModeString();
+    currentState.zoneName = currentZoneName_;
+
+    // Check if state has changed
+    bool stateChanged = (currentState.rendererMode != hudCachedState_.rendererMode ||
+                         currentState.fps != hudCachedState_.fps ||
+                         currentState.playerX != hudCachedState_.playerX ||
+                         currentState.playerY != hudCachedState_.playerY ||
+                         currentState.playerZ != hudCachedState_.playerZ ||
+                         currentState.entityCount != hudCachedState_.entityCount ||
+                         currentState.modeledEntityCount != hudCachedState_.modeledEntityCount ||
+                         currentState.targetId != hudCachedState_.targetId ||
+                         currentState.targetHpPercent != hudCachedState_.targetHpPercent ||
+                         currentState.animSpeed != hudCachedState_.animSpeed ||
+                         currentState.corpseZ != hudCachedState_.corpseZ ||
+                         currentState.wireframeMode != hudCachedState_.wireframeMode ||
+                         currentState.oldModels != hudCachedState_.oldModels ||
+                         currentState.cameraMode != hudCachedState_.cameraMode ||
+                         currentState.zoneName != hudCachedState_.zoneName);
+
+    // Skip rebuild if nothing changed
+    if (!stateChanged) {
+        return;
+    }
+
+    // Update cached state
+    hudCachedState_ = currentState;
+
     std::wstringstream text;
     std::wstringstream hotkeys;
 
@@ -1250,6 +1297,9 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         return false;
     }
 
+    // Start zone load timing
+    EQT::PerformanceMetrics::instance().markZoneLoadStart(zoneName);
+
     // Helper to scale internal progress (0.0-1.0) to the caller's specified range
     auto scaleProgress = [progressStart, progressEnd](float internalProgress) {
         return progressStart + internalProgress * (progressEnd - progressStart);
@@ -1269,11 +1319,14 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 
     drawLoadingScreen(scaleProgress(0.05f), L"Loading zone archive...");
 
+    EQT::PerformanceMetrics::instance().startTimer("S3D Archive Load", EQT::MetricCategory::Zoning);
     S3DLoader loader;
     if (!loader.loadZone(zonePath)) {
         LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", loader.getError());
+        EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
         return false;
     }
+    EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
 
     drawLoadingScreen(scaleProgress(0.30f), L"Processing zone data...");
 
@@ -1291,13 +1344,19 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     }
 
     drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
+    EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
     createZoneMesh();
+    EQT::PerformanceMetrics::instance().stopTimer("Zone Mesh Creation");
 
     drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
+    EQT::PerformanceMetrics::instance().startTimer("Object Mesh Creation", EQT::MetricCategory::Zoning);
     createObjectMeshes();
+    EQT::PerformanceMetrics::instance().stopTimer("Object Mesh Creation");
 
     drawLoadingScreen(scaleProgress(0.85f), L"Setting up zone lights...");
+    EQT::PerformanceMetrics::instance().startTimer("Zone Lights Setup", EQT::MetricCategory::Zoning);
     createZoneLights();
+    EQT::PerformanceMetrics::instance().stopTimer("Zone Lights Setup");
 
     drawLoadingScreen(scaleProgress(0.95f), L"Configuring camera...");
 
@@ -1327,6 +1386,8 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     setupFog();
 
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
+
+    EQT::PerformanceMetrics::instance().markZoneLoadEnd();
 
     return true;
 }
@@ -2102,7 +2163,19 @@ std::string IrrlichtRenderer::getCameraModeString() const {
 }
 
 bool IrrlichtRenderer::processFrame(float deltaTime) {
+    auto frameStart = std::chrono::steady_clock::now();
     LOG_TRACE(MOD_GRAPHICS, "processFrame: entered");
+
+    // Record frame time for gameplay statistics (deltaTime is in seconds)
+    int64_t frameTimeMs = static_cast<int64_t>(deltaTime * 1000.0f);
+    if (frameTimeMs > 0) {
+        EQT::PerformanceMetrics::instance().recordSample("Frame Time", frameTimeMs);
+    }
+
+    // Log warning if previous frame was slow (deltaTime > 100ms = <10 FPS)
+    if (deltaTime > 0.1f) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: Previous frame took {} ms (slow!)", static_cast<int>(deltaTime * 1000.0f));
+    }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checking isRunning...");
 
@@ -2682,10 +2755,16 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint E (before entity update)");
 
     // Update entity interpolation (smooth NPC movement between server updates)
+    auto entityUpdateStart = std::chrono::steady_clock::now();
     if (entityRenderer_) {
         entityRenderer_->updateInterpolation(deltaTime);
         // Update entity casting bars (timeout checks, etc.)
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
+    }
+    auto entityUpdateEnd = std::chrono::steady_clock::now();
+    auto entityUpdateMs = std::chrono::duration_cast<std::chrono::milliseconds>(entityUpdateEnd - entityUpdateStart).count();
+    if (entityUpdateMs > 50) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: Entity update took {} ms", entityUpdateMs);
     }
 
     // Update door animations
@@ -2737,7 +2816,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // Render
     driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+    auto drawAllStart = std::chrono::steady_clock::now();
     smgr_->drawAll();
+    auto drawAllEnd = std::chrono::steady_clock::now();
+    auto drawAllMs = std::chrono::duration_cast<std::chrono::milliseconds>(drawAllEnd - drawAllStart).count();
+    if (drawAllMs > 50) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", drawAllMs);
+    }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint K (after drawAll)");
 
@@ -2760,6 +2845,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     guienv_->drawAll();
+
+    // Draw FPS counter at top center
+    drawFPSCounter();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint L (after GUI)");
 
@@ -2790,8 +2878,14 @@ void IrrlichtRenderer::run() {
 
     while (isRunning()) {
         irr::u32 currentTime = device_->getTimer()->getTime();
-        float deltaTime = (currentTime - lastTime) / 1000.0f;
+        irr::u32 frameTimeMs = currentTime - lastTime;
+        float deltaTime = frameTimeMs / 1000.0f;
         lastTime = currentTime;
+
+        // Record frame time for gameplay statistics
+        if (frameTimeMs > 0) {
+            EQT::PerformanceMetrics::instance().recordSample("Frame Time", static_cast<int64_t>(frameTimeMs));
+        }
 
         if (!processFrame(deltaTime)) {
             break;
@@ -4884,6 +4978,39 @@ void IrrlichtRenderer::drawZoneLineBoxLabels() {
         font->draw(label.c_str(), irr::core::rect<irr::s32>(
             textX, textY, textX + textSize.Width, textY + textSize.Height), textColor);
     }
+}
+
+void IrrlichtRenderer::drawFPSCounter() {
+    if (!driver_ || !guienv_) {
+        return;
+    }
+
+    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    if (!font) {
+        return;
+    }
+
+    // Build FPS text
+    std::wstring fpsText = L"FPS: " + std::to_wstring(currentFps_);
+
+    // Get screen dimensions and text size for centering
+    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+    irr::core::dimension2d<irr::u32> textSize = font->getDimension(fpsText.c_str());
+
+    // Position at top center with small padding from top edge
+    int textX = (screenSize.Width - textSize.Width) / 2;
+    int textY = 5;
+
+    // Draw with a semi-transparent black background for readability
+    irr::core::rect<irr::s32> bgRect(textX - 4, textY - 2,
+                                      textX + textSize.Width + 4,
+                                      textY + textSize.Height + 2);
+    driver_->draw2DRectangle(irr::video::SColor(128, 0, 0, 0), bgRect);
+
+    // Draw FPS text in white
+    font->draw(fpsText.c_str(),
+               irr::core::rect<irr::s32>(textX, textY, textX + textSize.Width, textY + textSize.Height),
+               irr::video::SColor(255, 255, 255, 255));
 }
 
 void IrrlichtRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill) {

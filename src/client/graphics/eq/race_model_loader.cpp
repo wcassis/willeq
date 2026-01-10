@@ -8,8 +8,10 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
 #include "common/logging.h"
+#include "common/performance_metrics.h"
 #include <algorithm>
 #include <iostream>
+#include <chrono>
 
 namespace EQT {
 namespace Graphics {
@@ -95,6 +97,7 @@ void RaceModelLoader::clearCache() {
 }
 
 irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gender) {
+    auto funcStart = std::chrono::steady_clock::now();
     uint32_t key = makeCacheKey(raceId, gender);
 
     // Check mesh cache first
@@ -102,6 +105,9 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
     if (meshIt != meshCache_.end()) {
         return meshIt->second;
     }
+
+    // Not cached - this will involve actual loading
+    auto loadStart = std::chrono::steady_clock::now();
 
     // Check if model data is loaded
     auto modelIt = loadedModels_.find(key);
@@ -195,6 +201,14 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
         mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);  // flipV for character models
     } else {
         mesh = meshBuilder_->buildColoredMesh(*modelData->combinedGeometry);
+    }
+
+    // Log slow model loads
+    auto loadEnd = std::chrono::steady_clock::now();
+    auto loadMs = std::chrono::duration_cast<std::chrono::milliseconds>(loadEnd - loadStart).count();
+    if (loadMs > 50) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: getMeshForRace race={} took {} ms (not cached)", raceId, loadMs);
+        EQT::PerformanceMetrics::instance().recordSample("Slow Model Load", loadMs);
     }
 
     meshCache_[key] = mesh;

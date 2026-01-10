@@ -235,6 +235,10 @@ private:
     std::map<std::string, std::shared_ptr<TextureInfo>> zoneTextures_;
     bool zoneModelsLoaded_ = false;
 
+    // Cached merged textures (performance optimization)
+    mutable std::map<std::string, std::shared_ptr<TextureInfo>> cachedMergedTextures_;
+    mutable bool mergedTexturesCacheValid_ = false;
+
     // Old models mode (classic models from global_chr.s3d only)
     bool useOldModels_ = true;  // Default to old models
 

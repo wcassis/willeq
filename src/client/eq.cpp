@@ -14,6 +14,7 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "common/performance_metrics.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -685,6 +686,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 EverQuest::~EverQuest()
 {
+	// Output final performance metrics
+	LOG_INFO(MOD_MAIN, "{}", EQT::PerformanceMetrics::instance().generateReport());
+
 	// Stop the update loop before destroying
 	StopUpdateLoop();
 	
@@ -7282,6 +7286,32 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(timestamp);
+
+	Command perf;
+	perf.name = "perf";
+	perf.aliases = {"performance", "metrics"};
+	perf.usage = "/perf";
+	perf.description = "Show performance metrics report";
+	perf.category = "Utility";
+	perf.handler = [this](const std::string& args) {
+		std::string report = EQT::PerformanceMetrics::instance().generateReport();
+		// Output to console
+		LOG_INFO(MOD_MAIN, "{}", report);
+		// Also show summary in chat
+		auto stats = EQT::PerformanceMetrics::instance().getStats("Frame Time");
+		if (stats.count > 0) {
+			double avgFps = stats.avgMs() > 0 ? 1000.0 / stats.avgMs() : 0;
+			AddChatSystemMessage(fmt::format("=== Performance Metrics ==="));
+			AddChatSystemMessage(fmt::format("Startup: {} ms", EQT::PerformanceMetrics::instance().getCategoryTotalMs(EQT::MetricCategory::Startup)));
+			AddChatSystemMessage(fmt::format("Zoning: {} ms", EQT::PerformanceMetrics::instance().getCategoryTotalMs(EQT::MetricCategory::Zoning)));
+			AddChatSystemMessage(fmt::format("Avg FPS: {:.1f} (avg frame: {:.1f} ms)", avgFps, stats.avgMs()));
+			AddChatSystemMessage(fmt::format("Frame time: min {} ms, max {} ms", stats.minMs, stats.maxMs));
+			AddChatSystemMessage("Full report written to console.");
+		} else {
+			AddChatSystemMessage("No performance data collected yet.");
+		}
+	};
+	m_command_registry->registerCommand(perf);
 
 	Command filter;
 	filter.name = "filter";

@@ -106,6 +106,9 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     // When not looping, hold on the last frame instead of resetting
     holdOnComplete_ = !looping_;
 
+    // Performance: Update track pointer cache for direct access
+    updateTrackPointerCache();
+
     // Reset frame trigger tracking
     lastReportedFrame_ = -1;
 
@@ -371,15 +374,13 @@ BoneTransform SkeletalAnimator::getBoneTransformAtFrame(int boneIndex, int frame
 
     const AnimatedBone& bone = skeleton_->bones[boneIndex];
 
-    // If we have an active animation, use it
-    if (currentAnim_ && !currentAnimCode_.empty()) {
-        auto trackIt = bone.animationTracks.find(currentAnimCode_);
-        if (trackIt != bone.animationTracks.end() && trackIt->second) {
-            const auto& trackDef = trackIt->second;
-            if (!trackDef->frames.empty()) {
-                int frameIdx = std::min(frame, static_cast<int>(trackDef->frames.size()) - 1);
-                return trackDef->frames[frameIdx];
-            }
+    // Performance: Use cached track pointer instead of map lookup
+    if (currentAnim_ && !currentAnimCode_.empty() &&
+        boneIndex < static_cast<int>(cachedTrackPtrs_.size())) {
+        TrackDef* trackDef = cachedTrackPtrs_[boneIndex];
+        if (trackDef && !trackDef->frames.empty()) {
+            int frameIdx = std::min(frame, static_cast<int>(trackDef->frames.size()) - 1);
+            return trackDef->frames[frameIdx];
         }
     }
 
@@ -589,6 +590,33 @@ void SkeletalAnimator::checkFrameTriggers() {
     }
 
     lastReportedFrame_ = currentFrame_;
+}
+
+// ============================================================================
+// Performance: Animation Track Pointer Caching (Phase 3)
+// ============================================================================
+
+void SkeletalAnimator::updateTrackPointerCache() {
+    cachedTrackPtrs_.clear();
+
+    if (!skeleton_ || currentAnimCode_.empty()) {
+        cachedTrackAnimCode_.clear();
+        return;
+    }
+
+    // Build cache of track pointers for current animation
+    // One pointer per bone - nullptr if bone has no track for this animation
+    cachedTrackPtrs_.resize(skeleton_->bones.size(), nullptr);
+
+    for (size_t i = 0; i < skeleton_->bones.size(); ++i) {
+        const AnimatedBone& bone = skeleton_->bones[i];
+        auto trackIt = bone.animationTracks.find(currentAnimCode_);
+        if (trackIt != bone.animationTracks.end() && trackIt->second) {
+            cachedTrackPtrs_[i] = trackIt->second.get();
+        }
+    }
+
+    cachedTrackAnimCode_ = currentAnimCode_;
 }
 
 } // namespace Graphics

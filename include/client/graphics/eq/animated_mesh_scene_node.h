@@ -210,6 +210,10 @@ private:
 
     // Debug: mark this node as the player for targeted logging
     bool isPlayerNode_ = false;
+
+    // Performance: track last applied animation frame to skip redundant transforms
+    int lastAppliedFrame_ = -1;
+    float lastAppliedRotY_ = -9999.0f;  // Track rotation for player baking
 };
 
 } // namespace Graphics
