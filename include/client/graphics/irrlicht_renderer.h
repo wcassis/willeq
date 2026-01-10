@@ -15,6 +15,9 @@
 // Forward declaration for collision map
 class HCMap;
 
+// Forward declaration for zone lines
+namespace EQT { struct ZoneLineBoundingBox; }
+
 // Forward declarations for inventory UI
 namespace eqt {
 namespace ui { class WindowManager; }
@@ -193,6 +196,7 @@ public:
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
     bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
+    bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
     float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
@@ -303,6 +307,7 @@ private:
     bool vendorToggleRequested_ = false;
     bool trainerToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
+    bool zoneLineVisualizationToggleRequested_ = false;
     int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
     int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
     float collisionHeightDelta_ = 0.0f;
@@ -563,6 +568,10 @@ public:
     using ChatSubmitCallback = std::function<void(const std::string& text)>;
     void setChatSubmitCallback(ChatSubmitCallback callback);
 
+    // Zoning enabled callback (called when zone line visualization is toggled)
+    using ZoningEnabledCallback = std::function<void(bool enabled)>;
+    void setZoningEnabledCallback(ZoningEnabledCallback callback) { zoningEnabledCallback_ = callback; }
+
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
     void setCurrentTargetInfo(const TargetInfo& info);
@@ -607,6 +616,12 @@ public:
     // Zone line debugging
     void setZoneLineDebug(bool inZoneLine, uint16_t targetZoneId = 0, const std::string& debugText = "");
     bool isInZoneLine() const { return inZoneLine_; }
+
+    // Zone line bounding box visualization
+    void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes);
+    void clearZoneLineBoundingBoxes();
+    void toggleZoneLineVisualization();
+    bool isZoneLineVisualizationEnabled() const { return showZoneLineBoxes_; }
     bool isInventoryOpen() const;
     void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);
     void setCharacterDeity(const std::wstring& deity);
@@ -754,6 +769,7 @@ private:
     DoorInteractCallback doorInteractCallback_;
     WorldObjectInteractCallback worldObjectInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
+    ZoningEnabledCallback zoningEnabledCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
     uint8_t currentTargetHpPercent_ = 100;
@@ -806,6 +822,17 @@ private:
     uint16_t zoneLineTargetZoneId_ = 0;
     std::string zoneLineDebugText_;
     void drawZoneLineOverlay();
+
+    // Zone line bounding box visualization
+    struct ZoneLineBoxNode {
+        irr::scene::IMeshSceneNode* node = nullptr;
+        uint16_t targetZoneId = 0;
+        bool isProximityBased = false;
+    };
+    std::vector<ZoneLineBoxNode> zoneLineBoxNodes_;
+    bool showZoneLineBoxes_ = true;  // Enabled by default to help debug
+    void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
+    void drawZoneLineBoxLabels();
 
     // Inventory UI
     std::unique_ptr<eqt::ui::WindowManager> windowManager_;

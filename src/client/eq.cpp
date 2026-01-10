@@ -1390,11 +1390,15 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_ZONE, "Zone transition detected - disconnecting from current zone");
 
 		// Set player position to pending zone coordinates if we have them
+		// IMPORTANT: pending coordinates are in SERVER format (x=server_x, y=server_y)
+		// but m_x/m_y are in CLIENT DISPLAY format (m_x=server_y, m_y=server_x)
+		// So we need to swap X and Y when assigning
 		if (m_pending_zone_id != 0) {
-			LOG_DEBUG(MOD_ZONE, "Setting spawn position to ({:.1f}, {:.1f}, {:.1f})",
-				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z);
-			m_x = m_pending_zone_x;
-			m_y = m_pending_zone_y;
+			LOG_DEBUG(MOD_ZONE, "Setting spawn position: server coords ({:.1f}, {:.1f}, {:.1f}) -> client (m_x={:.1f}, m_y={:.1f})",
+				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z,
+				m_pending_zone_y, m_pending_zone_x);
+			m_x = m_pending_zone_y;  // client x (m_x) = server y
+			m_y = m_pending_zone_x;  // client y (m_y) = server x
 			m_z = m_pending_zone_z;
 			if (m_pending_zone_heading > 0) {
 				m_heading = m_pending_zone_heading;
@@ -5731,6 +5735,8 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 
 #ifdef EQT_HAS_GRAPHICS
 		// Signal renderer that zone is ready for display
+		// Note: Player entity creation is deferred to when we receive the first ClientUpdate
+		// with our spawn_id, since m_my_spawn_id isn't set yet at this point
 		if (m_renderer) {
 			m_renderer->setLoadingProgress(1.0f, L"Zone ready!");
 			m_renderer->setZoneReady(true);
@@ -5856,11 +5862,9 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			LOG_INFO(MOD_MOVEMENT, "Set our spawn ID to {} from ClientUpdate", m_my_spawn_id);
 
 #ifdef EQT_HAS_GRAPHICS
-			// Notify renderer of player spawn ID
+			// Now create the player entity - this is deferred from OnZoneLoadedGraphics
+			// to ensure all player data (inventory, appearance, position) has been received
 			if (m_graphics_initialized && m_renderer) {
-				m_renderer->setPlayerSpawnId(m_my_spawn_id);
-
-				// Also update the inventory model view with player appearance
 				auto playerIt = m_entities.find(m_my_spawn_id);
 				if (playerIt != m_entities.end()) {
 					const Entity& entity = playerIt->second;
@@ -5876,7 +5880,23 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 						appearance.equipment[i] = entity.equipment[i];
 						appearance.equipment_tint[i] = entity.equipment_tint[i];
 					}
+
+					LOG_INFO(MOD_ENTITY, "Creating player entity {} ({}) from ClientUpdate - equipment: primary={} secondary={}",
+					         m_my_spawn_id, entity.name, appearance.equipment[7], appearance.equipment[8]);
+
+					// Create the player entity with current position from ClientUpdate
+					m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
+					                         x, y, z, h_player,
+					                         true, entity.gender, appearance, false, false);
+
+					// Set player spawn ID AFTER entity is created so the animated node
+					// can be marked for the player rotation fix
+					m_renderer->setPlayerSpawnId(m_my_spawn_id);
+
+					// Update inventory model view with player appearance
 					m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+				} else {
+					LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", m_my_spawn_id);
 				}
 			}
 #endif
@@ -6830,6 +6850,87 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(moveto);
+
+	Command warp;
+	warp.name = "warp";
+	warp.usage = "/warp [x y z | entity_name]";
+	warp.description = "Instantly teleport to coordinates, entity, or current target";
+	warp.category = "Movement";
+	warp.handler = [this](const std::string& args) {
+		float x, y, z;
+		bool found_destination = false;
+
+		std::string trimmed = args;
+		while (!trimmed.empty() && trimmed[0] == ' ') {
+			trimmed = trimmed.substr(1);
+		}
+
+		if (trimmed.empty()) {
+			// No args - use current target if we have one
+			if (m_combat_manager && m_combat_manager->HasTarget()) {
+				uint16_t target_id = m_combat_manager->GetTargetId();
+				auto it = m_entities.find(target_id);
+				if (it != m_entities.end()) {
+					x = it->second.x;
+					y = it->second.y;
+					z = it->second.z;
+					found_destination = true;
+					AddChatSystemMessage(fmt::format("Warping to target: {}", it->second.name));
+				}
+			}
+			if (!found_destination) {
+				AddChatSystemMessage("Usage: /warp [x y z | entity_name] (or target an entity first)");
+				return;
+			}
+		} else {
+			// Try to parse as coordinates first
+			std::istringstream iss(trimmed);
+			if (iss >> x >> y >> z) {
+				found_destination = true;
+			} else {
+				// Try to find entity by name
+				Entity* entity = FindEntityByName(trimmed);
+				if (entity) {
+					x = entity->x;
+					y = entity->y;
+					z = entity->z;
+					found_destination = true;
+					AddChatSystemMessage(fmt::format("Warping to entity: {}", entity->name));
+				} else {
+					AddChatSystemMessage(fmt::format("Entity '{}' not found", trimmed));
+					return;
+				}
+			}
+		}
+
+		if (found_destination) {
+			// Instantly set position
+			m_x = x;
+			m_y = y;
+			m_z = z;
+
+			// Update our entity in the entity list
+			auto it = m_entities.find(m_my_spawn_id);
+			if (it != m_entities.end()) {
+				it->second.x = x;
+				it->second.y = y;
+				it->second.z = z;
+			}
+
+			// Send position update to server
+			SendPositionUpdate();
+
+#ifdef EQT_HAS_GRAPHICS
+			// Update graphics position
+			if (m_renderer) {
+				m_renderer->setPlayerPosition(x, y, z, m_heading);
+			}
+#endif
+
+			AddChatSystemMessage(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+		}
+	};
+	m_command_registry->registerCommand(warp);
 
 	Command follow;
 	follow.name = "follow";
@@ -10075,19 +10176,9 @@ void EverQuest::CleanupZone()
 	m_follow_target.clear();
 	m_in_combat_movement = false;
 
-	// Clear entity map (keep only self for now - will be re-populated by new zone)
-	uint16_t my_id = m_my_spawn_id;
-	Entity my_entity;
-	bool have_self = false;
-	auto it = m_entities.find(my_id);
-	if (it != m_entities.end()) {
-		my_entity = it->second;
-		have_self = true;
-	}
+	// Clear entity map completely - server will re-send all entity data for the new zone
+	// (including the player with a fresh spawn_id)
 	m_entities.clear();
-	if (have_self) {
-		m_entities[my_id] = my_entity;
-	}
 
 	// Clear door data
 	m_doors.clear();
@@ -10488,13 +10579,14 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	} else {
 		LOG_DEBUG(MOD_MAP, "LoadZoneLines: No EQ client path set, zone lines from WLD unavailable");
 	}
+
+	// NOTE: Zone line visualization boxes are sent to the renderer in OnZoneLoadedGraphics()
+	// AFTER loadZone() completes. If done here, the boxes get cleared when loadZone()
+	// calls unloadZone() internally.
 }
 
 void EverQuest::CheckZoneLine()
 {
-	// TODO: Automatic zoning disabled - needs fixing
-	return;
-
 	// Skip if not fully zoned in or no zone lines loaded
 	if (!IsFullyZonedIn() || !m_zone_lines || !m_zone_lines->hasZoneLines()) {
 #ifdef EQT_HAS_GRAPHICS
@@ -10550,18 +10642,27 @@ void EverQuest::CheckZoneLine()
 	}
 
 	// Check if currently in a zone line region
-	// BSP tree uses (server_y, server_x, server_z) based on testing with bsp_region_finder
+	// The extracted zone lines use BSP coordinates which need to be checked against player position
 	// m_x = server_y, m_y = server_x (from spawn struct)
-	// Zone lines at BSP x >= 1400 correspond to high server_y (north direction)
-	float bsp_x = m_x;   // server_y (north/south)
-	float bsp_y = m_y;   // server_x (east/west)
-	float bsp_z = m_z;
-	EQT::ZoneLineResult result = m_zone_lines->checkPosition(bsp_x, bsp_y, bsp_z, bsp_x, bsp_y, bsp_z);
+	// Testing with player position directly (coordinates may need adjustment based on zone)
+	float check_x = m_x;
+	float check_y = m_y;
+	float check_z = m_z;
+
+	// Debug: log position being checked
+	static int posLogCount = 0;
+	posLogCount++;
+	if (posLogCount % 100 == 1) {
+		LOG_DEBUG(MOD_ZONE, "CheckZoneLine: m_x={:.1f} m_y={:.1f} m_z={:.1f} (server: x={:.1f} y={:.1f})",
+			m_x, m_y, m_z, m_y, m_x);
+	}
+
+	EQT::ZoneLineResult result = m_zone_lines->checkPosition(check_x, check_y, check_z, check_x, check_y, check_z);
 
 	// Debug output for every position check (throttled)
 	if (checkCount % 50 == 0) {
-		LOG_TRACE(MOD_ZONE, "Zone line check: bsp=({:.1f}, {:.1f}, {:.1f}) server=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
-			bsp_x, bsp_y, bsp_z, m_y, m_x, m_z, result.isZoneLine ? "YES" : "no");
+		LOG_TRACE(MOD_ZONE, "Zone line check: check=({:.1f}, {:.1f}, {:.1f}) m_pos=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
+			check_x, check_y, check_z, m_x, m_y, m_z, result.isZoneLine ? "YES" : "no");
 	}
 
 	if (result.isZoneLine) {
@@ -10575,6 +10676,11 @@ void EverQuest::CheckZoneLine()
 			m_renderer->setZoneLineDebug(true, result.targetZoneId, debugText);
 		}
 #endif
+
+		// Skip actual zone trigger if zoning is disabled (visual indicator still shows)
+		if (!m_zoning_enabled) {
+			return;
+		}
 
 		// Debounce: require 500ms cooldown after a trigger before allowing another
 		if (m_zone_line_triggered) {
@@ -12519,6 +12625,12 @@ bool EverQuest::InitGraphics(int width, int height) {
 		ZoneSendChannelMessage(message, CHAT_CHANNEL_SAY, "");
 	});
 
+	// Set up zoning enabled callback (Z key toggles zone line visualization and zoning)
+	m_renderer->setZoningEnabledCallback([this](bool enabled) {
+		SetZoningEnabled(enabled);
+		LOG_INFO(MOD_ZONE, "Zoning {}", enabled ? "enabled" : "disabled");
+	});
+
 	// Set up vendor toggle callback (V key in Player Mode)
 	m_renderer->setVendorToggleCallback([this]() {
 		// If vendor window is open, close it
@@ -13204,6 +13316,23 @@ void EverQuest::OnZoneLoadedGraphics() {
 			LOG_TRACE(MOD_GRAPHICS, "Collision map set for Player Mode");
 		}
 
+		// Expand zone line trigger boxes to fill passages using collision detection
+		// This must be done BEFORE sending boxes to renderer, and requires the zone map
+		if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map) {
+			m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
+		}
+
+		// Send zone line bounding boxes to renderer for visualization
+		// NOTE: This must be done AFTER loadZone() completes because loadZone()
+		// calls unloadZone() which clears any existing boxes
+		if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+			auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
+			if (!boxes.empty()) {
+				m_renderer->setZoneLineBoundingBoxes(boxes);
+				LOG_DEBUG(MOD_GRAPHICS, "Sent {} zone line boxes to renderer after zone load", boxes.size());
+			}
+		}
+
 		// Set camera mode based on renderer mode
 		if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Player) {
 			// Player mode: use Follow camera (third-person behind player)
@@ -13218,8 +13347,17 @@ void EverQuest::OnZoneLoadedGraphics() {
 		// Note: Server Z is the middle of the character model, not ground level.
 		// The renderer should adjust model positioning internally - don't sync Z back.
 
-		// Create entities for all current spawns
+		// Create entities for all current spawns EXCEPT our own player
+		// The player entity will be created later in ZoneProcessGuildMOTD after
+		// all player data (inventory, appearance, etc.) has been received
 		for (const auto& [spawn_id, entity] : m_entities) {
+			// Skip our own player - will be created after fully connected
+			if (entity.name == m_character) {
+				LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) in OnZoneLoadedGraphics - will create after fully connected",
+				          spawn_id, entity.name);
+				continue;
+			}
+
 			// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 			bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 			bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
@@ -13246,12 +13384,7 @@ void EverQuest::OnZoneLoadedGraphics() {
 
 			m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
 			                         entity.x, entity.y, entity.z, entity.heading,
-			                         spawn_id == m_my_spawn_id, entity.gender, appearance, isNPC, isCorpse);
-
-			// If this is our player, also update the inventory model view
-			if (spawn_id == m_my_spawn_id) {
-				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-			}
+			                         false, entity.gender, appearance, isNPC, isCorpse);
 		}
 
 		// Recreate doors from stored data (they were cleared during zone load)
@@ -13281,6 +13414,14 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		return;
 	}
 
+	// Skip our own player - will be created in ZoneProcessGuildMOTD after fully connected
+	// This ensures all player data (inventory, appearance, etc.) has been received first
+	if (entity.name == m_character) {
+		LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) in OnSpawnAddedGraphics - will create after fully connected",
+		          entity.spawn_id, entity.name);
+		return;
+	}
+
 	// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 	bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 	bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
@@ -13307,7 +13448,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 
 	m_renderer->createEntity(entity.spawn_id, entity.race_id, entity.name,
 	                         entity.x, entity.y, entity.z, entity.heading,
-	                         entity.spawn_id == m_my_spawn_id, entity.gender, appearance, isNPC, isCorpse);
+	                         false, entity.gender, appearance, isNPC, isCorpse);
 
 	// Set initial pose state from spawn animation value
 	// The animation field in spawn data may indicate sitting/standing/etc.

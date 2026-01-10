@@ -442,6 +442,46 @@ IF(EQT_GRAPHICS)
         ${ZLIB_LIBRARIES}
         fmt::fmt
     )
+
+    # Zone Line Extraction tool (for extracting zone line bounding boxes to JSON)
+    ADD_EXECUTABLE(extract_zone_lines
+        tools/extract_zone_lines.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(extract_zone_lines PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(extract_zone_lines
+        ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
+
+    # BSP Coordinate Finder tool (for diagnosing BSP coordinate systems)
+    ADD_EXECUTABLE(bsp_coordinate_finder
+        tools/bsp_coordinate_finder.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(bsp_coordinate_finder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(bsp_coordinate_finder
+        ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
 ENDIF()
 
 # Install
