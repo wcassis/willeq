@@ -286,6 +286,13 @@ void WindowManager::collectWindowPositions() {
         settings.trade().window.visible = tradeWindow_->isOpen();
     }
 
+    // Skill trainer window
+    if (skillTrainerWindow_) {
+        settings.skillTrainer().window.x = skillTrainerWindow_->getX();
+        settings.skillTrainer().window.y = skillTrainerWindow_->getY();
+        settings.skillTrainer().window.visible = skillTrainerWindow_->isOpen();
+    }
+
     LOG_DEBUG(MOD_UI, "Collected window positions for saving");
 }
 
@@ -384,6 +391,16 @@ void WindowManager::applyWindowPositions() {
         int x = UISettings::resolvePosition(settings.trade().window.x, screenWidth_, defaultX);
         int y = UISettings::resolvePosition(settings.trade().window.y, screenHeight_, defaultY);
         tradeWindow_->setPosition(x, y);
+    }
+
+    // Skill trainer window
+    if (skillTrainerWindow_) {
+        // Default position is centered
+        int defaultX = (screenWidth_ - skillTrainerWindow_->getWidth()) / 2;
+        int defaultY = (screenHeight_ - skillTrainerWindow_->getHeight()) / 2;
+        int x = UISettings::resolvePosition(settings.skillTrainer().window.x, screenWidth_, defaultX);
+        int y = UISettings::resolvePosition(settings.skillTrainer().window.y, screenHeight_, defaultY);
+        skillTrainerWindow_->setPosition(x, y);
     }
 
     LOG_DEBUG(MOD_UI, "Applied window positions from UISettings");
@@ -1145,6 +1162,13 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
     // Check note window
     if (noteWindow_ && noteWindow_->isVisible()) {
         if (noteWindow_->handleMouseDown(x, y, leftButton, shift)) {
@@ -1328,6 +1352,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         }
     }
 
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
     // Check note window
     if (noteWindow_ && noteWindow_->isVisible()) {
         if (noteWindow_->handleMouseUp(x, y, leftButton)) {
@@ -1473,6 +1504,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
         // Don't return true - allow other windows to update their hover state
     }
 
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        skillTrainerWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
     // Check note window
     if (noteWindow_ && noteWindow_->isVisible()) {
         noteWindow_->handleMouseMove(x, y);
@@ -1603,6 +1640,7 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
         if (buffWindow_) buffWindow_->setHovered(false);
         if (groupWindow_) groupWindow_->setHovered(false);
         if (skillsWindow_) skillsWindow_->setHovered(false);
+        if (skillTrainerWindow_) skillTrainerWindow_->setHovered(false);
         if (spellBookWindow_) spellBookWindow_->setHovered(false);
         if (hotbarWindow_) hotbarWindow_->setHovered(false);
         if (playerStatusWindow_) playerStatusWindow_->setHovered(false);
@@ -1634,6 +1672,9 @@ void WindowManager::updateWindowHoverStates(int x, int y) {
     }
     if (skillsWindow_) {
         skillsWindow_->setHovered(skillsWindow_->isVisible() && skillsWindow_->containsPoint(x, y));
+    }
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setHovered(skillTrainerWindow_->isVisible() && skillTrainerWindow_->containsPoint(x, y));
     }
     if (spellBookWindow_) {
         spellBookWindow_->setHovered(spellBookWindow_->isVisible() && spellBookWindow_->containsPoint(x, y));
@@ -1676,6 +1717,13 @@ bool WindowManager::handleMouseWheel(float delta) {
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         if (skillsWindow_->containsPoint(mouseX_, mouseY_)) {
             return skillsWindow_->handleMouseWheel(delta);
+        }
+    }
+
+    // Route mouse wheel to skill trainer window if visible and mouse is over it
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->containsPoint(mouseX_, mouseY_)) {
+            return skillTrainerWindow_->handleMouseWheel(delta);
         }
     }
 
@@ -1767,6 +1815,11 @@ void WindowManager::render() {
     // Render skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         skillsWindow_->render(driver_, gui_);
+    }
+
+    // Render skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        skillTrainerWindow_->render(driver_, gui_);
     }
 
     // Render player status window (upper left)
@@ -3353,6 +3406,98 @@ void WindowManager::setHotbarCreateCallback(HotbarCreateCallback callback) {
     hotbarCreateCallback_ = callback;
     if (skillsWindow_) {
         skillsWindow_->setHotbarCallback(callback);
+    }
+}
+
+// ============================================================================
+// Skill Trainer Window Management
+// ============================================================================
+
+void WindowManager::initSkillTrainerWindow() {
+    skillTrainerWindow_ = std::make_unique<SkillTrainerWindow>();
+    skillTrainerWindow_->setSettingsKey("skill_trainer");
+
+    // Apply saved position from settings, or use default
+    const auto& settings = UISettings::instance().skillTrainer();
+    if (settings.window.x >= 0 && settings.window.y >= 0) {
+        skillTrainerWindow_->setPosition(settings.window.x, settings.window.y);
+    } else {
+        skillTrainerWindow_->positionDefault(screenWidth_, screenHeight_);
+    }
+
+    // Set up callbacks
+    if (skillTrainCallback_) {
+        skillTrainerWindow_->setTrainCallback(skillTrainCallback_);
+    }
+    if (trainerCloseCallback_) {
+        skillTrainerWindow_->setCloseCallback(trainerCloseCallback_);
+    }
+
+    LOG_DEBUG(MOD_UI, "Skill trainer window initialized");
+}
+
+void WindowManager::openSkillTrainerWindow(uint32_t trainerId, const std::wstring& trainerName,
+                                           const std::vector<TrainerSkillEntry>& skills) {
+    if (!skillTrainerWindow_) {
+        initSkillTrainerWindow();
+    }
+
+    // Update money display
+    skillTrainerWindow_->setPlayerMoney(basePlatinum_, baseGold_, baseSilver_, baseCopper_);
+
+    // Open with trainer data
+    skillTrainerWindow_->open(trainerId, trainerName, skills);
+
+    LOG_DEBUG(MOD_UI, "Skill trainer window opened: trainerId={} skillCount={}",
+              trainerId, skills.size());
+}
+
+void WindowManager::closeSkillTrainerWindow() {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->hide();
+    }
+}
+
+bool WindowManager::isSkillTrainerWindowOpen() const {
+    return skillTrainerWindow_ && skillTrainerWindow_->isVisible();
+}
+
+void WindowManager::updateSkillTrainerSkill(uint8_t skillId, uint32_t newValue) {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->updateSkill(skillId, newValue);
+    }
+}
+
+void WindowManager::updateSkillTrainerMoney(uint32_t platinum, uint32_t gold,
+                                            uint32_t silver, uint32_t copper) {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setPlayerMoney(platinum, gold, silver, copper);
+    }
+}
+
+void WindowManager::updateSkillTrainerPracticePoints(uint32_t points) {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setPracticePoints(points);
+    }
+}
+
+void WindowManager::decrementSkillTrainerPracticePoints() {
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->decrementPracticePoints();
+    }
+}
+
+void WindowManager::setSkillTrainCallback(SkillTrainCallback callback) {
+    skillTrainCallback_ = callback;
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setTrainCallback(callback);
+    }
+}
+
+void WindowManager::setTrainerCloseCallback(TrainerCloseCallback callback) {
+    trainerCloseCallback_ = callback;
+    if (skillTrainerWindow_) {
+        skillTrainerWindow_->setCloseCallback(callback);
     }
 }
 

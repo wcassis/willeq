@@ -235,7 +235,12 @@ enum TitaniumZoneOpcodes {
 	HC_OP_ShopEndConfirm = 0x20b2,   // Server confirms vendor session ended
 	HC_OP_MoneyUpdate = 0x267c,      // Update player money after transaction
 	// Book/Note reading opcode
-	HC_OP_ReadBook = 0x1496          // Read note/book item text
+	HC_OP_ReadBook = 0x1496,         // Read note/book item text
+	// Skill training opcodes
+	HC_OP_GMTraining = 0x238f,           // Skill training initiation/data (bidirectional)
+	HC_OP_GMTrainSkill = 0x11d2,         // Request to train a specific skill (client -> server)
+	HC_OP_GMEndTraining = 0x613d,        // End training session (client -> server)
+	HC_OP_GMEndTrainingResponse = 0x0000 // Server ack for end training (unused in Titanium)
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -592,6 +597,7 @@ public:
 	uint32_t GetGold() const { return m_gold; }
 	uint32_t GetSilver() const { return m_silver; }
 	uint32_t GetCopper() const { return m_copper; }
+	uint32_t GetPracticePoints() const { return m_practice_points; }
 	float GetWeight() const { return m_weight; }
 	float GetMaxWeight() const { return m_max_weight; }
 
@@ -871,6 +877,9 @@ private:
 	uint32_t m_silver = 0;
 	uint32_t m_copper = 0;
 
+	// Training/Practice points
+	uint32_t m_practice_points = 0;
+
 	// Weight
 	float m_weight = 0.0f;
 	float m_max_weight = 0.0f;
@@ -1083,6 +1092,10 @@ private:
 	float m_vendor_sell_rate = 1.0f;  // Price multiplier for this vendor
 	std::string m_vendor_name;        // Vendor NPC name
 
+	// Player mode trainer state
+	uint16_t m_trainer_npc_id = 0;    // Trainer NPC being trained with (0 = not training)
+	std::string m_trainer_name;       // Trainer NPC name
+
 	// Graphics callbacks (OnZoneLoadedGraphics is public, others are private)
 	void OnSpawnAddedGraphics(const Entity& entity);
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
@@ -1109,6 +1122,10 @@ private:
 	void ZoneProcessVendorItemToUI(const EQ::Net::Packet& p);
 	void ZoneProcessMoneyUpdate(const EQ::Net::Packet& p);
 	void SetupVendorCallbacks();
+
+	// Skill trainer packet handlers and send functions
+	void ZoneProcessGMTraining(const EQ::Net::Packet& p);
+	void SetupTrainerCallbacks();
 
 	// Trade packet handlers and send functions
 	void SetupTradeManagerCallbacks();
@@ -1146,6 +1163,13 @@ public:
 	void CloseVendorWindow();
 	bool IsVendorWindowOpen() const { return m_vendor_npc_id != 0; }
 	uint16_t GetVendorNpcId() const { return m_vendor_npc_id; }
+
+	// Skill trainer window methods (Player mode with graphics)
+	void RequestTrainerWindow(uint16_t npcId);
+	void TrainSkill(uint8_t skillId);
+	void CloseTrainerWindow();
+	bool IsTrainerWindowOpen() const { return m_trainer_npc_id != 0; }
+	uint16_t GetTrainerNpcId() const { return m_trainer_npc_id; }
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);

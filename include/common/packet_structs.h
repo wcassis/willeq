@@ -1055,6 +1055,45 @@ struct BookText_Struct {
     char booktext[1];          // Variable length - text content (use '^' for newlines)
 };
 
+/*
+ * Skill Training packet structures
+ * Used for GM/class trainer skill training
+ */
+
+// OP_GMTraining - Skill training request/response (bidirectional)
+// Client sends to request training window, server responds with skill caps
+// Size: 448 bytes
+struct GMTrainee_Struct {
+/*0000*/ uint32_t npcid;                   // Trainer NPC entity ID
+/*0004*/ uint32_t playerid;                // Player entity ID
+/*0008*/ uint32_t skills[MAX_PP_SKILL];    // Array of max trainable skill values (100 skills)
+/*0408*/ uint8_t  unknown408[40];          // Unknown padding/data
+/*0448*/
+};
+static_assert(sizeof(GMTrainee_Struct) == 448, "GMTrainee_Struct must be 448 bytes");
+
+// OP_GMEndTraining - End training session (client -> server)
+// Size: 8 bytes
+struct GMTrainEnd_Struct {
+/*0000*/ uint32_t npcid;                   // Trainer NPC entity ID
+/*0004*/ uint32_t playerid;                // Player entity ID
+/*0008*/
+};
+static_assert(sizeof(GMTrainEnd_Struct) == 8, "GMTrainEnd_Struct must be 8 bytes");
+
+// OP_GMTrainSkill - Request to train a specific skill (client -> server)
+// Size: 12 bytes
+struct GMSkillChange_Struct {
+/*0000*/ uint16_t npcid;                   // Trainer NPC entity ID (truncated to 16-bit)
+/*0002*/ uint8_t  unknown1[2];             // Session identifier or padding
+/*0004*/ uint16_t skillbank;               // 0 = normal skills, 1 = languages
+/*0006*/ uint8_t  unknown2[2];             // Padding
+/*0008*/ uint16_t skill_id;                // Skill ID to train
+/*0010*/ uint8_t  unknown3[2];             // Padding
+/*0012*/
+};
+static_assert(sizeof(GMSkillChange_Struct) == 12, "GMSkillChange_Struct must be 12 bytes");
+
 #pragma pack(pop)
 
 // Helper functions for position bitfield extraction

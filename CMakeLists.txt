@@ -220,6 +220,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/hotbar_window.cpp
         src/client/graphics/ui/hotbar_cursor.cpp
         src/client/graphics/ui/skills_window.cpp
+        src/client/graphics/ui/skill_trainer_window.cpp
         src/client/graphics/ui/note_window.cpp
         src/client/graphics/ui/player_status_window.cpp
         src/client/graphics/ui/casting_bar.cpp

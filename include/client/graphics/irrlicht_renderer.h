@@ -190,6 +190,7 @@ public:
     bool doorInteractRequested() { bool r = doorInteractRequested_; doorInteractRequested_ = false; return r; }
     bool hailRequested() { bool r = hailRequested_; hailRequested_ = false; return r; }
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
+    bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
@@ -298,6 +299,7 @@ private:
     bool doorInteractRequested_ = false;
     bool hailRequested_ = false;
     bool vendorToggleRequested_ = false;
+    bool trainerToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
     int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
     int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
@@ -534,6 +536,10 @@ public:
     using VendorToggleCallback = std::function<void()>;
     void setVendorToggleCallback(VendorToggleCallback callback) { vendorToggleCallback_ = callback; }
 
+    // Trainer toggle callback (called when T key is pressed in Player Mode)
+    using TrainerToggleCallback = std::function<void()>;
+    void setTrainerToggleCallback(TrainerToggleCallback callback) { trainerToggleCallback_ = callback; }
+
     // Read item callback (called when right-clicking a readable book/note item)
     using ReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
     void setReadItemCallback(ReadItemCallback callback);
@@ -727,6 +733,7 @@ private:
     AutoAttackStatusCallback autoAttackStatusCallback_;
     HailCallback hailCallback_;
     VendorToggleCallback vendorToggleCallback_;
+    TrainerToggleCallback trainerToggleCallback_;
     ChatSubmitCallback chatSubmitCallback_;
     DoorInteractCallback doorInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
