@@ -8758,6 +8758,7 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 
 						// Handle different message types based on string_id
 						// string_id=467 with type=286 = Loot message (item link)
+						// string_id=339 = Tradeskill success (item created)
 						// string_id=1032 = NPC says
 						// string_id=1034 = NPC shouts
 						if (string_id == 467) {
@@ -8765,6 +8766,17 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 							chatMsg.channel = eqt::ui::ChatChannel::Loot;
 							chatMsg.sender = "";
 							chatMsg.text = "You have looted " + parsed.displayText;
+							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
+								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
+							chatWindow->addMessage(chatMsg);
+							return;
+						}
+
+						if (string_id == 339) {
+							// Tradeskill success message - item name is in displayText
+							chatMsg.channel = eqt::ui::ChatChannel::System;
+							chatMsg.sender = "";
+							chatMsg.text = "You create a " + parsed.displayText + "!";
 							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
 								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
 							chatWindow->addMessage(chatMsg);
