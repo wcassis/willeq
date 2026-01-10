@@ -352,6 +352,15 @@ public:
     };
 
     // =========================================================================
+    // Skill Trainer Window Settings
+    // =========================================================================
+    struct SkillTrainerSettings {
+        WindowSettings window;
+
+        SkillTrainerSettings();
+    };
+
+    // =========================================================================
     // Casting Bar Settings
     // =========================================================================
     struct CastingBarSettings {
@@ -505,6 +514,9 @@ public:
     BankSettings& bank() { return m_bank; }
     const BankSettings& bank() const { return m_bank; }
 
+    SkillTrainerSettings& skillTrainer() { return m_skillTrainer; }
+    const SkillTrainerSettings& skillTrainer() const { return m_skillTrainer; }
+
     CastingBarSettings& castingBar() { return m_castingBar; }
     const CastingBarSettings& castingBar() const { return m_castingBar; }
 
@@ -574,6 +586,9 @@ private:
     void loadBankSettings(const Json::Value& json);
     void saveBankSettings(Json::Value& json) const;
 
+    void loadSkillTrainerSettings(const Json::Value& json);
+    void saveSkillTrainerSettings(Json::Value& json) const;
+
     void loadCastingBarSettings(const Json::Value& json);
     void saveCastingBarSettings(Json::Value& json) const;
 
@@ -613,6 +628,7 @@ private:
     HotbarSettings m_hotbar;
     TradeSettings m_trade;
     BankSettings m_bank;
+    SkillTrainerSettings m_skillTrainer;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;
     BuffTooltipSettings m_buffTooltip;

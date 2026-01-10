@@ -212,6 +212,9 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_ShopEnd: return "HC_OP_ShopEnd";
 		case HC_OP_ShopEndConfirm: return "HC_OP_ShopEndConfirm";
 		case HC_OP_MoneyUpdate: return "HC_OP_MoneyUpdate";
+		case HC_OP_GMTraining: return "HC_OP_GMTraining";
+		case HC_OP_GMTrainSkill: return "HC_OP_GMTrainSkill";
+		case HC_OP_GMEndTraining: return "HC_OP_GMEndTraining";
 		default: return fmt::format("OP_Unknown_{:#06x}", opcode);
 	}
 }
@@ -1819,6 +1822,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_MoneyUpdate:
 		ZoneProcessMoneyUpdate(p);
 		break;
+	case HC_OP_GMTraining:
+		ZoneProcessGMTraining(p);
+		break;
 #endif
 	case 0x61f9: // OP_TargetCommand response
 		// Server may reject our target
@@ -1858,17 +1864,32 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_SkillUpdate:
 		// Skill level update
-		if (p.Length() >= 7) {
-			uint8_t skill_id = p.GetUInt8(2);
-			uint32_t value = p.GetUInt32(3);
+		// SkillUpdate_Struct: skillId (uint32) + value (uint32) = 8 bytes + 2 byte header
+		if (p.Length() >= 10) {
+			uint32_t skill_id_32 = p.GetUInt32(2);  // 4-byte skillId at offset 2
+			uint32_t value = p.GetUInt32(6);        // 4-byte value at offset 6
+			uint8_t skill_id = static_cast<uint8_t>(skill_id_32);  // Cast to uint8_t for skill manager
 
 			// Update skill manager
 			if (m_skill_manager) {
 				m_skill_manager->updateSkill(skill_id, value);
 			}
 
+#ifdef EQT_HAS_GRAPHICS
+			// Update trainer window if open
+			if (m_renderer && m_renderer->getWindowManager() &&
+				m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
+				m_renderer->getWindowManager()->updateSkillTrainerSkill(skill_id, value);
+				// Decrement practice points since training succeeded
+				m_renderer->getWindowManager()->decrementSkillTrainerPracticePoints();
+				if (m_practice_points > 0) {
+					--m_practice_points;
+				}
+			}
+#endif
+
 			if (s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", skill_id, value);
+				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
 			}
 		}
 		break;
@@ -2555,6 +2576,9 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	uint32_t AGI = p.GetUInt32(base + 2256);     // offset 2256
 	uint32_t WIS = p.GetUInt32(base + 2260);     // offset 2260
 
+	// Practice points (unspent training points)
+	uint32_t practice_points = p.GetUInt32(base + 2224);  // offset 2224
+
 	// Currency - player's on-person money
 	uint32_t platinum = p.GetUInt32(base + 4428);  // offset 4428
 	uint32_t gold = p.GetUInt32(base + 4432);      // offset 4432
@@ -2647,6 +2671,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_bank_gold = bank_gold;
 	m_bank_silver = bank_silver;
 	m_bank_copper = bank_copper;
+	m_practice_points = practice_points;
 	m_last_name = last_name;
 
 	// Initialize skill manager with player info first
@@ -2724,6 +2749,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			STR, STA, CHA, DEX, INT, AGI, WIS);
 		LOG_DEBUG(MOD_MAIN, "Currency: {}pp {}gp {}sp {}cp", platinum, gold, silver, copper);
 		LOG_DEBUG(MOD_MAIN, "Bank Currency: {}pp {}gp {}sp {}cp", bank_platinum, bank_gold, bank_silver, bank_copper);
+		LOG_DEBUG(MOD_MAIN, "Practice points (training sessions): {}", practice_points);
 		LOG_DEBUG(MOD_MAIN, "Entity ID: {} (from offset 14384)", entity_id);
 		LOG_DEBUG(MOD_MAIN, "===========================");
 	}
@@ -4183,6 +4209,12 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 				static_cast<int32_t>(m_silver),
 				static_cast<int32_t>(m_copper));
 		}
+
+		// Update trainer window money display
+		if (m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
+			m_renderer->getWindowManager()->updateSkillTrainerMoney(
+				m_platinum, m_gold, m_silver, m_copper);
+		}
 	}
 #endif
 }
@@ -4391,6 +4423,191 @@ void EverQuest::CloseBankWindow()
 	m_banker_npc_id = 0;
 
 	AddChatSystemMessage("Bank window closed");
+}
+// ============================================================================
+// Skill Trainer Window Methods
+// ============================================================================
+
+void EverQuest::SetupTrainerCallbacks()
+{
+	if (!m_renderer || !m_renderer->getWindowManager()) {
+		return;
+	}
+
+	auto* windowManager = m_renderer->getWindowManager();
+
+	// Set callback for when player clicks Train button
+	windowManager->setSkillTrainCallback([this](uint8_t skillId) {
+		TrainSkill(skillId);
+	});
+
+	// Set callback for when player closes the trainer window
+	windowManager->setTrainerCloseCallback([this]() {
+		CloseTrainerWindow();
+	});
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Trainer callbacks set up");
+	}
+}
+
+void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
+{
+	// Server response to our training request
+	// GMTrainee_Struct: npcid(4), playerid(4), skills[100](400), unknown408[40](40) = 448 bytes
+	if (p.Length() < sizeof(EQT::GMTrainee_Struct) + 2) {
+		LOG_WARN(MOD_MAIN, "GMTraining packet too short: {} bytes", p.Length());
+		return;
+	}
+
+	const auto* trainee = reinterpret_cast<const EQT::GMTrainee_Struct*>(
+		static_cast<const char*>(p.Data()) + 2);
+
+	uint32_t npc_id = trainee->npcid;
+	uint32_t player_id = trainee->playerid;
+
+	LOG_DEBUG(MOD_MAIN, "GMTraining response: npc_id={} player_id={}", npc_id, player_id);
+
+	// Store trainer state
+	m_trainer_npc_id = static_cast<uint16_t>(npc_id);
+
+	// Get trainer name from entity if available
+	auto it = m_entities.find(m_trainer_npc_id);
+	if (it != m_entities.end()) {
+		m_trainer_name = EQT::toDisplayName(it->second.name);
+	} else {
+		m_trainer_name = "Trainer";
+	}
+
+	// Build list of trainable skills
+	std::vector<eqt::ui::TrainerSkillEntry> skillEntries;
+
+	for (uint8_t skill_id = 0; skill_id < EQT::MAX_PP_SKILL; ++skill_id) {
+		uint32_t max_trainable = trainee->skills[skill_id];
+
+		// Skip skills with max_trainable = 0 (not trainable at this trainer)
+		if (max_trainable == 0) {
+			continue;
+		}
+
+		// Get current skill value
+		uint32_t current_value = 0;
+		if (m_skill_manager) {
+			current_value = m_skill_manager->getSkillValue(skill_id);
+		}
+
+		// Skip skills already at or above max
+		if (current_value >= max_trainable) {
+			continue;
+		}
+
+		// Get skill name
+		const char* skill_name = EQ::getSkillName(skill_id);
+		std::wstring name_wstr(skill_name, skill_name + strlen(skill_name));
+
+		// Calculate training cost
+		// EQ training cost formula: (current_value + 1) * 10 copper per point
+		// For simplicity, we'll use the cost for training one point
+		uint32_t cost = (current_value + 1) * 10;
+
+		eqt::ui::TrainerSkillEntry entry;
+		entry.skill_id = skill_id;
+		entry.name = name_wstr;
+		entry.current_value = current_value;
+		entry.max_trainable = max_trainable;
+		entry.cost = cost;
+
+		skillEntries.push_back(entry);
+
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "  Skill {}: {} cur={} max={} cost={}",
+				skill_id, skill_name, current_value, max_trainable, cost);
+		}
+	}
+
+	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={}) with {} trainable skills",
+		m_trainer_name, m_trainer_npc_id, skillEntries.size());
+
+	// Open the trainer window
+	if (m_renderer && m_renderer->getWindowManager()) {
+		std::wstring trainer_name_wstr(m_trainer_name.begin(), m_trainer_name.end());
+		m_renderer->getWindowManager()->openSkillTrainerWindow(
+			m_trainer_npc_id, trainer_name_wstr, skillEntries);
+
+		// Update player money in trainer window
+		m_renderer->getWindowManager()->updateSkillTrainerMoney(
+			GetPlatinum(), GetGold(), GetSilver(), GetCopper());
+
+		// Update practice points (free training sessions)
+		m_renderer->getWindowManager()->updateSkillTrainerPracticePoints(
+			GetPracticePoints());
+	}
+}
+
+void EverQuest::RequestTrainerWindow(uint16_t npcId)
+{
+	if (m_trainer_npc_id != 0) {
+		LOG_DEBUG(MOD_MAIN, "Already in trainer session with NPC {}", m_trainer_npc_id);
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Requesting trainer window for NPC {}", npcId);
+
+	// Send GMTrainee_Struct
+	EQ::Net::DynamicPacket pkt;
+	EQT::GMTrainee_Struct req;
+	memset(&req, 0, sizeof(req));
+	req.npcid = npcId;
+	req.playerid = m_my_spawn_id;
+	pkt.PutData(0, &req, sizeof(req));
+	QueuePacket(HC_OP_GMTraining, &pkt);
+}
+
+void EverQuest::TrainSkill(uint8_t skillId)
+{
+	if (m_trainer_npc_id == 0) {
+		LOG_WARN(MOD_MAIN, "TrainSkill: Not in trainer session");
+		AddChatSystemMessage("You are not interacting with a trainer.");
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Training skill {} with trainer {}", skillId, m_trainer_npc_id);
+
+	// Send GMSkillChange_Struct
+	EQ::Net::DynamicPacket pkt;
+	EQT::GMSkillChange_Struct train;
+	memset(&train, 0, sizeof(train));
+	train.npcid = static_cast<uint16_t>(m_trainer_npc_id);
+	train.skillbank = 0;  // 0 = normal skills, 1 = languages
+	train.skill_id = skillId;
+	pkt.PutData(0, &train, sizeof(train));
+	QueuePacket(HC_OP_GMTrainSkill, &pkt);
+}
+
+void EverQuest::CloseTrainerWindow()
+{
+	if (m_trainer_npc_id == 0) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Closing trainer window for NPC {}", m_trainer_npc_id);
+
+	// Send GMTrainEnd_Struct
+	EQ::Net::DynamicPacket pkt;
+	EQT::GMTrainEnd_Struct end;
+	end.npcid = m_trainer_npc_id;
+	end.playerid = m_my_spawn_id;
+	pkt.PutData(0, &end, sizeof(end));
+	QueuePacket(HC_OP_GMEndTraining, &pkt);
+
+	// Close the UI immediately (don't wait for server confirmation)
+	if (m_renderer && m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->closeSkillTrainerWindow();
+	}
+
+	// Clear trainer state
+	m_trainer_npc_id = 0;
+	m_trainer_name.clear();
 }
 #endif
 
@@ -7192,6 +7409,52 @@ void EverQuest::RegisterCommands()
 #endif
 	};
 	m_command_registry->registerCommand(bank);
+
+	Command train;
+	train.name = "train";
+	train.usage = "/train";
+	train.description = "Open trainer window with current target";
+	train.category = "Skills";
+	train.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		// Check if we have a target
+		uint16_t target_id = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+		if (target_id == 0) {
+			AddChatSystemMessage("You must have a trainer targeted.");
+			return;
+		}
+
+		// Check if target exists
+		auto it = m_entities.find(target_id);
+		if (it == m_entities.end()) {
+			AddChatSystemMessage("Target not found.");
+			return;
+		}
+
+		const Entity& target = it->second;
+
+		// Check if target is an NPC (not player, not corpse)
+		if (target.npc_type != 1) {
+			AddChatSystemMessage("That is not an NPC.");
+			return;
+		}
+
+		// Check if target is a guildmaster trainer (class 20-35)
+		// Reference: EQEmu classes.h - WarriorGM=20 through BerserkerGM=35
+		constexpr uint8_t CLASS_WARRIOR_GM = 20;
+		constexpr uint8_t CLASS_BERSERKER_GM = 35;
+		if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
+			AddChatSystemMessage("That is not a trainer.");
+			return;
+		}
+
+		// Request trainer window from server
+		RequestTrainerWindow(target_id);
+#else
+		AddChatSystemMessage("Training requires graphics mode.");
+#endif
+	};
+	m_command_registry->registerCommand(train);
 
 	Command gems;
 	gems.name = "gems";
@@ -12342,6 +12605,50 @@ bool EverQuest::InitGraphics(int width, int height) {
 		OpenBankWindow(npcId);
 	});
 
+	// Set up trainer toggle callback (T key in Player Mode)
+	m_renderer->setTrainerToggleCallback([this]() {
+		// If trainer window is open, close it
+		if (IsTrainerWindowOpen()) {
+			CloseTrainerWindow();
+			return;
+		}
+
+		// Check if we have a target
+		if (!m_combat_manager || !m_combat_manager->HasTarget()) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: No target selected");
+			return;
+		}
+
+		uint16_t target_id = m_combat_manager->GetTargetId();
+		auto it = m_entities.find(target_id);
+		if (it == m_entities.end()) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} not found in entities", target_id);
+			return;
+		}
+
+		const Entity& target = it->second;
+
+		// Check if target is an NPC (not player, not corpse)
+		if (target.npc_type != 1) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not an NPC (type={})", target.name, target.npc_type);
+			return;
+		}
+
+		// Check if target is a guildmaster trainer (class 20-35)
+		// Reference: EQEmu classes.h - WarriorGM=20 through BerserkerGM=35
+		constexpr uint8_t CLASS_WARRIOR_GM = 20;
+		constexpr uint8_t CLASS_BERSERKER_GM = 35;
+		if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
+			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not a trainer (class={})", target.name, target.class_id);
+			AddChatSystemMessage("That is not a trainer.");
+			return;
+		}
+
+		// Request trainer window from server
+		LOG_DEBUG(MOD_MAIN, "Trainer toggle: Requesting trainer {} (id={}, class={})", target.name, target_id, target.class_id);
+		RequestTrainerWindow(target_id);
+	});
+
 	// Set up door interaction callback (left-click on door or U key in Player Mode)
 	m_renderer->setDoorInteractCallback([this](uint8_t doorId) {
 		SendClickDoor(doorId);
@@ -12400,6 +12707,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// Set up bank window callbacks
 	SetupBankCallbacks();
+
+	// Set up trainer window callbacks
+	SetupTrainerCallbacks();
 
 	// Set up trade window callbacks
 	SetupTradeWindowCallbacks();

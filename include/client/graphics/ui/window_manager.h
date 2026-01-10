@@ -17,6 +17,7 @@
 #include "hotbar_window.h"
 #include "hotbar_cursor.h"
 #include "skills_window.h"
+#include "skill_trainer_window.h"
 #include "note_window.h"
 #include "casting_bar.h"
 #include "tradeskill_container_window.h"
@@ -273,6 +274,22 @@ public:
     void setSkillActivateCallback(SkillActivateCallback callback);
     void setHotbarCreateCallback(HotbarCreateCallback callback);
 
+    // Skill trainer window management
+    void initSkillTrainerWindow();
+    void openSkillTrainerWindow(uint32_t trainerId, const std::wstring& trainerName,
+                                const std::vector<TrainerSkillEntry>& skills);
+    void closeSkillTrainerWindow();
+    bool isSkillTrainerWindowOpen() const;
+    void updateSkillTrainerSkill(uint8_t skillId, uint32_t newValue);
+    void updateSkillTrainerMoney(uint32_t platinum, uint32_t gold,
+                                 uint32_t silver, uint32_t copper);
+    void updateSkillTrainerPracticePoints(uint32_t points);
+    void decrementSkillTrainerPracticePoints();
+    SkillTrainerWindow* getSkillTrainerWindow() { return skillTrainerWindow_.get(); }
+    const SkillTrainerWindow* getSkillTrainerWindow() const { return skillTrainerWindow_.get(); }
+    void setSkillTrainCallback(SkillTrainCallback callback);
+    void setTrainerCloseCallback(TrainerCloseCallback callback);
+
     // Note window management (for reading books/notes)
     void showNoteWindow(const std::string& text, uint8_t type);
     void closeNoteWindow();
@@ -494,6 +511,7 @@ private:
     std::unique_ptr<HotbarWindow> hotbarWindow_;
     HotbarCursor hotbarCursor_;
     std::unique_ptr<SkillsWindow> skillsWindow_;
+    std::unique_ptr<SkillTrainerWindow> skillTrainerWindow_;
     std::unique_ptr<NoteWindow> noteWindow_;
     std::unique_ptr<TradeskillContainerWindow> tradeskillWindow_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
@@ -555,6 +573,10 @@ private:
     // Skills window callbacks
     SkillActivateCallback skillActivateCallback_;
     HotbarCreateCallback hotbarCreateCallback_;
+
+    // Skill trainer window callbacks
+    SkillTrainCallback skillTrainCallback_;
+    TrainerCloseCallback trainerCloseCallback_;
 
     // Read item callback (for book/note reading)
     ReadItemCallback readItemCallback_;

@@ -243,7 +243,12 @@ enum TitaniumZoneOpcodes {
 	// Tradeskill/Object opcodes
 	HC_OP_ClickObject = 0x3bc2,          // Client->Server: click world object (forge, groundspawn, etc.)
 	HC_OP_ClickObjectAction = 0x6937,    // Server->Client: object action response (open tradeskill container)
-	HC_OP_TradeSkillCombine = 0x0b40     // Bidirectional: tradeskill combine request/result
+	HC_OP_TradeSkillCombine = 0x0b40,    // Bidirectional: tradeskill combine request/result
+	// Skill training opcodes
+	HC_OP_GMTraining = 0x238f,           // Skill training initiation/data (bidirectional)
+	HC_OP_GMTrainSkill = 0x11d2,         // Request to train a specific skill (client -> server)
+	HC_OP_GMEndTraining = 0x613d,        // End training session (client -> server)
+	HC_OP_GMEndTrainingResponse = 0x0000 // Server ack for end training (unused in Titanium)
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -618,6 +623,7 @@ public:
 	uint32_t GetBankGold() const { return m_bank_gold; }
 	uint32_t GetBankSilver() const { return m_bank_silver; }
 	uint32_t GetBankCopper() const { return m_bank_copper; }
+	uint32_t GetPracticePoints() const { return m_practice_points; }
 	float GetWeight() const { return m_weight; }
 	float GetMaxWeight() const { return m_max_weight; }
 
@@ -910,6 +916,9 @@ private:
 	uint32_t m_bank_silver = 0;
 	uint32_t m_bank_copper = 0;
 
+	// Training/Practice points
+	uint32_t m_practice_points = 0;
+
 	// Weight
 	float m_weight = 0.0f;
 	float m_max_weight = 0.0f;
@@ -1130,6 +1139,10 @@ private:
 	// Player mode bank state
 	uint16_t m_banker_npc_id = 0;     // Banker NPC being interacted with (0 = bank closed)
 
+	// Player mode trainer state
+	uint16_t m_trainer_npc_id = 0;    // Trainer NPC being trained with (0 = not training)
+	std::string m_trainer_name;       // Trainer NPC name
+
 	// Graphics callbacks (OnZoneLoadedGraphics is public, others are private)
 	void OnSpawnAddedGraphics(const Entity& entity);
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
@@ -1160,6 +1173,10 @@ private:
 	void ZoneProcessMoneyUpdate(const EQ::Net::Packet& p);
 	void SetupVendorCallbacks();
 	void SetupBankCallbacks();
+
+	// Skill trainer packet handlers and send functions
+	void ZoneProcessGMTraining(const EQ::Net::Packet& p);
+	void SetupTrainerCallbacks();
 
 	// Trade packet handlers and send functions
 	void SetupTradeManagerCallbacks();
@@ -1206,6 +1223,13 @@ public:
 	void CloseBankWindow();
 	bool IsBankWindowOpen() const { return m_banker_npc_id != 0; }
 	uint16_t GetBankerNpcId() const { return m_banker_npc_id; }
+
+	// Skill trainer window methods (Player mode with graphics)
+	void RequestTrainerWindow(uint16_t npcId);
+	void TrainSkill(uint8_t skillId);
+	void CloseTrainerWindow();
+	bool IsTrainerWindowOpen() const { return m_trainer_npc_id != 0; }
+	uint16_t GetTrainerNpcId() const { return m_trainer_npc_id; }
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);

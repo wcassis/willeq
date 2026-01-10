@@ -98,6 +98,13 @@ UISettings::BankSettings::BankSettings() {
     window.showTitleBar = true;
 }
 
+UISettings::SkillTrainerSettings::SkillTrainerSettings() {
+    window.x = -1;  // Centered by default
+    window.y = -1;
+    window.visible = false;
+    window.showTitleBar = true;
+}
+
 UISettings::CastingBarSettings::CastingBarSettings() {
     playerBar.x = -1;  // Centered
     playerBar.y = -1;  // Above chat
@@ -192,6 +199,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("bank")) {
             loadBankSettings(windows["bank"]);
         }
+        if (windows.isMember("skillTrainer")) {
+            loadSkillTrainerSettings(windows["skillTrainer"]);
+        }
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
         }
@@ -256,6 +266,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveSpellBookSettings(windows["spellbook"]);
     saveTradeSettings(windows["trade"]);
     saveBankSettings(windows["bank"]);
+    saveSkillTrainerSettings(windows["skillTrainer"]);
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
 
@@ -338,6 +349,9 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
         }
         if (windows.isMember("bank")) {
             loadBankSettings(windows["bank"]);
+        }
+        if (windows.isMember("skillTrainer")) {
+            loadSkillTrainerSettings(windows["skillTrainer"]);
         }
         if (windows.isMember("castingBar")) {
             loadCastingBarSettings(windows["castingBar"]);
@@ -1030,6 +1044,18 @@ void UISettings::saveBankSettings(Json::Value& json) const {
     layout["slotSpacing"] = m_bank.slotSpacing;
     layout["padding"] = m_bank.padding;
     json["layout"] = layout;
+}
+
+// ============================================================================
+// Skill Trainer Settings Serialization
+// ============================================================================
+
+void UISettings::loadSkillTrainerSettings(const Json::Value& json) {
+    loadWindowSettings(m_skillTrainer.window, json);
+}
+
+void UISettings::saveSkillTrainerSettings(Json::Value& json) const {
+    saveWindowSettings(m_skillTrainer.window, json);
 }
 
 // ============================================================================

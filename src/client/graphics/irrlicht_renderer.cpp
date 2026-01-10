@@ -116,6 +116,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 vendorToggleRequested_ = true;
             }
 
+            // Trainer window toggle on T key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_T && !event.KeyInput.Control) {
+                trainerToggleRequested_ = true;
+            }
+
             // Hotbar shortcuts (Ctrl+1-9 and Ctrl+0)
             if (event.KeyInput.Control && !event.KeyInput.Shift) {
                 if (event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_9) {
@@ -2241,6 +2246,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (eventReceiver_->vendorToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
         if (vendorToggleCallback_) {
             vendorToggleCallback_();
+        }
+    }
+
+    // Handle trainer toggle (T key) - only in Player mode, not when chat focused
+    if (eventReceiver_->trainerToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
+        if (trainerToggleCallback_) {
+            trainerToggleCallback_();
         }
     }
 
