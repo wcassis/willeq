@@ -23,6 +23,10 @@ class HCMap;
 class CombatManager;
 class TradeManager;
 
+namespace eqt {
+    struct WorldObject;
+}
+
 namespace EQ {
     class SpellManager;
     class BuffManager;
@@ -235,7 +239,11 @@ enum TitaniumZoneOpcodes {
 	HC_OP_ShopEndConfirm = 0x20b2,   // Server confirms vendor session ended
 	HC_OP_MoneyUpdate = 0x267c,      // Update player money after transaction
 	// Book/Note reading opcode
-	HC_OP_ReadBook = 0x1496          // Read note/book item text
+	HC_OP_ReadBook = 0x1496,         // Read note/book item text
+	// Tradeskill/Object opcodes
+	HC_OP_ClickObject = 0x3bc2,          // Client->Server: click world object (forge, groundspawn, etc.)
+	HC_OP_ClickObjectAction = 0x6937,    // Server->Client: object action response (open tradeskill container)
+	HC_OP_TradeSkillCombine = 0x0b40     // Bidirectional: tradeskill combine request/result
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -512,6 +520,15 @@ public:
 	void SendClickDoor(uint8_t door_id, uint32_t item_id = 0);
 	const std::map<uint8_t, Door>& GetDoors() const { return m_doors; }
 
+	// World object / Tradeskill interaction
+	void SendClickObject(uint32_t drop_id);
+	void SendTradeSkillCombine(int16_t container_slot);
+	void SendCloseContainer(uint32_t drop_id);
+	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
+	const eqt::WorldObject* GetWorldObject(uint32_t drop_id) const;
+	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
+	void ClearWorldObjects();
+
 	// Group queries
 	bool IsInGroup() const { return m_in_group; }
 	bool IsGroupLeader() const { return m_is_group_leader; }
@@ -761,6 +778,8 @@ private:
 	void ZoneProcessSendGuildTributes(const EQ::Net::Packet &p);
 	void ZoneProcessSpawnDoor(const EQ::Net::Packet &p);
 	void ZoneProcessGroundSpawn(const EQ::Net::Packet &p);
+	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
+	void ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p);
 	void ZoneProcessSendZonepoints(const EQ::Net::Packet &p);
 	void ZoneProcessSendAAStats(const EQ::Net::Packet &p);
 	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);
@@ -851,6 +870,11 @@ private:
 	// Door tracking
 	std::map<uint8_t, Door> m_doors;
 	std::set<uint8_t> m_pending_door_clicks;  // Doors clicked by user, awaiting server response
+
+	// World object tracking (forges, looms, groundspawns, etc.)
+	std::map<uint32_t, eqt::WorldObject> m_world_objects;
+	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
+
 	uint16_t m_my_character_id = 0;
 	int m_character_select_index = -1;
 
@@ -1139,6 +1163,9 @@ private:
 	void SendMoveCoin(const EQT::MoveCoin_Struct& move);
 	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
 	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
+
+	// Tradeskill container callbacks
+	void SetupTradeskillCallbacks();
 
 	// Book/Note reading packet handlers
 	void ZoneProcessReadBook(const EQ::Net::Packet& p);

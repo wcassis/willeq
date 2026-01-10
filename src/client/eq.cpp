@@ -3,6 +3,7 @@
 #include "client/hc_map.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
+#include "client/world_object.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
@@ -125,6 +126,9 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_ZoneChange: return "HC_OP_ZoneChange";
 		case HC_OP_SetServerFilter: return "HC_OP_SetServerFilter";
 		case HC_OP_GroundSpawn: return "HC_OP_GroundSpawn";
+		case HC_OP_ClickObject: return "HC_OP_ClickObject";
+		case HC_OP_ClickObjectAction: return "HC_OP_ClickObjectAction";
+		case HC_OP_TradeSkillCombine: return "HC_OP_TradeSkillCombine";
 		case HC_OP_Weather: return "HC_OP_Weather";
 		case HC_OP_ClientUpdate: return "HC_OP_ClientUpdate";
 		case HC_OP_SpawnAppearance: return "HC_OP_SpawnAppearance";
@@ -1578,6 +1582,12 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_GroundSpawn:
 		ZoneProcessGroundSpawn(p);
+		break;
+	case HC_OP_ClickObjectAction:
+		ZoneProcessClickObjectAction(p);
+		break;
+	case HC_OP_TradeSkillCombine:
+		ZoneProcessTradeSkillCombine(p);
 		break;
 	case HC_OP_SendZonepoints:
 		ZoneProcessSendZonepoints(p);
@@ -3785,6 +3795,58 @@ void EverQuest::SetupTradeWindowCallbacks()
 	LOG_DEBUG(MOD_MAIN, "Trade window callbacks set up");
 }
 
+void EverQuest::SetupTradeskillCallbacks()
+{
+	auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+	if (!windowManager) {
+		LOG_WARN(MOD_MAIN, "Cannot set up tradeskill callbacks - window manager not available");
+		return;
+	}
+
+	// Set callback for when player clicks Combine in tradeskill container
+	windowManager->setOnTradeskillCombine([this]() {
+		// Get the tradeskill window to determine if it's a world container or inventory container
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (!windowManager) return;
+
+		auto* tradeskillWindow = windowManager->getTradeskillContainerWindow();
+		if (!tradeskillWindow || !tradeskillWindow->isOpen()) return;
+
+		if (tradeskillWindow->isWorldContainer()) {
+			// For world containers, send combine to the world container slot
+			SendTradeSkillCombine(eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE);
+			LOG_DEBUG(MOD_INVENTORY, "Sent tradeskill combine for world container");
+		} else {
+			// For inventory containers, send combine to the container's slot
+			int16_t containerSlot = tradeskillWindow->getContainerSlot();
+			SendTradeSkillCombine(containerSlot);
+			LOG_DEBUG(MOD_INVENTORY, "Sent tradeskill combine for inventory container at slot {}", containerSlot);
+		}
+	});
+
+	// Set callback for when tradeskill container window is closed
+	windowManager->setOnTradeskillClose([this]() {
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (!windowManager) return;
+
+		auto* tradeskillWindow = windowManager->getTradeskillContainerWindow();
+		if (!tradeskillWindow) return;
+
+		if (tradeskillWindow->isWorldContainer()) {
+			// For world containers, notify server that we're closing
+			uint32_t dropId = tradeskillWindow->getWorldObjectId();
+			if (dropId != 0) {
+				SendCloseContainer(dropId);
+				LOG_DEBUG(MOD_INVENTORY, "Sent close container for world object dropId={}", dropId);
+			}
+			m_active_tradeskill_object_id = 0;
+		}
+		// For inventory containers, nothing special needed - items are already in inventory
+	});
+
+	LOG_DEBUG(MOD_MAIN, "Tradeskill container callbacks set up");
+}
+
 void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 {
 	// Server response to our shop request
@@ -4969,7 +5031,52 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 {
-	LOG_TRACE(MOD_ENTITY, "Ground spawn received");
+	// Parse Object_Struct from packet (skip 2-byte opcode)
+	if (p.Length() < 2 + sizeof(EQT::Object_Struct)) {
+		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need {})",
+			p.Length(), 2 + sizeof(EQT::Object_Struct));
+		return;
+	}
+
+	const auto* obj = reinterpret_cast<const EQT::Object_Struct*>(p.Data() + 2);
+
+	// Create WorldObject from parsed data
+	eqt::WorldObject worldObj;
+	worldObj.drop_id = obj->drop_id;
+	worldObj.name = std::string(obj->object_name, strnlen(obj->object_name, sizeof(obj->object_name)));
+	worldObj.x = obj->x;
+	worldObj.y = obj->y;
+	worldObj.z = obj->z;
+	worldObj.heading = obj->heading;
+	worldObj.size = obj->size;
+	worldObj.object_type = obj->object_type;
+	worldObj.zone_id = obj->zone_id;
+	worldObj.zone_instance = obj->zone_instance;
+	worldObj.incline = obj->incline;
+	worldObj.tilt_x = obj->tilt_x;
+	worldObj.tilt_y = obj->tilt_y;
+	worldObj.solid_type = obj->solid_type;
+
+	// Store the world object
+	m_world_objects[worldObj.drop_id] = worldObj;
+
+	// Add tradeskill containers to renderer for click detection
+#ifdef EQT_HAS_GRAPHICS
+	if (worldObj.isTradeskillContainer() && m_renderer) {
+		m_renderer->addWorldObject(worldObj.drop_id, worldObj.x, worldObj.y, worldObj.z,
+			worldObj.object_type, worldObj.name);
+	}
+#endif
+
+	if (worldObj.isTradeskillContainer()) {
+		LOG_DEBUG(MOD_ENTITY, "Tradeskill object spawned: id={} name='{}' type={} ({}) at ({:.1f}, {:.1f}, {:.1f})",
+			worldObj.drop_id, worldObj.name, worldObj.object_type,
+			worldObj.getTradeskillName(), worldObj.x, worldObj.y, worldObj.z);
+	} else {
+		LOG_TRACE(MOD_ENTITY, "Ground object spawned: id={} name='{}' type={} at ({:.1f}, {:.1f}, {:.1f})",
+			worldObj.drop_id, worldObj.name, worldObj.object_type,
+			worldObj.x, worldObj.y, worldObj.z);
+	}
 }
 
 void EverQuest::ZoneProcessWeather(const EQ::Net::Packet &p)
@@ -8893,6 +9000,7 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 
 						// Handle different message types based on string_id
 						// string_id=467 with type=286 = Loot message (item link)
+						// string_id=339 = Tradeskill success (item created)
 						// string_id=1032 = NPC says
 						// string_id=1034 = NPC shouts
 						if (string_id == 467) {
@@ -8900,6 +9008,17 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 							chatMsg.channel = eqt::ui::ChatChannel::Loot;
 							chatMsg.sender = "";
 							chatMsg.text = "You have looted " + parsed.displayText;
+							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
+								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
+							chatWindow->addMessage(chatMsg);
+							return;
+						}
+
+						if (string_id == 339) {
+							// Tradeskill success message - item name is in displayText
+							chatMsg.channel = eqt::ui::ChatChannel::System;
+							chatMsg.sender = "";
+							chatMsg.text = "You create a " + parsed.displayText + "!";
 							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
 								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
 							chatWindow->addMessage(chatMsg);
@@ -9577,6 +9696,9 @@ void EverQuest::CleanupZone()
 
 	// Clear door data
 	m_doors.clear();
+
+	// Clear world objects (forges, looms, groundspawns)
+	ClearWorldObjects();
 
 	// Clear pathfinding data
 	m_pathfinder.reset();
@@ -10352,6 +10474,164 @@ void EverQuest::SendClickDoor(uint8_t door_id, uint32_t item_id)
 	p.PutUInt16(16, 0);               // unknown014
 
 	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+// ============================================================================
+// World Object / Tradeskill Methods
+// ============================================================================
+
+void EverQuest::SendClickObject(uint32_t drop_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot click object - not fully zoned in");
+		return;
+	}
+
+	// Check if object exists
+	auto it = m_world_objects.find(drop_id);
+	if (it == m_world_objects.end()) {
+		LOG_WARN(MOD_ENTITY, "Attempted to click unknown object {}", drop_id);
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Clicking object {} ('{}') type={} ({})",
+		drop_id, it->second.name, it->second.object_type,
+		it->second.getTradeskillName());
+
+	// Build ClickObject packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickObject_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickObject);
+	p.PutUInt32(2, drop_id);           // drop_id
+	p.PutUInt32(6, m_my_spawn_id);     // player_id
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+void EverQuest::SendTradeSkillCombine(int16_t container_slot)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot combine - not fully zoned in");
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Sending tradeskill combine for container slot {}", container_slot);
+
+	// Build TradeSkillCombine packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::NewCombine_Struct));
+
+	p.PutUInt16(0, HC_OP_TradeSkillCombine);
+	p.PutInt16(2, container_slot);     // container_slot
+	p.PutInt16(4, 0);                  // guildtribute_slot (usually 0)
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+void EverQuest::SendCloseContainer(uint32_t drop_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot close container - not fully zoned in");
+		return;
+	}
+
+	LOG_DEBUG(MOD_ENTITY, "Closing tradeskill container {}", drop_id);
+
+	// Build ClickObjectAction packet to close the container
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickObjectAction_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickObjectAction);
+	p.PutUInt32(2, m_my_spawn_id);     // player_id
+	p.PutUInt32(6, drop_id);           // drop_id
+	p.PutUInt32(10, 0);                // open = 0 (closing)
+	p.PutUInt32(14, 0);                // type
+	p.PutUInt32(18, 0);                // unknown16
+	p.PutUInt32(22, 0);                // icon
+	p.PutUInt32(26, 0);                // unknown24
+	// object_name is 64 bytes of zeros (not needed for close)
+	for (int i = 0; i < 64; i++) {
+		p.PutUInt8(30 + i, 0);
+	}
+
+	m_zone_connection->QueuePacket(p, 0, true);
+
+	// Clear active tradeskill object
+	m_active_tradeskill_object_id = 0;
+}
+
+const eqt::WorldObject* EverQuest::GetWorldObject(uint32_t drop_id) const
+{
+	auto it = m_world_objects.find(drop_id);
+	if (it != m_world_objects.end()) {
+		return &it->second;
+	}
+	return nullptr;
+}
+
+void EverQuest::ClearWorldObjects()
+{
+	LOG_DEBUG(MOD_ENTITY, "Clearing {} world objects", m_world_objects.size());
+	m_world_objects.clear();
+	m_active_tradeskill_object_id = 0;
+}
+
+void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
+{
+	// Parse ClickObjectAction_Struct from packet (skip 2-byte opcode)
+	if (p.Length() < 2 + sizeof(EQT::ClickObjectAction_Struct)) {
+		LOG_WARN(MOD_ENTITY, "ClickObjectAction packet too small: {} bytes (need {})",
+			p.Length(), 2 + sizeof(EQT::ClickObjectAction_Struct));
+		return;
+	}
+
+	const auto* action = reinterpret_cast<const EQT::ClickObjectAction_Struct*>(p.Data() + 2);
+
+	std::string objectName(action->object_name, strnlen(action->object_name, sizeof(action->object_name)));
+
+	if (action->open == 1) {
+		// Server is telling us to open a tradeskill container
+		LOG_INFO(MOD_ENTITY, "Opening tradeskill container: drop_id={} type={} icon={} name='{}'",
+			action->drop_id, action->type, action->icon, objectName);
+
+		// Store the active tradeskill object ID
+		m_active_tradeskill_object_id = action->drop_id;
+
+		// Tell WindowManager to open the tradeskill window
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (windowManager) {
+			// World containers have 10 slots (WORLD_BEGIN to WORLD_END)
+			windowManager->openTradeskillContainer(action->drop_id, objectName,
+				static_cast<uint8_t>(action->type), eqt::inventory::WORLD_COUNT);
+		}
+	} else {
+		// Server is confirming container is closed
+		LOG_DEBUG(MOD_ENTITY, "Tradeskill container closed: drop_id={}", action->drop_id);
+		m_active_tradeskill_object_id = 0;
+
+		// Close the window if it's open
+		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
+		if (windowManager) {
+			windowManager->closeTradeskillContainer();
+		}
+	}
+}
+
+void EverQuest::ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p)
+{
+	// This is the server response to a combine attempt
+	// The server will send item updates via OP_ItemPacket for the result
+	// and skill updates via OP_SkillUpdate for skill-ups
+
+	LOG_DEBUG(MOD_ENTITY, "TradeSkillCombine response received ({} bytes)", p.Length());
+
+	// The packet format for the result may vary - typically the server
+	// handles the item consumption and creation, then sends inventory updates.
+	// For now, just log that we received a response.
+
+	// TODO: Parse combine result and show success/failure message
+	// The result information may come via OP_SpecialMesg or OP_FormattedMessage
 }
 
 // ============================================================================
@@ -11935,6 +12215,20 @@ bool EverQuest::InitGraphics(int width, int height) {
 		SendClickDoor(doorId);
 	});
 
+	// Set up world object (tradeskill container) interaction callback (left-click on object or O key)
+	m_renderer->setWorldObjectInteractCallback([this](uint32_t dropId) {
+		// Find the world object to check if it's a tradeskill container
+		auto it = m_world_objects.find(dropId);
+		if (it != m_world_objects.end() && it->second.isTradeskillContainer()) {
+			LOG_INFO(MOD_INVENTORY, "Clicking tradeskill container: dropId={} name='{}' type={}",
+				dropId, it->second.name, it->second.object_type);
+			SendClickObject(dropId);
+		} else if (it != m_world_objects.end()) {
+			LOG_DEBUG(MOD_ENTITY, "World object {} is not a tradeskill container (type={})",
+				dropId, it->second.object_type);
+		}
+	});
+
 	// Set up spell gem cast callback (1-8 keys in Player Mode)
 	m_renderer->setSpellGemCastCallback([this](uint8_t gemSlot) {
 		if (m_spell_manager) {
@@ -11977,6 +12271,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// Set up trade window callbacks
 	SetupTradeWindowCallbacks();
+
+	// Set up tradeskill container callbacks
+	SetupTradeskillCallbacks();
 
 	// Initialize spell database if not already done
 	if (m_spell_manager && !m_spell_manager->isInitialized()) {
