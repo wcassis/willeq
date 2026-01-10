@@ -1464,6 +1464,13 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        if (petWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
     // Check skills window
     if (skillsWindow_ && skillsWindow_->isVisible()) {
         if (skillsWindow_->handleMouseDown(x, y, leftButton, shift)) {
@@ -1829,6 +1836,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
         // Don't return true - allow other windows to update their hover state
     }
 
+    // Check pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        petWindow_->handleMouseMove(x, y);
+        // Don't return true - allow other windows to update their hover state
+    }
+
     // Check player status window (for dragging when UI unlocked)
     if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
         playerStatusWindow_->handleMouseMove(x, y);
@@ -2148,6 +2161,11 @@ void WindowManager::render() {
         groupWindow_->render(driver_, gui_);
     }
 
+    // Render pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        petWindow_->render(driver_, gui_);
+    }
+
     // Render hotbar window
     if (hotbarWindow_ && hotbarWindow_->isVisible()) {
         hotbarWindow_->render(driver_, gui_);
@@ -2269,6 +2287,10 @@ void WindowManager::update(uint32_t currentTimeMs) {
     // Update group window (refreshes member data from EverQuest)
     if (groupWindow_) {
         groupWindow_->update();
+    }
+    // Update pet window (refreshes pet data from EverQuest)
+    if (petWindow_) {
+        petWindow_->update();
     }
     // Update player status window (refreshes HP/mana/stamina from EverQuest)
     if (playerStatusWindow_) {
@@ -3778,6 +3800,62 @@ void WindowManager::setGroupDeclineCallback(GroupDeclineCallback callback) {
     groupDeclineCallback_ = callback;
     if (groupWindow_) {
         groupWindow_->setDeclineCallback(callback);
+    }
+}
+
+// ============================================================================
+// Pet Window Management
+// ============================================================================
+
+void WindowManager::initPetWindow(EverQuest* eq) {
+    if (!eq) {
+        LOG_WARN(MOD_UI, "Cannot initialize pet window - EverQuest is null");
+        return;
+    }
+
+    petWindow_ = std::make_unique<PetWindow>();
+    petWindow_->setEQ(eq);
+    petWindow_->positionDefault(screenWidth_, screenHeight_);
+    // Pet window starts hidden - shown when pet is created
+    petWindow_->hide();
+
+    // Set up callback
+    if (petCommandCallback_) {
+        petWindow_->setCommandCallback(petCommandCallback_);
+    }
+
+    LOG_DEBUG(MOD_UI, "Pet window initialized");
+}
+
+void WindowManager::togglePetWindow() {
+    if (!petWindow_) return;
+    if (petWindow_->isVisible()) {
+        closePetWindow();
+    } else {
+        openPetWindow();
+    }
+}
+
+void WindowManager::openPetWindow() {
+    if (petWindow_) {
+        petWindow_->show();
+    }
+}
+
+void WindowManager::closePetWindow() {
+    if (petWindow_) {
+        petWindow_->hide();
+    }
+}
+
+bool WindowManager::isPetWindowOpen() const {
+    return petWindow_ && petWindow_->isVisible();
+}
+
+void WindowManager::setPetCommandCallback(PetCommandCallback callback) {
+    petCommandCallback_ = callback;
+    if (petWindow_) {
+        petWindow_->setCommandCallback(callback);
     }
 }
 

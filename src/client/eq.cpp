@@ -4589,6 +4589,10 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		entity.delta_heading = 0;
 		entity.last_update_time = std::time(nullptr);
 
+		// Store pet info (for deferred pet detection after our spawn ID is known)
+		entity.is_pet = p.GetUInt8(offset + 329);
+		entity.pet_owner_id = p.GetUInt32(offset + 189);
+
 		// Validate the spawn data before adding
 		if (entity.spawn_id > 0 && entity.spawn_id < 100000 && !entity.name.empty()) {
 			// Check if this is our own character and update our position
@@ -4675,6 +4679,26 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 	}
 	
 	LOG_INFO(MOD_ZONE, "Loaded {} spawns in zone", spawn_count);
+
+	// Second pass: Check for pet after all spawns are loaded (if we know our spawn ID)
+	// This handles the case where our character is in ZoneSpawns. If not, deferred
+	// pet detection in ClientUpdate will find the pet when our spawn ID is set.
+	if (m_my_spawn_id != 0 && m_pet_spawn_id == 0) {
+		for (const auto& pair : m_entities) {
+			const Entity& ent = pair.second;
+			if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
+				m_pet_spawn_id = ent.spawn_id;
+				std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+				m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+				LOG_INFO(MOD_MAIN, "Pet detected in ZoneSpawns: {} (ID: {}) Level {} owned by us (ID: {})",
+					ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
+#ifdef EQT_HAS_GRAPHICS
+				OnPetCreated(ent);
+#endif
+				break;
+			}
+		}
+	}
 }
 
 void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
@@ -5388,6 +5412,13 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 #endif
 		}
 
+		// Store pet info in entity (for deferred pet detection)
+		// is_pet is at offset 329 in Spawn_Struct (uint8_t)
+		// petOwnerId is at offset 189 in Spawn_Struct (uint32_t)
+		// MUST be set BEFORE adding to m_entities
+		entity.is_pet = p.GetUInt8(offset + 329);
+		entity.pet_owner_id = p.GetUInt32(offset + 189);
+
 		// Add to entity list
 		m_entities[entity.spawn_id] = entity;
 
@@ -5398,6 +5429,22 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			m_renderer->setPlayerSpawnId(m_my_spawn_id);
 		}
 #endif
+
+		// Check if this spawn is our pet (if we already know our spawn ID)
+		if (entity.is_pet != 0 && entity.pet_owner_id == m_my_spawn_id && m_my_spawn_id != 0) {
+			m_pet_spawn_id = entity.spawn_id;
+
+			// Initialize default button states (Follow=ON, others=OFF per server behavior)
+			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+			m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+
+			LOG_INFO(MOD_MAIN, "Pet detected: {} (ID: {}) Level {} owned by us (ID: {})",
+				entity.name, entity.spawn_id, entity.level, m_my_spawn_id);
+
+#ifdef EQT_HAS_GRAPHICS
+			OnPetCreated(entity);
+#endif
+		}
 
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_ENTITY, "New spawn: {} (ID: {}) Level {} {} Race {} at ({:.2f}, {:.2f}, {:.2f})",
@@ -5638,6 +5685,25 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			}
 			LOG_INFO(MOD_MOVEMENT, "Set our spawn ID to {} from ClientUpdate", m_my_spawn_id);
 
+			// Deferred pet detection: now that we know our spawn ID, check if any
+			// existing entity is our pet (spawns arrive before we know our ID)
+			if (m_pet_spawn_id == 0) {
+				for (const auto& pair : m_entities) {
+					const Entity& ent = pair.second;
+					if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
+						m_pet_spawn_id = ent.spawn_id;
+						std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+						m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+						LOG_INFO(MOD_MAIN, "Pet detected (deferred): {} (ID: {}) Level {} owned by us (ID: {})",
+							ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
+#ifdef EQT_HAS_GRAPHICS
+						OnPetCreated(ent);
+#endif
+						break;
+					}
+				}
+			}
+
 #ifdef EQT_HAS_GRAPHICS
 			// Notify renderer of player spawn ID
 			if (m_graphics_initialized && m_renderer) {
@@ -5777,6 +5843,16 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 			LOG_DEBUG(MOD_MAIN, "Trade partner despawned, canceling trade");
 			m_trade_manager->cancelTrade();
 			AddChatSystemMessage("Trade cancelled - partner is no longer available");
+		}
+
+		// Check if our pet despawned
+		if (spawn_id == m_pet_spawn_id) {
+			LOG_INFO(MOD_MAIN, "Pet {} ({}) despawned", spawn_id, it->second.name);
+			m_pet_spawn_id = 0;
+			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+#ifdef EQT_HAS_GRAPHICS
+			OnPetRemoved();
+#endif
 		}
 
 #ifdef EQT_HAS_GRAPHICS
@@ -7252,6 +7328,111 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(interrupt);
+
+	Command pet_cmd;
+	pet_cmd.name = "pet";
+	pet_cmd.usage = "/pet <command> [target]";
+	pet_cmd.description = "Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)";
+	pet_cmd.category = "Pet";
+	pet_cmd.handler = [this](const std::string& args) {
+		if (!HasPet()) {
+			AddChatSystemMessage("You do not have a pet.");
+			return;
+		}
+
+		std::string subcommand;
+		std::string target_name;
+
+		// Parse subcommand and optional target
+		std::istringstream iss(args);
+		iss >> subcommand;
+		std::getline(iss >> std::ws, target_name);
+
+		// Convert to lowercase for comparison
+		std::transform(subcommand.begin(), subcommand.end(), subcommand.begin(), ::tolower);
+
+		uint16_t target_id = 0;
+
+		// For attack command, resolve target
+		if (subcommand == "attack") {
+			if (!target_name.empty()) {
+				// Find entity by name
+				for (const auto& pair : m_entities) {
+					std::string entity_name = pair.second.name;
+					std::transform(entity_name.begin(), entity_name.end(), entity_name.begin(), ::tolower);
+					std::string search_name = target_name;
+					std::transform(search_name.begin(), search_name.end(), search_name.begin(), ::tolower);
+					if (entity_name.find(search_name) != std::string::npos) {
+						target_id = pair.first;
+						break;
+					}
+				}
+				if (target_id == 0) {
+					AddChatSystemMessage(fmt::format("Could not find target: {}", target_name));
+					return;
+				}
+			} else if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
+				target_id = m_combat_manager->GetTargetId();
+			} else {
+				AddChatSystemMessage("You must specify a target or have one selected.");
+				return;
+			}
+			SendPetCommand(EQT::PET_ATTACK, target_id);
+			AddChatSystemMessage("Commanding pet to attack.");
+		} else if (subcommand == "back" || subcommand == "stop") {
+			SendPetCommand(EQT::PET_BACKOFF);
+			AddChatSystemMessage("Commanding pet to back off.");
+		} else if (subcommand == "follow") {
+			SendPetCommand(EQT::PET_FOLLOWME);
+			AddChatSystemMessage("Commanding pet to follow.");
+		} else if (subcommand == "guard") {
+			SendPetCommand(EQT::PET_GUARDHERE);
+			AddChatSystemMessage("Commanding pet to guard here.");
+		} else if (subcommand == "sit" || subcommand == "sitdown") {
+			SendPetCommand(EQT::PET_SIT);
+			AddChatSystemMessage("Commanding pet to sit.");
+		} else if (subcommand == "stand" || subcommand == "standup") {
+			SendPetCommand(EQT::PET_STANDUP);
+			AddChatSystemMessage("Commanding pet to stand.");
+		} else if (subcommand == "taunt") {
+			SendPetCommand(EQT::PET_TAUNT);
+			AddChatSystemMessage("Toggling pet taunt.");
+		} else if (subcommand == "notaunt") {
+			SendPetCommand(EQT::PET_TAUNT_OFF);
+			AddChatSystemMessage("Disabling pet taunt.");
+		} else if (subcommand == "hold") {
+			SendPetCommand(EQT::PET_HOLD);
+			AddChatSystemMessage("Toggling pet hold.");
+		} else if (subcommand == "nohold" || subcommand == "unhold") {
+			SendPetCommand(EQT::PET_HOLD_OFF);
+			AddChatSystemMessage("Disabling pet hold.");
+		} else if (subcommand == "focus") {
+			SendPetCommand(EQT::PET_FOCUS);
+			AddChatSystemMessage("Toggling pet focus.");
+		} else if (subcommand == "nofocus") {
+			SendPetCommand(EQT::PET_FOCUS_OFF);
+			AddChatSystemMessage("Disabling pet focus.");
+		} else if (subcommand == "health" || subcommand == "report") {
+			SendPetCommand(EQT::PET_HEALTHREPORT);
+			AddChatSystemMessage("Requesting pet health report.");
+		} else if (subcommand == "dismiss" || subcommand == "getlost" || subcommand == "leave") {
+			DismissPet();
+		} else if (subcommand == "leader") {
+			SendPetCommand(EQT::PET_LEADER);
+			AddChatSystemMessage("Commanding pet to become leader.");
+		} else if (subcommand == "spellhold" || subcommand == "ghold") {
+			SendPetCommand(EQT::PET_SPELLHOLD);
+			AddChatSystemMessage("Toggling pet spell hold.");
+		} else if (subcommand == "nospellhold" || subcommand == "noghold") {
+			SendPetCommand(EQT::PET_SPELLHOLD_OFF);
+			AddChatSystemMessage("Disabling pet spell hold.");
+		} else if (subcommand.empty()) {
+			AddChatSystemMessage("Pet commands: attack, back, follow, guard, sit, stand, taunt, hold, focus, health, dismiss");
+		} else {
+			AddChatSystemMessage(fmt::format("Unknown pet command: {}. Use /pet for a list of commands.", subcommand));
+		}
+	};
+	m_command_registry->registerCommand(pet_cmd);
 }
 #endif
 
@@ -9829,6 +10010,15 @@ void EverQuest::CleanupZone()
 	// Clear door data
 	m_doors.clear();
 
+	// Clear pet state (pet won't exist in new zone)
+	if (m_pet_spawn_id != 0) {
+		m_pet_spawn_id = 0;
+		std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+#ifdef EQT_HAS_GRAPHICS
+		OnPetRemoved();
+#endif
+	}
+
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
 
@@ -10887,6 +11077,79 @@ void EverQuest::DeclineGroupInvite()
 		SendGroupDecline(m_pending_inviter_name);
 		AddChatSystemMessage("Group invite declined");
 	}
+}
+
+// ============================================================================
+// Pet Methods
+// ============================================================================
+
+const Entity* EverQuest::GetPetEntity() const
+{
+	if (m_pet_spawn_id == 0) {
+		return nullptr;
+	}
+	auto it = m_entities.find(m_pet_spawn_id);
+	if (it != m_entities.end()) {
+		return &it->second;
+	}
+	return nullptr;
+}
+
+uint8_t EverQuest::GetPetHpPercent() const
+{
+	const Entity* pet = GetPetEntity();
+	return pet ? pet->hp_percent : 0;
+}
+
+std::string EverQuest::GetPetName() const
+{
+	const Entity* pet = GetPetEntity();
+	return pet ? pet->name : "";
+}
+
+uint8_t EverQuest::GetPetLevel() const
+{
+	const Entity* pet = GetPetEntity();
+	return pet ? pet->level : 0;
+}
+
+bool EverQuest::GetPetButtonState(EQT::PetButton button) const
+{
+	if (button >= EQT::PET_BUTTON_COUNT) {
+		return false;
+	}
+	return m_pet_button_states[button];
+}
+
+void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
+{
+	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+		LOG_WARN(MOD_MAIN, "Cannot send pet command - not connected to zone");
+		return;
+	}
+
+	if (!HasPet()) {
+		LOG_WARN(MOD_MAIN, "Cannot send pet command - no pet");
+		AddChatSystemMessage("You do not have a pet.");
+		return;
+	}
+
+	EQT::PetCommand_Struct packet = {};
+	packet.command = static_cast<uint32_t>(command);
+	packet.target = target_id;
+
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::PetCommand_Struct));
+	p.PutUInt16(0, HC_OP_PetCommands);
+	p.PutData(2, &packet, sizeof(packet));
+
+	m_zone_connection->QueuePacket(p, 0, true);
+	LOG_DEBUG(MOD_MAIN, "Sent pet command: {} (target={})", EQT::GetPetCommandName(command), target_id);
+}
+
+void EverQuest::DismissPet()
+{
+	SendPetCommand(EQT::PET_GETLOST);
 }
 
 void EverQuest::ClearGroup()
@@ -12586,6 +12849,19 @@ bool EverQuest::InitGraphics(int width, int height) {
 		LOG_DEBUG(MOD_MAIN, "Group window initialized");
 	}
 
+	// Set up pet window
+	if (m_renderer && m_renderer->getWindowManager()) {
+		auto* windowManager = m_renderer->getWindowManager();
+		windowManager->initPetWindow(this);
+
+		// Set up pet command callback
+		windowManager->setPetCommandCallback([this](EQT::PetCommand command, uint16_t targetId) {
+			SendPetCommand(command, targetId);
+		});
+
+		LOG_DEBUG(MOD_MAIN, "Pet window initialized");
+	}
+
 	// Set up hotbar activate callback
 	if (m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
@@ -13033,6 +13309,45 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	if (entity.spawn_id == m_my_spawn_id) {
 		m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 	}
+}
+
+void EverQuest::OnPetCreated(const Entity& pet) {
+	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Pet window: Pet created - {} (ID: {}) Level {}",
+	          pet.name, pet.spawn_id, pet.level);
+
+	// Open pet window when pet is created
+	if (m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->openPetWindow();
+	}
+}
+
+void EverQuest::OnPetRemoved() {
+	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Pet window: Pet removed");
+
+	// Close pet window when pet is removed
+	if (m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->closePetWindow();
+	}
+}
+
+void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
+	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	LOG_DEBUG(MOD_MAIN, "Pet window: Button {} state changed to {}",
+	          EQT::GetPetButtonName(button), state ? "ON" : "OFF");
+
+	// Pet window button states will be updated by WindowManager when it's implemented
+	// TODO: m_renderer->getWindowManager()->updatePetButtonState(button, state);
 }
 
 void EverQuest::SaveEntityDataToFile(const std::string& filename) {
