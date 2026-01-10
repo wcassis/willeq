@@ -4,6 +4,7 @@
 #include "common/net/daybreak_connection.h"
 #include "common/event/timer.h"
 #include "common/packet_structs.h"
+#include "client/state/game_state.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -555,6 +556,10 @@ public:
 	// Additional public methods
 	uint16_t GetMySpawnID() const { return m_my_spawn_id; }
 
+	// Game state access (new state management system)
+	eqt::state::GameState& GetGameState() { return m_game_state; }
+	const eqt::state::GameState& GetGameState() const { return m_game_state; }
+
 	// Keyboard control methods
 	void StartMoveForward();
 	void StartMoveBackward();
@@ -621,6 +626,12 @@ public:
 #endif
 
 private:
+	// Game state (new state management system)
+	// This contains the central game state that can be shared across modes and renderers.
+	// During the transition period, both m_game_state and the legacy member variables
+	// exist. New code should use m_game_state; existing code is gradually migrated.
+	eqt::state::GameState m_game_state;
+
 	// Utility functions
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size);

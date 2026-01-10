@@ -143,6 +143,35 @@ SET(CLIENT_SOURCES
     src/client/raycast_mesh.cpp
     src/client/hc_map.cpp
     src/client/zone_lines.cpp
+    # State management sources
+    src/client/state/event_bus.cpp
+    src/client/state/player_state.cpp
+    src/client/state/entity_manager.cpp
+    src/client/state/world_state.cpp
+    src/client/state/combat_state.cpp
+    src/client/state/group_state.cpp
+    src/client/state/door_state.cpp
+    src/client/state/game_state.cpp
+    # Input handling sources
+    src/client/input/null_input_handler.cpp
+    src/client/input/console_input_handler.cpp
+    # Output/rendering sources
+    src/client/output/output_renderer.cpp
+    src/client/output/null_renderer.cpp
+    src/client/output/console_renderer.cpp
+    src/client/output/graphical_renderer.cpp
+    # Mode controller sources
+    src/client/mode/game_mode.cpp
+    src/client/mode/automated_mode.cpp
+    src/client/mode/headless_mode.cpp
+    src/client/mode/graphical_mode.cpp
+    # Action system sources
+    src/client/action/action_dispatcher.cpp
+    src/client/action/input_action_bridge.cpp
+    src/client/action/command_processor.cpp
+    # Application layer sources
+    src/client/application.cpp
+    src/client/eq_action_handler.cpp
     # Spell system sources
     src/client/spell/spell_database.cpp
     src/client/spell/spell_manager.cpp
@@ -169,6 +198,9 @@ ENDIF()
 SET(GRAPHICS_SOURCES)
 IF(EQT_GRAPHICS)
     SET(GRAPHICS_SOURCES
+        # Graphics input handling
+        src/client/input/graphics_input_handler.cpp
+        # EQ file loaders
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/s3d_loader.cpp
