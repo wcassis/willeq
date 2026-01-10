@@ -101,6 +101,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 doorInteractRequested_ = true;
             }
 
+            // World object (tradeskill container) interaction on O key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_O) {
+                worldObjectInteractRequested_ = true;
+            }
+
             // Hail on H key (Player mode)
             if (event.KeyInput.Key == irr::KEY_KEY_H) {
                 hailRequested_ = true;
@@ -1356,6 +1361,9 @@ void IrrlichtRenderer::unloadZone() {
         doorManager_->setZone(nullptr);
     }
 
+    // Clear world objects (tradeskill containers)
+    clearWorldObjects();
+
     // Clear object lights (they reference freed zone data)
     for (auto& objLight : objectLights_) {
         if (objLight.node) {
@@ -1789,6 +1797,112 @@ void IrrlichtRenderer::clearDoors() {
     if (doorManager_) {
         doorManager_->clearDoors();
     }
+}
+
+// ============================================================================
+// World Object Management (for tradeskill container click detection)
+// ============================================================================
+
+void IrrlichtRenderer::addWorldObject(uint32_t dropId, float x, float y, float z,
+                                       uint32_t objectType, const std::string& name) {
+    WorldObjectVisual obj;
+    obj.dropId = dropId;
+    obj.x = x;
+    obj.y = y;
+    obj.z = z;
+    obj.objectType = objectType;
+    obj.name = name;
+
+    // Create bounding box for click detection
+    // EQ coords: x, y are horizontal, z is vertical
+    // Irrlicht coords: x, z are horizontal, y is vertical
+    // Transform: EQ (x, y, z) -> Irrlicht (x, z, y)
+    float irrX = x;
+    float irrY = z;  // EQ z -> Irrlicht y
+    float irrZ = y;  // EQ y -> Irrlicht z
+
+    // Default object size - most tradeskill containers are roughly 3x3x3 units
+    float halfSize = 3.0f;
+    obj.boundingBox = irr::core::aabbox3df(
+        irrX - halfSize, irrY - halfSize, irrZ - halfSize,
+        irrX + halfSize, irrY + halfSize * 2, irrZ + halfSize  // Extend upward more
+    );
+
+    worldObjects_[dropId] = obj;
+    LOG_DEBUG(MOD_GRAPHICS, "Added world object: dropId={} type={} name='{}' at ({:.1f}, {:.1f}, {:.1f})",
+              dropId, objectType, name, x, y, z);
+}
+
+void IrrlichtRenderer::removeWorldObject(uint32_t dropId) {
+    auto it = worldObjects_.find(dropId);
+    if (it != worldObjects_.end()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Removed world object: dropId={}", dropId);
+        worldObjects_.erase(it);
+    }
+}
+
+void IrrlichtRenderer::clearWorldObjects() {
+    LOG_DEBUG(MOD_GRAPHICS, "Clearing {} world objects", worldObjects_.size());
+    worldObjects_.clear();
+}
+
+uint32_t IrrlichtRenderer::getWorldObjectAtScreenPos(int screenX, int screenY) const {
+    if (!camera_ || !collisionManager_) {
+        return 0;
+    }
+
+    // Get ray from camera through screen position
+    irr::core::line3df ray = collisionManager_->getRayFromScreenCoordinates(
+        irr::core::position2di(screenX, screenY), camera_);
+
+    uint32_t closestObjectId = 0;
+    float closestDist = std::numeric_limits<float>::max();
+
+    for (const auto& [id, obj] : worldObjects_) {
+        // Expand box slightly for easier clicking
+        irr::core::aabbox3df expandedBox = obj.boundingBox;
+        expandedBox.MinEdge -= irr::core::vector3df(1.0f, 1.0f, 1.0f);
+        expandedBox.MaxEdge += irr::core::vector3df(1.0f, 1.0f, 1.0f);
+
+        if (expandedBox.intersectsWithLine(ray)) {
+            // Calculate distance to object center
+            irr::core::vector3df objCenter = expandedBox.getCenter();
+            float dist = ray.start.getDistanceFrom(objCenter);
+
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestObjectId = id;
+            }
+        }
+    }
+
+    return closestObjectId;
+}
+
+uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, float playerZ,
+                                                   float maxDistance) const {
+    uint32_t nearestId = 0;
+    float nearestDistSq = maxDistance * maxDistance;
+
+    for (const auto& [id, obj] : worldObjects_) {
+        // Calculate 3D distance
+        float dx = obj.x - playerX;
+        float dy = obj.y - playerY;
+        float dz = obj.z - playerZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq < nearestDistSq) {
+            nearestDistSq = distSq;
+            nearestId = id;
+        }
+    }
+
+    if (nearestId != 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "getNearestWorldObject: found dropId={} at distance {:.1f}",
+                  nearestId, std::sqrt(nearestDistSq));
+    }
+
+    return nearestId;
 }
 
 void IrrlichtRenderer::playEntityDeathAnimation(uint16_t spawnId) {
@@ -2388,6 +2502,25 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                     doorInteractCallback_(doorId);
                 } else {
                     LOG_DEBUG(MOD_GRAPHICS, "U key: No door found in range or facing wrong direction");
+                }
+            }
+        }
+    }
+
+    // Handle world object (tradeskill container) interaction (O key) - only in Player mode
+    if (eventReceiver_->worldObjectInteractRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            if (worldObjectInteractCallback_) {
+                LOG_DEBUG(MOD_GRAPHICS, "O key pressed: pos=({:.1f}, {:.1f}, {:.1f})",
+                    playerX_, playerY_, playerZ_);
+
+                // Find nearest world object (tradeskill container)
+                uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
+                if (objectId != 0) {
+                    LOG_INFO(MOD_GRAPHICS, "World object interaction (O key): dropId {}", objectId);
+                    worldObjectInteractCallback_(objectId);
+                } else {
+                    LOG_DEBUG(MOD_GRAPHICS, "O key: No world object found in range");
                 }
             }
         }
@@ -4208,11 +4341,22 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
         }
     } else {
         // No entity found - check for door click
+        bool handledClick = false;
         if (doorManager_ && doorInteractCallback_) {
             uint8_t doorId = doorManager_->getDoorAtScreenPos(clickX, clickY, camera_, collisionManager_);
             if (doorId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "Door clicked: ID {}", doorId);
                 doorInteractCallback_(doorId);
+                handledClick = true;
+            }
+        }
+
+        // Check for world object (tradeskill container) click
+        if (!handledClick && worldObjectInteractCallback_) {
+            uint32_t objectId = getWorldObjectAtScreenPos(clickX, clickY);
+            if (objectId != 0) {
+                LOG_INFO(MOD_GRAPHICS, "World object clicked: dropId {}", objectId);
+                worldObjectInteractCallback_(objectId);
             }
         }
     }

@@ -137,6 +137,7 @@ SET(CLIENT_SOURCES
     src/client/trade_manager.cpp
     src/client/ucs.cpp
     src/client/position.cpp
+    src/client/world_object.cpp
     src/client/formatted_message.cpp
     src/client/pathfinder_interface.cpp
     src/client/pathfinder_null.cpp
@@ -203,6 +204,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/loot_window.cpp
         src/client/graphics/ui/vendor_window.cpp
         src/client/graphics/ui/trade_window.cpp
+        src/client/graphics/ui/tradeskill_container_window.cpp
         src/client/graphics/ui/trade_request_dialog.cpp
         src/client/graphics/ui/money_input_dialog.cpp
         src/client/graphics/ui/window_manager.cpp

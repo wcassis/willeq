@@ -103,6 +103,18 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     chatWindow_ = std::make_unique<ChatWindow>();
     chatWindow_->init(screenWidth, screenHeight);
 
+    // Create tradeskill container window (initially hidden)
+    tradeskillWindow_ = std::make_unique<TradeskillContainerWindow>(invManager_);
+    tradeskillWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
+        return iconLoader_.getIcon(iconId);
+    });
+    tradeskillWindow_->setSlotClickCallback([this](int16_t slotId, bool shift, bool ctrl) {
+        handleTradeskillSlotClick(slotId, shift, ctrl);
+    });
+    tradeskillWindow_->setSlotHoverCallback([this](int16_t slotId, int mouseX, int mouseY) {
+        handleTradeskillSlotHover(slotId, mouseX, mouseY);
+    });
+
     // Create hotbar window (visible by default)
     initHotbarWindow();
 }
@@ -417,9 +429,28 @@ void WindowManager::closeAllWindows() {
     closeInventory();
     closeLootWindow();
     closeVendorWindow();
+    closeTradeskillContainer();
 }
 
 void WindowManager::toggleBagWindow(int16_t generalSlot) {
+    // Check if this is a tradeskill container
+    const inventory::ItemInstance* item = invManager_->getItem(generalSlot);
+    if (item && item->isContainer() && inventory::isTradeskillContainerType(item->bagType)) {
+        // For tradeskill containers, check if this specific one is already open
+        if (isTradeskillContainerOpen() && tradeskillWindow_ &&
+            !tradeskillWindow_->isWorldContainer() &&
+            tradeskillWindow_->getContainerSlot() == generalSlot) {
+            // Close it
+            LOG_DEBUG(MOD_UI, "Toggling tradeskill container closed for slot {}", generalSlot);
+            closeTradeskillContainer();
+        } else {
+            // Open it (openBagWindow handles tradeskill containers)
+            openBagWindow(generalSlot);
+        }
+        return;
+    }
+
+    // Regular bag toggle
     if (isBagWindowOpen(generalSlot)) {
         closeBagWindow(generalSlot);
     } else {
@@ -431,6 +462,21 @@ void WindowManager::openBagWindow(int16_t generalSlot) {
     // Check if slot contains a bag
     const inventory::ItemInstance* item = invManager_->getItem(generalSlot);
     if (!item || !item->isContainer()) {
+        return;
+    }
+
+    // Check if this is a tradeskill container
+    if (inventory::isTradeskillContainerType(item->bagType)) {
+        // Open tradeskill container window instead of regular bag window
+        LOG_DEBUG(MOD_UI, "Opening tradeskill container for inventory item at slot {} (bagType={})",
+                  generalSlot, item->bagType);
+
+        // Close any existing tradeskill window first
+        closeTradeskillContainer();
+
+        // Open the tradeskill container window for this inventory item
+        openTradeskillContainerForItem(generalSlot, item->name,
+                                       item->bagType, item->bagSlots);
         return;
     }
 
@@ -1187,6 +1233,13 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
+    // Check tradeskill container window (if open)
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+            return true;
+        }
+    }
+
     // Check hotbar window - handle cursor placement/swap
     if (hotbarWindow_ && hotbarWindow_->isVisible() && hotbarWindow_->containsPoint(x, y)) {
         if (leftButton && hotbarCursor_.hasItem()) {
@@ -1338,6 +1391,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check trade window
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1550,6 +1610,13 @@ bool WindowManager::handleMouseMove(int x, int y) {
             } else {
                 tooltip_.clear();
             }
+            return true;
+        }
+    }
+
+    // Check tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseMove(x, y)) {
             return true;
         }
     }
@@ -1797,6 +1864,11 @@ void WindowManager::render() {
     // Render trade window
     if (tradeWindow_ && tradeWindow_->isOpen()) {
         tradeWindow_->render(driver_, gui_);
+    }
+
+    // Render tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        tradeskillWindow_->render(driver_, gui_);
     }
 
     // Render trade request dialog (on top of other windows)
@@ -2104,6 +2176,25 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
         }
     }
 
+    // Left click (no modifiers, no cursor item) on tradeskill container = toggle open/close
+    if (!shift && !ctrl && !invManager_->hasCursorItem()) {
+        const inventory::ItemInstance* item = invManager_->getItem(slotId);
+        if (item && item->isContainer() && inventory::isTradeskillContainerType(item->bagType)) {
+            LOG_DEBUG(MOD_UI, "WindowManager Left-click on tradeskill container at slot {}", slotId);
+            // Check if this specific container is already open
+            if (isTradeskillContainerOpen() && tradeskillWindow_ &&
+                !tradeskillWindow_->isWorldContainer() &&
+                tradeskillWindow_->getContainerSlot() == slotId) {
+                // Close it
+                closeTradeskillContainer();
+            } else {
+                // Open it (this will close any existing one)
+                openBagWindow(slotId);
+            }
+            return;
+        }
+    }
+
     if (invManager_->hasCursorItem()) {
         // Try to place item - check for auto-stacking
         const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
@@ -2148,9 +2239,18 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
                 }
             }
 
-            // If picking up a bag, close its window
+            // If picking up a container, close its window
             if (item && item->isContainer()) {
-                closeBagWindow(slotId);
+                if (inventory::isTradeskillContainerType(item->bagType)) {
+                    // Close tradeskill container window if this container is open
+                    if (isTradeskillContainerOpen() && tradeskillWindow_ &&
+                        !tradeskillWindow_->isWorldContainer() &&
+                        tradeskillWindow_->getContainerSlot() == slotId) {
+                        closeTradeskillContainer();
+                    }
+                } else {
+                    closeBagWindow(slotId);
+                }
             }
 
             LOG_DEBUG(MOD_UI, "WindowManager Picking up item from slot {}", slotId);
@@ -3383,6 +3483,187 @@ bool WindowManager::isNoteWindowOpen() const {
 
 void WindowManager::setOnReadItem(ReadItemCallback callback) {
     readItemCallback_ = callback;
+}
+
+// ============================================================================
+// Tradeskill Container Window Management
+// ============================================================================
+
+void WindowManager::openTradeskillContainer(uint32_t dropId, const std::string& name,
+                                             uint8_t objectType, int slotCount) {
+    if (!tradeskillWindow_) {
+        LOG_WARN(MOD_UI, "Tradeskill container window not initialized");
+        return;
+    }
+
+    // Set up callbacks before opening
+    tradeskillWindow_->setCombineCallback([this]() {
+        if (tradeskillCombineCallback_) {
+            tradeskillCombineCallback_();
+        }
+    });
+    tradeskillWindow_->setCloseCallback([this]() {
+        if (tradeskillCloseCallback_) {
+            tradeskillCloseCallback_();
+        }
+    });
+
+    tradeskillWindow_->openForWorldObject(dropId, name, objectType, slotCount);
+
+    // Center on screen
+    int windowWidth = tradeskillWindow_->getWidth();
+    int windowHeight = tradeskillWindow_->getHeight();
+    int x = (screenWidth_ - windowWidth) / 2;
+    int y = (screenHeight_ - windowHeight) / 2;
+    tradeskillWindow_->setPosition(x, y);
+
+    LOG_DEBUG(MOD_UI, "Tradeskill container opened for world object: dropId={} name='{}' type={} slots={}",
+              dropId, name, objectType, slotCount);
+}
+
+void WindowManager::openTradeskillContainerForItem(int16_t containerSlot, const std::string& name,
+                                                    uint8_t bagType, int slotCount) {
+    if (!tradeskillWindow_) {
+        LOG_WARN(MOD_UI, "Tradeskill container window not initialized");
+        return;
+    }
+
+    // Set up callbacks before opening
+    tradeskillWindow_->setCombineCallback([this]() {
+        if (tradeskillCombineCallback_) {
+            tradeskillCombineCallback_();
+        }
+    });
+    tradeskillWindow_->setCloseCallback([this]() {
+        if (tradeskillCloseCallback_) {
+            tradeskillCloseCallback_();
+        }
+    });
+
+    tradeskillWindow_->openForInventoryItem(containerSlot, name, bagType, slotCount);
+
+    // Center on screen
+    int windowWidth = tradeskillWindow_->getWidth();
+    int windowHeight = tradeskillWindow_->getHeight();
+    int x = (screenWidth_ - windowWidth) / 2;
+    int y = (screenHeight_ - windowHeight) / 2;
+    tradeskillWindow_->setPosition(x, y);
+
+    LOG_DEBUG(MOD_UI, "Tradeskill container opened for inventory item: slot={} name='{}' type={} slots={}",
+              containerSlot, name, bagType, slotCount);
+}
+
+void WindowManager::closeTradeskillContainer() {
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        // If closing a world container, clear the world container slots from inventory
+        if (tradeskillWindow_->isWorldContainer() && invManager_) {
+            invManager_->clearWorldContainerSlots();
+        }
+        tradeskillWindow_->close();
+        LOG_DEBUG(MOD_UI, "Tradeskill container window closed");
+    }
+}
+
+bool WindowManager::isTradeskillContainerOpen() const {
+    return tradeskillWindow_ && tradeskillWindow_->isOpen();
+}
+
+void WindowManager::setOnTradeskillCombine(TradeskillCombineCallback callback) {
+    tradeskillCombineCallback_ = callback;
+}
+
+void WindowManager::setOnTradeskillClose(TradeskillCloseCallback callback) {
+    tradeskillCloseCallback_ = callback;
+}
+
+void WindowManager::handleTradeskillSlotClick(int16_t slotId, bool shift, bool ctrl) {
+    LOG_DEBUG(MOD_UI, "WindowManager handleTradeskillSlotClick: slotId={} shift={} ctrl={}", slotId, shift, ctrl);
+
+    if (slotId == inventory::SLOT_INVALID) {
+        return;
+    }
+
+    // Check if this is a world container slot or inventory container slot
+    bool isWorldSlot = inventory::isWorldContainerSlot(slotId);
+
+    if (invManager_->hasCursorItem()) {
+        // Place item in container
+        const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
+        const inventory::ItemInstance* targetItem = nullptr;
+
+        if (isWorldSlot) {
+            // For world containers, check the tradeskill window's cached items
+            targetItem = tradeskillWindow_->getContainerItem(slotId);
+        } else {
+            // For inventory containers, check the inventory manager
+            targetItem = invManager_->getItem(slotId);
+        }
+
+        // Check if we can stack onto an existing item of the same type
+        if (cursorItem && targetItem && cursorItem->stackable && targetItem->stackable &&
+            cursorItem->itemId == targetItem->itemId &&
+            targetItem->stackSize > 0 && targetItem->quantity < targetItem->stackSize) {
+            LOG_DEBUG(MOD_UI, "Auto-stacking cursor item onto tradeskill slot {}", slotId);
+            invManager_->placeOnMatchingStack(slotId);
+        } else {
+            LOG_DEBUG(MOD_UI, "Placing cursor item at tradeskill slot {}", slotId);
+            placeItem(slotId);
+        }
+    } else {
+        // Try to pick up item from container
+        const inventory::ItemInstance* item = nullptr;
+
+        if (isWorldSlot) {
+            item = tradeskillWindow_->getContainerItem(slotId);
+        } else {
+            item = invManager_->getItem(slotId);
+        }
+
+        if (item) {
+            // Handle stackable items with modifiers
+            if (item->stackable && item->quantity > 1) {
+                if (ctrl) {
+                    LOG_DEBUG(MOD_UI, "Ctrl+click: picking up 1 from tradeskill stack of {} at slot {}",
+                              item->quantity, slotId);
+                    invManager_->pickupPartialStack(slotId, 1);
+                    tooltip_.clear();
+                    return;
+                } else if (shift) {
+                    LOG_DEBUG(MOD_UI, "Shift+click: showing quantity slider for tradeskill stack of {} at slot {}",
+                              item->quantity, slotId);
+                    showQuantitySlider(slotId, item->quantity);
+                    return;
+                }
+            }
+
+            LOG_DEBUG(MOD_UI, "Picking up item from tradeskill slot {}", slotId);
+            pickupItem(slotId);
+        }
+    }
+}
+
+void WindowManager::handleTradeskillSlotHover(int16_t slotId, int mouseX, int mouseY) {
+    if (slotId == inventory::SLOT_INVALID) {
+        tooltip_.clear();
+        return;
+    }
+
+    const inventory::ItemInstance* item = nullptr;
+
+    // Check if world container slot or inventory container slot
+    if (inventory::isWorldContainerSlot(slotId)) {
+        if (tradeskillWindow_) {
+            item = tradeskillWindow_->getContainerItem(slotId);
+        }
+    } else {
+        item = invManager_->getItem(slotId);
+    }
+
+    if (item) {
+        tooltip_.setItem(item, mouseX, mouseY);
+    } else {
+        tooltip_.clear();
+    }
 }
 
 // ============================================================================

@@ -18,6 +18,7 @@
 #include "skills_window.h"
 #include "note_window.h"
 #include "casting_bar.h"
+#include "tradeskill_container_window.h"
 #include "item_tooltip.h"
 #include "buff_tooltip.h"
 #include "item_icon_loader.h"
@@ -259,6 +260,20 @@ public:
     // Read item callback (set by EverQuest to handle book/note reading requests)
     void setOnReadItem(ReadItemCallback callback);
 
+    // Tradeskill container window management
+    void openTradeskillContainer(uint32_t dropId, const std::string& name,
+                                  uint8_t objectType, int slotCount);
+    void openTradeskillContainerForItem(int16_t containerSlot, const std::string& name,
+                                        uint8_t bagType, int slotCount);
+    void closeTradeskillContainer();
+    bool isTradeskillContainerOpen() const;
+    TradeskillContainerWindow* getTradeskillContainerWindow() { return tradeskillWindow_.get(); }
+    const TradeskillContainerWindow* getTradeskillContainerWindow() const { return tradeskillWindow_.get(); }
+
+    // Tradeskill container callbacks (set by EverQuest for packet handling)
+    void setOnTradeskillCombine(TradeskillCombineCallback callback);
+    void setOnTradeskillClose(TradeskillCloseCallback callback);
+
     // Player status window management
     void initPlayerStatusWindow(EverQuest* eq);
     PlayerStatusWindow* getPlayerStatusWindow() { return playerStatusWindow_.get(); }
@@ -361,6 +376,8 @@ private:
     void handleBagSlotClick(int16_t slotId, bool shift, bool ctrl);
     void handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctrl);
     void handleTradeMoneyAreaClick();
+    void handleTradeskillSlotClick(int16_t slotId, bool shift, bool ctrl);
+    void handleTradeskillSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleLootSlotHover(int16_t slotId, int mouseX, int mouseY);
     void handleDestroyClick();
@@ -442,6 +459,7 @@ private:
     HotbarCursor hotbarCursor_;
     std::unique_ptr<SkillsWindow> skillsWindow_;
     std::unique_ptr<NoteWindow> noteWindow_;
+    std::unique_ptr<TradeskillContainerWindow> tradeskillWindow_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
     std::unique_ptr<CastingBar> targetCastingBar_;  // For showing target's casting
@@ -488,6 +506,10 @@ private:
 
     // Read item callback (for book/note reading)
     ReadItemCallback readItemCallback_;
+
+    // Tradeskill container callbacks
+    TradeskillCombineCallback tradeskillCombineCallback_;
+    TradeskillCloseCallback tradeskillCloseCallback_;
 
     // Tooltips
     ItemTooltip tooltip_;

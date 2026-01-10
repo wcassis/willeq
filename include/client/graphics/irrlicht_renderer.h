@@ -188,6 +188,7 @@ public:
     bool inventoryToggleRequested() { bool r = inventoryToggleRequested_; inventoryToggleRequested_ = false; return r; }
     bool groupToggleRequested() { bool r = groupToggleRequested_; groupToggleRequested_ = false; return r; }
     bool doorInteractRequested() { bool r = doorInteractRequested_; doorInteractRequested_ = false; return r; }
+    bool worldObjectInteractRequested() { bool r = worldObjectInteractRequested_; worldObjectInteractRequested_ = false; return r; }
     bool hailRequested() { bool r = hailRequested_; hailRequested_ = false; return r; }
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
@@ -296,6 +297,7 @@ private:
     bool inventoryToggleRequested_ = false;
     bool groupToggleRequested_ = false;
     bool doorInteractRequested_ = false;
+    bool worldObjectInteractRequested_ = false;
     bool hailRequested_ = false;
     bool vendorToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
@@ -400,6 +402,15 @@ public:
     // Door interaction callback (called when player clicks door or presses U key)
     using DoorInteractCallback = std::function<void(uint8_t doorId)>;
     void setDoorInteractCallback(DoorInteractCallback callback) { doorInteractCallback_ = callback; }
+
+    // World object interaction callback (called when player clicks tradeskill container or presses O key)
+    using WorldObjectInteractCallback = std::function<void(uint32_t dropId)>;
+    void setWorldObjectInteractCallback(WorldObjectInteractCallback callback) { worldObjectInteractCallback_ = callback; }
+
+    // World object management (for click detection on tradeskill containers)
+    void addWorldObject(uint32_t dropId, float x, float y, float z, uint32_t objectType, const std::string& name);
+    void removeWorldObject(uint32_t dropId);
+    void clearWorldObjects();
 
     // Spell gem cast callback (called when player presses 1-8 keys)
     using SpellGemCastCallback = std::function<void(uint8_t gemSlot)>;
@@ -729,6 +740,7 @@ private:
     VendorToggleCallback vendorToggleCallback_;
     ChatSubmitCallback chatSubmitCallback_;
     DoorInteractCallback doorInteractCallback_;
+    WorldObjectInteractCallback worldObjectInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
@@ -790,6 +802,18 @@ private:
 
     // Spell visual effects
     std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
+
+    // World objects for click detection (tradeskill containers, etc.)
+    struct WorldObjectVisual {
+        uint32_t dropId;
+        float x, y, z;           // EQ coordinates
+        uint32_t objectType;
+        std::string name;
+        irr::core::aabbox3df boundingBox;  // For click detection
+    };
+    std::map<uint32_t, WorldObjectVisual> worldObjects_;
+    uint32_t getWorldObjectAtScreenPos(int screenX, int screenY) const;
+    uint32_t getNearestWorldObject(float playerX, float playerY, float playerZ, float maxDistance = 50.0f) const;
 };
 
 } // namespace Graphics

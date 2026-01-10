@@ -704,6 +704,14 @@ void InventoryManager::clearTradeSlots() {
     LOG_DEBUG(MOD_UI, "InventoryManager Cleared trade slots {}-{}", TRADE_BEGIN, TRADE_END);
 }
 
+void InventoryManager::clearWorldContainerSlots() {
+    // Clear items in world container slots (4000-4009)
+    for (int16_t slot = WORLD_BEGIN; slot <= WORLD_END; slot++) {
+        items_.erase(slot);
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager Cleared world container slots {}-{}", WORLD_BEGIN, WORLD_END);
+}
+
 bool InventoryManager::pickupItem(int16_t slotId) {
     // Can't pick up if already holding something on cursor
     if (!cursorQueue_.empty()) {
@@ -1078,6 +1086,11 @@ bool InventoryManager::canPlaceItemInSlot(const ItemInstance* item, int16_t targ
         return !item->noDrop;  // Only non-nodrop items can be traded
     }
 
+    // World container slots (tradeskill containers like forges, looms)
+    if (isWorldContainerItemSlot(targetSlot)) {
+        return canPlaceInWorldContainer(item, targetSlot);
+    }
+
     // Cursor slot
     if (isCursorSlot(targetSlot)) {
         return true;
@@ -1124,6 +1137,29 @@ bool InventoryManager::canPlaceInBag(const ItemInstance* item, int16_t bagSlot) 
     if (!item->canFitInContainer(bag->bagSize)) {
         return false;
     }
+
+    return true;
+}
+
+bool InventoryManager::canPlaceInWorldContainer(const ItemInstance* item, int16_t slot) const {
+    if (!item) {
+        return false;
+    }
+
+    // Can't put containers in world containers (no nested containers)
+    if (item->isContainer()) {
+        LOG_DEBUG(MOD_UI, "Cannot place container in world container slot {}", slot);
+        return false;
+    }
+
+    // Can't put no-drop items in world containers (they're shared with the world)
+    if (item->noDrop) {
+        LOG_DEBUG(MOD_UI, "Cannot place no-drop item '{}' in world container slot {}", item->name, slot);
+        return false;
+    }
+
+    // World containers don't have size restrictions like bags do
+    // The server will validate if the item is appropriate for the tradeskill
 
     return true;
 }
@@ -1549,12 +1585,30 @@ void InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
 }
 
 void InventoryManager::processMoveItemResponse(const EQ::Net::Packet& packet) {
-    // Server sends back MoveItem_Struct to confirm the move
-    // If the move was rejected, the server will send the item back to original slot
+    // Server sends back MoveItem_Struct to confirm the move or indicate server-side changes
+    // MoveItem_Struct: from_slot(4), to_slot(4), number_in_stack(4) = 12 bytes
+    // Packet: opcode(2) + data(12) = 14 bytes
     LOG_DEBUG(MOD_UI, "InventoryManager Received MoveItem response, size: {}", packet.Length());
 
-    // For now, we trust our client-side validation and don't need to do anything
-    // The server will send OP_ItemPacket if it needs to correct our state
+    if (packet.Length() < 14) {
+        LOG_WARN(MOD_UI, "MoveItem response too short: {} bytes", packet.Length());
+        return;
+    }
+
+    // Parse the MoveItem struct (after 2-byte opcode)
+    int32_t fromSlot = static_cast<int32_t>(packet.GetUInt32(2));
+    int32_t toSlot = static_cast<int32_t>(packet.GetUInt32(6));
+    uint32_t quantity = packet.GetUInt32(10);
+
+    LOG_DEBUG(MOD_UI, "InventoryManager MoveItem: from={} to={} qty={}", fromSlot, toSlot, quantity);
+
+    // If to_slot is -1 (0xFFFFFFFF), this is a server-side deletion (e.g., tradeskill consume)
+    if (toSlot == -1) {
+        LOG_DEBUG(MOD_UI, "InventoryManager Server deleted item from slot {}", fromSlot);
+        removeItem(static_cast<int16_t>(fromSlot));
+    }
+    // For other server-initiated moves, we'd handle them here
+    // But client-initiated moves are already processed locally
 }
 
 void InventoryManager::processDeleteItemResponse(const EQ::Net::Packet& packet) {

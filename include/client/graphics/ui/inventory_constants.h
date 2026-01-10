@@ -78,8 +78,213 @@ constexpr int16_t WORLD_BEGIN = 4000;
 constexpr int16_t WORLD_END = 4009;
 constexpr int16_t WORLD_COUNT = 10;
 
+// Tradeskill world container slot (used when combining in a world object like a forge)
+// This is the slot used in OP_TradeSkillCombine when using a world container
+constexpr int16_t SLOT_TRADESKILL_EXPERIMENT_COMBINE = 1000;
+
 // Invalid slot
 constexpr int16_t SLOT_INVALID = -1;
+
+// ============================================================================
+// Tradeskill Container Types (bagType values)
+// These correspond to EQEmu's ObjectType namespace values
+// Used to identify what type of tradeskill a container supports
+// ============================================================================
+enum TradeskillContainerType : uint8_t {
+    CONTAINER_SMALL_BAG = 0,
+    CONTAINER_LARGE_BAG = 1,
+    CONTAINER_QUIVER = 2,
+    CONTAINER_BELT_POUCH = 3,
+    CONTAINER_WRIST_POUCH = 4,
+    CONTAINER_BACKPACK = 5,
+    CONTAINER_SMALL_CHEST = 6,
+    CONTAINER_LARGE_CHEST = 7,
+    CONTAINER_BANDOLIER = 8,
+    CONTAINER_MEDICINE = 9,
+    CONTAINER_TINKERING = 10,
+    CONTAINER_LEXICON = 11,
+    CONTAINER_POISON_MAKING = 12,
+    CONTAINER_QUEST = 13,
+    CONTAINER_MIXING_BOWL = 14,
+    CONTAINER_BAKING = 15,
+    CONTAINER_TAILORING = 16,
+    CONTAINER_BLACKSMITHING = 17,
+    CONTAINER_FLETCHING = 18,
+    CONTAINER_BREWING = 19,
+    CONTAINER_JEWELRY_MAKING = 20,
+    CONTAINER_POTTERY = 21,
+    CONTAINER_KILN = 22,
+    CONTAINER_KEY_MAKER = 23,
+    CONTAINER_RESEARCH_WIZ = 24,
+    CONTAINER_RESEARCH_MAG = 25,
+    CONTAINER_RESEARCH_NEC = 26,
+    CONTAINER_RESEARCH_ENC = 27,
+    CONTAINER_UNKNOWN = 28,
+    CONTAINER_RESEARCH_PRACTICE = 29,
+    CONTAINER_ALCHEMY = 30,
+    CONTAINER_HIGH_ELF_FORGE = 31,
+    CONTAINER_DARK_ELF_FORGE = 32,
+    CONTAINER_OGRE_FORGE = 33,
+    CONTAINER_DWARF_FORGE = 34,
+    CONTAINER_GNOME_FORGE = 35,
+    CONTAINER_BARBARIAN_FORGE = 36,
+    CONTAINER_IKSAR_FORGE = 37,
+    CONTAINER_HUMAN_FORGE_1 = 38,
+    CONTAINER_HUMAN_FORGE_2 = 39,
+    CONTAINER_HALFLING_TAILORING_1 = 40,
+    CONTAINER_HALFLING_TAILORING_2 = 41,
+    CONTAINER_ERUDITE_TAILORING = 42,
+    CONTAINER_WOOD_ELF_TAILORING = 43,
+    CONTAINER_WOOD_ELF_FLETCHING = 44,
+    CONTAINER_IKSAR_POTTERY = 45,
+    CONTAINER_FISHING = 46,
+    CONTAINER_TROLL_FORGE = 47,
+    CONTAINER_WOOD_ELF_FORGE = 48,
+    CONTAINER_HALFLING_FORGE = 49,
+    CONTAINER_ERUDITE_FORGE = 50,
+    CONTAINER_MERCHANT = 51,
+    CONTAINER_FROGLOK_FORGE = 52,
+    CONTAINER_AUGMENTER = 53,
+    CONTAINER_CHURN = 54,
+    CONTAINER_TRANSFORMATION_MOLD = 55,
+    CONTAINER_DETRANSFORMATION_MOLD = 56,
+    CONTAINER_UNATTUNER = 57,
+    CONTAINER_TRADESKILL_BAG = 58,
+    CONTAINER_COLLECTIBLE_BAG = 59,
+    CONTAINER_NO_DEPOSIT = 60
+};
+
+// Check if a container type is a tradeskill container (not a regular bag)
+// Tradeskill containers start at type 10 (tinkering) and go up
+// Regular bag types are 0-9
+inline bool isTradeskillContainerType(uint8_t containerType) {
+    // Regular bags are types 0-9
+    // Tradeskill containers start at 10 (tinkering)
+    // But some special types like quest(13), merchant(51), etc. are not tradeskill
+    switch (containerType) {
+        case CONTAINER_TINKERING:
+        case CONTAINER_LEXICON:
+        case CONTAINER_POISON_MAKING:
+        case CONTAINER_MIXING_BOWL:
+        case CONTAINER_BAKING:
+        case CONTAINER_TAILORING:
+        case CONTAINER_BLACKSMITHING:
+        case CONTAINER_FLETCHING:
+        case CONTAINER_BREWING:
+        case CONTAINER_JEWELRY_MAKING:
+        case CONTAINER_POTTERY:
+        case CONTAINER_KILN:
+        case CONTAINER_KEY_MAKER:
+        case CONTAINER_RESEARCH_WIZ:
+        case CONTAINER_RESEARCH_MAG:
+        case CONTAINER_RESEARCH_NEC:
+        case CONTAINER_RESEARCH_ENC:
+        case CONTAINER_RESEARCH_PRACTICE:
+        case CONTAINER_ALCHEMY:
+        case CONTAINER_HIGH_ELF_FORGE:
+        case CONTAINER_DARK_ELF_FORGE:
+        case CONTAINER_OGRE_FORGE:
+        case CONTAINER_DWARF_FORGE:
+        case CONTAINER_GNOME_FORGE:
+        case CONTAINER_BARBARIAN_FORGE:
+        case CONTAINER_IKSAR_FORGE:
+        case CONTAINER_HUMAN_FORGE_1:
+        case CONTAINER_HUMAN_FORGE_2:
+        case CONTAINER_HALFLING_TAILORING_1:
+        case CONTAINER_HALFLING_TAILORING_2:
+        case CONTAINER_ERUDITE_TAILORING:
+        case CONTAINER_WOOD_ELF_TAILORING:
+        case CONTAINER_WOOD_ELF_FLETCHING:
+        case CONTAINER_IKSAR_POTTERY:
+        case CONTAINER_FISHING:
+        case CONTAINER_TROLL_FORGE:
+        case CONTAINER_WOOD_ELF_FORGE:
+        case CONTAINER_HALFLING_FORGE:
+        case CONTAINER_ERUDITE_FORGE:
+        case CONTAINER_FROGLOK_FORGE:
+        case CONTAINER_CHURN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Check if a slot is a world container item slot (4000-4009)
+inline bool isWorldContainerItemSlot(int16_t slotId) {
+    return slotId >= WORLD_BEGIN && slotId <= WORLD_END;
+}
+
+// Check if a slot is any world container slot (combine slot 1000 or item slots 4000-4009)
+inline bool isWorldContainerSlot(int16_t slotId) {
+    return slotId == SLOT_TRADESKILL_EXPERIMENT_COMBINE || isWorldContainerItemSlot(slotId);
+}
+
+// Get the tradeskill name for a container type
+inline const char* getTradeskillContainerName(uint8_t containerType) {
+    switch (containerType) {
+        case CONTAINER_SMALL_BAG: return "Small Bag";
+        case CONTAINER_LARGE_BAG: return "Large Bag";
+        case CONTAINER_QUIVER: return "Quiver";
+        case CONTAINER_BELT_POUCH: return "Belt Pouch";
+        case CONTAINER_WRIST_POUCH: return "Wrist Pouch";
+        case CONTAINER_BACKPACK: return "Backpack";
+        case CONTAINER_SMALL_CHEST: return "Small Chest";
+        case CONTAINER_LARGE_CHEST: return "Large Chest";
+        case CONTAINER_BANDOLIER: return "Bandolier";
+        case CONTAINER_MEDICINE: return "Medicine Bag";
+        case CONTAINER_TINKERING: return "Tinkering";
+        case CONTAINER_LEXICON: return "Lexicon";
+        case CONTAINER_POISON_MAKING: return "Mortar and Pestle";
+        case CONTAINER_QUEST: return "Quest Container";
+        case CONTAINER_MIXING_BOWL: return "Mixing Bowl";
+        case CONTAINER_BAKING: return "Oven";
+        case CONTAINER_TAILORING: return "Loom";
+        case CONTAINER_BLACKSMITHING: return "Forge";
+        case CONTAINER_FLETCHING: return "Fletching Kit";
+        case CONTAINER_BREWING: return "Brew Barrel";
+        case CONTAINER_JEWELRY_MAKING: return "Jeweler's Kit";
+        case CONTAINER_POTTERY: return "Pottery Wheel";
+        case CONTAINER_KILN: return "Kiln";
+        case CONTAINER_KEY_MAKER: return "Key Maker";
+        case CONTAINER_RESEARCH_WIZ: return "Wizard Lexicon";
+        case CONTAINER_RESEARCH_MAG: return "Mage Lexicon";
+        case CONTAINER_RESEARCH_NEC: return "Necromancer Lexicon";
+        case CONTAINER_RESEARCH_ENC: return "Enchanter Lexicon";
+        case CONTAINER_RESEARCH_PRACTICE: return "Practice Lexicon";
+        case CONTAINER_ALCHEMY: return "Alchemy Table";
+        case CONTAINER_HIGH_ELF_FORGE: return "High Elf Forge";
+        case CONTAINER_DARK_ELF_FORGE: return "Dark Elf Forge";
+        case CONTAINER_OGRE_FORGE: return "Ogre Forge";
+        case CONTAINER_DWARF_FORGE: return "Dwarf Forge";
+        case CONTAINER_GNOME_FORGE: return "Gnome Forge";
+        case CONTAINER_BARBARIAN_FORGE: return "Barbarian Forge";
+        case CONTAINER_IKSAR_FORGE: return "Iksar Forge";
+        case CONTAINER_HUMAN_FORGE_1: return "Human Forge";
+        case CONTAINER_HUMAN_FORGE_2: return "Human Forge";
+        case CONTAINER_HALFLING_TAILORING_1: return "Halfling Loom";
+        case CONTAINER_HALFLING_TAILORING_2: return "Halfling Loom";
+        case CONTAINER_ERUDITE_TAILORING: return "Erudite Loom";
+        case CONTAINER_WOOD_ELF_TAILORING: return "Wood Elf Loom";
+        case CONTAINER_WOOD_ELF_FLETCHING: return "Wood Elf Fletching Kit";
+        case CONTAINER_IKSAR_POTTERY: return "Iksar Pottery Wheel";
+        case CONTAINER_FISHING: return "Tackle Box";
+        case CONTAINER_TROLL_FORGE: return "Troll Forge";
+        case CONTAINER_WOOD_ELF_FORGE: return "Wood Elf Forge";
+        case CONTAINER_HALFLING_FORGE: return "Halfling Forge";
+        case CONTAINER_ERUDITE_FORGE: return "Erudite Forge";
+        case CONTAINER_MERCHANT: return "Merchant";
+        case CONTAINER_FROGLOK_FORGE: return "Froglok Forge";
+        case CONTAINER_AUGMENTER: return "Augmenter";
+        case CONTAINER_CHURN: return "Churn";
+        case CONTAINER_TRANSFORMATION_MOLD: return "Transformation Mold";
+        case CONTAINER_DETRANSFORMATION_MOLD: return "Detransformation Mold";
+        case CONTAINER_UNATTUNER: return "Unattuner";
+        case CONTAINER_TRADESKILL_BAG: return "Tradeskill Bag";
+        case CONTAINER_COLLECTIBLE_BAG: return "Collectible Bag";
+        case CONTAINER_NO_DEPOSIT: return "No Deposit";
+        default: return "Unknown Container";
+    }
+}
 
 // Item sizes
 enum ItemSize : uint8_t {

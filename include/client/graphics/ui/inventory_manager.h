@@ -122,6 +122,7 @@ public:
     void removeItem(int16_t slotId);
     void clearAll();
     void clearTradeSlots();  // Clear items in trade slots (3000-3007)
+    void clearWorldContainerSlots();  // Clear items in world container slots (4000-4009)
 
     // Cursor operations
     bool pickupItem(int16_t slotId);
@@ -151,6 +152,7 @@ public:
     bool canPlaceItemInSlot(const ItemInstance* item, int16_t targetSlot) const;
     bool canEquipItem(const ItemInstance* item, int16_t equipSlot) const;
     bool canPlaceInBag(const ItemInstance* item, int16_t bagSlot) const;
+    bool canPlaceInWorldContainer(const ItemInstance* item, int16_t slot) const;
     bool meetsRestrictions(const ItemInstance* item) const;
     bool hasLoreConflict(const ItemInstance* item, int16_t excludeSlot = SLOT_INVALID) const;
 
