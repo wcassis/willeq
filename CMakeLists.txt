@@ -220,6 +220,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/buff_tooltip.cpp
         src/client/graphics/ui/skill_tooltip.cpp
         src/client/graphics/ui/group_window.cpp
+        src/client/graphics/ui/pet_window.cpp
         src/client/graphics/ui/hotbar_window.cpp
         src/client/graphics/ui/hotbar_cursor.cpp
         src/client/graphics/ui/skills_window.cpp

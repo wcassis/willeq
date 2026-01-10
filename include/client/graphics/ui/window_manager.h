@@ -13,6 +13,7 @@
 #include "spell_book_window.h"
 #include "buff_window.h"
 #include "group_window.h"
+#include "pet_window.h"
 #include "player_status_window.h"
 #include "hotbar_window.h"
 #include "hotbar_cursor.h"
@@ -239,6 +240,16 @@ public:
     void setGroupDisbandCallback(GroupDisbandCallback callback);
     void setGroupAcceptCallback(GroupAcceptCallback callback);
     void setGroupDeclineCallback(GroupDeclineCallback callback);
+
+    // Pet window management
+    void initPetWindow(EverQuest* eq);
+    void togglePetWindow();
+    void openPetWindow();
+    void closePetWindow();
+    bool isPetWindowOpen() const;
+    PetWindow* getPetWindow() { return petWindow_.get(); }
+    const PetWindow* getPetWindow() const { return petWindow_.get(); }
+    void setPetCommandCallback(PetCommandCallback callback);
 
     // Hotbar window management
     void initHotbarWindow();
@@ -508,6 +519,7 @@ private:
     std::unique_ptr<SpellBookWindow> spellBookWindow_;
     std::unique_ptr<BuffWindow> buffWindow_;
     std::unique_ptr<GroupWindow> groupWindow_;
+    std::unique_ptr<PetWindow> petWindow_;
     std::unique_ptr<HotbarWindow> hotbarWindow_;
     HotbarCursor hotbarCursor_;
     std::unique_ptr<SkillsWindow> skillsWindow_;
@@ -565,6 +577,9 @@ private:
     GroupDisbandCallback groupDisbandCallback_;
     GroupAcceptCallback groupAcceptCallback_;
     GroupDeclineCallback groupDeclineCallback_;
+
+    // Pet window callback
+    PetCommandCallback petCommandCallback_;
 
     // Hotbar callbacks
     HotbarActivateCallback hotbarActivateCallback_;

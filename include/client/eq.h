@@ -4,6 +4,7 @@
 #include "common/net/daybreak_connection.h"
 #include "common/event/timer.h"
 #include "common/packet_structs.h"
+#include "client/pet_constants.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -244,11 +245,13 @@ enum TitaniumZoneOpcodes {
 	HC_OP_ClickObject = 0x3bc2,          // Client->Server: click world object (forge, groundspawn, etc.)
 	HC_OP_ClickObjectAction = 0x6937,    // Server->Client: object action response (open tradeskill container)
 	HC_OP_TradeSkillCombine = 0x0b40,    // Bidirectional: tradeskill combine request/result
-	// Skill training opcodes
+// Skill training opcodes
 	HC_OP_GMTraining = 0x238f,           // Skill training initiation/data (bidirectional)
 	HC_OP_GMTrainSkill = 0x11d2,         // Request to train a specific skill (client -> server)
 	HC_OP_GMEndTraining = 0x613d,        // End training session (client -> server)
-	HC_OP_GMEndTrainingResponse = 0x0000 // Server ack for end training (unused in Titanium)
+	HC_OP_GMEndTrainingResponse = 0x0000, // Server ack for end training (unused in Titanium)
+	// Pet opcodes
+	HC_OP_PetCommands = 0x10a1           // C->S: Pet command from client
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -420,6 +423,10 @@ struct Entity
 	float delta_x = 0, delta_y = 0, delta_z = 0;
 	float delta_heading = 0;
 	uint32_t last_update_time = 0;
+
+	// Pet tracking
+	uint8_t is_pet = 0;           // Non-zero if this entity is a pet (offset 329)
+	uint32_t pet_owner_id = 0;    // Spawn ID of pet's owner (offset 189)
 };
 
 // Door state information (parsed from Door_Struct packets)
@@ -557,6 +564,19 @@ public:
 	const std::string& GetPendingInviterName() const { return m_pending_inviter_name; }
 	void AcceptGroupInvite();
 	void DeclineGroupInvite();
+
+	// Pet queries
+	bool HasPet() const { return m_pet_spawn_id != 0; }
+	uint16_t GetPetSpawnId() const { return m_pet_spawn_id; }
+	const Entity* GetPetEntity() const;
+	uint8_t GetPetHpPercent() const;
+	std::string GetPetName() const;
+	uint8_t GetPetLevel() const;
+	bool GetPetButtonState(EQT::PetButton button) const;
+
+	// Pet commands
+	void SendPetCommand(EQT::PetCommand command, uint16_t target_id = 0);
+	void DismissPet();
 
 	// Movement state and behavior methods
 	void SetMovementMode(MovementMode mode);
@@ -875,6 +895,10 @@ private:
 	std::map<uint16_t, Entity> m_entities;
 	uint16_t m_my_spawn_id = 0;
 
+	// Pet tracking
+	uint16_t m_pet_spawn_id = 0;                                      // Our pet's spawn ID (0 = no pet)
+	bool m_pet_button_states[EQT::PET_BUTTON_COUNT] = {};             // Current button states
+
 	// Door tracking
 	std::map<uint8_t, Door> m_doors;
 	std::set<uint8_t> m_pending_door_clicks;  // Doors clicked by user, awaiting server response
@@ -1151,6 +1175,11 @@ private:
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
 	void OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
 	                          float dx, float dy, float dz, int32_t animation);
+
+	// Pet graphics callbacks
+	void OnPetCreated(const Entity& pet);
+	void OnPetRemoved();
+	void OnPetButtonStateChanged(EQT::PetButton button, bool state);
 
 	// Inventory packet handlers
 	void ZoneProcessMoveItem(const EQ::Net::Packet& p);

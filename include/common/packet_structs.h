@@ -1174,6 +1174,31 @@ struct GMSkillChange_Struct {
 };
 static_assert(sizeof(GMSkillChange_Struct) == 12, "GMSkillChange_Struct must be 12 bytes");
 
+// ============================================================================
+// Pet Command Structures
+// ============================================================================
+
+// OP_PetCommands - Pet command sent from client to server
+// Size: 8 bytes
+// Used in: OP_PetCommands packet (client->server)
+struct PetCommand_Struct {
+/*0000*/ uint32_t command;     // Pet command ID (see pet_constants.h PetCommand enum)
+/*0004*/ uint32_t target;      // Target spawn ID (for attack commands, 0 otherwise)
+/*0008*/
+};
+static_assert(sizeof(PetCommand_Struct) == 8, "PetCommand_Struct must be 8 bytes");
+
+// OP_PetCommandState - Pet button state update from server
+// Size: 8 bytes
+// Used in: OP_PetCommandState packet (server->client)
+// Note: This opcode may be unmapped for Titanium (shows 0x0000 in some captures)
+struct PetCommandState_Struct {
+/*0000*/ uint32_t button_id;   // Pet button ID (see pet_constants.h PetButton enum)
+/*0004*/ uint32_t state;       // Button state: 0 = off/unpressed, 1 = on/pressed
+/*0008*/
+};
+static_assert(sizeof(PetCommandState_Struct) == 8, "PetCommandState_Struct must be 8 bytes");
+
 #pragma pack(pop)
 
 // Helper functions for position bitfield extraction

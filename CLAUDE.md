@@ -218,6 +218,7 @@ The renderer has two modes, toggled with **F9**:
 | I | Toggle inventory |
 | K | Toggle skills window |
 | G | Toggle group window |
+| P | Toggle pet window |
 | U | Interact with nearest door |
 | H | Hail (say "Hail" or "Hail, <target>") |
 | ESC | Clear target |
@@ -277,6 +278,9 @@ The renderer has two modes, toggled with **F9**:
 
 **Skills:**
 - `/skills` - Toggle skills window
+
+**Pet:**
+- `/pet <command>` - Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)
 
 **Utility:**
 - `/help [command]` - Show help

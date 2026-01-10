@@ -196,7 +196,8 @@ public:
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
     bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
-    bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
+bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
+    bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
     float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
@@ -307,7 +308,8 @@ private:
     bool vendorToggleRequested_ = false;
     bool trainerToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
-    bool zoneLineVisualizationToggleRequested_ = false;
+bool zoneLineVisualizationToggleRequested_ = false;
+    bool petToggleRequested_ = false;
     int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
     int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
     float collisionHeightDelta_ = 0.0f;

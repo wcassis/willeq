@@ -136,9 +136,14 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 skillsToggleRequested_ = true;
             }
 
-            // Zone line visualization toggle on Z key
+// Zone line visualization toggle on Z key
             if (event.KeyInput.Key == irr::KEY_KEY_Z) {
                 zoneLineVisualizationToggleRequested_ = true;
+            }
+
+            // Pet window toggle on P key (Player mode)
+            if (event.KeyInput.Key == irr::KEY_KEY_P) {
+                petToggleRequested_ = true;
             }
 
             // Spell gem shortcuts (1-8 keys, not numpad) - only when Ctrl is not held
@@ -2506,10 +2511,17 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
-    // Handle zone line visualization toggle (Z key) - works in any mode, but only if chat is not focused
+// Handle zone line visualization toggle (Z key) - works in any mode, but only if chat is not focused
     if (eventReceiver_->zoneLineVisualizationToggleRequested()) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
             toggleZoneLineVisualization();
+        }
+    }
+
+    // Handle pet window toggle (P key) - only in Player mode, and only if chat is not focused
+    if (eventReceiver_->petToggleRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            windowManager_->togglePetWindow();
         }
     }
 
