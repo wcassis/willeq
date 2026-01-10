@@ -25,6 +25,7 @@
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/graphics/ui/hotbar_types.h"
+#include "client/graphics/ui/spell_book_window.h"
 #include "common/util/json_config.h"
 #endif
 #include "client/animation_constants.h"
@@ -2065,7 +2066,62 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		// Linked spell reuse timer - ignore for now
 		break;
 	case HC_OP_MemorizeSpell:
-		// Spell memorization confirmation - ignore for now
+		{
+			// MemorizeSpell_Struct: slot(4), spell_id(4), scribing(4), unknown0(4)
+			// Total: 16 bytes after opcode (2 bytes)
+			if (p.Length() < 18) {
+				LOG_WARN(MOD_SPELL, "MemorizeSpell packet too short: {} bytes", p.Length());
+				break;
+			}
+
+			uint32_t slot = p.GetUInt32(2);
+			uint32_t spell_id = p.GetUInt32(6);
+			uint32_t scribing = p.GetUInt32(10);
+
+			LOG_DEBUG(MOD_SPELL, "MemorizeSpell response: slot={} spell_id={} scribing={}",
+				slot, spell_id, scribing);
+
+			// Check if this is a scribe confirmation (scribing flag cleared to 0)
+			if (m_pending_scribe_spell_id != 0 &&
+				m_pending_scribe_spell_id == spell_id &&
+				scribing == 0) {
+
+				// Add spell to spellbook
+				if (m_spell_manager->scribeSpell(spell_id, static_cast<uint16_t>(slot))) {
+					// Get spell name for message
+					const EQ::SpellData* spellData = m_spell_manager->getSpell(spell_id);
+					std::string spellName = spellData ? spellData->name : "spell";
+
+					AddChatSystemMessage(fmt::format("You have learned {}!", spellName));
+					LOG_INFO(MOD_SPELL, "Successfully scribed spell {} ({}) to slot {}",
+						spellName, spell_id, slot);
+
+					// Refresh spellbook UI if open
+					if (m_renderer) {
+						auto* windowManager = m_renderer->getWindowManager();
+						if (windowManager) {
+							auto* spellBookWindow = windowManager->getSpellBookWindow();
+							if (spellBookWindow) {
+								spellBookWindow->refresh();
+							}
+						}
+					}
+				} else {
+					LOG_WARN(MOD_SPELL, "Failed to add spell {} to spellbook slot {}",
+						spell_id, slot);
+				}
+
+				// Clear pending scribe state
+				m_pending_scribe_spell_id = 0;
+				m_pending_scribe_book_slot = 0;
+				m_pending_scribe_source_slot = -1;
+			}
+			// Handle gem slot memorization confirmations (slot < MAX_SPELL_GEMS)
+			else if (slot < EQ::MAX_SPELL_GEMS && scribing == 0) {
+				// Existing gem memorization - SpellManager handles this via other mechanisms
+				LOG_DEBUG(MOD_SPELL, "Gem memorization confirmation: gem={} spell={}", slot, spell_id);
+			}
+		}
 		break;
 	case HC_OP_SpecialMesg:
 		{
@@ -2954,6 +3010,82 @@ void EverQuest::SendDeleteItem(int16_t slot)
 
 	DumpPacket("C->S", HC_OP_DeleteItem, packet);
 	m_zone_connection->QueuePacket(packet);
+}
+
+void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot)
+{
+	if (!m_zone_connection) {
+		LOG_WARN(MOD_SPELL, "No zone connection, cannot scribe spell");
+		return;
+	}
+
+	if (!m_spell_manager) {
+		LOG_WARN(MOD_SPELL, "No spell manager, cannot scribe spell");
+		return;
+	}
+
+	// Check if spell is already scribed
+	if (m_spell_manager->hasSpellScribed(spellId)) {
+		AddChatSystemMessage("You already have this spell scribed in your spellbook.");
+		LOG_DEBUG(MOD_SPELL, "Spell {} already scribed, not sending packets", spellId);
+		return;
+	}
+
+	// Check level/class requirements
+	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
+	if (spellData) {
+		uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(m_class));
+		if (reqLevel == 255) {
+			AddChatSystemMessage("Your class cannot use this spell.");
+			LOG_DEBUG(MOD_SPELL, "Class {} cannot use spell {}", m_class, spellId);
+			return;
+		}
+		if (m_level < reqLevel) {
+			AddChatSystemMessage(fmt::format("You must be level {} to scribe this spell.", reqLevel));
+			LOG_DEBUG(MOD_SPELL, "Level {} too low to scribe spell {} (requires {})",
+				m_level, spellId, reqLevel);
+			return;
+		}
+	}
+
+	LOG_INFO(MOD_SPELL, "Scribing spell {} to spellbook slot {} (scroll already on cursor)",
+		spellId, bookSlot);
+
+	// Note: The scroll was already moved to cursor slot when Ctrl+clicked
+	// (InventoryManager::setSpellForScribe sends MoveItem to cursor)
+	// We only need to send OP_MemorizeSpell here
+
+	// Send OP_MemorizeSpell with scribing action
+	// MemorizeSpell_Struct:
+	// - slot (4 bytes): spellbook slot (0-399) when scribing
+	// - spell_id (4 bytes): spell ID
+	// - scribing (4 bytes): action type (0=scribe from scroll, 1=memorize, 2=forget, 3=spellbar)
+	// - reduction (4 bytes): reuse timer reduction
+	{
+		EQ::Net::DynamicPacket memPacket;
+		memPacket.Resize(18);  // opcode(2) + struct(16)
+
+		constexpr uint32_t SCRIBING_FROM_SCROLL = 0;
+
+		memPacket.PutUInt16(0, HC_OP_MemorizeSpell);
+		memPacket.PutUInt32(2, bookSlot);    // spellbook slot (0-399)
+		memPacket.PutUInt32(6, spellId);     // spell ID
+		memPacket.PutUInt32(10, SCRIBING_FROM_SCROLL);  // scribing action = 0
+		memPacket.PutUInt32(14, 0);          // reduction
+
+		LOG_DEBUG(MOD_SPELL, "Sending MemorizeSpell: spell={} book_slot={} scribing=0 (scribe from scroll)",
+			spellId, bookSlot);
+		DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
+		m_zone_connection->QueuePacket(memPacket);
+	}
+
+	// Store pending scribe state for confirmation handling
+	m_pending_scribe_spell_id = spellId;
+	m_pending_scribe_book_slot = bookSlot;
+	m_pending_scribe_source_slot = sourceSlot;
+
+	AddChatSystemMessage(fmt::format("Scribing {}...",
+		spellData ? spellData->name : "spell"));
 }
 
 // Trade send functions
@@ -12336,6 +12468,21 @@ bool EverQuest::InitGraphics(int width, int height) {
 				AddChatSystemMessage(fmt::format("Forgot spell in gem {}", gemSlot + 1));
 			}
 		});
+
+		// Set up spellbook open/close callback to send appearance animation
+		windowManager->setSpellbookStateCallback([this](bool isOpen) {
+			// Send spawn appearance to server: animation 110 = sitting/spellbook, 100 = standing
+			SendSpawnAppearance(AT_ANIMATION, isOpen ? 110 : 100);
+			LOG_DEBUG(MOD_SPELL, "Spellbook {} - sent appearance animation {}",
+				isOpen ? "opened" : "closed", isOpen ? 110 : 100);
+		});
+
+		// Set up scribe spell request callback
+		windowManager->setScribeSpellRequestCallback(
+			[this](uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot) {
+				ScribeSpellFromScroll(spellId, bookSlot, sourceSlot);
+			}
+		);
 
 		LOG_DEBUG(MOD_SPELL, "Spell gem panel initialized");
 	}

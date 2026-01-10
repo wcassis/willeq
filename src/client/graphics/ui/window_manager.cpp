@@ -2509,10 +2509,46 @@ void WindowManager::handleSlotClick(int16_t slotId, bool shift, bool ctrl) {
         return;
     }
 
-    // Ctrl+click without shift and without inventory cursor = pickup for hotbar
+    // Ctrl+click without shift and without inventory cursor = pickup for hotbar or spell scribing
     if (ctrl && !shift && !invManager_->hasCursorItem()) {
         const inventory::ItemInstance* item = invManager_->getItem(slotId);
         if (item) {
+            // Check if this is a spell scroll - if so, start scribing flow
+            if (item->isSpellScroll()) {
+                uint32_t spellId = item->getScrollSpellId();
+
+                // Fallback: if scrollEffect wasn't populated, try to look up by name
+                if (spellId == 0 && spellMgr_ && item->name.size() > 7) {
+                    // Extract spell name after "Spell: " prefix
+                    std::string spellName = item->name.substr(7);
+                    const EQ::SpellData* spellData = spellMgr_->getDatabase().getSpellByName(spellName);
+                    if (spellData) {
+                        spellId = spellData->id;
+                        LOG_DEBUG(MOD_UI, "WindowManager Found spell by name lookup: '{}' -> id={}",
+                                 spellName, spellId);
+                    }
+                }
+
+                if (spellId != 0) {
+                    LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click on spell scroll: spell={} slot={}",
+                             spellId, slotId);
+                    // Set scribing state and notify callback
+                    invManager_->setSpellForScribe(spellId, slotId);
+                    if (spellScrollPickupCallback_) {
+                        spellScrollPickupCallback_(spellId, slotId);
+                    }
+                    // Enable scribing mode on spellbook and open it
+                    if (spellBookWindow_) {
+                        spellBookWindow_->setScribingMode(true, spellId);
+                    }
+                    openSpellbook();
+                    return;
+                } else {
+                    LOG_WARN(MOD_UI, "WindowManager Spell scroll '{}' has no spell ID", item->name);
+                }
+            }
+
+            // Not a spell scroll - pickup for hotbar
             LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up item for hotbar, itemId={}, icon={}",
                      item->itemId, item->icon);
             setHotbarCursor(HotbarButtonType::Item, item->itemId, "", item->icon);
@@ -2611,10 +2647,46 @@ void WindowManager::handleBagSlotClick(int16_t slotId, bool shift, bool ctrl) {
         return;
     }
 
-    // Ctrl+click without shift and without inventory cursor = pickup for hotbar
+    // Ctrl+click without shift and without inventory cursor = pickup for hotbar or spell scribing
     if (ctrl && !shift && !invManager_->hasCursorItem()) {
         const inventory::ItemInstance* item = invManager_->getItem(slotId);
         if (item) {
+            // Check if this is a spell scroll - if so, start scribing flow
+            if (item->isSpellScroll()) {
+                uint32_t spellId = item->getScrollSpellId();
+
+                // Fallback: if scrollEffect wasn't populated, try to look up by name
+                if (spellId == 0 && spellMgr_ && item->name.size() > 7) {
+                    // Extract spell name after "Spell: " prefix
+                    std::string spellName = item->name.substr(7);
+                    const EQ::SpellData* spellData = spellMgr_->getDatabase().getSpellByName(spellName);
+                    if (spellData) {
+                        spellId = spellData->id;
+                        LOG_DEBUG(MOD_UI, "WindowManager Found spell by name lookup in bag: '{}' -> id={}",
+                                 spellName, spellId);
+                    }
+                }
+
+                if (spellId != 0) {
+                    LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click on spell scroll in bag: spell={} slot={}",
+                             spellId, slotId);
+                    // Set scribing state and notify callback
+                    invManager_->setSpellForScribe(spellId, slotId);
+                    if (spellScrollPickupCallback_) {
+                        spellScrollPickupCallback_(spellId, slotId);
+                    }
+                    // Enable scribing mode on spellbook and open it
+                    if (spellBookWindow_) {
+                        spellBookWindow_->setScribingMode(true, spellId);
+                    }
+                    openSpellbook();
+                    return;
+                } else {
+                    LOG_WARN(MOD_UI, "WindowManager Spell scroll in bag '{}' has no spell ID", item->name);
+                }
+            }
+
+            // Not a spell scroll - pickup for hotbar
             LOG_DEBUG(MOD_UI, "WindowManager Ctrl+click: picking up bag item for hotbar, itemId={}, icon={}",
                      item->itemId, item->icon);
             setHotbarCursor(HotbarButtonType::Item, item->itemId, "", item->icon);
@@ -3421,6 +3493,23 @@ void WindowManager::initSpellGemPanel(EQ::SpellManager* spellMgr) {
         setSpellOnCursor(spell_id, icon);
     });
 
+    // Connect scribe spell callback - called when user clicks empty slot in scribing mode
+    spellBookWindow_->setScribeSpellCallback([this](uint32_t spell_id, uint16_t book_slot) {
+        if (!invManager_) return;
+
+        int16_t sourceSlot = invManager_->getScribeSourceSlot();
+        LOG_DEBUG(MOD_UI, "WindowManager: Scribe request - spell={} book_slot={} source_slot={}",
+                 spell_id, book_slot, sourceSlot);
+
+        // Call the scribe request callback to send packets
+        if (scribeSpellRequestCallback_) {
+            scribeSpellRequestCallback_(spell_id, book_slot, sourceSlot);
+        }
+
+        // Clear the scribing state
+        invManager_->clearSpellForScribe();
+    });
+
     // Connect spellbook button in gem panel to toggle spellbook window
     spellGemPanel_->setSpellbookCallback([this]() {
         toggleSpellbook();
@@ -3499,6 +3588,11 @@ void WindowManager::openSpellbook() {
         spellBookWindow_->show();
         spellBookWindow_->refresh();
         LOG_DEBUG(MOD_UI, "Spellbook opened at ({}, {})", x, y);
+
+        // Notify server that spellbook is open (triggers sitting animation)
+        if (spellbookStateCallback_) {
+            spellbookStateCallback_(true);
+        }
     }
 }
 
@@ -3506,6 +3600,22 @@ void WindowManager::closeSpellbook() {
     if (spellBookWindow_) {
         spellBookWindow_->hide();
         LOG_DEBUG(MOD_UI, "Spellbook closed");
+
+        // Clear scribing mode on spellbook
+        if (spellBookWindow_->isScribingMode()) {
+            spellBookWindow_->setScribingMode(false);
+        }
+
+        // Clear any pending spell scribing state
+        if (invManager_ && invManager_->isHoldingSpellForScribe()) {
+            LOG_DEBUG(MOD_UI, "Clearing spell scribing state on spellbook close");
+            invManager_->clearSpellForScribe();
+        }
+
+        // Notify server that spellbook is closed (triggers standing animation)
+        if (spellbookStateCallback_) {
+            spellbookStateCallback_(false);
+        }
     }
 }
 
@@ -3518,6 +3628,18 @@ void WindowManager::setSpellMemorizeCallback(SpellClickCallback callback) {
     if (spellBookWindow_) {
         spellBookWindow_->setSpellClickCallback(callback);
     }
+}
+
+void WindowManager::setSpellbookStateCallback(SpellbookStateCallback callback) {
+    spellbookStateCallback_ = std::move(callback);
+}
+
+void WindowManager::setSpellScrollPickupCallback(SpellScrollPickupCallback callback) {
+    spellScrollPickupCallback_ = std::move(callback);
+}
+
+void WindowManager::setScribeSpellRequestCallback(ScribeSpellRequestCallback callback) {
+    scribeSpellRequestCallback_ = std::move(callback);
 }
 
 // ============================================================================

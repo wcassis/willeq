@@ -389,6 +389,14 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
         item.focusEffect.type = toInt(fields[150]);
     }
 
+    // Scroll effect (154-158)
+    if (fields.size() >= 159) {
+        item.scrollEffect.effectId = toInt(fields[154]);
+        item.scrollEffect.type = toInt(fields[155]);
+        LOG_DEBUG(MOD_UI, "TitaniumItemParser Scroll effect for '{}': effectId={} type={}",
+            item.name, item.scrollEffect.effectId, item.scrollEffect.type);
+    }
+
     return true;
 }
 
@@ -1035,6 +1043,29 @@ void InventoryManager::returnCursorMoney() {
     // Money is returned by simply clearing it - the callback to update
     // player money should be handled by WindowManager
     clearCursorMoney();
+}
+
+void InventoryManager::setSpellForScribe(uint32_t spellId, int16_t sourceSlot) {
+    scribeSpellId_ = spellId;
+    scribeSourceSlot_ = sourceSlot;
+    LOG_DEBUG(MOD_UI, "InventoryManager: Set spell {} from slot {} for scribing",
+              spellId, sourceSlot);
+
+    // Move the scroll to cursor slot - this sends MoveItem to server
+    // The server expects the scroll to be on cursor when we send OP_MemorizeSpell
+    if (!pickupItem(sourceSlot)) {
+        LOG_WARN(MOD_UI, "InventoryManager: Failed to pick up scroll from slot {} for scribing",
+                 sourceSlot);
+    }
+}
+
+void InventoryManager::clearSpellForScribe() {
+    if (scribeSpellId_ != 0) {
+        LOG_DEBUG(MOD_UI, "InventoryManager: Cleared spell scribing state (was spell {})",
+                  scribeSpellId_);
+    }
+    scribeSpellId_ = 0;
+    scribeSourceSlot_ = SLOT_INVALID;
 }
 
 bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
@@ -1799,13 +1830,26 @@ void InventoryManager::processMoveItemResponse(const EQ::Net::Packet& packet) {
 
     LOG_DEBUG(MOD_UI, "InventoryManager MoveItem: from={} to={} qty={}", fromSlot, toSlot, quantity);
 
-    // If to_slot is -1 (0xFFFFFFFF), this is a server-side deletion (e.g., tradeskill consume)
+    // Check for item deletion (to_slot == -1 / 0xFFFFFFFF)
+    // This happens when:
+    // 1. A spell scroll is consumed after successful scribing
+    // 2. Tradeskill combine consumes ingredients
+    // 3. Server explicitly deletes an item
     if (toSlot == -1) {
-        LOG_DEBUG(MOD_UI, "InventoryManager Server deleted item from slot {}", fromSlot);
-        removeItem(static_cast<int16_t>(fromSlot));
+        int16_t slot = static_cast<int16_t>(fromSlot);
+        LOG_INFO(MOD_UI, "Item deleted from slot {} via MoveItem (to=-1)", slot);
+
+        // Check if this deletion is related to our pending scribe
+        if (isHoldingSpellForScribe() && getScribeSourceSlot() == slot) {
+            LOG_DEBUG(MOD_UI, "Scroll consumed after scribing from slot {}", slot);
+            clearSpellForScribe();
+        }
+
+        // Remove the item from inventory
+        removeItem(slot);
     }
-    // For other server-initiated moves, we'd handle them here
-    // But client-initiated moves are already processed locally
+    // Normal move operations are handled client-side
+    // Server will send OP_ItemPacket if it needs to correct our state
 }
 
 void InventoryManager::processDeleteItemResponse(const EQ::Net::Packet& packet) {

@@ -146,6 +146,14 @@ public:
     void clearCursorMoney();
     void returnCursorMoney();  // Return cursor money to player's coin
 
+    // Spell scroll scribing cursor state
+    // When a player Ctrl+clicks a spell scroll, we track it here until they click a spellbook slot
+    bool isHoldingSpellForScribe() const { return scribeSpellId_ != 0; }
+    uint32_t getScribeSpellId() const { return scribeSpellId_; }
+    int16_t getScribeSourceSlot() const { return scribeSourceSlot_; }
+    void setSpellForScribe(uint32_t spellId, int16_t sourceSlot);
+    void clearSpellForScribe();
+
     // Swap items between slots
     bool swapItems(int16_t fromSlot, int16_t toSlot);
 
@@ -225,6 +233,10 @@ private:
     // Cursor money - separate from cursor items
     CursorMoneyType cursorMoneyType_ = CursorMoneyType::None;
     uint32_t cursorMoneyAmount_ = 0;
+
+    // Spell scroll scribing state
+    uint32_t scribeSpellId_ = 0;       // Spell ID being scribed (0 = not scribing)
+    int16_t scribeSourceSlot_ = SLOT_INVALID;  // Inventory slot containing the scroll
 
     // Player info for validation
     uint32_t playerRace_ = 0;

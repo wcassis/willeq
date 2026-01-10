@@ -31,6 +31,15 @@ using ClearSpellCursorCallback = std::function<void()>;
 using SpellHotbarPickupCallback = std::function<void(HotbarButtonType type, uint32_t id,
                                                       const std::string& emoteText, uint32_t iconId)>;
 
+// Callback for spellbook open/close (sends appearance animation to server)
+using SpellbookStateCallback = std::function<void(bool isOpen)>;
+
+// Callback when a spell scroll is picked up for scribing (spell_id, source_slot)
+using SpellScrollPickupCallback = std::function<void(uint32_t spellId, int16_t sourceSlot)>;
+
+// Callback to scribe a spell from a scroll to a spellbook slot (spell_id, book_slot, source_slot)
+using ScribeSpellRequestCallback = std::function<void(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot)>;
+
 // Individual gem slot layout data
 struct GemSlotLayout {
     irr::core::recti bounds;       // Full gem bounds

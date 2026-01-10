@@ -1003,6 +1003,11 @@ private:
 	// Spell type processor (handles targeting and multi-target spells)
 	std::unique_ptr<EQ::SpellTypeProcessor> m_spell_type_processor;
 
+	// Pending spell scribe state (for handling server confirmation)
+	uint32_t m_pending_scribe_spell_id = 0;
+	uint16_t m_pending_scribe_book_slot = 0;
+	int16_t m_pending_scribe_source_slot = -1;
+
 	// Skill manager
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
 
@@ -1137,6 +1142,9 @@ private:
 	void SetupInventoryCallbacks();
 	void SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity);
 	void SendDeleteItem(int16_t slot);
+
+	// Spell scribing from scroll
+	void ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot);
 
 	// Loot packet handlers (Player mode)
 	void ZoneProcessLootItemToUI(const EQ::Net::Packet& p);
