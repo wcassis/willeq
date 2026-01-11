@@ -181,14 +181,16 @@ struct ItemInstance {
         if (classes == 0 || classes == CLASS_ALL) {
             return true;  // All classes
         }
-        return (classes & (1 << playerClass)) != 0;
+        // EQ class bitmask: class 1 = bit 0, class 7 (Monk) = bit 6, etc.
+        return (classes & (1 << (playerClass - 1))) != 0;
     }
 
     bool canBeUsedByRace(uint32_t playerRace) const {
         if (races == 0 || races == RACE_ALL) {
             return true;  // All races
         }
-        return (races & (1 << playerRace)) != 0;
+        // EQ race bitmask: race 1 = bit 0, race 2 = bit 1, etc.
+        return (races & (1 << (playerRace - 1))) != 0;
     }
 
     bool canBeUsedAtLevel(uint8_t playerLevel) const {

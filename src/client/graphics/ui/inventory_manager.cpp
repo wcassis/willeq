@@ -1176,11 +1176,17 @@ bool InventoryManager::canEquipItem(const ItemInstance* item, int16_t equipSlot)
 
     // Check if item can go in this slot type
     if (!item->canEquipInSlot(equipSlot)) {
+        LOG_DEBUG(MOD_UI, "canEquipItem: '{}' cannot go in slot {} (item slots bitmask=0x{:08X})",
+                  item->name, equipSlot, item->slots);
         return false;
     }
 
     // Check player restrictions
     if (!meetsRestrictions(item)) {
+        LOG_DEBUG(MOD_UI, "canEquipItem: '{}' fails restrictions (playerClass={}, playerRace={}, playerLevel={}, "
+                  "itemClasses=0x{:X}, itemRaces=0x{:X}, itemReqLevel={})",
+                  item->name, playerClass_, playerRace_, playerLevel_,
+                  item->classes, item->races, item->reqLevel);
         return false;
     }
 
