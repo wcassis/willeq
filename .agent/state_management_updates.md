@@ -579,6 +579,80 @@ The original plan mentioned InventoryState but it wasn't implemented. The bank w
 
 **Build verification:** ✅ Project compiles successfully with no errors
 
+### Phase 5: Output Layer Updates - COMPLETED
+
+**Status:** ✅ COMPLETE (2026-01-11)
+
+**What was implemented:**
+
+1. **IOutputRenderer interface updates** (`include/client/output/output_renderer.h`)
+   - Pet display methods: displayPetInfo(), updatePetStats(), clearPetInfo()
+   - Spell/casting display methods: displayCastingProgress(), clearCasting(), updateSpellGem()
+   - Inventory display: displayCursorItem()
+   - All new methods have default empty implementations for backward compatibility
+
+2. **ConsoleRenderer updates** (`include/client/output/console_renderer.h`, `src/client/output/console_renderer.cpp`)
+   - Added pet tracking members: m_petName, m_petLevel, m_petHpPercent, m_petManaPercent, m_hasPet
+   - Added casting tracking members: m_isCasting, m_castingSpellName, m_castingTargetName
+   - Event subscriptions for: PetCreated, PetRemoved, PetStatsChanged, CastingStateChanged
+   - Event handlers in handleEvent() for all new pet and casting events
+   - Implemented displayPetInfo(), updatePetStats(), clearPetInfo()
+   - Implemented displayCastingProgress(), clearCasting()
+   - Status line now displays pet info when pet is active
+   - Added "pet" and "spell" channel colors (cyan and magenta)
+
+3. **GraphicalRenderer updates** (`include/client/output/graphical_renderer.h`)
+   - Added PetCommandCallback type and setPetCommandCallback()
+   - Added InventoryActionCallback type and setInventoryActionCallback()
+   - Added callback member variables for new callbacks
+
+4. **NullRenderer** - No changes needed (uses default implementations)
+
+**Build verification:** ✅ Project compiles successfully with no errors
+
+### Phase 6: Application Class Integration - COMPLETED
+
+**Status:** ✅ COMPLETE (2026-01-11)
+
+**What was implemented:**
+
+1. **Application header updates** (`include/client/application.h`)
+   - Added sync method declarations: syncPetState(), syncNPCInteractionState(), syncSpellState()
+   - Added connectRendererCallbacks() method declaration
+   - Added state tracking members for change detection:
+     - Pet: m_lastPetSpawnId, m_lastPetHpPercent, m_lastPetManaPercent
+     - NPC interactions: m_lastVendorNpcId, m_lastBankerNpcId, m_lastTrainerNpcId
+     - Spell: m_lastIsCasting, m_lastCastingSpellId
+
+2. **Application implementation updates** (`src/client/application.cpp`)
+   - **Pet state synchronization** (syncPetState())
+     - Syncs pet spawn ID, name, level from EQ client
+     - Detects pet creation/removal and fires events
+     - Syncs pet HP percent with change detection
+     - Syncs all 10 pet button states
+   - **NPC interaction synchronization** (syncNPCInteractionState())
+     - Syncs vendor window state with name lookup from entity map
+     - Syncs banker window state
+     - Syncs trainer window state with name lookup from entity map
+   - **Spell state synchronization** (syncSpellState())
+     - Syncs casting state (isCasting, spellId, targetId, castTime)
+     - Syncs casting progress
+     - Syncs all 8 spell gem states (Empty, Ready, Casting, Refresh, MemorizeProgress)
+     - Syncs gem cooldown remaining/total
+   - **Renderer callback connections** (connectRendererCallbacks())
+     - SpellGemCastCallback → dispatcher.castSpell()
+     - TargetCallback → dispatcher.targetEntity()
+     - DoorInteractCallback → actionHandler.clickDoor()
+     - ChatSubmitCallback → commandProcessor.processCommand() or dispatcher.sendChatMessage()
+     - PetCommandCallback → dispatcher.sendPetCommand()
+     - InventoryActionCallback → logged (placeholder for future)
+
+3. **Main loop integration**
+   - syncGameStateFromClient() now calls all sub-sync methods
+   - connectRendererCallbacks() called during initialization after mode setup
+
+**Build verification:** ✅ Project compiles successfully with no errors
+
 ---
 
 ## Files to Modify
@@ -626,6 +700,16 @@ The original plan mentioned InventoryState but it wasn't implemented. The bank w
 - ✅ `src/client/state/game_state.cpp` - Initialize InventoryState and SpellState, handle resets
 - ✅ `CMakeLists.txt` - Added inventory_state.cpp and spell_state.cpp to sources
 
+### Modified Files (Phase 5 - COMPLETE):
+- ✅ `include/client/output/output_renderer.h` - Added pet, spell, and inventory display methods
+- ✅ `include/client/output/console_renderer.h` - Added pet/casting display declarations and state members
+- ✅ `src/client/output/console_renderer.cpp` - Implemented pet/casting event handling and display
+- ✅ `include/client/output/graphical_renderer.h` - Added PetCommandCallback and InventoryActionCallback
+
+### Modified Files (Phase 6 - COMPLETE):
+- ✅ `include/client/application.h` - Added sync methods and state tracking members
+- ✅ `src/client/application.cpp` - Implemented pet/NPC/spell sync and renderer callbacks
+
 ---
 
 ## Testing Considerations
@@ -660,9 +744,64 @@ The original plan mentioned InventoryState but it wasn't implemented. The bank w
 
 ---
 
+## Phase 7: EQ Class Integration - COMPLETED
+
+**Status:** ✅ COMPLETE (2026-01-11)
+
+**What was implemented:**
+
+Phase 7 migrated the EverQuest class to use GameState as the single source of truth, eliminating duplicate state. All 8 sub-phases completed:
+
+| Sub-Phase | Description | Status |
+|-----------|-------------|--------|
+| 7.1 | Movement State Migration | ✅ COMPLETE |
+| 7.2 | Player Attributes & Currency | ✅ COMPLETE |
+| 7.3 | World & Zone State | ✅ COMPLETE |
+| 7.4 | Entity State Migration | ✅ COMPLETE |
+| 7.5 | Group State Migration | ✅ COMPLETE |
+| 7.6 | Combat State Migration | ✅ COMPLETE |
+| 7.7 | Loot State Migration | ✅ COMPLETE |
+| 7.8 | Behavioral Flags & Cleanup | ✅ COMPLETE |
+
+**Implementation Summary:**
+- **7.1 Movement**: Position, heading, movement state accessors read from GameState; mutators sync to both
+- **7.2 Attributes**: 29 accessors (HP, mana, level, class, race, currency, attributes) read from GameState
+- **7.3 World/Zone**: Zone name, time of day, zone line state synced to WorldState
+- **7.4 Entities**: Entity add/remove/clear operations sync to EntityManager with struct conversion helpers
+- **7.5 Group**: 7 accessors read from GroupState; packet handlers sync membership changes
+- **7.6 Combat**: Combat movement and last slain entity synced to CombatState
+- **7.7 Loot**: Looting corpse ID synced to PlayerState
+- **7.8 Behavioral Flags**: AFK, anonymous, roleplay, camping flags synced to PlayerState; Application cleanup
+
+**Architecture After Phase 7:**
+```
+Server Packets → EQ Class (packet handlers) → GameState (owns state) → Renderers/UI
+                                                    ↑
+                                            EQ Class reads from here
+```
+
+See `.agent/phase7_eq_integration_plan.md` for detailed sub-phase implementation notes.
+
+---
+
 ## Notes
 
-- The EQ class still owns the authoritative state during the transition period
-- GameState provides a clean interface for renderers and mode controllers
-- State synchronization happens after EQ class processes packets
+- **Phase 7 Complete**: GameState is now the single source of truth for game state
+- The EQ class packet handlers write directly to GameState; accessors read from GameState
 - Events allow renderers to react to state changes without polling
+- Application::syncGameStateFromClient() reduced to syncing pet, NPC interaction, and spell states (not yet migrated to direct sync)
+- Legacy member variables in EQ class are retained for backward compatibility but gradually being deprecated
+
+## Summary
+
+The state management refactor is **COMPLETE**. All 7 phases have been implemented:
+
+1. **Phase 1**: Core state classes created (PlayerState, EntityManager, WorldState, etc.)
+2. **Phase 2**: Action system updated with pet/tradeskill actions
+3. **Phase 3**: Optional state classes (TradeskillState, WorldState zoning toggle)
+4. **Phase 4**: Inventory and Spell state classes
+5. **Phase 5**: Output layer updated with new display methods
+6. **Phase 6**: Application class integration with sync methods
+7. **Phase 7**: EQ class integration - GameState as single source of truth
+
+The architecture now cleanly separates state from graphics, enabling multiple output modes (graphical, console, automated) to share the same game state.

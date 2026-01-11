@@ -73,6 +73,19 @@ public:
     void displaySystemMessage(const std::string& message) override;
     void displayCombatMessage(const std::string& message) override;
 
+    // ========== Pet Display ==========
+
+    void displayPetInfo(const std::string& name, uint8_t level,
+                         uint8_t hpPercent, uint8_t manaPercent) override;
+    void updatePetStats(uint8_t hpPercent, uint8_t manaPercent) override;
+    void clearPetInfo() override;
+
+    // ========== Spell/Casting Display ==========
+
+    void displayCastingProgress(uint32_t spellId, const std::string& spellName,
+                                 float progress, const std::string& targetName) override;
+    void clearCasting() override;
+
     // ========== Control ==========
 
     void requestQuit() override { m_running = false; }
@@ -134,6 +147,18 @@ private:
     std::string m_targetName;
     uint8_t m_targetHpPercent = 100;
     uint8_t m_targetLevel = 0;
+
+    // Pet info
+    std::string m_petName;
+    uint8_t m_petLevel = 0;
+    uint8_t m_petHpPercent = 100;
+    uint8_t m_petManaPercent = 100;
+    bool m_hasPet = false;
+
+    // Casting info
+    bool m_isCasting = false;
+    std::string m_castingSpellName;
+    std::string m_castingTargetName;
 
     // Timing
     float m_timeSinceStatusUpdate = 0.0f;

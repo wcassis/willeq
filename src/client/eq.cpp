@@ -1888,10 +1888,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 			if (m_renderer && m_renderer->getWindowManager() &&
 				m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
 				m_renderer->getWindowManager()->updateSkillTrainerSkill(skill_id, value);
-				// Decrement practice points since training succeeded
+				// Decrement practice points since training succeeded (both local and GameState)
 				m_renderer->getWindowManager()->decrementSkillTrainerPracticePoints();
 				if (m_practice_points > 0) {
 					--m_practice_points;
+					m_game_state.player().decrementPracticePoints();
 				}
 			}
 #endif
@@ -2483,6 +2484,9 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 			m_current_zone_id = p.GetUInt16(686);
 		}
 
+		// Phase 7.3: Also update WorldState
+		m_game_state.world().setZone(m_current_zone_name, m_current_zone_id);
+
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data for: {} (zone_id={})",
 				m_current_zone_name, m_current_zone_id);
@@ -2652,7 +2656,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	}
 #endif
 
-	// Store character stats
+	// Store character stats (update both local members and GameState during migration)
 	m_level = level;
 	m_class = class_;
 	m_race = race;
@@ -2681,6 +2685,23 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_bank_copper = bank_copper;
 	m_practice_points = practice_points;
 	m_last_name = last_name;
+
+	// Phase 7.2: Also update GameState
+	auto& player = m_game_state.player();
+	player.setName(name[0] ? name : m_character);  // Use server name if available, else local
+	player.setLastName(last_name);
+	player.setLevel(level);
+	player.setClass(class_);
+	player.setRace(race);
+	player.setGender(gender);
+	player.setDeity(deity);
+	player.setHP(cur_hp, cur_hp);
+	player.setMana(mana, mana);
+	player.setEndurance(endurance, endurance);
+	player.setAttributes(STR, STA, CHA, DEX, INT, AGI, WIS);
+	player.setCurrency(platinum, gold, silver, copper);
+	player.setBankCurrency(bank_platinum, bank_gold, bank_silver, bank_copper);
+	player.setPracticePoints(practice_points);
 
 	// Initialize skill manager with player info first
 	if (m_skill_manager) {
@@ -2722,6 +2743,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_bind_y = bind_x;
 	m_bind_z = bind_z;
 	m_bind_heading = bind_heading;
+	// Phase 7.3: Also update PlayerState bind point
+	m_game_state.player().setBindPoint(bind_zone_id, m_bind_x, m_bind_y, m_bind_z, bind_heading);
 
 	// The entity ID appears to be at offset 14384 based on previous debugging
 	uint32_t entity_id = 0;
@@ -2790,8 +2813,9 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// Update our own size
 	m_size = size;
 	
-	// Store in entity list
+	// Store in entity list (sync to both local map and EntityManager)
 	m_entities[m_my_character_id] = self_entity;
+	SyncEntityToGameState(self_entity);
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, m_my_character_id);
@@ -4106,13 +4130,14 @@ void EverQuest::ZoneProcessShopPlayerBuy(const EQ::Net::Packet &p)
 				totalCopper -= totalPrice;
 				if (totalCopper < 0) totalCopper = 0;
 
-				// Convert back to currency
+				// Convert back to currency (update both local and GameState)
 				m_platinum = static_cast<uint32_t>(totalCopper / 1000);
 				totalCopper %= 1000;
 				m_gold = static_cast<uint32_t>(totalCopper / 100);
 				totalCopper %= 100;
 				m_silver = static_cast<uint32_t>(totalCopper / 10);
 				m_copper = static_cast<uint32_t>(totalCopper % 10);
+				m_game_state.player().setCurrency(m_platinum, m_gold, m_silver, m_copper);
 
 				// Update vendor window with new money
 				vendorWindow->setPlayerMoney(m_platinum, m_gold, m_silver, m_copper);
@@ -4193,11 +4218,12 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 	auto* money = reinterpret_cast<const EQT::MoneyUpdate_Struct*>(
 		static_cast<const char*>(p.Data()) + 2);
 
-	// Update player money
+	// Update player money (both local and GameState)
 	m_platinum = static_cast<uint32_t>(money->platinum);
 	m_gold = static_cast<uint32_t>(money->gold);
 	m_silver = static_cast<uint32_t>(money->silver);
 	m_copper = static_cast<uint32_t>(money->copper);
+	m_game_state.player().setCurrency(m_platinum, m_gold, m_silver, m_copper);
 
 	LOG_DEBUG(MOD_INVENTORY, "Money updated: {}pp {}gp {}sp {}cp",
 		m_platinum, m_gold, m_silver, m_copper);
@@ -4823,6 +4849,8 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			// Check if this is our own character and update our position
 			if (entity.name == m_character) {
 				m_my_spawn_id = entity.spawn_id;
+				// Phase 7.4: Also update PlayerState
+				m_game_state.player().setSpawnId(m_my_spawn_id);
 				if (m_trade_manager) {
 					m_trade_manager->setMySpawnId(m_my_spawn_id);
 				}
@@ -4878,8 +4906,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 #endif
 			}
 			
-			// Add to entity list
+			// Add to entity list (sync to both local map and EntityManager)
 			m_entities[entity.spawn_id] = entity;
+			SyncEntityToGameState(entity);
 			spawn_count++;
 
 #ifdef EQT_HAS_GRAPHICS
@@ -4933,6 +4962,9 @@ void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 	m_time_day = p.GetUInt8(4);
 	m_time_month = p.GetUInt8(5);
 	m_time_year = p.GetUInt16(6);
+
+	// Phase 7.3: Also update WorldState
+	m_game_state.world().setTimeOfDay(m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
 
 	LOG_DEBUG(MOD_ZONE, "Time of day: {:02d}:{:02d} {:02d}/{:02d}{}",
 		m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
@@ -5608,6 +5640,8 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 		// Check if this is our own spawn by comparing name
 		if (entity.name == m_character) {
 			m_my_spawn_id = entity.spawn_id;
+			// Phase 7.4: Also update PlayerState
+			m_game_state.player().setSpawnId(m_my_spawn_id);
 			if (m_trade_manager) {
 				m_trade_manager->setMySpawnId(m_my_spawn_id);
 			}
@@ -5644,8 +5678,9 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 		entity.is_pet = p.GetUInt8(offset + 329);
 		entity.pet_owner_id = p.GetUInt32(offset + 189);
 
-		// Add to entity list
+		// Add to entity list (sync to both local map and EntityManager)
 		m_entities[entity.spawn_id] = entity;
+		SyncEntityToGameState(entity);
 
 #ifdef EQT_HAS_GRAPHICS
 		OnSpawnAddedGraphics(entity);
@@ -5907,6 +5942,8 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		// Also update our spawn ID if not set
 		if (m_my_spawn_id == 0) {
 			m_my_spawn_id = spawn_id;
+			// Phase 7.4: Also update PlayerState
+			m_game_state.player().setSpawnId(m_my_spawn_id);
 			if (m_trade_manager) {
 				m_trade_manager->setMySpawnId(m_my_spawn_id);
 			}
@@ -6061,6 +6098,7 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 				m_player_looting_corpse_id = 0;
 				m_loot_all_in_progress = false;
 				m_loot_all_remaining_slots.clear();
+				m_game_state.player().clearLootingCorpse();  // Phase 7.7
 				// Mark as ready for deletion
 				m_loot_complete_corpse_id = spawn_id;
 			}
@@ -6100,7 +6138,9 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 		OnSpawnRemovedGraphics(spawn_id);
 #endif
 
+		// Remove from both local map and EntityManager
 		m_entities.erase(it);
+		RemoveEntityFromGameState(spawn_id);
 	} else {
 		if (s_debug_level >= 2) {
 			std::cout << fmt::format("DeleteSpawn for unknown spawn_id: {}", spawn_id) << std::endl;
@@ -6161,9 +6201,10 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	bool is_self = (spawn_id == m_my_spawn_id);
 
 	if (is_self) {
-		// Update player HP tracking
+		// Update player HP tracking (both local and GameState)
 		m_cur_hp = cur_hp;
 		m_max_hp = static_cast<uint32_t>(max_hp > 0 ? max_hp : 0);
+		m_game_state.player().setHP(m_cur_hp, m_max_hp);
 	}
 
 	if (is_self) {
@@ -8235,12 +8276,18 @@ void EverQuest::StartCombatMovement(const std::string &name, float stop_distance
 		m_combat_stop_distance = stop_distance;
 		m_in_combat_movement = true;
 		m_last_combat_movement_update = std::chrono::steady_clock::now();
-		
+
+		// Phase 7.6: Sync to GameState
+		m_game_state.combat().setCombatTarget(entity->name);
+		m_game_state.combat().setCombatStopDistance(stop_distance);
+		m_game_state.combat().setInCombatMovement(true);
+		m_game_state.combat().setLastCombatMovementUpdate(m_last_combat_movement_update);
+
 		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Starting combat movement to '{}' with stop distance {:.1f}", 
+			std::cout << fmt::format("Starting combat movement to '{}' with stop distance {:.1f}",
 				entity->name, stop_distance) << std::endl;
 		}
-		
+
 		// Start initial movement immediately
 		UpdateCombatMovement();
 	} else {
@@ -8258,6 +8305,7 @@ void EverQuest::UpdateCombatMovement()
 	if (!entity) {
 		// Target disappeared
 		m_in_combat_movement = false;
+		m_game_state.combat().setInCombatMovement(false);  // Phase 7.6
 		StopMovement();
 		return;
 	}
@@ -8384,6 +8432,360 @@ void EverQuest::UpdateCombatMovement()
 		}
 	}
 }
+
+// ============================================================================
+// Movement State Accessors (Phase 7.1 - use embedded m_game_state)
+// ============================================================================
+
+glm::vec3 EverQuest::GetPosition() const
+{
+	// Read from GameState (single source of truth)
+	return m_game_state.player().position();
+}
+
+float EverQuest::GetHeading() const
+{
+	// Read from GameState (single source of truth)
+	return m_game_state.player().heading();
+}
+
+bool EverQuest::IsMoving() const
+{
+	// Read from GameState (single source of truth)
+	return m_game_state.player().isMoving();
+}
+
+void EverQuest::SetHeading(float heading)
+{
+	// Update both local and GameState (during migration)
+	m_heading = heading;
+	m_game_state.player().setHeading(heading);
+}
+
+void EverQuest::SetMoveSpeed(float speed)
+{
+	// Update both local and GameState (during migration)
+	m_move_speed = speed;
+	m_game_state.player().setMoveSpeed(speed);
+}
+
+void EverQuest::SetPosition(float x, float y, float z)
+{
+	// Update both local and GameState (during migration)
+	m_x = x;
+	m_y = y;
+	m_z = z;
+	m_game_state.player().setPosition(x, y, z);
+}
+
+void EverQuest::SetMoving(bool moving)
+{
+	// Update both local and GameState (during migration)
+	m_is_moving = moving;
+	m_game_state.player().setMoving(moving);
+}
+
+// ============================================================================
+// Character Stat Accessors (Phase 7.2 - use embedded m_game_state)
+// ============================================================================
+
+uint8_t EverQuest::GetLevel() const
+{
+	return m_game_state.player().level();
+}
+
+uint32_t EverQuest::GetClass() const
+{
+	return m_game_state.player().classId();
+}
+
+uint32_t EverQuest::GetRace() const
+{
+	return m_game_state.player().race();
+}
+
+uint32_t EverQuest::GetGender() const
+{
+	return m_game_state.player().gender();
+}
+
+uint32_t EverQuest::GetSTR() const
+{
+	return m_game_state.player().STR();
+}
+
+uint32_t EverQuest::GetSTA() const
+{
+	return m_game_state.player().STA();
+}
+
+uint32_t EverQuest::GetDEX() const
+{
+	return m_game_state.player().DEX();
+}
+
+uint32_t EverQuest::GetAGI() const
+{
+	return m_game_state.player().AGI();
+}
+
+uint32_t EverQuest::GetINT() const
+{
+	return m_game_state.player().INT();
+}
+
+uint32_t EverQuest::GetWIS() const
+{
+	return m_game_state.player().WIS();
+}
+
+uint32_t EverQuest::GetCHA() const
+{
+	return m_game_state.player().CHA();
+}
+
+uint32_t EverQuest::GetCurrentHP() const
+{
+	return m_game_state.player().curHP();
+}
+
+uint32_t EverQuest::GetMaxHP() const
+{
+	return m_game_state.player().maxHP();
+}
+
+uint32_t EverQuest::GetCurrentMana() const
+{
+	return m_game_state.player().curMana();
+}
+
+uint32_t EverQuest::GetMaxMana() const
+{
+	return m_game_state.player().maxMana();
+}
+
+uint32_t EverQuest::GetCurrentEndurance() const
+{
+	return m_game_state.player().curEndurance();
+}
+
+uint32_t EverQuest::GetMaxEndurance() const
+{
+	return m_game_state.player().maxEndurance();
+}
+
+uint32_t EverQuest::GetDeity() const
+{
+	return m_game_state.player().deity();
+}
+
+uint32_t EverQuest::GetPlatinum() const
+{
+	return m_game_state.player().platinum();
+}
+
+uint32_t EverQuest::GetGold() const
+{
+	return m_game_state.player().gold();
+}
+
+uint32_t EverQuest::GetSilver() const
+{
+	return m_game_state.player().silver();
+}
+
+uint32_t EverQuest::GetCopper() const
+{
+	return m_game_state.player().copper();
+}
+
+uint32_t EverQuest::GetBankPlatinum() const
+{
+	return m_game_state.player().bankPlatinum();
+}
+
+uint32_t EverQuest::GetBankGold() const
+{
+	return m_game_state.player().bankGold();
+}
+
+uint32_t EverQuest::GetBankSilver() const
+{
+	return m_game_state.player().bankSilver();
+}
+
+uint32_t EverQuest::GetBankCopper() const
+{
+	return m_game_state.player().bankCopper();
+}
+
+uint32_t EverQuest::GetPracticePoints() const
+{
+	return m_game_state.player().practicePoints();
+}
+
+float EverQuest::GetWeight() const
+{
+	return m_game_state.player().weight();
+}
+
+float EverQuest::GetMaxWeight() const
+{
+	return m_game_state.player().maxWeight();
+}
+
+// ============================================================================
+// Entity Sync Helpers (Phase 7.4 - sync to EntityManager)
+// ============================================================================
+
+void EverQuest::SyncEntityToGameState(const Entity& entity)
+{
+	// Convert from EQ::Entity (snake_case) to eqt::state::Entity (camelCase)
+	eqt::state::Entity stateEntity;
+	stateEntity.spawnId = entity.spawn_id;
+	stateEntity.name = entity.name;
+	stateEntity.x = entity.x;
+	stateEntity.y = entity.y;
+	stateEntity.z = entity.z;
+	stateEntity.heading = entity.heading;
+	stateEntity.level = entity.level;
+	stateEntity.classId = entity.class_id;
+	stateEntity.raceId = entity.race_id;
+	stateEntity.gender = entity.gender;
+	stateEntity.guildId = entity.guild_id;
+	stateEntity.animation = entity.animation;
+	stateEntity.hpPercent = entity.hp_percent;
+	stateEntity.curMana = entity.cur_mana;
+	stateEntity.maxMana = entity.max_mana;
+	stateEntity.size = entity.size;
+	stateEntity.isCorpse = entity.is_corpse;
+	stateEntity.face = entity.face;
+	stateEntity.haircolor = entity.haircolor;
+	stateEntity.hairstyle = entity.hairstyle;
+	stateEntity.beardcolor = entity.beardcolor;
+	stateEntity.beard = entity.beard;
+	stateEntity.equipChest2 = entity.equip_chest2;
+	stateEntity.helm = entity.helm;
+	stateEntity.showhelm = entity.showhelm;
+	stateEntity.bodytype = entity.bodytype;
+	stateEntity.npcType = entity.npc_type;
+	stateEntity.light = entity.light;
+	for (int i = 0; i < 9; ++i) {
+		stateEntity.equipment[i] = entity.equipment[i];
+		stateEntity.equipmentTint[i] = entity.equipment_tint[i];
+	}
+	stateEntity.deltaX = entity.delta_x;
+	stateEntity.deltaY = entity.delta_y;
+	stateEntity.deltaZ = entity.delta_z;
+	stateEntity.deltaHeading = entity.delta_heading;
+	stateEntity.lastUpdateTime = entity.last_update_time;
+	stateEntity.isPet = entity.is_pet;
+	stateEntity.petOwnerId = entity.pet_owner_id;
+	stateEntity.primaryWeaponSkill = entity.primary_weapon_skill;
+	stateEntity.secondaryWeaponSkill = entity.secondary_weapon_skill;
+
+	// Add or update in EntityManager
+	if (!m_game_state.entities().hasEntity(entity.spawn_id)) {
+		m_game_state.entities().addEntity(stateEntity);
+	} else {
+		// Update existing entity
+		auto* existingEntity = m_game_state.entities().getEntityMutable(entity.spawn_id);
+		if (existingEntity) {
+			*existingEntity = stateEntity;
+		}
+	}
+}
+
+void EverQuest::RemoveEntityFromGameState(uint16_t spawnId)
+{
+	m_game_state.entities().removeEntity(spawnId);
+}
+
+// ============================================================================
+// Group Accessors and Sync Helper (Phase 7.5 - read from GroupState)
+// ============================================================================
+
+bool EverQuest::IsInGroup() const
+{
+	return m_game_state.group().inGroup();
+}
+
+bool EverQuest::IsGroupLeader() const
+{
+	return m_game_state.group().isLeader();
+}
+
+int EverQuest::GetGroupMemberCount() const
+{
+	return m_game_state.group().memberCount();
+}
+
+const std::string& EverQuest::GetGroupLeaderName() const
+{
+	return m_game_state.group().leaderName();
+}
+
+bool EverQuest::HasPendingGroupInvite() const
+{
+	return m_game_state.group().hasPendingInvite();
+}
+
+const std::string& EverQuest::GetPendingInviterName() const
+{
+	return m_game_state.group().pendingInviterName();
+}
+
+void EverQuest::SyncGroupMemberToGameState(int index, const GroupMember& member)
+{
+	// Convert from EQ::GroupMember (snake_case) to eqt::state::GroupMember (camelCase)
+	eqt::state::GroupMember stateMember;
+	stateMember.name = member.name;
+	stateMember.spawnId = member.spawn_id;
+	stateMember.level = member.level;
+	stateMember.classId = member.class_id;
+	stateMember.hpPercent = member.hp_percent;
+	stateMember.manaPercent = member.mana_percent;
+	stateMember.isLeader = member.is_leader;
+	stateMember.inZone = member.in_zone;
+
+	m_game_state.group().setMember(index, stateMember);
+}
+
+// ============================================================================
+// Combat State Sync (Phase 7.6 - sync to CombatState)
+// ============================================================================
+
+void EverQuest::SetCombatStopDistance(float distance)
+{
+	m_combat_stop_distance = distance;
+	m_game_state.combat().setCombatStopDistance(distance);
+}
+
+// ============================================================================
+// Behavioral Flag Accessors (Phase 7.8 - read from PlayerState)
+// ============================================================================
+
+bool EverQuest::IsAFK() const
+{
+	return m_game_state.player().isAFK();
+}
+
+bool EverQuest::IsAnonymous() const
+{
+	return m_game_state.player().isAnonymous();
+}
+
+bool EverQuest::IsRoleplay() const
+{
+	return m_game_state.player().isRoleplay();
+}
+
+bool EverQuest::IsCamping() const
+{
+	return m_game_state.player().isCamping();
+}
+
+// ============================================================================
 
 void EverQuest::Face(float x, float y, float z)
 {
@@ -9508,8 +9910,9 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	uint32_t spell_id = p.GetUInt32(10);   // offset 8 in struct
 	uint8_t keepcasting = p.GetUInt8(14);  // offset 12 in struct
 
-	// Update player mana tracking
+	// Update player mana tracking (both local and GameState)
 	m_mana = new_mana;
+	m_game_state.player().setCurMana(new_mana);
 
 	// Update our entity if we're tracking it
 	if (m_my_spawn_id != 0) {
@@ -9529,8 +9932,9 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 		m_spell_manager->handleManaChange(new_mana, stamina, spell_id);
 	}
 
-	// Also update endurance tracking
+	// Also update endurance tracking (both local and GameState)
 	m_endurance = stamina;
+	m_game_state.player().setEndurance(stamina, m_max_endurance);
 
 	// Update combat stats with new mana value
 	if (m_combat_manager) {
@@ -10014,6 +10418,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// Store the display name now before it gets modified to include "'s corpse"
 	if (killer_id == m_my_spawn_id) {
 		m_last_slain_entity_name = EQT::toDisplayName(victim_name);
+		m_game_state.combat().setLastSlainEntityName(m_last_slain_entity_name);  // Phase 7.6
 	}
 
 	// Notify combat manager if this was our target
@@ -10171,6 +10576,7 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 
 		// Reset HP to full (server will send actual values)
 		m_cur_hp = m_max_hp;
+		m_game_state.player().setHP(m_cur_hp, m_max_hp);
 
 		// Update our entity position
 		if (m_my_spawn_id != 0) {
@@ -10386,10 +10792,16 @@ void EverQuest::CleanupZone()
 	m_current_path_index = 0;
 	m_follow_target.clear();
 	m_in_combat_movement = false;
+	m_combat_target.clear();
+
+	// Phase 7.6: Sync combat state reset to GameState
+	m_game_state.combat().setInCombatMovement(false);
+	m_game_state.combat().clearCombatTarget();
 
 	// Clear entity map completely - server will re-send all entity data for the new zone
 	// (including the player with a fresh spawn_id)
 	m_entities.clear();
+	m_game_state.entities().clear();
 
 	// Clear door data
 	m_doors.clear();
@@ -10459,9 +10871,10 @@ void EverQuest::CleanupZone()
 	m_movement_history.clear();
 	m_last_movement_history_send = 0;
 
-	// Reset zone name and ID
+	// Reset zone name and ID (both local and WorldState)
 	m_current_zone_name.clear();
 	m_current_zone_id = 0;
+	m_game_state.world().resetZoneState();
 
 	LOG_DEBUG(MOD_ZONE, "Zone cleanup complete");
 }
@@ -10781,13 +11194,17 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	// Create new ZoneLines instance
 	m_zone_lines = std::make_unique<EQT::ZoneLines>();
 
-	// Reset zone line detection state
+	// Reset zone line detection state (both local and WorldState)
 	m_zone_line_triggered = false;
 	m_zone_change_requested = false;
 	m_pending_zone_id = 0;
 	m_last_zone_check_x = m_x;
 	m_last_zone_check_y = m_y;
 	m_last_zone_check_z = m_z;
+	m_game_state.world().setZoneLineTriggered(false);
+	m_game_state.world().setZoneChangeRequested(false);
+	m_game_state.world().clearPendingZone();
+	m_game_state.world().setLastZoneCheckPosition(m_x, m_y, m_z);
 
 	// Try to load zone lines from the zone's S3D file
 	if (!m_eq_client_path.empty()) {
@@ -10927,6 +11344,11 @@ void EverQuest::CheckZoneLine()
 		m_pending_zone_z = result.targetZ;
 		m_pending_zone_heading = result.heading;
 
+		// Phase 7.3: Also update WorldState
+		m_game_state.world().setZoneLineTriggered(true);
+		m_game_state.world().setZoneLineTriggerTime(now);
+		m_game_state.world().setPendingZone(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
+
 		LOG_INFO(MOD_ZONE, "Zone line triggered! Target zone: {}, coords: ({:.1f}, {:.1f}, {:.1f}), heading: {:.1f}",
 		        m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
 
@@ -10949,6 +11371,9 @@ void EverQuest::CheckZoneLine()
 				// Cooldown expired and we're not in a zone line, reset state
 				m_zone_line_triggered = false;
 				m_pending_zone_id = 0;
+				// Phase 7.3: Also update WorldState
+				m_game_state.world().setZoneLineTriggered(false);
+				m_game_state.world().clearPendingZone();
 			}
 		}
 	}
@@ -11560,6 +11985,9 @@ void EverQuest::ClearGroup()
 	for (auto& member : m_group_members) {
 		member = GroupMember();
 	}
+
+	// Phase 7.5: Sync to GameState
+	m_game_state.group().clearGroup();
 }
 
 int EverQuest::FindGroupMemberByName(const std::string& name) const
@@ -11615,6 +12043,10 @@ void EverQuest::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
 	if (invitee_name == m_character) {
 		m_has_pending_invite = true;
 		m_pending_inviter_name = inviter_name;
+
+		// Phase 7.5: Sync to GameState
+		m_game_state.group().setPendingInvite(inviter_name);
+
 		AddChatSystemMessage(inviter_name + " has invited you to join a group");
 
 #ifdef EQT_HAS_GRAPHICS
@@ -11650,14 +12082,20 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 		case EQT::GROUP_ACT_JOIN:
 		{
 			// Full group update
-			ClearGroup();
+			ClearGroup();  // Also syncs to GameState
 			m_in_group = true;
 			m_group_leader_name = std::string(data->leadersname);
 			m_is_group_leader = (m_group_leader_name == m_character);
 
+			// Phase 7.5: Sync group status to GameState
+			m_game_state.group().setInGroup(true);
+			m_game_state.group().setLeaderName(m_group_leader_name);
+			m_game_state.group().setIsLeader(m_is_group_leader);
+
 			// Hide pending invite since we joined
 			m_has_pending_invite = false;
 			m_pending_inviter_name.clear();
+			m_game_state.group().clearPendingInvite();  // Phase 7.5
 #ifdef EQT_HAS_GRAPHICS
 			if (m_renderer) {
 				auto* windowMgr = m_renderer->getWindowManager();
@@ -11679,6 +12117,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			self.in_zone = true;
 			m_group_members[0] = self;
 			m_group_member_count = 1;
+			SyncGroupMemberToGameState(0, self);  // Phase 7.5
 
 			// Add other members
 			for (int i = 0; i < 5 && m_group_member_count < MAX_GROUP_MEMBERS; i++) {
@@ -11700,9 +12139,14 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 						}
 					}
 
-					m_group_members[m_group_member_count++] = member;
+					m_group_members[m_group_member_count] = member;
+					SyncGroupMemberToGameState(m_group_member_count, member);  // Phase 7.5
+					m_group_member_count++;
 				}
 			}
+
+			// Phase 7.5: Recalculate member count in GameState
+			m_game_state.group().recalculateMemberCount();
 
 			AddChatSystemMessage("Group updated");
 			LOG_INFO(MOD_MAIN, "Group update: {} members, leader: {}",
@@ -11722,13 +12166,23 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 				}
 				m_group_member_count--;
 				m_group_members[m_group_member_count] = GroupMember();
+
+				// Phase 7.5: Rebuild GameState members after shift
+				for (int i = 0; i < m_group_member_count; i++) {
+					SyncGroupMemberToGameState(i, m_group_members[i]);
+				}
+				// Clear the slot that was freed
+				eqt::state::GroupMember emptyMember;
+				m_game_state.group().setMember(m_group_member_count, emptyMember);
+				m_game_state.group().recalculateMemberCount();
+
 				AddChatSystemMessage(member_name + " has left the group");
 			}
 			break;
 		}
 
 		case EQT::GROUP_ACT_DISBAND:
-			ClearGroup();
+			ClearGroup();  // Also syncs to GameState
 			AddChatSystemMessage("Your group has been disbanded");
 			break;
 
@@ -11738,9 +12192,14 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			m_group_leader_name = new_leader;
 			m_is_group_leader = (new_leader == m_character);
 
+			// Phase 7.5: Sync leader change to GameState
+			m_game_state.group().setLeaderName(new_leader);
+			m_game_state.group().setIsLeader(m_is_group_leader);
+
 			// Update leader flags
 			for (int i = 0; i < m_group_member_count; i++) {
 				m_group_members[i].is_leader = (m_group_members[i].name == new_leader);
+				SyncGroupMemberToGameState(i, m_group_members[i]);  // Phase 7.5
 			}
 
 			AddChatSystemMessage(new_leader + " is now the group leader");
@@ -11774,6 +12233,10 @@ void EverQuest::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
 {
 	m_has_pending_invite = false;
 	m_pending_inviter_name.clear();
+
+	// Phase 7.5: Sync to GameState
+	m_game_state.group().clearPendingInvite();
+
 	AddChatSystemMessage("Group invite cancelled");
 	LOG_INFO(MOD_MAIN, "Group invite cancelled");
 
@@ -12103,10 +12566,11 @@ void EverQuest::SetAFK(bool afk)
 	if (m_is_afk == afk) {
 		return;
 	}
-	
+
 	m_is_afk = afk;
+	m_game_state.player().setAFK(afk);  // Phase 7.8
 	SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
-	
+
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "AFK status: {}", afk ? "ON" : "OFF");
 	}
@@ -12117,10 +12581,11 @@ void EverQuest::SetAnonymous(bool anon)
 	if (m_is_anonymous == anon) {
 		return;
 	}
-	
+
 	m_is_anonymous = anon;
+	m_game_state.player().setAnonymous(anon);  // Phase 7.8
 	SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
-	
+
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Anonymous status: {}", anon ? "ON" : "OFF");
 	}
@@ -12133,6 +12598,7 @@ void EverQuest::SetRoleplay(bool rp)
 	}
 
 	m_is_roleplay = rp;
+	m_game_state.player().setRoleplay(rp);  // Phase 7.8
 	SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
 
 	if (s_debug_level >= 1) {
@@ -12148,6 +12614,7 @@ void EverQuest::StartCampTimer()
 
 	m_is_camping = true;
 	m_camp_start_time = std::chrono::steady_clock::now();
+	m_game_state.player().setCamping(true);  // Phase 7.8
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Camp timer started, will log out in {} seconds", CAMP_TIMER_SECONDS);
@@ -12161,6 +12628,7 @@ void EverQuest::CancelCamp()
 	}
 
 	m_is_camping = false;
+	m_game_state.player().setCamping(false);  // Phase 7.8
 	AddChatSystemMessage("You are no longer camping.");
 
 	if (s_debug_level >= 1) {
@@ -12180,6 +12648,7 @@ void EverQuest::UpdateCampTimer()
 	if (elapsed >= CAMP_TIMER_SECONDS) {
 		// Camp timer complete, logout
 		m_is_camping = false;
+		m_game_state.player().setCamping(false);  // Phase 7.8
 		AddChatSystemMessage("You have camped.");
 
 #ifdef EQT_HAS_GRAPHICS
@@ -12199,10 +12668,11 @@ void EverQuest::SetSneak(bool sneak)
 	if (m_is_sneaking == sneak) {
 		return;
 	}
-	
+
 	m_is_sneaking = sneak;
+	m_game_state.player().setSneaking(sneak);  // Phase 7.8
 	SendSpawnAppearance(AT_SNEAK, sneak ? 1 : 0);
-	
+
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sneak status: {}", sneak ? "ON" : "OFF");
 	}
@@ -12546,7 +13016,7 @@ void EverQuest::StartCombatMovement(uint16_t entity_id)
 		}
 		return;
 	}
-	
+
 	const auto& entity = it->second;
 	m_combat_target = entity.name;
 	// Use previously set combat stop distance, or default to 5.0f
@@ -12554,11 +13024,16 @@ void EverQuest::StartCombatMovement(uint16_t entity_id)
 		m_combat_stop_distance = 5.0f;
 	}
 	m_in_combat_movement = true;
-	
+
+	// Phase 7.6: Sync to GameState
+	m_game_state.combat().setCombatTarget(entity.name);
+	m_game_state.combat().setCombatStopDistance(m_combat_stop_distance);
+	m_game_state.combat().setInCombatMovement(true);
+
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Starting combat movement to {} (ID: {})", entity.name, entity_id);
 	}
-	
+
 	// Start moving to the target
 	MoveToEntityWithinRange(entity.name, m_combat_stop_distance);
 }
@@ -14026,9 +14501,10 @@ void EverQuest::UpdateInventoryStats() {
 	// Max weight capacity is equal to total STR
 	float maxWeight = static_cast<float>(totalStr);
 
-	// Update weight tracking
+	// Update weight tracking (both local and GameState)
 	m_weight = totalWeight;
 	m_max_weight = maxWeight;
+	m_game_state.player().setWeight(m_weight, m_max_weight);
 
 	// Update renderer with all stats
 	m_renderer->updateCharacterStats(
@@ -14061,6 +14537,7 @@ void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 
 	// Store the corpse being looted
 	m_player_looting_corpse_id = corpseId;
+	m_game_state.player().setLootingCorpse(corpseId);  // Phase 7.7
 	LOG_TRACE(MOD_INVENTORY, "Set m_player_looting_corpse_id={}", m_player_looting_corpse_id);
 
 	// Send loot request packet - server expects only the corpse ID (4 bytes)
@@ -14193,6 +14670,7 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	m_pending_loot_slots.clear();
 	m_loot_all_in_progress = false;
 	m_loot_all_remaining_slots.clear();
+	m_game_state.player().clearLootingCorpse();  // Phase 7.7
 
 	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
 	m_loot_complete_corpse_id = targetCorpseId;

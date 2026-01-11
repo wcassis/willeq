@@ -486,18 +486,20 @@ public:
 	void MoveToEntityWithinRange(const std::string &name, float stop_distance);
 	void StartCombatMovement(const std::string &name, float stop_distance);
 	void StartCombatMovement(uint16_t entity_id);
-	void SetCombatStopDistance(float distance) { m_combat_stop_distance = distance; }
+	void SetCombatStopDistance(float distance);  // Phase 7.6: also syncs to GameState
 	void UpdateCombatMovement();
 	void Follow(const std::string &name);
 	void StopFollow();
 	void Face(float x, float y, float z);
 	void FaceEntity(const std::string &name);
-	void SetHeading(float heading) { m_heading = heading; }
+	void SetHeading(float heading);
+	void SetPosition(float x, float y, float z);
+	void SetMoving(bool moving);
 	void UpdateMovement();
 	void SendPositionUpdate();
-	glm::vec3 GetPosition() const { return glm::vec3(m_x, m_y, m_z); }
-	float GetHeading() const { return m_heading; }
-	bool IsMoving() const { return m_is_moving; }
+	glm::vec3 GetPosition() const;
+	float GetHeading() const;
+	bool IsMoving() const;
 	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent; }
 	bool IsZoneChangeApproved() const { return m_zone_change_approved; }
 	void SetZoningEnabled(bool enabled) { m_zoning_enabled = enabled; }
@@ -508,7 +510,7 @@ public:
 	void SetPathfinding(bool enabled) { m_use_pathfinding = enabled; }
 	bool IsPathfindingEnabled() const { return m_use_pathfinding; }
 	bool HasReachedDestination() const;
-	void SetMoveSpeed(float speed) { m_move_speed = speed; }
+	void SetMoveSpeed(float speed);
 	void SetNavmeshPath(const std::string& path) { m_navmesh_path = path; }
 	void SetMapsPath(const std::string& path) { m_maps_path = path; }
 
@@ -544,12 +546,12 @@ public:
 	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
 	void ClearWorldObjects();
 
-	// Group queries
-	bool IsInGroup() const { return m_in_group; }
-	bool IsGroupLeader() const { return m_is_group_leader; }
-	int GetGroupMemberCount() const { return m_group_member_count; }
+	// Group queries (Phase 7.5: read from GameState)
+	bool IsInGroup() const;
+	bool IsGroupLeader() const;
+	int GetGroupMemberCount() const;
 	const GroupMember* GetGroupMember(int index) const;
-	const std::string& GetGroupLeaderName() const { return m_group_leader_name; }
+	const std::string& GetGroupLeaderName() const;
 	const std::string& GetMyName() const { return m_character; }
 	const std::string& GetMyLastName() const { return m_last_name; }
 
@@ -560,9 +562,9 @@ public:
 	void SendGroupDisband();
 	void SendLeaveGroup();
 
-	// Pending group invite handling
-	bool HasPendingGroupInvite() const { return m_has_pending_invite; }
-	const std::string& GetPendingInviterName() const { return m_pending_inviter_name; }
+	// Pending group invite handling (Phase 7.5: read from GameState)
+	bool HasPendingGroupInvite() const;
+	const std::string& GetPendingInviterName() const;
 	void AcceptGroupInvite();
 	void DeclineGroupInvite();
 
@@ -597,14 +599,14 @@ public:
 	void StartCampTimer();
 	void CancelCamp();
 	void UpdateCampTimer();
-	bool IsCamping() const { return m_is_camping; }
+	bool IsCamping() const;  // Phase 7.8: reads from GameState
 	void SetSneak(bool sneak);
 	float GetMovementSpeed() const;
 
-	// State getters
-	bool IsAFK() const { return m_is_afk; }
-	bool IsAnonymous() const { return m_is_anonymous; }
-	bool IsRoleplay() const { return m_is_roleplay; }
+	// State getters (Phase 7.8: read from GameState)
+	bool IsAFK() const;
+	bool IsAnonymous() const;
+	bool IsRoleplay() const;
 
 	// Additional public methods
 	uint16_t GetMySpawnID() const { return m_my_spawn_id; }
@@ -624,35 +626,36 @@ public:
 	void StopTurnRight();
 	void UpdateKeyboardMovement();
 
-	// Character stat getters
-	uint8_t GetLevel() const { return m_level; }
-	uint32_t GetClass() const { return m_class; }
-	uint32_t GetRace() const { return m_race; }
-	uint32_t GetSTR() const { return m_STR; }
-	uint32_t GetSTA() const { return m_STA; }
-	uint32_t GetDEX() const { return m_DEX; }
-	uint32_t GetAGI() const { return m_AGI; }
-	uint32_t GetINT() const { return m_INT; }
-	uint32_t GetWIS() const { return m_WIS; }
-	uint32_t GetCHA() const { return m_CHA; }
-	uint32_t GetCurrentHP() const { return m_cur_hp; }
-	uint32_t GetMaxHP() const { return m_max_hp; }
-	uint32_t GetCurrentMana() const { return m_mana; }
-	uint32_t GetMaxMana() const { return m_max_mana; }
-	uint32_t GetCurrentEndurance() const { return m_endurance; }
-	uint32_t GetMaxEndurance() const { return m_max_endurance; }
-	uint32_t GetDeity() const { return m_deity; }
-	uint32_t GetPlatinum() const { return m_platinum; }
-	uint32_t GetGold() const { return m_gold; }
-	uint32_t GetSilver() const { return m_silver; }
-	uint32_t GetCopper() const { return m_copper; }
-	uint32_t GetBankPlatinum() const { return m_bank_platinum; }
-	uint32_t GetBankGold() const { return m_bank_gold; }
-	uint32_t GetBankSilver() const { return m_bank_silver; }
-	uint32_t GetBankCopper() const { return m_bank_copper; }
-	uint32_t GetPracticePoints() const { return m_practice_points; }
-	float GetWeight() const { return m_weight; }
-	float GetMaxWeight() const { return m_max_weight; }
+	// Character stat getters (Phase 7.2 - read from GameState)
+	uint8_t GetLevel() const;
+	uint32_t GetClass() const;
+	uint32_t GetRace() const;
+	uint32_t GetGender() const;
+	uint32_t GetSTR() const;
+	uint32_t GetSTA() const;
+	uint32_t GetDEX() const;
+	uint32_t GetAGI() const;
+	uint32_t GetINT() const;
+	uint32_t GetWIS() const;
+	uint32_t GetCHA() const;
+	uint32_t GetCurrentHP() const;
+	uint32_t GetMaxHP() const;
+	uint32_t GetCurrentMana() const;
+	uint32_t GetMaxMana() const;
+	uint32_t GetCurrentEndurance() const;
+	uint32_t GetMaxEndurance() const;
+	uint32_t GetDeity() const;
+	uint32_t GetPlatinum() const;
+	uint32_t GetGold() const;
+	uint32_t GetSilver() const;
+	uint32_t GetCopper() const;
+	uint32_t GetBankPlatinum() const;
+	uint32_t GetBankGold() const;
+	uint32_t GetBankSilver() const;
+	uint32_t GetBankCopper() const;
+	uint32_t GetPracticePoints() const;
+	float GetWeight() const;
+	float GetMaxWeight() const;
 
 	// Keyboard state
 	bool m_move_forward = false;
@@ -676,8 +679,9 @@ public:
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
 	void LoadHotbarConfig();  // Load hotbar assignments from config file
 	EQT::Graphics::IrrlichtRenderer* GetRenderer() { return m_renderer.get(); }
-	const std::string& GetCurrentZoneName() const { return m_current_zone_name; }
-	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_time_hour; minute = m_time_minute; }
+	// Phase 7.3: Zone accessors read from GameState
+	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
+	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
 	void OnZoneLoadedGraphics();  // Public so main.cpp can call it after graphics init
 	void OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& update);  // Called when player moves in Player Mode
 	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
@@ -702,6 +706,13 @@ private:
 	static std::string GetBodyTypeName(uint8_t bodytype);
 	static std::string GetEquipSlotName(int slot);
 	static std::string GetNpcTypeName(uint8_t npc_type);
+
+	// Phase 7.4: Entity sync helpers
+	void SyncEntityToGameState(const Entity& entity);
+	void RemoveEntityFromGameState(uint16_t spawnId);
+
+	// Phase 7.5: Group sync helper
+	void SyncGroupMemberToGameState(int index, const GroupMember& member);
 
 	// Login
 	void LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);

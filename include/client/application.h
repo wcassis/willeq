@@ -194,9 +194,29 @@ private:
     void syncGameStateFromClient();
 
     /**
+     * Sync pet state from EverQuest client.
+     */
+    void syncPetState();
+
+    /**
+     * Sync player NPC interaction state (vendor, banker, trainer, looting).
+     */
+    void syncNPCInteractionState();
+
+    /**
+     * Sync spell state from SpellManager.
+     */
+    void syncSpellState();
+
+    /**
      * Update loading progress for the renderer.
      */
     void updateLoadingProgress();
+
+    /**
+     * Connect renderer callbacks to action dispatcher.
+     */
+    void connectRendererCallbacks();
 
     // ========== Components ==========
 
@@ -219,6 +239,23 @@ private:
     // Timing
     std::chrono::steady_clock::time_point m_lastUpdate;
     std::chrono::steady_clock::time_point m_lastGraphicsUpdate;
+
+    // ========== Sync State Tracking ==========
+    // Used to detect changes and fire events only when state actually changes
+
+    // Pet state tracking
+    uint16_t m_lastPetSpawnId = 0;
+    uint8_t m_lastPetHpPercent = 100;
+    uint8_t m_lastPetManaPercent = 100;
+
+    // NPC interaction tracking
+    uint16_t m_lastVendorNpcId = 0;
+    uint16_t m_lastBankerNpcId = 0;
+    uint16_t m_lastTrainerNpcId = 0;
+
+    // Spell state tracking
+    bool m_lastIsCasting = false;
+    uint32_t m_lastCastingSpellId = 0;
 };
 
 } // namespace eqt

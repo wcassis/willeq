@@ -4,6 +4,9 @@
 #include "client/mode/automated_mode.h"
 #include "client/mode/headless_mode.h"
 #include "client/mode/graphical_mode.h"
+#include "client/spell/spell_manager.h"
+#include "client/spell/spell_constants.h"
+#include "client/output/graphical_renderer.h"
 #include "common/event/event_loop.h"
 #include "common/util/json_config.h"
 #include "common/logging.h"
@@ -117,6 +120,9 @@ bool Application::initialize(const ApplicationConfig& config) {
         m_commandProcessor->setOutputRenderer(renderer);
         LOG_DEBUG(MOD_MAIN, "Command processor connected to renderer");
     }
+
+    // Connect renderer callbacks to action dispatcher
+    connectRendererCallbacks();
 
 #ifdef EQT_HAS_GRAPHICS
     // Initialize graphics if graphical mode
@@ -295,31 +301,269 @@ void Application::syncGameStateFromClient() {
         return;
     }
 
-    // For now, the EverQuest client maintains its own internal state
-    // and the renderer/other systems read from it directly.
-    // In the future, we would migrate EverQuest to use GameState as
-    // the single source of truth.
+    // Phase 7 Migration Note:
+    // Player position, stats, and zone info are now synced directly from EQ class
+    // packet handlers (Phase 7.1-7.3), so polling is no longer needed for those.
+    // The sub-syncs below (pet, NPC interaction, spell) haven't been migrated yet
+    // and still use polling for now.
 
-    // Sync player position from EverQuest to GameState
-    auto pos = m_eqClient->GetPosition();
-    m_gameState->player().setPosition(pos.x, pos.y, pos.z);
-    m_gameState->player().setHeading(m_eqClient->GetHeading());
+    // Sync subsystems (not yet migrated to direct sync)
+    syncPetState();
+    syncNPCInteractionState();
+    syncSpellState();
+}
 
-    // Sync player stats
-    m_gameState->player().setHP(m_eqClient->GetCurrentHP(), m_eqClient->GetMaxHP());
-    m_gameState->player().setMana(m_eqClient->GetCurrentMana(), m_eqClient->GetMaxMana());
-    m_gameState->player().setEndurance(m_eqClient->GetCurrentEndurance(), m_eqClient->GetMaxEndurance());
-    m_gameState->player().setLevel(m_eqClient->GetLevel());
+void Application::syncPetState() {
+    if (!m_eqClient || !m_gameState) {
+        return;
+    }
 
-    // Sync zone info
-    if (m_eqClient->IsFullyZonedIn()) {
-        m_gameState->world().setZoneConnected(true);
+    uint16_t petSpawnId = m_eqClient->GetPetSpawnId();
+
+    // Check for pet creation/removal
+    if (petSpawnId != m_lastPetSpawnId) {
+        if (petSpawnId != 0) {
+            // Pet created
+            std::string petName = m_eqClient->GetPetName();
+            uint8_t petLevel = m_eqClient->GetPetLevel();
+            m_gameState->pet().setPet(petSpawnId, petName, petLevel);
+            LOG_DEBUG(MOD_MAIN, "Pet state synced: {} (Level {})", petName, petLevel);
+        } else {
+            // Pet removed
+            m_gameState->pet().clearPet();
+            LOG_DEBUG(MOD_MAIN, "Pet cleared");
+        }
+        m_lastPetSpawnId = petSpawnId;
+        m_lastPetHpPercent = 100;
+        m_lastPetManaPercent = 100;
+    }
+
+    // Sync pet stats if we have a pet
+    if (petSpawnId != 0) {
+        uint8_t hpPercent = m_eqClient->GetPetHpPercent();
+        // Note: GetPetManaPercent doesn't exist, we'd need to track separately
+        // For now just sync HP
+        if (hpPercent != m_lastPetHpPercent) {
+            m_gameState->pet().updatePetStats(hpPercent, m_lastPetManaPercent);
+            m_lastPetHpPercent = hpPercent;
+        }
+
+        // Sync button states
+        for (uint8_t i = 0; i < 10; ++i) {
+            bool state = m_eqClient->GetPetButtonState(static_cast<EQT::PetButton>(i));
+            if (state != m_gameState->pet().getButtonState(i)) {
+                m_gameState->pet().setButtonState(i, state);
+            }
+        }
+    }
+}
+
+void Application::syncNPCInteractionState() {
+    if (!m_eqClient || !m_gameState) {
+        return;
+    }
+
+    // Sync vendor state
+    uint16_t vendorNpcId = m_eqClient->GetVendorNpcId();
+    if (vendorNpcId != m_lastVendorNpcId) {
+        if (vendorNpcId != 0) {
+            // Vendor window opened - get name from entity if available
+            std::string vendorName = "Vendor";
+            const auto& entities = m_eqClient->GetEntities();
+            auto it = entities.find(vendorNpcId);
+            if (it != entities.end()) {
+                vendorName = it->second.name;
+            }
+            m_gameState->player().setVendor(vendorNpcId, 1.0f, vendorName);
+            LOG_DEBUG(MOD_MAIN, "Vendor opened: {}", vendorName);
+        } else {
+            m_gameState->player().clearVendor();
+            LOG_DEBUG(MOD_MAIN, "Vendor closed");
+        }
+        m_lastVendorNpcId = vendorNpcId;
+    }
+
+    // Sync banker state
+    uint16_t bankerNpcId = m_eqClient->GetBankerNpcId();
+    if (bankerNpcId != m_lastBankerNpcId) {
+        if (bankerNpcId != 0) {
+            m_gameState->player().setBanker(bankerNpcId);
+            LOG_DEBUG(MOD_MAIN, "Bank opened");
+        } else {
+            m_gameState->player().clearBanker();
+            LOG_DEBUG(MOD_MAIN, "Bank closed");
+        }
+        m_lastBankerNpcId = bankerNpcId;
+    }
+
+    // Sync trainer state
+    uint16_t trainerNpcId = m_eqClient->GetTrainerNpcId();
+    if (trainerNpcId != m_lastTrainerNpcId) {
+        if (trainerNpcId != 0) {
+            // Get trainer name from entity if available
+            std::string trainerName = "Trainer";
+            const auto& entities = m_eqClient->GetEntities();
+            auto it = entities.find(trainerNpcId);
+            if (it != entities.end()) {
+                trainerName = it->second.name;
+            }
+            m_gameState->player().setTrainer(trainerNpcId, trainerName);
+            LOG_DEBUG(MOD_MAIN, "Trainer opened: {}", trainerName);
+        } else {
+            m_gameState->player().clearTrainer();
+            LOG_DEBUG(MOD_MAIN, "Trainer closed");
+        }
+        m_lastTrainerNpcId = trainerNpcId;
+    }
+}
+
+void Application::syncSpellState() {
+    if (!m_eqClient || !m_gameState) {
+        return;
+    }
+
+    auto* spellMgr = m_eqClient->GetSpellManager();
+    if (!spellMgr) {
+        return;
+    }
+
+    // Sync casting state
+    bool isCasting = spellMgr->isCasting();
+    uint32_t castingSpellId = spellMgr->getCurrentSpellId();
+
+    if (isCasting != m_lastIsCasting || castingSpellId != m_lastCastingSpellId) {
+        if (isCasting) {
+            uint16_t targetId = spellMgr->getCurrentTargetId();
+            uint32_t castTimeMs = static_cast<uint32_t>(
+                spellMgr->getCastProgress() > 0 ?
+                spellMgr->getCastTimeRemaining() / (1.0f - spellMgr->getCastProgress()) :
+                spellMgr->getCastTimeRemaining());
+            m_gameState->spells().setCasting(true, castingSpellId, targetId, castTimeMs);
+        } else {
+            m_gameState->spells().clearCasting();
+        }
+        m_lastIsCasting = isCasting;
+        m_lastCastingSpellId = castingSpellId;
+    }
+
+    // Update cast progress
+    if (isCasting) {
+        m_gameState->spells().updateCastProgress(spellMgr->getCastTimeRemaining());
+    }
+
+    // Sync spell gems
+    for (uint8_t slot = 0; slot < 8; ++slot) {
+        uint32_t spellId = spellMgr->getMemorizedSpell(slot);
+        EQ::GemState gemState = spellMgr->getGemState(slot);
+
+        // Convert EQ::GemState to state::SpellGemState
+        state::SpellGemState stateGemState = state::SpellGemState::Empty;
+        switch (gemState) {
+            case EQ::GemState::Empty:
+                stateGemState = state::SpellGemState::Empty;
+                break;
+            case EQ::GemState::Ready:
+                stateGemState = state::SpellGemState::Ready;
+                break;
+            case EQ::GemState::Casting:
+                stateGemState = state::SpellGemState::Casting;
+                break;
+            case EQ::GemState::Refresh:
+                stateGemState = state::SpellGemState::Refresh;
+                break;
+            case EQ::GemState::MemorizeProgress:
+                stateGemState = state::SpellGemState::MemorizeProgress;
+                break;
+        }
+
+        m_gameState->spells().setGem(slot, spellId, stateGemState);
+
+        // Update cooldown if refreshing
+        if (gemState == EQ::GemState::Refresh) {
+            uint32_t remaining = spellMgr->getGemCooldownRemaining(slot);
+            float progress = spellMgr->getGemCooldownProgress(slot);
+            uint32_t total = progress > 0 ? static_cast<uint32_t>(remaining / (1.0f - progress)) : remaining;
+            m_gameState->spells().setGemCooldown(slot, remaining, total);
+        }
     }
 }
 
 void Application::updateLoadingProgress() {
     // Loading progress is updated by EverQuest client callbacks directly
     // This method is a placeholder for future centralized loading state management
+}
+
+void Application::connectRendererCallbacks() {
+    if (!m_gameMode || !m_dispatcher) {
+        return;
+    }
+
+    auto* renderer = m_gameMode->getRenderer();
+    if (!renderer) {
+        return;
+    }
+
+    // Check if this is a graphical renderer with callbacks
+    auto* graphicalRenderer = dynamic_cast<output::GraphicalRenderer*>(renderer);
+    if (!graphicalRenderer) {
+        return;
+    }
+
+    LOG_DEBUG(MOD_MAIN, "Connecting renderer callbacks to action dispatcher");
+
+    // Connect spell gem cast callback
+    graphicalRenderer->setSpellGemCastCallback([this](uint8_t gemSlot) {
+        if (m_dispatcher) {
+            m_dispatcher->castSpell(gemSlot);
+        }
+    });
+
+    // Connect target selection callback
+    graphicalRenderer->setTargetCallback([this](uint16_t spawnId) {
+        if (m_dispatcher) {
+            m_dispatcher->targetEntity(spawnId);
+        }
+    });
+
+    // Connect door interaction callback
+    graphicalRenderer->setDoorInteractCallback([this](uint8_t doorId) {
+        if (m_actionHandler) {
+            m_actionHandler->clickDoor(doorId);
+        }
+    });
+
+    // Connect chat submit callback
+    graphicalRenderer->setChatSubmitCallback([this](const std::string& text) {
+        if (m_commandProcessor && !text.empty()) {
+            if (text[0] == '/') {
+                // Process as command
+                m_commandProcessor->processCommand(text);
+            } else {
+                // Send as chat
+                if (m_dispatcher) {
+                    m_dispatcher->sendChatMessage(action::ChatChannel::Say, text);
+                }
+            }
+        }
+    });
+
+    // Connect pet command callback
+    graphicalRenderer->setPetCommandCallback([this](uint8_t command, uint16_t targetId) {
+        if (m_dispatcher) {
+            m_dispatcher->sendPetCommand(command, targetId);
+        }
+    });
+
+    // Connect inventory action callback
+    graphicalRenderer->setInventoryActionCallback([this](int16_t slotId, uint8_t action) {
+        // Handle inventory actions through the action handler
+        if (m_actionHandler && action == 0) {  // 0 = use/equip
+            // For now just log - actual item use would go through EQ client
+            LOG_DEBUG(MOD_MAIN, "Inventory action: slot={}, action={}", slotId, action);
+        }
+    });
+
+    LOG_INFO(MOD_MAIN, "Renderer callbacks connected");
 }
 
 // ========== Static Helpers ==========

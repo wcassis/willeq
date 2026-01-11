@@ -214,6 +214,76 @@ public:
      */
     virtual void displayCombatMessage(const std::string& message) = 0;
 
+    // ========== Pet Display ==========
+
+    /**
+     * Display pet info.
+     * @param name Pet name
+     * @param level Pet level
+     * @param hpPercent Pet HP percentage (0-100)
+     * @param manaPercent Pet mana percentage (0-100)
+     */
+    virtual void displayPetInfo(const std::string& name, uint8_t level,
+                                 uint8_t hpPercent, uint8_t manaPercent) {
+        (void)name; (void)level; (void)hpPercent; (void)manaPercent;
+    }
+
+    /**
+     * Update pet HP/mana display.
+     */
+    virtual void updatePetStats(uint8_t hpPercent, uint8_t manaPercent) {
+        (void)hpPercent; (void)manaPercent;
+    }
+
+    /**
+     * Clear pet display (pet dismissed or died).
+     */
+    virtual void clearPetInfo() {}
+
+    // ========== Spell/Casting Display ==========
+
+    /**
+     * Display spell casting progress.
+     * @param spellId Spell ID being cast
+     * @param spellName Spell name (if known)
+     * @param progress Casting progress (0.0 to 1.0)
+     * @param targetName Name of target (if any)
+     */
+    virtual void displayCastingProgress(uint32_t spellId, const std::string& spellName,
+                                         float progress, const std::string& targetName) {
+        (void)spellId; (void)spellName; (void)progress; (void)targetName;
+    }
+
+    /**
+     * Clear casting display (cast completed, interrupted, or cancelled).
+     */
+    virtual void clearCasting() {}
+
+    /**
+     * Update spell gem state display.
+     * @param gemSlot Gem slot (0-7)
+     * @param spellId Spell ID in slot (0 = empty)
+     * @param spellName Spell name
+     * @param ready true if gem is ready to cast
+     * @param cooldownProgress Cooldown progress (0.0 = just cast, 1.0 = ready)
+     */
+    virtual void updateSpellGem(uint8_t gemSlot, uint32_t spellId,
+                                 const std::string& spellName, bool ready,
+                                 float cooldownProgress) {
+        (void)gemSlot; (void)spellId; (void)spellName; (void)ready; (void)cooldownProgress;
+    }
+
+    // ========== Inventory Display ==========
+
+    /**
+     * Display cursor item notification.
+     * @param hasItem true if cursor has an item
+     * @param itemName Name of item on cursor (if any)
+     */
+    virtual void displayCursorItem(bool hasItem, const std::string& itemName) {
+        (void)hasItem; (void)itemName;
+    }
+
     // ========== Input Handler (Optional) ==========
 
     /**

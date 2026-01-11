@@ -105,6 +105,22 @@ void ConsoleRenderer::connectToGameState(state::GameState& state) {
     m_listenerHandles.push_back(
         m_eventBus->subscribe(state::GameEventType::TargetChanged,
             [this](const state::GameEvent& event) { handleEvent(event); }));
+
+    // Subscribe to pet events
+    m_listenerHandles.push_back(
+        m_eventBus->subscribe(state::GameEventType::PetCreated,
+            [this](const state::GameEvent& event) { handleEvent(event); }));
+    m_listenerHandles.push_back(
+        m_eventBus->subscribe(state::GameEventType::PetRemoved,
+            [this](const state::GameEvent& event) { handleEvent(event); }));
+    m_listenerHandles.push_back(
+        m_eventBus->subscribe(state::GameEventType::PetStatsChanged,
+            [this](const state::GameEvent& event) { handleEvent(event); }));
+
+    // Subscribe to spell/casting events
+    m_listenerHandles.push_back(
+        m_eventBus->subscribe(state::GameEventType::CastingStateChanged,
+            [this](const state::GameEvent& event) { handleEvent(event); }));
 }
 
 void ConsoleRenderer::disconnectFromGameState() {
@@ -184,6 +200,48 @@ void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
             std::cout << "\n" << getChannelColor("zone")
                       << "=== Entering " << data.zoneName << " ==="
                       << colorReset() << "\n" << std::endl;
+            break;
+        }
+
+        case state::GameEventType::PetCreated: {
+            const auto& data = std::get<state::PetCreatedData>(event.data);
+            displayPetInfo(data.name, data.level, 100, 100);
+            std::cout << getTimestamp() << getChannelColor("pet")
+                      << "Pet: " << data.name << " (Level " << static_cast<int>(data.level) << ") summoned."
+                      << colorReset() << std::endl;
+            break;
+        }
+
+        case state::GameEventType::PetRemoved: {
+            std::cout << getTimestamp() << getChannelColor("pet")
+                      << "Pet dismissed."
+                      << colorReset() << std::endl;
+            clearPetInfo();
+            break;
+        }
+
+        case state::GameEventType::PetStatsChanged: {
+            const auto& data = std::get<state::PetStatsChangedData>(event.data);
+            updatePetStats(data.hpPercent, data.manaPercent);
+            break;
+        }
+
+        case state::GameEventType::CastingStateChanged: {
+            const auto& data = std::get<state::CastingStateChangedData>(event.data);
+            if (data.isCasting) {
+                m_isCasting = true;
+                m_castingSpellName = "Spell #" + std::to_string(data.spellId);
+                std::cout << getTimestamp() << getChannelColor("spell")
+                          << "Casting " << m_castingSpellName << "..."
+                          << colorReset() << std::endl;
+            } else {
+                if (m_isCasting) {
+                    std::cout << getTimestamp() << getChannelColor("spell")
+                              << "Casting complete."
+                              << colorReset() << std::endl;
+                }
+                clearCasting();
+            }
             break;
         }
 
@@ -313,6 +371,51 @@ void ConsoleRenderer::displayCombatMessage(const std::string& message) {
               << message << colorReset() << std::endl;
 }
 
+void ConsoleRenderer::displayPetInfo(const std::string& name, uint8_t level,
+                                      uint8_t hpPercent, uint8_t manaPercent) {
+    m_hasPet = true;
+    m_petName = name;
+    m_petLevel = level;
+    m_petHpPercent = hpPercent;
+    m_petManaPercent = manaPercent;
+}
+
+void ConsoleRenderer::updatePetStats(uint8_t hpPercent, uint8_t manaPercent) {
+    m_petHpPercent = hpPercent;
+    m_petManaPercent = manaPercent;
+}
+
+void ConsoleRenderer::clearPetInfo() {
+    m_hasPet = false;
+    m_petName.clear();
+    m_petLevel = 0;
+    m_petHpPercent = 100;
+    m_petManaPercent = 100;
+}
+
+void ConsoleRenderer::displayCastingProgress(uint32_t spellId, const std::string& spellName,
+                                              float progress, const std::string& targetName) {
+    std::lock_guard<std::mutex> lock(m_outputMutex);
+    m_isCasting = true;
+    m_castingSpellName = spellName.empty() ? "Spell #" + std::to_string(spellId) : spellName;
+    m_castingTargetName = targetName;
+
+    int progressPercent = static_cast<int>(progress * 100);
+    std::cout << "\r" << getChannelColor("spell")
+              << "Casting " << m_castingSpellName;
+    if (!targetName.empty()) {
+        std::cout << " on " << targetName;
+    }
+    std::cout << " [" << std::setw(3) << progressPercent << "%]"
+              << colorReset() << std::flush;
+}
+
+void ConsoleRenderer::clearCasting() {
+    m_isCasting = false;
+    m_castingSpellName.clear();
+    m_castingTargetName.clear();
+}
+
 void ConsoleRenderer::printStatusLine() {
     std::lock_guard<std::mutex> lock(m_outputMutex);
 
@@ -349,6 +452,12 @@ void ConsoleRenderer::printStatusLine() {
     if (m_targetSpawnId != 0 && !m_targetName.empty()) {
         std::cout << " | Target: " << m_targetName
                   << " " << static_cast<int>(m_targetHpPercent) << "%";
+    }
+
+    // Pet
+    if (m_hasPet && !m_petName.empty()) {
+        std::cout << " | Pet: " << m_petName
+                  << " HP:" << static_cast<int>(m_petHpPercent) << "%";
     }
 
     std::cout << colorReset() << std::endl;
@@ -398,6 +507,8 @@ std::string ConsoleRenderer::getChannelColor(const std::string& channel) const {
     if (channel == "status") return COLOR_BLUE;
     if (channel == "spawn") return COLOR_GRAY;
     if (channel == "despawn") return COLOR_GRAY;
+    if (channel == "pet") return COLOR_BRIGHT_CYAN;
+    if (channel == "spell") return COLOR_BRIGHT_MAGENTA;
 
     return COLOR_WHITE;
 }

@@ -238,6 +238,34 @@ public:
         m_chatSubmitCallback = callback;
     }
 
+    /**
+     * Pet command callback type.
+     * @param command Pet command ID (from pet_constants.h)
+     * @param targetId Optional target for attack command
+     */
+    using PetCommandCallback = std::function<void(uint8_t command, uint16_t targetId)>;
+
+    /**
+     * Set pet command callback.
+     */
+    virtual void setPetCommandCallback(PetCommandCallback callback) {
+        m_petCommandCallback = callback;
+    }
+
+    /**
+     * Inventory action callback type.
+     * @param slotId Inventory slot ID
+     * @param action Action type (0=use, 1=equip, 2=drop, etc.)
+     */
+    using InventoryActionCallback = std::function<void(int16_t slotId, uint8_t action)>;
+
+    /**
+     * Set inventory action callback.
+     */
+    virtual void setInventoryActionCallback(InventoryActionCallback callback) {
+        m_inventoryActionCallback = callback;
+    }
+
 protected:
     std::unique_ptr<input::IInputHandler> m_inputHandler;
     CameraMode m_cameraMode = CameraMode::FirstPerson;
@@ -249,6 +277,8 @@ protected:
     TargetCallback m_targetCallback;
     MovementCallback m_movementCallback;
     ChatSubmitCallback m_chatSubmitCallback;
+    PetCommandCallback m_petCommandCallback;
+    InventoryActionCallback m_inventoryActionCallback;
 
     // Event bus subscription
     state::EventBus* m_eventBus = nullptr;
