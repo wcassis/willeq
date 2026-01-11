@@ -34,6 +34,7 @@ enum class InputAction {
     ToggleSkills,
     ToggleGroup,
     ToggleVendor,
+    TogglePetWindow,
 
     // Interaction
     InteractDoor,

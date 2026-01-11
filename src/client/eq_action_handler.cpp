@@ -1,6 +1,7 @@
 #include "client/eq_action_handler.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/pet_constants.h"
 #include "common/logging.h"
 
 namespace eqt {
@@ -411,6 +412,28 @@ void EqActionHandler::cancelTrade() {
 void EqActionHandler::requestZone(const std::string& zoneName) {
     // Zone requests typically happen through doors/zone lines, not directly
     LOG_DEBUG(MOD_ZONE, "Zone request not yet implemented");
+}
+
+// ========== Pet ==========
+
+void EqActionHandler::sendPetCommand(uint8_t command, uint16_t targetId) {
+    m_eq.SendPetCommand(static_cast<EQT::PetCommand>(command), targetId);
+}
+
+void EqActionHandler::dismissPet() {
+    // PET_GETLOST = 29 from pet_constants.h
+    m_eq.SendPetCommand(EQT::PET_GETLOST, 0);
+}
+
+// ========== Tradeskill ==========
+
+void EqActionHandler::clickWorldObject(uint32_t dropId) {
+    m_eq.SendClickObject(dropId);
+}
+
+void EqActionHandler::tradeskillCombine() {
+    // Combine is typically triggered through the tradeskill window combine button
+    LOG_DEBUG(MOD_UI, "Tradeskill combine would need to be routed through tradeskill window");
 }
 
 // ========== Utility ==========

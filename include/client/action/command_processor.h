@@ -225,6 +225,8 @@ private:
     ActionResult cmdMem(const std::string& args);
     ActionResult cmdForget(const std::string& args);
 
+    ActionResult cmdPet(const std::string& args);
+
     ActionResult cmdFilter(const std::string& args);
 
     // Helper methods

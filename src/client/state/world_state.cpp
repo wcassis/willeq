@@ -87,6 +87,7 @@ void WorldState::resetZoneState() {
     m_zoneLineTriggered = false;
     m_zoneChangeRequested = false;
     m_zoneChangeApproved = false;
+    m_isZoning = false;
     clearPendingZone();
 
     // Reset connection state

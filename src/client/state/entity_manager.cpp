@@ -213,6 +213,40 @@ const Entity* EntityManager::getNearestCorpse(float x, float y, float z) const {
     });
 }
 
+// ========== Pet Queries ==========
+
+bool EntityManager::isPet(uint16_t spawnId) const {
+    const Entity* entity = getEntity(spawnId);
+    return entity && entity->isPet != 0;
+}
+
+uint32_t EntityManager::getPetOwnerId(uint16_t spawnId) const {
+    const Entity* entity = getEntity(spawnId);
+    if (entity && entity->isPet != 0) {
+        return entity->petOwnerId;
+    }
+    return 0;
+}
+
+uint16_t EntityManager::findPetByOwner(uint16_t ownerSpawnId) const {
+    for (const auto& pair : m_entities) {
+        if (pair.second.isPet != 0 && pair.second.petOwnerId == ownerSpawnId) {
+            return pair.first;
+        }
+    }
+    return 0;
+}
+
+std::vector<uint16_t> EntityManager::getAllPets() const {
+    std::vector<uint16_t> result;
+    for (const auto& pair : m_entities) {
+        if (pair.second.isPet != 0) {
+            result.push_back(pair.first);
+        }
+    }
+    return result;
+}
+
 // ========== Iteration ==========
 
 void EntityManager::forEachEntity(std::function<void(const Entity&)> callback) const {

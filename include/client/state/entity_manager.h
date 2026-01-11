@@ -58,6 +58,14 @@ struct Entity {
     float deltaHeading = 0;
     uint32_t lastUpdateTime = 0;
 
+    // Pet tracking
+    uint8_t isPet = 0;           // Non-zero if this entity is a pet
+    uint32_t petOwnerId = 0;     // Spawn ID of pet's owner
+
+    // Weapon skill types for combat animations (255 = unknown/none)
+    uint8_t primaryWeaponSkill = 255;
+    uint8_t secondaryWeaponSkill = 255;
+
     // Helper methods
     bool isPlayer() const { return npcType == 0; }
     bool isNPC() const { return npcType == 1; }
@@ -243,6 +251,35 @@ public:
      * @return Pointer to nearest corpse or nullptr
      */
     const Entity* getNearestCorpse(float x, float y, float z) const;
+
+    // ========== Pet Queries ==========
+
+    /**
+     * Check if an entity is a pet.
+     * @param spawnId The spawn ID to check
+     * @return true if entity is a pet
+     */
+    bool isPet(uint16_t spawnId) const;
+
+    /**
+     * Get the owner spawn ID of a pet.
+     * @param spawnId The pet's spawn ID
+     * @return Owner spawn ID or 0 if not a pet or not found
+     */
+    uint32_t getPetOwnerId(uint16_t spawnId) const;
+
+    /**
+     * Find a pet by its owner's spawn ID.
+     * @param ownerSpawnId The owner's spawn ID
+     * @return Pet's spawn ID or 0 if not found
+     */
+    uint16_t findPetByOwner(uint16_t ownerSpawnId) const;
+
+    /**
+     * Get all pets in the zone.
+     * @return Vector of pet spawn IDs
+     */
+    std::vector<uint16_t> getAllPets() const;
 
     // ========== Iteration ==========
 

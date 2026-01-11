@@ -663,6 +663,172 @@ ActionResult ActionDispatcher::requestZone(const std::string& zoneName) {
     return ActionResult::Success("Requesting zone: " + zoneName);
 }
 
+// ========== Pet Actions ==========
+
+ActionResult ActionDispatcher::sendPetCommand(uint8_t command, uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->sendPetCommand(command, targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::dismissPet() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->dismissPet();
+    return ActionResult::Success("Dismissing pet");
+}
+
+ActionResult ActionDispatcher::petAttack() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    uint16_t targetId = m_state.combat().targetId();
+    if (targetId == 0) {
+        return ActionResult::Failure("No target selected");
+    }
+
+    // PET_ATTACK = 2 (from pet_constants.h)
+    m_handler->sendPetCommand(2, targetId);
+    return ActionResult::Success("Pet attacking");
+}
+
+ActionResult ActionDispatcher::petBackOff() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_BACKOFF = 28 (from pet_constants.h)
+    m_handler->sendPetCommand(28, 0);
+    return ActionResult::Success("Pet backing off");
+}
+
+ActionResult ActionDispatcher::petFollow() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_FOLLOWME = 4 (from pet_constants.h)
+    m_handler->sendPetCommand(4, 0);
+    return ActionResult::Success("Pet following");
+}
+
+ActionResult ActionDispatcher::petGuard() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_GUARDHERE = 5 (from pet_constants.h)
+    m_handler->sendPetCommand(5, 0);
+    return ActionResult::Success("Pet guarding");
+}
+
+ActionResult ActionDispatcher::petSit() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_SIT = 6 (from pet_constants.h)
+    m_handler->sendPetCommand(6, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petTaunt() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_TAUNT = 12 (from pet_constants.h)
+    m_handler->sendPetCommand(12, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petHold() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_HOLD = 15 (from pet_constants.h)
+    m_handler->sendPetCommand(15, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petFocus() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_FOCUS = 24 (from pet_constants.h)
+    m_handler->sendPetCommand(24, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petHealth() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    // PET_HEALTHREPORT = 0 (from pet_constants.h)
+    m_handler->sendPetCommand(0, 0);
+    return ActionResult::Success();
+}
+
+// ========== Tradeskill Actions ==========
+
+ActionResult ActionDispatcher::clickWorldObject(uint32_t dropId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->clickWorldObject(dropId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::tradeskillCombine() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->tradeskillCombine();
+    return ActionResult::Success();
+}
+
 // ========== Utility Actions ==========
 
 ActionResult ActionDispatcher::sendAnimation(uint8_t animationId, uint8_t speed) {

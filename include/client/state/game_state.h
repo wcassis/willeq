@@ -7,6 +7,10 @@
 #include "client/state/combat_state.h"
 #include "client/state/group_state.h"
 #include "client/state/door_state.h"
+#include "client/state/pet_state.h"
+#include "client/state/tradeskill_state.h"
+#include "client/state/inventory_state.h"
+#include "client/state/spell_state.h"
 
 #include <memory>
 
@@ -92,6 +96,30 @@ public:
     DoorState& doors() { return m_doorState; }
     const DoorState& doors() const { return m_doorState; }
 
+    /**
+     * Get the pet state.
+     */
+    PetState& pet() { return m_petState; }
+    const PetState& pet() const { return m_petState; }
+
+    /**
+     * Get the tradeskill state.
+     */
+    TradeskillState& tradeskill() { return m_tradeskillState; }
+    const TradeskillState& tradeskill() const { return m_tradeskillState; }
+
+    /**
+     * Get the inventory state.
+     */
+    InventoryState& inventory() { return m_inventoryState; }
+    const InventoryState& inventory() const { return m_inventoryState; }
+
+    /**
+     * Get the spell state.
+     */
+    SpellState& spells() { return m_spellState; }
+    const SpellState& spells() const { return m_spellState; }
+
     // ========== Convenience Methods ==========
 
     /**
@@ -139,6 +167,10 @@ private:
     CombatState m_combatState;
     GroupState m_groupState;
     DoorState m_doorState;
+    PetState m_petState;
+    TradeskillState m_tradeskillState;
+    InventoryState m_inventoryState;
+    SpellState m_spellState;
 };
 
 } // namespace state

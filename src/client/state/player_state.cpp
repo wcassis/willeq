@@ -143,6 +143,121 @@ uint64_t PlayerState::totalCopperValue() const {
            static_cast<uint64_t>(m_copper);
 }
 
+// ========== Bank Currency ==========
+
+void PlayerState::setBankCurrency(uint32_t plat, uint32_t gold, uint32_t silver, uint32_t copper) {
+    m_bankPlatinum = plat;
+    m_bankGold = gold;
+    m_bankSilver = silver;
+    m_bankCopper = copper;
+}
+
+uint64_t PlayerState::totalBankCopperValue() const {
+    return static_cast<uint64_t>(m_bankPlatinum) * 1000 +
+           static_cast<uint64_t>(m_bankGold) * 100 +
+           static_cast<uint64_t>(m_bankSilver) * 10 +
+           static_cast<uint64_t>(m_bankCopper);
+}
+
+// ========== Practice Points ==========
+
+void PlayerState::decrementPracticePoints() {
+    if (m_practicePoints > 0) {
+        --m_practicePoints;
+    }
+}
+
+// ========== Vendor Interaction ==========
+
+void PlayerState::setVendor(uint16_t npcId, float sellRate, const std::string& name) {
+    m_vendorNpcId = npcId;
+    m_vendorSellRate = sellRate;
+    m_vendorName = name;
+
+    if (m_eventBus && npcId != 0) {
+        WindowOpenedData data;
+        data.npcId = npcId;
+        data.npcName = name;
+        data.sellRate = sellRate;
+        m_eventBus->publish(GameEventType::VendorWindowOpened, data);
+    }
+}
+
+void PlayerState::clearVendor() {
+    uint16_t oldNpcId = m_vendorNpcId;
+    m_vendorNpcId = 0;
+    m_vendorSellRate = 1.0f;
+    m_vendorName.clear();
+
+    if (m_eventBus && oldNpcId != 0) {
+        WindowClosedData data;
+        data.npcId = oldNpcId;
+        m_eventBus->publish(GameEventType::VendorWindowClosed, data);
+    }
+}
+
+// ========== Bank Interaction ==========
+
+void PlayerState::setBanker(uint16_t npcId) {
+    m_bankerNpcId = npcId;
+
+    if (m_eventBus && npcId != 0) {
+        WindowOpenedData data;
+        data.npcId = npcId;
+        data.npcName = "Banker";
+        data.sellRate = 1.0f;
+        m_eventBus->publish(GameEventType::BankWindowOpened, data);
+    }
+}
+
+void PlayerState::clearBanker() {
+    uint16_t oldNpcId = m_bankerNpcId;
+    m_bankerNpcId = 0;
+
+    if (m_eventBus && oldNpcId != 0) {
+        WindowClosedData data;
+        data.npcId = oldNpcId;
+        m_eventBus->publish(GameEventType::BankWindowClosed, data);
+    }
+}
+
+// ========== Trainer Interaction ==========
+
+void PlayerState::setTrainer(uint16_t npcId, const std::string& name) {
+    m_trainerNpcId = npcId;
+    m_trainerName = name;
+
+    if (m_eventBus && npcId != 0) {
+        WindowOpenedData data;
+        data.npcId = npcId;
+        data.npcName = name;
+        data.sellRate = 1.0f;
+        m_eventBus->publish(GameEventType::TrainerWindowOpened, data);
+    }
+}
+
+void PlayerState::clearTrainer() {
+    uint16_t oldNpcId = m_trainerNpcId;
+    m_trainerNpcId = 0;
+    m_trainerName.clear();
+
+    if (m_eventBus && oldNpcId != 0) {
+        WindowClosedData data;
+        data.npcId = oldNpcId;
+        m_eventBus->publish(GameEventType::TrainerWindowClosed, data);
+    }
+}
+
+// ========== Loot State ==========
+
+void PlayerState::setLootingCorpse(uint16_t corpseId) {
+    m_lootingCorpseId = corpseId;
+}
+
+void PlayerState::clearLootingCorpse() {
+    m_lootingCorpseId = 0;
+}
+
 // ========== Weight ==========
 
 void PlayerState::setWeight(float current, float max) {

@@ -119,6 +119,16 @@ public:
 
     void requestZone(const std::string& zoneName) override;
 
+    // ========== Pet ==========
+
+    void sendPetCommand(uint8_t command, uint16_t targetId) override;
+    void dismissPet() override;
+
+    // ========== Tradeskill ==========
+
+    void clickWorldObject(uint32_t dropId) override;
+    void tradeskillCombine() override;
+
     // ========== Utility ==========
 
     void sendAnimation(uint8_t animationId, uint8_t speed) override;

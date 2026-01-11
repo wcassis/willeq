@@ -163,6 +163,16 @@ public:
 
     virtual void requestZone(const std::string& zoneName) = 0;
 
+    // ========== Pet ==========
+
+    virtual void sendPetCommand(uint8_t command, uint16_t targetId = 0) = 0;
+    virtual void dismissPet() = 0;
+
+    // ========== Tradeskill ==========
+
+    virtual void clickWorldObject(uint32_t dropId) = 0;
+    virtual void tradeskillCombine() = 0;
+
     // ========== Utility ==========
 
     virtual void sendAnimation(uint8_t animationId, uint8_t speed = 10) = 0;
@@ -521,6 +531,77 @@ public:
      * Request zone transition.
      */
     ActionResult requestZone(const std::string& zoneName);
+
+    // ========== Pet Actions ==========
+
+    /**
+     * Send a pet command.
+     * @param command Pet command ID (see pet_constants.h PetCommand enum)
+     * @param targetId Optional target for attack commands
+     */
+    ActionResult sendPetCommand(uint8_t command, uint16_t targetId = 0);
+
+    /**
+     * Dismiss the current pet.
+     */
+    ActionResult dismissPet();
+
+    /**
+     * Command pet to attack current target.
+     */
+    ActionResult petAttack();
+
+    /**
+     * Command pet to back off (stop attacking).
+     */
+    ActionResult petBackOff();
+
+    /**
+     * Command pet to follow owner.
+     */
+    ActionResult petFollow();
+
+    /**
+     * Command pet to guard current location.
+     */
+    ActionResult petGuard();
+
+    /**
+     * Toggle pet sit.
+     */
+    ActionResult petSit();
+
+    /**
+     * Toggle pet taunt.
+     */
+    ActionResult petTaunt();
+
+    /**
+     * Toggle pet hold (don't add to hate list).
+     */
+    ActionResult petHold();
+
+    /**
+     * Toggle pet focus.
+     */
+    ActionResult petFocus();
+
+    /**
+     * Get pet health report.
+     */
+    ActionResult petHealth();
+
+    // ========== Tradeskill Actions ==========
+
+    /**
+     * Click/interact with a world object (forge, loom, etc.).
+     */
+    ActionResult clickWorldObject(uint32_t dropId);
+
+    /**
+     * Combine items in the current tradeskill container.
+     */
+    ActionResult tradeskillCombine();
 
     // ========== Utility Actions ==========
 

@@ -27,6 +27,12 @@ struct CombatEventData;
 struct GroupChangedData;
 struct GroupMemberUpdatedData;
 struct TimeOfDayChangedData;
+struct PetCreatedData;
+struct PetRemovedData;
+struct PetStatsChangedData;
+struct PetButtonStateChangedData;
+struct WindowOpenedData;
+struct WindowClosedData;
 
 // Event types enum
 enum class GameEventType {
@@ -67,6 +73,32 @@ enum class GameEventType {
 
     // Time events
     TimeOfDayChanged,
+
+    // Pet events
+    PetCreated,
+    PetRemoved,
+    PetStatsChanged,
+    PetButtonStateChanged,
+
+    // Window events (vendor, bank, trainer, tradeskill)
+    VendorWindowOpened,
+    VendorWindowClosed,
+    BankWindowOpened,
+    BankWindowClosed,
+    TrainerWindowOpened,
+    TrainerWindowClosed,
+    TradeskillContainerOpened,
+    TradeskillContainerClosed,
+
+    // Inventory events
+    InventorySlotChanged,
+    CursorItemChanged,
+    EquipmentStatsChanged,
+
+    // Spell events
+    SpellGemChanged,
+    CastingStateChanged,
+    SpellMemorizing,
 };
 
 // Event data structures
@@ -197,6 +229,95 @@ struct TimeOfDayChangedData {
     uint16_t year;
 };
 
+struct PetCreatedData {
+    uint16_t spawnId;
+    std::string name;
+    uint8_t level;
+};
+
+struct PetRemovedData {
+    uint16_t spawnId;
+    std::string name;
+};
+
+struct PetStatsChangedData {
+    uint16_t spawnId;
+    uint8_t hpPercent;
+    uint8_t manaPercent;
+};
+
+struct PetButtonStateChangedData {
+    uint8_t button;
+    bool state;
+};
+
+struct WindowOpenedData {
+    uint16_t npcId;
+    std::string npcName;
+    float sellRate;  // For vendor window
+};
+
+struct WindowClosedData {
+    uint16_t npcId;
+};
+
+struct TradeskillContainerOpenedEvent {
+    bool isWorldObject;           // true if world object (forge, etc.), false if inventory container
+    uint32_t objectId;            // World object drop ID (if world object)
+    int16_t inventorySlot;        // Inventory slot (if inventory container)
+    std::string containerName;
+    uint8_t containerType;
+    uint8_t slotCount;
+};
+
+struct TradeskillContainerClosedEvent {
+    bool wasWorldObject;
+    uint32_t objectId;
+    int16_t inventorySlot;
+};
+
+struct InventorySlotChangedData {
+    int16_t slotId;
+    bool hasItem;
+    uint32_t itemId;  // 0 if no item
+};
+
+struct CursorItemChangedData {
+    bool hasCursorItem;
+    uint8_t queueSize;
+};
+
+struct EquipmentStatsChangedData {
+    int32_t ac;
+    int32_t atk;
+    int32_t hp;
+    int32_t mana;
+    float weight;
+};
+
+struct SpellGemChangedData {
+    uint8_t gemSlot;
+    uint32_t spellId;
+    uint8_t gemState;  // SpellGemState value
+    uint32_t cooldownRemainingMs;
+};
+
+struct CastingStateChangedData {
+    bool isCasting;
+    uint32_t spellId;
+    uint16_t targetId;
+    uint32_t castTimeRemainingMs;
+    uint32_t castTimeTotalMs;
+};
+
+struct SpellMemorizingData {
+    bool isMemorizing;
+    uint8_t gemSlot;
+    uint32_t spellId;
+    uint32_t progressMs;
+    uint32_t totalMs;
+};
+
 // Variant type for all event data
 using EventData = std::variant<
     PlayerMovedData,
@@ -213,7 +334,21 @@ using EventData = std::variant<
     CombatEventData,
     GroupChangedData,
     GroupMemberUpdatedData,
-    TimeOfDayChangedData
+    TimeOfDayChangedData,
+    PetCreatedData,
+    PetRemovedData,
+    PetStatsChangedData,
+    PetButtonStateChangedData,
+    WindowOpenedData,
+    WindowClosedData,
+    TradeskillContainerOpenedEvent,
+    TradeskillContainerClosedEvent,
+    InventorySlotChangedData,
+    CursorItemChangedData,
+    EquipmentStatsChangedData,
+    SpellGemChangedData,
+    CastingStateChangedData,
+    SpellMemorizingData
 >;
 
 // Game event combining type and data

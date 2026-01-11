@@ -116,6 +116,15 @@ public:
 
     bool isFullyZonedIn() const { return m_zoneConnected && m_clientReady; }
 
+    // ========== Zoning Toggle ==========
+
+    /**
+     * Check if actively zoning (transitioning between zones).
+     * This is set when the zoning process starts and cleared when complete.
+     */
+    bool isZoning() const { return m_isZoning; }
+    void setZoning(bool zoning) { m_isZoning = zoning; }
+
     // ========== Reset ==========
 
     // Reset zone state (for zone changes)
@@ -167,6 +176,9 @@ private:
     // Connection state
     bool m_zoneConnected = false;
     bool m_clientReady = false;
+
+    // Active zoning toggle
+    bool m_isZoning = false;
 };
 
 } // namespace state

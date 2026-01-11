@@ -468,6 +468,11 @@ void CommandProcessor::registerBuiltinCommands() {
         "forget", {}, "/forget <gem#>", "Forget spell from gem slot", "Spells", true
     }, [this](const std::string& args) { return cmdForget(args); });
 
+    // Pet commands
+    registerCommand({
+        "pet", {}, "/pet <command>", "Issue pet command (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)", "Pet", true
+    }, [this](const std::string& args) { return cmdPet(args); });
+
     registerCommand({
         "filter", {}, "/filter [channel]", "Toggle channel display", "Chat", false
     }, [this](const std::string& args) { return cmdFilter(args); });
@@ -778,6 +783,40 @@ ActionResult CommandProcessor::cmdForget(const std::string& args) {
         return m_dispatcher.forgetSpell(static_cast<uint8_t>(gem));
     } catch (const std::exception&) {
         return ActionResult::Failure("Invalid gem slot");
+    }
+}
+
+ActionResult CommandProcessor::cmdPet(const std::string& args) {
+    if (args.empty()) {
+        displayMessage("Usage: /pet <command>");
+        displayMessage("Commands: attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss");
+        return ActionResult::Success();
+    }
+
+    std::string cmd = toLower(args);
+
+    if (cmd == "attack") {
+        return m_dispatcher.petAttack();
+    } else if (cmd == "back" || cmd == "backoff") {
+        return m_dispatcher.petBackOff();
+    } else if (cmd == "follow" || cmd == "followme") {
+        return m_dispatcher.petFollow();
+    } else if (cmd == "guard" || cmd == "guardhere") {
+        return m_dispatcher.petGuard();
+    } else if (cmd == "sit") {
+        return m_dispatcher.petSit();
+    } else if (cmd == "taunt") {
+        return m_dispatcher.petTaunt();
+    } else if (cmd == "hold") {
+        return m_dispatcher.petHold();
+    } else if (cmd == "focus") {
+        return m_dispatcher.petFocus();
+    } else if (cmd == "health") {
+        return m_dispatcher.petHealth();
+    } else if (cmd == "dismiss" || cmd == "getlost") {
+        return m_dispatcher.dismissPet();
+    } else {
+        return ActionResult::Failure("Unknown pet command: " + args);
     }
 }
 

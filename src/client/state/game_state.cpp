@@ -11,6 +11,10 @@ GameState::GameState() {
     m_combatState.setEventBus(&m_eventBus);
     m_groupState.setEventBus(&m_eventBus);
     m_doorState.setEventBus(&m_eventBus);
+    m_petState.setEventBus(&m_eventBus);
+    m_tradeskillState.setEventBus(&m_eventBus);
+    m_inventoryState.setEventBus(&m_eventBus);
+    m_spellState.setEventBus(&m_eventBus);
 }
 
 void GameState::resetForZoneChange() {
@@ -19,11 +23,25 @@ void GameState::resetForZoneChange() {
     m_doorState.clear();
     m_worldState.resetZoneState();
     m_combatState.reset();
+    m_petState.reset();
+    m_tradeskillState.reset();
 
     // Player state persists across zones but we clear movement target
     m_playerState.clearMovementTarget();
     m_playerState.clearFollowTarget();
     m_playerState.setMoving(false);
+
+    // Clear NPC interaction state (vendor, banker, trainer, looting)
+    m_playerState.clearVendor();
+    m_playerState.clearBanker();
+    m_playerState.clearTrainer();
+    m_playerState.clearLootingCorpse();
+
+    // Clear bank inventory state (bank closes on zone)
+    m_inventoryState.clearBank();
+
+    // Spells and inventory persist across zones but casting state is reset
+    m_spellState.clearCasting();
 
     // Group state persists across zones but we update inZone flags
     // (this will be handled by the zone entry process)
@@ -36,6 +54,10 @@ void GameState::clearAll() {
     m_worldState.resetZoneState();
     m_combatState.reset();
     m_groupState.clearGroup();
+    m_petState.reset();
+    m_tradeskillState.reset();
+    m_inventoryState.reset();
+    m_spellState.reset();
 
     // Reset player state to defaults
     m_playerState = PlayerState();
@@ -51,6 +73,10 @@ void GameState::clearAll() {
     m_combatState.setEventBus(&m_eventBus);
     m_groupState.setEventBus(&m_eventBus);
     m_doorState.setEventBus(&m_eventBus);
+    m_petState.setEventBus(&m_eventBus);
+    m_tradeskillState.setEventBus(&m_eventBus);
+    m_inventoryState.setEventBus(&m_eventBus);
+    m_spellState.setEventBus(&m_eventBus);
 }
 
 } // namespace state

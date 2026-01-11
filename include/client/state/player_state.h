@@ -245,6 +245,64 @@ public:
     std::chrono::steady_clock::time_point campStartTime() const { return m_campStartTime; }
     void setCampStartTime(std::chrono::steady_clock::time_point time) { m_campStartTime = time; }
 
+    // ========== Bank Currency ==========
+
+    uint32_t bankPlatinum() const { return m_bankPlatinum; }
+    uint32_t bankGold() const { return m_bankGold; }
+    uint32_t bankSilver() const { return m_bankSilver; }
+    uint32_t bankCopper() const { return m_bankCopper; }
+
+    void setBankPlatinum(uint32_t val) { m_bankPlatinum = val; }
+    void setBankGold(uint32_t val) { m_bankGold = val; }
+    void setBankSilver(uint32_t val) { m_bankSilver = val; }
+    void setBankCopper(uint32_t val) { m_bankCopper = val; }
+
+    void setBankCurrency(uint32_t plat, uint32_t gold, uint32_t silver, uint32_t copper);
+
+    // Total bank currency in copper
+    uint64_t totalBankCopperValue() const;
+
+    // ========== Practice Points ==========
+
+    uint32_t practicePoints() const { return m_practicePoints; }
+    void setPracticePoints(uint32_t points) { m_practicePoints = points; }
+    void decrementPracticePoints();
+
+    // ========== Vendor Interaction ==========
+
+    bool isWithVendor() const { return m_vendorNpcId != 0; }
+    uint16_t vendorNpcId() const { return m_vendorNpcId; }
+    float vendorSellRate() const { return m_vendorSellRate; }
+    const std::string& vendorName() const { return m_vendorName; }
+
+    void setVendor(uint16_t npcId, float sellRate, const std::string& name);
+    void clearVendor();
+
+    // ========== Bank Interaction ==========
+
+    bool isAtBank() const { return m_bankerNpcId != 0; }
+    uint16_t bankerNpcId() const { return m_bankerNpcId; }
+
+    void setBanker(uint16_t npcId);
+    void clearBanker();
+
+    // ========== Trainer Interaction ==========
+
+    bool isWithTrainer() const { return m_trainerNpcId != 0; }
+    uint16_t trainerNpcId() const { return m_trainerNpcId; }
+    const std::string& trainerName() const { return m_trainerName; }
+
+    void setTrainer(uint16_t npcId, const std::string& name);
+    void clearTrainer();
+
+    // ========== Loot State ==========
+
+    bool isLooting() const { return m_lootingCorpseId != 0; }
+    uint16_t lootingCorpseId() const { return m_lootingCorpseId; }
+
+    void setLootingCorpse(uint16_t corpseId);
+    void clearLootingCorpse();
+
     // ========== Bulk State Setting ==========
 
     // Used when receiving PlayerProfile packet
@@ -365,6 +423,30 @@ private:
     // Camp timer
     bool m_isCamping = false;
     std::chrono::steady_clock::time_point m_campStartTime;
+
+    // Bank currency
+    uint32_t m_bankPlatinum = 0;
+    uint32_t m_bankGold = 0;
+    uint32_t m_bankSilver = 0;
+    uint32_t m_bankCopper = 0;
+
+    // Practice points
+    uint32_t m_practicePoints = 0;
+
+    // Vendor interaction
+    uint16_t m_vendorNpcId = 0;
+    float m_vendorSellRate = 1.0f;
+    std::string m_vendorName;
+
+    // Bank interaction
+    uint16_t m_bankerNpcId = 0;
+
+    // Trainer interaction
+    uint16_t m_trainerNpcId = 0;
+    std::string m_trainerName;
+
+    // Loot state
+    uint16_t m_lootingCorpseId = 0;
 };
 
 } // namespace state
