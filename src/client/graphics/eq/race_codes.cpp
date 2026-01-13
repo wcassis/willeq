@@ -1,8 +1,157 @@
 #include "client/graphics/eq/race_codes.h"
+#include "common/logging.h"
+#include <json/json.h>
 #include <algorithm>
+#include <fstream>
+#include <map>
+#include <mutex>
 
 namespace EQT {
 namespace Graphics {
+
+// Static storage for race mappings loaded from JSON
+struct RaceMapping {
+    std::string code;
+    std::string name;
+    std::string femaleCode;
+    std::string s3dFile;
+    std::string fallbackCode;
+    std::string animationSource;     // Animation source code (e.g., "RAT" for ARM)
+    std::string animationSourceS3d;  // S3D file containing animation source (e.g., "qeynos_chr.s3d")
+    float scale = 1.0f;
+    bool genderVariants = false;
+    bool invisible = false;
+};
+
+static std::map<uint16_t, RaceMapping> s_raceMappings;
+static std::string s_jsonPath;
+static bool s_mappingsLoaded = false;
+static std::mutex s_mappingsMutex;
+
+bool loadRaceMappings(const std::string& jsonPath) {
+    std::lock_guard<std::mutex> lock(s_mappingsMutex);
+
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        LOG_WARN(MOD_GRAPHICS, "Could not open race mappings file: {}", jsonPath);
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to parse race mappings JSON: {}", errors);
+        return false;
+    }
+
+    s_raceMappings.clear();
+
+    const Json::Value& races = root["races"];
+    if (!races.isObject()) {
+        LOG_ERROR(MOD_GRAPHICS, "race_models.json missing 'races' object");
+        return false;
+    }
+
+    for (const auto& raceIdStr : races.getMemberNames()) {
+        uint16_t raceId = static_cast<uint16_t>(std::stoi(raceIdStr));
+        const Json::Value& raceData = races[raceIdStr];
+
+        RaceMapping mapping;
+        mapping.code = raceData.get("code", "").asString();
+        mapping.name = raceData.get("name", "").asString();
+        mapping.femaleCode = raceData.get("female_code", "").asString();
+        mapping.s3dFile = raceData.get("s3d_file", "").asString();
+        mapping.fallbackCode = raceData.get("fallback_code", "").asString();
+        mapping.animationSource = raceData.get("animation_source", "").asString();
+        mapping.animationSourceS3d = raceData.get("animation_source_s3d", "").asString();
+        mapping.scale = static_cast<float>(raceData.get("scale", 1.0).asDouble());
+        mapping.genderVariants = raceData.get("gender_variants", false).asBool();
+        mapping.invisible = raceData.get("invisible", false).asBool();
+
+        s_raceMappings[raceId] = mapping;
+    }
+
+    s_jsonPath = jsonPath;
+    s_mappingsLoaded = true;
+    LOG_INFO(MOD_GRAPHICS, "Loaded {} race mappings from {}", s_raceMappings.size(), jsonPath);
+    return true;
+}
+
+bool reloadRaceMappings() {
+    if (s_jsonPath.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "Cannot reload race mappings: no JSON file loaded");
+        return false;
+    }
+    return loadRaceMappings(s_jsonPath);
+}
+
+bool areRaceMappingsLoaded() {
+    return s_mappingsLoaded;
+}
+
+std::string getRaceS3DFile(uint16_t raceId) {
+    std::lock_guard<std::mutex> lock(s_mappingsMutex);
+    auto it = s_raceMappings.find(raceId);
+    if (it != s_raceMappings.end()) {
+        return it->second.s3dFile;
+    }
+    return "";
+}
+
+std::string getRaceS3DFileByCode(const std::string& raceCode) {
+    std::lock_guard<std::mutex> lock(s_mappingsMutex);
+    std::string upperCode = raceCode;
+    std::transform(upperCode.begin(), upperCode.end(), upperCode.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+
+    // Search all race mappings for one with this code
+    for (const auto& [raceId, mapping] : s_raceMappings) {
+        std::string mappingCode = mapping.code;
+        std::transform(mappingCode.begin(), mappingCode.end(), mappingCode.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        if (mappingCode == upperCode && !mapping.s3dFile.empty()) {
+            return mapping.s3dFile;
+        }
+    }
+    return "";
+}
+
+std::string getAnimationSourceFromConfig(uint16_t raceId) {
+    std::lock_guard<std::mutex> lock(s_mappingsMutex);
+    auto it = s_raceMappings.find(raceId);
+    if (it != s_raceMappings.end()) {
+        return it->second.animationSource;
+    }
+    return "";
+}
+
+std::string getAnimationSourceS3DFile(uint16_t raceId) {
+    std::lock_guard<std::mutex> lock(s_mappingsMutex);
+    auto it = s_raceMappings.find(raceId);
+    if (it != s_raceMappings.end()) {
+        return it->second.animationSourceS3d;
+    }
+    return "";
+}
+
+std::string getAnimationSourceS3DFileByCode(const std::string& raceCode) {
+    std::lock_guard<std::mutex> lock(s_mappingsMutex);
+    std::string upperCode = raceCode;
+    std::transform(upperCode.begin(), upperCode.end(), upperCode.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+
+    // Search all race mappings for one with this code and an animation_source_s3d
+    for (const auto& [raceId, mapping] : s_raceMappings) {
+        std::string mappingCode = mapping.code;
+        std::transform(mappingCode.begin(), mappingCode.end(), mappingCode.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        if (mappingCode == upperCode && !mapping.animationSourceS3d.empty()) {
+            return mapping.animationSourceS3d;
+        }
+    }
+    return "";
+}
 
 std::string getGenderedRaceCode(const std::string& maleCode, uint8_t gender) {
     if (gender != 1 || maleCode.empty()) {
@@ -21,9 +170,17 @@ std::string getGenderedRaceCode(const std::string& maleCode, uint8_t gender) {
 }
 
 std::string getRaceCode(uint16_t raceId) {
-    // Returns base race code (male variant for playable races)
-    // Use getGenderedRaceCode() to get gender-specific code
-    // Format: XXM for male, XXF for female (where XX is 2-letter race code)
+    // First check JSON mappings
+    {
+        std::lock_guard<std::mutex> lock(s_mappingsMutex);
+        auto it = s_raceMappings.find(raceId);
+        if (it != s_raceMappings.end() && !it->second.code.empty()) {
+            return it->second.code;
+        }
+    }
+
+    // Fallback to hardcoded defaults for races not in JSON
+    // These are kept for backwards compatibility and as fallback
     switch (raceId) {
         case 1:   return "HUM";  // Human Male / HUF for female
         case 2:   return "BAM";  // Barbarian Male / BAF for female
@@ -38,102 +195,99 @@ std::string getRaceCode(uint16_t raceId) {
         case 11:  return "HOM";  // Halfling Male / HOF for female
         case 12:  return "GNM";  // Gnome Male / GNF for female
         case 128: return "IKM";  // Iksar Male / IKF for female
-        case 130: return "KEM";  // Vah Shir Male / KEF for female
-        case 330: return "FRG";  // Froglok (use globalfroglok_chr.s3d)
 
-        // Common monsters/NPCs
+        // Common monsters/NPCs - corrected mappings
         case 13:  return "WOL";  // Wolf
         case 14:  return "BEA";  // Bear
-        case 15:  return "FEL";  // Freeport Guard (Human variant)
+        case 15:  return "HUM";  // Freeport Guard (Human)
         case 17:  return "ORC";  // Orc
         case 18:  return "ORC";  // Orc (variant)
         case 19:  return "ORC";  // Orc (variant 2)
-        case 20:  return "BRO";  // Brownie
+        case 20:  return "BRM";  // Brownie
         case 21:  return "SKE";  // Skeleton
-        case 22:  return "BET";  // Beetle / Fire Beetle / Klicnik (BET_HS_DEF in zone files)
-        case 23:  return "KOD";  // Kodiak Bear
-        case 24:  return "FIS";  // Fish / Koalindl (FIS_HS_DEF in zone files)
+        case 22:  return "BET";  // Beetle
+        case 23:  return "BEA";  // Kodiak Bear (same model as bear)
+        case 24:  return "FIS";  // Fish
         case 25:  return "ALL";  // Alligator
-        case 26:  return "SNA";  // Snake (SNA_HS_DEF in zone files)
+        case 26:  return "SNA";  // Snake
         case 27:  return "SPE";  // Spectre
-        case 28:  return "WER";  // Werewolf (variant)
+        case 28:  return "WER";  // Werewolf
         case 29:  return "WOL";  // Wolf (variant)
         case 30:  return "BEA";  // Bear (variant)
-        case 31:  return "FER";  // Freeport Citizen
-        case 32:  return "FER";  // Freeport Citizen (variant)
-        case 33:  return "GHO";  // Ghost
+        case 31:  return "FPM";  // Freeport Citizen Male
+        case 32:  return "FPM";  // Freeport Citizen (variant)
+        case 33:  return "GHU";  // Ghoul (NOT Ghost!)
         case 34:  return "BAT";  // Giant Bat
-        case 35:  return "RAT";  // Rat (smaller variant)
-        case 36:  return "RAT";  // Giant Rat / Large Rat
-        case 37:  return "SNA";  // Giant Snake / Grass Snake (SNA_HS_DEF in zone files)
+        case 35:  return "RAT";  // Rat
+        case 36:  return "RAT";  // Giant Rat
+        case 37:  return "SNA";  // Snake
         case 38:  return "SCA";  // Scarecrow
-        case 39:  return "GNN";  // Gnoll Pup (GNN_HS_DEF in zone files)
+        case 39:  return "GNN";  // Gnoll Pup
         case 40:  return "GOR";  // Gorilla
-        case 41:  return "UND";  // Undead Pet
-        case 42:  return "RAT";  // Rat
-        case 43:  return "BAT";  // Bat
-        case 44:  return "GNN";  // Gnoll (GNN_HS_DEF in zone files)
+        case 41:  return "SKE";  // Undead Pet (skeleton)
+        case 42:  return "WOL";  // Wolf (NOT Rat!)
+        case 43:  return "BEA";  // Bear (NOT Bat!)
+        case 44:  return "GNN";  // Gnoll
         case 45:  return "SNA";  // Sand Elf (unused)
         case 46:  return "GOB";  // Goblin
-        case 47:  return "COR";  // Corn (unused)
+        case 47:  return "GRI";  // Griffin (NOT Corn!)
         case 48:  return "SPI";  // Spider (small)
         case 49:  return "SPI";  // Spider (large)
-        case 50:  return "DEE";  // Deer
-        case 51:  return "LIO";  // Lion
+        case 50:  return "LIM";  // Lion Male (NOT Deer!)
+        case 51:  return "LIM";  // Lion
         case 52:  return "LIZ";  // Lizard Man
-        case 53:  return "MIN";  // Minotaur (variant)
-        case 54:  return "WAR";  // Warslik
-        case 55:  return "LAV";  // Lava Crawler
+        case 53:  return "MIN";  // Minotaur
+        case 54:  return "ORC";  // Orc (NOT Warslik!)
+        case 55:  return "DRK";  // Lava Crawler
         case 56:  return "ORC";  // Orc (Crushbone)
         case 57:  return "PIR";  // Piranha
         case 58:  return "ELE";  // Elemental
         case 59:  return "PUM";  // Puma
         case 60:  return "SKE";  // Skeleton (variant)
-        case 61:  return "NER";  // Neriak Citizen
-        case 62:  return "ERU";  // Erudite Citizen
-        case 63:  return "GHO";  // Ghost (variant)
-        case 64:  return "GRE";  // Greater Skeleton
-        case 65:  return "GUL";  // Ghoul
-        case 66:  return "HAG";  // Hag
+        case 61:  return "NGM";  // Neriak Citizen Male
+        case 62:  return "EGM";  // Erudite Citizen Male
+        case 63:  return "GHO";  // Ghost
+        case 64:  return "SKE";  // Greater Skeleton
+        case 65:  return "GHU";  // Ghoul
+        case 66:  return "VSM";  // Hag (Vampire model)
         case 67:  return "ZOM";  // Zombie
         case 68:  return "SPH";  // Sphinx
-        case 69:  return "ARM";  // Armadillo
-        case 70:  return "CRE";  // Clock Creature
-        case 71:  return "QCM";  // Qeynos Citizen Male / QCF for female (fallback to HUM if not found)
-        case 72:  return "EAR";  // Earth Elemental
-        case 73:  return "AIR";  // Air Elemental
-        case 74:  return "WAT";  // Water Elemental
-        case 75:  return "FIR";  // Fire Elemental
-        case 76:  return "WEP";  // Weapon Stand
+        case 69:  return "WIL";  // Will-o-Wisp (NOT Armadillo!)
+        case 70:  return "ZOM";  // Zombie (NOT Clock Creature!)
+        case 71:  return "QCM";  // Qeynos Citizen Male
+        case 72:  return "ELE";  // Earth Elemental
+        case 73:  return "ELE";  // Air Elemental
+        case 74:  return "ELE";  // Water Elemental
+        case 75:  return "ELE";  // Fire Elemental (generic ELE, NOT FIR!)
+        case 76:  return "PUM";  // Cat/Puma (NOT Weapon Stand!)
         case 77:  return "WER";  // Werewolf
-        case 78:  return "CAT";  // Cat
-        case 79:  return "ELF";  // Elf (generic)
-        case 80:  return "KAR";  // Karana Citizen
-        case 81:  return "VMP";  // Vampire
-        case 82:  return "HIK";  // Highpass Citizen
-        case 83:  return "GHO";  // Ghost (alternate)
-        case 84:  return "DWA";  // Dwarf Citizen
-        case 85:  return "DRG";  // Dragon
-        case 86:  return "DAR";  // Dark Elf Citizen
-        case 87:  return "GNN";  // Gnoll (variant, GNN_HS_DEF in zone files)
+        case 78:  return "PUM";  // Cat
+        case 79:  return "ELM";  // Elf
+        case 80:  return "QCM";  // Karana Citizen
+        case 81:  return "VSM";  // Vampire
+        case 82:  return "HHM";  // Highpass Citizen Male
+        case 83:  return "GHO";  // Ghost
+        case 84:  return "DWM";  // Dwarf Citizen
+        case 85:  return "DRA";  // Dragon
+        case 86:  return "DAM";  // Dark Elf Citizen
+        case 87:  return "GNN";  // Gnoll
         case 88:  return "MOS";  // Mosquito
         case 89:  return "IMP";  // Imp
         case 90:  return "GRI";  // Griffin
         case 91:  return "KOB";  // Kobold
-        case 92:  return "DRA";  // Drake (small)
-        case 93:  return "ALL";  // Alligator (swamp)
+        case 92:  return "DRA";  // Drake
+        case 93:  return "ALL";  // Alligator
         case 94:  return "MIN";  // Minotaur
         case 95:  return "DRA";  // Drake
-        case 96:  return "GEN";  // Genieish
+        case 96:  return "DJI";  // Genie
         case 120: return "EYE";  // Eye of Zomm
         case 127: return "INV";  // Invisible Man
-        case 240: return "INV";  // Invisible Man / Zone Controller / Marker
+        case 240: return "INV";  // Zone Controller / Marker
 
-        // Higher race IDs (expansions)
-        case 367: return "SKE";  // Decaying Skeleton (same as skeleton model)
+        // Higher race IDs
+        case 367: return "SKE";  // Decaying Skeleton
 
         default:
-            // Return empty for unknown races - will use placeholder
             return "";
     }
 }
@@ -183,21 +337,34 @@ std::string getZoneSpecificRaceCode(uint16_t raceId, uint8_t gender, const std::
 }
 
 std::string getFallbackRaceCode(uint16_t raceId, uint8_t gender) {
+    // First check JSON mappings for fallback_code
+    {
+        std::lock_guard<std::mutex> lock(s_mappingsMutex);
+        auto it = s_raceMappings.find(raceId);
+        if (it != s_raceMappings.end() && !it->second.fallbackCode.empty()) {
+            std::string fallback = it->second.fallbackCode;
+            // Apply gender suffix if it ends in M and gender is female
+            if (gender == 1 && fallback.length() == 3 && fallback.back() == 'M') {
+                fallback.back() = 'F';
+            }
+            return fallback;
+        }
+    }
+
+    // Fallback to hardcoded defaults
     switch (raceId) {
         case 71:  // Qeynos Citizen -> Human
-        case 77:  // (potential Freeport citizen) -> Human
         case 15:  // Freeport Guard -> Human
         case 80:  // Karana Citizen -> Human
+        case 82:  // Highpass Citizen -> Human
             return (gender == 1) ? "HUF" : "HUM";
 
         case 61:  // Neriak Citizen -> Dark Elf
+        case 86:  // Dark Elf Citizen -> Dark Elf
             return (gender == 1) ? "DAF" : "DAM";
 
         case 62:  // Erudite Citizen -> Erudite
             return (gender == 1) ? "ERF" : "ERM";
-
-        case 82:  // Highpass Citizen -> Human
-            return (gender == 1) ? "HUF" : "HUM";
 
         case 84:  // Dwarf Citizen -> Dwarf
             return (gender == 1) ? "DWF" : "DWM";
@@ -242,63 +409,79 @@ std::string getRaceModelFilename(uint16_t raceId, uint8_t gender) {
 }
 
 float getRaceScale(uint16_t raceId) {
-    // Scale factors for races (relative to human size)
+    // First check JSON mappings
+    {
+        std::lock_guard<std::mutex> lock(s_mappingsMutex);
+        auto it = s_raceMappings.find(raceId);
+        if (it != s_raceMappings.end()) {
+            return it->second.scale;
+        }
+    }
+
+    // Fallback to hardcoded defaults
     switch (raceId) {
         // Playable races
-        case 2:   return 1.2f;   // Barbarian - larger
-        case 8:   return 0.7f;   // Dwarf - shorter
-        case 9:   return 1.4f;   // Troll - large
-        case 10:  return 1.5f;   // Ogre - largest playable
-        case 11:  return 0.5f;   // Halfling - small
-        case 12:  return 0.6f;   // Gnome - small
-        case 128: return 1.1f;   // Iksar - slightly larger
-        case 130: return 1.1f;   // Vah Shir - slightly larger
+        case 2:   return 1.2f;   // Barbarian
+        case 8:   return 0.7f;   // Dwarf
+        case 9:   return 1.4f;   // Troll
+        case 10:  return 1.5f;   // Ogre
+        case 11:  return 0.5f;   // Halfling
+        case 12:  return 0.6f;   // Gnome
+        case 128: return 1.1f;   // Iksar
 
-        // Monsters - small creatures
+        // Monsters - small
         case 13:  return 0.8f;   // Wolf
-        case 22:  return 0.4f;   // Beetle / Fire Beetle
-        case 24:  return 0.3f;   // Fish / Koalindl
-        case 34:  return 0.4f;   // Giant Bat
-        case 35:  return 0.2f;   // Rat (small)
-        case 36:  return 0.4f;   // Giant Rat / Large Rat
-        case 37:  return 0.5f;   // Giant Snake / Grass Snake
-        case 39:  return 0.6f;   // Gnoll Pup (smaller gnoll)
-        case 42:  return 0.3f;   // Rat - tiny
-        case 43:  return 0.4f;   // Bat - small
+        case 22:  return 0.4f;   // Beetle
+        case 24:  return 0.3f;   // Fish
+        case 34:  return 0.6f;   // Giant Bat
+        case 35:  return 0.2f;   // Rat
+        case 36:  return 0.4f;   // Giant Rat
+        case 37:  return 0.5f;   // Snake
+        case 39:  return 0.6f;   // Gnoll Pup
+        case 42:  return 0.8f;   // Wolf (was incorrectly 0.3 for rat)
+        case 43:  return 1.2f;   // Bear (was incorrectly 0.4 for bat)
         case 48:  return 0.3f;   // Spider (small)
         case 49:  return 0.6f;   // Spider (large)
         case 57:  return 0.2f;   // Piranha
+        case 69:  return 0.5f;   // Will-o-Wisp
+        case 76:  return 0.8f;   // Cat/Puma
         case 78:  return 0.4f;   // Cat
         case 88:  return 0.2f;   // Mosquito
 
-        // Monsters - medium creatures
+        // Monsters - medium
         case 14:  return 1.2f;   // Bear
         case 17:  return 1.0f;   // Orc
         case 21:  return 1.0f;   // Skeleton
         case 26:  return 0.7f;   // Snake
+        case 33:  return 1.0f;   // Ghoul
         case 44:  return 1.0f;   // Gnoll
         case 46:  return 0.8f;   // Goblin
+        case 47:  return 2.0f;   // Griffin
+        case 50:  return 1.2f;   // Lion
         case 52:  return 1.1f;   // Lizard Man
+        case 54:  return 1.0f;   // Orc
         case 65:  return 1.0f;   // Ghoul
         case 67:  return 1.0f;   // Zombie
+        case 70:  return 1.0f;   // Zombie
+        case 75:  return 1.0f;   // Elemental
         case 77:  return 1.2f;   // Werewolf
         case 91:  return 0.7f;   // Kobold
         case 367: return 1.0f;   // Decaying Skeleton
 
-        // Monsters - large creatures
+        // Monsters - large
         case 23:  return 1.4f;   // Kodiak Bear
         case 25:  return 1.3f;   // Alligator
         case 40:  return 1.3f;   // Gorilla
         case 51:  return 1.2f;   // Lion
         case 59:  return 1.0f;   // Puma
-        case 85:  return 3.0f;   // Dragon - huge
+        case 85:  return 3.0f;   // Dragon
         case 90:  return 2.0f;   // Griffin
         case 94:  return 1.5f;   // Minotaur
         case 95:  return 1.5f;   // Drake
 
         // Invisible / Zone entities
-        case 127: return 0.0f;   // Invisible Man - don't render
-        case 240: return 0.0f;   // Zone Controller / Marker - don't render
+        case 127: return 0.0f;   // Invisible Man
+        case 240: return 0.0f;   // Zone Controller
 
         default:
             return 1.0f;
@@ -306,6 +489,16 @@ float getRaceScale(uint16_t raceId) {
 }
 
 std::string getRaceName(uint16_t raceId) {
+    // First check JSON mappings
+    {
+        std::lock_guard<std::mutex> lock(s_mappingsMutex);
+        auto it = s_raceMappings.find(raceId);
+        if (it != s_raceMappings.end() && !it->second.name.empty()) {
+            return it->second.name;
+        }
+    }
+
+    // Fallback to hardcoded defaults
     switch (raceId) {
         // Playable races
         case 1:   return "Human";
@@ -321,20 +514,21 @@ std::string getRaceName(uint16_t raceId) {
         case 11:  return "Halfling";
         case 12:  return "Gnome";
         case 128: return "Iksar";
-        case 130: return "Vah Shir";
-        case 330: return "Froglok";
 
-        // Common NPCs/monsters
+        // Common NPCs/monsters - corrected names
         case 13:  return "Wolf";
         case 14:  return "Bear";
         case 15:  return "Freeport Guard";
         case 17:
         case 18:
         case 19:
+        case 54:
         case 56:  return "Orc";
         case 20:  return "Brownie";
         case 21:
-        case 60:  return "Skeleton";
+        case 60:
+        case 64:
+        case 367: return "Skeleton";
         case 22:  return "Beetle";
         case 23:  return "Kodiak Bear";
         case 24:  return "Fish";
@@ -343,53 +537,55 @@ std::string getRaceName(uint16_t raceId) {
         case 26:
         case 37:  return "Snake";
         case 27:  return "Spectre";
-        case 28:  return "Werewolf";
+        case 28:
+        case 77:  return "Werewolf";
+        case 29:  return "Wolf";
+        case 30:  return "Bear";
         case 31:
         case 32:  return "Freeport Citizen";
         case 33:
-        case 63:
-        case 83:  return "Ghost";
+        case 65:  return "Ghoul";  // Corrected - was Ghost for 33
         case 34:  return "Giant Bat";
         case 35:
-        case 36:
-        case 42:  return "Rat";
+        case 36:  return "Rat";
         case 38:  return "Scarecrow";
         case 39:
         case 44:
         case 87:  return "Gnoll";
         case 40:  return "Gorilla";
         case 41:  return "Undead Pet";
-        case 43:  return "Bat";
+        case 42:  return "Wolf";  // Corrected - was Rat
+        case 43:  return "Bear";  // Corrected - was Bat
         case 46:  return "Goblin";
+        case 47:
+        case 90:  return "Griffin";  // Corrected - was not set for 47
         case 48:
         case 49:  return "Spider";
-        case 50:  return "Deer";
-        case 51:  return "Lion";
+        case 50:
+        case 51:  return "Lion";  // Corrected - 50 was Deer
         case 52:  return "Lizard Man";
         case 53:
         case 94:  return "Minotaur";
-        case 54:  return "Warslik";
         case 55:  return "Lava Crawler";
         case 57:  return "Piranha";
-        case 58:  return "Elemental";
-        case 59:  return "Puma";
+        case 58:
+        case 72:
+        case 73:
+        case 74:
+        case 75:  return "Elemental";
+        case 59:
+        case 76:
+        case 78:  return "Cat";  // 76 was Weapon Stand
         case 61:  return "Neriak Citizen";
         case 62:  return "Erudite Citizen";
-        case 64:  return "Greater Skeleton";
-        case 65:  return "Ghoul";
+        case 63:
+        case 83:  return "Ghost";
         case 66:  return "Hag";
-        case 67:  return "Zombie";
+        case 67:
+        case 70:  return "Zombie";  // 70 was Clock Creature
         case 68:  return "Sphinx";
-        case 69:  return "Armadillo";
-        case 70:  return "Clock Creature";
+        case 69:  return "Will-o-Wisp";  // Was Armadillo
         case 71:  return "Qeynos Citizen";
-        case 72:  return "Earth Elemental";
-        case 73:  return "Air Elemental";
-        case 74:  return "Water Elemental";
-        case 75:  return "Fire Elemental";
-        case 76:  return "Weapon Stand";
-        case 77:  return "Werewolf";
-        case 78:  return "Cat";
         case 79:  return "Elf";
         case 80:  return "Karana Citizen";
         case 81:  return "Vampire";
@@ -399,7 +595,6 @@ std::string getRaceName(uint16_t raceId) {
         case 86:  return "Dark Elf Citizen";
         case 88:  return "Mosquito";
         case 89:  return "Imp";
-        case 90:  return "Griffin";
         case 91:  return "Kobold";
         case 92:
         case 95:  return "Drake";
@@ -407,7 +602,6 @@ std::string getRaceName(uint16_t raceId) {
         case 120: return "Eye of Zomm";
         case 127:
         case 240: return "Invisible";
-        case 367: return "Decaying Skeleton";
 
         default:
             return "Unknown (" + std::to_string(raceId) + ")";

@@ -7,6 +7,25 @@
 namespace EQT {
 namespace Graphics {
 
+// Load race model mappings from JSON file
+// Returns true if loaded successfully
+bool loadRaceMappings(const std::string& jsonPath);
+
+// Reload race model mappings from previously loaded JSON file
+// Returns true if reloaded successfully
+bool reloadRaceMappings();
+
+// Check if race mappings have been loaded
+bool areRaceMappingsLoaded();
+
+// Get the S3D source file for a race (from JSON config)
+// Returns empty string if not found
+std::string getRaceS3DFile(uint16_t raceId);
+
+// Get the S3D file for a race by its 3-letter code (e.g., "LIM" for Lion)
+// Returns empty string if not found
+std::string getRaceS3DFileByCode(const std::string& raceCode);
+
 // EverQuest race IDs (Titanium era)
 // Playable races: 1-12, 128, 130, 330
 // Many NPC/monster races above these
@@ -49,6 +68,17 @@ std::string getZoneSpecificRaceCode(uint16_t raceId, uint8_t gender, const std::
 
 // Get fallback race code for zone-specific races when zone model not found
 std::string getFallbackRaceCode(uint16_t raceId, uint8_t gender);
+
+// Get the animation source code for a race from JSON config
+// Returns empty string if not specified (use getAnimationSourceCode from animation_mapping.h)
+std::string getAnimationSourceFromConfig(uint16_t raceId);
+
+// Get the S3D file containing the animation source for a race
+// Returns empty string if not specified (animation source is in global_chr.s3d)
+std::string getAnimationSourceS3DFile(uint16_t raceId);
+
+// Get the animation source S3D file by race code (e.g., "ARM" -> "qeynos_chr.s3d" for RAT)
+std::string getAnimationSourceS3DFileByCode(const std::string& raceCode);
 
 // Get the S3D filename for a race (for loading from zone archives)
 std::string getRaceModelFilename(uint16_t raceId, uint8_t gender);

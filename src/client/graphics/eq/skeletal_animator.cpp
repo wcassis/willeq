@@ -45,8 +45,8 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     // Find the animation
     auto it = skeleton_->animations.find(animCode);
     if (it == skeleton_->animations.end()) {
-        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' not found (have {} animations)",
-                  animCode, skeleton_->animations.size());
+        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' not found (have {} animations) model={}",
+                  animCode, skeleton_->animations.size(), skeleton_->modelCode);
         return false;
     }
 

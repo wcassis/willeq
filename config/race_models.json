@@ -1,0 +1,1132 @@
+{
+  "_comment": "Pre-Luclin race ID to model code mappings for EverQuest Titanium client",
+  "_version": "1.1",
+  "_notes": "Race IDs and codes from LanternExtractor/eqrequiem reference data. Models loaded from zone chr files at runtime.",
+  "races": {
+    "1": {
+      "code": "HUM",
+      "name": "Human",
+      "gender_variants": true,
+      "female_code": "HUF",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "2": {
+      "code": "BAM",
+      "name": "Barbarian",
+      "gender_variants": true,
+      "female_code": "BAF",
+      "scale": 1.2,
+      "s3d_file": "global_chr.s3d"
+    },
+    "3": {
+      "code": "ERM",
+      "name": "Erudite",
+      "gender_variants": true,
+      "female_code": "ERF",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "4": {
+      "code": "ELM",
+      "name": "Wood Elf",
+      "gender_variants": true,
+      "female_code": "ELF",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "5": {
+      "code": "HIM",
+      "name": "High Elf",
+      "gender_variants": true,
+      "female_code": "HIF",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "6": {
+      "code": "DAM",
+      "name": "Dark Elf",
+      "gender_variants": true,
+      "female_code": "DAF",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "7": {
+      "code": "HAM",
+      "name": "Half Elf",
+      "gender_variants": true,
+      "female_code": "HAF",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "8": {
+      "code": "DWM",
+      "name": "Dwarf",
+      "gender_variants": true,
+      "female_code": "DWF",
+      "scale": 0.7,
+      "s3d_file": "global_chr.s3d"
+    },
+    "9": {
+      "code": "TRM",
+      "name": "Troll",
+      "gender_variants": true,
+      "female_code": "TRF",
+      "scale": 1.4,
+      "s3d_file": "global_chr.s3d"
+    },
+    "10": {
+      "code": "OGM",
+      "name": "Ogre",
+      "gender_variants": true,
+      "female_code": "OGF",
+      "scale": 1.5,
+      "s3d_file": "global_chr.s3d"
+    },
+    "11": {
+      "code": "HOM",
+      "name": "Halfling",
+      "gender_variants": true,
+      "female_code": "HOF",
+      "scale": 0.5,
+      "s3d_file": "global_chr.s3d"
+    },
+    "12": {
+      "code": "GNM",
+      "name": "Gnome",
+      "gender_variants": true,
+      "female_code": "GNF",
+      "scale": 0.6,
+      "s3d_file": "global_chr.s3d"
+    },
+    "13": {
+      "code": "AVI",
+      "name": "Aviak",
+      "scale": 1.2
+    },
+    "14": {
+      "code": "WER",
+      "name": "Werewolf",
+      "scale": 1.2,
+      "s3d_file": "global_chr.s3d"
+    },
+    "15": {
+      "code": "BRM",
+      "name": "Brownie",
+      "gender_variants": true,
+      "female_code": "BRF",
+      "scale": 0.4,
+      "s3d_file": "lfaydark_chr.s3d"
+    },
+    "16": {
+      "code": "CEN",
+      "name": "Centaur",
+      "scale": 1.2
+    },
+    "17": {
+      "code": "GOM",
+      "name": "Golem",
+      "neuter_code": "GOL",
+      "scale": 1.2
+    },
+    "18": {
+      "code": "GIA",
+      "name": "Giant",
+      "scale": 2.0
+    },
+    "19": {
+      "code": "TRK",
+      "name": "Trakanon",
+      "scale": 3.0
+    },
+    "20": {
+      "code": "VST",
+      "name": "Venril Sathir",
+      "scale": 1.2
+    },
+    "21": {
+      "code": "BEH",
+      "name": "Evil Eye",
+      "scale": 1.0
+    },
+    "22": {
+      "code": "BET",
+      "name": "Beetle",
+      "scale": 0.4,
+      "s3d_file": "nro_chr.s3d",
+      "animation_source": "SPI",
+      "animation_source_s3d": "nektulos_chr.s3d"
+    },
+    "23": {
+      "code": "CPM",
+      "name": "Kerran",
+      "gender_variants": true,
+      "female_code": "CPF",
+      "scale": 1.2
+    },
+    "24": {
+      "code": "FIS",
+      "name": "Fish",
+      "scale": 0.3,
+      "s3d_file": "qeynos_chr.s3d"
+    },
+    "25": {
+      "code": "FAF",
+      "name": "Fairy",
+      "scale": 0.3,
+      "s3d_file": "gfaydark_chr.s3d"
+    },
+    "26": {
+      "code": "FRO",
+      "name": "Froglok",
+      "scale": 1.0,
+      "s3d_file": "guktop_chr.s3d"
+    },
+    "27": {
+      "code": "FRG",
+      "name": "Froglok Ghoul",
+      "scale": 1.0,
+      "s3d_file": "guktop_chr.s3d"
+    },
+    "28": {
+      "code": "FUN",
+      "name": "Fungusman",
+      "scale": 1.0
+    },
+    "29": {
+      "code": "GAR",
+      "name": "Gargoyle",
+      "male_code": "GAM",
+      "scale": 1.2
+    },
+    "30": {
+      "code": "BEH",
+      "name": "Gasbag",
+      "scale": 1.0
+    },
+    "31": {
+      "code": "CUB",
+      "name": "Gelatinous Cube",
+      "scale": 1.0
+    },
+    "32": {
+      "code": "GHM",
+      "name": "Ghost",
+      "gender_variants": true,
+      "female_code": "GHF",
+      "scale": 1.0
+    },
+    "33": {
+      "code": "GHU",
+      "name": "Ghoul",
+      "scale": 1.0,
+      "s3d_file": "befallen_chr.s3d",
+      "animation_source": "GOB",
+      "animation_source_s3d": "runnyeye_chr.s3d"
+    },
+    "34": {
+      "code": "BAT",
+      "name": "Giant Bat",
+      "scale": 0.6,
+      "s3d_file": "blackburrow_chr.s3d"
+    },
+    "36": {
+      "code": "RAT",
+      "name": "Rat",
+      "scale": 0.3,
+      "s3d_file": "qeynos_chr.s3d"
+    },
+    "37": {
+      "code": "SNA",
+      "name": "Snake",
+      "scale": 0.5,
+      "s3d_file": "qeynos_chr.s3d"
+    },
+    "38": {
+      "code": "SPI",
+      "name": "Spider",
+      "scale": 0.4,
+      "s3d_file": "nektulos_chr.s3d"
+    },
+    "39": {
+      "code": "GNN",
+      "name": "Gnoll",
+      "scale": 1.0,
+      "s3d_file": "blackburrow_chr.s3d"
+    },
+    "40": {
+      "code": "GOB",
+      "name": "Goblin",
+      "scale": 0.8,
+      "s3d_file": "runnyeye_chr.s3d"
+    },
+    "41": {
+      "code": "GOR",
+      "name": "Gorilla",
+      "scale": 1.3,
+      "s3d_file": "feerrott_chr.s3d"
+    },
+    "42": {
+      "code": "WOL",
+      "name": "Wolf",
+      "neuter_code": "WOL",
+      "female_code": "WOF",
+      "scale": 0.8,
+      "s3d_file": "qeynos_chr.s3d"
+    },
+    "43": {
+      "code": "BEA",
+      "name": "Bear",
+      "scale": 1.0,
+      "s3d_file": "everfrost_chr.s3d"
+    },
+    "44": {
+      "code": "FPM",
+      "name": "Freeport Guard",
+      "gender_variants": true,
+      "female_code": "FPF",
+      "scale": 1.0,
+      "s3d_file": "freporte_chr.s3d",
+      "fallback_code": "HUM"
+    },
+    "45": {
+      "code": "DML",
+      "name": "Demi Lich",
+      "scale": 0.8
+    },
+    "46": {
+      "code": "IMP",
+      "name": "Imp",
+      "scale": 0.5,
+      "s3d_file": "najena_chr.s3d"
+    },
+    "47": {
+      "code": "GRI",
+      "name": "Griffin",
+      "scale": 2.0,
+      "s3d_file": "northkarana_chr.s3d",
+      "animation_source": "DRK",
+      "animation_source_s3d": "permafrost_chr.s3d"
+    },
+    "48": {
+      "code": "KOB",
+      "name": "Kobold",
+      "scale": 0.7,
+      "s3d_file": "steamfont_chr.s3d"
+    },
+    "49": {
+      "code": "DRA",
+      "name": "Lava Dragon",
+      "scale": 3.0,
+      "s3d_file": "soldungb_chr.s3d"
+    },
+    "50": {
+      "code": "LIM",
+      "name": "Lion",
+      "gender_variants": true,
+      "female_code": "LIF",
+      "scale": 1.2,
+      "s3d_file": "southkarana_chr.s3d"
+    },
+    "51": {
+      "code": "LIZ",
+      "name": "Lizard Man",
+      "scale": 1.1,
+      "s3d_file": "cazicthule_chr.s3d"
+    },
+    "52": {
+      "code": "MIM",
+      "name": "Mimic",
+      "scale": 1.0
+    },
+    "53": {
+      "code": "MIN",
+      "name": "Minotaur",
+      "scale": 1.5,
+      "s3d_file": "steamfont_chr.s3d"
+    },
+    "54": {
+      "code": "ORC",
+      "name": "Orc",
+      "scale": 1.0,
+      "s3d_file": "crushbone_chr.s3d"
+    },
+    "55": {
+      "code": "BGM",
+      "name": "Human Beggar",
+      "gender_variants": true,
+      "female_code": "BGF",
+      "scale": 1.0
+    },
+    "56": {
+      "code": "PIF",
+      "name": "Pixie",
+      "scale": 0.3,
+      "s3d_file": "gfaydark_chr.s3d"
+    },
+    "57": {
+      "code": "DRM",
+      "name": "Drachnid",
+      "gender_variants": true,
+      "female_code": "DRF",
+      "scale": 1.2
+    },
+    "58": {
+      "code": "SOL",
+      "name": "Solusek Ro",
+      "scale": 1.5
+    },
+    "59": {
+      "code": "BGG",
+      "name": "Bloodgills",
+      "scale": 1.0
+    },
+    "60": {
+      "code": "SKE",
+      "name": "Skeleton",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "61": {
+      "code": "SHA",
+      "name": "Shark",
+      "scale": 1.0
+    },
+    "62": {
+      "code": "TUN",
+      "name": "Tunare",
+      "scale": 1.5
+    },
+    "63": {
+      "code": "TIG",
+      "name": "Tiger",
+      "scale": 1.2,
+      "s3d_file": "southkarana_chr.s3d",
+      "animation_source": "LIM",
+      "animation_source_s3d": "southkarana_chr.s3d"
+    },
+    "64": {
+      "code": "TRE",
+      "name": "Treant",
+      "scale": 2.0
+    },
+    "65": {
+      "code": "DVM",
+      "name": "Vampire",
+      "gender_variants": true,
+      "female_code": "DVF",
+      "scale": 1.0,
+      "s3d_file": "mistmoore_chr.s3d"
+    },
+    "66": {
+      "code": "RAL",
+      "name": "Rallos Zek",
+      "scale": 2.0
+    },
+    "67": {
+      "code": "HHM",
+      "name": "Highpass Citizen",
+      "gender_variants": true,
+      "female_code": "HHF",
+      "scale": 1.0,
+      "s3d_file": "highpass_chr.s3d",
+      "fallback_code": "HUM"
+    },
+    "68": {
+      "code": "TEN",
+      "name": "Tentacle Terror",
+      "scale": 1.2
+    },
+    "69": {
+      "code": "WIL",
+      "name": "Will-O-Wisp",
+      "scale": 0.5,
+      "s3d_file": "gfaydark_chr.s3d"
+    },
+    "70": {
+      "code": "ZOM",
+      "name": "Zombie",
+      "gender_variants": true,
+      "female_code": "ZOF",
+      "scale": 1.0,
+      "s3d_file": "befallen_chr.s3d"
+    },
+    "71": {
+      "code": "QCM",
+      "name": "Qeynos Citizen",
+      "gender_variants": true,
+      "female_code": "QCF",
+      "scale": 1.0,
+      "s3d_file": "qeynos_chr.s3d",
+      "fallback_code": "HUM"
+    },
+    "72": {
+      "code": "SHIP",
+      "name": "Ship",
+      "scale": 2.0
+    },
+    "73": {
+      "code": "LAUNCHM",
+      "name": "Launch",
+      "scale": 1.0
+    },
+    "74": {
+      "code": "PIR",
+      "name": "Piranha",
+      "scale": 0.2,
+      "s3d_file": "qeynos_chr.s3d"
+    },
+    "75": {
+      "code": "ELE",
+      "name": "Elemental",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    },
+    "76": {
+      "code": "PUM",
+      "name": "Puma",
+      "scale": 1.0,
+      "s3d_file": "southkarana_chr.s3d",
+      "animation_source": "LIM",
+      "animation_source_s3d": "southkarana_chr.s3d"
+    },
+    "77": {
+      "code": "NGM",
+      "name": "Neriak Citizen",
+      "gender_variants": true,
+      "female_code": "NGF",
+      "scale": 1.0,
+      "s3d_file": "neriaka_chr.s3d",
+      "fallback_code": "DAM"
+    },
+    "78": {
+      "code": "EGM",
+      "name": "Erudite Citizen",
+      "gender_variants": true,
+      "female_code": "EGF",
+      "scale": 1.0,
+      "s3d_file": "erudnext_chr.s3d",
+      "fallback_code": "ERM"
+    },
+    "79": {
+      "code": "BIX",
+      "name": "Bixie",
+      "scale": 0.6,
+      "s3d_file": "misty_chr.s3d"
+    },
+    "80": {
+      "code": "REA",
+      "name": "Reanimated Hand",
+      "scale": 0.5
+    },
+    "81": {
+      "code": "RIM",
+      "name": "Rivervale Citizen",
+      "gender_variants": true,
+      "female_code": "RIF",
+      "scale": 0.5,
+      "s3d_file": "rivervale_chr.s3d",
+      "fallback_code": "HOM"
+    },
+    "82": {
+      "code": "SCA",
+      "name": "Scarecrow",
+      "scale": 1.0,
+      "s3d_file": "global2_chr.s3d"
+    },
+    "83": {
+      "code": "SKU",
+      "name": "Skunk",
+      "scale": 0.4,
+      "animation_source": "RAT",
+      "animation_source_s3d": "qeynos_chr.s3d"
+    },
+    "85": {
+      "code": "SPE",
+      "name": "Spectre",
+      "scale": 1.0,
+      "s3d_file": "unrest_chr.s3d"
+    },
+    "86": {
+      "code": "SPH",
+      "name": "Sphinx",
+      "scale": 2.0,
+      "s3d_file": "global3_chr.s3d",
+      "animation_source": "DRK",
+      "animation_source_s3d": "permafrost_chr.s3d"
+    },
+    "87": {
+      "code": "ARM",
+      "name": "Armadillo",
+      "scale": 0.6,
+      "s3d_file": "nro_chr.s3d",
+      "animation_source": "RAT",
+      "animation_source_s3d": "qeynos_chr.s3d"
+    },
+    "88": {
+      "code": "CLM",
+      "name": "Clockwork Gnome",
+      "gender_variants": true,
+      "female_code": "CLF",
+      "neuter_code": "CLN",
+      "scale": 0.6,
+      "s3d_file": "steamfont_chr.s3d"
+    },
+    "89": {
+      "code": "DRK",
+      "name": "Drake",
+      "scale": 1.2,
+      "s3d_file": "permafrost_chr.s3d"
+    },
+    "90": {
+      "code": "HLM",
+      "name": "Halas Citizen",
+      "gender_variants": true,
+      "female_code": "HLF",
+      "scale": 1.2,
+      "s3d_file": "halas_chr.s3d",
+      "fallback_code": "BAM"
+    },
+    "91": {
+      "code": "ALL",
+      "name": "Alligator",
+      "scale": 1.3,
+      "s3d_file": "innothule_chr.s3d"
+    },
+    "92": {
+      "code": "GRM",
+      "name": "Grobb Citizen",
+      "gender_variants": true,
+      "female_code": "GRF",
+      "scale": 1.4,
+      "s3d_file": "grobb_chr.s3d",
+      "fallback_code": "TRM"
+    },
+    "93": {
+      "code": "OKM",
+      "name": "Oggok Citizen",
+      "gender_variants": true,
+      "female_code": "OKF",
+      "scale": 1.5,
+      "s3d_file": "oggok_chr.s3d",
+      "fallback_code": "OGM"
+    },
+    "94": {
+      "code": "KAM",
+      "name": "Kaladim Citizen",
+      "gender_variants": true,
+      "female_code": "KAF",
+      "neuter_code": "KAN",
+      "scale": 0.7,
+      "s3d_file": "kaladima_chr.s3d",
+      "fallback_code": "DWM"
+    },
+    "95": {
+      "code": "CAZ",
+      "name": "Cazic Thule",
+      "scale": 3.0
+    },
+    "96": {
+      "code": "COC",
+      "name": "Cockatrice",
+      "scale": 1.0
+    },
+    "98": {
+      "code": "VSM",
+      "name": "Elf Vampire",
+      "gender_variants": true,
+      "female_code": "VSF",
+      "scale": 1.0
+    },
+    "99": {
+      "code": "DEN",
+      "name": "Amygdalan",
+      "scale": 1.5
+    },
+    "100": {
+      "code": "DER",
+      "name": "Dervish",
+      "scale": 1.0,
+      "s3d_file": "oasis_chr.s3d"
+    },
+    "101": {
+      "code": "EFR",
+      "name": "Efreeti",
+      "scale": 1.5
+    },
+    "102": {
+      "code": "FRT",
+      "name": "Froglok Tadpole",
+      "scale": 0.3
+    },
+    "103": {
+      "code": "KED",
+      "name": "Kedge",
+      "scale": 1.2
+    },
+    "104": {
+      "code": "LEE",
+      "name": "Leech",
+      "scale": 0.5
+    },
+    "105": {
+      "code": "SWO",
+      "name": "Swordfish",
+      "scale": 0.8
+    },
+    "106": {
+      "code": "FEM",
+      "name": "Felguard",
+      "gender_variants": true,
+      "female_code": "FEF",
+      "scale": 1.0,
+      "s3d_file": "felwithea_chr.s3d"
+    },
+    "107": {
+      "code": "MAM",
+      "name": "Mammoth",
+      "scale": 2.0
+    },
+    "108": {
+      "code": "EYE",
+      "name": "Eye of Zomm",
+      "scale": 0.05,
+      "s3d_file": "global_chr.s3d"
+    },
+    "109": {
+      "code": "WAS",
+      "name": "Wasp",
+      "scale": 0.5
+    },
+    "110": {
+      "code": "MER",
+      "name": "Mermaid",
+      "scale": 1.0
+    },
+    "111": {
+      "code": "HAR",
+      "name": "Harpy",
+      "scale": 1.2
+    },
+    "112": {
+      "code": "GFM",
+      "name": "Fayguard",
+      "gender_variants": true,
+      "female_code": "GFF",
+      "scale": 1.0,
+      "s3d_file": "felwithea_chr.s3d"
+    },
+    "113": {
+      "code": "DRI",
+      "name": "Drixie",
+      "scale": 0.3
+    },
+    "116": {
+      "code": "SEA",
+      "name": "Seahorse",
+      "scale": 0.5
+    },
+    "117": {
+      "code": "GDM",
+      "name": "Ghost Dwarf",
+      "gender_variants": true,
+      "female_code": "GDF",
+      "scale": 0.7
+    },
+    "118": {
+      "code": "GEM",
+      "name": "Erudite Ghost",
+      "gender_variants": true,
+      "female_code": "GEF",
+      "scale": 1.0
+    },
+    "119": {
+      "code": "STC",
+      "name": "Sabertooth Cat",
+      "scale": 1.2,
+      "animation_source": "LIM",
+      "animation_source_s3d": "southkarana_chr.s3d"
+    },
+    "120": {
+      "code": "WOE",
+      "name": "Wolf Elemental",
+      "scale": 0.8
+    },
+    "121": {
+      "code": "GRG",
+      "name": "Gorgon",
+      "scale": 1.5
+    },
+    "122": {
+      "code": "DRU",
+      "name": "Dragon Skeleton",
+      "scale": 3.0
+    },
+    "123": {
+      "code": "INN",
+      "name": "Innoruuk",
+      "scale": 2.0
+    },
+    "124": {
+      "code": "UNI",
+      "name": "Unicorn",
+      "scale": 1.2
+    },
+    "125": {
+      "code": "PEG",
+      "name": "Pegasus",
+      "scale": 1.5
+    },
+    "126": {
+      "code": "DJI",
+      "name": "Djinn",
+      "scale": 1.5,
+      "s3d_file": "najena_chr.s3d"
+    },
+    "127": {
+      "code": "IVM",
+      "name": "Invisible Man",
+      "gender_variants": true,
+      "female_code": "IVF",
+      "scale": 0.0,
+      "invisible": true
+    },
+    "128": {
+      "code": "IKM",
+      "name": "Iksar",
+      "gender_variants": true,
+      "female_code": "IKF",
+      "scale": 1.1,
+      "s3d_file": "global4_chr.s3d"
+    },
+    "129": {
+      "code": "SCR",
+      "name": "Scorpion",
+      "scale": 1.0
+    },
+    "130": {
+      "code": "KEM",
+      "name": "Vah Shir",
+      "gender_variants": true,
+      "female_code": "KEF",
+      "scale": 1.2
+    },
+    "131": {
+      "code": "SRW",
+      "name": "Sarnak",
+      "scale": 1.3
+    },
+    "133": {
+      "code": "LYC",
+      "name": "Drolvarg",
+      "scale": 1.2
+    },
+    "134": {
+      "code": "MOS",
+      "name": "Mosquito",
+      "scale": 0.2,
+      "s3d_file": "innothule_chr.s3d"
+    },
+    "135": {
+      "code": "RHI",
+      "name": "Rhinoceros",
+      "scale": 1.5
+    },
+    "136": {
+      "code": "XAL",
+      "name": "Xalgoz",
+      "scale": 1.2
+    },
+    "137": {
+      "code": "KGO",
+      "name": "Kunark Goblin",
+      "scale": 0.8
+    },
+    "138": {
+      "code": "YET",
+      "name": "Yeti",
+      "scale": 1.5
+    },
+    "139": {
+      "code": "ICM",
+      "name": "Iksar Citizen",
+      "gender_variants": true,
+      "female_code": "ICF",
+      "neuter_code": "ICN",
+      "scale": 1.1,
+      "fallback_code": "IKM"
+    },
+    "140": {
+      "code": "FGI",
+      "name": "Forest Giant",
+      "scale": 2.0
+    },
+    "144": {
+      "code": "BRN",
+      "name": "Burynai",
+      "scale": 0.8
+    },
+    "145": {
+      "code": "GOO",
+      "name": "Goo",
+      "scale": 0.8
+    },
+    "146": {
+      "code": "SSN",
+      "name": "Spectral Sarnak",
+      "scale": 1.3
+    },
+    "147": {
+      "code": "SIM",
+      "name": "Spectral Iksar",
+      "gender_variants": true,
+      "female_code": "SIF",
+      "scale": 1.1
+    },
+    "148": {
+      "code": "BAC",
+      "name": "Kunark Fish",
+      "scale": 0.3
+    },
+    "149": {
+      "code": "ISC",
+      "name": "Iksar Scorpion",
+      "scale": 1.0
+    },
+    "150": {
+      "code": "ERO",
+      "name": "Erollisi",
+      "scale": 1.5
+    },
+    "151": {
+      "code": "TRI",
+      "name": "Tribunal",
+      "scale": 1.5
+    },
+    "153": {
+      "code": "BRI",
+      "name": "Bristlebane",
+      "scale": 0.8
+    },
+    "154": {
+      "code": "FDR",
+      "name": "Fay Drake",
+      "scale": 0.8
+    },
+    "155": {
+      "code": "SSK",
+      "name": "Sarnak Skeleton",
+      "scale": 1.3
+    },
+    "156": {
+      "code": "VRM",
+      "name": "Ratman",
+      "scale": 1.0
+    },
+    "157": {
+      "code": "WYV",
+      "name": "Wyvern",
+      "scale": 1.5
+    },
+    "158": {
+      "code": "WUR",
+      "name": "Wurm",
+      "scale": 3.0
+    },
+    "159": {
+      "code": "DEV",
+      "name": "Devourer",
+      "scale": 1.0
+    },
+    "160": {
+      "code": "IKG",
+      "name": "Iksar Golem",
+      "scale": 1.5
+    },
+    "161": {
+      "code": "IKS",
+      "name": "Iksar Skeleton",
+      "scale": 1.1
+    },
+    "162": {
+      "code": "MEP",
+      "name": "Man-Eating Plant",
+      "scale": 1.0
+    },
+    "163": {
+      "code": "RAP",
+      "name": "Raptor",
+      "scale": 1.0
+    },
+    "164": {
+      "code": "SGO",
+      "name": "Sarnak Golem",
+      "scale": 2.0
+    },
+    "165": {
+      "code": "SED",
+      "name": "Water Dragon",
+      "scale": 2.0
+    },
+    "166": {
+      "code": "IKH",
+      "name": "Iksar Hand",
+      "scale": 0.5
+    },
+    "167": {
+      "code": "SUC",
+      "name": "Succulent",
+      "scale": 0.8
+    },
+    "168": {
+      "code": "FMO",
+      "name": "Holgresh",
+      "scale": 1.0
+    },
+    "169": {
+      "code": "BTM",
+      "name": "Brontotherium",
+      "scale": 1.5
+    },
+    "170": {
+      "code": "SDE",
+      "name": "Snow Dervish",
+      "scale": 0.8
+    },
+    "171": {
+      "code": "DIW",
+      "name": "Dire Wolf",
+      "scale": 1.2
+    },
+    "172": {
+      "code": "MTC",
+      "name": "Manticore",
+      "scale": 1.5
+    },
+    "173": {
+      "code": "TOT",
+      "name": "Totem",
+      "scale": 1.0
+    },
+    "174": {
+      "code": "SPC",
+      "name": "Ice Spectre",
+      "scale": 1.0
+    },
+    "175": {
+      "code": "ENA",
+      "name": "Enchanted Armor",
+      "scale": 1.0
+    },
+    "176": {
+      "code": "SBU",
+      "name": "Snow Rabbit",
+      "scale": 0.3
+    },
+    "177": {
+      "code": "WAL",
+      "name": "Walrus",
+      "scale": 1.5
+    },
+    "178": {
+      "code": "RGM",
+      "name": "Geonid",
+      "scale": 1.0
+    },
+    "181": {
+      "code": "YAK",
+      "name": "Yakkar",
+      "scale": 1.2
+    },
+    "183": {
+      "code": "COM",
+      "name": "Coldain",
+      "gender_variants": true,
+      "female_code": "COF",
+      "neuter_code": "COK",
+      "scale": 0.7
+    },
+    "184": {
+      "code": "DR2",
+      "name": "Velious Dragon",
+      "scale": 3.0
+    },
+    "185": {
+      "code": "HAG",
+      "name": "Hag",
+      "scale": 1.0
+    },
+    "187": {
+      "code": "SIR",
+      "name": "Siren",
+      "scale": 1.0
+    },
+    "188": {
+      "code": "FSG",
+      "name": "Frost Giant",
+      "scale": 2.5
+    },
+    "189": {
+      "code": "STG",
+      "name": "Storm Giant",
+      "male_code": "STM",
+      "scale": 2.5
+    },
+    "190": {
+      "code": "OTM",
+      "name": "Othmir",
+      "scale": 0.8
+    },
+    "191": {
+      "code": "WLM",
+      "name": "Ulthork",
+      "scale": 1.5
+    },
+    "193": {
+      "code": "ABH",
+      "name": "Abhorrent",
+      "scale": 1.0
+    },
+    "194": {
+      "code": "STU",
+      "name": "Sea Turtle",
+      "scale": 1.5
+    },
+    "195": {
+      "code": "BWD",
+      "name": "Black/White Dragon",
+      "scale": 3.0
+    },
+    "196": {
+      "code": "GDR",
+      "name": "Ghost Dragon",
+      "scale": 3.0
+    },
+    "198": {
+      "code": "PRI",
+      "name": "Prismatic Dragon",
+      "scale": 3.0
+    },
+    "240": {
+      "code": "TPM",
+      "name": "Teleport Man",
+      "gender_variants": true,
+      "female_code": "TPF",
+      "scale": 0.0,
+      "invisible": true
+    },
+    "330": {
+      "code": "FRM",
+      "name": "Froglok (Playable)",
+      "gender_variants": true,
+      "female_code": "FRF",
+      "scale": 0.8
+    },
+    "367": {
+      "code": "SKE",
+      "name": "Decaying Skeleton",
+      "scale": 1.0,
+      "s3d_file": "global_chr.s3d"
+    }
+  }
+}

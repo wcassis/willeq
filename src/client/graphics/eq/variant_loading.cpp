@@ -5,6 +5,7 @@
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/animation_mapping.h"
 #include "client/graphics/eq/geometry_combiner.h"
+#include "client/graphics/eq/s3d_loader.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <cstdio>
@@ -352,17 +353,64 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
         snprintf(headBuf, sizeof(headBuf), "%sHE%02d_DMSPRITEDEF", codeToTry.c_str(), headVariant);
         std::string headMeshName = headBuf;
 
-        // Build list of character sources to search (zone first, then global - but defer global loading)
+        // Build list of character sources to search (JSON-specified first, then zone, then global)
         std::vector<std::pair<const std::vector<std::shared_ptr<CharacterModel>>*, const std::map<std::string, std::shared_ptr<TextureInfo>>*>> characterSources;
         bool needGlobalFallback = true;
+
+        // First, check if this race has a JSON-specified s3d_file
+        std::string jsonS3dFile = getRaceS3DFile(raceId);
+        if (!jsonS3dFile.empty() && !clientPath_.empty()) {
+            // Extract zone name from s3d filename (e.g., "freporte_chr.s3d" -> "freporte")
+            auto chrPos = jsonS3dFile.find("_chr.s3d");
+            if (chrPos != std::string::npos) {
+                std::string jsonZoneName = jsonS3dFile.substr(0, chrPos);
+                // Check if this is different from the current zone
+                if (jsonZoneName != currentZoneName_ && jsonZoneName.find("global") != 0) {
+                    // Try to load from this zone's chr file
+                    std::string lowerFilename = jsonS3dFile;
+                    std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+
+                    // Check if already in cache
+                    auto cacheIt = otherChrCaches_.find(lowerFilename);
+                    if (cacheIt == otherChrCaches_.end()) {
+                        // Load the chr file
+                        std::string fullPath = clientPath_ + jsonS3dFile;
+                        S3DLoader loader;
+                        if (loader.loadZone(fullPath)) {
+                            auto zone = loader.getZone();
+                            if (zone && !zone->characters.empty()) {
+                                OtherChrCache& cache = otherChrCaches_[lowerFilename];
+                                cache.characters = zone->characters;
+                                cache.textures = zone->characterTextures;
+                                // Invalidate merged textures cache since we added new textures
+                                mergedTexturesCacheValid_ = false;
+                                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} characters from JSON-specified {} for race {}",
+                                          cache.characters.size(), jsonS3dFile, raceId);
+                                cacheIt = otherChrCaches_.find(lowerFilename);
+                            }
+                        }
+                    }
+
+                    // Add JSON-specified chr file to search sources
+                    if (cacheIt != otherChrCaches_.end() && !cacheIt->second.characters.empty()) {
+                        characterSources.push_back({&cacheIt->second.characters, &cacheIt->second.textures});
+                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching JSON-specified {} ({} models) for {}",
+                                  jsonS3dFile, cacheIt->second.characters.size(), codeToTry);
+                    }
+                }
+            }
+        }
+
+        // Then add current zone characters
         if (zoneModelsLoaded_ && !zoneCharacters_.empty()) {
             characterSources.push_back({&zoneCharacters_, &zoneTextures_});
-            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching zone characters first ({} models) for {}", zoneCharacters_.size(), codeToTry);
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching zone characters ({} models) for {}", zoneCharacters_.size(), codeToTry);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No zone characters loaded (zoneModelsLoaded_={})", zoneModelsLoaded_);
         }
         // Note: We'll add globalCharacters_ later only if zone search fails
-        // Try zone first, then global if needed
+        // Try JSON-specified, then zone, then global if needed
         bool foundInZone = false;
 
         // Search for a character model that matches this race code
@@ -437,74 +485,190 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                     modelData->skeleton = character->animatedSkeleton;
                     size_t existingAnimCount = character->animatedSkeleton->animations.size();
 
-                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Using skeleton from {} with {} existing animations", codeToTry, existingAnimCount);
+                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Using skeleton from {} with {} existing animations, animSource={}",
+                              codeToTry, existingAnimCount, animationSourceCode);
 
                     // Merge missing animations from animation source (ELM/ELF/etc)
                     if (!animationSourceCode.empty() && codeToTry != animationSourceCode) {
-                        // Ensure global models are loaded so we can get animations from the source
-                        if (!globalModelsLoaded_) {
-                            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loading global models for animation source {}", animationSourceCode);
-                            loadGlobalModels();
-                        }
-                        // Search for animation source skeleton in global characters
-                        for (const auto& sourceChar : globalCharacters_) {
-                            if (!sourceChar) continue;
-                            std::string sourceName = sourceChar->name;
-                            std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
-                                           [](unsigned char c) { return std::toupper(c); });
-                            if (sourceName.find(animationSourceCode) != std::string::npos) {
-                                if (sourceChar->animatedSkeleton && !sourceChar->animatedSkeleton->animations.empty()) {
-                                    // Merge animations from source to our skeleton
-                                    // e.g., QCM bones (qcmpe, qcmch, etc.) <- ELM animations (elmpe, elmch, etc.)
-                                    // Model-specific animations are NEVER overwritten
-                                    auto& ourSkel = character->animatedSkeleton;
-                                    auto& sourceSkel = sourceChar->animatedSkeleton;
+                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Attempting animation merge from {} to {}", animationSourceCode, codeToTry);
 
-                                    std::string lowerCode = codeToTry;
-                                    std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
-                                                   [](unsigned char c) { return std::tolower(c); });
-                                    std::string lowerSource = animationSourceCode;
-                                    std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
-                                                   [](unsigned char c) { return std::tolower(c); });
+                        // Check if animation source is in a zone-specific S3D file
+                        std::string animSourceS3dFile = getAnimationSourceS3DFile(raceId);
+                        bool foundSource = false;
 
-                                    // Add missing animations (never overwrite existing)
-                                    int addedAnimations = 0;
-                                    for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
-                                        if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
-                                            ourSkel->animations[animCode] = sourceAnim;
-                                            addedAnimations++;
-                                        }
+                        // First, try to load from zone-specific animation source S3D if configured
+                        if (!animSourceS3dFile.empty() && !clientPath_.empty()) {
+                            std::string lowerFilename = animSourceS3dFile;
+                            std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
+                                           [](unsigned char c) { return std::tolower(c); });
+
+                            // Check if already in cache
+                            auto cacheIt = otherChrCaches_.find(lowerFilename);
+                            if (cacheIt == otherChrCaches_.end()) {
+                                // Load the animation source S3D file
+                                std::string fullPath = clientPath_ + animSourceS3dFile;
+                                S3DLoader loader;
+                                if (loader.loadZone(fullPath)) {
+                                    auto zone = loader.getZone();
+                                    if (zone && !zone->characters.empty()) {
+                                        OtherChrCache& cache = otherChrCaches_[lowerFilename];
+                                        cache.characters = zone->characters;
+                                        cache.textures = zone->characterTextures;
+                                        mergedTexturesCacheValid_ = false;
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded animation source S3D {} ({} characters)",
+                                                  animSourceS3dFile, cache.characters.size());
+                                        cacheIt = otherChrCaches_.find(lowerFilename);
                                     }
+                                }
+                            }
 
-                                    // Merge animation tracks for each bone (only add missing track entries)
-                                    int mappedBones = 0;
-                                    for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
-                                        std::string ourBoneName = ourSkel->bones[i].name;
-                                        std::string mappedName = ourBoneName;
-                                        size_t pos = mappedName.find(lowerCode);
-                                        if (pos != std::string::npos) {
-                                            mappedName.replace(pos, lowerCode.length(), lowerSource);
-                                        }
+                            // Search for animation source in the loaded cache
+                            if (cacheIt != otherChrCaches_.end()) {
+                                for (const auto& sourceChar : cacheIt->second.characters) {
+                                    if (!sourceChar) continue;
+                                    std::string sourceName = sourceChar->name;
+                                    std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                                                   [](unsigned char c) { return std::toupper(c); });
+                                    if (sourceName.find(animationSourceCode) != std::string::npos) {
+                                        if (sourceChar->animatedSkeleton && !sourceChar->animatedSkeleton->animations.empty()) {
+                                            auto& ourSkel = character->animatedSkeleton;
+                                            auto& sourceSkel = sourceChar->animatedSkeleton;
 
-                                        int sourceIdx = sourceSkel->getBoneIndex(mappedName);
-                                        if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
-                                            // Merge animation tracks - only add missing ones
-                                            for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
-                                                if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
-                                                    ourSkel->bones[i].animationTracks[trackCode] = trackDef;
+                                            std::string lowerCode = codeToTry;
+                                            std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
+                                                           [](unsigned char c) { return std::tolower(c); });
+                                            std::string lowerSource = animationSourceCode;
+                                            std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
+                                                           [](unsigned char c) { return std::tolower(c); });
+
+                                            // Add missing animations (never overwrite existing)
+                                            int addedAnimations = 0;
+                                            for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
+                                                if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
+                                                    ourSkel->animations[animCode] = sourceAnim;
+                                                    addedAnimations++;
                                                 }
                                             }
-                                            mappedBones++;
+
+                                            // Merge animation tracks for each bone
+                                            int mappedBones = 0;
+                                            for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
+                                                std::string ourBoneName = ourSkel->bones[i].name;
+                                                std::string mappedName = ourBoneName;
+                                                size_t pos = mappedName.find(lowerCode);
+                                                if (pos != std::string::npos) {
+                                                    mappedName.replace(pos, lowerCode.length(), lowerSource);
+                                                }
+
+                                                int sourceIdx = sourceSkel->getBoneIndex(mappedName);
+                                                if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
+                                                    for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
+                                                        if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
+                                                            ourSkel->bones[i].animationTracks[trackCode] = trackDef;
+                                                        }
+                                                    }
+                                                    mappedBones++;
+                                                }
+                                            }
+
+                                            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Merged animations from {} ({}) to {} - added {} animations (had {}, now {}), mapped {}/{} bones",
+                                                      animationSourceCode, animSourceS3dFile, codeToTry, addedAnimations, existingAnimCount, ourSkel->animations.size(), mappedBones, ourSkel->bones.size());
+                                            foundSource = true;
+                                            break;
                                         }
                                     }
+                                }
+                            }
 
-                                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Merged animations from {} to {} - added {} animations (had {}, now {}), mapped {}/{} bones",
-                                              animationSourceCode, codeToTry, addedAnimations, existingAnimCount, ourSkel->animations.size(), mappedBones, ourSkel->bones.size());
-                                    break;
+                            if (!foundSource) {
+                                LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Animation source {} not found in {} for race {}",
+                                         animationSourceCode, animSourceS3dFile, raceId);
+                            }
+                        }
+
+                        // Fall back to global characters if not found in zone-specific S3D
+                        if (!foundSource) {
+                            // Ensure global models are loaded so we can get animations from the source
+                            if (!globalModelsLoaded_) {
+                                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loading global models for animation source {}", animationSourceCode);
+                                loadGlobalModels();
+                            }
+                            // Search for animation source skeleton in global characters
+                            for (const auto& sourceChar : globalCharacters_) {
+                                if (!sourceChar) continue;
+                                std::string sourceName = sourceChar->name;
+                                std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                                               [](unsigned char c) { return std::toupper(c); });
+                                if (sourceName.find(animationSourceCode) != std::string::npos) {
+                                    if (sourceChar->animatedSkeleton && !sourceChar->animatedSkeleton->animations.empty()) {
+                                        // Merge animations from source to our skeleton
+                                        // e.g., QCM bones (qcmpe, qcmch, etc.) <- ELM animations (elmpe, elmch, etc.)
+                                        // Model-specific animations are NEVER overwritten
+                                        auto& ourSkel = character->animatedSkeleton;
+                                        auto& sourceSkel = sourceChar->animatedSkeleton;
+
+                                        std::string lowerCode = codeToTry;
+                                        std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
+                                                       [](unsigned char c) { return std::tolower(c); });
+                                        std::string lowerSource = animationSourceCode;
+                                        std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
+                                                       [](unsigned char c) { return std::tolower(c); });
+
+                                        // Add missing animations (never overwrite existing)
+                                        int addedAnimations = 0;
+                                        for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
+                                            if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
+                                                ourSkel->animations[animCode] = sourceAnim;
+                                                addedAnimations++;
+                                            }
+                                        }
+
+                                        // Merge animation tracks for each bone (only add missing track entries)
+                                        int mappedBones = 0;
+                                        for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
+                                            std::string ourBoneName = ourSkel->bones[i].name;
+                                            std::string mappedName = ourBoneName;
+                                            size_t pos = mappedName.find(lowerCode);
+                                            if (pos != std::string::npos) {
+                                                mappedName.replace(pos, lowerCode.length(), lowerSource);
+                                            }
+
+                                            int sourceIdx = sourceSkel->getBoneIndex(mappedName);
+                                            if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
+                                                // Merge animation tracks - only add missing ones
+                                                for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
+                                                    if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
+                                                        ourSkel->bones[i].animationTracks[trackCode] = trackDef;
+                                                    }
+                                                }
+                                                mappedBones++;
+                                            }
+                                        }
+
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Merged animations from {} to {} - added {} animations (had {}, now {}), mapped {}/{} bones",
+                                                  animationSourceCode, codeToTry, addedAnimations, existingAnimCount, ourSkel->animations.size(), mappedBones, ourSkel->bones.size());
+                                        foundSource = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
+
+                        if (!foundSource) {
+                            LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Animation source {} not found for race {} (code {})",
+                                     animationSourceCode, raceId, codeToTry);
+                        }
+                    } else if (animationSourceCode.empty()) {
+                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No animation source for {} - keeping {} animations",
+                                  codeToTry, character->animatedSkeleton->animations.size());
+                    } else {
+                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Animation source {} same as {} - skipping merge",
+                                  animationSourceCode, codeToTry);
                     }
+
+                    // Log final animation count after merging
+                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Variant {} final animation count: {}",
+                              codeToTry, modelData->skeleton->animations.size());
                 }
 
                 if (!rawGeom->vertexPieces.empty()) {
@@ -589,6 +753,171 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
 
                 if (character->animatedSkeleton) {
                     modelData->skeleton = character->animatedSkeleton;
+                    size_t existingAnimCount = character->animatedSkeleton->animations.size();
+
+                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - skeleton from {} with {} animations, animSource={}",
+                              codeToTry, existingAnimCount, animationSourceCode);
+
+                    // Merge missing animations from animation source (same as main path)
+                    if (!animationSourceCode.empty() && codeToTry != animationSourceCode) {
+                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - merging animations from {} to {}", animationSourceCode, codeToTry);
+
+                        // Check if animation source is in a zone-specific S3D file
+                        std::string animSourceS3dFile = getAnimationSourceS3DFile(raceId);
+                        bool foundSource = false;
+
+                        // First, try to load from zone-specific animation source S3D if configured
+                        if (!animSourceS3dFile.empty() && !clientPath_.empty()) {
+                            std::string lowerFilename = animSourceS3dFile;
+                            std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
+                                           [](unsigned char c) { return std::tolower(c); });
+
+                            // Check if already in cache
+                            auto cacheIt = otherChrCaches_.find(lowerFilename);
+                            if (cacheIt == otherChrCaches_.end()) {
+                                // Load the animation source S3D file
+                                std::string fullPath = clientPath_ + animSourceS3dFile;
+                                S3DLoader loader;
+                                if (loader.loadZone(fullPath)) {
+                                    auto zone = loader.getZone();
+                                    if (zone && !zone->characters.empty()) {
+                                        OtherChrCache& cache = otherChrCaches_[lowerFilename];
+                                        cache.characters = zone->characters;
+                                        cache.textures = zone->characterTextures;
+                                        mergedTexturesCacheValid_ = false;
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - loaded animation source S3D {} ({} characters)",
+                                                  animSourceS3dFile, cache.characters.size());
+                                        cacheIt = otherChrCaches_.find(lowerFilename);
+                                    }
+                                }
+                            }
+
+                            // Search for animation source in the loaded cache
+                            if (cacheIt != otherChrCaches_.end()) {
+                                for (const auto& sourceChar : cacheIt->second.characters) {
+                                    if (!sourceChar) continue;
+                                    std::string sourceName = sourceChar->name;
+                                    std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                                                   [](unsigned char c) { return std::toupper(c); });
+                                    if (sourceName.find(animationSourceCode) != std::string::npos) {
+                                        if (sourceChar->animatedSkeleton && !sourceChar->animatedSkeleton->animations.empty()) {
+                                            auto& ourSkel = character->animatedSkeleton;
+                                            auto& sourceSkel = sourceChar->animatedSkeleton;
+
+                                            std::string lowerCode = codeToTry;
+                                            std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
+                                                           [](unsigned char c) { return std::tolower(c); });
+                                            std::string lowerSource = animationSourceCode;
+                                            std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
+                                                           [](unsigned char c) { return std::tolower(c); });
+
+                                            // Add missing animations (never overwrite existing)
+                                            int addedAnimations = 0;
+                                            for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
+                                                if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
+                                                    ourSkel->animations[animCode] = sourceAnim;
+                                                    addedAnimations++;
+                                                }
+                                            }
+
+                                            // Merge animation tracks for each bone
+                                            int mappedBones = 0;
+                                            for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
+                                                std::string ourBoneName = ourSkel->bones[i].name;
+                                                std::string mappedName = ourBoneName;
+                                                size_t pos = mappedName.find(lowerCode);
+                                                if (pos != std::string::npos) {
+                                                    mappedName.replace(pos, lowerCode.length(), lowerSource);
+                                                }
+
+                                                int sourceIdx = sourceSkel->getBoneIndex(mappedName);
+                                                if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
+                                                    for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
+                                                        if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
+                                                            ourSkel->bones[i].animationTracks[trackCode] = trackDef;
+                                                        }
+                                                    }
+                                                    mappedBones++;
+                                                }
+                                            }
+
+                                            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - merged from {} ({}) - added {} animations (had {}, now {}), mapped {}/{} bones",
+                                                      animationSourceCode, animSourceS3dFile, addedAnimations, existingAnimCount, ourSkel->animations.size(), mappedBones, ourSkel->bones.size());
+                                            foundSource = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Fall back to global characters if not found in zone-specific S3D
+                        if (!foundSource) {
+                            // Search for animation source skeleton in global characters
+                            for (const auto& sourceChar : globalCharacters_) {
+                                if (!sourceChar) continue;
+                                std::string sourceName = sourceChar->name;
+                                std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                                               [](unsigned char c) { return std::toupper(c); });
+                                if (sourceName.find(animationSourceCode) != std::string::npos) {
+                                    if (sourceChar->animatedSkeleton && !sourceChar->animatedSkeleton->animations.empty()) {
+                                        auto& ourSkel = character->animatedSkeleton;
+                                        auto& sourceSkel = sourceChar->animatedSkeleton;
+
+                                        std::string lowerCode = codeToTry;
+                                        std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
+                                                       [](unsigned char c) { return std::tolower(c); });
+                                        std::string lowerSource = animationSourceCode;
+                                        std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
+                                                       [](unsigned char c) { return std::tolower(c); });
+
+                                        // Add missing animations (never overwrite existing)
+                                        int addedAnimations = 0;
+                                        for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
+                                            if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
+                                                ourSkel->animations[animCode] = sourceAnim;
+                                                addedAnimations++;
+                                            }
+                                        }
+
+                                        // Merge animation tracks for each bone
+                                        int mappedBones = 0;
+                                        for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
+                                            std::string ourBoneName = ourSkel->bones[i].name;
+                                            std::string mappedName = ourBoneName;
+                                            size_t pos = mappedName.find(lowerCode);
+                                            if (pos != std::string::npos) {
+                                                mappedName.replace(pos, lowerCode.length(), lowerSource);
+                                            }
+
+                                            int sourceIdx = sourceSkel->getBoneIndex(mappedName);
+                                            if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
+                                                for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
+                                                    if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
+                                                        ourSkel->bones[i].animationTracks[trackCode] = trackDef;
+                                                    }
+                                                }
+                                                mappedBones++;
+                                            }
+                                        }
+
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - merged {} animations (had {}, now {}), mapped {}/{} bones",
+                                                  addedAnimations, existingAnimCount, ourSkel->animations.size(), mappedBones, ourSkel->bones.size());
+                                        foundSource = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!foundSource) {
+                            LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Global fallback - animation source {} not found for race {}",
+                                     animationSourceCode, raceId);
+                        }
+                    }
+
+                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - {} final animation count: {}",
+                              codeToTry, modelData->skeleton->animations.size());
                 }
 
                 if (!rawGeom->vertexPieces.empty()) {
