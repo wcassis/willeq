@@ -84,6 +84,14 @@ The client connects through three stages, each with its own connection manager:
 **Combat** (`include/client/combat.h`)
 - `CombatManager` - Auto-attack, targeting, looting, combat abilities
 
+**Trading** (`src/client/trade_manager.cpp`)
+- `TradeManager` - Player-to-player trading, item/money exchange, trade state machine
+
+**Spells** (`src/client/spell/`)
+- `SpellManager` - Spell casting, gem state, cooldowns, memorization
+- `SpellEffects` - Effect processing (damage, healing, buffs)
+- `SpellTypeProcessor` - Target type validation and selection
+
 **Skills** (`include/client/skill/`)
 - `SkillManager` - Tracks player skills, handles activation, cooldowns
 - `SkillData` - Skill properties (value, category, cooldown, requirements)
@@ -104,6 +112,11 @@ The client connects through three stages, each with its own connection manager:
 - `BagWindow` - Container bag contents display
 - `LootWindow` - Corpse loot interface
 - `GroupWindow` - Group member display with HP/mana bars
+- `PetWindow` - Pet status display with command buttons
+- `VendorWindow` - Merchant buy/sell with sorting and pricing
+- `BankWindow` - Bank slots, shared bank, currency conversion
+- `TradeWindow` - Player trading interface with item/money slots
+- `TradeskillContainerWindow` - Tradeskill combines
 - `SkillsWindow` - Player skills list with activation and cooldown indicators
 - `SkillTooltip` - Skill details on hover (category, value, cooldown, requirements)
 - `ItemTooltip` - Item stat display on hover
@@ -245,7 +258,7 @@ The renderer has two modes, toggled with **F9**:
 
 **Chat:**
 - `/say`, `/shout`, `/ooc`, `/auction`, `/gsay`, `/gu` - Channel messages
-- `/tell <name> <msg>`, `/reply` - Private messages
+- `/tell <name> <msg>` - Private messages
 - `/emote <text>` - Emotes
 - `/filter [channel]` - Toggle channel display (say, tell, group, guild, shout, auction, ooc, emote, combat, exp, loot, npc, all)
 
@@ -281,6 +294,10 @@ The renderer has two modes, toggled with **F9**:
 
 **Pet:**
 - `/pet <command>` - Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)
+
+**Trading:**
+- `/trade` - Request trade with target
+- Trade window opens when accepting trade requests
 
 **Utility:**
 - `/help [command]` - Show help
