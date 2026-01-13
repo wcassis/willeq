@@ -40,6 +40,9 @@ public:
     void setLoadingProgress(float progress, const std::wstring& statusText) override;
     void setZoneReady(bool ready) override { m_zoneReady = ready; }
     bool isZoneReady() const override { return m_zoneReady; }
+    void setExpectedEntityCount(size_t count) override { (void)count; }
+    void notifyEntityLoaded() override {}
+    void setNetworkReady(bool ready) override { m_zoneReady = ready; }
 
     // ========== Player Display ==========
 

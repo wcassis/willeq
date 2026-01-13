@@ -1,6 +1,7 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/skeletal_animator.h"
 #include "client/animation_constants.h"
@@ -12,6 +13,7 @@
 #include <cmath>
 #include <set>
 #include <chrono>
+#include <fstream>
 
 namespace EQT {
 namespace Graphics {
@@ -49,6 +51,31 @@ void EntityRenderer::setClientPath(const std::string& path) {
     }
     if (equipmentModelLoader_) {
         equipmentModelLoader_->setClientPath(clientPath_);
+    }
+
+    // Load race model mappings from JSON
+    if (!areRaceMappingsLoaded()) {
+        // Try multiple paths to find race_models.json
+        std::vector<std::string> searchPaths = {
+            "config/race_models.json",                      // Run from project root
+            "../config/race_models.json",                   // Run from build directory
+            "../../config/race_models.json",                // Run from build/bin directory
+        };
+
+        for (const auto& jsonPath : searchPaths) {
+            std::ifstream testFile(jsonPath);
+            if (testFile.good()) {
+                testFile.close();
+                if (loadRaceMappings(jsonPath)) {
+                    LOG_INFO(MOD_GRAPHICS, "Loaded race mappings from {}", jsonPath);
+                    break;
+                }
+            }
+        }
+
+        if (!areRaceMappingsLoaded()) {
+            LOG_WARN(MOD_GRAPHICS, "Could not load race_models.json - using hardcoded defaults");
+        }
     }
 }
 

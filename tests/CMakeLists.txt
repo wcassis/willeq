@@ -172,6 +172,27 @@ ADD_EXECUTABLE(test_spell_database
 TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_spell_database)
 
+# Test PFS/S3D archive parsing
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_pfs_archive
+        test_pfs_archive.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_pfs_archive GTest::gtest_main ${ZLIB_LIBRARIES})
+    GTEST_DISCOVER_TESTS(test_pfs_archive)
+ENDIF()
+
+# Test WLD file parsing (Phase 2: Header and String Table)
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_wld
+        test_wld.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_wld)
+ENDIF()
+
 # Test graphics components (PFS, DDS decoder, etc.)
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_graphics
@@ -195,6 +216,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY})
+    TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_graphics)
 ENDIF()

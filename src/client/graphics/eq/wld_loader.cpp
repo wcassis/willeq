@@ -136,7 +136,7 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
                 parseFragment14(fragBody, fragBodySize, i + 1, nameRef, hashBuffer.data(), oldFormat);
                 break;
             case 0x15:
-                parseFragment15(fragBody, fragBodySize, i + 1, hashBuffer.data(), oldFormat);
+                parseFragment15(fragBody, fragBodySize, i + 1, nameRef, hashBuffer.data(), oldFormat);
                 break;
             case 0x2C:
                 parseFragment2C(fragBody, fragBodySize, i + 1, nameRef,
@@ -164,6 +164,12 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
                 break;
             case 0x28:
                 parseFragment28(fragBody, fragBodySize, i + 1);
+                break;
+            case 0x2A:
+                parseFragment2A(fragBody, fragBodySize, i + 1, nameRef, hashBuffer.data());
+                break;
+            case 0x35:
+                parseFragment35(fragBody, fragBodySize, i + 1);
                 break;
             case 0x2F:
                 parseFragment2F(fragBody, fragBodySize, i + 1);
@@ -262,21 +268,20 @@ void WldLoader::parseFragment05(const char* fragBuffer, uint32_t fragLength, uin
 
 void WldLoader::parseFragment30(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 const char* hash, bool oldFormat) {
+    // Fragment 0x30 structure matches eqsage: sage/lib/s3d/materials/material.js
     const WldFragment30Header* header = reinterpret_cast<const WldFragment30Header*>(fragBuffer);
-    const char* ptr = fragBuffer + sizeof(WldFragment30Header);
-
-    if (header->flags == 0) {
-        ptr += sizeof(uint32_t) * 2;
-    }
-
-    const WldFragmentRef* ref = reinterpret_cast<const WldFragmentRef*>(ptr);
 
     WldTextureBrush material;
 
-    if (header->params1 == 0 || ref->id == 0) {
+    // Extract material type from parameters (matches eqsage's materialType masking)
+    uint32_t materialType = header->parameters & ~0x80000000;
+
+    if (materialType == 0 || header->bitmapInfoRef == 0) {
+        // Boundary or invisible material
         material.flags = 1;
     } else {
-        uint32_t frag05Ref = ref->id;
+        // Resolve texture reference chain: 0x30 -> 0x05 -> 0x04
+        int32_t frag05Ref = header->bitmapInfoRef;
         auto it05 = textureRefs_.find(frag05Ref);
         if (it05 != textureRefs_.end()) {
             material.textureRefs.push_back(it05->second);
@@ -345,7 +350,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
 
     float scale = 1.0f / static_cast<float>(1 << header->scale);
     float recip256 = 1.0f / 256.0f;
-    float recip127 = 1.0f / 127.0f;
+    float recip128 = 1.0f / 128.0f;  // For signed int8 normals: [-128,127] -> [-1,1]
 
     // Read vertices
     // For character meshes, vertices are stored relative to center
@@ -394,14 +399,27 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                                          header->texCoordCount - header->vertexCount : 0);
     }
 
-    // Read normals - reference uses in->x * recip_127 without subtracting 128
+    // Read normals - int8 values divided by 128 give range [-1, 1], then normalize
     for (uint16_t i = 0; i < header->normalCount && i < header->vertexCount; ++i) {
         const WldNormal* n = reinterpret_cast<const WldNormal*>(ptr);
         ptr += sizeof(WldNormal);
 
-        geom->vertices[i].nx = static_cast<float>(n->x) * recip127;
-        geom->vertices[i].ny = static_cast<float>(n->y) * recip127;
-        geom->vertices[i].nz = static_cast<float>(n->z) * recip127;
+        float nx = static_cast<float>(n->x) * recip128;
+        float ny = static_cast<float>(n->y) * recip128;
+        float nz = static_cast<float>(n->z) * recip128;
+
+        // Normalize the vector (eqsage does this)
+        float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+        if (len > 0.0001f) {
+            geom->vertices[i].nx = nx / len;
+            geom->vertices[i].ny = ny / len;
+            geom->vertices[i].nz = nz / len;
+        } else {
+            // Default to up vector if normal is degenerate
+            geom->vertices[i].nx = 0.0f;
+            geom->vertices[i].ny = 0.0f;
+            geom->vertices[i].nz = 1.0f;
+        }
     }
     ptr += sizeof(WldNormal) * (header->normalCount > header->vertexCount ?
                                 header->normalCount - header->vertexCount : 0);
@@ -663,6 +681,11 @@ void WldLoader::parseFragment14(const char* fragBuffer, uint32_t fragLength, uin
             objDef.name = std::string(&hash[nameOffset]);
             std::transform(objDef.name.begin(), objDef.name.end(), objDef.name.begin(),
                           [](unsigned char c) { return std::toupper(c); });
+            // Remove _ACTORDEF suffix to match placeable naming convention
+            size_t actorDefPos = objDef.name.find("_ACTORDEF");
+            if (actorDefPos != std::string::npos) {
+                objDef.name = objDef.name.substr(0, actorDefPos);
+            }
         }
     }
 
@@ -692,35 +715,133 @@ void WldLoader::parseFragment14(const char* fragBuffer, uint32_t fragLength, uin
 }
 
 void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
-                                const char* hash, bool oldFormat) {
-    const WldFragmentRef* ref = reinterpret_cast<const WldFragmentRef*>(fragBuffer);
-    const WldFragment15Header* header = reinterpret_cast<const WldFragment15Header*>(
-        fragBuffer + sizeof(WldFragmentRef));
+                                int32_t nameRef, const char* hash, bool oldFormat) {
+    // Fragment 0x15 (ActorInstance) uses flag-based variable-length parsing
+    // Do NOT cast to a fixed struct - parse field by field based on flags
+    // Note: nameRef is already extracted by the caller (like other fragment parsers)
+    // Note: Fragment 0x15 typically has nameRef == 0; the name comes from objectRef
 
-    if (ref->id >= 0) {
+    const char* ptr = fragBuffer;
+    const char* endPtr = fragBuffer + fragLength;
+
+    // Read object definition reference (int32) - this is a STRING reference (negative = string hash offset)
+    // per eqsage: objectName = wld.getString(objectRef).replace('_ACTORDEF', '').toLowerCase()
+    if (ptr + sizeof(int32_t) > endPtr) return;
+    int32_t objectRef = *reinterpret_cast<const int32_t*>(ptr);
+    ptr += sizeof(int32_t);
+
+    // objectRef < 0 means it's a string hash reference (like _ACTORDEF name)
+    if (objectRef >= 0) {
+        // No valid string reference for object name - skip this placeable
         return;
     }
 
     auto placeable = std::make_shared<Placeable>();
 
-    int32_t nameOffset = -ref->id;
-    if (nameOffset > 0 ) {
+    // Set the object name from the string hash using objectRef (not nameRef)
+    int32_t nameOffset = -objectRef;
+    if (nameOffset > 0) {
         std::string name(&hash[nameOffset]);
         std::transform(name.begin(), name.end(), name.begin(),
                       [](unsigned char c) { return std::toupper(c); });
+        // Remove _ACTORDEF suffix if present (like eqsage does)
+        size_t actorDefPos = name.find("_ACTORDEF");
+        if (actorDefPos != std::string::npos) {
+            name = name.substr(0, actorDefPos);
+        }
         placeable->setName(name);
     }
 
-    placeable->setLocation(header->x, header->y, header->z);
+    // Read flags (uint32)
+    if (ptr + sizeof(uint32_t) > endPtr) return;
+    uint32_t flags = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += sizeof(uint32_t);
 
-    float rotX = header->rotateX / 512.0f * 360.0f;
-    float rotY = header->rotateY / 512.0f * 360.0f;
-    float rotZ = header->rotateZ / 512.0f * 360.0f;
-    placeable->setRotation(rotX, rotY, rotZ);
+    // Read sphere reference (uint32) - always present
+    if (ptr + sizeof(uint32_t) > endPtr) return;
+    uint32_t sphereRef = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += sizeof(uint32_t);
+    (void)sphereRef;  // Collision sphere reference, not currently used
 
-    float scaleX = header->scaleX;
-    float scaleY = header->scaleY;
-    placeable->setScale(scaleX, scaleY, scaleY);
+    // If HasCurrentAction flag set, read action (uint32)
+    if (flags & Fragment15Flags::HasCurrentAction) {
+        if (ptr + sizeof(uint32_t) > endPtr) return;
+        ptr += sizeof(uint32_t);  // Skip action ID
+    }
+
+    // If HasLocation flag set, read position and rotation
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+    float rawRotX = 0.0f, rawRotY = 0.0f, rawRotZ = 0.0f;
+
+    if (flags & Fragment15Flags::HasLocation) {
+        if (ptr + 6 * sizeof(float) + sizeof(uint32_t) > endPtr) return;
+
+        x = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        y = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        z = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        rawRotX = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        rawRotY = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        rawRotZ = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        ptr += sizeof(uint32_t);  // Unknown extra field
+    }
+
+    placeable->setLocation(x, y, z);
+
+    // Convert rotation from EQ format to internal representation
+    // This EXACTLY matches eqsage's Location class (sage/lib/s3d/common/location.js):
+    //   this.rotateX = 0;
+    //   this.rotateZ = rotateY * modifier;
+    //   this.rotateY = rotateX * modifier * -1;
+    //
+    // EQ rotation values are in 512ths of a circle (0-511 = 0-360 degrees)
+    const float rotModifier = 360.0f / 512.0f;
+    float finalRotX = 0.0f;                        // Always 0 (matches eqsage)
+    float finalRotY = rawRotX * rotModifier * -1.0f;  // Primary yaw, negated (matches eqsage)
+    float finalRotZ = rawRotY * rotModifier;       // Secondary rotation (matches eqsage)
+    placeable->setRotation(finalRotX, finalRotY, finalRotZ);
+
+    // If HasBoundingRadius flag set, read bounding radius (float)
+    if (flags & Fragment15Flags::HasBoundingRadius) {
+        if (ptr + sizeof(float) > endPtr) return;
+        ptr += sizeof(float);  // Skip bounding radius
+    }
+
+    // If HasScaleFactor flag set, read uniform scale (single float!)
+    float scaleFactor = 1.0f;  // Default to 1.0 if not present
+    if (flags & Fragment15Flags::HasScaleFactor) {
+        if (ptr + sizeof(float) > endPtr) return;
+        scaleFactor = *reinterpret_cast<const float*>(ptr);
+        ptr += sizeof(float);
+    }
+
+    // Set uniform scale for all axes (EQ uses single scale factor)
+    placeable->setScale(scaleFactor, scaleFactor, scaleFactor);
+
+    // Debug: log all placeables
+    fmt::print(stderr, "[PLACEABLE] {} pos=({:.2f},{:.2f},{:.2f}) rot=({:.2f},{:.2f},{:.2f}) scale={:.4f} flags=0x{:X}\n",
+        placeable->getName(), x, y, z, finalRotX, finalRotY, finalRotZ, scaleFactor, flags);
+
+    // If HasSound flag set, read sound name reference (int32)
+    if (flags & Fragment15Flags::HasSound) {
+        if (ptr + sizeof(int32_t) > endPtr) return;
+        ptr += sizeof(int32_t);  // Skip sound reference
+    }
+
+    // If HasVertexColorReference flag set, read vertex color reference (uint32)
+    if (flags & Fragment15Flags::HasVertexColorReference) {
+        if (ptr + sizeof(uint32_t) > endPtr) return;
+        ptr += sizeof(uint32_t);  // Skip vertex color reference
+    }
+
+    // Read userData size and skip userData
+    if (ptr + sizeof(uint32_t) > endPtr) return;
+    uint32_t userDataSize = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += sizeof(uint32_t);
+
+    if (userDataSize > 0 && ptr + userDataSize <= endPtr) {
+        // userData can contain zone line info, etc. - skip for now
+        ptr += userDataSize;
+    }
 
     placeables_.push_back(placeable);
 }
@@ -789,14 +910,27 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
         ptr += sizeof(float) * 2 * (header->texCoordCount - header->vertexCount);
     }
 
-    // Read normals - raw 32-bit floats
+    // Read normals - raw 32-bit floats, normalize for consistency
     for (uint32_t i = 0; i < header->normalCount && i < header->vertexCount; ++i) {
         const float* n = reinterpret_cast<const float*>(ptr);
         ptr += sizeof(float) * 3;
 
-        geom->vertices[i].nx = n[0];
-        geom->vertices[i].ny = n[1];
-        geom->vertices[i].nz = n[2];
+        float nx = n[0];
+        float ny = n[1];
+        float nz = n[2];
+
+        // Normalize the vector
+        float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+        if (len > 0.0001f) {
+            geom->vertices[i].nx = nx / len;
+            geom->vertices[i].ny = ny / len;
+            geom->vertices[i].nz = nz / len;
+        } else {
+            // Default to up vector if normal is degenerate
+            geom->vertices[i].nx = 0.0f;
+            geom->vertices[i].ny = 0.0f;
+            geom->vertices[i].nz = 1.0f;
+        }
     }
     // Skip extra normals if any
     if (header->normalCount > header->vertexCount) {
@@ -1250,27 +1384,87 @@ void WldLoader::parseFragment13(const char* fragBuffer, uint32_t fragLength, uin
 
 void WldLoader::parseFragment1B(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 int32_t nameRef, const char* hash, bool oldFormat) {
-    const WldFragment1BHeader* header = reinterpret_cast<const WldFragment1BHeader*>(fragBuffer);
+    // Fragment 0x1B - Light Source Definition
+    // Matches eqsage: sage/lib/s3d/lights/light.js LightSource
+    // Variable-length structure with conditional fields based on flags
+
+    if (fragLength < 8) {
+        return;  // Need at least flags + frameCount
+    }
+
+    const char* ptr = fragBuffer;
 
     auto light = std::make_shared<ZoneLight>();
 
+    // Get name from hash table
     if (nameRef != 0) {
         int32_t nameOffset = -nameRef;
-        if (nameOffset > 0 ) {
+        if (nameOffset > 0) {
             light->name = std::string(&hash[nameOffset]);
         }
     }
 
+    // Initialize position (set by Fragment 0x28)
     light->x = 0.0f;
     light->y = 0.0f;
     light->z = 0.0f;
     light->radius = 0.0f;
 
-    if (header->flags & (1 << 3)) {
-        light->r = header->color[0];
-        light->g = header->color[1];
-        light->b = header->color[2];
+    // Read flags and frameCount
+    light->flags = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += 4;
+    light->frameCount = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += 4;
+
+    // Read optional currentFrame (if flags & 0x01)
+    if (light->flags & LIGHT_FLAG_HAS_CURRENT_FRAME) {
+        light->currentFrame = *reinterpret_cast<const uint32_t*>(ptr);
+        ptr += 4;
+    }
+
+    // Read optional sleep (if flags & 0x02)
+    if (light->flags & LIGHT_FLAG_HAS_SLEEP) {
+        light->sleepMs = *reinterpret_cast<const uint32_t*>(ptr);
+        ptr += 4;
+    }
+
+    // Read optional light levels (if flags & 0x04)
+    if (light->flags & LIGHT_FLAG_HAS_LIGHT_LEVELS) {
+        light->lightLevels.reserve(light->frameCount);
+        for (uint32_t i = 0; i < light->frameCount; ++i) {
+            float level = *reinterpret_cast<const float*>(ptr);
+            light->lightLevels.push_back(level);
+            ptr += 4;
+        }
+    }
+
+    // Read optional colors (if flags & 0x10)
+    // This is the CORRECT flag (0x10 = HasColor), NOT 0x08 (SkipFrames)
+    if (light->flags & LIGHT_FLAG_HAS_COLOR) {
+        light->colors.reserve(light->frameCount);
+        for (uint32_t i = 0; i < light->frameCount; ++i) {
+            float r = *reinterpret_cast<const float*>(ptr);
+            ptr += 4;
+            float g = *reinterpret_cast<const float*>(ptr);
+            ptr += 4;
+            float b = *reinterpret_cast<const float*>(ptr);
+            ptr += 4;
+            light->colors.push_back({r, g, b});
+        }
+
+        // Set primary color from first frame
+        if (!light->colors.empty()) {
+            auto& [r, g, b] = light->colors[0];
+            light->r = r;
+            light->g = g;
+            light->b = b;
+        } else {
+            light->r = 1.0f;
+            light->g = 1.0f;
+            light->b = 1.0f;
+        }
     } else {
+        // No color data - default to white
         light->r = 1.0f;
         light->g = 1.0f;
         light->b = 1.0f;
@@ -1280,6 +1474,10 @@ void WldLoader::parseFragment1B(const char* fragBuffer, uint32_t fragLength, uin
 }
 
 void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
+    // Fragment 0x28 - Light Instance
+    // Matches eqsage: sage/lib/s3d/lights/light.js LightInstance
+    // Places a light source at a position with a radius
+
     const WldFragmentRef* ref = reinterpret_cast<const WldFragmentRef*>(fragBuffer);
     const WldFragment28Header* header = reinterpret_cast<const WldFragment28Header*>(
         fragBuffer + sizeof(WldFragmentRef));
@@ -1291,6 +1489,7 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
 
     auto it = lightDefs_.find(lightDefIndex);
     if (it == lightDefs_.end()) {
+        // No light definition found - create basic white light
         auto light = std::make_shared<ZoneLight>();
         light->r = 1.0f;
         light->g = 1.0f;
@@ -1303,6 +1502,7 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
         return;
     }
 
+    // Copy light definition and add position/radius
     auto light = std::make_shared<ZoneLight>();
     light->name = it->second->name;
     light->r = it->second->r;
@@ -1313,7 +1513,81 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
     light->z = header->z;
     light->radius = header->radius;
 
+    // Copy animation data
+    light->flags = it->second->flags;
+    light->frameCount = it->second->frameCount;
+    light->currentFrame = it->second->currentFrame;
+    light->sleepMs = it->second->sleepMs;
+    light->lightLevels = it->second->lightLevels;
+    light->colors = it->second->colors;
+
     lights_.push_back(light);
+}
+
+void WldLoader::parseFragment2A(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
+                                int32_t nameRef, const char* hash) {
+    // Fragment 0x2A - Ambient Light Region
+    // Matches eqsage: sage/lib/s3d/lights/light.js AmbientLight
+    // Defines regions where ambient light applies
+
+    if (fragLength < 8) {
+        return;  // Need at least flags + regionCount
+    }
+
+    auto ambient = std::make_shared<AmbientLightRegion>();
+
+    // Get name from hash table
+    if (nameRef != 0) {
+        int32_t nameOffset = -nameRef;
+        if (nameOffset > 0) {
+            ambient->name = std::string(&hash[nameOffset]);
+        }
+    }
+
+    const char* ptr = fragBuffer;
+
+    // Read flags and regionCount
+    ambient->flags = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += 4;
+    uint32_t regionCount = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += 4;
+
+    // Read region references
+    ambient->regionRefs.reserve(regionCount);
+    for (uint32_t i = 0; i < regionCount; ++i) {
+        int32_t regionRef = *reinterpret_cast<const int32_t*>(ptr);
+        ambient->regionRefs.push_back(regionRef);
+        ptr += 4;
+    }
+
+    ambientLightRegions_.push_back(ambient);
+}
+
+void WldLoader::parseFragment35(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
+    // Fragment 0x35 - Global Ambient Light
+    // Matches eqsage: sage/lib/s3d/lights/light.js GlobalAmbientLight
+    // Defines zone-wide ambient color
+
+    if (fragLength < 4) {
+        return;  // Need 4 bytes (BGRA)
+    }
+
+    auto ambient = std::make_shared<GlobalAmbientLight>();
+
+    // eqsage reads in BGRA order
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(fragBuffer);
+    uint8_t blue = bytes[0];
+    uint8_t green = bytes[1];
+    uint8_t red = bytes[2];
+    uint8_t alpha = bytes[3];
+
+    // Normalize to 0.0-1.0 range
+    ambient->r = static_cast<float>(red) / 255.0f;
+    ambient->g = static_cast<float>(green) / 255.0f;
+    ambient->b = static_cast<float>(blue) / 255.0f;
+    ambient->a = static_cast<float>(alpha) / 255.0f;
+
+    globalAmbientLight_ = ambient;
 }
 
 void WldLoader::parseFragment2F(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {

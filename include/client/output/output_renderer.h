@@ -148,6 +148,21 @@ public:
      */
     virtual bool isZoneReady() const = 0;
 
+    /**
+     * Set expected entity count for loading progress tracking.
+     */
+    virtual void setExpectedEntityCount(size_t count) = 0;
+
+    /**
+     * Notify that an entity has finished loading (model/texture/animation ready).
+     */
+    virtual void notifyEntityLoaded() = 0;
+
+    /**
+     * Mark the network phase as complete (packet exchange done).
+     */
+    virtual void setNetworkReady(bool ready) = 0;
+
     // ========== Player Display ==========
 
     /**

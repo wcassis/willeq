@@ -1393,8 +1393,12 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 }
 
 void IrrlichtRenderer::unloadZone() {
-    // Note: zoneReady_ is controlled by EverQuest based on network state,
-    // not by graphics loading state. Don't reset it here.
+    // Reset entity loading state - we're starting a new zone
+    networkReady_ = false;
+    entitiesLoaded_ = false;
+    expectedEntityCount_ = 0;
+    loadedEntityCount_ = 0;
+    zoneReady_ = false;
 
     // Reset animated texture manager
     animatedTextureManager_.reset();
@@ -1577,43 +1581,43 @@ void IrrlichtRenderer::createObjectMeshes() {
         float scaleZ = objInstance.placeable->getScaleZ();
         node->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
 
-        // Calculate height offset for models with non-base origins
-        // If the bounding box MinEdge.Y is negative, the model origin is above its base
-        float heightOffset = 0;
+        // With center baked into vertices (matching eqsage), we don't need height offset
+        // The mesh origin is now at the bottom of the object
         irr::core::aabbox3df bbox = mesh->getBoundingBox();
-        heightOffset = -bbox.MinEdge.Y * scaleZ;  // scaleZ is EQ's Z (height) -> Irrlicht Y
 
-        // Calculate attachment offset - the model should be positioned so its
-        // attachment point (MaxEdge.X, assumed to be wall-mount side) is at spawn point.
-        // bbox.X in Irrlicht = EQ X, bbox.Z in Irrlicht = EQ Y
-        float attachOffsetX = bbox.MaxEdge.X;  // Offset to place +X edge at spawn
-        float attachOffsetZ = (bbox.MinEdge.Z + bbox.MaxEdge.Z) / 2.0f;  // Center in Z
+        // Debug: log comprehensive object info
+        const auto& geom = objInstance.geometry;
+        LOG_DEBUG(MOD_GRAPHICS, "[OBJ] {} geomBounds=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}) center=({:.1f},{:.1f},{:.1f})",
+            objName, geom->minX, geom->minY, geom->minZ,
+            geom->maxX, geom->maxY, geom->maxZ,
+            geom->centerX, geom->centerY, geom->centerZ);
+        LOG_DEBUG(MOD_GRAPHICS, "[OBJ] {} meshBbox=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}) scale=({:.2f},{:.2f},{:.2f})",
+            objName, bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+            bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z, scaleX, scaleY, scaleZ);
+        LOG_DEBUG(MOD_GRAPHICS, "[OBJ] {} pos=({:.1f},{:.1f},{:.1f}) rot=({:.1f},{:.1f},{:.1f})",
+            objName, objInstance.placeable->getX(), objInstance.placeable->getY(), objInstance.placeable->getZ(),
+            objInstance.placeable->getRotateX(), objInstance.placeable->getRotateY(), objInstance.placeable->getRotateZ());
 
-        // Apply transforms (EQ Z-up to Irrlicht Y-up)
+        // Apply coordinate transform: EQ (x, y, z) Z-up → Irrlicht (x, z, y) Y-up
+        // Objects are placed at their raw ActorInstance positions (eqsage approach)
         float x = objInstance.placeable->getX();
         float y = objInstance.placeable->getY();
         float z = objInstance.placeable->getZ();
 
-        float rotZ = objInstance.placeable->getRotateZ();
+        // Position: EQ (x, y, z) → Irrlicht (x, z, y)
+        // No height offset needed since center is baked into mesh vertices
+        node->setPosition(irr::core::vector3df(x, z, y));
 
-        // Rotate the attachment offset by the object's rotation to get world-space offset
-        // Use -rotZ because Irrlicht rotation is counter-clockwise
-        float radians = -rotZ * 3.14159265f / 180.0f;
-        float cosR = std::cos(radians);
-        float sinR = std::sin(radians);
-        // Rotate (attachOffsetX, attachOffsetZ) by radians
-        // In Irrlicht: X stays X, Z stays Z (both horizontal)
-        float rotatedOffsetX = (attachOffsetX * cosR - attachOffsetZ * sinR) * scaleX;
-        float rotatedOffsetZ = (attachOffsetX * sinR + attachOffsetZ * cosR) * scaleY;
-
-        // Position with rotated attachment offset to place attachment point at spawn point
-        node->setPosition(irr::core::vector3df(x - rotatedOffsetX, z + heightOffset, y - rotatedOffsetZ));
-
-        float rotX = objInstance.placeable->getRotateX();
-        float rotY = objInstance.placeable->getRotateY();
-        // EQ Z rotation (yaw) increases clockwise, Irrlicht Y rotation increases counter-clockwise
-        // Must negate rotZ when mapping to Irrlicht Y rotation
-        node->setRotation(irr::core::vector3df(rotX, -rotZ, rotY));
+        float rotX = objInstance.placeable->getRotateX();  // Always 0
+        float rotY = objInstance.placeable->getRotateY();  // Yaw (matches eqsage Location.rotateY)
+        float rotZ = objInstance.placeable->getRotateZ();  // Secondary rotation (matches eqsage Location.rotateZ)
+        // Transform internal representation → Irrlicht:
+        // Internal (matches eqsage Location): rotateY = yaw around Z-up, rotateZ = secondary
+        // Irrlicht: Y rotation = yaw around Y-up
+        //
+        // eqsage adds +180° for glTF (right-handed), but Irrlicht is left-handed like EQ,
+        // so we do NOT add +180°. Just map internal rotateY → Irrlicht Y rotation.
+        node->setRotation(irr::core::vector3df(rotX, rotY, rotZ));
 
         for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
             node->getMaterial(i).Lighting = lightingEnabled_;
@@ -1731,8 +1735,8 @@ void IrrlichtRenderer::createObjectMeshes() {
         }
 
         if (isLightSource) {
-            // Create light at object position (at object height, not elevated)
-            irr::core::vector3df lightPos(x, z + heightOffset, y);
+            // Create light at object position
+            irr::core::vector3df lightPos(x, z, y);
 
             irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
                 nullptr, lightPos, lightColor, lightRadius * 1.5f);  // Increase effective radius
@@ -1827,6 +1831,20 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
         // In Player mode with FirstPerson camera, hide the player entity
         bool shouldHide = (rendererMode_ == RendererMode::Player && cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerEntityVisible(!shouldHide);
+
+        // Player entity creation is the final step - mark zone as ready
+        // This happens after all network packets are processed and other entities are loaded
+        if (networkReady_) {
+            setLoadingProgress(1.0f, L"Zone ready!");
+            zoneReady_ = true;
+            LOG_INFO(MOD_GRAPHICS, "Zone ready - player entity created and camera initialized");
+        }
+    }
+
+    // Track entity loading for loading screen progress
+    if (result) {
+        loadedEntityCount_++;
+        LOG_TRACE(MOD_GRAPHICS, "Entity created: {} (ID: {}), loaded count: {}", name, spawnId, loadedEntityCount_);
     }
 
     return result;
@@ -1855,6 +1873,46 @@ void IrrlichtRenderer::clearEntities() {
     if (entityRenderer_) {
         entityRenderer_->clearEntities();
     }
+}
+
+// ============================================================================
+// Entity Loading State Management
+// ============================================================================
+
+void IrrlichtRenderer::setExpectedEntityCount(size_t count) {
+    expectedEntityCount_ = count;
+    // Note: Entity count is tracked for informational purposes only.
+    // Zone ready is triggered when the player entity is created (isPlayer=true in createEntity).
+    LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", count, loadedEntityCount_);
+}
+
+void IrrlichtRenderer::notifyEntityLoaded() {
+    // Note: Entity counting is now done in createEntity() since entities are created
+    // synchronously during ZoneSpawns processing. This method is kept for interface
+    // compatibility but is not currently used for counting.
+    // The expected/loaded entity count comparison happens in setExpectedEntityCount().
+}
+
+void IrrlichtRenderer::setNetworkReady(bool ready) {
+    networkReady_ = ready;
+    LOG_DEBUG(MOD_GRAPHICS, "Network ready: {}", ready);
+
+    if (!ready) {
+        // Network not ready means we're zoning, reset entity loading state
+        entitiesLoaded_ = false;
+        expectedEntityCount_ = 0;
+        loadedEntityCount_ = 0;
+        zoneReady_ = false;
+    }
+    // Note: Zone ready is NOT set here. It will be set when the player entity
+    // is created in createEntity() with isPlayer=true. This ensures the loading
+    // screen stays visible until the player model is fully loaded.
+}
+
+void IrrlichtRenderer::checkAndSetZoneReady() {
+    // This method is kept for interface compatibility but zone ready
+    // is now triggered by player entity creation in createEntity().
+    // See createEntity() where isPlayer=true triggers zoneReady_ = true.
 }
 
 bool IrrlichtRenderer::createDoor(uint8_t doorId, const std::string& name,
@@ -2421,6 +2479,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         float zoomDelta = eventReceiver_->getCameraZoomDelta();
         if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
             cameraController_->adjustFollowDistance(zoomDelta);
+            // Immediately update the view with the new zoom distance
+            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_);
             LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
         }
     }

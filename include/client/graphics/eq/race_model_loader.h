@@ -141,8 +141,11 @@ private:
     // Load model from a numbered global#_chr.s3d file
     bool loadModelFromNumberedGlobal(int globalNum, uint16_t raceId, uint8_t gender);
 
-    // Load model from zone-specific _chr.s3d file
+    // Load model from zone-specific _chr.s3d file (clears cache, for current game zone)
     bool loadModelFromZoneChr(const std::string& zoneName, uint16_t raceId, uint8_t gender);
+
+    // Load model from a chr file using otherChrCaches_ (preserves cache, for JSON-specified files)
+    bool loadModelFromCachedChr(const std::string& chrFilename, uint16_t raceId, uint8_t gender);
 
     // Search all loaded global character archives for a model
     bool searchAllGlobalsForModel(uint16_t raceId, uint8_t gender);

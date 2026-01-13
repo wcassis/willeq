@@ -414,6 +414,21 @@ IF(EQT_GRAPHICS)
         fmt::fmt
     )
 
+    # PFS Verify tool (for verifying PFS/S3D archive parsing with JSON output)
+    ADD_EXECUTABLE(pfs_verify
+        tools/pfs_verify.cpp
+        src/client/graphics/eq/pfs.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(pfs_verify PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(pfs_verify
+        ${ZLIB_LIBRARIES}
+        fmt::fmt
+    )
+
     # WLD Dump tool (for analyzing WLD file contents)
     ADD_EXECUTABLE(wld_dump
         tools/wld_dump.cpp

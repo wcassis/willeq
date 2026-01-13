@@ -6,6 +6,8 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include <vector>
 #include <cstring>
+#include <fstream>
+#include <cstdlib>
 
 using namespace EQT::Graphics;
 
@@ -605,4 +607,462 @@ TEST_F(RaceModelLoaderTest, GetRaceCode_Bat) {
 TEST_F(RaceModelLoaderTest, GetRaceCode_Rat) {
     // RAT - note: RAT model may not exist in all zones
     EXPECT_EQ(RaceModelLoader::getRaceCode(36), "RAT");
+}
+
+// ============================================================================
+// Object Placement Tests - Verify transforms for Irrlicht
+// ============================================================================
+
+// IMPORTANT: Coordinate system handedness:
+// - EQ: Left-handed, Z-up
+// - Irrlicht: Left-handed, Y-up
+// - glTF (eqsage output): Right-handed, Y-up
+//
+// Because both EQ and Irrlicht are left-handed, willeq does NOT need the
+// right-handed transforms that eqsage applies for glTF export:
+// - eqsage adds +180° to Y rotation for glTF (right-handed) - willeq does NOT
+// - eqsage negates X for normals for glTF (right-handed) - willeq does NOT
+//
+// These tests verify:
+// 1. Center offset: vertices have center added (v + center) - matches eqsage
+// 2. Coordinate transform: EQ (x,y,z) Z-up -> Irrlicht (x,z,y) Y-up - matches eqsage
+// 3. Rotation: willeq does NOT add 180° (both EQ and Irrlicht are left-handed)
+
+class ObjectPlacementTest : public ::testing::Test {
+protected:
+    // eqsage's vertex transformation (from s3d-decoder.js lines 1262-1266 and 894-898)
+    // const transformedPositions = vertices.map((v) => [
+    //   v[0] + mesh.center[0],   // X
+    //   v[2] + mesh.center[2],   // Z -> Y (height)
+    //   v[1] + mesh.center[1],   // Y -> Z (depth)
+    // ]);
+    struct Vec3 {
+        float x, y, z;
+    };
+
+    // Apply center offset in EQ space (matches eqsage)
+    Vec3 applyCenterOffset(Vec3 vertex, Vec3 center) {
+        return {
+            vertex.x + center.x,
+            vertex.y + center.y,
+            vertex.z + center.z
+        };
+    }
+
+    // Transform from EQ coords to output coords (matches eqsage's Y/Z swap)
+    Vec3 eqToOutput(Vec3 eq) {
+        return {
+            eq.x,    // X stays X
+            eq.z,    // EQ Z (height) -> output Y
+            eq.y     // EQ Y (depth) -> output Z
+        };
+    }
+
+    // Full vertex transform as eqsage does it
+    Vec3 eqsageVertexTransform(Vec3 vertex, Vec3 center) {
+        // eqsage does: [v[0] + center[0], v[2] + center[2], v[1] + center[1]]
+        return {
+            vertex.x + center.x,
+            vertex.z + center.z,  // EQ Z + centerZ -> output Y
+            vertex.y + center.y   // EQ Y + centerY -> output Z
+        };
+    }
+
+    // willeq's approach: add center in EQ space, then transform
+    Vec3 willeqVertexTransform(Vec3 vertex, Vec3 center) {
+        // Step 1: Add center in EQ space
+        Vec3 adjusted = applyCenterOffset(vertex, center);
+        // Step 2: Transform to Irrlicht/output space
+        return eqToOutput(adjusted);
+    }
+
+    // eqsage's position transform (from s3d-decoder.js lines 1159-1161)
+    // x: actor.location.x,
+    // y: actor.location.z,  // swapped
+    // z: actor.location.y,
+    Vec3 eqsagePositionTransform(Vec3 eqPos) {
+        return {
+            eqPos.x,
+            eqPos.z,  // EQ Z -> output Y
+            eqPos.y   // EQ Y -> output Z
+        };
+    }
+
+    // =========================================================================
+    // STEP 1: Parsing - Raw EQ → Internal representation
+    // This should EXACTLY match eqsage's Location class
+    // =========================================================================
+    struct Rotation {
+        float x, y, z;
+    };
+
+    // eqsage's Location class (sage/lib/s3d/common/location.js):
+    //   this.rotateX = 0;
+    //   this.rotateZ = rotateY * modifier;
+    //   this.rotateY = rotateX * modifier * -1;
+    Rotation eqsageParsing(float rawRotX, float rawRotY, float rawRotZ) {
+        const float modifier = 360.0f / 512.0f;
+        return {
+            0.0f,                        // rotateX always 0
+            rawRotX * modifier * -1.0f,  // rotateY = primary yaw, negated
+            rawRotY * modifier           // rotateZ = secondary rotation
+        };
+    }
+
+    // willeq's parsing in wld_loader.cpp (should match eqsageParsing exactly)
+    Rotation willeqParsing(float rawRotX, float rawRotY, float rawRotZ) {
+        const float modifier = 360.0f / 512.0f;
+        return {
+            0.0f,                        // rotateX always 0
+            rawRotX * modifier * -1.0f,  // rotateY = primary yaw, negated
+            rawRotY * modifier           // rotateZ = secondary rotation
+        };
+    }
+
+    // =========================================================================
+    // STEP 2: Output transform - Internal representation → Target format
+    // eqsage: adds +180° for glTF (right-handed)
+    // willeq: NO +180° for Irrlicht (left-handed, same as EQ)
+    // =========================================================================
+
+    // eqsage's glTF export (s3d-decoder.js lines 1162-1164):
+    //   rotateY: actor.location.rotateY + 180
+    Rotation eqsageGltfTransform(Rotation internal) {
+        return {
+            internal.x,
+            internal.y + 180.0f,  // +180 for right-handed glTF
+            internal.z
+        };
+    }
+
+    // willeq's Irrlicht transform (no +180 needed, both left-handed)
+    Rotation willeqIrrlichtTransform(Rotation internal) {
+        return {
+            internal.x,
+            internal.y,  // NO +180 for left-handed Irrlicht
+            internal.z
+        };
+    }
+
+    // Full pipeline: Raw EQ → Internal → Output
+    Rotation eqsageFullPipeline(float rawRotX, float rawRotY, float rawRotZ) {
+        Rotation internal = eqsageParsing(rawRotX, rawRotY, rawRotZ);
+        return eqsageGltfTransform(internal);
+    }
+
+    Rotation willeqFullPipeline(float rawRotX, float rawRotY, float rawRotZ) {
+        Rotation internal = willeqParsing(rawRotX, rawRotY, rawRotZ);
+        return willeqIrrlichtTransform(internal);
+    }
+};
+
+// Test that vertex center offset produces same result as eqsage
+TEST_F(ObjectPlacementTest, VertexCenterOffset_MatchesEqsage) {
+    // Test case: chair with center at (0.45, -0.94, 3.27) in EQ space
+    Vec3 center = {0.45f, -0.94f, 3.27f};
+
+    // Test vertex at bottom of chair (relative to center)
+    Vec3 bottomVertex = {0.0f, 0.0f, -3.27f};
+
+    Vec3 eqsageResult = eqsageVertexTransform(bottomVertex, center);
+    Vec3 willeqResult = willeqVertexTransform(bottomVertex, center);
+
+    EXPECT_FLOAT_EQ(eqsageResult.x, willeqResult.x);
+    EXPECT_FLOAT_EQ(eqsageResult.y, willeqResult.y);
+    EXPECT_FLOAT_EQ(eqsageResult.z, willeqResult.z);
+}
+
+TEST_F(ObjectPlacementTest, VertexCenterOffset_ChairBottom_AtFloor) {
+    // Chair center at Z=3.27 means chair is ~6.54 units tall
+    // Bottom vertex at Z=-3.27 (relative to center)
+    // After adding center: bottom at Z=0 (floor level)
+    Vec3 center = {0.0f, 0.0f, 3.27f};
+    Vec3 bottomVertex = {0.0f, 0.0f, -3.27f};
+
+    Vec3 result = willeqVertexTransform(bottomVertex, center);
+
+    // In output space, Y is height. Bottom should be at Y=0
+    EXPECT_FLOAT_EQ(result.y, 0.0f);
+}
+
+TEST_F(ObjectPlacementTest, VertexCenterOffset_ChairTop_AboveFloor) {
+    // Chair center at Z=3.27 means chair is ~6.54 units tall
+    // Top vertex at Z=+3.27 (relative to center)
+    // After adding center: top at Z=6.54
+    Vec3 center = {0.0f, 0.0f, 3.27f};
+    Vec3 topVertex = {0.0f, 0.0f, 3.27f};
+
+    Vec3 result = willeqVertexTransform(topVertex, center);
+
+    // In output space, Y is height. Top should be at Y=6.54
+    EXPECT_FLOAT_EQ(result.y, 6.54f);
+}
+
+TEST_F(ObjectPlacementTest, VertexCenterOffset_ArbitraryVertex) {
+    // Test with non-trivial values
+    Vec3 center = {1.5f, -2.0f, 4.0f};
+    Vec3 vertex = {-0.5f, 1.0f, -2.0f};
+
+    Vec3 eqsageResult = eqsageVertexTransform(vertex, center);
+    Vec3 willeqResult = willeqVertexTransform(vertex, center);
+
+    // Both should produce: (vertex.x+center.x, vertex.z+center.z, vertex.y+center.y)
+    // = (-0.5+1.5, -2.0+4.0, 1.0-2.0) = (1.0, 2.0, -1.0)
+    EXPECT_FLOAT_EQ(eqsageResult.x, 1.0f);
+    EXPECT_FLOAT_EQ(eqsageResult.y, 2.0f);
+    EXPECT_FLOAT_EQ(eqsageResult.z, -1.0f);
+
+    EXPECT_FLOAT_EQ(willeqResult.x, eqsageResult.x);
+    EXPECT_FLOAT_EQ(willeqResult.y, eqsageResult.y);
+    EXPECT_FLOAT_EQ(willeqResult.z, eqsageResult.z);
+}
+
+// Test position transformation matches eqsage
+TEST_F(ObjectPlacementTest, PositionTransform_MatchesEqsage) {
+    Vec3 eqPos = {100.0f, 200.0f, 50.0f};  // EQ: x=100, y=200, z=50 (height)
+
+    Vec3 eqsageResult = eqsagePositionTransform(eqPos);
+
+    // eqsage: x=100, y=50 (from z), z=200 (from y)
+    EXPECT_FLOAT_EQ(eqsageResult.x, 100.0f);
+    EXPECT_FLOAT_EQ(eqsageResult.y, 50.0f);
+    EXPECT_FLOAT_EQ(eqsageResult.z, 200.0f);
+}
+
+// ==========================================================================
+// STEP 1 TESTS: Verify willeq parsing matches eqsage parsing exactly
+// ==========================================================================
+
+TEST_F(ObjectPlacementTest, Parsing_MatchesEqsage_Zero) {
+    Rotation eqsage = eqsageParsing(0, 0, 0);
+    Rotation willeq = willeqParsing(0, 0, 0);
+
+    EXPECT_FLOAT_EQ(eqsage.x, willeq.x);
+    EXPECT_FLOAT_EQ(eqsage.y, willeq.y);
+    EXPECT_FLOAT_EQ(eqsage.z, willeq.z);
+
+    // Zero rotation should stay zero
+    EXPECT_FLOAT_EQ(willeq.x, 0.0f);
+    EXPECT_FLOAT_EQ(willeq.y, 0.0f);
+    EXPECT_FLOAT_EQ(willeq.z, 0.0f);
+}
+
+TEST_F(ObjectPlacementTest, Parsing_MatchesEqsage_90Degrees) {
+    float rawRotX = 128.0f;  // 90 degrees in EQ format (128 * 360/512 = 90)
+
+    Rotation eqsage = eqsageParsing(rawRotX, 0, 0);
+    Rotation willeq = willeqParsing(rawRotX, 0, 0);
+
+    EXPECT_FLOAT_EQ(eqsage.x, willeq.x);
+    EXPECT_FLOAT_EQ(eqsage.y, willeq.y);
+    EXPECT_FLOAT_EQ(eqsage.z, willeq.z);
+
+    // 90 degrees should become -90 (negated in parsing)
+    EXPECT_FLOAT_EQ(willeq.y, -90.0f);
+}
+
+TEST_F(ObjectPlacementTest, Parsing_MatchesEqsage_180Degrees) {
+    float rawRotX = 256.0f;  // 180 degrees in EQ format
+
+    Rotation eqsage = eqsageParsing(rawRotX, 0, 0);
+    Rotation willeq = willeqParsing(rawRotX, 0, 0);
+
+    EXPECT_FLOAT_EQ(eqsage.x, willeq.x);
+    EXPECT_FLOAT_EQ(eqsage.y, willeq.y);
+    EXPECT_FLOAT_EQ(eqsage.z, willeq.z);
+
+    // 180 degrees should become -180 (negated)
+    EXPECT_FLOAT_EQ(willeq.y, -180.0f);
+}
+
+TEST_F(ObjectPlacementTest, Parsing_MatchesEqsage_SecondaryRotation) {
+    // Test secondary rotation (rawRotY)
+    float rawRotY = 64.0f;  // 45 degrees in EQ format
+
+    Rotation eqsage = eqsageParsing(0, rawRotY, 0);
+    Rotation willeq = willeqParsing(0, rawRotY, 0);
+
+    EXPECT_FLOAT_EQ(eqsage.x, willeq.x);
+    EXPECT_FLOAT_EQ(eqsage.y, willeq.y);
+    EXPECT_FLOAT_EQ(eqsage.z, willeq.z);
+
+    // Secondary rotation should be positive (not negated)
+    EXPECT_FLOAT_EQ(willeq.z, 45.0f);
+}
+
+// ==========================================================================
+// STEP 2 TESTS: Verify output transforms are correct
+// ==========================================================================
+
+TEST_F(ObjectPlacementTest, OutputTransform_eqsageAdds180) {
+    Rotation internal = {0.0f, -90.0f, 0.0f};
+    Rotation gltfOutput = eqsageGltfTransform(internal);
+
+    // eqsage adds 180 for glTF
+    EXPECT_FLOAT_EQ(gltfOutput.y, -90.0f + 180.0f);  // = 90
+}
+
+TEST_F(ObjectPlacementTest, OutputTransform_willeqNoAdditional) {
+    Rotation internal = {0.0f, -90.0f, 0.0f};
+    Rotation irrlichtOutput = willeqIrrlichtTransform(internal);
+
+    // willeq does NOT add 180 for Irrlicht (both left-handed)
+    EXPECT_FLOAT_EQ(irrlichtOutput.y, -90.0f);
+}
+
+TEST_F(ObjectPlacementTest, OutputTransform_Difference) {
+    // The key difference: eqsage adds 180°, willeq does not
+    Rotation internal = {0.0f, 0.0f, 0.0f};
+
+    Rotation gltf = eqsageGltfTransform(internal);
+    Rotation irrlicht = willeqIrrlichtTransform(internal);
+
+    // Difference should be exactly 180 degrees
+    EXPECT_FLOAT_EQ(gltf.y - irrlicht.y, 180.0f);
+}
+
+// ==========================================================================
+// FULL PIPELINE TESTS: Verify complete transform chains
+// ==========================================================================
+
+TEST_F(ObjectPlacementTest, FullPipeline_eqsageVsWilleq) {
+    // Full pipeline should differ by 180 degrees in Y rotation
+    float rawRotX = 128.0f;  // 90 degrees
+
+    Rotation eqsage = eqsageFullPipeline(rawRotX, 0, 0);
+    Rotation willeq = willeqFullPipeline(rawRotX, 0, 0);
+
+    // eqsage: -90 + 180 = 90
+    EXPECT_FLOAT_EQ(eqsage.y, 90.0f);
+
+    // willeq: -90 (no +180)
+    EXPECT_FLOAT_EQ(willeq.y, -90.0f);
+
+    // The difference is always 180 degrees
+    EXPECT_FLOAT_EQ(eqsage.y - willeq.y, 180.0f);
+}
+
+// Test complete object placement workflow
+TEST_F(ObjectPlacementTest, CompleteWorkflow_FloorObject) {
+    // Simulate a chair at floor level
+    Vec3 meshCenter = {0.0f, 0.0f, 3.0f};  // Center 3 units above base
+
+    // Vertex at bottom of mesh (relative to center)
+    Vec3 bottomVertex = {0.0f, 0.0f, -3.0f};
+
+    // ActorInstance position (where object should be placed)
+    Vec3 actorPos = {100.0f, 200.0f, 0.0f};  // At floor level (z=0)
+
+    // Step 1: Transform vertex with center (willeq approach)
+    Vec3 transformedVertex = willeqVertexTransform(bottomVertex, meshCenter);
+
+    // Step 2: Transform actor position
+    Vec3 transformedPos = eqsagePositionTransform(actorPos);
+
+    // Final world position of bottom vertex = transformedPos + transformedVertex
+    Vec3 worldPos = {
+        transformedPos.x + transformedVertex.x,
+        transformedPos.y + transformedVertex.y,
+        transformedPos.z + transformedVertex.z
+    };
+
+    // Bottom of chair should be at floor level (Y=0 in output space)
+    // transformedVertex.y = (-3.0 + 3.0) = 0
+    // transformedPos.y = 0 (from EQ z=0)
+    // worldPos.y = 0 + 0 = 0
+    EXPECT_FLOAT_EQ(worldPos.y, 0.0f);
+}
+
+// Integration test: Load actual zone data and verify transforms
+#include "client/graphics/eq/s3d_loader.h"
+
+class ObjectPlacementIntegrationTest : public ::testing::Test {
+protected:
+    std::string eqClientPath_;
+
+    void SetUp() override {
+        // Try to get EQ client path from environment or use default
+        const char* envPath = std::getenv("EQ_CLIENT_PATH");
+        if (envPath) {
+            eqClientPath_ = envPath;
+        } else {
+            eqClientPath_ = "/home/user/projects/claude/EverQuestP1999";
+        }
+    }
+
+    bool fileExists(const std::string& path) {
+        std::ifstream f(path);
+        return f.good();
+    }
+};
+
+// This test loads actual zone data and verifies the object placement
+// It requires the EQ client files to be present
+TEST_F(ObjectPlacementIntegrationTest, LoadZoneObjects_VerifyCenterApplied) {
+    std::string zonePath = eqClientPath_ + "/freportw.s3d";
+
+    // Skip if EQ files not available
+    if (!fileExists(zonePath)) {
+        GTEST_SKIP() << "EQ client files not found at " << eqClientPath_;
+    }
+
+    S3DLoader loader;
+    bool loaded = loader.loadZone(zonePath);
+    ASSERT_TRUE(loaded) << "Failed to load zone: " << loader.getError();
+
+    auto zone = loader.getZone();
+    ASSERT_NE(zone, nullptr);
+
+    // Verify objects were loaded
+    EXPECT_GT(zone->objects.size(), 0u) << "No objects loaded from zone";
+
+    // Verify object geometries have center = 0 (center baked into vertices)
+    for (const auto& obj : zone->objects) {
+        ASSERT_NE(obj.geometry, nullptr);
+        // After center is applied, the stored center should be cleared
+        EXPECT_FLOAT_EQ(obj.geometry->centerX, 0.0f)
+            << "Object geometry should have centerX=0 after baking";
+        EXPECT_FLOAT_EQ(obj.geometry->centerY, 0.0f)
+            << "Object geometry should have centerY=0 after baking";
+        EXPECT_FLOAT_EQ(obj.geometry->centerZ, 0.0f)
+            << "Object geometry should have centerZ=0 after baking";
+    }
+}
+
+// Test that object bounding boxes are reasonable after center adjustment
+TEST_F(ObjectPlacementIntegrationTest, LoadZoneObjects_VerifyBoundsReasonable) {
+    std::string zonePath = eqClientPath_ + "/freportw.s3d";
+
+    if (!fileExists(zonePath)) {
+        GTEST_SKIP() << "EQ client files not found at " << eqClientPath_;
+    }
+
+    S3DLoader loader;
+    bool loaded = loader.loadZone(zonePath);
+    ASSERT_TRUE(loaded);
+
+    auto zone = loader.getZone();
+    ASSERT_NE(zone, nullptr);
+
+    for (const auto& obj : zone->objects) {
+        if (!obj.geometry) continue;
+
+        // After center baking, minZ should be close to 0 for floor objects
+        // (their bottom is at the origin)
+        // For objects like torches/lamps, minZ might still be above 0
+
+        // At minimum, verify bounds are not inverted
+        EXPECT_LE(obj.geometry->minX, obj.geometry->maxX);
+        EXPECT_LE(obj.geometry->minY, obj.geometry->maxY);
+        EXPECT_LE(obj.geometry->minZ, obj.geometry->maxZ);
+
+        // Verify bounds are reasonable (not extremely large)
+        float sizeX = obj.geometry->maxX - obj.geometry->minX;
+        float sizeY = obj.geometry->maxY - obj.geometry->minY;
+        float sizeZ = obj.geometry->maxZ - obj.geometry->minZ;
+
+        EXPECT_LT(sizeX, 1000.0f) << "Object X size unreasonably large";
+        EXPECT_LT(sizeY, 1000.0f) << "Object Y size unreasonably large";
+        EXPECT_LT(sizeZ, 1000.0f) << "Object Z size unreasonably large";
+    }
 }

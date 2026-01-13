@@ -119,13 +119,13 @@ private:
 #pragma pack(push, 1)
 
 struct WldHeader {
-    uint32_t magic;
-    uint32_t version;
-    uint32_t fragmentCount;
-    uint32_t unk1;
-    uint32_t unk2;
-    uint32_t hashLength;
-    uint32_t unk3;
+    uint32_t magic;           // 0x54503D02 for WLD files
+    uint32_t version;         // 0x00015500 = old format, 0x1000C800 = new format
+    uint32_t fragmentCount;   // Number of fragments in the file
+    uint32_t bspRegionCount;  // Number of BSP regions (was unk1)
+    uint32_t unk2;            // Unknown, skipped
+    uint32_t hashLength;      // Size of encoded string hash table
+    uint32_t unk3;            // Unknown, skipped
 };
 
 struct WldFragmentHeader {
@@ -143,11 +143,15 @@ struct WldFragment04Header {
     uint32_t textureCount;
 };
 
+// Fragment 0x30 - Material Definition
+// Matches eqsage: sage/lib/s3d/materials/material.js
 struct WldFragment30Header {
-    uint32_t flags;
-    uint32_t params1;
-    uint32_t params2;
-    float params3[2];
+    uint32_t flags;           // Usually 0x02 in practice
+    uint32_t parameters;      // Contains MaterialType (mask with ~0x80000000)
+    uint8_t colorR, colorG, colorB, colorA;  // Color tint RGBA
+    float brightness;
+    float scaledAmbient;
+    int32_t bitmapInfoRef;    // Reference to Fragment 0x05 (1-indexed, 0 = none)
 };
 
 struct WldFragment31Header {
@@ -205,9 +209,9 @@ struct WldTexCoordNew {
 };
 
 struct WldNormal {
-    uint8_t x;
-    uint8_t y;
-    uint8_t z;
+    int8_t x;   // Signed: range -128 to 127, divide by 128.0 for [-1, 1]
+    int8_t y;
+    int8_t z;
 };
 
 struct WldPolygon {
@@ -229,14 +233,29 @@ struct WldFragment14Header {
     int32_t ref2;
 };
 
-// Fragment 0x15 - Placeable object instance
+// Fragment 0x15 - Placeable object instance (ActorInstance)
+// This fragment uses flag-based parsing - fields are only present when their flag is set
+// The struct below is NOT used for direct casting - use flag-based parsing instead
+namespace Fragment15Flags {
+    constexpr uint32_t HasCurrentAction = 0x01;
+    constexpr uint32_t HasLocation = 0x02;
+    constexpr uint32_t HasBoundingRadius = 0x04;
+    constexpr uint32_t HasScaleFactor = 0x08;
+    constexpr uint32_t HasSound = 0x10;
+    constexpr uint32_t Active = 0x20;
+    constexpr uint32_t SpriteVolumeOnly = 0x80;
+    constexpr uint32_t HasVertexColorReference = 0x100;
+}
+
+// NOTE: This struct is DEPRECATED - do not use for direct casting
+// Fragment 0x15 is variable-length based on flags
 struct WldFragment15Header {
     uint32_t flags;
     int32_t refId;
     float x, y, z;
     float rotateZ, rotateY, rotateX;
-    float unk;
-    float scaleY, scaleX;
+    float unk;  // Unknown - often 0
+    float scaleY, scaleX;  // Only 2 scale values in format
 };
 
 // Fragment 0x2C - Legacy Mesh (uncompressed float storage)
@@ -312,17 +331,47 @@ struct WldFragment13Header {
 };
 
 // Fragment 0x1B - Light source definition
+// Matches eqsage: sage/lib/s3d/lights/light.js LightSource
+// Variable-length structure with conditional fields based on flags
 struct WldFragment1BHeader {
-    uint32_t flags;
-    uint32_t params1;
-    float color[3];
+    uint32_t flags;       // LightFlags: 0x01=HasCurrentFrame, 0x02=HasSleep, 0x04=HasLightLevels, 0x08=SkipFrames, 0x10=HasColor
+    uint32_t frameCount;  // Number of animation frames
+    // Followed by conditional fields:
+    // [if flags & 0x01] uint32_t currentFrame
+    // [if flags & 0x02] uint32_t sleep
+    // [if flags & 0x04] float lightLevels[frameCount]
+    // [if flags & 0x10] float colors[frameCount * 3] (RGB for each frame)
 };
+
+// Fragment 0x1B flag constants (matches eqsage LightFlags)
+static constexpr uint32_t LIGHT_FLAG_HAS_CURRENT_FRAME = 0x01;
+static constexpr uint32_t LIGHT_FLAG_HAS_SLEEP = 0x02;
+static constexpr uint32_t LIGHT_FLAG_HAS_LIGHT_LEVELS = 0x04;
+static constexpr uint32_t LIGHT_FLAG_SKIP_FRAMES = 0x08;
+static constexpr uint32_t LIGHT_FLAG_HAS_COLOR = 0x10;
 
 // Fragment 0x28 - Light source instance
 struct WldFragment28Header {
     uint32_t flags;
     float x, y, z;
     float radius;
+};
+
+// Fragment 0x2A - Ambient Light Region
+// Matches eqsage: sage/lib/s3d/lights/light.js AmbientLight
+struct WldFragment2AHeader {
+    uint32_t flags;
+    uint32_t regionCount;
+    // Followed by: int32_t regionRefs[regionCount]
+};
+
+// Fragment 0x35 - Global Ambient Light
+// Matches eqsage: sage/lib/s3d/lights/light.js GlobalAmbientLight
+struct WldFragment35Header {
+    uint8_t blue;
+    uint8_t green;
+    uint8_t red;
+    uint8_t alpha;
 };
 
 // Fragment 0x37 - Mesh Animated Vertices (DMTRACKDEF)
@@ -437,12 +486,34 @@ struct SkeletonTrack {
     std::vector<int> parentIndices;  // Parent index for each bone (-1 for roots)
 };
 
-// Light source data
+// Light source data (Fragment 0x1B definition + 0x28 placement)
 struct ZoneLight {
     std::string name;
-    float x, y, z;
-    float r, g, b;
-    float radius;
+    float x, y, z;           // Position from Fragment 0x28
+    float r, g, b;           // Color (first frame if animated)
+    float radius;            // Radius from Fragment 0x28
+
+    // Animation data from Fragment 0x1B (optional)
+    uint32_t flags = 0;
+    uint32_t frameCount = 1;
+    uint32_t currentFrame = 0;
+    uint32_t sleepMs = 0;
+    std::vector<float> lightLevels;              // frameCount elements
+    std::vector<std::tuple<float,float,float>> colors;  // frameCount RGB tuples
+
+    bool isAnimated() const { return frameCount > 1; }
+};
+
+// Ambient light region (Fragment 0x2A)
+struct AmbientLightRegion {
+    std::string name;
+    uint32_t flags = 0;
+    std::vector<int32_t> regionRefs;  // References to BSP regions
+};
+
+// Global ambient light (Fragment 0x35)
+struct GlobalAmbientLight {
+    float r, g, b, a;  // RGBA normalized to 0.0-1.0
 };
 
 // Geometry data structures
@@ -520,6 +591,9 @@ public:
     const std::map<uint32_t, std::shared_ptr<BoneOrientation>>& getBoneOrientations() const { return boneOrientations_; }
     bool hasCharacterData() const { return !skeletonTracks_.empty(); }
     const std::vector<std::shared_ptr<ZoneLight>>& getLights() const { return lights_; }
+    const std::vector<std::shared_ptr<AmbientLightRegion>>& getAmbientLightRegions() const { return ambientLightRegions_; }
+    const std::shared_ptr<GlobalAmbientLight>& getGlobalAmbientLight() const { return globalAmbientLight_; }
+    bool hasGlobalAmbientLight() const { return globalAmbientLight_ != nullptr; }
 
     // BSP tree accessor (for zone line detection)
     const std::shared_ptr<BspTree>& getBspTree() const { return bspTree_; }
@@ -563,7 +637,7 @@ private:
     void parseFragment14(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash, bool oldFormat);
     void parseFragment15(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
-                         const char* hash, bool oldFormat);
+                         int32_t nameRef, const char* hash, bool oldFormat);
     void parseFragment2C(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash, bool oldFormat);
     void parseFragment2D(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
@@ -579,6 +653,9 @@ private:
     void parseFragment1B(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash, bool oldFormat);
     void parseFragment28(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
+    void parseFragment2A(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
+                         int32_t nameRef, const char* hash);
+    void parseFragment35(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
     void parseFragment2F(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
     void parseFragment37(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash);
@@ -609,6 +686,8 @@ private:
     std::map<uint32_t, uint32_t> boneOrientationRefs_;
     std::map<uint32_t, std::shared_ptr<ZoneLight>> lightDefs_;
     std::vector<std::shared_ptr<ZoneLight>> lights_;
+    std::vector<std::shared_ptr<AmbientLightRegion>> ambientLightRegions_;
+    std::shared_ptr<GlobalAmbientLight> globalAmbientLight_;
 
     // Map from fragment index to geometry (for precise bone model lookups)
     std::map<uint32_t, std::shared_ptr<ZoneGeometry>> geometryByFragIndex_;

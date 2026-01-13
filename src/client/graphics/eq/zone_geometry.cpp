@@ -7,6 +7,25 @@
 #include <iostream>
 #include <fstream>
 
+// ===========================================================================
+// UV and Coordinate System Notes
+// ===========================================================================
+// EQ uses a left-handed coordinate system (Z-up), same as DirectX/Irrlicht.
+// UV coordinates in EQ follow DirectX convention (origin at top-left, V increases downward).
+//
+// When comparing to eqsage (which exports to glTF):
+// - eqsage negates V coordinates because glTF uses OpenGL convention (origin at bottom-left)
+// - eqsage negates X positions because glTF uses right-handed coordinates
+// - These transformations are for FORMAT CONVERSION, not bug fixes
+//
+// For Irrlicht rendering, we do NOT need these transformations because:
+// - Irrlicht uses the same UV convention as EQ (DirectX-style, origin top-left)
+// - Irrlicht uses the same coordinate handedness as EQ (left-handed)
+//
+// Character models use flipV because the character model UV data in EQ files
+// is stored with a different convention than zone/object geometry.
+// ===========================================================================
+
 namespace EQT {
 namespace Graphics {
 

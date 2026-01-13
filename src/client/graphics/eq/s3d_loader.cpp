@@ -379,11 +379,37 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
             baseName = baseName.substr(0, suffixPos);
         }
 
-        // Store geometry by base name
+        // Store geometry by base name with center offset applied to vertices
+        // This matches eqsage which adds center to vertex positions before export
         if (!baseName.empty()) {
-            zone_->objectGeometries[baseName] = geom;
-            LOG_DEBUG(MOD_GRAPHICS, "Stored object geometry '{}' ({} verts, {} tris)",
-                baseName, geom->vertices.size(), geom->triangles.size());
+            // Create a copy with center offset applied to vertices
+            auto adjustedGeom = std::make_shared<ZoneGeometry>(*geom);
+
+            // Apply center offset to all vertices (in EQ coordinate space)
+            // This positions vertices at their actual world locations
+            for (auto& v : adjustedGeom->vertices) {
+                v.x += geom->centerX;
+                v.y += geom->centerY;
+                v.z += geom->centerZ;
+            }
+
+            // Update bounding box to match adjusted vertices
+            adjustedGeom->minX += geom->centerX;
+            adjustedGeom->maxX += geom->centerX;
+            adjustedGeom->minY += geom->centerY;
+            adjustedGeom->maxY += geom->centerY;
+            adjustedGeom->minZ += geom->centerZ;
+            adjustedGeom->maxZ += geom->centerZ;
+
+            // Clear center since it's now baked into vertices
+            adjustedGeom->centerX = 0;
+            adjustedGeom->centerY = 0;
+            adjustedGeom->centerZ = 0;
+
+            zone_->objectGeometries[baseName] = adjustedGeom;
+            LOG_DEBUG(MOD_GRAPHICS, "Stored object geometry '{}' ({} verts, {} tris, center applied: {:.2f},{:.2f},{:.2f})",
+                baseName, adjustedGeom->vertices.size(), adjustedGeom->triangles.size(),
+                geom->centerX, geom->centerY, geom->centerZ);
         }
     }
 
@@ -427,28 +453,13 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
             // This works for most single-mesh objects
             if (!geometries.empty()) {
                 // Find a geometry that might match
+                // Use the adjusted geometry from objectGeometries (has center offset applied)
                 std::shared_ptr<ZoneGeometry> geom = nullptr;
 
-                // Extract base name without _ACTORDEF suffix for matching
-                std::string baseName = objName;
-                size_t actorDefPos = baseName.find("_ACTORDEF");
-                if (actorDefPos != std::string::npos) {
-                    baseName = baseName.substr(0, actorDefPos);
-                }
-
-                // Try to match by base name (geometry names have _DMSPRITEDEF suffix)
-                for (const auto& g : geometries) {
-                    // Object geometries typically have names like "OBJECTNAME_DMSPRITEDEF"
-                    std::string upperName = g->name;
-                    std::transform(upperName.begin(), upperName.end(), upperName.begin(),
-                                  [](unsigned char c) { return std::toupper(c); });
-
-                    // Check if geometry name starts with the base object name
-                    if (upperName.find(baseName + "_DMSPRITEDEF") != std::string::npos ||
-                        upperName.find(baseName) == 0) {
-                        geom = g;
-                        break;
-                    }
+                // Try to find in already-adjusted objectGeometries first
+                auto objGeomIt = zone_->objectGeometries.find(objName);
+                if (objGeomIt != zone_->objectGeometries.end()) {
+                    geom = objGeomIt->second;
                 }
 
                 // If no match found, skip this object

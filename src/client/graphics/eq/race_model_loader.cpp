@@ -116,24 +116,70 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
         // Search order depends on useOldModels_ flag
 
         if (useOldModels_) {
-            // Old models mode: try zone-specific first (for zone NPCs like QCM, RAT, etc.)
-            // then fall back to global_chr.s3d
+            // Old models mode: Use JSON-configured S3D files for pre-Luclin models
+            // Search order:
+            // 1. JSON-specified S3D file (from race_models.json)
+            // 2. Current zone's _chr.s3d file
+            // 3. global_chr.s3d
+            // 4. Numbered globals (global2-7_chr.s3d)
 
-            // 1. Try zone-specific _chr.s3d file first (QCM in qeynos2, RAT, SNA, BET, SPI, etc.)
-            if (!currentZoneName_.empty()) {
+            // 1. Try JSON-specified S3D file first
+            std::string jsonS3dFile = getRaceS3DFile(raceId);
+            if (!jsonS3dFile.empty() && !clientPath_.empty()) {
+                // Try to load from the JSON-specified zone chr file
+                // Extract zone name from s3d filename (e.g., "qeynos_chr.s3d" -> "qeynos")
+                std::string zoneName = jsonS3dFile;
+                auto chrPos = zoneName.find("_chr.s3d");
+                if (chrPos != std::string::npos) {
+                    zoneName = zoneName.substr(0, chrPos);
+                    // Check if this is a global file (different loading path)
+                    if (zoneName.find("global") == 0) {
+                        // It's a global file - try global_chr.s3d or numbered global
+                        if (zoneName == "global") {
+                            if (loadModelFromGlobalChr(raceId, gender)) {
+                                modelIt = loadedModels_.find(key);
+                            }
+                        } else {
+                            // Try numbered global (e.g., global4_chr.s3d for Iksar)
+                            int globalNum = 0;
+                            if (zoneName.length() > 6) {
+                                try {
+                                    globalNum = std::stoi(zoneName.substr(6));
+                                } catch (...) {}
+                            }
+                            if (globalNum >= 2 && globalNum <= 7) {
+                                if (!numberedGlobalsLoaded_) {
+                                    loadNumberedGlobalModels();
+                                }
+                                if (loadModelFromNumberedGlobal(globalNum, raceId, gender)) {
+                                    modelIt = loadedModels_.find(key);
+                                }
+                            }
+                        }
+                    } else {
+                        // It's a zone chr file - use cached loading to preserve otherChrCaches_
+                        if (loadModelFromCachedChr(jsonS3dFile, raceId, gender)) {
+                            modelIt = loadedModels_.find(key);
+                        }
+                    }
+                }
+            }
+
+            // 2. If not found, try current zone's _chr.s3d file
+            if (modelIt == loadedModels_.end() && !currentZoneName_.empty()) {
                 if (loadModelFromZoneChr(currentZoneName_, raceId, gender)) {
                     modelIt = loadedModels_.find(key);
                 }
             }
 
-            // 2. If not found in zone, try global_chr.s3d (classic models)
+            // 3. If not found in zone, try global_chr.s3d (classic models)
             if (modelIt == loadedModels_.end()) {
                 if (loadModelFromGlobalChr(raceId, gender)) {
                     modelIt = loadedModels_.find(key);
                 }
             }
 
-            // 3. If still not found, try numbered globals (global2-7_chr.s3d)
+            // 4. If still not found, try numbered globals (global2-7_chr.s3d)
             if (modelIt == loadedModels_.end()) {
                 if (!numberedGlobalsLoaded_) {
                     loadNumberedGlobalModels();
@@ -146,8 +192,8 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
             }
 
             // For old models mode, don't search other zone _chr.s3d files.
-            // Classic models should be in global_chr.s3d, global2-7_chr.s3d,
-            // or the current zone's _chr.s3d. If not found, use placeholder.
+            // Classic models should be in JSON-specified files, global_chr.s3d,
+            // global2-7_chr.s3d, or the current zone's _chr.s3d.
         } else {
             // New models mode: prefer race-specific S3D files (Luclin+ models)
 

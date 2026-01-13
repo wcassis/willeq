@@ -916,6 +916,7 @@ private:
 	// Entity tracking
 	std::map<uint16_t, Entity> m_entities;
 	uint16_t m_my_spawn_id = 0;
+	bool m_player_graphics_entity_pending = false;  // True when player entity needs to be created on renderer after zoning
 
 	// Pet tracking
 	uint16_t m_pet_spawn_id = 0;                                      // Our pet's spawn ID (0 = no pet)

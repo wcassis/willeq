@@ -5820,12 +5820,16 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 		LOG_INFO(MOD_ZONE, "Zone connection complete! Client is now in the zone.");
 
 #ifdef EQT_HAS_GRAPHICS
-		// Signal renderer that zone is ready for display
+		// Signal renderer that network phase is complete and entities are ready
+		// The renderer will verify all entities are loaded before showing the game world
 		// Note: Player entity creation is deferred to when we receive the first ClientUpdate
 		// with our spawn_id, since m_my_spawn_id isn't set yet at this point
 		if (m_renderer) {
-			m_renderer->setLoadingProgress(1.0f, L"Zone ready!");
-			m_renderer->setZoneReady(true);
+			// Tell renderer how many entities were received from the server
+			m_renderer->setExpectedEntityCount(m_entities.size());
+			// Network phase is complete - renderer will check if all entities loaded
+			m_renderer->setNetworkReady(true);
+			LOG_DEBUG(MOD_ZONE, "Set expected entity count to {}, network ready", m_entities.size());
 		}
 #endif
 
@@ -5939,6 +5943,10 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		m_heading = 90.0f - server_h;
 		if (m_heading < 0.0f) m_heading += 360.0f;
 		if (m_heading >= 360.0f) m_heading -= 360.0f;
+
+		// Track whether we need to create player entity on renderer
+		bool needPlayerEntityCreation = false;
+
 		// Also update our spawn ID if not set
 		if (m_my_spawn_id == 0) {
 			m_my_spawn_id = spawn_id;
@@ -5968,51 +5976,61 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				}
 			}
 
+			needPlayerEntityCreation = true;
+		}
+
 #ifdef EQT_HAS_GRAPHICS
-			// Now create the player entity - this is deferred from OnZoneLoadedGraphics
-			// to ensure all player data (inventory, appearance, position) has been received
-			if (m_graphics_initialized && m_renderer) {
-				auto playerIt = m_entities.find(m_my_spawn_id);
-				if (playerIt != m_entities.end()) {
-					const Entity& entity = playerIt->second;
-					EQT::Graphics::EntityAppearance appearance;
-					appearance.face = entity.face;
-					appearance.haircolor = entity.haircolor;
-					appearance.hairstyle = entity.hairstyle;
-					appearance.beardcolor = entity.beardcolor;
-					appearance.beard = entity.beard;
-					appearance.texture = entity.equip_chest2;
-					appearance.helm = entity.helm;
-					for (int i = 0; i < 9; i++) {
-						appearance.equipment[i] = entity.equipment[i];
-						appearance.equipment_tint[i] = entity.equipment_tint[i];
-					}
+		// Also create player entity if it's pending (after zoning, entities were cleared)
+		if (m_player_graphics_entity_pending && m_my_spawn_id != 0) {
+			needPlayerEntityCreation = true;
+		}
 
-					LOG_INFO(MOD_ENTITY, "Creating player entity {} ({}) from ClientUpdate - equipment: primary={} secondary={}",
-					         m_my_spawn_id, entity.name, appearance.equipment[7], appearance.equipment[8]);
-
-					// Create the player entity with current position from ClientUpdate
-					m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
-					                         x, y, z, h_player,
-					                         true, entity.gender, appearance, false, false);
-
-					// Set player spawn ID AFTER entity is created so the animated node
-					// can be marked for the player rotation fix
-					m_renderer->setPlayerSpawnId(m_my_spawn_id);
-
-					// Update inventory model view with player appearance
-					m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-				} else {
-					LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", m_my_spawn_id);
+		// Now create the player entity - this is deferred from OnZoneLoadedGraphics
+		// to ensure all player data (inventory, appearance, position) has been received
+		if (needPlayerEntityCreation && m_graphics_initialized && m_renderer) {
+			auto playerIt = m_entities.find(m_my_spawn_id);
+			if (playerIt != m_entities.end()) {
+				const Entity& entity = playerIt->second;
+				EQT::Graphics::EntityAppearance appearance;
+				appearance.face = entity.face;
+				appearance.haircolor = entity.haircolor;
+				appearance.hairstyle = entity.hairstyle;
+				appearance.beardcolor = entity.beardcolor;
+				appearance.beard = entity.beard;
+				appearance.texture = entity.equip_chest2;
+				appearance.helm = entity.helm;
+				for (int i = 0; i < 9; i++) {
+					appearance.equipment[i] = entity.equipment[i];
+					appearance.equipment_tint[i] = entity.equipment_tint[i];
 				}
+
+				LOG_INFO(MOD_ENTITY, "Creating player entity {} ({}) from ClientUpdate - equipment: primary={} secondary={}",
+				         m_my_spawn_id, entity.name, appearance.equipment[7], appearance.equipment[8]);
+
+				// Create the player entity with current position from ClientUpdate
+				m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
+				                         x, y, z, h_player,
+				                         true, entity.gender, appearance, false, false);
+
+				// Set player spawn ID AFTER entity is created so the animated node
+				// can be marked for the player rotation fix
+				m_renderer->setPlayerSpawnId(m_my_spawn_id);
+
+				// Update inventory model view with player appearance
+				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+
+				// Player entity has been created, clear the pending flag
+				m_player_graphics_entity_pending = false;
+			} else {
+				LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", m_my_spawn_id);
 			}
+		}
 #endif
 
-			// Start the update loop when we first receive our ClientUpdate
-			// This indicates we're fully in the game world
-			if (!m_update_running) {
-				StartUpdateLoop();
-			}
+		// Start the update loop when we first receive our ClientUpdate
+		// This indicates we're fully in the game world
+		if (!m_update_running) {
+			StartUpdateLoop();
 		}
 		
 		// Update our entity in the entity list
@@ -10841,6 +10859,8 @@ void EverQuest::CleanupZone()
 	if (m_renderer) {
 		m_renderer->unloadZone();
 	}
+	// Player entity will need to be recreated on renderer after zoning
+	m_player_graphics_entity_pending = true;
 #endif
 
 	// Reset zone connection state flags
@@ -13952,8 +13972,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// If zone is already fully connected when graphics init, set zone ready
 	if (IsFullyZonedIn() && m_renderer) {
-		m_renderer->setZoneReady(true);
-		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering");
+		m_renderer->setExpectedEntityCount(m_entities.size());
+		m_renderer->setNetworkReady(true);
+		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering with {} entities", m_entities.size());
 	}
 
 	return true;

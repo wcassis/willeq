@@ -205,7 +205,10 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     // Calculate scale and bounding box info first
     float scale = static_cast<float>(size) / 100.0f;
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
-    float heightOffset = -bbox.MinEdge.Y * scale;
+
+    // With center baked into mesh vertices (matching eqsage), the mesh origin
+    // is already at the "hinge edge" (one edge of the door). No height offset needed.
+    float heightOffset = 0.0f;
 
     // Calculate mesh dimensions - determine which axis is the door's width
     // Door meshes are typically thin (small depth) and wide (large width)
@@ -217,9 +220,12 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
               bbox.MinEdge.Z, bbox.MaxEdge.Z, extentX, extentZ);
 
     // The door's width is the larger of X or Z (depth is the smaller one)
-    // Offset along the width axis to put the hinge edge at the pivot point
+    // With center baked, one edge (hinge) is already near the origin
+    // We need to offset to put that edge exactly at the pivot point
     bool widthIsX = (extentX >= extentZ);
-    float hingeOffset = (widthIsX ? extentX : extentZ) / 2.0f;
+    // Use the max edge value (should be ~0 after center baking) as the offset
+    // This puts the hinge edge at the pivot point
+    float hingeOffset = widthIsX ? bbox.MaxEdge.X * scale : bbox.MaxEdge.Z * scale;
 
     // Create pivot node at door's world position (this is the hinge point)
     // EQ Z-up to Irrlicht Y-up: (x, y, z) -> (x, z, y)
@@ -261,7 +267,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
 
     // Apply rotation to pivot node (this rotates the door around the hinge)
     // Door heading is in EQ 512 format (0-512), convert to degrees
-    // Add 90 degrees to align door correctly in frame
+    // Add 90 degrees to align door correctly in frame (doors face perpendicular to heading)
     // When closed: door is at openHeading (spawn + incline, appears closed)
     // When open: door is at closedHeading (spawn heading, appears open/rotated away)
     float currentHeading = initiallyOpen ? visual.closedHeading : visual.openHeading;

@@ -49,7 +49,18 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
         }
     }
 
-    // 4. Add/override with zone textures (zone takes precedence)
+    // 4. Add textures from JSON-specified chr files (otherChrCaches_)
+    // These are zone-specific chr files loaded for races specified in race_models.json
+    // (e.g., steamfont_chr.s3d for kobolds, qeynos_chr.s3d for qeynos citizens)
+    for (const auto& [filename, cache] : otherChrCaches_) {
+        for (const auto& [name, tex] : cache.textures) {
+            if (merged.find(name) == merged.end()) {
+                merged[name] = tex;
+            }
+        }
+    }
+
+    // 5. Add/override with zone textures (current zone takes highest precedence)
     for (const auto& [name, tex] : zoneTextures_) {
         merged[name] = tex;
     }

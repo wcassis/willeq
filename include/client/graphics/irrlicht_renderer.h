@@ -601,8 +601,17 @@ public:
     void showNoteWindow(const std::string& text, uint8_t type);
 
     // Zone ready state - controls whether to show loading screen
+    // Note: zoneReady is only true when BOTH network AND graphics are ready
     void setZoneReady(bool ready) { zoneReady_ = ready; }
     bool isZoneReady() const { return zoneReady_; }
+
+    // Entity loading state - tracks when all entities have been fully loaded
+    void setExpectedEntityCount(size_t count);  // Set expected number of entities from ZoneSpawns
+    void notifyEntityLoaded();  // Called when an entity has finished loading (model/texture/animation)
+    bool areEntitiesLoaded() const { return entitiesLoaded_; }
+    void setNetworkReady(bool ready);  // Called when network packet exchange is complete
+    bool isNetworkReady() const { return networkReady_; }
+    void checkAndSetZoneReady();  // Check if both network and graphics are ready
 
     // Loading progress for zone transitions
     void setLoadingProgress(float progress, const std::wstring& text) {
@@ -710,6 +719,10 @@ private:
     RendererConfig config_;
     bool initialized_ = false;
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
+    bool networkReady_ = false;  // True when network packet exchange is complete
+    bool entitiesLoaded_ = false;  // True when all entities have been loaded with models/textures
+    size_t expectedEntityCount_ = 0;  // Expected number of entities from ZoneSpawns
+    size_t loadedEntityCount_ = 0;  // Number of entities fully loaded so far
     float loadingProgress_ = 0.0f;  // Loading progress for zone transitions (0.0 - 1.0)
     std::wstring loadingText_ = L"Initializing...";  // Loading stage text
     std::wstring loadingTitle_ = L"EverQuest";  // Loading screen title
