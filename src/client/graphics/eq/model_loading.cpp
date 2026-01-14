@@ -928,8 +928,13 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
     }
 
     if (codesToTry.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No codes to try for race {} in {}", raceId, chrFilename);
         return false;
     }
+
+    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching {} ({} chars) for race {} with codes: {}",
+              chrFilename, characters.size(), raceId,
+              [&]() { std::string s; for (const auto& c : codesToTry) s += c + " "; return s; }());
 
     // Search cached characters for matching race code
     for (const std::string& codeToTry : codesToTry) {
@@ -938,13 +943,21 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                        [](unsigned char c) { return std::toupper(c); });
 
         for (const auto& character : characters) {
-            if (!character || character->parts.empty()) {
+            if (!character) {
+                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader:   Skipping null character");
+                continue;
+            }
+            if (character->parts.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader:   Skipping '{}' - no parts (skinned={}, raw={})",
+                          character->name, character->partsWithTransforms.size(), character->rawParts.size());
                 continue;
             }
 
             std::string charName = character->name;
             std::transform(charName.begin(), charName.end(), charName.begin(),
                            [](unsigned char c) { return std::toupper(c); });
+
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader:   Checking char '{}' for code '{}'", charName, upperCode);
 
             if (charName.find(upperCode) != std::string::npos) {
                 // Found a match - select default body and head parts
