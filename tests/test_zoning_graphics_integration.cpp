@@ -685,6 +685,114 @@ TEST_F(ZoningGraphicsIntegrationTest, MultipleZoneTransitionsWithGraphics) {
     EXPECT_GE(successfulTransitions, 1) << "Expected at least one successful zone transition";
 }
 
+/**
+ * Test that camera collision is properly cleared during zone transitions.
+ *
+ * This test verifies the fix for a use-after-free crash that occurred when:
+ * 1. Player zones in near a zone line
+ * 2. Player moves to trigger zoning
+ * 3. During zone unload, the triangle selector was freed BEFORE the camera's
+ *    reference to it was cleared, causing a crash in setFollowPosition()
+ *
+ * The fix ensures the camera collision manager is cleared BEFORE the zone
+ * triangle selector is dropped.
+ */
+TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
+    ASSERT_TRUE(createClientWithGraphics()) << "Failed to create client with graphics";
+
+    // Wait for initial zone-in
+    std::cout << "Waiting for initial zone-in..." << std::endl;
+    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
+        << "Timed out waiting for initial zone-in";
+
+#ifdef EQT_HAS_GRAPHICS
+    // Wait for graphics zone ready
+    std::cout << "Waiting for graphics zone ready..." << std::endl;
+    ASSERT_TRUE(waitForZoneReady(30000))
+        << "Timed out waiting for graphics zone ready";
+
+    auto* renderer = eq_->GetRenderer();
+    ASSERT_NE(renderer, nullptr) << "Renderer is null";
+
+    std::string currentZone = eq_->GetCurrentZoneName();
+    std::cout << "Initial zone: " << currentZone << std::endl;
+
+    // Get a zone line in this zone
+    ZoneLineInfo zoneLine = getZoneLineCenter(currentZone, 0);
+    if (!zoneLine.found) {
+        GTEST_SKIP() << "No zone lines defined for zone: " << currentZone;
+    }
+
+    std::cout << "Testing camera safety during zone transition to " << zoneLine.destinationZone << std::endl;
+
+    // Set camera mode to Follow (which uses collision detection)
+    renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+
+    // Move player position near the zone line
+    eq_->SetPosition(zoneLine.x, zoneLine.y, zoneLine.z);
+
+    // Process frames while triggering zone change
+    // This is where the crash used to occur - during zone unload, if processFrame()
+    // was called while the triangle selector was being freed but before the camera
+    // collision was cleared, it would crash in setFollowPosition()
+    std::cout << "Triggering zone transition and processing frames..." << std::endl;
+
+    int frameCount = 0;
+    bool zoneChangeStarted = false;
+
+    for (int i = 0; i < 200; i++) {
+        EQ::EventLoop::Get().Process();
+        eq_->UpdateMovement();
+
+        // Process graphics frame - this is where the crash would occur
+        float deltaTime = getDeltaTime();
+        bool frameOk = renderer->processFrame(deltaTime);
+        frameCount++;
+
+        if (!frameOk) {
+            std::cerr << "Graphics frame processing failed at frame " << frameCount << std::endl;
+            FAIL() << "Graphics window closed or crashed during zone transition";
+        }
+
+        // Check if zone change started (no longer fully zoned in)
+        if (eq_->IsFullyZonedIn() == false && !zoneChangeStarted) {
+            zoneChangeStarted = true;
+            std::cout << "Zone change started at frame " << frameCount << std::endl;
+        }
+
+        std::this_thread::sleep_for(16ms);
+
+        // If zone change completed and we're back in a zone, we're done
+        if (zoneChangeStarted && eq_->IsFullyZonedIn()) {
+            std::cout << "Zone change completed at frame " << frameCount << std::endl;
+            break;
+        }
+    }
+
+    if (!zoneChangeStarted) {
+        GTEST_SKIP() << "Zone line did not trigger (player may not have been close enough)";
+    }
+
+    // Wait for new zone to fully load
+    if (!eq_->IsFullyZonedIn()) {
+        ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
+            << "Timed out waiting for zone-in after transition";
+    }
+
+    // Wait for new zone graphics
+    ASSERT_TRUE(waitForZoneReady(30000))
+        << "Timed out waiting for graphics in new zone";
+
+    std::string newZone = eq_->GetCurrentZoneName();
+    std::cout << "Successfully transitioned to: " << newZone << std::endl;
+    std::cout << "Camera collision remained safe throughout " << frameCount << " frames" << std::endl;
+
+    // Verify we're in a different zone or same zone (zone line may loop back)
+    EXPECT_TRUE(eq_->IsFullyZonedIn()) << "Not fully zoned in after transition";
+    EXPECT_TRUE(renderer->isZoneReady()) << "Zone graphics not ready after transition";
+#endif
+}
+
 int main(int argc, char **argv) {
     // Parse command line for config path
     for (int i = 1; i < argc; i++) {

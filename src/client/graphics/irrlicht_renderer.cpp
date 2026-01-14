@@ -1537,15 +1537,16 @@ void IrrlichtRenderer::unloadZone() {
     // Reset animated texture manager
     animatedTextureManager_.reset();
 
-    // Remove zone collision selector
+    // Clear camera collision selector FIRST to prevent use-after-free during zone transitions
+    // This must happen BEFORE dropping zoneTriangleSelector_ to avoid race conditions
+    if (cameraController_) {
+        cameraController_->setCollisionManager(nullptr, nullptr);
+    }
+
+    // Now safe to remove zone collision selector
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
-    }
-
-    // Clear camera collision selector to prevent use-after-free during zone transitions
-    if (cameraController_) {
-        cameraController_->setCollisionManager(nullptr, nullptr);
     }
 
     // Remove zone mesh
