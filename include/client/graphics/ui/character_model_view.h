@@ -80,6 +80,24 @@ public:
     int getWidth() const { return width_; }
     int getHeight() const { return height_; }
 
+    // Test/debug accessors
+    bool hasCharacterModel() const { return characterNode_ != nullptr; }
+    bool hasPrimaryWeapon() const { return primaryWeaponNode_ != nullptr; }
+    bool hasSecondaryWeapon() const { return secondaryWeaponNode_ != nullptr; }
+    uint16_t getCurrentRaceId() const { return currentRaceId_; }
+    uint8_t getCurrentGender() const { return currentGender_; }
+    uint32_t getPrimaryWeaponId() const { return currentPrimaryId_; }
+    uint32_t getSecondaryWeaponId() const { return currentSecondaryId_; }
+
+    // Check if model has textures applied (at least one material with a texture)
+    bool hasTextures() const;
+
+    // Check if model is animating (has animation playing)
+    bool isAnimating() const;
+
+    // Get number of materials on the character model
+    uint32_t getMaterialCount() const;
+
 private:
     // Setup helpers
     void setupScene();

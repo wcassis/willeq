@@ -785,5 +785,31 @@ void CharacterModelView::renderToTexture() {
     driver_->setRenderTarget(nullptr, false, false);
 }
 
+bool CharacterModelView::hasTextures() const {
+    if (!characterNode_) return false;
+
+    // Check if any material has a texture
+    for (irr::u32 i = 0; i < characterNode_->getMaterialCount(); ++i) {
+        const irr::video::SMaterial& mat = characterNode_->getMaterial(i);
+        if (mat.getTexture(0) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CharacterModelView::isAnimating() const {
+    if (!characterNode_) return false;
+
+    // Check if the character has an animation playing
+    return characterNode_->getAnimationSpeed() > 0.0f &&
+           characterNode_->getEndFrame() > characterNode_->getStartFrame();
+}
+
+uint32_t CharacterModelView::getMaterialCount() const {
+    if (!characterNode_) return 0;
+    return characterNode_->getMaterialCount();
+}
+
 } // namespace ui
 } // namespace eqt

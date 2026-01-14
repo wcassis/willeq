@@ -290,3 +290,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_zoning_graphics_integration GTest::gtest_main willeq_core)
     # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
 ENDIF()
+
+# Integration test: Inventory Window Model View (connects to real EQEmu server with graphics enabled)
+# This test verifies the inventory window paperdoll character model loads, has textures, and animates.
+# Run manually with: DISPLAY=:99 ./bin/test_inventory_model_view
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_inventory_model_view
+        test_inventory_model_view.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_inventory_model_view PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_inventory_model_view GTest::gtest_main willeq_core)
+    # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
+ENDIF()

@@ -673,6 +673,14 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         }
     }
 
+    // Initialize inventory window model view now that entity renderer is available
+    // This must happen after entityRenderer_ is created since it needs the race model loader
+    if (windowManager_ && entityRenderer_) {
+        windowManager_->initModelView(smgr_,
+                                      entityRenderer_->getRaceModelLoader(),
+                                      entityRenderer_->getEquipmentModelLoader());
+    }
+
     globalAssetsLoaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "Global assets loaded successfully");
     return true;

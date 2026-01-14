@@ -98,6 +98,8 @@ public:
                              const EQT::Graphics::EntityAppearance& appearance);
     void updateModelView(float deltaTimeMs);
     bool hasModelView() const { return modelView_ != nullptr; }
+    CharacterModelView* getModelView() { return modelView_.get(); }
+    const CharacterModelView* getModelView() const { return modelView_.get(); }
 
 protected:
     void renderContent(irr::video::IVideoDriver* driver,
