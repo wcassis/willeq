@@ -521,5 +521,17 @@ void DoorManager::clearDoors()
     LOG_DEBUG(MOD_GRAPHICS, "Cleared all doors");
 }
 
+std::vector<irr::scene::IMeshSceneNode*> DoorManager::getDoorSceneNodes() const
+{
+    std::vector<irr::scene::IMeshSceneNode*> nodes;
+    nodes.reserve(doors_.size());
+    for (const auto& [id, visual] : doors_) {
+        if (visual.sceneNode) {
+            nodes.push_back(visual.sceneNode);
+        }
+    }
+    return nodes;
+}
+
 } // namespace Graphics
 } // namespace EQT

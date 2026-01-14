@@ -14256,6 +14256,9 @@ void EverQuest::LoadZoneGraphics() {
 	}
 	LOG_DEBUG(MOD_GRAPHICS, "Created {} doors", m_doors.size());
 
+	// Set up collision detection now that zone, objects, and doors are all loaded
+	m_renderer->setupZoneCollision();
+
 	// Phase 14: Camera, lighting, final setup
 	SetLoadingPhase(LoadingPhase::GRAPHICS_FINALIZING, "Preparing world...");
 

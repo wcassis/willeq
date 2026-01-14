@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 #include <memory>
 #include <cmath>
 
@@ -94,6 +95,9 @@ public:
 
     // Get door count
     size_t getDoorCount() const { return doors_.size(); }
+
+    // Get all door scene nodes for collision detection
+    std::vector<irr::scene::IMeshSceneNode*> getDoorSceneNodes() const;
 
 private:
     // Find matching mesh in zone objects by name

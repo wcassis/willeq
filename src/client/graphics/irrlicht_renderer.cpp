@@ -667,6 +667,10 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     // Create door manager (if not already created)
     if (!doorManager_) {
         doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
+        // If zone was already loaded before doorManager_ was created, set it now
+        if (currentZone_) {
+            doorManager_->setZone(currentZone_);
+        }
     }
 
     globalAssetsLoaded_ = true;
@@ -1627,8 +1631,8 @@ void IrrlichtRenderer::createZoneMesh() {
                 zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
 
-            // Set up collision detection using the zone mesh
-            setupZoneCollision();
+            // NOTE: Collision detection is now set up in setupZoneCollision() which should
+            // be called AFTER objects and doors are created to include them in collision.
 
             // Initialize animated texture manager for zone textures
             animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
@@ -4033,24 +4037,74 @@ void IrrlichtRenderer::setupZoneCollision() {
         zoneTriangleSelector_ = nullptr;
     }
 
-    if (!zoneMeshNode_ || !smgr_) {
+    if (!smgr_) {
         return;
     }
 
-    // Create triangle selector from zone mesh
-    zoneTriangleSelector_ = smgr_->createTriangleSelectorFromBoundingBox(zoneMeshNode_);
-    // For more accurate collision, use createTriangleSelector instead (slower but precise)
-    // But that can be very slow for large zone meshes, so let's try octree selector
-    irr::scene::IMesh* mesh = zoneMeshNode_->getMesh();
-    if (mesh) {
-        // Use octree selector for better performance on large meshes
-        zoneTriangleSelector_ = smgr_->createOctreeTriangleSelector(mesh, zoneMeshNode_, 128);
+    // Create a meta triangle selector to combine zone, objects, and doors
+    irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
+    if (!metaSelector) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create meta triangle selector");
+        return;
     }
 
-    if (zoneTriangleSelector_) {
-        zoneMeshNode_->setTriangleSelector(zoneTriangleSelector_);
-        LOG_DEBUG(MOD_GRAPHICS, "Zone triangle selector created (Irrlicht collision enabled)");
+    int selectorCount = 0;
+
+    // Add zone mesh selector
+    if (zoneMeshNode_) {
+        irr::scene::IMesh* mesh = zoneMeshNode_->getMesh();
+        if (mesh) {
+            irr::scene::ITriangleSelector* zoneSelector =
+                smgr_->createOctreeTriangleSelector(mesh, zoneMeshNode_, 128);
+            if (zoneSelector) {
+                metaSelector->addTriangleSelector(zoneSelector);
+                zoneMeshNode_->setTriangleSelector(zoneSelector);
+                zoneSelector->drop();
+                selectorCount++;
+                LOG_DEBUG(MOD_GRAPHICS, "Added zone mesh to collision (octree selector)");
+            }
+        }
     }
+
+    // Add placeable object selectors
+    for (auto* objectNode : objectNodes_) {
+        if (objectNode && objectNode->getMesh()) {
+            irr::scene::ITriangleSelector* objSelector =
+                smgr_->createTriangleSelector(objectNode->getMesh(), objectNode);
+            if (objSelector) {
+                metaSelector->addTriangleSelector(objSelector);
+                objectNode->setTriangleSelector(objSelector);
+                objSelector->drop();
+                selectorCount++;
+            }
+        }
+    }
+    if (!objectNodes_.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Added {} placeable objects to collision", objectNodes_.size());
+    }
+
+    // Add door selectors
+    if (doorManager_) {
+        auto doorNodes = doorManager_->getDoorSceneNodes();
+        for (auto* doorNode : doorNodes) {
+            if (doorNode && doorNode->getMesh()) {
+                irr::scene::ITriangleSelector* doorSelector =
+                    smgr_->createTriangleSelector(doorNode->getMesh(), doorNode);
+                if (doorSelector) {
+                    metaSelector->addTriangleSelector(doorSelector);
+                    doorNode->setTriangleSelector(doorSelector);
+                    doorSelector->drop();
+                    selectorCount++;
+                }
+            }
+        }
+        if (!doorNodes.empty()) {
+            LOG_DEBUG(MOD_GRAPHICS, "Added {} doors to collision", doorNodes.size());
+        }
+    }
+
+    zoneTriangleSelector_ = metaSelector;
+    LOG_DEBUG(MOD_GRAPHICS, "Zone collision setup complete ({} selectors)", selectorCount);
 
     // Get collision manager
     collisionManager_ = smgr_->getSceneCollisionManager();

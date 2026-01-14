@@ -421,6 +421,10 @@ public:
     void setDoorState(uint8_t doorId, bool open, bool userInitiated = false);
     void clearDoors();
 
+    // Collision setup - call after zone, objects, and doors are all loaded
+    // Creates a combined collision selector including zone geometry, placeables, and doors
+    void setupZoneCollision();
+
     // Door interaction callback (called when player clicks door or presses U key)
     using DoorInteractCallback = std::function<void(uint8_t doorId)>;
     void setDoorInteractCallback(DoorInteractCallback callback) { doorInteractCallback_ = callback; }
@@ -839,7 +843,6 @@ private:
                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
     // Find ground Z at position. currentZ is model center (server Z), modelYOffset is offset from center to feet.
     float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
-    void setupZoneCollision();  // Create triangle selector for zone mesh
 
     // Repair mode methods
     irr::scene::ISceneNode* findZoneObjectAtScreenPosition(int screenX, int screenY);

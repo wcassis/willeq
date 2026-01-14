@@ -220,6 +220,24 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_graphics)
 ENDIF()
 
+# Test door loading (unit tests + graphics tests)
+# Unit tests run without display, graphics tests need DISPLAY=:99
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_door_loading
+        test_door_loading.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_door_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_door_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY})
+    GTEST_DISCOVER_TESTS(test_door_loading)
+ENDIF()
+
 # Integration test: Zoning (connects to real EQEmu server)
 # This test is NOT auto-discovered because it requires a running server.
 # Run manually with: ./bin/test_zoning_integration
