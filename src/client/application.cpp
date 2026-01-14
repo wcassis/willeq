@@ -211,9 +211,10 @@ void Application::mainLoop() {
                 m_fullyConnected = true;
 
 #ifdef EQT_HAS_GRAPHICS
+                // NOTE: Zone graphics are now loaded automatically via the LoadingPhase system.
+                // LoadZoneGraphics() is called from OnGameStateComplete() when the game state is ready.
+                // We only need to load the hotbar config here.
                 if (m_config.graphicsEnabled && m_eqClient) {
-                    LOG_INFO(MOD_GRAPHICS, "Zone connected, loading zone graphics");
-                    m_eqClient->OnZoneLoadedGraphics();
                     m_eqClient->LoadHotbarConfig();
                 }
 #endif

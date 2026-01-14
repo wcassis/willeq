@@ -997,12 +997,10 @@ int main(int argc, char *argv[]) {
 				fully_connected_announced = true;
 
 #ifdef EQT_HAS_GRAPHICS
-				// Load zone graphics after zone connection (graphics should already be initialized)
+				// NOTE: Zone graphics are now loaded automatically via the LoadingPhase system.
+				// LoadZoneGraphics() is called from OnGameStateComplete() when the game state is ready.
+				// We only need to load the hotbar config here.
 				if (graphics_enabled && graphics_initialized && !eq_list.empty()) {
-					LOG_INFO(MOD_GRAPHICS, "Zone connected, loading zone graphics");
-					eq_list[0]->OnZoneLoadedGraphics();
-					LOG_DEBUG(MOD_GRAPHICS, "Zone graphics loaded");
-
 					// Load hotbar config from per-character config file
 					eq_list[0]->LoadHotbarConfig();
 				}

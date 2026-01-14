@@ -681,6 +681,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_login_connection_manager->OnPacketRecv(std::bind(&EverQuest::LoginOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
 
+	SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 	m_login_connection_manager->Connect(m_host, m_port);
 }
 
@@ -710,6 +711,109 @@ EverQuest::~EverQuest()
 	m_movement_history.clear();
 }
 
+// Loading phase tracking implementation
+void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
+	if (m_loading_phase == phase) {
+		return;  // No change
+	}
+
+	m_loading_phase = phase;
+	if (statusText) {
+		m_loading_status_text = statusText;
+	} else {
+		m_loading_status_text = GetLoadingStatusText();
+	}
+
+	int phaseNum = static_cast<int>(phase);
+	float progress = GetLoadingProgress();
+	LOG_INFO(MOD_MAIN, "[LOADING][Phase {}/15] ({:.0f}%) {}",
+	         phaseNum, progress * 100.0f, m_loading_status_text);
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		std::wstring wstatus(m_loading_status_text, m_loading_status_text + strlen(m_loading_status_text));
+		m_renderer->setLoadingProgress(progress, wstatus.c_str());
+	}
+#endif
+}
+
+float EverQuest::GetLoadingProgress() const {
+	switch (m_loading_phase) {
+		// Connection phases: 0% -> 25%
+		case LoadingPhase::DISCONNECTED:             return 0.00f;
+		case LoadingPhase::LOGIN_CONNECTING:         return 0.02f;
+		case LoadingPhase::LOGIN_AUTHENTICATING:     return 0.05f;
+		case LoadingPhase::WORLD_CONNECTING:         return 0.10f;
+		case LoadingPhase::WORLD_CHARACTER_SELECT:   return 0.15f;
+		case LoadingPhase::ZONE_CONNECTING:          return 0.20f;
+		// Game state phases: 25% -> 50%
+		case LoadingPhase::ZONE_RECEIVING_PROFILE:   return 0.25f;
+		case LoadingPhase::ZONE_RECEIVING_SPAWNS:    return 0.30f;
+		case LoadingPhase::ZONE_REQUEST_PHASE:       return 0.35f;
+		case LoadingPhase::ZONE_PLAYER_READY:        return 0.40f;
+		case LoadingPhase::ZONE_AWAITING_CONFIRM:    return 0.45f;
+		// Graphics loading phases: 50% -> 100%
+		case LoadingPhase::GRAPHICS_LOADING_ZONE:    return 0.50f;
+		case LoadingPhase::GRAPHICS_LOADING_MODELS:  return 0.65f;
+		case LoadingPhase::GRAPHICS_CREATING_ENTITIES: return 0.80f;
+		case LoadingPhase::GRAPHICS_FINALIZING:      return 0.95f;
+		case LoadingPhase::COMPLETE:                 return 1.00f;
+	}
+	return 0.0f;
+}
+
+const char* EverQuest::GetLoadingStatusText() const {
+	switch (m_loading_phase) {
+		case LoadingPhase::DISCONNECTED:             return "";
+		case LoadingPhase::LOGIN_CONNECTING:         return "Connecting to login server...";
+		case LoadingPhase::LOGIN_AUTHENTICATING:     return "Authenticating...";
+		case LoadingPhase::WORLD_CONNECTING:         return "Connecting to world server...";
+		case LoadingPhase::WORLD_CHARACTER_SELECT:   return "Loading characters...";
+		case LoadingPhase::ZONE_CONNECTING:          return "Connecting to zone...";
+		case LoadingPhase::ZONE_RECEIVING_PROFILE:   return "Receiving player data...";
+		case LoadingPhase::ZONE_RECEIVING_SPAWNS:    return "Receiving zone data...";
+		case LoadingPhase::ZONE_REQUEST_PHASE:       return "Synchronizing...";
+		case LoadingPhase::ZONE_PLAYER_READY:        return "Finalizing connection...";
+		case LoadingPhase::ZONE_AWAITING_CONFIRM:    return "Waiting for confirmation...";
+		case LoadingPhase::GRAPHICS_LOADING_ZONE:    return "Loading zone geometry...";
+		case LoadingPhase::GRAPHICS_LOADING_MODELS:  return "Loading character models...";
+		case LoadingPhase::GRAPHICS_CREATING_ENTITIES: return "Creating entities...";
+		case LoadingPhase::GRAPHICS_FINALIZING:      return "Preparing world...";
+		case LoadingPhase::COMPLETE:                 return "Ready!";
+	}
+	return "";
+}
+
+void EverQuest::OnGameStateComplete() {
+	LOG_INFO(MOD_MAIN, "[LOADING] Game state setup complete. Spawn ID: {}, Zone: {}",
+	         m_my_spawn_id, m_current_zone_name);
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		// Trigger graphics loading now that game state is ready
+		LoadZoneGraphics();
+	} else {
+		// No graphics mode - we're done
+		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
+	}
+#else
+	// No graphics mode - we're done
+	SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
+#endif
+}
+
+void EverQuest::OnGraphicsComplete() {
+	SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
+	LOG_INFO(MOD_MAIN, "[LOADING] Graphics loading complete. Game ready!");
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		m_renderer->setZoneReady(true);
+		m_renderer->hideLoadingScreen();
+	}
+#endif
+}
+
 void EverQuest::LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
 {
 	m_login_connection = connection;
@@ -720,11 +824,7 @@ void EverQuest::LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 {
 	if (to == EQ::Net::StatusConnected) {
 		LOG_INFO(MOD_WORLD, "Login connected.");
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setLoadingProgress(0.02f, L"Login server connected...");
-		}
-#endif
+		// Phase 1 complete - connected to login server, now sending session ready
 		LoginSendSessionReady();
 	}
 
@@ -733,6 +833,7 @@ void EverQuest::LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 		m_key.clear();
 		m_dbid = 0;
 		m_login_connection.reset();
+		SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 		m_login_connection_manager->Connect(m_host, m_port);
 	}
 }
@@ -788,11 +889,7 @@ void EverQuest::LoginSendSessionReady()
 
 void EverQuest::LoginSendLogin()
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setLoadingProgress(0.05f, L"Authenticating...");
-	}
-#endif
+	SetLoadingPhase(LoadingPhase::LOGIN_AUTHENTICATING);
 	size_t buffer_len = m_user.length() + m_pass.length() + 2;
 	std::unique_ptr<char[]> buffer(new char[buffer_len]);
 	memset(buffer.get(), 0, buffer_len);
@@ -870,11 +967,6 @@ void EverQuest::LoginProcessLoginResponse(const EQ::Net::Packet & p)
 		m_dbid = sp.GetUInt32(8);
 
 		LOG_INFO(MOD_WORLD, "Logged in successfully with dbid {} and key {}", m_dbid, m_key);
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setLoadingProgress(0.08f, L"Login successful, requesting server list...");
-		}
-#endif
 		LoginSendServerRequest();
 	}
 }
@@ -917,12 +1009,6 @@ void EverQuest::LoginProcessServerPacketList(const EQ::Net::Packet & p)
 	for (auto server : m_world_servers) {
 		if (server.second.long_name.compare(m_server) == 0) {
 			LOG_INFO(MOD_WORLD, "Found world server {}, attempting to login.", m_server);
-#ifdef EQT_HAS_GRAPHICS
-			if (m_renderer) {
-				std::wstring serverName(server.second.long_name.begin(), server.second.long_name.end());
-				m_renderer->setLoadingProgress(0.12f, L"Selecting server: " + serverName);
-			}
-#endif
 			LoginSendPlayRequest(server.first);
 			return;
 		}
@@ -945,11 +1031,6 @@ void EverQuest::LoginProcessServerPlayResponse(const EQ::Net::Packet &p)
 		if (ws != m_world_servers.end()) {
 			LOG_INFO(MOD_WORLD, "Connecting to world server {} at {}:9000",
 				ws->second.long_name, ws->second.address);
-#ifdef EQT_HAS_GRAPHICS
-			if (m_renderer) {
-				m_renderer->setLoadingProgress(0.18f, L"Connecting to world server...");
-			}
-#endif
 			ConnectToWorld(ws->second.address);
 			LoginDisableReconnect();
 		} else {
@@ -973,6 +1054,8 @@ void EverQuest::ConnectToWorld(const std::string& world_address)
 {
 	LOG_DEBUG(MOD_WORLD, "Creating new world connection manager for {}:9000", world_address);
 
+	SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
+
 	// Store the world server address for reconnection
 	m_world_server_host = world_address;
 
@@ -995,12 +1078,6 @@ void EverQuest::WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 
 	if (to == EQ::Net::StatusConnected) {
 		LOG_DEBUG(MOD_WORLD, "World connected, sending client auth");
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setLoadingTitle(L"Connecting...");
-			m_renderer->setLoadingProgress(0.25f, L"Authenticating with world server...");
-		}
-#endif
 		// Send login info immediately
 		WorldSendClientAuth();
 		LOG_DEBUG(MOD_WORLD, "Client auth sent");
@@ -1136,11 +1213,6 @@ void EverQuest::WorldSendClientAuth()
 
 void EverQuest::WorldSendEnterWorld(const std::string &character)
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setLoadingProgress(0.28f, L"Entering world...");
-	}
-#endif
 	EQ::Net::DynamicPacket p;
 	p.Resize(74);  // Matching good log size
 
@@ -1167,6 +1239,8 @@ void EverQuest::WorldSendEnterWorld(const std::string &character)
 
 void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 {
+	SetLoadingPhase(LoadingPhase::WORLD_CHARACTER_SELECT);
+
 	// For Titanium client, the packet is just the raw CharacterSelect_Struct
 	// Let's verify packet size
 	if (p.Length() < 1706) {
@@ -1199,17 +1273,11 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 			uint32_t race = p.GetUInt32(0 + 2 + (i * 4)); // Race array at offset 0
 			uint32_t zone = p.GetUInt32(964 + 2 + (i * 4)); // Zone array at offset 964
 			
-			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}", 
+			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}",
 				i, name, level, pclass, race, zone);
-			
+
 			if (m_character.compare(name) == 0) {
 				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", m_character, i);
-#ifdef EQT_HAS_GRAPHICS
-				if (m_renderer) {
-					std::wstring charName(m_character.begin(), m_character.end());
-					m_renderer->setLoadingProgress(0.32f, L"Character found: " + charName);
-				}
-#endif
 				m_character_select_index = i;
 				return;
 			}
@@ -1374,12 +1442,8 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Received ZoneServerInfo packet");
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setLoadingTitle(L"Loading Zone...");
-		m_renderer->setLoadingProgress(0.38f, L"Received zone server info...");
-	}
-#endif
+	// NOTE: Loading progress is handled by the LoadingPhase system.
+	// ConnectToZone() will set ZONE_CONNECTING phase after we process this packet.
 
 	// Extract zone server info
 	std::string new_zone_host = p.GetCString(2);
@@ -1436,11 +1500,7 @@ void EverQuest::ConnectToZone()
 {
 	LOG_DEBUG(MOD_ZONE, "Connecting to zone server at {}:{}", m_zone_server_host, m_zone_server_port);
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setLoadingProgress(0.48f, L"Connecting to zone server...");
-	}
-#endif
+	SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 
 	// Initialize inventory manager before zone connection so CharInventory packet can be processed
 	// This must exist before packets arrive, independent of graphics initialization
@@ -1484,11 +1544,6 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 	if (to == EQ::Net::StatusConnected) {
 		LOG_DEBUG(MOD_ZONE, "Zone connected");
 		m_zone_connected = true;
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setLoadingProgress(0.58f, L"Zone connected, requesting entry...");
-		}
-#endif
 		// Send stream identify immediately after connection
 		ZoneSendStreamIdentify();
 		m_zone_session_established = true;
@@ -1505,6 +1560,7 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_zone_entry_sent = false;
 		// m_client_spawned = false; // Deprecated
 		m_zone_connection.reset();
+		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 		m_zone_connection_manager->Connect(m_zone_server_host, m_zone_server_port);
 	}
 }
@@ -2508,10 +2564,9 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 	
 	m_new_zone_received = true;
 
-#ifdef EQT_HAS_GRAPHICS
-	// Load zone graphics
-	OnZoneLoadedGraphics();
-#endif
+	// NOTE: Zone graphics are now loaded in LoadZoneGraphics() which is called from
+	// OnGameStateComplete() when we receive our first ClientUpdate. This ensures
+	// the progress bar shows during the entire loading process.
 
 	// After NewZone, send all parallel requests
 	// 1. AA table request
@@ -2537,6 +2592,8 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 {
+	SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
+
 	if (s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "PlayerProfile received, size={} bytes", p.Length());
 	}
@@ -2750,7 +2807,11 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	uint32_t entity_id = 0;
 	if (p.Length() > base + 14384) {
 		entity_id = p.GetUInt32(base + 14384);
-		m_my_character_id = static_cast<uint16_t>(entity_id);
+		uint16_t new_spawn_id = static_cast<uint16_t>(entity_id);
+		if (m_my_spawn_id != 0 && m_my_spawn_id != new_spawn_id) {
+			LOG_WARN(MOD_ZONE, "Spawn ID changed unexpectedly: {} -> {}", m_my_spawn_id, new_spawn_id);
+		}
+		m_my_spawn_id = new_spawn_id;
 	}
 	
 	// For size, we need to check if it's sent in the profile or if we get it from spawn
@@ -2787,7 +2848,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	
 	// Add ourselves to the entity list
 	Entity self_entity;
-	self_entity.spawn_id = m_my_character_id;
+	self_entity.spawn_id = m_my_spawn_id;
 	self_entity.name = std::string(name);
 	// Use already-swapped m_x and m_y, and transformed heading
 	self_entity.x = m_x;
@@ -2814,11 +2875,11 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_size = size;
 	
 	// Store in entity list (sync to both local map and EntityManager)
-	m_entities[m_my_character_id] = self_entity;
+	m_entities[m_my_spawn_id] = self_entity;
 	SyncEntityToGameState(self_entity);
 
 	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, m_my_character_id);
+		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, m_my_spawn_id);
 	}
 
 	// Extract spell gems and spellbook from PlayerProfile
@@ -3182,8 +3243,8 @@ void EverQuest::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
 
 void EverQuest::SendTradeCoins(const EQT::TradeCoins_Struct& coins)
 {
-	LOG_DEBUG(MOD_MAIN, "SendTradeCoins called: spawn_id={} slot={} amount={} (m_my_spawn_id={} m_my_character_id={})",
-		coins.spawn_id, coins.slot, coins.amount, m_my_spawn_id, m_my_character_id);
+	LOG_DEBUG(MOD_MAIN, "SendTradeCoins called: spawn_id={} slot={} amount={} (m_my_spawn_id={})",
+		coins.spawn_id, coins.slot, coins.amount, m_my_spawn_id);
 
 	if (!m_zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeCoins");
@@ -4647,9 +4708,11 @@ void EverQuest::CloseTrainerWindow()
 
 void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 {
+	SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_SPAWNS);
+
 	// ZoneSpawns contains multiple Spawn_Struct entries
 	// Based on titanium_structs.h, Spawn_Struct is 385 bytes
-	
+
 	if (s_debug_level >= 2) {
 		LOG_DEBUG(MOD_ENTITY, "Received zone spawns packet, size: {} bytes", p.Length());
 	}
@@ -4848,6 +4911,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		if (entity.spawn_id > 0 && entity.spawn_id < 100000 && !entity.name.empty()) {
 			// Check if this is our own character and update our position
 			if (entity.name == m_character) {
+				if (m_my_spawn_id != 0 && m_my_spawn_id != entity.spawn_id) {
+					LOG_WARN(MOD_ZONE, "Spawn ID changed in ZoneSpawns: {} -> {}", m_my_spawn_id, entity.spawn_id);
+				}
 				m_my_spawn_id = entity.spawn_id;
 				// Phase 7.4: Also update PlayerState
 				m_game_state.player().setSpawnId(m_my_spawn_id);
@@ -4882,6 +4948,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 					}
 					m_renderer->setPlayerSpawnId(m_my_spawn_id);
 				}
+				// Mark player entity as pending creation - will be created when ClientUpdate arrives
+				// This ensures the loading screen stays visible until the player model is fully loaded
+				m_player_graphics_entity_pending = true;
 #endif
 				// Update our position to match server spawn position
 				m_x = entity.x;
@@ -4911,9 +4980,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			SyncEntityToGameState(entity);
 			spawn_count++;
 
-#ifdef EQT_HAS_GRAPHICS
-			OnSpawnAddedGraphics(entity);
-#endif
+			// NOTE: Graphics entities are NOT created here during ZoneSpawns processing.
+			// All entities are created later in LoadZoneGraphics() during the graphics loading phase.
+			// This ensures the progress bar shows during the entire loading process.
 
 			if (spawn_count <= 5) {
 				LOG_DEBUG(MOD_ENTITY, "Loaded spawn {}: {} (ID: {}) Level {} Race {} Size {:.2f} at ({:.2f}, {:.2f}, {:.2f})",
@@ -5222,6 +5291,20 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		}
 		break;
 
+	case AT_SPAWN_ID:
+		// Server is assigning us a new spawn ID (happens after zoning)
+		// spawn_id=0 means "self", parameter contains the new spawn ID
+		if (spawn_id == 0 && parameter != 0) {
+			uint16_t newSpawnId = static_cast<uint16_t>(parameter);
+			LOG_INFO(MOD_ZONE, "Server assigned new spawn ID: {} (was {})", newSpawnId, m_my_spawn_id);
+			m_my_spawn_id = newSpawnId;
+			m_game_state.player().setSpawnId(m_my_spawn_id);
+			if (m_trade_manager) {
+				m_trade_manager->setMySpawnId(m_my_spawn_id);
+			}
+		}
+		break;
+
 	default:
 		// Other appearance types (invisible, levitate, etc.) - not implemented yet
 		break;
@@ -5495,14 +5578,8 @@ void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessWeather(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_ZONE, "Weather update received");
-	
-	m_weather_received = true;
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setLoadingProgress(0.68f, L"Receiving zone data...");
-	}
-#endif
+	m_weather_received = true;
 
 	// Weather is the last packet in Zone Entry phase
 	// Now we can send ReqNewZone
@@ -5807,36 +5884,17 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 		ZoneSendSetServerFilter();
 		m_server_filter_sent = true;
 	}
-	
+
 	if (!m_client_ready_sent) {
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setLoadingProgress(0.92f, L"Finalizing zone entry...");
-		}
-#endif
+		SetLoadingPhase(LoadingPhase::ZONE_PLAYER_READY, "Finalizing connection...");
 		ZoneSendClientReady();
 		m_client_ready_sent = true;
 
-		LOG_INFO(MOD_ZONE, "Zone connection complete! Client is now in the zone.");
-
-#ifdef EQT_HAS_GRAPHICS
-		// Signal renderer that network phase is complete and entities are ready
-		// The renderer will verify all entities are loaded before showing the game world
-		// Note: Player entity creation is deferred to when we receive the first ClientUpdate
-		// with our spawn_id, since m_my_spawn_id isn't set yet at this point
-		if (m_renderer) {
-			// Tell renderer how many entities were received from the server
-			m_renderer->setExpectedEntityCount(m_entities.size());
-			// Network phase is complete - renderer will check if all entities loaded
-			m_renderer->setNetworkReady(true);
-			LOG_DEBUG(MOD_ZONE, "Set expected entity count to {}, network ready", m_entities.size());
-		}
-#endif
-
-		// Start the update loop now that we're fully zoned in
-		if (!m_update_running) {
-			StartUpdateLoop();
-		}
+		// Note: We don't start the update loop here - we wait for our first ClientUpdate
+		// which confirms the server has our position. StartUpdateLoop() is called in
+		// ZoneProcessClientUpdate() when we receive our own spawn's position update.
+		// That's also where we trigger OnGameStateComplete() for graphics loading.
+		LOG_DEBUG(MOD_ZONE, "Sent ClientReady, waiting for position confirmation...");
 	}
 }
 
@@ -5918,12 +5976,12 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	// Level 1: current player, current target, or tracked targets
 	// Level 2+: all entities
 	uint16_t currentTargetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-	bool isCurrentPlayer = (spawn_id == m_my_character_id);
+	bool isCurrentPlayer = (spawn_id == m_my_spawn_id);
 	bool shouldLogPosition = (s_debug_level >= 2) ||
 	                         (s_debug_level >= 1 && (isCurrentPlayer || spawn_id == currentTargetId || IsTrackedTarget(spawn_id)));
 	if (shouldLogPosition) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C spawn_id={} pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} delta=({:.2f}, {:.2f}, {:.2f}) (my_id={})",
-			spawn_id, x, y, z, server_h, animation, dx, dy, dz, m_my_character_id);
+			spawn_id, x, y, z, server_h, animation, dx, dy, dz, m_my_spawn_id);
 	}
 	// Additional detailed logging for current player at debug level 1+
 	if (s_debug_level >= 1 && isCurrentPlayer) {
@@ -5934,7 +5992,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	}
 
 	// Check if this is an update for our own character
-	if (spawn_id == m_my_character_id) {
+	if (spawn_id == m_my_spawn_id) {
 		// Update our position to match what the server says
 		m_x = x;
 		m_y = y;
@@ -6030,7 +6088,22 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		// Start the update loop when we first receive our ClientUpdate
 		// This indicates we're fully in the game world
 		if (!m_update_running) {
+			SetLoadingPhase(LoadingPhase::ZONE_AWAITING_CONFIRM, "Player confirmed...");
+			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", m_my_spawn_id);
+
+#ifdef EQT_HAS_GRAPHICS
+			// Signal renderer that network phase is complete and entities are ready
+			if (m_renderer) {
+				m_renderer->setExpectedEntityCount(m_entities.size());
+				m_renderer->setNetworkReady(true);
+				LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", m_entities.size(), 0);
+				LOG_DEBUG(MOD_GRAPHICS, "Network ready: true");
+			}
+#endif
+
 			StartUpdateLoop();
+			// Game state is now complete - trigger graphics loading if graphics mode
+			OnGameStateComplete();
 		}
 		
 		// Update our entity in the entity list
@@ -6267,18 +6340,19 @@ void EverQuest::CheckZoneRequestPhaseComplete()
 	// We need to have received:
 	// 1. At least one AA table (m_aa_table_count > 0)
 	// 2. RespondAA packet
-	// 3. At least one tribute info (m_tribute_count > 0) 
+	// 3. At least one tribute info (m_tribute_count > 0)
 	// 4. At least one guild tribute (m_guild_tribute_count > 0)
-	
+
 	// For simplicity, we'll check if we've received at least one of each
-	if (m_new_zone_received && 
-	    m_aa_table_count > 0 && 
-	    m_tribute_count > 0 && 
+	if (m_new_zone_received &&
+	    m_aa_table_count > 0 &&
+	    m_tribute_count > 0 &&
 	    m_guild_tribute_count > 0 &&
 	    !m_req_client_spawn_sent) {
-		
+
+		SetLoadingPhase(LoadingPhase::ZONE_REQUEST_PHASE);
 		LOG_INFO(MOD_ZONE, "Zone Request phase complete, sending ReqClientSpawn");
-		
+
 		// Move to Player Spawn Request phase
 		ZoneSendReqClientSpawn();
 		m_req_client_spawn_sent = true;
@@ -9405,27 +9479,23 @@ void EverQuest::SendPositionUpdate()
 	} update;
 	
 	memset(&update, 0, sizeof(update));
-	
-	// Use the entity ID we extracted from PlayerProfile
+
+	// Use the spawn ID we extracted from PlayerProfile or ZoneSpawns
 	// This is what the server expects in ClientUpdate packets
-	update.spawn_id = m_my_character_id;
+	update.spawn_id = m_my_spawn_id;
 	update.sequence = ++m_movement_sequence;
-	
-	// Debug: Log what we're actually sending
-	// LOG_DEBUG(MOD_MAIN, "SendMovementUpdate: Using spawn_id {} (m_my_character_id={})", 
-	// 	update.spawn_id, m_my_character_id);
-	
-	// Validate that we have a valid character ID
-	if (m_my_character_id == 0) {
-		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with m_my_character_id = 0! Not sending update.");
+
+	// Validate that we have a valid spawn ID
+	if (m_my_spawn_id == 0) {
+		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with m_my_spawn_id = 0! Not sending update.");
 		return;
 	}
 
 	// Check if we're accidentally using another player's ID
-	auto it = m_entities.find(m_my_character_id);
+	auto it = m_entities.find(m_my_spawn_id);
 	if (it != m_entities.end() && it->second.name != m_character) {
-		LOG_WARN(MOD_MOVEMENT, "m_my_character_id {} belongs to '{}', not our character '{}'!",
-			m_my_character_id, it->second.name, m_character);
+		LOG_WARN(MOD_MOVEMENT, "m_my_spawn_id {} belongs to '{}', not our character '{}'!",
+			m_my_spawn_id, it->second.name, m_character);
 	}
 	
 	// Convert from internal coordinate system back to server coordinate system
@@ -9467,7 +9537,7 @@ void EverQuest::SendPositionUpdate()
 	if (s_debug_level >= 2) {
 		// Log server coordinates (x_pos, y_pos) = (m_y, m_x) due to coordinate swap
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
-			m_my_character_id, update.x_pos, update.y_pos, update.z_pos, m_heading, m_animation, update.delta_x, update.delta_y, update.delta_z);
+			m_my_spawn_id, update.x_pos, update.y_pos, update.z_pos, m_heading, m_animation, update.delta_x, update.delta_y, update.delta_z);
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
 			m_x, m_y, m_z, update.x_pos, update.y_pos, update.z_pos);
 	}
@@ -10530,7 +10600,7 @@ void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
 	}
 	
 	// Store stamina values if this is for our character
-	if (spawn_id == m_my_character_id) {
+	if (spawn_id == m_my_spawn_id) {
 		// TODO: Store stamina values as member variables if needed
 	}
 }
@@ -10795,11 +10865,17 @@ void EverQuest::CleanupZone()
 {
 	LOG_DEBUG(MOD_ZONE, "Cleaning up current zone state");
 
+	// Stop the update loop first - this must happen before zone transition
+	// so that ZoneProcessClientUpdate() can restart it for the new zone
+	StopUpdateLoop();
+
+	SetLoadingPhase(LoadingPhase::DISCONNECTED, "Leaving zone...");
+
 #ifdef EQT_HAS_GRAPHICS
 	// Zone is no longer ready - show loading screen during transition
 	if (m_renderer) {
 		m_renderer->setZoneReady(false);
-		m_renderer->setLoadingProgress(0.0f, L"Disconnecting from zone...");
+		m_renderer->showLoadingScreen();
 	}
 #endif
 
@@ -10932,22 +11008,16 @@ void EverQuest::ProcessDeferredZoneChange()
 	LOG_DEBUG(MOD_ZONE, "Processing deferred zone change");
 
 	LOG_TRACE(MOD_ZONE, "Step 1: Disconnecting from current zone");
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setLoadingProgress(0.1f, L"Disconnecting from zone...");
-	}
-#endif
+	// NOTE: DisconnectFromZone() calls CleanupZone() which sets DISCONNECTED phase
+	// and shows loading screen. No need for separate setLoadingProgress call.
 	DisconnectFromZone();
 	LOG_TRACE(MOD_ZONE, "Step 1 complete: Zone disconnected");
 
 	// Reconnect to world server to get new zone info
 	if (!m_world_server_host.empty()) {
 		LOG_TRACE(MOD_ZONE, "Step 2: Creating new world connection manager");
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setLoadingProgress(0.15f, L"Connecting to world server...");
-		}
-#endif
+
+		SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
 
 		// Reset world connection state flags so we go through the full handshake again
 		m_world_ready = false;
@@ -11237,7 +11307,7 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 		LOG_DEBUG(MOD_MAP, "LoadZoneLines: No EQ client path set, zone lines from WLD unavailable");
 	}
 
-	// NOTE: Zone line visualization boxes are sent to the renderer in OnZoneLoadedGraphics()
+	// NOTE: Zone line visualization boxes are sent to the renderer in LoadZoneGraphics()
 	// AFTER loadZone() completes. If done here, the boxes get cleared when loadZone()
 	// calls unloadZone() internally.
 }
@@ -13226,21 +13296,17 @@ bool EverQuest::InitGraphics(int width, int height) {
 	config.lighting = false;  // Fullbright mode
 	config.showNameTags = true;
 
-	if (!m_renderer->init(config)) {
-		LOG_ERROR(MOD_GRAPHICS, "Failed to initialize renderer");
+	// Use initLoadingScreen() for early progress display - only creates window + progress bar
+	// Model loading is deferred to loadGlobalAssets() which is called during graphics loading phase
+	if (!m_renderer->initLoadingScreen(config)) {
+		LOG_ERROR(MOD_GRAPHICS, "Failed to initialize renderer loading screen");
 		m_renderer.reset();
 		return false;
 	}
 
-	// Preload global character models for faster entity rendering
-	auto* entityRenderer = m_renderer->getEntityRenderer();
-	if (entityRenderer) {
-		if (entityRenderer->loadGlobalCharacters()) {
-			LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
-		} else {
-			LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
-		}
-	}
+	// NOTE: Global character models are NOT loaded here anymore.
+	// They are loaded in loadGlobalAssets() during GRAPHICS_LOADING_MODELS phase.
+	// This allows the progress bar to show during the entire loading process.
 
 	// Set up HUD callback to display player stats (HP/Mana bars)
 	// Zone, location, entities are displayed by the renderer HUD
@@ -14089,130 +14155,152 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 	}
 }
 
-void EverQuest::OnZoneLoadedGraphics() {
+#ifdef EQT_HAS_GRAPHICS
+void EverQuest::LoadZoneGraphics() {
 	if (!m_graphics_initialized || !m_renderer) {
+		LOG_WARN(MOD_GRAPHICS, "LoadZoneGraphics called but graphics not initialized");
+		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
 		return;
 	}
 
-	// Prevent double loading - check if this zone is already loaded
-	if (m_renderer->getCurrentZoneName() == m_current_zone_name && !m_current_zone_name.empty()) {
-		LOG_DEBUG(MOD_GRAPHICS, "Zone {} already loaded, skipping", m_current_zone_name);
-		return;
-	}
+	// Phase 11: Load zone geometry (S3D file)
+	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Loading zone geometry...");
 
-	LOG_DEBUG(MOD_GRAPHICS, "Loading zone: {}", m_current_zone_name);
-
-	// Load the zone in the renderer
-	// Progress range: 0.70 to 0.88 - fits between "Receiving zone data..." (0.68)
-	// and "Finalizing zone entry..." (0.92)
-	if (m_renderer->loadZone(m_current_zone_name, 0.70f, 0.88f)) {
-		LOG_DEBUG(MOD_GRAPHICS, "Zone loaded successfully");
-
-		// Update progress after zone geometry loaded (loadZone uses drawLoadingScreen directly,
-		// so we need to sync the member variable to prevent progress from dropping back)
-		m_renderer->setLoadingProgress(0.88f, L"Zone geometry loaded...");
-
-		// Update collision map for Player Mode movement
-		if (m_zone_map) {
-			m_renderer->setCollisionMap(m_zone_map.get());
-			LOG_TRACE(MOD_GRAPHICS, "Collision map set for Player Mode");
-		}
-
-		// Expand zone line trigger boxes to fill passages using collision detection
-		// This must be done BEFORE sending boxes to renderer, and requires the zone map
-		if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map) {
-			m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
-		}
-
-		// Send zone line bounding boxes to renderer for visualization
-		// NOTE: This must be done AFTER loadZone() completes because loadZone()
-		// calls unloadZone() which clears any existing boxes
-		if (m_zone_lines && m_zone_lines->hasZoneLines()) {
-			auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
-			if (!boxes.empty()) {
-				m_renderer->setZoneLineBoundingBoxes(boxes);
-				LOG_DEBUG(MOD_GRAPHICS, "Sent {} zone line boxes to renderer after zone load", boxes.size());
-			}
-		}
-
-		// Set camera mode based on renderer mode
-		if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Player) {
-			// Player mode: use Follow camera (third-person behind player)
-			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+	// Build path to zone S3D and load
+	if (!m_current_zone_name.empty()) {
+		// Prevent double loading - check if this zone is already loaded
+		if (m_renderer->getCurrentZoneName() == m_current_zone_name) {
+			LOG_DEBUG(MOD_GRAPHICS, "Zone {} already loaded, skipping S3D load", m_current_zone_name);
 		} else {
-			// Admin mode: use Free camera for debugging
-			m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Free);
-		}
-		// Convert m_heading from degrees (0-360) to EQ format (0-512)
-		float heading512 = m_heading * 512.0f / 360.0f;
-		m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
-		// Note: Server Z is the middle of the character model, not ground level.
-		// The renderer should adjust model positioning internally - don't sync Z back.
-
-		// Create entities for all current spawns EXCEPT our own player
-		// The player entity will be created later in ZoneProcessGuildMOTD after
-		// all player data (inventory, appearance, etc.) has been received
-		for (const auto& [spawn_id, entity] : m_entities) {
-			// Skip our own player - will be created after fully connected
-			if (entity.name == m_character) {
-				LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) in OnZoneLoadedGraphics - will create after fully connected",
-				          spawn_id, entity.name);
-				continue;
+			// Load the zone S3D with progress range 0.50 to 0.60
+			if (!m_renderer->loadZone(m_current_zone_name, 0.50f, 0.60f)) {
+				LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", m_current_zone_name);
 			}
-
-			// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
-			bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
-			bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-
-			// Fallback: Also detect corpse by name (server adds "'s corpse" or "_corpse" suffix)
-			if (!isCorpse && entity.name.find("corpse") != std::string::npos) {
-				isCorpse = true;
-				LOG_TRACE(MOD_ENTITY, "Entity {} ({}) detected as corpse by name (npc_type={})", spawn_id, entity.name, (int)entity.npc_type);
-			}
-
-			// Build appearance from entity data
-			EQT::Graphics::EntityAppearance appearance;
-			appearance.face = entity.face;
-			appearance.haircolor = entity.haircolor;
-			appearance.hairstyle = entity.hairstyle;
-			appearance.beardcolor = entity.beardcolor;
-			appearance.beard = entity.beard;
-			appearance.texture = entity.equip_chest2;
-			appearance.helm = entity.helm;
-			for (int i = 0; i < 9; i++) {
-				appearance.equipment[i] = entity.equipment[i];
-				appearance.equipment_tint[i] = entity.equipment_tint[i];
-			}
-
-			m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
-			                         entity.x, entity.y, entity.z, entity.heading,
-			                         false, entity.gender, appearance, isNPC, isCorpse);
 		}
-
-		// Recreate doors from stored data (they were cleared during zone load)
-		for (const auto& [door_id, door] : m_doors) {
-			bool initiallyOpen = (door.state != 0) != door.invert_state;
-			m_renderer->createDoor(door.door_id, door.name, door.x, door.y, door.z,
-			                       door.heading, door.incline, door.size, door.opentype,
-			                       initiallyOpen);
-		}
-		LOG_DEBUG(MOD_GRAPHICS, "Recreated {} doors after zone load", m_doors.size());
-
-		// Set up hotbar changed callback to auto-save
-		auto* windowMgr = m_renderer->getWindowManager();
-		if (windowMgr) {
-			windowMgr->setHotbarChangedCallback([this]() {
-				SaveHotbarConfig();
-			});
-			LOG_DEBUG(MOD_UI, "Hotbar changed callback registered");
-		}
-	} else {
-		LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", m_current_zone_name);
 	}
+
+	// Phase 12: Load character models (global assets)
+	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_MODELS, "Loading character models...");
+	m_renderer->loadGlobalAssets();
+
+	// Phase 13: Create entity scene nodes for all entities in m_entities
+	SetLoadingPhase(LoadingPhase::GRAPHICS_CREATING_ENTITIES, "Creating entities...");
+
+	// Update collision map for Player Mode movement
+	if (m_zone_map) {
+		m_renderer->setCollisionMap(m_zone_map.get());
+		LOG_TRACE(MOD_GRAPHICS, "Collision map set for Player Mode");
+	}
+
+	// Expand zone line trigger boxes to fill passages using collision detection
+	if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map) {
+		m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
+	}
+
+	// Send zone line bounding boxes to renderer for visualization
+	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+		auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
+		if (!boxes.empty()) {
+			m_renderer->setZoneLineBoundingBoxes(boxes);
+			LOG_DEBUG(MOD_GRAPHICS, "Sent {} zone line boxes to renderer", boxes.size());
+		}
+	}
+
+	// Create entities for all current spawns EXCEPT our own player
+	// The player entity will be created later after receiving first ClientUpdate
+	for (const auto& [spawn_id, entity] : m_entities) {
+		// Skip our own player - will be created after fully connected
+		if (entity.name == m_character) {
+			LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) - will create after fully connected",
+			          spawn_id, entity.name);
+			continue;
+		}
+
+		// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
+		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
+		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
+
+		// Fallback: Also detect corpse by name
+		if (!isCorpse && entity.name.find("corpse") != std::string::npos) {
+			isCorpse = true;
+		}
+
+		// Build appearance from entity data
+		EQT::Graphics::EntityAppearance appearance;
+		appearance.face = entity.face;
+		appearance.haircolor = entity.haircolor;
+		appearance.hairstyle = entity.hairstyle;
+		appearance.beardcolor = entity.beardcolor;
+		appearance.beard = entity.beard;
+		appearance.texture = entity.equip_chest2;
+		appearance.helm = entity.helm;
+		for (int i = 0; i < 9; i++) {
+			appearance.equipment[i] = entity.equipment[i];
+			appearance.equipment_tint[i] = entity.equipment_tint[i];
+		}
+
+		m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
+		                         entity.x, entity.y, entity.z, entity.heading,
+		                         false, entity.gender, appearance, isNPC, isCorpse);
+	}
+
+	// Recreate doors from stored data
+	for (const auto& [door_id, door] : m_doors) {
+		bool initiallyOpen = (door.state != 0) != door.invert_state;
+		m_renderer->createDoor(door.door_id, door.name, door.x, door.y, door.z,
+		                       door.heading, door.incline, door.size, door.opentype,
+		                       initiallyOpen);
+	}
+	LOG_DEBUG(MOD_GRAPHICS, "Created {} doors", m_doors.size());
+
+	// Phase 14: Camera, lighting, final setup
+	SetLoadingPhase(LoadingPhase::GRAPHICS_FINALIZING, "Preparing world...");
+
+	// Set camera mode based on renderer mode
+	if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Player) {
+		m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+	} else {
+		m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Free);
+	}
+
+	// Convert m_heading from degrees (0-360) to EQ format (0-512)
+	float heading512 = m_heading * 512.0f / 360.0f;
+	m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
+
+	// Set up hotbar changed callback to auto-save
+	auto* windowMgr = m_renderer->getWindowManager();
+	if (windowMgr) {
+		windowMgr->setHotbarChangedCallback([this]() {
+			SaveHotbarConfig();
+		});
+		LOG_DEBUG(MOD_UI, "Hotbar changed callback registered");
+	}
+
+	// Mark that we're waiting for player entity creation
+	m_player_graphics_entity_pending = true;
+
+	// Phase 15: Graphics complete
+	OnGraphicsComplete();
 }
+#endif
+
+// NOTE: OnZoneLoadedGraphics() has been removed. Graphics loading is now handled
+// by LoadZoneGraphics() which is called from OnGameStateComplete() when the
+// game state is ready. This ensures the progress bar shows during the entire
+// loading process from login to gameplay.
 
 void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	if (!m_graphics_initialized || !m_renderer) {
+		return;
+	}
+
+	// Only create graphics entities if loading is complete.
+	// During initial zone load, entities are stored in m_entities and created
+	// in bulk by LoadZoneGraphics(). This function is for NEW spawns that
+	// appear after the zone is fully loaded (players zoning in, NPC respawns).
+	if (m_loading_phase != LoadingPhase::COMPLETE) {
+		LOG_TRACE(MOD_ENTITY, "Skipping entity {} ({}) graphics - loading phase {} not complete",
+		          entity.spawn_id, entity.name, static_cast<int>(m_loading_phase));
 		return;
 	}
 

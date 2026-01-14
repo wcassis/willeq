@@ -366,6 +366,19 @@ public:
     // Initialize the renderer
     bool init(const RendererConfig& config);
 
+    // Initialize only the loading screen (window + progress bar, no model loading)
+    // Use this at startup for early progress display, then call loadGlobalAssets() later
+    bool initLoadingScreen(const RendererConfig& config);
+
+    // Load global assets (character models, equipment) - call after initLoadingScreen()
+    // This is the heavy loading that was previously done in init()
+    bool loadGlobalAssets();
+
+    // Show/hide loading screen (progress bar overlay)
+    void showLoadingScreen();
+    void hideLoadingScreen();
+    bool isLoadingScreenVisible() const { return loadingScreenVisible_; }
+
     // Shutdown the renderer
     void shutdown();
 
@@ -718,6 +731,8 @@ private:
 
     RendererConfig config_;
     bool initialized_ = false;
+    bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
+    bool globalAssetsLoaded_ = false;  // True when loadGlobalAssets() has completed
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
     bool networkReady_ = false;  // True when network packet exchange is complete
     bool entitiesLoaded_ = false;  // True when all entities have been loaded with models/textures

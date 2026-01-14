@@ -556,6 +556,134 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     return true;
 }
 
+bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
+    config_ = config;
+
+    // Choose driver type
+    irr::video::E_DRIVER_TYPE driverType;
+    if (config.softwareRenderer) {
+        driverType = irr::video::EDT_BURNINGSVIDEO;
+    } else {
+        driverType = irr::video::EDT_OPENGL;
+    }
+
+    // Create device
+    irr::SIrrlichtCreationParameters params;
+    params.DriverType = driverType;
+    params.WindowSize = irr::core::dimension2d<irr::u32>(config.width, config.height);
+    params.Fullscreen = config.fullscreen;
+    params.Stencilbuffer = false;
+    params.Vsync = true;
+    params.AntiAlias = 0;
+
+    device_ = irr::createDeviceEx(params);
+
+    if (!device_) {
+        // Fall back to basic software renderer
+        params.DriverType = irr::video::EDT_SOFTWARE;
+        device_ = irr::createDeviceEx(params);
+    }
+
+    if (!device_) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device");
+        return false;
+    }
+
+    // Suppress Irrlicht's internal logging
+    device_->getLogger()->setLogLevel(irr::ELL_ERROR);
+    device_->setWindowCaption(irr::core::stringw(config.windowTitle.c_str()).c_str());
+
+    driver_ = device_->getVideoDriver();
+    smgr_ = device_->getSceneManager();
+    guienv_ = device_->getGUIEnvironment();
+
+    // Create event receiver
+    eventReceiver_ = std::make_unique<RendererEventReceiver>();
+    device_->setEventReceiver(eventReceiver_.get());
+
+    // Setup camera (needed for loading screen rendering)
+    setupCamera();
+
+    // Setup lighting (basic setup)
+    setupLighting();
+
+    // Setup HUD (needed for loading screen text)
+    setupHUD();
+
+    // Apply initial settings
+    wireframeMode_ = config.wireframe;
+    fogEnabled_ = config.fog;
+    lightingEnabled_ = config.lighting;
+
+    // NOTE: We do NOT create entity renderer or load models here.
+    // That happens in loadGlobalAssets() which is called during graphics loading phase.
+
+    initialized_ = true;
+    loadingScreenVisible_ = true;  // Show loading screen by default
+    globalAssetsLoaded_ = false;
+    lastFpsTime_ = device_->getTimer()->getTime();
+
+    LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer loading screen initialized: {}x{}", config.width, config.height);
+    return true;
+}
+
+bool IrrlichtRenderer::loadGlobalAssets() {
+    if (!initialized_) {
+        LOG_ERROR(MOD_GRAPHICS, "Cannot load global assets - renderer not initialized");
+        return false;
+    }
+
+    if (globalAssetsLoaded_) {
+        LOG_DEBUG(MOD_GRAPHICS, "Global assets already loaded, skipping");
+        return true;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Loading global assets (character models, equipment)...");
+
+    // Create entity renderer (if not already created by init())
+    if (!entityRenderer_) {
+        entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
+        entityRenderer_->setClientPath(config_.eqClientPath);
+        entityRenderer_->setNameTagsVisible(config_.showNameTags);
+    }
+
+    // Load main global character models (global_chr.s3d)
+    if (entityRenderer_->loadGlobalCharacters()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
+    } else {
+        LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
+    }
+
+    // Preload numbered global character models for better coverage (global2-7_chr.s3d)
+    entityRenderer_->loadNumberedGlobals();
+
+    // Load equipment models from gequip.s3d archives
+    if (entityRenderer_->loadEquipmentModels()) {
+        LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
+    }
+
+    // Create door manager (if not already created)
+    if (!doorManager_) {
+        doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
+    }
+
+    globalAssetsLoaded_ = true;
+    LOG_INFO(MOD_GRAPHICS, "Global assets loaded successfully");
+    return true;
+}
+
+void IrrlichtRenderer::showLoadingScreen() {
+    loadingScreenVisible_ = true;
+    LOG_DEBUG(MOD_GRAPHICS, "Loading screen shown");
+}
+
+void IrrlichtRenderer::hideLoadingScreen() {
+    loadingScreenVisible_ = false;
+    LOG_DEBUG(MOD_GRAPHICS, "Loading screen hidden");
+}
+
 void IrrlichtRenderer::shutdown() {
     unloadZone();
 
@@ -575,6 +703,8 @@ void IrrlichtRenderer::shutdown() {
     hudText_ = nullptr;
     hotkeysText_ = nullptr;
     initialized_ = false;
+    loadingScreenVisible_ = true;
+    globalAssetsLoaded_ = false;
 
     LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer shutdown");
 }
@@ -2867,8 +2997,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint J (before render)");
 
-    // If zone not ready, show loading screen instead of rendering zone
-    if (!zoneReady_) {
+    // If loading screen is visible, show it instead of rendering zone
+    // Loading screen is shown during initial load, zoning, and until explicitly hidden
+    if (loadingScreenVisible_) {
         drawLoadingScreen(loadingProgress_, loadingText_);
         LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint M (done - loading screen)");
         return true;

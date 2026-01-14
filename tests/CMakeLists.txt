@@ -219,3 +219,27 @@ IF(EQT_GRAPHICS)
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_graphics)
 ENDIF()
+
+# Integration test: Zoning (connects to real EQEmu server)
+# This test is NOT auto-discovered because it requires a running server.
+# Run manually with: ./bin/test_zoning_integration
+ADD_EXECUTABLE(test_zoning_integration
+    test_zoning_integration.cpp
+)
+TARGET_LINK_LIBRARIES(test_zoning_integration GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zoning_integration PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+# Note: Not using GTEST_DISCOVER_TESTS because this requires a running server
+
+# Integration test: Zoning with Graphics (connects to real EQEmu server with graphics enabled)
+# This test is NOT auto-discovered because it requires a running server and X display.
+# Run manually with: DISPLAY=:99 ./bin/test_zoning_graphics_integration
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zoning_graphics_integration
+        test_zoning_graphics_integration.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zoning_graphics_integration PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zoning_graphics_integration GTest::gtest_main willeq_core)
+    # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
+ENDIF()

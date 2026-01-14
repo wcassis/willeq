@@ -130,10 +130,9 @@ SET(COMMON_SOURCES
     src/common/performance_metrics.cpp
 )
 
-# Client sources
-SET(CLIENT_SOURCES
+# Client sources (core - without main.cpp, for library)
+SET(CLIENT_CORE_SOURCES
     src/client/eq.cpp
-    src/client/main.cpp
     src/client/combat.cpp
     src/client/trade_manager.cpp
     src/client/ucs.cpp
@@ -191,12 +190,12 @@ SET(CLIENT_SOURCES
 
 # Navmesh pathfinding (optional)
 IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
-    LIST(APPEND CLIENT_SOURCES src/client/pathfinder_nav_mesh.cpp)
+    LIST(APPEND CLIENT_CORE_SOURCES src/client/pathfinder_nav_mesh.cpp)
 ENDIF()
 
 # Waypoint pathfinding (optional, requires Boost)
 IF(Boost_FOUND)
-    LIST(APPEND CLIENT_SOURCES src/client/pathfinder_waypoint.cpp)
+    LIST(APPEND CLIENT_CORE_SOURCES src/client/pathfinder_waypoint.cpp)
     ADD_DEFINITIONS(-DEQT_HAS_WAYPOINT)
 ENDIF()
 
@@ -271,17 +270,20 @@ IF(EQT_GRAPHICS)
     )
 ENDIF()
 
-# All sources
-SET(ALL_SOURCES
+# All core sources (for library - excludes main.cpp)
+SET(ALL_CORE_SOURCES
     ${COMMON_SOURCES}
-    ${CLIENT_SOURCES}
+    ${CLIENT_CORE_SOURCES}
     ${PATHFINDING_SOURCES}
     ${MAP_SOURCES}
     ${GRAPHICS_SOURCES}
 )
 
-# Create the executable
-ADD_EXECUTABLE(willeq ${ALL_SOURCES})
+# Create a static library for the core client code (used by both executable and tests)
+ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
+
+# Create the main executable
+ADD_EXECUTABLE(willeq src/client/main.cpp)
 
 # Link libraries
 SET(LINK_LIBS
@@ -324,7 +326,11 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ENDIF()
 ENDIF()
 
-TARGET_LINK_LIBRARIES(willeq ${LINK_LIBS})
+# Link libraries to the core library
+TARGET_LINK_LIBRARIES(willeq_core ${LINK_LIBS})
+
+# willeq executable links to the core library (which brings in all dependencies)
+TARGET_LINK_LIBRARIES(willeq willeq_core ${LINK_LIBS})
 
 # Model Viewer tool (for debugging character models)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

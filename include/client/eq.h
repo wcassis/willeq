@@ -370,6 +370,34 @@ enum ChatChannelType {
 	CHAT_CHANNEL_EMOTE = 22
 };
 
+// Loading phase enum for zone-in progress tracking
+// Covers the entire pre-gameplay process: login -> world -> zone -> game state -> graphics
+enum class LoadingPhase {
+	// Connection phases
+	DISCONNECTED = 0,           // Not connected to any server
+	LOGIN_CONNECTING = 1,       // Connecting to login server
+	LOGIN_AUTHENTICATING = 2,   // Sending credentials, awaiting response
+	WORLD_CONNECTING = 3,       // Connecting to world server
+	WORLD_CHARACTER_SELECT = 4, // Receiving character list, selecting character
+	ZONE_CONNECTING = 5,        // Connecting to zone server
+
+	// Game state phases (network packets)
+	ZONE_RECEIVING_PROFILE = 6,  // Waiting for PlayerProfile
+	ZONE_RECEIVING_SPAWNS = 7,   // Waiting for ZoneSpawns
+	ZONE_REQUEST_PHASE = 8,      // AA data, tributes, ReqClientSpawn
+	ZONE_PLAYER_READY = 9,       // GuildMOTD, ClientReady
+	ZONE_AWAITING_CONFIRM = 10,  // Waiting for first ClientUpdate with our spawn_id
+
+	// Graphics loading phases
+	GRAPHICS_LOADING_ZONE = 11,       // Loading zone S3D (geometry, textures)
+	GRAPHICS_LOADING_MODELS = 12,     // Loading character models
+	GRAPHICS_CREATING_ENTITIES = 13,  // Creating scene nodes for all entities
+	GRAPHICS_FINALIZING = 14,         // Camera, lighting, final setup
+
+	// Complete
+	COMPLETE = 15                // Hide loading screen, show game world
+};
+
 struct WorldServer
 {
 	std::string long_name;
@@ -500,10 +528,20 @@ public:
 	glm::vec3 GetPosition() const;
 	float GetHeading() const;
 	bool IsMoving() const;
-	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent; }
+	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent && m_update_running; }
 	bool IsZoneChangeApproved() const { return m_zone_change_approved; }
 	void SetZoningEnabled(bool enabled) { m_zoning_enabled = enabled; }
 	bool IsZoningEnabled() const { return m_zoning_enabled; }
+
+	// Loading phase tracking (covers entire pre-gameplay process)
+	LoadingPhase GetLoadingPhase() const { return m_loading_phase; }
+	void SetLoadingPhase(LoadingPhase phase, const char* statusText = nullptr);
+	float GetLoadingProgress() const;
+	const char* GetLoadingStatusText() const;
+	bool IsGameStateReady() const { return static_cast<int>(m_loading_phase) >= static_cast<int>(LoadingPhase::ZONE_AWAITING_CONFIRM); }
+	bool IsGraphicsReady() const { return m_loading_phase == LoadingPhase::COMPLETE; }
+	void OnGameStateComplete();  // Called when game state setup finishes, triggers graphics loading
+	void OnGraphicsComplete();   // Called when graphics loading finishes, enables gameplay
 	void ListEntities(const std::string& search = "") const;
 	void DumpEntityAppearance(uint16_t spawn_id) const;
 	void DumpEntityAppearance(const std::string& name) const;
@@ -682,7 +720,7 @@ public:
 	// Phase 7.3: Zone accessors read from GameState
 	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
-	void OnZoneLoadedGraphics();  // Public so main.cpp can call it after graphics init
+	void LoadZoneGraphics();  // Loads zone geometry, models, and creates entities (called after game state ready)
 	void OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& update);  // Called when player moves in Player Mode
 	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
 #endif
@@ -883,6 +921,10 @@ private:
 	// Safe packet sending helper
 	bool SafeQueueZonePacket(EQ::Net::Packet &p, int stream = 0, bool reliable = true);
 
+	// Loading phase tracking (covers entire pre-gameplay process)
+	LoadingPhase m_loading_phase = LoadingPhase::DISCONNECTED;
+	const char* m_loading_status_text = "";
+
 	// Zone state
 	bool m_zone_connected = false;
 	bool m_zone_session_established = false;
@@ -930,7 +972,6 @@ private:
 	std::map<uint32_t, eqt::WorldObject> m_world_objects;
 	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
 
-	uint16_t m_my_character_id = 0;
 	int m_character_select_index = -1;
 
 	// Character stats
@@ -1193,8 +1234,8 @@ private:
 	uint16_t m_trainer_npc_id = 0;    // Trainer NPC being trained with (0 = not training)
 	std::string m_trainer_name;       // Trainer NPC name
 
-	// Graphics callbacks (OnZoneLoadedGraphics is public, others are private)
-	void OnSpawnAddedGraphics(const Entity& entity);
+	// Graphics callbacks (LoadZoneGraphics is public, others are private)
+	void OnSpawnAddedGraphics(const Entity& entity);  // Only creates entity if loading is complete
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
 	void OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
 	                          float dx, float dy, float dz, int32_t animation);
