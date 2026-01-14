@@ -8,11 +8,13 @@ WillEQ is a standalone EverQuest client targeting the Titanium client version wi
 
 ## Build Commands
 
+**IMPORTANT: Do NOT use the `-j` flag when building. Always use `cmake --build .` without parallel jobs.**
+
 ```bash
 # Configure (from project root)
 mkdir -p build && cd build && cmake ..
 
-# Build
+# Build (no -j flag!)
 cmake --build build
 
 # Run tests
