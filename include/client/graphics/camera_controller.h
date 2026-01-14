@@ -32,7 +32,8 @@ public:
 
     // Set camera to follow an entity position
     // Uses EQ coordinates (Z-up), converts internally
-    void setFollowPosition(float eqX, float eqY, float eqZ, float eqHeading);
+    // deltaTime is used for smooth collision zoom recovery
+    void setFollowPosition(float eqX, float eqY, float eqZ, float eqHeading, float deltaTime = 0.0f);
 
     // Get camera position in EQ coordinates
     void getPositionEQ(float& x, float& y, float& z) const;
@@ -40,10 +41,15 @@ public:
     // Get camera heading in EQ format (0-512)
     float getHeadingEQ() const;
 
-    // Follow mode zoom control
+    // Follow mode zoom control (sets preferred distance)
     void setFollowDistance(float distance);
-    float getFollowDistance() const { return followDistance_; }
+    float getFollowDistance() const { return preferredFollowDistance_; }
+    float getActualFollowDistance() const { return actualFollowDistance_; }
     void adjustFollowDistance(float delta);
+
+    // Collision detection for camera zoom
+    void setCollisionManager(irr::scene::ISceneCollisionManager* mgr,
+                             irr::scene::ITriangleSelector* selector);
 
     // Camera orbit control (for third-person mode)
     // The orbit angle determines where the camera is positioned around the player
@@ -69,9 +75,17 @@ private:
     static constexpr float MAX_PITCH = 89.0f;
 
     // Follow mode distance (zoom) - 0 = first person, >0 = third person
-    float followDistance_ = 20.0f;  // Default to a comfortable third-person view
+    float preferredFollowDistance_ = 20.0f;  // User's desired distance
+    float actualFollowDistance_ = 20.0f;     // Current distance (may be reduced due to collision)
     static constexpr float MIN_FOLLOW_DISTANCE = 0.0f;
     static constexpr float MAX_FOLLOW_DISTANCE = 300.0f;
+
+    // Camera collision zoom
+    irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
+    irr::scene::ITriangleSelector* collisionSelector_ = nullptr;
+    static constexpr float CAMERA_COLLISION_OFFSET = 0.5f;   // Distance to stay away from walls
+    static constexpr float MIN_COLLISION_DISTANCE = 1.0f;    // Minimum zoom when colliding
+    static constexpr float ZOOM_RECOVERY_SPEED = 30.0f;      // Units per second to zoom back out
 
     // Camera orbit angle in EQ heading units (0-512)
     // This is independent of player heading - player can rotate without camera following

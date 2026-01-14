@@ -2614,7 +2614,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
             cameraController_->adjustFollowDistance(zoomDelta);
             // Immediately update the view with the new zoom distance
-            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_);
+            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
             LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
         }
     }
@@ -3821,7 +3821,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
             camera_->setTarget(target);
         } else if (cameraMode_ == CameraMode::Follow && cameraController_) {
             // Follow mode: third-person camera behind player
-            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_);
+            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
         }
     }
 
@@ -4108,6 +4108,11 @@ void IrrlichtRenderer::setupZoneCollision() {
 
     // Get collision manager
     collisionManager_ = smgr_->getSceneCollisionManager();
+
+    // Set up camera collision detection for follow mode zoom
+    if (cameraController_ && collisionManager_ && zoneTriangleSelector_) {
+        cameraController_->setCollisionManager(collisionManager_, zoneTriangleSelector_);
+    }
 }
 
 bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,
