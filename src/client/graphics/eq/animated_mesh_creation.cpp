@@ -189,11 +189,16 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, ui
         return nullptr;
     }
 
+    // Use parent's scene manager if provided, otherwise use our default smgr_
+    // This is critical for nodes created in isolated scene managers (e.g., CharacterModelView)
+    irr::scene::ISceneNode* parentNode = parent ? parent : smgr_->getRootSceneNode();
+    irr::scene::ISceneManager* targetSmgr = parent ? parent->getSceneManager() : smgr_;
+
     // Create the scene node
     EQAnimatedMeshSceneNode* node = new EQAnimatedMeshSceneNode(
         animMesh,
-        parent ? parent : smgr_->getRootSceneNode(),
-        smgr_,
+        parentNode,
+        targetSmgr,
         id
     );
 
@@ -221,11 +226,15 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithAppearance(uint1
         return createAnimatedNode(raceId, gender, parent, id);
     }
 
+    // Use parent's scene manager if provided, otherwise use our default smgr_
+    irr::scene::ISceneNode* parentNode = parent ? parent : smgr_->getRootSceneNode();
+    irr::scene::ISceneManager* targetSmgr = parent ? parent->getSceneManager() : smgr_;
+
     // Create the scene node
     EQAnimatedMeshSceneNode* node = new EQAnimatedMeshSceneNode(
         animMesh,
-        parent ? parent : smgr_->getRootSceneNode(),
-        smgr_,
+        parentNode,
+        targetSmgr,
         id
     );
 
@@ -316,11 +325,16 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
         raceCode[raceCode.length() - 1] = 'F';
     }
 
+    // Use parent's scene manager if provided, otherwise use our default smgr_
+    // This is critical for nodes created in isolated scene managers (e.g., CharacterModelView)
+    irr::scene::ISceneNode* parentNode = parent ? parent : smgr_->getRootSceneNode();
+    irr::scene::ISceneManager* targetSmgr = parent ? parent->getSceneManager() : smgr_;
+
     // Create the scene node
     EQAnimatedMeshSceneNode* node = new EQAnimatedMeshSceneNode(
         animMesh,
-        parent ? parent : smgr_->getRootSceneNode(),
-        smgr_,
+        parentNode,
+        targetSmgr,
         id
     );
 
