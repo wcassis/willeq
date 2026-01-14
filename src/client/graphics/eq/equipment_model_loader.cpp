@@ -80,10 +80,10 @@ bool EquipmentModelLoader::isShield(int modelId) {
 }
 
 int EquipmentModelLoader::parseModelIdFromActorName(const std::string& actorName) {
-    // Parse "IT123_HS_DEF" or "IT123_ACTORDEF" -> 123
-    // Equipment models in gequip archives use _HS_DEF suffix
+    // Parse "IT123" -> 123
+    // Note: WLD loader strips _ACTORDEF suffix, so we just match IT followed by digits
     // Actor names are uppercase
-    std::regex pattern("IT(\\d+)_(?:HS_DEF|ACTORDEF)");
+    std::regex pattern("IT(\\d+)");
     std::smatch match;
     if (std::regex_match(actorName, match, pattern)) {
         return std::stoi(match[1].str());
@@ -175,7 +175,15 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
         LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: WLD {}: {} actors, {} geometries",
                 wldName, objectDefs.size(), geometries.size());
 
-        // Process each actor that matches IT###_ACTORDEF pattern
+        // Debug: Log first few actor names to see what pattern they use
+        int debugCount = 0;
+        for (const auto& [name, _] : objectDefs) {
+            if (debugCount++ < 5) {
+                LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Sample actor name: '{}'", name);
+            }
+        }
+
+        // Process each actor that matches IT### pattern
         for (const auto& [actorName, objDef] : objectDefs) {
             int modelId = parseModelIdFromActorName(actorName);
             if (modelId < 0) {

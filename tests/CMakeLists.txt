@@ -220,6 +220,35 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_graphics)
 ENDIF()
 
+# Test asset loading (equipment, race models, textures, animations, lights)
+# These tests verify EQ assets load without errors
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_asset_loading
+        test_asset_loading.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_codes.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_creation.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/geometry_combiner.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_model_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_textures.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animation_mapping.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
+        ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_asset_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
+    GTEST_DISCOVER_TESTS(test_asset_loading)
+ENDIF()
+
 # Test door loading (unit tests + graphics tests)
 # Unit tests run without display, graphics tests need DISPLAY=:99
 IF(EQT_GRAPHICS)
