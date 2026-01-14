@@ -1543,6 +1543,11 @@ void IrrlichtRenderer::unloadZone() {
         zoneTriangleSelector_ = nullptr;
     }
 
+    // Clear camera collision selector to prevent use-after-free during zone transitions
+    if (cameraController_) {
+        cameraController_->setCollisionManager(nullptr, nullptr);
+    }
+
     // Remove zone mesh
     if (zoneMeshNode_) {
         zoneMeshNode_->remove();
