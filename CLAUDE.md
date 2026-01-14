@@ -155,6 +155,65 @@ Tests are in `tests/` with one executable per test suite. Each test links only t
 - `test_integration_network.cpp` - Network protocol integration
 - `test_formatted_message.cpp` - FormattedMessage parsing for NPC dialogue
 
+### Graphics Integration Tests
+
+Graphics integration tests require a running EQEmu server and X display. They are NOT auto-discovered by ctest because they need external dependencies.
+
+**Requirements:**
+- Running EQEmu server (login + world + zone servers)
+- X display (use `DISPLAY=:99` with Xvfb for headless testing)
+- EQ Titanium client files at configured `eq_client_path`
+- Test config file: `/home/user/projects/claude/casterella.json`
+
+**Running graphics integration tests:**
+```bash
+# Run from build directory
+DISPLAY=:99 ./bin/test_zoning_graphics_integration
+DISPLAY=:99 ./bin/test_inventory_model_view
+
+# Run specific test
+DISPLAY=:99 ./bin/test_inventory_model_view --gtest_filter="*ModelHasTextures*"
+```
+
+**Available graphics integration tests:**
+- `test_zoning_graphics_integration.cpp` - Zone transitions with graphics enabled, LoadingPhase verification, camera collision safety
+- `test_inventory_model_view.cpp` - Inventory window paperdoll model loading, textures, animation, weapons, render-to-texture
+
+**Test config format** (`casterella.json`):
+```json
+{
+  "clients": [{
+    "character": "Casterella",
+    "eq_client_path": "/path/to/EverQuestP1999",
+    "host": "10.0.30.13",
+    "port": 5998,
+    "user": "test_user",
+    "pass": "test_pass",
+    "server": "ServerName",
+    "maps_path": "/path/to/maps/base",
+    "navmesh_path": "/path/to/maps/nav"
+  }]
+}
+```
+
+**Writing new graphics integration tests:**
+
+1. Use `EQT_HAS_GRAPHICS` preprocessor guards
+2. Skip if DISPLAY not set: `if (!std::getenv("DISPLAY")) GTEST_SKIP()`
+3. Create client with `createClientWithGraphics()` helper
+4. Wait for zone-in with `waitForZoneIn()` and `waitForZoneReady()`
+5. Access renderer via `eq_->GetRenderer()`
+6. Process frames with `processFrames(count)` or `waitForWithGraphics(predicate)`
+
+**Debugging crashes during integration tests:**
+
+Use the GDB helper script to capture crash backtraces:
+```bash
+# Script sends keystrokes to trigger movement/zoning
+./scripts/gdb_zone_crash.sh
+# Output saved to gdb_crash_output.log
+```
+
 ## Key Patterns
 
 - Zone connection requires specific packet sequencing - see `CheckZoneRequestPhaseComplete()` and the various `m_*_sent` / `m_*_received` flags
