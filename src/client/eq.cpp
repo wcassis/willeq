@@ -14206,15 +14206,10 @@ void EverQuest::LoadZoneGraphics() {
 		}
 	}
 
-	// Create entities for all current spawns EXCEPT our own player
-	// The player entity will be created later after receiving first ClientUpdate
+	// Create entities for all current spawns INCLUDING our own player
+	// Note: unloadZone() clears all entities, so we must recreate the player here
 	for (const auto& [spawn_id, entity] : m_entities) {
-		// Skip our own player - will be created after fully connected
-		if (entity.name == m_character) {
-			LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) - will create after fully connected",
-			          spawn_id, entity.name);
-			continue;
-		}
+		bool isPlayer = (entity.name == m_character);
 
 		// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
@@ -14241,7 +14236,15 @@ void EverQuest::LoadZoneGraphics() {
 
 		m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
 		                         entity.x, entity.y, entity.z, entity.heading,
-		                         false, entity.gender, appearance, isNPC, isCorpse);
+		                         isPlayer, entity.gender, appearance, isNPC, isCorpse);
+
+		if (isPlayer) {
+			// Set up player-specific rendering after creating the entity
+			m_renderer->setPlayerSpawnId(m_my_spawn_id);
+			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+			LOG_INFO(MOD_ENTITY, "Created player entity {} ({}) during graphics loading",
+			         spawn_id, entity.name);
+		}
 	}
 
 	// Recreate doors from stored data
