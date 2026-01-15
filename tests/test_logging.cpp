@@ -324,6 +324,6 @@ TEST_F(LoggingTest, FormatTimestamp_ProducesValidFormat) {
 // =============================================================================
 
 TEST_F(LoggingTest, ModuleCount_MatchesExpected) {
-    // MOD_COUNT should be 19 (the number of defined modules)
-    EXPECT_EQ(MOD_COUNT, 19);
+    // MOD_COUNT should be 20 (the number of defined modules)
+    EXPECT_EQ(MOD_COUNT, 20);
 }

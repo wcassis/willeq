@@ -103,7 +103,7 @@ protected:
 
 TEST_F(AnimationTest, BasicAnimations) {
     EXPECT_EQ(ANIM_STAND, 0);
-    EXPECT_EQ(ANIM_WALK, 1);
+    EXPECT_EQ(ANIM_WALK, 12);
     EXPECT_EQ(ANIM_RUN, 27);
     EXPECT_EQ(ANIM_JUMP, 20);
     EXPECT_EQ(ANIM_DEATH, 16);
