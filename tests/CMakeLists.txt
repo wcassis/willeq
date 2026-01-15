@@ -311,3 +311,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_inventory_model_view GTest::gtest_main willeq_core)
     # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
 ENDIF()
+
+# Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
+# This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
+# they land properly. Tests casting multiple spells in series and buff refresh behavior.
+# Run manually with: DISPLAY=:99 ./bin/test_beneficial_spell_casting
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_beneficial_spell_casting
+        test_beneficial_spell_casting.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_beneficial_spell_casting PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_beneficial_spell_casting GTest::gtest_main willeq_core)
+    # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
+ENDIF()
