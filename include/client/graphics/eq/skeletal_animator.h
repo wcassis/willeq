@@ -182,6 +182,10 @@ public:
     void setPlaybackSpeed(float speed) { playbackSpeed_ = speed; }
     float getPlaybackSpeed() const { return playbackSpeed_; }
 
+    // Enable verbose logging (for debugging specific entities like current target)
+    void setVerboseLogging(bool enabled) { verboseLogging_ = enabled; }
+    bool isVerboseLogging() const { return verboseLogging_; }
+
     // ========================================================================
     // Animation Blending (Phase 6.1)
     // ========================================================================
@@ -266,6 +270,7 @@ private:
     int currentFrame_;         // Current frame index
     bool looping_;             // Whether animation should loop
     float playbackSpeed_;      // Speed multiplier
+    bool verboseLogging_ = false;  // Verbose debug logging (for current target)
 
     // Animation queuing for playThrough animations
     bool playThroughActive_;   // True if current animation must complete before next starts

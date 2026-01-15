@@ -100,6 +100,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleCollision: collisionToggleRequested_ = true; break;
                     case HA::ToggleCollisionDebug: collisionDebugToggleRequested_ = true; break;
                     case HA::ToggleZoneLineVisualization: zoneLineVisualizationToggleRequested_ = true; break;
+                    case HA::CycleObjectLights: cycleObjectLightsRequested_ = true; break;
                     case HA::InteractDoor: doorInteractRequested_ = true; break;
                     case HA::InteractWorldObject: worldObjectInteractRequested_ = true; break;
                     case HA::Hail: hailRequested_ = true; break;
@@ -604,10 +605,9 @@ void IrrlichtRenderer::setupCamera() {
 }
 
 void IrrlichtRenderer::setupLighting() {
-    // Add ambient light - will be updated by time of day
-    smgr_->setAmbientLight(irr::video::SColorf(config_.ambientIntensity,
-                                                config_.ambientIntensity,
-                                                config_.ambientIntensity, 1.0f));
+    // Start in dark mode (lighting ON, zone lights OFF)
+    // Only object lights will illuminate the scene
+    smgr_->setAmbientLight(irr::video::SColorf(0.005f, 0.005f, 0.008f, 1.0f));
 
     // Add a directional light (sun) - store reference for time of day updates
     sunLight_ = smgr_->addLightSceneNode(
@@ -621,6 +621,8 @@ void IrrlichtRenderer::setupLighting() {
         irr::video::SLight& lightData = sunLight_->getLightData();
         lightData.Type = irr::video::ELT_DIRECTIONAL;
         lightData.Direction = irr::core::vector3df(0.5f, -1.0f, 0.5f);
+        // Start with sun hidden (dark mode - only object lights)
+        sunLight_->setVisible(false);
     }
 }
 
@@ -629,6 +631,12 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
 
     currentHour_ = hour;
     currentMinute_ = minute;
+
+    // Don't update ambient/sun if we're in dark mode (zone lights OFF)
+    // In dark mode, only object lights illuminate the scene
+    if (lightingEnabled_ && !zoneLightsEnabled_) {
+        return;
+    }
 
     // Calculate ambient light based on hour
     // EQ time: 0-4 night, 5-6 dawn, 7-17 day, 18-19 dusk, 20-23 night
@@ -676,26 +684,65 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
 }
 
 void IrrlichtRenderer::updateObjectLights() {
-    if (objectLights_.empty() || !camera_) return;
+    if (!camera_) return;
 
-    const float maxDistance = 500.0f;  // Maximum distance to enable a light
-    const size_t maxActiveLights = 12;  // Maximum number of active object lights
+    const float maxDistance = 500.0f;  // Maximum distance to consider a light
+    const size_t hardwareLightLimit = 8;  // Software renderer limit
 
     irr::core::vector3df cameraPos = camera_->getPosition();
 
-    // Calculate distances and sort by distance
-    std::vector<std::pair<float, size_t>> distances;
-    distances.reserve(objectLights_.size());
+    // Player position for occlusion checks (EQ coords to Irrlicht: x, z, y)
+    // Raise to head height (~5 units) so low geometry doesn't block line of sight
+    irr::core::vector3df playerPos(playerX_, playerZ_ + 5.0f, playerY_);
 
-    for (size_t i = 0; i < objectLights_.size(); ++i) {
-        float dist = cameraPos.getDistanceFrom(objectLights_[i].position);
-        if (dist <= maxDistance) {
-            distances.push_back({dist, i});
+    // Helper to calculate horizontal (XZ plane) distance - ignores vertical (Y) component
+    // This ensures lights above/below the player are still considered "close"
+    auto horizontalDistance = [](const irr::core::vector3df& a, const irr::core::vector3df& b) -> float {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return std::sqrt(dx * dx + dz * dz);
+    };
+
+    // Helper to check if a light is visible from player position (not occluded by geometry)
+    auto isLightVisible = [this, &playerPos](const irr::core::vector3df& lightPos) -> bool {
+        if (!collisionManager_ || !zoneTriangleSelector_) {
+            return true;  // No collision detection available, assume visible
         }
-    }
 
-    // Sort by distance (closest first)
-    std::sort(distances.begin(), distances.end());
+        // Cast ray from player to light
+        irr::core::line3df ray(playerPos, lightPos);
+        irr::core::vector3df hitPoint;
+        irr::core::triangle3df hitTriangle;
+        irr::scene::ISceneNode* hitNode = nullptr;
+
+        // Check if ray hits geometry before reaching the light
+        hitNode = collisionManager_->getSceneNodeAndCollisionPointFromRay(
+            ray, hitPoint, hitTriangle, 0, nullptr);
+
+        if (hitNode) {
+            // Calculate distances
+            float distToLight = playerPos.getDistanceFrom(lightPos);
+            float distToHit = playerPos.getDistanceFrom(hitPoint);
+
+            // Light is occluded if we hit something closer than the light
+            // Use a small tolerance to avoid floating point issues
+            if (distToHit < distToLight - 5.0f) {
+                return false;  // Light is occluded
+            }
+        }
+
+        return true;  // Light is visible
+    };
+
+    // Unified light pool: stores {distance, light_node, is_zone_light, name}
+    struct LightCandidate {
+        float distance;
+        irr::scene::ILightSceneNode* node;
+        bool isZoneLight;
+        std::string name;
+    };
+    std::vector<LightCandidate> candidates;
+    candidates.reserve(objectLights_.size() + zoneLightNodes_.size());
 
     // First, disable all lights
     for (auto& objLight : objectLights_) {
@@ -703,13 +750,121 @@ void IrrlichtRenderer::updateObjectLights() {
             objLight.node->setVisible(false);
         }
     }
+    for (auto* node : zoneLightNodes_) {
+        if (node) {
+            node->setVisible(false);
+        }
+    }
 
-    // Enable the closest N lights
-    size_t enabledCount = std::min(distances.size(), maxActiveLights);
-    for (size_t i = 0; i < enabledCount; ++i) {
-        size_t idx = distances[i].second;
+    // Add zone lights to the pool if zone lights are enabled
+    if (zoneLightsEnabled_) {
+        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+            auto* node = zoneLightNodes_[i];
+            if (node) {
+                irr::core::vector3df lightPos = node->getPosition();
+                float dist = horizontalDistance(cameraPos, lightPos);
+                if (dist <= maxDistance && isLightVisible(lightPos)) {
+                    candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i)});
+                }
+            }
+        }
+    }
+
+    // Add object lights to the pool (up to maxObjectLights_ candidates)
+    // First collect and sort VISIBLE object lights by horizontal distance
+    std::vector<std::pair<float, size_t>> objectDistances;
+    objectDistances.reserve(objectLights_.size());
+    size_t inRangeCount = 0;
+    size_t occludedCount = 0;
+    for (size_t i = 0; i < objectLights_.size(); ++i) {
+        float dist = horizontalDistance(cameraPos, objectLights_[i].position);
+        if (dist <= maxDistance) {
+            inRangeCount++;
+            if (isLightVisible(objectLights_[i].position)) {
+                objectDistances.push_back({dist, i});
+            } else {
+                occludedCount++;
+            }
+        }
+    }
+    std::sort(objectDistances.begin(), objectDistances.end());
+
+    // Add the closest maxObjectLights_ visible object lights to candidates
+    size_t objectLightCount = std::min(objectDistances.size(), static_cast<size_t>(maxObjectLights_));
+    for (size_t i = 0; i < objectLightCount; ++i) {
+        size_t idx = objectDistances[i].second;
         if (objectLights_[idx].node) {
-            objectLights_[idx].node->setVisible(true);
+            candidates.push_back({objectDistances[i].first, objectLights_[idx].node, false, objectLights_[idx].objectName});
+        }
+    }
+
+    // Sort all candidates by distance (closest first)
+    std::sort(candidates.begin(), candidates.end(),
+        [](const LightCandidate& a, const LightCandidate& b) {
+            return a.distance < b.distance;
+        });
+
+    // Enable only the closest lights up to hardware limit
+    size_t enabledCount = std::min(candidates.size(), hardwareLightLimit);
+    for (size_t i = 0; i < enabledCount; ++i) {
+        if (candidates[i].node) {
+            candidates[i].node->setVisible(true);
+        }
+    }
+
+    // Check if active lights changed and log if so (cleared by cycleObjectLights)
+    // Use "_none_" sentinel when 0 lights so we can distinguish "0 lights logged" from "needs re-log"
+    bool needsLog = previousActiveLights_.empty() ||
+                    (enabledCount == 0 && previousActiveLights_[0] != "_none_") ||
+                    (enabledCount > 0 && (previousActiveLights_.size() != enabledCount || previousActiveLights_[0] == "_none_"));
+    if (needsLog) {
+        previousActiveLights_.clear();
+        LOG_DEBUG(MOD_GRAPHICS, "Active lights: {} enabled (objLights: {} in range, {} visible, {} occluded; maxObj={})",
+            enabledCount, inRangeCount, objectDistances.size(), occludedCount, maxObjectLights_);
+        if (enabledCount == 0) {
+            previousActiveLights_.push_back("_none_");
+        } else {
+            previousActiveLights_.reserve(enabledCount);
+            for (size_t i = 0; i < enabledCount; ++i) {
+                previousActiveLights_.push_back(candidates[i].name);
+                if (candidates[i].node) {
+                    irr::core::vector3df pos = candidates[i].node->getPosition();
+                    LOG_DEBUG(MOD_GRAPHICS, "  #{} '{}' at ({:.1f}, {:.1f}, {:.1f}) dist={:.1f}",
+                        i, candidates[i].name, pos.X, pos.Y, pos.Z, candidates[i].distance);
+                }
+            }
+        }
+    }
+
+    // Debug: Create/update markers at active light positions
+    if (showLightDebugMarkers_ && smgr_) {
+        // Remove old markers
+        for (auto* marker : lightDebugMarkers_) {
+            if (marker) marker->remove();
+        }
+        lightDebugMarkers_.clear();
+
+        // Create new markers at enabled light positions
+        irr::scene::IMesh* cubeMesh = smgr_->getGeometryCreator()->createCubeMesh(irr::core::vector3df(2.0f, 2.0f, 2.0f));
+        if (cubeMesh) {
+            for (size_t i = 0; i < enabledCount; ++i) {
+                if (candidates[i].node) {
+                    irr::core::vector3df pos = candidates[i].node->getPosition();
+                    irr::scene::IMeshSceneNode* marker = smgr_->addMeshSceneNode(cubeMesh);
+                    if (marker) {
+                        marker->setPosition(pos);
+                        // Color based on light type: yellow for zone lights, orange for object lights
+                        irr::video::SColor color = candidates[i].isZoneLight ?
+                            irr::video::SColor(255, 255, 255, 0) :  // Yellow for zone
+                            irr::video::SColor(255, 255, 128, 0);   // Orange for object
+                        marker->getMaterial(0).Lighting = false;
+                        marker->getMaterial(0).EmissiveColor = color;
+                        marker->getMaterial(0).DiffuseColor = color;
+                        lightDebugMarkers_.push_back(marker);
+                    }
+                }
+            }
+            cubeMesh->drop();
         }
     }
 }
@@ -1712,9 +1867,9 @@ void IrrlichtRenderer::createObjectMeshes() {
         } else if (upperName.find("LANTERN") != std::string::npos ||
                    upperName.find("LAMP") != std::string::npos ||
                    upperName.find("LIGHT") != std::string::npos) {
-            // Lanterns/lamps - warm yellow
+            // Lanterns/lamps/lightpoles - warm yellow, reduced intensity (1/4 strength)
             isLightSource = true;
-            lightColor = irr::video::SColorf(1.0f, 0.85f, 0.6f, 1.0f);
+            lightColor = irr::video::SColorf(0.25f, 0.21f, 0.15f, 1.0f);
             lightRadius = 100.0f;
         } else if (upperName.find("CANDLE") != std::string::npos) {
             // Candles - soft yellow, smaller radius
@@ -1724,8 +1879,25 @@ void IrrlichtRenderer::createObjectMeshes() {
         }
 
         if (isLightSource) {
-            // Create light at object position
+            // Start with object's base position (EQ coords to Irrlicht: x, z, y)
             irr::core::vector3df lightPos(x, z, y);
+
+            // Try to find a nearby zone light with the correct elevated position
+            // Zone lights from WLD data have accurate light source positions (e.g., lantern height)
+            if (currentZone_ && !currentZone_->lights.empty()) {
+                float bestDist = 50.0f;  // Max horizontal distance to consider a match
+                for (const auto& zoneLight : currentZone_->lights) {
+                    // Calculate horizontal distance (ignore vertical)
+                    float dx = zoneLight->x - x;
+                    float dy = zoneLight->y - y;  // EQ Y is horizontal
+                    float hDist = std::sqrt(dx * dx + dy * dy);
+                    if (hDist < bestDist) {
+                        bestDist = hDist;
+                        // Use the zone light's position (transform EQ to Irrlicht)
+                        lightPos = irr::core::vector3df(zoneLight->x, zoneLight->z, zoneLight->y);
+                    }
+                }
+            }
 
             irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
                 nullptr, lightPos, lightColor, lightRadius * 1.5f);  // Increase effective radius
@@ -1733,8 +1905,9 @@ void IrrlichtRenderer::createObjectMeshes() {
             if (lightNode) {
                 irr::video::SLight& lightData = lightNode->getLightData();
                 lightData.Type = irr::video::ELT_POINT;
-                // Lower attenuation for more visible ground lighting
-                lightData.Attenuation = irr::core::vector3df(0.1f, 0.0f, 0.00002f);
+                // Attenuation: 1/(constant + linear*d + quadratic*d²)
+                // constant=1 (full brightness at source), linear for gradual falloff
+                lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
                 lightNode->setVisible(false);  // Start hidden, updateObjectLights will enable nearby ones
 
                 ObjectLight objLight;
@@ -1771,12 +1944,9 @@ void IrrlichtRenderer::createZoneLights() {
         return;
     }
 
-    // Limit number of lights for performance (software renderer is slow with many lights)
-    // Irrlicht software renderer typically supports 8 lights max per scene
-    const size_t maxLights = 8;
-    size_t lightCount = std::min(currentZone_->lights.size(), maxLights);
-
-    for (size_t i = 0; i < lightCount; ++i) {
+    // Create ALL zone lights - unified light management in updateObjectLights()
+    // will select the closest ones based on distance and hardware limits
+    for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
         const auto& light = currentZone_->lights[i];
 
         // Transform EQ coordinates (Z-up) to Irrlicht (Y-up)
@@ -1796,8 +1966,8 @@ void IrrlichtRenderer::createZoneLights() {
             lightData.Type = irr::video::ELT_POINT;
             lightData.Attenuation = irr::core::vector3df(1.0f, 0.0f, 0.00001f);
 
-            // Start with lights disabled (user can toggle with F4)
-            lightNode->setVisible(zoneLightsEnabled_);
+            // Start hidden - updateObjectLights() manages visibility
+            lightNode->setVisible(false);
 
             zoneLightNodes_.push_back(lightNode);
         }
@@ -2268,6 +2438,10 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "processFrame: check zonelights...");
     if (eventReceiver_->zoneLightsToggleRequested()) {
         toggleZoneLights();
+    }
+    LOG_TRACE(MOD_GRAPHICS, "processFrame: check cycleObjectLights...");
+    if (eventReceiver_->cycleObjectLightsRequested()) {
+        cycleObjectLights();
     }
     LOG_TRACE(MOD_GRAPHICS, "processFrame: check lighting...");
     if (eventReceiver_->lightingToggleRequested()) {
@@ -3047,16 +3221,85 @@ void IrrlichtRenderer::toggleLighting() {
 }
 
 void IrrlichtRenderer::toggleZoneLights() {
-    zoneLightsEnabled_ = !zoneLightsEnabled_;
+    // 3-state cycle:
+    // State 1: Lighting ON, Zone lights OFF (default) - dark scene, only object lights
+    // State 2: Lighting ON, Zone lights ON - normal ambient/sun + zone lights
+    // State 3: Lighting OFF, Zone lights OFF - no lighting effects
+    // Then back to State 1
 
-    // Toggle visibility of all zone lights
-    for (auto* node : zoneLightNodes_) {
-        if (node) {
-            node->setVisible(zoneLightsEnabled_);
+    if (lightingEnabled_ && !zoneLightsEnabled_) {
+        // State 1 -> State 2: Turn zone lights ON, restore normal ambient/sun
+        zoneLightsEnabled_ = true;
+        // Restore normal ambient and sun based on time of day
+        updateTimeOfDay(currentHour_, currentMinute_);
+        if (sunLight_) {
+            sunLight_->setVisible(true);
         }
+        LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: ON ({} lights)", zoneLightNodes_.size());
+    } else if (lightingEnabled_ && zoneLightsEnabled_) {
+        // State 2 -> State 3: Turn both OFF
+        zoneLightsEnabled_ = false;
+        lightingEnabled_ = false;
+        // Update materials to disable lighting
+        if (zoneMeshNode_) {
+            for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
+                zoneMeshNode_->getMaterial(i).Lighting = false;
+            }
+        }
+        for (auto* node : objectNodes_) {
+            if (node) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = false;
+                }
+            }
+        }
+        LOG_INFO(MOD_GRAPHICS, "Lighting: OFF, Zone lights: OFF");
+    } else {
+        // State 3 -> State 1: Turn lighting ON, keep zone lights OFF
+        // Dark scene - only object lights provide illumination
+        lightingEnabled_ = true;
+        zoneLightsEnabled_ = false;
+        // Update materials to enable lighting
+        if (zoneMeshNode_) {
+            for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
+                zoneMeshNode_->getMaterial(i).Lighting = true;
+                zoneMeshNode_->getMaterial(i).NormalizeNormals = true;
+                zoneMeshNode_->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+            }
+        }
+        for (auto* node : objectNodes_) {
+            if (node) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = true;
+                    node->getMaterial(i).NormalizeNormals = true;
+                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                }
+            }
+        }
+        // Set dark ambient and disable sun - only object lights illuminate
+        smgr_->setAmbientLight(irr::video::SColorf(0.005f, 0.005f, 0.008f, 1.0f));
+        if (sunLight_) {
+            sunLight_->setVisible(false);
+        }
+        LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: OFF (dark mode)");
+    }
+    // Note: light visibility is managed by updateObjectLights() unified light management
+}
+
+void IrrlichtRenderer::cycleObjectLights() {
+    // Cycle: 0 -> 1 -> 2 -> 3 -> ... -> 8 -> 0 -> ...
+    if (maxObjectLights_ >= 8) {
+        maxObjectLights_ = 0;
+    } else {
+        maxObjectLights_++;
     }
 
-    LOG_INFO(MOD_GRAPHICS, "Zone lights: {} ({} lights)", (zoneLightsEnabled_ ? "ON" : "OFF"), zoneLightNodes_.size());
+    // Clear previous to force re-logging of active lights on next update
+    previousActiveLights_.clear();
+
+    LOG_INFO(MOD_GRAPHICS, "Object lights: {} max", maxObjectLights_);
 }
 
 void IrrlichtRenderer::toggleOldModels() {

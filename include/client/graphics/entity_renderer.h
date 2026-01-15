@@ -222,7 +222,7 @@ public:
     const std::map<uint16_t, EntityVisual>& getEntities() const { return entities_; }
 
     // Debug: Set target ID for animation debugging output
-    void setDebugTargetId(uint16_t spawnId) { debugTargetId_ = spawnId; }
+    void setDebugTargetId(uint16_t spawnId);
     uint16_t getDebugTargetId() const { return debugTargetId_; }
 
     // Show/hide the player entity (used in first-person mode)

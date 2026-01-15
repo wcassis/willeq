@@ -44,6 +44,7 @@ enum class InputAction {
     ToggleHUD,
     ToggleNameTags,
     ToggleZoneLights,
+    CycleObjectLights,
     ToggleCameraMode,
     ToggleOldModels,
     ToggleRendererMode,
