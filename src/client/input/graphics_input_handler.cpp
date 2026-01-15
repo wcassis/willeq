@@ -1,4 +1,5 @@
 #include "client/input/graphics_input_handler.h"
+#include "client/input/hotkey_manager.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -27,19 +28,34 @@ void GraphicsInputHandler::updateFromEventReceiver() {
 #ifdef EQT_HAS_GRAPHICS
     if (!m_eventReceiver) return;
 
-    // Update movement state from held keys
-    m_state.moveForward = m_eventReceiver->isKeyDown(irr::KEY_KEY_W) ||
-                          m_eventReceiver->isKeyDown(irr::KEY_UP);
-    m_state.moveBackward = m_eventReceiver->isKeyDown(irr::KEY_KEY_S) ||
-                           m_eventReceiver->isKeyDown(irr::KEY_DOWN);
-    m_state.strafeLeft = m_eventReceiver->isKeyDown(irr::KEY_KEY_Q);
-    m_state.strafeRight = m_eventReceiver->isKeyDown(irr::KEY_KEY_E);
-    m_state.turnLeft = m_eventReceiver->isKeyDown(irr::KEY_KEY_A) ||
-                       m_eventReceiver->isKeyDown(irr::KEY_LEFT);
-    m_state.turnRight = m_eventReceiver->isKeyDown(irr::KEY_KEY_D) ||
-                        m_eventReceiver->isKeyDown(irr::KEY_RIGHT);
+    // Reset movement state
+    m_state.moveForward = false;
+    m_state.moveBackward = false;
+    m_state.strafeLeft = false;
+    m_state.strafeRight = false;
+    m_state.turnLeft = false;
+    m_state.turnRight = false;
     m_state.shiftHeld = m_eventReceiver->isKeyDown(irr::KEY_LSHIFT) ||
                         m_eventReceiver->isKeyDown(irr::KEY_RSHIFT);
+
+    // Update movement state from held keys using HotkeyManager
+    auto& hotkeyMgr = HotkeyManager::instance();
+    for (int keyCode = 0; keyCode < irr::KEY_KEY_CODES_COUNT; ++keyCode) {
+        if (m_eventReceiver->isKeyDown(static_cast<irr::EKEY_CODE>(keyCode))) {
+            HotkeyAction action;
+            if (hotkeyMgr.isMovementKey(static_cast<irr::EKEY_CODE>(keyCode), action)) {
+                switch (action) {
+                    case HotkeyAction::MoveForward: m_state.moveForward = true; break;
+                    case HotkeyAction::MoveBackward: m_state.moveBackward = true; break;
+                    case HotkeyAction::StrafeLeft: m_state.strafeLeft = true; break;
+                    case HotkeyAction::StrafeRight: m_state.strafeRight = true; break;
+                    case HotkeyAction::TurnLeft: m_state.turnLeft = true; break;
+                    case HotkeyAction::TurnRight: m_state.turnRight = true; break;
+                    default: break;
+                }
+            }
+        }
+    }
 
     // Update mouse state
     m_state.mouseX = m_eventReceiver->getMouseX();

@@ -27,6 +27,7 @@
 #include "client/graphics/ui/command_registry.h"
 #include "client/graphics/ui/hotbar_types.h"
 #include "client/graphics/ui/spell_book_window.h"
+#include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #endif
 #include "client/animation_constants.h"
@@ -7868,6 +7869,50 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(pet_cmd);
+
+	// === System Commands - Hotkeys ===
+
+	Command hotkeys;
+	hotkeys.name = "hotkeys";
+	hotkeys.usage = "/hotkeys <reload|save|conflicts>";
+	hotkeys.description = "Manage hotkey configuration";
+	hotkeys.category = "Utility";
+	hotkeys.handler = [this](const std::string& args) {
+		auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+		if (args == "reload") {
+			if (hotkeyMgr.reload()) {
+				AddChatSystemMessage("Hotkeys reloaded successfully.");
+				auto conflicts = hotkeyMgr.detectConflicts();
+				if (!conflicts.empty()) {
+					AddChatSystemMessage(fmt::format("Warning: {} hotkey conflicts detected.", conflicts.size()));
+				}
+			} else {
+				AddChatSystemMessage("Failed to reload hotkeys. Check config file.");
+			}
+		} else if (args == "save") {
+			if (hotkeyMgr.saveToFile()) {
+				AddChatSystemMessage("Hotkeys saved successfully.");
+			} else {
+				AddChatSystemMessage("Failed to save hotkeys.");
+			}
+		} else if (args == "conflicts") {
+			auto conflicts = hotkeyMgr.detectConflicts();
+			if (conflicts.empty()) {
+				AddChatSystemMessage("No hotkey conflicts detected.");
+			} else {
+				AddChatSystemMessage(fmt::format("{} hotkey conflicts:", conflicts.size()));
+				for (const auto& c : conflicts) {
+					AddChatSystemMessage(c.message);
+				}
+			}
+		} else if (args.empty()) {
+			AddChatSystemMessage("Hotkey commands: reload, save, conflicts");
+			AddChatSystemMessage(fmt::format("Config path: {}", hotkeyMgr.getConfigPath()));
+		} else {
+			AddChatSystemMessage("Unknown hotkey subcommand. Use: reload, save, conflicts");
+		}
+	};
+	m_command_registry->registerCommand(hotkeys);
 }
 #endif
 

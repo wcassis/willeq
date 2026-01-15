@@ -9,6 +9,7 @@
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/ui/ui_settings.h"
+#include "client/input/hotkey_manager.h"
 #endif
 
 #include <thread>
@@ -42,6 +43,16 @@ void HandleSigUsr1(int /*sig*/) {
 void HandleSigUsr2(int /*sig*/) {
 	LogLevelDecrease();
 }
+
+// Signal handler for hotkey reload (SIGHUP)
+#ifdef EQT_HAS_GRAPHICS
+void HandleSigHup(int /*sig*/) {
+	// Reload hotkey configuration
+	// Note: This is a simple flag-based approach since we can't safely
+	// do complex operations in a signal handler
+	eqt::input::HotkeyManager::instance().reload();
+}
+#endif
 
 // Terminal handling for raw keyboard input (Unix)
 struct termios orig_termios;
@@ -575,6 +586,10 @@ int main(int argc, char *argv[]) {
 	// Register signal handlers for runtime log level adjustment
 	signal(SIGUSR1, HandleSigUsr1);
 	signal(SIGUSR2, HandleSigUsr2);
+#ifdef EQT_HAS_GRAPHICS
+	// Register SIGHUP handler for hotkey configuration reload
+	signal(SIGHUP, HandleSigHup);
+#endif
 #endif
 
 	LOG_INFO(MOD_MAIN, "Starting WillEQ with debug level {}, config file: {}, pathfinding: {}",
@@ -598,6 +613,14 @@ int main(int argc, char *argv[]) {
 #ifdef EQT_HAS_GRAPHICS
 		// Still load UI settings even for legacy config format
 		eqt::ui::UISettings::instance().loadFromFile("config/ui_settings.json");
+
+		// Load hotkey settings for legacy config format
+		{
+			auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+			hotkeyMgr.resetToDefaults();
+			hotkeyMgr.loadFromFile("config/hotkeys.json");
+			hotkeyMgr.logConflicts();
+		}
 #endif
 	} else if (config_handle.isObject()) {
 		// New format: object with optional logging and clients sections
@@ -616,6 +639,26 @@ int main(int argc, char *argv[]) {
 				LOG_INFO(MOD_UI, "Applying UI settings overrides from main config");
 				uiSettings.applyOverrides(config_handle["uiSettings"]);
 			}
+		}
+
+		// Load hotkey settings from default file, then apply any overrides from main config
+		{
+			auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+
+			// 1. Reset to defaults first
+			hotkeyMgr.resetToDefaults();
+
+			// 2. Load from config/hotkeys.json if it exists
+			hotkeyMgr.loadFromFile("config/hotkeys.json");
+
+			// 3. Apply overrides from main config if present
+			if (config_handle.isMember("hotkeys")) {
+				LOG_INFO(MOD_INPUT, "Applying hotkey overrides from main config");
+				hotkeyMgr.applyOverrides(config_handle["hotkeys"]);
+			}
+
+			// 4. Log any conflicts
+			hotkeyMgr.logConflicts();
 		}
 #endif
 

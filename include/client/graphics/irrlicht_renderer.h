@@ -11,6 +11,7 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
+#include "client/input/hotkey_manager.h"
 
 // Forward declaration for collision map
 class HCMap;
@@ -265,6 +266,16 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     bool slashKeyPressed() { bool r = slashKeyPressed_; slashKeyPressed_ = false; return r; }
     bool escapeKeyPressed() { bool r = escapeKeyPressed_; escapeKeyPressed_ = false; return r; }
 
+    // Current mode (for hotkey lookups)
+    void setCurrentMode(RendererMode mode) {
+        switch (mode) {
+            case RendererMode::Player: currentMode_ = eqt::input::HotkeyMode::Player; break;
+            case RendererMode::Repair: currentMode_ = eqt::input::HotkeyMode::Repair; break;
+            case RendererMode::Admin: currentMode_ = eqt::input::HotkeyMode::Admin; break;
+        }
+    }
+    eqt::input::HotkeyMode getCurrentMode() const { return currentMode_; }
+
     // Repair mode control requests
     float getRepairRotateXDelta() { float d = repairRotateXDelta_; repairRotateXDelta_ = 0; return d; }
     float getRepairRotateYDelta() { float d = repairRotateYDelta_; repairRotateYDelta_ = 0; return d; }
@@ -355,6 +366,9 @@ bool zoneLineVisualizationToggleRequested_ = false;
     bool repairFlipYRequested_ = false;
     bool repairFlipZRequested_ = false;
     bool repairResetRequested_ = false;
+
+    // Current hotkey mode for key lookups
+    eqt::input::HotkeyMode currentMode_ = eqt::input::HotkeyMode::Player;
 };
 
 // Main Irrlicht renderer class
