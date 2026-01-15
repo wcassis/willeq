@@ -65,6 +65,7 @@ CombatManager::CombatManager(EverQuest* eq)
 	, m_combat_state(COMBAT_STATE_IDLE)
 	, m_current_target_id(0)
 	, m_auto_attack_enabled(false)
+	, m_auto_fire_enabled(false)
 	, m_is_casting(false)
 	, m_current_spell_id(0)
 	, m_spell_target_id(0)
@@ -356,6 +357,57 @@ void CombatManager::DisableAutoAttack() {
 	m_eq->QueuePacket(HC_OP_AutoAttack2, &packet2);
 }
 
+void CombatManager::EnableAutoFire() {
+	LOG_DEBUG(MOD_COMBAT, "EnableAutoFire called (has_target={}, target_id={})",
+		HasTarget(), m_current_target_id);
+
+	if (!HasTarget()) {
+		LOG_DEBUG(MOD_COMBAT, "EnableAutoFire: No target, returning");
+		return;
+	}
+
+	// Disable melee auto-attack when enabling ranged
+	if (m_auto_attack_enabled) {
+		DisableAutoAttack();
+	}
+
+	m_auto_fire_enabled = true;
+	SetCombatState(COMBAT_STATE_ENGAGED);
+
+	// Send auto fire on packet (1 byte bool)
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(1);
+	packet.PutUInt8(0, 1);  // true = on
+	m_eq->QueuePacket(HC_OP_AutoFire, &packet);
+
+	LOG_DEBUG(MOD_COMBAT, "EnableAutoFire: Auto fire ENABLED");
+}
+
+void CombatManager::DisableAutoFire() {
+	m_auto_fire_enabled = false;
+
+	// Only change state if we're engaged and not melee attacking
+	if (m_combat_state == COMBAT_STATE_ENGAGED && !m_auto_attack_enabled) {
+		SetCombatState(COMBAT_STATE_IDLE);
+	}
+
+	// Send auto fire off packet (1 byte bool)
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(1);
+	packet.PutUInt8(0, 0);  // false = off
+	m_eq->QueuePacket(HC_OP_AutoFire, &packet);
+
+	LOG_DEBUG(MOD_COMBAT, "DisableAutoFire: Auto fire DISABLED");
+}
+
+void CombatManager::ToggleAutoFire() {
+	if (m_auto_fire_enabled) {
+		DisableAutoFire();
+	} else {
+		EnableAutoFire();
+	}
+}
+
 bool CombatManager::CastSpell(uint32_t spell_id, uint16_t target_id) {
 	if (m_is_casting) {
 		return false;
@@ -441,6 +493,35 @@ void CombatManager::UseAbility(uint32_t ability_id, uint16_t target_id) {
 	m_eq->QueuePacket(HC_OP_CombatAbility, &packet);
 
 	LOG_DEBUG(MOD_COMBAT, "Sent CombatAbility packet: skill={}, target={}", ability_id, actual_target);
+}
+
+void CombatManager::Taunt(uint16_t target_id) {
+	if (!m_eq) {
+		LOG_ERROR(MOD_COMBAT, "Taunt: No EQ reference");
+		return;
+	}
+
+	// Use current target if none specified
+	uint16_t actual_target = target_id;
+	if (actual_target == 0) {
+		actual_target = m_current_target_id;
+	}
+
+	if (actual_target == 0) {
+		LOG_DEBUG(MOD_COMBAT, "Taunt: No target specified");
+		return;
+	}
+
+	LOG_DEBUG(MOD_COMBAT, "Taunt: target={}", actual_target);
+
+	// Build Taunt packet using Target_Struct (4 bytes)
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(4);
+	packet.PutUInt32(0, actual_target);
+
+	m_eq->QueuePacket(HC_OP_Taunt, &packet);
+
+	LOG_DEBUG(MOD_COMBAT, "Sent Taunt packet: target={}", actual_target);
 }
 
 void CombatManager::UpdateCombatStats(const CombatStats& stats) {

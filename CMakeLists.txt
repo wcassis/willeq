@@ -160,6 +160,7 @@ SET(CLIENT_CORE_SOURCES
     # Input handling sources
     src/client/input/null_input_handler.cpp
     src/client/input/console_input_handler.cpp
+    src/client/input/hotkey_manager.cpp
     # Output/rendering sources
     src/client/output/output_renderer.cpp
     src/client/output/null_renderer.cpp

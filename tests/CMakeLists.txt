@@ -218,6 +218,15 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_graphics)
+
+    # Test HotkeyManager (requires Irrlicht for key codes)
+    ADD_EXECUTABLE(test_hotkey_manager
+        test_hotkey_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotkey_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotkey_manager GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
+    GTEST_DISCOVER_TESTS(test_hotkey_manager)
 ENDIF()
 
 # Test asset loading (equipment, race models, textures, animations, lights)

@@ -137,6 +137,12 @@ public:
 	void DisableAutoAttack();
 	bool IsAutoAttackEnabled() const { return m_auto_attack_enabled; }
 
+	// Auto fire (ranged)
+	void EnableAutoFire();
+	void DisableAutoFire();
+	void ToggleAutoFire();
+	bool IsAutoFireEnabled() const { return m_auto_fire_enabled; }
+
 	// Auto movement during combat
 	void EnableAutoMovement() { m_auto_movement_enabled = true; }
 	void DisableAutoMovement() { m_auto_movement_enabled = false; }
@@ -151,6 +157,7 @@ public:
 
 	// Combat abilities
 	void UseAbility(uint32_t ability_id, uint16_t target_id = 0);
+	void Taunt(uint16_t target_id = 0);
 
 	// Situational awareness
 	void UpdateCombatStats(const CombatStats& stats);
@@ -214,6 +221,7 @@ private:
 
 	// Auto attack
 	bool m_auto_attack_enabled;
+	bool m_auto_fire_enabled;  // Ranged auto-attack
 	std::chrono::steady_clock::time_point m_last_attack_time;
 	uint32_t m_attack_delay_ms;
 

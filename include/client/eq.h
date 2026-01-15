@@ -136,6 +136,7 @@ enum TitaniumZoneOpcodes {
 	HC_OP_WorldObjectsSent = 0x0000,
 	HC_OP_ExpUpdate = 0x5ecd,
 	HC_OP_RaidUpdate = 0x1f21,
+	HC_OP_RaidInvite = 0x5891,   // Invite player to raid
 	HC_OP_GuildMOTD = 0x475a,
 	HC_OP_ChannelMessage = 0x1004,
 	HC_OP_WearChange = 0x7441,
@@ -252,7 +253,122 @@ enum TitaniumZoneOpcodes {
 	HC_OP_GMEndTraining = 0x613d,        // End training session (client -> server)
 	HC_OP_GMEndTrainingResponse = 0x0000, // Server ack for end training (unused in Titanium)
 	// Pet opcodes
-	HC_OP_PetCommands = 0x10a1           // C->S: Pet command from client
+	HC_OP_PetCommands = 0x10a1,          // C->S: Pet command from client
+	// Logout/Camp opcodes
+	HC_OP_Camp = 0x78c1,                 // C->S: Camp request (starts 30s timer)
+	HC_OP_Logout = 0x61ff,               // C->S: Logout request (after camp timer)
+	HC_OP_LogoutReply = 0x3cdc,          // S->C: Server confirmation of logout
+	// Resurrection opcodes
+	HC_OP_RezzRequest = 0x1035,          // S->C: Resurrection offer
+	HC_OP_RezzAnswer = 0x6219,           // C->S: Accept/decline resurrection
+	HC_OP_RezzComplete = 0x4b05,         // S->C: Resurrection complete
+	// Who opcodes
+	HC_OP_WhoAllRequest = 0x5cdd,        // C->S: Request /who results
+	HC_OP_WhoAllResponse = 0x757b,       // S->C: Who results
+	// Inspect opcodes
+	HC_OP_InspectRequest = 0x775d,       // Bidirectional: Request inspect / being inspected
+	HC_OP_InspectAnswer = 0x2403,        // Bidirectional: Inspect response data
+	// Guild opcodes (C->S)
+	HC_OP_GuildInvite = 0x18b7,          // C->S: Invite player to guild
+	HC_OP_GuildInviteAccept = 0x61d0,    // C->S: Accept/decline guild invite
+	HC_OP_GuildRemove = 0x0179,          // C->S: Remove member from guild
+	HC_OP_GuildDelete = 0x6cce,          // C->S: Delete guild
+	HC_OP_GuildLeader = 0x12b1,          // C->S: Transfer leadership
+	HC_OP_GuildDemote = 0x4eb9,          // C->S: Demote member
+	HC_OP_GuildPublicNote = 0x17a2,      // C->S: Set public note
+	HC_OP_SetGuildMOTD = 0x591c,         // C->S: Set guild MOTD
+	HC_OP_GetGuildMOTD = 0x7fec,         // C->S: Request guild MOTD
+	// Guild opcodes (S->C)
+	HC_OP_GuildMemberList = 0x147d,      // S->C: Full member list
+	HC_OP_GuildMemberUpdate = 0x0f4d,    // S->C: Member status change
+	HC_OP_GetGuildMOTDReply = 0x3246,    // S->C: MOTD response
+	HC_OP_SetGuildRank = 0x6966,         // S->C: Rank change
+	HC_OP_GuildMemberAdd = 0x754e,       // S->C: New member joined
+	// Phase 3: Corpse Management
+	HC_OP_CorpseDrag = 0x50c0,           // C->S: Start dragging corpse
+	HC_OP_CorpseDrop = 0x7c7c,           // C->S: Drop dragged corpse
+	HC_OP_ConsiderCorpse = 0x773f,       // C->S: Consider corpse (like /con)
+	HC_OP_ConfirmDelete = 0x3838,        // C->S: Confirm corpse deletion
+	// Phase 3: Consent System
+	HC_OP_Consent = 0x1081,              // C->S: Grant consent to loot corpse
+	HC_OP_ConsentDeny = 0x4e8c,          // C->S: Deny consent
+	HC_OP_ConsentResponse = 0x6380,      // S->C: Consent granted response
+	HC_OP_DenyResponse = 0x7c66,         // S->C: Consent denied response
+	// Phase 3: Combat Targeting
+	HC_OP_Assist = 0x7709,               // C->S: Assist target (acquire their target)
+	HC_OP_AssistGroup = 0x5104,          // C->S: Group assist
+	// Phase 3: Travel System
+	HC_OP_BoardBoat = 0x4298,            // C->S: Board boat
+	HC_OP_LeaveBoat = 0x67c9,            // C->S: Leave boat
+	HC_OP_ControlBoat = 0x2c81,          // C->S: Control boat direction
+	// Phase 3: Group Split
+	HC_OP_Split = 0x4848,                // C->S: Split money with group
+	// Phase 3: LFG System
+	HC_OP_LFGCommand = 0x68ac,           // C->S: LFG toggle command
+	// Phase 3: Raid additions
+	HC_OP_RaidJoin = 0x3c24,             // C->S: Join raid
+	HC_OP_MarkRaidNPC = 0x5191,          // C->S: Mark NPC for raid
+	// Phase 3: Combat Abilities
+	HC_OP_Shielding = 0x3fe6,            // C->S: Shield another player
+	HC_OP_EnvDamage = 0x31b3,            // S->C: Environmental damage
+	// Phase 3: Discipline System
+	HC_OP_DisciplineUpdate = 0x7180,     // S->C: Discipline list update
+	HC_OP_DisciplineTimer = 0x53df,      // S->C: Discipline cooldown timer
+	// Phase 3: Banking
+	HC_OP_BankerChange = 0x6a5b,         // S->C: Bank contents changed
+	// Phase 3: Misc opcodes
+	HC_OP_Save = 0x736b,                 // C->S: Save character request
+	HC_OP_SaveOnZoneReq = 0x1540,        // C->S: Save before zone
+	HC_OP_PopupResponse = 0x3816,        // C->S: Response to popup dialog
+	HC_OP_ClearObject = 0x21ed,          // S->C: Clear world object
+	// Phase 4: Dueling
+	HC_OP_RequestDuel = 0x28e1,          // Bidirectional: Duel request
+	HC_OP_DuelAccept = 0x1b09,           // C->S: Accept duel
+	HC_OP_DuelDecline = 0x3bad,          // C->S: Decline duel
+	// Phase 4: Skills (Note: HC_OP_BindWound and HC_OP_TrackTarget already defined above)
+	HC_OP_TrackUnknown = 0x6177,         // C->S: Track related
+	// Phase 4: Tradeskills
+	HC_OP_RecipesFavorite = 0x23f0,      // C->S: Favorite recipes list
+	HC_OP_RecipesSearch = 0x164d,        // C->S: Search recipes
+	HC_OP_RecipeDetails = 0x4ea2,        // C->S: Get recipe details
+	HC_OP_RecipeAutoCombine = 0x0353,    // Bidirectional: Auto-combine
+	HC_OP_RecipeReply = 0x31f8,          // S->C: Recipe search results
+	// Phase 4: Cosmetic
+	HC_OP_Surname = 0x4668,              // C->S: Set surname
+	HC_OP_FaceChange = 0x0f8e,           // C->S: Change face
+	HC_OP_Dye = 0x00dd,                  // Bidirectional: Dye armor
+	// Phase 4: Audio
+	HC_OP_PlayMP3 = 0x26ab,              // S->C: Play music
+	HC_OP_Sound = 0x541e,                // S->C: Play sound effect
+	// Phase 4: Misc
+	HC_OP_RandomReq = 0x5534,            // C->S: Random roll request
+	HC_OP_RandomReply = 0x6cd5,          // S->C: Random roll result
+	HC_OP_FindPersonRequest = 0x3c41,    // C->S: Find person path
+	HC_OP_FindPersonReply = 0x5711,      // S->C: Find person result
+	HC_OP_CameraEffect = 0x0937,         // S->C: Camera shake/effect
+	HC_OP_Rewind = 0x4cfa,               // C->S: Rewind (stuck recovery)
+	HC_OP_YellForHelp = 0x61ef,          // C->S: Yell for help
+	HC_OP_Report = 0x7f9d,               // C->S: Report/bug
+	HC_OP_FriendsWho = 0x48fe,           // C->S: Friends list who
+	// Phase 4: GM Commands
+	HC_OP_GMZoneRequest = 0x1306,        // Bidirectional: GM zone request
+	HC_OP_GMSummon = 0x1edc,             // Bidirectional: GM summon player
+	HC_OP_GMGoto = 0x1cee,               // C->S: GM goto player
+	HC_OP_GMFind = 0x5930,               // Bidirectional: GM find player
+	HC_OP_GMKick = 0x692c,               // Bidirectional: GM kick player
+	HC_OP_GMKill = 0x6980,               // Bidirectional: GM kill target
+	HC_OP_GMHideMe = 0x15b2,             // C->S: GM invisibility
+	HC_OP_GMToggle = 0x7fea,             // C->S: GM toggle
+	HC_OP_GMEmoteZone = 0x39f2,          // C->S: GM zone emote
+	HC_OP_GMBecomeNPC = 0x7864,          // C->S: GM become NPC
+	HC_OP_GMSearchCorpse = 0x3c32,       // C->S: GM search corpse
+	HC_OP_GMLastName = 0x23a1,           // Bidirectional: GM set last name
+	HC_OP_GMApproval = 0x0c0f,           // C->S: GM approval
+	HC_OP_GMServers = 0x3387,            // C->S: GM servers
+	// Phase 4: Petitions
+	HC_OP_Petition = 0x251f,             // C->S: Submit petition
+	HC_OP_PetitionQue = 0x33c3,          // C->S: Petition queue
+	HC_OP_PetitionDelete = 0x5692        // C->S: Delete petition
 };
 
 // UCS (Universal Chat Service) opcodes
@@ -456,6 +572,14 @@ struct Entity
 	// Pet tracking
 	uint8_t is_pet = 0;           // Non-zero if this entity is a pet (offset 329)
 	uint32_t pet_owner_id = 0;    // Spawn ID of pet's owner (offset 189)
+
+	// Appearance state flags (updated via SpawnAppearance packets)
+	bool is_invisible = false;    // AT_INVISIBLE: true if invisible to other players
+	bool is_sneaking = false;     // AT_SNEAK: true if sneaking
+	bool is_linkdead = false;     // AT_LINKDEAD: true if connection lost
+	bool is_afk = false;          // AT_AFK: true if player is AFK
+	uint8_t flymode = 0;          // AT_FLYMODE: 0=ground, 1=flying, 2=levitate
+	uint8_t anon_status = 0;      // AT_ANONYMOUS: 0=normal, 1=anonymous, 2=roleplay
 };
 
 // Door state information (parsed from Door_Struct packets)
@@ -579,6 +703,9 @@ public:
 	void SendClickObject(uint32_t drop_id);
 	void SendTradeSkillCombine(int16_t container_slot);
 	void SendCloseContainer(uint32_t drop_id);
+
+	// Skill-specific packet sends
+	void SendApplyPoison(uint32_t inventory_slot);
 	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
 	const eqt::WorldObject* GetWorldObject(uint32_t drop_id) const;
 	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
@@ -605,6 +732,9 @@ public:
 	const std::string& GetPendingInviterName() const;
 	void AcceptGroupInvite();
 	void DeclineGroupInvite();
+
+	// Raid actions
+	void SendRaidInvite(const std::string& target_name);
 
 	// Pet queries
 	bool HasPet() const { return m_pet_spawn_id != 0; }
@@ -638,6 +768,88 @@ public:
 	void CancelCamp();
 	void UpdateCampTimer();
 	bool IsCamping() const;  // Phase 7.8: reads from GameState
+	void SendCamp();         // Send OP_Camp to server
+	void SendLogout();       // Send OP_Logout to server
+	void SendRezzAnswer(bool accept);  // Send OP_RezzAnswer (accept/decline)
+	bool HasPendingRezz() const { return m_has_pending_rezz; }
+	void SendWhoAllRequest(const std::string& name = "", int lvllow = -1, int lvlhigh = -1,
+		int race = -1, int class_ = -1, bool gm = false);  // Send /who request
+	void SendInspectRequest(uint32_t target_id);  // Send /inspect request
+	// Guild functions
+	void SendGuildInvite(const std::string& player_name);
+	void SendGuildInviteAccept(bool accept);
+	void SendGuildRemove(const std::string& player_name);
+	void SendGuildDemote(const std::string& player_name);
+	void SendGuildLeader(const std::string& player_name);
+	void SendGetGuildMOTD();
+	void SendSetGuildMOTD(const std::string& motd);
+	bool HasPendingGuildInvite() const { return m_has_pending_guild_invite; }
+	// Phase 3: Corpse Management
+	void SendCorpseDrag(const std::string& corpse_name);
+	void SendCorpseDrop();
+	void SendConsiderCorpse(uint32_t corpse_id);
+	void SendConfirmDelete(uint32_t corpse_id);
+	bool IsDraggingCorpse() const { return m_is_dragging_corpse; }
+	// Phase 3: Consent System
+	void SendConsent(const std::string& player_name);
+	void SendConsentDeny(const std::string& player_name);
+	// Phase 3: Combat Targeting
+	void SendAssist(uint32_t target_id);
+	void SendAssistGroup(uint32_t target_id);
+	// Phase 3: Travel System
+	void SendBoardBoat(uint32_t boat_id);
+	void SendLeaveBoat();
+	void SendControlBoat(float heading, uint8_t type);
+	bool IsOnBoat() const { return m_is_on_boat; }
+	// Phase 3: Group Split
+	void SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+	// Phase 3: LFG System
+	void SendLFGCommand(bool lfg_on);
+	bool IsLFG() const { return m_is_lfg; }
+	// Phase 3: Combat Abilities
+	void SendShielding(uint32_t target_id);
+	// Phase 3: Misc
+	void SendSave();
+	void SendSaveOnZoneReq();
+	void SendPopupResponse(uint32_t popup_id, uint32_t button);
+	// Phase 4: Dueling
+	void SendDuelRequest(uint32_t target_id);
+	void SendDuelAccept(uint32_t target_id);
+	void SendDuelDecline(uint32_t target_id);
+	bool IsInDuel() const { return m_is_dueling; }
+	bool HasPendingDuel() const { return m_has_pending_duel; }
+	// Phase 4: Skills
+	void SendBindWound(uint32_t target_id);
+	void SendTrackTarget(uint32_t target_id);
+	// Phase 4: Tradeskills
+	void SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites);
+	void SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial);
+	void SendRecipeDetails(uint32_t recipe_id);
+	void SendRecipeAutoCombine(uint32_t object_type, uint32_t recipe_id);
+	// Phase 4: Cosmetic
+	void SendSurname(const std::string& surname);
+	void SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t eyecolor1, uint8_t eyecolor2,
+		uint8_t hairstyle, uint8_t beard, uint8_t face);
+	// Phase 4: Misc
+	void SendRandom(uint32_t low, uint32_t high);
+	void SendFindPerson(uint32_t npc_id);
+	void SendRewind();
+	void SendYellForHelp();
+	void SendReport(const std::string& report_text);
+	void SendFriendsWho();
+	// Phase 4: GM Commands
+	void SendGMZoneRequest(const std::string& charname, uint16_t zone_id);
+	void SendGMSummon(const std::string& charname);
+	void SendGMGoto(const std::string& charname);
+	void SendGMFind(const std::string& charname);
+	void SendGMKick(const std::string& charname);
+	void SendGMKill(const std::string& charname);
+	void SendGMHideMe(bool hide);
+	void SendGMEmoteZone(const std::string& text);
+	void SendGMLastName(const std::string& charname, const std::string& lastname);
+	// Phase 4: Petitions
+	void SendPetition(const std::string& text);
+	void SendPetitionDelete(uint32_t petition_id);
 	void SetSneak(bool sneak);
 	float GetMovementSpeed() const;
 
@@ -868,6 +1080,8 @@ private:
 	void ZoneProcessGroundSpawn(const EQ::Net::Packet &p);
 	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
 	void ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p);
+	void ZoneProcessApplyPoison(const EQ::Net::Packet &p);
+	void ZoneProcessTrack(const EQ::Net::Packet &p);
 	void ZoneProcessSendZonepoints(const EQ::Net::Packet &p);
 	void ZoneProcessSendAAStats(const EQ::Net::Packet &p);
 	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);
@@ -901,6 +1115,38 @@ private:
 	void ZoneProcessStamina(const EQ::Net::Packet &p);
 	void ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p);
 	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
+	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
+	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
+	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);
+	void ZoneProcessWhoAllResponse(const EQ::Net::Packet &p);
+	void ZoneProcessInspectRequest(const EQ::Net::Packet &p);
+	void ZoneProcessInspectAnswer(const EQ::Net::Packet &p);
+	// Guild packet handlers
+	void ZoneProcessGuildInvite(const EQ::Net::Packet &p);
+	void ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p);
+	void ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p);
+	void ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p);
+	// Phase 3 packet handlers
+	void ZoneProcessConsentResponse(const EQ::Net::Packet &p);
+	void ZoneProcessDenyResponse(const EQ::Net::Packet &p);
+	void ZoneProcessEnvDamage(const EQ::Net::Packet &p);
+	void ZoneProcessDisciplineUpdate(const EQ::Net::Packet &p);
+	void ZoneProcessDisciplineTimer(const EQ::Net::Packet &p);
+	void ZoneProcessBankerChange(const EQ::Net::Packet &p);
+	void ZoneProcessClearObject(const EQ::Net::Packet &p);
+	void ZoneProcessLFGAppearance(const EQ::Net::Packet &p);
+	// Phase 4 packet handlers
+	void ZoneProcessDuelRequest(const EQ::Net::Packet &p);
+	void ZoneProcessRecipeReply(const EQ::Net::Packet &p);
+	void ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p);
+	void ZoneProcessRandomReply(const EQ::Net::Packet &p);
+	void ZoneProcessFindPersonReply(const EQ::Net::Packet &p);
+	void ZoneProcessCameraEffect(const EQ::Net::Packet &p);
+	void ZoneProcessPlayMP3(const EQ::Net::Packet &p);
+	void ZoneProcessSound(const EQ::Net::Packet &p);
+	void ZoneProcessGMZoneRequest(const EQ::Net::Packet &p);
+	void ZoneProcessGMFind(const EQ::Net::Packet &p);
+	void ZoneProcessGMSummon(const EQ::Net::Packet &p);
 
 	// Zone transition methods
 	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading);
@@ -1162,6 +1408,30 @@ private:
 	bool m_is_camping = false;
 	std::chrono::steady_clock::time_point m_camp_start_time;
 	static constexpr int CAMP_TIMER_SECONDS = 30;
+
+	// Pending resurrection offer
+	bool m_has_pending_rezz = false;
+	// Phase 3: Corpse drag state
+	bool m_is_dragging_corpse = false;
+	std::string m_dragged_corpse_name;
+	// Phase 3: Boat state
+	bool m_is_on_boat = false;
+	uint32_t m_boat_id = 0;
+	// Phase 3: LFG state
+	bool m_is_lfg = false;
+	// Phase 4: Duel state
+	bool m_is_dueling = false;
+	bool m_has_pending_duel = false;
+	uint32_t m_duel_target_id = 0;
+	uint32_t m_duel_initiator_id = 0;
+	EQT::Resurrect_Struct m_pending_rezz;
+
+	// Guild state
+	uint32_t m_guild_id = 0;
+	std::string m_guild_name;
+	bool m_has_pending_guild_invite = false;
+	std::string m_guild_invite_from;
+	uint32_t m_guild_invite_id = 0;
 
 	// Movement methods
 	void MoveTo(float x, float y, float z);

@@ -27,6 +27,7 @@
 #include "client/graphics/ui/command_registry.h"
 #include "client/graphics/ui/hotbar_types.h"
 #include "client/graphics/ui/spell_book_window.h"
+#include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #endif
 #include "client/animation_constants.h"
@@ -183,6 +184,100 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_TradeAcceptClick: return "HC_OP_TradeAcceptClick";
 		case HC_OP_FinishTrade: return "HC_OP_FinishTrade";
 		case HC_OP_PreLogoutReply: return "HC_OP_PreLogoutReply";
+		case HC_OP_Camp: return "HC_OP_Camp";
+		case HC_OP_Logout: return "HC_OP_Logout";
+		case HC_OP_LogoutReply: return "HC_OP_LogoutReply";
+		case HC_OP_RezzRequest: return "HC_OP_RezzRequest";
+		case HC_OP_RezzAnswer: return "HC_OP_RezzAnswer";
+		case HC_OP_RezzComplete: return "HC_OP_RezzComplete";
+		case HC_OP_WhoAllRequest: return "HC_OP_WhoAllRequest";
+		case HC_OP_WhoAllResponse: return "HC_OP_WhoAllResponse";
+		case HC_OP_InspectRequest: return "HC_OP_InspectRequest";
+		case HC_OP_InspectAnswer: return "HC_OP_InspectAnswer";
+		case HC_OP_GuildInvite: return "HC_OP_GuildInvite";
+		case HC_OP_GuildInviteAccept: return "HC_OP_GuildInviteAccept";
+		case HC_OP_GuildRemove: return "HC_OP_GuildRemove";
+		case HC_OP_GuildDelete: return "HC_OP_GuildDelete";
+		case HC_OP_GuildLeader: return "HC_OP_GuildLeader";
+		case HC_OP_GuildDemote: return "HC_OP_GuildDemote";
+		case HC_OP_GuildPublicNote: return "HC_OP_GuildPublicNote";
+		case HC_OP_SetGuildMOTD: return "HC_OP_SetGuildMOTD";
+		case HC_OP_GetGuildMOTD: return "HC_OP_GetGuildMOTD";
+		case HC_OP_GuildMemberList: return "HC_OP_GuildMemberList";
+		case HC_OP_GuildMemberUpdate: return "HC_OP_GuildMemberUpdate";
+		case HC_OP_GetGuildMOTDReply: return "HC_OP_GetGuildMOTDReply";
+		case HC_OP_SetGuildRank: return "HC_OP_SetGuildRank";
+		case HC_OP_GuildMemberAdd: return "HC_OP_GuildMemberAdd";
+		// Phase 3 opcodes
+		case HC_OP_CorpseDrag: return "HC_OP_CorpseDrag";
+		case HC_OP_CorpseDrop: return "HC_OP_CorpseDrop";
+		case HC_OP_ConsiderCorpse: return "HC_OP_ConsiderCorpse";
+		case HC_OP_ConfirmDelete: return "HC_OP_ConfirmDelete";
+		case HC_OP_Consent: return "HC_OP_Consent";
+		case HC_OP_ConsentDeny: return "HC_OP_ConsentDeny";
+		case HC_OP_ConsentResponse: return "HC_OP_ConsentResponse";
+		case HC_OP_DenyResponse: return "HC_OP_DenyResponse";
+		case HC_OP_Assist: return "HC_OP_Assist";
+		case HC_OP_AssistGroup: return "HC_OP_AssistGroup";
+		case HC_OP_BoardBoat: return "HC_OP_BoardBoat";
+		case HC_OP_LeaveBoat: return "HC_OP_LeaveBoat";
+		case HC_OP_ControlBoat: return "HC_OP_ControlBoat";
+		case HC_OP_Split: return "HC_OP_Split";
+		case HC_OP_LFGCommand: return "HC_OP_LFGCommand";
+		case HC_OP_RaidJoin: return "HC_OP_RaidJoin";
+		case HC_OP_MarkRaidNPC: return "HC_OP_MarkRaidNPC";
+		case HC_OP_Shielding: return "HC_OP_Shielding";
+		case HC_OP_EnvDamage: return "HC_OP_EnvDamage";
+		case HC_OP_DisciplineUpdate: return "HC_OP_DisciplineUpdate";
+		case HC_OP_DisciplineTimer: return "HC_OP_DisciplineTimer";
+		case HC_OP_BankerChange: return "HC_OP_BankerChange";
+		case HC_OP_Save: return "HC_OP_Save";
+		case HC_OP_SaveOnZoneReq: return "HC_OP_SaveOnZoneReq";
+		case HC_OP_PopupResponse: return "HC_OP_PopupResponse";
+		case HC_OP_ClearObject: return "HC_OP_ClearObject";
+		// Phase 4 opcodes
+		case HC_OP_RequestDuel: return "HC_OP_RequestDuel";
+		case HC_OP_DuelAccept: return "HC_OP_DuelAccept";
+		case HC_OP_DuelDecline: return "HC_OP_DuelDecline";
+		case HC_OP_BindWound: return "HC_OP_BindWound";
+		case HC_OP_TrackTarget: return "HC_OP_TrackTarget";
+		case HC_OP_TrackUnknown: return "HC_OP_TrackUnknown";
+		case HC_OP_RecipesFavorite: return "HC_OP_RecipesFavorite";
+		case HC_OP_RecipesSearch: return "HC_OP_RecipesSearch";
+		case HC_OP_RecipeDetails: return "HC_OP_RecipeDetails";
+		case HC_OP_RecipeAutoCombine: return "HC_OP_RecipeAutoCombine";
+		case HC_OP_RecipeReply: return "HC_OP_RecipeReply";
+		case HC_OP_Surname: return "HC_OP_Surname";
+		case HC_OP_FaceChange: return "HC_OP_FaceChange";
+		case HC_OP_Dye: return "HC_OP_Dye";
+		case HC_OP_PlayMP3: return "HC_OP_PlayMP3";
+		case HC_OP_Sound: return "HC_OP_Sound";
+		case HC_OP_RandomReq: return "HC_OP_RandomReq";
+		case HC_OP_RandomReply: return "HC_OP_RandomReply";
+		case HC_OP_FindPersonRequest: return "HC_OP_FindPersonRequest";
+		case HC_OP_FindPersonReply: return "HC_OP_FindPersonReply";
+		case HC_OP_CameraEffect: return "HC_OP_CameraEffect";
+		case HC_OP_Rewind: return "HC_OP_Rewind";
+		case HC_OP_YellForHelp: return "HC_OP_YellForHelp";
+		case HC_OP_Report: return "HC_OP_Report";
+		case HC_OP_FriendsWho: return "HC_OP_FriendsWho";
+		case HC_OP_GMZoneRequest: return "HC_OP_GMZoneRequest";
+		case HC_OP_GMSummon: return "HC_OP_GMSummon";
+		case HC_OP_GMGoto: return "HC_OP_GMGoto";
+		case HC_OP_GMFind: return "HC_OP_GMFind";
+		case HC_OP_GMKick: return "HC_OP_GMKick";
+		case HC_OP_GMKill: return "HC_OP_GMKill";
+		case HC_OP_GMHideMe: return "HC_OP_GMHideMe";
+		case HC_OP_GMToggle: return "HC_OP_GMToggle";
+		case HC_OP_GMEmoteZone: return "HC_OP_GMEmoteZone";
+		case HC_OP_GMBecomeNPC: return "HC_OP_GMBecomeNPC";
+		case HC_OP_GMSearchCorpse: return "HC_OP_GMSearchCorpse";
+		case HC_OP_GMLastName: return "HC_OP_GMLastName";
+		case HC_OP_GMApproval: return "HC_OP_GMApproval";
+		case HC_OP_GMServers: return "HC_OP_GMServers";
+		case HC_OP_Petition: return "HC_OP_Petition";
+		case HC_OP_PetitionQue: return "HC_OP_PetitionQue";
+		case HC_OP_PetitionDelete: return "HC_OP_PetitionDelete";
 		case HC_OP_FloatListThing: return "HC_OP_FloatListThing";
 		case HC_OP_MobRename: return "HC_OP_MobRename";
 		case HC_OP_Stun: return "HC_OP_Stun";
@@ -2042,10 +2137,99 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		}
 		break;
 	case HC_OP_PreLogoutReply:
-		// Response to logout request
+		// Pre-logout confirmation (server acknowledges camp request)
 		if (s_debug_level >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Logout reply received");
+			LOG_DEBUG(MOD_MAIN, "Pre-logout reply received (camp acknowledged)");
 		}
+		break;
+	case HC_OP_LogoutReply:
+		ZoneProcessLogoutReply(p);
+		break;
+	case HC_OP_RezzRequest:
+		ZoneProcessRezzRequest(p);
+		break;
+	case HC_OP_RezzComplete:
+		ZoneProcessRezzComplete(p);
+		break;
+	case HC_OP_WhoAllResponse:
+		ZoneProcessWhoAllResponse(p);
+		break;
+	case HC_OP_InspectRequest:
+		ZoneProcessInspectRequest(p);
+		break;
+	case HC_OP_InspectAnswer:
+		ZoneProcessInspectAnswer(p);
+		break;
+	case HC_OP_GuildInvite:
+		ZoneProcessGuildInvite(p);
+		break;
+	case HC_OP_GetGuildMOTDReply:
+		ZoneProcessGuildMOTDReply(p);
+		break;
+	case HC_OP_GuildMemberUpdate:
+		ZoneProcessGuildMemberUpdate(p);
+		break;
+	case HC_OP_GuildMemberAdd:
+		ZoneProcessGuildMemberAdd(p);
+		break;
+	// Phase 3 packet handlers
+	case HC_OP_ConsentResponse:
+		ZoneProcessConsentResponse(p);
+		break;
+	case HC_OP_DenyResponse:
+		ZoneProcessDenyResponse(p);
+		break;
+	case HC_OP_EnvDamage:
+		ZoneProcessEnvDamage(p);
+		break;
+	case HC_OP_DisciplineUpdate:
+		ZoneProcessDisciplineUpdate(p);
+		break;
+	case HC_OP_DisciplineTimer:
+		ZoneProcessDisciplineTimer(p);
+		break;
+	case HC_OP_BankerChange:
+		ZoneProcessBankerChange(p);
+		break;
+	case HC_OP_ClearObject:
+		ZoneProcessClearObject(p);
+		break;
+	case HC_OP_LFGAppearance:
+		ZoneProcessLFGAppearance(p);
+		break;
+	// Phase 4 packet handlers
+	case HC_OP_RequestDuel:
+		ZoneProcessDuelRequest(p);
+		break;
+	case HC_OP_RecipeReply:
+		ZoneProcessRecipeReply(p);
+		break;
+	case HC_OP_RecipeAutoCombine:
+		ZoneProcessRecipeAutoCombine(p);
+		break;
+	case HC_OP_RandomReply:
+		ZoneProcessRandomReply(p);
+		break;
+	case HC_OP_FindPersonReply:
+		ZoneProcessFindPersonReply(p);
+		break;
+	case HC_OP_CameraEffect:
+		ZoneProcessCameraEffect(p);
+		break;
+	case HC_OP_PlayMP3:
+		ZoneProcessPlayMP3(p);
+		break;
+	case HC_OP_Sound:
+		ZoneProcessSound(p);
+		break;
+	case HC_OP_GMZoneRequest:
+		ZoneProcessGMZoneRequest(p);
+		break;
+	case HC_OP_GMFind:
+		ZoneProcessGMFind(p);
+		break;
+	case HC_OP_GMSummon:
+		ZoneProcessGMSummon(p);
 		break;
 	case HC_OP_MobRename:
 		// Mob name change - typically when mob becomes corpse
@@ -2145,9 +2329,7 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_SetGroupTarget:
 		// Group target indicator - ignore for now
 		break;
-	case HC_OP_LFGAppearance:
-		// LFG appearance update - ignore
-		break;
+	// Note: HC_OP_LFGAppearance handled earlier with ZoneProcessLFGAppearance
 	case HC_OP_LinkedReuse:
 		// Linked spell reuse timer - ignore for now
 		break;
@@ -2280,7 +2462,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_Track:
 		// Track response - contains list of trackable entities
-		LOG_DEBUG(MOD_MAIN, "Track response received: {} bytes", p.Length());
+		ZoneProcessTrack(p);
+		break;
+	case HC_OP_ApplyPoison:
+		// Apply Poison response - success/failure from server
+		ZoneProcessApplyPoison(p);
 		break;
 	case HC_OP_PickPocket:
 		// Pick Pocket response
@@ -5305,8 +5491,115 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		}
 		break;
 
+	case AT_INVISIBLE:
+		// Invisibility state change
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.is_invisible = (parameter != 0);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} invisibility set to {}", spawn_id, it->second.is_invisible);
+			}
+			// TODO: Graphics rendering could hide/fade invisible entities
+		}
+		break;
+
+	case AT_SNEAK:
+		// Sneaking state change
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.is_sneaking = (parameter != 0);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} sneaking set to {}", spawn_id, it->second.is_sneaking);
+			}
+		}
+		break;
+
+	case AT_LINKDEAD:
+		// Linkdead state change
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.is_linkdead = (parameter != 0);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} linkdead set to {}", spawn_id, it->second.is_linkdead);
+			}
+		}
+		break;
+
+	case AT_FLYMODE:
+		// Levitate/fly mode change
+		// 0=ground, 1=flying, 2=levitate, 3=water, 4=floating, 5=levitate+run
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.flymode = static_cast<uint8_t>(parameter);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} flymode set to {}", spawn_id, parameter);
+			}
+			// TODO: Graphics rendering could show levitation animation
+		}
+		break;
+
+	case AT_AFK:
+		// AFK state change
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.is_afk = (parameter != 0);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} AFK set to {}", spawn_id, it->second.is_afk);
+			}
+		}
+		break;
+
+	case AT_ANONYMOUS:
+		// Anonymous/roleplay status change: 0=normal, 1=anon, 2=roleplay
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.anon_status = static_cast<uint8_t>(parameter);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} anon_status set to {}", spawn_id, parameter);
+			}
+		}
+		break;
+
+	case AT_PET:
+		// Pet owner ID update
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.pet_owner_id = parameter;
+				it->second.is_pet = (parameter != 0) ? 1 : 0;
+				LOG_DEBUG(MOD_ENTITY, "Entity {} pet_owner_id set to {}", spawn_id, parameter);
+			}
+		}
+		break;
+
+	case AT_SIZE:
+		// Size change
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				// Size is stored as a float, parameter contains size value
+				it->second.size = static_cast<float>(parameter) / 10.0f;  // EQ uses size*10
+				LOG_DEBUG(MOD_ENTITY, "Entity {} size set to {}", spawn_id, it->second.size);
+			}
+			// TODO: Graphics rendering could update entity scale
+		}
+		break;
+
+	case AT_LIGHT:
+		// Light source change
+		{
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.light = static_cast<uint8_t>(parameter);
+				LOG_DEBUG(MOD_ENTITY, "Entity {} light set to {}", spawn_id, parameter);
+			}
+		}
+		break;
+
 	default:
-		// Other appearance types (invisible, levitate, etc.) - not implemented yet
+		// Unhandled appearance types - log for debugging
+		LOG_DEBUG(MOD_ENTITY, "Unhandled SpawnAppearance type {} for spawn_id={}, parameter={}",
+			type, spawn_id, parameter);
 		break;
 	}
 }
@@ -5871,7 +6164,47 @@ void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_ZONE, "Received raid update");
+	// Raid update packets contain information about raid membership changes
+	// The format varies based on the action type in the packet
+	// For now, log the packet details for debugging
+
+	if (p.Length() < 6) {
+		LOG_DEBUG(MOD_ZONE, "Received short raid update: {} bytes", p.Length());
+		return;
+	}
+
+	uint32_t action = p.GetUInt32(2);
+	LOG_DEBUG(MOD_ZONE, "Received raid update: action={}, {} bytes", action, p.Length());
+
+	// Common raid actions:
+	// 0 = raid formed/joined
+	// 1 = member left
+	// 2 = member joined
+	// 3 = leader changed
+	// 6 = raid disbanded
+
+	switch (action) {
+	case 0:
+		AddChatSystemMessage("You have joined the raid.");
+		break;
+	case 1:
+		// Member left - could parse name from packet
+		LOG_DEBUG(MOD_ZONE, "Raid member left");
+		break;
+	case 2:
+		// Member joined - could parse name from packet
+		LOG_DEBUG(MOD_ZONE, "Raid member joined");
+		break;
+	case 3:
+		AddChatSystemMessage("The raid leader has changed.");
+		break;
+	case 6:
+		AddChatSystemMessage("The raid has disbanded.");
+		break;
+	default:
+		LOG_DEBUG(MOD_ZONE, "Unknown raid action: {}", action);
+		break;
+	}
 }
 
 void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
@@ -6794,9 +7127,9 @@ void EverQuest::RegisterCommands()
 		}
 
 		if (!target_name.empty()) {
-			// Implement follow behavior (movement following)
+			// Start following the target
+			Follow(target_name);
 			AddChatSystemMessage(fmt::format("Following {}", EQT::toDisplayName(target_name)));
-			// TODO: Implement actual follow movement
 		} else {
 			AddChatSystemMessage("No pending invite. Use /follow <name> to follow a player.");
 		}
@@ -6991,6 +7324,516 @@ void EverQuest::RegisterCommands()
 		AddChatSystemMessage("Trade cancelled");
 	};
 	m_command_registry->registerCommand(canceltrade_cmd);
+
+	// === Resurrection Commands ===
+
+	Command rezaccept_cmd;
+	rezaccept_cmd.name = "rezaccept";
+	rezaccept_cmd.aliases = {"acceptrez"};
+	rezaccept_cmd.usage = "/rezaccept";
+	rezaccept_cmd.description = "Accept pending resurrection offer";
+	rezaccept_cmd.category = "Utility";
+	rezaccept_cmd.handler = [this](const std::string& args) {
+		SendRezzAnswer(true);
+	};
+	m_command_registry->registerCommand(rezaccept_cmd);
+
+	Command rezdecline_cmd;
+	rezdecline_cmd.name = "rezdecline";
+	rezdecline_cmd.aliases = {"declinerez"};
+	rezdecline_cmd.usage = "/rezdecline";
+	rezdecline_cmd.description = "Decline pending resurrection offer";
+	rezdecline_cmd.category = "Utility";
+	rezdecline_cmd.handler = [this](const std::string& args) {
+		SendRezzAnswer(false);
+	};
+	m_command_registry->registerCommand(rezdecline_cmd);
+
+	// === Who Command ===
+
+	Command who_cmd;
+	who_cmd.name = "who";
+	who_cmd.aliases = {"whoall"};
+	who_cmd.usage = "/who [name] [level range]";
+	who_cmd.description = "Search for players online";
+	who_cmd.category = "Social";
+	who_cmd.handler = [this](const std::string& args) {
+		// Parse arguments: /who [name] [minlvl maxlvl]
+		std::string name;
+		int lvllow = -1, lvlhigh = -1;
+
+		std::istringstream iss(args);
+		std::string token;
+		std::vector<std::string> tokens;
+		while (iss >> token) {
+			tokens.push_back(token);
+		}
+
+		if (!tokens.empty()) {
+			// First check if first arg is a number (level range)
+			bool first_is_level = false;
+			try {
+				lvllow = std::stoi(tokens[0]);
+				first_is_level = true;
+			} catch (...) {
+				name = tokens[0];
+			}
+
+			if (first_is_level && tokens.size() >= 2) {
+				try {
+					lvlhigh = std::stoi(tokens[1]);
+				} catch (...) {
+					lvlhigh = lvllow;  // Single level
+				}
+			} else if (!first_is_level && tokens.size() >= 2) {
+				try {
+					lvllow = std::stoi(tokens[1]);
+					if (tokens.size() >= 3) {
+						lvlhigh = std::stoi(tokens[2]);
+					} else {
+						lvlhigh = lvllow;
+					}
+				} catch (...) {
+					// Ignore level parsing errors
+				}
+			}
+		}
+
+		SendWhoAllRequest(name, lvllow, lvlhigh);
+		AddChatSystemMessage("Searching for players...");
+	};
+	m_command_registry->registerCommand(who_cmd);
+
+	Command inspect_cmd;
+	inspect_cmd.name = "inspect";
+	inspect_cmd.usage = "/inspect [name]";
+	inspect_cmd.description = "Inspect target or named player";
+	inspect_cmd.category = "Social";
+	inspect_cmd.handler = [this](const std::string& args) {
+		uint32_t target_id = 0;
+
+		if (args.empty()) {
+			// Use current target
+			if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
+				target_id = m_combat_manager->GetTargetId();
+			}
+			if (target_id == 0) {
+				AddChatSystemMessage("No target - use /inspect <name> or target a player");
+				return;
+			}
+		} else {
+			// Find player by name
+			std::string searchName = args;
+			std::transform(searchName.begin(), searchName.end(), searchName.begin(), ::tolower);
+
+			for (const auto& [id, entity] : m_entities) {
+				std::string entityName = entity.name;
+				std::transform(entityName.begin(), entityName.end(), entityName.begin(), ::tolower);
+				if (entityName.find(searchName) != std::string::npos) {
+					target_id = id;
+					break;
+				}
+			}
+			if (target_id == 0) {
+				AddChatSystemMessage(fmt::format("Player '{}' not found", args));
+				return;
+			}
+		}
+
+		SendInspectRequest(target_id);
+		AddChatSystemMessage("Inspecting...");
+	};
+	m_command_registry->registerCommand(inspect_cmd);
+
+	// === Guild Commands ===
+
+	Command guildinvite_cmd;
+	guildinvite_cmd.name = "guildinvite";
+	guildinvite_cmd.aliases = {"ginvite"};
+	guildinvite_cmd.usage = "/guildinvite <name>";
+	guildinvite_cmd.description = "Invite player to guild";
+	guildinvite_cmd.category = "Guild";
+	guildinvite_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /guildinvite <name>");
+			return;
+		}
+		SendGuildInvite(args);
+	};
+	m_command_registry->registerCommand(guildinvite_cmd);
+
+	Command guildaccept_cmd;
+	guildaccept_cmd.name = "guildaccept";
+	guildaccept_cmd.aliases = {"acceptguild"};
+	guildaccept_cmd.usage = "/guildaccept";
+	guildaccept_cmd.description = "Accept pending guild invite";
+	guildaccept_cmd.category = "Guild";
+	guildaccept_cmd.handler = [this](const std::string& args) {
+		SendGuildInviteAccept(true);
+	};
+	m_command_registry->registerCommand(guildaccept_cmd);
+
+	Command guilddecline_cmd;
+	guilddecline_cmd.name = "guilddecline";
+	guilddecline_cmd.aliases = {"declineguild"};
+	guilddecline_cmd.usage = "/guilddecline";
+	guilddecline_cmd.description = "Decline pending guild invite";
+	guilddecline_cmd.category = "Guild";
+	guilddecline_cmd.handler = [this](const std::string& args) {
+		SendGuildInviteAccept(false);
+	};
+	m_command_registry->registerCommand(guilddecline_cmd);
+
+	Command guildremove_cmd;
+	guildremove_cmd.name = "guildremove";
+	guildremove_cmd.aliases = {"gremove", "gkick"};
+	guildremove_cmd.usage = "/guildremove <name>";
+	guildremove_cmd.description = "Remove member from guild";
+	guildremove_cmd.category = "Guild";
+	guildremove_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /guildremove <name>");
+			return;
+		}
+		SendGuildRemove(args);
+	};
+	m_command_registry->registerCommand(guildremove_cmd);
+
+	Command guilddemote_cmd;
+	guilddemote_cmd.name = "guilddemote";
+	guilddemote_cmd.aliases = {"gdemote"};
+	guilddemote_cmd.usage = "/guilddemote <name>";
+	guilddemote_cmd.description = "Demote guild member";
+	guilddemote_cmd.category = "Guild";
+	guilddemote_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /guilddemote <name>");
+			return;
+		}
+		SendGuildDemote(args);
+	};
+	m_command_registry->registerCommand(guilddemote_cmd);
+
+	Command guildleader_cmd;
+	guildleader_cmd.name = "guildleader";
+	guildleader_cmd.aliases = {"gleader"};
+	guildleader_cmd.usage = "/guildleader <name>";
+	guildleader_cmd.description = "Transfer guild leadership";
+	guildleader_cmd.category = "Guild";
+	guildleader_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /guildleader <name>");
+			return;
+		}
+		SendGuildLeader(args);
+	};
+	m_command_registry->registerCommand(guildleader_cmd);
+
+	Command guildmotd_cmd;
+	guildmotd_cmd.name = "guildmotd";
+	guildmotd_cmd.aliases = {"gmotd"};
+	guildmotd_cmd.usage = "/guildmotd [message]";
+	guildmotd_cmd.description = "View or set guild MOTD";
+	guildmotd_cmd.category = "Guild";
+	guildmotd_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			SendGetGuildMOTD();
+		} else {
+			SendSetGuildMOTD(args);
+		}
+	};
+	m_command_registry->registerCommand(guildmotd_cmd);
+
+	// === Phase 3: Corpse Commands ===
+
+	Command corpsedrag_cmd;
+	corpsedrag_cmd.name = "corpsedrag";
+	corpsedrag_cmd.aliases = {"drag"};
+	corpsedrag_cmd.usage = "/corpsedrag <corpse_name>";
+	corpsedrag_cmd.description = "Start dragging a corpse";
+	corpsedrag_cmd.category = "Corpse";
+	corpsedrag_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /corpsedrag <corpse_name>");
+			return;
+		}
+		SendCorpseDrag(args);
+	};
+	m_command_registry->registerCommand(corpsedrag_cmd);
+
+	Command corpsedrop_cmd;
+	corpsedrop_cmd.name = "corpsedrop";
+	corpsedrop_cmd.aliases = {"drop"};
+	corpsedrop_cmd.usage = "/corpsedrop";
+	corpsedrop_cmd.description = "Drop the corpse you are dragging";
+	corpsedrop_cmd.category = "Corpse";
+	corpsedrop_cmd.handler = [this](const std::string& args) {
+		SendCorpseDrop();
+	};
+	m_command_registry->registerCommand(corpsedrop_cmd);
+
+	Command consent_cmd;
+	consent_cmd.name = "consent";
+	consent_cmd.usage = "/consent <player_name>";
+	consent_cmd.description = "Grant permission to drag your corpse";
+	consent_cmd.category = "Corpse";
+	consent_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /consent <player_name>");
+			return;
+		}
+		SendConsent(args);
+	};
+	m_command_registry->registerCommand(consent_cmd);
+
+	Command deny_cmd;
+	deny_cmd.name = "deny";
+	deny_cmd.usage = "/deny <player_name>";
+	deny_cmd.description = "Revoke permission to drag your corpse";
+	deny_cmd.category = "Corpse";
+	deny_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /deny <player_name>");
+			return;
+		}
+		SendConsentDeny(args);
+	};
+	m_command_registry->registerCommand(deny_cmd);
+
+	// === Phase 3: Combat Targeting Commands ===
+
+	Command assist_cmd;
+	assist_cmd.name = "assist";
+	assist_cmd.aliases = {"a"};
+	assist_cmd.usage = "/assist [target]";
+	assist_cmd.description = "Assist your target or specified player";
+	assist_cmd.category = "Combat";
+	assist_cmd.handler = [this](const std::string& args) {
+		uint32_t target_id = 0;
+		if (args.empty()) {
+			// Use current target
+			target_id = m_game_state.combat().targetId();
+			if (target_id == 0) {
+				AddChatSystemMessage("You don't have a target.");
+				return;
+			}
+		} else {
+			// Find player by name
+			Entity* entity = FindEntityByName(args);
+			if (entity) {
+				target_id = entity->spawn_id;
+			} else {
+				AddChatSystemMessage(fmt::format("Could not find '{}'", args));
+				return;
+			}
+		}
+		SendAssist(target_id);
+	};
+	m_command_registry->registerCommand(assist_cmd);
+
+	// === Phase 3: Group Commands ===
+
+	Command split_cmd;
+	split_cmd.name = "split";
+	split_cmd.usage = "/split <platinum> [gold] [silver] [copper]";
+	split_cmd.description = "Split money with your group";
+	split_cmd.category = "Group";
+	split_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /split <platinum> [gold] [silver] [copper]");
+			return;
+		}
+		uint32_t p = 0, g = 0, s = 0, c = 0;
+		std::istringstream iss(args);
+		iss >> p >> g >> s >> c;
+		SendSplit(p, g, s, c);
+	};
+	m_command_registry->registerCommand(split_cmd);
+
+	// === Phase 3: LFG Commands ===
+
+	Command lfg_cmd;
+	lfg_cmd.name = "lfg";
+	lfg_cmd.usage = "/lfg";
+	lfg_cmd.description = "Toggle Looking For Group status";
+	lfg_cmd.category = "Social";
+	lfg_cmd.handler = [this](const std::string& args) {
+		SendLFGCommand(!m_is_lfg);
+	};
+	m_command_registry->registerCommand(lfg_cmd);
+
+	// === Phase 3: Combat Ability Commands ===
+
+	Command shield_cmd;
+	shield_cmd.name = "shield";
+	shield_cmd.usage = "/shield";
+	shield_cmd.description = "Shield your current target (Warrior/Paladin)";
+	shield_cmd.category = "Combat";
+	shield_cmd.handler = [this](const std::string& args) {
+		uint32_t target_id = m_game_state.combat().targetId();
+		if (target_id == 0) {
+			AddChatSystemMessage("You don't have a target to shield.");
+			return;
+		}
+		SendShielding(target_id);
+	};
+	m_command_registry->registerCommand(shield_cmd);
+
+	// === Phase 3: Misc Commands ===
+
+	Command save_cmd;
+	save_cmd.name = "save";
+	save_cmd.usage = "/save";
+	save_cmd.description = "Request character save";
+	save_cmd.category = "Utility";
+	save_cmd.handler = [this](const std::string& args) {
+		SendSave();
+	};
+	m_command_registry->registerCommand(save_cmd);
+
+	// === Phase 4: Duel Commands ===
+
+	Command duel_cmd;
+	duel_cmd.name = "duel";
+	duel_cmd.usage = "/duel";
+	duel_cmd.description = "Challenge your target to a duel";
+	duel_cmd.category = "Combat";
+	duel_cmd.handler = [this](const std::string& args) {
+		uint32_t target_id = m_game_state.combat().targetId();
+		if (target_id == 0) {
+			AddChatSystemMessage("You don't have a target.");
+			return;
+		}
+		SendDuelRequest(target_id);
+	};
+	m_command_registry->registerCommand(duel_cmd);
+
+	Command duelaccept_cmd;
+	duelaccept_cmd.name = "duelaccept";
+	duelaccept_cmd.usage = "/duelaccept";
+	duelaccept_cmd.description = "Accept a duel challenge";
+	duelaccept_cmd.category = "Combat";
+	duelaccept_cmd.handler = [this](const std::string& args) {
+		if (!m_has_pending_duel) {
+			AddChatSystemMessage("You have no pending duel challenge.");
+			return;
+		}
+		SendDuelAccept(m_duel_initiator_id);
+	};
+	m_command_registry->registerCommand(duelaccept_cmd);
+
+	Command dueldecline_cmd;
+	dueldecline_cmd.name = "dueldecline";
+	dueldecline_cmd.usage = "/dueldecline";
+	dueldecline_cmd.description = "Decline a duel challenge";
+	dueldecline_cmd.category = "Combat";
+	dueldecline_cmd.handler = [this](const std::string& args) {
+		if (!m_has_pending_duel) {
+			AddChatSystemMessage("You have no pending duel challenge.");
+			return;
+		}
+		SendDuelDecline(m_duel_initiator_id);
+	};
+	m_command_registry->registerCommand(dueldecline_cmd);
+
+	// === Phase 4: Skill Commands ===
+
+	Command bindwound_cmd;
+	bindwound_cmd.name = "bandage";
+	bindwound_cmd.aliases = {"bindwound"};
+	bindwound_cmd.usage = "/bandage";
+	bindwound_cmd.description = "Use bind wound skill on target";
+	bindwound_cmd.category = "Skills";
+	bindwound_cmd.handler = [this](const std::string& args) {
+		uint32_t target_id = m_game_state.combat().targetId();
+		if (target_id == 0) {
+			target_id = m_my_spawn_id;  // Self-target
+		}
+		SendBindWound(target_id);
+	};
+	m_command_registry->registerCommand(bindwound_cmd);
+
+	// === Phase 4: Cosmetic Commands ===
+
+	Command surname_cmd;
+	surname_cmd.name = "surname";
+	surname_cmd.usage = "/surname <lastname>";
+	surname_cmd.description = "Request to set your surname";
+	surname_cmd.category = "Social";
+	surname_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /surname <lastname>");
+			return;
+		}
+		SendSurname(args);
+	};
+	m_command_registry->registerCommand(surname_cmd);
+
+	// === Phase 4: Misc Commands ===
+
+	Command random_cmd;
+	random_cmd.name = "random";
+	random_cmd.aliases = {"roll"};
+	random_cmd.usage = "/random [low] [high]";
+	random_cmd.description = "Roll a random number";
+	random_cmd.category = "Social";
+	random_cmd.handler = [this](const std::string& args) {
+		uint32_t low = 0, high = 100;
+		std::istringstream iss(args);
+		iss >> low >> high;
+		if (high < low) high = low;
+		SendRandom(low, high);
+	};
+	m_command_registry->registerCommand(random_cmd);
+
+	Command rewind_cmd;
+	rewind_cmd.name = "rewind";
+	rewind_cmd.usage = "/rewind";
+	rewind_cmd.description = "Attempt to return to a safe position";
+	rewind_cmd.category = "Movement";
+	rewind_cmd.handler = [this](const std::string& args) {
+		SendRewind();
+	};
+	m_command_registry->registerCommand(rewind_cmd);
+
+	Command yell_cmd;
+	yell_cmd.name = "yell";
+	yell_cmd.usage = "/yell";
+	yell_cmd.description = "Yell for help";
+	yell_cmd.category = "Social";
+	yell_cmd.handler = [this](const std::string& args) {
+		SendYellForHelp();
+	};
+	m_command_registry->registerCommand(yell_cmd);
+
+	Command bug_cmd;
+	bug_cmd.name = "bug";
+	bug_cmd.aliases = {"report"};
+	bug_cmd.usage = "/bug <description>";
+	bug_cmd.description = "Submit a bug report";
+	bug_cmd.category = "Utility";
+	bug_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /bug <description>");
+			return;
+		}
+		SendReport(args);
+	};
+	m_command_registry->registerCommand(bug_cmd);
+
+	Command petition_cmd;
+	petition_cmd.name = "petition";
+	petition_cmd.usage = "/petition <text>";
+	petition_cmd.description = "Submit a petition";
+	petition_cmd.category = "Utility";
+	petition_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /petition <text>");
+			return;
+		}
+		SendPetition(args);
+	};
+	m_command_registry->registerCommand(petition_cmd);
 
 	// === Movement Commands ===
 
@@ -7293,6 +8136,41 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(combat);
+
+	Command taunt;
+	taunt.name = "taunt";
+	taunt.usage = "/taunt";
+	taunt.description = "Taunt current target (warrior/paladin/shadowknight ability)";
+	taunt.category = "Combat";
+	taunt.handler = [this](const std::string& args) {
+		if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
+			m_combat_manager->Taunt();
+			AddChatSystemMessage("Taunting target");
+		} else {
+			AddChatSystemMessage("No target to taunt");
+		}
+	};
+	m_command_registry->registerCommand(taunt);
+
+	Command autofire;
+	autofire.name = "autofire";
+	autofire.aliases = {"af"};
+	autofire.usage = "/autofire";
+	autofire.description = "Toggle ranged auto-attack (archery/throwing)";
+	autofire.category = "Combat";
+	autofire.handler = [this](const std::string& args) {
+		if (!m_combat_manager) return;
+		if (m_combat_manager->IsAutoFireEnabled()) {
+			m_combat_manager->DisableAutoFire();
+			AddChatSystemMessage("Auto fire OFF");
+		} else if (m_combat_manager->GetTargetId() != 0) {
+			m_combat_manager->EnableAutoFire();
+			AddChatSystemMessage("Auto fire ON");
+		} else {
+			AddChatSystemMessage("No target - auto fire not enabled");
+		}
+	};
+	m_command_registry->registerCommand(autofire);
 
 	// === Utility Commands ===
 
@@ -7960,6 +8838,50 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(pet_cmd);
+
+	// === System Commands - Hotkeys ===
+
+	Command hotkeys;
+	hotkeys.name = "hotkeys";
+	hotkeys.usage = "/hotkeys <reload|save|conflicts>";
+	hotkeys.description = "Manage hotkey configuration";
+	hotkeys.category = "Utility";
+	hotkeys.handler = [this](const std::string& args) {
+		auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+		if (args == "reload") {
+			if (hotkeyMgr.reload()) {
+				AddChatSystemMessage("Hotkeys reloaded successfully.");
+				auto conflicts = hotkeyMgr.detectConflicts();
+				if (!conflicts.empty()) {
+					AddChatSystemMessage(fmt::format("Warning: {} hotkey conflicts detected.", conflicts.size()));
+				}
+			} else {
+				AddChatSystemMessage("Failed to reload hotkeys. Check config file.");
+			}
+		} else if (args == "save") {
+			if (hotkeyMgr.saveToFile()) {
+				AddChatSystemMessage("Hotkeys saved successfully.");
+			} else {
+				AddChatSystemMessage("Failed to save hotkeys.");
+			}
+		} else if (args == "conflicts") {
+			auto conflicts = hotkeyMgr.detectConflicts();
+			if (conflicts.empty()) {
+				AddChatSystemMessage("No hotkey conflicts detected.");
+			} else {
+				AddChatSystemMessage(fmt::format("{} hotkey conflicts:", conflicts.size()));
+				for (const auto& c : conflicts) {
+					AddChatSystemMessage(c.message);
+				}
+			}
+		} else if (args.empty()) {
+			AddChatSystemMessage("Hotkey commands: reload, save, conflicts");
+			AddChatSystemMessage(fmt::format("Config path: {}", hotkeyMgr.getConfigPath()));
+		} else {
+			AddChatSystemMessage("Unknown hotkey subcommand. Use: reload, save, conflicts");
+		}
+	};
+	m_command_registry->registerCommand(hotkeys);
 }
 #endif
 
@@ -11856,18 +12778,109 @@ void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p)
 {
-	// This is the server response to a combine attempt
-	// The server will send item updates via OP_ItemPacket for the result
-	// and skill updates via OP_SkillUpdate for skill-ups
+	// Server response to a combine attempt
+	// The server sends an empty acknowledgment packet (0 bytes payload)
+	// Actual results come via separate packets:
+	// - OP_FormattedMessage with string_id 339 for success ("You create a <item>!")
+	// - OP_ItemPacket for inventory updates
+	// - OP_SkillUpdate for skill increases
+	// These are already handled in their respective handlers.
 
-	LOG_DEBUG(MOD_ENTITY, "TradeSkillCombine response received ({} bytes)", p.Length());
+	LOG_DEBUG(MOD_ENTITY, "TradeSkillCombine acknowledgment received ({} bytes)", p.Length());
 
-	// The packet format for the result may vary - typically the server
-	// handles the item consumption and creation, then sends inventory updates.
-	// For now, just log that we received a response.
+	// Close tradeskill container window on combine completion
+#ifdef EQT_HAS_GRAPHICS
+	if (m_graphics_initialized && m_renderer) {
+		auto windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			// Optionally close the tradeskill window after combine
+			// (User may want to do multiple combines, so we don't auto-close)
+		}
+	}
+#endif
+}
 
-	// TODO: Parse combine result and show success/failure message
-	// The result information may come via OP_SpecialMesg or OP_FormattedMessage
+void EverQuest::SendApplyPoison(uint32_t inventory_slot)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot apply poison - not fully zoned in");
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Sending apply poison for inventory slot {}", inventory_slot);
+
+	// Build ApplyPoison packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ApplyPoison_Struct));  // opcode + struct
+
+	p.PutUInt16(0, HC_OP_ApplyPoison);
+	p.PutUInt32(2, inventory_slot);  // inventorySlot
+	p.PutUInt32(6, 0);               // success (0 when sending, server fills in response)
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+void EverQuest::ZoneProcessApplyPoison(const EQ::Net::Packet &p)
+{
+	// Server response to apply poison attempt
+	// ApplyPoison_Struct: inventorySlot (4), success (4) = 8 bytes + 2 opcode = 10 bytes
+	if (p.Length() < 10) {
+		LOG_WARN(MOD_ENTITY, "ApplyPoison response too short: {} bytes", p.Length());
+		return;
+	}
+
+	uint32_t inventory_slot = p.GetUInt32(2);
+	uint32_t success = p.GetUInt32(6);
+
+	LOG_DEBUG(MOD_ENTITY, "ApplyPoison response: slot={}, success={}", inventory_slot, success);
+
+	if (success) {
+		AddChatSystemMessage("You apply the poison to your weapon.");
+	} else {
+		AddChatSystemMessage("You failed to apply the poison.");
+	}
+}
+
+void EverQuest::ZoneProcessTrack(const EQ::Net::Packet &p)
+{
+	// Track response contains variable number of Track_Struct entries
+	// Each entry is 8 bytes: entityid (4) + distance (4)
+	// Plus 2 bytes for opcode = minimum 2 bytes
+
+	if (p.Length() < 2) {
+		LOG_WARN(MOD_ENTITY, "Track response too short: {} bytes", p.Length());
+		return;
+	}
+
+	size_t data_len = p.Length() - 2;  // Subtract opcode
+	size_t entry_count = data_len / sizeof(EQT::Track_Struct);
+
+	LOG_DEBUG(MOD_ENTITY, "Track response: {} bytes, {} entries", p.Length(), entry_count);
+
+	if (entry_count == 0) {
+		AddChatSystemMessage("No trackable entities nearby.");
+		return;
+	}
+
+	AddChatSystemMessage(fmt::format("=== Tracking ({} targets) ===", entry_count));
+
+	size_t offset = 2;  // Skip opcode
+	for (size_t i = 0; i < entry_count && offset + sizeof(EQT::Track_Struct) <= p.Length(); i++) {
+		uint32_t entity_id = p.GetUInt32(offset);
+		float distance = p.GetFloat(offset + 4);
+		offset += sizeof(EQT::Track_Struct);
+
+		// Look up entity name
+		std::string name = "Unknown";
+		auto it = m_entities.find(static_cast<uint16_t>(entity_id));
+		if (it != m_entities.end()) {
+			name = it->second.name;
+		}
+
+		AddChatSystemMessage(fmt::format("  {} - {:.0f} units", name, distance));
+		LOG_DEBUG(MOD_ENTITY, "  Track entry: entity_id={}, name={}, distance={:.1f}",
+			entity_id, name, distance);
+	}
 }
 
 // ============================================================================
@@ -11975,6 +12988,34 @@ void EverQuest::SendLeaveGroup()
 {
 	// Same packet as disband for non-leader
 	SendGroupDisband();
+}
+
+void EverQuest::SendRaidInvite(const std::string& target_name)
+{
+	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+		LOG_WARN(MOD_MAIN, "Cannot send raid invite - not connected to zone");
+		return;
+	}
+
+	if (target_name.empty()) {
+		LOG_WARN(MOD_MAIN, "Cannot send raid invite - no target name specified");
+		return;
+	}
+
+	LOG_INFO(MOD_MAIN, "Sending raid invite to {}", target_name);
+
+	// RaidInvite packet uses a name string (64 bytes max)
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + 64);  // opcode + name
+	p.PutUInt16(0, HC_OP_RaidInvite);
+
+	// Copy name with null termination
+	std::string padded_name = target_name;
+	padded_name.resize(64, '\0');
+	p.PutData(2, padded_name.data(), 64);
+
+	m_zone_connection->QueuePacket(p, 0, true);
+	AddChatSystemMessage(fmt::format("Inviting {} to raid.", target_name));
 }
 
 void EverQuest::AcceptGroupInvite()
@@ -12706,6 +13747,9 @@ void EverQuest::StartCampTimer()
 	m_camp_start_time = std::chrono::steady_clock::now();
 	m_game_state.player().setCamping(true);  // Phase 7.8
 
+	// Send OP_Camp to server to notify we're camping
+	SendCamp();
+
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Camp timer started, will log out in {} seconds", CAMP_TIMER_SECONDS);
 	}
@@ -12736,20 +13780,1627 @@ void EverQuest::UpdateCampTimer()
 	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_camp_start_time).count();
 
 	if (elapsed >= CAMP_TIMER_SECONDS) {
-		// Camp timer complete, logout
+		// Camp timer complete, send logout to server
 		m_is_camping = false;
 		m_game_state.player().setCamping(false);  // Phase 7.8
 		AddChatSystemMessage("You have camped.");
 
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->requestQuit();
-		}
-#endif
+		// Send OP_Logout to server - server will respond with OP_LogoutReply
+		SendLogout();
 
 		if (s_debug_level >= 1) {
-			LOG_DEBUG(MOD_MAIN, "Camp timer complete, logging out");
+			LOG_DEBUG(MOD_MAIN, "Camp timer complete, sending logout request");
 		}
+	}
+}
+
+void EverQuest::SendCamp()
+{
+	// OP_Camp is an empty packet - just the opcode
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Camp);
+	QueuePacket(HC_OP_Camp, &packet);
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Sent OP_Camp to server");
+	}
+}
+
+void EverQuest::SendLogout()
+{
+	// OP_Logout is an empty packet - just the opcode
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Logout);
+	QueuePacket(HC_OP_Logout, &packet);
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Sent OP_Logout to server");
+	}
+}
+
+void EverQuest::ZoneProcessLogoutReply(const EQ::Net::Packet &p)
+{
+	// Server confirmed logout - now we can safely disconnect
+	LOG_INFO(MOD_MAIN, "Logout confirmed by server");
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		m_renderer->requestQuit();
+	}
+#endif
+
+	// In headless mode, disconnect from zone
+	DisconnectFromZone();
+}
+
+void EverQuest::ZoneProcessRezzRequest(const EQ::Net::Packet &p)
+{
+	// Server is offering a resurrection
+	if (p.Length() < 2 + sizeof(EQT::Resurrect_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_RezzRequest packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::Resurrect_Struct* rez = reinterpret_cast<const EQT::Resurrect_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Store the pending rez offer
+	m_has_pending_rezz = true;
+	m_pending_rezz = *rez;
+
+	// Display the rez offer in chat
+	std::string rezzer_name(rez->rezzer_name, strnlen(rez->rezzer_name, 64));
+	std::string corpse_name(rez->corpse_name, strnlen(rez->corpse_name, 64));
+
+	LOG_INFO(MOD_MAIN, "Resurrection offer from {} for corpse '{}' (spell {})",
+		rezzer_name, corpse_name, rez->spellid);
+
+	AddChatSystemMessage(fmt::format("{} is offering to resurrect you.", rezzer_name));
+	AddChatSystemMessage("Type /accept to accept or /decline to decline the resurrection.");
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Rez location: zone={}, instance={}, pos=({}, {}, {})",
+			rez->zone_id, rez->instance_id, rez->x, rez->y, rez->z);
+	}
+}
+
+void EverQuest::ZoneProcessRezzComplete(const EQ::Net::Packet &p)
+{
+	// Resurrection is complete
+	m_has_pending_rezz = false;
+	memset(&m_pending_rezz, 0, sizeof(m_pending_rezz));
+
+	LOG_INFO(MOD_MAIN, "Resurrection complete");
+	AddChatSystemMessage("You have been resurrected!");
+
+	// The server will handle the zone change if needed via OP_ZoneChange
+}
+
+void EverQuest::SendRezzAnswer(bool accept)
+{
+	if (!m_has_pending_rezz) {
+		AddChatSystemMessage("You don't have a pending resurrection offer.");
+		return;
+	}
+
+	// Copy the pending rez struct and set the action
+	EQT::Resurrect_Struct rez = m_pending_rezz;
+	rez.action = accept ? 1 : 0;
+
+	// Build and send the packet
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::Resurrect_Struct));
+	packet.PutUInt16(0, HC_OP_RezzAnswer);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &rez, sizeof(EQT::Resurrect_Struct));
+	QueuePacket(HC_OP_RezzAnswer, &packet);
+
+	if (accept) {
+		LOG_INFO(MOD_MAIN, "Accepted resurrection offer");
+		AddChatSystemMessage("You have accepted the resurrection.");
+	} else {
+		LOG_INFO(MOD_MAIN, "Declined resurrection offer");
+		AddChatSystemMessage("You have declined the resurrection.");
+		// Clear pending rez on decline
+		m_has_pending_rezz = false;
+		memset(&m_pending_rezz, 0, sizeof(m_pending_rezz));
+	}
+}
+
+void EverQuest::SendWhoAllRequest(const std::string& name, int lvllow, int lvlhigh,
+	int race, int class_, bool gm)
+{
+	EQT::Who_All_Struct who;
+	memset(&who, 0, sizeof(who));
+
+	// Copy name filter (up to 63 chars + null)
+	if (!name.empty()) {
+		strncpy(who.whom, name.c_str(), 63);
+		who.whom[63] = '\0';
+	}
+
+	// Set filters (-1 means no filter, use 0xFFFFFFFF)
+	who.wrace = (race < 0) ? 0xFFFFFFFF : static_cast<uint32_t>(race);
+	who.wclass = (class_ < 0) ? 0xFFFFFFFF : static_cast<uint32_t>(class_);
+	who.lvllow = (lvllow < 0) ? 0xFFFFFFFF : static_cast<uint32_t>(lvllow);
+	who.lvlhigh = (lvlhigh < 0) ? 0xFFFFFFFF : static_cast<uint32_t>(lvlhigh);
+	who.gmlookup = gm ? 1 : 0xFFFFFFFF;
+
+	// Build and send the packet
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::Who_All_Struct));
+	packet.PutUInt16(0, HC_OP_WhoAllRequest);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &who, sizeof(EQT::Who_All_Struct));
+	QueuePacket(HC_OP_WhoAllRequest, &packet);
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Sent OP_WhoAllRequest: name='{}', race={}, class={}, lvl={}-{}",
+			name, race, class_, lvllow, lvlhigh);
+	}
+}
+
+void EverQuest::ZoneProcessWhoAllResponse(const EQ::Net::Packet &p)
+{
+	// Parse the who response packet
+	// This is a variable-length packet with a header followed by player entries
+	if (p.Length() < 2 + sizeof(EQT::WhoAllReturnHeader)) {
+		LOG_WARN(MOD_MAIN, "OP_WhoAllResponse packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
+	const EQT::WhoAllReturnHeader* header = reinterpret_cast<const EQT::WhoAllReturnHeader*>(data);
+
+	uint32_t player_count = header->playercount;
+	LOG_INFO(MOD_MAIN, "Who response: {} player(s)", player_count);
+
+	if (player_count == 0) {
+		AddChatSystemMessage("No players found matching your search.");
+		return;
+	}
+
+	AddChatSystemMessage(fmt::format("Players found: {}", player_count));
+
+	// The player data follows the header in a complex variable-length format
+	// Each player entry contains multiple uint32 format strings followed by variable-length strings
+	// For now, just display the count - full parsing would require understanding the string table format
+	// The actual player names and details are encoded with format string IDs that reference
+	// the client's string table
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Who header: id={}, playercount={}", header->id, header->playercount);
+	}
+}
+
+void EverQuest::SendInspectRequest(uint32_t target_id)
+{
+	// Build the inspect request
+	EQT::Inspect_Struct inspect;
+	inspect.TargetID = target_id;
+	inspect.PlayerID = m_my_spawn_id;
+
+	// Build and send the packet
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::Inspect_Struct));
+	packet.PutUInt16(0, HC_OP_InspectRequest);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &inspect, sizeof(EQT::Inspect_Struct));
+	QueuePacket(HC_OP_InspectRequest, &packet);
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Sent OP_InspectRequest for target {}", target_id);
+	}
+}
+
+void EverQuest::ZoneProcessInspectRequest(const EQ::Net::Packet &p)
+{
+	// Someone is inspecting us
+	if (p.Length() < 2 + sizeof(EQT::Inspect_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_InspectRequest packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::Inspect_Struct* inspect = reinterpret_cast<const EQT::Inspect_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Find the inspector's name
+	std::string inspector_name = "Someone";
+	auto it = m_entities.find(static_cast<uint16_t>(inspect->PlayerID));
+	if (it != m_entities.end()) {
+		inspector_name = it->second.name;
+	}
+
+	LOG_INFO(MOD_MAIN, "{} is inspecting you", inspector_name);
+	AddChatSystemMessage(fmt::format("{} is inspecting you.", inspector_name));
+}
+
+void EverQuest::ZoneProcessInspectAnswer(const EQ::Net::Packet &p)
+{
+	// Received inspection data about someone
+	if (p.Length() < 2 + sizeof(EQT::InspectResponse_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_InspectAnswer packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::InspectResponse_Struct* response = reinterpret_cast<const EQT::InspectResponse_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Find the target's name
+	std::string target_name = "Unknown";
+	auto it = m_entities.find(static_cast<uint16_t>(response->TargetID));
+	if (it != m_entities.end()) {
+		target_name = it->second.name;
+	}
+
+	LOG_INFO(MOD_MAIN, "Received inspect data for {}", target_name);
+	AddChatSystemMessage(fmt::format("Inspecting {}:", target_name));
+
+	// Display equipped items
+	for (int i = 0; i < 22; i++) {
+		if (response->itemnames[i][0] != '\0') {
+			std::string item_name(response->itemnames[i], strnlen(response->itemnames[i], 64));
+			AddChatSystemMessage(fmt::format("  Slot {}: {}", i, item_name));
+		}
+	}
+
+	// Display inspect message if present
+	if (response->text[0] != '\0') {
+		std::string message(response->text, strnlen(response->text, 288));
+		AddChatSystemMessage(fmt::format("Message: {}", message));
+	}
+}
+
+// === Guild Functions ===
+
+void EverQuest::SendGuildInvite(const std::string& player_name)
+{
+	if (m_guild_id == 0) {
+		AddChatSystemMessage("You are not in a guild.");
+		return;
+	}
+
+	EQT::GuildCommand_Struct invite;
+	memset(&invite, 0, sizeof(invite));
+	strncpy(invite.othername, player_name.c_str(), 63);
+	strncpy(invite.myname, m_character.c_str(), 63);
+	invite.guildeqid = static_cast<uint16_t>(m_guild_id);
+	invite.officer = 2;  // TODO: Use actual rank
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::GuildCommand_Struct));
+	packet.PutUInt16(0, HC_OP_GuildInvite);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &invite, sizeof(EQT::GuildCommand_Struct));
+	QueuePacket(HC_OP_GuildInvite, &packet);
+
+	AddChatSystemMessage(fmt::format("Inviting {} to join your guild.", player_name));
+}
+
+void EverQuest::SendGuildInviteAccept(bool accept)
+{
+	if (!m_has_pending_guild_invite) {
+		AddChatSystemMessage("You don't have a pending guild invite.");
+		return;
+	}
+
+	EQT::GuildInviteAccept_Struct response;
+	memset(&response, 0, sizeof(response));
+	strncpy(response.inviter, m_guild_invite_from.c_str(), 63);
+	strncpy(response.newmember, m_character.c_str(), 63);
+	response.response = accept ? 1 : 0;
+	response.guildeqid = m_guild_invite_id;
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::GuildInviteAccept_Struct));
+	packet.PutUInt16(0, HC_OP_GuildInviteAccept);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &response, sizeof(EQT::GuildInviteAccept_Struct));
+	QueuePacket(HC_OP_GuildInviteAccept, &packet);
+
+	m_has_pending_guild_invite = false;
+	m_guild_invite_from.clear();
+	m_guild_invite_id = 0;
+
+	if (accept) {
+		AddChatSystemMessage("You have accepted the guild invite.");
+	} else {
+		AddChatSystemMessage("You have declined the guild invite.");
+	}
+}
+
+void EverQuest::SendGuildRemove(const std::string& player_name)
+{
+	if (m_guild_id == 0) {
+		AddChatSystemMessage("You are not in a guild.");
+		return;
+	}
+
+	EQT::GuildRemove_Struct remove;
+	memset(&remove, 0, sizeof(remove));
+	strncpy(remove.target, player_name.c_str(), 63);
+	strncpy(remove.name, m_character.c_str(), 63);
+	remove.leaderstatus = 2;  // TODO: Use actual rank
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::GuildRemove_Struct));
+	packet.PutUInt16(0, HC_OP_GuildRemove);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &remove, sizeof(EQT::GuildRemove_Struct));
+	QueuePacket(HC_OP_GuildRemove, &packet);
+
+	AddChatSystemMessage(fmt::format("Removing {} from the guild.", player_name));
+}
+
+void EverQuest::SendGuildDemote(const std::string& player_name)
+{
+	if (m_guild_id == 0) {
+		AddChatSystemMessage("You are not in a guild.");
+		return;
+	}
+
+	EQT::GuildDemote_Struct demote;
+	memset(&demote, 0, sizeof(demote));
+	strncpy(demote.name, m_character.c_str(), 63);
+	strncpy(demote.target, player_name.c_str(), 63);
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::GuildDemote_Struct));
+	packet.PutUInt16(0, HC_OP_GuildDemote);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &demote, sizeof(EQT::GuildDemote_Struct));
+	QueuePacket(HC_OP_GuildDemote, &packet);
+
+	AddChatSystemMessage(fmt::format("Demoting {} in the guild.", player_name));
+}
+
+void EverQuest::SendGuildLeader(const std::string& player_name)
+{
+	if (m_guild_id == 0) {
+		AddChatSystemMessage("You are not in a guild.");
+		return;
+	}
+
+	EQT::GuildMakeLeader_Struct leader;
+	memset(&leader, 0, sizeof(leader));
+	strncpy(leader.name, m_character.c_str(), 63);
+	strncpy(leader.target, player_name.c_str(), 63);
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::GuildMakeLeader_Struct));
+	packet.PutUInt16(0, HC_OP_GuildLeader);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &leader, sizeof(EQT::GuildMakeLeader_Struct));
+	QueuePacket(HC_OP_GuildLeader, &packet);
+
+	AddChatSystemMessage(fmt::format("Transferring guild leadership to {}.", player_name));
+}
+
+void EverQuest::SendGetGuildMOTD()
+{
+	// Empty packet to request MOTD
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GetGuildMOTD);
+	QueuePacket(HC_OP_GetGuildMOTD, &packet);
+}
+
+void EverQuest::SendSetGuildMOTD(const std::string& motd)
+{
+	if (m_guild_id == 0) {
+		AddChatSystemMessage("You are not in a guild.");
+		return;
+	}
+
+	EQT::GuildMOTD_Struct gmotd;
+	memset(&gmotd, 0, sizeof(gmotd));
+	strncpy(gmotd.name, m_character.c_str(), 63);
+	strncpy(gmotd.setby_name, m_character.c_str(), 63);
+	strncpy(gmotd.motd, motd.c_str(), 511);
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(2 + sizeof(EQT::GuildMOTD_Struct));
+	packet.PutUInt16(0, HC_OP_SetGuildMOTD);
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &gmotd, sizeof(EQT::GuildMOTD_Struct));
+	QueuePacket(HC_OP_SetGuildMOTD, &packet);
+
+	AddChatSystemMessage("Guild MOTD updated.");
+}
+
+void EverQuest::ZoneProcessGuildInvite(const EQ::Net::Packet &p)
+{
+	// Received a guild invite
+	if (p.Length() < 2 + sizeof(EQT::GuildCommand_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_GuildInvite packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::GuildCommand_Struct* invite = reinterpret_cast<const EQT::GuildCommand_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string inviter(invite->myname, strnlen(invite->myname, 64));
+
+	m_has_pending_guild_invite = true;
+	m_guild_invite_from = inviter;
+	m_guild_invite_id = invite->guildeqid;
+
+	LOG_INFO(MOD_MAIN, "Guild invite received from {}", inviter);
+	AddChatSystemMessage(fmt::format("{} has invited you to join a guild.", inviter));
+	AddChatSystemMessage("Type /guildaccept to accept or /guilddecline to decline.");
+}
+
+void EverQuest::ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p)
+{
+	// Received guild MOTD
+	if (p.Length() < 2 + sizeof(EQT::GuildMOTD_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_GetGuildMOTDReply packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::GuildMOTD_Struct* motd = reinterpret_cast<const EQT::GuildMOTD_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string setby(motd->setby_name, strnlen(motd->setby_name, 64));
+	std::string message(motd->motd, strnlen(motd->motd, 512));
+
+	LOG_INFO(MOD_MAIN, "Guild MOTD (set by {}): {}", setby, message);
+	AddChatSystemMessage(fmt::format("Guild MOTD (set by {}): {}", setby, message));
+}
+
+void EverQuest::ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p)
+{
+	// Guild member status update (zone change, etc.)
+	if (p.Length() < 2 + sizeof(EQT::GuildMemberUpdate_Struct)) {
+		return;
+	}
+
+	const EQT::GuildMemberUpdate_Struct* update = reinterpret_cast<const EQT::GuildMemberUpdate_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string member_name(update->member_name, strnlen(update->member_name, 64));
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Guild member {} changed zone to {}", member_name, update->zone_id);
+	}
+}
+
+void EverQuest::ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p)
+{
+	// New guild member added
+	if (p.Length() < 2 + 92) {  // Minimum size for GuildJoin_Struct
+		return;
+	}
+
+	// Parse the packet to get the new member name
+	const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
+	// Name is at offset 28 (after guild_id, unknown04, level, class, rank, zoneid, unknown24)
+	const char* name = reinterpret_cast<const char*>(data + 28);
+	std::string member_name(name, strnlen(name, 64));
+
+	LOG_INFO(MOD_MAIN, "{} has joined the guild", member_name);
+	AddChatSystemMessage(fmt::format("{} has joined the guild.", member_name));
+}
+
+// ============================================================================
+// Phase 3: Corpse Management
+// ============================================================================
+
+void EverQuest::SendCorpseDrag(const std::string& corpse_name)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_CorpseDrag);
+
+	EQT::CorpseDrag_Struct drag;
+	memset(&drag, 0, sizeof(drag));
+	strncpy(drag.CorpseName, corpse_name.c_str(), 63);
+	strncpy(drag.DraggerName, m_character.c_str(), 63);
+	packet.PutData(2, &drag, sizeof(drag));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		m_is_dragging_corpse = true;
+		m_dragged_corpse_name = corpse_name;
+		LOG_INFO(MOD_MAIN, "Started dragging corpse: {}", corpse_name);
+		AddChatSystemMessage(fmt::format("You begin to drag {}.", corpse_name));
+	}
+}
+
+void EverQuest::SendCorpseDrop()
+{
+	if (!m_is_dragging_corpse) {
+		AddChatSystemMessage("You are not dragging a corpse.");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_CorpseDrop);
+
+	EQT::CorpseDrag_Struct drop;
+	memset(&drop, 0, sizeof(drop));
+	strncpy(drop.CorpseName, m_dragged_corpse_name.c_str(), 63);
+	strncpy(drop.DraggerName, m_character.c_str(), 63);
+	packet.PutData(2, &drop, sizeof(drop));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Dropped corpse: {}", m_dragged_corpse_name);
+		AddChatSystemMessage(fmt::format("You stop dragging {}.", m_dragged_corpse_name));
+		m_is_dragging_corpse = false;
+		m_dragged_corpse_name.clear();
+	}
+}
+
+void EverQuest::SendConsiderCorpse(uint32_t corpse_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_ConsiderCorpse);
+	packet.PutUInt32(2, corpse_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Considering corpse ID: {}", corpse_id);
+	}
+}
+
+void EverQuest::SendConfirmDelete(uint32_t corpse_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_ConfirmDelete);
+	packet.PutUInt32(2, corpse_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Confirmed deletion of corpse ID: {}", corpse_id);
+		AddChatSystemMessage("Your corpse has been summoned to your bind point.");
+	}
+}
+
+// ============================================================================
+// Phase 3: Consent System
+// ============================================================================
+
+void EverQuest::SendConsent(const std::string& player_name)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Consent);
+	packet.PutString(2, player_name);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Granting corpse consent to: {}", player_name);
+		AddChatSystemMessage(fmt::format("You have granted {} permission to drag your corpse.", player_name));
+	}
+}
+
+void EverQuest::SendConsentDeny(const std::string& player_name)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_ConsentDeny);
+	packet.PutString(2, player_name);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Denying corpse consent for: {}", player_name);
+		AddChatSystemMessage(fmt::format("You have denied {} permission to drag your corpse.", player_name));
+	}
+}
+
+void EverQuest::ZoneProcessConsentResponse(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::ConsentResponse_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_ConsentResponse packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::ConsentResponse_Struct* consent = reinterpret_cast<const EQT::ConsentResponse_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string grantname(consent->grantname, strnlen(consent->grantname, 64));
+	std::string ownername(consent->ownername, strnlen(consent->ownername, 64));
+	std::string zonename(consent->zonename, strnlen(consent->zonename, 32));
+
+	LOG_INFO(MOD_MAIN, "Consent granted: {} can now loot {}'s corpse in {}",
+		grantname, ownername, zonename);
+	AddChatSystemMessage(fmt::format("{} has been given permission to drag your corpse.", grantname));
+}
+
+void EverQuest::ZoneProcessDenyResponse(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::ConsentResponse_Struct)) {
+		LOG_WARN(MOD_MAIN, "OP_DenyResponse packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const EQT::ConsentResponse_Struct* consent = reinterpret_cast<const EQT::ConsentResponse_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string grantname(consent->grantname, strnlen(consent->grantname, 64));
+
+	LOG_INFO(MOD_MAIN, "Consent denied for: {}", grantname);
+	AddChatSystemMessage(fmt::format("{}'s permission to drag your corpse has been revoked.", grantname));
+}
+
+// ============================================================================
+// Phase 3: Combat Targeting
+// ============================================================================
+
+void EverQuest::SendAssist(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Assist);
+	packet.PutUInt32(2, target_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Assist request for target ID: {}", target_id);
+	}
+}
+
+void EverQuest::SendAssistGroup(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_AssistGroup);
+	packet.PutUInt32(2, target_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Group assist request for target ID: {}", target_id);
+	}
+}
+
+// ============================================================================
+// Phase 3: Travel System
+// ============================================================================
+
+void EverQuest::SendBoardBoat(uint32_t boat_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_BoardBoat);
+	packet.PutUInt32(2, boat_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		m_is_on_boat = true;
+		m_boat_id = boat_id;
+		LOG_INFO(MOD_MAIN, "Boarding boat ID: {}", boat_id);
+		AddChatSystemMessage("You board the boat.");
+	}
+}
+
+void EverQuest::SendLeaveBoat()
+{
+	if (!m_is_on_boat) {
+		AddChatSystemMessage("You are not on a boat.");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_LeaveBoat);
+	packet.PutUInt32(2, m_boat_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Leaving boat ID: {}", m_boat_id);
+		AddChatSystemMessage("You leave the boat.");
+		m_is_on_boat = false;
+		m_boat_id = 0;
+	}
+}
+
+void EverQuest::SendControlBoat(float heading, uint8_t type)
+{
+	if (!m_is_on_boat) {
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_ControlBoat);
+
+	EQT::ControlBoat_Struct control;
+	memset(&control, 0, sizeof(control));
+	control.boatid = m_boat_id;
+	control.heading = heading;
+	control.type = type;
+	packet.PutData(2, &control, sizeof(control));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+	}
+}
+
+// ============================================================================
+// Phase 3: Group Split
+// ============================================================================
+
+void EverQuest::SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper)
+{
+	if (!m_in_group) {
+		AddChatSystemMessage("You are not in a group.");
+		return;
+	}
+
+	// Check if we have enough money
+	uint64_t total_copper = copper + silver * 10 + gold * 100 + platinum * 1000;
+	uint64_t my_copper = m_copper + m_silver * 10 + m_gold * 100 + m_platinum * 1000;
+
+	if (total_copper > my_copper) {
+		AddChatSystemMessage("You don't have that much money.");
+		return;
+	}
+
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Split);
+
+	EQT::Split_Struct split;
+	split.platinum = platinum;
+	split.gold = gold;
+	split.silver = silver;
+	split.copper = copper;
+	packet.PutData(2, &split, sizeof(split));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Splitting {}p {}g {}s {}c with group", platinum, gold, silver, copper);
+		AddChatSystemMessage(fmt::format("You split {}p {}g {}s {}c with your group.",
+			platinum, gold, silver, copper));
+	}
+}
+
+// ============================================================================
+// Phase 3: LFG System
+// ============================================================================
+
+void EverQuest::SendLFGCommand(bool lfg_on)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_LFGCommand);
+	packet.PutUInt32(2, lfg_on ? 1 : 0);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		m_is_lfg = lfg_on;
+		LOG_INFO(MOD_MAIN, "LFG status: {}", lfg_on ? "ON" : "OFF");
+		AddChatSystemMessage(fmt::format("You are {} looking for a group.", lfg_on ? "now" : "no longer"));
+	}
+}
+
+void EverQuest::ZoneProcessLFGAppearance(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::LFG_Appearance_Struct)) {
+		return;
+	}
+
+	const EQT::LFG_Appearance_Struct* lfg = reinterpret_cast<const EQT::LFG_Appearance_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Update entity's LFG status
+	auto it = m_entities.find(static_cast<uint16_t>(lfg->spawn_id));
+	if (it != m_entities.end()) {
+		// If we had an LFG flag on Entity, we'd update it here
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Entity {} LFG status: {}", lfg->spawn_id, lfg->lfg);
+		}
+	}
+
+	// Update our own status if it's us
+	if (lfg->spawn_id == m_my_spawn_id) {
+		m_is_lfg = (lfg->lfg != 0);
+	}
+}
+
+// ============================================================================
+// Phase 3: Combat Abilities
+// ============================================================================
+
+void EverQuest::SendShielding(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Shielding);
+
+	EQT::Shielding_Struct shield;
+	shield.target_id = target_id;
+	packet.PutData(2, &shield, sizeof(shield));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Shielding target ID: {}", target_id);
+	}
+}
+
+void EverQuest::ZoneProcessEnvDamage(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::EnvDamage2_Struct)) {
+		return;
+	}
+
+	const EQT::EnvDamage2_Struct* env = reinterpret_cast<const EQT::EnvDamage2_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string damage_type;
+	switch (env->dmgtype) {
+		case 250: damage_type = "falling"; break;
+		case 251: damage_type = "drowning"; break;
+		case 252: damage_type = "burning"; break;
+		case 253: damage_type = "lava"; break;
+		default: damage_type = "environmental"; break;
+	}
+
+	if (env->id == m_my_spawn_id) {
+		LOG_INFO(MOD_MAIN, "You took {} {} damage!", env->damage, damage_type);
+		AddChatSystemMessage(fmt::format("You took {} points of {} damage.", env->damage, damage_type));
+	}
+}
+
+// ============================================================================
+// Phase 3: Discipline System
+// ============================================================================
+
+void EverQuest::ZoneProcessDisciplineUpdate(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::Disciplines_Struct)) {
+		return;
+	}
+
+	const EQT::Disciplines_Struct* disc = reinterpret_cast<const EQT::Disciplines_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Update discipline list in game state if needed
+	LOG_DEBUG(MOD_MAIN, "Received discipline update");
+
+	// Count known disciplines
+	int count = 0;
+	for (uint32_t i = 0; i < EQT::MAX_PP_DISCIPLINES; i++) {
+		if (disc->values[i] != 0) {
+			count++;
+		}
+	}
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "You know {} disciplines", count);
+	}
+}
+
+void EverQuest::ZoneProcessDisciplineTimer(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::DisciplineTimer_Struct)) {
+		return;
+	}
+
+	const EQT::DisciplineTimer_Struct* timer = reinterpret_cast<const EQT::DisciplineTimer_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Discipline timer {}: {} seconds remaining",
+			timer->timer_id, timer->timer_value);
+	}
+}
+
+// ============================================================================
+// Phase 3: Banking
+// ============================================================================
+
+void EverQuest::ZoneProcessBankerChange(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::BankerChange_Struct)) {
+		return;
+	}
+
+	const EQT::BankerChange_Struct* bank = reinterpret_cast<const EQT::BankerChange_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Update bank currency
+	m_bank_platinum = bank->platinum;
+	m_bank_gold = bank->gold;
+	m_bank_silver = bank->silver;
+	m_bank_copper = bank->copper;
+
+	// Also update GameState
+	m_game_state.player().setBankPlatinum(bank->platinum);
+	m_game_state.player().setBankGold(bank->gold);
+	m_game_state.player().setBankSilver(bank->silver);
+	m_game_state.player().setBankCopper(bank->copper);
+
+	LOG_DEBUG(MOD_MAIN, "Bank updated: {}p {}g {}s {}c",
+		m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+}
+
+// ============================================================================
+// Phase 3: Misc
+// ============================================================================
+
+void EverQuest::SendSave()
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Save);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Character save requested");
+		AddChatSystemMessage("Saving character...");
+	}
+}
+
+void EverQuest::SendSaveOnZoneReq()
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_SaveOnZoneReq);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Pre-zone save requested");
+	}
+}
+
+void EverQuest::SendPopupResponse(uint32_t popup_id, uint32_t button)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_PopupResponse);
+
+	EQT::PopupResponse_Struct response;
+	response.sender = 0;  // Usually filled in by context
+	response.popup_id = popup_id;
+	response.response = button;
+	packet.PutData(2, &response, sizeof(response));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Popup response: id={} button={}", popup_id, button);
+	}
+}
+
+void EverQuest::ZoneProcessClearObject(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + 4) {  // Need at least object ID
+		return;
+	}
+
+	const uint32_t* object_id = reinterpret_cast<const uint32_t*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Remove from world objects
+	auto it = m_world_objects.find(*object_id);
+	if (it != m_world_objects.end()) {
+		LOG_DEBUG(MOD_MAIN, "Clearing world object: {}", *object_id);
+		m_world_objects.erase(it);
+	}
+}
+
+// ============================================================================
+// Phase 4: Dueling System
+// ============================================================================
+
+void EverQuest::SendDuelRequest(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_RequestDuel);
+
+	EQT::Duel_Struct duel;
+	duel.duel_initiator = m_my_spawn_id;
+	duel.duel_target = target_id;
+	packet.PutData(2, &duel, sizeof(duel));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		m_has_pending_duel = true;
+		m_duel_target_id = target_id;
+		LOG_INFO(MOD_MAIN, "Sent duel request to target ID: {}", target_id);
+		AddChatSystemMessage("You have challenged someone to a duel.");
+	}
+}
+
+void EverQuest::SendDuelAccept(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_DuelAccept);
+
+	EQT::Duel_Struct duel;
+	duel.duel_initiator = target_id;
+	duel.duel_target = m_my_spawn_id;
+	packet.PutData(2, &duel, sizeof(duel));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		m_is_dueling = true;
+		m_has_pending_duel = false;
+		m_duel_target_id = target_id;
+		LOG_INFO(MOD_MAIN, "Accepted duel from: {}", target_id);
+		AddChatSystemMessage("You have accepted the duel!");
+	}
+}
+
+void EverQuest::SendDuelDecline(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_DuelDecline);
+
+	EQT::DuelResponse_Struct response;
+	response.target_id = m_my_spawn_id;
+	response.entity_id = target_id;
+	response.unknown = 0;
+	packet.PutData(2, &response, sizeof(response));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		m_has_pending_duel = false;
+		m_duel_initiator_id = 0;
+		LOG_INFO(MOD_MAIN, "Declined duel from: {}", target_id);
+		AddChatSystemMessage("You have declined the duel.");
+	}
+}
+
+void EverQuest::ZoneProcessDuelRequest(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::Duel_Struct)) {
+		return;
+	}
+
+	const EQT::Duel_Struct* duel = reinterpret_cast<const EQT::Duel_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Someone challenged us to a duel
+	if (duel->duel_target == m_my_spawn_id) {
+		m_has_pending_duel = true;
+		m_duel_initiator_id = duel->duel_initiator;
+
+		// Find challenger name
+		std::string challenger = "Someone";
+		auto it = m_entities.find(static_cast<uint16_t>(duel->duel_initiator));
+		if (it != m_entities.end()) {
+			challenger = it->second.name;
+		}
+
+		LOG_INFO(MOD_MAIN, "{} has challenged you to a duel!", challenger);
+		AddChatSystemMessage(fmt::format("{} has challenged you to a duel! Type /duelaccept or /dueldecline.", challenger));
+	}
+}
+
+// ============================================================================
+// Phase 4: Skills
+// ============================================================================
+
+void EverQuest::SendBindWound(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_BindWound);
+
+	EQT::BindWound_Struct bw;
+	bw.to = static_cast<uint16_t>(target_id);
+	bw.unknown2 = 0;
+	bw.type = 0;
+	bw.unknown6 = 0;
+	packet.PutData(2, &bw, sizeof(bw));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Bind wound on target: {}", target_id);
+	}
+}
+
+void EverQuest::SendTrackTarget(uint32_t target_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_TrackTarget);
+	packet.PutUInt32(2, target_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Track target: {}", target_id);
+	}
+}
+
+// ============================================================================
+// Phase 4: Tradeskill Recipes
+// ============================================================================
+
+void EverQuest::SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_RecipesFavorite);
+	packet.PutUInt32(2, object_type);
+	packet.PutUInt32(6, 0);  // some_id
+
+	// Pack up to 500 favorites
+	for (size_t i = 0; i < 500 && i < favorites.size(); i++) {
+		packet.PutUInt32(10 + i * 4, favorites[i]);
+	}
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Sent {} favorite recipes", favorites.size());
+	}
+}
+
+void EverQuest::SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_RecipesSearch);
+
+	EQT::RecipesSearch_Struct search;
+	memset(&search, 0, sizeof(search));
+	search.object_type = object_type;
+	search.some_id = 0;
+	search.mintrivial = mintrivial;
+	search.maxtrivial = maxtrivial;
+	strncpy(search.query, query.c_str(), 55);
+	search.unknown4 = 0x00030000;
+	search.unknown5 = 0x0012DD4C;
+	packet.PutData(2, &search, sizeof(search));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Recipe search: '{}'", query);
+	}
+}
+
+void EverQuest::SendRecipeDetails(uint32_t recipe_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_RecipeDetails);
+	packet.PutUInt32(2, recipe_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Request recipe details: {}", recipe_id);
+	}
+}
+
+void EverQuest::SendRecipeAutoCombine(uint32_t object_type, uint32_t recipe_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_RecipeAutoCombine);
+
+	EQT::RecipeAutoCombine_Struct combine;
+	combine.object_type = object_type;
+	combine.some_id = 0;
+	combine.unknown1 = 0;
+	combine.recipe_id = recipe_id;
+	combine.reply_code = 0xe16493;  // Magic request value
+	packet.PutData(2, &combine, sizeof(combine));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Auto-combine recipe: {}", recipe_id);
+	}
+}
+
+void EverQuest::ZoneProcessRecipeReply(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::RecipeReply_Struct)) {
+		return;
+	}
+
+	const EQT::RecipeReply_Struct* recipe = reinterpret_cast<const EQT::RecipeReply_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string name(recipe->recipe_name, strnlen(recipe->recipe_name, 64));
+	LOG_DEBUG(MOD_MAIN, "Recipe: {} (ID: {}, Trivial: {})", name, recipe->recipe_id, recipe->trivial);
+}
+
+void EverQuest::ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::RecipeAutoCombine_Struct)) {
+		return;
+	}
+
+	const EQT::RecipeAutoCombine_Struct* combine = reinterpret_cast<const EQT::RecipeAutoCombine_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	if (combine->reply_code == 0) {
+		LOG_INFO(MOD_MAIN, "Auto-combine successful for recipe {}", combine->recipe_id);
+		AddChatSystemMessage("Tradeskill combine successful!");
+	} else {
+		LOG_INFO(MOD_MAIN, "Auto-combine failed for recipe {}", combine->recipe_id);
+		AddChatSystemMessage("Tradeskill combine failed.");
+	}
+}
+
+// ============================================================================
+// Phase 4: Cosmetic
+// ============================================================================
+
+void EverQuest::SendSurname(const std::string& surname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Surname);
+
+	EQT::Surname_Struct sn;
+	memset(&sn, 0, sizeof(sn));
+	strncpy(sn.name, m_character.c_str(), 63);
+	strncpy(sn.lastname, surname.c_str(), 31);
+	packet.PutData(2, &sn, sizeof(sn));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Set surname to: {}", surname);
+		AddChatSystemMessage(fmt::format("Requesting surname: {}", surname));
+	}
+}
+
+void EverQuest::SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t eyecolor1, uint8_t eyecolor2,
+	uint8_t hairstyle, uint8_t beard, uint8_t face)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_FaceChange);
+
+	EQT::FaceChange_Struct fc;
+	fc.haircolor = haircolor;
+	fc.beardcolor = beardcolor;
+	fc.eyecolor1 = eyecolor1;
+	fc.eyecolor2 = eyecolor2;
+	fc.hairstyle = hairstyle;
+	fc.beard = beard;
+	fc.face = face;
+	fc.unused = 0;
+	packet.PutData(2, &fc, sizeof(fc));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Face change requested");
+	}
+}
+
+// ============================================================================
+// Phase 4: Misc
+// ============================================================================
+
+void EverQuest::SendRandom(uint32_t low, uint32_t high)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_RandomReq);
+
+	EQT::RandomReq_Struct rnd;
+	rnd.low = low;
+	rnd.high = high;
+	packet.PutData(2, &rnd, sizeof(rnd));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Random {} to {}", low, high);
+	}
+}
+
+void EverQuest::ZoneProcessRandomReply(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::RandomReply_Struct)) {
+		return;
+	}
+
+	const EQT::RandomReply_Struct* rnd = reinterpret_cast<const EQT::RandomReply_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string name(rnd->name, strnlen(rnd->name, 64));
+	LOG_INFO(MOD_MAIN, "{} rolled {} ({} to {})", name, rnd->result, rnd->low, rnd->high);
+	AddChatSystemMessage(fmt::format("**A Magic Die is rolled by {}. It could have been {} to {}. It is {}.",
+		name, rnd->low, rnd->high, rnd->result));
+}
+
+void EverQuest::SendFindPerson(uint32_t npc_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_FindPersonRequest);
+
+	EQT::FindPersonRequest_Struct fp;
+	fp.npc_id = npc_id;
+	fp.client_pos.x = m_x;
+	fp.client_pos.y = m_y;
+	fp.client_pos.z = m_z;
+	packet.PutData(2, &fp, sizeof(fp));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Find person request for NPC: {}", npc_id);
+	}
+}
+
+void EverQuest::ZoneProcessFindPersonReply(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::FindPerson_Point)) {
+		return;
+	}
+
+	const EQT::FindPerson_Point* dest = reinterpret_cast<const EQT::FindPerson_Point*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	LOG_INFO(MOD_MAIN, "Find person result: destination at ({}, {}, {})", dest->x, dest->y, dest->z);
+	AddChatSystemMessage(fmt::format("Path destination: {:.1f}, {:.1f}, {:.1f}", dest->x, dest->y, dest->z));
+}
+
+void EverQuest::SendRewind()
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Rewind);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Rewind requested");
+		AddChatSystemMessage("Attempting to rewind to a safe position...");
+	}
+}
+
+void EverQuest::SendYellForHelp()
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_YellForHelp);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Yelling for help!");
+		AddChatSystemMessage("You yell for help!");
+	}
+}
+
+void EverQuest::SendReport(const std::string& report_text)
+{
+	// Simplified report - just send the text
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Report);
+	packet.PutUInt32(2, 0);  // category_id
+	// For simplicity, we'll just send minimal data
+	packet.PutString(6, report_text);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Report submitted");
+		AddChatSystemMessage("Your report has been submitted.");
+	}
+}
+
+void EverQuest::SendFriendsWho()
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_FriendsWho);
+	packet.PutUInt32(2, m_my_spawn_id);
+	packet.PutString(6, m_character);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "Friends who requested");
+	}
+}
+
+void EverQuest::ZoneProcessCameraEffect(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::Camera_Struct)) {
+		return;
+	}
+
+	const EQT::Camera_Struct* cam = reinterpret_cast<const EQT::Camera_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	LOG_DEBUG(MOD_MAIN, "Camera effect: duration={}ms, intensity={}", cam->duration, cam->intensity);
+	// Could trigger camera shake in renderer if implemented
+}
+
+void EverQuest::ZoneProcessPlayMP3(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 4) {
+		return;
+	}
+
+	const char* filename = reinterpret_cast<const char*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string file(filename, strnlen(filename, p.Length() - 2));
+	LOG_DEBUG(MOD_MAIN, "Play MP3: {}", file);
+	// Could play audio file if audio system implemented
+}
+
+void EverQuest::ZoneProcessSound(const EQ::Net::Packet &p)
+{
+	LOG_DEBUG(MOD_MAIN, "Sound effect received");
+	// Could play sound effect if audio system implemented
+}
+
+// ============================================================================
+// Phase 4: GM Commands
+// ============================================================================
+
+void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMZoneRequest);
+
+	EQT::GMZoneRequest_Struct gm;
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.charname, charname.c_str(), 63);
+	gm.zone_id = zone_id;
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM zone request: {} to zone {}", charname, zone_id);
+	}
+}
+
+void EverQuest::SendGMSummon(const std::string& charname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMSummon);
+
+	EQT::GMSummon_Struct gm;
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.charname, charname.c_str(), 63);
+	strncpy(gm.gmname, m_character.c_str(), 63);
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM summon: {}", charname);
+	}
+}
+
+void EverQuest::SendGMGoto(const std::string& charname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMGoto);
+
+	EQT::GMSummon_Struct gm;
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.charname, charname.c_str(), 63);
+	strncpy(gm.gmname, m_character.c_str(), 63);
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM goto: {}", charname);
+	}
+}
+
+void EverQuest::SendGMFind(const std::string& charname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMFind);
+
+	EQT::GMSummon_Struct gm;
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.charname, charname.c_str(), 63);
+	strncpy(gm.gmname, m_character.c_str(), 63);
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_DEBUG(MOD_MAIN, "GM find: {}", charname);
+	}
+}
+
+void EverQuest::SendGMKick(const std::string& charname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMKick);
+
+	EQT::GMKick_Struct gm;
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.name, charname.c_str(), 63);
+	strncpy(gm.gmname, m_character.c_str(), 63);
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM kick: {}", charname);
+	}
+}
+
+void EverQuest::SendGMKill(const std::string& charname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMKill);
+
+	EQT::GMKick_Struct gm;  // Same struct as kick
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.name, charname.c_str(), 63);
+	strncpy(gm.gmname, m_character.c_str(), 63);
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM kill: {}", charname);
+	}
+}
+
+void EverQuest::SendGMHideMe(bool hide)
+{
+	// Uses SpawnAppearance
+	SendSpawnAppearance(AT_GM, hide ? 1 : 0);
+	LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
+}
+
+void EverQuest::SendGMEmoteZone(const std::string& text)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMEmoteZone);
+	packet.PutString(2, text);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM zone emote: {}", text);
+	}
+}
+
+void EverQuest::SendGMLastName(const std::string& charname, const std::string& lastname)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMLastName);
+
+	EQT::GMLastName_Struct gm;
+	memset(&gm, 0, sizeof(gm));
+	strncpy(gm.name, charname.c_str(), 63);
+	strncpy(gm.gmname, m_character.c_str(), 63);
+	strncpy(gm.lastname, lastname.c_str(), 63);
+	packet.PutData(2, &gm, sizeof(gm));
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM set lastname for {}: {}", charname, lastname);
+	}
+}
+
+void EverQuest::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::GMZoneRequest_Struct)) {
+		return;
+	}
+
+	const EQT::GMZoneRequest_Struct* gm = reinterpret_cast<const EQT::GMZoneRequest_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	if (gm->success) {
+		LOG_INFO(MOD_MAIN, "GM zone request approved for zone {}", gm->zone_id);
+	} else {
+		LOG_WARN(MOD_MAIN, "GM zone request denied");
+		AddChatSystemMessage("Zone request denied.");
+	}
+}
+
+void EverQuest::ZoneProcessGMFind(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::GMSummon_Struct)) {
+		return;
+	}
+
+	const EQT::GMSummon_Struct* gm = reinterpret_cast<const EQT::GMSummon_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	std::string charname(gm->charname, strnlen(gm->charname, 64));
+	LOG_INFO(MOD_MAIN, "GM find result: {} in zone {} at ({}, {}, {})",
+		charname, gm->zoneID, gm->x, gm->y, gm->z);
+	AddChatSystemMessage(fmt::format("{} is in zone {} at ({}, {}, {})",
+		charname, gm->zoneID, gm->x, gm->y, gm->z));
+}
+
+void EverQuest::ZoneProcessGMSummon(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2 + sizeof(EQT::GMSummon_Struct)) {
+		return;
+	}
+
+	const EQT::GMSummon_Struct* gm = reinterpret_cast<const EQT::GMSummon_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	if (gm->success) {
+		LOG_INFO(MOD_MAIN, "GM summon successful");
+	} else {
+		LOG_WARN(MOD_MAIN, "GM summon failed");
+		AddChatSystemMessage("Summon failed.");
+	}
+}
+
+// ============================================================================
+// Phase 4: Petitions
+// ============================================================================
+
+void EverQuest::SendPetition(const std::string& text)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_Petition);
+	packet.PutString(2, text);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Petition submitted");
+		AddChatSystemMessage("Your petition has been submitted.");
+	}
+}
+
+void EverQuest::SendPetitionDelete(uint32_t petition_id)
+{
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_PetitionDelete);
+	packet.PutUInt32(2, petition_id);
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "Petition {} deleted", petition_id);
 	}
 }
 
@@ -14410,15 +17061,23 @@ void EverQuest::OnPetRemoved() {
 }
 
 void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
-	if (!m_graphics_initialized || !m_renderer) {
-		return;
-	}
-
-	LOG_DEBUG(MOD_MAIN, "Pet window: Button {} state changed to {}",
+	LOG_DEBUG(MOD_MAIN, "Pet button state changed: {} = {}",
 	          EQT::GetPetButtonName(button), state ? "ON" : "OFF");
 
-	// Pet window button states will be updated by WindowManager when it's implemented
-	// TODO: m_renderer->getWindowManager()->updatePetButtonState(button, state);
+	// Pet button state is tracked here, pet window will read state during render
+	// The window's update() method polls pet state from EQ each frame
+#ifdef EQT_HAS_GRAPHICS
+	if (m_graphics_initialized && m_renderer) {
+		auto windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto petWindow = windowManager->getPetWindow();
+			if (petWindow) {
+				// PetWindow::update() is called each frame and reads current state
+				// Button visual state will update automatically on next render
+			}
+		}
+	}
+#endif
 }
 
 void EverQuest::SaveEntityDataToFile(const std::string& filename) {

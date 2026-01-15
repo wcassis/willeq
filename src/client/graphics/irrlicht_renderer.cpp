@@ -40,130 +40,6 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
         if (event.KeyInput.PressedDown) {
             keyWasPressed_[event.KeyInput.Key] = true;
 
-            // Wireframe toggle on F1
-            if (event.KeyInput.Key == irr::KEY_F1) {
-                wireframeToggleRequested_ = true;
-            }
-
-            // HUD toggle on F2
-            if (event.KeyInput.Key == irr::KEY_F2) {
-                hudToggleRequested_ = true;
-            }
-
-            // Name tags toggle on F3
-            if (event.KeyInput.Key == irr::KEY_F3) {
-                nameTagToggleRequested_ = true;
-            }
-
-            // Zone lights toggle on F4
-            if (event.KeyInput.Key == irr::KEY_F4) {
-                zoneLightsToggleRequested_ = true;
-            }
-
-            // Camera mode toggle on F5
-            if (event.KeyInput.Key == irr::KEY_F5) {
-                cameraModeToggleRequested_ = true;
-            }
-
-            // Old/New models toggle on F6
-            if (event.KeyInput.Key == irr::KEY_F6) {
-                oldModelsToggleRequested_ = true;
-            }
-
-            // Renderer mode toggle on F9 (Admin/Player mode)
-            if (event.KeyInput.Key == irr::KEY_F9) {
-                rendererModeToggleRequested_ = true;
-            }
-
-            // Autorun toggle on R or Numlock (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_R && !event.KeyInput.Control) {
-                autorunToggleRequested_ = true;
-            }
-            if (event.KeyInput.Key == irr::KEY_NUMLOCK) {
-                autorunToggleRequested_ = true;
-            }
-
-            // Auto attack toggle on ` (backtick) key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_OEM_3) {  // Backtick/tilde key
-                autoAttackToggleRequested_ = true;
-            }
-
-            // Inventory toggle on I key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_I) {
-                inventoryToggleRequested_ = true;
-            }
-
-            // Group window toggle on G key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_G) {
-                groupToggleRequested_ = true;
-            }
-
-            // Door interaction on U key (Player mode - use nearest door)
-            if (event.KeyInput.Key == irr::KEY_KEY_U) {
-                doorInteractRequested_ = true;
-            }
-
-            // World object (tradeskill container) interaction on O key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_O) {
-                worldObjectInteractRequested_ = true;
-            }
-
-            // Hail on H key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_H) {
-                hailRequested_ = true;
-            }
-
-            // Vendor window toggle on V key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_V) {
-                vendorToggleRequested_ = true;
-            }
-
-            // Trainer window toggle on T key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_T && !event.KeyInput.Control) {
-                trainerToggleRequested_ = true;
-            }
-
-            // Hotbar shortcuts (Ctrl+1-9 and Ctrl+0)
-            if (event.KeyInput.Control && !event.KeyInput.Shift) {
-                if (event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_9) {
-                    hotbarActivationRequest_ = static_cast<int8_t>(event.KeyInput.Key - irr::KEY_KEY_1);
-                } else if (event.KeyInput.Key == irr::KEY_KEY_0) {
-                    hotbarActivationRequest_ = 9;  // 10th button (index 9)
-                }
-            }
-
-            // Skills window toggle on K key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_K) {
-                skillsToggleRequested_ = true;
-            }
-
-// Zone line visualization toggle on Z key
-            if (event.KeyInput.Key == irr::KEY_KEY_Z) {
-                zoneLineVisualizationToggleRequested_ = true;
-            }
-
-            // Pet window toggle on P key (Player mode)
-            if (event.KeyInput.Key == irr::KEY_KEY_P) {
-                petToggleRequested_ = true;
-            }
-
-            // Spell gem shortcuts (1-8 keys, not numpad) - only when Ctrl is not held
-            if (!event.KeyInput.Control && event.KeyInput.Key >= irr::KEY_KEY_1 && event.KeyInput.Key <= irr::KEY_KEY_8) {
-                spellGemCastRequest_ = static_cast<int8_t>(event.KeyInput.Key - irr::KEY_KEY_1);
-            }
-
-            // Chat input shortcuts
-            if (event.KeyInput.Key == irr::KEY_RETURN) {
-                enterKeyPressed_ = true;
-            }
-            if (event.KeyInput.Key == irr::KEY_ESCAPE) {
-                escapeKeyPressed_ = true;
-            }
-            // Slash key (forward slash or numpad divide)
-            if (event.KeyInput.Key == irr::KEY_OEM_2 || event.KeyInput.Key == irr::KEY_DIVIDE) {
-                slashKeyPressed_ = true;
-            }
-
             // Queue key event for chat input (all printable characters)
             KeyEvent keyEvent;
             keyEvent.key = event.KeyInput.Key;
@@ -172,167 +48,166 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             keyEvent.ctrl = event.KeyInput.Control;
             pendingKeyEvents_.push_back(keyEvent);
 
-            // Collision debug controls (Player mode)
-            // C: Toggle collision on/off
-            if (event.KeyInput.Key == irr::KEY_KEY_C && !event.KeyInput.Control) {
-                collisionToggleRequested_ = true;
+            // Chat input shortcuts - these are always tracked for text input
+            if (event.KeyInput.Key == irr::KEY_RETURN) {
+                enterKeyPressed_ = true;
             }
-            // Ctrl+C: Toggle collision debug output
-            if (event.KeyInput.Key == irr::KEY_KEY_C && event.KeyInput.Control) {
-                collisionDebugToggleRequested_ = true;
-            }
-            // T: Adjust collision check height (T=up)
-            if (event.KeyInput.Key == irr::KEY_KEY_T) {
-                collisionHeightDelta_ = event.KeyInput.Shift ? 0.1f : 1.0f;
-            }
-            // Y/B: Adjust step height (Y=up, B=down)
-            if (event.KeyInput.Key == irr::KEY_KEY_Y) {
-                stepHeightDelta_ = event.KeyInput.Shift ? 0.1f : 1.0f;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_B && !event.KeyInput.Control) {
-                stepHeightDelta_ = event.KeyInput.Shift ? -0.1f : -1.0f;
-            }
-
-            // Save entities on F10
-            if (event.KeyInput.Key == irr::KEY_F10) {
-                saveEntitiesRequested_ = true;
-            }
-
-            // Lighting toggle on F11
-            if (event.KeyInput.Key == irr::KEY_F11) {
-                lightingToggleRequested_ = true;
-            }
-
-            // Screenshot on F12
-            if (event.KeyInput.Key == irr::KEY_F12) {
-                screenshotRequested_ = true;
-            }
-
-            // Escape: Clear target, Shift+Escape: Quit
             if (event.KeyInput.Key == irr::KEY_ESCAPE) {
-                if (event.KeyInput.Shift) {
-                    quitRequested_ = true;
-                } else {
-                    clearTargetRequested_ = true;
-                }
+                escapeKeyPressed_ = true;
+            }
+            if (event.KeyInput.Key == irr::KEY_OEM_2 || event.KeyInput.Key == irr::KEY_DIVIDE) {
+                slashKeyPressed_ = true;
             }
 
-            // Animation speed control: [ to decrease, ] to increase
-            if (event.KeyInput.Key == irr::KEY_OEM_4) {  // '[' key
-                animSpeedDelta_ = -0.1f;
-            }
-            if (event.KeyInput.Key == irr::KEY_OEM_6) {  // ']' key
-                animSpeedDelta_ = 0.1f;
-            }
-
-            // Ambient light control: Page Up to increase, Page Down to decrease
-            if (event.KeyInput.Key == irr::KEY_PRIOR) {  // Page Up
-                ambientLightDelta_ = event.KeyInput.Shift ? 0.01f : 0.05f;
-            }
-            if (event.KeyInput.Key == irr::KEY_NEXT) {  // Page Down
-                ambientLightDelta_ = event.KeyInput.Shift ? -0.01f : -0.05f;
-            }
-
-            // Corpse Z offset control: P to raise, Shift+P to lower
-            if (event.KeyInput.Key == irr::KEY_KEY_P) {
-                corpseZOffsetDelta_ = event.KeyInput.Shift ? -1.0f : 1.0f;
-            }
-
-            // Eye height control: Y to raise, Shift+Y to lower
-            if (event.KeyInput.Key == irr::KEY_KEY_Y) {
-                eyeHeightDelta_ = event.KeyInput.Shift ? -1.0f : 1.0f;
-            }
-
-            // Spell particle control: Ctrl+- to decrease, Ctrl+= to increase
-            // Shift for fine control (0.1 step), normal is 0.5 step
-            if (event.KeyInput.Control) {
-                float particleStep = event.KeyInput.Shift ? 0.1f : 0.5f;
-                if (event.KeyInput.Key == irr::KEY_MINUS) {
-                    particleMultiplierDelta_ = -particleStep;
-                }
-                if (event.KeyInput.Key == irr::KEY_PLUS) {
-                    particleMultiplierDelta_ = particleStep;
-                }
-            }
-
-            // F7: Toggle helm debug mode
-            if (event.KeyInput.Key == irr::KEY_F7) {
-                helmDebugToggleRequested_ = true;
-            }
-
-            // Helm UV adjustment keys (active anytime, not just in helm debug mode):
-            // Arrow keys: U/V offset
-            // I/K: U offset, J/L: V offset (alternative)
-            // O/P: U scale, comma/period: V scale
-            // -/=: Rotation
-            // 0: Reset all
-            // Ctrl+S: Swap UV
-            // Ctrl+V: Toggle V flip
-            // Ctrl+U: Toggle U flip
-            // F8: Print helm state
+            // Step sizes for delta-based adjustments
             float uvStep = event.KeyInput.Shift ? 0.01f : 0.1f;
             float scaleStep = event.KeyInput.Shift ? 0.01f : 0.1f;
             float rotStep = event.KeyInput.Shift ? 1.0f : 15.0f;
+            float repairRotStep = 15.0f;
 
-            // U offset: I/K keys or Left/Right arrows with Alt
-            if (event.KeyInput.Key == irr::KEY_KEY_I) {
-                helmUOffsetDelta_ = -uvStep;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_K) {
-                helmUOffsetDelta_ = uvStep;
-            }
-            // V offset: J/L keys
-            if (event.KeyInput.Key == irr::KEY_KEY_J) {
-                helmVOffsetDelta_ = -uvStep;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_L) {
-                helmVOffsetDelta_ = uvStep;
-            }
-            // U scale: O/P keys
-            if (event.KeyInput.Key == irr::KEY_KEY_O) {
-                helmUScaleDelta_ = -scaleStep;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_P) {
-                helmUScaleDelta_ = scaleStep;
-            }
-            // V scale: comma/period keys
-            if (event.KeyInput.Key == irr::KEY_COMMA) {
-                helmVScaleDelta_ = -scaleStep;
-            }
-            if (event.KeyInput.Key == irr::KEY_PERIOD) {
-                helmVScaleDelta_ = scaleStep;
-            }
-            // Rotation: -/= keys (minus/equals) - also used for zoom in Player mode
-            if (event.KeyInput.Key == irr::KEY_MINUS) {
-                helmRotationDelta_ = -rotStep;
-                cameraZoomDelta_ = 2.0f;  // Zoom out (increase distance)
-            }
-            if (event.KeyInput.Key == irr::KEY_PLUS) {
-                helmRotationDelta_ = rotStep;
-                cameraZoomDelta_ = -2.0f;  // Zoom in (decrease distance)
-            }
-            // F8: Print state
-            if (event.KeyInput.Key == irr::KEY_F8) {
-                helmPrintStateRequested_ = true;
-            }
-            // 0 key: Reset (when not in camera movement)
-            if (event.KeyInput.Key == irr::KEY_KEY_0) {
-                helmResetRequested_ = true;
-            }
-            // Ctrl+S: Swap UV
-            if (event.KeyInput.Key == irr::KEY_KEY_S && event.KeyInput.Control) {
-                helmUVSwapRequested_ = true;
-            }
-            // Ctrl+V: Toggle V flip
-            if (event.KeyInput.Key == irr::KEY_KEY_V && event.KeyInput.Control) {
-                helmVFlipRequested_ = true;
-            }
-            // Ctrl+U: Toggle U flip
-            if (event.KeyInput.Key == irr::KEY_KEY_U && event.KeyInput.Control) {
-                helmUFlipRequested_ = true;
+            // Look up action from HotkeyManager
+            auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+            auto action = hotkeyMgr.getAction(
+                event.KeyInput.Key,
+                event.KeyInput.Control,
+                event.KeyInput.Shift,
+                false,  // Alt not directly exposed by Irrlicht
+                currentMode_);
+
+            if (action.has_value()) {
+                using HA = eqt::input::HotkeyAction;
+                switch (*action) {
+                    // === Global Actions ===
+                    case HA::Quit: quitRequested_ = true; break;
+                    case HA::Screenshot: screenshotRequested_ = true; break;
+                    case HA::ToggleWireframe: wireframeToggleRequested_ = true; break;
+                    case HA::ToggleHUD: hudToggleRequested_ = true; break;
+                    case HA::ToggleNameTags: nameTagToggleRequested_ = true; break;
+                    case HA::ToggleZoneLights: zoneLightsToggleRequested_ = true; break;
+                    case HA::ToggleCameraMode: cameraModeToggleRequested_ = true; break;
+                    case HA::ToggleOldModels: oldModelsToggleRequested_ = true; break;
+                    case HA::ToggleRendererMode: rendererModeToggleRequested_ = true; break;
+
+                    // === Player Mode Actions ===
+                    case HA::ToggleAutorun: autorunToggleRequested_ = true; break;
+                    case HA::ToggleAutoAttack: autoAttackToggleRequested_ = true; break;
+                    case HA::ToggleInventory: inventoryToggleRequested_ = true; break;
+                    case HA::ToggleSkills: skillsToggleRequested_ = true; break;
+                    case HA::ToggleGroup: groupToggleRequested_ = true; break;
+                    case HA::TogglePetWindow: petToggleRequested_ = true; break;
+                    case HA::ToggleVendor: vendorToggleRequested_ = true; break;
+                    case HA::ToggleTrainer: trainerToggleRequested_ = true; break;
+                    case HA::ToggleCollision: collisionToggleRequested_ = true; break;
+                    case HA::ToggleCollisionDebug: collisionDebugToggleRequested_ = true; break;
+                    case HA::ToggleZoneLineVisualization: zoneLineVisualizationToggleRequested_ = true; break;
+                    case HA::InteractDoor: doorInteractRequested_ = true; break;
+                    case HA::InteractWorldObject: worldObjectInteractRequested_ = true; break;
+                    case HA::Hail: hailRequested_ = true; break;
+                    case HA::ClearTarget: clearTargetRequested_ = true; break;
+                    case HA::OpenChat: enterKeyPressed_ = true; break;
+                    case HA::OpenChatSlash: slashKeyPressed_ = true; break;
+
+                    // Spell Gems
+                    case HA::SpellGem1: spellGemCastRequest_ = 0; break;
+                    case HA::SpellGem2: spellGemCastRequest_ = 1; break;
+                    case HA::SpellGem3: spellGemCastRequest_ = 2; break;
+                    case HA::SpellGem4: spellGemCastRequest_ = 3; break;
+                    case HA::SpellGem5: spellGemCastRequest_ = 4; break;
+                    case HA::SpellGem6: spellGemCastRequest_ = 5; break;
+                    case HA::SpellGem7: spellGemCastRequest_ = 6; break;
+                    case HA::SpellGem8: spellGemCastRequest_ = 7; break;
+
+                    // Hotbar Slots
+                    case HA::HotbarSlot1: hotbarActivationRequest_ = 0; break;
+                    case HA::HotbarSlot2: hotbarActivationRequest_ = 1; break;
+                    case HA::HotbarSlot3: hotbarActivationRequest_ = 2; break;
+                    case HA::HotbarSlot4: hotbarActivationRequest_ = 3; break;
+                    case HA::HotbarSlot5: hotbarActivationRequest_ = 4; break;
+                    case HA::HotbarSlot6: hotbarActivationRequest_ = 5; break;
+                    case HA::HotbarSlot7: hotbarActivationRequest_ = 6; break;
+                    case HA::HotbarSlot8: hotbarActivationRequest_ = 7; break;
+                    case HA::HotbarSlot9: hotbarActivationRequest_ = 8; break;
+                    case HA::HotbarSlot10: hotbarActivationRequest_ = 9; break;
+
+                    // Camera Zoom
+                    case HA::CameraZoomIn: cameraZoomDelta_ = -2.0f; break;
+                    case HA::CameraZoomOut: cameraZoomDelta_ = 2.0f; break;
+
+                    // === Admin Mode Actions ===
+                    case HA::SaveEntities: saveEntitiesRequested_ = true; break;
+                    case HA::ToggleLighting: lightingToggleRequested_ = true; break;
+                    case HA::ToggleHelmDebug: helmDebugToggleRequested_ = true; break;
+                    case HA::HelmPrintState: helmPrintStateRequested_ = true; break;
+                    case HA::AnimSpeedDecrease: animSpeedDelta_ = -0.1f; break;
+                    case HA::AnimSpeedIncrease: animSpeedDelta_ = 0.1f; break;
+                    case HA::AmbientLightDecrease:
+                        ambientLightDelta_ = event.KeyInput.Shift ? -0.01f : -0.05f;
+                        break;
+                    case HA::AmbientLightIncrease:
+                        ambientLightDelta_ = event.KeyInput.Shift ? 0.01f : 0.05f;
+                        break;
+                    case HA::CorpseZOffsetUp: corpseZOffsetDelta_ = 1.0f; break;
+                    case HA::CorpseZOffsetDown: corpseZOffsetDelta_ = -1.0f; break;
+                    case HA::EyeHeightUp: eyeHeightDelta_ = 1.0f; break;
+                    case HA::EyeHeightDown: eyeHeightDelta_ = -1.0f; break;
+                    case HA::ParticleMultiplierDecrease:
+                        particleMultiplierDelta_ = event.KeyInput.Shift ? -0.1f : -0.5f;
+                        break;
+                    case HA::ParticleMultiplierIncrease:
+                        particleMultiplierDelta_ = event.KeyInput.Shift ? 0.1f : 0.5f;
+                        break;
+                    case HA::HeadVariantPrev: headVariantCycleDelta_ = -1; break;
+                    case HA::HeadVariantNext: headVariantCycleDelta_ = 1; break;
+
+                    // Helm UV adjustments
+                    case HA::HelmUOffsetLeft: helmUOffsetDelta_ = -uvStep; break;
+                    case HA::HelmUOffsetRight: helmUOffsetDelta_ = uvStep; break;
+                    case HA::HelmVOffsetUp: helmVOffsetDelta_ = uvStep; break;
+                    case HA::HelmVOffsetDown: helmVOffsetDelta_ = -uvStep; break;
+                    case HA::HelmUScaleDecrease: helmUScaleDelta_ = -scaleStep; break;
+                    case HA::HelmUScaleIncrease: helmUScaleDelta_ = scaleStep; break;
+                    case HA::HelmVScaleDecrease: helmVScaleDelta_ = -scaleStep; break;
+                    case HA::HelmVScaleIncrease: helmVScaleDelta_ = scaleStep; break;
+                    case HA::HelmRotateLeft: helmRotationDelta_ = -rotStep; break;
+                    case HA::HelmRotateRight: helmRotationDelta_ = rotStep; break;
+                    case HA::HelmReset: helmResetRequested_ = true; break;
+                    case HA::HelmUVSwap: helmUVSwapRequested_ = true; break;
+                    case HA::HelmVFlip: helmVFlipRequested_ = true; break;
+                    case HA::HelmUFlip: helmUFlipRequested_ = true; break;
+
+                    // Collision height adjustments
+                    case HA::CollisionHeightUp:
+                        collisionHeightDelta_ = event.KeyInput.Shift ? 0.1f : 1.0f;
+                        break;
+                    case HA::CollisionHeightDown:
+                        collisionHeightDelta_ = event.KeyInput.Shift ? -0.1f : -1.0f;
+                        break;
+                    case HA::StepHeightUp:
+                        stepHeightDelta_ = event.KeyInput.Shift ? 0.1f : 1.0f;
+                        break;
+                    case HA::StepHeightDown:
+                        stepHeightDelta_ = event.KeyInput.Shift ? -0.1f : -1.0f;
+                        break;
+
+                    // === Repair Mode Actions ===
+                    case HA::RepairRotateXPos: repairRotateXDelta_ = repairRotStep; break;
+                    case HA::RepairRotateXNeg: repairRotateXDelta_ = -repairRotStep; break;
+                    case HA::RepairRotateYPos: repairRotateYDelta_ = repairRotStep; break;
+                    case HA::RepairRotateYNeg: repairRotateYDelta_ = -repairRotStep; break;
+                    case HA::RepairRotateZPos: repairRotateZDelta_ = repairRotStep; break;
+                    case HA::RepairRotateZNeg: repairRotateZDelta_ = -repairRotStep; break;
+                    case HA::RepairFlipX: repairFlipXRequested_ = true; break;
+                    case HA::RepairFlipY: repairFlipYRequested_ = true; break;
+                    case HA::RepairFlipZ: repairFlipZRequested_ = true; break;
+                    case HA::RepairReset: repairResetRequested_ = true; break;
+
+                    // Movement keys and Jump are handled separately (continuous state)
+                    default:
+                        break;
+                }
             }
 
-            // Also support numpad if available
+            // Numpad helm controls (not in HotkeyManager, kept as hardcoded fallback)
             if (event.KeyInput.Key == irr::KEY_NUMPAD4) helmUOffsetDelta_ = -uvStep;
             if (event.KeyInput.Key == irr::KEY_NUMPAD6) helmUOffsetDelta_ = uvStep;
             if (event.KeyInput.Key == irr::KEY_NUMPAD8) helmVOffsetDelta_ = uvStep;
@@ -345,41 +220,6 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             if (event.KeyInput.Key == irr::KEY_SUBTRACT) helmRotationDelta_ = -rotStep;
             if (event.KeyInput.Key == irr::KEY_NUMPAD5) helmPrintStateRequested_ = true;
             if (event.KeyInput.Key == irr::KEY_NUMPAD0) helmResetRequested_ = true;
-
-            // H/N: Cycle head variant (prev/next)
-            if (event.KeyInput.Key == irr::KEY_KEY_H && !event.KeyInput.Control) {
-                headVariantCycleDelta_ = -1;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_N) {
-                headVariantCycleDelta_ = 1;
-            }
-
-            // Repair mode controls: X/Y/Z = rotate, 1/2/3 = flip, R = reset
-            // Note: These are captured always but only processed when in Repair mode
-            float repairRotStep = 15.0f;  // Fixed 15-degree rotation increment
-            if (event.KeyInput.Key == irr::KEY_KEY_X && !event.KeyInput.Control) {
-                repairRotateXDelta_ = event.KeyInput.Shift ? -repairRotStep : repairRotStep;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_Y && !event.KeyInput.Control) {
-                repairRotateYDelta_ = event.KeyInput.Shift ? -repairRotStep : repairRotStep;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_Z && !event.KeyInput.Control) {
-                repairRotateZDelta_ = event.KeyInput.Shift ? -repairRotStep : repairRotStep;
-            }
-            // 1/2/3 keys for flip toggles (repair mode only - conflicts with spell gems)
-            if (event.KeyInput.Key == irr::KEY_KEY_1 && event.KeyInput.Control) {
-                repairFlipXRequested_ = true;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_2 && event.KeyInput.Control) {
-                repairFlipYRequested_ = true;
-            }
-            if (event.KeyInput.Key == irr::KEY_KEY_3 && event.KeyInput.Control) {
-                repairFlipZRequested_ = true;
-            }
-            // R key for reset (Ctrl+R to avoid conflict with autorun)
-            if (event.KeyInput.Key == irr::KEY_KEY_R && event.KeyInput.Control) {
-                repairResetRequested_ = true;
-            }
         }
         return true;
     }
@@ -516,6 +356,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create event receiver
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
     device_->setEventReceiver(eventReceiver_.get());
+    eventReceiver_->setCurrentMode(rendererMode_);  // Initialize hotkey mode
 
     // Setup camera
     setupCamera();
@@ -3256,6 +3097,11 @@ void IrrlichtRenderer::setRendererMode(RendererMode mode) {
     }
 
     rendererMode_ = mode;
+
+    // Update event receiver's mode for hotkey lookups
+    if (eventReceiver_) {
+        eventReceiver_->setCurrentMode(mode);
+    }
 
     if (mode == RendererMode::Player) {
         // Switch to Player mode

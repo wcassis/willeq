@@ -882,6 +882,122 @@ struct NewCombine_Struct {
 };
 static_assert(sizeof(NewCombine_Struct) == 4, "NewCombine_Struct must be 4 bytes");
 
+/**
+ * Apply Poison Struct
+ * Used for applying poison to weapons (Rogue skill)
+ * Size: 8 bytes
+ * Used in: OP_ApplyPoison packet (bidirectional)
+ */
+struct ApplyPoison_Struct {
+/*0000*/ uint32_t inventorySlot;  // Inventory slot of the poison item
+/*0004*/ uint32_t success;        // 0 = failed, 1 = success (set by server in response)
+/*0008*/
+};
+static_assert(sizeof(ApplyPoison_Struct) == 8, "ApplyPoison_Struct must be 8 bytes");
+
+/**
+ * Track Entry Struct
+ * Single entry in tracking results
+ * Size: 8 bytes (Titanium format)
+ */
+struct Track_Struct {
+/*0000*/ uint32_t entityid;     // Spawn ID of trackable entity
+/*0004*/ float distance;        // Distance to entity
+/*0008*/
+};
+static_assert(sizeof(Track_Struct) == 8, "Track_Struct must be 8 bytes");
+
+/**
+ * Resurrect Struct
+ * Used for resurrection offers and responses
+ * Size: 228 bytes (Titanium format)
+ * Used in: OP_RezzRequest (S->C), OP_RezzAnswer (C->S), OP_RezzComplete (S->C)
+ */
+struct Resurrect_Struct {
+/*0000*/ uint32_t unknown00;          // Unknown, always 0
+/*0004*/ uint16_t zone_id;            // Zone to resurrect in
+/*0006*/ uint16_t instance_id;        // Instance ID (0 for non-instanced)
+/*0008*/ float    y;                  // Y coordinate to rez at
+/*0012*/ float    x;                  // X coordinate to rez at
+/*0016*/ float    z;                  // Z coordinate to rez at
+/*0020*/ char     your_name[64];      // Name of the person being rezzed
+/*0084*/ uint32_t unknown88;          // Unknown
+/*0088*/ char     rezzer_name[64];    // Name of the person casting rez
+/*0152*/ uint32_t spellid;            // Spell ID of the resurrection spell
+/*0156*/ char     corpse_name[64];    // Name of the corpse (with "'s corpse")
+/*0220*/ uint32_t action;             // 0=decline, 1=accept (in OP_RezzAnswer)
+/*0224*/
+};
+static_assert(sizeof(Resurrect_Struct) == 224, "Resurrect_Struct must be 224 bytes");
+
+/**
+ * Who All Request Struct
+ * Used to request /who results
+ * Size: 152 bytes (Titanium format)
+ * Used in: OP_WhoAllRequest (C->S)
+ */
+struct Who_All_Struct {
+/*0000*/ char     whom[64];       // Name filter (empty = all)
+/*0064*/ uint32_t wrace;          // Race filter (0xFFFFFFFF = all)
+/*0068*/ uint32_t wclass;         // Class filter (0xFFFFFFFF = all)
+/*0072*/ uint32_t lvllow;         // Minimum level (0xFFFFFFFF = no min)
+/*0076*/ uint32_t lvlhigh;        // Maximum level (0xFFFFFFFF = no max)
+/*0080*/ uint32_t gmlookup;       // GM lookup flag (0xFFFFFFFF = normal)
+/*0084*/ uint32_t unknown084;     // Unknown
+/*0088*/ uint8_t  unknown088[64]; // Padding
+/*0152*/
+};
+static_assert(sizeof(Who_All_Struct) == 152, "Who_All_Struct must be 152 bytes");
+
+/**
+ * Who All Return Header
+ * Header for /who response (followed by variable player entries)
+ * Used in: OP_WhoAllResponse (S->C)
+ */
+struct WhoAllReturnHeader {
+/*0000*/ uint32_t id;                   // Unknown
+/*0004*/ uint32_t playerineqstring;     // String ID for "Players in EverQuest"
+/*0008*/ char     line[27];             // Header text
+/*0035*/ uint8_t  unknown035;           // Padding (0x0A)
+/*0036*/ uint32_t unknown036;           // Unknown (0)
+/*0040*/ uint32_t playersinzonestring;  // String ID for "Players in zone"
+/*0044*/ uint32_t unknown044[2];        // Unknown (0s)
+/*0052*/ uint32_t unknown052;           // Unknown (1)
+/*0056*/ uint32_t unknown056;           // Unknown (1)
+/*0060*/ uint32_t playercount;          // Number of players in response
+/*0064*/
+};
+static_assert(sizeof(WhoAllReturnHeader) == 64, "WhoAllReturnHeader must be 64 bytes");
+
+/**
+ * Inspect Request Struct
+ * Used to request inspect or notify being inspected
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_InspectRequest (C->S and S->C)
+ */
+struct Inspect_Struct {
+/*0000*/ uint32_t TargetID;    // Entity ID of target being inspected
+/*0004*/ uint32_t PlayerID;    // Entity ID of player doing the inspect
+/*0008*/
+};
+static_assert(sizeof(Inspect_Struct) == 8, "Inspect_Struct must be 8 bytes");
+
+/**
+ * Inspect Response Struct
+ * Contains equipment info and inspect message
+ * Size: 1792 bytes (Titanium format)
+ * Used in: OP_InspectAnswer (C->S and S->C)
+ */
+struct InspectResponse_Struct {
+/*0000*/ uint32_t TargetID;           // Entity ID being inspected
+/*0004*/ uint32_t PlayerID;           // Entity ID doing the inspect
+/*0008*/ char     itemnames[22][64];  // Equipment slot names (22 slots * 64 chars)
+/*1416*/ uint32_t itemicons[22];      // Equipment slot icon IDs
+/*1504*/ char     text[288];          // Inspect message
+/*1792*/
+};
+static_assert(sizeof(InspectResponse_Struct) == 1792, "InspectResponse_Struct must be 1792 bytes");
+
 // ============================================================================
 // Group Structures (from titanium_structs.h)
 // ============================================================================
@@ -1200,6 +1316,631 @@ struct PetCommandState_Struct {
 static_assert(sizeof(PetCommandState_Struct) == 8, "PetCommandState_Struct must be 8 bytes");
 
 #pragma pack(pop)
+
+// ============================================================================
+// Guild Structures (from titanium_structs.h)
+// ============================================================================
+
+/**
+ * Guild Command Struct
+ * Used for guild invites
+ * Size: 134 bytes (Titanium format)
+ * Used in: OP_GuildInvite (C->S)
+ */
+struct GuildCommand_Struct {
+/*0000*/ char     othername[64];  // Target player name
+/*0064*/ char     myname[64];     // Inviter name
+/*0128*/ uint16_t guildeqid;      // Guild ID
+/*0130*/ uint8_t  unknown130[2];  // Padding
+/*0132*/ uint32_t officer;        // Inviter rank (0=member, 1=officer, 2=leader)
+/*0136*/
+};
+static_assert(sizeof(GuildCommand_Struct) == 136, "GuildCommand_Struct must be 136 bytes");
+
+/**
+ * Guild Invite Accept Struct
+ * Used when accepting guild invites
+ * Size: 140 bytes (Titanium format)
+ * Used in: OP_GuildInviteAccept (C->S)
+ */
+struct GuildInviteAccept_Struct {
+/*0000*/ char     inviter[64];    // Who sent the invite
+/*0064*/ char     newmember[64];  // Player accepting
+/*0128*/ uint32_t response;       // 0=decline, 1=accept
+/*0132*/ uint32_t guildeqid;      // Guild ID
+/*0136*/
+};
+static_assert(sizeof(GuildInviteAccept_Struct) == 136, "GuildInviteAccept_Struct must be 136 bytes");
+
+/**
+ * Guild Remove Struct
+ * Used for removing/kicking guild members
+ * Size: 136 bytes (Titanium format)
+ * Used in: OP_GuildRemove (C->S)
+ */
+struct GuildRemove_Struct {
+/*0000*/ char     target[64];     // Player being removed
+/*0064*/ char     name[64];       // Player doing the removal
+/*0128*/ uint32_t unknown128;     // Unknown
+/*0132*/ uint32_t leaderstatus;   // Remover's rank
+/*0136*/
+};
+static_assert(sizeof(GuildRemove_Struct) == 136, "GuildRemove_Struct must be 136 bytes");
+
+/**
+ * Guild Demote Struct
+ * Used for demoting guild members
+ * Size: 128 bytes (Titanium format)
+ * Used in: OP_GuildDemote (C->S)
+ */
+struct GuildDemote_Struct {
+/*0000*/ char     name[64];       // Player doing the demotion
+/*0064*/ char     target[64];     // Player being demoted
+/*0128*/
+};
+static_assert(sizeof(GuildDemote_Struct) == 128, "GuildDemote_Struct must be 128 bytes");
+
+/**
+ * Guild Make Leader Struct
+ * Used for transferring guild leadership
+ * Size: 128 bytes (Titanium format)
+ * Used in: OP_GuildLeader (C->S)
+ */
+struct GuildMakeLeader_Struct {
+/*0000*/ char     name[64];       // Current leader name
+/*0064*/ char     target[64];     // New leader name
+/*0128*/
+};
+static_assert(sizeof(GuildMakeLeader_Struct) == 128, "GuildMakeLeader_Struct must be 128 bytes");
+
+/**
+ * Guild MOTD Struct
+ * Used for get/set guild MOTD
+ * Size: 648 bytes (Titanium format)
+ * Used in: OP_GetGuildMOTDReply (S->C), OP_SetGuildMOTD (C->S)
+ */
+struct GuildMOTD_Struct {
+/*0000*/ uint32_t unknown0;       // Unknown
+/*0004*/ char     name[64];       // Guild name or player name
+/*0068*/ char     setby_name[64]; // Who set the MOTD
+/*0132*/ uint32_t unknown132;     // Unknown
+/*0136*/ char     motd[512];      // MOTD text
+/*0648*/
+};
+static_assert(sizeof(GuildMOTD_Struct) == 648, "GuildMOTD_Struct must be 648 bytes");
+
+/**
+ * Guild Member Update Struct
+ * Used for member status updates (zone change, etc.)
+ * Size: 76 bytes (Titanium format)
+ * Used in: OP_GuildMemberUpdate (S->C)
+ */
+struct GuildMemberUpdate_Struct {
+/*0000*/ uint32_t guild_id;        // Guild ID
+/*0004*/ char     member_name[64]; // Member name
+/*0068*/ uint16_t zone_id;         // Zone ID
+/*0070*/ uint16_t instance_id;     // Instance ID
+/*0072*/ uint32_t unknown072;      // Unknown
+/*0076*/
+};
+static_assert(sizeof(GuildMemberUpdate_Struct) == 76, "GuildMemberUpdate_Struct must be 76 bytes");
+
+// ============================================================================
+// Phase 3: Corpse Management Structures
+// ============================================================================
+
+/**
+ * Corpse Drag Struct
+ * Used for dragging corpses
+ * Size: 152 bytes (Titanium format)
+ * Used in: OP_CorpseDrag, OP_CorpseDrop (C->S)
+ */
+struct CorpseDrag_Struct {
+/*0000*/ char     CorpseName[64];     // Name of corpse being dragged
+/*0064*/ char     DraggerName[64];    // Name of player dragging
+/*0128*/ uint8_t  Unknown128[24];     // Unknown padding
+/*0152*/
+};
+static_assert(sizeof(CorpseDrag_Struct) == 152, "CorpseDrag_Struct must be 152 bytes");
+
+// ============================================================================
+// Phase 3: Consent System Structures
+// ============================================================================
+
+/**
+ * Consent Request Struct
+ * Used for granting consent to loot corpse
+ * Variable size (name is null-terminated string)
+ * Used in: OP_Consent, OP_ConsentDeny (C->S)
+ */
+struct Consent_Struct {
+/*0000*/ char     name[1];            // Variable length player name
+};
+
+/**
+ * Consent Response Struct
+ * Used for consent response from server
+ * Size: 161 bytes (Titanium format)
+ * Used in: OP_ConsentResponse, OP_DenyResponse (S->C)
+ */
+struct ConsentResponse_Struct {
+/*0000*/ char     grantname[64];      // Player granted consent
+/*0064*/ char     ownername[64];      // Corpse owner name
+/*0128*/ uint8_t  permission;         // 1=granted, 0=denied
+/*0129*/ char     zonename[32];       // Zone where corpse is
+/*0161*/
+};
+static_assert(sizeof(ConsentResponse_Struct) == 161, "ConsentResponse_Struct must be 161 bytes");
+
+// ============================================================================
+// Phase 3: Travel System Structures
+// ============================================================================
+
+/**
+ * Control Boat Struct
+ * Used for controlling boat direction
+ * Size: 20 bytes (Titanium format)
+ * Used in: OP_ControlBoat (C->S)
+ */
+struct ControlBoat_Struct {
+/*0000*/ uint32_t boatid;             // Boat entity ID
+/*0004*/ float    heading;            // Target heading
+/*0008*/ uint8_t  type;               // Control type (0=no input, 1=left, 2=right)
+/*0009*/ uint8_t  unknown[11];        // Padding
+/*0020*/
+};
+static_assert(sizeof(ControlBoat_Struct) == 20, "ControlBoat_Struct must be 20 bytes");
+
+// ============================================================================
+// Phase 3: Group Split Structures
+// ============================================================================
+
+/**
+ * Split Money Struct
+ * Used for splitting money with group
+ * Size: 16 bytes (Titanium format)
+ * Used in: OP_Split (C->S)
+ */
+struct Split_Struct {
+/*0000*/ uint32_t platinum;           // Platinum to split
+/*0004*/ uint32_t gold;               // Gold to split
+/*0008*/ uint32_t silver;             // Silver to split
+/*0012*/ uint32_t copper;             // Copper to split
+/*0016*/
+};
+static_assert(sizeof(Split_Struct) == 16, "Split_Struct must be 16 bytes");
+
+// ============================================================================
+// Phase 3: LFG System Structures
+// ============================================================================
+
+/**
+ * LFG Appearance Struct
+ * Used for LFG flag updates from server
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_LFGAppearance (S->C)
+ */
+struct LFG_Appearance_Struct {
+/*0000*/ uint32_t spawn_id;           // Player spawn ID
+/*0004*/ uint32_t lfg;                // 0=off, 1=lfg
+/*0008*/
+};
+static_assert(sizeof(LFG_Appearance_Struct) == 8, "LFG_Appearance_Struct must be 8 bytes");
+
+// ============================================================================
+// Phase 3: Combat Abilities Structures
+// ============================================================================
+
+/**
+ * Shielding Struct
+ * Used for warrior/paladin shielding ability
+ * Size: 4 bytes (Titanium format)
+ * Used in: OP_Shielding (C->S)
+ */
+struct Shielding_Struct {
+/*0000*/ uint32_t target_id;          // Target to shield
+/*0004*/
+};
+static_assert(sizeof(Shielding_Struct) == 4, "Shielding_Struct must be 4 bytes");
+
+/**
+ * Environmental Damage Struct
+ * Used for damage from environment (falling, lava, etc.)
+ * Size: 32 bytes (Titanium format)
+ * Used in: OP_EnvDamage (S->C)
+ */
+struct EnvDamage2_Struct {
+/*0000*/ uint32_t id;                 // Entity ID
+/*0004*/ uint16_t damage;             // Amount of damage
+/*0006*/ uint8_t  unknown06[10];      // Unknown
+/*0016*/ uint8_t  dmgtype;            // Damage type (250=fall, 251=drown, 252=burn, 253=lava)
+/*0017*/ uint8_t  unknown17[14];      // Unknown
+/*0031*/ uint8_t  constant;           // Usually 0xFE
+/*0032*/
+};
+static_assert(sizeof(EnvDamage2_Struct) == 32, "EnvDamage2_Struct must be 32 bytes");
+
+// ============================================================================
+// Phase 3: Discipline System Structures
+// (Disciplines_Struct is already defined with MAX_PP_DISCIPLINES)
+// ============================================================================
+
+/**
+ * Discipline Timer Struct
+ * Used for discipline reuse timers
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_DisciplineTimer (S->C)
+ */
+struct DisciplineTimer_Struct {
+/*0000*/ uint32_t timer_id;           // Timer slot ID
+/*0004*/ uint32_t timer_value;        // Remaining time in seconds
+/*0008*/
+};
+static_assert(sizeof(DisciplineTimer_Struct) == 8, "DisciplineTimer_Struct must be 8 bytes");
+
+// ============================================================================
+// Phase 3: Banking Structures
+// ============================================================================
+
+/**
+ * Banker Change Struct
+ * Used for banker/currency updates
+ * Size: 32 bytes (Titanium format)
+ * Used in: OP_BankerChange (S->C)
+ */
+struct BankerChange_Struct {
+/*0000*/ uint32_t platinum;           // Bank platinum
+/*0004*/ uint32_t gold;               // Bank gold
+/*0008*/ uint32_t silver;             // Bank silver
+/*0012*/ uint32_t copper;             // Bank copper
+/*0016*/ uint32_t platinum_bank;      // On-hand platinum (duplicate?)
+/*0020*/ uint32_t gold_bank;          // On-hand gold (duplicate?)
+/*0024*/ uint32_t silver_bank;        // On-hand silver (duplicate?)
+/*0028*/ uint32_t copper_bank;        // On-hand copper (duplicate?)
+/*0032*/
+};
+static_assert(sizeof(BankerChange_Struct) == 32, "BankerChange_Struct must be 32 bytes");
+
+// ============================================================================
+// Phase 3: Misc Structures
+// ============================================================================
+
+/**
+ * Popup Response Struct
+ * Used for responding to popup dialogs
+ * Size: 12 bytes (Titanium format)
+ * Used in: OP_PopupResponse (C->S)
+ */
+struct PopupResponse_Struct {
+/*0000*/ uint32_t sender;             // NPC/entity that sent popup
+/*0004*/ uint32_t popup_id;           // Popup ID from PopupText
+/*0008*/ uint32_t response;           // Button clicked (1=yes, 2=no)
+/*0012*/
+};
+static_assert(sizeof(PopupResponse_Struct) == 12, "PopupResponse_Struct must be 12 bytes");
+
+// ============================================================================
+// Phase 4: Dueling Structures
+// ============================================================================
+
+/**
+ * Duel Struct
+ * Used for duel requests and acceptance
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_RequestDuel (Bidirectional), OP_DuelAccept (C->S)
+ */
+struct Duel_Struct {
+/*0000*/ uint32_t duel_initiator;     // ID of initiator
+/*0004*/ uint32_t duel_target;        // ID of target
+/*0008*/
+};
+static_assert(sizeof(Duel_Struct) == 8, "Duel_Struct must be 8 bytes");
+
+/**
+ * Duel Response Struct
+ * Used for declining duels
+ * Size: 12 bytes (Titanium format)
+ * Used in: OP_DuelDecline (C->S)
+ */
+struct DuelResponse_Struct {
+/*0000*/ uint32_t target_id;          // Player being declined
+/*0004*/ uint32_t entity_id;          // Initiator of the duel
+/*0008*/ uint32_t unknown;            // Unknown purpose
+/*0012*/
+};
+static_assert(sizeof(DuelResponse_Struct) == 12, "DuelResponse_Struct must be 12 bytes");
+
+// ============================================================================
+// Phase 4: Skills Structures
+// ============================================================================
+
+/**
+ * Bind Wound Struct
+ * Used for bind wound skill
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_BindWound (C->S)
+ */
+struct BindWound_Struct {
+/*0000*/ uint16_t to;                 // Target ID
+/*0002*/ uint16_t unknown2;           // Placeholder
+/*0004*/ uint16_t type;               // Bind wound type
+/*0006*/ uint16_t unknown6;           // Unknown
+/*0008*/
+};
+static_assert(sizeof(BindWound_Struct) == 8, "BindWound_Struct must be 8 bytes");
+
+// ============================================================================
+// Phase 4: Tradeskill Recipe Structures
+// ============================================================================
+
+/**
+ * Recipe Search Struct
+ * Used for searching recipes
+ * Size: 80 bytes (Titanium format)
+ * Used in: OP_RecipesSearch (C->S)
+ */
+struct RecipesSearch_Struct {
+/*0000*/ uint32_t object_type;        // Object type
+/*0004*/ uint32_t some_id;            // Object ID
+/*0008*/ uint32_t mintrivial;         // Minimum trivial
+/*0012*/ uint32_t maxtrivial;         // Maximum trivial
+/*0016*/ char     query[56];          // Search query string
+/*0072*/ uint32_t unknown4;           // Set to 0x00030000
+/*0076*/ uint32_t unknown5;           // Set to 0x0012DD4C
+/*0080*/
+};
+static_assert(sizeof(RecipesSearch_Struct) == 80, "RecipesSearch_Struct must be 80 bytes");
+
+/**
+ * Recipe Reply Struct
+ * Used for recipe search results
+ * Size: 84 bytes (Titanium format)
+ * Used in: OP_RecipeReply (S->C)
+ */
+struct RecipeReply_Struct {
+/*0000*/ uint32_t object_type;        // Object type
+/*0004*/ uint32_t some_id;            // Object ID
+/*0008*/ uint32_t component_count;    // Number of components
+/*0012*/ uint32_t recipe_id;          // Recipe ID
+/*0016*/ uint32_t trivial;            // Trivial value
+/*0020*/ char     recipe_name[64];    // Recipe name
+/*0084*/
+};
+static_assert(sizeof(RecipeReply_Struct) == 84, "RecipeReply_Struct must be 84 bytes");
+
+/**
+ * Recipe Auto-Combine Struct
+ * Used for auto-combining recipes
+ * Size: 20 bytes (Titanium format)
+ * Used in: OP_RecipeAutoCombine (Bidirectional)
+ */
+struct RecipeAutoCombine_Struct {
+/*0000*/ uint32_t object_type;        // Object type
+/*0004*/ uint32_t some_id;            // Object ID
+/*0008*/ uint32_t unknown1;           // Echoed in reply
+/*0012*/ uint32_t recipe_id;          // Recipe ID
+/*0016*/ uint32_t reply_code;         // Request: 0xe16493, Reply: 0=success, 0xfffff5=failure
+/*0020*/
+};
+static_assert(sizeof(RecipeAutoCombine_Struct) == 20, "RecipeAutoCombine_Struct must be 20 bytes");
+
+// ============================================================================
+// Phase 4: Cosmetic Structures
+// ============================================================================
+
+/**
+ * Surname Struct
+ * Used for setting surname
+ * Size: 100 bytes (Titanium format)
+ * Used in: OP_Surname (C->S)
+ */
+struct Surname_Struct {
+/*0000*/ char     name[64];           // Character name
+/*0064*/ uint32_t unknown0064;        // Unknown
+/*0068*/ char     lastname[32];       // Surname to set
+/*0100*/
+};
+static_assert(sizeof(Surname_Struct) == 100, "Surname_Struct must be 100 bytes");
+
+/**
+ * Face Change Struct
+ * Used for changing face appearance
+ * Size: 8 bytes (Titanium format, padded)
+ * Used in: OP_FaceChange (C->S)
+ */
+struct FaceChange_Struct {
+/*0000*/ uint8_t haircolor;           // Hair color
+/*0001*/ uint8_t beardcolor;          // Beard color
+/*0002*/ uint8_t eyecolor1;           // Left eye color
+/*0003*/ uint8_t eyecolor2;           // Right eye color
+/*0004*/ uint8_t hairstyle;           // Hair style
+/*0005*/ uint8_t beard;               // Beard style
+/*0006*/ uint8_t face;                // Face type
+/*0007*/ uint8_t unused;              // Padding
+/*0008*/
+};
+static_assert(sizeof(FaceChange_Struct) == 8, "FaceChange_Struct must be 8 bytes");
+
+// ============================================================================
+// Phase 4: Misc Structures
+// ============================================================================
+
+/**
+ * Random Request Struct
+ * Used for /random command
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_RandomReq (C->S)
+ */
+struct RandomReq_Struct {
+/*0000*/ uint32_t low;                // Minimum value
+/*0004*/ uint32_t high;               // Maximum value
+/*0008*/
+};
+static_assert(sizeof(RandomReq_Struct) == 8, "RandomReq_Struct must be 8 bytes");
+
+/**
+ * Random Reply Struct
+ * Used for /random result
+ * Size: 76 bytes (Titanium format)
+ * Used in: OP_RandomReply (S->C)
+ */
+struct RandomReply_Struct {
+/*0000*/ uint32_t low;                // Minimum value
+/*0004*/ uint32_t high;               // Maximum value
+/*0008*/ uint32_t result;             // Random result
+/*0012*/ char     name[64];           // Player name
+/*0076*/
+};
+static_assert(sizeof(RandomReply_Struct) == 76, "RandomReply_Struct must be 76 bytes");
+
+/**
+ * Find Person Point
+ * Used in find person path
+ * Size: 12 bytes
+ */
+struct FindPerson_Point {
+/*0000*/ float y;                     // Y coordinate
+/*0004*/ float x;                     // X coordinate
+/*0008*/ float z;                     // Z coordinate
+/*0012*/
+};
+static_assert(sizeof(FindPerson_Point) == 12, "FindPerson_Point must be 12 bytes");
+
+/**
+ * Find Person Request Struct
+ * Size: 16 bytes (Titanium format)
+ * Used in: OP_FindPersonRequest (C->S)
+ */
+struct FindPersonRequest_Struct {
+/*0000*/ uint32_t npc_id;             // NPC to find
+/*0004*/ FindPerson_Point client_pos; // Client position
+/*0016*/
+};
+static_assert(sizeof(FindPersonRequest_Struct) == 16, "FindPersonRequest_Struct must be 16 bytes");
+
+/**
+ * Camera Effect Struct
+ * Used for camera shake/effects
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_CameraEffect (S->C)
+ */
+struct Camera_Struct {
+/*0000*/ uint32_t duration;           // Duration in milliseconds
+/*0004*/ float    intensity;          // Effect intensity
+/*0008*/
+};
+static_assert(sizeof(Camera_Struct) == 8, "Camera_Struct must be 8 bytes");
+
+// ============================================================================
+// Phase 4: GM Command Structures
+// ============================================================================
+
+/**
+ * GM Zone Request Struct
+ * Size: 88 bytes (Titanium format)
+ * Used in: OP_GMZoneRequest (Bidirectional)
+ */
+struct GMZoneRequest_Struct {
+/*0000*/ char     charname[64];       // Character name
+/*0064*/ uint32_t zone_id;            // Zone ID
+/*0068*/ float    x;                  // X coordinate
+/*0072*/ float    y;                  // Y coordinate
+/*0076*/ float    z;                  // Z coordinate
+/*0080*/ float    heading;            // Heading
+/*0084*/ uint32_t success;            // Success flag
+/*0088*/
+};
+static_assert(sizeof(GMZoneRequest_Struct) == 88, "GMZoneRequest_Struct must be 88 bytes");
+
+/**
+ * GM Summon Struct
+ * Size: 104 bytes (Titanium format)
+ * Used in: OP_GMSummon, OP_GMGoto, OP_GMFind (Bidirectional)
+ */
+struct GMSummon_Struct {
+/*0000*/ char     charname[64];       // Target character name
+/*0064*/ char     gmname[64];         // GM name
+/*0128*/ uint32_t success;            // Success flag
+/*0132*/ uint32_t zoneID;             // Zone ID
+/*0136*/ int32_t  y;                  // Y coordinate
+/*0140*/ int32_t  x;                  // X coordinate
+/*0144*/ int32_t  z;                  // Z coordinate
+/*0148*/ uint32_t unknown2;           // Unknown
+/*0152*/
+};
+static_assert(sizeof(GMSummon_Struct) == 152, "GMSummon_Struct must be 152 bytes");
+
+/**
+ * GM Kick/Kill Struct
+ * Size: 132 bytes (Titanium format)
+ * Used in: OP_GMKick, OP_GMKill (Bidirectional)
+ */
+struct GMKick_Struct {
+/*0000*/ char     name[64];           // Target name
+/*0064*/ char     gmname[64];         // GM name
+/*0128*/ uint8_t  unknown;            // Unknown
+/*0129*/ uint8_t  padding[3];         // Padding
+/*0132*/
+};
+static_assert(sizeof(GMKick_Struct) == 132, "GMKick_Struct must be 132 bytes");
+
+/**
+ * GM Toggle Struct
+ * Size: 68 bytes (Titanium format)
+ * Used in: OP_GMToggle (C->S)
+ */
+struct GMToggle_Struct {
+/*0000*/ char     unknown0[64];       // Unknown
+/*0064*/ uint32_t toggle;             // Toggle value
+/*0068*/
+};
+static_assert(sizeof(GMToggle_Struct) == 68, "GMToggle_Struct must be 68 bytes");
+
+/**
+ * Become NPC Struct
+ * Size: 8 bytes (Titanium format)
+ * Used in: OP_GMBecomeNPC (C->S)
+ */
+struct BecomeNPC_Struct {
+/*0000*/ uint32_t id;                 // NPC ID
+/*0004*/ int32_t  maxlevel;           // Max level
+/*0008*/
+};
+static_assert(sizeof(BecomeNPC_Struct) == 8, "BecomeNPC_Struct must be 8 bytes");
+
+/**
+ * GM Last Name Struct
+ * Size: 200 bytes (Titanium format)
+ * Used in: OP_GMLastName (Bidirectional)
+ */
+struct GMLastName_Struct {
+/*0000*/ char     name[64];           // Character name
+/*0064*/ char     gmname[64];         // GM name
+/*0128*/ char     lastname[64];       // Last name to set
+/*0192*/ uint16_t unknown[4];         // Unknown
+/*0200*/
+};
+static_assert(sizeof(GMLastName_Struct) == 200, "GMLastName_Struct must be 200 bytes");
+
+// ============================================================================
+// Phase 4: Petition Structures
+// ============================================================================
+
+/**
+ * Petition Update Struct
+ * Size: 112 bytes (Titanium format)
+ * Used in: OP_PetitionUpdate (S->C), OP_PetitionDelete (C->S)
+ */
+struct PetitionUpdate_Struct {
+/*0000*/ uint32_t petnumber;          // Petition number
+/*0004*/ uint32_t color;              // Status color (0=green, 1=yellow, 2=red)
+/*0008*/ uint32_t status;             // Status code
+/*0012*/ uint32_t senttime;           // Timestamp
+/*0016*/ char     accountid[32];      // Account name
+/*0048*/ char     gmsenttoo[64];      // GM assigned to
+/*0112*/
+};
+static_assert(sizeof(PetitionUpdate_Struct) == 112, "PetitionUpdate_Struct must be 112 bytes");
 
 // Helper functions for position bitfield extraction
 namespace Position {
