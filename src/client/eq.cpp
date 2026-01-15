@@ -15940,7 +15940,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
-	config.softwareRenderer = true;  // Use software renderer (no GPU required)
+	config.softwareRenderer = !m_use_opengl;  // Use software renderer unless OpenGL requested
 	config.eqClientPath = m_eq_client_path;
 	config.windowTitle = "WillEQ - " + m_character;
 	config.fog = true;

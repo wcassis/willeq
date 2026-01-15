@@ -89,7 +89,9 @@ bool Application::initialize(const ApplicationConfig& config) {
     modeConfig.fullscreen = config.fullscreen;
     modeConfig.eqClientPath = config.eqClientPath;
 
-    m_gameMode = mode::createMode(config.operatingMode);
+    LOG_INFO(MOD_MAIN, "Creating game mode with renderer type: {}",
+        config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU ? "OpenGL" : "Software");
+    m_gameMode = mode::createMode(config.operatingMode, config.graphicalRendererType);
     if (!m_gameMode) {
         LOG_ERROR(MOD_MAIN, "Failed to create game mode");
         return false;
@@ -599,6 +601,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.displayWidth = std::atoi(argv[++i]);
                 config.displayHeight = std::atoi(argv[++i]);
             }
+        } else if (arg == "--opengl" || arg == "--gpu") {
+            config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "Options:\n";
@@ -609,6 +613,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --headless               Run in headless interactive mode\n";
             std::cout << "  --automated              Run in automated/bot mode\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
+            std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
             std::cout << "  --log-level=LEVEL        Set log level\n";
             std::cout << "  --log-module=MOD:LEVEL   Set per-module log level\n";
             std::cout << "  -h, --help               Show this help message\n";

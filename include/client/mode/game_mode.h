@@ -22,6 +22,17 @@ enum class OperatingMode {
 };
 
 /**
+ * GraphicalRendererType - Types of graphical renderers available.
+ */
+enum class GraphicalRendererType {
+    IrrlichtSoftware,  // Irrlicht software renderer (default)
+    IrrlichtGPU,       // Irrlicht with GPU acceleration
+    ASCII,             // Terminal-based ASCII graphics (future)
+    TopDown,           // 2D overhead view (future)
+    LowRes             // Reduced resolution/detail (future)
+};
+
+/**
  * Get the string name of an operating mode.
  */
 inline const char* operatingModeToString(OperatingMode mode) {
@@ -158,9 +169,11 @@ public:
 /**
  * Create a game mode of the specified type.
  * @param mode Operating mode to create
+ * @param rendererType Renderer type for graphical modes (default: IrrlichtSoftware)
  * @return Unique pointer to the mode
  */
-std::unique_ptr<IGameMode> createMode(OperatingMode mode);
+std::unique_ptr<IGameMode> createMode(OperatingMode mode,
+    GraphicalRendererType rendererType = GraphicalRendererType::IrrlichtSoftware);
 
 /**
  * Parse operating mode from string.

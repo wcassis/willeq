@@ -701,6 +701,7 @@ private:
     void setupCamera();
     void setupLighting();
     void updateObjectLights();  // Distance-based culling of object lights
+    void updateObjectVisibility();  // Distance-based culling of placeable objects
     void updateVertexAnimations(float deltaMs);  // Update vertex animated meshes
     void setupFog();
     void setupHUD();
@@ -740,6 +741,9 @@ private:
     std::string currentZoneName_;
     irr::scene::IMeshSceneNode* zoneMeshNode_ = nullptr;
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
+    std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
+    float objectRenderDistance_ = 300.0f;  // Max distance to render objects
+    irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions

@@ -924,6 +924,8 @@ public:
 	bool UpdateGraphics(float deltaTime);
 	void SetEQClientPath(const std::string& path) { m_eq_client_path = path; }
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
+	void SetUseOpenGL(bool useOpenGL) { m_use_opengl = useOpenGL; }
+	bool GetUseOpenGL() const { return m_use_opengl; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
 	const std::string& GetConfigPath() const { return m_config_path; }
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
@@ -1476,6 +1478,7 @@ private:
 	std::string m_eq_client_path;
 	std::string m_config_path;  // Path to per-character config file
 	bool m_graphics_initialized = false;
+	bool m_use_opengl = false;  // Use OpenGL renderer instead of software
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
 
 	// Inventory manager

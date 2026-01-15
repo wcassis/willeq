@@ -354,6 +354,14 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     smgr_ = device_->getSceneManager();
     guienv_ = device_->getGUIEnvironment();
 
+    // Log driver info
+    if (driver_) {
+        const wchar_t* driverName = driver_->getName();
+        std::wstring wname(driverName);
+        std::string name(wname.begin(), wname.end());
+        LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
+    }
+
     // Create event receiver
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
     device_->setEventReceiver(eventReceiver_.get());
@@ -438,6 +446,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     driver_ = device_->getVideoDriver();
     smgr_ = device_->getSceneManager();
     guienv_ = device_->getGUIEnvironment();
+
+    // Log driver info
+    if (driver_) {
+        const wchar_t* driverName = driver_->getName();
+        std::wstring wname(driverName);
+        std::string name(wname.begin(), wname.end());
+        LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
+    }
 
     // Create event receiver
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
@@ -683,6 +699,48 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     }
 }
 
+void IrrlichtRenderer::updateObjectVisibility() {
+    if (!camera_ || objectNodes_.empty()) return;
+
+    irr::core::vector3df cameraPos = camera_->getPosition();
+
+    // Only update visibility if camera has moved significantly (>10 units)
+    // This avoids per-frame overhead when standing still
+    const float updateThreshold = 10.0f;
+    float cameraMoved = cameraPos.getDistanceFrom(lastCullingCameraPos_);
+    if (cameraMoved < updateThreshold && lastCullingCameraPos_.getLength() > 0.01f) {
+        return;  // Camera hasn't moved enough, skip update
+    }
+    lastCullingCameraPos_ = cameraPos;
+
+    // Update visibility based on distance
+    size_t visibleCount = 0;
+    size_t hiddenCount = 0;
+    const float renderDistSq = objectRenderDistance_ * objectRenderDistance_;
+
+    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+        if (!objectNodes_[i]) continue;
+
+        float distSq = cameraPos.getDistanceFromSQ(objectPositions_[i]);
+        bool shouldBeVisible = (distSq <= renderDistSq);
+
+        if (shouldBeVisible) {
+            if (!objectNodes_[i]->isVisible()) {
+                objectNodes_[i]->setVisible(true);
+            }
+            visibleCount++;
+        } else {
+            if (objectNodes_[i]->isVisible()) {
+                objectNodes_[i]->setVisible(false);
+            }
+            hiddenCount++;
+        }
+    }
+
+    LOG_TRACE(MOD_GRAPHICS, "Object visibility: {} visible, {} hidden (dist={})",
+        visibleCount, hiddenCount, objectRenderDistance_);
+}
+
 void IrrlichtRenderer::updateObjectLights() {
     if (!camera_) return;
 
@@ -771,30 +829,42 @@ void IrrlichtRenderer::updateObjectLights() {
     }
 
     // Add object lights to the pool (up to maxObjectLights_ candidates)
-    // First collect and sort VISIBLE object lights by horizontal distance
+    // Performance: Only do occlusion checks on closest 16 lights, not all in range
+    const size_t maxOcclusionChecks = 16;
+
+    // First collect ALL lights in range by distance (no occlusion check yet)
     std::vector<std::pair<float, size_t>> objectDistances;
     objectDistances.reserve(objectLights_.size());
-    size_t inRangeCount = 0;
-    size_t occludedCount = 0;
     for (size_t i = 0; i < objectLights_.size(); ++i) {
         float dist = horizontalDistance(cameraPos, objectLights_[i].position);
         if (dist <= maxDistance) {
-            inRangeCount++;
-            if (isLightVisible(objectLights_[i].position)) {
-                objectDistances.push_back({dist, i});
-            } else {
-                occludedCount++;
-            }
+            objectDistances.push_back({dist, i});
         }
     }
     std::sort(objectDistances.begin(), objectDistances.end());
 
-    // Add the closest maxObjectLights_ visible object lights to candidates
-    size_t objectLightCount = std::min(objectDistances.size(), static_cast<size_t>(maxObjectLights_));
-    for (size_t i = 0; i < objectLightCount; ++i) {
+    // Only do occlusion checks on the closest N lights
+    size_t inRangeCount = objectDistances.size();
+    size_t occludedCount = 0;
+    size_t checksPerformed = std::min(objectDistances.size(), maxOcclusionChecks);
+
+    std::vector<std::pair<float, size_t>> visibleLights;
+    visibleLights.reserve(checksPerformed);
+    for (size_t i = 0; i < checksPerformed; ++i) {
         size_t idx = objectDistances[i].second;
+        if (isLightVisible(objectLights_[idx].position)) {
+            visibleLights.push_back(objectDistances[i]);
+        } else {
+            occludedCount++;
+        }
+    }
+
+    // Add the closest maxObjectLights_ visible object lights to candidates
+    size_t objectLightCount = std::min(visibleLights.size(), static_cast<size_t>(maxObjectLights_));
+    for (size_t i = 0; i < objectLightCount; ++i) {
+        size_t idx = visibleLights[i].second;
         if (objectLights_[idx].node) {
-            candidates.push_back({objectDistances[i].first, objectLights_[idx].node, false, objectLights_[idx].objectName});
+            candidates.push_back({visibleLights[i].first, objectLights_[idx].node, false, objectLights_[idx].objectName});
         }
     }
 
@@ -819,8 +889,8 @@ void IrrlichtRenderer::updateObjectLights() {
                     (enabledCount > 0 && (previousActiveLights_.size() != enabledCount || previousActiveLights_[0] == "_none_"));
     if (needsLog) {
         previousActiveLights_.clear();
-        LOG_DEBUG(MOD_GRAPHICS, "Active lights: {} enabled (objLights: {} in range, {} visible, {} occluded; maxObj={})",
-            enabledCount, inRangeCount, objectDistances.size(), occludedCount, maxObjectLights_);
+        LOG_DEBUG(MOD_GRAPHICS, "Active lights: {} enabled (objLights: {} in range, checked {}, {} visible, {} occluded; maxObj={})",
+            enabledCount, inRangeCount, checksPerformed, visibleLights.size(), occludedCount, maxObjectLights_);
         if (enabledCount == 0) {
             previousActiveLights_.push_back("_none_");
         } else {
@@ -1627,8 +1697,12 @@ void IrrlichtRenderer::createZoneMesh() {
     }
 
     if (mesh) {
-        zoneMeshNode_ = smgr_->addMeshSceneNode(mesh);
+        // Use octree scene node for automatic frustum culling of zone geometry
+        // minimalPolysPerNode=256 controls octree subdivision granularity
+        // This helps with OpenGL/llvmpipe but not with Irrlicht's software renderer
+        zoneMeshNode_ = smgr_->addOctreeSceneNode(mesh, nullptr, -1, 256);
         if (zoneMeshNode_) {
+            LOG_INFO(MOD_GRAPHICS, "Zone mesh created as octree node (polys per node: 256)");
             for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
                 zoneMeshNode_->getMaterial(i).Lighting = lightingEnabled_;
                 zoneMeshNode_->getMaterial(i).BackfaceCulling = false;
@@ -1669,6 +1743,7 @@ void IrrlichtRenderer::createObjectMeshes() {
         }
     }
     objectNodes_.clear();
+    objectPositions_.clear();
 
     // Clear object lights
     for (auto& objLight : objectLights_) {
@@ -1847,6 +1922,7 @@ void IrrlichtRenderer::createObjectMeshes() {
         // Store the object name in the scene node for later identification
         node->setName(objName.c_str());
         objectNodes_.push_back(node);
+        objectPositions_.push_back(irr::core::vector3df(x, z, y));  // Cache position for distance culling
 
         // Check if this object is a light source (torch, lantern, etc.)
         std::string upperName = objName;
@@ -3012,7 +3088,12 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Update vertex animations (flags, banners, etc.)
     updateVertexAnimations(deltaTime * 1000.0f);  // Convert to milliseconds
 
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H (before object lights)");
+    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H (before object visibility)");
+
+    // Update object visibility (distance-based culling of placeable objects)
+    updateObjectVisibility();
+
+    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H2 (before object lights)");
 
     // Update object lights (distance-based culling)
     updateObjectLights();
