@@ -88,6 +88,9 @@ void GraphicsInputHandler::updateFromEventReceiver() {
     if (m_eventReceiver->zoneLightsToggleRequested()) {
         m_pendingActions[static_cast<size_t>(InputAction::ToggleZoneLights)] = true;
     }
+    if (m_eventReceiver->cycleObjectLightsRequested()) {
+        m_pendingActions[static_cast<size_t>(InputAction::CycleObjectLights)] = true;
+    }
     if (m_eventReceiver->cameraModeToggleRequested()) {
         m_pendingActions[static_cast<size_t>(InputAction::ToggleCameraMode)] = true;
     }

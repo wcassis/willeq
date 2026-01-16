@@ -1545,6 +1545,26 @@ void EntityRenderer::setPlayerEntityVisible(bool visible) {
     }
 }
 
+void EntityRenderer::setDebugTargetId(uint16_t spawnId) {
+    // Disable verbose logging on previous target
+    if (debugTargetId_ != 0 && debugTargetId_ != spawnId) {
+        auto it = entities_.find(debugTargetId_);
+        if (it != entities_.end() && it->second.isAnimated && it->second.animatedNode) {
+            it->second.animatedNode->getAnimator().setVerboseLogging(false);
+        }
+    }
+
+    debugTargetId_ = spawnId;
+
+    // Enable verbose logging on new target
+    if (spawnId != 0) {
+        auto it = entities_.find(spawnId);
+        if (it != entities_.end() && it->second.isAnimated && it->second.animatedNode) {
+            it->second.animatedNode->getAnimator().setVerboseLogging(true);
+        }
+    }
+}
+
 void EntityRenderer::debugLogPlayerVisibility() const {
     static int frameCounter = 0;
     if (++frameCounter % 60 != 0) return;  // Log once per second at 60fps

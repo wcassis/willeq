@@ -56,7 +56,8 @@
             "HotbarSlot9": "Ctrl+9",
             "HotbarSlot10": "Ctrl+0",
             "CameraZoomIn": "Plus",
-            "CameraZoomOut": "Minus"
+            "CameraZoomOut": "Minus",
+            "CycleObjectLights": "L"
         },
         "admin": {
             "SaveEntities": "F10",

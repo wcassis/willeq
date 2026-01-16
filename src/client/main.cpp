@@ -521,6 +521,7 @@ int main(int argc, char *argv[]) {
 	bool pathfinding_enabled = true;
 #ifdef EQT_HAS_GRAPHICS
 	bool graphics_enabled = true;
+	bool use_opengl = false;
 	int graphics_width = 800;
 	int graphics_height = 600;
 #endif
@@ -545,6 +546,8 @@ int main(int argc, char *argv[]) {
 				graphics_width = std::atoi(argv[++i]);
 				graphics_height = std::atoi(argv[++i]);
 			}
+		} else if (arg == "--opengl" || arg == "--gpu") {
+			use_opengl = true;
 #endif
 		} else if (arg == "--help" || arg == "-h") {
 			std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -555,6 +558,7 @@ int main(int argc, char *argv[]) {
 #ifdef EQT_HAS_GRAPHICS
 			std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
 			std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
+			std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
 #endif
 			std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
 			std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
@@ -741,6 +745,7 @@ int main(int argc, char *argv[]) {
 	bool graphics_initialized = false;
 	if (graphics_enabled && !eq_list.empty() && !eq_list[0]->GetEQClientPath().empty()) {
 		LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics early for loading screen...");
+		eq_list[0]->SetUseOpenGL(use_opengl);
 		EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
 		if (eq_list[0]->InitGraphics(graphics_width, graphics_height)) {
 			graphics_initialized = true;

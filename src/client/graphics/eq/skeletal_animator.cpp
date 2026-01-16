@@ -38,15 +38,19 @@ void SkeletalAnimator::setSkeleton(std::shared_ptr<CharacterSkeleton> skeleton) 
 
 bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, bool playThrough) {
     if (!skeleton_) {
-        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - no skeleton");
+        if (verboseLogging_) {
+            LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - no skeleton");
+        }
         return false;
     }
 
     // Find the animation
     auto it = skeleton_->animations.find(animCode);
     if (it == skeleton_->animations.end()) {
-        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' not found (have {} animations) model={}",
-                  animCode, skeleton_->animations.size(), skeleton_->modelCode);
+        if (verboseLogging_) {
+            LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' not found (have {} animations) model={}",
+                      animCode, skeleton_->animations.size(), skeleton_->modelCode);
+        }
         return false;
     }
 
@@ -58,9 +62,11 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
         }
     }
     if (bonesWithTracks == 0) {
-        LOG_WARN(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' exists but no bones have tracks for it! ({} bones total) model={}",
-                 animCode, skeleton_->bones.size(), skeleton_->modelCode);
-    } else {
+        if (verboseLogging_) {
+            LOG_WARN(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' exists but no bones have tracks for it! ({} bones total) model={}",
+                     animCode, skeleton_->bones.size(), skeleton_->modelCode);
+        }
+    } else if (verboseLogging_) {
         LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - animation '{}' tracks={}/{} model={}",
                   animCode, bonesWithTracks, skeleton_->bones.size(), skeleton_->modelCode);
     }
@@ -74,8 +80,10 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     if (playThroughActive_ && state_ == AnimationState::Playing) {
         queuedAnimCode_ = animCode;
         queuedLoop_ = loop;
-        LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - QUEUED '{}' (playThrough '{}' active) model={}",
-                  animCode, currentAnimCode_, (skeleton_ ? skeleton_->modelCode : "?"));
+        if (verboseLogging_) {
+            LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - QUEUED '{}' (playThrough '{}' active) model={}",
+                      animCode, currentAnimCode_, (skeleton_ ? skeleton_->modelCode : "?"));
+        }
         return false;  // Return false to indicate animation wasn't started, just queued
     }
 
@@ -113,7 +121,7 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
     lastReportedFrame_ = -1;
 
     // Log animation details when starting playThrough animations (combat, damage, etc.)
-    if (playThrough) {
+    if (playThrough && verboseLogging_) {
         LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - STARTED '{}' frames={} duration={}ms model={}",
                   animCode, (currentAnim_ ? currentAnim_->frameCount : 0),
                   (currentAnim_ ? currentAnim_->animationTimeMs : 0), skeleton_->modelCode);

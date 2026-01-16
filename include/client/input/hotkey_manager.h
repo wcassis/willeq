@@ -105,6 +105,9 @@ enum class HotkeyAction : uint32_t {
     CameraZoomIn,
     CameraZoomOut,
 
+    // Lighting
+    CycleObjectLights,
+
     // === Admin Mode Actions ===
     SaveEntities,
     ToggleLighting,

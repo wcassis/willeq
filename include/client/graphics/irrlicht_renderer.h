@@ -178,6 +178,7 @@ public:
     bool hudToggleRequested() { bool r = hudToggleRequested_; hudToggleRequested_ = false; return r; }
     bool nameTagToggleRequested() { bool r = nameTagToggleRequested_; nameTagToggleRequested_ = false; return r; }
     bool zoneLightsToggleRequested() { bool r = zoneLightsToggleRequested_; zoneLightsToggleRequested_ = false; return r; }
+    bool cycleObjectLightsRequested() { bool r = cycleObjectLightsRequested_; cycleObjectLightsRequested_ = false; return r; }
     bool cameraModeToggleRequested() { bool r = cameraModeToggleRequested_; cameraModeToggleRequested_ = false; return r; }
     bool oldModelsToggleRequested() { bool r = oldModelsToggleRequested_; oldModelsToggleRequested_ = false; return r; }
     bool saveEntitiesRequested() { bool r = saveEntitiesRequested_; saveEntitiesRequested_ = false; return r; }
@@ -300,6 +301,7 @@ private:
     bool hudToggleRequested_ = false;
     bool nameTagToggleRequested_ = false;
     bool zoneLightsToggleRequested_ = false;
+    bool cycleObjectLightsRequested_ = false;
     bool cameraModeToggleRequested_ = false;
     bool oldModelsToggleRequested_ = false;
     bool saveEntitiesRequested_ = false;
@@ -523,6 +525,7 @@ public:
     void toggleFog();
     void toggleLighting();
     void toggleZoneLights();
+    void cycleObjectLights();
     void toggleOldModels();
     bool isUsingOldModels() const;
     void resetCoordOffsets();
@@ -698,6 +701,7 @@ private:
     void setupCamera();
     void setupLighting();
     void updateObjectLights();  // Distance-based culling of object lights
+    void updateObjectVisibility();  // Distance-based culling of placeable objects
     void updateVertexAnimations(float deltaMs);  // Update vertex animated meshes
     void setupFog();
     void setupHUD();
@@ -737,8 +741,14 @@ private:
     std::string currentZoneName_;
     irr::scene::IMeshSceneNode* zoneMeshNode_ = nullptr;
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
+    std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
+    float objectRenderDistance_ = 300.0f;  // Max distance to render objects
+    irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
+    std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
+    bool showLightDebugMarkers_ = false;  // Show debug markers for active lights
+    std::vector<std::string> previousActiveLights_;  // Track active lights to detect changes
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
     irr::scene::ILightSceneNode* sunLight_ = nullptr;  // Directional sun light
     float ambientMultiplier_ = 1.0f;  // User-adjustable ambient light multiplier (Page Up/Down)
@@ -762,8 +772,9 @@ private:
     bool wireframeMode_ = false;
     bool hudEnabled_ = true;
     bool fogEnabled_ = true;
-    bool lightingEnabled_ = false;
-    bool zoneLightsEnabled_ = false;
+    bool lightingEnabled_ = true;   // Lighting enabled by default
+    bool zoneLightsEnabled_ = false; // Zone lights off by default
+    int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
     // Player position (for Follow and FirstPerson modes)

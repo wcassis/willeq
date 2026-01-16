@@ -9,16 +9,7 @@
 namespace eqt {
 namespace mode {
 
-/**
- * GraphicalRendererType - Types of graphical renderers available.
- */
-enum class GraphicalRendererType {
-    IrrlichtSoftware,  // Irrlicht software renderer (default)
-    IrrlichtGPU,       // Irrlicht with GPU acceleration
-    ASCII,             // Terminal-based ASCII graphics (future)
-    TopDown,           // 2D overhead view (future)
-    LowRes             // Reduced resolution/detail (future)
-};
+// GraphicalRendererType is defined in game_mode.h
 
 /**
  * GraphicalMode - Mode for visual interactive operation.

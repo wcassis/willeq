@@ -9,7 +9,7 @@
 namespace eqt {
 namespace mode {
 
-std::unique_ptr<IGameMode> createMode(OperatingMode mode) {
+std::unique_ptr<IGameMode> createMode(OperatingMode mode, GraphicalRendererType rendererType) {
     switch (mode) {
         case OperatingMode::Automated:
             return std::make_unique<AutomatedMode>();
@@ -18,11 +18,11 @@ std::unique_ptr<IGameMode> createMode(OperatingMode mode) {
             return std::make_unique<HeadlessMode>();
 
         case OperatingMode::GraphicalInteractive:
-            return std::make_unique<GraphicalMode>();
+            return std::make_unique<GraphicalMode>(rendererType);
 
         default:
             // Default to graphical mode
-            return std::make_unique<GraphicalMode>();
+            return std::make_unique<GraphicalMode>(rendererType);
     }
 }
 

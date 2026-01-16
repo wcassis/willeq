@@ -174,6 +174,9 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"CameraZoomIn", HotkeyAction::CameraZoomIn},
     {"CameraZoomOut", HotkeyAction::CameraZoomOut},
 
+    // Player - Lighting
+    {"CycleObjectLights", HotkeyAction::CycleObjectLights},
+
     // Admin
     {"SaveEntities", HotkeyAction::SaveEntities},
     {"ToggleLighting", HotkeyAction::ToggleLighting},
@@ -522,6 +525,9 @@ void HotkeyManager::setupDefaults() {
     // === Player Mode - Camera Zoom ===
     addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS);
     addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_MINUS);
+
+    // === Player Mode - Lighting ===
+    addBinding(HotkeyAction::CycleObjectLights, HotkeyMode::Player, irr::KEY_KEY_L);
 
     // === Admin Mode ===
     addBinding(HotkeyAction::SaveEntities, HotkeyMode::Admin, irr::KEY_F10);
