@@ -131,6 +131,7 @@ public:
 	uint16_t GetTargetId() const { return m_current_target_id; }
 	bool HasTarget() const { return m_current_target_id != 0; }
 	void ConsiderTarget();
+	void CycleTargets(bool forward = true);
 
 	// Auto attack
 	void EnableAutoAttack();
@@ -218,6 +219,8 @@ private:
 	std::unique_ptr<CombatTarget> m_current_target_info;
 	std::vector<CombatTarget> m_potential_targets;
 	std::chrono::steady_clock::time_point m_last_target_scan;
+	std::vector<uint16_t> m_cycle_targets;  // Sorted list of nearby targetable entities
+	int m_cycle_index = -1;  // Current position in cycle list (-1 = no cycle active)
 
 	// Auto attack
 	bool m_auto_attack_enabled;

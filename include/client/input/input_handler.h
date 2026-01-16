@@ -26,8 +26,22 @@ enum class InputAction {
 
     // Combat
     ToggleAutoAttack,
+    Attack,             // Initiate attack on target (distinct from toggle)
     ClearTarget,
+    Consider,           // Consider target (sends server packet)
     Hail,
+
+    // Targeting
+    TargetSelf,
+    TargetGroupMember1,
+    TargetGroupMember2,
+    TargetGroupMember3,
+    TargetGroupMember4,
+    TargetGroupMember5,
+    TargetNearestPC,
+    TargetNearestNPC,
+    CycleTargets,
+    CycleTargetsReverse,
 
     // UI toggles
     ToggleInventory,
@@ -35,15 +49,21 @@ enum class InputAction {
     ToggleGroup,
     ToggleVendor,
     TogglePetWindow,
+    ToggleTrainer,
+    ToggleSpellbook,
 
     // Interaction
     InteractDoor,
+    InteractWorldObject,
+    Interact,           // Unified interact - nearest door/object/NPC
+    ReplyToTell,        // Reply to last tell
 
     // Graphics-only toggles (handled by GraphicsInputHandler)
     ToggleWireframe,
     ToggleHUD,
     ToggleNameTags,
     ToggleZoneLights,
+    ToggleZoneLineVisualization,
     CycleObjectLights,
     ToggleCameraMode,
     ToggleOldModels,

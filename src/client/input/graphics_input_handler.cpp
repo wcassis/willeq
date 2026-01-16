@@ -1,5 +1,6 @@
 #include "client/input/graphics_input_handler.h"
 #include "client/input/hotkey_manager.h"
+#include "common/logging.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -121,6 +122,49 @@ void GraphicsInputHandler::updateFromEventReceiver() {
     if (m_eventReceiver->clearTargetRequested()) {
         m_pendingActions[static_cast<size_t>(InputAction::ClearTarget)] = true;
     }
+
+    // Targeting actions
+    if (m_eventReceiver->targetSelfRequested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetSelfRequested() returned true, setting TargetSelf action");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetSelf)] = true;
+    }
+    if (m_eventReceiver->targetGroupMember1Requested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember1Requested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember1)] = true;
+    }
+    if (m_eventReceiver->targetGroupMember2Requested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember2Requested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember2)] = true;
+    }
+    if (m_eventReceiver->targetGroupMember3Requested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember3Requested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember3)] = true;
+    }
+    if (m_eventReceiver->targetGroupMember4Requested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember4Requested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember4)] = true;
+    }
+    if (m_eventReceiver->targetGroupMember5Requested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember5Requested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember5)] = true;
+    }
+    if (m_eventReceiver->targetNearestPCRequested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetNearestPCRequested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetNearestPC)] = true;
+    }
+    if (m_eventReceiver->targetNearestNPCRequested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetNearestNPCRequested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::TargetNearestNPC)] = true;
+    }
+    if (m_eventReceiver->cycleTargetsRequested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: cycleTargetsRequested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::CycleTargets)] = true;
+    }
+    if (m_eventReceiver->cycleTargetsReverseRequested()) {
+        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: cycleTargetsReverseRequested() returned true");
+        m_pendingActions[static_cast<size_t>(InputAction::CycleTargetsReverse)] = true;
+    }
+
     if (m_eventReceiver->autoAttackToggleRequested()) {
         m_pendingActions[static_cast<size_t>(InputAction::ToggleAutoAttack)] = true;
     }

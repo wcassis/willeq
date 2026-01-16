@@ -200,6 +200,21 @@ public:
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
 bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
     bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
+    bool spellbookToggleRequested() { bool r = spellbookToggleRequested_; spellbookToggleRequested_ = false; return r; }
+    bool buffWindowToggleRequested() { bool r = buffWindowToggleRequested_; buffWindowToggleRequested_ = false; return r; }
+
+    // Targeting action requests
+    bool targetSelfRequested() { bool r = targetSelfRequested_; targetSelfRequested_ = false; return r; }
+    bool targetGroupMember1Requested() { bool r = targetGroupMember1Requested_; targetGroupMember1Requested_ = false; return r; }
+    bool targetGroupMember2Requested() { bool r = targetGroupMember2Requested_; targetGroupMember2Requested_ = false; return r; }
+    bool targetGroupMember3Requested() { bool r = targetGroupMember3Requested_; targetGroupMember3Requested_ = false; return r; }
+    bool targetGroupMember4Requested() { bool r = targetGroupMember4Requested_; targetGroupMember4Requested_ = false; return r; }
+    bool targetGroupMember5Requested() { bool r = targetGroupMember5Requested_; targetGroupMember5Requested_ = false; return r; }
+    bool targetNearestPCRequested() { bool r = targetNearestPCRequested_; targetNearestPCRequested_ = false; return r; }
+    bool targetNearestNPCRequested() { bool r = targetNearestNPCRequested_; targetNearestNPCRequested_ = false; return r; }
+    bool cycleTargetsRequested() { bool r = cycleTargetsRequested_; cycleTargetsRequested_ = false; return r; }
+    bool cycleTargetsReverseRequested() { bool r = cycleTargetsReverseRequested_; cycleTargetsReverseRequested_ = false; return r; }
+
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
     float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
@@ -323,6 +338,19 @@ private:
     bool skillsToggleRequested_ = false;
 bool zoneLineVisualizationToggleRequested_ = false;
     bool petToggleRequested_ = false;
+    bool spellbookToggleRequested_ = false;
+    bool buffWindowToggleRequested_ = false;
+    // Targeting action flags
+    bool targetSelfRequested_ = false;
+    bool targetGroupMember1Requested_ = false;
+    bool targetGroupMember2Requested_ = false;
+    bool targetGroupMember3Requested_ = false;
+    bool targetGroupMember4Requested_ = false;
+    bool targetGroupMember5Requested_ = false;
+    bool targetNearestPCRequested_ = false;
+    bool targetNearestNPCRequested_ = false;
+    bool cycleTargetsRequested_ = false;
+    bool cycleTargetsReverseRequested_ = false;
     int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
     int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
     float collisionHeightDelta_ = 0.0f;
@@ -608,6 +636,22 @@ public:
     using ZoningEnabledCallback = std::function<void(bool enabled)>;
     void setZoningEnabledCallback(ZoningEnabledCallback callback) { zoningEnabledCallback_ = callback; }
 
+    // Targeting callbacks (F1-F8 hotkeys)
+    using TargetSelfCallback = std::function<void()>;
+    void setTargetSelfCallback(TargetSelfCallback callback) { targetSelfCallback_ = callback; }
+
+    using TargetGroupMemberCallback = std::function<void(int memberIndex)>;  // 0-4 for group members
+    void setTargetGroupMemberCallback(TargetGroupMemberCallback callback) { targetGroupMemberCallback_ = callback; }
+
+    using TargetNearestPCCallback = std::function<void()>;
+    void setTargetNearestPCCallback(TargetNearestPCCallback callback) { targetNearestPCCallback_ = callback; }
+
+    using TargetNearestNPCCallback = std::function<void()>;
+    void setTargetNearestNPCCallback(TargetNearestNPCCallback callback) { targetNearestNPCCallback_ = callback; }
+
+    using CycleTargetsCallback = std::function<void(bool reverse)>;  // true for Shift+Tab
+    void setCycleTargetsCallback(CycleTargetsCallback callback) { cycleTargetsCallback_ = callback; }
+
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
     void setCurrentTargetInfo(const TargetInfo& info);
@@ -852,6 +896,11 @@ private:
     WorldObjectInteractCallback worldObjectInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
     ZoningEnabledCallback zoningEnabledCallback_;
+    TargetSelfCallback targetSelfCallback_;
+    TargetGroupMemberCallback targetGroupMemberCallback_;
+    TargetNearestPCCallback targetNearestPCCallback_;
+    TargetNearestNPCCallback targetNearestNPCCallback_;
+    CycleTargetsCallback cycleTargetsCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
     uint8_t currentTargetHpPercent_ = 100;

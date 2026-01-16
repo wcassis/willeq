@@ -134,6 +134,8 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"TogglePetWindow", HotkeyAction::TogglePetWindow},
     {"ToggleVendor", HotkeyAction::ToggleVendor},
     {"ToggleTrainer", HotkeyAction::ToggleTrainer},
+    {"ToggleSpellbook", HotkeyAction::ToggleSpellbook},
+    {"ToggleBuffWindow", HotkeyAction::ToggleBuffWindow},
     {"ToggleCollision", HotkeyAction::ToggleCollision},
     {"ToggleCollisionDebug", HotkeyAction::ToggleCollisionDebug},
     {"ToggleZoneLineVisualization", HotkeyAction::ToggleZoneLineVisualization},
@@ -141,8 +143,24 @@ static const ActionNameMapping s_actionNameMappings[] = {
     // Player - Interaction
     {"InteractDoor", HotkeyAction::InteractDoor},
     {"InteractWorldObject", HotkeyAction::InteractWorldObject},
+    {"Interact", HotkeyAction::Interact},
     {"Hail", HotkeyAction::Hail},
     {"ClearTarget", HotkeyAction::ClearTarget},
+    {"Consider", HotkeyAction::Consider},
+    {"Attack", HotkeyAction::Attack},
+    {"ReplyToTell", HotkeyAction::ReplyToTell},
+
+    // Player - Targeting
+    {"TargetSelf", HotkeyAction::TargetSelf},
+    {"TargetGroupMember1", HotkeyAction::TargetGroupMember1},
+    {"TargetGroupMember2", HotkeyAction::TargetGroupMember2},
+    {"TargetGroupMember3", HotkeyAction::TargetGroupMember3},
+    {"TargetGroupMember4", HotkeyAction::TargetGroupMember4},
+    {"TargetGroupMember5", HotkeyAction::TargetGroupMember5},
+    {"TargetNearestPC", HotkeyAction::TargetNearestPC},
+    {"TargetNearestNPC", HotkeyAction::TargetNearestNPC},
+    {"CycleTargets", HotkeyAction::CycleTargets},
+    {"CycleTargetsReverse", HotkeyAction::CycleTargetsReverse},
 
     // Player - Chat
     {"OpenChat", HotkeyAction::OpenChat},
@@ -452,13 +470,7 @@ void HotkeyManager::setupDefaults() {
         }
     };
 
-    // === Global Bindings ===
-    addBinding(HotkeyAction::ToggleWireframe, HotkeyMode::Global, irr::KEY_F1);
-    addBinding(HotkeyAction::ToggleHUD, HotkeyMode::Global, irr::KEY_F2);
-    addBinding(HotkeyAction::ToggleNameTags, HotkeyMode::Global, irr::KEY_F3);
-    addBinding(HotkeyAction::ToggleZoneLights, HotkeyMode::Global, irr::KEY_F4);
-    addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Global, irr::KEY_F5);
-    addBinding(HotkeyAction::ToggleOldModels, HotkeyMode::Global, irr::KEY_F6);
+    // === Global Bindings (always active) ===
     addBinding(HotkeyAction::ToggleRendererMode, HotkeyMode::Global, irr::KEY_F9);
     addBinding(HotkeyAction::Screenshot, HotkeyMode::Global, irr::KEY_F12);
     addBinding(HotkeyAction::Quit, HotkeyMode::Global, irr::KEY_ESCAPE, ModifierFlags::Shift);
@@ -468,72 +480,103 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::MoveForward, HotkeyMode::Player, irr::KEY_UP);
     addBinding(HotkeyAction::MoveBackward, HotkeyMode::Player, irr::KEY_KEY_S);
     addBinding(HotkeyAction::MoveBackward, HotkeyMode::Player, irr::KEY_DOWN);
-    addBinding(HotkeyAction::StrafeLeft, HotkeyMode::Player, irr::KEY_KEY_Q);
-    addBinding(HotkeyAction::StrafeRight, HotkeyMode::Player, irr::KEY_KEY_E);
+    addBinding(HotkeyAction::StrafeLeft, HotkeyMode::Player, irr::KEY_KEY_A, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::StrafeLeft, HotkeyMode::Player, irr::KEY_END);
+    addBinding(HotkeyAction::StrafeRight, HotkeyMode::Player, irr::KEY_KEY_D, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::StrafeRight, HotkeyMode::Player, irr::KEY_NEXT);  // Page Down
     addBinding(HotkeyAction::TurnLeft, HotkeyMode::Player, irr::KEY_KEY_A);
     addBinding(HotkeyAction::TurnLeft, HotkeyMode::Player, irr::KEY_LEFT);
     addBinding(HotkeyAction::TurnRight, HotkeyMode::Player, irr::KEY_KEY_D);
     addBinding(HotkeyAction::TurnRight, HotkeyMode::Player, irr::KEY_RIGHT);
     addBinding(HotkeyAction::Jump, HotkeyMode::Player, irr::KEY_SPACE);
 
+    // === Player Mode - Combat ===
+    addBinding(HotkeyAction::ToggleAutoAttack, HotkeyMode::Player, irr::KEY_KEY_Q);
+    addBinding(HotkeyAction::Attack, HotkeyMode::Player, irr::KEY_KEY_Q, ModifierFlags::Ctrl);
+
     // === Player Mode - Toggles ===
-    addBinding(HotkeyAction::ToggleAutorun, HotkeyMode::Player, irr::KEY_KEY_R);
+    addBinding(HotkeyAction::ToggleAutorun, HotkeyMode::Player, irr::KEY_OEM_3);  // Grave/Backtick
+    addBinding(HotkeyAction::ToggleAutorun, HotkeyMode::Player, irr::KEY_ADD);    // Numpad +
     addBinding(HotkeyAction::ToggleAutorun, HotkeyMode::Player, irr::KEY_NUMLOCK);
-    addBinding(HotkeyAction::ToggleAutoAttack, HotkeyMode::Player, irr::KEY_OEM_3);  // Grave/Backtick
     addBinding(HotkeyAction::ToggleInventory, HotkeyMode::Player, irr::KEY_KEY_I);
     addBinding(HotkeyAction::ToggleSkills, HotkeyMode::Player, irr::KEY_KEY_K);
     addBinding(HotkeyAction::ToggleGroup, HotkeyMode::Player, irr::KEY_KEY_G);
+    addBinding(HotkeyAction::ToggleGroup, HotkeyMode::Player, irr::KEY_KEY_P, ModifierFlags::Alt);  // Alternate EQ binding
     addBinding(HotkeyAction::TogglePetWindow, HotkeyMode::Player, irr::KEY_KEY_P);
     addBinding(HotkeyAction::ToggleVendor, HotkeyMode::Player, irr::KEY_KEY_V);
     addBinding(HotkeyAction::ToggleTrainer, HotkeyMode::Player, irr::KEY_KEY_T);
-    addBinding(HotkeyAction::ToggleCollision, HotkeyMode::Player, irr::KEY_KEY_C);
-    addBinding(HotkeyAction::ToggleCollisionDebug, HotkeyMode::Player, irr::KEY_KEY_C, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleZoneLineVisualization, HotkeyMode::Player, irr::KEY_KEY_Z);
+    addBinding(HotkeyAction::ToggleSpellbook, HotkeyMode::Player, irr::KEY_KEY_B, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleBuffWindow, HotkeyMode::Player, irr::KEY_KEY_B, ModifierFlags::Alt);
+    addBinding(HotkeyAction::ToggleCollision, HotkeyMode::Player, irr::KEY_KEY_C, ModifierFlags::Ctrl | ModifierFlags::Alt);
+    addBinding(HotkeyAction::ToggleZoneLineVisualization, HotkeyMode::Player, irr::KEY_KEY_Z, ModifierFlags::Ctrl);
 
     // === Player Mode - Interaction ===
-    addBinding(HotkeyAction::InteractDoor, HotkeyMode::Player, irr::KEY_KEY_U);
-    addBinding(HotkeyAction::InteractWorldObject, HotkeyMode::Player, irr::KEY_KEY_O);
+    addBinding(HotkeyAction::Interact, HotkeyMode::Player, irr::KEY_KEY_U);
     addBinding(HotkeyAction::Hail, HotkeyMode::Player, irr::KEY_KEY_H);
     addBinding(HotkeyAction::ClearTarget, HotkeyMode::Player, irr::KEY_ESCAPE);
+    addBinding(HotkeyAction::Consider, HotkeyMode::Player, irr::KEY_KEY_C);
+    addBinding(HotkeyAction::ReplyToTell, HotkeyMode::Player, irr::KEY_KEY_R);
+
+    // === Player Mode - Targeting (F1-F8, Tab) ===
+    addBinding(HotkeyAction::TargetSelf, HotkeyMode::Player, irr::KEY_F1);
+    addBinding(HotkeyAction::TargetGroupMember1, HotkeyMode::Player, irr::KEY_F2);
+    addBinding(HotkeyAction::TargetGroupMember2, HotkeyMode::Player, irr::KEY_F3);
+    addBinding(HotkeyAction::TargetGroupMember3, HotkeyMode::Player, irr::KEY_F4);
+    addBinding(HotkeyAction::TargetGroupMember4, HotkeyMode::Player, irr::KEY_F5);
+    addBinding(HotkeyAction::TargetGroupMember5, HotkeyMode::Player, irr::KEY_F6);
+    addBinding(HotkeyAction::TargetNearestPC, HotkeyMode::Player, irr::KEY_F7);
+    addBinding(HotkeyAction::TargetNearestNPC, HotkeyMode::Player, irr::KEY_F8);
+    addBinding(HotkeyAction::CycleTargets, HotkeyMode::Player, irr::KEY_TAB);
+    addBinding(HotkeyAction::CycleTargetsReverse, HotkeyMode::Player, irr::KEY_TAB, ModifierFlags::Shift);
 
     // === Player Mode - Chat ===
     addBinding(HotkeyAction::OpenChat, HotkeyMode::Player, irr::KEY_RETURN);
     addBinding(HotkeyAction::OpenChatSlash, HotkeyMode::Player, irr::KEY_OEM_2);  // Slash
 
-    // === Player Mode - Spell Gems (1-8, no modifier) ===
-    addBinding(HotkeyAction::SpellGem1, HotkeyMode::Player, irr::KEY_KEY_1);
-    addBinding(HotkeyAction::SpellGem2, HotkeyMode::Player, irr::KEY_KEY_2);
-    addBinding(HotkeyAction::SpellGem3, HotkeyMode::Player, irr::KEY_KEY_3);
-    addBinding(HotkeyAction::SpellGem4, HotkeyMode::Player, irr::KEY_KEY_4);
-    addBinding(HotkeyAction::SpellGem5, HotkeyMode::Player, irr::KEY_KEY_5);
-    addBinding(HotkeyAction::SpellGem6, HotkeyMode::Player, irr::KEY_KEY_6);
-    addBinding(HotkeyAction::SpellGem7, HotkeyMode::Player, irr::KEY_KEY_7);
-    addBinding(HotkeyAction::SpellGem8, HotkeyMode::Player, irr::KEY_KEY_8);
+    // === Player Mode - Spell Gems (Alt+1-8) ===
+    addBinding(HotkeyAction::SpellGem1, HotkeyMode::Player, irr::KEY_KEY_1, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem2, HotkeyMode::Player, irr::KEY_KEY_2, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem3, HotkeyMode::Player, irr::KEY_KEY_3, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem4, HotkeyMode::Player, irr::KEY_KEY_4, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem5, HotkeyMode::Player, irr::KEY_KEY_5, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem6, HotkeyMode::Player, irr::KEY_KEY_6, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem7, HotkeyMode::Player, irr::KEY_KEY_7, ModifierFlags::Alt);
+    addBinding(HotkeyAction::SpellGem8, HotkeyMode::Player, irr::KEY_KEY_8, ModifierFlags::Alt);
 
-    // === Player Mode - Hotbar (Ctrl+1-0) ===
-    addBinding(HotkeyAction::HotbarSlot1, HotkeyMode::Player, irr::KEY_KEY_1, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot2, HotkeyMode::Player, irr::KEY_KEY_2, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot3, HotkeyMode::Player, irr::KEY_KEY_3, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot4, HotkeyMode::Player, irr::KEY_KEY_4, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot5, HotkeyMode::Player, irr::KEY_KEY_5, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot6, HotkeyMode::Player, irr::KEY_KEY_6, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot7, HotkeyMode::Player, irr::KEY_KEY_7, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot8, HotkeyMode::Player, irr::KEY_KEY_8, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot9, HotkeyMode::Player, irr::KEY_KEY_9, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HotbarSlot10, HotkeyMode::Player, irr::KEY_KEY_0, ModifierFlags::Ctrl);
+    // === Player Mode - Hotbar (1-0, no modifier) ===
+    addBinding(HotkeyAction::HotbarSlot1, HotkeyMode::Player, irr::KEY_KEY_1);
+    addBinding(HotkeyAction::HotbarSlot2, HotkeyMode::Player, irr::KEY_KEY_2);
+    addBinding(HotkeyAction::HotbarSlot3, HotkeyMode::Player, irr::KEY_KEY_3);
+    addBinding(HotkeyAction::HotbarSlot4, HotkeyMode::Player, irr::KEY_KEY_4);
+    addBinding(HotkeyAction::HotbarSlot5, HotkeyMode::Player, irr::KEY_KEY_5);
+    addBinding(HotkeyAction::HotbarSlot6, HotkeyMode::Player, irr::KEY_KEY_6);
+    addBinding(HotkeyAction::HotbarSlot7, HotkeyMode::Player, irr::KEY_KEY_7);
+    addBinding(HotkeyAction::HotbarSlot8, HotkeyMode::Player, irr::KEY_KEY_8);
+    addBinding(HotkeyAction::HotbarSlot9, HotkeyMode::Player, irr::KEY_KEY_9);
+    addBinding(HotkeyAction::HotbarSlot10, HotkeyMode::Player, irr::KEY_KEY_0);
 
-    // === Player Mode - Camera Zoom ===
+    // === Player Mode - Camera ===
     addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS);
     addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_MINUS);
+    addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Player, irr::KEY_F5, ModifierFlags::Ctrl);
 
     // === Player Mode - Lighting ===
     addBinding(HotkeyAction::CycleObjectLights, HotkeyMode::Player, irr::KEY_KEY_L);
 
-    // === Admin Mode ===
+    // === Admin Mode - Debug toggles (Ctrl+F1-F8) ===
+    addBinding(HotkeyAction::ToggleWireframe, HotkeyMode::Admin, irr::KEY_F1, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleHUD, HotkeyMode::Admin, irr::KEY_F2, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleNameTags, HotkeyMode::Admin, irr::KEY_F3, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleZoneLights, HotkeyMode::Admin, irr::KEY_F4, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Admin, irr::KEY_F5, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleOldModels, HotkeyMode::Admin, irr::KEY_F6, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleHelmDebug, HotkeyMode::Admin, irr::KEY_F7, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::HelmPrintState, HotkeyMode::Admin, irr::KEY_F8, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleCollisionDebug, HotkeyMode::Admin, irr::KEY_KEY_C, ModifierFlags::Ctrl | ModifierFlags::Shift);
+
+    // === Admin Mode - Other controls ===
     addBinding(HotkeyAction::SaveEntities, HotkeyMode::Admin, irr::KEY_F10);
     addBinding(HotkeyAction::ToggleLighting, HotkeyMode::Admin, irr::KEY_F11);
-    addBinding(HotkeyAction::ToggleHelmDebug, HotkeyMode::Admin, irr::KEY_F7);
-    addBinding(HotkeyAction::HelmPrintState, HotkeyMode::Admin, irr::KEY_F8);
     addBinding(HotkeyAction::AnimSpeedDecrease, HotkeyMode::Admin, irr::KEY_OEM_4);  // [
     addBinding(HotkeyAction::AnimSpeedIncrease, HotkeyMode::Admin, irr::KEY_OEM_6);  // ]
     addBinding(HotkeyAction::AmbientLightIncrease, HotkeyMode::Admin, irr::KEY_PRIOR);  // Page Up

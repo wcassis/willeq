@@ -38,10 +38,10 @@ inline bool hasModifier(ModifierFlags flags, ModifierFlags mod) {
  * Bindings in Global mode are always active regardless of current mode.
  */
 enum class HotkeyMode : uint8_t {
-    Global,   // Always active (F1, F2, F5, F9, Shift+Escape)
-    Player,   // Active in Player mode (WASD, R, `, I, 1-8, Ctrl+1-9)
+    Global,   // Always active (F9, F12, Shift+Escape)
+    Player,   // Active in Player mode (WASD, Q, F1-F8, 1-0, Alt+1-8)
     Repair,   // Active in Repair mode (X/Y/Z rotation, Ctrl+1/2/3 flip)
-    Admin     // Active in Admin mode ([/], PageUp/Down, F7)
+    Admin     // Active in Admin mode (Ctrl+F1-F8, [/], PageUp/Down)
 };
 
 /**
@@ -79,6 +79,8 @@ enum class HotkeyAction : uint32_t {
     TogglePetWindow,
     ToggleVendor,
     ToggleTrainer,
+    ToggleSpellbook,    // Spellbook window (Ctrl+B)
+    ToggleBuffWindow,   // Buff window (Alt+B)
     ToggleCollision,
     ToggleCollisionDebug,
     ToggleZoneLineVisualization,
@@ -86,8 +88,24 @@ enum class HotkeyAction : uint32_t {
     // Interaction
     InteractDoor,
     InteractWorldObject,
+    Interact,           // Unified interact - nearest door/object/NPC
     Hail,
     ClearTarget,
+    Consider,           // Consider target (C key, sends server packet)
+    Attack,             // Initiate attack on target (Ctrl+Q, distinct from toggle)
+    ReplyToTell,        // Reply to last tell (R key)
+
+    // Targeting (F1-F8, Tab)
+    TargetSelf,             // F1 - Target yourself
+    TargetGroupMember1,     // F2 - Target group member 1
+    TargetGroupMember2,     // F3 - Target group member 2
+    TargetGroupMember3,     // F4 - Target group member 3
+    TargetGroupMember4,     // F5 - Target group member 4
+    TargetGroupMember5,     // F6 - Target group member 5
+    TargetNearestPC,        // F7 - Target nearest player character
+    TargetNearestNPC,       // F8 - Target nearest NPC
+    CycleTargets,           // Tab - Cycle through nearby targets
+    CycleTargetsReverse,    // Shift+Tab - Cycle targets in reverse
 
     // Chat
     OpenChat,

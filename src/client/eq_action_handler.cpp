@@ -152,6 +152,49 @@ void EqActionHandler::targetNearest() {
     LOG_DEBUG(MOD_COMBAT, "Target nearest not yet implemented");
 }
 
+void EqActionHandler::targetNearestPC() {
+    const auto& gameState = m_eq.GetGameState();
+    auto& player = gameState.player();
+    auto& entities = gameState.entities();
+
+    // Exclude self from nearest PC search
+    auto* nearestPC = entities.getNearestPlayer(player.x(), player.y(), player.z(), player.spawnId());
+    if (nearestPC) {
+        auto* combat = getCombatManager();
+        if (combat) {
+            combat->SetTarget(nearestPC->spawnId);
+        }
+    }
+}
+
+void EqActionHandler::targetNearestNPC() {
+    const auto& gameState = m_eq.GetGameState();
+    auto& player = gameState.player();
+    auto& entities = gameState.entities();
+
+    auto* nearestNPC = entities.getNearestNPC(player.x(), player.y(), player.z());
+    if (nearestNPC) {
+        auto* combat = getCombatManager();
+        if (combat) {
+            combat->SetTarget(nearestNPC->spawnId);
+        }
+    }
+}
+
+void EqActionHandler::cycleTargets() {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->CycleTargets(true);  // Forward
+    }
+}
+
+void EqActionHandler::cycleTargetsReverse() {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->CycleTargets(false);  // Reverse
+    }
+}
+
 void EqActionHandler::clearTarget() {
     auto* combat = getCombatManager();
     if (combat) {
@@ -287,8 +330,12 @@ void EqActionHandler::sendTell(const std::string& target, const std::string& mes
 }
 
 void EqActionHandler::replyToLastTell(const std::string& message) {
-    // Would need to track last tell sender in EverQuest class
-    LOG_DEBUG(MOD_INPUT, "Reply to last tell not yet implemented");
+    const std::string& lastSender = m_eq.GetLastTellSender();
+    if (lastSender.empty()) {
+        LOG_DEBUG(MOD_INPUT, "Reply to last tell: No one to reply to");
+        return;
+    }
+    m_eq.SendChatMessage(message, "tell", lastSender);
 }
 
 // ========== Group ==========

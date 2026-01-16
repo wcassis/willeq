@@ -91,6 +91,10 @@ public:
     virtual void targetEntity(uint16_t spawnId) = 0;
     virtual void targetEntityByName(const std::string& name) = 0;
     virtual void targetNearest() = 0;
+    virtual void targetNearestPC() = 0;
+    virtual void targetNearestNPC() = 0;
+    virtual void cycleTargets() = 0;
+    virtual void cycleTargetsReverse() = 0;
     virtual void clearTarget() = 0;
 
     virtual void enableAutoAttack() = 0;
@@ -307,6 +311,26 @@ public:
     ActionResult targetNearest();
 
     /**
+     * Target the nearest player character.
+     */
+    ActionResult targetNearestPC();
+
+    /**
+     * Target the nearest NPC.
+     */
+    ActionResult targetNearestNPC();
+
+    /**
+     * Cycle through nearby targets (forward).
+     */
+    ActionResult cycleTargets();
+
+    /**
+     * Cycle through nearby targets (reverse).
+     */
+    ActionResult cycleTargetsReverse();
+
+    /**
      * Clear current target.
      */
     ActionResult clearTarget();
@@ -379,6 +403,17 @@ public:
     ActionResult clickNearestDoor();
 
     /**
+     * Interact with the nearest world object (forge, loom, etc.).
+     */
+    ActionResult interactNearestWorldObject();
+
+    /**
+     * Interact with the nearest interactable (door, object, or NPC).
+     * Unified interaction that finds the closest thing to interact with.
+     */
+    ActionResult interactNearest();
+
+    /**
      * Open loot window for a corpse.
      */
     ActionResult lootCorpse(uint16_t corpseId);
@@ -409,6 +444,12 @@ public:
      * Reply to the last tell received.
      */
     ActionResult replyToLastTell(const std::string& message);
+
+    /**
+     * Open chat input pre-filled for replying to the last tell.
+     * This is for the R key binding - opens chat with /tell <last_sender>
+     */
+    ActionResult openReplyToTell();
 
     // ========== Group Actions ==========
 

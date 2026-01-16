@@ -47,6 +47,10 @@ public:
     void targetEntity(uint16_t spawnId) override;
     void targetEntityByName(const std::string& name) override;
     void targetNearest() override;
+    void targetNearestPC() override;
+    void targetNearestNPC() override;
+    void cycleTargets() override;
+    void cycleTargetsReverse() override;
     void clearTarget() override;
 
     void enableAutoAttack() override;

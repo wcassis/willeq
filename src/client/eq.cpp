@@ -6770,6 +6770,12 @@ void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 	uint32_t skill = p.GetUInt32(146);
 	std::string message = p.GetCString(150);
 
+	// Track last tell sender for /reply command
+	if (channel == CHAT_CHANNEL_TELL && !sender.empty() && sender != m_character) {
+		m_last_tell_sender = sender;
+		LOG_DEBUG(MOD_MAIN, "Last tell sender updated to: {}", m_last_tell_sender);
+	}
+
 	if (s_debug_level >= 1) {
 		std::cout << fmt::format("[CHAT] {} ({}): {}",
 			sender,
@@ -7067,7 +7073,15 @@ void EverQuest::RegisterCommands()
 	reply.description = "Reply to last tell";
 	reply.category = "Chat";
 	reply.handler = [this](const std::string& args) {
-		AddChatSystemMessage("Reply not yet implemented");
+		if (m_last_tell_sender.empty()) {
+			AddChatSystemMessage("No one to reply to");
+			return;
+		}
+		if (args.empty()) {
+			AddChatSystemMessage("Usage: /reply <message>");
+			return;
+		}
+		SendChatMessage(args, "tell", m_last_tell_sender);
 	};
 	m_command_registry->registerCommand(reply);
 
@@ -16295,6 +16309,226 @@ bool EverQuest::InitGraphics(int width, int height) {
 				// Log or display error message
 				LOG_DEBUG(MOD_SPELL, "Spell gem {} cast failed: {}", gemSlot + 1, static_cast<int>(result));
 			}
+		}
+	});
+
+	// Set up targeting callbacks (F1-F8, Tab hotkeys)
+	m_renderer->setTargetSelfCallback([this]() {
+		// F1 - Target Self
+		if (m_combat_manager) {
+			uint16_t mySpawnId = m_my_spawn_id;
+			if (mySpawnId != 0) {
+				LOG_DEBUG(MOD_COMBAT, "F1 - Targeting self (spawn_id={})", mySpawnId);
+				m_combat_manager->SetTarget(mySpawnId);
+				// Update renderer target info
+				auto it = m_entities.find(mySpawnId);
+				if (it != m_entities.end()) {
+					const Entity& e = it->second;
+					EQT::Graphics::TargetInfo info;
+					info.spawnId = e.spawn_id;
+					info.name = e.name;
+					info.level = e.level;
+					info.hpPercent = e.hp_percent;
+					info.raceId = e.race_id;
+					info.gender = e.gender;
+					info.classId = e.class_id;
+					info.npcType = e.npc_type;
+					m_renderer->setCurrentTargetInfo(info);
+				}
+			}
+		}
+	});
+
+	m_renderer->setTargetGroupMemberCallback([this](int memberIndex) {
+		// F2-F6 - Target group member by index (0-4)
+		if (m_combat_manager) {
+			const GroupMember* member = GetGroupMember(memberIndex);
+			if (member && member->spawn_id != 0) {
+				LOG_DEBUG(MOD_COMBAT, "F{} - Targeting group member {} '{}' (spawn_id={})",
+					memberIndex + 2, memberIndex, member->name, member->spawn_id);
+				m_combat_manager->SetTarget(member->spawn_id);
+				// Update renderer target info
+				auto it = m_entities.find(member->spawn_id);
+				if (it != m_entities.end()) {
+					const Entity& e = it->second;
+					EQT::Graphics::TargetInfo info;
+					info.spawnId = e.spawn_id;
+					info.name = e.name;
+					info.level = e.level;
+					info.hpPercent = e.hp_percent;
+					info.raceId = e.race_id;
+					info.gender = e.gender;
+					info.classId = e.class_id;
+					info.npcType = e.npc_type;
+					m_renderer->setCurrentTargetInfo(info);
+				}
+			} else {
+				LOG_DEBUG(MOD_COMBAT, "F{} - No group member at index {}", memberIndex + 2, memberIndex);
+			}
+		}
+	});
+
+	m_renderer->setTargetNearestPCCallback([this]() {
+		// F7 - Target nearest PC (player character)
+		if (!m_combat_manager) return;
+
+		// Find nearest player character (npc_type == 0) excluding self
+		uint16_t nearestId = 0;
+		float nearestDistSq = std::numeric_limits<float>::max();
+
+		for (const auto& [id, e] : m_entities) {
+			if (id == m_my_spawn_id) continue;  // Skip self
+			if (e.npc_type != 0) continue;  // Players only (npc_type 0)
+
+			float dx = e.x - m_x;
+			float dy = e.y - m_y;
+			float distSq = dx * dx + dy * dy;
+			if (distSq < nearestDistSq) {
+				nearestDistSq = distSq;
+				nearestId = id;
+			}
+		}
+
+		if (nearestId != 0) {
+			LOG_DEBUG(MOD_COMBAT, "F7 - Targeting nearest PC (spawn_id={})", nearestId);
+			m_combat_manager->SetTarget(nearestId);
+			auto it = m_entities.find(nearestId);
+			if (it != m_entities.end()) {
+				const Entity& e = it->second;
+				EQT::Graphics::TargetInfo info;
+				info.spawnId = e.spawn_id;
+				info.name = e.name;
+				info.level = e.level;
+				info.hpPercent = e.hp_percent;
+				info.raceId = e.race_id;
+				info.gender = e.gender;
+				info.classId = e.class_id;
+				info.npcType = e.npc_type;
+				m_renderer->setCurrentTargetInfo(info);
+			}
+		} else {
+			LOG_DEBUG(MOD_COMBAT, "F7 - No PC found nearby");
+		}
+	});
+
+	m_renderer->setTargetNearestNPCCallback([this]() {
+		// F8 - Target nearest visible NPC within 50 units
+		if (!m_combat_manager) return;
+
+		// Find nearest visible NPC (npc_type == 1) within range
+		uint16_t nearestId = 0;
+		float nearestDistSq = std::numeric_limits<float>::max();
+		constexpr float maxRange = 50.0f;
+		constexpr float maxRangeSq = maxRange * maxRange;
+
+		// Player eye position for LOS check (add eye height offset)
+		glm::vec3 playerPos(m_x, m_y, m_z + 6.0f);  // ~6 units eye height
+
+		for (const auto& [id, e] : m_entities) {
+			if (e.npc_type != 1) continue;  // NPCs only (npc_type 1)
+
+			float dx = e.x - m_x;
+			float dy = e.y - m_y;
+			float distSq = dx * dx + dy * dy;
+
+			// Skip if beyond 50 unit range
+			if (distSq > maxRangeSq) continue;
+
+			// Check line of sight if map is loaded
+			if (m_zone_map && m_zone_map->IsLoaded()) {
+				glm::vec3 targetPos(e.x, e.y, e.z + 3.0f);  // Target center mass
+				if (!m_zone_map->CheckLOS(playerPos, targetPos)) {
+					continue;  // No line of sight, skip this NPC
+				}
+			}
+
+			if (distSq < nearestDistSq) {
+				nearestDistSq = distSq;
+				nearestId = id;
+			}
+		}
+
+		if (nearestId != 0) {
+			float dist = std::sqrt(nearestDistSq);
+			LOG_DEBUG(MOD_COMBAT, "F8 - Targeting nearest visible NPC (spawn_id={}, dist={:.1f})", nearestId, dist);
+			m_combat_manager->SetTarget(nearestId);
+			auto it = m_entities.find(nearestId);
+			if (it != m_entities.end()) {
+				const Entity& e = it->second;
+				EQT::Graphics::TargetInfo info;
+				info.spawnId = e.spawn_id;
+				info.name = e.name;
+				info.level = e.level;
+				info.hpPercent = e.hp_percent;
+				info.raceId = e.race_id;
+				info.gender = e.gender;
+				info.classId = e.class_id;
+				info.npcType = e.npc_type;
+				m_renderer->setCurrentTargetInfo(info);
+			}
+		} else {
+			LOG_DEBUG(MOD_COMBAT, "F8 - No visible NPC found within 50 units");
+		}
+	});
+
+	m_renderer->setCycleTargetsCallback([this](bool reverse) {
+		// Tab / Shift+Tab - Cycle through visible entities
+		if (!m_combat_manager) return;
+
+		// Build sorted list of targetable entities by distance
+		std::vector<std::pair<float, uint16_t>> sortedEntities;
+		for (const auto& [id, e] : m_entities) {
+			if (id == m_my_spawn_id) continue;  // Skip self
+			// Include players (0) and NPCs (1), skip corpses (2, 3)
+			if (e.npc_type > 1) continue;
+
+			float dx = e.x - m_x;
+			float dy = e.y - m_y;
+			float distSq = dx * dx + dy * dy;
+			sortedEntities.emplace_back(distSq, id);
+		}
+
+		if (sortedEntities.empty()) return;
+
+		// Sort by distance
+		std::sort(sortedEntities.begin(), sortedEntities.end());
+
+		// Find current target in list
+		uint16_t currentTarget = m_combat_manager->GetTargetId();
+		int currentIdx = -1;
+		for (size_t i = 0; i < sortedEntities.size(); ++i) {
+			if (sortedEntities[i].second == currentTarget) {
+				currentIdx = static_cast<int>(i);
+				break;
+			}
+		}
+
+		// Calculate next index
+		int nextIdx;
+		if (reverse) {
+			nextIdx = (currentIdx <= 0) ? static_cast<int>(sortedEntities.size()) - 1 : currentIdx - 1;
+		} else {
+			nextIdx = (currentIdx < 0 || currentIdx >= static_cast<int>(sortedEntities.size()) - 1) ? 0 : currentIdx + 1;
+		}
+
+		uint16_t nextTargetId = sortedEntities[nextIdx].second;
+		LOG_DEBUG(MOD_COMBAT, "{} - Cycling to {} target (spawn_id={})",
+			reverse ? "Shift+Tab" : "Tab", reverse ? "previous" : "next", nextTargetId);
+		m_combat_manager->SetTarget(nextTargetId);
+
+		auto it = m_entities.find(nextTargetId);
+		if (it != m_entities.end()) {
+			const Entity& e = it->second;
+			EQT::Graphics::TargetInfo info;
+			info.spawnId = e.spawn_id;
+			info.name = e.name;
+			info.level = e.level;
+			info.hpPercent = e.hp_percent;
+			info.raceId = e.race_id;
+			info.gender = e.gender;
+			info.classId = e.class_id;
+			info.npcType = e.npc_type;
+			m_renderer->setCurrentTargetInfo(info);
 		}
 	});
 

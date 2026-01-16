@@ -693,6 +693,7 @@ public:
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
 	uint16_t GetEntityID() const { return m_my_spawn_id; }
+	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
 
 	// Door interaction
@@ -1372,6 +1373,9 @@ private:
 	// Pending group invite
 	bool m_has_pending_invite = false;
 	std::string m_pending_inviter_name;
+
+	// Chat state - for reply to tell
+	std::string m_last_tell_sender;
 
 	// Group helper methods
 	void ClearGroup();

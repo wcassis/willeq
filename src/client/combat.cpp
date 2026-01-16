@@ -301,6 +301,90 @@ void CombatManager::ConsiderTarget() {
 	LOG_DEBUG(MOD_COMBAT, "Sent consider request for target ID: {}", m_current_target_id);
 }
 
+void CombatManager::CycleTargets(bool forward) {
+	// Get entities and player position
+	const auto& entities = m_eq->GetEntities();
+	glm::vec3 my_pos = m_eq->GetPosition();
+	uint16_t my_id = m_eq->GetEntityID();
+
+	// Build/refresh the cycle list if needed
+	// Rebuild if empty or if we've moved significantly since last build
+	static glm::vec3 last_pos = my_pos;
+	float dist_moved = glm::length(my_pos - last_pos);
+
+	if (m_cycle_targets.empty() || dist_moved > 50.0f) {
+		m_cycle_targets.clear();
+		m_cycle_index = -1;
+		last_pos = my_pos;
+
+		// Collect all nearby targetable entities within range
+		const float CYCLE_RANGE = 200.0f;
+
+		for (const auto& [id, entity] : entities) {
+			// Skip self
+			if (id == my_id) continue;
+
+			// Skip corpses
+			if (entity.is_corpse) continue;
+
+			// Calculate distance
+			glm::vec3 entity_pos(entity.x, entity.y, entity.z);
+			float distance = glm::length(entity_pos - my_pos);
+
+			if (distance <= CYCLE_RANGE) {
+				m_cycle_targets.push_back(id);
+			}
+		}
+
+		// Sort by distance
+		std::sort(m_cycle_targets.begin(), m_cycle_targets.end(),
+			[&entities, &my_pos](uint16_t a, uint16_t b) {
+				auto it_a = entities.find(a);
+				auto it_b = entities.find(b);
+				if (it_a == entities.end()) return false;
+				if (it_b == entities.end()) return true;
+
+				glm::vec3 pos_a(it_a->second.x, it_a->second.y, it_a->second.z);
+				glm::vec3 pos_b(it_b->second.x, it_b->second.y, it_b->second.z);
+				return glm::length(pos_a - my_pos) < glm::length(pos_b - my_pos);
+			});
+
+		LOG_DEBUG(MOD_COMBAT, "Rebuilt cycle target list with {} entities", m_cycle_targets.size());
+	}
+
+	if (m_cycle_targets.empty()) {
+		LOG_DEBUG(MOD_COMBAT, "No targets available for cycling");
+		return;
+	}
+
+	// Find current target in list if we have one
+	if (m_cycle_index < 0 && HasTarget()) {
+		auto it = std::find(m_cycle_targets.begin(), m_cycle_targets.end(), m_current_target_id);
+		if (it != m_cycle_targets.end()) {
+			m_cycle_index = static_cast<int>(std::distance(m_cycle_targets.begin(), it));
+		}
+	}
+
+	// Move to next/previous target
+	if (forward) {
+		m_cycle_index++;
+		if (m_cycle_index >= static_cast<int>(m_cycle_targets.size())) {
+			m_cycle_index = 0;
+		}
+	} else {
+		m_cycle_index--;
+		if (m_cycle_index < 0) {
+			m_cycle_index = static_cast<int>(m_cycle_targets.size()) - 1;
+		}
+	}
+
+	// Set the new target
+	uint16_t new_target = m_cycle_targets[m_cycle_index];
+	SetTarget(new_target);
+
+	LOG_DEBUG(MOD_COMBAT, "Cycled to target index {} (ID: {})", m_cycle_index, new_target);
+}
+
 void CombatManager::EnableAutoAttack() {
 	LOG_DEBUG(MOD_COMBAT, "EnableAutoAttack called (has_target={}, target_id={})",
 		HasTarget(), m_current_target_id);

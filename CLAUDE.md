@@ -272,31 +272,48 @@ The renderer has two modes, toggled with **F9**:
 **Both Modes:**
 | Key | Action |
 |-----|--------|
-| F1 | Toggle wireframe |
-| F2 | Toggle HUD |
-| F3 | Toggle name tags |
-| F5 | Cycle camera mode (Free/Follow/FirstPerson) |
 | F9 | Toggle Admin/Player mode |
 | F12 | Screenshot |
-| LMB+drag | Look around |
+| LMB+drag | Look around (camera) |
+| RMB+drag | Look around (camera) |
+| Ctrl+LMB+drag | Look around (single-button mouse) |
 | Shift+ESC | Quit |
 
 **Player Mode Only:**
 | Key | Action |
 |-----|--------|
 | WASD/Arrows | Move (with collision) |
-| Q/E | Strafe |
-| R / NumLock | Toggle autorun |
-| 1-8 | Cast spell from gem slot 1-8 |
-| ` (backtick) | Toggle auto-attack |
+| Ctrl+A / End | Strafe left |
+| Ctrl+D / PageDown | Strafe right |
+| Q | Toggle auto-attack |
+| Ctrl+Q | Attack (initiate combat) |
+| ` / NumLock / Numpad+ | Toggle autorun |
+| Space | Jump |
+| 1-8 | Hotbar slots 1-8 |
+| 9-0 | Hotbar slots 9-10 |
+| Alt+1-8 | Cast spell from gem 1-8 |
+| F1 | Target self |
+| F2-F6 | Target group member 1-5 |
+| F7 | Target nearest PC |
+| F8 | Target nearest NPC |
+| Tab | Cycle targets |
+| Shift+Tab | Cycle targets reverse |
+| C | Consider target |
+| R | Reply to last tell |
 | I | Toggle inventory |
 | K | Toggle skills window |
-| G | Toggle group window |
+| G / Alt+P | Toggle group window |
 | P | Toggle pet window |
-| U | Interact with nearest door |
+| Ctrl+B | Toggle spellbook |
+| Alt+B | Toggle buff window |
+| U | Interact (nearest door/object) |
 | H | Hail (say "Hail" or "Hail, <target>") |
+| L | Cycle object lights |
 | ESC | Clear target |
-| C | Toggle collision |
+| +/- | Camera zoom in/out |
+| Ctrl+F5 | Cycle camera mode |
+| Ctrl+Alt+C | Toggle collision |
+| Ctrl+Z | Toggle zone line visualization |
 | Enter | Open chat input |
 | / | Open chat with slash |
 
@@ -305,15 +322,21 @@ The renderer has two modes, toggled with **F9**:
 |-----|--------|
 | WASD | Camera movement (Free camera) |
 | E/Q | Camera up/down |
-| F4 | Toggle zone lights |
-| F6 | Toggle Classic/Luclin models |
-| F7 | Toggle helm debug mode |
+| Ctrl+F1 | Toggle wireframe |
+| Ctrl+F2 | Toggle HUD |
+| Ctrl+F3 | Toggle name tags |
+| Ctrl+F4 | Toggle zone lights |
+| Ctrl+F5 | Cycle camera mode |
+| Ctrl+F6 | Toggle Classic/Luclin models |
+| Ctrl+F7 | Toggle helm debug mode |
+| Ctrl+F8 | Print helm state |
 | F10 | Save entities to JSON |
 | F11 | Toggle lighting |
 | [ / ] | Decrease/increase animation speed |
-| P | Adjust corpse Z offset |
+| P / Shift+P | Adjust corpse Z offset |
 | Page Up/Down | Adjust ambient light |
 | H/N | Cycle head variant |
+| Ctrl+Shift+C | Toggle collision debug
 
 ### Slash Commands
 

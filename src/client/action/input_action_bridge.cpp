@@ -73,8 +73,73 @@ void InputActionBridge::processDiscreteActions() {
         reportAction("ToggleAutoAttack", m_dispatcher.toggleAutoAttack());
     }
 
+    if (m_input->consumeAction(input::InputAction::Attack)) {
+        reportAction("Attack", m_dispatcher.enableAutoAttack());
+    }
+
     if (m_input->consumeAction(input::InputAction::ClearTarget)) {
         reportAction("ClearTarget", m_dispatcher.clearTarget());
+    }
+
+    if (m_input->consumeAction(input::InputAction::Consider)) {
+        reportAction("Consider", m_dispatcher.consider());
+    }
+
+    // Targeting actions
+    if (m_input->consumeAction(input::InputAction::TargetSelf)) {
+        uint16_t playerId = m_state.player().spawnId();
+        reportAction("TargetSelf", m_dispatcher.targetEntity(playerId));
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetGroupMember1)) {
+        auto* member = m_state.group().getMember(0);
+        if (member && member->spawnId != 0) {
+            reportAction("TargetGroupMember1", m_dispatcher.targetEntity(member->spawnId));
+        }
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetGroupMember2)) {
+        auto* member = m_state.group().getMember(1);
+        if (member && member->spawnId != 0) {
+            reportAction("TargetGroupMember2", m_dispatcher.targetEntity(member->spawnId));
+        }
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetGroupMember3)) {
+        auto* member = m_state.group().getMember(2);
+        if (member && member->spawnId != 0) {
+            reportAction("TargetGroupMember3", m_dispatcher.targetEntity(member->spawnId));
+        }
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetGroupMember4)) {
+        auto* member = m_state.group().getMember(3);
+        if (member && member->spawnId != 0) {
+            reportAction("TargetGroupMember4", m_dispatcher.targetEntity(member->spawnId));
+        }
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetGroupMember5)) {
+        auto* member = m_state.group().getMember(4);
+        if (member && member->spawnId != 0) {
+            reportAction("TargetGroupMember5", m_dispatcher.targetEntity(member->spawnId));
+        }
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetNearestPC)) {
+        reportAction("TargetNearestPC", m_dispatcher.targetNearestPC());
+    }
+
+    if (m_input->consumeAction(input::InputAction::TargetNearestNPC)) {
+        reportAction("TargetNearestNPC", m_dispatcher.targetNearestNPC());
+    }
+
+    if (m_input->consumeAction(input::InputAction::CycleTargets)) {
+        reportAction("CycleTargets", m_dispatcher.cycleTargets());
+    }
+
+    if (m_input->consumeAction(input::InputAction::CycleTargetsReverse)) {
+        reportAction("CycleTargetsReverse", m_dispatcher.cycleTargetsReverse());
     }
 
     // Interaction
@@ -88,6 +153,22 @@ void InputActionBridge::processDiscreteActions() {
 
     if (m_input->consumeAction(input::InputAction::InteractDoor)) {
         reportAction("ClickNearestDoor", m_dispatcher.clickNearestDoor());
+    }
+
+    if (m_input->consumeAction(input::InputAction::InteractWorldObject)) {
+        // World object interaction requires a drop ID, use nearest
+        reportAction("InteractWorldObject", m_dispatcher.interactNearestWorldObject());
+    }
+
+    if (m_input->consumeAction(input::InputAction::Interact)) {
+        // Unified interact - find nearest interactable (door, object, or NPC)
+        reportAction("Interact", m_dispatcher.interactNearest());
+    }
+
+    if (m_input->consumeAction(input::InputAction::ReplyToTell)) {
+        // Reply to last tell - opens chat with pre-filled /tell command
+        // This is handled by the chat system, not directly through dispatcher
+        reportAction("ReplyToTell", m_dispatcher.openReplyToTell());
     }
 }
 

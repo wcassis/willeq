@@ -74,6 +74,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 false,  // Alt not directly exposed by Irrlicht
                 currentMode_);
 
+            // Debug: log key press and action lookup
+            LOG_DEBUG(MOD_INPUT, "Key pressed: {} (ctrl={}, shift={}), mode={}, action={}",
+                hotkeyMgr.keyCodeToName(event.KeyInput.Key),
+                event.KeyInput.Control, event.KeyInput.Shift,
+                hotkeyMgr.modeEnumToName(currentMode_),
+                action.has_value() ? hotkeyMgr.actionEnumToName(*action) : "none");
+
             if (action.has_value()) {
                 using HA = eqt::input::HotkeyAction;
                 switch (*action) {
@@ -95,6 +102,8 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleSkills: skillsToggleRequested_ = true; break;
                     case HA::ToggleGroup: groupToggleRequested_ = true; break;
                     case HA::TogglePetWindow: petToggleRequested_ = true; break;
+                    case HA::ToggleSpellbook: spellbookToggleRequested_ = true; break;
+                    case HA::ToggleBuffWindow: buffWindowToggleRequested_ = true; break;
                     case HA::ToggleVendor: vendorToggleRequested_ = true; break;
                     case HA::ToggleTrainer: trainerToggleRequested_ = true; break;
                     case HA::ToggleCollision: collisionToggleRequested_ = true; break;
@@ -105,6 +114,49 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::InteractWorldObject: worldObjectInteractRequested_ = true; break;
                     case HA::Hail: hailRequested_ = true; break;
                     case HA::ClearTarget: clearTargetRequested_ = true; break;
+
+                    // Targeting
+                    case HA::TargetSelf:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetSelfRequested_ = true");
+                        targetSelfRequested_ = true;
+                        break;
+                    case HA::TargetGroupMember1:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember1Requested_ = true");
+                        targetGroupMember1Requested_ = true;
+                        break;
+                    case HA::TargetGroupMember2:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember2Requested_ = true");
+                        targetGroupMember2Requested_ = true;
+                        break;
+                    case HA::TargetGroupMember3:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember3Requested_ = true");
+                        targetGroupMember3Requested_ = true;
+                        break;
+                    case HA::TargetGroupMember4:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember4Requested_ = true");
+                        targetGroupMember4Requested_ = true;
+                        break;
+                    case HA::TargetGroupMember5:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember5Requested_ = true");
+                        targetGroupMember5Requested_ = true;
+                        break;
+                    case HA::TargetNearestPC:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetNearestPCRequested_ = true");
+                        targetNearestPCRequested_ = true;
+                        break;
+                    case HA::TargetNearestNPC:
+                        LOG_DEBUG(MOD_INPUT, "Setting targetNearestNPCRequested_ = true");
+                        targetNearestNPCRequested_ = true;
+                        break;
+                    case HA::CycleTargets:
+                        LOG_DEBUG(MOD_INPUT, "Setting cycleTargetsRequested_ = true");
+                        cycleTargetsRequested_ = true;
+                        break;
+                    case HA::CycleTargetsReverse:
+                        LOG_DEBUG(MOD_INPUT, "Setting cycleTargetsReverseRequested_ = true");
+                        cycleTargetsReverseRequested_ = true;
+                        break;
+
                     case HA::OpenChat: enterKeyPressed_ = true; break;
                     case HA::OpenChatSlash: slashKeyPressed_ = true; break;
 
@@ -2559,6 +2611,56 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle targeting hotkeys (F1-F8, Tab) - only in Player mode
+    if (rendererMode_ == RendererMode::Player) {
+        // F1 - Target Self
+        if (eventReceiver_->targetSelfRequested() && targetSelfCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F1 pressed - calling targetSelfCallback_");
+            targetSelfCallback_();
+        }
+        // F2-F6 - Target Group Members
+        if (eventReceiver_->targetGroupMember1Requested() && targetGroupMemberCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F2 pressed - calling targetGroupMemberCallback_(0)");
+            targetGroupMemberCallback_(0);
+        }
+        if (eventReceiver_->targetGroupMember2Requested() && targetGroupMemberCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F3 pressed - calling targetGroupMemberCallback_(1)");
+            targetGroupMemberCallback_(1);
+        }
+        if (eventReceiver_->targetGroupMember3Requested() && targetGroupMemberCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F4 pressed - calling targetGroupMemberCallback_(2)");
+            targetGroupMemberCallback_(2);
+        }
+        if (eventReceiver_->targetGroupMember4Requested() && targetGroupMemberCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F5 pressed - calling targetGroupMemberCallback_(3)");
+            targetGroupMemberCallback_(3);
+        }
+        if (eventReceiver_->targetGroupMember5Requested() && targetGroupMemberCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F6 pressed - calling targetGroupMemberCallback_(4)");
+            targetGroupMemberCallback_(4);
+        }
+        // F7 - Target Nearest PC
+        if (eventReceiver_->targetNearestPCRequested() && targetNearestPCCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F7 pressed - calling targetNearestPCCallback_");
+            targetNearestPCCallback_();
+        }
+        // F8 - Target Nearest NPC
+        if (eventReceiver_->targetNearestNPCRequested() && targetNearestNPCCallback_) {
+            LOG_DEBUG(MOD_INPUT, "F8 pressed - calling targetNearestNPCCallback_");
+            targetNearestNPCCallback_();
+        }
+        // Tab - Cycle Targets
+        if (eventReceiver_->cycleTargetsRequested() && cycleTargetsCallback_) {
+            LOG_DEBUG(MOD_INPUT, "Tab pressed - calling cycleTargetsCallback_(false)");
+            cycleTargetsCallback_(false);
+        }
+        // Shift+Tab - Cycle Targets Reverse
+        if (eventReceiver_->cycleTargetsReverseRequested() && cycleTargetsCallback_) {
+            LOG_DEBUG(MOD_INPUT, "Shift+Tab pressed - calling cycleTargetsCallback_(true)");
+            cycleTargetsCallback_(true);
+        }
+    }
+
     // Handle Repair mode controls (only when in Repair mode with a target)
     if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
         // Rotation: X/Y/Z keys (Shift for negative direction)
@@ -2833,8 +2935,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (rendererMode_ == RendererMode::Admin) {
         // Admin mode: Free camera when in Free mode
         if (cameraMode_ == CameraMode::Free && cameraController_) {
-            // Don't use mouse for camera if UI has capture
-            bool mouseEnabled = eventReceiver_->isLeftButtonDown() && !windowManagerCapture_;
+            // Mouse look enabled when any of these conditions are met and UI doesn't have capture:
+            // 1. Left mouse button held (current WillEQ behavior)
+            // 2. Right mouse button held (traditional 3D game control)
+            // 3. Ctrl+Left mouse button (single-button mouse workaround)
+            bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+            bool mouseEnabled = (eventReceiver_->isLeftButtonDown() ||
+                                 eventReceiver_->isRightButtonDown() ||
+                                 (ctrlHeld && eventReceiver_->isLeftButtonDown())) &&
+                                !windowManagerCapture_;
             int mouseDeltaX = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaX();
             int mouseDeltaY = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaY();
 
@@ -2894,6 +3003,20 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (eventReceiver_->petToggleRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
             windowManager_->togglePetWindow();
+        }
+    }
+
+    // Handle spellbook toggle (Ctrl+B) - only in Player mode, and only if chat is not focused
+    if (eventReceiver_->spellbookToggleRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            windowManager_->toggleSpellbook();
+        }
+    }
+
+    // Handle buff window toggle (Alt+B) - only in Player mode, and only if chat is not focused
+    if (eventReceiver_->buffWindowToggleRequested() && rendererMode_ == RendererMode::Player) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            windowManager_->toggleBuffWindow();
         }
     }
 
@@ -3566,8 +3689,17 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         heading += playerMovement_.turnSpeed * deltaTime * (512.0f / 360.0f);
     }
 
-    // Mouse look (only when left mouse button held and UI doesn't have capture)
-    if (eventReceiver_->isLeftButtonDown() && !windowManagerCapture_) {
+    // Mouse look - enabled when any of these conditions are met and UI doesn't have capture:
+    // 1. Left mouse button held (current WillEQ behavior)
+    // 2. Right mouse button held (traditional 3D game control)
+    // 3. Ctrl+Left mouse button (single-button mouse workaround - Ctrl+Click = Right Click on Mac)
+    bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+    bool mouseLookActive = (eventReceiver_->isLeftButtonDown() ||
+                            eventReceiver_->isRightButtonDown() ||
+                            (ctrlHeld && eventReceiver_->isLeftButtonDown())) &&
+                           !windowManagerCapture_;
+
+    if (mouseLookActive) {
         int mouseDeltaX = eventReceiver_->getMouseDeltaX();
         int mouseDeltaY = eventReceiver_->getMouseDeltaY();
         // Convert mouse delta X to heading change (sensitivity adjusted)

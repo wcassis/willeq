@@ -1,6 +1,7 @@
 #include "client/action/action_dispatcher.h"
 #include "client/state/game_state.h"
 #include <cmath>
+#include <limits>
 
 namespace eqt {
 namespace action {
@@ -231,6 +232,38 @@ ActionResult ActionDispatcher::targetNearest() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::targetNearestPC() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->targetNearestPC();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::targetNearestNPC() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->targetNearestNPC();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::cycleTargets() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->cycleTargets();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::cycleTargetsReverse() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->cycleTargetsReverse();
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::clearTarget() {
     auto result = checkHandler();
     if (!result.success) return result;
@@ -377,6 +410,70 @@ ActionResult ActionDispatcher::clickNearestDoor() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::interactNearestWorldObject() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    // TODO: Implement when ObjectState is added to GameState
+    // For now, world object interaction requires explicit drop ID
+    return ActionResult::Failure("Use clickWorldObject with drop ID");
+}
+
+ActionResult ActionDispatcher::interactNearest() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    auto& player = m_state.player();
+    float px = player.x();
+    float py = player.y();
+    float pz = player.z();
+
+    // Find the nearest interactable: door or NPC
+    float nearestDist = std::numeric_limits<float>::max();
+    enum class InteractType { None, Door, NPC } nearest = InteractType::None;
+
+    // Check doors
+    auto& doors = m_state.doors();
+    auto* door = doors.getNearestDoor(px, py, pz);
+    if (door) {
+        float dx = door->x - px;
+        float dy = door->y - py;
+        float dz = door->z - pz;
+        float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = InteractType::Door;
+        }
+    }
+
+    // Check NPCs (non-player entities that are not hostile)
+    auto& entities = m_state.entities();
+    auto* npc = entities.getNearestNPC(px, py, pz);
+    if (npc) {
+        float dx = npc->x - px;
+        float dy = npc->y - py;
+        float dz = npc->z - pz;
+        float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = InteractType::NPC;
+        }
+    }
+
+    // Interact with nearest
+    switch (nearest) {
+        case InteractType::Door:
+            m_handler->clickNearestDoor();
+            return ActionResult::Success("Interacting with door");
+        case InteractType::NPC:
+            m_handler->targetEntity(npc->spawnId);
+            m_handler->hailTarget();
+            return ActionResult::Success("Hailing " + npc->name);
+        default:
+            return ActionResult::Failure("Nothing to interact with nearby");
+    }
+}
+
 ActionResult ActionDispatcher::lootCorpse(uint16_t corpseId) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
@@ -440,6 +537,16 @@ ActionResult ActionDispatcher::replyToLastTell(const std::string& message) {
 
     m_handler->replyToLastTell(message);
     return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::openReplyToTell() {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    // TODO: Implement when ChatState is added to GameState
+    // The UI layer should track the last tell sender and handle this
+    // For now, return a special message that the UI can recognize
+    return ActionResult::Success("open_reply");
 }
 
 // ========== Group Actions ==========
