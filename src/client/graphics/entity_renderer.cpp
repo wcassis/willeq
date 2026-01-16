@@ -368,127 +368,129 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
         // Calculate model offset for collision calculations
         // Server Z is the geometric MODEL CENTER, not the feet/ground position
-        // modelYOffset is the distance from model center to feet (half the model height)
+        // modelYOffset is for rendering adjustment (set to 0 since server Z works directly)
+        // collisionZOffset is the distance from model center to feet for collision detection
         irr::core::aabbox3df bbox = animNode->getBoundingBox();
         float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-        // Use half the bounding box height as the center-to-feet distance
-        // This is more accurate than -MinEdge.Y when the model origin isn't at the geometric center
-        visual.modelYOffset = (bboxHeight / 2.0f) * scale;
+        // modelYOffset = 0 for rendering (server Z position works as-is)
+        visual.modelYOffset = 0;
+        // collisionZOffset = half model height for collision (server Z is center, feet are below)
+        visual.collisionZOffset = (bboxHeight / 2.0f) * scale;
 
         // Debug: log bounding box info for entity creation
-        LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox Y=[{:.2f},{:.2f}] height={:.2f} scale={:.3f} modelYOffset={:.2f} (half-height)",
-                 name, raceId, bbox.MinEdge.Y, bbox.MaxEdge.Y, bboxHeight, scale, visual.modelYOffset);
+        LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox Y=[{:.2f},{:.2f}] height={:.2f} scale={:.3f} collisionZOffset={:.2f}",
+			name, raceId, bbox.MinEdge.Y, bbox.MaxEdge.Y, bboxHeight, scale, visual.collisionZOffset);
 
-        // Set position (convert EQ Z-up to Irrlicht Y-up)
-        // Server Z is the model center, add modelYOffset to position model correctly
-        animNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
+	// Set position (convert EQ Z-up to Irrlicht Y-up)
+	// Server Z is the model center, add modelYOffset to position model correctly
+	animNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
-        // Set rotation (EQ heading to Irrlicht Y rotation)
-        // Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
-        // EQ heading: 0=North(+Y), increases clockwise
-        // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
-        // Must negate to convert between coordinate systems
-        float visualHeading = -heading;
-        animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
-        if (isPlayer) {
-            LOG_DEBUG(MOD_GRAPHICS, "[ROT-CREATE] createEntity PLAYER: spawnId={} heading={:.1f} visualHeading={:.1f} node={}",
-                      spawnId, heading, visualHeading, (void*)animNode);
-        }
+	// Set rotation (EQ heading to Irrlicht Y rotation)
+	// Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
+	// EQ heading: 0=North(+Y), increases clockwise
+	// Irrlicht Y rotation: 0=+Z, increases counter-clockwise
+	// Must negate to convert between coordinate systems
+	float visualHeading = -heading;
+	animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
+	if (isPlayer) {
+		LOG_DEBUG(MOD_GRAPHICS, "[ROT-CREATE] createEntity PLAYER: spawnId={} heading={:.1f} visualHeading={:.1f} node={}",
+				spawnId, heading, visualHeading, (void*)animNode);
+	}
 
-        // Scale is already set in createAnimatedNode, but apply adjustments
-        animNode->setScale(irr::core::vector3df(scale, scale, scale));
+	// Scale is already set in createAnimatedNode, but apply adjustments
+	animNode->setScale(irr::core::vector3df(scale, scale, scale));
 
-        // Set material properties
-        for (irr::u32 i = 0; i < animNode->getMaterialCount(); ++i) {
-            animNode->getMaterial(i).Lighting = false;
-            animNode->getMaterial(i).BackfaceCulling = false;
-        }
+	// Set material properties
+	for (irr::u32 i = 0; i < animNode->getMaterialCount(); ++i) {
+		animNode->getMaterial(i).Lighting = false;
+		animNode->getMaterial(i).BackfaceCulling = false;
+	}
 
-        // Apply global animation speed
-        animNode->setAnimationSpeed(10.0f * globalAnimationSpeed_);
+	// Apply global animation speed
+	animNode->setAnimationSpeed(10.0f * globalAnimationSpeed_);
 
-        // Highlight player entity
-        if (isPlayer) {
-            for (irr::u32 i = 0; i < animNode->getMaterialCount(); ++i) {
-                animNode->getMaterial(i).EmissiveColor = irr::video::SColor(255, 50, 50, 100);
-            }
-        }
+	// Highlight player entity
+	if (isPlayer) {
+		for (irr::u32 i = 0; i < animNode->getMaterialCount(); ++i) {
+			animNode->getMaterial(i).EmissiveColor = irr::video::SColor(255, 50, 50, 100);
+		}
+	}
 
-        // Create name tag (text node above entity)
-        if (nameTagsVisible_ && !name.empty()) {
-            std::wstring wname = EQT::toDisplayNameW(name);
-            // Position name just above the model's head (humanoid models are ~6 units tall)
-            // Use 5.5f to place text just above the head
-            float nameHeight = 5.5f * scale;
+	// Create name tag (text node above entity)
+	if (nameTagsVisible_ && !name.empty()) {
+		std::wstring wname = EQT::toDisplayNameW(name);
+		// Position name just above the model's head (humanoid models are ~6 units tall)
+		// Use 5.5f to place text just above the head
+		float nameHeight = 5.5f * scale;
 
-            visual.nameNode = smgr_->addTextSceneNode(
-                smgr_->getGUIEnvironment()->getBuiltInFont(),
-                wname.c_str(),
-                isPlayer ? irr::video::SColor(255, 100, 200, 255) : irr::video::SColor(255, 255, 255, 255),
-                animNode,
-                irr::core::vector3df(0, nameHeight, 0)
-            );
-        }
+		visual.nameNode = smgr_->addTextSceneNode(
+				smgr_->getGUIEnvironment()->getBuiltInFont(),
+				wname.c_str(),
+				isPlayer ? irr::video::SColor(255, 100, 200, 255) : irr::video::SColor(255, 255, 255, 255),
+				animNode,
+				irr::core::vector3df(0, nameHeight, 0)
+				);
+	}
 
-        entities_[spawnId] = visual;
+	entities_[spawnId] = visual;
 
-        // Attach equipment models to bone attachment points
-        attachEquipment(entities_[spawnId]);
+	// Attach equipment models to bone attachment points
+	attachEquipment(entities_[spawnId]);
 
-        // If this is a corpse, set the death animation and hold on last frame
-        if (isCorpse) {
-            // Try death animations: d05 is the actual death/dying animation
-            // d01/d02 are damage animations, not death
-            bool hasD05 = animNode->hasAnimation("d05");
-            bool hasD01 = animNode->hasAnimation("d01");
-            bool hasD02 = animNode->hasAnimation("d02");
+	// If this is a corpse, set the death animation and hold on last frame
+	if (isCorpse) {
+		// Try death animations: d05 is the actual death/dying animation
+		// d01/d02 are damage animations, not death
+		bool hasD05 = animNode->hasAnimation("d05");
+		bool hasD01 = animNode->hasAnimation("d01");
+		bool hasD02 = animNode->hasAnimation("d02");
 
-            std::string deathAnim;
-            if (hasD05) {
-                deathAnim = "d05";
-            } else if (hasD02) {
-                deathAnim = "d02";  // Fallback to heavy damage
-            } else if (hasD01) {
-                deathAnim = "d01";  // Fallback to minor damage
-            }
+		std::string deathAnim;
+		if (hasD05) {
+			deathAnim = "d05";
+		} else if (hasD02) {
+			deathAnim = "d02";  // Fallback to heavy damage
+		} else if (hasD01) {
+			deathAnim = "d01";  // Fallback to minor damage
+		}
 
-            if (!deathAnim.empty()) {
-                animNode->playAnimation(deathAnim, false, false);  // Don't loop, not playThrough
+		if (!deathAnim.empty()) {
+			animNode->playAnimation(deathAnim, false, false);  // Don't loop, not playThrough
 
-                // Jump to the last frame to show the "lying down" pose
-                SkeletalAnimator& animator = animNode->getAnimator();
-                animator.setToLastFrame();
+			// Jump to the last frame to show the "lying down" pose
+			SkeletalAnimator& animator = animNode->getAnimator();
+			animator.setToLastFrame();
 
-                // Force immediate mesh update so corpse appears lying down
-                animNode->forceAnimationUpdate();
+			// Force immediate mesh update so corpse appears lying down
+			animNode->forceAnimationUpdate();
 
-                // Mark corpse position as adjusted (no Z offset needed)
-                entities_[spawnId].corpsePositionAdjusted = true;
-                entities_[spawnId].corpseYOffset = 0.0f;
+			// Mark corpse position as adjusted (no Z offset needed)
+			entities_[spawnId].corpsePositionAdjusted = true;
+			entities_[spawnId].corpseYOffset = 0.0f;
 
-                entities_[spawnId].currentAnimation = deathAnim;
-            }
-        }
+			entities_[spawnId].currentAnimation = deathAnim;
+		}
+	}
 
-        // Log total entity creation time if slow
-        auto createEnd = std::chrono::steady_clock::now();
-        auto createMs = std::chrono::duration_cast<std::chrono::milliseconds>(createEnd - createStart).count();
-        if (createMs > 50) {
-            LOG_WARN(MOD_GRAPHICS, "PERF: createEntity (animated) for {} race {} took {} ms", name, raceId, createMs);
-            EQT::PerformanceMetrics::instance().recordSample("Slow Entity Create", createMs);
-        }
-        return true;
+	// Log total entity creation time if slow
+	auto createEnd = std::chrono::steady_clock::now();
+	auto createMs = std::chrono::duration_cast<std::chrono::milliseconds>(createEnd - createStart).count();
+	if (createMs > 50) {
+		LOG_WARN(MOD_GRAPHICS, "PERF: createEntity (animated) for {} race {} took {} ms", name, raceId, createMs);
+		EQT::PerformanceMetrics::instance().recordSample("Slow Entity Create", createMs);
+	}
+	return true;
     }
 
     // Fall back to static mesh
     irr::scene::IMesh* mesh = getMeshForRace(raceId, gender, appearance);
     if (!mesh) {
-        return false;
+	    return false;
     }
 
     // Check if this is a placeholder mesh
     bool usesPlaceholder = (placeholderMeshCache_.find(raceId) != placeholderMeshCache_.end() &&
-                            placeholderMeshCache_[raceId] == mesh);
+		    placeholderMeshCache_[raceId] == mesh);
 
     visual.usesPlaceholder = usesPlaceholder;
     visual.isAnimated = false;
@@ -496,7 +498,7 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     // Create mesh node
     visual.meshNode = smgr_->addMeshSceneNode(mesh);
     if (!visual.meshNode) {
-        return false;
+	    return false;
     }
     visual.sceneNode = visual.meshNode;
 
@@ -504,8 +506,10 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     // Server Z is the geometric MODEL CENTER, not the feet/ground position
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
     float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-    // Use half the bounding box height as the center-to-feet distance
-    visual.modelYOffset = (bboxHeight / 2.0f) * scale;
+    // modelYOffset = 0 for rendering (server Z position works as-is)
+    visual.modelYOffset = 0;
+    // collisionZOffset = half model height for collision (server Z is center, feet are below)
+    visual.collisionZOffset = (bboxHeight / 2.0f) * scale;
 
     // Set position (convert EQ Z-up to Irrlicht Y-up)
     // Server Z is model center, add modelYOffset for correct positioning
@@ -1815,6 +1819,16 @@ float EntityRenderer::getPlayerModelYOffset() const {
     return 0.0f;
 }
 
+float EntityRenderer::getPlayerCollisionZOffset() const {
+    // Find the player entity
+    for (const auto& [id, visual] : entities_) {
+        if (visual.isPlayer) {
+            return visual.collisionZOffset;
+        }
+    }
+    return 0.0f;
+}
+
 float EntityRenderer::getPlayerEyeHeightFromFeet() const {
     // Find the player entity
     for (const auto& [id, visual] : entities_) {
@@ -2587,12 +2601,14 @@ void EntityRenderer::cycleHeadVariant(int direction) {
             float scale = raceModelLoader_ ? raceModelLoader_->getRaceScale(visual.raceId) : 1.0f;
             irr::core::aabbox3df bbox = animNode->getBoundingBox();
             float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-            // Use half the bounding box height as the center-to-feet distance
-            visual.modelYOffset = (bboxHeight / 2.0f) * scale;
+            // modelYOffset = 0 for rendering (server Z position works as-is)
+            visual.modelYOffset = 0;
+            // collisionZOffset = half model height for collision (server Z is center, feet are below)
+            visual.collisionZOffset = (bboxHeight / 2.0f) * scale;
 
             // Restore position with center offset
             float irrlichtX = visual.lastX;
-            float irrlichtY = visual.lastZ + visual.modelYOffset;  // EQ Z -> Irrlicht Y with center offset
+            float irrlichtY = visual.lastZ + visual.modelYOffset;  // EQ Z -> Irrlicht Y
             float irrlichtZ = visual.lastY;  // EQ Y -> Irrlicht Z
             animNode->setPosition(irr::core::vector3df(irrlichtX, irrlichtY, irrlichtZ));
 

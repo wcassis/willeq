@@ -3778,12 +3778,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         bool useHCMap = collisionMap_ != nullptr;
         bool hasCollision = playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
 
-        // Get the player's model Y offset for ground snapping
+        // Get the player's collision Z offset for ground snapping
         // Server Z represents the CENTER of the model, so when snapping to ground,
-        // we need to offset by -modelYOffset to place feet at ground level
+        // we need to offset by -collisionZOffset to place feet at ground level
         float modelYOffset = 0.0f;
         if (entityRenderer_) {
-            modelYOffset = entityRenderer_->getPlayerModelYOffset();
+            modelYOffset = entityRenderer_->getPlayerCollisionZOffset();
         }
 
         if (hasCollision && useIrrlicht) {

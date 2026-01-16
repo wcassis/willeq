@@ -70,6 +70,7 @@ struct EntityVisual {
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
+    float collisionZOffset = 0;    // Offset from server Z (model center) to feet for collision detection
 
     // Pose state (sitting, standing, etc.) - set via SpawnAppearance, not movement updates
     // This prevents movement updates from overriding sitting/crouching poses
@@ -269,6 +270,11 @@ public:
     // Server Z represents the CENTER of the model, so feet are at serverZ + modelYOffset
     // Returns 0.0f if player entity not found
     float getPlayerModelYOffset() const;
+
+    // Get the player's collision Z offset (distance from server Z to feet for collision)
+    // Server Z is model center, feet are at serverZ - collisionZOffset
+    // Returns 0.0f if player entity not found
+    float getPlayerCollisionZOffset() const;
 
     // Get the player's eye height from feet (for first-person camera positioning)
     // Returns the height from ground level to approximate eye position
