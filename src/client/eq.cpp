@@ -13102,6 +13102,60 @@ void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 
 	m_zone_connection->QueuePacket(p, 0, true);
 	LOG_DEBUG(MOD_MAIN, "Sent pet command: {} (target={})", EQT::GetPetCommandName(command), target_id);
+
+	// Optimistically update button states based on command sent
+	// Follow, Guard, Sit are mutually exclusive position commands
+	switch (command) {
+	case EQT::PET_FOLLOWME:
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = false;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = false;
+		break;
+	case EQT::PET_GUARDHERE:
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = false;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = true;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = false;
+		break;
+	case EQT::PET_SITDOWN:  // PET_SIT is an alias for this
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = false;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = false;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = true;
+		break;
+	case EQT::PET_STANDUP:
+		// Standing up returns to follow mode
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = false;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = false;
+		break;
+	// Independent toggles
+	case EQT::PET_HOLD:
+		m_pet_button_states[EQT::PET_BUTTON_HOLD] = !m_pet_button_states[EQT::PET_BUTTON_HOLD];
+		break;
+	case EQT::PET_HOLD_ON:
+		m_pet_button_states[EQT::PET_BUTTON_HOLD] = true;
+		break;
+	case EQT::PET_HOLD_OFF:
+		m_pet_button_states[EQT::PET_BUTTON_HOLD] = false;
+		break;
+	case EQT::PET_TAUNT:
+		m_pet_button_states[EQT::PET_BUTTON_TAUNT] = !m_pet_button_states[EQT::PET_BUTTON_TAUNT];
+		break;
+	case EQT::PET_TAUNT_ON:
+		m_pet_button_states[EQT::PET_BUTTON_TAUNT] = true;
+		break;
+	case EQT::PET_TAUNT_OFF:
+		m_pet_button_states[EQT::PET_BUTTON_TAUNT] = false;
+		break;
+	case EQT::PET_FOCUS:
+		m_pet_button_states[EQT::PET_BUTTON_FOCUS] = !m_pet_button_states[EQT::PET_BUTTON_FOCUS];
+		break;
+	case EQT::PET_SPELLHOLD:
+		m_pet_button_states[EQT::PET_BUTTON_SPELLHOLD] = !m_pet_button_states[EQT::PET_BUTTON_SPELLHOLD];
+		break;
+	default:
+		// Attack, Back Off, Get Lost, etc. don't have toggle states
+		break;
+	}
 }
 
 void EverQuest::DismissPet()

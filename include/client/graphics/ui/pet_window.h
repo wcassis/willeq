@@ -85,7 +85,6 @@ private:
     irr::video::SColor getHpLow() const { return UISettings::instance().group().hpLow; }
     irr::video::SColor getManaBackground() const { return UISettings::instance().group().manaBackground; }
     irr::video::SColor getManaFill() const { return UISettings::instance().group().manaFill; }
-    irr::video::SColor getToggleOnColor() const { return irr::video::SColor(255, 80, 120, 80); }  // Green tint for pressed
 
     // Layout bounds (relative to content area)
     irr::core::recti nameBounds_;

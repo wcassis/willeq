@@ -308,23 +308,21 @@ void PetWindow::drawCommandButton(irr::video::IVideoDriver* driver,
         contentY + button.bounds.LowerRightCorner.Y
     );
 
-    // Use base class drawButton for consistent styling
-    // But override for pressed toggle buttons
-    if (pressed) {
-        // Draw pressed toggle button with green tint
-        driver->draw2DRectangle(getToggleOnColor(), boundsAbs);
-        driver->draw2DRectangleOutline(boundsAbs, irr::video::SColor(255, 100, 160, 100));
+    // Draw the button normally (always clickable)
+    drawButton(driver, gui, boundsAbs, button.label, button.hovered, !enabled);
 
-        if (gui) {
-            irr::gui::IGUIFont* font = gui->getBuiltInFont();
-            if (font) {
-                font->draw(button.label.c_str(), boundsAbs, irr::video::SColor(255, 255, 255, 255),
-                          true, true);  // Center text
-            }
-        }
-    } else {
-        // Use standard button drawing
-        drawButton(driver, gui, boundsAbs, button.label, button.hovered, !enabled);
+    // Draw green border around active/pressed buttons
+    if (pressed) {
+        irr::video::SColor greenBorder(255, 50, 200, 50);  // Bright green border
+        // Draw 2-pixel thick border by drawing outline twice
+        driver->draw2DRectangleOutline(boundsAbs, greenBorder);
+        irr::core::recti innerBounds(
+            boundsAbs.UpperLeftCorner.X + 1,
+            boundsAbs.UpperLeftCorner.Y + 1,
+            boundsAbs.LowerRightCorner.X - 1,
+            boundsAbs.LowerRightCorner.Y - 1
+        );
+        driver->draw2DRectangleOutline(innerBounds, greenBorder);
     }
 }
 
