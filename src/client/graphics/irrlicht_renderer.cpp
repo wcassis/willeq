@@ -2064,8 +2064,27 @@ void IrrlichtRenderer::updatePvsVisibility() {
     float camY = playerY_;
     float camZ = playerZ_;
 
-    // Find which BSP region the camera is in
-    auto region = zoneBspTree_->findRegionForPoint(camX, camY, camZ);
+    // Cache BSP lookup - only recompute if position changed significantly (>5 units)
+    static float lastBspX = -99999.0f, lastBspY = -99999.0f, lastBspZ = -99999.0f;
+    static std::shared_ptr<EQT::Graphics::BspRegion> cachedRegion;
+
+    float dx = camX - lastBspX;
+    float dy = camY - lastBspY;
+    float dz = camZ - lastBspZ;
+    float distSq = dx*dx + dy*dy + dz*dz;
+
+    std::shared_ptr<EQT::Graphics::BspRegion> region;
+    if (distSq > 25.0f) {  // 5 units squared
+        // Position changed enough, do BSP lookup
+        region = zoneBspTree_->findRegionForPoint(camX, camY, camZ);
+        cachedRegion = region;
+        lastBspX = camX;
+        lastBspY = camY;
+        lastBspZ = camZ;
+    } else {
+        // Use cached result
+        region = cachedRegion;
+    }
 
     // Find region index
     size_t newRegionIdx = SIZE_MAX;
@@ -2085,14 +2104,36 @@ void IrrlichtRenderer::updatePvsVisibility() {
 
     currentPvsRegion_ = newRegionIdx;
 
-    // If camera is outside all regions, show everything
+    // If camera is outside all regions, apply distance culling only (no PVS)
     if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
+        float renderDistSq = zoneRenderDistance_ * zoneRenderDistance_;
+        size_t visibleCount = 0, distanceCulledCount = 0;
+
         for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (node) {
-                node->setVisible(true);
+            if (!node) continue;
+
+            // Still apply distance culling even without PVS data
+            bool inRenderDistance = true;
+            if (currentZone_ && currentZone_->wldLoader) {
+                auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
+                if (geom) {
+                    float dx = geom->centerX - camX;
+                    float dy = geom->centerY - camY;
+                    float dz = geom->centerZ - camZ;
+                    float distSq = dx*dx + dy*dy + dz*dz;
+                    inRenderDistance = (distSq <= renderDistSq);
+                }
+            }
+
+            node->setVisible(inRenderDistance);
+            if (inRenderDistance) {
+                visibleCount++;
+            } else {
+                distanceCulledCount++;
             }
         }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS: showing all regions (outside BSP or no PVS data)");
+        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} distance culled (dist={:.0f})",
+            visibleCount, distanceCulledCount, zoneRenderDistance_);
         return;
     }
 
@@ -2108,31 +2149,53 @@ void IrrlichtRenderer::updatePvsVisibility() {
     LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
         newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
 
-    // Update visibility based on PVS data
+    // Update visibility based on PVS data AND distance
     size_t visibleCount = 0;
     size_t hiddenCount = 0;
     size_t outOfRangeCount = 0;
+    size_t distanceCulledCount = 0;
+
+    // Pre-compute squared render distance for performance
+    float renderDistSq = zoneRenderDistance_ * zoneRenderDistance_;
 
     for (auto& [regionIdx, node] : regionMeshNodes_) {
         if (!node) continue;
 
-        // Check if this region is visible from current region
-        bool isVisible = false;
+        // Check if this region is visible from current region (PVS)
+        bool pvsVisible = false;
         if (regionIdx == newRegionIdx) {
             // Always visible to self
-            isVisible = true;
+            pvsVisible = true;
         } else if (regionIdx < region->visibleRegions.size()) {
-            isVisible = region->visibleRegions[regionIdx];
+            pvsVisible = region->visibleRegions[regionIdx];
         } else {
             // Region index outside PVS array - count for debugging
             outOfRangeCount++;
         }
 
+        // Check distance to region center
+        bool inRenderDistance = true;  // Default to visible if we can't get center
+        if (currentZone_ && currentZone_->wldLoader) {
+            auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
+            if (geom) {
+                float dx = geom->centerX - camX;
+                float dy = geom->centerY - camY;
+                float dz = geom->centerZ - camZ;
+                float distSq = dx*dx + dy*dy + dz*dz;
+                inRenderDistance = (distSq <= renderDistSq);
+            }
+        }
+
+        // Combine PVS visibility with distance check
+        bool isVisible = pvsVisible && inRenderDistance;
         node->setVisible(isVisible);
 
         if (isVisible) {
             visibleCount++;
         } else {
+            if (pvsVisible && !inRenderDistance) {
+                distanceCulledCount++;
+            }
             hiddenCount++;
         }
     }
@@ -2175,8 +2238,8 @@ void IrrlichtRenderer::updatePvsVisibility() {
         }
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden, {} outOfRange",
-        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenCount, outOfRangeCount);
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden ({} distance culled), {} outOfRange",
+        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenCount, distanceCulledCount, outOfRangeCount);
 
     // Log the first few visible and hidden region indices to spot patterns
     static size_t logCount = 0;

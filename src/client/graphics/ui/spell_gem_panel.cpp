@@ -438,6 +438,9 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         return false;
     }
 
+    LOG_DEBUG(MOD_UI, "SpellGemPanel: Click on gem {} (left={} shift={} ctrl={})",
+        gemIndex + 1, leftButton, shift, ctrl);
+
     if (leftButton) {
         // Check if there's a spell on cursor - memorize it to this gem
         if (getSpellCursorCallback_) {
@@ -481,11 +484,19 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         // Check if gem is clickable (not on cooldown or empty)
         if (spellMgr_) {
             EQ::GemState state = spellMgr_->getGemState(static_cast<uint8_t>(gemIndex));
+            LOG_DEBUG(MOD_UI, "SpellGemPanel: gem {} state={} spellMgr_={:p}",
+                gemIndex + 1, static_cast<int>(state), static_cast<void*>(spellMgr_));
             if (state == EQ::GemState::Refresh || state == EQ::GemState::Empty ||
                 state == EQ::GemState::MemorizeProgress) {
                 // Gem is on cooldown, empty, or memorizing - don't cast
+                LOG_DEBUG(MOD_UI, "SpellGem {} click blocked: state={}", gemIndex + 1,
+                    state == EQ::GemState::Refresh ? "Refresh" :
+                    state == EQ::GemState::Empty ? "Empty" : "MemorizeProgress");
                 return true;  // Still consume the click
             }
+            LOG_DEBUG(MOD_UI, "SpellGem {} clicked: proceeding to castGem", gemIndex + 1);
+        } else {
+            LOG_WARN(MOD_UI, "SpellGemPanel: spellMgr_ is null, calling castGem anyway");
         }
         // Left-click to cast
         castGem(static_cast<uint8_t>(gemIndex));

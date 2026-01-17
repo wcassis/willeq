@@ -1472,9 +1472,28 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
     float eqCameraY = cameraPos.Z;  // EQ Y = Irrlicht Z
     float eqCameraZ = cameraPos.Y;  // EQ Z = Irrlicht Y
 
-    // Update camera's BSP region for PVS culling
+    // Update camera's BSP region for PVS culling (with caching)
     if (bspTree_ && !bspTree_->regions.empty()) {
-        auto region = bspTree_->findRegionForPoint(eqCameraX, eqCameraY, eqCameraZ);
+        // Cache BSP lookup - only recompute if position changed significantly (>5 units)
+        static float lastBspCamX = -99999.0f, lastBspCamY = -99999.0f, lastBspCamZ = -99999.0f;
+        static std::shared_ptr<BspRegion> cachedCamRegion;
+
+        float dx = eqCameraX - lastBspCamX;
+        float dy = eqCameraY - lastBspCamY;
+        float dz = eqCameraZ - lastBspCamZ;
+        float distSq = dx*dx + dy*dy + dz*dz;
+
+        std::shared_ptr<BspRegion> region;
+        if (distSq > 25.0f) {  // 5 units squared
+            region = bspTree_->findRegionForPoint(eqCameraX, eqCameraY, eqCameraZ);
+            cachedCamRegion = region;
+            lastBspCamX = eqCameraX;
+            lastBspCamY = eqCameraY;
+            lastBspCamZ = eqCameraZ;
+        } else {
+            region = cachedCamRegion;
+        }
+
         if (region) {
             // Find the region's index
             size_t regionIdx = SIZE_MAX;

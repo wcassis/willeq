@@ -83,6 +83,31 @@ void SpellManager::update(float delta_time)
             }
         }
     }
+
+    // Check if cast has been ongoing too long without completing
+    // Some spells (like pet summons) may not send an Action packet
+    if (m_is_casting && !m_waiting_for_server_confirm) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_cast_start_time).count();
+
+        // Allow cast duration + 5 second buffer for server response
+        uint32_t timeout = m_cast_duration_ms + 5000;
+        if (elapsed > timeout) {
+            LOG_WARN(MOD_SPELL, "Cast of spell {} timed out after {}ms (expected {}ms)",
+                m_current_spell_id, elapsed, m_cast_duration_ms);
+
+            // Complete the cast (assume success for spells like pet summons)
+            completeCast(true);
+
+#ifdef EQT_HAS_GRAPHICS
+            auto* renderer = m_eq->GetRenderer();
+            if (renderer && renderer->getWindowManager()) {
+                renderer->getWindowManager()->completeCast();
+            }
+#endif
+        }
+    }
 }
 
 void SpellManager::updateGemCooldowns(float delta_time)
@@ -148,16 +173,22 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
 
     // Check gem state
     GemState state = m_gem_states[gem_slot];
+    LOG_DEBUG(MOD_SPELL, "beginCastFromGem: gem={} state={} (0=Empty,1=Ready,2=Casting,3=Refresh,4=Memorize)",
+        gem_slot + 1, static_cast<int>(state));
     if (state == GemState::Casting) {
+        LOG_DEBUG(MOD_SPELL, "beginCastFromGem: returning AlreadyCasting");
         return CastResult::AlreadyCasting;
     }
     if (state == GemState::Refresh) {
+        LOG_DEBUG(MOD_SPELL, "beginCastFromGem: returning GemCooldown");
         return CastResult::GemCooldown;
     }
     if (state == GemState::MemorizeProgress) {
+        LOG_DEBUG(MOD_SPELL, "beginCastFromGem: returning SpellNotReady");
         return CastResult::SpellNotReady;
     }
     if (state == GemState::Empty) {
+        LOG_DEBUG(MOD_SPELL, "beginCastFromGem: returning NotMemorized");
         return CastResult::NotMemorized;
     }
 
@@ -170,10 +201,14 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
     // Use current target if none specified
     if (target_id == 0) {
         target_id = m_eq->GetCombatManager()->GetTargetId();
+        LOG_DEBUG(MOD_SPELL, "beginCastFromGem: no target specified, got target_id={} from CombatManager",
+            target_id);
     }
 
     // Validate the cast
     CastResult result = validateCast(*spell, target_id);
+    LOG_DEBUG(MOD_SPELL, "beginCastFromGem: validateCast returned {} for target_id={}",
+        static_cast<int>(result), target_id);
     if (result != CastResult::Success) {
         return result;
     }
@@ -306,6 +341,9 @@ uint32_t SpellManager::getCastTimeRemaining() const
 
 CastResult SpellManager::validateCast(const SpellData& spell, uint16_t target_id)
 {
+    LOG_DEBUG(MOD_SPELL, "validateCast: spell='{}' target_type={} target_id={}",
+        spell.name, static_cast<int>(spell.target_type), target_id);
+
     // Check if already casting
     if (m_is_casting) {
         return CastResult::AlreadyCasting;
@@ -359,7 +397,11 @@ bool SpellManager::checkMana(const SpellData& spell) const
 
 bool SpellManager::checkRange(const SpellData& spell, uint16_t target_id) const
 {
+    LOG_DEBUG(MOD_SPELL, "checkRange: spell='{}' range={} target_id={}",
+        spell.name, spell.range, target_id);
+
     if (spell.range <= 0) {
+        LOG_DEBUG(MOD_SPELL, "checkRange: no range limit, returning true");
         return true;  // No range limit
     }
 
@@ -368,11 +410,18 @@ bool SpellManager::checkRange(const SpellData& spell, uint16_t target_id) const
     const auto& entities = m_eq->GetEntities();
     auto it = entities.find(target_id);
     if (it == entities.end()) {
+        LOG_DEBUG(MOD_SPELL, "checkRange: target {} not found in {} entities",
+            target_id, entities.size());
         return false;  // Target doesn't exist
     }
 
     glm::vec3 target_pos(it->second.x, it->second.y, it->second.z);
     float distance = glm::distance(player_pos, target_pos);
+
+    LOG_DEBUG(MOD_SPELL, "checkRange: player=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) distance={:.1f} range={}",
+        player_pos.x, player_pos.y, player_pos.z,
+        target_pos.x, target_pos.y, target_pos.z,
+        distance, spell.range);
 
     return distance <= spell.range;
 }

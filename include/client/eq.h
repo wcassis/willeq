@@ -632,6 +632,7 @@ public:
 	void SendChatMessage(const std::string &message, const std::string &channel_name, const std::string &target = "");
 	void ProcessChatInput(const std::string &input);  // Process chat window input (commands or messages)
 	void AddChatSystemMessage(const std::string &text);  // Add system message to chat window
+	void AddChatCombatMessage(const std::string &text, bool is_self = false);  // Add combat message (is_self for player damage)
 
 	// Public movement interface
 	void Move(float x, float y, float z);

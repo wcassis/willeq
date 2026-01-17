@@ -6630,6 +6630,14 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 #endif
 		}
 
+		// Check if our combat target despawned - disable auto-attack
+		if (m_combat_manager && m_combat_manager->HasTarget() &&
+			m_combat_manager->GetTargetId() == spawn_id) {
+			LOG_DEBUG(MOD_COMBAT, "Combat target {} ({}) despawned, disabling auto-attack", spawn_id, it->second.name);
+			m_combat_manager->DisableAutoAttack();
+			m_combat_manager->ClearTarget();
+		}
+
 #ifdef EQT_HAS_GRAPHICS
 		OnSpawnRemovedGraphics(spawn_id);
 #endif
@@ -6962,6 +6970,34 @@ void EverQuest::AddChatSystemMessage(const std::string &text)
 #endif
 	// Also print to console
 	LOG_INFO(MOD_MAIN, "{}", text);
+}
+
+void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		auto* windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto* chatWindow = windowManager->getChatWindow();
+			if (chatWindow) {
+				eqt::ui::ChatChannel channel = is_self ?
+					eqt::ui::ChatChannel::CombatSelf :
+					eqt::ui::ChatChannel::Combat;
+				chatWindow->addSystemMessage(text, channel);
+			} else {
+				LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: chatWindow is null");
+			}
+		} else {
+			LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: windowManager is null");
+		}
+	} else {
+		LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: m_renderer is null");
+	}
+#else
+	LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: EQT_HAS_GRAPHICS not defined");
+#endif
+	// Also print to console
+	LOG_DEBUG(MOD_COMBAT, "{}", text);
 }
 
 // ============================================================================
@@ -8414,23 +8450,29 @@ void EverQuest::RegisterCommands()
 	renderdist.name = "renderdist";
 	renderdist.aliases = {"clipplane", "viewdist"};
 	renderdist.usage = "/renderdist [distance]";
-	renderdist.description = "Get or set entity render distance";
+	renderdist.description = "Get or set render distance for entities and zone geometry";
 	renderdist.category = "Utility";
 	renderdist.handler = [this](const std::string& args) {
 		if (!m_renderer) return;
 		auto* entityRenderer = m_renderer->getEntityRenderer();
-		if (!entityRenderer) return;
 
 		if (args.empty()) {
-			float dist = entityRenderer->getRenderDistance();
-			AddChatSystemMessage(fmt::format("Render distance: {:.0f} units", dist));
+			float entityDist = entityRenderer ? entityRenderer->getRenderDistance() : 0.0f;
+			float zoneDist = m_renderer->getZoneRenderDistance();
+			AddChatSystemMessage(fmt::format("Render distance: entities={:.0f}, zone={:.0f} units", entityDist, zoneDist));
 		} else {
 			try {
 				float dist = std::stof(args);
 				if (dist < 50.0f) dist = 50.0f;
 				if (dist > 10000.0f) dist = 10000.0f;
-				entityRenderer->setRenderDistance(dist);
-				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units", dist));
+
+				// Set both entity and zone render distance
+				if (entityRenderer) {
+					entityRenderer->setRenderDistance(dist);
+				}
+				m_renderer->setZoneRenderDistance(dist);
+
+				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units (entities + zone)", dist));
 			} catch (...) {
 				AddChatSystemMessage("Usage: /renderdist [50-10000]");
 			}
@@ -9569,8 +9611,8 @@ void EverQuest::UpdateCombatMovement()
 
 glm::vec3 EverQuest::GetPosition() const
 {
-	// Read from GameState (single source of truth)
-	return m_game_state.player().position();
+	// Return actual position (m_x, m_y, m_z are kept up to date)
+	return glm::vec3(m_x, m_y, m_z);
 }
 
 float EverQuest::GetHeading() const
@@ -11493,7 +11535,24 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 				victim_name, victim_id, killer_name, killer_id, damage);
 		}
 	}
-	
+
+	// Add combat chat messages for deaths
+	std::string victim_display = EQT::toDisplayName(victim_name);
+	std::string killer_display = EQT::toDisplayName(killer_name);
+	if (killer_id == m_my_spawn_id) {
+		// Player killed something
+		AddChatCombatMessage(fmt::format("You hit {} for {} points of damage.", victim_display, damage), true);
+		AddChatCombatMessage(fmt::format("You have slain {}!", victim_display), true);
+	} else if (victim_id == m_my_spawn_id) {
+		// Player was killed
+		AddChatCombatMessage(fmt::format("{} hit you for {} points of damage.", killer_display, damage), true);
+		AddChatCombatMessage(fmt::format("You have been slain by {}!", killer_display), true);
+	} else if (!victim_display.empty() && !killer_display.empty()) {
+		// Observing a kill
+		AddChatCombatMessage(fmt::format("{} hits {} for {} points of damage.", killer_display, victim_display, damage), false);
+		AddChatCombatMessage(fmt::format("{} has been slain by {}!", victim_display, killer_display), false);
+	}
+
 	// Track the last entity we killed for SimpleMessage substitution
 	// Store the display name now before it gets modified to include "'s corpse"
 	if (killer_id == m_my_spawn_id) {
@@ -15665,8 +15724,11 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 {
+	LOG_INFO(MOD_COMBAT, "ZoneProcessDamage called, packet length={}", p.Length());
+
 	// Damage notification
 	if (p.Length() < 25) { // 2 opcode + 23 CombatDamage_Struct
+		LOG_INFO(MOD_COMBAT, "Damage packet too short: {} < 25", p.Length());
 		return;
 	}
 	
@@ -15709,17 +15771,69 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		LOG_TRACE(MOD_COMBAT, "Damage bytes at offset 7: {:02x} {:02x} {:02x} {:02x}", data[7], data[8], data[9], data[10]);
 	}
 
-	if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
-		// Get entity names if available
-		std::string target_name = std::to_string(target_id);
-		std::string source_name = std::to_string(source_id);
-		auto target_it = m_entities.find(target_id);
-		auto source_it = m_entities.find(source_id);
-		if (target_it != m_entities.end()) target_name = target_it->second.name;
-		if (source_it != m_entities.end()) source_name = source_it->second.name;
+	// Get entity names for combat messages
+	std::string target_name;
+	std::string source_name;
+	auto target_it = m_entities.find(target_id);
+	auto source_it = m_entities.find(source_id);
+	if (target_it != m_entities.end()) {
+		target_name = EQT::toDisplayName(target_it->second.name);
+	}
+	if (source_it != m_entities.end()) {
+		source_name = EQT::toDisplayName(source_it->second.name);
+	}
 
+	if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 		LOG_DEBUG(MOD_COMBAT, "{} -> {} for {} damage (type {})",
-			source_name, target_name, damage_amount, damage_type);
+			source_name.empty() ? std::to_string(source_id) : source_name,
+			target_name.empty() ? std::to_string(target_id) : target_name,
+			damage_amount, damage_type);
+	}
+
+	// Add combat chat messages
+	if (damage_amount > 0 && !target_name.empty()) {
+		bool player_is_target = (target_id == m_my_spawn_id);
+		bool player_is_source = (source_id == m_my_spawn_id);
+
+		std::string msg;
+		if (player_is_source) {
+			// Player dealt damage
+			if (spell_id > 0 && spell_id != 0xFFFF) {
+				msg = fmt::format("You hit {} for {} points of non-melee damage.", target_name, damage_amount);
+			} else {
+				msg = fmt::format("You hit {} for {} points of damage.", target_name, damage_amount);
+			}
+			AddChatCombatMessage(msg, true);
+		} else if (player_is_target) {
+			// Player took damage
+			if (spell_id > 0 && spell_id != 0xFFFF) {
+				msg = fmt::format("{} hit you for {} points of non-melee damage.", source_name.empty() ? "Unknown" : source_name, damage_amount);
+			} else {
+				msg = fmt::format("{} hits YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, damage_amount);
+			}
+			AddChatCombatMessage(msg, true);
+		} else if (!source_name.empty()) {
+			// Observing combat between others
+			if (spell_id > 0 && spell_id != 0xFFFF) {
+				msg = fmt::format("{} hit {} for {} points of non-melee damage.", source_name, target_name, damage_amount);
+			} else {
+				msg = fmt::format("{} hits {} for {} points of damage.", source_name, target_name, damage_amount);
+			}
+			AddChatCombatMessage(msg, false);
+		}
+	} else if (damage_amount == 0 && !target_name.empty()) {
+		// Miss
+		bool player_is_source = (source_id == m_my_spawn_id);
+		bool player_is_target = (target_id == m_my_spawn_id);
+
+		std::string msg;
+		if (player_is_source) {
+			msg = fmt::format("You try to hit {} but miss!", target_name);
+			AddChatCombatMessage(msg, true);
+		} else if (player_is_target && !source_name.empty()) {
+			msg = fmt::format("{} tries to hit YOU but misses!", source_name);
+			AddChatCombatMessage(msg, true);
+		}
 	}
 
 #ifdef EQT_HAS_GRAPHICS
@@ -16749,9 +16863,15 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 		// Set up gem cast callback
 		windowManager->setGemCastCallback([this](uint8_t gemSlot) {
-			if (!m_spell_manager) return;
+			LOG_DEBUG(MOD_SPELL, "Gem cast callback invoked for gem {} m_spell_manager={:p}",
+				gemSlot + 1, static_cast<void*>(m_spell_manager.get()));
+			if (!m_spell_manager) {
+				LOG_WARN(MOD_SPELL, "Gem cast callback: spell manager is null");
+				return;
+			}
 			uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
 			EQ::CastResult result = m_spell_manager->beginCastFromGem(gemSlot, targetId);
+			LOG_DEBUG(MOD_SPELL, "beginCastFromGem result: {} targetId={}", static_cast<int>(result), targetId);
 			if (result == EQ::CastResult::Success) {
 				uint32_t spellId = m_spell_manager->getMemorizedSpell(gemSlot);
 				const EQ::SpellData* spell = m_spell_manager->getSpell(spellId);
@@ -16766,6 +16886,14 @@ bool EverQuest::InitGraphics(int width, int height) {
 				AddChatSystemMessage("Spell not ready");
 			} else if (result == EQ::CastResult::AlreadyCasting) {
 				AddChatSystemMessage("Already casting");
+			} else if (result == EQ::CastResult::OutOfRange) {
+				AddChatSystemMessage("Target out of range");
+			} else if (result == EQ::CastResult::InvalidTarget) {
+				AddChatSystemMessage("Invalid target");
+			} else if (result == EQ::CastResult::NoLineOfSight) {
+				AddChatSystemMessage("You cannot see your target");
+			} else if (result == EQ::CastResult::Stunned) {
+				AddChatSystemMessage("You are stunned");
 			}
 		});
 

@@ -380,6 +380,56 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
     LOG_DEBUG(MOD_UI, "[UISettings] Applied config overrides");
 }
 
+void UISettings::applyChatSettingsOverride(const Json::Value& chatSettingsJson) {
+    // Apply chat-specific settings from main config (e.g., willeq.json)
+    // This allows the main config to override system defaults from chat_settings.json
+
+    if (chatSettingsJson.isMember("tabs")) {
+        const Json::Value& tabsJson = chatSettingsJson["tabs"];
+        for (const auto& tabName : tabsJson.getMemberNames()) {
+            const Json::Value& tabJson = tabsJson[tabName];
+            ChatTabSettings tabSettings;
+
+            if (tabJson.isMember("enabled")) {
+                tabSettings.enabled = tabJson["enabled"].asBool();
+            }
+
+            if (tabJson.isMember("channels")) {
+                tabSettings.channels.clear();
+                const Json::Value& channels = tabJson["channels"];
+                for (Json::ArrayIndex i = 0; i < channels.size(); i++) {
+                    tabSettings.channels.insert(channels[i].asInt());
+                }
+            }
+
+            if (tabJson.isMember("echoToMain")) {
+                tabSettings.echoToMain = tabJson["echoToMain"].asBool();
+            }
+
+            m_chat.tabs[tabName] = tabSettings;
+            LOG_DEBUG(MOD_UI, "[UISettings] Applied chat tab override: {} (enabled={}, channels={}, echoToMain={})",
+                      tabName, tabSettings.enabled, tabSettings.channels.size(), tabSettings.echoToMain);
+        }
+    }
+
+    // Could also support overriding showTimestamps, enabledChannels, etc.
+    if (chatSettingsJson.isMember("showTimestamps")) {
+        m_chat.showTimestamps = chatSettingsJson["showTimestamps"].asBool();
+    }
+
+    if (chatSettingsJson.isMember("enabledChannels")) {
+        const Json::Value& channels = chatSettingsJson["enabledChannels"];
+        if (channels.isArray()) {
+            m_chat.enabledChannels.clear();
+            for (Json::ArrayIndex i = 0; i < channels.size(); i++) {
+                m_chat.enabledChannels.insert(channels[i].asInt());
+            }
+        }
+    }
+
+    LOG_DEBUG(MOD_UI, "[UISettings] Applied chatSettings override");
+}
+
 void UISettings::resetToDefaults() {
     m_uiLocked = true;
     m_globalTheme = GlobalTheme{};
@@ -599,6 +649,33 @@ void UISettings::loadChatSettings(const Json::Value& json) {
             }
         }
     }
+
+    // Load tab settings
+    if (json.isMember("tabs")) {
+        const Json::Value& tabsJson = json["tabs"];
+        for (const auto& tabName : tabsJson.getMemberNames()) {
+            const Json::Value& tabJson = tabsJson[tabName];
+            ChatTabSettings tabSettings;
+
+            if (tabJson.isMember("enabled")) {
+                tabSettings.enabled = tabJson["enabled"].asBool();
+            }
+
+            if (tabJson.isMember("channels")) {
+                tabSettings.channels.clear();
+                const Json::Value& channels = tabJson["channels"];
+                for (Json::ArrayIndex i = 0; i < channels.size(); i++) {
+                    tabSettings.channels.insert(channels[i].asInt());
+                }
+            }
+
+            if (tabJson.isMember("echoToMain")) {
+                tabSettings.echoToMain = tabJson["echoToMain"].asBool();
+            }
+
+            m_chat.tabs[tabName] = tabSettings;
+        }
+    }
 }
 
 void UISettings::saveChatSettings(Json::Value& json) const {
@@ -623,6 +700,25 @@ void UISettings::saveChatSettings(Json::Value& json) const {
         filters[std::to_string(ch)] = true;
     }
     json["channelFilters"] = filters;
+
+    // Save tab settings
+    Json::Value tabsJson;
+    for (const auto& [tabName, tabSettings] : m_chat.tabs) {
+        Json::Value tabJson;
+        tabJson["enabled"] = tabSettings.enabled;
+
+        Json::Value channelsJson(Json::arrayValue);
+        for (int ch : tabSettings.channels) {
+            channelsJson.append(ch);
+        }
+        tabJson["channels"] = channelsJson;
+
+        tabJson["echoToMain"] = tabSettings.echoToMain;
+        tabsJson[tabName] = tabJson;
+    }
+    if (!m_chat.tabs.empty()) {
+        json["tabs"] = tabsJson;
+    }
 }
 
 // ============================================================================

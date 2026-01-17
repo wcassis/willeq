@@ -593,6 +593,10 @@ public:
     float getRotationY() const;
     float getRotationZ() const;
 
+    // Zone render distance (for geometry culling)
+    void setZoneRenderDistance(float distance) { zoneRenderDistance_ = distance; }
+    float getZoneRenderDistance() const { return zoneRenderDistance_; }
+
     // Get Irrlicht device (for advanced usage)
     irr::IrrlichtDevice* getDevice() { return device_; }
 
@@ -822,6 +826,7 @@ private:
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
     float objectRenderDistance_ = 300.0f;  // Max distance to render objects
+    float zoneRenderDistance_ = 2000.0f;   // Max distance to render zone geometry regions
     irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)

@@ -87,6 +87,14 @@ ChatWindow::ChatWindow()
     // Initialize default channel filters (all enabled)
     initDefaultChannels();
 
+    // Initialize combat channel routing
+    initCombatChannels();
+
+    // Initialize tabs
+    tabs_.push_back({"Main", {}, true});
+    tabs_.push_back({"Combat", {}, false});
+    activeTabIndex_ = 0;
+
     // Set up input field callback
     inputField_.setSubmitCallback([this](const std::string& text) {
         if (submitCallback_) {
@@ -118,6 +126,9 @@ void ChatWindow::init(int screenWidth, int screenHeight) {
 
     // Try to load saved settings (overrides defaults if file exists)
     loadSettings();
+
+    // Apply tab settings from UISettings (may have been set by main config)
+    applyTabSettings();
 
     // Make sure position is valid for current screen size
     if (getX() + getWidth() > screenWidth) {
@@ -173,10 +184,14 @@ void ChatWindow::render(irr::video::IVideoDriver* driver,
 
     // Process any pending messages
     messageBuffer_.processPending();
+    combatBuffer_.processPending();
 
     // Auto-scroll to bottom if we were at bottom and new messages arrived
     if (scrollOffset_ == 0 && messageBuffer_.hasNewMessages()) {
         messageBuffer_.clearNewMessageFlag();
+    }
+    if (combatScrollOffset_ == 0 && combatBuffer_.hasNewMessages()) {
+        combatBuffer_.clearNewMessageFlag();
     }
 
     // Render window frame
@@ -189,11 +204,17 @@ void ChatWindow::renderContent(irr::video::IVideoDriver* driver,
     int scrollbarWidth = getScrollbarWidth();
     int inputFieldHeight = getInputFieldHeight();
 
-    // Calculate areas (message area excludes scrollbar width)
+    // Get font for tab rendering
+    irr::gui::IGUIFont* font = gui->getBuiltInFont();
+
+    // Render tabs first
+    renderTabs(driver, font);
+
+    // Calculate areas (message area excludes scrollbar width and starts below tabs)
     int inputY = content.LowerRightCorner.Y - inputFieldHeight;
     irr::core::recti messageArea(
         content.UpperLeftCorner.X,
-        content.UpperLeftCorner.Y,
+        content.UpperLeftCorner.Y + tabBarHeight_,  // Start below tab bar
         content.LowerRightCorner.X - scrollbarWidth - 2,  // Leave room for scrollbar
         inputY - 2  // Small gap between messages and input
     );
@@ -240,6 +261,85 @@ void ChatWindow::renderContent(irr::video::IVideoDriver* driver,
         gripColor);
 }
 
+void ChatWindow::renderTabs(irr::video::IVideoDriver* driver, irr::gui::IGUIFont* font) {
+    irr::core::recti content = getContentArea();
+
+    // Tab bar background
+    irr::core::recti tabBarRect(
+        content.UpperLeftCorner.X,
+        content.UpperLeftCorner.Y,
+        content.LowerRightCorner.X - getScrollbarWidth(),
+        content.UpperLeftCorner.Y + tabBarHeight_
+    );
+    driver->draw2DRectangle(irr::video::SColor(255, 40, 40, 40), tabBarRect);
+
+    // Calculate tab widths
+    int tabWidth = 60;
+    int tabPadding = 2;
+    int x = content.UpperLeftCorner.X + tabPadding;
+    int y = content.UpperLeftCorner.Y + 2;
+
+    for (size_t i = 0; i < tabs_.size(); ++i) {
+        ChatTab& tab = tabs_[i];
+        bool isActive = (static_cast<int>(i) == activeTabIndex_);
+
+        // Update tab bounds for click detection
+        tab.bounds = irr::core::recti(
+            x, y,
+            x + tabWidth, y + tabBarHeight_ - 4
+        );
+        tab.active = isActive;
+
+        // Tab background
+        irr::video::SColor tabBg = isActive ?
+            irr::video::SColor(255, 80, 80, 80) :
+            irr::video::SColor(255, 50, 50, 50);
+        driver->draw2DRectangle(tabBg, tab.bounds);
+
+        // Active tab indicator (bottom highlight)
+        if (isActive) {
+            irr::core::recti indicator(
+                tab.bounds.UpperLeftCorner.X,
+                tab.bounds.LowerRightCorner.Y - 2,
+                tab.bounds.LowerRightCorner.X,
+                tab.bounds.LowerRightCorner.Y
+            );
+            driver->draw2DRectangle(irr::video::SColor(255, 100, 150, 255), indicator);
+        }
+
+        // Tab text
+        if (font) {
+            std::wstring nameW(tab.name.begin(), tab.name.end());
+            irr::core::dimension2du textDim = font->getDimension(nameW.c_str());
+            int textX = tab.bounds.UpperLeftCorner.X + (tabWidth - static_cast<int>(textDim.Width)) / 2;
+            int textY = tab.bounds.UpperLeftCorner.Y + (tabBarHeight_ - 4 - static_cast<int>(textDim.Height)) / 2;
+
+            irr::video::SColor textColor = isActive ?
+                irr::video::SColor(255, 255, 255, 255) :
+                irr::video::SColor(255, 180, 180, 180);
+            font->draw(nameW.c_str(), irr::core::recti(textX, textY, textX + 100, textY + 20), textColor);
+        }
+
+        x += tabWidth + tabPadding;
+    }
+
+    // Bottom border of tab bar
+    driver->draw2DLine(
+        irr::core::vector2di(tabBarRect.UpperLeftCorner.X, tabBarRect.LowerRightCorner.Y),
+        irr::core::vector2di(tabBarRect.LowerRightCorner.X, tabBarRect.LowerRightCorner.Y),
+        irr::video::SColor(255, 60, 60, 60)
+    );
+}
+
+int ChatWindow::getTabAtPosition(int x, int y) const {
+    for (size_t i = 0; i < tabs_.size(); ++i) {
+        if (tabs_[i].bounds.isPointInside(irr::core::vector2di(x, y))) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
                                  irr::gui::IGUIEnvironment* gui,
                                  const irr::core::recti& messageArea) {
@@ -249,7 +349,16 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
     // Clear rendered links from previous frame
     renderedLinks_.clear();
 
-    const auto& messages = messageBuffer_.getMessages();
+    // Select buffer and cache based on active tab
+    bool isCombatTab = (activeTabIndex_ == 1);
+    const ChatMessageBuffer& activeBuffer = isCombatTab ? combatBuffer_ : messageBuffer_;
+    std::vector<CachedWrappedMessage>& activeCache = isCombatTab ? combatWrappedLineCache_ : wrappedLineCache_;
+    int& activeCacheWidth = isCombatTab ? combatWrappedLineCacheWidth_ : wrappedLineCacheWidth_;
+    size_t& activeCacheMessageCount = isCombatTab ? combatWrappedLineCacheMessageCount_ : wrappedLineCacheMessageCount_;
+    bool& activeCacheShowTimestamps = isCombatTab ? combatWrappedLineCacheShowTimestamps_ : wrappedLineCacheShowTimestamps_;
+    int& activeScrollOffset = isCombatTab ? combatScrollOffset_ : scrollOffset_;
+
+    const auto& messages = activeBuffer.getMessages();
     if (messages.empty()) return;
 
     int lineHeight = 12;  // Approximate font height
@@ -260,14 +369,14 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
     if (visibleLines_ <= 0) return;
 
     // Performance optimization: check if we need to rebuild the wrapped line cache
-    bool cacheValid = (wrappedLineCacheWidth_ == maxWidth &&
-                       wrappedLineCacheMessageCount_ == messages.size() &&
-                       wrappedLineCacheShowTimestamps_ == showTimestamps_);
+    bool cacheValid = (activeCacheWidth == maxWidth &&
+                       activeCacheMessageCount == messages.size() &&
+                       activeCacheShowTimestamps == showTimestamps_);
 
     if (!cacheValid) {
         // Rebuild wrapped line cache
-        wrappedLineCache_.clear();
-        wrappedLineCache_.reserve(messages.size());
+        activeCache.clear();
+        activeCache.reserve(messages.size());
 
         for (const auto& msg : messages) {
             if (isChannelEnabled(msg.channel)) {
@@ -285,13 +394,13 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
                     std::wstring textW(displayText.begin(), displayText.end());
                     cached.lines.push_back(textW);
                 }
-                wrappedLineCache_.push_back(std::move(cached));
+                activeCache.push_back(std::move(cached));
             }
         }
 
-        wrappedLineCacheWidth_ = maxWidth;
-        wrappedLineCacheMessageCount_ = messages.size();
-        wrappedLineCacheShowTimestamps_ = showTimestamps_;
+        activeCacheWidth = maxWidth;
+        activeCacheMessageCount = messages.size();
+        activeCacheShowTimestamps = showTimestamps_;
     }
 
     // Build flat list of lines for rendering (using cached data)
@@ -303,10 +412,10 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
         const ChatMessage* msg;
     };
     std::vector<WrappedLine> allLines;
-    allLines.reserve(wrappedLineCache_.size() * 2);  // Rough estimate
+    allLines.reserve(activeCache.size() * 2);  // Rough estimate
 
     size_t msgIdx = 0;
-    for (const auto& cached : wrappedLineCache_) {
+    for (const auto& cached : activeCache) {
         for (const auto& line : cached.lines) {
             allLines.push_back({line, cached.color, cached.hasLinks, msgIdx, cached.msg});
         }
@@ -317,8 +426,8 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
 
     // Calculate which lines to show (accounting for scroll)
     int totalLines = static_cast<int>(allLines.size());
-    int startIdx = std::max(0, totalLines - visibleLines_ - scrollOffset_);
-    int endIdx = std::max(0, totalLines - scrollOffset_);
+    int startIdx = std::max(0, totalLines - visibleLines_ - activeScrollOffset);
+    int endIdx = std::max(0, totalLines - activeScrollOffset);
 
     // Render lines from bottom to top within the visible area
     int y = messageArea.LowerRightCorner.Y - lineHeight;
@@ -344,7 +453,7 @@ void ChatWindow::renderMessages(irr::video::IVideoDriver* driver,
     }
 
     // Draw scroll indicator if not at bottom
-    if (scrollOffset_ > 0) {
+    if (activeScrollOffset > 0) {
         std::wstring indicator = L"[More below - scroll down]";
         irr::core::dimension2du dim = font->getDimension(indicator.c_str());
         int indicatorX = messageArea.UpperLeftCorner.X + (messageArea.getWidth() - dim.Width) / 2;
@@ -371,6 +480,19 @@ bool ChatWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool
         return true;
     }
 
+    // Check for tab click
+    if (leftButton) {
+        int tabIndex = getTabAtPosition(x, y);
+        if (tabIndex >= 0 && tabIndex != activeTabIndex_) {
+            activeTabIndex_ = tabIndex;
+            // Update active state on tabs
+            for (size_t i = 0; i < tabs_.size(); ++i) {
+                tabs_[i].active = (static_cast<int>(i) == activeTabIndex_);
+            }
+            return true;
+        }
+    }
+
     // Check scrollbar interactions
     if (leftButton && isOnScrollbar(x, y)) {
         // Check scroll up button
@@ -390,7 +512,8 @@ bool ChatWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool
         if (thumb.isPointInside(irr::core::vector2di(x, y))) {
             draggingScrollbar_ = true;
             scrollbarDragStartY_ = y;
-            scrollbarDragStartOffset_ = scrollOffset_;
+            // Use active scroll offset for drag start
+            scrollbarDragStartOffset_ = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
             return true;
         }
 
@@ -404,9 +527,15 @@ bool ChatWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool
             int maxOffset = getMaxScrollOffset();
             if (maxOffset > 0) {
                 float clickRatio = static_cast<float>(y - trackTop) / (trackBottom - trackTop);
-                // Invert because scrollOffset_ 0 = bottom
-                scrollOffset_ = static_cast<int>((1.0f - clickRatio) * maxOffset);
-                scrollOffset_ = std::max(0, std::min(scrollOffset_, maxOffset));
+                // Invert because scrollOffset 0 = bottom
+                int newOffset = static_cast<int>((1.0f - clickRatio) * maxOffset);
+                newOffset = std::max(0, std::min(newOffset, maxOffset));
+                // Update active scroll offset
+                if (activeTabIndex_ == 1) {
+                    combatScrollOffset_ = newOffset;
+                } else {
+                    scrollOffset_ = newOffset;
+                }
             }
             return true;
         }
@@ -511,10 +640,16 @@ bool ChatWindow::handleMouseMove(int x, int y) {
             int maxOffset = getMaxScrollOffset();
             if (maxOffset > 0) {
                 int deltaY = y - scrollbarDragStartY_;
-                // Invert deltaY because dragging down should decrease scrollOffset_
+                // Invert deltaY because dragging down should decrease scroll offset
                 float scrollPerPixel = static_cast<float>(maxOffset) / trackHeight;
                 int newOffset = scrollbarDragStartOffset_ - static_cast<int>(deltaY * scrollPerPixel);
-                scrollOffset_ = std::max(0, std::min(newOffset, maxOffset));
+                newOffset = std::max(0, std::min(newOffset, maxOffset));
+                // Update active scroll offset
+                if (activeTabIndex_ == 1) {
+                    combatScrollOffset_ = newOffset;
+                } else {
+                    scrollOffset_ = newOffset;
+                }
             }
         }
         return true;
@@ -624,11 +759,36 @@ void ChatWindow::insertText(const std::string& text) {
 void ChatWindow::addMessage(ChatMessage msg) {
     LOG_DEBUG(MOD_UI, "[ChatWindow] addMessage: channel={}, len={}, text='{}'",
               static_cast<int>(msg.channel), msg.text.length(), msg.text);
-    messageBuffer_.addMessage(std::move(msg));
+
+    // Route message to appropriate buffer based on channel
+    if (isCombatChannel(msg.channel)) {
+        // If echoToMain is enabled, add to both buffers
+        if (echoToMain_) {
+            ChatMessage msgCopy = msg;  // Make a copy for main buffer
+            messageBuffer_.addMessage(std::move(msgCopy));
+        }
+        combatBuffer_.addMessage(std::move(msg));
+    } else {
+        messageBuffer_.addMessage(std::move(msg));
+    }
 }
 
 void ChatWindow::addSystemMessage(const std::string& text, ChatChannel channel) {
-    messageBuffer_.addSystemMessage(text, channel);
+    LOG_DEBUG(MOD_UI, "[ChatWindow] addSystemMessage: channel={}, text='{}', isCombat={}, echoToMain={}",
+              static_cast<int>(channel), text, isCombatChannel(channel), echoToMain_);
+
+    // Route system message to appropriate buffer based on channel
+    if (isCombatChannel(channel)) {
+        // If echoToMain is enabled, add to both buffers
+        if (echoToMain_) {
+            LOG_DEBUG(MOD_UI, "[ChatWindow] Adding to MAIN buffer (echo)");
+            messageBuffer_.addSystemMessage(text, channel);
+        }
+        LOG_DEBUG(MOD_UI, "[ChatWindow] Adding to COMBAT buffer");
+        combatBuffer_.addSystemMessage(text, channel);
+    } else {
+        messageBuffer_.addSystemMessage(text, channel);
+    }
 }
 
 void ChatWindow::setSubmitCallback(ChatSubmitCallback callback) {
@@ -663,25 +823,32 @@ void ChatWindow::update(uint32_t currentTimeMs) {
 
 void ChatWindow::scrollUp(int lines) {
     int maxScroll = getMaxScrollOffset();
-    scrollOffset_ = std::min(scrollOffset_ + lines, maxScroll);
+    int& activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
+    activeScrollOffset = std::min(activeScrollOffset + lines, maxScroll);
 }
 
 void ChatWindow::scrollDown(int lines) {
-    scrollOffset_ = std::max(0, scrollOffset_ - lines);
+    int& activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
+    activeScrollOffset = std::max(0, activeScrollOffset - lines);
 }
 
 void ChatWindow::scrollToBottom() {
-    scrollOffset_ = 0;
+    int& activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
+    activeScrollOffset = 0;
 }
 
 bool ChatWindow::isScrolledToBottom() const {
-    return scrollOffset_ == 0;
+    int activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
+    return activeScrollOffset == 0;
 }
 
 int ChatWindow::getMaxScrollOffset() const {
+    // Select buffer based on active tab
+    const ChatMessageBuffer& activeBuffer = (activeTabIndex_ == 1) ? combatBuffer_ : messageBuffer_;
+
     // Filter messages by enabled channels
     int totalMessages = 0;
-    for (const auto& msg : messageBuffer_.getMessages()) {
+    for (const auto& msg : activeBuffer.getMessages()) {
         if (enabledChannels_.count(msg.channel) > 0) {
             totalMessages++;
         }
@@ -694,10 +861,10 @@ irr::core::recti ChatWindow::getScrollbarTrackBounds() const {
     int scrollbarWidth = getScrollbarWidth();
     int inputY = content.LowerRightCorner.Y - getInputFieldHeight();
 
-    // Scrollbar is on the right side of the content area
+    // Scrollbar is on the right side of the content area, below the tab bar
     int x = content.LowerRightCorner.X - scrollbarWidth;
-    int y = content.UpperLeftCorner.Y;
-    int height = inputY - content.UpperLeftCorner.Y - 2;
+    int y = content.UpperLeftCorner.Y + tabBarHeight_;  // Start below tab bar
+    int height = inputY - y - 2;
 
     return irr::core::recti(x, y, x + scrollbarWidth, y + height);
 }
@@ -726,8 +893,11 @@ irr::core::recti ChatWindow::getScrollbarThumbBounds() const {
     // Calculate thumb size (minimum 20 pixels)
     int thumbHeight = std::max(20, trackHeight * visibleLines_ / (visibleLines_ + maxOffset));
 
-    // Calculate thumb position (inverted because scrollOffset_ 0 = bottom)
-    float scrollRatio = (maxOffset > 0) ? static_cast<float>(maxOffset - scrollOffset_) / maxOffset : 0.0f;
+    // Use active scroll offset based on current tab
+    int activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
+
+    // Calculate thumb position (inverted because scrollOffset 0 = bottom)
+    float scrollRatio = (maxOffset > 0) ? static_cast<float>(maxOffset - activeScrollOffset) / maxOffset : 0.0f;
     int thumbY = trackTop + static_cast<int>((trackHeight - thumbHeight) * scrollRatio);
 
     return irr::core::recti(track.UpperLeftCorner.X, thumbY,
@@ -961,6 +1131,46 @@ void ChatWindow::initDefaultChannels() {
     enabledChannels_.insert(ChatChannel::NPCDialogue);
 }
 
+void ChatWindow::initCombatChannels() {
+    // Default channels routed to combat tab
+    combatChannels_.insert(ChatChannel::Combat);
+    combatChannels_.insert(ChatChannel::CombatSelf);
+    combatChannels_.insert(ChatChannel::Spell);
+    combatChannels_.insert(ChatChannel::Loot);
+    combatChannels_.insert(ChatChannel::Experience);
+}
+
+void ChatWindow::applyTabSettings() {
+    // Apply tab settings from UISettings
+    // This allows the main config to override the default combat channels
+    const auto& chatSettings = UISettings::instance().chat();
+
+    // Look for "combat" tab settings
+    auto it = chatSettings.tabs.find("combat");
+    if (it != chatSettings.tabs.end()) {
+        const auto& combatTabSettings = it->second;
+
+        if (combatTabSettings.enabled) {
+            // Clear defaults and apply configured channels
+            combatChannels_.clear();
+            for (int ch : combatTabSettings.channels) {
+                combatChannels_.insert(static_cast<ChatChannel>(ch));
+            }
+
+            // Apply echo setting
+            echoToMain_ = combatTabSettings.echoToMain;
+        } else {
+            // Combat tab disabled - all messages go to main
+            combatChannels_.clear();
+            echoToMain_ = false;
+        }
+    }
+}
+
+bool ChatWindow::isCombatChannel(ChatChannel channel) const {
+    return combatChannels_.find(channel) != combatChannels_.end();
+}
+
 void ChatWindow::setChannelEnabled(ChatChannel channel, bool enabled) {
     if (enabled) {
         enabledChannels_.insert(channel);
@@ -972,7 +1182,13 @@ void ChatWindow::setChannelEnabled(ChatChannel channel, bool enabled) {
 }
 
 bool ChatWindow::isChannelEnabled(ChatChannel channel) const {
-    return enabledChannels_.find(channel) != enabledChannels_.end();
+    bool enabled = enabledChannels_.find(channel) != enabledChannels_.end();
+    // Debug: log channel enable status for combat channels
+    if (static_cast<int>(channel) >= 100 && static_cast<int>(channel) <= 105) {
+        LOG_DEBUG(MOD_UI, "[ChatWindow] isChannelEnabled: channel={} enabled={} (enabledChannels_.size={})",
+                  static_cast<int>(channel), enabled, enabledChannels_.size());
+    }
+    return enabled;
 }
 
 void ChatWindow::toggleChannel(ChatChannel channel) {

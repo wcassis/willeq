@@ -40,6 +40,7 @@ public:
     bool loadFromFile(const std::string& path = "config/ui_settings.json");
     bool saveToFile(const std::string& path = "");  // Empty = use loaded path
     void applyOverrides(const Json::Value& overrides, const std::string& overrideSourcePath = "");
+    void applyChatSettingsOverride(const Json::Value& chatSettingsJson);
     void resetToDefaults();
 
     // Get/set the config file path (for saving)
@@ -109,6 +110,15 @@ public:
     };
 
     // =========================================================================
+    // Chat Tab Settings
+    // =========================================================================
+    struct ChatTabSettings {
+        bool enabled = true;
+        std::set<int> channels;  // ChatChannel values routed to this tab
+        bool echoToMain = false; // If true, also show in main tab
+    };
+
+    // =========================================================================
     // Chat Window Settings
     // =========================================================================
     struct ChatSettings {
@@ -129,6 +139,9 @@ public:
 
         // Channel filters (channel ID -> enabled)
         std::set<int> enabledChannels;
+
+        // Tab configuration (tab name -> settings)
+        std::map<std::string, ChatTabSettings> tabs;
 
         ChatSettings();
     };

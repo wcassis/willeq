@@ -130,16 +130,25 @@ private:
     void constrainSize();
 
     // Components
-    ChatMessageBuffer messageBuffer_;
+    ChatMessageBuffer messageBuffer_;      // Main chat buffer
+    ChatMessageBuffer combatBuffer_;       // Combat-specific buffer
     ChatInputField inputField_;
     CommandAutoComplete autoComplete_;
 
     // Track last input text to detect changes (for resetting auto-complete)
     std::string lastInputText_;
 
-    // Scroll state
-    int scrollOffset_ = 0;  // Number of lines scrolled up from bottom
+    // Scroll state (per-tab)
+    int scrollOffset_ = 0;        // Main tab scroll offset
+    int combatScrollOffset_ = 0;  // Combat tab scroll offset
     int visibleLines_ = 5;
+
+    // Combat channel routing
+    std::set<ChatChannel> combatChannels_;  // Channels routed to combat tab
+    bool echoToMain_ = false;               // If true, combat messages also appear in main tab
+    void initCombatChannels();              // Initialize default combat channels
+    bool isCombatChannel(ChatChannel channel) const;
+    void applyTabSettings();                // Apply tab settings from UISettings
 
     // Layout accessors - read from UISettings
     int getInputFieldHeight() const { return UISettings::instance().chat().inputFieldHeight; }
@@ -182,6 +191,20 @@ private:
     std::set<ChatChannel> enabledChannels_;
     void initDefaultChannels();
 
+    // Tab system
+    struct ChatTab {
+        std::string name;
+        irr::core::recti bounds;  // Calculated during render
+        bool active = false;
+    };
+    std::vector<ChatTab> tabs_;
+    int activeTabIndex_ = 0;
+    static constexpr int tabBarHeight_ = 20;
+
+    // Tab rendering
+    void renderTabs(irr::video::IVideoDriver* driver, irr::gui::IGUIFont* font);
+    int getTabAtPosition(int x, int y) const;  // Returns tab index or -1
+
     // Rendered link tracking for click detection
     struct RenderedLink {
         irr::core::recti bounds;      // Screen rectangle of the link
@@ -203,8 +226,17 @@ private:
     mutable size_t wrappedLineCacheMessageCount_ = 0;  // Number of messages when cache was built
     mutable bool wrappedLineCacheShowTimestamps_ = false;  // Timestamp setting when cache was built
 
+    // Combat tab wrapped line cache (separate from main)
+    mutable std::vector<CachedWrappedMessage> combatWrappedLineCache_;
+    mutable int combatWrappedLineCacheWidth_ = -1;
+    mutable size_t combatWrappedLineCacheMessageCount_ = 0;
+    mutable bool combatWrappedLineCacheShowTimestamps_ = false;
+
     // Invalidate wrapped line cache (called on resize)
-    void invalidateWrappedLineCache() { wrappedLineCacheWidth_ = -1; }
+    void invalidateWrappedLineCache() {
+        wrappedLineCacheWidth_ = -1;
+        combatWrappedLineCacheWidth_ = -1;
+    }
 
     // Hovered link tracking for visual feedback
     int hoveredLinkIndex_ = -1;  // Index into renderedLinks_, -1 means none

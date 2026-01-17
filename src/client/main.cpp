@@ -643,6 +643,13 @@ int main(int argc, char *argv[]) {
 				LOG_INFO(MOD_UI, "Applying UI settings overrides from main config");
 				uiSettings.applyOverrides(config_handle["uiSettings"]);
 			}
+
+			// 3. Apply chat settings overrides from main config if present
+			// This allows configuring chat tabs (Combat tab, etc.) from the main config
+			if (config_handle.isMember("chatSettings")) {
+				LOG_INFO(MOD_UI, "Applying chat settings overrides from main config");
+				uiSettings.applyChatSettingsOverride(config_handle["chatSettings"]);
+			}
 		}
 
 		// Load hotkey settings from default file, then apply any overrides from main config

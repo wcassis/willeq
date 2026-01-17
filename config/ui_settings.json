@@ -466,8 +466,8 @@
             },
             "position" : 
             {
-                "x" : 654,
-                "y" : 40
+                "x" : 650,
+                "y" : 53
             },
             "showTitleBar" : false,
             "size" : 
@@ -614,6 +614,22 @@
             {
                 "height" : 180,
                 "width" : 425
+            },
+            "tabs" :
+            {
+                "combat" :
+                {
+                    "channels" :
+                    [
+                        100,
+                        101,
+                        102,
+                        103,
+                        104
+                    ],
+                    "echoToMain" : true,
+                    "enabled" : true
+                }
             },
             "visible" : true
         },
@@ -857,7 +873,7 @@
                 "height" : 340,
                 "width" : 365
             },
-            "visible" : true
+            "visible" : false
         },
         "loot" : 
         {
@@ -991,6 +1007,32 @@
                 "width" : 90
             },
             "visible" : true
+        },
+        "skillTrainer" : 
+        {
+            "alwaysLocked" : false,
+            "maxSize" : 
+            {
+                "height" : 1080,
+                "width" : 1920
+            },
+            "minSize" : 
+            {
+                "height" : 50,
+                "width" : 50
+            },
+            "position" : 
+            {
+                "x" : -1,
+                "y" : -1
+            },
+            "showTitleBar" : true,
+            "size" : 
+            {
+                "height" : -1,
+                "width" : -1
+            },
+            "visible" : false
         },
         "skills" : 
         {
