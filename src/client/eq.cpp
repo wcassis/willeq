@@ -5592,6 +5592,11 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 			if (it != m_entities.end()) {
 				it->second.light = static_cast<uint8_t>(parameter);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} light set to {}", spawn_id, parameter);
+#ifdef EQT_HAS_GRAPHICS
+				if (m_renderer) {
+					m_renderer->setEntityLight(spawn_id, static_cast<uint8_t>(parameter));
+				}
+#endif
 			}
 		}
 		break;
@@ -6406,6 +6411,11 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				// Set player spawn ID AFTER entity is created so the animated node
 				// can be marked for the player rotation fix
 				m_renderer->setPlayerSpawnId(m_my_spawn_id);
+
+				// Set entity light source if equipped (must be after setPlayerSpawnId)
+				if (entity.light > 0) {
+					m_renderer->setEntityLight(m_my_spawn_id, entity.light);
+				}
 
 				// Update inventory model view with player appearance
 				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
@@ -17126,9 +17136,18 @@ void EverQuest::LoadZoneGraphics() {
 		if (isPlayer) {
 			// Set up player-specific rendering after creating the entity
 			m_renderer->setPlayerSpawnId(m_my_spawn_id);
+			// Set entity light source if equipped (must be after setPlayerSpawnId for player)
+			if (entity.light > 0) {
+				m_renderer->setEntityLight(spawn_id, entity.light);
+			}
 			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 			LOG_INFO(MOD_ENTITY, "Created player entity {} ({}) during graphics loading",
 			         spawn_id, entity.name);
+		} else {
+			// Set entity light source if equipped (for NPCs)
+			if (entity.light > 0) {
+				m_renderer->setEntityLight(spawn_id, entity.light);
+			}
 		}
 	}
 
@@ -17230,6 +17249,11 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	m_renderer->createEntity(entity.spawn_id, entity.race_id, entity.name,
 	                         entity.x, entity.y, entity.z, entity.heading,
 	                         false, entity.gender, appearance, isNPC, isCorpse);
+
+	// Set entity light source if equipped
+	if (entity.light > 0) {
+		m_renderer->setEntityLight(entity.spawn_id, entity.light);
+	}
 
 	// Set initial pose state from spawn animation value
 	// The animation field in spawn data may indicate sitting/standing/etc.

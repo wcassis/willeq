@@ -65,13 +65,13 @@
             "CameraZoomIn": "Plus",
             "CameraZoomOut": "Minus",
             "ToggleCameraMode": "Ctrl+F5",
-            "CycleObjectLights": "L"
+            "ToggleZoneLights": "Ctrl+F4"
         },
         "admin": {
+            "CycleObjectLights": "L",
             "ToggleWireframe": "Ctrl+F1",
             "ToggleHUD": "Ctrl+F2",
             "ToggleNameTags": "Ctrl+F3",
-            "ToggleZoneLights": "Ctrl+F4",
             "ToggleCameraMode": "Ctrl+F5",
             "ToggleOldModels": "Ctrl+F6",
             "ToggleHelmDebug": "Ctrl+F7",
@@ -93,8 +93,8 @@
             "HeadVariantNext": "N",
             "HelmUOffsetLeft": "I",
             "HelmUOffsetRight": "K",
-            "HelmVOffsetUp": "L",
-            "HelmVOffsetDown": "J",
+            "HelmVOffsetUp": "Apostrophe",
+            "HelmVOffsetDown": "Semicolon",
             "HelmUScaleDecrease": "O",
             "HelmUScaleIncrease": "P",
             "HelmVScaleDecrease": "Comma",

@@ -110,6 +110,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleCollisionDebug: collisionDebugToggleRequested_ = true; break;
                     case HA::ToggleZoneLineVisualization: zoneLineVisualizationToggleRequested_ = true; break;
                     case HA::CycleObjectLights: cycleObjectLightsRequested_ = true; break;
+                    case HA::Interact:  // Generic interact - tries door first, then world object
+                        doorInteractRequested_ = true;
+                        worldObjectInteractRequested_ = true;
+                        break;
                     case HA::InteractDoor: doorInteractRequested_ = true; break;
                     case HA::InteractWorldObject: worldObjectInteractRequested_ = true; break;
                     case HA::Hail: hailRequested_ = true; break;
@@ -854,7 +858,7 @@ void IrrlichtRenderer::updateObjectLights() {
     std::vector<LightCandidate> candidates;
     candidates.reserve(objectLights_.size() + zoneLightNodes_.size());
 
-    // First, disable all lights
+    // First, disable all lights (including player light)
     for (auto& objLight : objectLights_) {
         if (objLight.node) {
             objLight.node->setVisible(false);
@@ -864,6 +868,16 @@ void IrrlichtRenderer::updateObjectLights() {
         if (node) {
             node->setVisible(false);
         }
+    }
+    if (playerLightNode_) {
+        playerLightNode_->setVisible(false);
+        // Update player light position to follow player
+        playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
+    }
+
+    // Add player light first with distance 0 (always highest priority)
+    if (playerLightNode_ && playerLightLevel_ > 0) {
+        candidates.push_back({0.0f, playerLightNode_, false, "player_light"});
     }
 
     // Add zone lights to the pool if zone lights are enabled
@@ -2081,7 +2095,7 @@ void IrrlichtRenderer::createZoneLights() {
         // EQ: x, y, z -> Irrlicht: x, z, y
         irr::core::vector3df pos(light->x, light->z, light->y);
 
-        // Create point light
+        // Create point light at full intensity - updateZoneLightColors() will apply vision-based intensity
         irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
             nullptr,
             pos,
@@ -2102,6 +2116,31 @@ void IrrlichtRenderer::createZoneLights() {
     }
 
     LOG_DEBUG(MOD_GRAPHICS, "Created {} zone lights (of {} available)", zoneLightNodes_.size(), currentZone_->lights.size());
+
+    // Enable lighting and zone lights by default so vision system works on initial load
+    if (!zoneLightNodes_.empty()) {
+        lightingEnabled_ = true;
+        zoneLightsEnabled_ = true;
+
+        // Update zone mesh materials to enable lighting
+        if (zoneMeshNode_) {
+            for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
+                zoneMeshNode_->getMaterial(i).Lighting = true;
+            }
+        }
+
+        // Update object mesh materials to enable lighting
+        for (auto* node : objectNodes_) {
+            if (node) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = true;
+                }
+            }
+        }
+    }
+
+    // Apply vision-based intensity and color adjustments
+    updateZoneLightColors();
 }
 
 bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
@@ -2115,6 +2154,9 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
 
     // If this is the player entity, handle visibility based on current mode
     if (result && isPlayer) {
+        // Set player race for vision-based lighting
+        setPlayerRace(raceId);
+
         // In Player mode with FirstPerson camera, hide the player entity
         bool shouldHide = (rendererMode_ == RendererMode::Player && cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerEntityVisible(!shouldHide);
@@ -2153,6 +2195,66 @@ void IrrlichtRenderer::removeEntity(uint16_t spawnId) {
 void IrrlichtRenderer::startCorpseDecay(uint16_t spawnId) {
     if (entityRenderer_) {
         entityRenderer_->startCorpseDecay(spawnId);
+    }
+}
+
+void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
+    // Handle player light specially - it's always highest priority in light pool
+    if (spawnId == playerSpawnId_ && playerSpawnId_ != 0) {
+        playerLightLevel_ = lightLevel;
+
+        if (lightLevel == 0) {
+            // Remove player light
+            if (playerLightNode_) {
+                playerLightNode_->remove();
+                playerLightNode_ = nullptr;
+                LOG_DEBUG(MOD_GRAPHICS, "Removed player light");
+            }
+            return;
+        }
+
+        // Calculate light properties based on level
+        float intensity = lightLevel / 255.0f;
+        float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;
+
+        // Warm light color (slightly yellow/orange like torchlight)
+        float r = std::min(1.0f, 0.9f + intensity * 0.1f);
+        float g = std::min(1.0f, 0.7f + intensity * 0.2f);
+        float b = std::min(1.0f, 0.4f + intensity * 0.2f);
+
+        // Position at player location (Irrlicht Y-up coordinates)
+        irr::core::vector3df lightPos(playerX_, playerZ_ + 3.0f, playerY_);
+
+        if (playerLightNode_) {
+            // Update existing light
+            irr::video::SLight& lightData = playerLightNode_->getLightData();
+            lightData.DiffuseColor = irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f);
+            lightData.Radius = radius;
+            playerLightNode_->setPosition(lightPos);
+        } else if (smgr_) {
+            // Create new light
+            playerLightNode_ = smgr_->addLightSceneNode(
+                nullptr,
+                lightPos,
+                irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f),
+                radius
+            );
+
+            if (playerLightNode_) {
+                irr::video::SLight& lightData = playerLightNode_->getLightData();
+                lightData.Type = irr::video::ELT_POINT;
+                lightData.Attenuation = irr::core::vector3df(0.0f, 0.01f, 0.0001f);
+                // Start hidden - updateObjectLights will enable it
+                playerLightNode_->setVisible(false);
+                LOG_INFO(MOD_GRAPHICS, "Created player light: level={}, radius={:.1f}", lightLevel, radius);
+            }
+        }
+        return;
+    }
+
+    // Non-player entity lights
+    if (entityRenderer_) {
+        entityRenderer_->setEntityLight(spawnId, lightLevel);
     }
 }
 
@@ -2395,6 +2497,97 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
                      playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ);
         }
     }
+}
+
+void IrrlichtRenderer::setPlayerRace(uint16_t raceId) {
+    // Determine base vision from race
+    // Ultravision: Dark Elf (6), High Elf (5), Wood Elf (4), Troll (9), Iksar (128)
+    // Infravision: Dwarf (8), Gnome (12), Half Elf (7), Ogre (10), Halfling (11)
+    // Normal: Human (1), Barbarian (2), Erudite (3), Vah Shir (130), Froglok (330)
+    switch (raceId) {
+        case 4:   // Wood Elf
+        case 5:   // High Elf
+        case 6:   // Dark Elf
+        case 9:   // Troll
+        case 128: // Iksar
+            baseVision_ = VisionType::Ultravision;
+            break;
+        case 7:   // Half Elf
+        case 8:   // Dwarf
+        case 10:  // Ogre
+        case 11:  // Halfling
+        case 12:  // Gnome
+            baseVision_ = VisionType::Infravision;
+            break;
+        default:  // Human (1), Barbarian (2), Erudite (3), Vah Shir (130), Froglok (330), etc.
+            baseVision_ = VisionType::Normal;
+            break;
+    }
+    currentVision_ = baseVision_;
+    LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
+             raceId, currentVision_ == VisionType::Ultravision ? "Ultravision" :
+                     currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+    updateZoneLightColors();
+}
+
+void IrrlichtRenderer::setVisionType(VisionType vision) {
+    // Only upgrade vision, never downgrade below base
+    if (vision > currentVision_) {
+        currentVision_ = vision;
+        LOG_INFO(MOD_GRAPHICS, "Vision upgraded to: {}",
+                 currentVision_ == VisionType::Ultravision ? "Ultravision" :
+                 currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+        updateZoneLightColors();
+    }
+}
+
+void IrrlichtRenderer::updateZoneLightColors() {
+    if (!currentZone_ || zoneLightNodes_.empty()) {
+        return;
+    }
+
+    // Determine intensity and color shift based on vision type
+    float intensity = 0.25f;  // Normal (base)
+    float redShift = 0.0f;
+
+    switch (currentVision_) {
+        case VisionType::Ultravision:
+            intensity = 1.0f;  // Full intensity
+            redShift = 0.0f;   // Normal colors
+            break;
+        case VisionType::Infravision:
+            intensity = 0.75f; // 75% intensity
+            redShift = 0.3f;   // Shift toward red spectrum
+            break;
+        case VisionType::Normal:
+        default:
+            intensity = 0.25f; // Base intensity (25%)
+            redShift = 0.0f;   // Normal colors
+            break;
+    }
+
+    // Update all zone light colors
+    for (size_t i = 0; i < zoneLightNodes_.size() && i < currentZone_->lights.size(); ++i) {
+        auto* node = zoneLightNodes_[i];
+        const auto& light = currentZone_->lights[i];
+        if (node) {
+            // Apply intensity and red shift
+            float r = light->r * intensity;
+            float g = light->g * intensity * (1.0f - redShift * 0.5f);  // Reduce green for infravision
+            float b = light->b * intensity * (1.0f - redShift);         // Reduce blue more for infravision
+
+            // Boost red for infravision
+            if (redShift > 0.0f) {
+                r = std::min(1.0f, r * (1.0f + redShift));
+            }
+
+            irr::video::SLight& lightData = node->getLightData();
+            lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
+        }
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Updated {} zone lights: intensity={:.0f}%, redShift={:.0f}%",
+              zoneLightNodes_.size(), intensity * 100.0f, redShift * 100.0f);
 }
 
 void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float heading) {

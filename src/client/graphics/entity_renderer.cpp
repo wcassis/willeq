@@ -1268,6 +1268,11 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
             visual.sceneNode->setPosition(irr::core::vector3df(visual.lastX, visual.lastZ + visual.modelYOffset, visual.lastY));
         }
 
+        // Update light position to follow entity
+        if (visual.lightNode) {
+            visual.lightNode->setPosition(irr::core::vector3df(visual.lastX, visual.lastZ + visual.modelYOffset + 3.0f, visual.lastY));
+        }
+
         // Update equipment positions to follow bone attachment points
         updateEquipmentTransforms(visual);
     }
@@ -1318,6 +1323,12 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
     if (visual.castBarBillboard) {
         visual.castBarBillboard->remove();
         visual.castBarBillboard = nullptr;
+    }
+
+    // Remove light source
+    if (visual.lightNode) {
+        visual.lightNode->remove();
+        visual.lightNode = nullptr;
     }
 
     if (visual.nameNode) {
@@ -2276,6 +2287,70 @@ void EntityRenderer::setEntityWeaponDelay(uint16_t spawnId, float delayMs) {
     }
     it->second.weaponDelayMs = delayMs;
     LOG_DEBUG(MOD_ENTITY, "Set weapon delay for spawn {}: {}ms", spawnId, delayMs);
+}
+
+void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return;
+    }
+
+    EntityVisual& visual = it->second;
+
+    // No change needed
+    if (visual.lightLevel == lightLevel) {
+        return;
+    }
+
+    visual.lightLevel = lightLevel;
+
+    if (lightLevel == 0) {
+        // Remove existing light
+        if (visual.lightNode) {
+            visual.lightNode->remove();
+            visual.lightNode = nullptr;
+            LOG_DEBUG(MOD_ENTITY, "Removed light from entity {} ({})", spawnId, visual.name);
+        }
+        return;
+    }
+
+    // Calculate light properties based on level
+    // EQ light values: ~10=candle, ~50=small lightstone, ~100=lantern, ~200=greater lightstone
+    float intensity = lightLevel / 255.0f;
+    float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;  // 20-100 range
+
+    // Warm light color (slightly yellow/orange like torchlight)
+    float r = std::min(1.0f, 0.9f + intensity * 0.1f);
+    float g = std::min(1.0f, 0.7f + intensity * 0.2f);
+    float b = std::min(1.0f, 0.4f + intensity * 0.2f);
+
+    // Get entity position in Irrlicht coordinates (Y-up)
+    // Light positioned slightly above entity's head
+    irr::core::vector3df lightPos(visual.lastX, visual.lastZ + visual.modelYOffset + 3.0f, visual.lastY);
+
+    if (visual.lightNode) {
+        // Update existing light
+        irr::video::SLight& lightData = visual.lightNode->getLightData();
+        lightData.DiffuseColor = irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f);
+        lightData.Radius = radius;
+        visual.lightNode->setPosition(lightPos);
+    } else {
+        // Create new light
+        visual.lightNode = smgr_->addLightSceneNode(
+            nullptr,  // Not parented to entity so we can control position independently
+            lightPos,
+            irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f),
+            radius
+        );
+
+        if (visual.lightNode) {
+            irr::video::SLight& lightData = visual.lightNode->getLightData();
+            lightData.Type = irr::video::ELT_POINT;
+            lightData.Attenuation = irr::core::vector3df(0.0f, 0.01f, 0.0001f);
+            LOG_INFO(MOD_ENTITY, "Created light for entity {} ({}): level={}, radius={:.1f}",
+                     spawnId, visual.name, lightLevel, radius);
+        }
+    }
 }
 
 uint8_t EntityRenderer::getEntityPrimaryWeaponSkill(uint16_t spawnId) const {

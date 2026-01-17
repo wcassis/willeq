@@ -38,6 +38,14 @@ enum class RendererMode {
     Admin    // Free camera, debug info, no collision, all keys work
 };
 
+// Vision types affecting zone light visibility
+// Can be upgraded by race, items, or buffs (never downgraded)
+enum class VisionType {
+    Normal,      // Base vision (25% intensity) - Human, Barbarian, Erudite, Vah Shir, Froglok
+    Infravision, // Heat vision (75% intensity, red-shifted) - Dwarf, Gnome, Half Elf, Ogre, Halfling
+    Ultravision  // Full dark vision (100% intensity) - Dark Elf, High Elf, Wood Elf, Troll, Iksar
+};
+
 // Extended target information for HUD display
 struct TargetInfo {
     uint16_t spawnId = 0;
@@ -455,6 +463,7 @@ public:
                       float dx = 0, float dy = 0, float dz = 0, uint32_t animation = 0);
     void removeEntity(uint16_t spawnId);
     void startCorpseDecay(uint16_t spawnId);  // Start fade-out animation for corpse
+    void setEntityLight(uint16_t spawnId, uint8_t lightLevel);  // Set entity light source (lantern, lightstone)
     void clearEntities();
 
     // Door management
@@ -515,6 +524,19 @@ public:
 
     // Set the player's spawn ID (marks that entity as the player and handles visibility)
     void setPlayerSpawnId(uint16_t spawnId);
+
+    // Set player's race (determines base vision type)
+    void setPlayerRace(uint16_t raceId);
+
+    // Set vision type (for buffs/items that upgrade vision)
+    // Only upgrades vision - cannot downgrade below base race vision
+    void setVisionType(VisionType vision);
+
+    // Get current vision type
+    VisionType getVisionType() const { return currentVision_; }
+
+    // Reset vision to base race vision (when buff wears off)
+    void resetVisionToBase() { currentVision_ = baseVision_; updateZoneLightColors(); }
 
     // Set player position for camera following
     void setPlayerPosition(float x, float y, float z, float heading);
@@ -753,6 +775,7 @@ private:
     void createZoneMesh();
     void createObjectMeshes();
     void createZoneLights();
+    void updateZoneLightColors();  // Update zone light colors based on current vision type
 
     // Loading screen
     void drawLoadingScreen(float progress, const std::wstring& stageText);
@@ -818,6 +841,8 @@ private:
     bool fogEnabled_ = true;
     bool lightingEnabled_ = true;   // Lighting enabled by default
     bool zoneLightsEnabled_ = false; // Zone lights off by default
+    VisionType baseVision_ = VisionType::Normal;    // Base vision from race
+    VisionType currentVision_ = VisionType::Normal; // Current vision (may be upgraded by items/buffs)
     int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
@@ -825,6 +850,10 @@ private:
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;
     float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
     uint16_t playerSpawnId_ = 0;  // Spawn ID of the player entity
+
+    // Player light source (lantern, lightstone, etc.) - always highest priority in light pool
+    irr::scene::ILightSceneNode* playerLightNode_ = nullptr;
+    uint8_t playerLightLevel_ = 0;
 
     // HUD elements
     irr::gui::IGUIStaticText* hudText_ = nullptr;

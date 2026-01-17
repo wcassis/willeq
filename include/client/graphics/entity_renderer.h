@@ -107,6 +107,10 @@ struct EntityVisual {
     float fpAttackTimer = 0.0f;               // Timer for first-person attack animation
     float fpAttackDuration = 0.5f;            // Duration of attack animation in seconds
     bool fpIsAttacking = false;               // True if attack animation is playing
+
+    // Light source (lantern, lightstone, etc.)
+    irr::scene::ILightSceneNode* lightNode = nullptr;  // Point light attached to entity
+    uint8_t lightLevel = 0;                            // Current light level (0=none, 1-255=intensity)
 };
 
 // Manages rendering of game entities (NPCs, players, mobs)
@@ -203,6 +207,10 @@ public:
     // Set weapon delay for attack animation speed matching (Phase 6.2)
     // delayMs: weapon delay in milliseconds (EQ delay * 100, e.g., delay 30 = 3000ms)
     void setEntityWeaponDelay(uint16_t spawnId, float delayMs);
+
+    // Set entity light level (from equipped light sources like lanterns, lightstones)
+    // lightLevel: 0=no light, higher values=brighter light (max 255)
+    void setEntityLight(uint16_t spawnId, uint8_t lightLevel);
 
     // Check if entity is playing a playThrough animation
     bool isEntityPlayingThrough(uint16_t spawnId) const;
