@@ -139,6 +139,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/position.cpp
     src/client/world_object.cpp
     src/client/formatted_message.cpp
+    src/client/string_database.cpp
     src/client/pathfinder_interface.cpp
     src/client/pathfinder_null.cpp
     src/client/raycast_mesh.cpp

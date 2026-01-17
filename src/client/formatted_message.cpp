@@ -204,4 +204,105 @@ std::string parseFormattedMessageText(const uint8_t* data, size_t msg_len) {
     return parsed.displayText;
 }
 
+ParsedFormattedMessageWithArgs parseFormattedMessageArgs(const uint8_t* data, size_t msg_len) {
+    ParsedFormattedMessageWithArgs result;
+    std::string currentArg;
+    bool in_link = false;
+    size_t link_content_start = 0;
+
+    for (size_t i = 0; i < msg_len; ++i) {
+        if (data[i] == 0x12) {
+            if (!in_link) {
+                // Starting a link
+                in_link = true;
+                link_content_start = i + 1;
+            } else {
+                // Ending a link - extract metadata and name
+                size_t link_len = i - link_content_start;
+                size_t name_start_offset = 0;
+                size_t metadata_size = 0;
+
+                if (link_len > LINK_METADATA_SIZE_LONG) {
+                    metadata_size = LINK_METADATA_SIZE_LONG;
+                    name_start_offset = LINK_METADATA_SIZE_LONG;
+                } else if (link_len > LINK_METADATA_SIZE_SHORT) {
+                    metadata_size = LINK_METADATA_SIZE_SHORT;
+                    name_start_offset = LINK_METADATA_SIZE_SHORT;
+                } else {
+                    metadata_size = link_len;
+                    name_start_offset = link_len;
+                }
+
+                // Extract metadata
+                std::string metadata;
+                for (size_t j = 0; j < metadata_size && (link_content_start + j) < i; ++j) {
+                    char c = static_cast<char>(data[link_content_start + j]);
+                    if (c >= 32 && c <= 126) {
+                        metadata += c;
+                    }
+                }
+
+                // Extract name and add to current argument
+                std::string name;
+                for (size_t j = link_content_start + name_start_offset; j < i; ++j) {
+                    if (data[j] >= 32 && data[j] <= 126) {
+                        char c = static_cast<char>(data[j]);
+                        name += c;
+                        currentArg += c;
+                    }
+                }
+
+                // Create link record
+                MessageLink link;
+                link.displayText = name;
+                link.metadata = metadata;
+                link.itemId = parseItemIdFromMetadata(metadata);
+                link.type = determineLinkType(metadata, link.itemId);
+                result.links.push_back(link);
+
+                in_link = false;
+            }
+        } else if (!in_link) {
+            if (data[i] == 0) {
+                // Null byte = argument delimiter
+                // Trim the current argument and add it if non-empty
+                // Trim leading spaces
+                size_t start = 0;
+                while (start < currentArg.length() && currentArg[start] == ' ') {
+                    start++;
+                }
+                // Trim trailing spaces
+                size_t end = currentArg.length();
+                while (end > start && currentArg[end - 1] == ' ') {
+                    end--;
+                }
+                if (end > start) {
+                    result.args.push_back(currentArg.substr(start, end - start));
+                }
+                currentArg.clear();
+            } else if (data[i] >= 32 && data[i] <= 126) {
+                currentArg += static_cast<char>(data[i]);
+            }
+            // Skip other non-printable chars outside links
+        }
+    }
+
+    // Don't forget the last argument
+    // Trim leading spaces
+    size_t start = 0;
+    while (start < currentArg.length() && currentArg[start] == ' ') {
+        start++;
+    }
+    // Trim trailing spaces
+    size_t end = currentArg.length();
+    while (end > start && currentArg[end - 1] == ' ') {
+        end--;
+    }
+    if (end > start) {
+        result.args.push_back(currentArg.substr(start, end - start));
+    }
+
+    return result;
+}
+
 } // namespace eqt

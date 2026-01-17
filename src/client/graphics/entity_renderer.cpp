@@ -2258,12 +2258,44 @@ bool EntityRenderer::setEntityAnimation(uint16_t spawnId, const std::string& ani
         return false;
     }
 
+    // Try the requested animation first
     if (visual.animatedNode->playAnimation(animCode, loop, playThrough)) {
         visual.currentAnimation = animCode;
         return true;
     }
-    LOG_DEBUG(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} playAnimation('{}') returned false",
-              spawnId, animCode);
+
+    // Animation not found - try fallback to first available animation of same class
+    if (animCode.length() >= 1) {
+        char animClass = std::tolower(animCode[0]);
+
+        // Get list of available animations and find first matching class
+        auto availableAnims = visual.animatedNode->getAnimationList();
+        std::string fallbackAnim;
+
+        for (const auto& anim : availableAnims) {
+            if (!anim.empty() && std::tolower(anim[0]) == animClass) {
+                fallbackAnim = anim;
+                break;  // Use first matching animation
+            }
+        }
+
+        if (!fallbackAnim.empty()) {
+            if (visual.animatedNode->playAnimation(fallbackAnim, loop, playThrough)) {
+                LOG_DEBUG(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} animation '{}' not found, falling back to '{}'",
+                          spawnId, animCode, fallbackAnim);
+                visual.currentAnimation = fallbackAnim;
+                return true;
+            }
+        }
+
+        // No animation of this class available
+        LOG_WARN(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} no '{}' class animation available (requested '{}')",
+                 spawnId, animClass, animCode);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "setEntityAnimation: spawn_id={} playAnimation('{}') returned false",
+                  spawnId, animCode);
+    }
+
     return false;
 }
 

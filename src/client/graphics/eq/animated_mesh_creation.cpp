@@ -297,6 +297,12 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
         animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, 0, textureVariant);
     }
 
+    // If head variant not found (e.g., SKEHE01 doesn't exist), fall back to head variant 0
+    if (!animMesh && headVariant > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "createAnimatedNodeWithEquipment: Head variant {} not found for race {}, falling back to head variant 0", (int)headVariant, raceId);
+        animMesh = getAnimatedMeshWithAppearance(raceId, gender, 0, bodyVariant, textureVariant);
+    }
+
     // Final fallback to default mesh (no robe textures)
     if (!animMesh) {
         animMesh = getAnimatedMeshForRace(raceId, gender);

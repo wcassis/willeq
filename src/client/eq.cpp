@@ -316,7 +316,17 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 }
 
 std::string EverQuest::GetStringMessage(uint32_t string_id) {
-	// Common string messages from string_ids.h
+	// Use StringDatabase if loaded
+	if (m_string_db.isLoaded()) {
+		std::string msg = m_string_db.getString(string_id);
+		if (!msg.empty()) {
+			return msg;
+		}
+		// Fall through to return unknown message
+		return fmt::format("[Unknown message #{}]", string_id);
+	}
+
+	// Fallback to hardcoded messages (if string files not loaded)
 	switch (string_id) {
 		case 100: return "Your target is out of range, get closer!";
 		case 101: return "Target player not found.";
@@ -419,6 +429,58 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 337: return "You gained raid leadership experience!";
 		default: return fmt::format("[Unknown message #{}]", string_id);
 	}
+}
+
+std::string EverQuest::GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args) {
+	// Use StringDatabase if loaded
+	if (m_string_db.isLoaded()) {
+		std::string msg = m_string_db.formatString(string_id, args);
+		if (!msg.empty()) {
+			return msg;
+		}
+		return fmt::format("[Unknown message #{}]", string_id);
+	}
+
+	// Fallback: get template and do basic substitution
+	std::string tmpl = GetStringMessage(string_id);
+	if (tmpl.empty() || tmpl[0] == '[') {
+		return tmpl;  // Unknown message
+	}
+
+	// Basic %1, %2, etc. substitution
+	std::string result = tmpl;
+	for (size_t i = 0; i < args.size() && i < 9; i++) {
+		std::string placeholder = "%" + std::to_string(i + 1);
+		size_t pos = result.find(placeholder);
+		if (pos != std::string::npos) {
+			result.replace(pos, placeholder.length(), args[i]);
+		}
+	}
+	return result;
+}
+
+bool EverQuest::LoadStringFiles(const std::string& eqClientPath) {
+	// Load EQ string files for message lookups
+	std::string eqstr_path = eqClientPath + "/eqstr_us.txt";
+	std::string dbstr_path = eqClientPath + "/dbstr_us.txt";
+
+	bool success = true;
+
+	if (m_string_db.loadEqStrFile(eqstr_path)) {
+		LOG_INFO(MOD_MAIN, "Loaded {} strings from eqstr_us.txt", m_string_db.getEqStrCount());
+	} else {
+		LOG_WARN(MOD_MAIN, "Failed to load eqstr_us.txt from {}", eqstr_path);
+		success = false;
+	}
+
+	if (m_string_db.loadDbStrFile(dbstr_path)) {
+		LOG_INFO(MOD_MAIN, "Loaded {} strings from dbstr_us.txt", m_string_db.getDbStrCount());
+	} else {
+		LOG_WARN(MOD_MAIN, "Failed to load dbstr_us.txt from {}", dbstr_path);
+		success = false;
+	}
+
+	return success;
 }
 
 std::string EverQuest::GetChatTypeName(uint32_t chat_type) {
@@ -8867,8 +8929,9 @@ void EverQuest::RegisterCommands()
 			SendPetCommand(EQT::PET_FOCUS);
 			AddChatSystemMessage("Toggling pet focus.");
 		} else if (subcommand == "nofocus") {
-			SendPetCommand(EQT::PET_FOCUS_OFF);
-			AddChatSystemMessage("Disabling pet focus.");
+			// Titanium only has toggle, no explicit off - use toggle
+			SendPetCommand(EQT::PET_FOCUS);
+			AddChatSystemMessage("Toggling pet focus off.");
 		} else if (subcommand == "health" || subcommand == "report") {
 			SendPetCommand(EQT::PET_HEALTHREPORT);
 			AddChatSystemMessage("Requesting pet health report.");
@@ -8881,8 +8944,9 @@ void EverQuest::RegisterCommands()
 			SendPetCommand(EQT::PET_SPELLHOLD);
 			AddChatSystemMessage("Toggling pet spell hold.");
 		} else if (subcommand == "nospellhold" || subcommand == "noghold") {
-			SendPetCommand(EQT::PET_SPELLHOLD_OFF);
-			AddChatSystemMessage("Disabling pet spell hold.");
+			// Titanium only has toggle, no explicit off - use toggle
+			SendPetCommand(EQT::PET_SPELLHOLD);
+			AddChatSystemMessage("Toggling pet spell hold off.");
 		} else if (subcommand.empty()) {
 			AddChatSystemMessage("Pet commands: attack, back, follow, guard, sit, stand, taunt, hold, focus, health, dismiss");
 		} else {
@@ -11143,166 +11207,108 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Packet length: {}, unknown0={}, string_id={}, type={}",
 		p.Length(), unknown0, string_id, type);
 
-	// Message starts at offset 14 (2 byte opcode + 12 byte header)
+	// Parse message arguments (null-byte delimited in packet)
+	std::vector<std::string> args;
+	eqt::ParsedFormattedMessageWithArgs parsedArgs;
+
 	if (p.Length() > 14) {
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 14;
 		size_t msg_len = p.Length() - 14;
 
-		// Parse the message with full link preservation
-		eqt::ParsedFormattedMessage parsed = eqt::parseFormattedMessage(data, msg_len);
+		// Parse with argument preservation
+		parsedArgs = eqt::parseFormattedMessageArgs(data, msg_len);
+		args = parsedArgs.args;
 
-		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] string_id={}, type={}, message='{}', links={}",
-			string_id, type, parsed.displayText, parsed.links.size());
-
-		// Display in chat window if we have content
-		if (!parsed.displayText.empty()) {
-#ifdef EQT_HAS_GRAPHICS
-			if (!m_renderer) {
-				LOG_DEBUG(MOD_ZONE, "[FormattedMessage] No renderer available");
-			} else {
-				auto* windowManager = m_renderer->getWindowManager();
-				if (!windowManager) {
-					LOG_DEBUG(MOD_ZONE, "[FormattedMessage] No window manager available");
-				} else {
-					auto* chatWindow = windowManager->getChatWindow();
-					if (!chatWindow) {
-						LOG_DEBUG(MOD_ZONE, "[FormattedMessage] No chat window available");
-					} else {
-						eqt::ui::ChatMessage chatMsg;
-						chatMsg.links = std::move(parsed.links);
-
-						// Handle different message types based on string_id
-						// string_id=467 with type=286 = Loot message (item link)
-						// string_id=339 = Tradeskill success (item created)
-						// string_id=1032 = NPC says
-						// string_id=1034 = NPC shouts
-						if (string_id == 467) {
-							// Loot message - display as system message with item link
-							chatMsg.channel = eqt::ui::ChatChannel::Loot;
-							chatMsg.sender = "";
-							chatMsg.text = "You have looted " + parsed.displayText;
-							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
-								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
-							chatWindow->addMessage(chatMsg);
-							return;
-						}
-
-						if (string_id == 339) {
-							// Tradeskill success message - item name is in displayText
-							chatMsg.channel = eqt::ui::ChatChannel::System;
-							chatMsg.sender = "";
-							chatMsg.text = "You create a " + parsed.displayText + "!";
-							LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
-								static_cast<int>(chatMsg.channel), chatMsg.sender, chatMsg.text);
-							chatWindow->addMessage(chatMsg);
-							return;
-						}
-
-						// Parse NPC name (first two words) and message from displayText
-						// Format: "Firstname Lastname message text here"
-						std::string npcName;
-						std::string messageText;
-						const std::string& fullText = parsed.displayText;
-
-						// Find first two spaces to extract two-word NPC name
-						size_t firstSpace = fullText.find(' ');
-						if (firstSpace != std::string::npos) {
-							size_t secondSpace = fullText.find(' ', firstSpace + 1);
-							if (secondSpace != std::string::npos) {
-								npcName = fullText.substr(0, secondSpace);
-								messageText = fullText.substr(secondSpace + 1);
-							} else {
-								// Only one space, treat first word as name
-								npcName = fullText.substr(0, firstSpace);
-								messageText = fullText.substr(firstSpace + 1);
-							}
-						} else {
-							// No space, entire text is name (unlikely)
-							npcName = fullText;
-						}
-
-						// Determine format based on string_id
-						// string_id=1032 → "says" (NPC dialogue)
-						// string_id=1034 → "shouts" (NPC shout)
-						std::string verb;
-						if (string_id == 1034) {
-							verb = "shouts";
-							chatMsg.channel = eqt::ui::ChatChannel::Shout;
-						} else {
-							// Default to "says" for string_id=1032 and others
-							verb = "says";
-							chatMsg.channel = eqt::ui::ChatChannel::NPCDialogue;
-						}
-
-						// Set sender and message text
-						chatMsg.sender = npcName;
-						if (!messageText.empty()) {
-							if (chatMsg.channel == eqt::ui::ChatChannel::Shout) {
-								// For Shout: chat_message_buffer.cpp handles formatting
-								// like "NPC Name shouts, 'message'", so just set the raw message
-								chatMsg.text = messageText;
-
-								// Adjust link positions for the message text
-								// Original displayText: "NPC Name message..." - message starts after npcName + " "
-								// New text: just "message..." - starts at 0
-								// So we need to shift link positions left by (npcName.length() + 1)
-								size_t originalMessageStart = npcName.length() + 1;  // After "NPC Name "
-
-								for (auto& link : chatMsg.links) {
-									if (link.startPos >= originalMessageStart) {
-										link.startPos -= originalMessageStart;
-									} else {
-										// Link is in the NPC name, which we've removed - mark as invalid
-										link.startPos = 0;
-									}
-									if (link.endPos >= originalMessageStart) {
-										link.endPos -= originalMessageStart;
-									} else {
-										link.endPos = 0;
-									}
-								}
-							} else {
-								// For NPCDialogue: chat_message_buffer displays text as-is,
-								// so include the full formatted message
-								chatMsg.text = npcName + " " + verb + ", '" + messageText + "'";
-
-								// Adjust link positions for the reformatted text
-								// Original: "NPC Name message..." - message starts after npcName + " "
-								// New: "NPC Name says, 'message...'" - message starts after npcName + " " + verb + ", '"
-								// The offset is the difference: verb.length() + 3 (" " + ", '")
-								size_t originalMessageStart = npcName.length() + 1;  // After "NPC Name "
-								size_t newMessageStart = npcName.length() + 1 + verb.length() + 3;  // After "NPC Name says, '"
-								int offset = static_cast<int>(newMessageStart) - static_cast<int>(originalMessageStart);
-
-								for (auto& link : chatMsg.links) {
-									if (link.startPos >= originalMessageStart) {
-										link.startPos += offset;
-									}
-									if (link.endPos >= originalMessageStart) {
-										link.endPos += offset;
-									}
-								}
-							}
-						} else {
-							chatMsg.text = chatMsg.channel == eqt::ui::ChatChannel::Shout ?
-								"something" : npcName + " " + verb + " something";
-						}
-
-						chatMsg.color = eqt::ui::getChannelColor(chatMsg.channel);
-						chatMsg.isSystemMessage = false;  // Has a sender now
-						LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
-							static_cast<int>(chatMsg.channel), npcName, chatMsg.text);
-						chatWindow->addMessage(std::move(chatMsg));
-					}
-				}
-			}
-#endif
+		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] string_id={}, type={}, args_count={}, links={}",
+			string_id, type, args.size(), parsedArgs.links.size());
+		for (size_t i = 0; i < args.size(); i++) {
+			LOG_DEBUG(MOD_ZONE, "[FormattedMessage]   arg[{}]='{}'", i, args[i]);
 		}
-	} else {
-		// No message content, just the header
-		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] string_id={}, type={}, no message content",
-			string_id, type);
 	}
+
+	// Look up the format template from StringDatabase
+	std::string tmpl = m_string_db.getString(string_id);
+
+	// Format the message using the template and arguments
+	std::string formatted_text;
+	if (!tmpl.empty()) {
+		formatted_text = GetFormattedStringMessage(string_id, args);
+		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] template='{}', formatted='{}'", tmpl, formatted_text);
+	} else {
+		// Fallback: join args with spaces if template not found
+		for (size_t i = 0; i < args.size(); i++) {
+			if (i > 0) formatted_text += " ";
+			formatted_text += args[i];
+		}
+		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] No template for string_id={}, fallback text='{}'",
+			string_id, formatted_text);
+	}
+
+	if (formatted_text.empty()) {
+		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] string_id={}, type={}, empty result",
+			string_id, type);
+		return;
+	}
+
+	// Determine chat channel based on template content
+	eqt::ui::ChatChannel channel = eqt::ui::ChatChannel::System;
+	std::string sender;
+	bool isSystemMessage = true;
+
+	if (!tmpl.empty()) {
+		// Check template patterns to determine message type
+		if (tmpl.find("looted") != std::string::npos) {
+			channel = eqt::ui::ChatChannel::Loot;
+		} else if (tmpl.find("fashioned") != std::string::npos ||
+		           tmpl.find("create") != std::string::npos) {
+			channel = eqt::ui::ChatChannel::System;
+		} else if (tmpl.find("shouts") != std::string::npos) {
+			channel = eqt::ui::ChatChannel::Shout;
+			// For shout messages, first arg is usually the NPC name
+			if (!args.empty()) {
+				sender = args[0];
+				isSystemMessage = false;
+			}
+		} else if (tmpl.find("says") != std::string::npos ||
+		           tmpl.find("tells you") != std::string::npos) {
+			channel = eqt::ui::ChatChannel::NPCDialogue;
+			// For say/tell messages, first arg is usually the NPC name
+			if (!args.empty()) {
+				sender = args[0];
+				isSystemMessage = false;
+			}
+		} else if (tmpl.find("experience") != std::string::npos) {
+			channel = eqt::ui::ChatChannel::Experience;
+		} else if (tmpl.find("spell") != std::string::npos && tmpl.find("worn off") != std::string::npos) {
+			channel = eqt::ui::ChatChannel::Spell;
+		}
+	}
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		auto* windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto* chatWindow = windowManager->getChatWindow();
+			if (chatWindow) {
+				eqt::ui::ChatMessage chatMsg;
+				chatMsg.channel = channel;
+				chatMsg.sender = sender;
+				chatMsg.text = formatted_text;
+				chatMsg.color = eqt::ui::getChannelColor(channel);
+				chatMsg.isSystemMessage = isSystemMessage;
+				chatMsg.links = std::move(parsedArgs.links);
+
+				LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
+					static_cast<int>(channel), sender, formatted_text);
+				chatWindow->addMessage(std::move(chatMsg));
+				return;
+			}
+		}
+	}
+#endif
+
+	// Fallback: print to console if no chat window
+	LOG_INFO(MOD_ZONE, "[FormattedMessage] {}", formatted_text);
 }
 
 void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
@@ -11310,6 +11316,7 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 	// SimpleMessage is used for system messages that use string templates
 	// SimpleMessage_Struct: color(4), string_id(4), unknown8(4)
 	// Total: 12 bytes + 2 byte opcode = 14 bytes minimum
+	// Note: SimpleMessage has no argument data - placeholders must be filled from context
 
 	if (p.Length() < 14) {
 		LOG_WARN(MOD_ZONE, "SimpleMessage packet too small: {} bytes", p.Length());
@@ -11320,18 +11327,24 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 	uint32_t string_id = p.GetUInt32(6);    // string_id
 
 	// Get the message template for this string ID
-	std::string message_text = GetStringMessage(string_id);
+	std::string tmpl = GetStringMessage(string_id);
 
 	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}, template='{}'",
-		color_type, string_id, message_text);
+		color_type, string_id, tmpl);
 
-	// Substitute placeholders (%1, %2, etc.) with entity names
-	// %1 is typically the target (for "You have slain %1!")
-	if (message_text.find("%1") != std::string::npos) {
+	// Build arguments from context for placeholder substitution
+	// SimpleMessage doesn't include args in packet - they must be inferred
+	std::vector<std::string> args;
+
+	// Determine context-based arguments
+	// %1 is typically the target entity name
+	if (tmpl.find("%1") != std::string::npos || tmpl.find("#1") != std::string::npos) {
 		std::string target_name = "something";
 
-		// For "slain" messages (string_id 303), use the last slain entity name
-		if (string_id == 303 && !m_last_slain_entity_name.empty()) {
+		// For "slain" messages, use the last slain entity name
+		// Note: String 12113 is "You have slain %1!" in eqstr_us.txt
+		// Server may send 303 or 12113 depending on context
+		if ((string_id == 303 || string_id == 12113) && !m_last_slain_entity_name.empty()) {
 			target_name = m_last_slain_entity_name;
 		}
 		// Otherwise try current combat target
@@ -11342,10 +11355,15 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 			}
 		}
 
-		size_t pos = message_text.find("%1");
-		if (pos != std::string::npos) {
-			message_text.replace(pos, 2, target_name);
-		}
+		args.push_back(target_name);
+	}
+
+	// Format the message with arguments
+	std::string message_text;
+	if (!args.empty()) {
+		message_text = GetFormattedStringMessage(string_id, args);
+	} else {
+		message_text = tmpl;
 	}
 
 	// Map color_type to chat channel
@@ -13152,6 +13170,60 @@ void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 
 	m_zone_connection->QueuePacket(p, 0, true);
 	LOG_DEBUG(MOD_MAIN, "Sent pet command: {} (target={})", EQT::GetPetCommandName(command), target_id);
+
+	// Optimistically update button states based on command sent
+	// Follow, Guard, Sit are mutually exclusive position commands
+	switch (command) {
+	case EQT::PET_FOLLOWME:
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = false;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = false;
+		break;
+	case EQT::PET_GUARDHERE:
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = false;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = true;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = false;
+		break;
+	case EQT::PET_SITDOWN:  // PET_SIT is an alias for this
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = false;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = false;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = true;
+		break;
+	case EQT::PET_STANDUP:
+		// Standing up returns to follow mode
+		m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+		m_pet_button_states[EQT::PET_BUTTON_GUARD] = false;
+		m_pet_button_states[EQT::PET_BUTTON_SIT] = false;
+		break;
+	// Independent toggles
+	case EQT::PET_HOLD:
+		m_pet_button_states[EQT::PET_BUTTON_HOLD] = !m_pet_button_states[EQT::PET_BUTTON_HOLD];
+		break;
+	case EQT::PET_HOLD_ON:
+		m_pet_button_states[EQT::PET_BUTTON_HOLD] = true;
+		break;
+	case EQT::PET_HOLD_OFF:
+		m_pet_button_states[EQT::PET_BUTTON_HOLD] = false;
+		break;
+	case EQT::PET_TAUNT:
+		m_pet_button_states[EQT::PET_BUTTON_TAUNT] = !m_pet_button_states[EQT::PET_BUTTON_TAUNT];
+		break;
+	case EQT::PET_TAUNT_ON:
+		m_pet_button_states[EQT::PET_BUTTON_TAUNT] = true;
+		break;
+	case EQT::PET_TAUNT_OFF:
+		m_pet_button_states[EQT::PET_BUTTON_TAUNT] = false;
+		break;
+	case EQT::PET_FOCUS:
+		m_pet_button_states[EQT::PET_BUTTON_FOCUS] = !m_pet_button_states[EQT::PET_BUTTON_FOCUS];
+		break;
+	case EQT::PET_SPELLHOLD:
+		m_pet_button_states[EQT::PET_BUTTON_SPELLHOLD] = !m_pet_button_states[EQT::PET_BUTTON_SPELLHOLD];
+		break;
+	default:
+		// Attack, Back Off, Get Lost, etc. don't have toggle states
+		break;
+	}
 }
 
 void EverQuest::DismissPet()
@@ -14005,12 +14077,41 @@ void EverQuest::ZoneProcessWhoAllResponse(const EQ::Net::Packet &p)
 	uint32_t player_count = header->playercount;
 	LOG_INFO(MOD_MAIN, "Who response: {} player(s)", player_count);
 
+	// Get localized header strings from StringDatabase
+	std::string header_text;
+
+	// Use playerineqstring for the header (e.g., "Players in EverQuest")
+	if (header->playerineqstring != 0) {
+		std::string eqstr = m_string_db.getString(header->playerineqstring);
+		if (!eqstr.empty()) {
+			header_text = eqstr;
+		}
+	}
+
+	// Fallback to playersinzonestring if playerineqstring is empty
+	if (header_text.empty() && header->playersinzonestring != 0) {
+		std::string zonestr = m_string_db.getString(header->playersinzonestring);
+		if (!zonestr.empty()) {
+			header_text = zonestr;
+		}
+	}
+
+	// Use the line field if no string ID matched
+	if (header_text.empty() && header->line[0] != '\0') {
+		header_text = std::string(header->line, strnlen(header->line, sizeof(header->line)));
+	}
+
 	if (player_count == 0) {
 		AddChatSystemMessage("No players found matching your search.");
 		return;
 	}
 
-	AddChatSystemMessage(fmt::format("Players found: {}", player_count));
+	// Display header with player count
+	if (!header_text.empty()) {
+		AddChatSystemMessage(fmt::format("{}: {}", header_text, player_count));
+	} else {
+		AddChatSystemMessage(fmt::format("Players found: {}", player_count));
+	}
 
 	// The player data follows the header in a complex variable-length format
 	// Each player entry contains multiple uint32 format strings followed by variable-length strings
@@ -14019,7 +14120,8 @@ void EverQuest::ZoneProcessWhoAllResponse(const EQ::Net::Packet &p)
 	// the client's string table
 
 	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Who header: id={}, playercount={}", header->id, header->playercount);
+		LOG_DEBUG(MOD_MAIN, "Who header: id={}, playerineqstring={}, playersinzonestring={}, playercount={}",
+			header->id, header->playerineqstring, header->playersinzonestring, header->playercount);
 	}
 }
 
@@ -15976,6 +16078,13 @@ void EverQuest::UpdateKeyboardMovement()
 
 #ifdef EQT_HAS_GRAPHICS
 // Graphics renderer integration methods
+
+void EverQuest::SetEQClientPath(const std::string& path) {
+	m_eq_client_path = path;
+
+	// Load EQ string files for message lookups
+	LoadStringFiles(path);
+}
 
 bool EverQuest::InitGraphics(int width, int height) {
 	if (m_graphics_initialized) {
