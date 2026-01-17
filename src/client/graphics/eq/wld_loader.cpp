@@ -44,6 +44,7 @@ bool WldLoader::parseFromArchive(const std::string& archivePath, const std::stri
     meshAnimatedVertices_.clear();
     meshAnimatedVerticesRefs_.clear();
     bspTree_.reset();
+    totalRegionCount_ = 0;
 
     PfsArchive archive;
     if (!archive.open(archivePath)) {
@@ -66,6 +67,9 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
     size_t idx = 0;
     const WldHeader* header = reinterpret_cast<const WldHeader*>(&buffer[idx]);
     idx += sizeof(WldHeader);
+
+    // Store total region count for PVS array sizing
+    totalRegionCount_ = header->bspRegionCount;
 
     // Check magic
     if (header->magic != 0x54503d02) {
@@ -666,6 +670,37 @@ std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
     }
 
     return combined;
+}
+
+std::shared_ptr<ZoneGeometry> WldLoader::getGeometryForRegion(size_t regionIndex) const {
+    if (!bspTree_ || regionIndex >= bspTree_->regions.size()) {
+        return nullptr;
+    }
+
+    const auto& region = bspTree_->regions[regionIndex];
+    if (!region->containsPolygons || region->meshReference < 0) {
+        return nullptr;
+    }
+
+    // meshReference is a 1-indexed fragment reference
+    // Convert to 0-indexed and look up in geometryByFragIndex_
+    auto it = geometryByFragIndex_.find(static_cast<uint32_t>(region->meshReference));
+    return (it != geometryByFragIndex_.end()) ? it->second : nullptr;
+}
+
+bool WldLoader::hasPvsData() const {
+    if (!bspTree_ || bspTree_->regions.empty()) {
+        return false;
+    }
+
+    // Check if at least one region has PVS visibility data
+    for (const auto& region : bspTree_->regions) {
+        if (!region->visibleRegions.empty()) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void WldLoader::parseFragment14(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
@@ -1686,6 +1721,75 @@ void WldLoader::parseFragment37(const char* fragBuffer, uint32_t fragLength, uin
         animVerts->name, frameCount, vertexCount, animVerts->delayMs);
 }
 
+// Decode RLE-encoded PVS (Potentially Visible Set) data from Fragment 0x22
+// RLE format from libeq documentation:
+// - 0x00..0x3E: skip forward by this many region IDs (not visible)
+// - 0x3F, WORD: skip forward by the amount in the following 16-bit WORD
+// - 0x40..0x7F: skip forward based on bits 3..5, then include IDs based on bits 0..2
+// - 0x80..0xBF: include IDs based on bits 3..5, then skip forward based on bits 0..2
+// - 0xC0..0xFE: (byte - 0xC0) region IDs are nearby (visible)
+// - 0xFF, WORD: the number of region IDs given by the following WORD are nearby
+static std::vector<bool> decodeRlePvs(const char* data, int16_t dataSize, uint32_t numRegions) {
+    std::vector<bool> visible(numRegions, false);
+    uint32_t region = 0;
+    int i = 0;
+
+    while (i < dataSize && region < numRegions) {
+        uint8_t byte = static_cast<uint8_t>(data[i++]);
+
+        if (byte <= 0x3E) {
+            // 0x00..0x3E - skip forward by this many region IDs (not visible)
+            region += byte;
+        } else if (byte == 0x3F) {
+            // 0x3F, WORD - skip forward by the amount given in the following 16-bit WORD
+            if (i + 2 <= dataSize) {
+                uint16_t skipCount = *reinterpret_cast<const uint16_t*>(&data[i]);
+                i += 2;
+                region += skipCount;
+            } else {
+                break; // Malformed data
+            }
+        } else if (byte <= 0x7F) {
+            // 0x40..0x7F - skip forward based on bits 3..5, then include IDs based on bits 0..2
+            uint8_t val = byte - 0x40;
+            uint8_t skipCount = (val >> 3) & 0x07;   // bits 3..5
+            uint8_t includeCount = val & 0x07;        // bits 0..2
+            region += skipCount;
+            for (uint8_t j = 0; j < includeCount && region < numRegions; j++) {
+                visible[region++] = true;
+            }
+        } else if (byte <= 0xBF) {
+            // 0x80..0xBF - include IDs based on bits 3..5, then skip forward based on bits 0..2
+            uint8_t val = byte - 0x80;
+            uint8_t includeCount = (val >> 3) & 0x07;  // bits 3..5
+            uint8_t skipCount = val & 0x07;            // bits 0..2
+            for (uint8_t j = 0; j < includeCount && region < numRegions; j++) {
+                visible[region++] = true;
+            }
+            region += skipCount;
+        } else if (byte <= 0xFE) {
+            // 0xC0..0xFE - (byte - 0xC0) region IDs are nearby (visible)
+            uint8_t includeCount = byte - 0xC0;
+            for (uint8_t j = 0; j < includeCount && region < numRegions; j++) {
+                visible[region++] = true;
+            }
+        } else { // byte == 0xFF
+            // 0xFF, WORD - the number of region IDs given by the following WORD are nearby
+            if (i + 2 <= dataSize) {
+                uint16_t includeCount = *reinterpret_cast<const uint16_t*>(&data[i]);
+                i += 2;
+                for (uint16_t j = 0; j < includeCount && region < numRegions; j++) {
+                    visible[region++] = true;
+                }
+            } else {
+                break; // Malformed data
+            }
+        }
+    }
+
+    return visible;
+}
+
 void WldLoader::parseFragment21(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
     // Fragment 0x21 - BSP Tree
     // Contains the BSP tree nodes for zone region detection
@@ -1799,9 +1903,20 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
     // Skip data5 (28 bytes each entry)
     ptr += 7 * 4 * data5Size;
 
-    // Skip PVS data
+    // Decode PVS (Potentially Visible Set) data
+    // This RLE-encoded bitfield indicates which other regions are visible from this region
     if (ptr + 2 <= fragBuffer + fragLength) {
         int16_t pvsSize = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
+        if (pvsSize > 0 && totalRegionCount_ > 0 && ptr + pvsSize <= fragBuffer + fragLength) {
+            region->visibleRegions = decodeRlePvs(ptr, pvsSize, totalRegionCount_);
+            // Count visible regions for logging
+            size_t visibleCount = 0;
+            for (bool v : region->visibleRegions) {
+                if (v) visibleCount++;
+            }
+            LOG_TRACE(MOD_MAP, "[BSP] Region {} PVS: {} bytes decoded, {}/{} regions visible",
+                regionIndex, pvsSize, visibleCount, totalRegionCount_);
+        }
         ptr += pvsSize;
     }
 

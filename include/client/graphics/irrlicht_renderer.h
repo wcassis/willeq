@@ -6,6 +6,7 @@
 #include <memory>
 #include <functional>
 #include <vector>
+#include <map>
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/entity_renderer.h"
@@ -773,6 +774,8 @@ private:
     void setupHUD();
     void updateHUD();
     void createZoneMesh();
+    void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
+    void updatePvsVisibility();    // Update region visibility based on camera position
     void createObjectMeshes();
     void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
@@ -807,6 +810,15 @@ private:
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;
     irr::scene::IMeshSceneNode* zoneMeshNode_ = nullptr;
+
+    // PVS (Potentially Visible Set) culling state
+    bool usePvsCulling_ = false;  // Whether PVS culling is active for this zone
+    std::map<size_t, irr::scene::IMeshSceneNode*> regionMeshNodes_;  // Per-region mesh nodes
+    std::shared_ptr<EQT::Graphics::BspTree> zoneBspTree_;  // BSP tree for region queries
+    size_t currentPvsRegion_ = SIZE_MAX;  // Current camera region (SIZE_MAX = unknown)
+    irr::scene::IMeshSceneNode* fallbackMeshNode_ = nullptr;  // Mesh for geometry not in any region
+    irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
+
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
     float objectRenderDistance_ = 300.0f;  // Max distance to render objects

@@ -1470,6 +1470,34 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
     // Grid uses EQ X, Y (horizontal plane)
     float eqCameraX = cameraPos.X;
     float eqCameraY = cameraPos.Z;  // EQ Y = Irrlicht Z
+    float eqCameraZ = cameraPos.Y;  // EQ Z = Irrlicht Y
+
+    // Update camera's BSP region for PVS culling
+    if (bspTree_ && !bspTree_->regions.empty()) {
+        auto region = bspTree_->findRegionForPoint(eqCameraX, eqCameraY, eqCameraZ);
+        if (region) {
+            // Find the region's index
+            size_t regionIdx = SIZE_MAX;
+            for (size_t i = 0; i < bspTree_->regions.size(); ++i) {
+                if (bspTree_->regions[i] == region) {
+                    regionIdx = i;
+                    break;
+                }
+            }
+            if (regionIdx != currentCameraRegionIdx_) {
+                currentCameraRegionIdx_ = regionIdx;
+                currentCameraRegion_ = region;
+                LOG_TRACE(MOD_GRAPHICS, "EntityRenderer: Camera entered region {}", regionIdx);
+            }
+        } else {
+            // Camera outside BSP tree - show all entities
+            if (currentCameraRegionIdx_ != SIZE_MAX) {
+                currentCameraRegionIdx_ = SIZE_MAX;
+                currentCameraRegion_ = nullptr;
+                LOG_TRACE(MOD_GRAPHICS, "EntityRenderer: Camera outside BSP tree");
+            }
+        }
+    }
 
     // Get entities potentially within render distance
     std::vector<uint16_t> nearbyEntities;
@@ -1491,14 +1519,55 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         irr::core::vector3df entityPos(visual.lastX, visual.lastZ, visual.lastY);
         float distanceSq = cameraPos.getDistanceFromSQ(entityPos);
 
-        // Update mesh visibility based on render distance
-        if (visual.meshNode) {
-            visual.meshNode->setVisible(distanceSq <= renderDistanceSq);
+        // Check distance-based visibility
+        bool inRenderDistance = (distanceSq <= renderDistanceSq);
+
+        // Check PVS visibility (if BSP tree is set)
+        bool pvsVisible = true;  // Default to visible if no PVS data
+        if (bspTree_ && currentCameraRegion_ && !currentCameraRegion_->visibleRegions.empty()) {
+            // Find which region the entity is in
+            auto entityRegion = bspTree_->findRegionForPoint(visual.lastX, visual.lastY, visual.lastZ);
+            if (entityRegion) {
+                // Find the entity region's index
+                size_t entityRegionIdx = SIZE_MAX;
+                for (size_t i = 0; i < bspTree_->regions.size(); ++i) {
+                    if (bspTree_->regions[i] == entityRegion) {
+                        entityRegionIdx = i;
+                        break;
+                    }
+                }
+                // Check if entity's region is visible from camera's region
+                if (entityRegionIdx < currentCameraRegion_->visibleRegions.size()) {
+                    pvsVisible = currentCameraRegion_->visibleRegions[entityRegionIdx];
+                }
+                // If entity region is outside PVS array, assume visible (conservative)
+            }
+            // If entity is outside BSP tree, assume visible
         }
 
-        // Update name tag visibility based on name tag distance and global toggle
+        // Combined visibility: must be in render distance AND PVS visible
+        bool isVisible = inRenderDistance && pvsVisible;
+
+        // Update model visibility (handles both animated and static mesh nodes)
+        if (visual.animatedNode) {
+            visual.animatedNode->setVisible(isVisible);
+        }
+        if (visual.meshNode) {
+            visual.meshNode->setVisible(isVisible);
+        }
+
+        // Update name tag visibility based on name tag distance, global toggle, and PVS
         if (visual.nameNode) {
-            visual.nameNode->setVisible(nameTagsVisible_ && distanceSq <= nameTagDistanceSq);
+            bool nameVisible = nameTagsVisible_ && (distanceSq <= nameTagDistanceSq) && pvsVisible;
+            visual.nameNode->setVisible(nameVisible);
+        }
+
+        // Update equipment visibility to match entity visibility
+        if (visual.primaryEquipNode) {
+            visual.primaryEquipNode->setVisible(isVisible);
+        }
+        if (visual.secondaryEquipNode) {
+            visual.secondaryEquipNode->setVisible(isVisible);
         }
     }
 
@@ -1507,11 +1576,20 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         for (auto& [spawnId, visual] : entities_) {
             if (processedEntities.find(spawnId) == processedEntities.end()) {
                 // Entity not in nearby set - hide it
+                if (visual.animatedNode) {
+                    visual.animatedNode->setVisible(false);
+                }
                 if (visual.meshNode) {
                     visual.meshNode->setVisible(false);
                 }
                 if (visual.nameNode) {
                     visual.nameNode->setVisible(false);
+                }
+                if (visual.primaryEquipNode) {
+                    visual.primaryEquipNode->setVisible(false);
+                }
+                if (visual.secondaryEquipNode) {
+                    visual.secondaryEquipNode->setVisible(false);
                 }
             }
         }
@@ -3138,6 +3216,25 @@ void EntityRenderer::getEntitiesInRange(float centerX, float centerY, float rang
             }
         }
     }
+}
+
+// ============================================================================
+// PVS-based Visibility Culling
+// ============================================================================
+
+void EntityRenderer::setBspTree(std::shared_ptr<BspTree> bspTree) {
+    bspTree_ = bspTree;
+    currentCameraRegionIdx_ = SIZE_MAX;
+    currentCameraRegion_ = nullptr;
+    LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: BSP tree set with {} regions",
+              bspTree_ ? bspTree_->regions.size() : 0);
+}
+
+void EntityRenderer::clearBspTree() {
+    bspTree_ = nullptr;
+    currentCameraRegionIdx_ = SIZE_MAX;
+    currentCameraRegion_ = nullptr;
+    LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: BSP tree cleared");
 }
 
 } // namespace Graphics

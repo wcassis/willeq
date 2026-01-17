@@ -143,15 +143,16 @@ bool S3DLoader::loadZone(const std::string& archivePath) {
     }
 
     // Parse WLD file
-    WldLoader wldLoader;
-    if (!wldLoader.parseFromArchive(archivePath, mainWld)) {
+    auto wldLoader = std::make_shared<WldLoader>();
+    if (!wldLoader->parseFromArchive(archivePath, mainWld)) {
         error_ = "Failed to parse WLD file: " + mainWld;
         return false;
     }
 
     zone_ = std::make_shared<S3DZone>();
     zone_->zoneName = zoneName_;
-    zone_->geometry = wldLoader.getCombinedGeometry();
+    zone_->wldLoader = wldLoader;  // Store for PVS access
+    zone_->geometry = wldLoader->getCombinedGeometry();
 
     if (!zone_->geometry) {
         error_ = "No geometry extracted from WLD";

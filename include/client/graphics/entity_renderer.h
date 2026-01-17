@@ -13,6 +13,7 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
+#include "client/graphics/eq/wld_loader.h"
 
 namespace EQT {
 namespace Graphics {
@@ -303,6 +304,13 @@ public:
     void renderEntityCastingBars(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui,
                                   irr::scene::ICameraSceneNode* camera);
 
+    // Set BSP tree for PVS-based entity visibility culling
+    // When set, entities in regions not visible from the camera's region will be hidden
+    void setBspTree(std::shared_ptr<BspTree> bspTree);
+
+    // Clear BSP tree (call when changing zones)
+    void clearBspTree();
+
 private:
     irr::scene::IMesh* getMeshForRace(uint16_t raceId, uint8_t gender = 0,
                                        const EntityAppearance& appearance = EntityAppearance());
@@ -338,6 +346,11 @@ private:
     // Visibility settings
     float renderDistance_ = 500.0f;   // Max distance to render entity models
     float nameTagDistance_ = 200.0f;  // Max distance to show name tags
+
+    // PVS-based visibility culling
+    std::shared_ptr<BspTree> bspTree_;                  // BSP tree for region lookups
+    size_t currentCameraRegionIdx_ = SIZE_MAX;          // Camera's current region index
+    std::shared_ptr<BspRegion> currentCameraRegion_;    // Camera's current region (has visibleRegions)
 
     // Debug: Target ID for animation debugging
     uint16_t debugTargetId_ = 0;

@@ -8348,6 +8348,34 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(perf);
 
+	Command renderdist;
+	renderdist.name = "renderdist";
+	renderdist.aliases = {"clipplane", "viewdist"};
+	renderdist.usage = "/renderdist [distance]";
+	renderdist.description = "Get or set entity render distance";
+	renderdist.category = "Utility";
+	renderdist.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* entityRenderer = m_renderer->getEntityRenderer();
+		if (!entityRenderer) return;
+
+		if (args.empty()) {
+			float dist = entityRenderer->getRenderDistance();
+			AddChatSystemMessage(fmt::format("Render distance: {:.0f} units", dist));
+		} else {
+			try {
+				float dist = std::stof(args);
+				if (dist < 50.0f) dist = 50.0f;
+				if (dist > 10000.0f) dist = 10000.0f;
+				entityRenderer->setRenderDistance(dist);
+				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units", dist));
+			} catch (...) {
+				AddChatSystemMessage("Usage: /renderdist [50-10000]");
+			}
+		}
+	};
+	m_command_registry->registerCommand(renderdist);
+
 	Command filter;
 	filter.name = "filter";
 	filter.usage = "/filter [channel]";

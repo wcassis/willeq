@@ -89,6 +89,9 @@ struct S3DZone {
     std::map<std::string, std::shared_ptr<TextureInfo>> textures;
     std::string zoneName;
 
+    // WLD loader - provides access to BSP tree and per-region geometry for PVS culling
+    std::shared_ptr<WldLoader> wldLoader;
+
     // Placeable objects
     std::vector<ObjectInstance> objects;
 

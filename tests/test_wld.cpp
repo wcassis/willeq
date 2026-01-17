@@ -3272,6 +3272,67 @@ TEST_F(IntegrationTest, BspTreeZoneLines) {
     }
 }
 
+// Test PVS (Potentially Visible Set) data decoding
+TEST_F(IntegrationTest, PvsDataDecoding) {
+    std::string s3dPath = eqClientPath_ + "/befallen.s3d";  // Use befallen - an indoor zone with good PVS data
+    if (!fileExists(s3dPath)) {
+        GTEST_SKIP() << "EQ client not found";
+    }
+
+    WldLoader loader;
+    ASSERT_TRUE(loader.parseFromArchive(s3dPath, "befallen.wld"));
+
+    std::cout << "PVS Data (befallen):\n";
+    std::cout << "  Has PVS data: " << (loader.hasPvsData() ? "yes" : "no") << "\n";
+    std::cout << "  Total region count: " << loader.getTotalRegionCount() << "\n";
+
+    auto bspTree = loader.getBspTree();
+    ASSERT_NE(bspTree, nullptr);
+
+    // Count regions with PVS data and calculate statistics
+    size_t regionsWithPvs = 0;
+    size_t totalVisibleRegions = 0;
+    size_t minVisible = SIZE_MAX;
+    size_t maxVisible = 0;
+
+    for (const auto& region : bspTree->regions) {
+        if (!region->visibleRegions.empty()) {
+            regionsWithPvs++;
+            size_t visibleCount = 0;
+            for (bool v : region->visibleRegions) {
+                if (v) visibleCount++;
+            }
+            totalVisibleRegions += visibleCount;
+            minVisible = std::min(minVisible, visibleCount);
+            maxVisible = std::max(maxVisible, visibleCount);
+        }
+    }
+
+    std::cout << "  Regions with PVS: " << regionsWithPvs << "/" << bspTree->regions.size() << "\n";
+
+    if (regionsWithPvs > 0) {
+        double avgVisible = static_cast<double>(totalVisibleRegions) / regionsWithPvs;
+        std::cout << "  Avg visible regions: " << avgVisible << "\n";
+        std::cout << "  Min visible: " << minVisible << "\n";
+        std::cout << "  Max visible: " << maxVisible << "\n";
+
+        // Verify PVS data makes sense (should be at least visible to self)
+        EXPECT_GT(regionsWithPvs, 0) << "Should have some regions with PVS data";
+        EXPECT_GT(avgVisible, 0) << "Average visible regions should be > 0";
+        EXPECT_LE(maxVisible, bspTree->regions.size()) << "Max visible should not exceed total regions";
+    }
+
+    // Test geometry-to-region mapping
+    size_t regionsWithGeometry = 0;
+    for (size_t i = 0; i < bspTree->regions.size(); ++i) {
+        auto geom = loader.getGeometryForRegion(i);
+        if (geom) {
+            regionsWithGeometry++;
+        }
+    }
+    std::cout << "  Regions with geometry: " << regionsWithGeometry << "/" << bspTree->regions.size() << "\n";
+}
+
 // ============================================================================
 // Phase 11.6: Cross-Zone Comparison Tests
 // ============================================================================

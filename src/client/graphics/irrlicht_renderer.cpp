@@ -16,6 +16,7 @@
 #include <sstream>
 #include <cmath>
 #include <limits>
+#include <set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -1619,7 +1620,8 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 
     drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
     EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
-    createZoneMesh();
+    // Use PVS-based culling if available (falls back to combined mesh if not)
+    createZoneMeshWithPvs();
     EQT::PerformanceMetrics::instance().stopTimer("Zone Mesh Creation");
 
     drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
@@ -1693,6 +1695,35 @@ void IrrlichtRenderer::unloadZone() {
     if (zoneMeshNode_) {
         zoneMeshNode_->remove();
         zoneMeshNode_ = nullptr;
+    }
+
+    // Remove PVS region mesh nodes
+    for (auto& [regionIdx, node] : regionMeshNodes_) {
+        if (node) {
+            node->remove();
+        }
+    }
+    regionMeshNodes_.clear();
+
+    if (fallbackMeshNode_) {
+        fallbackMeshNode_->remove();
+        fallbackMeshNode_ = nullptr;
+    }
+
+    // Remove collision-only node (used in PVS mode)
+    if (zoneCollisionNode_) {
+        zoneCollisionNode_->remove();
+        zoneCollisionNode_ = nullptr;
+    }
+
+    // Reset PVS state
+    usePvsCulling_ = false;
+    zoneBspTree_.reset();
+    currentPvsRegion_ = SIZE_MAX;
+
+    // Clear BSP tree from entity renderer
+    if (entityRenderer_) {
+        entityRenderer_->clearBspTree();
     }
 
     // Remove object nodes
@@ -1795,6 +1826,405 @@ void IrrlichtRenderer::createZoneMesh() {
             }
         }
         mesh->drop();
+    }
+}
+
+void IrrlichtRenderer::createZoneMeshWithPvs() {
+    if (!currentZone_ || !currentZone_->wldLoader) {
+        LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no zone or WLD loader");
+        createZoneMesh();  // Fall back to combined mesh
+        return;
+    }
+
+    auto wldLoader = currentZone_->wldLoader;
+    auto bspTree = wldLoader->getBspTree();
+
+    if (!bspTree || bspTree->regions.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no BSP tree or regions");
+        createZoneMesh();
+        return;
+    }
+
+    if (!wldLoader->hasPvsData()) {
+        LOG_INFO(MOD_GRAPHICS, "Zone has no PVS data, using combined mesh");
+        createZoneMesh();
+        return;
+    }
+
+    // Clean up existing mesh nodes
+    if (zoneMeshNode_) {
+        zoneMeshNode_->remove();
+        zoneMeshNode_ = nullptr;
+    }
+
+    for (auto& [regionIdx, node] : regionMeshNodes_) {
+        if (node) {
+            node->remove();
+        }
+    }
+    regionMeshNodes_.clear();
+
+    if (fallbackMeshNode_) {
+        fallbackMeshNode_->remove();
+        fallbackMeshNode_ = nullptr;
+    }
+
+    // Store BSP tree for visibility queries
+    zoneBspTree_ = bspTree;
+    usePvsCulling_ = true;
+    currentPvsRegion_ = SIZE_MAX;
+
+    // Pass BSP tree to entity renderer for PVS-based entity culling
+    if (entityRenderer_) {
+        entityRenderer_->setBspTree(bspTree);
+    }
+
+    ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+
+    // Count regions with geometry for progress tracking
+    size_t regionsWithGeometry = 0;
+    for (size_t i = 0; i < bspTree->regions.size(); ++i) {
+        if (wldLoader->getGeometryForRegion(i)) {
+            regionsWithGeometry++;
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Creating PVS mesh with {} regions ({} with geometry)",
+        bspTree->regions.size(), regionsWithGeometry);
+
+    // Create a mesh for each region that has geometry
+    size_t createdMeshes = 0;
+    for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
+        auto geom = wldLoader->getGeometryForRegion(regionIdx);
+        if (!geom || geom->vertices.empty()) {
+            continue;
+        }
+
+        irr::scene::IMesh* mesh = nullptr;
+
+        if (!currentZone_->textures.empty() && !geom->textureNames.empty()) {
+            mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+        } else {
+            mesh = builder.buildColoredMesh(*geom);
+        }
+
+        if (mesh) {
+            // Use regular mesh scene node (not octree - regions are already spatial partitions)
+            auto* node = smgr_->addMeshSceneNode(mesh);
+            if (node) {
+                // Apply mesh center offset to position the region correctly
+                // EQ coords: (x, y, z) -> Irrlicht coords: (x, z, y)
+                node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
+
+                // Log first 10 region mesh positions for debugging
+                if (createdMeshes < 10) {
+                    LOG_DEBUG(MOD_GRAPHICS, "Region {} mesh: EQ center=({:.1f},{:.1f},{:.1f}) bounds=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f})",
+                        regionIdx, geom->centerX, geom->centerY, geom->centerZ,
+                        geom->minX, geom->minY, geom->minZ,
+                        geom->maxX, geom->maxY, geom->maxZ);
+                }
+
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = lightingEnabled_;
+                    node->getMaterial(i).BackfaceCulling = false;
+                    node->getMaterial(i).GouraudShading = true;
+                    node->getMaterial(i).FogEnable = fogEnabled_;
+                    node->getMaterial(i).Wireframe = wireframeMode_;
+                    node->getMaterial(i).NormalizeNormals = true;
+                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                }
+
+                regionMeshNodes_[regionIdx] = node;
+                createdMeshes++;
+            }
+            mesh->drop();
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Created {} region mesh nodes for PVS culling", createdMeshes);
+
+    // Check for geometry not associated with any BSP region (fallback geometry)
+    // This geometry should always be visible
+    std::set<ZoneGeometry*> referencedGeometries;
+    for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
+        auto geom = wldLoader->getGeometryForRegion(regionIdx);
+        if (geom) {
+            referencedGeometries.insert(geom.get());
+        }
+    }
+
+    // Count unreferenced geometries
+    const auto& allGeometries = wldLoader->getGeometries();
+    size_t unreferencedCount = 0;
+    size_t unreferencedVerts = 0;
+    for (const auto& geom : allGeometries) {
+        if (referencedGeometries.find(geom.get()) == referencedGeometries.end()) {
+            unreferencedCount++;
+            unreferencedVerts += geom->vertices.size();
+        }
+    }
+
+    if (unreferencedCount > 0) {
+        LOG_WARN(MOD_GRAPHICS, "PVS: {} geometries ({} vertices) not referenced by any BSP region - creating fallback mesh",
+            unreferencedCount, unreferencedVerts);
+
+        // Build a combined mesh from unreferenced geometries
+        auto fallbackGeom = std::make_shared<ZoneGeometry>();
+        uint32_t vertexOffset = 0;
+
+        for (const auto& geom : allGeometries) {
+            if (referencedGeometries.find(geom.get()) == referencedGeometries.end()) {
+                // Add vertices with center offset applied (world coordinates)
+                for (const auto& v : geom->vertices) {
+                    Vertex3D worldV = v;
+                    worldV.x += geom->centerX;
+                    worldV.y += geom->centerY;
+                    worldV.z += geom->centerZ;
+                    fallbackGeom->vertices.push_back(worldV);
+                }
+
+                // Add triangles with adjusted indices
+                for (const auto& tri : geom->triangles) {
+                    Triangle t = tri;
+                    t.v1 += vertexOffset;
+                    t.v2 += vertexOffset;
+                    t.v3 += vertexOffset;
+                    fallbackGeom->triangles.push_back(t);
+                }
+
+                // Copy texture info
+                for (const auto& texName : geom->textureNames) {
+                    fallbackGeom->textureNames.push_back(texName);
+                }
+
+                vertexOffset += static_cast<uint32_t>(geom->vertices.size());
+            }
+        }
+
+        // Create the fallback mesh node (always visible)
+        if (!fallbackGeom->vertices.empty()) {
+            irr::scene::IMesh* fallbackMesh = nullptr;
+            if (!currentZone_->textures.empty() && !fallbackGeom->textureNames.empty()) {
+                fallbackMesh = builder.buildTexturedMesh(*fallbackGeom, currentZone_->textures);
+            } else {
+                fallbackMesh = builder.buildColoredMesh(*fallbackGeom);
+            }
+
+            if (fallbackMesh) {
+                fallbackMeshNode_ = smgr_->addMeshSceneNode(fallbackMesh);
+                if (fallbackMeshNode_) {
+                    // Fallback geometry is already in world coords, position at origin
+                    fallbackMeshNode_->setPosition(irr::core::vector3df(0, 0, 0));
+                    fallbackMeshNode_->setVisible(true);  // Always visible
+
+                    for (irr::u32 i = 0; i < fallbackMeshNode_->getMaterialCount(); ++i) {
+                        fallbackMeshNode_->getMaterial(i).Lighting = lightingEnabled_;
+                        fallbackMeshNode_->getMaterial(i).BackfaceCulling = false;
+                    }
+
+                    LOG_INFO(MOD_GRAPHICS, "Created fallback mesh with {} vertices, {} triangles",
+                        fallbackGeom->vertices.size(), fallbackGeom->triangles.size());
+                }
+                fallbackMesh->drop();
+            }
+        }
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "All {} geometries are referenced by BSP regions", allGeometries.size());
+    }
+
+    // Initialize animated texture manager for the combined geometry
+    // (animated textures still use the combined geometry for now)
+    if (currentZone_->geometry) {
+        animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
+        // Note: We're not registering individual region nodes for texture animation yet
+        // This could be improved later to animate textures per-region
+    }
+}
+
+void IrrlichtRenderer::updatePvsVisibility() {
+    // DEBUG: Set to true to disable PVS culling and show all region meshes
+    static bool disablePvsForDebug = false;
+    if (disablePvsForDebug) {
+        // Show all region meshes for debugging
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node) {
+                node->setVisible(true);
+            }
+        }
+        return;
+    }
+
+    if (!usePvsCulling_ || !zoneBspTree_ || regionMeshNodes_.empty()) {
+        return;
+    }
+
+    // Get camera position (use player position for consistency)
+    float camX = playerX_;
+    float camY = playerY_;
+    float camZ = playerZ_;
+
+    // Find which BSP region the camera is in
+    auto region = zoneBspTree_->findRegionForPoint(camX, camY, camZ);
+
+    // Find region index
+    size_t newRegionIdx = SIZE_MAX;
+    if (region) {
+        for (size_t i = 0; i < zoneBspTree_->regions.size(); ++i) {
+            if (zoneBspTree_->regions[i].get() == region.get()) {
+                newRegionIdx = i;
+                break;
+            }
+        }
+    }
+
+    // Skip update if still in same region
+    if (newRegionIdx == currentPvsRegion_) {
+        return;
+    }
+
+    currentPvsRegion_ = newRegionIdx;
+
+    // If camera is outside all regions, show everything
+    if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node) {
+                node->setVisible(true);
+            }
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "PVS: showing all regions (outside BSP or no PVS data)");
+        return;
+    }
+
+    // Log PVS array details for debugging
+    LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} has visibleRegions.size()={}, regionMeshNodes_.size()={}",
+        newRegionIdx, region->visibleRegions.size(), regionMeshNodes_.size());
+
+    // Count how many regions the PVS says are visible
+    size_t pvsVisibleCount = 0;
+    for (size_t i = 0; i < region->visibleRegions.size(); ++i) {
+        if (region->visibleRegions[i]) pvsVisibleCount++;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
+        newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
+
+    // Update visibility based on PVS data
+    size_t visibleCount = 0;
+    size_t hiddenCount = 0;
+    size_t outOfRangeCount = 0;
+
+    for (auto& [regionIdx, node] : regionMeshNodes_) {
+        if (!node) continue;
+
+        // Check if this region is visible from current region
+        bool isVisible = false;
+        if (regionIdx == newRegionIdx) {
+            // Always visible to self
+            isVisible = true;
+        } else if (regionIdx < region->visibleRegions.size()) {
+            isVisible = region->visibleRegions[regionIdx];
+        } else {
+            // Region index outside PVS array - count for debugging
+            outOfRangeCount++;
+        }
+
+        node->setVisible(isVisible);
+
+        if (isVisible) {
+            visibleCount++;
+        } else {
+            hiddenCount++;
+        }
+    }
+
+    // Log warning if many regions are outside PVS array
+    if (outOfRangeCount > 0) {
+        LOG_WARN(MOD_GRAPHICS, "PVS: {} region meshes have index >= visibleRegions.size() ({})",
+            outOfRangeCount, region->visibleRegions.size());
+    }
+
+    // Check if the current region has its own mesh
+    bool currentRegionHasMesh = (regionMeshNodes_.find(newRegionIdx) != regionMeshNodes_.end());
+
+    // Get the mesh position and bounds for the current region if it exists
+    float meshX = 0, meshY = 0, meshZ = 0;
+    bool camInMeshBounds = false;
+    if (currentRegionHasMesh && currentZone_ && currentZone_->wldLoader) {
+        auto pos = regionMeshNodes_[newRegionIdx]->getPosition();
+        meshX = pos.X;
+        meshY = pos.Y;
+        meshZ = pos.Z;
+
+        // Check if camera is within mesh bounds (in EQ coordinates)
+        auto geom = currentZone_->wldLoader->getGeometryForRegion(newRegionIdx);
+        if (geom) {
+            // Mesh world bounds = center + relative bounds
+            float worldMinX = geom->centerX + geom->minX;
+            float worldMaxX = geom->centerX + geom->maxX;
+            float worldMinY = geom->centerY + geom->minY;
+            float worldMaxY = geom->centerY + geom->maxY;
+            float worldMinZ = geom->centerZ + geom->minZ;
+            float worldMaxZ = geom->centerZ + geom->maxZ;
+
+            camInMeshBounds = (camX >= worldMinX && camX <= worldMaxX &&
+                              camY >= worldMinY && camY <= worldMaxY &&
+                              camZ >= worldMinZ && camZ <= worldMaxZ);
+
+            LOG_DEBUG(MOD_GRAPHICS, "PVS region {} mesh bounds: ({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}), cam in bounds: {}",
+                newRegionIdx, worldMinX, worldMinY, worldMinZ, worldMaxX, worldMaxY, worldMaxZ, camInMeshBounds);
+        }
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden, {} outOfRange",
+        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenCount, outOfRangeCount);
+
+    // Log the first few visible and hidden region indices to spot patterns
+    static size_t logCount = 0;
+    if (logCount < 5) {
+        std::string visibleStr, hiddenStr;
+        size_t visibleLogged = 0, hiddenLogged = 0;
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (!node) continue;
+            if (node->isVisible() && visibleLogged < 10) {
+                visibleStr += std::to_string(regionIdx) + " ";
+                visibleLogged++;
+            } else if (!node->isVisible() && hiddenLogged < 10) {
+                hiddenStr += std::to_string(regionIdx) + " ";
+                hiddenLogged++;
+            }
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "PVS sample: visible regions=[{}], hidden regions=[{}]",
+            visibleStr, hiddenStr);
+        logCount++;
+    }
+
+    // If current region has no mesh, log which visible regions are nearby the camera
+    if (!currentRegionHasMesh && currentZone_ && currentZone_->wldLoader && visibleCount > 0) {
+        size_t nearbyCount = 0;
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (!node || !node->isVisible()) continue;
+            auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
+            if (geom) {
+                // Check if this visible region's mesh contains the camera position
+                float worldMinX = geom->centerX + geom->minX;
+                float worldMaxX = geom->centerX + geom->maxX;
+                float worldMinY = geom->centerY + geom->minY;
+                float worldMaxY = geom->centerY + geom->maxY;
+                float worldMinZ = geom->centerZ + geom->minZ;
+                float worldMaxZ = geom->centerZ + geom->maxZ;
+
+                if (camX >= worldMinX && camX <= worldMaxX &&
+                    camY >= worldMinY && camY <= worldMaxY &&
+                    camZ >= worldMinZ && camZ <= worldMaxZ) {
+                    nearbyCount++;
+                    if (nearbyCount <= 3) {
+                        LOG_DEBUG(MOD_GRAPHICS, "  -> Visible region {} contains camera: bounds ({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f})",
+                            regionIdx, worldMinX, worldMinY, worldMinZ, worldMaxX, worldMaxY, worldMaxZ);
+                    }
+                }
+            }
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "  -> {} visible regions contain camera position", nearbyCount);
     }
 }
 
@@ -3409,6 +3839,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Update object visibility (distance-based culling of placeable objects)
     updateObjectVisibility();
 
+    // Update PVS visibility (region-based culling if enabled)
+    updatePvsVisibility();
+
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H2 (before object lights)");
 
     // Update object lights (distance-based culling)
@@ -4546,6 +4979,12 @@ void IrrlichtRenderer::setupZoneCollision() {
         zoneTriangleSelector_ = nullptr;
     }
 
+    // Clean up old collision node (used in PVS mode)
+    if (zoneCollisionNode_) {
+        zoneCollisionNode_->remove();
+        zoneCollisionNode_ = nullptr;
+    }
+
     if (!smgr_) {
         return;
     }
@@ -4559,8 +4998,50 @@ void IrrlichtRenderer::setupZoneCollision() {
 
     int selectorCount = 0;
 
-    // Add zone mesh selector
-    if (zoneMeshNode_) {
+    // Add zone mesh selector(s)
+    // For PVS-based rendering, create a single combined collision mesh from all region geometry
+    // (Individual selectors per region would be too slow - 4000+ selectors!)
+    if (!regionMeshNodes_.empty() && currentZone_ && currentZone_->geometry) {
+        // PVS mode: build a combined collision mesh from the zone geometry
+        // Use the original combined geometry which has all triangles
+        ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+        irr::scene::IMesh* collisionMesh = builder.buildMesh(*currentZone_->geometry);
+
+        if (collisionMesh) {
+            // Create a hidden scene node just for collision
+            zoneCollisionNode_ = smgr_->addMeshSceneNode(collisionMesh);
+            if (zoneCollisionNode_) {
+                zoneCollisionNode_->setVisible(false);  // Don't render, just use for collision
+                zoneCollisionNode_->setPosition(irr::core::vector3df(0, 0, 0));
+
+                irr::scene::ITriangleSelector* zoneSelector =
+                    smgr_->createOctreeTriangleSelector(collisionMesh, zoneCollisionNode_, 128);
+                if (zoneSelector) {
+                    metaSelector->addTriangleSelector(zoneSelector);
+                    zoneCollisionNode_->setTriangleSelector(zoneSelector);
+                    zoneSelector->drop();
+                    selectorCount++;
+                    LOG_DEBUG(MOD_GRAPHICS, "Added combined zone collision mesh (octree selector, {} triangles)",
+                              currentZone_->geometry->triangles.size());
+                }
+            }
+            collisionMesh->drop();
+        }
+
+        // Also add fallback mesh if it exists (geometry not in BSP regions)
+        if (fallbackMeshNode_ && fallbackMeshNode_->getMesh()) {
+            irr::scene::ITriangleSelector* fallbackSelector =
+                smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
+            if (fallbackSelector) {
+                metaSelector->addTriangleSelector(fallbackSelector);
+                fallbackMeshNode_->setTriangleSelector(fallbackSelector);
+                fallbackSelector->drop();
+                selectorCount++;
+                LOG_DEBUG(MOD_GRAPHICS, "Added fallback mesh to collision");
+            }
+        }
+    } else if (zoneMeshNode_) {
+        // Non-PVS mode: single combined zone mesh
         irr::scene::IMesh* mesh = zoneMeshNode_->getMesh();
         if (mesh) {
             irr::scene::ITriangleSelector* zoneSelector =

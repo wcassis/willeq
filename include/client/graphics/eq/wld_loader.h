@@ -55,6 +55,9 @@ struct BspRegion {
     int32_t meshReference = -1;
     std::vector<RegionType> regionTypes;
     std::optional<ZoneLineInfo> zoneLineInfo;
+    // PVS (Potentially Visible Set) data - which regions are visible from this region
+    // Indexed by region ID (0-based), true = that region is visible from this one
+    std::vector<bool> visibleRegions;
 };
 
 // Axis-aligned bounding box for BSP region bounds calculation
@@ -599,6 +602,14 @@ public:
     const std::shared_ptr<BspTree>& getBspTree() const { return bspTree_; }
     bool hasZoneLines() const { return bspTree_ && !bspTree_->regions.empty(); }
 
+    // PVS (Potentially Visible Set) accessors
+    // Get the geometry associated with a BSP region (via meshReference)
+    std::shared_ptr<ZoneGeometry> getGeometryForRegion(size_t regionIndex) const;
+    // Check if zone has usable PVS data (at least one region with visibility info)
+    bool hasPvsData() const;
+    // Get total region count from WLD header
+    uint32_t getTotalRegionCount() const { return totalRegionCount_; }
+
     // Animation data accessors
     const std::map<uint32_t, std::shared_ptr<TrackDef>>& getTrackDefs() const { return trackDefs_; }
     const std::map<uint32_t, std::shared_ptr<TrackRef>>& getTrackRefs() const { return trackRefs_; }
@@ -702,6 +713,7 @@ private:
 
     // BSP tree for zone regions (zone lines, water, lava, etc.)
     std::shared_ptr<BspTree> bspTree_;
+    uint32_t totalRegionCount_ = 0;  // From WLD header, used for PVS array sizing
 };
 
 // Helper function to decode WLD string hash
