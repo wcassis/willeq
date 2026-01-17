@@ -30,6 +30,12 @@ struct ParsedFormattedMessage {
     std::vector<MessageLink> links;       // All links in order of appearance
 };
 
+// A parsed message with arguments separated (null-byte delimited in raw packet)
+struct ParsedFormattedMessageWithArgs {
+    std::vector<std::string> args;        // Arguments separated by null bytes
+    std::vector<MessageLink> links;       // All links in order of appearance
+};
+
 // Parse a FormattedMessage payload with full link preservation.
 // Link format: [\x12<hex_metadata><item_name>\x12]
 // Hex metadata is 45 or 56 characters of uppercase hex (0-9, A-F).
@@ -49,5 +55,14 @@ ParsedFormattedMessage parseFormattedMessage(const uint8_t* data, size_t msg_len
 // @param msg_len Length of the message data
 // @return        Cleaned display string with link metadata stripped
 std::string parseFormattedMessageText(const uint8_t* data, size_t msg_len);
+
+// Parse a FormattedMessage payload, preserving null-byte argument delimiters.
+// The raw packet uses null bytes (0x00) to separate arguments for placeholder
+// substitution (%1, %2, %T1, etc.). This function returns them as a vector.
+//
+// @param data    Pointer to message data (after the 12-byte header)
+// @param msg_len Length of the message data
+// @return        ParsedFormattedMessageWithArgs with arguments and link information
+ParsedFormattedMessageWithArgs parseFormattedMessageArgs(const uint8_t* data, size_t msg_len);
 
 } // namespace eqt

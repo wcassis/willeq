@@ -164,6 +164,15 @@ ADD_EXECUTABLE(test_formatted_message
 TARGET_LINK_LIBRARIES(test_formatted_message GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_formatted_message)
 
+# Test StringDatabase loading and formatting
+ADD_EXECUTABLE(test_string_database
+    test_string_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/string_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/formatted_message.cpp
+)
+TARGET_LINK_LIBRARIES(test_string_database GTest::gtest_main ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_string_database)
+
 # Test spell database loading and querying
 ADD_EXECUTABLE(test_spell_database
     test_spell_database.cpp

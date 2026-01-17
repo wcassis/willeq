@@ -6,6 +6,7 @@
 #include "common/packet_structs.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
+#include "client/string_database.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -917,12 +918,16 @@ public:
 	friend class CombatManager;
 	friend class TradeManager;
 
+	// String database for EQ message lookups (works in all modes)
+	bool LoadStringFiles(const std::string& eqClientPath);
+	const EQT::StringDatabase& GetStringDatabase() const { return m_string_db; }
+
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer methods
 	bool InitGraphics(int width = 800, int height = 600);
 	void ShutdownGraphics();
 	bool UpdateGraphics(float deltaTime);
-	void SetEQClientPath(const std::string& path) { m_eq_client_path = path; }
+	void SetEQClientPath(const std::string& path);
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
 	void SetUseOpenGL(bool useOpenGL) { m_use_opengl = useOpenGL; }
 	bool GetUseOpenGL() const { return m_use_opengl; }
@@ -950,7 +955,8 @@ private:
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size);
 	static std::string GetOpcodeName(uint16_t opcode);
-	static std::string GetStringMessage(uint32_t string_id);
+	std::string GetStringMessage(uint32_t string_id);
+	std::string GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args);
 	static std::string GetChatTypeName(uint32_t chat_type);
 	static std::string GetClassName(uint32_t class_id);
 	static std::string GetRaceName(uint32_t race_id);
@@ -1211,6 +1217,9 @@ private:
 	// Pet tracking
 	uint16_t m_pet_spawn_id = 0;                                      // Our pet's spawn ID (0 = no pet)
 	bool m_pet_button_states[EQT::PET_BUTTON_COUNT] = {};             // Current button states
+
+	// String database for EQ message lookups (works in all modes)
+	EQT::StringDatabase m_string_db;
 
 	// Door tracking
 	std::map<uint8_t, Door> m_doors;

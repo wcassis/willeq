@@ -448,3 +448,105 @@ TEST_F(FormattedMessageTest, StructuredParsing_FiveLinks) {
             << "Link " << i << " extraction failed";
     }
 }
+
+// ============================================================================
+// Tests for parseFormattedMessageArgs (null-byte delimited argument parsing)
+// ============================================================================
+
+// Test basic null-byte separated arguments
+TEST_F(FormattedMessageTest, Args_NullByteSeparatedArgs) {
+    // "Fippy Darkpaw" <null> "1095" <null> "Xararn"
+    std::vector<uint8_t> data;
+    for (char c : std::string("Fippy Darkpaw")) data.push_back(c);
+    data.push_back(0x00);
+    for (char c : std::string("1095")) data.push_back(c);
+    data.push_back(0x00);
+    for (char c : std::string("Xararn")) data.push_back(c);
+
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+
+    ASSERT_EQ(result.args.size(), 3u);
+    EXPECT_EQ(result.args[0], "Fippy Darkpaw");
+    EXPECT_EQ(result.args[1], "1095");
+    EXPECT_EQ(result.args[2], "Xararn");
+}
+
+// Test single argument (no null bytes)
+TEST_F(FormattedMessageTest, Args_SingleArg) {
+    std::string text = "Just one argument";
+    std::vector<uint8_t> data(text.begin(), text.end());
+
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+
+    ASSERT_EQ(result.args.size(), 1u);
+    EXPECT_EQ(result.args[0], "Just one argument");
+}
+
+// Test with trailing null bytes (should be ignored)
+TEST_F(FormattedMessageTest, Args_TrailingNulls) {
+    std::vector<uint8_t> data;
+    for (char c : std::string("Arg1")) data.push_back(c);
+    data.push_back(0x00);
+    for (char c : std::string("Arg2")) data.push_back(c);
+    data.push_back(0x00);
+    data.push_back(0x00);  // Trailing null should be ignored
+
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+
+    ASSERT_EQ(result.args.size(), 2u);
+    EXPECT_EQ(result.args[0], "Arg1");
+    EXPECT_EQ(result.args[1], "Arg2");
+}
+
+// Test with leading/trailing spaces in arguments
+TEST_F(FormattedMessageTest, Args_TrimSpaces) {
+    std::vector<uint8_t> data;
+    for (char c : std::string("  Arg1  ")) data.push_back(c);
+    data.push_back(0x00);
+    for (char c : std::string("  Arg2  ")) data.push_back(c);
+
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+
+    ASSERT_EQ(result.args.size(), 2u);
+    EXPECT_EQ(result.args[0], "Arg1");
+    EXPECT_EQ(result.args[1], "Arg2");
+}
+
+// Test NPC dialogue format: "NPC Name" <null> "String ID" <null> "Target Name"
+TEST_F(FormattedMessageTest, Args_NPCDialogueFormat) {
+    // Based on plan example: Fippy Darkpaw\x00 1095\x00 Xararn\x00
+    std::vector<uint8_t> data;
+    for (char c : std::string("Fippy Darkpaw")) data.push_back(c);
+    data.push_back(0x00);
+    for (char c : std::string(" 1095")) data.push_back(c);  // Note: space before number
+    data.push_back(0x00);
+    for (char c : std::string(" Xararn")) data.push_back(c);
+    data.push_back(0x00);
+
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+
+    ASSERT_EQ(result.args.size(), 3u);
+    EXPECT_EQ(result.args[0], "Fippy Darkpaw");
+    EXPECT_EQ(result.args[1], "1095");  // Space should be trimmed
+    EXPECT_EQ(result.args[2], "Xararn");
+}
+
+// Test with links embedded in arguments
+TEST_F(FormattedMessageTest, Args_WithLinks) {
+    std::vector<uint8_t> data;
+    for (char c : std::string("NPC Name")) data.push_back(c);
+    data.push_back(0x00);
+    // Second arg contains a link
+    for (char c : std::string("Talk to ")) data.push_back(c);
+    appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Guard");
+    for (char c : std::string(" about quest")) data.push_back(c);
+
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+
+    ASSERT_EQ(result.args.size(), 2u);
+    EXPECT_EQ(result.args[0], "NPC Name");
+    // Note: brackets are preserved as they're part of the link display format
+    EXPECT_EQ(result.args[1], "Talk to [Guard] about quest");
+    ASSERT_EQ(result.links.size(), 1u);
+    EXPECT_EQ(result.links[0].displayText, "Guard");
+}
