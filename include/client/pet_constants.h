@@ -13,48 +13,41 @@
 namespace EQT {
 
 /*
- * Pet Command IDs
+ * Pet Command IDs - TITANIUM CLIENT VALUES
  *
- * These are the command values sent in OP_PetCommands packets.
- * The client sends these when issuing pet commands via /pet slash commands
- * or clicking pet window buttons.
+ * These are the command values sent in OP_PetCommands packets for the
+ * Titanium client. The server's titanium.cpp decoder translates these
+ * to internal server values.
+ *
+ * IMPORTANT: These values are Titanium-specific and differ from the
+ * server's internal PetCommand enum (in emu_constants.h).
  */
 enum PetCommand : uint32_t {
-    PET_HEALTHREPORT    = 0,    // /pet health - Report pet health status
-    PET_LEADER          = 1,    // /pet leader - Show who the pet follows
-    PET_ATTACK          = 2,    // /pet attack - Attack current target
-    PET_QATTACK         = 3,    // /pet qattack - Queue attack on player's target
-    PET_FOLLOWME        = 4,    // /pet follow - Follow owner
+    // Titanium client command values (from titanium.cpp DECODE(OP_PetCommands))
+    PET_BACKOFF         = 1,    // /pet back off - Stop attacking, return to owner
+    PET_GETLOST         = 2,    // /pet get lost - Dismiss pet
+    PET_ASYOUWERE       = 3,    // /pet as you were - Return to previous state (mapped to follow)
+    PET_HEALTHREPORT    = 4,    // /pet health - Report pet health status
     PET_GUARDHERE       = 5,    // /pet guard - Guard current location
-    PET_SIT             = 6,    // /pet sit - Toggle sit
-    PET_SITDOWN         = 7,    // /pet sit on - Force sit down
-    PET_STANDUP         = 8,    // /pet sit off - Force stand up
-    PET_STOP            = 9,    // /pet stop - Stop movement (not implemented on most servers)
-    PET_STOP_ON         = 10,   // /pet stop on
-    PET_STOP_OFF        = 11,   // /pet stop off
-    PET_TAUNT           = 12,   // /pet taunt - Toggle taunt mode
+    PET_GUARDME         = 6,    // /pet guard me - Guard owner (mapped to follow)
+    PET_ATTACK          = 7,    // /pet attack - Attack current target
+    PET_FOLLOWME        = 8,    // /pet follow - Follow owner
+    PET_SITDOWN         = 9,    // /pet sit on - Force sit down
+    PET_STANDUP         = 10,   // /pet sit off - Force stand up
+    PET_TAUNT           = 11,   // /pet taunt - Toggle taunt mode
+    PET_HOLD            = 12,   // /pet hold - Toggle hold mode
     PET_TAUNT_ON        = 13,   // /pet taunt on
     PET_TAUNT_OFF       = 14,   // /pet taunt off
-    PET_HOLD            = 15,   // /pet hold - Won't add to hate list unless attacking
-    PET_HOLD_ON         = 16,   // /pet hold on
-    PET_HOLD_OFF        = 17,   // /pet hold off
-    PET_GHOLD           = 18,   // /pet ghold - Never adds to hate list
-    PET_GHOLD_ON        = 19,   // /pet ghold on
-    PET_GHOLD_OFF       = 20,   // /pet ghold off
-    PET_SPELLHOLD       = 21,   // /pet no cast - Don't cast spells
-    PET_SPELLHOLD_ON    = 22,   // /pet spellhold on
-    PET_SPELLHOLD_OFF   = 23,   // /pet spellhold off
-    PET_FOCUS           = 24,   // /pet focus - Focus on target
-    PET_FOCUS_ON        = 25,   // /pet focus on
-    PET_FOCUS_OFF       = 26,   // /pet focus off
-    PET_FEIGN           = 27,   // /pet feign - Feign death (if pet has ability)
-    PET_BACKOFF         = 28,   // /pet back off - Stop attacking, return to owner
-    PET_GETLOST         = 29,   // /pet get lost - Dismiss pet
-    PET_GUARDME         = 30,   // Same as follow (older clients)
-    PET_REGROUP         = 31,   // /pet regroup - Stop attack, return to guard position
-    PET_REGROUP_ON      = 32,   // /pet regroup on
-    PET_REGROUP_OFF     = 33,   // /pet regroup off
-    PET_MAXCOMMANDS     = 34    // Total number of pet commands
+    // 15 = target command (doesn't send packet)
+    PET_LEADER          = 16,   // /pet leader - Show who the pet follows
+    PET_FEIGN           = 17,   // /pet feign - Feign death (if pet has ability)
+    PET_SPELLHOLD       = 18,   // /pet no cast - Toggle spell casting
+    PET_FOCUS           = 19,   // /pet focus - Toggle focus on target
+    PET_HOLD_ON         = 20,   // /pet hold on
+    PET_HOLD_OFF        = 21,   // /pet hold off
+
+    // Convenience alias
+    PET_SIT             = PET_SITDOWN,  // /pet sit - Sit down
 };
 
 /*
@@ -84,40 +77,26 @@ enum PetButton : uint32_t {
  */
 inline const char* GetPetCommandName(PetCommand cmd) {
     switch (cmd) {
-        case PET_HEALTHREPORT:  return "health";
-        case PET_LEADER:        return "leader";
-        case PET_ATTACK:        return "attack";
-        case PET_QATTACK:       return "qattack";
-        case PET_FOLLOWME:      return "follow";
-        case PET_GUARDHERE:     return "guard";
-        case PET_SIT:           return "sit";
-        case PET_SITDOWN:       return "sit on";
-        case PET_STANDUP:       return "sit off";
-        case PET_STOP:          return "stop";
-        case PET_STOP_ON:       return "stop on";
-        case PET_STOP_OFF:      return "stop off";
-        case PET_TAUNT:         return "taunt";
-        case PET_TAUNT_ON:      return "taunt on";
-        case PET_TAUNT_OFF:     return "taunt off";
-        case PET_HOLD:          return "hold";
-        case PET_HOLD_ON:       return "hold on";
-        case PET_HOLD_OFF:      return "hold off";
-        case PET_GHOLD:         return "ghold";
-        case PET_GHOLD_ON:      return "ghold on";
-        case PET_GHOLD_OFF:     return "ghold off";
-        case PET_SPELLHOLD:     return "no cast";
-        case PET_SPELLHOLD_ON:  return "spellhold on";
-        case PET_SPELLHOLD_OFF: return "spellhold off";
-        case PET_FOCUS:         return "focus";
-        case PET_FOCUS_ON:      return "focus on";
-        case PET_FOCUS_OFF:     return "focus off";
-        case PET_FEIGN:         return "feign";
         case PET_BACKOFF:       return "back off";
         case PET_GETLOST:       return "get lost";
-        case PET_GUARDME:       return "guardme";
-        case PET_REGROUP:       return "regroup";
-        case PET_REGROUP_ON:    return "regroup on";
-        case PET_REGROUP_OFF:   return "regroup off";
+        case PET_ASYOUWERE:     return "as you were";
+        case PET_HEALTHREPORT:  return "health";
+        case PET_GUARDHERE:     return "guard";
+        case PET_GUARDME:       return "guard me";
+        case PET_ATTACK:        return "attack";
+        case PET_FOLLOWME:      return "follow";
+        case PET_SITDOWN:       return "sit";
+        case PET_STANDUP:       return "stand";
+        case PET_TAUNT:         return "taunt";
+        case PET_HOLD:          return "hold";
+        case PET_TAUNT_ON:      return "taunt on";
+        case PET_TAUNT_OFF:     return "taunt off";
+        case PET_LEADER:        return "leader";
+        case PET_FEIGN:         return "feign";
+        case PET_SPELLHOLD:     return "no cast";
+        case PET_FOCUS:         return "focus";
+        case PET_HOLD_ON:       return "hold on";
+        case PET_HOLD_OFF:      return "hold off";
         default:                return "unknown";
     }
 }

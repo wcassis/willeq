@@ -8815,8 +8815,9 @@ void EverQuest::RegisterCommands()
 			SendPetCommand(EQT::PET_FOCUS);
 			AddChatSystemMessage("Toggling pet focus.");
 		} else if (subcommand == "nofocus") {
-			SendPetCommand(EQT::PET_FOCUS_OFF);
-			AddChatSystemMessage("Disabling pet focus.");
+			// Titanium only has toggle, no explicit off - use toggle
+			SendPetCommand(EQT::PET_FOCUS);
+			AddChatSystemMessage("Toggling pet focus off.");
 		} else if (subcommand == "health" || subcommand == "report") {
 			SendPetCommand(EQT::PET_HEALTHREPORT);
 			AddChatSystemMessage("Requesting pet health report.");
@@ -8829,8 +8830,9 @@ void EverQuest::RegisterCommands()
 			SendPetCommand(EQT::PET_SPELLHOLD);
 			AddChatSystemMessage("Toggling pet spell hold.");
 		} else if (subcommand == "nospellhold" || subcommand == "noghold") {
-			SendPetCommand(EQT::PET_SPELLHOLD_OFF);
-			AddChatSystemMessage("Disabling pet spell hold.");
+			// Titanium only has toggle, no explicit off - use toggle
+			SendPetCommand(EQT::PET_SPELLHOLD);
+			AddChatSystemMessage("Toggling pet spell hold off.");
 		} else if (subcommand.empty()) {
 			AddChatSystemMessage("Pet commands: attack, back, follow, guard, sit, stand, taunt, hold, focus, health, dismiss");
 		} else {
