@@ -428,8 +428,17 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
             if (charName.find(codeToTry) != std::string::npos) {
                 // Found a matching character - now find specific body and head parts
 
+                // If head variant > 0, also prepare fallback to head variant 0
+                std::string headMeshFallback;
+                if (headVariant > 0) {
+                    char fallbackBuf[32];
+                    snprintf(fallbackBuf, sizeof(fallbackBuf), "%sHE00_DMSPRITEDEF", codeToTry.c_str());
+                    headMeshFallback = fallbackBuf;
+                }
+
                 // Select SKINNED parts (partsWithTransforms)
                 std::vector<CharacterPart> selectedSkinnedParts;
+                bool foundRequestedHead = false;
                 for (const auto& part : character->partsWithTransforms) {
                     if (!part.geometry) continue;
 
@@ -439,11 +448,28 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
 
                     if (partName == bodyMeshName || partName == headMeshName) {
                         selectedSkinnedParts.push_back(part);
+                        if (partName == headMeshName) foundRequestedHead = true;
+                    }
+                }
+
+                // If requested head variant wasn't found, try fallback to head variant 0
+                if (!foundRequestedHead && !headMeshFallback.empty()) {
+                    for (const auto& part : character->partsWithTransforms) {
+                        if (!part.geometry) continue;
+                        std::string partName = part.geometry->name;
+                        std::transform(partName.begin(), partName.end(), partName.begin(),
+                                       [](unsigned char c) { return std::toupper(c); });
+                        if (partName == headMeshFallback) {
+                            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Head variant {} not found, using fallback head variant 0 ({})", (int)headVariant, headMeshFallback);
+                            selectedSkinnedParts.push_back(part);
+                            break;
+                        }
                     }
                 }
 
                 // Select RAW parts (rawParts) for animation
                 std::vector<CharacterPart> selectedRawParts;
+                foundRequestedHead = false;
                 for (const auto& part : character->rawParts) {
                     if (!part.geometry) continue;
 
@@ -453,6 +479,21 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
 
                     if (partName == bodyMeshName || partName == headMeshName) {
                         selectedRawParts.push_back(part);
+                        if (partName == headMeshName) foundRequestedHead = true;
+                    }
+                }
+
+                // If requested head variant wasn't found in raw parts, try fallback to head variant 0
+                if (!foundRequestedHead && !headMeshFallback.empty()) {
+                    for (const auto& part : character->rawParts) {
+                        if (!part.geometry) continue;
+                        std::string partName = part.geometry->name;
+                        std::transform(partName.begin(), partName.end(), partName.begin(),
+                                       [](unsigned char c) { return std::toupper(c); });
+                        if (partName == headMeshFallback) {
+                            selectedRawParts.push_back(part);
+                            break;
+                        }
                     }
                 }
 
@@ -708,7 +749,16 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                            [](unsigned char c) { return std::toupper(c); });
 
             if (charName.find(codeToTry) != std::string::npos) {
+                // If head variant > 0, also prepare fallback to head variant 0
+                std::string headMeshFallback;
+                if (headVariant > 0) {
+                    char fallbackBuf[32];
+                    snprintf(fallbackBuf, sizeof(fallbackBuf), "%sHE00_DMSPRITEDEF", codeToTry.c_str());
+                    headMeshFallback = fallbackBuf;
+                }
+
                 std::vector<CharacterPart> selectedSkinnedParts;
+                bool foundRequestedHead = false;
                 for (const auto& part : character->partsWithTransforms) {
                     if (!part.geometry) continue;
                     std::string partName = part.geometry->name;
@@ -716,10 +766,27 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                                    [](unsigned char c) { return std::toupper(c); });
                     if (partName == bodyMeshName || partName == headMeshName) {
                         selectedSkinnedParts.push_back(part);
+                        if (partName == headMeshName) foundRequestedHead = true;
+                    }
+                }
+
+                // If requested head variant wasn't found, try fallback to head variant 0
+                if (!foundRequestedHead && !headMeshFallback.empty()) {
+                    for (const auto& part : character->partsWithTransforms) {
+                        if (!part.geometry) continue;
+                        std::string partName = part.geometry->name;
+                        std::transform(partName.begin(), partName.end(), partName.begin(),
+                                       [](unsigned char c) { return std::toupper(c); });
+                        if (partName == headMeshFallback) {
+                            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Head variant {} not found, using fallback head variant 0 ({})", (int)headVariant, headMeshFallback);
+                            selectedSkinnedParts.push_back(part);
+                            break;
+                        }
                     }
                 }
 
                 std::vector<CharacterPart> selectedRawParts;
+                foundRequestedHead = false;
                 for (const auto& part : character->rawParts) {
                     if (!part.geometry) continue;
                     std::string partName = part.geometry->name;
@@ -727,6 +794,21 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                                    [](unsigned char c) { return std::toupper(c); });
                     if (partName == bodyMeshName || partName == headMeshName) {
                         selectedRawParts.push_back(part);
+                        if (partName == headMeshName) foundRequestedHead = true;
+                    }
+                }
+
+                // If requested head variant wasn't found in raw parts, try fallback to head variant 0
+                if (!foundRequestedHead && !headMeshFallback.empty()) {
+                    for (const auto& part : character->rawParts) {
+                        if (!part.geometry) continue;
+                        std::string partName = part.geometry->name;
+                        std::transform(partName.begin(), partName.end(), partName.begin(),
+                                       [](unsigned char c) { return std::toupper(c); });
+                        if (partName == headMeshFallback) {
+                            selectedRawParts.push_back(part);
+                            break;
+                        }
                     }
                 }
 
