@@ -1,6 +1,7 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include <cmath>
 #include <algorithm>
 #include <unordered_map>
@@ -235,7 +236,18 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         return nullptr;
     }
 
-    // Check cache first
+    // If constrained texture cache is set, route through it
+    // This handles downsampling, 16-bit conversion, and memory budget enforcement
+    if (constrainedCache_) {
+        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data);
+        if (texture) {
+            // Also cache locally for quick lookups (cache owns the texture)
+            textureCache_[name] = texture;
+        }
+        return texture;
+    }
+
+    // Check cache first (unconstrained mode)
     auto it = textureCache_.find(name);
     if (it != textureCache_.end()) {
         return it->second;
@@ -534,6 +546,10 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name)
 bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
     return textureCache_.find(name) != textureCache_.end() ||
            pendingTextures_.find(name) != pendingTextures_.end();
+}
+
+void ZoneMeshBuilder::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    constrainedCache_ = cache;
 }
 
 } // namespace Graphics

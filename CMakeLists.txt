@@ -230,6 +230,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/entity_renderer.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/animated_texture_manager.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
         # Inventory UI sources
         src/client/graphics/ui/inventory_constants.cpp
         src/client/graphics/ui/inventory_manager.cpp
@@ -343,6 +345,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/equipment_textures.cpp
@@ -396,6 +400,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(s3d_dump PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -476,6 +482,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(analyze_hum_model PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -494,6 +502,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_animation PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -513,6 +523,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(extract_zone_lines PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -533,6 +545,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(bsp_coordinate_finder PRIVATE
         ${CMAKE_SOURCE_DIR}/include

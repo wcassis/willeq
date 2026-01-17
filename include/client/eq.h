@@ -54,6 +54,7 @@ namespace EQT {
 namespace Graphics {
     class IrrlichtRenderer;
     struct PlayerPositionUpdate;
+    enum class ConstrainedRenderingPreset;
 }
 }
 namespace eqt {
@@ -932,6 +933,8 @@ public:
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
 	void SetUseOpenGL(bool useOpenGL) { m_use_opengl = useOpenGL; }
 	bool GetUseOpenGL() const { return m_use_opengl; }
+	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
+	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
 	const std::string& GetConfigPath() const { return m_config_path; }
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
@@ -1492,6 +1495,7 @@ private:
 	std::string m_config_path;  // Path to per-character config file
 	bool m_graphics_initialized = false;
 	bool m_use_opengl = false;  // Use OpenGL renderer instead of software
+	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset{};  // Constrained rendering preset (startup-only)
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
 
 	// Inventory manager

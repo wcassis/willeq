@@ -202,6 +202,16 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_wld)
 ENDIF()
 
+# Test constrained renderer configuration (presets, resolution calculation, clamping)
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_constrained_renderer
+        test_constrained_renderer.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_constrained_renderer GTest::gtest_main ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_constrained_renderer)
+ENDIF()
+
 # Test graphics components (PFS, DDS decoder, etc.)
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_graphics
@@ -223,6 +233,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
@@ -261,6 +273,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_asset_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
@@ -279,6 +293,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_door_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_door_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY})

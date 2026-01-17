@@ -12,6 +12,7 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "client/input/hotkey_manager.h"
 
 // Forward declaration for collision map
@@ -28,6 +29,9 @@ namespace inventory { class InventoryManager; }
 
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
+
+// Forward declaration for constrained texture cache
+namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
 
 namespace EQT {
 namespace Graphics {
@@ -155,6 +159,11 @@ struct RendererConfig {
     bool lighting = false;         // Fullbright mode by default
     bool showNameTags = true;
     float ambientIntensity = 0.4f;
+
+    // Constrained rendering mode (startup-only, cannot change at runtime)
+    // When enabled, enforces memory limits for texture and framebuffer
+    ConstrainedRenderingPreset constrainedPreset = ConstrainedRenderingPreset::None;
+    ConstrainedRendererConfig constrainedConfig;
 };
 
 // Event receiver for keyboard/mouse input
@@ -579,6 +588,9 @@ public:
     void cycleObjectLights();
     void toggleOldModels();
     bool isUsingOldModels() const;
+    void setFrameTimingEnabled(bool enabled);  // Enable/disable frame timing profiler
+    bool isFrameTimingEnabled() const { return frameTimingEnabled_; }
+    void runSceneProfile();  // Run scene breakdown profiler (profiles next frame)
     void resetCoordOffsets();
     void adjustOffsetX(float delta);
     void adjustOffsetY(float delta);
@@ -692,6 +704,10 @@ public:
     // Collision map for player mode movement
     void setCollisionMap(HCMap* map) { collisionMap_ = map; }
 
+    // Clip distance (camera far plane) - for constrained rendering mode
+    void setClipDistance(float distance);
+    float getClipDistance() const;
+
     // Inventory UI
     void setInventoryManager(eqt::inventory::InventoryManager* manager);
     void toggleInventory();
@@ -764,6 +780,12 @@ public:
     // Spell visual effects access
     EQ::SpellVisualFX* getSpellVisualFX() { return spellVisualFX_.get(); }
 
+    // Constrained texture cache access (may return nullptr if not in constrained mode)
+    ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_.get(); }
+
+    // Check if constrained rendering mode is active
+    bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
+
 private:
     void setupCamera();
     void setupLighting();
@@ -806,6 +828,7 @@ private:
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
+    std::unique_ptr<ConstrainedTextureCache> constrainedTextureCache_;  // Optional, for memory-limited rendering
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;
@@ -902,6 +925,11 @@ private:
     int currentFps_ = 0;
     int frameCount_ = 0;
     irr::u32 lastFpsTime_ = 0;
+
+    // Polygon count tracking (for constrained mode)
+    uint32_t lastPolygonCount_ = 0;
+    int polygonBudgetExceededFrames_ = 0;  // Throttle warnings
+    int constrainedStatsLogCounter_ = 0;   // Periodic stats logging
 
     // Renderer mode (Player / Repair / Admin)
     RendererMode rendererMode_ = RendererMode::Player;
@@ -1027,6 +1055,57 @@ private:
     std::map<uint32_t, WorldObjectVisual> worldObjects_;
     uint32_t getWorldObjectAtScreenPos(int screenX, int screenY) const;
     uint32_t getNearestWorldObject(float playerX, float playerY, float playerZ, float maxDistance = 50.0f) const;
+
+    // Frame timing profiler for performance analysis
+    struct FrameTimings {
+        int64_t inputHandling = 0;
+        int64_t cameraUpdate = 0;
+        int64_t entityUpdate = 0;
+        int64_t doorUpdate = 0;
+        int64_t spellVfxUpdate = 0;
+        int64_t animatedTextures = 0;
+        int64_t vertexAnimations = 0;
+        int64_t objectVisibility = 0;
+        int64_t pvsVisibility = 0;
+        int64_t objectLights = 0;
+        int64_t hudUpdate = 0;
+        int64_t sceneDrawAll = 0;
+        int64_t targetBox = 0;
+        int64_t castingBars = 0;
+        int64_t guiDrawAll = 0;
+        int64_t windowManager = 0;
+        int64_t zoneLineOverlay = 0;
+        int64_t endScene = 0;
+        int64_t totalFrame = 0;
+    };
+    FrameTimings frameTimings_;
+    FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames
+    int frameTimingsSampleCount_ = 0;
+    bool frameTimingEnabled_ = false;  // Enable with /frametiming command
+    void logFrameTimings();  // Log accumulated frame timings
+
+    // Scene breakdown profiler - profiles drawAll() by node category
+    struct SceneBreakdown {
+        int64_t totalDrawAll = 0;      // Full scene render time
+        int64_t withoutZone = 0;       // Time without zone mesh
+        int64_t withoutEntities = 0;   // Time without entities
+        int64_t withoutObjects = 0;    // Time without placeable objects
+        int64_t withoutDoors = 0;      // Time without doors
+        // Derived (calculated from differences)
+        int64_t zoneTime = 0;
+        int64_t entityTime = 0;
+        int64_t objectTime = 0;
+        int64_t doorTime = 0;
+        int64_t otherTime = 0;
+        // Counts
+        int zonePolys = 0;
+        int entityCount = 0;
+        int objectCount = 0;
+        int doorCount = 0;
+    };
+    bool sceneProfileEnabled_ = false;
+    int sceneProfileFrameCount_ = 0;
+    void profileSceneBreakdown();  // Run once to profile scene categories
 };
 
 } // namespace Graphics

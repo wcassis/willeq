@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -1441,6 +1442,14 @@ void EntityRenderer::clearEntities() {
 
 bool EntityRenderer::hasEntity(uint16_t spawnId) const {
     return entities_.find(spawnId) != entities_.end();
+}
+
+void EntityRenderer::setAllEntitiesVisible(bool visible) {
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.sceneNode) {
+            visual.sceneNode->setVisible(visible);
+        }
+    }
 }
 
 size_t EntityRenderer::getModeledEntityCount() const {
@@ -3267,6 +3276,97 @@ void EntityRenderer::clearBspTree() {
     currentCameraRegionIdx_ = SIZE_MAX;
     currentCameraRegion_ = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: BSP tree cleared");
+}
+
+void EntityRenderer::setConstrainedConfig(const ConstrainedRendererConfig* config) {
+    constrainedConfig_ = config;
+    if (config && config->enabled) {
+        LOG_INFO(MOD_GRAPHICS, "EntityRenderer: Constrained mode enabled - max {} entities within {} units",
+                 config->maxVisibleEntities, config->entityRenderDistance);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: Constrained mode disabled");
+    }
+}
+
+void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cameraPos) {
+    // If constrained mode is not enabled, show all entities
+    if (!constrainedConfig_ || !constrainedConfig_->enabled) {
+        visibleEntityCount_ = static_cast<int>(entities_.size());
+        return;
+    }
+
+    const float maxDistance = constrainedConfig_->entityRenderDistance;
+    const int maxEntities = constrainedConfig_->maxVisibleEntities;
+    const float maxDistSq = maxDistance * maxDistance;
+
+    // Build a list of entity distances from camera
+    struct EntityDistance {
+        uint16_t spawnId;
+        float distanceSq;
+    };
+    std::vector<EntityDistance> entityDistances;
+    entityDistances.reserve(entities_.size());
+
+    for (auto& [spawnId, visual] : entities_) {
+        if (!visual.sceneNode) continue;
+
+        // Get entity position in Irrlicht coordinates (already stored this way)
+        irr::core::vector3df entityPos = visual.sceneNode->getPosition();
+
+        // Calculate squared distance to camera
+        float dx = entityPos.X - cameraPos.X;
+        float dy = entityPos.Y - cameraPos.Y;
+        float dz = entityPos.Z - cameraPos.Z;
+        float distSq = dx * dx + dy * dy + dz * dz;
+
+        entityDistances.push_back({spawnId, distSq});
+    }
+
+    // Sort by distance (closest first)
+    std::sort(entityDistances.begin(), entityDistances.end(),
+              [](const EntityDistance& a, const EntityDistance& b) {
+                  return a.distanceSq < b.distanceSq;
+              });
+
+    // Apply visibility limits
+    visibleEntityCount_ = 0;
+    for (size_t i = 0; i < entityDistances.size(); ++i) {
+        const auto& ed = entityDistances[i];
+        auto it = entities_.find(ed.spawnId);
+        if (it == entities_.end()) continue;
+
+        EntityVisual& visual = it->second;
+
+        // Check if entity should be visible
+        bool shouldBeVisible = (visibleEntityCount_ < maxEntities) && (ed.distanceSq <= maxDistSq);
+
+        // Always show the player entity
+        if (visual.isPlayer) {
+            shouldBeVisible = true;
+        }
+
+        // Update visibility
+        if (visual.sceneNode) {
+            visual.sceneNode->setVisible(shouldBeVisible);
+        }
+        if (visual.nameNode) {
+            visual.nameNode->setVisible(shouldBeVisible && nameTagsVisible_);
+        }
+
+        if (shouldBeVisible) {
+            visibleEntityCount_++;
+        }
+    }
+
+    // Log when we're at capacity (but not every frame)
+    static int logThrottle = 0;
+    if (++logThrottle >= 60) {  // Log every ~60 frames
+        logThrottle = 0;
+        if (visibleEntityCount_ >= maxEntities) {
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained mode: showing {}/{} entities (at limit)",
+                      visibleEntityCount_, static_cast<int>(entities_.size()));
+        }
+    }
 }
 
 } // namespace Graphics
