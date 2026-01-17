@@ -233,8 +233,13 @@ irr::scene::IMesh* EntityRenderer::createPlaceholderMesh(float size, irr::video:
     }
     buffer->recalculateBoundingBox();
 
-    buffer->Material.Lighting = false;
+    buffer->Material.Lighting = lightingEnabled_;
     buffer->Material.BackfaceCulling = false;
+    if (lightingEnabled_) {
+        buffer->Material.NormalizeNormals = true;
+        buffer->Material.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+        buffer->Material.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+    }
 
     mesh->addMeshBuffer(buffer);
     buffer->drop();
@@ -402,8 +407,13 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
 	// Set material properties
 	for (irr::u32 i = 0; i < animNode->getMaterialCount(); ++i) {
-		animNode->getMaterial(i).Lighting = false;
+		animNode->getMaterial(i).Lighting = lightingEnabled_;
 		animNode->getMaterial(i).BackfaceCulling = false;
+		if (lightingEnabled_) {
+			animNode->getMaterial(i).NormalizeNormals = true;
+			animNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+			animNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+		}
 	}
 
 	// Apply global animation speed
@@ -528,8 +538,13 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
     // Set material properties
     for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
-        visual.meshNode->getMaterial(i).Lighting = false;
+        visual.meshNode->getMaterial(i).Lighting = lightingEnabled_;
         visual.meshNode->getMaterial(i).BackfaceCulling = false;
+        if (lightingEnabled_) {
+            visual.meshNode->getMaterial(i).NormalizeNormals = true;
+            visual.meshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+            visual.meshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+        }
     }
 
     // Highlight player entity
@@ -1625,6 +1640,46 @@ void EntityRenderer::setNameTagsVisible(bool visible) {
     }
 }
 
+void EntityRenderer::setLightingEnabled(bool enabled) {
+    lightingEnabled_ = enabled;
+
+    // Update all entity materials
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.animatedNode) {
+            for (irr::u32 i = 0; i < visual.animatedNode->getMaterialCount(); ++i) {
+                visual.animatedNode->getMaterial(i).Lighting = enabled;
+                if (enabled) {
+                    visual.animatedNode->getMaterial(i).NormalizeNormals = true;
+                    visual.animatedNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    visual.animatedNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                }
+            }
+        }
+        if (visual.meshNode) {
+            for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
+                visual.meshNode->getMaterial(i).Lighting = enabled;
+                if (enabled) {
+                    visual.meshNode->getMaterial(i).NormalizeNormals = true;
+                    visual.meshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    visual.meshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                }
+            }
+        }
+        if (visual.primaryEquipNode) {
+            for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
+                visual.primaryEquipNode->getMaterial(i).Lighting = enabled;
+            }
+        }
+        if (visual.secondaryEquipNode) {
+            for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
+                visual.secondaryEquipNode->getMaterial(i).Lighting = enabled;
+            }
+        }
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Entity lighting: {}", enabled ? "ON" : "OFF");
+}
+
 void EntityRenderer::setPlayerEntityVisible(bool visible) {
     bool foundPlayer = false;
     for (auto& [spawnId, visual] : entities_) {
@@ -2044,7 +2099,7 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                 // Initial position will be updated by updateEquipmentTransforms
                 visual.primaryEquipNode->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
                 for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
-                    visual.primaryEquipNode->getMaterial(i).Lighting = false;
+                    visual.primaryEquipNode->getMaterial(i).Lighting = lightingEnabled_;
                     visual.primaryEquipNode->getMaterial(i).BackfaceCulling = false;
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached primary equipment {} to entity {}", primaryId, visual.spawnId);
@@ -2062,7 +2117,7 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                 // Initial position will be updated by updateEquipmentTransforms
                 visual.secondaryEquipNode->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
                 for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
-                    visual.secondaryEquipNode->getMaterial(i).Lighting = false;
+                    visual.secondaryEquipNode->getMaterial(i).Lighting = lightingEnabled_;
                     visual.secondaryEquipNode->getMaterial(i).BackfaceCulling = false;
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached secondary equipment {} to entity {}", secondaryId, visual.spawnId);
@@ -2475,7 +2530,9 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
         if (visual.lightNode) {
             irr::video::SLight& lightData = visual.lightNode->getLightData();
             lightData.Type = irr::video::ELT_POINT;
-            lightData.Attenuation = irr::core::vector3df(0.0f, 0.01f, 0.0001f);
+            // Attenuation: 1/(constant + linear*d + quadratic*d²)
+            // constant=1 for full brightness at source
+            lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
             LOG_INFO(MOD_ENTITY, "Created light for entity {} ({}): level={}, radius={:.1f}",
                      spawnId, visual.name, lightLevel, radius);
         }

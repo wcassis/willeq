@@ -169,6 +169,9 @@ public:
     // Show/hide name tags
     void setNameTagsVisible(bool visible);
 
+    // Enable/disable lighting on entity materials
+    void setLightingEnabled(bool enabled);
+
     // Get race model loader (for preloading)
     RaceModelLoader* getRaceModelLoader() { return raceModelLoader_.get(); }
 
@@ -341,6 +344,7 @@ private:
     std::map<uint16_t, irr::scene::IMesh*> placeholderMeshCache_;
 
     bool nameTagsVisible_ = true;
+    bool lightingEnabled_ = false;
     irr::gui::IGUIFont* nameFont_ = nullptr;
 
     // Visibility settings

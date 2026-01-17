@@ -2622,6 +2622,18 @@ void IrrlichtRenderer::createZoneLights() {
             }
         }
 
+        // Update PVS region mesh materials to enable lighting
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = true;
+                    node->getMaterial(i).NormalizeNormals = true;
+                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                }
+            }
+        }
+
         // Update object mesh materials to enable lighting
         for (auto* node : objectNodes_) {
             if (node) {
@@ -2629,6 +2641,11 @@ void IrrlichtRenderer::createZoneLights() {
                     node->getMaterial(i).Lighting = true;
                 }
             }
+        }
+
+        // Update entity materials to enable lighting
+        if (entityRenderer_) {
+            entityRenderer_->setLightingEnabled(true);
         }
     }
 
@@ -2707,8 +2724,9 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
         }
 
         // Calculate light properties based on level
+        // EQ light values: ~10=candle, ~50=small lightstone, ~100=lantern, ~200=greater lightstone
         float intensity = lightLevel / 255.0f;
-        float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;
+        float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;  // 20-100 range
 
         // Warm light color (slightly yellow/orange like torchlight)
         float r = std::min(1.0f, 0.9f + intensity * 0.1f);
@@ -2736,7 +2754,9 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
             if (playerLightNode_) {
                 irr::video::SLight& lightData = playerLightNode_->getLightData();
                 lightData.Type = irr::video::ELT_POINT;
-                lightData.Attenuation = irr::core::vector3df(0.0f, 0.01f, 0.0001f);
+                // Attenuation: 1/(constant + linear*d + quadratic*d²)
+                // constant=1 for full brightness at source
+                lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
                 // Start hidden - updateObjectLights will enable it
                 playerLightNode_->setVisible(false);
                 LOG_INFO(MOD_GRAPHICS, "Created player light: level={}, radius={:.1f}", lightLevel, radius);
@@ -4099,6 +4119,18 @@ void IrrlichtRenderer::toggleLighting() {
         }
     }
 
+    // Update PVS region mesh nodes
+    for (auto& [regionIdx, node] : regionMeshNodes_) {
+        if (node) {
+            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                node->getMaterial(i).Lighting = lightingEnabled_;
+                node->getMaterial(i).NormalizeNormals = true;
+                node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+            }
+        }
+    }
+
     for (auto* node : objectNodes_) {
         if (node) {
             for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
@@ -4108,6 +4140,11 @@ void IrrlichtRenderer::toggleLighting() {
                 node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
         }
+    }
+
+    // Update entity materials
+    if (entityRenderer_) {
+        entityRenderer_->setLightingEnabled(lightingEnabled_);
     }
 
     LOG_INFO(MOD_GRAPHICS, "Lighting: {}", (lightingEnabled_ ? "ON" : "OFF"));
@@ -4139,12 +4176,24 @@ void IrrlichtRenderer::toggleZoneLights() {
                 zoneMeshNode_->getMaterial(i).Lighting = false;
             }
         }
+        // Update PVS region mesh nodes
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = false;
+                }
+            }
+        }
         for (auto* node : objectNodes_) {
             if (node) {
                 for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
                     node->getMaterial(i).Lighting = false;
                 }
             }
+        }
+        // Update entity materials
+        if (entityRenderer_) {
+            entityRenderer_->setLightingEnabled(false);
         }
         LOG_INFO(MOD_GRAPHICS, "Lighting: OFF, Zone lights: OFF");
     } else {
@@ -4161,6 +4210,17 @@ void IrrlichtRenderer::toggleZoneLights() {
                 zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
         }
+        // Update PVS region mesh nodes
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).Lighting = true;
+                    node->getMaterial(i).NormalizeNormals = true;
+                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                }
+            }
+        }
         for (auto* node : objectNodes_) {
             if (node) {
                 for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
@@ -4175,6 +4235,10 @@ void IrrlichtRenderer::toggleZoneLights() {
         smgr_->setAmbientLight(irr::video::SColorf(0.005f, 0.005f, 0.008f, 1.0f));
         if (sunLight_) {
             sunLight_->setVisible(false);
+        }
+        // Update entity materials
+        if (entityRenderer_) {
+            entityRenderer_->setLightingEnabled(true);
         }
         LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: OFF (dark mode)");
     }
