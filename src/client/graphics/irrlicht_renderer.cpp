@@ -669,7 +669,7 @@ void IrrlichtRenderer::setupCamera() {
         -1
     );
 
-    camera_->setFarValue(50000.0f);
+    camera_->setFarValue(zoneRenderDistance_);
     camera_->setNearValue(1.0f);
 
     cameraController_ = std::make_unique<CameraController>(camera_);

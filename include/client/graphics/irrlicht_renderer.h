@@ -593,9 +593,18 @@ public:
     float getRotationY() const;
     float getRotationZ() const;
 
-    // Zone render distance (for geometry culling)
-    void setZoneRenderDistance(float distance) { zoneRenderDistance_ = distance; }
+    // Zone render distance (for geometry culling and camera far plane)
+    void setZoneRenderDistance(float distance) {
+        zoneRenderDistance_ = distance;
+        if (camera_) {
+            camera_->setFarValue(distance);
+        }
+    }
     float getZoneRenderDistance() const { return zoneRenderDistance_; }
+
+    // Object render distance (for trees, placeables)
+    void setObjectRenderDistance(float distance) { objectRenderDistance_ = distance; }
+    float getObjectRenderDistance() const { return objectRenderDistance_; }
 
     // Get Irrlicht device (for advanced usage)
     irr::IrrlichtDevice* getDevice() { return device_; }

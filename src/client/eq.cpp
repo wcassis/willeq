@@ -8450,7 +8450,7 @@ void EverQuest::RegisterCommands()
 	renderdist.name = "renderdist";
 	renderdist.aliases = {"clipplane", "viewdist"};
 	renderdist.usage = "/renderdist [distance]";
-	renderdist.description = "Get or set render distance for entities and zone geometry";
+	renderdist.description = "Get or set render distance for entities, objects, and zone geometry";
 	renderdist.category = "Utility";
 	renderdist.handler = [this](const std::string& args) {
 		if (!m_renderer) return;
@@ -8458,21 +8458,23 @@ void EverQuest::RegisterCommands()
 
 		if (args.empty()) {
 			float entityDist = entityRenderer ? entityRenderer->getRenderDistance() : 0.0f;
+			float objectDist = m_renderer->getObjectRenderDistance();
 			float zoneDist = m_renderer->getZoneRenderDistance();
-			AddChatSystemMessage(fmt::format("Render distance: entities={:.0f}, zone={:.0f} units", entityDist, zoneDist));
+			AddChatSystemMessage(fmt::format("Render distance: entities={:.0f}, objects={:.0f}, zone={:.0f} units", entityDist, objectDist, zoneDist));
 		} else {
 			try {
 				float dist = std::stof(args);
 				if (dist < 50.0f) dist = 50.0f;
 				if (dist > 10000.0f) dist = 10000.0f;
 
-				// Set both entity and zone render distance
+				// Set entity, object, and zone render distance
 				if (entityRenderer) {
 					entityRenderer->setRenderDistance(dist);
 				}
+				m_renderer->setObjectRenderDistance(dist);
 				m_renderer->setZoneRenderDistance(dist);
 
-				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units (entities + zone)", dist));
+				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units", dist));
 			} catch (...) {
 				AddChatSystemMessage("Usage: /renderdist [50-10000]");
 			}
