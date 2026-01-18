@@ -16945,6 +16945,40 @@ bool EverQuest::InitGraphics(int width, int height) {
 	if (m_spell_manager && m_spell_manager->isInitialized() && !m_buff_manager) {
 		m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
 		LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
+
+		// Set up buff fade callback to handle vision buff expiration
+		m_buff_manager->setBuffFadeCallback([this](uint16_t entity_id, uint32_t spell_id) {
+			// Only handle player vision buffs
+			if (entity_id != 0) return;
+			if (!m_spell_manager || !m_renderer) return;
+
+			// Check if the faded spell had vision effects
+			const EQ::SpellData* spell = m_spell_manager->getSpell(spell_id);
+			if (!spell) return;
+
+			bool hadVisionEffect = spell->hasEffect(EQ::SpellEffect::UltraVision) ||
+			                       spell->hasEffect(EQ::SpellEffect::InfraVision);
+			if (!hadVisionEffect) return;
+
+			LOG_DEBUG(MOD_SPELL, "Vision buff faded (spell {}), recalculating vision", spell_id);
+
+			// Reset to base vision first
+			m_renderer->resetVisionToBase();
+
+			// Re-scan remaining buffs for vision effects and re-apply
+			for (const auto& buff : m_buff_manager->getPlayerBuffs()) {
+				const EQ::SpellData* buffSpell = m_spell_manager->getSpell(buff.spell_id);
+				if (!buffSpell) continue;
+
+				if (buffSpell->hasEffect(EQ::SpellEffect::UltraVision)) {
+					m_renderer->setVisionType(EQT::Graphics::VisionType::Ultravision);
+					break;  // Ultravision is best, no need to check more
+				} else if (buffSpell->hasEffect(EQ::SpellEffect::InfraVision)) {
+					m_renderer->setVisionType(EQT::Graphics::VisionType::Infravision);
+					// Keep checking in case there's an Ultravision buff
+				}
+			}
+		});
 	}
 
 	// Initialize spell effects processor

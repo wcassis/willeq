@@ -3180,6 +3180,16 @@ void IrrlichtRenderer::setVisionType(VisionType vision) {
     }
 }
 
+void IrrlichtRenderer::resetVisionToBase() {
+    if (currentVision_ != baseVision_) {
+        currentVision_ = baseVision_;
+        LOG_INFO(MOD_GRAPHICS, "Vision reset to base: {}",
+                 currentVision_ == VisionType::Ultravision ? "Ultravision" :
+                 currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+        updateZoneLightColors();
+    }
+}
+
 void IrrlichtRenderer::updateZoneLightColors() {
     if (!currentZone_ || zoneLightNodes_.empty()) {
         return;

@@ -105,6 +105,8 @@ public:
     void handleInvisibility(uint16_t target_id, uint8_t invis_type);  // 0=normal, 1=undead, 2=animals
     void handleSeeInvisible(uint16_t target_id);
     void handleTrueSight(uint16_t target_id);
+    void handleUltraVision(uint16_t target_id);  // Upgrades player vision to Ultravision
+    void handleInfraVision(uint16_t target_id);  // Upgrades player vision to Infravision
 
     // Movement Abilities
     void handleLevitate(uint16_t target_id, bool enable);

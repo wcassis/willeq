@@ -560,11 +560,14 @@ public:
     // Only upgrades vision - cannot downgrade below base race vision
     void setVisionType(VisionType vision);
 
+    // Reset vision to base race vision (call when vision buffs fade)
+    void resetVisionToBase();
+
     // Get current vision type
     VisionType getVisionType() const { return currentVision_; }
 
-    // Reset vision to base race vision (when buff wears off)
-    void resetVisionToBase() { currentVision_ = baseVision_; updateZoneLightColors(); }
+    // Get base vision type (from race)
+    VisionType getBaseVision() const { return baseVision_; }
 
     // Set player position for camera following
     void setPlayerPosition(float x, float y, float z, float heading);

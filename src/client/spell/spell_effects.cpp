@@ -6,6 +6,7 @@
 #include <client/spell/spell_database.h>
 #include <client/spell/buff_manager.h>
 #include <client/eq.h>
+#include <client/graphics/irrlicht_renderer.h>
 #include <common/logging.h>
 #include <algorithm>
 #include <cmath>
@@ -234,8 +235,13 @@ EffectResult SpellEffects::processEffect(
             break;
 
         case SpellEffect::UltraVision:
-            handleTrueSight(target_id);
-            result.message = "true sight";
+            handleUltraVision(target_id);
+            result.message = "ultravision";
+            break;
+
+        case SpellEffect::InfraVision:
+            handleInfraVision(target_id);
+            result.message = "infravision";
             break;
 
         // ====================================================================
@@ -720,6 +726,38 @@ void SpellEffects::handleSeeInvisible(uint16_t target_id)
 void SpellEffects::handleTrueSight(uint16_t target_id)
 {
     LOG_DEBUG(MOD_SPELL, "True Sight: target {}", target_id);
+}
+
+void SpellEffects::handleUltraVision(uint16_t target_id)
+{
+    LOG_DEBUG(MOD_SPELL, "Ultravision: target {}", target_id);
+
+    // Only affects player's vision
+    if (!isPlayer(target_id)) return;
+
+    if (m_eq) {
+        auto* renderer = m_eq->GetRenderer();
+        if (renderer) {
+            renderer->setVisionType(EQT::Graphics::VisionType::Ultravision);
+            LOG_INFO(MOD_SPELL, "Player vision upgraded to Ultravision");
+        }
+    }
+}
+
+void SpellEffects::handleInfraVision(uint16_t target_id)
+{
+    LOG_DEBUG(MOD_SPELL, "Infravision: target {}", target_id);
+
+    // Only affects player's vision
+    if (!isPlayer(target_id)) return;
+
+    if (m_eq) {
+        auto* renderer = m_eq->GetRenderer();
+        if (renderer) {
+            renderer->setVisionType(EQT::Graphics::VisionType::Infravision);
+            LOG_INFO(MOD_SPELL, "Player vision upgraded to Infravision");
+        }
+    }
 }
 
 // ============================================================================
