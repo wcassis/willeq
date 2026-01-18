@@ -178,6 +178,7 @@ enum TitaniumZoneOpcodes {
 	// Additional opcodes
 	HC_OP_BecomeCorpse = 0x4dbc,
 	HC_OP_ZonePlayerToBind = 0x385e,
+	HC_OP_LevelUpdate = 0x6d44,
 	HC_OP_SimpleMessage = 0x673c,
 	HC_OP_TargetHoTT = 0x6a12,
 	HC_OP_SkillUpdate = 0x6a93,
@@ -1127,6 +1128,7 @@ private:
 	void ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p);
 	void ZoneProcessStamina(const EQ::Net::Packet &p);
 	void ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p);
+	void ZoneProcessLevelUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
 	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
 	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
