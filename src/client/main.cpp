@@ -528,6 +528,10 @@ int main(int argc, char *argv[]) {
 	EQT::Graphics::ConstrainedRenderingPreset constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::None;
 	bool frame_timing_enabled = false;
 	bool scene_profile_enabled = false;
+#ifdef WITH_RDP
+	bool rdp_enabled = false;
+	uint16_t rdp_port = 3389;
+#endif
 #endif
 
 	for (int i = 1; i < argc; i++) {
@@ -566,6 +570,14 @@ int main(int argc, char *argv[]) {
 			frame_timing_enabled = true;
 		} else if (arg == "--scene-profile" || arg == "--sp") {
 			scene_profile_enabled = true;
+#ifdef WITH_RDP
+		} else if (arg == "--rdp" || arg == "--enable-rdp") {
+			rdp_enabled = true;
+		} else if (arg == "--rdp-port") {
+			if (i + 1 < argc) {
+				rdp_port = static_cast<uint16_t>(std::atoi(argv[++i]));
+			}
+#endif
 #endif
 		} else if (arg == "--help" || arg == "-h") {
 			std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -580,6 +592,10 @@ int main(int argc, char *argv[]) {
 			std::cout << "  --constrained <preset>   Enable constrained rendering mode (voodoo1, voodoo2, tnt)\n";
 			std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
 			std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
+#ifdef WITH_RDP
+			std::cout << "  --rdp, --enable-rdp      Enable native RDP server for remote access\n";
+			std::cout << "  --rdp-port <port>        RDP server port (default: 3389)\n";
+#endif
 #endif
 			std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
 			std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
@@ -707,6 +723,21 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
+
+#ifdef WITH_RDP
+		// Parse RDP config from main config
+		if (config_handle.isMember("rdp")) {
+			const auto& rdp_config = config_handle["rdp"];
+			if (rdp_config.isMember("enabled") && rdp_config["enabled"].asBool()) {
+				rdp_enabled = true;
+				LOG_INFO(MOD_GRAPHICS, "RDP server enabled from config");
+			}
+			if (rdp_config.isMember("port")) {
+				rdp_port = static_cast<uint16_t>(rdp_config["port"].asInt());
+				LOG_INFO(MOD_GRAPHICS, "RDP port from config: {}", rdp_port);
+			}
+		}
+#endif
 #endif
 
 		if (config_handle.isMember("clients") && config_handle["clients"].isArray()) {
@@ -806,6 +837,21 @@ int main(int argc, char *argv[]) {
 					// Schedule scene profile - it will run after zone is loaded
 					renderer->runSceneProfile();
 				}
+#ifdef WITH_RDP
+				// Initialize and start RDP server if enabled
+				if (rdp_enabled) {
+					LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", rdp_port);
+					if (renderer->initRDP(rdp_port)) {
+						if (renderer->startRDPServer()) {
+							LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", rdp_port);
+						} else {
+							LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
+						}
+					} else {
+						LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
+					}
+				}
+#endif
 			}
 		} else {
 			LOG_WARN(MOD_GRAPHICS, "Failed to initialize graphics - running headless");
@@ -1186,6 +1232,16 @@ int main(int argc, char *argv[]) {
 	command_thread.join();
 
 #ifdef EQT_HAS_GRAPHICS
+	// Shutdown RDP server if running
+#ifdef WITH_RDP
+	if (graphics_initialized && !eq_list.empty()) {
+		auto* renderer = eq_list[0]->GetRenderer();
+		if (renderer && renderer->isRDPRunning()) {
+			LOG_INFO(MOD_GRAPHICS, "Stopping RDP server...");
+			renderer->stopRDPServer();
+		}
+	}
+#endif
 	// Shutdown graphics
 	if (graphics_initialized && !eq_list.empty()) {
 		eq_list[0]->ShutdownGraphics();

@@ -15,6 +15,10 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/input/hotkey_manager.h"
 
+#ifdef WITH_RDP
+#include "client/graphics/rdp/rdp_server.h"
+#endif
+
 // Forward declaration for collision map
 class HCMap;
 
@@ -835,6 +839,41 @@ public:
     // Check if constrained rendering mode is active
     bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
+#ifdef WITH_RDP
+    // RDP server support (alternative to Xvfb+x11vnc)
+
+    /**
+     * Initialize the native RDP server.
+     *
+     * @param port The port to listen on (default: 3389)
+     * @return true on success, false on failure
+     */
+    bool initRDP(uint16_t port = 3389);
+
+    /**
+     * Start the RDP server.
+     * Call after initRDP() to begin accepting connections.
+     *
+     * @return true on success, false on failure
+     */
+    bool startRDPServer();
+
+    /**
+     * Stop the RDP server.
+     */
+    void stopRDPServer();
+
+    /**
+     * Check if the RDP server is running.
+     */
+    bool isRDPRunning() const;
+
+    /**
+     * Get the number of connected RDP clients.
+     */
+    size_t getRDPClientCount() const;
+#endif // WITH_RDP
+
 private:
     void setupCamera();
     void setupLighting();
@@ -1163,6 +1202,20 @@ private:
     bool sceneProfileEnabled_ = false;
     int sceneProfileFrameCount_ = 0;
     void profileSceneBreakdown();  // Run once to profile scene categories
+
+#ifdef WITH_RDP
+    // RDP server for native remote desktop streaming
+    std::unique_ptr<RDPServer> rdpServer_;
+
+    // Capture framebuffer and send to RDP clients
+    void captureFrameForRDP();
+
+    // Handle RDP keyboard input
+    void handleRDPKeyboard(uint16_t flags, uint8_t scancode);
+
+    // Handle RDP mouse input
+    void handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y);
+#endif // WITH_RDP
 };
 
 } // namespace Graphics

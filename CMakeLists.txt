@@ -81,6 +81,36 @@ IF(EQT_GRAPHICS)
     ENDIF()
 ENDIF()
 
+# Find FreeRDP (optional, for native RDP streaming - requires graphics)
+# RDP is an additional display option alongside Xvfb+x11vnc
+IF(EQT_GRAPHICS)
+    IF(PkgConfig_FOUND)
+        # Try FreeRDP 3.x first, then fall back to 2.x
+        PKG_CHECK_MODULES(FREERDP freerdp3 winpr3)
+        IF(NOT FREERDP_FOUND)
+            PKG_CHECK_MODULES(FREERDP freerdp2 winpr2)
+        ENDIF()
+    ENDIF()
+    IF(FREERDP_FOUND)
+        OPTION(WITH_RDP "Enable native RDP support" ON)
+    ELSE()
+        OPTION(WITH_RDP "Enable native RDP support" OFF)
+    ENDIF()
+    IF(WITH_RDP)
+        IF(FREERDP_FOUND)
+            ADD_DEFINITIONS(-DWITH_RDP)
+            MESSAGE(STATUS "Native RDP support: ENABLED")
+        ELSE()
+            MESSAGE(STATUS "Native RDP support: DISABLED (FreeRDP not found)")
+            SET(WITH_RDP OFF)
+        ENDIF()
+    ELSE()
+        MESSAGE(STATUS "Native RDP support: DISABLED (not requested)")
+    ENDIF()
+ELSE()
+    SET(WITH_RDP OFF)
+ENDIF()
+
 # Include directories
 INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/include
@@ -112,6 +142,11 @@ ENDIF()
 
 IF(EQT_GRAPHICS AND IRRLICHT_INCLUDE_DIR)
     INCLUDE_DIRECTORIES(${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+
+IF(WITH_RDP AND FREERDP_FOUND)
+    INCLUDE_DIRECTORIES(${FREERDP_INCLUDE_DIRS})
+    LINK_DIRECTORIES(${FREERDP_LIBRARY_DIRS})
 ENDIF()
 
 # Common library sources
@@ -277,6 +312,16 @@ IF(EQT_GRAPHICS)
     )
 ENDIF()
 
+# RDP server sources (optional, requires FreeRDP)
+SET(RDP_SOURCES)
+IF(WITH_RDP)
+    SET(RDP_SOURCES
+        src/client/graphics/rdp/rdp_server.cpp
+        src/client/graphics/rdp/rdp_peer_context.cpp
+        src/client/graphics/rdp/rdp_input_handler.cpp
+    )
+ENDIF()
+
 # All core sources (for library - excludes main.cpp)
 SET(ALL_CORE_SOURCES
     ${COMMON_SOURCES}
@@ -284,6 +329,7 @@ SET(ALL_CORE_SOURCES
     ${PATHFINDING_SOURCES}
     ${MAP_SOURCES}
     ${GRAPHICS_SOURCES}
+    ${RDP_SOURCES}
 )
 
 # Create a static library for the core client code (used by both executable and tests)
@@ -331,6 +377,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         # Linux/X11
         LIST(APPEND LINK_LIBS X11 Xxf86vm GL)
     ENDIF()
+ENDIF()
+
+IF(WITH_RDP AND FREERDP_FOUND)
+    LIST(APPEND LINK_LIBS ${FREERDP_LIBRARIES})
 ENDIF()
 
 # Link libraries to the core library
@@ -620,5 +670,14 @@ IF(EQT_GRAPHICS)
     MESSAGE(STATUS "Irrlicht: ${IRRLICHT_LIBRARY}")
 ELSE()
     MESSAGE(STATUS "Irrlicht: NOT FOUND (graphics disabled)")
+ENDIF()
+IF(WITH_RDP)
+    MESSAGE(STATUS "FreeRDP: ${FREERDP_LIBRARIES} (native RDP enabled)")
+ELSEIF(EQT_GRAPHICS AND FREERDP_FOUND)
+    MESSAGE(STATUS "FreeRDP: available but disabled (use -DWITH_RDP=ON to enable)")
+ELSEIF(EQT_GRAPHICS)
+    MESSAGE(STATUS "FreeRDP: NOT FOUND (native RDP disabled)")
+ELSE()
+    MESSAGE(STATUS "FreeRDP: NOT AVAILABLE (requires graphics)")
 ENDIF()
 MESSAGE(STATUS "")

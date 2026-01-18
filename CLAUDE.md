@@ -41,7 +41,25 @@ cd build && ctest -R TestName --output-on-failure
 # With VNC (for headless servers)
 ./scripts/start-with-vnc.sh -c willeq.json
 # Connect via: vnc://localhost:5999
+
+# With native RDP (alternative to VNC)
+./build/bin/willeq -c willeq.json --rdp
+# Connect via: mstsc.exe /v:hostname:3389 (Windows)
+# Or: xfreerdp /v:hostname:3389 /cert:ignore (Linux)
+
+# RDP with custom port
+./build/bin/willeq -c willeq.json --rdp --rdp-port 13389
 ```
+
+### Display Options Comparison
+
+| Method | Use Case | Client |
+|--------|----------|--------|
+| Direct X11 | Local display with GPU/software rendering | Native |
+| Xvfb + VNC | Remote access, cross-platform | VNC client |
+| Native RDP | Windows users, better compression | mstsc.exe, xfreerdp |
+
+RDP and VNC can run simultaneously if both X11 and RDP are enabled.
 
 ## Dependencies
 
@@ -50,6 +68,7 @@ Optional:
 - Boost (waypoint pathfinding)
 - librecast-dev (navmesh pathfinding via Recast/Detour)
 - libirrlicht-dev, libxxf86vm-dev (3D graphics rendering)
+- freerdp3-dev, libwinpr3-dev (native RDP streaming)
 
 ## Architecture
 
@@ -241,6 +260,17 @@ Use the GDB helper script to capture crash backtraces:
 ```json
 {
     "eq_client_path": "/path/to/EverQuest"
+}
+```
+
+**RDP configuration** (optional):
+```json
+{
+    "eq_client_path": "/path/to/EverQuest",
+    "rdp": {
+        "enabled": true,
+        "port": 3389
+    }
 }
 ```
 

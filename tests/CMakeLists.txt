@@ -349,3 +349,37 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_beneficial_spell_casting GTest::gtest_main willeq_core)
     # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
 ENDIF()
+
+# Test RDP input handler (scancode translation)
+# These tests verify RDP scancode to Irrlicht key code translation
+IF(WITH_RDP)
+    ADD_EXECUTABLE(test_rdp_input_handler
+        test_rdp_input_handler.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/rdp/rdp_input_handler.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_rdp_input_handler PRIVATE
+        ${IRRLICHT_INCLUDE_DIR}
+        ${FREERDP_INCLUDE_DIRS}
+    )
+    TARGET_COMPILE_DEFINITIONS(test_rdp_input_handler PRIVATE WITH_RDP)
+    TARGET_LINK_LIBRARIES(test_rdp_input_handler GTest::gtest_main ${FREERDP_LIBRARIES})
+    GTEST_DISCOVER_TESTS(test_rdp_input_handler)
+ENDIF()
+
+# Test RDP server (initialization, lifecycle, callbacks)
+# These tests verify RDP server functionality without actual network connections
+IF(WITH_RDP)
+    ADD_EXECUTABLE(test_rdp_server
+        test_rdp_server.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/rdp/rdp_server.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/rdp/rdp_peer_context.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/rdp/rdp_input_handler.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_rdp_server PRIVATE
+        ${IRRLICHT_INCLUDE_DIR}
+        ${FREERDP_INCLUDE_DIRS}
+    )
+    TARGET_COMPILE_DEFINITIONS(test_rdp_server PRIVATE WITH_RDP)
+    TARGET_LINK_LIBRARIES(test_rdp_server GTest::gtest_main ${FREERDP_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_rdp_server)
+ENDIF()
