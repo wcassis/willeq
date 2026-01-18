@@ -850,32 +850,76 @@ void IrrlichtRenderer::updateObjectVisibility() {
     }
     lastCullingCameraPos_ = cameraPos;
 
-    // Update visibility based on distance
-    size_t visibleCount = 0;
-    size_t hiddenCount = 0;
+    // Update scene graph membership based on distance
+    // This removes far objects entirely from the scene graph to skip traversal overhead
+    size_t inSceneCount = 0;
+    size_t removedCount = 0;
     const float renderDistSq = objectRenderDistance_ * objectRenderDistance_;
 
     for (size_t i = 0; i < objectNodes_.size(); ++i) {
         if (!objectNodes_[i]) continue;
 
         float distSq = cameraPos.getDistanceFromSQ(objectPositions_[i]);
-        bool shouldBeVisible = (distSq <= renderDistSq);
+        bool shouldBeInScene = (distSq <= renderDistSq);
 
-        if (shouldBeVisible) {
-            if (!objectNodes_[i]->isVisible()) {
-                objectNodes_[i]->setVisible(true);
-            }
-            visibleCount++;
+        if (shouldBeInScene && !objectInSceneGraph_[i]) {
+            // Add back to scene graph
+            smgr_->getRootSceneNode()->addChild(objectNodes_[i]);
+            objectNodes_[i]->setVisible(true);
+            objectInSceneGraph_[i] = true;
+        } else if (!shouldBeInScene && objectInSceneGraph_[i]) {
+            // Remove from scene graph (but keep the node alive via grab())
+            objectNodes_[i]->remove();
+            objectInSceneGraph_[i] = false;
+        }
+
+        if (objectInSceneGraph_[i]) {
+            inSceneCount++;
         } else {
-            if (objectNodes_[i]->isVisible()) {
-                objectNodes_[i]->setVisible(false);
-            }
-            hiddenCount++;
+            removedCount++;
         }
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "Object visibility: {} visible, {} hidden (dist={})",
-        visibleCount, hiddenCount, objectRenderDistance_);
+    LOG_TRACE(MOD_GRAPHICS, "Object scene graph: {} in scene, {} removed (dist={})",
+        inSceneCount, removedCount, objectRenderDistance_);
+}
+
+void IrrlichtRenderer::updateZoneLightVisibility() {
+    if (!camera_ || zoneLightNodes_.empty()) return;
+
+    irr::core::vector3df cameraPos = camera_->getPosition();
+
+    // Update scene graph membership based on distance
+    // This removes far lights entirely from the scene graph to skip traversal overhead
+    size_t inSceneCount = 0;
+    size_t removedCount = 0;
+    const float renderDistSq = zoneLightRenderDistance_ * zoneLightRenderDistance_;
+
+    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+        if (!zoneLightNodes_[i]) continue;
+
+        float distSq = cameraPos.getDistanceFromSQ(zoneLightPositions_[i]);
+        bool shouldBeInScene = (distSq <= renderDistSq);
+
+        if (shouldBeInScene && !zoneLightInSceneGraph_[i]) {
+            // Add back to scene graph
+            smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
+            zoneLightInSceneGraph_[i] = true;
+        } else if (!shouldBeInScene && zoneLightInSceneGraph_[i]) {
+            // Remove from scene graph (but keep the node alive via grab())
+            zoneLightNodes_[i]->remove();
+            zoneLightInSceneGraph_[i] = false;
+        }
+
+        if (zoneLightInSceneGraph_[i]) {
+            inSceneCount++;
+        } else {
+            removedCount++;
+        }
+    }
+
+    LOG_TRACE(MOD_GRAPHICS, "Zone light scene graph: {} in scene, {} removed (dist={})",
+        inSceneCount, removedCount, zoneLightRenderDistance_);
 }
 
 void IrrlichtRenderer::updateObjectLights() {
@@ -1877,20 +1921,30 @@ void IrrlichtRenderer::unloadZone() {
     }
 
     // Remove object nodes
-    for (auto* node : objectNodes_) {
-        if (node) {
-            node->remove();
+    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+        if (objectNodes_[i]) {
+            if (i < objectInSceneGraph_.size() && objectInSceneGraph_[i]) {
+                objectNodes_[i]->remove();
+            }
+            objectNodes_[i]->drop();  // Release our reference
         }
     }
     objectNodes_.clear();
+    objectPositions_.clear();
+    objectInSceneGraph_.clear();
 
     // Remove zone light nodes
-    for (auto* node : zoneLightNodes_) {
-        if (node) {
-            node->remove();
+    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+        if (zoneLightNodes_[i]) {
+            if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
+                zoneLightNodes_[i]->remove();
+            }
+            zoneLightNodes_[i]->drop();  // Release our reference
         }
     }
     zoneLightNodes_.clear();
+    zoneLightPositions_.clear();
+    zoneLightInSceneGraph_.clear();
 
     // Clear entity renderer
     if (entityRenderer_) {
@@ -2394,13 +2448,18 @@ void IrrlichtRenderer::createObjectMeshes() {
         return;
     }
 
-    for (auto* node : objectNodes_) {
-        if (node) {
-            node->remove();
+    // Clear existing object nodes with proper reference counting
+    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+        if (objectNodes_[i]) {
+            if (i < objectInSceneGraph_.size() && objectInSceneGraph_[i]) {
+                objectNodes_[i]->remove();
+            }
+            objectNodes_[i]->drop();  // Release our reference
         }
     }
     objectNodes_.clear();
     objectPositions_.clear();
+    objectInSceneGraph_.clear();
 
     // Clear object lights
     for (auto& objLight : objectLights_) {
@@ -2584,8 +2643,10 @@ void IrrlichtRenderer::createObjectMeshes() {
 
         // Store the object name in the scene node for later identification
         node->setName(objName.c_str());
+        node->grab();  // Keep alive when removed from scene graph
         objectNodes_.push_back(node);
         objectPositions_.push_back(irr::core::vector3df(x, z, y));  // Cache position for distance culling
+        objectInSceneGraph_.push_back(true);  // Initially in scene graph
 
         // Check if this object is a light source (torch, lantern, etc.)
         std::string upperName = objName;
@@ -2672,12 +2733,18 @@ void IrrlichtRenderer::createObjectMeshes() {
 
 void IrrlichtRenderer::createZoneLights() {
     // Clear existing zone lights
-    for (auto* node : zoneLightNodes_) {
-        if (node) {
-            node->remove();
+    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+        if (zoneLightNodes_[i]) {
+            // Remove from scene graph if still in it
+            if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
+                zoneLightNodes_[i]->remove();
+            }
+            zoneLightNodes_[i]->drop();  // Release our reference
         }
     }
     zoneLightNodes_.clear();
+    zoneLightPositions_.clear();
+    zoneLightInSceneGraph_.clear();
 
     if (!currentZone_ || currentZone_->lights.empty()) {
         return;
@@ -2708,7 +2775,10 @@ void IrrlichtRenderer::createZoneLights() {
             // Start hidden - updateObjectLights() manages visibility
             lightNode->setVisible(false);
 
+            lightNode->grab();  // Keep alive when removed from scene graph
             zoneLightNodes_.push_back(lightNode);
+            zoneLightPositions_.push_back(lightNode->getPosition());  // Cache position
+            zoneLightInSceneGraph_.push_back(true);  // Initially in scene graph
         }
     }
 
@@ -4029,6 +4099,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // ===== FRAME TIMING: Object Visibility =====
     updateObjectVisibility();
+    updateZoneLightVisibility();
     if (frameTimingEnabled_) frameTimings_.objectVisibility = measureSection();
 
     // ===== FRAME TIMING: PVS Visibility =====
@@ -4558,10 +4629,15 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     auto hideAll = [this]() {
         if (zoneMeshNode_) zoneMeshNode_->setVisible(false);
         if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(false);
-        for (auto* node : objectNodes_) if (node) node->setVisible(false);
+        // Hide objects (they may already be out of scene graph)
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            if (objectNodes_[i]) objectNodes_[i]->setVisible(false);
+        }
         if (doorManager_) doorManager_->setAllDoorsVisible(false);
-        // Also hide lights
-        for (auto* node : zoneLightNodes_) if (node) node->setVisible(false);
+        // Also hide lights (they may already be out of scene graph)
+        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+            if (zoneLightNodes_[i]) zoneLightNodes_[i]->setVisible(false);
+        }
         if (sunLight_) sunLight_->setVisible(false);
         if (playerLightNode_) playerLightNode_->setVisible(false);
     };
@@ -4569,10 +4645,27 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     auto showAll = [this]() {
         if (zoneMeshNode_) zoneMeshNode_->setVisible(true);
         if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(true);
-        for (auto* node : objectNodes_) if (node) node->setVisible(true);
+        // Add objects back to scene graph and show
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            if (objectNodes_[i]) {
+                if (i < objectInSceneGraph_.size() && !objectInSceneGraph_[i]) {
+                    smgr_->getRootSceneNode()->addChild(objectNodes_[i]);
+                    objectInSceneGraph_[i] = true;
+                }
+                objectNodes_[i]->setVisible(true);
+            }
+        }
         if (doorManager_) doorManager_->setAllDoorsVisible(true);
-        // Show lights
-        for (auto* node : zoneLightNodes_) if (node) node->setVisible(true);
+        // Add lights back to scene graph and show
+        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+            if (zoneLightNodes_[i]) {
+                if (i < zoneLightInSceneGraph_.size() && !zoneLightInSceneGraph_[i]) {
+                    smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
+                    zoneLightInSceneGraph_[i] = true;
+                }
+                zoneLightNodes_[i]->setVisible(true);
+            }
+        }
         if (sunLight_) sunLight_->setVisible(true);
         if (playerLightNode_) playerLightNode_->setVisible(true);
     };

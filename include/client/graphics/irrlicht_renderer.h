@@ -790,7 +790,8 @@ private:
     void setupCamera();
     void setupLighting();
     void updateObjectLights();  // Distance-based culling of object lights
-    void updateObjectVisibility();  // Distance-based culling of placeable objects
+    void updateObjectVisibility();  // Distance-based scene graph management for placeable objects
+    void updateZoneLightVisibility();  // Distance-based scene graph management for zone lights
     void updateVertexAnimations(float deltaMs);  // Update vertex animated meshes
     void setupFog();
     void setupHUD();
@@ -844,9 +845,13 @@ private:
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
+    std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
     float objectRenderDistance_ = 300.0f;  // Max distance to render objects
     irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
+    std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
+    std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
+    float zoneLightRenderDistance_ = 400.0f;  // Max distance to keep lights in scene graph
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
     bool showLightDebugMarkers_ = false;  // Show debug markers for active lights
