@@ -32,6 +32,9 @@ namespace EQ { class SpellVisualFX; }
 namespace EQT {
 namespace Graphics {
 
+// Forward declaration
+class SkyRenderer;
+
 // Renderer mode: Player (gameplay), Repair (object adjustment), Admin (debug)
 enum class RendererMode {
     Player,  // First-person/follow, collision, server sync, simplified HUD
@@ -449,8 +452,32 @@ public:
     // Unload current zone
     void unloadZone();
 
+    // Set zone environment parameters (sky type, fog colors) from server data
+    // Call after loadZone() to apply zone-specific rendering settings
+    // skyType: sky type from NewZone_Struct (0-255)
+    // zoneType: zone type (0=outdoor, 1=dungeon, etc. - indoor zones disable sky)
+    // fogRed/Green/Blue: fog color arrays (4 values for different fog ranges)
+    // fogMinClip/MaxClip: fog distance arrays (4 values)
+    void setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
+                            const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
+                            const float fogMinClip[4], const float fogMaxClip[4]);
+
     // Get current zone name
     const std::string& getCurrentZoneName() const { return currentZoneName_; }
+
+    // Sky control for debugging
+    // Toggle sky rendering on/off
+    void toggleSky();
+
+    // Force a specific sky type (for testing)
+    // skyTypeId: sky type ID (0=default, 6=luclin, 10=thegrey, 11=pofire, etc.)
+    void forceSkyType(uint8_t skyTypeId);
+
+    // Check if sky is enabled
+    bool isSkyEnabled() const;
+
+    // Get current sky info string for debug HUD
+    std::string getSkyDebugInfo() const;
 
     // Entity management
     // isPlayer: true if this is our own player character
@@ -819,6 +846,7 @@ private:
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
+    std::unique_ptr<SkyRenderer> skyRenderer_;
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;

@@ -1314,6 +1314,16 @@ private:
 	std::unique_ptr<IPathfinder> m_pathfinder;
 	std::string m_current_zone_name;
 	uint16_t m_current_zone_id = 0;
+
+	// Zone environment data from NewZone packet
+	uint8_t m_zone_sky_type = 0;           // Sky type for rendering (0-255)
+	uint8_t m_zone_type = 0;               // Zone type (0=outdoor, 1=dungeon, etc.)
+	uint8_t m_zone_fog_red[4] = {0};       // Fog colors for 4 fog ranges
+	uint8_t m_zone_fog_green[4] = {0};
+	uint8_t m_zone_fog_blue[4] = {0};
+	float m_zone_fog_minclip[4] = {0};     // Fog min clip distances
+	float m_zone_fog_maxclip[4] = {0};     // Fog max clip distances
+
 	std::vector<glm::vec3> m_current_path;
 	size_t m_current_path_index = 0;
 

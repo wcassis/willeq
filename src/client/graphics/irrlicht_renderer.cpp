@@ -5,6 +5,7 @@
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "client/graphics/sky_renderer.h"
 #include "client/zone_lines.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
@@ -588,6 +589,16 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         }
     }
 
+    // Create sky renderer (if not already created)
+    if (!skyRenderer_) {
+        skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
+        if (!skyRenderer_->initialize(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed - sky will not be rendered");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized");
+        }
+    }
+
     // Initialize inventory window model view now that entity renderer is available
     // This must happen after entityRenderer_ is created since it needs the race model loader
     if (windowManager_ && entityRenderer_) {
@@ -753,6 +764,28 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     if (sunLight_) {
         irr::video::SLight& lightData = sunLight_->getLightData();
         lightData.DiffuseColor = irr::video::SColorf(sunIntensity, sunIntensity, sunIntensity * 0.9f, 1.0f);
+    }
+
+    // Update sky celestial body positions and colors
+    if (skyRenderer_ && skyRenderer_->isInitialized()) {
+        skyRenderer_->updateTimeOfDay(hour, minute);
+
+        // Update fog color to match sky if fog is enabled
+        if (fogEnabled_ && driver_ && skyRenderer_->isEnabled()) {
+            irr::video::SColor fogColor = skyRenderer_->getRecommendedFogColor();
+
+            // Get current fog settings to preserve distances
+            irr::video::SColor currentFogColor;
+            irr::video::E_FOG_TYPE fogType;
+            irr::f32 fogStart, fogEnd, fogDensity;
+            bool pixelFog, rangeFog;
+            driver_->getFog(currentFogColor, fogType, fogStart, fogEnd, fogDensity, pixelFog, rangeFog);
+
+            // Only update fog color if we have valid fog distances
+            if (fogEnd > fogStart && fogEnd > 0) {
+                driver_->setFog(fogColor, fogType, fogStart, fogEnd, fogDensity, pixelFog, rangeFog);
+            }
+        }
     }
 }
 
@@ -1421,6 +1454,12 @@ void IrrlichtRenderer::updateHUD() {
         text << L"  Models: " << (isUsingOldModels() ? L"Classic" : L"Luclin");
         text << L"  FPS: " << currentFps_ << L"\n";
 
+        // Sky info
+        std::string skyInfo = getSkyDebugInfo();
+        std::wstring wSkyInfo(skyInfo.begin(), skyInfo.end());
+        text << wSkyInfo;
+        text << L"  Time: " << (int)currentHour_ << L":" << (currentMinute_ < 10 ? L"0" : L"") << (int)currentMinute_ << L"\n";
+
         // Current target display
         if (currentTargetId_ != 0) {
             text << L"\n--- TARGET ---\n";
@@ -1618,6 +1657,9 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         doorManager_->setZone(currentZone_);
     }
 
+    // Sky initialization is deferred to setZoneEnvironment() which is called
+    // after loadZone() with actual sky type from server NewZone packet
+
     drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
     EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
     // Use PVS-based culling if available (falls back to combined mesh if not)
@@ -1753,6 +1795,11 @@ void IrrlichtRenderer::unloadZone() {
         doorManager_->setZone(nullptr);
     }
 
+    // Disable sky when unloading zone (will be re-enabled when new zone loads)
+    if (skyRenderer_) {
+        skyRenderer_->setEnabled(false);
+    }
+
     // Clear world objects (tradeskill containers)
     clearWorldObjects();
 
@@ -1772,6 +1819,85 @@ void IrrlichtRenderer::unloadZone() {
 
     currentZone_.reset();
     currentZoneName_.clear();
+}
+
+void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
+                                          const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
+                                          const float fogMinClip[4], const float fogMaxClip[4]) {
+    // Set sky type if sky renderer is available
+    if (skyRenderer_ && skyRenderer_->isInitialized()) {
+        skyRenderer_->setSkyType(skyType, currentZoneName_);
+
+        // Disable sky for indoor zones (zoneType != 0)
+        // zoneType: 0=outdoor, 1=dungeon/indoor, 2=dungeon/no sky, 3=indoor city
+        bool isIndoor = (zoneType != 0);
+        skyRenderer_->setEnabled(!isIndoor);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {}",
+                  skyType, zoneType, isIndoor ? "indoor" : "outdoor",
+                  isIndoor ? "disabled" : "enabled");
+    }
+
+    // Apply fog settings from zone data
+    // Use the first fog range (index 0) for now - EQ supports 4 fog ranges
+    if (driver_ && fogEnabled_) {
+        irr::video::SColor fogColor(255, fogRed[0], fogGreen[0], fogBlue[0]);
+        float fogStart = fogMinClip[0];
+        float fogEnd = fogMaxClip[0];
+
+        // Only apply fog if we have valid clip distances
+        if (fogEnd > fogStart && fogEnd > 0) {
+            driver_->setFog(
+                fogColor,
+                irr::video::EFT_FOG_LINEAR,
+                fogStart,
+                fogEnd,
+                0.0f,  // Density (unused for linear fog)
+                true,  // Pixel fog
+                false  // Range fog
+            );
+            LOG_DEBUG(MOD_GRAPHICS, "Zone fog: RGB({},{},{}) range {}-{}",
+                      fogRed[0], fogGreen[0], fogBlue[0], fogStart, fogEnd);
+        }
+    }
+}
+
+void IrrlichtRenderer::toggleSky() {
+    if (skyRenderer_) {
+        bool newState = !skyRenderer_->isEnabled();
+        skyRenderer_->setEnabled(newState);
+        LOG_INFO(MOD_GRAPHICS, "Sky rendering: {}", newState ? "ON" : "OFF");
+    }
+}
+
+void IrrlichtRenderer::forceSkyType(uint8_t skyTypeId) {
+    if (skyRenderer_ && skyRenderer_->isInitialized()) {
+        skyRenderer_->setSkyType(skyTypeId, currentZoneName_);
+        LOG_INFO(MOD_GRAPHICS, "Forced sky type to {}", skyTypeId);
+    }
+}
+
+bool IrrlichtRenderer::isSkyEnabled() const {
+    return skyRenderer_ && skyRenderer_->isEnabled();
+}
+
+std::string IrrlichtRenderer::getSkyDebugInfo() const {
+    if (!skyRenderer_ || !skyRenderer_->isInitialized()) {
+        return "Sky: Not initialized";
+    }
+
+    std::string info = "Sky: ";
+    if (!skyRenderer_->isEnabled()) {
+        info += "OFF";
+    } else {
+        info += fmt::format("Type {} ", skyRenderer_->getCurrentSkyType());
+
+        // Get sky color info
+        auto colors = skyRenderer_->getCurrentSkyColors();
+        info += fmt::format("Bright:{:.0f}% ", colors.cloudBrightness * 100);
+    }
+
+    return info;
 }
 
 void IrrlichtRenderer::createZoneMesh() {
@@ -3676,6 +3802,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint C (after camera update)");
+
+    // Update sky position to follow camera (makes sky appear infinitely far away)
+    if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
+        skyRenderer_->setCameraPosition(camera_->getPosition());
+    }
 
     // Handle inventory toggle (I key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->inventoryToggleRequested() && rendererMode_ == RendererMode::Player) {

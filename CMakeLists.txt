@@ -211,6 +211,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/sky_loader.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/race_codes.cpp
@@ -230,6 +231,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/entity_renderer.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/animated_texture_manager.cpp
+        src/client/graphics/sky_config.cpp
+        src/client/graphics/sky_renderer.cpp
         # Inventory UI sources
         src/client/graphics/ui/inventory_constants.cpp
         src/client/graphics/ui/inventory_manager.cpp

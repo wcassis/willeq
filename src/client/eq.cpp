@@ -2788,6 +2788,38 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 			m_current_zone_id = p.GetUInt16(686);
 		}
 
+		// Extract zone environment data (sky type, fog colors)
+		// Offsets are +2 for opcode prefix
+		if (p.Length() >= 477) {  // Need sky field at offset 474 (+2 = 476)
+			// Zone type at offset 374 (0=outdoor, 1=dungeon, etc.)
+			m_zone_type = p.GetUInt8(376);
+
+			// Sky type at offset 474
+			m_zone_sky_type = p.GetUInt8(476);
+
+			// Fog colors at offsets 375-386
+			for (int i = 0; i < 4; i++) {
+				m_zone_fog_red[i] = p.GetUInt8(377 + i);
+				m_zone_fog_green[i] = p.GetUInt8(381 + i);
+				m_zone_fog_blue[i] = p.GetUInt8(385 + i);
+			}
+
+			// Fog clip distances at offsets 388-419
+			if (p.Length() >= 422) {
+				for (int i = 0; i < 4; i++) {
+					m_zone_fog_minclip[i] = p.GetFloat(390 + i * 4);
+					m_zone_fog_maxclip[i] = p.GetFloat(406 + i * 4);
+				}
+			}
+
+			if (s_debug_level >= 3) {
+				LOG_DEBUG(MOD_MAIN, "Zone environment: ztype={}, sky={}, fog RGB=({},{},{}), clip={}-{}",
+					m_zone_type, m_zone_sky_type,
+					m_zone_fog_red[0], m_zone_fog_green[0], m_zone_fog_blue[0],
+					m_zone_fog_minclip[0], m_zone_fog_maxclip[0]);
+			}
+		}
+
 		// Phase 7.3: Also update WorldState
 		m_game_state.world().setZone(m_current_zone_name, m_current_zone_id);
 
@@ -8401,7 +8433,7 @@ void EverQuest::RegisterCommands()
 
 	Command timestamp;
 	timestamp.name = "timestamp";
-	timestamp.aliases = {"timestamps", "time"};
+	timestamp.aliases = {"timestamps", "ts"};
 	timestamp.usage = "/timestamp";
 	timestamp.description = "Toggle timestamps in chat";
 	timestamp.category = "Utility";
@@ -8565,6 +8597,77 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(filter);
+
+	// === Sky Commands ===
+
+	Command sky;
+	sky.name = "sky";
+	sky.usage = "/sky";
+	sky.description = "Toggle sky rendering on/off";
+	sky.category = "Utility";
+	sky.handler = [this](const std::string& args) {
+		if (m_renderer) {
+			m_renderer->toggleSky();
+			AddChatSystemMessage(fmt::format("Sky rendering: {}", m_renderer->isSkyEnabled() ? "ON" : "OFF"));
+		}
+	};
+	m_command_registry->registerCommand(sky);
+
+	Command skytype;
+	skytype.name = "skytype";
+	skytype.usage = "/skytype <id>";
+	skytype.description = "Force sky type (0=default, 6=luclin, 10=grey, 11=fire, 12=storms)";
+	skytype.category = "Utility";
+	skytype.requiresArgs = true;
+	skytype.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		try {
+			int id = std::stoi(args);
+			if (id < 0 || id > 255) {
+				AddChatSystemMessage("Sky type must be 0-255");
+				return;
+			}
+			m_renderer->forceSkyType(static_cast<uint8_t>(id));
+			AddChatSystemMessage(fmt::format("Forced sky type to {}", id));
+		} catch (...) {
+			AddChatSystemMessage("Usage: /skytype <0-255>");
+		}
+	};
+	m_command_registry->registerCommand(skytype);
+
+	Command time_cmd;
+	time_cmd.name = "time";
+	time_cmd.aliases = {"settime"};
+	time_cmd.usage = "/time [hour]";
+	time_cmd.description = "Show or set game time (0-23)";
+	time_cmd.category = "Utility";
+	time_cmd.handler = [this](const std::string& args) {
+		if (args.empty()) {
+			// Show current time
+			AddChatSystemMessage(fmt::format("Game time: {:02d}:{:02d}", m_time_hour, m_time_minute));
+		} else {
+			// Set time
+			try {
+				int hour = std::stoi(args);
+				if (hour < 0 || hour > 23) {
+					AddChatSystemMessage("Hour must be 0-23");
+					return;
+				}
+				m_time_hour = static_cast<uint8_t>(hour);
+				m_time_minute = 0;
+
+				// Update renderer
+				if (m_renderer) {
+					m_renderer->updateTimeOfDay(m_time_hour, m_time_minute);
+				}
+
+				AddChatSystemMessage(fmt::format("Time set to {:02d}:00", m_time_hour));
+			} catch (...) {
+				AddChatSystemMessage("Usage: /time [0-23]");
+			}
+		}
+	};
+	m_command_registry->registerCommand(time_cmd);
 
 	Command who;
 	who.name = "who";
@@ -17339,11 +17442,21 @@ void EverQuest::LoadZoneGraphics() {
 				LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", m_current_zone_name);
 			}
 		}
+
 	}
 
 	// Phase 12: Load character models (global assets)
+	// NOTE: This also initializes the sky renderer, so must be done before setZoneEnvironment
 	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_MODELS, "Loading character models...");
 	m_renderer->loadGlobalAssets();
+
+	// Apply zone environment settings (sky type, fog) from NewZone packet
+	// Must be done AFTER loadGlobalAssets() which initializes the sky renderer
+	if (!m_current_zone_name.empty()) {
+		m_renderer->setZoneEnvironment(m_zone_sky_type, m_zone_type,
+			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
+			m_zone_fog_minclip, m_zone_fog_maxclip);
+	}
 
 	// Phase 13: Create entity scene nodes for all entities in m_entities
 	SetLoadingPhase(LoadingPhase::GRAPHICS_CREATING_ENTITIES, "Creating entities...");
