@@ -10,9 +10,10 @@
 namespace EQT {
 namespace Graphics {
 
-// Forward declaration
+// Forward declarations
 struct S3DZone;
 struct TextureInfo;
+class ConstrainedTextureCache;
 
 // Converts EQ zone geometry to Irrlicht mesh
 class ZoneMeshBuilder {
@@ -46,6 +47,14 @@ public:
     // Check if a texture is registered (either loaded or pending)
     bool hasTexture(const std::string& name) const;
 
+    // Constrained rendering support
+    // Set optional constrained texture cache for memory-limited rendering
+    // When set, textures are loaded through the cache with downsampling and 16-bit conversion
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // Get the constrained texture cache (may be nullptr)
+    ConstrainedTextureCache* getConstrainedTextureCache() const { return constrainedCache_; }
+
 private:
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
@@ -59,6 +68,9 @@ private:
 
     // Track which textures have alpha transparency
     std::set<std::string> texturesWithAlpha_;
+
+    // Optional constrained texture cache for memory-limited rendering
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 };
 
 // Helper to generate colors for visualization

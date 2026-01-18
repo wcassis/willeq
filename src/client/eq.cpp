@@ -8478,6 +8478,37 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(perf);
 
+	Command frametiming;
+	frametiming.name = "frametiming";
+	frametiming.aliases = {"frametime", "ft"};
+	frametiming.usage = "/frametiming";
+	frametiming.description = "Toggle frame timing profiler (outputs breakdown every 60 frames)";
+	frametiming.category = "Utility";
+	frametiming.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		bool newState = !m_renderer->isFrameTimingEnabled();
+		m_renderer->setFrameTimingEnabled(newState);
+		if (newState) {
+			AddChatSystemMessage("Frame timing profiler ENABLED - check console for breakdown every ~2 seconds");
+		} else {
+			AddChatSystemMessage("Frame timing profiler DISABLED");
+		}
+	};
+	m_command_registry->registerCommand(frametiming);
+
+	Command sceneprofile;
+	sceneprofile.name = "sceneprofile";
+	sceneprofile.aliases = {"sp", "scenebreak"};
+	sceneprofile.usage = "/sceneprofile";
+	sceneprofile.description = "Profile scene rendering by category (zone, entities, objects, doors)";
+	sceneprofile.category = "Utility";
+	sceneprofile.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->runSceneProfile();
+		AddChatSystemMessage("Scene profile running - check console for breakdown");
+	};
+	m_command_registry->registerCommand(sceneprofile);
+
 	Command renderdist;
 	renderdist.name = "renderdist";
 	renderdist.aliases = {"clipplane", "viewdist"};
@@ -8513,6 +8544,30 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(renderdist);
+
+	Command clipdist;
+	clipdist.name = "clipdist";
+	clipdist.aliases = {"clip", "farplane"};
+	clipdist.usage = "/clipdist [distance]";
+	clipdist.description = "Get or set camera clip distance (far plane)";
+	clipdist.category = "Utility";
+	clipdist.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+
+		if (args.empty()) {
+			float dist = m_renderer->getClipDistance();
+			AddChatSystemMessage(fmt::format("Clip distance: {:.0f} units", dist));
+		} else {
+			try {
+				float dist = std::stof(args);
+				m_renderer->setClipDistance(dist);
+				AddChatSystemMessage(fmt::format("Clip distance set to {:.0f} units", dist));
+			} catch (...) {
+				AddChatSystemMessage("Usage: /clipdist [100-50000]");
+			}
+		}
+	};
+	m_command_registry->registerCommand(clipdist);
 
 	Command filter;
 	filter.name = "filter";
@@ -16368,6 +16423,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	config.fog = true;
 	config.lighting = false;  // Fullbright mode
 	config.showNameTags = true;
+	config.constrainedPreset = m_constrained_preset;  // Constrained rendering mode (startup-only)
 
 	// Use initLoadingScreen() for early progress display - only creates window + progress bar
 	// Model loading is deferred to loadGlobalAssets() which is called during graphics loading phase

@@ -8,6 +8,7 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/ui/ui_settings.h"
 #include "client/input/hotkey_manager.h"
 #endif
@@ -524,6 +525,9 @@ int main(int argc, char *argv[]) {
 	bool use_opengl = false;
 	int graphics_width = 800;
 	int graphics_height = 600;
+	EQT::Graphics::ConstrainedRenderingPreset constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::None;
+	bool frame_timing_enabled = false;
+	bool scene_profile_enabled = false;
 #endif
 
 	for (int i = 1; i < argc; i++) {
@@ -548,6 +552,20 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (arg == "--opengl" || arg == "--gpu") {
 			use_opengl = true;
+		} else if (arg == "--constrained") {
+			if (i + 1 < argc) {
+				std::string preset_name = argv[++i];
+				constrained_preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(preset_name);
+				if (constrained_preset == EQT::Graphics::ConstrainedRenderingPreset::None && preset_name != "none") {
+					std::cerr << "Unknown constrained preset: " << preset_name << "\n";
+					std::cerr << "Valid presets: none, voodoo1, voodoo2, tnt\n";
+					return 1;
+				}
+			}
+		} else if (arg == "--frame-timing" || arg == "--ft") {
+			frame_timing_enabled = true;
+		} else if (arg == "--scene-profile" || arg == "--sp") {
+			scene_profile_enabled = true;
 #endif
 		} else if (arg == "--help" || arg == "-h") {
 			std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -559,6 +577,9 @@ int main(int argc, char *argv[]) {
 			std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
 			std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
 			std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
+			std::cout << "  --constrained <preset>   Enable constrained rendering mode (voodoo1, voodoo2, tnt)\n";
+			std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
+			std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
 #endif
 			std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
 			std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
@@ -671,6 +692,21 @@ int main(int argc, char *argv[]) {
 			// 4. Log any conflicts
 			hotkeyMgr.logConflicts();
 		}
+
+		// Parse rendering config from main config
+		if (config_handle.isMember("rendering")) {
+			const auto& rendering = config_handle["rendering"];
+			if (rendering.isMember("constrained_mode")) {
+				std::string preset_name = rendering["constrained_mode"].asString();
+				auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(preset_name);
+				if (preset != EQT::Graphics::ConstrainedRenderingPreset::None || preset_name == "none") {
+					constrained_preset = preset;
+					LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode from config: {}", preset_name);
+				} else {
+					LOG_WARN(MOD_GRAPHICS, "Unknown constrained preset in config: {}", preset_name);
+				}
+			}
+		}
 #endif
 
 		if (config_handle.isMember("clients") && config_handle["clients"].isArray()) {
@@ -753,6 +789,7 @@ int main(int argc, char *argv[]) {
 	if (graphics_enabled && !eq_list.empty() && !eq_list[0]->GetEQClientPath().empty()) {
 		LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics early for loading screen...");
 		eq_list[0]->SetUseOpenGL(use_opengl);
+		eq_list[0]->SetConstrainedPreset(constrained_preset);
 		EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
 		if (eq_list[0]->InitGraphics(graphics_width, graphics_height)) {
 			graphics_initialized = true;
@@ -762,6 +799,13 @@ int main(int argc, char *argv[]) {
 			if (renderer) {
 				renderer->setLoadingTitle(L"EverQuest");
 				renderer->setLoadingProgress(0.0f, L"Connecting to login server...");
+				if (frame_timing_enabled) {
+					renderer->setFrameTimingEnabled(true);
+				}
+				if (scene_profile_enabled) {
+					// Schedule scene profile - it will run after zone is loaded
+					renderer->runSceneProfile();
+				}
 			}
 		} else {
 			LOG_WARN(MOD_GRAPHICS, "Failed to initialize graphics - running headless");

@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -373,6 +374,27 @@ IrrlichtRenderer::~IrrlichtRenderer() {
 bool IrrlichtRenderer::init(const RendererConfig& config) {
     config_ = config;
 
+    // Apply constrained rendering mode if enabled
+    if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+        // Load preset configuration
+        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
+
+        // Calculate max resolution from framebuffer budget
+        config_.constrainedConfig.calculateMaxResolution();
+
+        // Clamp resolution to max allowed by framebuffer memory limit
+        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
+            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
+                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
+        }
+
+        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer)",
+                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
+                 config_.width, config_.height,
+                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024));
+    }
+
     // Choose driver type
     irr::video::E_DRIVER_TYPE driverType;
     if (config.softwareRenderer) {
@@ -421,6 +443,17 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
     }
 
+    // Create constrained texture cache if in constrained mode
+    if (config_.constrainedConfig.enabled && driver_) {
+        constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
+            config_.constrainedConfig, driver_);
+        constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
+        LOG_INFO(MOD_GRAPHICS, "Constrained texture cache created ({}KB limit, {}x{} max texture)",
+                 config_.constrainedConfig.textureMemoryBytes / 1024,
+                 config_.constrainedConfig.maxTextureDimension,
+                 config_.constrainedConfig.maxTextureDimension);
+    }
+
     // Create event receiver
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
     device_->setEventReceiver(eventReceiver_.get());
@@ -439,6 +472,11 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
     entityRenderer_->setClientPath(config.eqClientPath);
     entityRenderer_->setNameTagsVisible(config.showNameTags);
+
+    // Pass constrained config to entity renderer for visibility limits
+    if (config_.constrainedConfig.enabled) {
+        entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+    }
 
     // Preload numbered global character models for better coverage
     entityRenderer_->loadNumberedGlobals();
@@ -467,6 +505,27 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
 bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     config_ = config;
+
+    // Apply constrained rendering mode if enabled
+    if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+        // Load preset configuration
+        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
+
+        // Calculate max resolution from framebuffer budget
+        config_.constrainedConfig.calculateMaxResolution();
+
+        // Clamp resolution to max allowed by framebuffer memory limit
+        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
+            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
+                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
+        }
+
+        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer)",
+                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
+                 config_.width, config_.height,
+                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024));
+    }
 
     // Choose driver type
     irr::video::E_DRIVER_TYPE driverType;
@@ -512,6 +571,17 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         std::wstring wname(driverName);
         std::string name(wname.begin(), wname.end());
         LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
+    }
+
+    // Create constrained texture cache if in constrained mode
+    if (config_.constrainedConfig.enabled && driver_) {
+        constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
+            config_.constrainedConfig, driver_);
+        constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
+        LOG_INFO(MOD_GRAPHICS, "Constrained texture cache created ({}KB limit, {}x{} max texture)",
+                 config_.constrainedConfig.textureMemoryBytes / 1024,
+                 config_.constrainedConfig.maxTextureDimension,
+                 config_.constrainedConfig.maxTextureDimension);
     }
 
     // Create event receiver
@@ -562,6 +632,10 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
         entityRenderer_->setClientPath(config_.eqClientPath);
         entityRenderer_->setNameTagsVisible(config_.showNameTags);
+        // Pass constrained config to entity renderer for visibility limits
+        if (config_.constrainedConfig.enabled) {
+            entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+        }
     }
 
     // Load main global character models (global_chr.s3d)
@@ -681,7 +755,13 @@ void IrrlichtRenderer::setupCamera() {
         -1
     );
 
-    camera_->setFarValue(zoneRenderDistance_);
+    // Use constrained clip distance if enabled, otherwise use zone render distance
+    float farValue = zoneRenderDistance_;
+    if (config_.constrainedConfig.enabled) {
+        farValue = config_.constrainedConfig.clipDistance;
+        LOG_INFO(MOD_GRAPHICS, "Constrained mode: clip distance set to {}", farValue);
+    }
+    camera_->setFarValue(farValue);
     camera_->setNearValue(1.0f);
 
     cameraController_ = std::make_unique<CameraController>(camera_);
@@ -804,32 +884,76 @@ void IrrlichtRenderer::updateObjectVisibility() {
     }
     lastCullingCameraPos_ = cameraPos;
 
-    // Update visibility based on distance
-    size_t visibleCount = 0;
-    size_t hiddenCount = 0;
+    // Update scene graph membership based on distance
+    // This removes far objects entirely from the scene graph to skip traversal overhead
+    size_t inSceneCount = 0;
+    size_t removedCount = 0;
     const float renderDistSq = objectRenderDistance_ * objectRenderDistance_;
 
     for (size_t i = 0; i < objectNodes_.size(); ++i) {
         if (!objectNodes_[i]) continue;
 
         float distSq = cameraPos.getDistanceFromSQ(objectPositions_[i]);
-        bool shouldBeVisible = (distSq <= renderDistSq);
+        bool shouldBeInScene = (distSq <= renderDistSq);
 
-        if (shouldBeVisible) {
-            if (!objectNodes_[i]->isVisible()) {
-                objectNodes_[i]->setVisible(true);
-            }
-            visibleCount++;
+        if (shouldBeInScene && !objectInSceneGraph_[i]) {
+            // Add back to scene graph
+            smgr_->getRootSceneNode()->addChild(objectNodes_[i]);
+            objectNodes_[i]->setVisible(true);
+            objectInSceneGraph_[i] = true;
+        } else if (!shouldBeInScene && objectInSceneGraph_[i]) {
+            // Remove from scene graph (but keep the node alive via grab())
+            objectNodes_[i]->remove();
+            objectInSceneGraph_[i] = false;
+        }
+
+        if (objectInSceneGraph_[i]) {
+            inSceneCount++;
         } else {
-            if (objectNodes_[i]->isVisible()) {
-                objectNodes_[i]->setVisible(false);
-            }
-            hiddenCount++;
+            removedCount++;
         }
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "Object visibility: {} visible, {} hidden (dist={})",
-        visibleCount, hiddenCount, objectRenderDistance_);
+    LOG_TRACE(MOD_GRAPHICS, "Object scene graph: {} in scene, {} removed (dist={})",
+        inSceneCount, removedCount, objectRenderDistance_);
+}
+
+void IrrlichtRenderer::updateZoneLightVisibility() {
+    if (!camera_ || zoneLightNodes_.empty()) return;
+
+    irr::core::vector3df cameraPos = camera_->getPosition();
+
+    // Update scene graph membership based on distance
+    // This removes far lights entirely from the scene graph to skip traversal overhead
+    size_t inSceneCount = 0;
+    size_t removedCount = 0;
+    const float renderDistSq = zoneLightRenderDistance_ * zoneLightRenderDistance_;
+
+    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+        if (!zoneLightNodes_[i]) continue;
+
+        float distSq = cameraPos.getDistanceFromSQ(zoneLightPositions_[i]);
+        bool shouldBeInScene = (distSq <= renderDistSq);
+
+        if (shouldBeInScene && !zoneLightInSceneGraph_[i]) {
+            // Add back to scene graph
+            smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
+            zoneLightInSceneGraph_[i] = true;
+        } else if (!shouldBeInScene && zoneLightInSceneGraph_[i]) {
+            // Remove from scene graph (but keep the node alive via grab())
+            zoneLightNodes_[i]->remove();
+            zoneLightInSceneGraph_[i] = false;
+        }
+
+        if (zoneLightInSceneGraph_[i]) {
+            inSceneCount++;
+        } else {
+            removedCount++;
+        }
+    }
+
+    LOG_TRACE(MOD_GRAPHICS, "Zone light scene graph: {} in scene, {} removed (dist={})",
+        inSceneCount, removedCount, zoneLightRenderDistance_);
 }
 
 void IrrlichtRenderer::updateObjectLights() {
@@ -916,13 +1040,15 @@ void IrrlichtRenderer::updateObjectLights() {
     }
 
     // Add zone lights to the pool if zone lights are enabled
+    // Note: Zone lights skip occlusion checks for performance - they are static/decorative
+    // and checking 200+ raycasts per frame is too expensive
     if (zoneLightsEnabled_) {
         for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
             auto* node = zoneLightNodes_[i];
             if (node) {
                 irr::core::vector3df lightPos = node->getPosition();
                 float dist = horizontalDistance(cameraPos, lightPos);
-                if (dist <= maxDistance && isLightVisible(lightPos)) {
+                if (dist <= maxDistance) {
                     candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i)});
                 }
             }
@@ -1122,15 +1248,25 @@ void IrrlichtRenderer::setupFog() {
         return;
     }
 
-    float zoneWidth = currentZone_->geometry->maxX - currentZone_->geometry->minX;
-    float zoneDepth = currentZone_->geometry->maxY - currentZone_->geometry->minY;
-    float zoneSize = std::max(zoneWidth, zoneDepth);
+    float fogStart, fogEnd;
 
-    float fogStart = zoneSize * 0.2f;
-    float fogEnd = zoneSize * 0.8f;
+    // Use constrained mode fog settings if enabled
+    if (config_.constrainedConfig.enabled) {
+        fogStart = config_.constrainedConfig.fogStart();
+        fogEnd = config_.constrainedConfig.fogEnd();
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained mode fog: start={}, end={}", fogStart, fogEnd);
+    } else {
+        // Default fog based on zone size
+        float zoneWidth = currentZone_->geometry->maxX - currentZone_->geometry->minX;
+        float zoneDepth = currentZone_->geometry->maxY - currentZone_->geometry->minY;
+        float zoneSize = std::max(zoneWidth, zoneDepth);
 
-    fogStart = std::max(100.0f, std::min(fogStart, 5000.0f));
-    fogEnd = std::max(fogStart + 500.0f, std::min(fogEnd, 20000.0f));
+        fogStart = zoneSize * 0.2f;
+        fogEnd = zoneSize * 0.8f;
+
+        fogStart = std::max(100.0f, std::min(fogStart, 5000.0f));
+        fogEnd = std::max(fogStart + 500.0f, std::min(fogEnd, 20000.0f));
+    }
 
     irr::video::SColor fogColor(255, 50, 50, 80);
 
@@ -1461,6 +1597,56 @@ void IrrlichtRenderer::updateHUD() {
         text << wSkyInfo;
         text << L"  Time: " << (int)currentHour_ << L":" << (currentMinute_ < 10 ? L"0" : L"") << (int)currentMinute_ << L"\n";
 
+        // Constrained mode debug info
+        if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+            // Preset name and resolution
+            std::string presetName = ConstrainedRendererConfig::presetName(config_.constrainedPreset);
+            std::wstring wPresetName(presetName.begin(), presetName.end());
+            text << L"\n[" << wPresetName << L"] " << config_.width << L"x" << config_.height;
+            text << L" @ " << config_.constrainedConfig.colorDepthBits << L"-bit\n";
+
+            // Framebuffer memory (calculated from current resolution)
+            size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
+            size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
+            float fbiUsedMB = static_cast<float>(fbiUsed) / (1024.0f * 1024.0f);
+            float fbiLimitMB = static_cast<float>(fbiLimit) / (1024.0f * 1024.0f);
+            wchar_t fbiBuf[64];
+            swprintf(fbiBuf, 64, L"FBI: %.1fMB/%.1fMB", fbiUsedMB, fbiLimitMB);
+            text << fbiBuf;
+
+            // Texture memory (from cache)
+            if (constrainedTextureCache_) {
+                size_t tmuUsed = constrainedTextureCache_->getCurrentUsage();
+                size_t tmuLimit = constrainedTextureCache_->getMemoryLimit();
+                float tmuUsedMB = static_cast<float>(tmuUsed) / (1024.0f * 1024.0f);
+                float tmuLimitMB = static_cast<float>(tmuLimit) / (1024.0f * 1024.0f);
+                wchar_t tmuBuf[64];
+                swprintf(tmuBuf, 64, L" | TMU: %.1fMB/%.1fMB\n", tmuUsedMB, tmuLimitMB);
+                text << tmuBuf;
+
+                // Texture count and cache statistics
+                size_t texCount = constrainedTextureCache_->getTextureCount();
+                float hitRate = constrainedTextureCache_->getHitRate();
+                size_t evictions = constrainedTextureCache_->getEvictionCount();
+                wchar_t statsBuf[64];
+                swprintf(statsBuf, 64, L"Textures: %zu | Hit: %.0f%% | Evict: %zu\n",
+                         texCount, hitRate, evictions);
+                text << statsBuf;
+            } else {
+                text << L" | TMU: N/A\n";
+            }
+
+            // Geometry stats: polygon count, entity count, clip distance
+            wchar_t geomBuf[128];
+            int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
+            int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
+            swprintf(geomBuf, 128, L"Polys: %u/%d | Entities: %d/%d | Clip: %.0f\n",
+                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
+                     visibleEntities, totalEntities,
+                     config_.constrainedConfig.clipDistance);
+            text << geomBuf;
+        }
+
         // Current target display
         if (currentTargetId_ != 0) {
             text << L"\n--- TARGET ---\n";
@@ -1706,6 +1892,14 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
+    // Log texture cache stats (cache was frozen at start of zone load)
+    if (constrainedTextureCache_) {
+        LOG_INFO(MOD_GRAPHICS, "Constrained texture cache - {} textures, {} bytes used (limit: {} bytes)",
+                 constrainedTextureCache_->getTextureCount(),
+                 constrainedTextureCache_->getCurrentUsage(),
+                 constrainedTextureCache_->getMemoryLimit());
+    }
+
     EQT::PerformanceMetrics::instance().markZoneLoadEnd();
 
     return true;
@@ -1770,20 +1964,30 @@ void IrrlichtRenderer::unloadZone() {
     }
 
     // Remove object nodes
-    for (auto* node : objectNodes_) {
-        if (node) {
-            node->remove();
+    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+        if (objectNodes_[i]) {
+            if (i < objectInSceneGraph_.size() && objectInSceneGraph_[i]) {
+                objectNodes_[i]->remove();
+            }
+            objectNodes_[i]->drop();  // Release our reference
         }
     }
     objectNodes_.clear();
+    objectPositions_.clear();
+    objectInSceneGraph_.clear();
 
     // Remove zone light nodes
-    for (auto* node : zoneLightNodes_) {
-        if (node) {
-            node->remove();
+    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+        if (zoneLightNodes_[i]) {
+            if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
+                zoneLightNodes_[i]->remove();
+            }
+            zoneLightNodes_[i]->drop();  // Release our reference
         }
     }
     zoneLightNodes_.clear();
+    zoneLightPositions_.clear();
+    zoneLightInSceneGraph_.clear();
 
     // Clear entity renderer
     if (entityRenderer_) {
@@ -1912,6 +2116,12 @@ void IrrlichtRenderer::createZoneMesh() {
     }
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+
+    // Pass constrained texture cache if in constrained mode
+    if (constrainedTextureCache_) {
+        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+
     irr::scene::IMesh* mesh = nullptr;
 
     if (!currentZone_->textures.empty() && !currentZone_->geometry->textureNames.empty()) {
@@ -2007,6 +2217,11 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
     }
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+
+    // Pass constrained texture cache if in constrained mode
+    if (constrainedTextureCache_) {
+        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
 
     // Count regions with geometry for progress tracking
     size_t regionsWithGeometry = 0;
@@ -2423,13 +2638,18 @@ void IrrlichtRenderer::createObjectMeshes() {
         return;
     }
 
-    for (auto* node : objectNodes_) {
-        if (node) {
-            node->remove();
+    // Clear existing object nodes with proper reference counting
+    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+        if (objectNodes_[i]) {
+            if (i < objectInSceneGraph_.size() && objectInSceneGraph_[i]) {
+                objectNodes_[i]->remove();
+            }
+            objectNodes_[i]->drop();  // Release our reference
         }
     }
     objectNodes_.clear();
     objectPositions_.clear();
+    objectInSceneGraph_.clear();
 
     // Clear object lights
     for (auto& objLight : objectLights_) {
@@ -2447,6 +2667,12 @@ void IrrlichtRenderer::createObjectMeshes() {
     }
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+
+    // Pass constrained texture cache if in constrained mode
+    if (constrainedTextureCache_) {
+        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+
     std::map<std::string, irr::scene::IMesh*> meshCache;
 
     for (const auto& objInstance : currentZone_->objects) {
@@ -2607,8 +2833,10 @@ void IrrlichtRenderer::createObjectMeshes() {
 
         // Store the object name in the scene node for later identification
         node->setName(objName.c_str());
+        node->grab();  // Keep alive when removed from scene graph
         objectNodes_.push_back(node);
         objectPositions_.push_back(irr::core::vector3df(x, z, y));  // Cache position for distance culling
+        objectInSceneGraph_.push_back(true);  // Initially in scene graph
 
         // Check if this object is a light source (torch, lantern, etc.)
         std::string upperName = objName;
@@ -2695,12 +2923,18 @@ void IrrlichtRenderer::createObjectMeshes() {
 
 void IrrlichtRenderer::createZoneLights() {
     // Clear existing zone lights
-    for (auto* node : zoneLightNodes_) {
-        if (node) {
-            node->remove();
+    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+        if (zoneLightNodes_[i]) {
+            // Remove from scene graph if still in it
+            if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
+                zoneLightNodes_[i]->remove();
+            }
+            zoneLightNodes_[i]->drop();  // Release our reference
         }
     }
     zoneLightNodes_.clear();
+    zoneLightPositions_.clear();
+    zoneLightInSceneGraph_.clear();
 
     if (!currentZone_ || currentZone_->lights.empty()) {
         return;
@@ -2731,7 +2965,10 @@ void IrrlichtRenderer::createZoneLights() {
             // Start hidden - updateObjectLights() manages visibility
             lightNode->setVisible(false);
 
+            lightNode->grab();  // Keep alive when removed from scene graph
             zoneLightNodes_.push_back(lightNode);
+            zoneLightPositions_.push_back(lightNode->getPosition());  // Cache position
+            zoneLightInSceneGraph_.push_back(true);  // Initially in scene graph
         }
     }
 
@@ -3352,6 +3589,17 @@ std::string IrrlichtRenderer::getCameraModeString() const {
 
 bool IrrlichtRenderer::processFrame(float deltaTime) {
     auto frameStart = std::chrono::steady_clock::now();
+    auto sectionStart = frameStart;
+    auto sectionEnd = frameStart;
+
+    // Helper to measure section time in microseconds
+    auto measureSection = [&]() -> int64_t {
+        sectionEnd = std::chrono::steady_clock::now();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(sectionEnd - sectionStart).count();
+        sectionStart = sectionEnd;
+        return us;
+    };
+
     LOG_TRACE(MOD_GRAPHICS, "processFrame: entered");
 
     // Record frame time for gameplay statistics (deltaTime is in seconds)
@@ -3435,6 +3683,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (eventReceiver_->saveEntitiesRequested() && saveEntitiesCallback_) {
         saveEntitiesCallback_();
     }
+
+    // ===== FRAME TIMING: Input Handling =====
+    if (frameTimingEnabled_) frameTimings_.inputHandling = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: check clearTarget...");
     // Handle clear target (Escape key)
@@ -3754,6 +4005,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint B (before camera update)");
 
+    // ===== FRAME TIMING: Input Handling (accumulated from all prior input handling) =====
+    if (frameTimingEnabled_) frameTimings_.inputHandling += measureSection();
+
     // Check if chat input has focus (skip movement keys if so)
     bool chatHasFocus = windowManager_ && windowManager_->isChatInputFocused();
 
@@ -3825,6 +4079,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
         skyRenderer_->setCameraPosition(camera_->getPosition());
     }
+
+    // ===== FRAME TIMING: Camera Update =====
+    if (frameTimingEnabled_) frameTimings_.cameraUpdate = measureSection();
 
     // Handle inventory toggle (I key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->inventoryToggleRequested() && rendererMode_ == RendererMode::Player) {
@@ -4031,53 +4288,61 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint E (before entity update)");
 
-    // Update entity interpolation (smooth NPC movement between server updates)
-    auto entityUpdateStart = std::chrono::steady_clock::now();
+    // ===== FRAME TIMING: Entity Update =====
+    sectionStart = std::chrono::steady_clock::now();
     if (entityRenderer_) {
         entityRenderer_->updateInterpolation(deltaTime);
         // Update entity casting bars (timeout checks, etc.)
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
+        // Update constrained visibility (limits entity count/distance in constrained mode)
+        if (camera_) {
+            entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
+        }
     }
-    auto entityUpdateEnd = std::chrono::steady_clock::now();
-    auto entityUpdateMs = std::chrono::duration_cast<std::chrono::milliseconds>(entityUpdateEnd - entityUpdateStart).count();
-    if (entityUpdateMs > 50) {
-        LOG_WARN(MOD_GRAPHICS, "PERF: Entity update took {} ms", entityUpdateMs);
-    }
+    if (frameTimingEnabled_) frameTimings_.entityUpdate = measureSection();
 
-    // Update door animations
+    // ===== FRAME TIMING: Door Update =====
     if (doorManager_) {
         doorManager_->update(deltaTime);
     }
+    if (frameTimingEnabled_) frameTimings_.doorUpdate = measureSection();
 
-    // Update spell visual effects (particles, cast glows, impacts)
+    // ===== FRAME TIMING: Spell VFX Update =====
     if (spellVisualFX_) {
         spellVisualFX_->update(deltaTime);
     }
+    if (frameTimingEnabled_) frameTimings_.spellVfxUpdate = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint F (before animated textures)");
 
-    // Update animated textures (flames, water, etc.)
+    // ===== FRAME TIMING: Animated Textures =====
     if (animatedTextureManager_) {
         animatedTextureManager_->update(deltaTime * 1000.0f);  // Convert to milliseconds
     }
+    if (frameTimingEnabled_) frameTimings_.animatedTextures = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint G (before vertex animations)");
 
-    // Update vertex animations (flags, banners, etc.)
+    // ===== FRAME TIMING: Vertex Animations =====
     updateVertexAnimations(deltaTime * 1000.0f);  // Convert to milliseconds
+    if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H (before object visibility)");
 
-    // Update object visibility (distance-based culling of placeable objects)
+    // ===== FRAME TIMING: Object Visibility =====
     updateObjectVisibility();
+    updateZoneLightVisibility();
+    if (frameTimingEnabled_) frameTimings_.objectVisibility = measureSection();
 
-    // Update PVS visibility (region-based culling if enabled)
+    // ===== FRAME TIMING: PVS Visibility =====
     updatePvsVisibility();
+    if (frameTimingEnabled_) frameTimings_.pvsVisibility = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H2 (before object lights)");
 
-    // Update object lights (distance-based culling)
+    // ===== FRAME TIMING: Object Lights =====
     updateObjectLights();
+    if (frameTimingEnabled_) frameTimings_.objectLights = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint I (before HUD)");
 
@@ -4090,6 +4355,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Update HUD
     updateHUD();
 
+    // ===== FRAME TIMING: HUD Update =====
+    if (frameTimingEnabled_) frameTimings_.hudUpdate = measureSection();
+
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint J (before render)");
 
     // If loading screen is visible, show it instead of rendering zone
@@ -4100,14 +4368,77 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         return true;
     }
 
+    // Run scene breakdown profile if scheduled (waits for frame count to reach 0)
+    if (sceneProfileEnabled_) {
+        if (sceneProfileFrameCount_ < 0) {
+            sceneProfileFrameCount_++;
+        } else {
+            profileSceneBreakdown();
+        }
+    }
+
     // Render
     driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
-    auto drawAllStart = std::chrono::steady_clock::now();
+    sectionStart = std::chrono::steady_clock::now();  // Reset for accurate sceneDrawAll timing
     smgr_->drawAll();
-    auto drawAllEnd = std::chrono::steady_clock::now();
-    auto drawAllMs = std::chrono::duration_cast<std::chrono::milliseconds>(drawAllEnd - drawAllStart).count();
-    if (drawAllMs > 50) {
-        LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", drawAllMs);
+    if (frameTimingEnabled_) {
+        frameTimings_.sceneDrawAll = measureSection();
+        // Also warn if scene draw is slow (>50ms)
+        if (frameTimings_.sceneDrawAll > 50000) {  // 50ms in microseconds
+            LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
+        }
+    }
+
+    // Track polygon count for constrained mode budget
+    lastPolygonCount_ = driver_->getPrimitiveCountDrawn();
+    if (config_.constrainedConfig.enabled) {
+        // Check if we exceeded the polygon budget (soft limit - just warn)
+        if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {
+            if (++polygonBudgetExceededFrames_ >= 60) {  // Throttle to once per ~60 frames
+                LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
+                         lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame);
+                polygonBudgetExceededFrames_ = 0;
+            }
+        } else {
+            polygonBudgetExceededFrames_ = 0;
+        }
+
+        // Periodic stats logging (every ~5 seconds at 30fps = 150 frames)
+        if (++constrainedStatsLogCounter_ >= 150) {
+            constrainedStatsLogCounter_ = 0;
+
+            // Get entity stats
+            int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
+            int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
+
+            // Get texture cache stats
+            size_t tmuUsed = 0, tmuLimit = 0;
+            float hitRate = 0.0f;
+            size_t evictions = 0;
+            if (constrainedTextureCache_) {
+                tmuUsed = constrainedTextureCache_->getCurrentUsage();
+                tmuLimit = constrainedTextureCache_->getMemoryLimit();
+                hitRate = constrainedTextureCache_->getHitRate();
+                evictions = constrainedTextureCache_->getEvictionCount();
+            }
+
+            // Calculate framebuffer usage
+            size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
+            size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
+
+            LOG_INFO(MOD_GRAPHICS, "=== CONSTRAINED MODE STATS [{}] ===",
+                     ConstrainedRendererConfig::presetName(config_.constrainedPreset));
+            LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
+                     config_.width, config_.height, config_.constrainedConfig.colorDepthBits,
+                     fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
+            LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
+                     tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
+            LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
+                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
+                     visibleEntities, totalEntities, config_.constrainedConfig.maxVisibleEntities,
+                     config_.constrainedConfig.clipDistance);
+            LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
+        }
     }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint K (after drawAll)");
@@ -4125,15 +4456,24 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         drawCollisionDebugLines(deltaTime);
     }
 
+    // ===== FRAME TIMING: Target Box =====
+    if (frameTimingEnabled_) frameTimings_.targetBox = measureSection();
+
     // Draw entity casting bars (above other entities' heads)
     if (entityRenderer_) {
         entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
     }
 
+    // ===== FRAME TIMING: Casting Bars =====
+    if (frameTimingEnabled_) frameTimings_.castingBars = measureSection();
+
     guienv_->drawAll();
 
     // Draw FPS counter at top center
     drawFPSCounter();
+
+    // ===== FRAME TIMING: GUI Draw All =====
+    if (frameTimingEnabled_) frameTimings_.guiDrawAll = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint L (after GUI)");
 
@@ -4142,13 +4482,59 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         windowManager_->render();
     }
 
+    // ===== FRAME TIMING: Window Manager =====
+    if (frameTimingEnabled_) frameTimings_.windowManager = measureSection();
+
     // Draw zone line overlay (pink border when in zone line)
     drawZoneLineOverlay();
 
     // Draw zone line bounding box labels
     drawZoneLineBoxLabels();
 
+    // ===== FRAME TIMING: Zone Line Overlay =====
+    if (frameTimingEnabled_) frameTimings_.zoneLineOverlay = measureSection();
+
     driver_->endScene();
+
+    // ===== FRAME TIMING: End Scene =====
+    if (frameTimingEnabled_) frameTimings_.endScene = measureSection();
+
+    // ===== FRAME TIMING: Total Frame =====
+    if (frameTimingEnabled_) {
+        auto frameEnd = std::chrono::steady_clock::now();
+        frameTimings_.totalFrame = std::chrono::duration_cast<std::chrono::microseconds>(
+            frameEnd - frameStart).count();
+
+        // Accumulate and periodically log
+        frameTimingsAccum_.inputHandling += frameTimings_.inputHandling;
+        frameTimingsAccum_.cameraUpdate += frameTimings_.cameraUpdate;
+        frameTimingsAccum_.entityUpdate += frameTimings_.entityUpdate;
+        frameTimingsAccum_.doorUpdate += frameTimings_.doorUpdate;
+        frameTimingsAccum_.spellVfxUpdate += frameTimings_.spellVfxUpdate;
+        frameTimingsAccum_.animatedTextures += frameTimings_.animatedTextures;
+        frameTimingsAccum_.vertexAnimations += frameTimings_.vertexAnimations;
+        frameTimingsAccum_.objectVisibility += frameTimings_.objectVisibility;
+        frameTimingsAccum_.pvsVisibility += frameTimings_.pvsVisibility;
+        frameTimingsAccum_.objectLights += frameTimings_.objectLights;
+        frameTimingsAccum_.hudUpdate += frameTimings_.hudUpdate;
+        frameTimingsAccum_.sceneDrawAll += frameTimings_.sceneDrawAll;
+        frameTimingsAccum_.targetBox += frameTimings_.targetBox;
+        frameTimingsAccum_.castingBars += frameTimings_.castingBars;
+        frameTimingsAccum_.guiDrawAll += frameTimings_.guiDrawAll;
+        frameTimingsAccum_.windowManager += frameTimings_.windowManager;
+        frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
+        frameTimingsAccum_.endScene += frameTimings_.endScene;
+        frameTimingsAccum_.totalFrame += frameTimings_.totalFrame;
+        frameTimingsSampleCount_++;
+
+        // Log every 60 frames (~2 seconds at 30fps)
+        if (frameTimingsSampleCount_ >= 60) {
+            logFrameTimings();
+            // Reset accumulators
+            frameTimingsAccum_ = FrameTimings();
+            frameTimingsSampleCount_ = 0;
+        }
+    }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint M (done)");
 
@@ -4438,6 +4824,290 @@ bool IrrlichtRenderer::isUsingOldModels() const {
     return loader->isUsingOldModels();
 }
 
+void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
+    frameTimingEnabled_ = enabled;
+    if (enabled) {
+        // Reset accumulators when starting
+        frameTimings_ = FrameTimings();
+        frameTimingsAccum_ = FrameTimings();
+        frameTimingsSampleCount_ = 0;
+        LOG_INFO(MOD_GRAPHICS, "Frame timing profiler ENABLED - timing data will be logged every 60 frames");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "Frame timing profiler DISABLED");
+    }
+}
+
+void IrrlichtRenderer::logFrameTimings() {
+    if (frameTimingsSampleCount_ == 0) return;
+
+    float avgTotal = static_cast<float>(frameTimingsAccum_.totalFrame) / frameTimingsSampleCount_;
+    float fpsEstimate = avgTotal > 0 ? 1000000.0f / avgTotal : 0;
+
+    // Calculate percentages
+    auto pct = [&](int64_t val) -> float {
+        return frameTimingsAccum_.totalFrame > 0 ?
+            100.0f * static_cast<float>(val) / frameTimingsAccum_.totalFrame : 0;
+    };
+
+    // Calculate averages in microseconds
+    auto avg = [&](int64_t val) -> float {
+        return static_cast<float>(val) / frameTimingsSampleCount_;
+    };
+
+    LOG_INFO(MOD_GRAPHICS, "=== FRAME TIMING BREAKDOWN ({} frames, {:.1f} fps estimate) ===",
+             frameTimingsSampleCount_, fpsEstimate);
+    LOG_INFO(MOD_GRAPHICS, "  Total Frame:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.totalFrame), 100.0f);
+    LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
+    LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.inputHandling), pct(frameTimingsAccum_.inputHandling));
+    LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.animatedTextures), pct(frameTimingsAccum_.animatedTextures));
+    LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.vertexAnimations), pct(frameTimingsAccum_.vertexAnimations));
+    LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectVisibility), pct(frameTimingsAccum_.objectVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
+    LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.hudUpdate), pct(frameTimingsAccum_.hudUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneDrawAll), pct(frameTimingsAccum_.sceneDrawAll));
+    LOG_INFO(MOD_GRAPHICS, "  Target Box:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.targetBox), pct(frameTimingsAccum_.targetBox));
+    LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.castingBars), pct(frameTimingsAccum_.castingBars));
+    LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.guiDrawAll), pct(frameTimingsAccum_.guiDrawAll));
+    LOG_INFO(MOD_GRAPHICS, "  Window Manager:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManager), pct(frameTimingsAccum_.windowManager));
+    LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLineOverlay), pct(frameTimingsAccum_.zoneLineOverlay));
+    LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.endScene), pct(frameTimingsAccum_.endScene));
+}
+
+void IrrlichtRenderer::runSceneProfile() {
+    sceneProfileEnabled_ = true;
+    // Wait 60 frames before profiling to allow constrained visibility to run
+    sceneProfileFrameCount_ = -60;
+    LOG_INFO(MOD_GRAPHICS, "Scene profile scheduled - will run after 60 frames");
+}
+
+void IrrlichtRenderer::profileSceneBreakdown() {
+    if (!driver_ || !smgr_) return;
+
+    SceneBreakdown breakdown;
+    const int numSamples = 10;  // More samples for stability
+
+    // Helper to draw scene and return (time_us, poly_count)
+    auto timeAndPolyDrawAll = [this]() -> std::pair<int64_t, uint32_t> {
+        auto start = std::chrono::steady_clock::now();
+        smgr_->drawAll();
+        auto end = std::chrono::steady_clock::now();
+        int64_t time_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        uint32_t polys = driver_->getPrimitiveCountDrawn();
+        return {time_us, polys};
+    };
+
+    // Helper to hide all scene content including lights
+    auto hideAll = [this]() {
+        if (zoneMeshNode_) zoneMeshNode_->setVisible(false);
+        if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(false);
+        // Hide objects (they may already be out of scene graph)
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            if (objectNodes_[i]) objectNodes_[i]->setVisible(false);
+        }
+        if (doorManager_) doorManager_->setAllDoorsVisible(false);
+        // Also hide lights (they may already be out of scene graph)
+        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+            if (zoneLightNodes_[i]) zoneLightNodes_[i]->setVisible(false);
+        }
+        if (sunLight_) sunLight_->setVisible(false);
+        if (playerLightNode_) playerLightNode_->setVisible(false);
+    };
+
+    auto showAll = [this]() {
+        if (zoneMeshNode_) zoneMeshNode_->setVisible(true);
+        if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(true);
+        // Add objects back to scene graph and show
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            if (objectNodes_[i]) {
+                if (i < objectInSceneGraph_.size() && !objectInSceneGraph_[i]) {
+                    smgr_->getRootSceneNode()->addChild(objectNodes_[i]);
+                    objectInSceneGraph_[i] = true;
+                }
+                objectNodes_[i]->setVisible(true);
+            }
+        }
+        if (doorManager_) doorManager_->setAllDoorsVisible(true);
+        // Add lights back to scene graph and show
+        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+            if (zoneLightNodes_[i]) {
+                if (i < zoneLightInSceneGraph_.size() && !zoneLightInSceneGraph_[i]) {
+                    smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
+                    zoneLightInSceneGraph_[i] = true;
+                }
+                zoneLightNodes_[i]->setVisible(true);
+            }
+        }
+        if (sunLight_) sunLight_->setVisible(true);
+        if (playerLightNode_) playerLightNode_->setVisible(true);
+    };
+
+    // Count nodes
+    breakdown.entityCount = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
+    breakdown.objectCount = static_cast<int>(objectNodes_.size());
+    breakdown.doorCount = doorManager_ ? static_cast<int>(doorManager_->getDoorCount()) : 0;
+    int lightCount = static_cast<int>(zoneLightNodes_.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
+
+    // Count total scene nodes recursively
+    std::function<int(irr::scene::ISceneNode*)> countNodes = [&](irr::scene::ISceneNode* node) -> int {
+        if (!node) return 0;
+        int count = 1;
+        const auto& children = node->getChildren();
+        for (auto* child : children) {
+            count += countNodes(child);
+        }
+        return count;
+    };
+    int totalSceneNodes = countNodes(smgr_->getRootSceneNode());
+
+    LOG_INFO(MOD_GRAPHICS, "=== SCENE BREAKDOWN PROFILE ===");
+    LOG_INFO(MOD_GRAPHICS, "Zone mesh node: {}", zoneMeshNode_ ? "valid" : "NULL");
+    LOG_INFO(MOD_GRAPHICS, "Total scene nodes: {} (lights: {})", totalSceneNodes, lightCount);
+    LOG_INFO(MOD_GRAPHICS, "Measuring each category in isolation ({} samples each)...", numSamples);
+
+    // Hide everything first
+    hideAll();
+
+    // 1. Measure baseline (nothing visible - just scene graph overhead)
+    int64_t baselineSum = 0;
+    uint32_t baselinePolys = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        baselineSum += time;
+        baselinePolys = polys;  // Should be 0 or near 0
+        driver_->endScene();
+    }
+    int64_t baseline = baselineSum / numSamples;
+
+    // 2. Measure zone mesh only
+    if (zoneMeshNode_) zoneMeshNode_->setVisible(true);
+    int64_t zoneSum = 0;
+    uint32_t zonePolys = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        zoneSum += time;
+        zonePolys = polys;  // Keep last sample's poly count
+        driver_->endScene();
+    }
+    breakdown.zoneTime = (zoneSum / numSamples) - baseline;
+    breakdown.zonePolys = static_cast<int>(zonePolys - baselinePolys);
+    if (zoneMeshNode_) zoneMeshNode_->setVisible(false);
+
+    // 3. Measure entities only
+    if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(true);
+    int64_t entitySum = 0;
+    uint32_t entityPolys = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        entitySum += time;
+        entityPolys = polys;
+        driver_->endScene();
+    }
+    breakdown.entityTime = (entitySum / numSamples) - baseline;
+    int entityPolyCount = static_cast<int>(entityPolys - baselinePolys);
+    if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(false);
+
+    // 4. Measure objects only
+    for (auto* node : objectNodes_) if (node) node->setVisible(true);
+    int64_t objectSum = 0;
+    uint32_t objectPolys = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        objectSum += time;
+        objectPolys = polys;
+        driver_->endScene();
+    }
+    breakdown.objectTime = (objectSum / numSamples) - baseline;
+    int objectPolyCount = static_cast<int>(objectPolys - baselinePolys);
+    for (auto* node : objectNodes_) if (node) node->setVisible(false);
+
+    // 5. Measure doors only
+    if (doorManager_) doorManager_->setAllDoorsVisible(true);
+    int64_t doorSum = 0;
+    uint32_t doorPolys = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        doorSum += time;
+        doorPolys = polys;
+        driver_->endScene();
+    }
+    breakdown.doorTime = (doorSum / numSamples) - baseline;
+    int doorPolyCount = static_cast<int>(doorPolys - baselinePolys);
+    if (doorManager_) doorManager_->setAllDoorsVisible(false);
+
+    // 6. Measure lights only
+    for (auto* node : zoneLightNodes_) if (node) node->setVisible(true);
+    if (sunLight_) sunLight_->setVisible(true);
+    if (playerLightNode_) playerLightNode_->setVisible(true);
+    int64_t lightSum = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        lightSum += time;
+        driver_->endScene();
+    }
+    int64_t lightTime = (lightSum / numSamples) - baseline;
+    for (auto* node : zoneLightNodes_) if (node) node->setVisible(false);
+    if (sunLight_) sunLight_->setVisible(false);
+    if (playerLightNode_) playerLightNode_->setVisible(false);
+
+    // 7. Measure full scene
+    showAll();
+    int64_t totalSum = 0;
+    uint32_t totalPolys = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        totalSum += time;
+        totalPolys = polys;
+        driver_->endScene();
+    }
+    breakdown.totalDrawAll = totalSum / numSamples;
+
+    // Calculate "other" time (scene overhead not captured by individual categories)
+    int64_t measuredTotal = breakdown.zoneTime + breakdown.entityTime +
+                            breakdown.objectTime + breakdown.doorTime + baseline;
+    breakdown.otherTime = breakdown.totalDrawAll - measuredTotal;
+    if (breakdown.otherTime < 0) breakdown.otherTime = 0;
+
+    // Calculate percentages
+    auto pct = [&](int64_t val) -> float {
+        return breakdown.totalDrawAll > 0 ? 100.0f * val / breakdown.totalDrawAll : 0;
+    };
+
+    LOG_INFO(MOD_GRAPHICS, "");
+    LOG_INFO(MOD_GRAPHICS, "Scene contents (from driver polygon count):");
+    LOG_INFO(MOD_GRAPHICS, "  Zone mesh:    {:>6} polys", breakdown.zonePolys);
+    LOG_INFO(MOD_GRAPHICS, "  Entities:     {:>6} polys ({} nodes)", entityPolyCount, breakdown.entityCount);
+    LOG_INFO(MOD_GRAPHICS, "  Objects:      {:>6} polys ({} nodes)", objectPolyCount, breakdown.objectCount);
+    LOG_INFO(MOD_GRAPHICS, "  Doors:        {:>6} polys ({} nodes)", doorPolyCount, breakdown.doorCount);
+    LOG_INFO(MOD_GRAPHICS, "  Lights:       {:>6} nodes", lightCount);
+    LOG_INFO(MOD_GRAPHICS, "  Total:        {:>6} polys ({} scene nodes)", totalPolys, totalSceneNodes);
+    LOG_INFO(MOD_GRAPHICS, "");
+    LOG_INFO(MOD_GRAPHICS, "Render time breakdown (avg of {} samples):", numSamples);
+    LOG_INFO(MOD_GRAPHICS, "  Total drawAll:  {:>8} us (100.0%)", breakdown.totalDrawAll);
+    LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
+    LOG_INFO(MOD_GRAPHICS, "  Zone mesh:      {:>8} us ({:>5.1f}%)", breakdown.zoneTime, pct(breakdown.zoneTime));
+    LOG_INFO(MOD_GRAPHICS, "  Entities:       {:>8} us ({:>5.1f}%)", breakdown.entityTime, pct(breakdown.entityTime));
+    LOG_INFO(MOD_GRAPHICS, "  Objects:        {:>8} us ({:>5.1f}%)", breakdown.objectTime, pct(breakdown.objectTime));
+    LOG_INFO(MOD_GRAPHICS, "  Doors:          {:>8} us ({:>5.1f}%)", breakdown.doorTime, pct(breakdown.doorTime));
+    LOG_INFO(MOD_GRAPHICS, "  Lights:         {:>8} us ({:>5.1f}%)", lightTime, pct(lightTime));
+    LOG_INFO(MOD_GRAPHICS, "  Baseline:       {:>8} us ({:>5.1f}%)", baseline, pct(baseline));
+    LOG_INFO(MOD_GRAPHICS, "  Interaction:    {:>8} us ({:>5.1f}%)", breakdown.otherTime, pct(breakdown.otherTime));
+    LOG_INFO(MOD_GRAPHICS, "=== END SCENE BREAKDOWN ===");
+
+    sceneProfileEnabled_ = false;
+}
+
 // --- Renderer Mode Implementation ---
 
 void IrrlichtRenderer::setRendererMode(RendererMode mode) {
@@ -4541,6 +5211,32 @@ std::string IrrlichtRenderer::getRendererModeString() const {
         case RendererMode::Admin: return "Admin";
         default: return "Unknown";
     }
+}
+
+void IrrlichtRenderer::setClipDistance(float distance) {
+    // Clamp to reasonable range
+    if (distance < 100.0f) distance = 100.0f;
+    if (distance > 50000.0f) distance = 50000.0f;
+
+    // Update the config (for HUD display and fog calculations)
+    config_.constrainedConfig.clipDistance = distance;
+
+    // Update the camera's far plane
+    if (camera_) {
+        camera_->setFarValue(distance);
+    }
+
+    // Update fog to match new clip distance
+    setupFog();
+
+    LOG_INFO(MOD_GRAPHICS, "Clip distance set to {}", distance);
+}
+
+float IrrlichtRenderer::getClipDistance() const {
+    if (camera_) {
+        return camera_->getFarValue();
+    }
+    return config_.constrainedConfig.clipDistance;
 }
 
 // --- Player Mode Movement Implementation ---

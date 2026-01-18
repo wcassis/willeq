@@ -18,8 +18,9 @@
 namespace EQT {
 namespace Graphics {
 
-// Forward declaration
+// Forward declarations
 class RaceModelLoader;
+struct ConstrainedRendererConfig;
 
 // Appearance data for entity rendering
 struct EntityAppearance {
@@ -112,6 +113,10 @@ struct EntityVisual {
     // Light source (lantern, lightstone, etc.)
     irr::scene::ILightSceneNode* lightNode = nullptr;  // Point light attached to entity
     uint8_t lightLevel = 0;                            // Current light level (0=none, 1-255=intensity)
+
+    // Scene graph management (for constrained mode optimization)
+    // When false, the entity is removed from scene graph to skip traversal overhead
+    bool inSceneGraph = true;
 };
 
 // Manages rendering of game entities (NPCs, players, mobs)
@@ -159,6 +164,9 @@ public:
 
     // Get entity count
     size_t getEntityCount() const { return entities_.size(); }
+
+    // Set visibility of all entity nodes (for profiling)
+    void setAllEntitiesVisible(bool visible);
 
     // Get count of entities with actual models (not placeholders)
     size_t getModeledEntityCount() const;
@@ -313,6 +321,19 @@ public:
 
     // Clear BSP tree (call when changing zones)
     void clearBspTree();
+
+    // Constrained rendering support
+    // Set the constrained renderer config for entity visibility limits
+    // When set, limits the number of visible entities and their render distance
+    void setConstrainedConfig(const ConstrainedRendererConfig* config);
+
+    // Update entity visibility based on constrained mode limits
+    // Call this each frame after updating entity positions
+    // cameraPos: camera position in Irrlicht coordinates
+    void updateConstrainedVisibility(const irr::core::vector3df& cameraPos);
+
+    // Get number of entities currently visible (for debug HUD)
+    int getVisibleEntityCount() const { return visibleEntityCount_; }
 
 private:
     irr::scene::IMesh* getMeshForRace(uint16_t raceId, uint8_t gender = 0,
@@ -498,6 +519,10 @@ private:
 
     // Player spawn ID (for filtering player from entity casting bars)
     uint16_t playerSpawnId_ = 0;
+
+    // Constrained rendering state
+    const ConstrainedRendererConfig* constrainedConfig_ = nullptr;
+    int visibleEntityCount_ = 0;  // Number of entities currently visible (for debug HUD)
 };
 
 } // namespace Graphics

@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -364,6 +365,7 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         // Use animated mesh
         visual.animatedNode = animNode;
         visual.sceneNode = animNode;
+        visual.sceneNode->grab();  // Keep alive when removed from scene graph
         visual.isAnimated = true;
         visual.usesPlaceholder = false;
 
@@ -511,6 +513,7 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 	    return false;
     }
     visual.sceneNode = visual.meshNode;
+    visual.sceneNode->grab();  // Keep alive when removed from scene graph
 
     // Calculate model offset for collision calculations
     // Server Z is the geometric MODEL CENTER, not the feet/ground position
@@ -1357,7 +1360,11 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
         visual.nameNode->remove();
     }
     if (visual.sceneNode) {
-        visual.sceneNode->remove();
+        // If not in scene graph, we still hold the reference from grab()
+        if (visual.inSceneGraph) {
+            visual.sceneNode->remove();
+        }
+        visual.sceneNode->drop();  // Release our reference
     }
 
     entities_.erase(it);
@@ -1451,11 +1458,19 @@ void EntityRenderer::clearEntities() {
         if (visual.castBarBillboard) {
             visual.castBarBillboard->remove();
         }
+        // Remove light node
+        if (visual.lightNode) {
+            visual.lightNode->remove();
+        }
         if (visual.nameNode) {
             visual.nameNode->remove();
         }
         if (visual.sceneNode) {
-            visual.sceneNode->remove();
+            // If not in scene graph, we still hold the reference from grab()
+            if (visual.inSceneGraph) {
+                visual.sceneNode->remove();
+            }
+            visual.sceneNode->drop();  // Release our reference
         }
     }
     entities_.clear();
@@ -1463,6 +1478,23 @@ void EntityRenderer::clearEntities() {
 
 bool EntityRenderer::hasEntity(uint16_t spawnId) const {
     return entities_.find(spawnId) != entities_.end();
+}
+
+void EntityRenderer::setAllEntitiesVisible(bool visible) {
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.sceneNode) {
+            if (visible) {
+                // Add back to scene graph if not already there
+                if (!visual.inSceneGraph) {
+                    smgr_->getRootSceneNode()->addChild(visual.sceneNode);
+                    visual.inSceneGraph = true;
+                }
+                visual.sceneNode->setVisible(true);
+            } else {
+                visual.sceneNode->setVisible(false);
+            }
+        }
+    }
 }
 
 size_t EntityRenderer::getModeledEntityCount() const {
@@ -2849,6 +2881,8 @@ void EntityRenderer::cycleHeadVariant(int direction) {
         // Remove old scene node
         if (visual.sceneNode) {
             visual.sceneNode->remove();
+            visual.sceneNode->drop();  // Release our reference
+            visual.sceneNode = nullptr;
         }
         if (visual.nameNode) {
             visual.nameNode->remove();
@@ -2864,6 +2898,7 @@ void EntityRenderer::cycleHeadVariant(int direction) {
         if (animNode) {
             visual.animatedNode = animNode;
             visual.sceneNode = animNode;
+            visual.sceneNode->grab();  // Keep alive when removed from scene graph
             visual.meshNode = nullptr;
             visual.isAnimated = true;
             visual.usesPlaceholder = false;
@@ -3356,6 +3391,117 @@ void EntityRenderer::clearBspTree() {
     currentCameraRegionIdx_ = SIZE_MAX;
     currentCameraRegion_ = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: BSP tree cleared");
+}
+
+void EntityRenderer::setConstrainedConfig(const ConstrainedRendererConfig* config) {
+    constrainedConfig_ = config;
+    if (config && config->enabled) {
+        LOG_INFO(MOD_GRAPHICS, "EntityRenderer: Constrained mode enabled - max {} entities within {} units",
+                 config->maxVisibleEntities, config->entityRenderDistance);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: Constrained mode disabled");
+    }
+}
+
+void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cameraPos) {
+    // If constrained mode is not enabled, show all entities
+    if (!constrainedConfig_ || !constrainedConfig_->enabled) {
+        visibleEntityCount_ = static_cast<int>(entities_.size());
+        return;
+    }
+
+    const float maxDistance = constrainedConfig_->entityRenderDistance;
+    const int maxEntities = constrainedConfig_->maxVisibleEntities;
+    const float maxDistSq = maxDistance * maxDistance;
+
+    // Build a list of entity distances from camera
+    struct EntityDistance {
+        uint16_t spawnId;
+        float distanceSq;
+    };
+    std::vector<EntityDistance> entityDistances;
+    entityDistances.reserve(entities_.size());
+
+    for (auto& [spawnId, visual] : entities_) {
+        if (!visual.sceneNode) continue;
+
+        // Get entity position in Irrlicht coordinates (already stored this way)
+        irr::core::vector3df entityPos = visual.sceneNode->getPosition();
+
+        // Calculate squared distance to camera
+        float dx = entityPos.X - cameraPos.X;
+        float dy = entityPos.Y - cameraPos.Y;
+        float dz = entityPos.Z - cameraPos.Z;
+        float distSq = dx * dx + dy * dy + dz * dz;
+
+        entityDistances.push_back({spawnId, distSq});
+    }
+
+    // Sort by distance (closest first)
+    std::sort(entityDistances.begin(), entityDistances.end(),
+              [](const EntityDistance& a, const EntityDistance& b) {
+                  return a.distanceSq < b.distanceSq;
+              });
+
+    // Apply visibility limits
+    visibleEntityCount_ = 0;
+    for (size_t i = 0; i < entityDistances.size(); ++i) {
+        const auto& ed = entityDistances[i];
+        auto it = entities_.find(ed.spawnId);
+        if (it == entities_.end()) continue;
+
+        EntityVisual& visual = it->second;
+
+        // Check if entity should be visible
+        bool shouldBeVisible = (visibleEntityCount_ < maxEntities) && (ed.distanceSq <= maxDistSq);
+
+        // Always show the player entity
+        if (visual.isPlayer) {
+            shouldBeVisible = true;
+        }
+
+        // Update scene graph membership (not just visibility)
+        // This removes nodes entirely from the scene graph to skip traversal overhead
+        if (visual.sceneNode) {
+            if (shouldBeVisible && !visual.inSceneGraph) {
+                // Add back to scene graph
+                smgr_->getRootSceneNode()->addChild(visual.sceneNode);
+                visual.sceneNode->setVisible(true);
+                visual.inSceneGraph = true;
+            } else if (!shouldBeVisible && visual.inSceneGraph) {
+                // Remove from scene graph (but keep the node alive)
+                visual.sceneNode->remove();
+                visual.inSceneGraph = false;
+            }
+        }
+        if (visual.nameNode) {
+            if (shouldBeVisible && nameTagsVisible_) {
+                if (!visual.nameNode->isVisible()) {
+                    visual.nameNode->setVisible(true);
+                }
+            } else {
+                if (visual.nameNode->isVisible()) {
+                    visual.nameNode->setVisible(false);
+                }
+            }
+        }
+
+        if (shouldBeVisible) {
+            visibleEntityCount_++;
+        }
+    }
+
+    // Log when we're at capacity (but not every frame)
+    static int logThrottle = 0;
+    if (++logThrottle >= 60) {  // Log every ~60 frames
+        logThrottle = 0;
+        if (visibleEntityCount_ >= maxEntities) {
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained mode: showing {}/{} entities (at limit), {} in scene graph",
+                      visibleEntityCount_, static_cast<int>(entities_.size()),
+                      std::count_if(entities_.begin(), entities_.end(),
+                                   [](const auto& p) { return p.second.inSceneGraph; }));
+        }
+    }
 }
 
 } // namespace Graphics

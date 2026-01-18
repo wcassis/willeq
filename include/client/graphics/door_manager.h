@@ -96,6 +96,9 @@ public:
     // Get door count
     size_t getDoorCount() const { return doors_.size(); }
 
+    // Set visibility of all door nodes (for profiling)
+    void setAllDoorsVisible(bool visible);
+
     // Get all door scene nodes for collision detection
     std::vector<irr::scene::IMeshSceneNode*> getDoorSceneNodes() const;
 

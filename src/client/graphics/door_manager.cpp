@@ -521,6 +521,15 @@ void DoorManager::clearDoors()
     LOG_DEBUG(MOD_GRAPHICS, "Cleared all doors");
 }
 
+void DoorManager::setAllDoorsVisible(bool visible)
+{
+    for (auto& [id, visual] : doors_) {
+        if (visual.sceneNode) {
+            visual.sceneNode->setVisible(visible);
+        }
+    }
+}
+
 std::vector<irr::scene::IMeshSceneNode*> DoorManager::getDoorSceneNodes() const
 {
     std::vector<irr::scene::IMeshSceneNode*> nodes;
