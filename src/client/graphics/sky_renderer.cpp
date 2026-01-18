@@ -945,13 +945,12 @@ SkyColorSet SkyRenderer::interpolateSkyColors(const SkyColorSet& a, const SkyCol
 }
 
 void SkyRenderer::updateSkyLayerColors() {
-    if (!enabled_ || skyDomeNodes_.empty()) {
+    if (!enabled_) {
         return;
     }
 
     // Apply tint to sky layers based on time of day
     // Use cloud brightness to modulate layer colors
-    irr::u32 brightness = static_cast<irr::u32>(255.0f * currentSkyColors_.cloudBrightness);
 
     // Create a tint color that blends zenith and horizon colors
     // This simulates the sky gradient effect
@@ -970,7 +969,7 @@ void SkyRenderer::updateSkyLayerColors() {
         static_cast<irr::u32>(tint.getBlue() * currentSkyColors_.cloudBrightness)
     );
 
-    // Apply tint to all sky layers via material diffuse color
+    // Apply tint to legacy sky dome nodes
     for (auto* node : skyDomeNodes_) {
         if (node) {
             for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
@@ -980,6 +979,18 @@ void SkyRenderer::updateSkyLayerColors() {
                 // Ensure vertex colors are used for modulation
                 node->getMaterial(i).ColorMaterial = irr::video::ECM_NONE;
             }
+        }
+    }
+
+    // Apply tint to Irrlicht built-in sky box for day/night cycle
+    if (irrlichtSkyDome_) {
+        for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
+            irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
+            // Use diffuse color to tint the sky texture
+            mat.DiffuseColor = tint;
+            mat.AmbientColor = tint;
+            // ECM_DIFFUSE_AND_AMBIENT makes the material colors modulate the texture
+            mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
         }
     }
 }

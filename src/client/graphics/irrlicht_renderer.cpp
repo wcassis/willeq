@@ -2034,14 +2034,15 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
     if (skyRenderer_ && skyRenderer_->isInitialized()) {
         skyRenderer_->setSkyType(skyType, currentZoneName_);
 
-        // Disable sky for indoor zones (zoneType != 0)
-        // zoneType: 0=outdoor, 1=dungeon/indoor, 2=dungeon/no sky, 3=indoor city
-        bool isIndoor = (zoneType != 0);
-        skyRenderer_->setEnabled(!isIndoor);
+        // Determine if sky should be shown based on zone type
+        // zoneType values from server: 1=Outdoors, 2=Dungeons, 255(0xFF)=Any/default
+        // Only disable sky for explicit dungeon zones (type 2)
+        bool isDungeon = (zoneType == 2);
+        skyRenderer_->setEnabled(!isDungeon);
 
         LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {}",
-                  skyType, zoneType, isIndoor ? "indoor" : "outdoor",
-                  isIndoor ? "disabled" : "enabled");
+                  skyType, zoneType, isDungeon ? "dungeon" : "outdoor",
+                  isDungeon ? "disabled" : "enabled");
     }
 
     // Apply fog settings from zone data
