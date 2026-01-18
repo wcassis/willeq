@@ -207,6 +207,7 @@ public:
     bool doorInteractRequested() { bool r = doorInteractRequested_; doorInteractRequested_ = false; return r; }
     bool worldObjectInteractRequested() { bool r = worldObjectInteractRequested_; worldObjectInteractRequested_ = false; return r; }
     bool hailRequested() { bool r = hailRequested_; hailRequested_ = false; return r; }
+    bool considerRequested() { bool r = considerRequested_; considerRequested_ = false; return r; }
     bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
     bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
@@ -345,6 +346,7 @@ private:
     bool doorInteractRequested_ = false;
     bool worldObjectInteractRequested_ = false;
     bool hailRequested_ = false;
+    bool considerRequested_ = false;
     bool vendorToggleRequested_ = false;
     bool trainerToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
@@ -678,6 +680,10 @@ public:
     using HailCallback = std::function<void()>;
     void setHailCallback(HailCallback callback) { hailCallback_ = callback; }
 
+    // Consider callback (called when C key is pressed in Player Mode)
+    using ConsiderCallback = std::function<void()>;
+    void setConsiderCallback(ConsiderCallback callback) { considerCallback_ = callback; }
+
     // Vendor toggle callback (called when V key is pressed in Player Mode)
     using VendorToggleCallback = std::function<void()>;
     void setVendorToggleCallback(VendorToggleCallback callback) { vendorToggleCallback_ = callback; }
@@ -974,6 +980,7 @@ private:
     AutoAttackCallback autoAttackCallback_;
     AutoAttackStatusCallback autoAttackStatusCallback_;
     HailCallback hailCallback_;
+    ConsiderCallback considerCallback_;
     VendorToggleCallback vendorToggleCallback_;
     BankerInteractCallback bankerInteractCallback_;
     TrainerToggleCallback trainerToggleCallback_;

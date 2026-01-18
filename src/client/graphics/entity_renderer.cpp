@@ -1146,13 +1146,20 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
             continue;
         }
 
+        // Corpses should never move - skip interpolation entirely
+        if (visual.isCorpse) {
+            updateEquipmentTransforms(visual);
+            toDeactivate.push_back(spawnId);
+            continue;
+        }
+
         // Don't interpolate too far past the expected update time
         // This prevents entities from running off into infinity if updates stop
         if (visual.timeSinceUpdate > visual.lastUpdateInterval * 1.5f) {
             // For NPCs that are still supposed to be moving (serverAnimation != 0),
             // recalculate velocity from heading instead of stopping
             // Negative animation = moving backward
-            if (visual.isNPC && visual.serverAnimation != 0) {
+            if (visual.isNPC && !visual.isCorpse && visual.serverAnimation != 0) {
                 // Recalculate velocity from heading - NPC should keep moving
                 // Convert heading to radians: heading * π/180 (no *2, heading is full resolution from 11-bit)
                 float headingRad = visual.serverHeading * 3.14159265f / 180.0f;
@@ -2382,6 +2389,12 @@ void EntityRenderer::markEntityAsCorpse(uint16_t spawnId) {
     EntityVisual& visual = it->second;
     visual.isCorpse = true;
     visual.corpseTime = 0.0f;  // Reset corpse timer
+
+    // Stop all movement - corpses don't move
+    visual.velocityX = 0.0f;
+    visual.velocityY = 0.0f;
+    visual.velocityZ = 0.0f;
+    visual.serverAnimation = 0;  // Clear server animation (which drives NPC movement)
 
     // Update name to include "'s corpse" suffix
     if (visual.name.find("'s corpse") == std::string::npos &&

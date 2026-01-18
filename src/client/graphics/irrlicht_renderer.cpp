@@ -119,6 +119,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::InteractDoor: doorInteractRequested_ = true; break;
                     case HA::InteractWorldObject: worldObjectInteractRequested_ = true; break;
                     case HA::Hail: hailRequested_ = true; break;
+                    case HA::Consider: considerRequested_ = true; break;
                     case HA::ClearTarget: clearTargetRequested_ = true; break;
 
                     // Targeting
@@ -3567,6 +3568,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (eventReceiver_->hailRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
         if (hailCallback_) {
             hailCallback_();
+        }
+    }
+
+    // Handle consider (C key) - only in Player mode, not when chat focused
+    if (eventReceiver_->considerRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
+        if (considerCallback_) {
+            considerCallback_();
         }
     }
 

@@ -15750,7 +15750,7 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 	if (p.Length() < 30) { // 2 opcode + 28 Consider_Struct
 		return;
 	}
-	
+
 	struct Consider_Struct {
 		uint32_t playerid;
 		uint32_t targetid;
@@ -15761,17 +15761,59 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 		uint8_t  pvpcon;
 		uint8_t  unknown3[3];
 	} *con = (Consider_Struct*)((uint8_t*)p.Data() + 2);
-	
+
 	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Consider: target={}, faction={}, level={}, hp={}/{}", 
+		LOG_DEBUG(MOD_MAIN, "Consider: target={}, faction={}, level={}, hp={}/{}",
 			con->targetid, con->faction, con->level, con->cur_hp, con->max_hp);
 	}
-	
+
 	// Update combat manager with consider info
 	if (m_combat_manager) {
-		m_combat_manager->ProcessConsiderResponse(con->targetid, con->faction, con->level, 
+		m_combat_manager->ProcessConsiderResponse(con->targetid, con->faction, con->level,
 			con->cur_hp, con->max_hp);
 	}
+
+	// Display consider message to chat
+	std::string target_name = "Unknown";
+	auto it = m_entities.find(static_cast<uint16_t>(con->targetid));
+	if (it != m_entities.end()) {
+		target_name = it->second.name;
+	}
+
+	// Determine faction standing message
+	// Faction values: 1=ally, 2=warmly, 3=kindly, 4=amiably, 5=indifferent,
+	//                 6=apprehensive, 7=dubious, 8=threatening, 9=scowling
+	std::string faction_msg;
+	switch (con->faction) {
+		case 1: faction_msg = "regards you as an ally"; break;
+		case 2: faction_msg = "looks upon you warmly"; break;
+		case 3: faction_msg = "kindly considers you"; break;
+		case 4: faction_msg = "judges you amiably"; break;
+		case 5: faction_msg = "regards you indifferently"; break;
+		case 6: faction_msg = "looks your way apprehensively"; break;
+		case 7: faction_msg = "glowers at you dubiously"; break;
+		case 8: faction_msg = "threatens you"; break;
+		case 9: faction_msg = "scowls at you, ready to attack"; break;
+		default: faction_msg = fmt::format("regards you (faction {})", con->faction); break;
+	}
+
+	// Determine con color name based on server level value
+	std::string con_color;
+	switch (con->level) {
+		case 2:  con_color = "green"; break;
+		case 4:  con_color = "blue"; break;
+		case 6:  con_color = "gray"; break;
+		case 10: con_color = "light blue"; break;
+		case 13: con_color = "red"; break;
+		case 15: con_color = "yellow"; break;
+		case 18: con_color = "light blue"; break;
+		case 20: con_color = "white"; break;
+		default: con_color = "white"; break;
+	}
+
+	// Format: "a gnoll scout regards you indifferently -- cons green"
+	std::string message = fmt::format("{} {} -- cons {}", target_name, faction_msg, con_color);
+	AddChatSystemMessage(message);
 }
 
 void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
@@ -16508,6 +16550,15 @@ bool EverQuest::InitGraphics(int width, int height) {
 			}
 		}
 		ZoneSendChannelMessage(message, CHAT_CHANNEL_SAY, "");
+	});
+
+	// Set up consider callback (C key in Player Mode)
+	m_renderer->setConsiderCallback([this]() {
+		if (m_combat_manager && m_combat_manager->HasTarget()) {
+			m_combat_manager->ConsiderTarget();
+		} else {
+			AddChatSystemMessage("You must have a target to consider.");
+		}
 	});
 
 	// Set up zoning enabled callback (Z key toggles zone line visualization and zoning)
