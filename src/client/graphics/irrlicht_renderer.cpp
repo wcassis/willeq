@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/light_source.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -3020,11 +3021,11 @@ void IrrlichtRenderer::createZoneLights() {
 bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                      float x, float y, float z, float heading, bool isPlayer,
                                      uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                     bool isCorpse) {
+                                     bool isCorpse, float serverSize) {
     if (!entityRenderer_) {
         return false;
     }
-    bool result = entityRenderer_->createEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse);
+    bool result = entityRenderer_->createEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize);
 
     // If this is the player entity, handle visibility based on current mode
     if (result && isPlayer) {
@@ -3088,9 +3089,10 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
         }
 
         // Calculate light properties based on level
-        // EQ light values: ~10=candle, ~50=small lightstone, ~100=lantern, ~200=greater lightstone
-        float intensity = lightLevel / 255.0f;
-        float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;  // 20-100 range
+        // Server sends light TYPE (0-15), convert to level (0-10) for intensity
+        uint8_t level = lightsource::TypeToLevel(lightLevel);
+        float intensity = level / 10.0f;  // 0-10 scale to 0.0-1.0
+        float radius = 20.0f + (level / 10.0f) * 80.0f;  // 20-100 range
 
         // Warm light color (slightly yellow/orange like torchlight)
         float r = std::min(1.0f, 0.9f + intensity * 0.1f);

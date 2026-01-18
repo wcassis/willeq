@@ -5264,11 +5264,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			// All entities are created later in LoadZoneGraphics() during the graphics loading phase.
 			// This ensures the progress bar shows during the entire loading process.
 
-			if (spawn_count <= 5) {
 				LOG_DEBUG(MOD_ENTITY, "Loaded spawn {}: {} (ID: {}) Level {} Race {} Size {:.2f} at ({:.2f}, {:.2f}, {:.2f})",
 					spawn_count, entity.name, entity.spawn_id, entity.level,
 					entity.race_id, entity.size, entity.x, entity.y, entity.z);
-			}
 			// Log all spawns with position and heading at debug level 3+
 			LOG_WARN(MOD_ENTITY, "ZoneSpawn: {} (ID:{}) pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} npc_type={}",
 				entity.name, entity.spawn_id, entity.x, entity.y, entity.z, entity.heading, entity.npc_type);
@@ -6500,7 +6498,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				// Create the player entity with current position from ClientUpdate
 				m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
 				                         x, y, z, h_player,
-				                         true, entity.gender, appearance, false, false);
+				                         true, entity.gender, appearance, false, false, entity.size);
 
 				// Set player spawn ID AFTER entity is created so the animated node
 				// can be marked for the player rotation fix
@@ -17652,7 +17650,7 @@ void EverQuest::LoadZoneGraphics() {
 
 		m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
 		                         entity.x, entity.y, entity.z, entity.heading,
-		                         isPlayer, entity.gender, appearance, isNPC, isCorpse);
+		                         isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
 
 		if (isPlayer) {
 			// Set up player-specific rendering after creating the entity
@@ -17769,7 +17767,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 
 	m_renderer->createEntity(entity.spawn_id, entity.race_id, entity.name,
 	                         entity.x, entity.y, entity.z, entity.heading,
-	                         false, entity.gender, appearance, isNPC, isCorpse);
+	                         false, entity.gender, appearance, isNPC, isCorpse, entity.size);
 
 	// Set entity light source if equipped
 	if (entity.light > 0) {

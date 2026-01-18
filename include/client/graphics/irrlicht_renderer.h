@@ -494,10 +494,11 @@ public:
     // isPlayer: true if this is our own player character
     // isNPC: true if this is an NPC (npc_type=1), false for other player characters
     // isCorpse: true if this is a corpse (npc_type=2 or 3), starts with death animation
+    // serverSize: size value from server (0 or 1 = default, >1 = larger, <1 = smaller)
     bool createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                      float x, float y, float z, float heading, bool isPlayer = false,
                      uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
-                     bool isNPC = true, bool isCorpse = false);
+                     bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
     void updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                       float dx = 0, float dy = 0, float dz = 0, uint32_t animation = 0);
     void removeEntity(uint16_t spawnId);

@@ -1,5 +1,6 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/light_source.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -291,7 +292,7 @@ irr::scene::IMesh* EntityRenderer::getMeshForRace(uint16_t raceId, uint8_t gende
 bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                    float x, float y, float z, float heading, bool isPlayer,
                                    uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                   bool isCorpse) {
+                                   bool isCorpse, float serverSize) {
     auto createStart = std::chrono::steady_clock::now();
 
     if (!smgr_ || hasEntity(spawnId)) {
@@ -303,6 +304,20 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     if (scale <= 0.0f) {
         return true;  // Return true since this is expected behavior
     }
+
+    // Apply server size multiplier
+    // Server size is an absolute value where 6.0 is "standard humanoid" size
+    // Convert to multiplier by dividing by reference size (6.0)
+    // If serverSize is 0, use default multiplier of 1.0
+    constexpr float REFERENCE_SIZE = 6.0f;
+    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
+    float baseScale = scale;
+    scale *= sizeMultiplier;
+
+    // Debug: log size information for all entities
+    // Formula: finalScale = baseScale * (serverSize / 6.0)
+    LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} size: {:.2f} * ({:.2f}/6) = {:.2f}",
+              name, raceId, baseScale, serverSize, scale);
 
     EntityVisual visual;
     visual.spawnId = spawnId;
@@ -2544,9 +2559,10 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     }
 
     // Calculate light properties based on level
-    // EQ light values: ~10=candle, ~50=small lightstone, ~100=lantern, ~200=greater lightstone
-    float intensity = lightLevel / 255.0f;
-    float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;  // 20-100 range
+    // Server sends light TYPE (0-15), convert to level (0-10) for intensity
+    uint8_t level = lightsource::TypeToLevel(lightLevel);
+    float intensity = level / 10.0f;  // 0-10 scale to 0.0-1.0
+    float radius = 20.0f + (level / 10.0f) * 80.0f;  // 20-100 range
 
     // Warm light color (slightly yellow/orange like torchlight)
     float r = std::min(1.0f, 0.9f + intensity * 0.1f);
