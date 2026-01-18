@@ -113,6 +113,10 @@ struct EntityVisual {
     // Light source (lantern, lightstone, etc.)
     irr::scene::ILightSceneNode* lightNode = nullptr;  // Point light attached to entity
     uint8_t lightLevel = 0;                            // Current light level (0=none, 1-255=intensity)
+
+    // Scene graph management (for constrained mode optimization)
+    // When false, the entity is removed from scene graph to skip traversal overhead
+    bool inSceneGraph = true;
 };
 
 // Manages rendering of game entities (NPCs, players, mobs)

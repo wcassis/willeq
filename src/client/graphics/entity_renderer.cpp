@@ -360,6 +360,7 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         // Use animated mesh
         visual.animatedNode = animNode;
         visual.sceneNode = animNode;
+        visual.sceneNode->grab();  // Keep alive when removed from scene graph
         visual.isAnimated = true;
         visual.usesPlaceholder = false;
 
@@ -502,6 +503,7 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 	    return false;
     }
     visual.sceneNode = visual.meshNode;
+    visual.sceneNode->grab();  // Keep alive when removed from scene graph
 
     // Calculate model offset for collision calculations
     // Server Z is the geometric MODEL CENTER, not the feet/ground position
@@ -1336,7 +1338,11 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
         visual.nameNode->remove();
     }
     if (visual.sceneNode) {
-        visual.sceneNode->remove();
+        // If not in scene graph, we still hold the reference from grab()
+        if (visual.inSceneGraph) {
+            visual.sceneNode->remove();
+        }
+        visual.sceneNode->drop();  // Release our reference
     }
 
     entities_.erase(it);
@@ -1430,11 +1436,19 @@ void EntityRenderer::clearEntities() {
         if (visual.castBarBillboard) {
             visual.castBarBillboard->remove();
         }
+        // Remove light node
+        if (visual.lightNode) {
+            visual.lightNode->remove();
+        }
         if (visual.nameNode) {
             visual.nameNode->remove();
         }
         if (visual.sceneNode) {
-            visual.sceneNode->remove();
+            // If not in scene graph, we still hold the reference from grab()
+            if (visual.inSceneGraph) {
+                visual.sceneNode->remove();
+            }
+            visual.sceneNode->drop();  // Release our reference
         }
     }
     entities_.clear();
@@ -1447,7 +1461,16 @@ bool EntityRenderer::hasEntity(uint16_t spawnId) const {
 void EntityRenderer::setAllEntitiesVisible(bool visible) {
     for (auto& [spawnId, visual] : entities_) {
         if (visual.sceneNode) {
-            visual.sceneNode->setVisible(visible);
+            if (visible) {
+                // Add back to scene graph if not already there
+                if (!visual.inSceneGraph) {
+                    smgr_->getRootSceneNode()->addChild(visual.sceneNode);
+                    visual.inSceneGraph = true;
+                }
+                visual.sceneNode->setVisible(true);
+            } else {
+                visual.sceneNode->setVisible(false);
+            }
         }
     }
 }
@@ -2769,6 +2792,8 @@ void EntityRenderer::cycleHeadVariant(int direction) {
         // Remove old scene node
         if (visual.sceneNode) {
             visual.sceneNode->remove();
+            visual.sceneNode->drop();  // Release our reference
+            visual.sceneNode = nullptr;
         }
         if (visual.nameNode) {
             visual.nameNode->remove();
@@ -2784,6 +2809,7 @@ void EntityRenderer::cycleHeadVariant(int direction) {
         if (animNode) {
             visual.animatedNode = animNode;
             visual.sceneNode = animNode;
+            visual.sceneNode->grab();  // Keep alive when removed from scene graph
             visual.meshNode = nullptr;
             visual.isAnimated = true;
             visual.usesPlaceholder = false;
@@ -3345,12 +3371,30 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
             shouldBeVisible = true;
         }
 
-        // Update visibility
+        // Update scene graph membership (not just visibility)
+        // This removes nodes entirely from the scene graph to skip traversal overhead
         if (visual.sceneNode) {
-            visual.sceneNode->setVisible(shouldBeVisible);
+            if (shouldBeVisible && !visual.inSceneGraph) {
+                // Add back to scene graph
+                smgr_->getRootSceneNode()->addChild(visual.sceneNode);
+                visual.sceneNode->setVisible(true);
+                visual.inSceneGraph = true;
+            } else if (!shouldBeVisible && visual.inSceneGraph) {
+                // Remove from scene graph (but keep the node alive)
+                visual.sceneNode->remove();
+                visual.inSceneGraph = false;
+            }
         }
         if (visual.nameNode) {
-            visual.nameNode->setVisible(shouldBeVisible && nameTagsVisible_);
+            if (shouldBeVisible && nameTagsVisible_) {
+                if (!visual.nameNode->isVisible()) {
+                    visual.nameNode->setVisible(true);
+                }
+            } else {
+                if (visual.nameNode->isVisible()) {
+                    visual.nameNode->setVisible(false);
+                }
+            }
         }
 
         if (shouldBeVisible) {
@@ -3363,8 +3407,10 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
     if (++logThrottle >= 60) {  // Log every ~60 frames
         logThrottle = 0;
         if (visibleEntityCount_ >= maxEntities) {
-            LOG_DEBUG(MOD_GRAPHICS, "Constrained mode: showing {}/{} entities (at limit)",
-                      visibleEntityCount_, static_cast<int>(entities_.size()));
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained mode: showing {}/{} entities (at limit), {} in scene graph",
+                      visibleEntityCount_, static_cast<int>(entities_.size()),
+                      std::count_if(entities_.begin(), entities_.end(),
+                                   [](const auto& p) { return p.second.inSceneGraph; }));
         }
     }
 }

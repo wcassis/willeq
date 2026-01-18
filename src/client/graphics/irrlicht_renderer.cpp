@@ -4065,9 +4065,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         return true;
     }
 
-    // Run scene breakdown profile if scheduled
+    // Run scene breakdown profile if scheduled (waits for frame count to reach 0)
     if (sceneProfileEnabled_) {
-        profileSceneBreakdown();
+        if (sceneProfileFrameCount_ < 0) {
+            sceneProfileFrameCount_++;
+        } else {
+            profileSceneBreakdown();
+        }
     }
 
     // Render
@@ -4529,8 +4533,9 @@ void IrrlichtRenderer::logFrameTimings() {
 
 void IrrlichtRenderer::runSceneProfile() {
     sceneProfileEnabled_ = true;
-    sceneProfileFrameCount_ = 0;
-    LOG_INFO(MOD_GRAPHICS, "Scene profile scheduled - will run on next frame");
+    // Wait 60 frames before profiling to allow constrained visibility to run
+    sceneProfileFrameCount_ = -60;
+    LOG_INFO(MOD_GRAPHICS, "Scene profile scheduled - will run after 60 frames");
 }
 
 void IrrlichtRenderer::profileSceneBreakdown() {
@@ -4549,12 +4554,16 @@ void IrrlichtRenderer::profileSceneBreakdown() {
         return {time_us, polys};
     };
 
-    // Helper to hide all scene content
+    // Helper to hide all scene content including lights
     auto hideAll = [this]() {
         if (zoneMeshNode_) zoneMeshNode_->setVisible(false);
         if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(false);
         for (auto* node : objectNodes_) if (node) node->setVisible(false);
         if (doorManager_) doorManager_->setAllDoorsVisible(false);
+        // Also hide lights
+        for (auto* node : zoneLightNodes_) if (node) node->setVisible(false);
+        if (sunLight_) sunLight_->setVisible(false);
+        if (playerLightNode_) playerLightNode_->setVisible(false);
     };
 
     auto showAll = [this]() {
@@ -4562,15 +4571,33 @@ void IrrlichtRenderer::profileSceneBreakdown() {
         if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(true);
         for (auto* node : objectNodes_) if (node) node->setVisible(true);
         if (doorManager_) doorManager_->setAllDoorsVisible(true);
+        // Show lights
+        for (auto* node : zoneLightNodes_) if (node) node->setVisible(true);
+        if (sunLight_) sunLight_->setVisible(true);
+        if (playerLightNode_) playerLightNode_->setVisible(true);
     };
 
     // Count nodes
     breakdown.entityCount = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
     breakdown.objectCount = static_cast<int>(objectNodes_.size());
     breakdown.doorCount = doorManager_ ? static_cast<int>(doorManager_->getDoorCount()) : 0;
+    int lightCount = static_cast<int>(zoneLightNodes_.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
+
+    // Count total scene nodes recursively
+    std::function<int(irr::scene::ISceneNode*)> countNodes = [&](irr::scene::ISceneNode* node) -> int {
+        if (!node) return 0;
+        int count = 1;
+        const auto& children = node->getChildren();
+        for (auto* child : children) {
+            count += countNodes(child);
+        }
+        return count;
+    };
+    int totalSceneNodes = countNodes(smgr_->getRootSceneNode());
 
     LOG_INFO(MOD_GRAPHICS, "=== SCENE BREAKDOWN PROFILE ===");
     LOG_INFO(MOD_GRAPHICS, "Zone mesh node: {}", zoneMeshNode_ ? "valid" : "NULL");
+    LOG_INFO(MOD_GRAPHICS, "Total scene nodes: {} (lights: {})", totalSceneNodes, lightCount);
     LOG_INFO(MOD_GRAPHICS, "Measuring each category in isolation ({} samples each)...", numSamples);
 
     // Hide everything first
@@ -4648,7 +4675,23 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     int doorPolyCount = static_cast<int>(doorPolys - baselinePolys);
     if (doorManager_) doorManager_->setAllDoorsVisible(false);
 
-    // 6. Measure full scene
+    // 6. Measure lights only
+    for (auto* node : zoneLightNodes_) if (node) node->setVisible(true);
+    if (sunLight_) sunLight_->setVisible(true);
+    if (playerLightNode_) playerLightNode_->setVisible(true);
+    int64_t lightSum = 0;
+    for (int i = 0; i < numSamples; i++) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        auto [time, polys] = timeAndPolyDrawAll();
+        lightSum += time;
+        driver_->endScene();
+    }
+    int64_t lightTime = (lightSum / numSamples) - baseline;
+    for (auto* node : zoneLightNodes_) if (node) node->setVisible(false);
+    if (sunLight_) sunLight_->setVisible(false);
+    if (playerLightNode_) playerLightNode_->setVisible(false);
+
+    // 7. Measure full scene
     showAll();
     int64_t totalSum = 0;
     uint32_t totalPolys = 0;
@@ -4678,7 +4721,8 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     LOG_INFO(MOD_GRAPHICS, "  Entities:     {:>6} polys ({} nodes)", entityPolyCount, breakdown.entityCount);
     LOG_INFO(MOD_GRAPHICS, "  Objects:      {:>6} polys ({} nodes)", objectPolyCount, breakdown.objectCount);
     LOG_INFO(MOD_GRAPHICS, "  Doors:        {:>6} polys ({} nodes)", doorPolyCount, breakdown.doorCount);
-    LOG_INFO(MOD_GRAPHICS, "  Total:        {:>6} polys", totalPolys);
+    LOG_INFO(MOD_GRAPHICS, "  Lights:       {:>6} nodes", lightCount);
+    LOG_INFO(MOD_GRAPHICS, "  Total:        {:>6} polys ({} scene nodes)", totalPolys, totalSceneNodes);
     LOG_INFO(MOD_GRAPHICS, "");
     LOG_INFO(MOD_GRAPHICS, "Render time breakdown (avg of {} samples):", numSamples);
     LOG_INFO(MOD_GRAPHICS, "  Total drawAll:  {:>8} us (100.0%)", breakdown.totalDrawAll);
@@ -4687,6 +4731,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     LOG_INFO(MOD_GRAPHICS, "  Entities:       {:>8} us ({:>5.1f}%)", breakdown.entityTime, pct(breakdown.entityTime));
     LOG_INFO(MOD_GRAPHICS, "  Objects:        {:>8} us ({:>5.1f}%)", breakdown.objectTime, pct(breakdown.objectTime));
     LOG_INFO(MOD_GRAPHICS, "  Doors:          {:>8} us ({:>5.1f}%)", breakdown.doorTime, pct(breakdown.doorTime));
+    LOG_INFO(MOD_GRAPHICS, "  Lights:         {:>8} us ({:>5.1f}%)", lightTime, pct(lightTime));
     LOG_INFO(MOD_GRAPHICS, "  Baseline:       {:>8} us ({:>5.1f}%)", baseline, pct(baseline));
     LOG_INFO(MOD_GRAPHICS, "  Interaction:    {:>8} us ({:>5.1f}%)", breakdown.otherTime, pct(breakdown.otherTime));
     LOG_INFO(MOD_GRAPHICS, "=== END SCENE BREAKDOWN ===");
