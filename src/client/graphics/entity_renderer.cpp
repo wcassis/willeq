@@ -593,6 +593,21 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         );
     }
 
+    // Set up collision data for boats (race 72 = Ship, race 73 = Launch/Barrel Barge)
+    if (raceId == 72 || raceId == 73) {
+        visual.hasCollision = true;
+        // Use bounding box to determine collision radius and deck height
+        irr::core::aabbox3df collBbox = mesh->getBoundingBox();
+        float bboxWidth = std::max(collBbox.MaxEdge.X - collBbox.MinEdge.X,
+                                   collBbox.MaxEdge.Z - collBbox.MinEdge.Z);
+        visual.collisionRadius = (bboxWidth / 2.0f) * scale;
+        visual.collisionHeight = (collBbox.MaxEdge.Y - collBbox.MinEdge.Y) * scale;
+        // Deck is at the top of the bounding box (server Z is center, so add half height)
+        visual.deckZ = z + (visual.collisionHeight / 2.0f);
+        LOG_DEBUG(MOD_GRAPHICS, "Boat collision: race {} radius={:.1f} height={:.1f} deckZ={:.1f}",
+            raceId, visual.collisionRadius, visual.collisionHeight, visual.deckZ);
+    }
+
     entities_[spawnId] = visual;
 
     // Log entity creation with model status
@@ -3546,6 +3561,46 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
                                    [](const auto& p) { return p.second.inSceneGraph; }));
         }
     }
+}
+
+float EntityRenderer::findBoatDeckZ(float x, float y, float currentZ) const {
+    // BEST_Z_INVALID from hc_map.h
+    constexpr float BEST_Z_INVALID = -999999.0f;
+
+    float bestDeckZ = BEST_Z_INVALID;
+    float bestDistance = 999999.0f;
+
+    // Check all entities with collision (boats)
+    for (const auto& [spawnId, visual] : entities_) {
+        if (!visual.hasCollision) {
+            continue;
+        }
+
+        // Check horizontal distance to boat center
+        float dx = x - visual.lastX;
+        float dy = y - visual.lastY;
+        float horizontalDist = std::sqrt(dx * dx + dy * dy);
+
+        // If within boat's collision radius
+        if (horizontalDist <= visual.collisionRadius) {
+            // Check if we're at or above the boat's deck level (within step height)
+            // Deck Z is calculated as boat center + half height
+            float deckZ = visual.lastZ + (visual.collisionHeight / 2.0f);
+
+            // Allow stepping up onto deck from slightly below, or standing on it
+            // Step height tolerance: 4 units up, 2 units down
+            float zDiff = currentZ - deckZ;
+            if (zDiff >= -4.0f && zDiff <= 2.0f) {
+                // This boat is a valid floor - check if it's closer than previous best
+                if (horizontalDist < bestDistance) {
+                    bestDeckZ = deckZ;
+                    bestDistance = horizontalDist;
+                }
+            }
+        }
+    }
+
+    return bestDeckZ;
 }
 
 } // namespace Graphics

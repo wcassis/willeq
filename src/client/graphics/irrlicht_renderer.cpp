@@ -5942,6 +5942,26 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
         }
     }
 
+    // Check for boat collision - boats act as elevated platforms
+    float boatDeckZ = BEST_Z_INVALID;
+    if (entityRenderer_) {
+        boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, currentZ);
+    }
+
+    // Determine final ground Z
+    // If standing on a boat deck, use the higher of boat deck or zone ground
+    if (boatDeckZ != BEST_Z_INVALID) {
+        if (groundZ == BEST_Z_INVALID || boatDeckZ > groundZ) {
+            if (playerConfig_.collisionDebug) {
+                // Yellow line showing boat deck hit
+                irr::core::vector3df irrFrom(x, currentZ, y);
+                irr::core::vector3df irrTo(x, boatDeckZ, y);
+                addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
+            }
+            return boatDeckZ;
+        }
+    }
+
     if (groundZ == BEST_Z_INVALID) {
         return currentZ;  // No ground found, keep current Z
     }
