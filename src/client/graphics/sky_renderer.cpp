@@ -390,7 +390,9 @@ void SkyRenderer::createCelestialBodies() {
                 moonNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
                 moonNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
                 moonNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-                moonNode_->setMaterialType(irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL);
+                // Use ADD_COLOR like sun - BMP textures don't have alpha channel
+                // This makes bright parts of moon visible against dark sky
+                moonNode_->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
 
                 LOG_DEBUG(MOD_GRAPHICS, "Created moon billboard (texture: {}, hasTrack: {})",
                          body->textureName, moonTrack_ ? "yes" : "no");
@@ -572,6 +574,16 @@ void SkyRenderer::updateCelestialPositions() {
         // Moon visible at night
         bool moonVisible = (timeOfDay < 6.0f || timeOfDay > 19.0f);
         moonNode_->setVisible(moonVisible && enabled_);
+
+        // Debug logging for moon position (throttled)
+        static int moonDebugCounter = 0;
+        if (++moonDebugCounter >= 300) {  // Log every ~10 seconds at 30fps
+            moonDebugCounter = 0;
+            LOG_DEBUG(MOD_GRAPHICS, "Moon: time={:.2f} visible={} enabled={} pos=({:.1f},{:.1f},{:.1f}) cam=({:.1f},{:.1f},{:.1f})",
+                      timeOfDay, moonVisible, enabled_,
+                      moonPos.X, moonPos.Y, moonPos.Z,
+                      lastCameraPos_.X, lastCameraPos_.Y, lastCameraPos_.Z);
+        }
     }
 
     // Update sizes based on elevation (larger near horizon)
@@ -650,13 +662,22 @@ irr::core::vector3df SkyRenderer::calculateTrackPosition(const std::shared_ptr<S
     const SkyTrackKeyframe& kf0 = track->keyframes[frame0];
     const SkyTrackKeyframe& kf1 = track->keyframes[frame1];
 
-    // Interpolate translation (position)
-    glm::vec3 pos = glm::mix(kf0.translation, kf1.translation, t);
+    // Celestial body tracks use rotation to position on sky dome, not translation
+    // The quaternion rotates a base direction vector to get the position
+    glm::quat rot = glm::slerp(kf0.rotation, kf1.rotation, t);
+
+    // Base direction is straight up (0, 0, 1) in EQ coordinates (Z-up)
+    // Rotate it by the track quaternion to get the celestial body direction
+    glm::vec3 baseDir(0.0f, 0.0f, 1.0f);
+    glm::vec3 dir = rot * baseDir;
 
     // Scale to celestial distance and convert EQ to Irrlicht coordinates
-    // EQ: Z-up -> Irrlicht: Y-up
-    float scale = CELESTIAL_DISTANCE / 100.0f;  // Assume track data is in ~100 unit scale
-    return irr::core::vector3df(pos.x * scale, pos.z * scale, pos.y * scale);
+    // EQ: (x, y, z) Z-up -> Irrlicht: (x, z, y) Y-up
+    return irr::core::vector3df(
+        dir.x * CELESTIAL_DISTANCE,
+        dir.z * CELESTIAL_DISTANCE,  // EQ Z -> Irrlicht Y
+        dir.y * CELESTIAL_DISTANCE   // EQ Y -> Irrlicht Z
+    );
 }
 
 float SkyRenderer::calculateCelestialSize(float baseSize, float elevation) const {

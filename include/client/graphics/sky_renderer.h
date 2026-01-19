@@ -207,10 +207,10 @@ private:
     // Celestial body distance from camera (slightly less than sky dome)
     static constexpr float CELESTIAL_DISTANCE = 1700.0f;
 
-    // Celestial body billboard base sizes (smaller = more realistic)
-    // At 1700 units distance: 30 units = ~1 degree visual angle
-    static constexpr float SUN_BASE_SIZE = 30.0f;
-    static constexpr float MOON_BASE_SIZE = 25.0f;
+    // Celestial body billboard base sizes
+    // At 1700 units distance: 100 units = ~3.4 degree visual angle
+    static constexpr float SUN_BASE_SIZE = 120.0f;
+    static constexpr float MOON_BASE_SIZE = 100.0f;
 
     // Size scaling range (min/max multipliers for horizon effect)
     static constexpr float SIZE_SCALE_MIN = 1.0f;
