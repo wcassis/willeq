@@ -215,6 +215,12 @@ bool XmiDecoder::parseSequenceEvents(const uint8_t* data, size_t size,
                 continue;
             }
 
+            // Skip EndOfTrack events - we'll add one at the end of the combined output
+            if (metaType == 0x2F) {
+                pos += metaLen;
+                break;  // End of this sequence
+            }
+
             MidiEvent evt;
             evt.absoluteTime = currentTime;
             evt.data.push_back(0xFF);
@@ -239,11 +245,6 @@ bool XmiDecoder::parseSequenceEvents(const uint8_t* data, size_t size,
             }
 
             events.push_back(evt);
-
-            if (metaType == 0x2F) {
-                // End of track - don't break, let it be added
-                break;
-            }
         } else if (status >= 0xF0 && status <= 0xF7) {
             // System exclusive
             pos++;

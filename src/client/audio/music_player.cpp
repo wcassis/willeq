@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -66,10 +67,15 @@ bool MusicPlayer::initialize(const std::string& soundFontPath) {
     if (fluidSettings_) {
         // Use PulseAudio for real-time background music playback
         fluid_settings_setstr(fluidSettings_, "audio.driver", "pulseaudio");
-        fluid_settings_setnum(fluidSettings_, "synth.sample-rate", 44100.0);
+
+        // Match exact settings from working standalone test
+        fluid_settings_setnum(fluidSettings_, "synth.sample-rate", 48000.0);
         fluid_settings_setint(fluidSettings_, "synth.reverb.active", 1);
         fluid_settings_setint(fluidSettings_, "synth.chorus.active", 1);
         fluid_settings_setint(fluidSettings_, "synth.polyphony", 256);
+        fluid_settings_setint(fluidSettings_, "audio.period-size", 512);
+        fluid_settings_setint(fluidSettings_, "audio.periods", 4);
+        fluid_settings_setnum(fluidSettings_, "synth.gain", 0.6);
 
         std::cerr << "[AUDIO] FluidSynth: creating synth..." << std::endl;
         fluidSynth_ = new_fluid_synth(fluidSettings_);
