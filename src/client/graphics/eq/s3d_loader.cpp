@@ -650,11 +650,6 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
             continue;
         }
 
-        // Check if this WLD has skeleton data
-        if (!chrLoader.hasCharacterData()) {
-            continue;
-        }
-
         const auto& skeletonTracks = chrLoader.getSkeletonTracks();
         const auto& geometries = chrLoader.getGeometries();
 
@@ -774,6 +769,92 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                 character->parts.push_back(geom);
             }
             zone_->characters.push_back(character);
+        }
+
+        // Also check for static actors (like boats) that have no skeleton
+        // These are defined by Actor fragments (0x14) with mesh references but no skeleton
+        const auto& objectDefs = chrLoader.getObjectDefs();
+        const auto& modelRefs = chrLoader.getModelRefs();
+
+        LOG_DEBUG(MOD_GRAPHICS, "S3DLoader: Checking for static actors - {} objectDefs, {} modelRefs",
+            objectDefs.size(), modelRefs.size());
+
+        // Track which names we've already added as skeletal characters
+        std::set<std::string> existingCharNames;
+        for (const auto& chr : zone_->characters) {
+            if (chr) {
+                std::string upperName = chr->name;
+                std::transform(upperName.begin(), upperName.end(), upperName.begin(),
+                              [](unsigned char c) { return std::toupper(c); });
+                // Extract base name (before _HS_DEF suffix)
+                size_t hsDefPos = upperName.find("_HS_DEF");
+                if (hsDefPos != std::string::npos) {
+                    existingCharNames.insert(upperName.substr(0, hsDefPos));
+                } else {
+                    existingCharNames.insert(upperName);
+                }
+            }
+        }
+
+        for (const auto& [objName, objDef] : objectDefs) {
+            // Skip if we already have this as a skeletal character
+            if (existingCharNames.find(objName) != existingCharNames.end()) {
+                LOG_TRACE(MOD_GRAPHICS, "S3DLoader: Skipping '{}' - already exists as skeletal character", objName);
+                continue;
+            }
+
+            // Skip if no mesh references
+            if (objDef.meshRefs.empty()) {
+                LOG_TRACE(MOD_GRAPHICS, "S3DLoader: Skipping '{}' - no mesh references", objName);
+                continue;
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader: Processing static actor '{}' with {} mesh refs", objName, objDef.meshRefs.size());
+
+            // Find geometry through mesh references
+            std::vector<std::shared_ptr<ZoneGeometry>> staticMeshes;
+            for (uint32_t meshRef : objDef.meshRefs) {
+                LOG_TRACE(MOD_GRAPHICS, "S3DLoader:   meshRef {} -> checking modelRefs", meshRef);
+                // meshRef points to a 0x2D fragment (ModelRef)
+                auto modelIt = modelRefs.find(meshRef);
+                if (modelIt != modelRefs.end()) {
+                    uint32_t geomRef = modelIt->second.geometryFragRef;
+                    LOG_TRACE(MOD_GRAPHICS, "S3DLoader:   found modelRef -> geomRef {}", geomRef);
+                    if (geomRef > 0) {
+                        auto geom = chrLoader.getGeometryByFragmentIndex(geomRef);
+                        if (geom && !geom->vertices.empty()) {
+                            staticMeshes.push_back(geom);
+                            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader:   found geometry '{}' with {} vertices", geom->name, geom->vertices.size());
+                        } else {
+                            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader:   geomRef {} -> no geometry found", geomRef);
+                        }
+                    }
+                } else {
+                    LOG_TRACE(MOD_GRAPHICS, "S3DLoader:   meshRef {} not in modelRefs", meshRef);
+                }
+            }
+
+            // If we found geometry, create a static character model
+            if (!staticMeshes.empty()) {
+                auto character = std::make_shared<CharacterModel>();
+                character->name = objName + "_ACTORDEF";  // Mark as static actor
+
+                for (const auto& geom : staticMeshes) {
+                    character->parts.push_back(geom);
+
+                    // Also add to partsWithTransforms with identity transform
+                    CharacterPart part;
+                    part.geometry = geom;
+                    part.shiftX = part.shiftY = part.shiftZ = 0;
+                    part.rotateX = part.rotateY = part.rotateZ = 0;
+                    character->partsWithTransforms.push_back(part);
+                }
+
+                zone_->characters.push_back(character);
+                LOG_DEBUG(MOD_GRAPHICS, "S3DLoader: Loaded static actor '{}' with {} meshes, {} vertices",
+                    objName, staticMeshes.size(),
+                    staticMeshes.empty() ? 0 : staticMeshes[0]->vertices.size());
+            }
         }
     }
 
