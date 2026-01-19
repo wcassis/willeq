@@ -125,7 +125,7 @@ void WindowManager::onResize(int screenWidth, int screenHeight) {
     screenHeight_ = screenHeight;
     positionInventoryWindow();
     positionLootWindow();
-    tileBagWindows();
+    // Note: Bag windows maintain their saved positions on resize
     if (chatWindow_) {
         chatWindow_->onResize(screenWidth, screenHeight);
     }
@@ -306,6 +306,15 @@ void WindowManager::collectWindowPositions() {
         settings.skillTrainer().window.visible = skillTrainerWindow_->isOpen();
     }
 
+    // Bag windows - save positions for each open bag by its slot index
+    for (const auto& [generalSlot, bagWindow] : bagWindows_) {
+        int slotIndex = generalSlot - inventory::GENERAL_BEGIN;
+        if (slotIndex >= 0 && slotIndex < 8) {
+            settings.bagWindows().positions[slotIndex].x = bagWindow->getX();
+            settings.bagWindows().positions[slotIndex].y = bagWindow->getY();
+        }
+    }
+
     LOG_DEBUG(MOD_UI, "Collected window positions for saving");
 }
 
@@ -414,6 +423,15 @@ void WindowManager::applyWindowPositions() {
         int x = UISettings::resolvePosition(settings.skillTrainer().window.x, screenWidth_, defaultX);
         int y = UISettings::resolvePosition(settings.skillTrainer().window.y, screenHeight_, defaultY);
         skillTrainerWindow_->setPosition(x, y);
+    }
+
+    // Bag windows - apply saved positions for any currently open bags
+    for (auto& [generalSlot, bagWindow] : bagWindows_) {
+        int slotIndex = generalSlot - inventory::GENERAL_BEGIN;
+        if (slotIndex >= 0 && slotIndex < 8) {
+            const auto& pos = settings.bagWindows().positions[slotIndex];
+            bagWindow->setPosition(pos.x, pos.y);
+        }
     }
 
     LOG_DEBUG(MOD_UI, "Applied window positions from UISettings");
@@ -526,16 +544,22 @@ void WindowManager::openBagWindow(int16_t generalSlot) {
     });
 
     bagWindow->show();
-    bagWindows_[generalSlot] = std::move(bagWindow);
 
-    tileBagWindows();
+    // Calculate slot index (0-7) from general slot (22-29)
+    int slotIndex = generalSlot - inventory::GENERAL_BEGIN;
+    if (slotIndex >= 0 && slotIndex < 8) {
+        // Apply saved position from UISettings
+        const auto& pos = UISettings::instance().bagWindows().positions[slotIndex];
+        bagWindow->setPosition(pos.x, pos.y);
+    }
+
+    bagWindows_[generalSlot] = std::move(bagWindow);
 }
 
 void WindowManager::closeBagWindow(int16_t generalSlot) {
     auto it = bagWindows_.find(generalSlot);
     if (it != bagWindows_.end()) {
         bagWindows_.erase(it);
-        tileBagWindows();
     }
 }
 
@@ -1469,55 +1493,73 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
-    // Check buff window
-    if (buffWindow_ && buffWindow_->isVisible()) {
-        if (buffWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
+    // =========================================================================
+    // Z-ordered windows - check in reverse z-order (topmost first)
+    // When clicked, window is brought to front
+    // =========================================================================
 
-    // Check group window
-    if (groupWindow_ && groupWindow_->isVisible()) {
-        if (groupWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
+    // Build list of z-orderable windows that are currently visible
+    // These windows can overlap and should respond based on visual stacking
+    std::vector<WindowBase*> zOrderableWindows;
 
-    // Check pet window
-    if (petWindow_ && petWindow_->isVisible()) {
-        if (petWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
-
-    // Check skills window
-    if (skillsWindow_ && skillsWindow_->isVisible()) {
-        if (skillsWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
-
-    // Check skill trainer window
-    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
-        if (skillTrainerWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
-
-    // Check note window
-    if (noteWindow_ && noteWindow_->isVisible()) {
-        if (noteWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
-
-    // Windows are checked in reverse render order (topmost first) so that
-    // clicks go to the visually topmost window, not a window underneath.
-
-    // Check bag windows first (rendered on top of other item windows)
+    // Add bag windows (dynamically created)
     for (auto& [slotId, bagWindow] : bagWindows_) {
-        if (bagWindow->handleMouseDown(x, y, leftButton, shift, ctrl)) {
-            return true;
+        if (bagWindow && bagWindow->isVisible()) {
+            zOrderableWindows.push_back(bagWindow.get());
+        }
+    }
+
+    // Add bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow && bagWindow->isVisible()) {
+            zOrderableWindows.push_back(bagWindow.get());
+        }
+    }
+
+    // Add other windows that participate in z-ordering
+    if (buffWindow_ && buffWindow_->isVisible()) {
+        zOrderableWindows.push_back(buffWindow_.get());
+    }
+    if (groupWindow_ && groupWindow_->isVisible()) {
+        zOrderableWindows.push_back(groupWindow_.get());
+    }
+    if (petWindow_ && petWindow_->isVisible()) {
+        zOrderableWindows.push_back(petWindow_.get());
+    }
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        zOrderableWindows.push_back(skillsWindow_.get());
+    }
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        zOrderableWindows.push_back(skillTrainerWindow_.get());
+    }
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        zOrderableWindows.push_back(noteWindow_.get());
+    }
+    if (inventoryWindow_ && inventoryWindow_->isVisible()) {
+        zOrderableWindows.push_back(inventoryWindow_.get());
+    }
+
+    // Sort by z-order (windows in windowZOrder_ at back are on top)
+    // Windows not in z-order list go to the bottom
+    std::stable_sort(zOrderableWindows.begin(), zOrderableWindows.end(),
+        [this](WindowBase* a, WindowBase* b) {
+            auto itA = std::find(windowZOrder_.begin(), windowZOrder_.end(), a);
+            auto itB = std::find(windowZOrder_.begin(), windowZOrder_.end(), b);
+            int posA = (itA != windowZOrder_.end()) ? std::distance(windowZOrder_.begin(), itA) : -1;
+            int posB = (itB != windowZOrder_.end()) ? std::distance(windowZOrder_.begin(), itB) : -1;
+            return posA > posB;  // Higher position = more on top, check first
+        });
+
+    // Check windows in z-order (topmost first)
+    for (WindowBase* window : zOrderableWindows) {
+        if (window->containsPoint(x, y)) {
+            // Bring this window to front
+            bringToFront(window);
+
+            // Let the window handle the click
+            if (window->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+                return true;
+            }
         }
     }
 
@@ -1819,6 +1861,45 @@ bool WindowManager::handleMouseMove(int x, int y) {
     mouseX_ = x;
     mouseY_ = y;
 
+    // PRIORITY: Check if any window is currently being dragged
+    // If so, route the mouse move to that window first before checking others
+    // This prevents other windows from stealing focus during drag operations
+    auto checkDragging = [x, y](WindowBase* window) -> bool {
+        if (window && window->isDragging()) {
+            window->handleMouseMove(x, y);
+            return true;
+        }
+        return false;
+    };
+
+    // Check all windows for active drag state
+    if (checkDragging(chatWindow_.get())) return true;
+    if (checkDragging(inventoryWindow_.get())) return true;
+    if (checkDragging(lootWindow_.get())) return true;
+    if (checkDragging(vendorWindow_.get())) return true;
+    if (checkDragging(tradeWindow_.get())) return true;
+    if (checkDragging(bankWindow_.get())) return true;
+    if (checkDragging(buffWindow_.get())) return true;
+    if (checkDragging(groupWindow_.get())) return true;
+    if (checkDragging(petWindow_.get())) return true;
+    if (checkDragging(skillsWindow_.get())) return true;
+    if (checkDragging(skillTrainerWindow_.get())) return true;
+    if (checkDragging(spellBookWindow_.get())) return true;
+    if (checkDragging(hotbarWindow_.get())) return true;
+    if (checkDragging(playerStatusWindow_.get())) return true;
+    if (checkDragging(noteWindow_.get())) return true;
+    if (checkDragging(tradeskillWindow_.get())) return true;
+    if (spellGemPanel_ && spellGemPanel_->isDragging()) {
+        spellGemPanel_->handleMouseMove(x, y);
+        return true;
+    }
+    for (auto& [slotId, bagWindow] : bagWindows_) {
+        if (checkDragging(bagWindow.get())) return true;
+    }
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (checkDragging(bagWindow.get())) return true;
+    }
+
     // Handle quantity slider dragging
     if (quantitySliderDragging_) {
         int trackWidth = quantitySliderTrackBounds_.getWidth() - 10;  // Handle width
@@ -1855,62 +1936,78 @@ bool WindowManager::handleMouseMove(int x, int y) {
         }
     }
 
-    // Check buff window
-    if (buffWindow_ && buffWindow_->isVisible()) {
-        if (buffWindow_->handleMouseMove(x, y)) {
-            // Update buff tooltip based on hovered buff
-            const EQ::ActiveBuff* hoveredBuff = buffWindow_->getHoveredBuff();
-            if (hoveredBuff) {
-                buffTooltip_.setBuff(hoveredBuff, x, y);
-            } else {
-                buffTooltip_.clear();
-            }
-            return true;
-        }
-    }
-
-    // Check group window
-    if (groupWindow_ && groupWindow_->isVisible()) {
-        groupWindow_->handleMouseMove(x, y);
-        // Don't return true - allow other windows to update their hover state
-    }
-
-    // Check pet window
-    if (petWindow_ && petWindow_->isVisible()) {
-        petWindow_->handleMouseMove(x, y);
-        // Don't return true - allow other windows to update their hover state
-    }
-
     // Check player status window (for dragging when UI unlocked)
     if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
         playerStatusWindow_->handleMouseMove(x, y);
         // Don't return true - allow other windows to update their hover state
     }
 
-    // Check skills window
-    if (skillsWindow_ && skillsWindow_->isVisible()) {
-        skillsWindow_->handleMouseMove(x, y);
-        // Don't return true - allow other windows to update their hover state
-    }
+    // =========================================================================
+    // Z-ordered windows - check in reverse z-order (topmost first)
+    // =========================================================================
 
-    // Check skill trainer window
-    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
-        skillTrainerWindow_->handleMouseMove(x, y);
-        // Don't return true - allow other windows to update their hover state
-    }
+    // Build list of z-orderable windows that are currently visible
+    std::vector<WindowBase*> zOrderableWindows;
 
-    // Check note window
-    if (noteWindow_ && noteWindow_->isVisible()) {
-        noteWindow_->handleMouseMove(x, y);
-        // Don't return true - allow other windows to update their hover state
-    }
-
-    // Windows are checked in reverse render order (topmost first) so that
-    // tooltips show for the visually topmost window, not a window underneath.
-
-    // Check bag windows first (rendered on top of other item windows)
+    // Add bag windows (dynamically created)
     for (auto& [slotId, bagWindow] : bagWindows_) {
-        if (bagWindow->handleMouseMove(x, y)) {
+        if (bagWindow && bagWindow->isVisible()) {
+            zOrderableWindows.push_back(bagWindow.get());
+        }
+    }
+
+    // Add bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow && bagWindow->isVisible()) {
+            zOrderableWindows.push_back(bagWindow.get());
+        }
+    }
+
+    // Add other windows that participate in z-ordering
+    if (buffWindow_ && buffWindow_->isVisible()) {
+        zOrderableWindows.push_back(buffWindow_.get());
+    }
+    if (groupWindow_ && groupWindow_->isVisible()) {
+        zOrderableWindows.push_back(groupWindow_.get());
+    }
+    if (petWindow_ && petWindow_->isVisible()) {
+        zOrderableWindows.push_back(petWindow_.get());
+    }
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        zOrderableWindows.push_back(skillsWindow_.get());
+    }
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        zOrderableWindows.push_back(skillTrainerWindow_.get());
+    }
+    if (noteWindow_ && noteWindow_->isVisible()) {
+        zOrderableWindows.push_back(noteWindow_.get());
+    }
+    if (inventoryWindow_ && inventoryWindow_->isVisible()) {
+        zOrderableWindows.push_back(inventoryWindow_.get());
+    }
+
+    // Sort by z-order (windows in windowZOrder_ at back are on top)
+    std::stable_sort(zOrderableWindows.begin(), zOrderableWindows.end(),
+        [this](WindowBase* a, WindowBase* b) {
+            auto itA = std::find(windowZOrder_.begin(), windowZOrder_.end(), a);
+            auto itB = std::find(windowZOrder_.begin(), windowZOrder_.end(), b);
+            int posA = (itA != windowZOrder_.end()) ? std::distance(windowZOrder_.begin(), itA) : -1;
+            int posB = (itB != windowZOrder_.end()) ? std::distance(windowZOrder_.begin(), itB) : -1;
+            return posA > posB;  // Higher position = more on top, check first
+        });
+
+    // Check windows in z-order (topmost first)
+    for (WindowBase* window : zOrderableWindows) {
+        if (window->handleMouseMove(x, y)) {
+            // Special handling for buff window tooltip
+            if (window == buffWindow_.get()) {
+                const EQ::ActiveBuff* hoveredBuff = buffWindow_->getHoveredBuff();
+                if (hoveredBuff) {
+                    buffTooltip_.setBuff(hoveredBuff, x, y);
+                } else {
+                    buffTooltip_.clear();
+                }
+            }
             return true;
         }
     }
@@ -2011,12 +2108,7 @@ bool WindowManager::handleMouseMove(int x, int y) {
         }
     }
 
-    // Check inventory window
-    if (inventoryWindow_ && inventoryWindow_->isVisible()) {
-        if (inventoryWindow_->handleMouseMove(x, y)) {
-            return true;
-        }
-    }
+    // Note: inventory window is now handled in z-ordered section above
 
     // Check chat window
     if (chatWindow_ && chatWindow_->isVisible()) {
@@ -3510,20 +3602,46 @@ void WindowManager::renderConfirmDialog() {
 }
 
 WindowBase* WindowManager::getWindowAtPosition(int x, int y) {
-    // Check bag windows first (on top)
-    for (auto& [slotId, bagWindow] : bagWindows_) {
-        if (bagWindow->isVisible() && bagWindow->containsPoint(x, y)) {
-            return bagWindow.get();
+    // Check windows in reverse z-order (topmost first)
+    for (auto it = windowZOrder_.rbegin(); it != windowZOrder_.rend(); ++it) {
+        WindowBase* window = *it;
+        if (window && window->isVisible() && window->containsPoint(x, y)) {
+            return window;
         }
     }
+    return nullptr;
+}
 
-    // Check inventory window
-    if (inventoryWindow_ && inventoryWindow_->isVisible() &&
-        inventoryWindow_->containsPoint(x, y)) {
-        return inventoryWindow_.get();
+void WindowManager::bringToFront(WindowBase* window) {
+    if (!window) return;
+
+    // Find and remove from current position
+    auto it = std::find(windowZOrder_.begin(), windowZOrder_.end(), window);
+    if (it != windowZOrder_.end()) {
+        windowZOrder_.erase(it);
     }
 
-    return nullptr;
+    // Add to back (topmost)
+    windowZOrder_.push_back(window);
+}
+
+void WindowManager::addToZOrder(WindowBase* window) {
+    if (!window) return;
+
+    // Don't add duplicates
+    auto it = std::find(windowZOrder_.begin(), windowZOrder_.end(), window);
+    if (it == windowZOrder_.end()) {
+        windowZOrder_.push_back(window);
+    }
+}
+
+void WindowManager::removeFromZOrder(WindowBase* window) {
+    if (!window) return;
+
+    auto it = std::find(windowZOrder_.begin(), windowZOrder_.end(), window);
+    if (it != windowZOrder_.end()) {
+        windowZOrder_.erase(it);
+    }
 }
 
 bool WindowManager::isChatInputFocused() const {

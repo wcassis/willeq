@@ -351,6 +351,21 @@ public:
     };
 
     // =========================================================================
+    // Bag Window Settings (persisted per inventory slot 0-7)
+    // =========================================================================
+    struct BagWindowSettings {
+        // Position for each of the 8 general inventory slots
+        // Index 0 = SLOT_GENERAL_0 (slot 22), Index 7 = SLOT_GENERAL_7 (slot 29)
+        struct BagPosition {
+            int x = -1;  // -1 = use default calculated position
+            int y = -1;
+        };
+        std::array<BagPosition, 8> positions;
+
+        BagWindowSettings();
+    };
+
+    // =========================================================================
     // Bank Window Settings
     // =========================================================================
     struct BankSettings {
@@ -527,6 +542,9 @@ public:
     BankSettings& bank() { return m_bank; }
     const BankSettings& bank() const { return m_bank; }
 
+    BagWindowSettings& bagWindows() { return m_bagWindows; }
+    const BagWindowSettings& bagWindows() const { return m_bagWindows; }
+
     SkillTrainerSettings& skillTrainer() { return m_skillTrainer; }
     const SkillTrainerSettings& skillTrainer() const { return m_skillTrainer; }
 
@@ -599,6 +617,9 @@ private:
     void loadBankSettings(const Json::Value& json);
     void saveBankSettings(Json::Value& json) const;
 
+    void loadBagWindowSettings(const Json::Value& json);
+    void saveBagWindowSettings(Json::Value& json) const;
+
     void loadSkillTrainerSettings(const Json::Value& json);
     void saveSkillTrainerSettings(Json::Value& json) const;
 
@@ -641,6 +662,7 @@ private:
     HotbarSettings m_hotbar;
     TradeSettings m_trade;
     BankSettings m_bank;
+    BagWindowSettings m_bagWindows;
     SkillTrainerSettings m_skillTrainer;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;

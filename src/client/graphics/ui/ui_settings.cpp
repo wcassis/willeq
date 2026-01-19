@@ -98,6 +98,27 @@ UISettings::BankSettings::BankSettings() {
     window.showTitleBar = true;
 }
 
+UISettings::BagWindowSettings::BagWindowSettings() {
+    // Calculate default positions for all 8 bag windows
+    // Inventory window is at (50, 50) with size 365x340
+    // Bag windows are ~96px wide, ~236px tall (10-slot bag)
+    // Arrange in 2 rows of 4 bags to the right of inventory
+
+    constexpr int INVENTORY_RIGHT = 50 + 365;  // = 415
+    constexpr int BAG_START_X = INVENTORY_RIGHT + 10;  // = 425
+    constexpr int BAG_START_Y = 50;
+    constexpr int BAG_WIDTH = 96;
+    constexpr int BAG_HEIGHT = 236;
+    constexpr int BAG_SPACING = 10;
+
+    for (int i = 0; i < 8; i++) {
+        int col = i % 4;
+        int row = i / 4;
+        positions[i].x = BAG_START_X + col * (BAG_WIDTH + BAG_SPACING);
+        positions[i].y = BAG_START_Y + row * (BAG_HEIGHT + BAG_SPACING);
+    }
+}
+
 UISettings::SkillTrainerSettings::SkillTrainerSettings() {
     window.x = -1;  // Centered by default
     window.y = -1;
@@ -208,6 +229,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("hotbar")) {
             loadHotbarSettings(windows["hotbar"]);
         }
+        if (windows.isMember("bagWindows")) {
+            loadBagWindowSettings(windows["bagWindows"]);
+        }
     }
 
     // Load tooltip settings
@@ -269,6 +293,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveSkillTrainerSettings(windows["skillTrainer"]);
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
+    saveBagWindowSettings(windows["bagWindows"]);
 
     // Save tooltip settings
     saveTooltipSettings(root["tooltips"]);
@@ -359,6 +384,9 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
         if (windows.isMember("hotbar")) {
             loadHotbarSettings(windows["hotbar"]);
         }
+        if (windows.isMember("bagWindows")) {
+            loadBagWindowSettings(windows["bagWindows"]);
+        }
     }
 
     if (overrides.isMember("tooltips")) {
@@ -442,6 +470,9 @@ void UISettings::resetToDefaults() {
     m_spellGems = SpellGemSettings{};
     m_spellBook = SpellBookSettings{};
     m_hotbar = HotbarSettings{};
+    m_trade = TradeSettings{};
+    m_bank = BankSettings{};
+    m_bagWindows = BagWindowSettings{};
     m_castingBar = CastingBarSettings{};
     m_itemTooltip = ItemTooltipSettings{};
     m_buffTooltip = BuffTooltipSettings{};
@@ -1140,6 +1171,32 @@ void UISettings::saveBankSettings(Json::Value& json) const {
     layout["slotSpacing"] = m_bank.slotSpacing;
     layout["padding"] = m_bank.padding;
     json["layout"] = layout;
+}
+
+// ============================================================================
+// Bag Window Settings Serialization
+// ============================================================================
+
+void UISettings::loadBagWindowSettings(const Json::Value& json) {
+    if (json.isMember("positions")) {
+        const Json::Value& positions = json["positions"];
+        for (Json::ArrayIndex i = 0; i < positions.size() && i < 8; i++) {
+            const Json::Value& pos = positions[i];
+            if (pos.isMember("x")) m_bagWindows.positions[i].x = pos["x"].asInt();
+            if (pos.isMember("y")) m_bagWindows.positions[i].y = pos["y"].asInt();
+        }
+    }
+}
+
+void UISettings::saveBagWindowSettings(Json::Value& json) const {
+    Json::Value positions(Json::arrayValue);
+    for (size_t i = 0; i < 8; i++) {
+        Json::Value pos;
+        pos["x"] = m_bagWindows.positions[i].x;
+        pos["y"] = m_bagWindows.positions[i].y;
+        positions.append(pos);
+    }
+    json["positions"] = positions;
 }
 
 // ============================================================================
