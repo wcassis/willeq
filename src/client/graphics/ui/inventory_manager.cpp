@@ -764,6 +764,11 @@ bool InventoryManager::pickupItem(int16_t slotId) {
         moveItemCallback_(slotId, CURSOR_SLOT, 0);
     }
 
+    // Notify equipment change callback if picking up from equipment slot
+    if (isEquipmentSlot(slotId) && equipmentChangedCallback_) {
+        equipmentChangedCallback_(slotId);
+    }
+
     return true;
 }
 
@@ -822,6 +827,11 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         if (moveItemCallback_) {
             moveItemCallback_(CURSOR_SLOT, targetSlot, 0);
         }
+
+        // Notify equipment change callback if target is an equipment slot
+        if (isEquipmentSlot(targetSlot) && equipmentChangedCallback_) {
+            equipmentChangedCallback_(targetSlot);
+        }
     } else {
         // Slot is empty - just place
         LOG_DEBUG(MOD_UI, "InventoryManager Placed '{}' in slot {}", cursorItem->name, targetSlot);
@@ -855,6 +865,11 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
             cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
         } else {
             cursorSourceSlot_ = SLOT_INVALID;
+        }
+
+        // Notify equipment change callback if target is an equipment slot
+        if (isEquipmentSlot(targetSlot) && equipmentChangedCallback_) {
+            equipmentChangedCallback_(targetSlot);
         }
     }
 

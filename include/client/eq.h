@@ -1112,6 +1112,7 @@ private:
 	void ZoneProcessHPUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessChannelMessage(const EQ::Net::Packet &p);
 	void ZoneProcessWearChange(const EQ::Net::Packet &p);
+	void UpdatePlayerAppearanceFromInventory();
 	void ZoneProcessIllusion(const EQ::Net::Packet &p);
 	void ZoneProcessMoveDoor(const EQ::Net::Packet &p);
 	void ZoneProcessCompletedTasks(const EQ::Net::Packet &p);

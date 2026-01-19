@@ -22,6 +22,8 @@ namespace inventory {
 // Callback for sending item movement to server
 using MoveItemCallback = std::function<void(int16_t fromSlot, int16_t toSlot, uint32_t quantity)>;
 using DeleteItemCallback = std::function<void(int16_t slot)>;
+// Callback when equipment slot changes (for appearance updates)
+using EquipmentChangedCallback = std::function<void(int16_t slotId)>;
 
 // Aggregate stats from equipped items
 struct EquipmentStats {
@@ -203,6 +205,7 @@ public:
     // Server communication callbacks
     void setMoveItemCallback(MoveItemCallback callback) { moveItemCallback_ = callback; }
     void setDeleteItemCallback(DeleteItemCallback callback) { deleteItemCallback_ = callback; }
+    void setEquipmentChangedCallback(EquipmentChangedCallback callback) { equipmentChangedCallback_ = callback; }
 
     // Packet processing
     void processCharInventory(const EQ::Net::Packet& packet);
@@ -253,6 +256,7 @@ private:
     // Callbacks
     MoveItemCallback moveItemCallback_;
     DeleteItemCallback deleteItemCallback_;
+    EquipmentChangedCallback equipmentChangedCallback_;
 
     // Internal helpers
     bool isValidSlot(int16_t slotId) const;

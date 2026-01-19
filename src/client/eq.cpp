@@ -3360,6 +3360,14 @@ void EverQuest::SetupInventoryCallbacks()
 			SendDeleteItem(slot);
 		}
 	);
+
+	// Set callback for when player equipment slot changes (for appearance updates)
+	m_inventory_manager->setEquipmentChangedCallback(
+		[this](int16_t slotId) {
+			LOG_DEBUG(MOD_INVENTORY, "Equipment slot {} changed, updating appearance", slotId);
+			UpdatePlayerAppearanceFromInventory();
+		}
+	);
 }
 
 void EverQuest::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity)
@@ -11022,8 +11030,8 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 		}
 
 #ifdef EQT_HAS_GRAPHICS
-		// If this is our player, update the inventory model view
-		if (spawn_id == m_my_spawn_id && m_graphics_initialized && m_renderer) {
+		// Update entity appearance in the 3D world
+		if (m_graphics_initialized && m_renderer) {
 			// Build appearance from updated entity data
 			EQT::Graphics::EntityAppearance appearance;
 			appearance.face = entity.face;
@@ -11037,10 +11045,94 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 				appearance.equipment[i] = entity.equipment[i];
 				appearance.equipment_tint[i] = entity.equipment_tint[i];
 			}
-			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+
+			// Update the in-game 3D model for this entity
+			m_renderer->updateEntityAppearance(spawn_id, entity.race_id, entity.gender, appearance);
+
+			// If this is our player, also update the inventory paperdoll
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+			}
 		}
 #endif
 	}
+}
+
+void EverQuest::UpdatePlayerAppearanceFromInventory()
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (!m_graphics_initialized || !m_renderer || !m_inventory_manager) {
+		return;
+	}
+
+	// Find the player entity
+	auto it = m_entities.find(m_my_spawn_id);
+	if (it == m_entities.end()) {
+		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", m_my_spawn_id);
+		return;
+	}
+
+	Entity& entity = it->second;
+
+	// Build appearance from inventory items
+	EQT::Graphics::EntityAppearance appearance;
+	appearance.face = entity.face;
+	appearance.haircolor = entity.haircolor;
+	appearance.hairstyle = entity.hairstyle;
+	appearance.beardcolor = entity.beardcolor;
+	appearance.beard = entity.beard;
+	appearance.texture = entity.equip_chest2;
+	appearance.helm = entity.helm;
+
+	// Initialize equipment arrays from entity (fallback)
+	for (int i = 0; i < 9; i++) {
+		appearance.equipment[i] = entity.equipment[i];
+		appearance.equipment_tint[i] = entity.equipment_tint[i];
+	}
+
+	// Mapping from inventory slots to equipment appearance indices
+	// Note: EQ equipment indices are: 0=Head, 1=Chest, 2=Arms, 3=Wrist, 4=Hands, 5=Legs, 6=Feet, 7=Primary, 8=Secondary
+	struct SlotMapping {
+		int16_t inventorySlot;
+		int equipSlotIndex;
+	};
+	const SlotMapping mappings[] = {
+		{ eqt::inventory::SLOT_HEAD, 0 },      // Head
+		{ eqt::inventory::SLOT_CHEST, 1 },     // Chest
+		{ eqt::inventory::SLOT_ARMS, 2 },      // Arms
+		{ eqt::inventory::SLOT_WRIST1, 3 },    // Wrist (use first wrist slot)
+		{ eqt::inventory::SLOT_HANDS, 4 },     // Hands
+		{ eqt::inventory::SLOT_LEGS, 5 },      // Legs
+		{ eqt::inventory::SLOT_FEET, 6 },      // Feet
+		{ eqt::inventory::SLOT_PRIMARY, 7 },   // Primary
+		{ eqt::inventory::SLOT_SECONDARY, 8 }, // Secondary
+	};
+
+	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Building appearance from inventory");
+	for (const auto& mapping : mappings) {
+		const auto* item = m_inventory_manager->getItem(mapping.inventorySlot);
+		if (item) {
+			// Body armor: use material for texture variant and color for tint
+			if (mapping.equipSlotIndex < 7) {
+				appearance.equipment[mapping.equipSlotIndex] = item->material;
+				appearance.equipment_tint[mapping.equipSlotIndex] = item->color;
+			} else {
+				// Weapons: use item ID for model lookup
+				appearance.equipment[mapping.equipSlotIndex] = item->itemId;
+			}
+		} else {
+			// No item in slot - clear the appearance slot
+			appearance.equipment[mapping.equipSlotIndex] = 0;
+			appearance.equipment_tint[mapping.equipSlotIndex] = 0;
+		}
+	}
+
+	// Update both the in-game entity and the inventory paperdoll
+	m_renderer->updateEntityAppearance(m_my_spawn_id, entity.race_id, entity.gender, appearance);
+	m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+
+	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Updated player appearance");
+#endif
 }
 
 void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
