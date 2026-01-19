@@ -4380,8 +4380,12 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
-    // Render
-    driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+    // Render - use sky renderer's clear color for day/night effect
+    irr::video::SColor clearColor(255, 50, 50, 80);  // Default dark blue
+    if (skyRenderer_ && skyRenderer_->isEnabled() && skyRenderer_->isInitialized()) {
+        clearColor = skyRenderer_->getCurrentClearColor();
+    }
+    driver_->beginScene(true, true, clearColor);
     sectionStart = std::chrono::steady_clock::now();  // Reset for accurate sceneDrawAll timing
     smgr_->drawAll();
     if (frameTimingEnabled_) {

@@ -228,7 +228,8 @@ void SkyRenderer::createSkyDome() {
                         // Set texture tiling and filtering on all 6 materials
                         for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
                             irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
-                            mat.setFlag(irr::video::EMF_LIGHTING, false);
+                            // Enable lighting so material colors can affect the texture
+                            mat.setFlag(irr::video::EMF_LIGHTING, true);
                             mat.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
                             mat.setFlag(irr::video::EMF_TRILINEAR_FILTER, true);
                             mat.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, true);
@@ -236,6 +237,14 @@ void SkyRenderer::createSkyDome() {
                             mat.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
                             mat.TextureLayer[0].BilinearFilter = true;
                             mat.TextureLayer[0].TrilinearFilter = true;
+
+                            // Set up material colors for day/night tinting
+                            // Use full white as base so tinting can darken
+                            mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                            mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                            mat.EmissiveColor = irr::video::SColor(0, 0, 0, 0);
+                            // ECM_DIFFUSE_AND_AMBIENT: material colors modulate the texture
+                            mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
 
                             // Scale UV to tile the texture
                             irr::core::matrix4 texMat;
@@ -983,15 +992,39 @@ void SkyRenderer::updateSkyLayerColors() {
     }
 
     // Apply tint to Irrlicht built-in sky box for day/night cycle
+    // Irrlicht sky boxes don't respond well to lighting, so we use two techniques:
+    // 1. Set the background clear color to match the tint (for the "base" sky color)
+    // 2. Adjust sky box opacity - more transparent at night so background shows through
     if (irrlichtSkyDome_) {
+        // Calculate opacity based on brightness - darker = more transparent to show background
+        // At full brightness (1.0), alpha = 255 (opaque)
+        // At low brightness (0.2), alpha = ~100 (semi-transparent, background shows through)
+        float brightness = currentSkyColors_.cloudBrightness;
+        irr::u32 alpha = static_cast<irr::u32>(100 + 155 * brightness);  // Range: 100-255
+
         for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
             irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
-            // Use diffuse color to tint the sky texture
-            mat.DiffuseColor = tint;
-            mat.AmbientColor = tint;
-            // ECM_DIFFUSE_AND_AMBIENT makes the material colors modulate the texture
+            // Use vertex alpha for transparency
+            mat.DiffuseColor = irr::video::SColor(alpha, tint.getRed(), tint.getGreen(), tint.getBlue());
+            mat.AmbientColor = irr::video::SColor(alpha, tint.getRed(), tint.getGreen(), tint.getBlue());
+            // Use transparent material type to enable alpha blending
+            mat.MaterialType = irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
             mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
         }
+    }
+
+    // Set the background/clear color to match the tint for proper day/night effect
+    if (driver_) {
+        // Use a darker version of the tint as the background color
+        // This shows through the semi-transparent sky at night
+        irr::video::SColor clearColor(
+            255,
+            tint.getRed() / 2,
+            tint.getGreen() / 2,
+            tint.getBlue() / 2
+        );
+        // Store for use by beginScene
+        currentClearColor_ = clearColor;
     }
 }
 

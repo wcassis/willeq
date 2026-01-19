@@ -14,8 +14,10 @@
 #include <iostream>
 #include <cmath>
 #include <set>
+#include <unordered_set>
 #include <chrono>
 #include <fstream>
+#include <fmt/ranges.h>
 
 namespace EQT {
 namespace Graphics {
@@ -995,6 +997,32 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
                     // Phase 6.2: Set attack animation speed to match weapon delay
                     if ((animation == 5 || animation == 6) && visual.weaponDelayMs > 0) {
                         visual.animatedNode->getAnimator().setTargetDuration(visual.weaponDelayMs * 0.5f);
+                    }
+                }
+            } else {
+                // Animation not found - try fallback
+                auto availableAnims = visual.animatedNode->getAnimationList();
+                std::string fallbackAnim;
+                char animClass = !targetAnim.empty() ? std::tolower(targetAnim[0]) : 'o';
+
+                for (const auto& anim : availableAnims) {
+                    if (!anim.empty() && std::tolower(anim[0]) == animClass) {
+                        fallbackAnim = anim;
+                        break;
+                    }
+                }
+
+                if (!fallbackAnim.empty() && visual.animatedNode->playAnimation(fallbackAnim, loopAnim, playThrough)) {
+                    LOG_DEBUG(MOD_GRAPHICS, "updateEntity: spawn={} animation '{}' not found, using fallback '{}' (available: {})",
+                              spawnId, targetAnim, fallbackAnim, fmt::join(availableAnims, ","));
+                    visual.currentAnimation = fallbackAnim;
+                } else if (visual.isNPC && animation > 0) {
+                    // Only log warning for moving NPCs that have no animation
+                    static std::unordered_set<uint32_t> loggedEntities;
+                    if (loggedEntities.find(spawnId) == loggedEntities.end()) {
+                        LOG_WARN(MOD_GRAPHICS, "updateEntity: spawn={} animation '{}' not found for moving NPC (available: {})",
+                                  spawnId, targetAnim, fmt::join(availableAnims, ","));
+                        loggedEntities.insert(spawnId);
                     }
                 }
             }

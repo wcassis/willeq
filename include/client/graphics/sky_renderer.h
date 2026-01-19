@@ -85,6 +85,9 @@ public:
     // Get recommended fog color based on current time of day
     irr::video::SColor getRecommendedFogColor() const;
 
+    // Get current background clear color for day/night cycle
+    irr::video::SColor getCurrentClearColor() const { return currentClearColor_; }
+
 private:
     // Calculate sky colors for given time of day (decimal hours 0-24)
     SkyColorSet calculateSkyColors(float timeOfDay) const;
@@ -191,6 +194,9 @@ private:
 
     // Cached sky colors for current time of day
     SkyColorSet currentSkyColors_;
+
+    // Current background clear color for day/night cycle
+    irr::video::SColor currentClearColor_{255, 50, 80, 120};
 
     // Cloud layer nodes for UV scrolling (subset of skyDomeNodes_)
     std::vector<irr::scene::IMeshSceneNode*> cloudLayerNodes_;
