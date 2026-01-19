@@ -3583,14 +3583,19 @@ float EntityRenderer::findBoatDeckZ(float x, float y, float currentZ) const {
 
         // If within boat's collision radius
         if (horizontalDist <= visual.collisionRadius) {
-            // Check if we're at or above the boat's deck level (within step height)
-            // Deck Z is calculated as boat center + half height
+            // Deck Z is at the top of the boat model
             float deckZ = visual.lastZ + (visual.collisionHeight / 2.0f);
+            // Bottom of boat (for checking if we're within the boat's vertical range)
+            float boatBottomZ = visual.lastZ - (visual.collisionHeight / 2.0f);
 
-            // Allow stepping up onto deck from slightly below, or standing on it
-            // Step height tolerance: 4 units up, 2 units down
+            // Allow standing on deck if:
+            // 1. We're on the deck (within small tolerance above)
+            // 2. We're below the deck but above the bottom of the boat (inside the boat's height)
+            // 3. We're slightly below the boat (allowing step up from water)
             float zDiff = currentZ - deckZ;
-            if (zDiff >= -4.0f && zDiff <= 2.0f) {
+            // Allow up to 2 units above deck, or anywhere from deck down to 10 units below boat bottom
+            // This allows stepping onto boats from water level
+            if (zDiff <= 2.0f && currentZ >= (boatBottomZ - 10.0f)) {
                 // This boat is a valid floor - check if it's closer than previous best
                 if (horizontalDist < bestDistance) {
                     bestDeckZ = deckZ;

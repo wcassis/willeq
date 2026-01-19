@@ -6212,6 +6212,7 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
         }
     }
 
+    float groundZ = feetZ;  // Default to current feet position
     if (hit) {
         float floorZ = hitPoint.Y;
 
@@ -6219,7 +6220,7 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
         // 1. It's at or below our feet + step height (we can step up to it)
         // 2. It's not a ceiling (above our feet + step tolerance)
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
-            return floorZ;
+            groundZ = floorZ;
         } else {
             // Hit a ceiling/obstruction - player can't fit, block movement
             // Return an invalid value to signal blocked (return as if ground is way above)
@@ -6227,7 +6228,25 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
         }
     }
 
-    return feetZ;  // No ground found, return current feet position
+    // Check for boat collision - boats act as elevated platforms
+    // This uses feetZ (currentZ - modelYOffset) as the player position
+    if (entityRenderer_) {
+        float boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, feetZ);
+        if (boatDeckZ != BEST_Z_INVALID) {
+            // Use the higher of boat deck or zone ground
+            if (boatDeckZ > groundZ) {
+                if (playerConfig_.collisionDebug) {
+                    // Yellow line showing boat deck
+                    irr::core::vector3df irrFrom(x, feetZ, y);
+                    irr::core::vector3df irrTo(x, boatDeckZ, y);
+                    addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
+                }
+                return boatDeckZ;
+            }
+        }
+    }
+
+    return groundZ;
 }
 
 // --- Repair Mode Methods ---
