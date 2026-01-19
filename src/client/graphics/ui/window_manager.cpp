@@ -1511,21 +1511,17 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
-    // Check loot window first (if open)
-    if (lootWindow_ && lootWindow_->isOpen()) {
-        if (lootWindow_->handleMouseDown(x, y, leftButton, shift)) {
+    // Windows are checked in reverse render order (topmost first) so that
+    // clicks go to the visually topmost window, not a window underneath.
+
+    // Check bag windows first (rendered on top of other item windows)
+    for (auto& [slotId, bagWindow] : bagWindows_) {
+        if (bagWindow->handleMouseDown(x, y, leftButton, shift, ctrl)) {
             return true;
         }
     }
 
-    // Check vendor window (if open)
-    if (vendorWindow_ && vendorWindow_->isOpen()) {
-        if (vendorWindow_->handleMouseDown(x, y, leftButton, shift)) {
-            return true;
-        }
-    }
-
-    // Check trade request dialog first (modal)
+    // Check trade request dialog (modal)
     if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
         if (tradeRequestDialog_->handleMouseDown(x, y, leftButton, shift)) {
             return true;
@@ -1539,9 +1535,9 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
-    // Check trade window (if open)
-    if (tradeWindow_ && tradeWindow_->isOpen()) {
-        if (tradeWindow_->handleMouseDown(x, y, leftButton, shift)) {
+    // Check tradeskill container window (if open)
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
             return true;
         }
     }
@@ -1560,9 +1556,23 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
     }
 
-    // Check tradeskill container window (if open)
-    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
-        if (tradeskillWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
+    // Check trade window (if open)
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        if (tradeWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Check vendor window (if open)
+    if (vendorWindow_ && vendorWindow_->isOpen()) {
+        if (vendorWindow_->handleMouseDown(x, y, leftButton, shift)) {
+            return true;
+        }
+    }
+
+    // Check loot window (if open)
+    if (lootWindow_ && lootWindow_->isOpen()) {
+        if (lootWindow_->handleMouseDown(x, y, leftButton, shift)) {
             return true;
         }
     }
@@ -1605,13 +1615,6 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
 
         // Let hotbar window handle other clicks
         if (hotbarWindow_->handleMouseDown(x, y, leftButton, shift, ctrl)) {
-            return true;
-        }
-    }
-
-    // Check bag windows (they're on top of inventory)
-    for (auto& [slotId, bagWindow] : bagWindows_) {
-        if (bagWindow->handleMouseDown(x, y, leftButton, shift, ctrl)) {
             return true;
         }
     }
@@ -1673,58 +1676,33 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         return true;
     }
 
-    // Check spellbook window
-    if (spellBookWindow_ && spellBookWindow_->isVisible()) {
-        if (spellBookWindow_->handleMouseUp(x, y, leftButton)) {
-            return true;
-        }
-    }
+    // Windows are checked in reverse render order (topmost first) so that
+    // mouse up events go to the visually topmost window, not a window underneath.
 
-    // Check buff window
-    if (buffWindow_ && buffWindow_->isVisible()) {
-        if (buffWindow_->handleMouseUp(x, y, leftButton)) {
-            return true;
-        }
-    }
-
-    // Check loot window
-    if (lootWindow_ && lootWindow_->isOpen()) {
-        if (lootWindow_->handleMouseUp(x, y, leftButton)) {
-            return true;
-        }
-    }
-
-    // Check vendor window
-    if (vendorWindow_ && vendorWindow_->isOpen()) {
-        if (vendorWindow_->handleMouseUp(x, y, leftButton)) {
-            return true;
-        }
-    }
-
-    // Check skills window
-    if (skillsWindow_ && skillsWindow_->isVisible()) {
-        if (skillsWindow_->handleMouseUp(x, y, leftButton)) {
-            return true;
-        }
-    }
-
-    // Check skill trainer window
-    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
-        if (skillTrainerWindow_->handleMouseUp(x, y, leftButton)) {
-            return true;
-        }
-    }
-
-    // Check note window
+    // Check note window first (rendered on top)
     if (noteWindow_ && noteWindow_->isVisible()) {
         if (noteWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
 
-    // Check trade window
-    if (tradeWindow_ && tradeWindow_->isOpen()) {
-        if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
+    // Check bag windows (rendered on top of other item windows)
+    for (auto& [slotId, bagWindow] : bagWindows_) {
+        if (bagWindow->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check money input dialog
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        if (moneyInputDialog_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1743,23 +1721,23 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         }
     }
 
-    // Check tradeskill container window
-    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
-        if (tradeskillWindow_->handleMouseUp(x, y, leftButton)) {
+    // Check trade window
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        if (tradeWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
 
-    // Check money input dialog
-    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
-        if (moneyInputDialog_->handleMouseUp(x, y, leftButton)) {
+    // Check vendor window
+    if (vendorWindow_ && vendorWindow_->isOpen()) {
+        if (vendorWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
 
-    // Check bag windows
-    for (auto& [slotId, bagWindow] : bagWindows_) {
-        if (bagWindow->handleMouseUp(x, y, leftButton)) {
+    // Check loot window
+    if (lootWindow_ && lootWindow_->isOpen()) {
+        if (lootWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1785,6 +1763,20 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
         }
     }
 
+    // Check skill trainer window
+    if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
+        if (skillTrainerWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check skills window
+    if (skillsWindow_ && skillsWindow_->isVisible()) {
+        if (skillsWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
     // Check group window
     if (groupWindow_ && groupWindow_->isVisible()) {
         if (groupWindow_->handleMouseUp(x, y, leftButton)) {
@@ -1795,6 +1787,20 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check player status window
     if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
         if (playerStatusWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check buff window
+    if (buffWindow_ && buffWindow_->isVisible()) {
+        if (buffWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check spellbook window
+    if (spellBookWindow_ && spellBookWindow_->isVisible()) {
+        if (spellBookWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }
@@ -1899,17 +1905,60 @@ bool WindowManager::handleMouseMove(int x, int y) {
         // Don't return true - allow other windows to update their hover state
     }
 
-    // Check loot window
-    if (lootWindow_ && lootWindow_->isOpen()) {
-        if (lootWindow_->handleMouseMove(x, y)) {
-            // Update tooltip for loot window items
-            // Note: getHighlightedSlot returns display index, need to convert to corpse slot
-            int16_t displayIndex = lootWindow_->getHighlightedSlot();
-            if (displayIndex != inventory::SLOT_INVALID) {
-                int16_t corpseSlot = lootWindow_->getCorpseSlotFromDisplayIndex(displayIndex);
-                const inventory::ItemInstance* item = (corpseSlot != inventory::SLOT_INVALID)
-                    ? lootWindow_->getItem(corpseSlot) : nullptr;
-                if (item && !invManager_->hasCursorItem()) {
+    // Windows are checked in reverse render order (topmost first) so that
+    // tooltips show for the visually topmost window, not a window underneath.
+
+    // Check bag windows first (rendered on top of other item windows)
+    for (auto& [slotId, bagWindow] : bagWindows_) {
+        if (bagWindow->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check trade request dialog
+    if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
+        if (tradeRequestDialog_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check money input dialog
+    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
+        if (moneyInputDialog_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check tradeskill container window
+    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
+        if (tradeskillWindow_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check bank bag windows
+    for (auto& [slotId, bagWindow] : bankBagWindows_) {
+        if (bagWindow->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check bank window
+    if (bankWindow_ && bankWindow_->isVisible()) {
+        if (bankWindow_->handleMouseMove(x, y)) {
+            return true;
+        }
+    }
+
+    // Check trade window
+    if (tradeWindow_ && tradeWindow_->isOpen()) {
+        if (tradeWindow_->handleMouseMove(x, y)) {
+            // Update tooltip for trade window items
+            int16_t highlightedSlot = tradeWindow_->getHighlightedSlot();
+            if (highlightedSlot != inventory::SLOT_INVALID) {
+                bool isOwn = tradeWindow_->isHighlightedSlotOwn();
+                const inventory::ItemInstance* item = tradeWindow_->getDisplayedItem(highlightedSlot, isOwn);
+                if (item) {
                     tooltip_.setItem(item, x, y);
                 } else {
                     tooltip_.clear();
@@ -1940,29 +1989,17 @@ bool WindowManager::handleMouseMove(int x, int y) {
         }
     }
 
-    // Check trade request dialog
-    if (tradeRequestDialog_ && tradeRequestDialog_->isShown()) {
-        if (tradeRequestDialog_->handleMouseMove(x, y)) {
-            return true;
-        }
-    }
-
-    // Check money input dialog
-    if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
-        if (moneyInputDialog_->handleMouseMove(x, y)) {
-            return true;
-        }
-    }
-
-    // Check trade window
-    if (tradeWindow_ && tradeWindow_->isOpen()) {
-        if (tradeWindow_->handleMouseMove(x, y)) {
-            // Update tooltip for trade window items
-            int16_t highlightedSlot = tradeWindow_->getHighlightedSlot();
-            if (highlightedSlot != inventory::SLOT_INVALID) {
-                bool isOwn = tradeWindow_->isHighlightedSlotOwn();
-                const inventory::ItemInstance* item = tradeWindow_->getDisplayedItem(highlightedSlot, isOwn);
-                if (item) {
+    // Check loot window
+    if (lootWindow_ && lootWindow_->isOpen()) {
+        if (lootWindow_->handleMouseMove(x, y)) {
+            // Update tooltip for loot window items
+            // Note: getHighlightedSlot returns display index, need to convert to corpse slot
+            int16_t displayIndex = lootWindow_->getHighlightedSlot();
+            if (displayIndex != inventory::SLOT_INVALID) {
+                int16_t corpseSlot = lootWindow_->getCorpseSlotFromDisplayIndex(displayIndex);
+                const inventory::ItemInstance* item = (corpseSlot != inventory::SLOT_INVALID)
+                    ? lootWindow_->getItem(corpseSlot) : nullptr;
+                if (item && !invManager_->hasCursorItem()) {
                     tooltip_.setItem(item, x, y);
                 } else {
                     tooltip_.clear();
@@ -1970,34 +2007,6 @@ bool WindowManager::handleMouseMove(int x, int y) {
             } else {
                 tooltip_.clear();
             }
-            return true;
-        }
-    }
-
-    // Check bank bag windows
-    for (auto& [slotId, bagWindow] : bankBagWindows_) {
-        if (bagWindow->handleMouseMove(x, y)) {
-            return true;
-        }
-    }
-
-    // Check bank window
-    if (bankWindow_ && bankWindow_->isVisible()) {
-        if (bankWindow_->handleMouseMove(x, y)) {
-            return true;
-        }
-    }
-
-    // Check tradeskill container window
-    if (tradeskillWindow_ && tradeskillWindow_->isOpen()) {
-        if (tradeskillWindow_->handleMouseMove(x, y)) {
-            return true;
-        }
-    }
-
-    // Check bag windows
-    for (auto& [slotId, bagWindow] : bagWindows_) {
-        if (bagWindow->handleMouseMove(x, y)) {
             return true;
         }
     }

@@ -541,10 +541,8 @@ bool LootWindow::handleMouseMove(int x, int y) {
     if (!visible_ || !containsPoint(x, y)) {
         clearHighlights();
         hoveredButton_ = ButtonId::None;
-        // Notify tooltip to hide
-        if (slotHoverCallback_) {
-            slotHoverCallback_(inventory::SLOT_INVALID, x, y);
-        }
+        // Don't call slotHoverCallback_ when mouse is outside - let other windows handle it
+        // The tooltip will be cleared at the end of WindowManager::handleMouseMove if no window handles it
         return false;
     }
 

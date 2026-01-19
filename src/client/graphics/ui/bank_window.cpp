@@ -344,9 +344,8 @@ bool BankWindow::handleMouseMove(int x, int y) {
         goldConvert10Highlighted_ = false;
         goldConvertAllHighlighted_ = false;
         convertAllChainHighlighted_ = false;
-        if (slotHoverCallback_) {
-            slotHoverCallback_(inventory::SLOT_INVALID, x, y);
-        }
+        // Don't call slotHoverCallback_ when mouse is outside - let other windows handle it
+        // The tooltip will be cleared at the end of WindowManager::handleMouseMove if no window handles it
         return false;
     }
 
