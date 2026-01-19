@@ -110,7 +110,8 @@ bool TradeManager::addItemToTrade(int16_t inventorySlot, int tradeSlot)
         return false;
     }
 
-    // TODO: Validate item can be traded (not NO_DROP, etc.)
+    // Item validation (NO_DROP, etc.) is handled by InventoryManager::canPlaceItemInSlot()
+    // which checks isNpcTrade_ flag - NPC trades allow all items, player trades restrict NO_DROP
     // The actual item movement is handled by the inventory system via MoveItem packet
     // This just tracks that we've put something in the trade
 

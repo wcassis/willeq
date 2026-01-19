@@ -3784,6 +3784,15 @@ void EverQuest::SetupTradeManagerCallbacks()
 	});
 
 	m_trade_manager->setOnStateChanged([this](TradeState state) {
+		// Update inventory manager NPC trade flag for item validation
+		if (m_inventory_manager) {
+			if (state == TradeState::Active) {
+				m_inventory_manager->setNpcTrade(m_trade_manager->isNpcTrade());
+			} else if (state == TradeState::None || state == TradeState::Completed) {
+				m_inventory_manager->setNpcTrade(false);
+			}
+		}
+
 		if (!m_renderer || !m_renderer->getWindowManager()) {
 			return;
 		}

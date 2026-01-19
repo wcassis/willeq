@@ -1045,9 +1045,11 @@ void WindowManager::openTradeWindow(uint32_t partnerSpawnId, const std::string& 
     tradeWindow_->setPosition(x, y);
 
     // If player has an item on cursor, automatically add it to the first trade slot
+    // NPC trades allow all items including NO_DROP (for quest turn-ins)
     if (invManager_ && invManager_->hasCursorItem()) {
         const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
-        if (cursorItem && !cursorItem->noDrop) {
+        bool canTrade = cursorItem && (!cursorItem->noDrop || isNpcTrade);
+        if (canTrade) {
             // Find first empty trade slot
             int16_t firstEmptySlot = inventory::SLOT_INVALID;
             for (int i = 0; i < 8; i++) {
@@ -1072,7 +1074,7 @@ void WindowManager::openTradeWindow(uint32_t partnerSpawnId, const std::string& 
                 placeItem(firstEmptySlot);
             }
         } else if (cursorItem && cursorItem->noDrop) {
-            LOG_DEBUG(MOD_UI, "Cursor item '{}' is NO_DROP, not auto-adding to trade", cursorItem->name);
+            LOG_DEBUG(MOD_UI, "Cursor item '{}' is NO_DROP and not NPC trade, not auto-adding", cursorItem->name);
         }
     }
     // If player has money on cursor, automatically add it to the trade
@@ -2827,10 +2829,11 @@ void WindowManager::handleTradeSlotClick(int16_t tradeSlot, bool shift, bool ctr
     int tradeSlotIndex = tradeSlot - inventory::TRADE_BEGIN;
 
     if (invManager_->hasCursorItem()) {
-        // Check if item can be traded (not NO_DROP)
+        // Check if item can be traded (not NO_DROP, unless it's an NPC trade)
         const inventory::ItemInstance* cursorItem = invManager_->getCursorItem();
-        if (cursorItem && cursorItem->noDrop) {
-            LOG_DEBUG(MOD_UI, "Cannot trade NO_DROP item: {}", cursorItem->name);
+        bool isNpcTrade = tradeManager_ && tradeManager_->isNpcTrade();
+        if (cursorItem && cursorItem->noDrop && !isNpcTrade) {
+            LOG_DEBUG(MOD_UI, "Cannot trade NO_DROP item to player: {}", cursorItem->name);
             if (onTradeErrorCallback_) {
                 onTradeErrorCallback_("You cannot trade that item.");
             }

@@ -100,6 +100,10 @@ public:
     uint32_t getPlayerClass() const { return playerClass_; }
     uint8_t getPlayerLevel() const { return playerLevel_; }
 
+    // NPC trade flag - when true, allows all items (including NO_DROP) in trade slots
+    void setNpcTrade(bool isNpcTrade) { isNpcTrade_ = isNpcTrade; }
+    bool isNpcTrade() const { return isNpcTrade_; }
+
     // Item access by slot
     const ItemInstance* getItem(int16_t slotId) const;
     ItemInstance* getItemMutable(int16_t slotId);
@@ -242,6 +246,9 @@ private:
     uint32_t playerRace_ = 0;
     uint32_t playerClass_ = 0;
     uint8_t playerLevel_ = 1;
+
+    // NPC trade state - when true, NO_DROP restrictions are bypassed for trade slots
+    bool isNpcTrade_ = false;
 
     // Callbacks
     MoveItemCallback moveItemCallback_;

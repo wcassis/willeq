@@ -1139,13 +1139,28 @@ bool InventoryManager::canPlaceItemInSlot(const ItemInstance* item, int16_t targ
         return canPlaceInBankSlot(item, targetSlot);
     }
 
-    // Trade slots - can place any tradeable item
+    // Trade slots - NPC trades allow all items, player trades restrict NO_DROP
     if (isTradeSlot(targetSlot)) {
-        return !item->noDrop;  // Only non-nodrop items can be traded
+        // NPC trades (quests) allow all item types including NO_DROP
+        if (isNpcTrade_) {
+            return true;
+        }
+        return !item->noDrop;  // Only non-nodrop items can be traded to players
     }
 
     // Trade bag slots - check container constraints and tradeability
     if (isTradeBagSlot(targetSlot)) {
+        // NPC trades allow all items in bags too
+        if (isNpcTrade_) {
+            if (item->isContainer()) {
+                return false;  // Still can't put containers in containers
+            }
+            const ItemInstance* container = getContainerAtSlot(targetSlot);
+            if (!container) {
+                return false;
+            }
+            return item->canFitInContainer(container->bagSize);
+        }
         if (item->noDrop || item->isContainer()) {
             return false;
         }
