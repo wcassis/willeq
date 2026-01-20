@@ -705,8 +705,14 @@ void IrrlichtRenderer::hideLoadingScreen() {
 void IrrlichtRenderer::shutdown() {
     unloadZone();
 
+    // Reset all managers that hold Irrlicht resources BEFORE dropping the device
+    // Their destructors may try to remove scene nodes which requires a valid device
     entityRenderer_.reset();
     cameraController_.reset();
+    doorManager_.reset();
+    skyRenderer_.reset();
+    animatedTextureManager_.reset();
+    windowManager_.reset();
     eventReceiver_.reset();
 
     if (device_) {
@@ -3590,6 +3596,38 @@ std::string IrrlichtRenderer::getCameraModeString() const {
         case CameraMode::FirstPerson: return "First Person";
         default: return "Unknown";
     }
+}
+
+void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
+                                           float& forwardX, float& forwardY, float& forwardZ,
+                                           float& upX, float& upY, float& upZ) const {
+    if (!camera_) {
+        // Default values if camera not available
+        posX = posY = posZ = 0.0f;
+        forwardX = 0.0f; forwardY = 0.0f; forwardZ = -1.0f;
+        upX = 0.0f; upY = 1.0f; upZ = 0.0f;
+        return;
+    }
+
+    // Get camera position (already in EQ coordinates: x, y, z where z is up)
+    irr::core::vector3df pos = camera_->getPosition();
+    posX = pos.X;
+    posY = pos.Y;
+    posZ = pos.Z;
+
+    // Get camera target to compute forward direction
+    irr::core::vector3df target = camera_->getTarget();
+    irr::core::vector3df forward = target - pos;
+    forward.normalize();
+    forwardX = forward.X;
+    forwardY = forward.Y;
+    forwardZ = forward.Z;
+
+    // Get camera up vector
+    irr::core::vector3df up = camera_->getUpVector();
+    upX = up.X;
+    upY = up.Y;
+    upZ = up.Z;
 }
 
 bool IrrlichtRenderer::processFrame(float deltaTime) {
