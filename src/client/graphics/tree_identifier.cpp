@@ -62,6 +62,22 @@ void TreeIdentifier::initDefaultPatterns() {
         "*greenery*",
         "*vegetation*"
     };
+
+    // Exclusion patterns - objects that should NOT be treated as trees
+    // even if they match tree patterns (e.g., "fire" matches "*fir*")
+    exclusionPatterns_ = {
+        "*fire*",
+        "*flame*",
+        "*torch*",
+        "*lamp*",
+        "*light*",
+        "*candle*",
+        "*brazier*",
+        "*campfire*",
+        "*bonfire*",
+        "*lantern*",
+        "*sconce*"
+    };
 }
 
 std::string TreeIdentifier::toLower(const std::string& str) {
@@ -145,8 +161,17 @@ bool TreeIdentifier::matchesAnyPattern(const std::string& name,
 bool TreeIdentifier::isTreeMesh(const std::string& meshName, const std::string& textureName) const {
     std::string lowerMesh = toLower(meshName);
 
-    // Check explicit exclusions first
+    // Check explicit exclusions first (exact match)
     if (excludedMeshes_.find(lowerMesh) != excludedMeshes_.end()) {
+        return false;
+    }
+
+    // Check exclusion patterns (e.g., fire/torch/lamp objects)
+    // These may match tree patterns but should not be treated as trees
+    if (matchesAnyPattern(meshName, exclusionPatterns_)) {
+        return false;
+    }
+    if (!textureName.empty() && matchesAnyPattern(textureName, exclusionPatterns_)) {
         return false;
     }
 

@@ -103,6 +103,10 @@ private:
     // Default patterns for leaf/foliage material names
     std::vector<std::string> leafPatterns_;
 
+    // Exclusion patterns - objects that should NOT be treated as trees
+    // (e.g., "fire" matches "*fir*" but should be excluded)
+    std::vector<std::string> exclusionPatterns_;
+
     // Zone-specific explicit tree mesh names
     std::unordered_set<std::string> zoneTreeMeshes_;
 
