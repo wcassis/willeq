@@ -119,6 +119,38 @@ UISettings::BagWindowSettings::BagWindowSettings() {
     }
 }
 
+UISettings::BankBagWindowSettings::BankBagWindowSettings() {
+    // Calculate default positions for all 18 bank bag windows
+    // Bank window is typically at (100, 150)
+    // Bag windows are ~96px wide, ~236px tall (10-slot bag)
+    // Arrange main bank bags in 4 rows of 4 below the bank window
+    // Shared bank bags go to the right of main bank bags
+
+    constexpr int BANK_WINDOW_X = 100;
+    constexpr int BANK_WINDOW_Y = 150;
+    constexpr int BANK_WINDOW_HEIGHT = 400;  // Approximate height
+    constexpr int BAG_START_X = BANK_WINDOW_X;
+    constexpr int BAG_START_Y = BANK_WINDOW_Y + BANK_WINDOW_HEIGHT + 10;
+    constexpr int BAG_WIDTH = 96;
+    constexpr int BAG_HEIGHT = 236;
+    constexpr int BAG_SPACING = 10;
+
+    // 16 main bank slots (2000-2015) arranged in 4 rows of 4
+    for (int i = 0; i < 16; i++) {
+        int col = i % 4;
+        int row = i / 4;
+        mainBankPositions[i].x = BAG_START_X + col * (BAG_WIDTH + BAG_SPACING);
+        mainBankPositions[i].y = BAG_START_Y + row * (BAG_HEIGHT + BAG_SPACING);
+    }
+
+    // 2 shared bank slots (2500-2501) to the right of main bank bags
+    constexpr int SHARED_START_X = BAG_START_X + 4 * (BAG_WIDTH + BAG_SPACING) + 20;
+    for (int i = 0; i < 2; i++) {
+        sharedBankPositions[i].x = SHARED_START_X;
+        sharedBankPositions[i].y = BAG_START_Y + i * (BAG_HEIGHT + BAG_SPACING);
+    }
+}
+
 UISettings::SkillTrainerSettings::SkillTrainerSettings() {
     window.x = -1;  // Centered by default
     window.y = -1;
@@ -232,6 +264,9 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("bagWindows")) {
             loadBagWindowSettings(windows["bagWindows"]);
         }
+        if (windows.isMember("bankBagWindows")) {
+            loadBankBagWindowSettings(windows["bankBagWindows"]);
+        }
     }
 
     // Load tooltip settings
@@ -294,6 +329,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
     saveBagWindowSettings(windows["bagWindows"]);
+    saveBankBagWindowSettings(windows["bankBagWindows"]);
 
     // Save tooltip settings
     saveTooltipSettings(root["tooltips"]);
@@ -387,6 +423,9 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
         if (windows.isMember("bagWindows")) {
             loadBagWindowSettings(windows["bagWindows"]);
         }
+        if (windows.isMember("bankBagWindows")) {
+            loadBankBagWindowSettings(windows["bankBagWindows"]);
+        }
     }
 
     if (overrides.isMember("tooltips")) {
@@ -473,6 +512,7 @@ void UISettings::resetToDefaults() {
     m_trade = TradeSettings{};
     m_bank = BankSettings{};
     m_bagWindows = BagWindowSettings{};
+    m_bankBagWindows = BankBagWindowSettings{};
     m_castingBar = CastingBarSettings{};
     m_itemTooltip = ItemTooltipSettings{};
     m_buffTooltip = BuffTooltipSettings{};
@@ -1197,6 +1237,54 @@ void UISettings::saveBagWindowSettings(Json::Value& json) const {
         positions.append(pos);
     }
     json["positions"] = positions;
+}
+
+// ============================================================================
+// Bank Bag Window Settings Serialization
+// ============================================================================
+
+void UISettings::loadBankBagWindowSettings(const Json::Value& json) {
+    // Load main bank bag positions (slots 2000-2015)
+    if (json.isMember("mainBankPositions")) {
+        const Json::Value& positions = json["mainBankPositions"];
+        for (Json::ArrayIndex i = 0; i < positions.size() && i < 16; i++) {
+            const Json::Value& pos = positions[i];
+            if (pos.isMember("x")) m_bankBagWindows.mainBankPositions[i].x = pos["x"].asInt();
+            if (pos.isMember("y")) m_bankBagWindows.mainBankPositions[i].y = pos["y"].asInt();
+        }
+    }
+
+    // Load shared bank bag positions (slots 2500-2501)
+    if (json.isMember("sharedBankPositions")) {
+        const Json::Value& positions = json["sharedBankPositions"];
+        for (Json::ArrayIndex i = 0; i < positions.size() && i < 2; i++) {
+            const Json::Value& pos = positions[i];
+            if (pos.isMember("x")) m_bankBagWindows.sharedBankPositions[i].x = pos["x"].asInt();
+            if (pos.isMember("y")) m_bankBagWindows.sharedBankPositions[i].y = pos["y"].asInt();
+        }
+    }
+}
+
+void UISettings::saveBankBagWindowSettings(Json::Value& json) const {
+    // Save main bank bag positions (slots 2000-2015)
+    Json::Value mainPositions(Json::arrayValue);
+    for (size_t i = 0; i < 16; i++) {
+        Json::Value pos;
+        pos["x"] = m_bankBagWindows.mainBankPositions[i].x;
+        pos["y"] = m_bankBagWindows.mainBankPositions[i].y;
+        mainPositions.append(pos);
+    }
+    json["mainBankPositions"] = mainPositions;
+
+    // Save shared bank bag positions (slots 2500-2501)
+    Json::Value sharedPositions(Json::arrayValue);
+    for (size_t i = 0; i < 2; i++) {
+        Json::Value pos;
+        pos["x"] = m_bankBagWindows.sharedBankPositions[i].x;
+        pos["y"] = m_bankBagWindows.sharedBankPositions[i].y;
+        sharedPositions.append(pos);
+    }
+    json["sharedBankPositions"] = sharedPositions;
 }
 
 // ============================================================================

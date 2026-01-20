@@ -366,6 +366,21 @@ public:
     };
 
     // =========================================================================
+    // Bank Bag Window Settings (persisted per bank slot)
+    // =========================================================================
+    struct BankBagWindowSettings {
+        struct BagPosition {
+            int x = -1;  // -1 = use default calculated position
+            int y = -1;
+        };
+        // 16 main bank slots (2000-2015) + 2 shared bank slots (2500-2501)
+        std::array<BagPosition, 16> mainBankPositions;    // Index 0-15 for slots 2000-2015
+        std::array<BagPosition, 2> sharedBankPositions;   // Index 0-1 for slots 2500-2501
+
+        BankBagWindowSettings();
+    };
+
+    // =========================================================================
     // Bank Window Settings
     // =========================================================================
     struct BankSettings {
@@ -545,6 +560,9 @@ public:
     BagWindowSettings& bagWindows() { return m_bagWindows; }
     const BagWindowSettings& bagWindows() const { return m_bagWindows; }
 
+    BankBagWindowSettings& bankBagWindows() { return m_bankBagWindows; }
+    const BankBagWindowSettings& bankBagWindows() const { return m_bankBagWindows; }
+
     SkillTrainerSettings& skillTrainer() { return m_skillTrainer; }
     const SkillTrainerSettings& skillTrainer() const { return m_skillTrainer; }
 
@@ -620,6 +638,9 @@ private:
     void loadBagWindowSettings(const Json::Value& json);
     void saveBagWindowSettings(Json::Value& json) const;
 
+    void loadBankBagWindowSettings(const Json::Value& json);
+    void saveBankBagWindowSettings(Json::Value& json) const;
+
     void loadSkillTrainerSettings(const Json::Value& json);
     void saveSkillTrainerSettings(Json::Value& json) const;
 
@@ -663,6 +684,7 @@ private:
     TradeSettings m_trade;
     BankSettings m_bank;
     BagWindowSettings m_bagWindows;
+    BankBagWindowSettings m_bankBagWindows;
     SkillTrainerSettings m_skillTrainer;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;

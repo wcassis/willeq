@@ -315,6 +315,25 @@ void WindowManager::collectWindowPositions() {
         }
     }
 
+    // Bank bag windows - save positions for each open bank bag
+    for (const auto& [bankSlot, bagWindow] : bankBagWindows_) {
+        if (inventory::isBankSlot(bankSlot)) {
+            // Main bank slot (2000-2015) -> index 0-15
+            int index = bankSlot - inventory::BANK_BEGIN;
+            if (index >= 0 && index < 16) {
+                settings.bankBagWindows().mainBankPositions[index].x = bagWindow->getX();
+                settings.bankBagWindows().mainBankPositions[index].y = bagWindow->getY();
+            }
+        } else if (inventory::isSharedBankSlot(bankSlot)) {
+            // Shared bank slot (2500-2501) -> index 0-1
+            int index = bankSlot - inventory::SHARED_BANK_BEGIN;
+            if (index >= 0 && index < 2) {
+                settings.bankBagWindows().sharedBankPositions[index].x = bagWindow->getX();
+                settings.bankBagWindows().sharedBankPositions[index].y = bagWindow->getY();
+            }
+        }
+    }
+
     LOG_DEBUG(MOD_UI, "Collected window positions for saving");
 }
 
@@ -431,6 +450,25 @@ void WindowManager::applyWindowPositions() {
         if (slotIndex >= 0 && slotIndex < 8) {
             const auto& pos = settings.bagWindows().positions[slotIndex];
             bagWindow->setPosition(pos.x, pos.y);
+        }
+    }
+
+    // Bank bag windows - apply saved positions for any currently open bank bags
+    for (auto& [bankSlot, bagWindow] : bankBagWindows_) {
+        if (inventory::isBankSlot(bankSlot)) {
+            // Main bank slot (2000-2015) -> index 0-15
+            int index = bankSlot - inventory::BANK_BEGIN;
+            if (index >= 0 && index < 16) {
+                const auto& pos = settings.bankBagWindows().mainBankPositions[index];
+                bagWindow->setPosition(pos.x, pos.y);
+            }
+        } else if (inventory::isSharedBankSlot(bankSlot)) {
+            // Shared bank slot (2500-2501) -> index 0-1
+            int index = bankSlot - inventory::SHARED_BANK_BEGIN;
+            if (index >= 0 && index < 2) {
+                const auto& pos = settings.bankBagWindows().sharedBankPositions[index];
+                bagWindow->setPosition(pos.x, pos.y);
+            }
         }
     }
 
@@ -698,16 +736,32 @@ void WindowManager::openBankBagWindow(int16_t bankSlot) {
     });
 
     bagWindow->show();
-    bankBagWindows_[bankSlot] = std::move(bagWindow);
 
-    tileBankBagWindows();
+    // Apply saved position from UISettings
+    const auto& settings = UISettings::instance().bankBagWindows();
+    if (inventory::isBankSlot(bankSlot)) {
+        // Main bank slot (2000-2015) -> index 0-15
+        int index = bankSlot - inventory::BANK_BEGIN;
+        if (index >= 0 && index < 16) {
+            const auto& pos = settings.mainBankPositions[index];
+            bagWindow->setPosition(pos.x, pos.y);
+        }
+    } else if (inventory::isSharedBankSlot(bankSlot)) {
+        // Shared bank slot (2500-2501) -> index 0-1
+        int index = bankSlot - inventory::SHARED_BANK_BEGIN;
+        if (index >= 0 && index < 2) {
+            const auto& pos = settings.sharedBankPositions[index];
+            bagWindow->setPosition(pos.x, pos.y);
+        }
+    }
+
+    bankBagWindows_[bankSlot] = std::move(bagWindow);
 }
 
 void WindowManager::closeBankBagWindow(int16_t bankSlot) {
     auto it = bankBagWindows_.find(bankSlot);
     if (it != bankBagWindows_.end()) {
         bankBagWindows_.erase(it);
-        tileBankBagWindows();
     }
 }
 
