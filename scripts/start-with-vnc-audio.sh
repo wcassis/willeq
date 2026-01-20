@@ -37,10 +37,17 @@ log_error() {
 cleanup() {
     log_info "Cleaning up..."
 
+    # Restore terminal state (willeq uses raw mode which can break the terminal on crash)
+    stty sane 2>/dev/null || true
+
     # Kill background processes
     [ -n "$XVFB_PID" ] && kill $XVFB_PID 2>/dev/null || true
     [ -n "$VNC_PID" ] && kill $VNC_PID 2>/dev/null || true
+
+    # Kill audio streaming subshell and any ffmpeg processes using our sink
     [ -n "$AUDIO_PID" ] && kill $AUDIO_PID 2>/dev/null || true
+    # ffmpeg runs as a child of the subshell - kill it explicitly by matching the sink name
+    pkill -f "ffmpeg.*${SINK_NAME}" 2>/dev/null || true
 
     # Restore original default sink
     if [ -n "$ORIGINAL_DEFAULT_SINK" ]; then
@@ -210,12 +217,18 @@ main() {
         WILLEQ_ENV="$WILLEQ_ENV PULSE_SINK=${SINK_NAME}"
     fi
 
+    # Set up log file in project directory
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+    LOG_FILE="$PROJECT_DIR/willeq-vnc-audio.log"
+
     log_info "Starting WillEQ..."
     log_info "Command: $WILLEQ_ENV ./build/bin/willeq $*"
+    log_info "Log file: $LOG_FILE"
     echo ""
 
-    # Run WillEQ with the configured environment
-    env DISPLAY=:${DISPLAY_NUM} PULSE_SINK=${SINK_NAME} ./build/bin/willeq "$@"
+    # Run WillEQ with the configured environment, saving output to log file
+    env DISPLAY=:${DISPLAY_NUM} PULSE_SINK=${SINK_NAME} ./build/bin/willeq "$@" 2>&1 | tee "$LOG_FILE"
 }
 
 main "$@"

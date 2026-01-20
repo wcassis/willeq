@@ -30,6 +30,12 @@
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #endif
+
+#ifdef WITH_AUDIO
+#include "client/audio/audio_manager.h"
+#include "client/audio/sound_assets.h"
+#endif
+
 #include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
@@ -846,6 +852,11 @@ EverQuest::~EverQuest()
 {
 	// Output final performance metrics
 	LOG_INFO(MOD_MAIN, "{}", EQT::PerformanceMetrics::instance().generateReport());
+
+	// Shutdown audio before other cleanup
+#ifdef WITH_AUDIO
+	ShutdownAudio();
+#endif
 
 	// Stop the update loop before destroying
 	StopUpdateLoop();
@@ -2836,6 +2847,13 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 
 		// Load zone lines for zone transitions
 		LoadZoneLines(m_current_zone_name);
+
+		// Update zone music
+#ifdef WITH_AUDIO
+		if (m_audio_manager) {
+			m_audio_manager->onZoneChange(m_current_zone_name);
+		}
+#endif
 	} else {
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data");
@@ -9200,6 +9218,163 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(hotkeys);
+
+#ifdef WITH_AUDIO
+	// === Audio Commands ===
+
+	Command music_cmd;
+	music_cmd.name = "music";
+	music_cmd.usage = "/music [on|off]";
+	music_cmd.description = "Toggle or set music playback";
+	music_cmd.category = "Audio";
+	music_cmd.handler = [this](const std::string& args) {
+		if (!m_audio_manager) {
+			AddChatSystemMessage("Audio system not available.");
+			return;
+		}
+
+		std::string arg = args;
+		std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+
+		if (arg == "on") {
+			m_audio_manager->resumeMusic();
+			AddChatSystemMessage("Music enabled.");
+		} else if (arg == "off") {
+			m_audio_manager->pauseMusic();
+			AddChatSystemMessage("Music disabled.");
+		} else if (arg.empty()) {
+			// Toggle
+			if (m_audio_manager->isMusicPlaying()) {
+				m_audio_manager->pauseMusic();
+				AddChatSystemMessage("Music disabled.");
+			} else {
+				m_audio_manager->resumeMusic();
+				AddChatSystemMessage("Music enabled.");
+			}
+		} else {
+			AddChatSystemMessage("Usage: /music [on|off]");
+		}
+	};
+	m_command_registry->registerCommand(music_cmd);
+
+	Command sound_cmd;
+	sound_cmd.name = "sound";
+	sound_cmd.usage = "/sound [on|off]";
+	sound_cmd.description = "Toggle or set sound effects";
+	sound_cmd.category = "Audio";
+	sound_cmd.handler = [this](const std::string& args) {
+		if (!m_audio_manager) {
+			AddChatSystemMessage("Audio system not available.");
+			return;
+		}
+
+		std::string arg = args;
+		std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+
+		if (arg == "on") {
+			m_audio_manager->setAudioEnabled(true);
+			AddChatSystemMessage("Sound effects enabled.");
+		} else if (arg == "off") {
+			m_audio_manager->setAudioEnabled(false);
+			AddChatSystemMessage("Sound effects disabled.");
+		} else if (arg.empty()) {
+			// Toggle
+			bool currentState = m_audio_manager->isAudioEnabled();
+			m_audio_manager->setAudioEnabled(!currentState);
+			AddChatSystemMessage(fmt::format("Sound effects {}.", !currentState ? "enabled" : "disabled"));
+		} else {
+			AddChatSystemMessage("Usage: /sound [on|off]");
+		}
+	};
+	m_command_registry->registerCommand(sound_cmd);
+
+	Command volume_cmd;
+	volume_cmd.name = "volume";
+	volume_cmd.aliases = {"vol"};
+	volume_cmd.usage = "/volume <0-100>";
+	volume_cmd.description = "Set master volume";
+	volume_cmd.category = "Audio";
+	volume_cmd.handler = [this](const std::string& args) {
+		if (!m_audio_manager) {
+			AddChatSystemMessage("Audio system not available.");
+			return;
+		}
+
+		if (args.empty()) {
+			int currentVol = static_cast<int>(m_audio_manager->getMasterVolume() * 100.0f);
+			AddChatSystemMessage(fmt::format("Master volume: {}%", currentVol));
+			return;
+		}
+
+		try {
+			int vol = std::stoi(args);
+			vol = std::clamp(vol, 0, 100);
+			m_audio_manager->setMasterVolume(vol / 100.0f);
+			AddChatSystemMessage(fmt::format("Master volume set to {}%", vol));
+		} catch (const std::exception&) {
+			AddChatSystemMessage("Usage: /volume <0-100>");
+		}
+	};
+	m_command_registry->registerCommand(volume_cmd);
+
+	Command musicvolume_cmd;
+	musicvolume_cmd.name = "musicvolume";
+	musicvolume_cmd.aliases = {"mvol"};
+	musicvolume_cmd.usage = "/musicvolume <0-100>";
+	musicvolume_cmd.description = "Set music volume";
+	musicvolume_cmd.category = "Audio";
+	musicvolume_cmd.handler = [this](const std::string& args) {
+		if (!m_audio_manager) {
+			AddChatSystemMessage("Audio system not available.");
+			return;
+		}
+
+		if (args.empty()) {
+			int currentVol = static_cast<int>(m_audio_manager->getMusicVolume() * 100.0f);
+			AddChatSystemMessage(fmt::format("Music volume: {}%", currentVol));
+			return;
+		}
+
+		try {
+			int vol = std::stoi(args);
+			vol = std::clamp(vol, 0, 100);
+			m_audio_manager->setMusicVolume(vol / 100.0f);
+			AddChatSystemMessage(fmt::format("Music volume set to {}%", vol));
+		} catch (const std::exception&) {
+			AddChatSystemMessage("Usage: /musicvolume <0-100>");
+		}
+	};
+	m_command_registry->registerCommand(musicvolume_cmd);
+
+	Command effectsvolume_cmd;
+	effectsvolume_cmd.name = "effectsvolume";
+	effectsvolume_cmd.aliases = {"evol", "sfxvol"};
+	effectsvolume_cmd.usage = "/effectsvolume <0-100>";
+	effectsvolume_cmd.description = "Set sound effects volume";
+	effectsvolume_cmd.category = "Audio";
+	effectsvolume_cmd.handler = [this](const std::string& args) {
+		if (!m_audio_manager) {
+			AddChatSystemMessage("Audio system not available.");
+			return;
+		}
+
+		if (args.empty()) {
+			int currentVol = static_cast<int>(m_audio_manager->getEffectsVolume() * 100.0f);
+			AddChatSystemMessage(fmt::format("Effects volume: {}%", currentVol));
+			return;
+		}
+
+		try {
+			int vol = std::stoi(args);
+			vol = std::clamp(vol, 0, 100);
+			m_audio_manager->setEffectsVolume(vol / 100.0f);
+			AddChatSystemMessage(fmt::format("Effects volume set to {}%", vol));
+		} catch (const std::exception&) {
+			AddChatSystemMessage("Usage: /effectsvolume <0-100>");
+		}
+	};
+	m_command_registry->registerCommand(effectsvolume_cmd);
+#endif
 }
 #endif
 
@@ -11211,6 +11386,17 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 			name, spawn_id, spell_id, cast_time) << std::endl;
 	}
 
+#ifdef WITH_AUDIO
+	// Play spell casting sound at caster's position
+	if (m_audio_manager) {
+		auto it = m_entities.find(spawn_id);
+		if (it != m_entities.end()) {
+			m_audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST,
+				glm::vec3(it->second.x, it->second.y, it->second.z));
+		}
+	}
+#endif
+
 	// Notify spell manager about the cast
 	if (m_spell_manager) {
 		m_spell_manager->handleBeginCast(spawn_id, spell_id, cast_time);
@@ -11675,6 +11861,14 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// Mark entity as dead (0 HP)
 		victim_it->second.hp_percent = 0;
 		victim_it->second.is_corpse = true;  // Mark as corpse
+
+#ifdef WITH_AUDIO
+		// Play death sound at victim's position
+		if (m_audio_manager) {
+			m_audio_manager->playSound(EQT::Audio::SoundId::DEATH,
+				glm::vec3(victim_it->second.x, victim_it->second.y, victim_it->second.z));
+		}
+#endif
 
 #ifdef EQT_HAS_GRAPHICS
 		// Trigger death animation in graphics
@@ -15545,14 +15739,54 @@ void EverQuest::ZoneProcessPlayMP3(const EQ::Net::Packet &p)
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	std::string file(filename, strnlen(filename, p.Length() - 2));
-	LOG_DEBUG(MOD_MAIN, "Play MP3: {}", file);
-	// Could play audio file if audio system implemented
+	LOG_DEBUG(MOD_AUDIO, "Play MP3 request: {}", file);
+
+#ifdef WITH_AUDIO
+	if (m_audio_manager) {
+		m_audio_manager->playMusic(file, false);  // Play once, don't loop
+	}
+#endif
 }
 
 void EverQuest::ZoneProcessSound(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_MAIN, "Sound effect received");
-	// Could play sound effect if audio system implemented
+	// Sound packet format (Titanium):
+	// Offset 0-1: Opcode
+	// Offset 2-5: Sound ID (uint32_t)
+	// Offset 6-9: X position (float, optional)
+	// Offset 10-13: Y position (float, optional)
+	// Offset 14-17: Z position (float, optional)
+
+	if (p.Length() < 6) {  // Minimum: opcode + sound ID
+		LOG_DEBUG(MOD_AUDIO, "Sound packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	const uint8_t* data = static_cast<const uint8_t*>(p.Data());
+	uint32_t soundId = *reinterpret_cast<const uint32_t*>(data + 2);
+
+	// Check for position data
+	bool hasPosition = (p.Length() >= 18);  // opcode + sound ID + 3 floats
+	float x = 0, y = 0, z = 0;
+	if (hasPosition) {
+		x = *reinterpret_cast<const float*>(data + 6);
+		y = *reinterpret_cast<const float*>(data + 10);
+		z = *reinterpret_cast<const float*>(data + 14);
+	}
+
+	LOG_DEBUG(MOD_AUDIO, "Sound effect: id={} pos=({:.1f}, {:.1f}, {:.1f}) hasPos={}",
+		soundId, x, y, z, hasPosition);
+
+#ifdef WITH_AUDIO
+	// Don't play sounds during zone loading
+	if (m_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
+		if (hasPosition) {
+			m_audio_manager->playSound(soundId, glm::vec3(x, y, z));
+		} else {
+			m_audio_manager->playSound(soundId);
+		}
+	}
+#endif
 }
 
 // ============================================================================
@@ -16037,6 +16271,31 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			AddChatCombatMessage(msg, true);
 		}
 	}
+
+#ifdef WITH_AUDIO
+	// Play combat sounds at target position
+	if (m_audio_manager && target_it != m_entities.end()) {
+		const Entity& target = target_it->second;
+		bool isMelee = (spell_id == 0 || spell_id == 0xFFFF);
+
+		if (damage_amount > 0) {
+			if (isMelee) {
+				// Melee hit sound
+				m_audio_manager->playSound(EQT::Audio::SoundId::MELEE_HIT,
+					glm::vec3(target.x, target.y, target.z));
+			} else {
+				// Spell damage - play spell impact sound
+				// TODO: Map specific spells to specific impact sounds
+				m_audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST,
+					glm::vec3(target.x, target.y, target.z));
+			}
+		} else if (isMelee) {
+			// Miss - play swing sound
+			m_audio_manager->playSound(EQT::Audio::SoundId::MELEE_MISS,
+				glm::vec3(target.x, target.y, target.z));
+		}
+	}
+#endif
 
 #ifdef EQT_HAS_GRAPHICS
 	// Trigger damage reaction animation on target (if damage > 0 and not a miss)
@@ -17442,6 +17701,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);
 
+	// Initialize audio system (uses EQ client path from graphics config)
+#ifdef WITH_AUDIO
+	InitializeAudio();
+#endif
+
 	// If zone is already fully connected when graphics init, set zone ready
 	if (IsFullyZonedIn() && m_renderer) {
 		m_renderer->setExpectedEntityCount(m_entities.size());
@@ -17545,6 +17809,23 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		if (zone_transition_logging) {
 			LOG_TRACE(MOD_GRAPHICS, "processFrame returned {}", result);
 		}
+
+#ifdef WITH_AUDIO
+		// Update audio listener position to match camera
+		if (m_audio_manager && result) {
+			float posX, posY, posZ;
+			float forwardX, forwardY, forwardZ;
+			float upX, upY, upZ;
+			m_renderer->getCameraTransform(posX, posY, posZ,
+			                               forwardX, forwardY, forwardZ,
+			                               upX, upY, upZ);
+			m_audio_manager->setListenerPosition(
+				glm::vec3(posX, posY, posZ),
+				glm::vec3(forwardX, forwardY, forwardZ),
+				glm::vec3(upX, upY, upZ)
+			);
+		}
+#endif
 
 		if (!result) {
 			LOG_DEBUG(MOD_GRAPHICS, "processFrame returned false - window may have been closed");
@@ -18315,4 +18596,121 @@ void EverQuest::LoadHotbarConfig() {
 }
 
 #endif // EQT_HAS_GRAPHICS
+
+// =============================================================================
+// Audio System
+// =============================================================================
+
+#ifdef WITH_AUDIO
+
+void EverQuest::InitializeAudio() {
+	if (m_audio_manager) {
+		return;  // Already initialized
+	}
+
+	// Check if audio is disabled via configuration
+	if (!m_audio_config_enabled) {
+		LOG_INFO(MOD_AUDIO, "Audio disabled by configuration");
+		return;
+	}
+
+	// Get EQ client path from config or graphics settings
+	std::string eqPath;
+#ifdef EQT_HAS_GRAPHICS
+	eqPath = m_eq_client_path;
+#endif
+
+	if (eqPath.empty()) {
+		LOG_WARN(MOD_AUDIO, "EQ client path not set, audio disabled");
+		return;
+	}
+
+	m_audio_manager = std::make_unique<EQT::Audio::AudioManager>();
+	if (!m_audio_manager->initialize(eqPath, false, m_audio_config_soundfont)) {
+		LOG_WARN(MOD_AUDIO, "Failed to initialize audio system");
+		m_audio_manager.reset();
+		return;
+	}
+
+	// Apply configured volume levels
+	m_audio_manager->setMasterVolume(m_audio_config_master_volume);
+	m_audio_manager->setMusicVolume(m_audio_config_music_volume);
+	m_audio_manager->setEffectsVolume(m_audio_config_effects_volume);
+
+	LOG_DEBUG(MOD_AUDIO, "Audio volumes: master={:.0f}%, music={:.0f}%, effects={:.0f}%",
+		m_audio_config_master_volume * 100.0f,
+		m_audio_config_music_volume * 100.0f,
+		m_audio_config_effects_volume * 100.0f);
+
+	// Preload common sounds for faster playback
+	m_audio_manager->preloadCommonSounds();
+
+#if defined(WITH_RDP) && defined(EQT_HAS_GRAPHICS)
+	// Set up RDP audio streaming callback
+	if (m_renderer && m_renderer->getRDPServer()) {
+		auto* rdpServer = m_renderer->getRDPServer();
+		m_audio_manager->setAudioOutputCallback(
+			[rdpServer](const int16_t* samples, size_t count,
+			            uint32_t sampleRate, uint8_t channels) {
+				if (rdpServer && rdpServer->isRunning()) {
+					rdpServer->sendAudioSamples(samples, count, sampleRate, channels);
+				}
+			}
+		);
+		LOG_INFO(MOD_AUDIO, "RDP audio streaming callback configured");
+	}
+#endif
+
+	LOG_INFO(MOD_AUDIO, "Audio system initialized");
+}
+
+void EverQuest::ShutdownAudio() {
+	if (m_audio_manager) {
+		m_audio_manager->shutdown();
+		m_audio_manager.reset();
+		LOG_INFO(MOD_AUDIO, "Audio system shut down");
+	}
+}
+
+void EverQuest::PlaySound(uint32_t soundId) {
+	// Don't play sounds during zone loading
+	if (m_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
+		m_audio_manager->playSound(soundId);
+	}
+}
+
+void EverQuest::PlaySoundAt(uint32_t soundId, float x, float y, float z) {
+	// Don't play sounds during zone loading
+	if (m_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
+		m_audio_manager->playSound(soundId, glm::vec3(x, y, z));
+	}
+}
+
+void EverQuest::PlayCombatSound(bool hit, float x, float y, float z) {
+	// Don't play sounds during zone loading
+	if (!m_audio_manager || m_loading_phase != LoadingPhase::COMPLETE) return;
+
+	// Use sound IDs from SoundAssets
+	uint32_t soundId = hit ? EQT::Audio::SoundId::MELEE_HIT : EQT::Audio::SoundId::MELEE_SWING;
+	m_audio_manager->playSound(soundId, glm::vec3(x, y, z));
+}
+
+void EverQuest::PlaySpellSound(uint32_t spellId) {
+	// Don't play sounds during zone loading
+	if (!m_audio_manager || m_loading_phase != LoadingPhase::COMPLETE) return;
+
+	// Play generic spell cast sound
+	// TODO: Could map specific spells to specific sounds if needed
+	m_audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST);
+}
+
+void EverQuest::PlayUISound(uint32_t soundId) {
+	// Don't play sounds during zone loading
+	if (!m_audio_manager || m_loading_phase != LoadingPhase::COMPLETE) return;
+
+	// UI sounds are played at listener position (non-positional)
+	m_audio_manager->playSound(soundId);
+}
+
+#endif // WITH_AUDIO
  
