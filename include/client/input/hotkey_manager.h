@@ -141,6 +141,8 @@ enum class HotkeyAction : uint32_t {
     EyeHeightDown,
     ParticleMultiplierDecrease,
     ParticleMultiplierIncrease,
+    DetailDensityDecrease,
+    DetailDensityIncrease,
     HeadVariantPrev,
     HeadVariantNext,
 

@@ -274,6 +274,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/ui/ui_settings.cpp
         src/client/graphics/spell_visual_fx.cpp
+        # Detail system (grass, plants, debris)
+        src/client/graphics/detail/detail_manager.cpp
+        src/client/graphics/detail/detail_chunk.cpp
+        src/client/graphics/detail/detail_config_loader.cpp
+        src/client/graphics/detail/detail_texture_atlas.cpp
+        src/client/graphics/detail/seasonal_controller.cpp
     )
 ENDIF()
 
@@ -560,6 +566,35 @@ IF(EQT_GRAPHICS)
         ${ZLIB_LIBRARIES}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
+    )
+
+    # Surface Map Generator tool (for pre-computing surface type maps)
+    ADD_EXECUTABLE(generate_surface_map
+        tools/generate_surface_map.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(generate_surface_map PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(generate_surface_map
+        ${ZLIB_LIBRARIES}
+        fmt::fmt
+    )
+
+    # Surface Map Query tool (for debugging surface maps)
+    ADD_EXECUTABLE(query_surface_map
+        tools/query_surface_map.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(query_surface_map PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
     )
 ENDIF()
 

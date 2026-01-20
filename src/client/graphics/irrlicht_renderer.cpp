@@ -218,6 +218,12 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ParticleMultiplierIncrease:
                         particleMultiplierDelta_ = event.KeyInput.Shift ? 0.1f : 0.5f;
                         break;
+                    case HA::DetailDensityDecrease:
+                        detailDensityDelta_ = event.KeyInput.Shift ? -0.05f : -0.1f;
+                        break;
+                    case HA::DetailDensityIncrease:
+                        detailDensityDelta_ = event.KeyInput.Shift ? 0.05f : 0.1f;
+                        break;
                     case HA::HeadVariantPrev: headVariantCycleDelta_ = -1; break;
                     case HA::HeadVariantNext: headVariantCycleDelta_ = 1; break;
 
@@ -672,6 +678,16 @@ bool IrrlichtRenderer::loadGlobalAssets() {
             LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed - sky will not be rendered");
         } else {
             LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized");
+        }
+    }
+
+    // Create detail manager (grass, plants, debris)
+    if (!detailManager_) {
+        detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
+        // Set surface maps path - surface map files are expected in EQ client directory
+        // (e.g., qeynos2_surface.map alongside qeynos2.s3d)
+        if (!config_.eqClientPath.empty()) {
+            detailManager_->setSurfaceMapsPath(config_.eqClientPath);
         }
     }
 
@@ -1648,6 +1664,13 @@ void IrrlichtRenderer::updateHUD() {
             text << geomBuf;
         }
 
+        // Detail system info (grass, plants, debris)
+        if (detailManager_ && detailManager_->isEnabled()) {
+            std::string detailInfo = detailManager_->getDebugInfo();
+            std::wstring wDetailInfo(detailInfo.begin(), detailInfo.end());
+            text << wDetailInfo << L"\n";
+        }
+
         // Current target display
         if (currentTargetId_ != 0) {
             text << L"\n--- TARGET ---\n";
@@ -1781,7 +1804,8 @@ void IrrlichtRenderer::updateHUD() {
         hotkeys << L"F1=Wire  F2=HUD  F3=Names\n";
         hotkeys << L"F4=Lights  F5=Cam  F6=Models\n";
         hotkeys << L"F9=Player  F12=Screenshot\n";
-        hotkeys << L"[/]=AnimSpd  P=CorpseZ";
+        hotkeys << L"[/]=AnimSpd  P=CorpseZ\n";
+        hotkeys << L"{/}=Detail  /season";
     }
 
     hudText_->setText(text.str().c_str());
@@ -1891,6 +1915,10 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // Setup fog based on zone size
     setupFog();
 
+    // Setup collision detection (includes zone mesh, objects, doors)
+    // This also initializes the detail system
+    setupZoneCollision();
+
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
     // Log texture cache stats (cache was frozen at start of zone load)
@@ -1921,6 +1949,11 @@ void IrrlichtRenderer::unloadZone() {
     // This must happen BEFORE dropping zoneTriangleSelector_ to avoid race conditions
     if (cameraController_) {
         cameraController_->setCollisionManager(nullptr, nullptr);
+    }
+
+    // Clear detail system BEFORE dropping collision selector
+    if (detailManager_) {
+        detailManager_->onZoneExit();
     }
 
     // Now safe to remove zone collision selector
@@ -3901,6 +3934,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         LOG_INFO(MOD_GRAPHICS, "Ambient light multiplier: {}", ambientMultiplier_);
     }
 
+    // Handle detail density adjustments ([ = decrease, ] = increase)
+    float detailDelta = eventReceiver_->getDetailDensityDelta();
+    if (detailDelta != 0.0f && detailManager_) {
+        detailManager_->adjustDensity(detailDelta);
+        LOG_INFO(MOD_GRAPHICS, "Detail density: {:.0f}%", detailManager_->getDensity() * 100.0f);
+    }
+
     // Handle corpse Z offset adjustments (P = raise, Shift+P = lower) - not when chat focused
     if (!chatInputFocused) {
         float corpseZDelta = eventReceiver_->getCorpseZOffsetDelta();
@@ -4329,6 +4369,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // ===== FRAME TIMING: Vertex Animations =====
     updateVertexAnimations(deltaTime * 1000.0f);  // Convert to milliseconds
     if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
+
+    // ===== Detail System Update (grass, plants, debris) =====
+    // Use player position (converted to Irrlicht coords), not camera position
+    // Camera can be in free-fly mode, follow mode, etc. - player position is authoritative
+    if (detailManager_ && detailManager_->isEnabled()) {
+        // Convert EQ coords (X, Y, Z where Z is up) to Irrlicht coords (X, Y, Z where Y is up)
+        irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
+        detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f);
+    }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H (before object visibility)");
 
@@ -6101,6 +6150,32 @@ void IrrlichtRenderer::setupZoneCollision() {
     // Set up camera collision detection for follow mode zoom
     if (cameraController_ && collisionManager_ && zoneTriangleSelector_) {
         cameraController_->setCollisionManager(collisionManager_, zoneTriangleSelector_);
+    }
+
+    // Initialize detail system with collision selector for ground queries
+    // Also pass WldLoader for BSP-based water/lava/zoneline exclusion
+    // and zoneMeshNode for texture lookups
+    // Pass the same zone geometry that the mesh was built from to ensure texture indices match
+    if (detailManager_ && zoneTriangleSelector_) {
+        std::shared_ptr<WldLoader> wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
+        std::shared_ptr<ZoneGeometry> zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
+
+        // Pass zone mesh node for texture lookups
+        // In non-PVS mode, use zoneMeshNode_
+        // In PVS mode, zoneMeshNode_ is null - we'll add region nodes below
+        detailManager_->onZoneEnter(currentZoneName_, zoneTriangleSelector_, zoneMeshNode_, wldLoader, zoneGeom);
+
+        // In PVS mode, add all region mesh nodes for texture lookup
+        if (!regionMeshNodes_.empty()) {
+            int addedCount = 0;
+            for (auto& [regionIdx, node] : regionMeshNodes_) {
+                if (node && node->getMesh()) {
+                    detailManager_->addMeshNodeForTextureLookup(node);
+                    addedCount++;
+                }
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "Detail system added {} region meshes for texture lookups", addedCount);
+        }
     }
 }
 

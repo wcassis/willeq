@@ -210,6 +210,8 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"EyeHeightDown", HotkeyAction::EyeHeightDown},
     {"ParticleMultiplierDecrease", HotkeyAction::ParticleMultiplierDecrease},
     {"ParticleMultiplierIncrease", HotkeyAction::ParticleMultiplierIncrease},
+    {"DetailDensityDecrease", HotkeyAction::DetailDensityDecrease},
+    {"DetailDensityIncrease", HotkeyAction::DetailDensityIncrease},
     {"HeadVariantPrev", HotkeyAction::HeadVariantPrev},
     {"HeadVariantNext", HotkeyAction::HeadVariantNext},
 
@@ -587,6 +589,8 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::EyeHeightDown, HotkeyMode::Admin, irr::KEY_KEY_Y, ModifierFlags::Shift);
     addBinding(HotkeyAction::ParticleMultiplierDecrease, HotkeyMode::Admin, irr::KEY_MINUS, ModifierFlags::Ctrl);
     addBinding(HotkeyAction::ParticleMultiplierIncrease, HotkeyMode::Admin, irr::KEY_PLUS, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::DetailDensityDecrease, HotkeyMode::Admin, irr::KEY_OEM_4);  // [ key
+    addBinding(HotkeyAction::DetailDensityIncrease, HotkeyMode::Admin, irr::KEY_OEM_6);  // ] key
     addBinding(HotkeyAction::HeadVariantPrev, HotkeyMode::Admin, irr::KEY_KEY_H);
     addBinding(HotkeyAction::HeadVariantNext, HotkeyMode::Admin, irr::KEY_KEY_N);
 

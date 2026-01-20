@@ -29,6 +29,9 @@
 #include "client/graphics/ui/spell_book_window.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
+#include "client/graphics/detail/detail_manager.h"
+#include "client/graphics/detail/detail_types.h"
+#include "client/graphics/detail/seasonal_controller.h"
 #endif
 #include "client/animation_constants.h"
 #include <array>
@@ -9219,6 +9222,184 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(hotkeys);
+
+	// === Detail System Commands (grass, plants, debris) ===
+
+	Command detail;
+	detail.name = "detail";
+	detail.aliases = {"detaildensity", "grass"};
+	detail.usage = "/detail [0-100]";
+	detail.description = "Set or show detail density (grass, plants)";
+	detail.category = "Utility";
+	detail.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+
+		if (args.empty()) {
+			AddChatSystemMessage(fmt::format("Detail density: {}%",
+				static_cast<int>(dm->getDensity() * 100)));
+		} else {
+			try {
+				int value = std::stoi(args);
+				value = std::clamp(value, 0, 100);
+				dm->setDensity(value / 100.0f);
+				AddChatSystemMessage(fmt::format("Detail density set to {}%", value));
+			} catch (...) {
+				AddChatSystemMessage("Usage: /detail [0-100]");
+			}
+		}
+	};
+	m_command_registry->registerCommand(detail);
+
+	Command togglegrass;
+	togglegrass.name = "togglegrass";
+	togglegrass.usage = "/togglegrass";
+	togglegrass.description = "Toggle grass rendering on/off";
+	togglegrass.category = "Utility";
+	togglegrass.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+		using EQT::Graphics::Detail::DetailCategory;
+		bool enabled = dm->isCategoryEnabled(DetailCategory::Grass);
+		dm->setCategoryEnabled(DetailCategory::Grass, !enabled);
+		AddChatSystemMessage(fmt::format("Grass: {}", !enabled ? "enabled" : "disabled"));
+	};
+	m_command_registry->registerCommand(togglegrass);
+
+	Command toggleplants;
+	toggleplants.name = "toggleplants";
+	toggleplants.usage = "/toggleplants";
+	toggleplants.description = "Toggle plants rendering on/off";
+	toggleplants.category = "Utility";
+	toggleplants.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+		using EQT::Graphics::Detail::DetailCategory;
+		bool enabled = dm->isCategoryEnabled(DetailCategory::Plants);
+		dm->setCategoryEnabled(DetailCategory::Plants, !enabled);
+		AddChatSystemMessage(fmt::format("Plants: {}", !enabled ? "enabled" : "disabled"));
+	};
+	m_command_registry->registerCommand(toggleplants);
+
+	Command togglerocks;
+	togglerocks.name = "togglerocks";
+	togglerocks.usage = "/togglerocks";
+	togglerocks.description = "Toggle rocks rendering on/off";
+	togglerocks.category = "Utility";
+	togglerocks.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+		using EQT::Graphics::Detail::DetailCategory;
+		bool enabled = dm->isCategoryEnabled(DetailCategory::Rocks);
+		dm->setCategoryEnabled(DetailCategory::Rocks, !enabled);
+		AddChatSystemMessage(fmt::format("Rocks: {}", !enabled ? "enabled" : "disabled"));
+	};
+	m_command_registry->registerCommand(togglerocks);
+
+	Command toggledebris;
+	toggledebris.name = "toggledebris";
+	toggledebris.usage = "/toggledebris";
+	toggledebris.description = "Toggle debris rendering on/off";
+	toggledebris.category = "Utility";
+	toggledebris.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+		using EQT::Graphics::Detail::DetailCategory;
+		bool enabled = dm->isCategoryEnabled(DetailCategory::Debris);
+		dm->setCategoryEnabled(DetailCategory::Debris, !enabled);
+		AddChatSystemMessage(fmt::format("Debris: {}", !enabled ? "enabled" : "disabled"));
+	};
+	m_command_registry->registerCommand(toggledebris);
+
+	Command season;
+	season.name = "season";
+	season.usage = "/season [default|snow|autumn|desert|swamp|auto]";
+	season.description = "Override seasonal detail variant";
+	season.category = "Utility";
+	season.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+		using EQT::Graphics::Detail::Season;
+		using EQT::Graphics::Detail::SeasonalController;
+
+		if (args.empty()) {
+			// Show current season
+			Season current = dm->getCurrentSeason();
+			AddChatSystemMessage(fmt::format("Current season: {}",
+				SeasonalController::getSeasonName(current)));
+			return;
+		}
+
+		std::string lower = args;
+		std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+		if (lower == "auto" || lower == "clear") {
+			dm->clearSeasonOverride();
+			Season detected = dm->getCurrentSeason();
+			AddChatSystemMessage(fmt::format("Season: automatic detection ({})",
+				SeasonalController::getSeasonName(detected)));
+		} else if (lower == "default" || lower == "normal") {
+			dm->setSeasonOverride(Season::Default);
+			AddChatSystemMessage("Season override: Default");
+		} else if (lower == "snow" || lower == "winter") {
+			dm->setSeasonOverride(Season::Snow);
+			AddChatSystemMessage("Season override: Snow");
+		} else if (lower == "autumn" || lower == "fall") {
+			dm->setSeasonOverride(Season::Autumn);
+			AddChatSystemMessage("Season override: Autumn");
+		} else if (lower == "desert" || lower == "dry") {
+			dm->setSeasonOverride(Season::Desert);
+			AddChatSystemMessage("Season override: Desert");
+		} else if (lower == "swamp" || lower == "marsh") {
+			dm->setSeasonOverride(Season::Swamp);
+			AddChatSystemMessage("Season override: Swamp");
+		} else {
+			AddChatSystemMessage("Usage: /season [default|snow|autumn|desert|swamp|auto]");
+		}
+	};
+	m_command_registry->registerCommand(season);
+
+	Command detailinfo;
+	detailinfo.name = "detailinfo";
+	detailinfo.usage = "/detailinfo";
+	detailinfo.description = "Show detail system debug info";
+	detailinfo.category = "Utility";
+	detailinfo.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* dm = m_renderer->getDetailManager();
+		if (!dm) {
+			AddChatSystemMessage("Detail system not available");
+			return;
+		}
+		AddChatSystemMessage(dm->getDebugInfo());
+		AddChatSystemMessage(fmt::format("  Chunks: {}, Placements: {}",
+			dm->getActiveChunkCount(), dm->getVisiblePlacementCount()));
+	};
+	m_command_registry->registerCommand(detailinfo);
 }
 #endif
 

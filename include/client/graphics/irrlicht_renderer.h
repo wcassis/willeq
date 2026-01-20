@@ -13,6 +13,7 @@
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/detail/detail_manager.h"
 #include "client/input/hotkey_manager.h"
 
 // Forward declaration for collision map
@@ -283,6 +284,9 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     // Spell particle multiplier adjustment (- to decrease, = to increase, Shift for fine control)
     float getParticleMultiplierDelta() { float d = particleMultiplierDelta_; particleMultiplierDelta_ = 0; return d; }
 
+    // Detail density adjustment ([ to decrease, ] to increase)
+    float getDetailDensityDelta() { float d = detailDensityDelta_; detailDensityDelta_ = 0; return d; }
+
     // Chat input key events
     struct KeyEvent {
         irr::EKEY_CODE key;
@@ -390,6 +394,7 @@ bool zoneLineVisualizationToggleRequested_ = false;
     float corpseZOffsetDelta_ = 0.0f;
     float eyeHeightDelta_ = 0.0f;
     float particleMultiplierDelta_ = 0.0f;
+    float detailDensityDelta_ = 0.0f;
     bool quitRequested_ = false;
 
     // Helm UV debugging
@@ -836,6 +841,9 @@ public:
     // Check if constrained rendering mode is active
     bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
+    // Detail system access (grass, plants, debris)
+    Detail::DetailManager* getDetailManager() { return detailManager_.get(); }
+
 private:
     void setupCamera();
     void setupLighting();
@@ -881,6 +889,7 @@ private:
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
     std::unique_ptr<SkyRenderer> skyRenderer_;
     std::unique_ptr<ConstrainedTextureCache> constrainedTextureCache_;  // Optional, for memory-limited rendering
+    std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;
