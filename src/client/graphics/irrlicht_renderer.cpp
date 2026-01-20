@@ -498,6 +498,18 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create door manager
     doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
 
+    // Create tree wind animation manager
+    treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
+
+    // Create weather system
+    weatherSystem_ = std::make_unique<WeatherSystem>();
+    // Connect weather system to tree manager via callback
+    weatherSystem_->addCallback([this](WeatherType weather) {
+        if (treeManager_) {
+            treeManager_->setWeather(weather);
+        }
+    });
+
     // Apply initial settings
     wireframeMode_ = config.wireframe;
     fogEnabled_ = config.fog;
@@ -611,6 +623,22 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // NOTE: We do NOT create entity renderer or load models here.
     // That happens in loadGlobalAssets() which is called during graphics loading phase.
+
+    // Create tree wind animation manager (needed before loadZone())
+    if (!treeManager_) {
+        treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
+    }
+
+    // Create weather system (needed before loadZone())
+    if (!weatherSystem_) {
+        weatherSystem_ = std::make_unique<WeatherSystem>();
+        // Connect weather system to tree manager via callback
+        weatherSystem_->addCallback([this](WeatherType weather) {
+            if (treeManager_) {
+                treeManager_->setWeather(weather);
+            }
+        });
+    }
 
     initialized_ = true;
     loadingScreenVisible_ = true;  // Show loading screen by default
@@ -1919,6 +1947,22 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // This also initializes the detail system
     setupZoneCollision();
 
+    // Initialize tree wind animation system using placeable objects
+    LOG_DEBUG(MOD_GRAPHICS, "Tree wind init check: treeManager_={}, currentZone_={}, objects={}",
+              (treeManager_ ? "yes" : "no"),
+              (currentZone_ ? "yes" : "no"),
+              (currentZone_ ? std::to_string(currentZone_->objects.size()) : "n/a"));
+    if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
+        treeManager_->loadConfig("", zoneName);  // Load zone-specific config
+        treeManager_->initialize(currentZone_->objects, currentZone_->objectTextures);
+        LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
+    }
+
+    // Initialize weather system for this zone
+    if (weatherSystem_) {
+        weatherSystem_->setWeatherFromZone(zoneName);
+    }
+
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
     // Log texture cache stats (cache was frozen at start of zone load)
@@ -1954,6 +1998,11 @@ void IrrlichtRenderer::unloadZone() {
     // Clear detail system BEFORE dropping collision selector
     if (detailManager_) {
         detailManager_->onZoneExit();
+    }
+
+    // Clear tree wind animation system
+    if (treeManager_) {
+        treeManager_->cleanup();
     }
 
     // Now safe to remove zone collision selector
@@ -2716,6 +2765,21 @@ void IrrlichtRenderer::createObjectMeshes() {
         }
 
         const std::string& objName = objInstance.placeable->getName();
+
+        // Skip trees - they will be handled by the animated tree manager
+        // Check is done even before tree manager is fully initialized since the
+        // tree identifier patterns are available immediately after manager creation
+        if (treeManager_) {
+            std::string primaryTexture;
+            if (!objInstance.geometry->textureNames.empty()) {
+                primaryTexture = objInstance.geometry->textureNames[0];
+            }
+            if (treeManager_->isTreeObject(objName, primaryTexture)) {
+                LOG_DEBUG(MOD_GRAPHICS, "[OBJ] Skipping tree '{}' - handled by tree manager", objName);
+                continue;
+            }
+        }
+
         irr::scene::IMesh* mesh = nullptr;
 
         auto cacheIt = meshCache.find(objName);
@@ -4377,6 +4441,18 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         // Convert EQ coords (X, Y, Z where Z is up) to Irrlicht coords (X, Y, Z where Y is up)
         irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
         detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f);
+    }
+
+    // ===== Weather System Update =====
+    if (weatherSystem_) {
+        weatherSystem_->update(deltaTime);
+    }
+
+    // ===== Tree Wind Animation Update =====
+    if (treeManager_ && treeManager_->isEnabled()) {
+        // Use camera position for distance-based animation culling
+        irr::core::vector3df cameraPos = camera_ ? camera_->getPosition() : irr::core::vector3df(0, 0, 0);
+        treeManager_->update(deltaTime, cameraPos);
     }
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H (before object visibility)");

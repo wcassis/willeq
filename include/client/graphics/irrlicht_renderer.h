@@ -14,6 +14,8 @@
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/detail/detail_manager.h"
+#include "client/graphics/animated_tree_manager.h"
+#include "client/graphics/weather_system.h"
 #include "client/input/hotkey_manager.h"
 
 // Forward declaration for collision map
@@ -890,6 +892,8 @@ private:
     std::unique_ptr<SkyRenderer> skyRenderer_;
     std::unique_ptr<ConstrainedTextureCache> constrainedTextureCache_;  // Optional, for memory-limited rendering
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
+    std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
+    std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;

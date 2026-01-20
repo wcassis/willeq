@@ -280,6 +280,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/detail/detail_config_loader.cpp
         src/client/graphics/detail/detail_texture_atlas.cpp
         src/client/graphics/detail/seasonal_controller.cpp
+        # Tree wind animation system
+        src/client/graphics/tree_wind_config.cpp
+        src/client/graphics/tree_identifier.cpp
+        src/client/graphics/tree_wind_controller.cpp
+        src/client/graphics/animated_tree_manager.cpp
+        src/client/graphics/weather_system.cpp
     )
 ENDIF()
 
