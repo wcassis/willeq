@@ -1233,48 +1233,31 @@ void IrrlichtRenderer::updateVertexAnimations(float deltaMs) {
             const VertexAnimFrame& frame = vam.animData->frames[vam.currentFrame];
             size_t expectedVerts = frame.positions.size() / 3;
 
-            // Update each mesh buffer
-            // Track cumulative vertex offset across buffers
-            size_t vertexOffset = 0;
+            // Update each mesh buffer using vertex mapping
             for (irr::u32 b = 0; b < vam.mesh->getMeshBufferCount(); ++b) {
                 irr::scene::IMeshBuffer* buffer = vam.mesh->getMeshBuffer(b);
                 irr::video::S3DVertex* vertices = static_cast<irr::video::S3DVertex*>(buffer->getVertices());
                 irr::u32 vertexCount = buffer->getVertexCount();
 
-                // Check if we have enough animation data for this buffer
-                if (vertexOffset + vertexCount > expectedVerts) {
-                    vertexOffset += vertexCount;
+                // Check if we have mapping for this buffer
+                if (b >= vam.vertexMapping.size() || vam.vertexMapping[b].size() != vertexCount) {
                     continue;
                 }
 
-                // Use vertex mapping if available, otherwise fall back to sequential
-                bool useMapping = (vam.vertexMapping.size() > b &&
-                                   vam.vertexMapping[b].size() == vertexCount);
-
                 for (irr::u32 v = 0; v < vertexCount; ++v) {
-                    size_t animIdx;
-                    if (useMapping) {
-                        animIdx = vam.vertexMapping[b][v];
-                        if (animIdx == SIZE_MAX) {
-                            // No match found for this vertex, skip it
-                            continue;
-                        }
-                    } else {
-                        animIdx = vertexOffset + v;
-                    }
-
-                    // Bounds check
-                    if (animIdx >= expectedVerts) {
-                        continue;
+                    size_t animIdx = vam.vertexMapping[b][v];
+                    if (animIdx == SIZE_MAX || animIdx >= expectedVerts) {
+                        continue;  // No mapping for this vertex
                     }
 
                     // Get new position from animation frame (EQ coordinates)
-                    float eqX = frame.positions[animIdx * 3 + 0];
-                    float eqY = frame.positions[animIdx * 3 + 1];
-                    float eqZ = frame.positions[animIdx * 3 + 2];
+                    // Animation positions are relative to center, add center offset
+                    float eqX = frame.positions[animIdx * 3 + 0] + vam.centerOffsetX;
+                    float eqY = frame.positions[animIdx * 3 + 1] + vam.centerOffsetY;
+                    float eqZ = frame.positions[animIdx * 3 + 2] + vam.centerOffsetZ;
 
-                    // Apply EQ->Irrlicht coordinate transform (same as zone_geometry.cpp)
-                    // EQ Z-up -> Irrlicht Y-up
+                    // Apply EQ->Irrlicht coordinate transform
+                    // EQ (x, y, z) Z-up -> Irrlicht (x, z, y) Y-up
                     vertices[v].Pos.X = eqX;
                     vertices[v].Pos.Y = eqZ;
                     vertices[v].Pos.Z = eqY;
@@ -1282,7 +1265,6 @@ void IrrlichtRenderer::updateVertexAnimations(float deltaMs) {
 
                 // Mark buffer as dirty so Irrlicht knows to re-upload it
                 buffer->setDirty(irr::scene::EBT_VERTEX);
-                vertexOffset += vertexCount;
             }
         }
     }
@@ -2879,12 +2861,53 @@ void IrrlichtRenderer::createObjectMeshes() {
             vam.objectName = objName;
 
             // Build vertex mapping from mesh buffer vertices to animation vertices
-            // by matching frame 0 positions (with coordinate transform)
-            if (!vam.animData->frames.empty()) {
+            // The mesh has center baked in but animation positions are relative to center
+            // Also, buildTexturedMesh() reorders vertices by texture, so we need mapping
+            if (!vam.animData->frames.empty() && mesh->getMeshBufferCount() > 0) {
                 const auto& frame0 = vam.animData->frames[0];
                 size_t animVertCount = frame0.positions.size() / 3;
 
+                // First, calculate center offset from geometry (it was logged but cleared)
+                // We can recover it by finding the best match offset
+                if (animVertCount > 0) {
+                    irr::scene::IMeshBuffer* buffer0 = mesh->getMeshBuffer(0);
+                    if (buffer0 && buffer0->getVertexCount() > 0) {
+                        irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(buffer0->getVertices());
+
+                        // Find the center offset by matching the first mesh vertex to any anim vertex
+                        float meshX = verts[0].Pos.X;
+                        float meshY = verts[0].Pos.Y;  // Irrlicht Y = EQ Z
+                        float meshZ = verts[0].Pos.Z;  // Irrlicht Z = EQ Y
+
+                        float bestDist = 1e10f;
+                        for (size_t av = 0; av < animVertCount; ++av) {
+                            float animX = frame0.positions[av * 3 + 0];
+                            float animY = frame0.positions[av * 3 + 1];
+                            float animZ = frame0.positions[av * 3 + 2];
+
+                            // Try this as the center offset
+                            float offsetX = meshX - animX;
+                            float offsetY = meshZ - animY;  // Irrlicht Z = EQ Y
+                            float offsetZ = meshY - animZ;  // Irrlicht Y = EQ Z
+
+                            // Check if this offset works for vertex 0
+                            float dist = offsetX*offsetX + offsetY*offsetY + offsetZ*offsetZ;
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                vam.centerOffsetX = offsetX;
+                                vam.centerOffsetY = offsetY;
+                                vam.centerOffsetZ = offsetZ;
+                            }
+                        }
+
+                        LOG_DEBUG(MOD_GRAPHICS, "Vertex anim '{}' center offset: ({:.2f}, {:.2f}, {:.2f})",
+                                  objName, vam.centerOffsetX, vam.centerOffsetY, vam.centerOffsetZ);
+                    }
+                }
+
+                // Build vertex mapping with center offset applied
                 vam.vertexMapping.resize(mesh->getMeshBufferCount());
+                size_t totalMapped = 0;
                 for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
                     irr::scene::IMeshBuffer* buffer = mesh->getMeshBuffer(b);
                     irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(buffer->getVertices());
@@ -2893,21 +2916,21 @@ void IrrlichtRenderer::createObjectMeshes() {
                     vam.vertexMapping[b].resize(vertexCount, SIZE_MAX);
 
                     for (irr::u32 mv = 0; mv < vertexCount; ++mv) {
-                        // Mesh vertex is in Irrlicht coords (x, z, y from EQ)
+                        // Mesh vertex is in Irrlicht coords
                         float meshX = verts[mv].Pos.X;
-                        float meshY = verts[mv].Pos.Y;  // This is EQ Z
-                        float meshZ = verts[mv].Pos.Z;  // This is EQ Y
+                        float meshY = verts[mv].Pos.Y;  // Irrlicht Y = EQ Z
+                        float meshZ = verts[mv].Pos.Z;  // Irrlicht Z = EQ Y
 
-                        // Find matching animation vertex
+                        // Find matching animation vertex (with center offset)
                         float bestDist = 1e10f;
                         size_t bestIdx = SIZE_MAX;
                         for (size_t av = 0; av < animVertCount; ++av) {
-                            // Animation vertex in EQ coords
-                            float animX = frame0.positions[av * 3 + 0];
-                            float animY = frame0.positions[av * 3 + 1];  // EQ Y
-                            float animZ = frame0.positions[av * 3 + 2];  // EQ Z
+                            // Animation vertex in EQ coords + center offset
+                            float animX = frame0.positions[av * 3 + 0] + vam.centerOffsetX;
+                            float animY = frame0.positions[av * 3 + 1] + vam.centerOffsetY;
+                            float animZ = frame0.positions[av * 3 + 2] + vam.centerOffsetZ;
 
-                            // Compare with transform: mesh(X,Y,Z) should match anim(X,Z,Y)
+                            // Compare: mesh(X,Y,Z) vs anim_centered(X,Z,Y) with coord transform
                             float dx = meshX - animX;
                             float dy = meshY - animZ;  // mesh Y (Irrlicht) = anim Z (EQ)
                             float dz = meshZ - animY;  // mesh Z (Irrlicht) = anim Y (EQ)
@@ -2919,11 +2942,15 @@ void IrrlichtRenderer::createObjectMeshes() {
                             }
                         }
 
-                        if (bestDist < 0.001f) {  // Close enough match
+                        if (bestDist < 1.0f) {  // Allow some tolerance
                             vam.vertexMapping[b][mv] = bestIdx;
+                            totalMapped++;
                         }
                     }
                 }
+
+                LOG_DEBUG(MOD_GRAPHICS, "Vertex anim '{}' mapped {}/{} vertices",
+                          objName, totalMapped, animVertCount);
             }
 
             vertexAnimatedMeshes_.push_back(vam);

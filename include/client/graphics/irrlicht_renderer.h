@@ -109,6 +109,11 @@ struct VertexAnimatedMesh {
     // Mapping from mesh buffer vertex index to animation vertex index
     // Indexed by [bufferIndex][vertexIndex] -> animationVertexIndex
     std::vector<std::vector<size_t>> vertexMapping;
+    // Center offset (EQ coords) - animation frames are relative to center,
+    // but mesh vertices have center baked in. Add this to animation positions.
+    float centerOffsetX = 0.0f;
+    float centerOffsetY = 0.0f;
+    float centerOffsetZ = 0.0f;
 };
 
 // Player movement state for EQ-style controls
