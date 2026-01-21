@@ -4,6 +4,8 @@
 #include <string>
 #include <memory>
 #include "client/graphics/detail/detail_types.h"
+#include "client/graphics/detail/detail_texture_atlas.h"
+#include "client/graphics/detail/seasonal_controller.h"
 
 namespace EQT {
 namespace Graphics {
@@ -42,6 +44,12 @@ private:
 
     // Convert orientation string to enum
     static DetailOrientation parseOrientationString(const std::string& str);
+
+    // Convert surface type string to enum
+    static SurfaceType parseSurfaceTypeString(const std::string& str);
+
+    // Convert atlas tile string to enum
+    static AtlasTile parseAtlasTileString(const std::string& str);
 };
 
 } // namespace Detail

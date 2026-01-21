@@ -1,4 +1,5 @@
 #include "client/graphics/detail/detail_config_loader.h"
+#include "client/graphics/detail/detail_texture_atlas.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
@@ -42,8 +43,17 @@ std::unique_ptr<ZoneDetailConfig> DetailConfigLoader::loadConfigForZone(
 }
 
 std::unique_ptr<ZoneDetailConfig> DetailConfigLoader::loadDefaultConfig(const std::string& dataPath) const {
+    // Try configs/detail_objects.json first (new location)
+    std::string newPath = "configs/detail_objects.json";
+    auto config = loadConfigFile(newPath);
+    if (config) {
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded default config from {}", newPath);
+        return config;
+    }
+
+    // Fall back to old location
     std::string defaultPath = dataPath + "/detail/default_config.json";
-    auto config = loadConfigFile(defaultPath);
+    config = loadConfigFile(defaultPath);
     if (config) {
         LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded default config from {}", defaultPath);
     }
@@ -80,13 +90,29 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
         return false;
     }
 
-    // Parse basic settings
+    // Parse basic settings (legacy format)
     if (root.isMember("zoneName")) {
         config.zoneName = root["zoneName"].asString();
     }
     if (root.isMember("isOutdoor")) {
         config.isOutdoor = root["isOutdoor"].asBool();
     }
+
+    // Parse global settings (new format)
+    if (root.isMember("globalSettings")) {
+        const Json::Value& globals = root["globalSettings"];
+        if (globals.isMember("chunkSize")) {
+            config.chunkSize = globals["chunkSize"].asFloat();
+        }
+        if (globals.isMember("viewDistance")) {
+            config.viewDistance = globals["viewDistance"].asFloat();
+        }
+        if (globals.isMember("baseDensityMultiplier")) {
+            config.densityMultiplier = globals["baseDensityMultiplier"].asFloat();
+        }
+    }
+
+    // Legacy direct settings
     if (root.isMember("chunkSize")) {
         config.chunkSize = root["chunkSize"].asFloat();
     }
@@ -123,7 +149,13 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
                 type.orientation = parseOrientationString(typeJson["orientation"].asString());
             }
 
-            // Parse atlas coordinates
+            // Parse atlas tile by name (new format)
+            if (typeJson.isMember("atlasTile")) {
+                AtlasTile tile = parseAtlasTileString(typeJson["atlasTile"].asString());
+                getTileUV(tile, type.u0, type.v0, type.u1, type.v1);
+            }
+
+            // Parse atlas coordinates (legacy format)
             if (typeJson.isMember("atlas")) {
                 const Json::Value& atlas = typeJson["atlas"];
                 if (atlas.isMember("x")) type.atlasX = atlas["x"].asInt();
@@ -132,7 +164,15 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
                 if (atlas.isMember("height")) type.atlasHeight = atlas["height"].asInt();
             }
 
-            // Parse size range
+            // Parse size - new format (separate fields)
+            if (typeJson.isMember("minSize")) {
+                type.minSize = typeJson["minSize"].asFloat();
+            }
+            if (typeJson.isMember("maxSize")) {
+                type.maxSize = typeJson["maxSize"].asFloat();
+            }
+
+            // Parse size range (legacy format)
             if (typeJson.isMember("sizeRange") && typeJson["sizeRange"].isArray()) {
                 const Json::Value& sizes = typeJson["sizeRange"];
                 if (sizes.size() >= 2) {
@@ -152,6 +192,24 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
                 type.baseDensity = typeJson["baseDensity"].asFloat();
             }
 
+            // Parse allowed surfaces (new format - array of strings)
+            if (typeJson.isMember("allowedSurfaces") && typeJson["allowedSurfaces"].isArray()) {
+                uint32_t surfaceMask = 0;
+                for (const auto& surfaceJson : typeJson["allowedSurfaces"]) {
+                    SurfaceType st = parseSurfaceTypeString(surfaceJson.asString());
+                    surfaceMask |= static_cast<uint32_t>(st);
+                }
+                type.allowedSurfaces = surfaceMask;
+            }
+
+            // Parse excluded surfaces (subtract from allowed)
+            if (typeJson.isMember("excludedSurfaces") && typeJson["excludedSurfaces"].isArray()) {
+                for (const auto& surfaceJson : typeJson["excludedSurfaces"]) {
+                    SurfaceType st = parseSurfaceTypeString(surfaceJson.asString());
+                    type.allowedSurfaces &= ~static_cast<uint32_t>(st);
+                }
+            }
+
             // Parse wind settings
             if (typeJson.isMember("windResponse")) {
                 type.windResponse = typeJson["windResponse"].asFloat();
@@ -160,15 +218,20 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
                 type.windHeightBias = typeJson["windHeightBias"].asFloat();
             }
 
-            // Parse test color (RGBA)
+            // Parse test color (ARGB array)
             if (typeJson.isMember("testColor") && typeJson["testColor"].isArray()) {
                 const Json::Value& color = typeJson["testColor"];
-                if (color.size() >= 3) {
+                if (color.size() >= 4) {
+                    int a = color[0].asInt();
+                    int r = color[1].asInt();
+                    int g = color[2].asInt();
+                    int b = color[3].asInt();
+                    type.testColor = irr::video::SColor(a, r, g, b);
+                } else if (color.size() >= 3) {
                     int r = color[0].asInt();
                     int g = color[1].asInt();
                     int b = color[2].asInt();
-                    int a = color.size() >= 4 ? color[3].asInt() : 255;
-                    type.testColor = irr::video::SColor(a, r, g, b);
+                    type.testColor = irr::video::SColor(255, r, g, b);
                 }
             }
 
@@ -176,6 +239,7 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
         }
     }
 
+    LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded {} detail types", config.detailTypes.size());
     return true;
 }
 
@@ -272,6 +336,77 @@ ZoneDetailConfig DetailConfigLoader::getHardcodedDefault(const std::string& zone
     config.detailTypes.push_back(rock);
 
     return config;
+}
+
+SurfaceType DetailConfigLoader::parseSurfaceTypeString(const std::string& str) {
+    std::string lower = str;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (lower == "grass") return SurfaceType::Grass;
+    if (lower == "dirt") return SurfaceType::Dirt;
+    if (lower == "stone") return SurfaceType::Stone;
+    if (lower == "brick") return SurfaceType::Brick;
+    if (lower == "wood") return SurfaceType::Wood;
+    if (lower == "sand") return SurfaceType::Sand;
+    if (lower == "snow") return SurfaceType::Snow;
+    if (lower == "water") return SurfaceType::Water;
+    if (lower == "lava") return SurfaceType::Lava;
+    if (lower == "jungle") return SurfaceType::Jungle;
+    if (lower == "swamp") return SurfaceType::Swamp;
+    if (lower == "rock") return SurfaceType::Rock;
+    if (lower == "natural") return SurfaceType::Natural;
+    if (lower == "tropical") return SurfaceType::Tropical;
+    if (lower == "cold") return SurfaceType::Cold;
+    if (lower == "hardsurface") return SurfaceType::HardSurface;
+    if (lower == "all") return SurfaceType::All;
+
+    LOG_WARN(MOD_GRAPHICS, "DetailConfigLoader: Unknown surface type '{}', defaulting to Natural", str);
+    return SurfaceType::Natural;
+}
+
+AtlasTile DetailConfigLoader::parseAtlasTileString(const std::string& str) {
+    // Map string names to AtlasTile enum values
+    // Row 0: Temperate grass/flowers
+    if (str == "GrassShort") return AtlasTile::GrassShort;
+    if (str == "GrassTall") return AtlasTile::GrassTall;
+    if (str == "Flower1") return AtlasTile::Flower1;
+    if (str == "Flower2") return AtlasTile::Flower2;
+    if (str == "Rock1") return AtlasTile::Rock1;
+    if (str == "Rock2") return AtlasTile::Rock2;
+    if (str == "Debris") return AtlasTile::Debris;
+    if (str == "Mushroom") return AtlasTile::Mushroom;
+
+    // Row 1: Snow biome
+    if (str == "IceCrystal") return AtlasTile::IceCrystal;
+    if (str == "Snowdrift") return AtlasTile::Snowdrift;
+    if (str == "DeadGrass") return AtlasTile::DeadGrass;
+    if (str == "SnowRock") return AtlasTile::SnowRock;
+    if (str == "Icicle") return AtlasTile::Icicle;
+
+    // Row 2: Sand biome
+    if (str == "Shell") return AtlasTile::Shell;
+    if (str == "BeachGrass") return AtlasTile::BeachGrass;
+    if (str == "Pebbles") return AtlasTile::Pebbles;
+    if (str == "Driftwood") return AtlasTile::Driftwood;
+    if (str == "Cactus") return AtlasTile::Cactus;
+
+    // Row 3: Jungle biome
+    if (str == "Fern") return AtlasTile::Fern;
+    if (str == "TropicalFlower") return AtlasTile::TropicalFlower;
+    if (str == "JungleGrass") return AtlasTile::JungleGrass;
+    if (str == "Vine") return AtlasTile::Vine;
+    if (str == "Bamboo") return AtlasTile::Bamboo;
+
+    // Row 4: Swamp biome
+    if (str == "Cattail") return AtlasTile::Cattail;
+    if (str == "SwampMushroom") return AtlasTile::SwampMushroom;
+    if (str == "Reed") return AtlasTile::Reed;
+    if (str == "LilyPad") return AtlasTile::LilyPad;
+    if (str == "SwampGrass") return AtlasTile::SwampGrass;
+
+    LOG_WARN(MOD_GRAPHICS, "DetailConfigLoader: Unknown atlas tile '{}', defaulting to GrassShort", str);
+    return AtlasTile::GrassShort;
 }
 
 } // namespace Detail

@@ -1,6 +1,7 @@
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/detail/detail_chunk.h"
 #include "client/graphics/detail/detail_texture_atlas.h"
+#include "client/graphics/detail/detail_config_loader.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "common/logging.h"
 #include <fmt/format.h>
@@ -56,8 +57,8 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
                      mapPath, surfaceMap_.getGridWidth(), surfaceMap_.getGridHeight(),
                      surfaceMap_.getCellSize());
         } else {
-            LOG_WARN(MOD_GRAPHICS, "DetailManager: No surface map found at '{}', "
-                     "falling back to on-the-fly texture detection", mapPath);
+            LOG_INFO(MOD_GRAPHICS, "DetailManager: No surface map found at '{}', "
+                     "detail system disabled for this zone", mapPath);
         }
     }
 
@@ -144,8 +145,17 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
         }
     }
 
-    // Create default config for this zone
-    config_ = createDefaultConfig(zoneName);
+    // Load config from JSON file or use hardcoded default
+    DetailConfigLoader loader;
+    auto loadedConfig = loader.loadDefaultConfig("data");
+    if (loadedConfig) {
+        config_ = *loadedConfig;
+        config_.zoneName = zoneName;
+        LOG_INFO(MOD_GRAPHICS, "DetailManager: Loaded config with {} detail types", config_.detailTypes.size());
+    } else {
+        LOG_WARN(MOD_GRAPHICS, "DetailManager: Could not load JSON config, using hardcoded defaults");
+        config_ = createDefaultConfig(zoneName);
+    }
 
     // Detect season for this zone and apply seasonal modifiers
     currentSeason_ = seasonalController_.detectSeason(zoneName);
@@ -200,7 +210,8 @@ void DetailManager::addMeshNodeForTextureLookup(irr::scene::IMeshSceneNode* node
 }
 
 void DetailManager::update(const irr::core::vector3df& playerPosIrrlicht, float deltaTimeMs) {
-    if (!enabled_ || density_ < 0.01f || currentZone_.empty()) {
+    // Require pre-computed surface map - don't fall back to on-the-fly detection
+    if (!enabled_ || density_ < 0.01f || currentZone_.empty() || !surfaceMap_.isLoaded()) {
         return;
     }
 
@@ -458,11 +469,11 @@ bool DetailManager::getGroundInfo(float x, float z, float& outY,
         return false;
     }
 
-    // Raycast UPWARD from below to find the ground surface from underneath
-    // This avoids hitting roofs, ceilings, and other overhead geometry
-    // Start from well below ground level and cast upward
-    irr::core::vector3df start(x, -1000.0f, z);
-    irr::core::vector3df end(x, 1000.0f, z);
+    // Raycast DOWNWARD from above to find the ground surface
+    // Start from well above ground level and cast downward
+    // This hits the actual walkable ground surface, not underwater floors
+    irr::core::vector3df start(x, 500.0f, z);
+    irr::core::vector3df end(x, -500.0f, z);
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
     irr::scene::ISceneNode* outNode = nullptr;
@@ -470,8 +481,7 @@ bool DetailManager::getGroundInfo(float x, float z, float& outY,
     irr::core::line3df ray(start, end);
     if (collisionManager_->getCollisionPoint(ray, zoneSelector_, hitPoint, hitTriangle, outNode)) {
         outY = hitPoint.Y;
-        // For upward raycast, the normal should point down for ground surfaces
-        // Flip it so it points up (away from ground)
+        // Ensure normal points up (away from ground)
         outNormal = hitTriangle.getNormal().normalize();
         if (outNormal.Y < 0) {
             outNormal = -outNormal;
@@ -791,6 +801,11 @@ SurfaceType DetailManager::classifyTexture(const std::string& textureName) const
     std::string name = textureName;
     std::transform(name.begin(), name.end(), name.begin(), ::tolower);
 
+    // Helper to check if name starts with a prefix
+    auto startsWith = [&name](const char* prefix) {
+        return name.rfind(prefix, 0) == 0;
+    };
+
     // Debug: log texture classification (limited)
     static int classifyLogCount = 0;
 
@@ -803,16 +818,77 @@ SurfaceType DetailManager::classifyTexture(const std::string& textureName) const
         return surface;
     };
 
+    // === EXCLUSIONS FIRST - textures that are NOT walkable ground ===
+
     // Check for water/lava first (these should be excluded entirely)
     if (name.find("water") != std::string::npos ||
         name.find("lava") != std::string::npos ||
         name.find("lavaf") != std::string::npos ||
         name.find("falls") != std::string::npos ||
-        name.find("fount") != std::string::npos) {
+        name.find("fount") != std::string::npos ||
+        name.find("agua") != std::string::npos) {
         return logAndReturn(SurfaceType::Water, "water/lava");
     }
 
-    // Grass surfaces - check early so grass textures aren't caught by other patterns
+    // Wall surfaces - treat as brick/stone (indoor) - exclude from detail
+    if (name.find("wall") != std::string::npos ||
+        name.find("waal") != std::string::npos ||     // EQ typo
+        name.find("wail") != std::string::npos ||     // EQ typo
+        name.find("wafl") != std::string::npos) {     // EQ abbreviation
+        return logAndReturn(SurfaceType::Brick, "wall");
+    }
+
+    // Roof textures - no vegetation
+    if (name.find("roof") != std::string::npos ||
+        name.find("ceil") != std::string::npos) {
+        return logAndReturn(SurfaceType::Stone, "roof/ceiling");
+    }
+
+    // === BIOME-SPECIFIC GROUND TEXTURES ===
+    // Check these BEFORE generic grass to properly categorize expansion content
+
+    // Swamp/marsh textures (Innothule, Feerrott, Kunark swamps)
+    if (name.find("swamp") != std::string::npos ||
+        name.find("marsh") != std::string::npos ||
+        name.find("bog") != std::string::npos ||
+        name.find("muck") != std::string::npos ||
+        name.find("slime") != std::string::npos ||
+        name.find("sludge") != std::string::npos) {
+        return logAndReturn(SurfaceType::Swamp, "swamp/marsh");
+    }
+
+    // Jungle textures (Kunark tropical zones)
+    if (name.find("jungle") != std::string::npos ||
+        name.find("fern") != std::string::npos ||
+        name.find("palm") != std::string::npos ||
+        name.find("tropical") != std::string::npos ||
+        startsWith("ej") ||           // Emerald Jungle prefix
+        startsWith("sbjung")) {       // Stonebrunt jungle
+        return logAndReturn(SurfaceType::Jungle, "jungle/tropical");
+    }
+
+    // Firiona Vie grass is tropical (Kunark) - check for "fir" prefix but not "fire"
+    if ((startsWith("fir") || name.find("firgrass") != std::string::npos) &&
+        name.find("fire") == std::string::npos) {
+        return logAndReturn(SurfaceType::Jungle, "firiona/tropical");
+    }
+
+    // Snow/ice textures (Velious zones) - expanded patterns
+    if (name.find("snow") != std::string::npos ||
+        name.find("ice") != std::string::npos ||
+        name.find("frost") != std::string::npos ||
+        name.find("frozen") != std::string::npos ||
+        name.find("icsnow") != std::string::npos ||
+        startsWith("gdr") ||          // Great Divide prefix
+        startsWith("vel") ||          // Velketor prefix
+        startsWith("wice") ||         // Velious water ice
+        startsWith("thu")) {          // Thurgadin prefix
+        return logAndReturn(SurfaceType::Snow, "snow/ice");
+    }
+
+    // === GENERIC GROUND TEXTURES ===
+
+    // Grass surfaces
     if (name.find("grass") != std::string::npos ||
         name.find("gras") != std::string::npos ||
         name.find("lawn") != std::string::npos ||
@@ -820,9 +896,20 @@ SurfaceType DetailManager::classifyTexture(const std::string& textureName) const
         return logAndReturn(SurfaceType::Grass, "grass");
     }
 
-    // Stone/rock surfaces - including EQ naming patterns
+    // Natural rock/cliff terrain (NOT man-made stone floors)
+    if ((name.find("rock") != std::string::npos ||
+         name.find("cliff") != std::string::npos ||
+         name.find("boulder") != std::string::npos ||
+         name.find("mountain") != std::string::npos ||
+         name.find("crag") != std::string::npos) &&
+        name.find("floor") == std::string::npos &&
+        name.find("flor") == std::string::npos &&
+        name.find("tile") == std::string::npos) {
+        return logAndReturn(SurfaceType::Rock, "natural rock");
+    }
+
+    // Man-made stone surfaces - cobblestone, floors, tiles
     if (name.find("stone") != std::string::npos ||
-        name.find("rock") != std::string::npos ||
         name.find("cobble") != std::string::npos ||
         name.find("coble") != std::string::npos ||    // EQ uses "coble" not "cobble"
         name.find("marble") != std::string::npos ||
@@ -834,26 +921,17 @@ SurfaceType DetailManager::classifyTexture(const std::string& textureName) const
         name.find("flr") != std::string::npos ||      // EQ abbreviation
         name.find("tile") != std::string::npos ||
         name.find("til") != std::string::npos ||      // EQ abbreviation
-        name.find("ceil") != std::string::npos ||     // Ceiling = indoor
         name.find("carpet") != std::string::npos) {   // Carpet = indoor
-        return logAndReturn(SurfaceType::Stone, "stone/rock/floor/tile");
+        return logAndReturn(SurfaceType::Stone, "stone/floor/tile");
     }
 
     // Brick surfaces
     if (name.find("brick") != std::string::npos ||
         name.find("city") != std::string::npos ||     // citywall = stone/brick
-        name.find("cyw") != std::string::npos ||      // cyw = city wall prefix (cywleav, etc.)
+        name.find("cyw") != std::string::npos ||      // cyw = city wall prefix
         name.find("leav") != std::string::npos ||     // eaves/leaves on buildings
         name.find("eave") != std::string::npos) {     // roof eaves
         return logAndReturn(SurfaceType::Brick, "brick/city");
-    }
-
-    // Wall surfaces - treat as brick/stone (indoor)
-    if (name.find("wall") != std::string::npos ||
-        name.find("waal") != std::string::npos ||     // EQ typo
-        name.find("wail") != std::string::npos ||     // EQ typo
-        name.find("wafl") != std::string::npos) {     // EQ abbreviation
-        return logAndReturn(SurfaceType::Brick, "wall");
     }
 
     // Wood surfaces
@@ -883,26 +961,33 @@ SurfaceType DetailManager::classifyTexture(const std::string& textureName) const
         return logAndReturn(SurfaceType::Sand, "sand");
     }
 
-    // Snow surfaces
-    if (name.find("snow") != std::string::npos ||
-        name.find("ice") != std::string::npos ||
-        name.find("frost") != std::string::npos) {
-        return logAndReturn(SurfaceType::Snow, "snow");
-    }
-
     // Dirt surfaces
     if (name.find("dirt") != std::string::npos ||
         name.find("drt") != std::string::npos ||       // EQ abbreviation for dirt
         name.find("xdrt") != std::string::npos ||      // exterior dirt pattern
         name.find("mud") != std::string::npos ||
+        name.find("ground") != std::string::npos ||
         name.find("path") != std::string::npos ||
         name.find("road") != std::string::npos) {
         return logAndReturn(SurfaceType::Dirt, "dirt");
     }
 
-    // Roof textures - no vegetation
-    if (name.find("roof") != std::string::npos) {
-        return logAndReturn(SurfaceType::Stone, "roof");
+    // === KUNARK ZONE PREFIXES ===
+
+    // Burning Woods - volcanic/ash ground
+    if (startsWith("bw") && (name.find("ground") != std::string::npos ||
+                             name.find("grass") != std::string::npos)) {
+        return logAndReturn(SurfaceType::Dirt, "burning woods ash");
+    }
+
+    // Dreadlands - barren rock
+    if (startsWith("dread") || startsWith("drd")) {
+        return logAndReturn(SurfaceType::Rock, "dreadlands rock");
+    }
+
+    // Field of Bone - bone/dirt ground
+    if (startsWith("fob") || name.find("bone") != std::string::npos) {
+        return logAndReturn(SurfaceType::Dirt, "field of bone");
     }
 
     // Default to grass for unknown textures
@@ -1064,6 +1149,307 @@ ZoneDetailConfig DetailManager::createDefaultConfig(const std::string& zoneName)
     // Mushroom: tile (3,1)
     getTileUV(AtlasTile::Mushroom, mushroom.u0, mushroom.v0, mushroom.u1, mushroom.v1);
     config.detailTypes.push_back(mushroom);
+
+    // ==========================================
+    // Snow biome (Velious) - SurfaceType::Snow
+    // ==========================================
+
+    // Ice crystals - small crystalline ice formations
+    DetailType iceCrystal;
+    iceCrystal.name = "ice_crystal";
+    iceCrystal.category = DetailCategory::Rocks;  // Crystal formations are rock-like
+    iceCrystal.orientation = DetailOrientation::CrossedQuads;
+    iceCrystal.minSize = 0.6f;
+    iceCrystal.maxSize = 1.4f;
+    iceCrystal.baseDensity = 0.2f;
+    iceCrystal.maxSlope = 0.5f;
+    iceCrystal.windResponse = 0.0f;  // Ice doesn't blow in wind
+    iceCrystal.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Snow);
+    iceCrystal.testColor = irr::video::SColor(255, 180, 220, 255);  // Light blue
+    getTileUV(AtlasTile::IceCrystal, iceCrystal.u0, iceCrystal.v0, iceCrystal.u1, iceCrystal.v1);
+    config.detailTypes.push_back(iceCrystal);
+
+    // Snowdrifts - small piles of snow
+    DetailType snowdrift;
+    snowdrift.name = "snowdrift";
+    snowdrift.category = DetailCategory::Debris;  // Ground cover like debris
+    snowdrift.orientation = DetailOrientation::CrossedQuads;
+    snowdrift.minSize = 1.0f;
+    snowdrift.maxSize = 2.5f;
+    snowdrift.baseDensity = 0.35f;
+    snowdrift.maxSlope = 0.4f;
+    snowdrift.windResponse = 0.0f;
+    snowdrift.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Snow);
+    snowdrift.testColor = irr::video::SColor(255, 240, 245, 255);  // White-blue
+    getTileUV(AtlasTile::Snowdrift, snowdrift.u0, snowdrift.v0, snowdrift.u1, snowdrift.v1);
+    config.detailTypes.push_back(snowdrift);
+
+    // Dead grass - brown/dead grass poking through snow
+    DetailType deadGrass;
+    deadGrass.name = "dead_grass";
+    deadGrass.category = DetailCategory::Grass;
+    deadGrass.orientation = DetailOrientation::CrossedQuads;
+    deadGrass.minSize = 1.2f;
+    deadGrass.maxSize = 2.4f;
+    deadGrass.baseDensity = 0.25f;
+    deadGrass.maxSlope = 0.45f;
+    deadGrass.windResponse = 0.5f;  // Less wind response than healthy grass
+    deadGrass.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Snow);
+    deadGrass.testColor = irr::video::SColor(255, 139, 119, 101);  // Brown
+    getTileUV(AtlasTile::DeadGrass, deadGrass.u0, deadGrass.v0, deadGrass.u1, deadGrass.v1);
+    config.detailTypes.push_back(deadGrass);
+
+    // Snow-covered rocks
+    DetailType snowRock;
+    snowRock.name = "snow_rock";
+    snowRock.category = DetailCategory::Rocks;
+    snowRock.orientation = DetailOrientation::CrossedQuads;
+    snowRock.minSize = 0.8f;
+    snowRock.maxSize = 1.8f;
+    snowRock.baseDensity = 0.15f;
+    snowRock.maxSlope = 0.6f;
+    snowRock.windResponse = 0.0f;
+    snowRock.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Snow);
+    snowRock.testColor = irr::video::SColor(255, 200, 200, 210);  // Grayish white
+    getTileUV(AtlasTile::SnowRock, snowRock.u0, snowRock.v0, snowRock.u1, snowRock.v1);
+    config.detailTypes.push_back(snowRock);
+
+    // ==========================================
+    // Sand biome (Ro deserts, beaches) - SurfaceType::Sand
+    // ==========================================
+
+    // Seashells - scattered on beaches
+    DetailType shell;
+    shell.name = "shell";
+    shell.category = DetailCategory::Debris;
+    shell.orientation = DetailOrientation::CrossedQuads;
+    shell.minSize = 0.4f;
+    shell.maxSize = 1.0f;
+    shell.baseDensity = 0.4f;
+    shell.maxSlope = 0.3f;
+    shell.windResponse = 0.0f;
+    shell.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Sand);
+    shell.testColor = irr::video::SColor(255, 245, 235, 220);  // Cream/shell color
+    getTileUV(AtlasTile::Shell, shell.u0, shell.v0, shell.u1, shell.v1);
+    config.detailTypes.push_back(shell);
+
+    // Beach grass - sparse dune grass
+    DetailType beachGrass;
+    beachGrass.name = "beach_grass";
+    beachGrass.category = DetailCategory::Grass;
+    beachGrass.orientation = DetailOrientation::CrossedQuads;
+    beachGrass.minSize = 1.0f;
+    beachGrass.maxSize = 2.2f;
+    beachGrass.baseDensity = 0.5f;  // Sparse but visible in desert/beach
+    beachGrass.maxSlope = 0.4f;
+    beachGrass.windResponse = 0.8f;
+    beachGrass.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Sand);
+    beachGrass.testColor = irr::video::SColor(255, 180, 180, 120);  // Tan/yellow
+    getTileUV(AtlasTile::BeachGrass, beachGrass.u0, beachGrass.v0, beachGrass.u1, beachGrass.v1);
+    config.detailTypes.push_back(beachGrass);
+
+    // Pebbles - small stones on sand
+    DetailType pebbles;
+    pebbles.name = "pebbles";
+    pebbles.category = DetailCategory::Rocks;
+    pebbles.orientation = DetailOrientation::CrossedQuads;
+    pebbles.minSize = 0.5f;
+    pebbles.maxSize = 1.2f;
+    pebbles.baseDensity = 0.4f;
+    pebbles.maxSlope = 0.5f;
+    pebbles.windResponse = 0.0f;
+    pebbles.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Sand);
+    pebbles.testColor = irr::video::SColor(255, 160, 150, 140);  // Gray-brown
+    getTileUV(AtlasTile::Pebbles, pebbles.u0, pebbles.v0, pebbles.u1, pebbles.v1);
+    config.detailTypes.push_back(pebbles);
+
+    // Driftwood - beach debris
+    DetailType driftwood;
+    driftwood.name = "driftwood";
+    driftwood.category = DetailCategory::Debris;
+    driftwood.orientation = DetailOrientation::CrossedQuads;
+    driftwood.minSize = 0.8f;
+    driftwood.maxSize = 2.0f;
+    driftwood.baseDensity = 0.3f;  // Sparse but visible
+    driftwood.maxSlope = 0.35f;
+    driftwood.windResponse = 0.0f;
+    driftwood.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Sand);
+    driftwood.testColor = irr::video::SColor(255, 139, 119, 101);  // Brown wood
+    getTileUV(AtlasTile::Driftwood, driftwood.u0, driftwood.v0, driftwood.u1, driftwood.v1);
+    config.detailTypes.push_back(driftwood);
+
+    // Small cactus - desert vegetation
+    DetailType cactus;
+    cactus.name = "cactus";
+    cactus.category = DetailCategory::Plants;
+    cactus.orientation = DetailOrientation::CrossedQuads;
+    cactus.minSize = 1.0f;
+    cactus.maxSize = 2.5f;
+    cactus.baseDensity = 0.25f;  // Sparse but visible
+    cactus.maxSlope = 0.3f;
+    cactus.windResponse = 0.0f;  // Cacti don't sway
+    cactus.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Sand);
+    cactus.testColor = irr::video::SColor(255, 100, 140, 80);  // Desert green
+    getTileUV(AtlasTile::Cactus, cactus.u0, cactus.v0, cactus.u1, cactus.v1);
+    config.detailTypes.push_back(cactus);
+
+    // ==========================================
+    // Jungle biome (Kunark tropical) - SurfaceType::Jungle
+    // ==========================================
+
+    // Tropical fern - large leafy fern
+    DetailType fern;
+    fern.name = "fern";
+    fern.category = DetailCategory::Plants;
+    fern.orientation = DetailOrientation::CrossedQuads;
+    fern.minSize = 1.5f;
+    fern.maxSize = 3.5f;
+    fern.baseDensity = 0.4f;  // Dense tropical vegetation
+    fern.maxSlope = 0.4f;
+    fern.windResponse = 0.6f;
+    fern.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Jungle);
+    fern.testColor = irr::video::SColor(255, 60, 140, 60);  // Dark green
+    getTileUV(AtlasTile::Fern, fern.u0, fern.v0, fern.u1, fern.v1);
+    config.detailTypes.push_back(fern);
+
+    // Tropical flower - colorful jungle flower
+    DetailType tropicalFlower;
+    tropicalFlower.name = "tropical_flower";
+    tropicalFlower.category = DetailCategory::Plants;
+    tropicalFlower.orientation = DetailOrientation::CrossedQuads;
+    tropicalFlower.minSize = 1.2f;
+    tropicalFlower.maxSize = 2.8f;
+    tropicalFlower.baseDensity = 0.25f;
+    tropicalFlower.maxSlope = 0.35f;
+    tropicalFlower.windResponse = 0.5f;
+    tropicalFlower.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Jungle);
+    tropicalFlower.testColor = irr::video::SColor(255, 255, 100, 150);  // Pink/red
+    getTileUV(AtlasTile::TropicalFlower, tropicalFlower.u0, tropicalFlower.v0, tropicalFlower.u1, tropicalFlower.v1);
+    config.detailTypes.push_back(tropicalFlower);
+
+    // Dense tropical grass
+    DetailType jungleGrass;
+    jungleGrass.name = "jungle_grass";
+    jungleGrass.category = DetailCategory::Grass;
+    jungleGrass.orientation = DetailOrientation::CrossedQuads;
+    jungleGrass.minSize = 1.5f;
+    jungleGrass.maxSize = 3.0f;
+    jungleGrass.baseDensity = 0.5f;  // Very dense
+    jungleGrass.maxSlope = 0.45f;
+    jungleGrass.windResponse = 0.8f;
+    jungleGrass.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Jungle);
+    jungleGrass.testColor = irr::video::SColor(255, 80, 160, 40);  // Bright jungle green
+    getTileUV(AtlasTile::JungleGrass, jungleGrass.u0, jungleGrass.v0, jungleGrass.u1, jungleGrass.v1);
+    config.detailTypes.push_back(jungleGrass);
+
+    // Ground vines
+    DetailType vine;
+    vine.name = "vine";
+    vine.category = DetailCategory::Plants;
+    vine.orientation = DetailOrientation::CrossedQuads;
+    vine.minSize = 1.0f;
+    vine.maxSize = 2.5f;
+    vine.baseDensity = 0.15f;
+    vine.maxSlope = 0.5f;
+    vine.windResponse = 0.3f;
+    vine.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Jungle);
+    vine.testColor = irr::video::SColor(255, 50, 120, 50);  // Dark green
+    getTileUV(AtlasTile::Vine, vine.u0, vine.v0, vine.u1, vine.v1);
+    config.detailTypes.push_back(vine);
+
+    // Small bamboo shoots
+    DetailType bamboo;
+    bamboo.name = "bamboo";
+    bamboo.category = DetailCategory::Plants;
+    bamboo.orientation = DetailOrientation::CrossedQuads;
+    bamboo.minSize = 2.0f;
+    bamboo.maxSize = 4.0f;
+    bamboo.baseDensity = 0.1f;
+    bamboo.maxSlope = 0.3f;
+    bamboo.windResponse = 0.4f;
+    bamboo.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Jungle);
+    bamboo.testColor = irr::video::SColor(255, 140, 180, 80);  // Light green-yellow
+    getTileUV(AtlasTile::Bamboo, bamboo.u0, bamboo.v0, bamboo.u1, bamboo.v1);
+    config.detailTypes.push_back(bamboo);
+
+    // ==========================================
+    // Swamp biome (Innothule, Kunark marshes) - SurfaceType::Swamp
+    // ==========================================
+
+    // Cattails - tall marsh reeds with brown tops
+    DetailType cattail;
+    cattail.name = "cattail";
+    cattail.category = DetailCategory::Plants;
+    cattail.orientation = DetailOrientation::CrossedQuads;
+    cattail.minSize = 2.0f;
+    cattail.maxSize = 4.5f;
+    cattail.baseDensity = 0.3f;
+    cattail.maxSlope = 0.3f;
+    cattail.windResponse = 0.5f;
+    cattail.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Swamp);
+    cattail.testColor = irr::video::SColor(255, 100, 140, 80);  // Marsh green
+    getTileUV(AtlasTile::Cattail, cattail.u0, cattail.v0, cattail.u1, cattail.v1);
+    config.detailTypes.push_back(cattail);
+
+    // Swamp mushrooms - fungi growing in wet areas
+    DetailType swampMushroom;
+    swampMushroom.name = "swamp_mushroom";
+    swampMushroom.category = DetailCategory::Mushrooms;
+    swampMushroom.orientation = DetailOrientation::CrossedQuads;
+    swampMushroom.minSize = 0.8f;
+    swampMushroom.maxSize = 2.0f;
+    swampMushroom.baseDensity = 0.2f;
+    swampMushroom.maxSlope = 0.4f;
+    swampMushroom.windResponse = 0.0f;
+    swampMushroom.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Swamp);
+    swampMushroom.testColor = irr::video::SColor(255, 160, 120, 100);  // Brownish
+    getTileUV(AtlasTile::SwampMushroom, swampMushroom.u0, swampMushroom.v0, swampMushroom.u1, swampMushroom.v1);
+    config.detailTypes.push_back(swampMushroom);
+
+    // Marsh reeds - shorter than cattails
+    DetailType reed;
+    reed.name = "reed";
+    reed.category = DetailCategory::Grass;
+    reed.orientation = DetailOrientation::CrossedQuads;
+    reed.minSize = 1.5f;
+    reed.maxSize = 3.0f;
+    reed.baseDensity = 0.4f;
+    reed.maxSlope = 0.35f;
+    reed.windResponse = 0.6f;
+    reed.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Swamp);
+    reed.testColor = irr::video::SColor(255, 90, 130, 70);  // Dark swamp green
+    getTileUV(AtlasTile::Reed, reed.u0, reed.v0, reed.u1, reed.v1);
+    config.detailTypes.push_back(reed);
+
+    // Lily pads at water edges (for ground near swamp water)
+    DetailType lilyPad;
+    lilyPad.name = "lily_pad";
+    lilyPad.category = DetailCategory::Plants;
+    lilyPad.orientation = DetailOrientation::FlatGround;  // Flat on ground
+    lilyPad.minSize = 1.0f;
+    lilyPad.maxSize = 2.5f;
+    lilyPad.baseDensity = 0.15f;
+    lilyPad.maxSlope = 0.15f;  // Only on very flat ground
+    lilyPad.windResponse = 0.0f;
+    lilyPad.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Swamp);
+    lilyPad.testColor = irr::video::SColor(255, 60, 120, 60);  // Green
+    getTileUV(AtlasTile::LilyPad, lilyPad.u0, lilyPad.v0, lilyPad.u1, lilyPad.v1);
+    config.detailTypes.push_back(lilyPad);
+
+    // Soggy marsh grass
+    DetailType swampGrass;
+    swampGrass.name = "swamp_grass";
+    swampGrass.category = DetailCategory::Grass;
+    swampGrass.orientation = DetailOrientation::CrossedQuads;
+    swampGrass.minSize = 1.2f;
+    swampGrass.maxSize = 2.5f;
+    swampGrass.baseDensity = 0.35f;
+    swampGrass.maxSlope = 0.4f;
+    swampGrass.windResponse = 0.7f;
+    swampGrass.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Swamp);
+    swampGrass.testColor = irr::video::SColor(255, 80, 110, 60);  // Dull swamp green
+    getTileUV(AtlasTile::SwampGrass, swampGrass.u0, swampGrass.v0, swampGrass.u1, swampGrass.v1);
+    config.detailTypes.push_back(swampGrass);
 
     return config;
 }

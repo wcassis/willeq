@@ -1,0 +1,363 @@
+{
+  "version": 1,
+  "description": "Detail object configuration for ground vegetation and debris",
+
+  "globalSettings": {
+    "chunkSize": 50.0,
+    "viewDistance": 150.0,
+    "baseDensityMultiplier": 1.0
+  },
+
+  "seasons": {
+    "default": {
+      "densityMultiplier": 1.0,
+      "tint": [255, 255, 255, 255]
+    },
+    "snow": {
+      "densityMultiplier": 0.4,
+      "tint": [255, 200, 220, 255]
+    },
+    "desert": {
+      "densityMultiplier": 0.5,
+      "tint": [255, 255, 230, 180]
+    },
+    "swamp": {
+      "densityMultiplier": 1.2,
+      "tint": [255, 180, 200, 150]
+    },
+    "autumn": {
+      "densityMultiplier": 1.0,
+      "tint": [255, 255, 200, 150]
+    }
+  },
+
+  "detailTypes": [
+    {
+      "name": "grass",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "GrassShort",
+      "minSize": 1.0,
+      "maxSize": 2.4,
+      "baseDensity": 1.0,
+      "maxSlope": 0.5,
+      "windResponse": 1.0,
+      "allowedSurfaces": ["Grass", "Dirt"],
+      "testColor": [255, 0, 255, 0]
+    },
+    {
+      "name": "tall_grass",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "GrassTall",
+      "minSize": 2.0,
+      "maxSize": 4.0,
+      "baseDensity": 0.3,
+      "maxSlope": 0.4,
+      "windResponse": 1.0,
+      "allowedSurfaces": ["Grass"],
+      "testColor": [255, 0, 200, 0]
+    },
+    {
+      "name": "flower",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Flower1",
+      "minSize": 1.6,
+      "maxSize": 3.2,
+      "baseDensity": 0.25,
+      "maxSlope": 0.35,
+      "windResponse": 0.7,
+      "allowedSurfaces": ["Grass"],
+      "testColor": [255, 255, 0, 255]
+    },
+    {
+      "name": "rock",
+      "category": "Rocks",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Rock1",
+      "minSize": 1.0,
+      "maxSize": 2.0,
+      "baseDensity": 0.15,
+      "maxSlope": 0.7,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["All"],
+      "excludedSurfaces": ["Water", "Lava"],
+      "testColor": [255, 150, 150, 150]
+    },
+    {
+      "name": "debris",
+      "category": "Debris",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Debris",
+      "minSize": 0.8,
+      "maxSize": 1.6,
+      "baseDensity": 0.12,
+      "maxSlope": 0.6,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["All"],
+      "excludedSurfaces": ["Water", "Lava"],
+      "testColor": [255, 200, 150, 100]
+    },
+    {
+      "name": "mushroom",
+      "category": "Mushrooms",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Mushroom",
+      "minSize": 0.8,
+      "maxSize": 1.6,
+      "baseDensity": 0.08,
+      "maxSlope": 0.4,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Grass", "Dirt"],
+      "testColor": [255, 255, 50, 50]
+    },
+    {
+      "name": "ice_crystal",
+      "category": "Rocks",
+      "orientation": "CrossedQuads",
+      "atlasTile": "IceCrystal",
+      "minSize": 0.6,
+      "maxSize": 1.4,
+      "baseDensity": 0.2,
+      "maxSlope": 0.5,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Snow"],
+      "testColor": [255, 180, 220, 255]
+    },
+    {
+      "name": "snowdrift",
+      "category": "Debris",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Snowdrift",
+      "minSize": 1.0,
+      "maxSize": 2.5,
+      "baseDensity": 0.35,
+      "maxSlope": 0.4,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Snow"],
+      "testColor": [255, 240, 245, 255]
+    },
+    {
+      "name": "dead_grass",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "DeadGrass",
+      "minSize": 1.2,
+      "maxSize": 2.4,
+      "baseDensity": 0.25,
+      "maxSlope": 0.45,
+      "windResponse": 0.5,
+      "allowedSurfaces": ["Snow"],
+      "testColor": [255, 139, 119, 101]
+    },
+    {
+      "name": "snow_rock",
+      "category": "Rocks",
+      "orientation": "CrossedQuads",
+      "atlasTile": "SnowRock",
+      "minSize": 0.8,
+      "maxSize": 1.8,
+      "baseDensity": 0.15,
+      "maxSlope": 0.6,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Snow"],
+      "testColor": [255, 200, 200, 210]
+    },
+    {
+      "name": "shell",
+      "category": "Debris",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Shell",
+      "minSize": 0.4,
+      "maxSize": 1.0,
+      "baseDensity": 0.4,
+      "maxSlope": 0.3,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Sand"],
+      "testColor": [255, 245, 235, 220]
+    },
+    {
+      "name": "beach_grass",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "BeachGrass",
+      "minSize": 1.0,
+      "maxSize": 2.2,
+      "baseDensity": 0.5,
+      "maxSlope": 0.4,
+      "windResponse": 0.8,
+      "allowedSurfaces": ["Sand"],
+      "testColor": [255, 180, 180, 120]
+    },
+    {
+      "name": "pebbles",
+      "category": "Rocks",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Pebbles",
+      "minSize": 0.5,
+      "maxSize": 1.2,
+      "baseDensity": 0.4,
+      "maxSlope": 0.5,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Sand"],
+      "testColor": [255, 160, 150, 140]
+    },
+    {
+      "name": "driftwood",
+      "category": "Debris",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Driftwood",
+      "minSize": 0.8,
+      "maxSize": 2.0,
+      "baseDensity": 0.3,
+      "maxSlope": 0.35,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Sand"],
+      "testColor": [255, 139, 119, 101]
+    },
+    {
+      "name": "cactus",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Cactus",
+      "minSize": 1.0,
+      "maxSize": 2.5,
+      "baseDensity": 0.25,
+      "maxSlope": 0.3,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Sand"],
+      "testColor": [255, 100, 140, 80]
+    },
+    {
+      "name": "fern",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Fern",
+      "minSize": 1.5,
+      "maxSize": 3.5,
+      "baseDensity": 0.4,
+      "maxSlope": 0.4,
+      "windResponse": 0.6,
+      "allowedSurfaces": ["Jungle"],
+      "testColor": [255, 60, 140, 60]
+    },
+    {
+      "name": "tropical_flower",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "TropicalFlower",
+      "minSize": 1.2,
+      "maxSize": 2.8,
+      "baseDensity": 0.25,
+      "maxSlope": 0.35,
+      "windResponse": 0.5,
+      "allowedSurfaces": ["Jungle"],
+      "testColor": [255, 255, 100, 150]
+    },
+    {
+      "name": "jungle_grass",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "JungleGrass",
+      "minSize": 1.5,
+      "maxSize": 3.0,
+      "baseDensity": 0.5,
+      "maxSlope": 0.45,
+      "windResponse": 0.8,
+      "allowedSurfaces": ["Jungle"],
+      "testColor": [255, 80, 160, 40]
+    },
+    {
+      "name": "vine",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Vine",
+      "minSize": 1.0,
+      "maxSize": 2.5,
+      "baseDensity": 0.15,
+      "maxSlope": 0.5,
+      "windResponse": 0.3,
+      "allowedSurfaces": ["Jungle"],
+      "testColor": [255, 50, 120, 50]
+    },
+    {
+      "name": "bamboo",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Bamboo",
+      "minSize": 2.0,
+      "maxSize": 4.0,
+      "baseDensity": 0.1,
+      "maxSlope": 0.3,
+      "windResponse": 0.4,
+      "allowedSurfaces": ["Jungle"],
+      "testColor": [255, 140, 180, 80]
+    },
+    {
+      "name": "cattail",
+      "category": "Plants",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Cattail",
+      "minSize": 2.0,
+      "maxSize": 4.5,
+      "baseDensity": 0.3,
+      "maxSlope": 0.3,
+      "windResponse": 0.5,
+      "allowedSurfaces": ["Swamp"],
+      "testColor": [255, 100, 140, 80]
+    },
+    {
+      "name": "swamp_mushroom",
+      "category": "Mushrooms",
+      "orientation": "CrossedQuads",
+      "atlasTile": "SwampMushroom",
+      "minSize": 0.8,
+      "maxSize": 2.0,
+      "baseDensity": 0.2,
+      "maxSlope": 0.4,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Swamp"],
+      "testColor": [255, 160, 120, 100]
+    },
+    {
+      "name": "reed",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "Reed",
+      "minSize": 1.5,
+      "maxSize": 3.0,
+      "baseDensity": 0.4,
+      "maxSlope": 0.35,
+      "windResponse": 0.6,
+      "allowedSurfaces": ["Swamp"],
+      "testColor": [255, 90, 130, 70]
+    },
+    {
+      "name": "lily_pad",
+      "category": "Plants",
+      "orientation": "FlatGround",
+      "atlasTile": "LilyPad",
+      "minSize": 1.0,
+      "maxSize": 2.5,
+      "baseDensity": 0.15,
+      "maxSlope": 0.15,
+      "windResponse": 0.0,
+      "allowedSurfaces": ["Swamp"],
+      "testColor": [255, 60, 120, 60]
+    },
+    {
+      "name": "swamp_grass",
+      "category": "Grass",
+      "orientation": "CrossedQuads",
+      "atlasTile": "SwampGrass",
+      "minSize": 1.2,
+      "maxSize": 2.5,
+      "baseDensity": 0.35,
+      "maxSlope": 0.4,
+      "windResponse": 0.7,
+      "allowedSurfaces": ["Swamp"],
+      "testColor": [255, 80, 110, 60]
+    }
+  ]
+}

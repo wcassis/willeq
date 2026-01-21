@@ -24,6 +24,8 @@ struct SurfaceMapHeader {
 };
 
 // Raw surface type values in the map file
+// NOTE: These values are stored in binary map files - do not reorder existing values!
+// New types must be added at the end to maintain backwards compatibility.
 enum class RawSurfaceType : uint8_t {
     Unknown = 0,
     Grass   = 1,
@@ -34,7 +36,10 @@ enum class RawSurfaceType : uint8_t {
     Sand    = 6,
     Snow    = 7,
     Water   = 8,
-    Lava    = 9
+    Lava    = 9,
+    Jungle  = 10,  // Kunark tropical vegetation
+    Swamp   = 11,  // Wetlands, marshes
+    Rock    = 12   // Natural rocky terrain (not man-made)
 };
 
 /**
@@ -182,6 +187,9 @@ inline SurfaceType SurfaceMap::convertRawType(RawSurfaceType raw) {
         case RawSurfaceType::Snow:    return SurfaceType::Snow;
         case RawSurfaceType::Water:   return SurfaceType::Water;
         case RawSurfaceType::Lava:    return SurfaceType::Lava;
+        case RawSurfaceType::Jungle:  return SurfaceType::Jungle;
+        case RawSurfaceType::Swamp:   return SurfaceType::Swamp;
+        case RawSurfaceType::Rock:    return SurfaceType::Rock;
         default: return SurfaceType::Unknown;
     }
 }

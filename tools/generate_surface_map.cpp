@@ -23,7 +23,8 @@
 
 namespace fs = std::filesystem;
 
-// Surface types matching detail_types.h
+// Surface types matching detail_types.h and surface_map.h RawSurfaceType
+// NOTE: Values must match RawSurfaceType in surface_map.h for binary compatibility
 enum class SurfaceType : uint8_t {
     Unknown     = 0,
     Grass       = 1,
@@ -34,7 +35,10 @@ enum class SurfaceType : uint8_t {
     Sand        = 6,
     Snow        = 7,
     Water       = 8,
-    Lava        = 9
+    Lava        = 9,
+    Jungle      = 10,  // Kunark tropical vegetation
+    Swamp       = 11,  // Wetlands, marshes
+    Rock        = 12   // Natural rocky terrain (not man-made)
 };
 
 const char* surfaceTypeName(SurfaceType type) {
@@ -49,6 +53,9 @@ const char* surfaceTypeName(SurfaceType type) {
         case SurfaceType::Snow:    return "Snow";
         case SurfaceType::Water:   return "Water";
         case SurfaceType::Lava:    return "Lava";
+        case SurfaceType::Jungle:  return "Jungle";
+        case SurfaceType::Swamp:   return "Swamp";
+        case SurfaceType::Rock:    return "Rock";
         default: return "Unknown";
     }
 }
@@ -66,12 +73,18 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
     std::string name = textureName;
     std::transform(name.begin(), name.end(), name.begin(), ::tolower);
 
+    // Helper to check if name starts with a prefix
+    auto startsWith = [&name](const char* prefix) {
+        return name.rfind(prefix, 0) == 0;
+    };
+
     // === EXCLUSIONS FIRST - textures that are NOT walkable ground ===
 
     // Water/lava - exclude from detail placement
     if (name.find("water") != std::string::npos ||
         name.find("falls") != std::string::npos ||
-        name.find("fount") != std::string::npos) {
+        name.find("fount") != std::string::npos ||
+        name.find("agua") != std::string::npos) {
         return SurfaceType::Water;
     }
     if (name.find("lava") != std::string::npos ||
@@ -98,14 +111,72 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
         return SurfaceType::Unknown;
     }
 
-    // === GROUND TEXTURES - things we walk on ===
+    // === BIOME-SPECIFIC GROUND TEXTURES ===
+    // Check these BEFORE generic grass to properly categorize expansion content
+
+    // Swamp/marsh textures (Innothule, Feerrott, Kunark swamps)
+    // Check before grass since swamp areas shouldn't have temperate grass
+    if (name.find("swamp") != std::string::npos ||
+        name.find("marsh") != std::string::npos ||
+        name.find("bog") != std::string::npos ||
+        name.find("muck") != std::string::npos ||
+        name.find("slime") != std::string::npos ||
+        name.find("sludge") != std::string::npos) {
+        return SurfaceType::Swamp;
+    }
+
+    // Jungle textures (Kunark tropical zones)
+    // Check before grass since jungle shouldn't have temperate grass
+    if (name.find("jungle") != std::string::npos ||
+        name.find("fern") != std::string::npos ||
+        name.find("palm") != std::string::npos ||
+        name.find("tropical") != std::string::npos ||
+        startsWith("ej") ||           // Emerald Jungle prefix
+        startsWith("sbjung")) {       // Stonebrunt jungle
+        return SurfaceType::Jungle;
+    }
+
+    // Firiona Vie grass is tropical (Kunark) - check for "fir" prefix but not "fire"
+    if ((startsWith("fir") || name.find("firgrass") != std::string::npos) &&
+        name.find("fire") == std::string::npos) {
+        return SurfaceType::Jungle;
+    }
+
+    // Snow/ice textures (Velious zones)
+    // Expanded patterns for Velious zone prefixes
+    if (name.find("snow") != std::string::npos ||
+        name.find("ice") != std::string::npos ||
+        name.find("frost") != std::string::npos ||
+        name.find("frozen") != std::string::npos ||
+        name.find("icsnow") != std::string::npos ||
+        startsWith("gdr") ||          // Great Divide prefix (gdrocksnow, etc.)
+        startsWith("vel") ||          // Velketor prefix
+        startsWith("wice") ||         // Velious water ice
+        startsWith("thu")) {          // Thurgadin prefix
+        return SurfaceType::Snow;
+    }
+
+    // === GENERIC GROUND TEXTURES ===
 
     // Grass - explicit grass textures (includes xgrasdir = grass/dirt transition)
     if (name.find("grass") != std::string::npos ||
-        name.find("gras") != std::string::npos ||   // catches xgrasdir
+        name.find("gras") != std::string::npos ||   // catches xgrasdir, kwgras1, etc.
         name.find("lawn") != std::string::npos ||
         name.find("turf") != std::string::npos) {
         return SurfaceType::Grass;
+    }
+
+    // Natural rock/cliff terrain (NOT man-made stone floors)
+    // Check for rock WITHOUT floor/tile indicators
+    if ((name.find("rock") != std::string::npos ||
+         name.find("cliff") != std::string::npos ||
+         name.find("boulder") != std::string::npos ||
+         name.find("mountain") != std::string::npos ||
+         name.find("crag") != std::string::npos) &&
+        name.find("floor") == std::string::npos &&
+        name.find("flor") == std::string::npos &&
+        name.find("tile") == std::string::npos) {
+        return SurfaceType::Rock;
     }
 
     // Cobblestone/paved streets - the main walkable stone in cities
@@ -115,7 +186,7 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
         return SurfaceType::Stone;
     }
 
-    // Explicit floor textures
+    // Explicit floor textures (man-made)
     if (name.find("floor") != std::string::npos ||
         name.find("flor") != std::string::npos ||
         name.find("flr") != std::string::npos) {
@@ -128,9 +199,11 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
         return SurfaceType::Stone;
     }
 
-    // Dirt paths
+    // Dirt/mud paths
     if (name.find("dirt") != std::string::npos ||
-        name.find("xdrt") != std::string::npos) {
+        name.find("xdrt") != std::string::npos ||
+        name.find("mud") != std::string::npos ||
+        name.find("ground") != std::string::npos) {
         return SurfaceType::Dirt;
     }
 
@@ -145,20 +218,34 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
     // Sand/beach
     if (name.find("sand") != std::string::npos ||
         name.find("beach") != std::string::npos ||
-        name.find("desert") != std::string::npos) {
+        name.find("desert") != std::string::npos ||
+        name.find("dune") != std::string::npos) {
         return SurfaceType::Sand;
-    }
-
-    // Snow/ice
-    if (name.find("snow") != std::string::npos ||
-        name.find("ice") != std::string::npos ||
-        name.find("frost") != std::string::npos) {
-        return SurfaceType::Snow;
     }
 
     // Brick explicitly named (rare as ground, but possible)
     if (name.find("brick") != std::string::npos) {
         return SurfaceType::Brick;
+    }
+
+    // === KUNARK ZONE PREFIXES ===
+    // Many Kunark textures use zone-specific prefixes
+    // These are outdoor ground textures that should get appropriate biomes
+
+    // Burning Woods - volcanic/ash ground
+    if (startsWith("bw") && (name.find("ground") != std::string::npos ||
+                             name.find("grass") != std::string::npos)) {
+        return SurfaceType::Dirt;  // Ash/volcanic dirt
+    }
+
+    // Dreadlands - barren rock
+    if (startsWith("dread") || startsWith("drd")) {
+        return SurfaceType::Rock;
+    }
+
+    // Field of Bone - bone/dirt ground
+    if (startsWith("fob") || name.find("bone") != std::string::npos) {
+        return SurfaceType::Dirt;
     }
 
     // === UNKNOWN - don't assume anything about unrecognized textures ===

@@ -102,8 +102,8 @@ float SeasonalController::getSeasonDensityMultiplier(Season season) const {
             return 0.4f;
 
         case Season::Desert:
-            // Very sparse vegetation in deserts
-            return 0.2f;
+            // Sparse vegetation in deserts (but not zero)
+            return 0.5f;
 
         case Season::Swamp:
             // Dense vegetation in swamps

@@ -712,11 +712,8 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     // Create detail manager (grass, plants, debris)
     if (!detailManager_) {
         detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-        // Set surface maps path - surface map files are expected in EQ client directory
-        // (e.g., qeynos2_surface.map alongside qeynos2.s3d)
-        if (!config_.eqClientPath.empty()) {
-            detailManager_->setSurfaceMapsPath(config_.eqClientPath);
-        }
+        // Set surface maps path - surface map files are in data/detail/zones/
+        detailManager_->setSurfaceMapsPath("data/detail/zones");
     }
 
     // Initialize inventory window model view now that entity renderer is available

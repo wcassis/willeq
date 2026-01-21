@@ -54,18 +54,23 @@ enum class Season {
 // Surface types for detail placement filtering
 enum class SurfaceType : uint32_t {
     Unknown     = 0,
-    Grass       = 1 << 0,   // Natural grass/vegetation areas
+    Grass       = 1 << 0,   // Natural grass/vegetation areas (temperate)
     Dirt        = 1 << 1,   // Dirt paths, unpaved ground
-    Stone       = 1 << 2,   // Stone floors, cobblestone, rock
+    Stone       = 1 << 2,   // Stone floors, cobblestone, tiles (man-made)
     Brick       = 1 << 3,   // Brick surfaces, walls
     Wood        = 1 << 4,   // Wooden floors, planks
     Sand        = 1 << 5,   // Desert sand, beaches
-    Snow        = 1 << 6,   // Snow-covered ground
-    Water       = 1 << 7,   // Water surfaces (excluded)
-    Lava        = 1 << 8,   // Lava surfaces (excluded)
+    Snow        = 1 << 6,   // Snow-covered ground (Velious)
+    Water       = 1 << 7,   // Water surfaces (excluded from detail)
+    Lava        = 1 << 8,   // Lava surfaces (excluded from detail)
+    Jungle      = 1 << 9,   // Tropical vegetation (Kunark)
+    Swamp       = 1 << 10,  // Wetlands, marshes (Innothule, Kunark)
+    Rock        = 1 << 11,  // Natural rocky terrain (not man-made floors)
 
     // Composite masks for convenience
-    Natural     = Grass | Dirt | Sand | Snow,  // Natural outdoor surfaces
+    Natural     = Grass | Dirt | Sand | Snow | Jungle | Swamp | Rock,  // Natural outdoor surfaces
+    Tropical    = Jungle | Swamp,              // Kunark tropical biomes
+    Cold        = Snow,                        // Velious cold biomes
     HardSurface = Stone | Brick | Wood,        // Man-made hard surfaces
     All         = 0xFFFFFFFF
 };
