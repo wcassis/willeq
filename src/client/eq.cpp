@@ -4472,9 +4472,9 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 		}
 
 #ifdef WITH_AUDIO
-		// Play vendor music
-		if (m_audio_manager) {
-			m_audio_manager->playMusic("opener2.xmi", false);
+		// Play vendor music (configurable via audio.vendor_music)
+		if (m_audio_manager && !m_audio_config_vendor_music.empty()) {
+			m_audio_manager->playMusic(m_audio_config_vendor_music, false);
 		}
 #endif
 
