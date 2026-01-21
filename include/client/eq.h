@@ -1662,6 +1662,7 @@ public:
 	float m_audio_config_music_volume = 0.7f;
 	float m_audio_config_effects_volume = 1.0f;
 	std::string m_audio_config_soundfont;
+	std::string m_audio_config_vendor_music = "gl.xmi";
 	bool m_audio_config_use_3d_audio = true;
 
 public:
@@ -1675,6 +1676,7 @@ public:
 	void SetMusicVolume(float volume) { m_audio_config_music_volume = volume; }
 	void SetEffectsVolume(float volume) { m_audio_config_effects_volume = volume; }
 	void SetSoundFont(const std::string& path) { m_audio_config_soundfont = path; }
+	void SetVendorMusic(const std::string& filename) { m_audio_config_vendor_music = filename; }
 	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
 
 	// Sound effect helpers (client-triggered)

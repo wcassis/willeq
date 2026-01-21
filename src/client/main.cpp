@@ -540,6 +540,7 @@ int main(int argc, char *argv[]) {
 	float audio_music_volume = 0.5f;   // 50% - XMI music can be loud
 	float audio_effects_volume = 1.0f;
 	std::string audio_soundfont;
+	std::string audio_vendor_music = "gl.xmi";  // Music played when vendor window opens
 #endif
 
 	for (int i = 1; i < argc; i++) {
@@ -805,6 +806,10 @@ int main(int argc, char *argv[]) {
 				audio_soundfont = audio_config["soundfont"].asString();
 				LOG_INFO(MOD_AUDIO, "SoundFont from config: {}", audio_soundfont);
 			}
+			if (audio_config.isMember("vendor_music")) {
+				audio_vendor_music = audio_config["vendor_music"].asString();
+				LOG_INFO(MOD_AUDIO, "Vendor music from config: {}", audio_vendor_music);
+			}
 		}
 #endif
 
@@ -877,6 +882,7 @@ int main(int argc, char *argv[]) {
 			if (!audio_soundfont.empty()) {
 				eq->SetSoundFont(audio_soundfont);
 			}
+			eq->SetVendorMusic(audio_vendor_music);
 #endif
 
 			eq_list.push_back(std::move(eq));
