@@ -9266,16 +9266,15 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(hotkeys);
 
-<<<<<<< HEAD
 	// === Detail System Commands (grass, plants, debris) ===
 
-	Command detail;
-	detail.name = "detail";
-	detail.aliases = {"detaildensity", "grass"};
-	detail.usage = "/detail [0-100]";
-	detail.description = "Set or show detail density (grass, plants)";
-	detail.category = "Utility";
-	detail.handler = [this](const std::string& args) {
+	Command detailCmd;
+	detailCmd.name = "detail";
+	detailCmd.aliases = {"detaildensity", "grass"};
+	detailCmd.usage = "/detail [0-100]";
+	detailCmd.description = "Set or show detail density (grass, plants)";
+	detailCmd.category = "Utility";
+	detailCmd.handler = [this](const std::string& args) {
 		if (!m_renderer) return;
 		auto* dm = m_renderer->getDetailManager();
 		if (!dm) {
@@ -9297,7 +9296,7 @@ void EverQuest::RegisterCommands()
 			}
 		}
 	};
-	m_command_registry->registerCommand(detail);
+	m_command_registry->registerCommand(detailCmd);
 
 	Command togglegrass;
 	togglegrass.name = "togglegrass";
