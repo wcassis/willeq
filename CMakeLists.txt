@@ -383,6 +383,8 @@ IF(WITH_AUDIO)
         src/client/audio/eff_loader.cpp
         src/client/audio/zone_sound_emitter.cpp
         src/client/audio/zone_audio_manager.cpp
+        src/client/audio/door_sounds.cpp
+        src/client/audio/combat_music.cpp
     )
 ENDIF()
 

@@ -48,7 +48,7 @@ bool CombatMusicManager::initialize(const std::string& eqPath,
 
     // Create dedicated music player for stingers
     stingerPlayer_ = std::make_unique<MusicPlayer>();
-    if (!stingerPlayer_->initialize(soundFontPath_)) {
+    if (!stingerPlayer_->initialize(eqPath_, soundFontPath_)) {
         std::cout << "[COMBAT_MUSIC] Failed to initialize stinger player" << std::endl;
         stingerPlayer_.reset();
         return false;

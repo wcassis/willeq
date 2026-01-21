@@ -31,7 +31,9 @@ public:
     MusicPlayer& operator=(const MusicPlayer&) = delete;
 
     // Initialization
-    bool initialize(const std::string& soundFontPath = "");
+    // eqPath: path to EQ client directory (for auto-loading EQ soundfonts)
+    // soundFontPath: optional user-specified soundfont (loaded last, highest priority)
+    bool initialize(const std::string& eqPath = "", const std::string& soundFontPath = "");
     void shutdown();
 
     // Playback control
@@ -44,6 +46,7 @@ public:
     bool isPlaying() const { return playing_; }
     bool isPaused() const { return paused_; }
     float getPosition() const;  // Current playback position in seconds
+    const std::string& getCurrentFile() const { return currentFile_; }
 
     // Volume (0.0 - 1.0)
     void setVolume(float volume);

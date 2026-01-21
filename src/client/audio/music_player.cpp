@@ -31,7 +31,7 @@ MusicPlayer::~MusicPlayer() {
     shutdown();
 }
 
-bool MusicPlayer::initialize(const std::string& soundFontPath) {
+bool MusicPlayer::initialize(const std::string& eqPath, const std::string& soundFontPath) {
     if (initialized_) {
         return true;
     }
@@ -81,36 +81,72 @@ bool MusicPlayer::initialize(const std::string& soundFontPath) {
         fluidSynth_ = new_fluid_synth(fluidSettings_);
         if (fluidSynth_) {
             std::cerr << "[AUDIO] FluidSynth: synth created (ptr=" << fluidSynth_ << ")" << std::endl;
-            // Load SoundFont if provided
-            if (!soundFontPath.empty() && std::filesystem::exists(soundFontPath)) {
-                std::cerr << "[AUDIO] FluidSynth: loading soundfont: " << soundFontPath << std::endl;
-                soundFontId_ = fluid_synth_sfload(fluidSynth_, soundFontPath.c_str(), 1);
-                if (soundFontId_ >= 0) {
-                    std::cerr << "[AUDIO] FluidSynth: soundfont loaded (id=" << soundFontId_ << ")" << std::endl;
-                    LOG_INFO(MOD_AUDIO, "Loaded SoundFont: {}", soundFontPath);
 
-                    // Create audio driver to connect synth to PulseAudio
-                    std::cerr << "[AUDIO] FluidSynth: creating audio driver..." << std::endl;
+            // Load EQ client soundfonts first (lower priority)
+            // These are the original EQ soundfonts that came with the game
+            bool anySoundFontLoaded = false;
+            if (!eqPath.empty()) {
+                // Load synthus2.sf2 (main instrument bank, ~12MB)
+                std::string eqSf2Main = eqPath + "/synthus2.sf2";
+                if (std::filesystem::exists(eqSf2Main)) {
+                    std::cerr << "[AUDIO] FluidSynth: loading EQ soundfont: " << eqSf2Main << std::endl;
+                    int sfId = fluid_synth_sfload(fluidSynth_, eqSf2Main.c_str(), 1);
+                    if (sfId >= 0) {
+                        std::cerr << "[AUDIO] FluidSynth: EQ soundfont loaded (id=" << sfId << ")" << std::endl;
+                        LOG_INFO(MOD_AUDIO, "Loaded EQ SoundFont: {}", eqSf2Main);
+                        soundFontId_ = sfId;
+                        anySoundFontLoaded = true;
+                    }
+                }
+
+                // Load synthusr.sf2 (supplemental bank, ~500KB)
+                std::string eqSf2User = eqPath + "/synthusr.sf2";
+                if (std::filesystem::exists(eqSf2User)) {
+                    std::cerr << "[AUDIO] FluidSynth: loading EQ user soundfont: " << eqSf2User << std::endl;
+                    int sfId = fluid_synth_sfload(fluidSynth_, eqSf2User.c_str(), 1);
+                    if (sfId >= 0) {
+                        std::cerr << "[AUDIO] FluidSynth: EQ user soundfont loaded (id=" << sfId << ")" << std::endl;
+                        LOG_INFO(MOD_AUDIO, "Loaded EQ SoundFont: {}", eqSf2User);
+                        soundFontId_ = sfId;
+                        anySoundFontLoaded = true;
+                    }
+                }
+            }
+
+            // Load user-specified soundfont last (highest priority - instruments here override EQ soundfonts)
+            if (!soundFontPath.empty() && std::filesystem::exists(soundFontPath)) {
+                std::cerr << "[AUDIO] FluidSynth: loading user soundfont: " << soundFontPath << std::endl;
+                int sfId = fluid_synth_sfload(fluidSynth_, soundFontPath.c_str(), 1);
+                if (sfId >= 0) {
+                    std::cerr << "[AUDIO] FluidSynth: user soundfont loaded (id=" << sfId << ")" << std::endl;
+                    LOG_INFO(MOD_AUDIO, "Loaded user SoundFont: {}", soundFontPath);
+                    soundFontId_ = sfId;
+                    anySoundFontLoaded = true;
+                } else {
+                    std::cerr << "[AUDIO] FluidSynth: user soundfont FAILED to load" << std::endl;
+                    LOG_WARN(MOD_AUDIO, "Failed to load user SoundFont: {}", soundFontPath);
+                }
+            }
+
+            // Create audio driver if any soundfont was loaded
+            if (anySoundFontLoaded) {
+                std::cerr << "[AUDIO] FluidSynth: creating audio driver..." << std::endl;
+                fluidAudioDriver_ = new_fluid_audio_driver(fluidSettings_, fluidSynth_);
+                if (fluidAudioDriver_) {
+                    std::cerr << "[AUDIO] FluidSynth: audio driver created" << std::endl;
+                } else {
+                    std::cerr << "[AUDIO] FluidSynth: audio driver FAILED - trying ALSA" << std::endl;
+                    // Try ALSA as fallback
+                    fluid_settings_setstr(fluidSettings_, "audio.driver", "alsa");
                     fluidAudioDriver_ = new_fluid_audio_driver(fluidSettings_, fluidSynth_);
                     if (fluidAudioDriver_) {
-                        std::cerr << "[AUDIO] FluidSynth: audio driver created" << std::endl;
+                        std::cerr << "[AUDIO] FluidSynth: ALSA audio driver created" << std::endl;
                     } else {
-                        std::cerr << "[AUDIO] FluidSynth: audio driver FAILED - trying ALSA" << std::endl;
-                        // Try ALSA as fallback
-                        fluid_settings_setstr(fluidSettings_, "audio.driver", "alsa");
-                        fluidAudioDriver_ = new_fluid_audio_driver(fluidSettings_, fluidSynth_);
-                        if (fluidAudioDriver_) {
-                            std::cerr << "[AUDIO] FluidSynth: ALSA audio driver created" << std::endl;
-                        } else {
-                            std::cerr << "[AUDIO] FluidSynth: ALSA audio driver also FAILED" << std::endl;
-                        }
+                        std::cerr << "[AUDIO] FluidSynth: ALSA audio driver also FAILED" << std::endl;
                     }
-                } else {
-                    std::cerr << "[AUDIO] FluidSynth: soundfont FAILED to load" << std::endl;
-                    LOG_WARN(MOD_AUDIO, "Failed to load SoundFont: {}", soundFontPath);
                 }
             } else {
-                std::cerr << "[AUDIO] FluidSynth: no soundfont path or file not found" << std::endl;
+                std::cerr << "[AUDIO] FluidSynth: no soundfonts loaded - XMI playback disabled" << std::endl;
             }
         } else {
             std::cerr << "[AUDIO] FluidSynth: synth creation FAILED" << std::endl;

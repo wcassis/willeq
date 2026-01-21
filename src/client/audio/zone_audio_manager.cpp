@@ -96,9 +96,11 @@ void ZoneAudioManager::update(float deltaTime, const glm::vec3& listenerPos, boo
 
             // Get sound file (might be XMI reference or MP3)
             // For positive IDs 1-31, it's an XMI subsong
-            // This is handled by playMusic in AudioManager
-            std::string musicFile = currentZone_ + ".xmi";
-            audioManager_->playMusic(musicFile, true);
+            // Use findZoneMusic to apply zone name mappings (e.g., oasis -> nro)
+            std::string musicFile = audioManager_->findZoneMusic(currentZone_);
+            if (!musicFile.empty()) {
+                audioManager_->playMusic(musicFile, true);
+            }
 
             std::cout << "[ZONE_AUDIO] Music region entered at ("
                       << activeMusicEmitter_->getPosition().x << ", "

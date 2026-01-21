@@ -76,6 +76,7 @@ public:
 
     // Zone transitions
     void onZoneChange(const std::string& zoneName);
+    void restartZoneMusic();  // Restart current zone's music
 
     // Volume controls (0.0 - 1.0)
     void setMasterVolume(float volume);
@@ -103,6 +104,9 @@ public:
     // Loopback mode control
     void update();  // Must be called periodically to render loopback audio
 
+    // Find zone music file with zone name mapping (e.g., oasis -> nro)
+    std::string findZoneMusic(const std::string& zoneName);
+
 private:
     // Loopback device initialization
     bool initializeLoopbackDevice();
@@ -112,7 +116,6 @@ private:
     std::shared_ptr<SoundBuffer> loadSound(const std::string& filename);
     std::shared_ptr<SoundBuffer> loadSoundFromPfs(const std::string& filename);
     std::shared_ptr<SoundBuffer> getSoundById(uint32_t soundId);
-    std::string findZoneMusic(const std::string& zoneName);
 
     // PFS archive management
     void scanPfsArchives();

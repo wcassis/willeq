@@ -80,9 +80,9 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
 
     // Initialize music player
     musicPlayer_ = std::make_unique<MusicPlayer>();
-    std::cout << "[AUDIO] Initializing music player with soundfont: "
-              << (soundFontPath_.empty() ? "(none)" : soundFontPath_) << std::endl;
-    if (!musicPlayer_->initialize(soundFontPath_)) {
+    std::cout << "[AUDIO] Initializing music player with eqPath: " << eqPath_
+              << ", soundfont: " << (soundFontPath_.empty() ? "(none)" : soundFontPath_) << std::endl;
+    if (!musicPlayer_->initialize(eqPath_, soundFontPath_)) {
         LOG_WARN(MOD_AUDIO, "Music player initialization failed, music will be disabled");
     }
 
@@ -283,6 +283,12 @@ void AudioManager::playMusic(const std::string& filename, bool loop) {
         return;
     }
 
+    // Skip if the same file is already playing
+    if (musicPlayer_->isPlaying() && musicPlayer_->getCurrentFile() == fullPath) {
+        std::cout << "[AUDIO] MUSIC SKIP: file=" << fullPath << " (already playing)" << std::endl;
+        return;
+    }
+
     std::cout << "[AUDIO] MUSIC PLAY: file=" << fullPath << " loop=" << (loop ? "yes" : "no") << std::endl;
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
@@ -346,6 +352,17 @@ void AudioManager::onZoneChange(const std::string& zoneName) {
         // No music for this zone, just stop
         std::cout << "[AUDIO] NO MUSIC FOR ZONE: " << zoneName << std::endl;
         stopMusic(2.0f);
+    }
+}
+
+void AudioManager::restartZoneMusic() {
+    if (!initialized_ || !audioEnabled_ || currentZone_.empty()) {
+        return;
+    }
+
+    std::string musicFile = findZoneMusic(currentZone_);
+    if (!musicFile.empty()) {
+        playMusic(musicFile, true);
     }
 }
 

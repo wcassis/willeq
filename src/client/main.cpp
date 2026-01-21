@@ -537,7 +537,7 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_AUDIO
 	bool audio_enabled = true;
 	float audio_master_volume = 1.0f;
-	float audio_music_volume = 0.7f;
+	float audio_music_volume = 0.5f;   // 50% - XMI music can be loud
 	float audio_effects_volume = 1.0f;
 	std::string audio_soundfont;
 #endif

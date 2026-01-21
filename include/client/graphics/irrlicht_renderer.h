@@ -278,6 +278,12 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     // Ambient light adjustment (returns delta value, 0 if no change)
     float getAmbientLightDelta() { float d = ambientLightDelta_; ambientLightDelta_ = 0; return d; }
 
+    // Music volume adjustment (returns delta value, 0 if no change)
+    float getMusicVolumeDelta() { float d = musicVolumeDelta_; musicVolumeDelta_ = 0; return d; }
+
+    // Effects volume adjustment (returns delta value, 0 if no change)
+    float getEffectsVolumeDelta() { float d = effectsVolumeDelta_; effectsVolumeDelta_ = 0; return d; }
+
     // Corpse Z offset adjustment (returns delta value, 0 if no change)
     float getCorpseZOffsetDelta() { float d = corpseZOffsetDelta_; corpseZOffsetDelta_ = 0; return d; }
 
@@ -391,6 +397,8 @@ bool zoneLineVisualizationToggleRequested_ = false;
     float animSpeedDelta_ = 0.0f;
     float cameraZoomDelta_ = 0.0f;
     float ambientLightDelta_ = 0.0f;
+    float musicVolumeDelta_ = 0.0f;
+    float effectsVolumeDelta_ = 0.0f;
     float corpseZOffsetDelta_ = 0.0f;
     float eyeHeightDelta_ = 0.0f;
     float particleMultiplierDelta_ = 0.0f;
@@ -664,6 +672,9 @@ public:
 
     // Get entity renderer
     EntityRenderer* getEntityRenderer() { return entityRenderer_.get(); }
+
+    // Get event receiver (for input state queries)
+    RendererEventReceiver* getEventReceiver() { return eventReceiver_.get(); }
 
     // HUD text update callback (for external HUD info)
     using HUDCallback = std::function<std::wstring()>;

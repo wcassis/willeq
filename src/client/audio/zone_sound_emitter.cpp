@@ -170,37 +170,24 @@ void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, boo
     // Handle fade in/out
     float deltaMs = deltaTime * 1000.0f;
     if (isPlaying_) {
-        // Check if source is still playing
-        ALint state;
-        alGetSourcei(source_, AL_SOURCE_STATE, &state);
+        // Note: We can't check the actual source state because AudioManager uses
+        // its own source pool. Instead, we use the cooldown timer to track when
+        // we consider the sound "done playing" for re-trigger purposes.
 
-        if (state != AL_PLAYING && state != AL_PAUSED) {
-            // Sound finished
-            isPlaying_ = false;
+        // Update volume with fade
+        if (currentVolume_ < targetVolume_) {
+            float fadeInMs = static_cast<float>(fadeOutMs_) / 2.0f;
+            fadeInMs = std::min(fadeInMs, 5000.0f);  // Cap at 5 seconds
+            float fadeRate = deltaMs / fadeInMs;
+            currentVolume_ = std::min(targetVolume_, currentVolume_ + fadeRate);
+        } else if (currentVolume_ > targetVolume_) {
+            float fadeRate = deltaMs / static_cast<float>(fadeOutMs_);
+            currentVolume_ = std::max(targetVolume_, currentVolume_ - fadeRate);
 
-            // Reset cooldown for next play
-            int32_t baseCooldown = isDay ? cooldown1_ : cooldown2_;
-            int32_t randomAdd = randomDelay_ > 0 ? (std::rand() % (randomDelay_ + 1)) : 0;
-            cooldownTimer_ = static_cast<float>(baseCooldown + randomAdd);
-        } else {
-            // Update volume with fade
-            if (currentVolume_ < targetVolume_) {
-                float fadeInMs = static_cast<float>(fadeOutMs_) / 2.0f;
-                fadeInMs = std::min(fadeInMs, 5000.0f);  // Cap at 5 seconds
-                float fadeRate = deltaMs / fadeInMs;
-                currentVolume_ = std::min(targetVolume_, currentVolume_ + fadeRate);
-            } else if (currentVolume_ > targetVolume_) {
-                float fadeRate = deltaMs / static_cast<float>(fadeOutMs_);
-                currentVolume_ = std::max(targetVolume_, currentVolume_ - fadeRate);
-
-                // If faded out completely, stop
-                if (currentVolume_ <= 0.0f && !inRange) {
-                    stop();
-                }
+            // If faded out completely, stop
+            if (currentVolume_ <= 0.0f && !inRange) {
+                stop();
             }
-
-            // Apply volume
-            updateVolume(distance);
         }
     }
 
@@ -217,9 +204,14 @@ void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, boo
 
     wasInRange_ = inRange;
 
-    // Update cooldown timer
-    if (!isPlaying_ && cooldownTimer_ > 0) {
+    // Update cooldown timer (also serves as "play duration" tracking)
+    if (cooldownTimer_ > 0) {
         cooldownTimer_ -= deltaMs;
+
+        // When cooldown expires, mark as no longer playing (ready for next trigger)
+        if (cooldownTimer_ <= 0 && isPlaying_) {
+            isPlaying_ = false;
+        }
     }
 
     // Check if we should start playing
@@ -307,7 +299,7 @@ void ZoneSoundEmitter::stop() {
 }
 
 void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
-    if (!audioManager || source_ == 0) {
+    if (!audioManager) {
         return;
     }
 
@@ -322,25 +314,27 @@ void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
         filename += ".wav";
     }
 
-    // Load sound buffer (this will get from cache if already loaded)
-    // Note: AudioManager::loadSound is private, so we use playSoundByName indirectly
-    // For now, we'll use a simple approach - just trigger the sound
-    // A more sophisticated implementation would cache the buffer
-
-    // For looping ambient sounds, we need the buffer to set up looping
-    // This is a limitation - we may need to extend AudioManager
-    // For now, play non-looping and rely on cooldown timer
-
+    // Play through AudioManager's source pool
     audioManager->playSoundByName(filename, position_);
     isPlaying_ = true;
     currentVolume_ = targetVolume_;
 
     // Set cooldown for next play
+    // Note: We use cooldown timer to track play duration since we can't check
+    // the actual source state (AudioManager uses its own source pool)
     int32_t baseCooldown = isDay ? cooldown1_ : cooldown2_;
     int32_t randomAdd = randomDelay_ > 0 ? (std::rand() % (randomDelay_ + 1)) : 0;
-    cooldownTimer_ = static_cast<float>(baseCooldown + randomAdd);
 
-    // If no cooldown, this is a one-shot trigger
+    // Ensure minimum cooldown of 1 second to prevent rapid re-triggering
+    // This accounts for typical ambient sound durations
+    static constexpr int32_t MIN_COOLDOWN_MS = 1000;
+    int32_t totalCooldown = baseCooldown + randomAdd;
+    if (totalCooldown < MIN_COOLDOWN_MS && totalCooldown >= 0) {
+        totalCooldown = MIN_COOLDOWN_MS;
+    }
+    cooldownTimer_ = static_cast<float>(totalCooldown);
+
+    // If no cooldown specified, this is a one-shot trigger
     // The sound will play once and we wait for the player to leave and re-enter
     if (baseCooldown <= 0 && randomDelay_ <= 0) {
         cooldownTimer_ = -1.0f;  // Don't replay automatically

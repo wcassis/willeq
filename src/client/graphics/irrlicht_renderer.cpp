@@ -199,6 +199,12 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::CameraZoomIn: cameraZoomDelta_ = -2.0f; break;
                     case HA::CameraZoomOut: cameraZoomDelta_ = 2.0f; break;
 
+                    // Audio Volume
+                    case HA::MusicVolumeUp: musicVolumeDelta_ = 0.1f; break;
+                    case HA::MusicVolumeDown: musicVolumeDelta_ = -0.1f; break;
+                    case HA::EffectsVolumeUp: effectsVolumeDelta_ = 0.1f; break;
+                    case HA::EffectsVolumeDown: effectsVolumeDelta_ = -0.1f; break;
+
                     // === Admin Mode Actions ===
                     case HA::SaveEntities: saveEntitiesRequested_ = true; break;
                     case HA::ToggleLighting: lightingToggleRequested_ = true; break;

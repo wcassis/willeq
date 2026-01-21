@@ -35,6 +35,7 @@
 #include "client/audio/audio_manager.h"
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/sound_assets.h"
+#include "client/audio/door_sounds.h"
 #endif
 
 #include "client/animation_constants.h"
@@ -4446,6 +4447,13 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 			m_renderer->getWindowManager()->getVendorWindow()->setPlayerMoney(pp, gp, sp, cp);
 		}
 
+#ifdef WITH_AUDIO
+		// Play vendor music
+		if (m_audio_manager) {
+			m_audio_manager->playMusic("opener2.xmi", false);
+		}
+#endif
+
 		LOG_INFO(MOD_INVENTORY, "Opened vendor window for {} (id={})", m_vendor_name, m_vendor_npc_id);
 	} else {
 		LOG_WARN(MOD_INVENTORY, "Vendor open failed: action={}", action);
@@ -4773,6 +4781,13 @@ void EverQuest::CloseVendorWindow()
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeVendorWindow();
 	}
+
+#ifdef WITH_AUDIO
+	// Restore zone music
+	if (m_audio_manager) {
+		m_audio_manager->restartZoneMusic();
+	}
+#endif
 
 	// Clear vendor state
 	m_vendor_npc_id = 0;
@@ -11292,6 +11307,49 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 #endif
 }
 
+// Helper function to determine door type from door name
+#ifdef WITH_AUDIO
+static EQT::Audio::DoorType getDoorTypeFromName(const std::string& name) {
+	// Convert to lowercase for comparison
+	std::string lowerName = name;
+	std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+
+	// Check for secret doors
+	if (lowerName.find("secret") != std::string::npos ||
+	    lowerName.find("hidden") != std::string::npos) {
+		return EQT::Audio::DoorType::Secret;
+	}
+
+	// Check for metal doors/gates
+	if (lowerName.find("gate") != std::string::npos ||
+	    lowerName.find("iron") != std::string::npos ||
+	    lowerName.find("metal") != std::string::npos ||
+	    lowerName.find("grate") != std::string::npos ||
+	    lowerName.find("portcullis") != std::string::npos ||
+	    lowerName.find("bars") != std::string::npos) {
+		return EQT::Audio::DoorType::Metal;
+	}
+
+	// Check for stone doors
+	if (lowerName.find("stone") != std::string::npos ||
+	    lowerName.find("rock") != std::string::npos ||
+	    lowerName.find("boulder") != std::string::npos ||
+	    lowerName.find("crypt") != std::string::npos ||
+	    lowerName.find("tomb") != std::string::npos) {
+		return EQT::Audio::DoorType::Stone;
+	}
+
+	// Check for sliding doors
+	if (lowerName.find("slide") != std::string::npos ||
+	    lowerName.find("panel") != std::string::npos) {
+		return EQT::Audio::DoorType::Sliding;
+	}
+
+	// Default to wood for most doors
+	return EQT::Audio::DoorType::Wood;
+}
+#endif
+
 void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 {
 	// MoveDoor indicates door animations (opening/closing)
@@ -11322,6 +11380,17 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 			          is_open ? "opened" : "closed",
 			          user_initiated ? " (user)" : "");
 		}
+
+#ifdef WITH_AUDIO
+		// Play door sound
+		if (m_audio_manager) {
+			const Door& door = it->second;
+			EQT::Audio::DoorType doorType = getDoorTypeFromName(door.name);
+			uint32_t soundId = EQT::Audio::DoorSounds::getDoorSound(doorType, is_open);
+			glm::vec3 doorPos(door.x, door.y, door.z);
+			m_audio_manager->playSound(soundId, doorPos);
+		}
+#endif
 
 #ifdef EQT_HAS_GRAPHICS
 		// Notify renderer to animate the door
@@ -17838,6 +17907,22 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 			// Phase 13: Update zone sound emitters
 			if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
 				m_zone_audio_manager->update(deltaTime, glm::vec3(posX, posY, posZ), m_is_daytime);
+			}
+
+			// Handle music volume hotkey adjustments ([ and ])
+			float musicDelta = m_renderer->getEventReceiver()->getMusicVolumeDelta();
+			if (musicDelta != 0.0f) {
+				float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getMusicVolume() + musicDelta));
+				m_audio_manager->setMusicVolume(newVol);
+				AddChatSystemMessage(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
+			}
+
+			// Handle effects volume hotkey adjustments (Shift+[ and Shift+])
+			float effectsDelta = m_renderer->getEventReceiver()->getEffectsVolumeDelta();
+			if (effectsDelta != 0.0f) {
+				float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getEffectsVolume() + effectsDelta));
+				m_audio_manager->setEffectsVolume(newVol);
+				AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
 			}
 		}
 #endif
