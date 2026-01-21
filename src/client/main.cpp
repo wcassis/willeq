@@ -528,6 +528,18 @@ int main(int argc, char *argv[]) {
 	EQT::Graphics::ConstrainedRenderingPreset constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::None;
 	bool frame_timing_enabled = false;
 	bool scene_profile_enabled = false;
+#ifdef WITH_RDP
+	bool rdp_enabled = false;
+	uint16_t rdp_port = 3389;
+#endif
+#endif
+
+#ifdef WITH_AUDIO
+	bool audio_enabled = true;
+	float audio_master_volume = 1.0f;
+	float audio_music_volume = 0.5f;   // 50% - XMI music can be loud
+	float audio_effects_volume = 1.0f;
+	std::string audio_soundfont;
 #endif
 
 	for (int i = 1; i < argc; i++) {
@@ -566,6 +578,37 @@ int main(int argc, char *argv[]) {
 			frame_timing_enabled = true;
 		} else if (arg == "--scene-profile" || arg == "--sp") {
 			scene_profile_enabled = true;
+#ifdef WITH_RDP
+		} else if (arg == "--rdp" || arg == "--enable-rdp") {
+			rdp_enabled = true;
+		} else if (arg == "--rdp-port") {
+			if (i + 1 < argc) {
+				rdp_port = static_cast<uint16_t>(std::atoi(argv[++i]));
+			}
+#endif
+#endif
+#ifdef WITH_AUDIO
+		} else if (arg == "--no-audio" || arg == "-na") {
+			audio_enabled = false;
+		} else if (arg == "--audio-volume") {
+			if (i + 1 < argc) {
+				int vol = std::atoi(argv[++i]);
+				audio_master_volume = std::clamp(vol, 0, 100) / 100.0f;
+			}
+		} else if (arg == "--music-volume") {
+			if (i + 1 < argc) {
+				int vol = std::atoi(argv[++i]);
+				audio_music_volume = std::clamp(vol, 0, 100) / 100.0f;
+			}
+		} else if (arg == "--effects-volume") {
+			if (i + 1 < argc) {
+				int vol = std::atoi(argv[++i]);
+				audio_effects_volume = std::clamp(vol, 0, 100) / 100.0f;
+			}
+		} else if (arg == "--soundfont") {
+			if (i + 1 < argc) {
+				audio_soundfont = argv[++i];
+			}
 #endif
 		} else if (arg == "--help" || arg == "-h") {
 			std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -580,6 +623,17 @@ int main(int argc, char *argv[]) {
 			std::cout << "  --constrained <preset>   Enable constrained rendering mode (voodoo1, voodoo2, tnt)\n";
 			std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
 			std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
+#ifdef WITH_RDP
+			std::cout << "  --rdp, --enable-rdp      Enable native RDP server for remote access\n";
+			std::cout << "  --rdp-port <port>        RDP server port (default: 3389)\n";
+#endif
+#endif
+#ifdef WITH_AUDIO
+			std::cout << "  -na, --no-audio          Disable audio\n";
+			std::cout << "  --audio-volume <0-100>   Master volume (default: 100)\n";
+			std::cout << "  --music-volume <0-100>   Music volume (default: 70)\n";
+			std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
+			std::cout << "  --soundfont <path>       Path to SoundFont for MIDI playback\n";
 #endif
 			std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
 			std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
@@ -707,6 +761,51 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
+
+#ifdef WITH_RDP
+		// Parse RDP config from main config
+		if (config_handle.isMember("rdp")) {
+			const auto& rdp_config = config_handle["rdp"];
+			if (rdp_config.isMember("enabled") && rdp_config["enabled"].asBool()) {
+				rdp_enabled = true;
+				LOG_INFO(MOD_GRAPHICS, "RDP server enabled from config");
+			}
+			if (rdp_config.isMember("port")) {
+				rdp_port = static_cast<uint16_t>(rdp_config["port"].asInt());
+				LOG_INFO(MOD_GRAPHICS, "RDP port from config: {}", rdp_port);
+			}
+		}
+#endif
+#endif
+
+#ifdef WITH_AUDIO
+		// Parse audio config from main config
+		if (config_handle.isMember("audio")) {
+			const auto& audio_config = config_handle["audio"];
+			if (audio_config.isMember("enabled")) {
+				audio_enabled = audio_config["enabled"].asBool();
+				LOG_INFO(MOD_AUDIO, "Audio {} from config", audio_enabled ? "enabled" : "disabled");
+			}
+			if (audio_config.isMember("master_volume")) {
+				int vol = audio_config["master_volume"].asInt();
+				audio_master_volume = std::clamp(vol, 0, 100) / 100.0f;
+				LOG_INFO(MOD_AUDIO, "Master volume from config: {}%", vol);
+			}
+			if (audio_config.isMember("music_volume")) {
+				int vol = audio_config["music_volume"].asInt();
+				audio_music_volume = std::clamp(vol, 0, 100) / 100.0f;
+				LOG_INFO(MOD_AUDIO, "Music volume from config: {}%", vol);
+			}
+			if (audio_config.isMember("effects_volume")) {
+				int vol = audio_config["effects_volume"].asInt();
+				audio_effects_volume = std::clamp(vol, 0, 100) / 100.0f;
+				LOG_INFO(MOD_AUDIO, "Effects volume from config: {}%", vol);
+			}
+			if (audio_config.isMember("soundfont")) {
+				audio_soundfont = audio_config["soundfont"].asString();
+				LOG_INFO(MOD_AUDIO, "SoundFont from config: {}", audio_soundfont);
+			}
+		}
 #endif
 
 		if (config_handle.isMember("clients") && config_handle["clients"].isArray()) {
@@ -769,6 +868,17 @@ int main(int argc, char *argv[]) {
 			eq->SetConfigPath(config_file);
 #endif
 
+#ifdef WITH_AUDIO
+			// Apply audio settings from command line
+			eq->SetAudioEnabled(audio_enabled);
+			eq->SetMasterVolume(audio_master_volume);
+			eq->SetMusicVolume(audio_music_volume);
+			eq->SetEffectsVolume(audio_effects_volume);
+			if (!audio_soundfont.empty()) {
+				eq->SetSoundFont(audio_soundfont);
+			}
+#endif
+
 			eq_list.push_back(std::move(eq));
 		}
 	}
@@ -806,6 +916,21 @@ int main(int argc, char *argv[]) {
 					// Schedule scene profile - it will run after zone is loaded
 					renderer->runSceneProfile();
 				}
+#ifdef WITH_RDP
+				// Initialize and start RDP server if enabled
+				if (rdp_enabled) {
+					LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", rdp_port);
+					if (renderer->initRDP(rdp_port)) {
+						if (renderer->startRDPServer()) {
+							LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", rdp_port);
+						} else {
+							LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
+						}
+					} else {
+						LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
+					}
+				}
+#endif
 			}
 		} else {
 			LOG_WARN(MOD_GRAPHICS, "Failed to initialize graphics - running headless");
@@ -1186,6 +1311,16 @@ int main(int argc, char *argv[]) {
 	command_thread.join();
 
 #ifdef EQT_HAS_GRAPHICS
+	// Shutdown RDP server if running
+#ifdef WITH_RDP
+	if (graphics_initialized && !eq_list.empty()) {
+		auto* renderer = eq_list[0]->GetRenderer();
+		if (renderer && renderer->isRDPRunning()) {
+			LOG_INFO(MOD_GRAPHICS, "Stopping RDP server...");
+			renderer->stopRDPServer();
+		}
+	}
+#endif
 	// Shutdown graphics
 	if (graphics_initialized && !eq_list.empty()) {
 		eq_list[0]->ShutdownGraphics();

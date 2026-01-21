@@ -18,6 +18,10 @@
 #include "client/graphics/weather_system.h"
 #include "client/input/hotkey_manager.h"
 
+#ifdef WITH_RDP
+#include "client/graphics/rdp/rdp_server.h"
+#endif
+
 // Forward declaration for collision map
 class HCMap;
 
@@ -282,6 +286,12 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     // Ambient light adjustment (returns delta value, 0 if no change)
     float getAmbientLightDelta() { float d = ambientLightDelta_; ambientLightDelta_ = 0; return d; }
 
+    // Music volume adjustment (returns delta value, 0 if no change)
+    float getMusicVolumeDelta() { float d = musicVolumeDelta_; musicVolumeDelta_ = 0; return d; }
+
+    // Effects volume adjustment (returns delta value, 0 if no change)
+    float getEffectsVolumeDelta() { float d = effectsVolumeDelta_; effectsVolumeDelta_ = 0; return d; }
+
     // Corpse Z offset adjustment (returns delta value, 0 if no change)
     float getCorpseZOffsetDelta() { float d = corpseZOffsetDelta_; corpseZOffsetDelta_ = 0; return d; }
 
@@ -398,6 +408,8 @@ bool zoneLineVisualizationToggleRequested_ = false;
     float animSpeedDelta_ = 0.0f;
     float cameraZoomDelta_ = 0.0f;
     float ambientLightDelta_ = 0.0f;
+    float musicVolumeDelta_ = 0.0f;
+    float effectsVolumeDelta_ = 0.0f;
     float corpseZOffsetDelta_ = 0.0f;
     float eyeHeightDelta_ = 0.0f;
     float particleMultiplierDelta_ = 0.0f;
@@ -613,6 +625,11 @@ public:
     CameraMode getCameraMode() const { return cameraMode_; }
     std::string getCameraModeString() const;
 
+    // Get camera position and orientation for audio listener
+    void getCameraTransform(float& posX, float& posY, float& posZ,
+                            float& forwardX, float& forwardY, float& forwardZ,
+                            float& upX, float& upY, float& upZ) const;
+
     // Process input and render a single frame
     // Returns false if the renderer should stop
     bool processFrame(float deltaTime);
@@ -668,6 +685,9 @@ public:
 
     // Get entity renderer
     EntityRenderer* getEntityRenderer() { return entityRenderer_.get(); }
+
+    // Get event receiver (for input state queries)
+    RendererEventReceiver* getEventReceiver() { return eventReceiver_.get(); }
 
     // HUD text update callback (for external HUD info)
     using HUDCallback = std::function<std::wstring()>;
@@ -850,6 +870,47 @@ public:
 
     // Detail system access (grass, plants, debris)
     Detail::DetailManager* getDetailManager() { return detailManager_.get(); }
+
+#ifdef WITH_RDP
+    // RDP server support (alternative to Xvfb+x11vnc)
+
+    /**
+     * Initialize the native RDP server.
+     *
+     * @param port The port to listen on (default: 3389)
+     * @return true on success, false on failure
+     */
+    bool initRDP(uint16_t port = 3389);
+
+    /**
+     * Start the RDP server.
+     * Call after initRDP() to begin accepting connections.
+     *
+     * @return true on success, false on failure
+     */
+    bool startRDPServer();
+
+    /**
+     * Stop the RDP server.
+     */
+    void stopRDPServer();
+
+    /**
+     * Check if the RDP server is running.
+     */
+    bool isRDPRunning() const;
+
+    /**
+     * Get the RDP server for audio integration.
+     * Returns nullptr if RDP is not enabled or not running.
+     */
+    RDPServer* getRDPServer() { return rdpServer_.get(); }
+
+    /**
+     * Get the number of connected RDP clients.
+     */
+    size_t getRDPClientCount() const;
+#endif // WITH_RDP
 
 private:
     void setupCamera();
@@ -1182,6 +1243,20 @@ private:
     bool sceneProfileEnabled_ = false;
     int sceneProfileFrameCount_ = 0;
     void profileSceneBreakdown();  // Run once to profile scene categories
+
+#ifdef WITH_RDP
+    // RDP server for native remote desktop streaming
+    std::unique_ptr<RDPServer> rdpServer_;
+
+    // Capture framebuffer and send to RDP clients
+    void captureFrameForRDP();
+
+    // Handle RDP keyboard input
+    void handleRDPKeyboard(uint16_t flags, uint8_t scancode);
+
+    // Handle RDP mouse input
+    void handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y);
+#endif // WITH_RDP
 };
 
 } // namespace Graphics

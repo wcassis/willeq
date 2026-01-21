@@ -192,6 +192,12 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"CameraZoomIn", HotkeyAction::CameraZoomIn},
     {"CameraZoomOut", HotkeyAction::CameraZoomOut},
 
+    // Player - Audio Volume
+    {"MusicVolumeUp", HotkeyAction::MusicVolumeUp},
+    {"MusicVolumeDown", HotkeyAction::MusicVolumeDown},
+    {"EffectsVolumeUp", HotkeyAction::EffectsVolumeUp},
+    {"EffectsVolumeDown", HotkeyAction::EffectsVolumeDown},
+
     // Player - Lighting
     {"CycleObjectLights", HotkeyAction::CycleObjectLights},
 
@@ -564,6 +570,13 @@ void HotkeyManager::setupDefaults() {
 
     // === Player Mode - Lighting ===
     addBinding(HotkeyAction::CycleObjectLights, HotkeyMode::Player, irr::KEY_KEY_L);
+
+    // === Player Mode - Audio Volume ===
+    // Use function keys which work reliably on all platforms including Linux/VNC
+    addBinding(HotkeyAction::MusicVolumeDown, HotkeyMode::Player, irr::KEY_F10);         // F10
+    addBinding(HotkeyAction::MusicVolumeUp, HotkeyMode::Player, irr::KEY_F11);           // F11
+    addBinding(HotkeyAction::EffectsVolumeDown, HotkeyMode::Player, irr::KEY_F10, ModifierFlags::Shift);  // Shift+F10
+    addBinding(HotkeyAction::EffectsVolumeUp, HotkeyMode::Player, irr::KEY_F11, ModifierFlags::Shift);    // Shift+F11
 
     // === Admin Mode - Debug toggles (Ctrl+F1-F8) ===
     addBinding(HotkeyAction::ToggleWireframe, HotkeyMode::Admin, irr::KEY_F1, ModifierFlags::Ctrl);

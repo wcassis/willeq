@@ -123,6 +123,12 @@ enum class HotkeyAction : uint32_t {
     CameraZoomIn,
     CameraZoomOut,
 
+    // Audio volume
+    MusicVolumeUp,
+    MusicVolumeDown,
+    EffectsVolumeUp,
+    EffectsVolumeDown,
+
     // Lighting
     CycleObjectLights,
 
