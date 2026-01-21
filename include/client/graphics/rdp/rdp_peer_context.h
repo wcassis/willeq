@@ -6,6 +6,7 @@
 #include <freerdp/freerdp.h>
 #include <freerdp/codec/rfx.h>
 #include <freerdp/codec/nsc.h>
+#include <freerdp/server/rdpsnd.h>
 
 #include <winpr/stream.h>
 
@@ -37,6 +38,11 @@ struct RDPPeerContext {
 
     // Connection state
     bool activated;
+
+    // Audio context for RDPSND
+    RdpsndServerContext* rdpsndContext;
+    bool audioActivated;
+    int16_t selectedAudioFormat;  // Index into client's format list, -1 if not selected
 
     // Back-pointer to server (set during context initialization)
     RDPServer* server;

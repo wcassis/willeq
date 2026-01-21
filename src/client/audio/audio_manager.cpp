@@ -621,6 +621,14 @@ size_t AudioManager::getLoadedSoundCount() const {
     return bufferCache_.size();
 }
 
+std::shared_ptr<SoundBuffer> AudioManager::getSoundBuffer(uint32_t soundId) {
+    return getSoundById(soundId);
+}
+
+std::shared_ptr<SoundBuffer> AudioManager::getSoundBufferByName(const std::string& filename) {
+    return loadSound(filename);
+}
+
 bool AudioManager::initializeHardwareDevice() {
     // Open default audio device
     device_ = alcOpenDevice(nullptr);

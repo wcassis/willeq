@@ -5,6 +5,8 @@
 
 #include <freerdp/freerdp.h>
 #include <freerdp/listener.h>
+#include <freerdp/server/rdpsnd.h>
+#include <freerdp/codec/audio.h>
 
 #include <thread>
 #include <atomic>
@@ -144,11 +146,40 @@ public:
      */
     void setMouseCallback(RDPMouseCallback callback) { mouseCallback_ = std::move(callback); }
 
+    /**
+     * Send audio samples to connected RDP clients.
+     *
+     * Call this from the audio mixing callback to stream audio.
+     * Samples should be 16-bit signed PCM, stereo, 44100Hz.
+     *
+     * @param samples Pointer to sample data (interleaved stereo)
+     * @param frameCount Number of frames (1 frame = 2 samples for stereo)
+     * @param sampleRate Sample rate in Hz (e.g., 44100)
+     * @param channels Number of channels (1=mono, 2=stereo)
+     */
+    void sendAudioSamples(const int16_t* samples, size_t frameCount,
+                          uint32_t sampleRate, uint8_t channels);
+
+    /**
+     * Check if audio streaming is enabled and ready.
+     */
+    bool isAudioReady() const { return audioReady_.load(); }
+
+    /**
+     * Enable or disable audio streaming.
+     */
+    void setAudioEnabled(bool enabled) { audioEnabled_ = enabled; }
+    bool isAudioEnabled() const { return audioEnabled_; }
+
     // Internal methods called by FreeRDP callbacks (public for C callback access)
     void onPeerConnected(RDPPeerContext* context);
     void onPeerDisconnected(RDPPeerContext* context);
     void onKeyboardEventInternal(uint16_t flags, uint8_t scancode);
     void onMouseEventInternal(uint16_t flags, uint16_t x, uint16_t y);
+
+    // Audio callbacks (public for C callback access)
+    void onAudioActivated(RDPPeerContext* context);
+    void initAudioForPeer(RDPPeerContext* context);
 
     // Peer handling thread function (public for C callback)
     void peerThreadImpl(freerdp_peer* client);
@@ -203,6 +234,16 @@ private:
     // Input callbacks
     RDPKeyboardCallback keyboardCallback_;
     RDPMouseCallback mouseCallback_;
+
+    // Audio streaming
+    bool audioEnabled_ = true;
+    std::atomic<bool> audioReady_{false};
+    std::mutex audioMutex_;
+    uint16_t audioTimestamp_ = 0;
+
+    // Server-supported audio formats
+    static AUDIO_FORMAT serverAudioFormats_[];
+    static const size_t numServerAudioFormats_;
 };
 
 } // namespace Graphics

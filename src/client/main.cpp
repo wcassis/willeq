@@ -534,6 +534,14 @@ int main(int argc, char *argv[]) {
 #endif
 #endif
 
+#ifdef WITH_AUDIO
+	bool audio_enabled = true;
+	float audio_master_volume = 1.0f;
+	float audio_music_volume = 0.7f;
+	float audio_effects_volume = 1.0f;
+	std::string audio_soundfont;
+#endif
+
 	for (int i = 1; i < argc; i++) {
 		std::string arg = argv[i];
 		if (arg == "--debug" || arg == "-d") {
@@ -579,6 +587,29 @@ int main(int argc, char *argv[]) {
 			}
 #endif
 #endif
+#ifdef WITH_AUDIO
+		} else if (arg == "--no-audio" || arg == "-na") {
+			audio_enabled = false;
+		} else if (arg == "--audio-volume") {
+			if (i + 1 < argc) {
+				int vol = std::atoi(argv[++i]);
+				audio_master_volume = std::clamp(vol, 0, 100) / 100.0f;
+			}
+		} else if (arg == "--music-volume") {
+			if (i + 1 < argc) {
+				int vol = std::atoi(argv[++i]);
+				audio_music_volume = std::clamp(vol, 0, 100) / 100.0f;
+			}
+		} else if (arg == "--effects-volume") {
+			if (i + 1 < argc) {
+				int vol = std::atoi(argv[++i]);
+				audio_effects_volume = std::clamp(vol, 0, 100) / 100.0f;
+			}
+		} else if (arg == "--soundfont") {
+			if (i + 1 < argc) {
+				audio_soundfont = argv[++i];
+			}
+#endif
 		} else if (arg == "--help" || arg == "-h") {
 			std::cout << "Usage: " << argv[0] << " [options]\n";
 			std::cout << "Options:\n";
@@ -596,6 +627,13 @@ int main(int argc, char *argv[]) {
 			std::cout << "  --rdp, --enable-rdp      Enable native RDP server for remote access\n";
 			std::cout << "  --rdp-port <port>        RDP server port (default: 3389)\n";
 #endif
+#endif
+#ifdef WITH_AUDIO
+			std::cout << "  -na, --no-audio          Disable audio\n";
+			std::cout << "  --audio-volume <0-100>   Master volume (default: 100)\n";
+			std::cout << "  --music-volume <0-100>   Music volume (default: 70)\n";
+			std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
+			std::cout << "  --soundfont <path>       Path to SoundFont for MIDI playback\n";
 #endif
 			std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
 			std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
@@ -740,6 +778,36 @@ int main(int argc, char *argv[]) {
 #endif
 #endif
 
+#ifdef WITH_AUDIO
+		// Parse audio config from main config
+		if (config_handle.isMember("audio")) {
+			const auto& audio_config = config_handle["audio"];
+			if (audio_config.isMember("enabled")) {
+				audio_enabled = audio_config["enabled"].asBool();
+				LOG_INFO(MOD_AUDIO, "Audio {} from config", audio_enabled ? "enabled" : "disabled");
+			}
+			if (audio_config.isMember("master_volume")) {
+				int vol = audio_config["master_volume"].asInt();
+				audio_master_volume = std::clamp(vol, 0, 100) / 100.0f;
+				LOG_INFO(MOD_AUDIO, "Master volume from config: {}%", vol);
+			}
+			if (audio_config.isMember("music_volume")) {
+				int vol = audio_config["music_volume"].asInt();
+				audio_music_volume = std::clamp(vol, 0, 100) / 100.0f;
+				LOG_INFO(MOD_AUDIO, "Music volume from config: {}%", vol);
+			}
+			if (audio_config.isMember("effects_volume")) {
+				int vol = audio_config["effects_volume"].asInt();
+				audio_effects_volume = std::clamp(vol, 0, 100) / 100.0f;
+				LOG_INFO(MOD_AUDIO, "Effects volume from config: {}%", vol);
+			}
+			if (audio_config.isMember("soundfont")) {
+				audio_soundfont = audio_config["soundfont"].asString();
+				LOG_INFO(MOD_AUDIO, "SoundFont from config: {}", audio_soundfont);
+			}
+		}
+#endif
+
 		if (config_handle.isMember("clients") && config_handle["clients"].isArray()) {
 			clients_config = config_handle["clients"];
 		} else {
@@ -798,6 +866,17 @@ int main(int argc, char *argv[]) {
 				eq->SetEQClientPath(eq_client_path);
 			}
 			eq->SetConfigPath(config_file);
+#endif
+
+#ifdef WITH_AUDIO
+			// Apply audio settings from command line
+			eq->SetAudioEnabled(audio_enabled);
+			eq->SetMasterVolume(audio_master_volume);
+			eq->SetMusicVolume(audio_music_volume);
+			eq->SetEffectsVolume(audio_effects_volume);
+			if (!audio_soundfont.empty()) {
+				eq->SetSoundFont(audio_soundfont);
+			}
 #endif
 
 			eq_list.push_back(std::move(eq));

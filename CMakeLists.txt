@@ -81,6 +81,42 @@ IF(EQT_GRAPHICS)
     ENDIF()
 ENDIF()
 
+# Find audio libraries (optional, for sound effects and music)
+IF(PkgConfig_FOUND)
+    PKG_CHECK_MODULES(OPENAL openal)
+    PKG_CHECK_MODULES(SNDFILE sndfile)
+    PKG_CHECK_MODULES(FLUIDSYNTH fluidsynth)
+ENDIF()
+IF(NOT OPENAL_FOUND)
+    FIND_PATH(OPENAL_INCLUDE_DIRS AL/al.h PATH_SUFFIXES OpenAL)
+    FIND_LIBRARY(OPENAL_LIBRARIES NAMES openal OpenAL32)
+    IF(OPENAL_INCLUDE_DIRS AND OPENAL_LIBRARIES)
+        SET(OPENAL_FOUND TRUE)
+    ENDIF()
+ENDIF()
+IF(OPENAL_FOUND AND SNDFILE_FOUND)
+    OPTION(WITH_AUDIO "Enable audio support" ON)
+ELSE()
+    OPTION(WITH_AUDIO "Enable audio support" OFF)
+ENDIF()
+IF(WITH_AUDIO)
+    IF(OPENAL_FOUND AND SNDFILE_FOUND)
+        ADD_DEFINITIONS(-DWITH_AUDIO)
+        MESSAGE(STATUS "Audio support: ENABLED")
+        IF(FLUIDSYNTH_FOUND)
+            ADD_DEFINITIONS(-DWITH_FLUIDSYNTH)
+            MESSAGE(STATUS "  MIDI/XMI support: ENABLED (FluidSynth)")
+        ELSE()
+            MESSAGE(STATUS "  MIDI/XMI support: DISABLED (FluidSynth not found)")
+        ENDIF()
+    ELSE()
+        MESSAGE(STATUS "Audio support: DISABLED (OpenAL or libsndfile not found)")
+        SET(WITH_AUDIO OFF)
+    ENDIF()
+ELSE()
+    MESSAGE(STATUS "Audio support: DISABLED (not requested)")
+ENDIF()
+
 # Find FreeRDP (optional, for native RDP streaming - requires graphics)
 # RDP is an additional display option alongside Xvfb+x11vnc
 IF(EQT_GRAPHICS)
@@ -115,6 +151,7 @@ ENDIF()
 INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/third_party/minimp3
     ${LIBUV_INCLUDE_DIR}
     ${GLM_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
@@ -147,6 +184,18 @@ ENDIF()
 IF(WITH_RDP AND FREERDP_FOUND)
     INCLUDE_DIRECTORIES(${FREERDP_INCLUDE_DIRS})
     LINK_DIRECTORIES(${FREERDP_LIBRARY_DIRS})
+ENDIF()
+
+IF(WITH_AUDIO)
+    IF(OPENAL_INCLUDE_DIRS)
+        INCLUDE_DIRECTORIES(${OPENAL_INCLUDE_DIRS})
+    ENDIF()
+    IF(SNDFILE_INCLUDE_DIRS)
+        INCLUDE_DIRECTORIES(${SNDFILE_INCLUDE_DIRS})
+    ENDIF()
+    IF(FLUIDSYNTH_FOUND AND FLUIDSYNTH_INCLUDE_DIRS)
+        INCLUDE_DIRECTORIES(${FLUIDSYNTH_INCLUDE_DIRS})
+    ENDIF()
 ENDIF()
 
 # Common library sources
@@ -322,6 +371,21 @@ IF(WITH_RDP)
     )
 ENDIF()
 
+# Audio sources (optional, requires OpenAL and libsndfile)
+SET(AUDIO_SOURCES)
+IF(WITH_AUDIO)
+    SET(AUDIO_SOURCES
+        src/client/audio/audio_manager.cpp
+        src/client/audio/sound_buffer.cpp
+        src/client/audio/music_player.cpp
+        src/client/audio/sound_assets.cpp
+        src/client/audio/xmi_decoder.cpp
+        src/client/audio/eff_loader.cpp
+        src/client/audio/zone_sound_emitter.cpp
+        src/client/audio/zone_audio_manager.cpp
+    )
+ENDIF()
+
 # All core sources (for library - excludes main.cpp)
 SET(ALL_CORE_SOURCES
     ${COMMON_SOURCES}
@@ -330,6 +394,7 @@ SET(ALL_CORE_SOURCES
     ${MAP_SOURCES}
     ${GRAPHICS_SOURCES}
     ${RDP_SOURCES}
+    ${AUDIO_SOURCES}
 )
 
 # Create a static library for the core client code (used by both executable and tests)
@@ -381,6 +446,15 @@ ENDIF()
 
 IF(WITH_RDP AND FREERDP_FOUND)
     LIST(APPEND LINK_LIBS ${FREERDP_LIBRARIES})
+    # Add FreeRDP server library for RDPSND audio streaming
+    LIST(APPEND LINK_LIBS freerdp-server3)
+ENDIF()
+
+IF(WITH_AUDIO)
+    LIST(APPEND LINK_LIBS ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES})
+    IF(FLUIDSYNTH_FOUND)
+        LIST(APPEND LINK_LIBS ${FLUIDSYNTH_LIBRARIES})
+    ENDIF()
 ENDIF()
 
 # Link libraries to the core library
@@ -679,5 +753,18 @@ ELSEIF(EQT_GRAPHICS)
     MESSAGE(STATUS "FreeRDP: NOT FOUND (native RDP disabled)")
 ELSE()
     MESSAGE(STATUS "FreeRDP: NOT AVAILABLE (requires graphics)")
+ENDIF()
+IF(WITH_AUDIO)
+    MESSAGE(STATUS "OpenAL: ${OPENAL_LIBRARIES}")
+    MESSAGE(STATUS "libsndfile: ${SNDFILE_LIBRARIES}")
+    IF(FLUIDSYNTH_FOUND)
+        MESSAGE(STATUS "FluidSynth: ${FLUIDSYNTH_LIBRARIES} (MIDI/XMI enabled)")
+    ELSE()
+        MESSAGE(STATUS "FluidSynth: NOT FOUND (MIDI/XMI disabled)")
+    ENDIF()
+ELSEIF(OPENAL_FOUND AND SNDFILE_FOUND)
+    MESSAGE(STATUS "Audio: available but disabled (use -DWITH_AUDIO=ON to enable)")
+ELSE()
+    MESSAGE(STATUS "Audio: NOT FOUND (OpenAL or libsndfile missing)")
 ENDIF()
 MESSAGE(STATUS "")

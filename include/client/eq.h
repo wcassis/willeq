@@ -49,6 +49,15 @@ namespace EQT {
     struct CancelTrade_Struct;
 }
 
+#ifdef WITH_AUDIO
+namespace EQT {
+namespace Audio {
+    class AudioManager;
+    class ZoneAudioManager;
+}
+}
+#endif
+
 #ifdef EQT_HAS_GRAPHICS
 namespace EQT {
 namespace Graphics {
@@ -1630,5 +1639,46 @@ public:
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);
+#endif
+
+#ifdef WITH_AUDIO
+	// Audio manager for sound effects and music
+	std::unique_ptr<EQT::Audio::AudioManager> m_audio_manager;
+	// Zone audio manager for positioned sound emitters
+	std::unique_ptr<EQT::Audio::ZoneAudioManager> m_zone_audio_manager;
+	void InitializeAudio();
+	void ShutdownAudio();
+
+	// Day/night state for audio (calculated from game time)
+	bool m_is_daytime = true;
+	void UpdateDayNightState();
+
+	// Audio configuration (applied during InitializeAudio)
+	bool m_audio_config_enabled = true;
+	float m_audio_config_master_volume = 1.0f;
+	float m_audio_config_music_volume = 0.7f;
+	float m_audio_config_effects_volume = 1.0f;
+	std::string m_audio_config_soundfont;
+	bool m_audio_config_use_3d_audio = true;
+
+public:
+	EQT::Audio::AudioManager* GetAudioManager() { return m_audio_manager.get(); }
+	EQT::Audio::ZoneAudioManager* GetZoneAudioManager() { return m_zone_audio_manager.get(); }
+	bool IsDaytime() const { return m_is_daytime; }
+
+	// Audio configuration setters (call before InitGraphics/InitializeAudio)
+	void SetAudioEnabled(bool enabled) { m_audio_config_enabled = enabled; }
+	void SetMasterVolume(float volume) { m_audio_config_master_volume = volume; }
+	void SetMusicVolume(float volume) { m_audio_config_music_volume = volume; }
+	void SetEffectsVolume(float volume) { m_audio_config_effects_volume = volume; }
+	void SetSoundFont(const std::string& path) { m_audio_config_soundfont = path; }
+	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
+
+	// Sound effect helpers (client-triggered)
+	void PlaySound(uint32_t soundId);
+	void PlaySoundAt(uint32_t soundId, float x, float y, float z);
+	void PlayCombatSound(bool hit, float x, float y, float z);
+	void PlaySpellSound(uint32_t spellId);
+	void PlayUISound(uint32_t soundId);
 #endif
 };

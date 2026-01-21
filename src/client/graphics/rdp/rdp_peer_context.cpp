@@ -28,6 +28,9 @@ BOOL rdpPeerContextNew(freerdp_peer* peer, rdpContext* ctx) {
     context->rfxContext = nullptr;
     context->nscContext = nullptr;
     context->encodeStream = nullptr;
+    context->rdpsndContext = nullptr;
+    context->audioActivated = false;
+    context->selectedAudioFormat = -1;
 
     // Initialize RFX (RemoteFX) encoder
     context->rfxContext = rfx_context_new(TRUE);  // TRUE = encoder mode
@@ -73,6 +76,14 @@ void rdpPeerContextFree(freerdp_peer* peer, rdpContext* ctx) {
     if (!context) {
         return;
     }
+
+    // Free RDPSND context
+    if (context->rdpsndContext) {
+        rdpsnd_server_context_free(context->rdpsndContext);
+        context->rdpsndContext = nullptr;
+    }
+    context->audioActivated = false;
+    context->selectedAudioFormat = -1;
 
     // Free encoding stream
     if (context->encodeStream) {

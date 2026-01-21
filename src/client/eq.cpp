@@ -33,6 +33,7 @@
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
+#include "client/audio/zone_audio_manager.h"
 #include "client/audio/sound_assets.h"
 #endif
 
@@ -2848,10 +2849,14 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		// Load zone lines for zone transitions
 		LoadZoneLines(m_current_zone_name);
 
-		// Update zone music
+		// Update zone music and sound emitters
 #ifdef WITH_AUDIO
 		if (m_audio_manager) {
 			m_audio_manager->onZoneChange(m_current_zone_name);
+		}
+		// Phase 13: Load zone sound emitters
+		if (m_zone_audio_manager && !m_eq_client_path.empty()) {
+			m_zone_audio_manager->loadZone(m_current_zone_name, m_eq_client_path);
 		}
 #endif
 	} else {
@@ -5332,6 +5337,11 @@ void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 
 	// Phase 7.3: Also update WorldState
 	m_game_state.world().setTimeOfDay(m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
+
+#ifdef WITH_AUDIO
+	// Phase 13: Update day/night state for audio
+	UpdateDayNightState();
+#endif
 
 	LOG_DEBUG(MOD_ZONE, "Time of day: {:02d}:{:02d} {:02d}/{:02d}{}",
 		m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
@@ -17824,6 +17834,11 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 				glm::vec3(forwardX, forwardY, forwardZ),
 				glm::vec3(upX, upY, upZ)
 			);
+
+			// Phase 13: Update zone sound emitters
+			if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
+				m_zone_audio_manager->update(deltaTime, glm::vec3(posX, posY, posZ), m_is_daytime);
+			}
 		}
 #endif
 
@@ -18661,14 +18676,40 @@ void EverQuest::InitializeAudio() {
 	}
 #endif
 
+	// Phase 13: Initialize zone audio manager for positioned sound emitters
+	m_zone_audio_manager = std::make_unique<EQT::Audio::ZoneAudioManager>();
+	m_zone_audio_manager->setAudioManager(m_audio_manager.get());
+	LOG_DEBUG(MOD_AUDIO, "Zone audio manager initialized");
+
 	LOG_INFO(MOD_AUDIO, "Audio system initialized");
 }
 
 void EverQuest::ShutdownAudio() {
+	// Shut down zone audio manager first
+	if (m_zone_audio_manager) {
+		m_zone_audio_manager->unloadZone();
+		m_zone_audio_manager.reset();
+	}
+
 	if (m_audio_manager) {
 		m_audio_manager->shutdown();
 		m_audio_manager.reset();
 		LOG_INFO(MOD_AUDIO, "Audio system shut down");
+	}
+}
+
+void EverQuest::UpdateDayNightState() {
+	// EverQuest day/night cycle:
+	// Day: 6:00 AM (hour 6) to 6:59 PM (hour 18)
+	// Night: 7:00 PM (hour 19) to 5:59 AM (hour 5)
+	bool wasDay = m_is_daytime;
+	m_is_daytime = (m_time_hour >= 6 && m_time_hour < 19);
+
+	// If day/night state changed, notify zone audio manager
+	if (wasDay != m_is_daytime && m_zone_audio_manager) {
+		m_zone_audio_manager->setDayNight(m_is_daytime);
+		LOG_DEBUG(MOD_AUDIO, "Day/night changed to {} (hour {})",
+			m_is_daytime ? "day" : "night", m_time_hour);
 	}
 }
 

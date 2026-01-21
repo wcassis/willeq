@@ -604,6 +604,11 @@ public:
     CameraMode getCameraMode() const { return cameraMode_; }
     std::string getCameraModeString() const;
 
+    // Get camera position and orientation for audio listener
+    void getCameraTransform(float& posX, float& posY, float& posZ,
+                            float& forwardX, float& forwardY, float& forwardZ,
+                            float& upX, float& upY, float& upZ) const;
+
     // Process input and render a single frame
     // Returns false if the renderer should stop
     bool processFrame(float deltaTime);
@@ -867,6 +872,12 @@ public:
      * Check if the RDP server is running.
      */
     bool isRDPRunning() const;
+
+    /**
+     * Get the RDP server for audio integration.
+     * Returns nullptr if RDP is not enabled or not running.
+     */
+    RDPServer* getRDPServer() { return rdpServer_.get(); }
 
     /**
      * Get the number of connected RDP clients.

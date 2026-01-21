@@ -62,6 +62,11 @@ public:
     void preloadCommonSounds();
     size_t getLoadedSoundCount() const;
 
+    // Get sound buffer for custom playback (e.g., looping ambient sounds)
+    // Returns nullptr if sound not found
+    std::shared_ptr<SoundBuffer> getSoundBuffer(uint32_t soundId);
+    std::shared_ptr<SoundBuffer> getSoundBufferByName(const std::string& filename);
+
     // Music
     void playMusic(const std::string& filename, bool loop = true);
     void stopMusic(float fadeOutSeconds = 1.0f);

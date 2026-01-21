@@ -8,11 +8,14 @@
 #include <freerdp/codec/rfx.h>
 #include <freerdp/codec/nsc.h>
 #include <freerdp/codec/color.h>
+#include <freerdp/codec/audio.h>
 #include <freerdp/update.h>
 #include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/peer.h>
 #include <freerdp/listener.h>
+#include <freerdp/server/rdpsnd.h>
+#include <freerdp/channels/wtsvc.h>
 
 #include <winpr/ssl.h>
 #include <winpr/winsock.h>
@@ -35,6 +38,16 @@ static BOOL onSynchronizeEvent(rdpInput* input, UINT32 flags);
 static BOOL onKeyboardEvent(rdpInput* input, UINT16 flags, UINT8 code);
 static BOOL onMouseEvent(rdpInput* input, UINT16 flags, UINT16 x, UINT16 y);
 static BOOL onExtendedMouseEvent(rdpInput* input, UINT16 flags, UINT16 x, UINT16 y);
+static void onRdpsndActivated(RdpsndServerContext* context);
+
+// Server-supported audio formats (16-bit stereo PCM at various sample rates)
+AUDIO_FORMAT RDPServer::serverAudioFormats_[] = {
+    { WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0, nullptr },  // 44.1kHz stereo
+    { WAVE_FORMAT_PCM, 2, 22050, 88200, 4, 16, 0, nullptr },   // 22.05kHz stereo
+    { WAVE_FORMAT_PCM, 1, 44100, 88200, 2, 16, 0, nullptr },   // 44.1kHz mono
+    { WAVE_FORMAT_PCM, 1, 22050, 44100, 2, 16, 0, nullptr },   // 22.05kHz mono
+};
+const size_t RDPServer::numServerAudioFormats_ = sizeof(serverAudioFormats_) / sizeof(serverAudioFormats_[0]);
 
 RDPServer::RDPServer()
     : listener_(nullptr)
@@ -194,9 +207,14 @@ void RDPServer::updateFrame(const uint8_t* frameData, uint32_t width, uint32_t h
 }
 
 void RDPServer::onPeerConnected(RDPPeerContext* context) {
-    std::lock_guard<std::mutex> lock(peersMutex_);
-    activePeers_.push_back(context);
-    std::cout << "[RDP] Client connected (total: " << activePeers_.size() << ")" << std::endl;
+    {
+        std::lock_guard<std::mutex> lock(peersMutex_);
+        activePeers_.push_back(context);
+        std::cout << "[RDP] Client connected (total: " << activePeers_.size() << ")" << std::endl;
+    }
+
+    // Initialize audio for this peer (must be done after connection)
+    initAudioForPeer(context);
 }
 
 void RDPServer::onPeerDisconnected(RDPPeerContext* context) {
@@ -513,6 +531,166 @@ static BOOL onMouseEvent(rdpInput* input, UINT16 flags, UINT16 x, UINT16 y) {
 static BOOL onExtendedMouseEvent(rdpInput* input, UINT16 flags, UINT16 x, UINT16 y) {
     // Extended mouse events (extra buttons) - forward as regular mouse events
     return onMouseEvent(input, flags, x, y);
+}
+
+// RDPSND activated callback - called when audio channel is ready
+static void onRdpsndActivated(RdpsndServerContext* context) {
+    if (!context || !context->data) {
+        return;
+    }
+
+    RDPPeerContext* peerContext = static_cast<RDPPeerContext*>(context->data);
+    if (peerContext && peerContext->server) {
+        peerContext->server->onAudioActivated(peerContext);
+    }
+}
+
+void RDPServer::initAudioForPeer(RDPPeerContext* context) {
+    if (!context || !audioEnabled_) {
+        return;
+    }
+
+    freerdp_peer* client = context->_p.peer;
+    if (!client) {
+        return;
+    }
+
+    // Get the virtual channel manager from the peer
+    HANDLE vcm = WTSOpenServerA((LPSTR)client->context);
+    if (!vcm) {
+        std::cerr << "[RDP Audio] Failed to open virtual channel manager" << std::endl;
+        return;
+    }
+
+    // Create RDPSND server context
+    context->rdpsndContext = rdpsnd_server_context_new(vcm);
+    if (!context->rdpsndContext) {
+        std::cerr << "[RDP Audio] Failed to create RDPSND context" << std::endl;
+        return;
+    }
+
+    // Configure audio formats
+    context->rdpsndContext->server_formats = serverAudioFormats_;
+    context->rdpsndContext->num_server_formats = numServerAudioFormats_;
+
+    // Set source format (what we'll be sending)
+    // We'll send 16-bit stereo PCM at 44.1kHz
+    static AUDIO_FORMAT srcFormat = { WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0, nullptr };
+    context->rdpsndContext->src_format = &srcFormat;
+
+    // Set latency (audio buffer size in milliseconds)
+    context->rdpsndContext->latency = 50;  // 50ms buffer
+
+    // Store peer context for callback access
+    context->rdpsndContext->data = context;
+
+    // Set the activated callback
+    context->rdpsndContext->Activated = onRdpsndActivated;
+
+    // Initialize the RDPSND channel (non-threaded mode, we'll drive it)
+    UINT status = context->rdpsndContext->Initialize(context->rdpsndContext, FALSE);
+    if (status != CHANNEL_RC_OK) {
+        std::cerr << "[RDP Audio] Failed to initialize RDPSND: " << status << std::endl;
+        rdpsnd_server_context_free(context->rdpsndContext);
+        context->rdpsndContext = nullptr;
+        return;
+    }
+
+    std::cout << "[RDP Audio] RDPSND channel initialized for peer" << std::endl;
+}
+
+void RDPServer::onAudioActivated(RDPPeerContext* context) {
+    if (!context || !context->rdpsndContext) {
+        return;
+    }
+
+    std::cout << "[RDP Audio] Audio channel activated, client has "
+              << context->rdpsndContext->num_client_formats << " formats" << std::endl;
+
+    // Find a compatible format (prefer stereo 44.1kHz PCM)
+    int16_t selectedFormat = -1;
+    for (UINT16 i = 0; i < context->rdpsndContext->num_client_formats; i++) {
+        const AUDIO_FORMAT* fmt = &context->rdpsndContext->client_formats[i];
+        if (fmt->wFormatTag == WAVE_FORMAT_PCM &&
+            fmt->nChannels == 2 &&
+            fmt->wBitsPerSample == 16) {
+            // Prefer 44.1kHz
+            if (fmt->nSamplesPerSec == 44100) {
+                selectedFormat = i;
+                break;
+            } else if (selectedFormat < 0) {
+                selectedFormat = i;
+            }
+        }
+    }
+
+    // Fall back to first PCM format if no stereo found
+    if (selectedFormat < 0) {
+        for (UINT16 i = 0; i < context->rdpsndContext->num_client_formats; i++) {
+            const AUDIO_FORMAT* fmt = &context->rdpsndContext->client_formats[i];
+            if (fmt->wFormatTag == WAVE_FORMAT_PCM) {
+                selectedFormat = i;
+                break;
+            }
+        }
+    }
+
+    if (selectedFormat >= 0) {
+        const AUDIO_FORMAT* fmt = &context->rdpsndContext->client_formats[selectedFormat];
+        std::cout << "[RDP Audio] Selected format " << selectedFormat
+                  << ": " << fmt->nSamplesPerSec << "Hz, "
+                  << fmt->nChannels << "ch, "
+                  << fmt->wBitsPerSample << "bit" << std::endl;
+
+        // Select the format
+        UINT status = context->rdpsndContext->SelectFormat(context->rdpsndContext, selectedFormat);
+        if (status == CHANNEL_RC_OK) {
+            context->selectedAudioFormat = selectedFormat;
+            context->audioActivated = true;
+            audioReady_.store(true);
+        } else {
+            std::cerr << "[RDP Audio] Failed to select format: " << status << std::endl;
+        }
+    } else {
+        std::cerr << "[RDP Audio] No compatible audio format found" << std::endl;
+    }
+}
+
+void RDPServer::sendAudioSamples(const int16_t* samples, size_t frameCount,
+                                  uint32_t sampleRate, uint8_t channels) {
+    if (!running_.load() || !audioEnabled_ || !audioReady_.load()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(audioMutex_);
+
+    // Send to all peers with active audio
+    std::lock_guard<std::mutex> peersLock(peersMutex_);
+    for (RDPPeerContext* context : activePeers_) {
+        if (!context || !context->audioActivated || !context->rdpsndContext) {
+            continue;
+        }
+
+        // Check if format matches (we expect stereo 44.1kHz)
+        // TODO: Add sample rate conversion if needed
+
+        // Send samples using SendSamples
+        // The timestamp is used for synchronization
+        UINT status = context->rdpsndContext->SendSamples(
+            context->rdpsndContext,
+            samples,
+            frameCount,
+            audioTimestamp_
+        );
+
+        if (status != CHANNEL_RC_OK) {
+            // Non-fatal, just skip this frame
+        }
+    }
+
+    // Update timestamp (in milliseconds worth of samples)
+    // At 44.1kHz, 1ms = 44.1 samples
+    audioTimestamp_ += static_cast<uint16_t>((frameCount * 1000) / sampleRate);
 }
 
 } // namespace Graphics

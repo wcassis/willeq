@@ -42,6 +42,11 @@ cd build && ctest -R TestName --output-on-failure
 ./scripts/start-with-vnc.sh -c willeq.json
 # Connect via: vnc://localhost:5999
 
+# With VNC + Audio streaming (for headless servers with sound)
+./scripts/start-with-vnc-audio.sh -c willeq.json
+# Connect VNC: vnc://localhost:5999
+# Connect Audio: vlc http://localhost:8080
+
 # With native RDP (alternative to VNC)
 ./build/bin/willeq -c willeq.json --rdp
 # Connect via: mstsc.exe /v:hostname:3389 (Windows)
@@ -53,11 +58,12 @@ cd build && ctest -R TestName --output-on-failure
 
 ### Display Options Comparison
 
-| Method | Use Case | Client |
-|--------|----------|--------|
-| Direct X11 | Local display with GPU/software rendering | Native |
-| Xvfb + VNC | Remote access, cross-platform | VNC client |
-| Native RDP | Windows users, better compression | mstsc.exe, xfreerdp |
+| Method | Use Case | Audio | Client |
+|--------|----------|-------|--------|
+| Direct X11 | Local display with GPU/software rendering | Local | Native |
+| Xvfb + VNC | Remote access, cross-platform | None | VNC client |
+| Xvfb + VNC + Audio | Remote with sound | HTTP stream | VNC + VLC |
+| Native RDP | Windows users, better compression | RDP audio | mstsc.exe, xfreerdp |
 
 RDP and VNC can run simultaneously if both X11 and RDP are enabled.
 
@@ -69,6 +75,8 @@ Optional:
 - librecast-dev (navmesh pathfinding via Recast/Detour)
 - libirrlicht-dev, libxxf86vm-dev (3D graphics rendering)
 - freerdp3-dev, libwinpr3-dev (native RDP streaming)
+- libopenal-dev, libsndfile1-dev (audio playback)
+- libfluidsynth-dev (MIDI/XMI music via SoundFont)
 
 ## Architecture
 
@@ -155,6 +163,31 @@ The client connects through three stages, each with its own connection manager:
 **EverQuest Client Files**
 - `/home/user/projects/claude/EverQuestP1999` - Official Titanium Edition EverQuest Client
 
+**Audio System** (`include/client/audio/`, `src/client/audio/`)
+
+Core Components:
+- `AudioManager` - Main audio manager, handles initialization, volume controls, sound playback
+- `SoundBuffer` - OpenAL buffer wrapper for WAV files (supports loading from PFS archives)
+- `SoundAssets` - Parses SoundAssets.txt for sound ID to filename mapping
+- `MusicPlayer` - Streaming music playback for XMI/MIDI and MP3 files
+- `XmiDecoder` - Converts EQ's XMI format to standard MIDI for FluidSynth
+
+Zone Audio:
+- `EffLoader` - Parses zone_sounds.eff and zone_sndbnk.eff files for emitter data
+- `ZoneSoundEmitter` - Positioned sound sources with day/night variants, cooldowns
+- `ZoneAudioManager` - Manages all zone emitters, handles day/night transitions
+
+Sound Categories:
+- `PlayerSounds` - Race/gender-specific player sounds (death, hit, jump, drown)
+- `CreatureSounds` - NPC race-based sounds (attack, damage, death, idle)
+- `DoorSounds` - Door type sounds (metal, stone, wood, secret, mechanisms)
+- `WeatherAudio` - Rain/wind loops, thunder, intensity-based volume
+- `WaterSounds` - Water entry/exit, swimming, underwater ambient
+- `UISounds` - Level up, UI interactions, notifications
+- `CombatMusic` - Combat stinger XMI files (damage1.xmi, damage2.xmi)
+
+Sound files are loaded from `snd*.pfs` archives and the `sounds/` directory in the EQ client
+
 ### Coordinate Systems
 
 - EQ uses Z-up: (x, y, z)
@@ -186,6 +219,22 @@ Tests are in `tests/` with one executable per test suite. Each test links only t
 - `test_packet_structs.cpp` - Binary struct layout validation
 - `test_integration_network.cpp` - Network protocol integration
 - `test_formatted_message.cpp` - FormattedMessage parsing for NPC dialogue
+
+**Audio tests** (require `WITH_AUDIO`, skip if no audio device):
+- `test_sound_assets.cpp` - SoundAssets parsing, SoundBuffer, AudioManager
+- `test_xmi_decoder.cpp` - XMI to MIDI conversion
+- `test_zone_music.cpp` - Zone music transitions, MusicPlayer
+- `test_sound_effects.cpp` - Sound ID constants, sound effect playback
+- `test_spatial_audio.cpp` - 3D spatial audio, loopback mode for RDP
+- `test_eff_loader.cpp` - EFF file parsing (zone sound emitter config)
+- `test_zone_sound_emitters.cpp` - Zone sound emitter system
+- `test_day_night_audio.cpp` - Day/night audio transitions
+- `test_player_sounds.cpp` - Player race/gender sound mapping
+- `test_creature_sounds.cpp` - Creature/NPC race sound mapping
+- `test_door_sounds.cpp` - Door and object sound types
+- `test_weather_audio.cpp` - Weather and water sounds
+- `test_ui_sounds.cpp` - UI sound mappings
+- `test_combat_music.cpp` - Combat music stingers
 
 ### Graphics Integration Tests
 
@@ -272,6 +321,32 @@ Use the GDB helper script to capture crash backtraces:
         "port": 3389
     }
 }
+```
+
+**Audio configuration** (optional):
+```json
+{
+    "eq_client_path": "/path/to/EverQuest",
+    "audio": {
+        "enabled": true,
+        "master_volume": 100,
+        "music_volume": 70,
+        "effects_volume": 100,
+        "soundfont": "/path/to/soundfont.sf2"
+    }
+}
+```
+
+**Audio command line options:**
+```bash
+# Disable audio
+./build/bin/willeq -c willeq.json --no-audio
+
+# Set volumes (0-100)
+./build/bin/willeq -c willeq.json --audio-volume 80 --music-volume 50 --effects-volume 100
+
+# Specify SoundFont for MIDI/XMI music
+./build/bin/willeq -c willeq.json --soundfont /usr/share/sounds/sf2/FluidR3_GM.sf2
 ```
 
 **User settings** stored in `config/` directory:
@@ -412,6 +487,13 @@ The renderer has two modes, toggled with **F9**:
 **Trading:**
 - `/trade` - Request trade with target
 - Trade window opens when accepting trade requests
+
+**Audio:**
+- `/music [on|off]` - Toggle or set music playback
+- `/sound [on|off]` - Toggle or set sound effects
+- `/volume [0-100]` - Show or set master volume (alias: `/vol`)
+- `/musicvolume [0-100]` - Show or set music volume (alias: `/mvol`)
+- `/effectsvolume [0-100]` - Show or set effects volume (aliases: `/evol`, `/sfxvol`)
 
 **Utility:**
 - `/help [command]` - Show help
