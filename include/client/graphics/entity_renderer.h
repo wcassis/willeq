@@ -74,6 +74,12 @@ struct EntityVisual {
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
     float collisionZOffset = 0;    // Offset from server Z (model center) to feet for collision detection
 
+    // Boat/object collision - allows entities to act as physical obstructions
+    bool hasCollision = false;     // True if this entity has collision (boats, etc.)
+    float collisionRadius = 0;     // Horizontal collision radius
+    float collisionHeight = 0;     // Vertical collision height (deck height for boats)
+    float deckZ = 0;               // Z coordinate of the deck surface (for standing on boats)
+
     // Pose state (sitting, standing, etc.) - set via SpawnAppearance, not movement updates
     // This prevents movement updates from overriding sitting/crouching poses
     enum class PoseState : uint8_t { Standing = 0, Sitting = 1, Crouching = 2, Lying = 3 };
@@ -136,10 +142,11 @@ public:
     // isPlayer: true if this is our own player character
     // isNPC: true if this is an NPC (npc_type=1), false for other player characters
     // isCorpse: true if this is a corpse (npc_type=2 or 3), starts with death animation
+    // serverSize: size value from server (0 or 1 = default, >1 = larger, <1 = smaller)
     bool createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                      float x, float y, float z, float heading, bool isPlayer = false,
                      uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
-                     bool isNPC = true, bool isCorpse = false);
+                     bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
 
     // Update entity position/heading with velocity for interpolation
     void updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
@@ -241,6 +248,12 @@ public:
 
     // Get entities map for LOS checking (read-only access)
     const std::map<uint16_t, EntityVisual>& getEntities() const { return entities_; }
+
+    // Check for boat collision at a position
+    // Returns the deck Z height if standing on a boat, or BEST_Z_INVALID if not on a boat
+    // x, y: EQ coordinates to check
+    // currentZ: current player Z position (to check if we're at boat level)
+    float findBoatDeckZ(float x, float y, float currentZ) const;
 
     // Debug: Set target ID for animation debugging output
     void setDebugTargetId(uint16_t spawnId);

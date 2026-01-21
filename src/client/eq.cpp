@@ -181,6 +181,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_Emote: return "HC_OP_Emote";
 		case HC_OP_BecomeCorpse: return "HC_OP_BecomeCorpse";
 		case HC_OP_ZonePlayerToBind: return "HC_OP_ZonePlayerToBind";
+		case HC_OP_LevelUpdate: return "HC_OP_LevelUpdate";
 		case HC_OP_SimpleMessage: return "HC_OP_SimpleMessage";
 		case HC_OP_TargetHoTT: return "HC_OP_TargetHoTT";
 		case HC_OP_SkillUpdate: return "HC_OP_SkillUpdate";
@@ -2080,6 +2081,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_ZonePlayerToBind:
 		ZoneProcessZonePlayerToBind(p);
 		break;
+	case HC_OP_LevelUpdate:
+		ZoneProcessLevelUpdate(p);
+		break;
 	case HC_OP_ZoneChange:
 		ZoneProcessZoneChange(p);
 		break;
@@ -3380,6 +3384,14 @@ void EverQuest::SetupInventoryCallbacks()
 			SendDeleteItem(slot);
 		}
 	);
+
+	// Set callback for when player equipment slot changes (for appearance updates)
+	m_inventory_manager->setEquipmentChangedCallback(
+		[this](int16_t slotId) {
+			LOG_DEBUG(MOD_INVENTORY, "Equipment slot {} changed, updating appearance", slotId);
+			UpdatePlayerAppearanceFromInventory();
+		}
+	);
 }
 
 void EverQuest::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity)
@@ -3804,6 +3816,15 @@ void EverQuest::SetupTradeManagerCallbacks()
 	});
 
 	m_trade_manager->setOnStateChanged([this](TradeState state) {
+		// Update inventory manager NPC trade flag for item validation
+		if (m_inventory_manager) {
+			if (state == TradeState::Active) {
+				m_inventory_manager->setNpcTrade(m_trade_manager->isNpcTrade());
+			} else if (state == TradeState::None || state == TradeState::Completed) {
+				m_inventory_manager->setNpcTrade(false);
+			}
+		}
+
 		if (!m_renderer || !m_renderer->getWindowManager()) {
 			return;
 		}
@@ -5302,11 +5323,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			// All entities are created later in LoadZoneGraphics() during the graphics loading phase.
 			// This ensures the progress bar shows during the entire loading process.
 
-			if (spawn_count <= 5) {
 				LOG_DEBUG(MOD_ENTITY, "Loaded spawn {}: {} (ID: {}) Level {} Race {} Size {:.2f} at ({:.2f}, {:.2f}, {:.2f})",
 					spawn_count, entity.name, entity.spawn_id, entity.level,
 					entity.race_id, entity.size, entity.x, entity.y, entity.z);
-			}
 			// Log all spawns with position and heading at debug level 3+
 			LOG_WARN(MOD_ENTITY, "ZoneSpawn: {} (ID:{}) pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} npc_type={}",
 				entity.name, entity.spawn_id, entity.x, entity.y, entity.z, entity.heading, entity.npc_type);
@@ -6543,7 +6562,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				// Create the player entity with current position from ClientUpdate
 				m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
 				                         x, y, z, h_player,
-				                         true, entity.gender, appearance, false, false);
+				                         true, entity.gender, appearance, false, false, entity.size);
 
 				// Set player spawn ID AFTER entity is created so the animated node
 				// can be marked for the player rotation fix
@@ -11211,8 +11230,8 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 		}
 
 #ifdef EQT_HAS_GRAPHICS
-		// If this is our player, update the inventory model view
-		if (spawn_id == m_my_spawn_id && m_graphics_initialized && m_renderer) {
+		// Update entity appearance in the 3D world
+		if (m_graphics_initialized && m_renderer) {
 			// Build appearance from updated entity data
 			EQT::Graphics::EntityAppearance appearance;
 			appearance.face = entity.face;
@@ -11226,10 +11245,94 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 				appearance.equipment[i] = entity.equipment[i];
 				appearance.equipment_tint[i] = entity.equipment_tint[i];
 			}
-			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+
+			// Update the in-game 3D model for this entity
+			m_renderer->updateEntityAppearance(spawn_id, entity.race_id, entity.gender, appearance);
+
+			// If this is our player, also update the inventory paperdoll
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+			}
 		}
 #endif
 	}
+}
+
+void EverQuest::UpdatePlayerAppearanceFromInventory()
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (!m_graphics_initialized || !m_renderer || !m_inventory_manager) {
+		return;
+	}
+
+	// Find the player entity
+	auto it = m_entities.find(m_my_spawn_id);
+	if (it == m_entities.end()) {
+		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", m_my_spawn_id);
+		return;
+	}
+
+	Entity& entity = it->second;
+
+	// Build appearance from inventory items
+	EQT::Graphics::EntityAppearance appearance;
+	appearance.face = entity.face;
+	appearance.haircolor = entity.haircolor;
+	appearance.hairstyle = entity.hairstyle;
+	appearance.beardcolor = entity.beardcolor;
+	appearance.beard = entity.beard;
+	appearance.texture = entity.equip_chest2;
+	appearance.helm = entity.helm;
+
+	// Initialize equipment arrays from entity (fallback)
+	for (int i = 0; i < 9; i++) {
+		appearance.equipment[i] = entity.equipment[i];
+		appearance.equipment_tint[i] = entity.equipment_tint[i];
+	}
+
+	// Mapping from inventory slots to equipment appearance indices
+	// Note: EQ equipment indices are: 0=Head, 1=Chest, 2=Arms, 3=Wrist, 4=Hands, 5=Legs, 6=Feet, 7=Primary, 8=Secondary
+	struct SlotMapping {
+		int16_t inventorySlot;
+		int equipSlotIndex;
+	};
+	const SlotMapping mappings[] = {
+		{ eqt::inventory::SLOT_HEAD, 0 },      // Head
+		{ eqt::inventory::SLOT_CHEST, 1 },     // Chest
+		{ eqt::inventory::SLOT_ARMS, 2 },      // Arms
+		{ eqt::inventory::SLOT_WRIST1, 3 },    // Wrist (use first wrist slot)
+		{ eqt::inventory::SLOT_HANDS, 4 },     // Hands
+		{ eqt::inventory::SLOT_LEGS, 5 },      // Legs
+		{ eqt::inventory::SLOT_FEET, 6 },      // Feet
+		{ eqt::inventory::SLOT_PRIMARY, 7 },   // Primary
+		{ eqt::inventory::SLOT_SECONDARY, 8 }, // Secondary
+	};
+
+	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Building appearance from inventory");
+	for (const auto& mapping : mappings) {
+		const auto* item = m_inventory_manager->getItem(mapping.inventorySlot);
+		if (item) {
+			// Body armor: use material for texture variant and color for tint
+			if (mapping.equipSlotIndex < 7) {
+				appearance.equipment[mapping.equipSlotIndex] = item->material;
+				appearance.equipment_tint[mapping.equipSlotIndex] = item->color;
+			} else {
+				// Weapons: use item ID for model lookup
+				appearance.equipment[mapping.equipSlotIndex] = item->itemId;
+			}
+		} else {
+			// No item in slot - clear the appearance slot
+			appearance.equipment[mapping.equipSlotIndex] = 0;
+			appearance.equipment_tint[mapping.equipSlotIndex] = 0;
+		}
+	}
+
+	// Update both the in-game entity and the inventory paperdoll
+	m_renderer->updateEntityAppearance(m_my_spawn_id, entity.race_id, entity.gender, appearance);
+	m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+
+	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Updated player appearance");
+#endif
 }
 
 void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
@@ -12092,121 +12195,102 @@ void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 {
 	// ZonePlayerToBind is sent when the player dies and needs to respawn at bind point
-	// The packet uses ZoneChange_Struct format (88 bytes):
-	// char_name[64], zone_id (2), instance_id (2), y (4), x (4), z (4), zone_reason (4), success (4)
+	// Uses ZonePlayerToBind_Struct (variable length):
+	// bind_zone_id (2), bind_instance_id (2), x (4), y (4), z (4), heading (4), zone_name[] (variable)
+	// Minimum size: 2 opcode + 20 fixed = 22 bytes
 
 	LOG_INFO(MOD_MAIN, "You are being sent to your bind point...");
 
-	if (p.Length() < 90) {  // 2 bytes opcode + 88 bytes struct
-		LOG_WARN(MOD_MAIN, "ZonePlayerToBind packet too small: {} bytes", p.Length());
+	if (p.Length() < 22) {  // 2 bytes opcode + 20 bytes minimum struct
+		LOG_WARN(MOD_MAIN, "ZonePlayerToBind packet too small: {} bytes (need at least 22)", p.Length());
 		// Fall back to stored bind point
 		LOG_DEBUG(MOD_MAIN, "Using stored bind point: zone {} at ({:.2f}, {:.2f}, {:.2f})",
 			m_bind_zone_id, m_bind_x, m_bind_y, m_bind_z);
 		return;
 	}
 
-	// Parse ZoneChange_Struct
-	char char_name[65] = {0};
-	memcpy(char_name, static_cast<const char*>(p.Data()) + 2, 64);
-	uint16_t target_zone_id = p.GetUInt16(66);
-	uint16_t instance_id = p.GetUInt16(68);
-	float zone_y = p.GetFloat(70);  // Server sends y first
-	float zone_x = p.GetFloat(74);  // Then x
-	float zone_z = p.GetFloat(78);
-	uint32_t zone_reason = p.GetUInt32(82);
-	int32_t success = p.GetInt32(86);
+	// Parse ZonePlayerToBind_Struct
+	uint16_t target_zone_id = p.GetUInt16(2);
+	uint16_t instance_id = p.GetUInt16(4);
+	float zone_x = p.GetFloat(6);   // Server x
+	float zone_y = p.GetFloat(10);  // Server y
+	float zone_z = p.GetFloat(14);
+	float zone_heading = p.GetFloat(18);
 
-	// Swap x/y for our coordinate system
+	// Extract zone_name if present (starts at offset 22)
+	std::string zone_name;
+	if (p.Length() > 22) {
+		const char* name_ptr = static_cast<const char*>(p.Data()) + 22;
+		size_t max_len = p.Length() - 22;
+		zone_name = std::string(name_ptr, strnlen(name_ptr, max_len));
+	}
+
+	// Swap x/y for our coordinate system (server sends x,y but we use y,x internally)
 	float bind_x = zone_y;
 	float bind_y = zone_x;
 	float bind_z = zone_z;
+	float bind_heading = zone_heading;
 
-	LOG_DEBUG(MOD_MAIN, "Zone change to zone {} (instance {}): ({:.2f}, {:.2f}, {:.2f}) reason={} success={}",
-		target_zone_id, instance_id, bind_x, bind_y, bind_z, zone_reason, success);
+	LOG_DEBUG(MOD_MAIN, "ZonePlayerToBind: zone={} instance={} pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} name='{}'",
+		target_zone_id, instance_id, bind_x, bind_y, bind_z, bind_heading, zone_name);
 
-	if (success != 1) {
-		LOG_WARN(MOD_MAIN, "Zone change failed (success != 1)");
+	// Store pending zone info
+	m_pending_zone_id = target_zone_id;
+	m_pending_zone_x = bind_x;
+	m_pending_zone_y = bind_y;
+	m_pending_zone_z = bind_z;
+	m_pending_zone_heading = bind_heading;
+
+	// Check if we're staying in the same zone or going to a different zone
+	bool is_same_zone = (target_zone_id == m_current_zone_id) || (target_zone_id == 0);
+
+	if (is_same_zone) {
+		LOG_DEBUG(MOD_MAIN, "Same-zone respawn to ({:.2f}, {:.2f}, {:.2f})", bind_x, bind_y, bind_z);
+	} else {
+		LOG_DEBUG(MOD_MAIN, "Cross-zone respawn: current zone {} -> bind zone {}",
+			m_current_zone_id, target_zone_id);
+	}
+
+	// Client must respond with OP_ZoneChange to initiate the zone change
+	// The server will then send OP_ZoneChange back with success=1
+	// For same-zone deaths, the server still expects this handshake
+	RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
+}
+
+void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
+{
+	// LevelUpdate_Struct: level (4), level_old (4), exp (4) = 12 bytes
+	// Sent when player levels up or down (death exp loss can cause level loss)
+
+	if (p.Length() < 14) {  // 2 bytes opcode + 12 bytes struct
+		LOG_WARN(MOD_MAIN, "LevelUpdate packet too small: {} bytes (need 14)", p.Length());
 		return;
 	}
 
-	// Check if we're staying in the same zone or going to a different zone
-	bool is_same_zone = (target_zone_id == m_current_zone_id) || (m_current_zone_id == 0);
+	uint32_t new_level = p.GetUInt32(2);
+	uint32_t old_level = p.GetUInt32(6);
+	uint32_t exp = p.GetUInt32(10);
 
-	if (is_same_zone) {
-		// Same zone death - just teleport player locally
-		LOG_DEBUG(MOD_MAIN, "Same-zone respawn to ({:.2f}, {:.2f}, {:.2f})",
-			bind_x, bind_y, bind_z);
+	LOG_DEBUG(MOD_MAIN, "LevelUpdate: level {} -> {}, exp={}", old_level, new_level, exp);
 
-		// Update our position to the bind point
-		m_x = bind_x;
-		m_y = bind_y;
-		m_z = bind_z;
-		// Use bind heading if available
-		if (m_bind_heading > 0) {
-			m_heading = m_bind_heading;
+	// Update player level
+	m_level = static_cast<uint8_t>(new_level);
+
+	// Update entity level if we have a spawn ID
+	if (m_my_spawn_id != 0) {
+		auto it = m_entities.find(m_my_spawn_id);
+		if (it != m_entities.end()) {
+			it->second.level = m_level;
 		}
+	}
 
-		// Reset HP to full (server will send actual values)
-		m_cur_hp = m_max_hp;
-		m_game_state.player().setHP(m_cur_hp, m_max_hp);
+	// Update game state
+	m_game_state.player().setLevel(m_level);
 
-		// Update our entity position
-		if (m_my_spawn_id != 0) {
-			auto it = m_entities.find(m_my_spawn_id);
-			if (it != m_entities.end()) {
-				it->second.x = m_x;
-				it->second.y = m_y;
-				it->second.z = m_z;
-				it->second.hp_percent = 100;
-				it->second.is_corpse = false;
-			}
-		}
-
-#ifdef EQT_HAS_GRAPHICS
-		// Update renderer with new position
-		// Convert m_heading from degrees (0-360) to EQ format (0-512)
-		if (m_graphics_initialized && m_renderer) {
-			float heading512 = m_heading * 512.0f / 360.0f;
-			m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
-
-			// Clear corpse state for player entity
-			if (m_my_spawn_id != 0) {
-				auto* entityRenderer = m_renderer->getEntityRenderer();
-				if (entityRenderer) {
-					entityRenderer->setPlayerEntityVisible(true);
-				}
-			}
-		}
-#endif
-
-		// Send position update to server to confirm we're at bind point
-		SendPositionUpdate();
-
-		LOG_INFO(MOD_MAIN, "Respawned at bind point ({:.2f}, {:.2f}, {:.2f})",
-			m_x, m_y, m_z);
-	} else {
-		// Different zone death - need full zone transition
-		LOG_DEBUG(MOD_MAIN, "Cross-zone respawn: current zone {} -> bind zone {}",
-			m_current_zone_id, target_zone_id);
-
-		// Store pending zone info for the transition
-		// The server will send us ZoneServerInfo through the world connection
-		m_pending_zone_id = target_zone_id;
-		m_pending_zone_x = bind_x;
-		m_pending_zone_y = bind_y;
-		m_pending_zone_z = bind_z;
-		m_pending_zone_heading = m_bind_heading;
-
-		// Mark that we're waiting for a zone change
-		m_zone_change_requested = true;
-
-		LOG_DEBUG(MOD_MAIN, "Waiting for world server to provide new zone server info...");
-
-		// The server will coordinate the transition:
-		// 1. Zone server notifies world server of death respawn
-		// 2. World server finds/boots target zone
-		// 3. World server sends ZoneServerInfo to client
-		// 4. WorldProcessZoneServerInfo() will detect this and handle the transition
+	if (new_level > old_level) {
+		LOG_INFO(MOD_MAIN, "LEVEL UP! You are now level {}!", new_level);
+	} else if (new_level < old_level) {
+		LOG_INFO(MOD_MAIN, "You have lost a level. You are now level {}.", new_level);
 	}
 }
 
@@ -18033,7 +18117,7 @@ void EverQuest::LoadZoneGraphics() {
 
 		m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
 		                         entity.x, entity.y, entity.z, entity.heading,
-		                         isPlayer, entity.gender, appearance, isNPC, isCorpse);
+		                         isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
 
 		if (isPlayer) {
 			// Set up player-specific rendering after creating the entity
@@ -18150,7 +18234,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 
 	m_renderer->createEntity(entity.spawn_id, entity.race_id, entity.name,
 	                         entity.x, entity.y, entity.z, entity.heading,
-	                         false, entity.gender, appearance, isNPC, isCorpse);
+	                         false, entity.gender, appearance, isNPC, isCorpse, entity.size);
 
 	// Set entity light source if equipped
 	if (entity.light > 0) {

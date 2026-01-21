@@ -228,7 +228,8 @@ void SkyRenderer::createSkyDome() {
                         // Set texture tiling and filtering on all 6 materials
                         for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
                             irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
-                            mat.setFlag(irr::video::EMF_LIGHTING, false);
+                            // Enable lighting so material colors can affect the texture
+                            mat.setFlag(irr::video::EMF_LIGHTING, true);
                             mat.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
                             mat.setFlag(irr::video::EMF_TRILINEAR_FILTER, true);
                             mat.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, true);
@@ -236,6 +237,14 @@ void SkyRenderer::createSkyDome() {
                             mat.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
                             mat.TextureLayer[0].BilinearFilter = true;
                             mat.TextureLayer[0].TrilinearFilter = true;
+
+                            // Set up material colors for day/night tinting
+                            // Use full white as base so tinting can darken
+                            mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                            mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                            mat.EmissiveColor = irr::video::SColor(0, 0, 0, 0);
+                            // ECM_DIFFUSE_AND_AMBIENT: material colors modulate the texture
+                            mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
 
                             // Scale UV to tile the texture
                             irr::core::matrix4 texMat;
@@ -381,7 +390,9 @@ void SkyRenderer::createCelestialBodies() {
                 moonNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
                 moonNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
                 moonNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-                moonNode_->setMaterialType(irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL);
+                // Use ADD_COLOR like sun - BMP textures don't have alpha channel
+                // This makes bright parts of moon visible against dark sky
+                moonNode_->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
 
                 LOG_DEBUG(MOD_GRAPHICS, "Created moon billboard (texture: {}, hasTrack: {})",
                          body->textureName, moonTrack_ ? "yes" : "no");
@@ -563,6 +574,16 @@ void SkyRenderer::updateCelestialPositions() {
         // Moon visible at night
         bool moonVisible = (timeOfDay < 6.0f || timeOfDay > 19.0f);
         moonNode_->setVisible(moonVisible && enabled_);
+
+        // Debug logging for moon position (throttled)
+        static int moonDebugCounter = 0;
+        if (++moonDebugCounter >= 300) {  // Log every ~10 seconds at 30fps
+            moonDebugCounter = 0;
+            LOG_DEBUG(MOD_GRAPHICS, "Moon: time={:.2f} visible={} enabled={} pos=({:.1f},{:.1f},{:.1f}) cam=({:.1f},{:.1f},{:.1f})",
+                      timeOfDay, moonVisible, enabled_,
+                      moonPos.X, moonPos.Y, moonPos.Z,
+                      lastCameraPos_.X, lastCameraPos_.Y, lastCameraPos_.Z);
+        }
     }
 
     // Update sizes based on elevation (larger near horizon)
@@ -641,13 +662,22 @@ irr::core::vector3df SkyRenderer::calculateTrackPosition(const std::shared_ptr<S
     const SkyTrackKeyframe& kf0 = track->keyframes[frame0];
     const SkyTrackKeyframe& kf1 = track->keyframes[frame1];
 
-    // Interpolate translation (position)
-    glm::vec3 pos = glm::mix(kf0.translation, kf1.translation, t);
+    // Celestial body tracks use rotation to position on sky dome, not translation
+    // The quaternion rotates a base direction vector to get the position
+    glm::quat rot = glm::slerp(kf0.rotation, kf1.rotation, t);
+
+    // Base direction is straight up (0, 0, 1) in EQ coordinates (Z-up)
+    // Rotate it by the track quaternion to get the celestial body direction
+    glm::vec3 baseDir(0.0f, 0.0f, 1.0f);
+    glm::vec3 dir = rot * baseDir;
 
     // Scale to celestial distance and convert EQ to Irrlicht coordinates
-    // EQ: Z-up -> Irrlicht: Y-up
-    float scale = CELESTIAL_DISTANCE / 100.0f;  // Assume track data is in ~100 unit scale
-    return irr::core::vector3df(pos.x * scale, pos.z * scale, pos.y * scale);
+    // EQ: (x, y, z) Z-up -> Irrlicht: (x, z, y) Y-up
+    return irr::core::vector3df(
+        dir.x * CELESTIAL_DISTANCE,
+        dir.z * CELESTIAL_DISTANCE,  // EQ Z -> Irrlicht Y
+        dir.y * CELESTIAL_DISTANCE   // EQ Y -> Irrlicht Z
+    );
 }
 
 float SkyRenderer::calculateCelestialSize(float baseSize, float elevation) const {
@@ -945,13 +975,12 @@ SkyColorSet SkyRenderer::interpolateSkyColors(const SkyColorSet& a, const SkyCol
 }
 
 void SkyRenderer::updateSkyLayerColors() {
-    if (!enabled_ || skyDomeNodes_.empty()) {
+    if (!enabled_) {
         return;
     }
 
     // Apply tint to sky layers based on time of day
     // Use cloud brightness to modulate layer colors
-    irr::u32 brightness = static_cast<irr::u32>(255.0f * currentSkyColors_.cloudBrightness);
 
     // Create a tint color that blends zenith and horizon colors
     // This simulates the sky gradient effect
@@ -970,7 +999,7 @@ void SkyRenderer::updateSkyLayerColors() {
         static_cast<irr::u32>(tint.getBlue() * currentSkyColors_.cloudBrightness)
     );
 
-    // Apply tint to all sky layers via material diffuse color
+    // Apply tint to legacy sky dome nodes
     for (auto* node : skyDomeNodes_) {
         if (node) {
             for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
@@ -981,6 +1010,42 @@ void SkyRenderer::updateSkyLayerColors() {
                 node->getMaterial(i).ColorMaterial = irr::video::ECM_NONE;
             }
         }
+    }
+
+    // Apply tint to Irrlicht built-in sky box for day/night cycle
+    // Irrlicht sky boxes don't respond well to lighting, so we use two techniques:
+    // 1. Set the background clear color to match the tint (for the "base" sky color)
+    // 2. Adjust sky box opacity - more transparent at night so background shows through
+    if (irrlichtSkyDome_) {
+        // Calculate opacity based on brightness - darker = more transparent to show background
+        // At full brightness (1.0), alpha = 255 (opaque)
+        // At low brightness (0.2), alpha = ~100 (semi-transparent, background shows through)
+        float brightness = currentSkyColors_.cloudBrightness;
+        irr::u32 alpha = static_cast<irr::u32>(100 + 155 * brightness);  // Range: 100-255
+
+        for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
+            irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
+            // Use vertex alpha for transparency
+            mat.DiffuseColor = irr::video::SColor(alpha, tint.getRed(), tint.getGreen(), tint.getBlue());
+            mat.AmbientColor = irr::video::SColor(alpha, tint.getRed(), tint.getGreen(), tint.getBlue());
+            // Use transparent material type to enable alpha blending
+            mat.MaterialType = irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
+            mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
+        }
+    }
+
+    // Set the background/clear color to match the tint for proper day/night effect
+    if (driver_) {
+        // Use a darker version of the tint as the background color
+        // This shows through the semi-transparent sky at night
+        irr::video::SColor clearColor(
+            255,
+            tint.getRed() / 2,
+            tint.getGreen() / 2,
+            tint.getBlue() / 2
+        );
+        // Store for use by beginScene
+        currentClearColor_ = clearColor;
     }
 }
 

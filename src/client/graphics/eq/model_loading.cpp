@@ -1036,6 +1036,31 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                     if (!animSourceCode.empty() && animSourceCode != upperCode) {
                         std::shared_ptr<CharacterSkeleton> sourceSkel;
 
+                        // Load the animation_source_s3d file if specified for this race
+                        std::string animSourceS3d = getAnimationSourceS3DFile(raceId);
+                        if (!animSourceS3d.empty()) {
+                            std::string lowerAnimS3d = animSourceS3d;
+                            std::transform(lowerAnimS3d.begin(), lowerAnimS3d.end(), lowerAnimS3d.begin(),
+                                           [](unsigned char c) { return std::tolower(c); });
+
+                            // Load the file if not already cached
+                            if (otherChrCaches_.find(lowerAnimS3d) == otherChrCaches_.end()) {
+                                std::string fullPath = clientPath_ + animSourceS3d;
+                                S3DLoader loader;
+                                if (loader.loadZone(fullPath)) {
+                                    auto zone = loader.getZone();
+                                    if (zone && !zone->characters.empty()) {
+                                        OtherChrCache& cache = otherChrCaches_[lowerAnimS3d];
+                                        cache.characters = zone->characters;
+                                        cache.textures = zone->characterTextures;
+                                        mergedTexturesCacheValid_ = false;
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded animation source file {} with {} characters",
+                                                  animSourceS3d, cache.characters.size());
+                                    }
+                                }
+                            }
+                        }
+
                         // Build list of character sources to search for animation source
                         std::vector<const std::vector<std::shared_ptr<CharacterModel>>*> searchSources;
 

@@ -481,6 +481,12 @@ private:
     // Hit testing
     WindowBase* getWindowAtPosition(int x, int y);
 
+    // Z-order management - windows at back of vector are on top (rendered last, checked first)
+    void bringToFront(WindowBase* window);
+    void addToZOrder(WindowBase* window);
+    void removeFromZOrder(WindowBase* window);
+    std::vector<WindowBase*> windowZOrder_;  // Windows in z-order (back = topmost)
+
     // Irrlicht components
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::gui::IGUIEnvironment* gui_ = nullptr;

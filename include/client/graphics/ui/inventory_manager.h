@@ -22,6 +22,8 @@ namespace inventory {
 // Callback for sending item movement to server
 using MoveItemCallback = std::function<void(int16_t fromSlot, int16_t toSlot, uint32_t quantity)>;
 using DeleteItemCallback = std::function<void(int16_t slot)>;
+// Callback when equipment slot changes (for appearance updates)
+using EquipmentChangedCallback = std::function<void(int16_t slotId)>;
 
 // Aggregate stats from equipped items
 struct EquipmentStats {
@@ -99,6 +101,10 @@ public:
     uint32_t getPlayerRace() const { return playerRace_; }
     uint32_t getPlayerClass() const { return playerClass_; }
     uint8_t getPlayerLevel() const { return playerLevel_; }
+
+    // NPC trade flag - when true, allows all items (including NO_DROP) in trade slots
+    void setNpcTrade(bool isNpcTrade) { isNpcTrade_ = isNpcTrade; }
+    bool isNpcTrade() const { return isNpcTrade_; }
 
     // Item access by slot
     const ItemInstance* getItem(int16_t slotId) const;
@@ -199,6 +205,7 @@ public:
     // Server communication callbacks
     void setMoveItemCallback(MoveItemCallback callback) { moveItemCallback_ = callback; }
     void setDeleteItemCallback(DeleteItemCallback callback) { deleteItemCallback_ = callback; }
+    void setEquipmentChangedCallback(EquipmentChangedCallback callback) { equipmentChangedCallback_ = callback; }
 
     // Packet processing
     void processCharInventory(const EQ::Net::Packet& packet);
@@ -243,9 +250,13 @@ private:
     uint32_t playerClass_ = 0;
     uint8_t playerLevel_ = 1;
 
+    // NPC trade state - when true, NO_DROP restrictions are bypassed for trade slots
+    bool isNpcTrade_ = false;
+
     // Callbacks
     MoveItemCallback moveItemCallback_;
     DeleteItemCallback deleteItemCallback_;
+    EquipmentChangedCallback equipmentChangedCallback_;
 
     // Internal helpers
     bool isValidSlot(int16_t slotId) const;

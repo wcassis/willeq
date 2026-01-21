@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/light_source.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -2050,14 +2051,15 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
     if (skyRenderer_ && skyRenderer_->isInitialized()) {
         skyRenderer_->setSkyType(skyType, currentZoneName_);
 
-        // Disable sky for indoor zones (zoneType != 0)
-        // zoneType: 0=outdoor, 1=dungeon/indoor, 2=dungeon/no sky, 3=indoor city
-        bool isIndoor = (zoneType != 0);
-        skyRenderer_->setEnabled(!isIndoor);
+        // Determine if sky should be shown based on zone type
+        // zoneType values from server: 1=Outdoors, 2=Dungeons, 255(0xFF)=Any/default
+        // Only disable sky for explicit dungeon zones (type 2)
+        bool isDungeon = (zoneType == 2);
+        skyRenderer_->setEnabled(!isDungeon);
 
         LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {}",
-                  skyType, zoneType, isIndoor ? "indoor" : "outdoor",
-                  isIndoor ? "disabled" : "enabled");
+                  skyType, zoneType, isDungeon ? "dungeon" : "outdoor",
+                  isDungeon ? "disabled" : "enabled");
     }
 
     // Apply fog settings from zone data
@@ -3037,11 +3039,11 @@ void IrrlichtRenderer::createZoneLights() {
 bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                      float x, float y, float z, float heading, bool isPlayer,
                                      uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                     bool isCorpse) {
+                                     bool isCorpse, float serverSize) {
     if (!entityRenderer_) {
         return false;
     }
-    bool result = entityRenderer_->createEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse);
+    bool result = entityRenderer_->createEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize);
 
     // If this is the player entity, handle visibility based on current mode
     if (result && isPlayer) {
@@ -3105,9 +3107,10 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
         }
 
         // Calculate light properties based on level
-        // EQ light values: ~10=candle, ~50=small lightstone, ~100=lantern, ~200=greater lightstone
-        float intensity = lightLevel / 255.0f;
-        float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;  // 20-100 range
+        // Server sends light TYPE (0-15), convert to level (0-10) for intensity
+        uint8_t level = lightsource::TypeToLevel(lightLevel);
+        float intensity = level / 10.0f;  // 0-10 scale to 0.0-1.0
+        float radius = 20.0f + (level / 10.0f) * 80.0f;  // 20-100 range
 
         // Warm light color (slightly yellow/orange like torchlight)
         float r = std::min(1.0f, 0.9f + intensity * 0.1f);
@@ -4426,8 +4429,12 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
-    // Render
-    driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+    // Render - use sky renderer's clear color for day/night effect
+    irr::video::SColor clearColor(255, 50, 50, 80);  // Default dark blue
+    if (skyRenderer_ && skyRenderer_->isEnabled() && skyRenderer_->isInitialized()) {
+        clearColor = skyRenderer_->getCurrentClearColor();
+    }
+    driver_->beginScene(true, true, clearColor);
     sectionStart = std::chrono::steady_clock::now();  // Reset for accurate sceneDrawAll timing
     smgr_->drawAll();
     if (frameTimingEnabled_) {
@@ -5989,6 +5996,26 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
         }
     }
 
+    // Check for boat collision - boats act as elevated platforms
+    float boatDeckZ = BEST_Z_INVALID;
+    if (entityRenderer_) {
+        boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, currentZ);
+    }
+
+    // Determine final ground Z
+    // If standing on a boat deck, use the higher of boat deck or zone ground
+    if (boatDeckZ != BEST_Z_INVALID) {
+        if (groundZ == BEST_Z_INVALID || boatDeckZ > groundZ) {
+            if (playerConfig_.collisionDebug) {
+                // Yellow line showing boat deck hit
+                irr::core::vector3df irrFrom(x, currentZ, y);
+                irr::core::vector3df irrTo(x, boatDeckZ, y);
+                addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
+            }
+            return boatDeckZ;
+        }
+    }
+
     if (groundZ == BEST_Z_INVALID) {
         return currentZ;  // No ground found, keep current Z
     }
@@ -6239,6 +6266,7 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
         }
     }
 
+    float groundZ = feetZ;  // Default to current feet position
     if (hit) {
         float floorZ = hitPoint.Y;
 
@@ -6246,7 +6274,7 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
         // 1. It's at or below our feet + step height (we can step up to it)
         // 2. It's not a ceiling (above our feet + step tolerance)
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
-            return floorZ;
+            groundZ = floorZ;
         } else {
             // Hit a ceiling/obstruction - player can't fit, block movement
             // Return an invalid value to signal blocked (return as if ground is way above)
@@ -6254,7 +6282,25 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
         }
     }
 
-    return feetZ;  // No ground found, return current feet position
+    // Check for boat collision - boats act as elevated platforms
+    // This uses feetZ (currentZ - modelYOffset) as the player position
+    if (entityRenderer_) {
+        float boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, feetZ);
+        if (boatDeckZ != BEST_Z_INVALID) {
+            // Use the higher of boat deck or zone ground
+            if (boatDeckZ > groundZ) {
+                if (playerConfig_.collisionDebug) {
+                    // Yellow line showing boat deck
+                    irr::core::vector3df irrFrom(x, feetZ, y);
+                    irr::core::vector3df irrTo(x, boatDeckZ, y);
+                    addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
+                }
+                return boatDeckZ;
+            }
+        }
+    }
+
+    return groundZ;
 }
 
 // --- Repair Mode Methods ---

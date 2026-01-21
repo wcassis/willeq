@@ -267,7 +267,7 @@
     "18": {
       "code": "GIA",
       "name": "Giant",
-      "scale": 2.0,
+      "scale": 3.0,
       "s3d_file": "commons_chr.s3d",
       "also_in": [
         "commons.s3d",
@@ -1009,7 +1009,7 @@
     "38": {
       "code": "SPI",
       "name": "Spider",
-      "scale": 0.4,
+      "scale": 1.0,
       "s3d_file": "akanon_chr.s3d",
       "also_in": [
         "akanon.s3d",
@@ -2226,12 +2226,14 @@
     "72": {
       "code": "SHIP",
       "name": "Ship",
-      "scale": 2.0
+      "scale": 2.0,
+      "s3d_file": "timorous_chr.s3d"
     },
     "73": {
-      "code": "LAUNCHM",
+      "code": "LAUNCH",
       "name": "Launch",
-      "scale": 1.0
+      "scale": 1.0,
+      "s3d_file": "timorous_chr.s3d"
     },
     "74": {
       "code": "PIR",
@@ -2497,7 +2499,7 @@
     "85": {
       "code": "SPE",
       "name": "Spectre",
-      "scale": 1.0,
+      "scale": 3.0,
       "s3d_file": "global4_chr.s3d",
       "also_in": [
         "fearplane.s3d",

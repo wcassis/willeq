@@ -265,16 +265,29 @@ void SkyLoader::parseCelestialBodies() {
                 celestial->isMoon = true;
             }
 
-            // Find texture
-            auto texIt = materialTextures_.find(meshName);
-            if (texIt != materialTextures_.end()) {
-                celestial->textureName = texIt->second;
+            // Find texture - prioritize name-based lookup for celestial bodies
+            // The WLD often has shared materials that can cause incorrect texture mappings
+            std::string baseName = celestialName;
+            // Strip numeric suffix (e.g., "SUN62" -> "SUN", "MOON31" -> "MOON")
+            size_t digitPos = baseName.find_first_of("0123456789");
+            if (digitPos != std::string::npos) {
+                baseName = baseName.substr(0, digitPos);
+            }
+            std::transform(baseName.begin(), baseName.end(), baseName.begin(),
+                          [](unsigned char c) { return std::tolower(c); });
+
+            // Check if a texture with this base name exists
+            std::string expectedTexture = baseName + ".bmp";
+            if (skyData_->textures.find(expectedTexture) != skyData_->textures.end()) {
+                celestial->textureName = expectedTexture;
             } else {
-                // Try lowercase name + .bmp
-                std::string texName = celestialName;
-                std::transform(texName.begin(), texName.end(), texName.begin(),
-                              [](unsigned char c) { return std::tolower(c); });
-                celestial->textureName = texName + ".bmp";
+                // Fall back to material texture mapping
+                auto texIt = materialTextures_.find(meshName);
+                if (texIt != materialTextures_.end()) {
+                    celestial->textureName = texIt->second;
+                } else {
+                    celestial->textureName = expectedTexture;  // Use expected even if not found
+                }
             }
 
             // Find animation track

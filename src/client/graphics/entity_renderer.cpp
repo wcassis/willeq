@@ -1,5 +1,6 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/light_source.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -13,8 +14,10 @@
 #include <iostream>
 #include <cmath>
 #include <set>
+#include <unordered_set>
 #include <chrono>
 #include <fstream>
+#include <fmt/ranges.h>
 
 namespace EQT {
 namespace Graphics {
@@ -291,7 +294,7 @@ irr::scene::IMesh* EntityRenderer::getMeshForRace(uint16_t raceId, uint8_t gende
 bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                    float x, float y, float z, float heading, bool isPlayer,
                                    uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                   bool isCorpse) {
+                                   bool isCorpse, float serverSize) {
     auto createStart = std::chrono::steady_clock::now();
 
     if (!smgr_ || hasEntity(spawnId)) {
@@ -303,6 +306,20 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     if (scale <= 0.0f) {
         return true;  // Return true since this is expected behavior
     }
+
+    // Apply server size multiplier
+    // Server size is an absolute value where 6.0 is "standard humanoid" size
+    // Convert to multiplier by dividing by reference size (6.0)
+    // If serverSize is 0, use default multiplier of 1.0
+    constexpr float REFERENCE_SIZE = 6.0f;
+    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
+    float baseScale = scale;
+    scale *= sizeMultiplier;
+
+    // Debug: log size information for all entities
+    // Formula: finalScale = baseScale * (serverSize / 6.0)
+    LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} size: {:.2f} * ({:.2f}/6) = {:.2f}",
+              name, raceId, baseScale, serverSize, scale);
 
     EntityVisual visual;
     visual.spawnId = spawnId;
@@ -574,6 +591,21 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
             visual.meshNode,
             irr::core::vector3df(0, nameHeight, 0)
         );
+    }
+
+    // Set up collision data for boats (race 72 = Ship, race 73 = Launch/Barrel Barge)
+    if (raceId == 72 || raceId == 73) {
+        visual.hasCollision = true;
+        // Use bounding box to determine collision radius and deck height
+        irr::core::aabbox3df collBbox = mesh->getBoundingBox();
+        float bboxWidth = std::max(collBbox.MaxEdge.X - collBbox.MinEdge.X,
+                                   collBbox.MaxEdge.Z - collBbox.MinEdge.Z);
+        visual.collisionRadius = (bboxWidth / 2.0f) * scale;
+        visual.collisionHeight = (collBbox.MaxEdge.Y - collBbox.MinEdge.Y) * scale;
+        // Deck is at the top of the bounding box (server Z is center, so add half height)
+        visual.deckZ = z + (visual.collisionHeight / 2.0f);
+        LOG_DEBUG(MOD_GRAPHICS, "Boat collision: race {} radius={:.1f} height={:.1f} deckZ={:.1f}",
+            raceId, visual.collisionRadius, visual.collisionHeight, visual.deckZ);
     }
 
     entities_[spawnId] = visual;
@@ -980,6 +1012,32 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
                     // Phase 6.2: Set attack animation speed to match weapon delay
                     if ((animation == 5 || animation == 6) && visual.weaponDelayMs > 0) {
                         visual.animatedNode->getAnimator().setTargetDuration(visual.weaponDelayMs * 0.5f);
+                    }
+                }
+            } else {
+                // Animation not found - try fallback
+                auto availableAnims = visual.animatedNode->getAnimationList();
+                std::string fallbackAnim;
+                char animClass = !targetAnim.empty() ? std::tolower(targetAnim[0]) : 'o';
+
+                for (const auto& anim : availableAnims) {
+                    if (!anim.empty() && std::tolower(anim[0]) == animClass) {
+                        fallbackAnim = anim;
+                        break;
+                    }
+                }
+
+                if (!fallbackAnim.empty() && visual.animatedNode->playAnimation(fallbackAnim, loopAnim, playThrough)) {
+                    LOG_DEBUG(MOD_GRAPHICS, "updateEntity: spawn={} animation '{}' not found, using fallback '{}' (available: {})",
+                              spawnId, targetAnim, fallbackAnim, fmt::join(availableAnims, ","));
+                    visual.currentAnimation = fallbackAnim;
+                } else if (visual.isNPC && animation > 0) {
+                    // Only log warning for moving NPCs that have no animation
+                    static std::unordered_set<uint32_t> loggedEntities;
+                    if (loggedEntities.find(spawnId) == loggedEntities.end()) {
+                        LOG_WARN(MOD_GRAPHICS, "updateEntity: spawn={} animation '{}' not found for moving NPC (available: {})",
+                                  spawnId, targetAnim, fmt::join(availableAnims, ","));
+                        loggedEntities.insert(spawnId);
                     }
                 }
             }
@@ -2544,9 +2602,10 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     }
 
     // Calculate light properties based on level
-    // EQ light values: ~10=candle, ~50=small lightstone, ~100=lantern, ~200=greater lightstone
-    float intensity = lightLevel / 255.0f;
-    float radius = 20.0f + (lightLevel / 255.0f) * 80.0f;  // 20-100 range
+    // Server sends light TYPE (0-15), convert to level (0-10) for intensity
+    uint8_t level = lightsource::TypeToLevel(lightLevel);
+    float intensity = level / 10.0f;  // 0-10 scale to 0.0-1.0
+    float radius = 20.0f + (level / 10.0f) * 80.0f;  // 20-100 range
 
     // Warm light color (slightly yellow/orange like torchlight)
     float r = std::min(1.0f, 0.9f + intensity * 0.1f);
@@ -3502,6 +3561,51 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
                                    [](const auto& p) { return p.second.inSceneGraph; }));
         }
     }
+}
+
+float EntityRenderer::findBoatDeckZ(float x, float y, float currentZ) const {
+    // BEST_Z_INVALID from hc_map.h
+    constexpr float BEST_Z_INVALID = -999999.0f;
+
+    float bestDeckZ = BEST_Z_INVALID;
+    float bestDistance = 999999.0f;
+
+    // Check all entities with collision (boats)
+    for (const auto& [spawnId, visual] : entities_) {
+        if (!visual.hasCollision) {
+            continue;
+        }
+
+        // Check horizontal distance to boat center
+        float dx = x - visual.lastX;
+        float dy = y - visual.lastY;
+        float horizontalDist = std::sqrt(dx * dx + dy * dy);
+
+        // If within boat's collision radius
+        if (horizontalDist <= visual.collisionRadius) {
+            // Deck Z is at the top of the boat model
+            float deckZ = visual.lastZ + (visual.collisionHeight / 2.0f);
+            // Bottom of boat (for checking if we're within the boat's vertical range)
+            float boatBottomZ = visual.lastZ - (visual.collisionHeight / 2.0f);
+
+            // Allow standing on deck if:
+            // 1. We're on the deck (within small tolerance above)
+            // 2. We're below the deck but above the bottom of the boat (inside the boat's height)
+            // 3. We're slightly below the boat (allowing step up from water)
+            float zDiff = currentZ - deckZ;
+            // Allow up to 2 units above deck, or anywhere from deck down to 10 units below boat bottom
+            // This allows stepping onto boats from water level
+            if (zDiff <= 2.0f && currentZ >= (boatBottomZ - 10.0f)) {
+                // This boat is a valid floor - check if it's closer than previous best
+                if (horizontalDist < bestDistance) {
+                    bestDeckZ = deckZ;
+                    bestDistance = horizontalDist;
+                }
+            }
+        }
+    }
+
+    return bestDeckZ;
 }
 
 } // namespace Graphics
