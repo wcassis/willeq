@@ -6,6 +6,7 @@
 #include "client/graphics/detail/detail_types.h"
 #include "client/graphics/detail/detail_texture_atlas.h"
 #include "client/graphics/detail/seasonal_controller.h"
+#include "client/graphics/detail/foliage_disturbance_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -31,6 +32,10 @@ public:
 
     // Get the default hardcoded config (fallback when no files exist)
     static ZoneDetailConfig getHardcodedDefault(const std::string& zoneName);
+
+    // Load foliage disturbance config from JSON file or embedded section
+    // Looks for "foliage_disturbance" section in configs/detail_objects.json
+    FoliageDisturbanceConfig loadFoliageDisturbanceConfig(const std::string& dataPath) const;
 
 private:
     // Parse JSON into config structure

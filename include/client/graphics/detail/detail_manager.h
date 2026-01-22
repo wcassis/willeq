@@ -10,6 +10,7 @@
 #include "client/graphics/detail/wind_controller.h"
 #include "client/graphics/detail/seasonal_controller.h"
 #include "client/graphics/detail/surface_map.h"
+#include "client/graphics/detail/foliage_disturbance.h"
 
 namespace EQT {
 namespace Graphics {
@@ -30,7 +31,12 @@ public:
     ~DetailManager();
 
     // Frame update - call from IrrlichtRenderer::processFrame
-    void update(const irr::core::vector3df& cameraPos, float deltaTimeMs);
+    // playerPos/playerVelocity: for foliage disturbance (grass bending when walking)
+    // playerMoving: true if player is currently moving
+    void update(const irr::core::vector3df& cameraPos, float deltaTimeMs,
+                const irr::core::vector3df& playerPos = irr::core::vector3df(0, 0, 0),
+                const irr::core::vector3df& playerVelocity = irr::core::vector3df(0, 0, 0),
+                bool playerMoving = false);
 
     // Density control (0.0 = off, 1.0 = maximum)
     void setDensity(float density);
@@ -66,6 +72,11 @@ public:
     std::string getDebugInfo() const;
     bool isEnabled() const { return enabled_ && density_ > 0.01f; }
     void setEnabled(bool enabled);
+
+    // Foliage disturbance control
+    void setFoliageDisturbanceConfig(const FoliageDisturbanceConfig& config);
+    const FoliageDisturbanceConfig& getFoliageDisturbanceConfig() const;
+    bool isFoliageDisturbanceEnabled() const;
 
     // Access for UI/commands
     size_t getActiveChunkCount() const { return activeChunks_.size(); }
@@ -141,6 +152,10 @@ private:
 
     // Wind animation
     WindController windController_;
+
+    // Foliage disturbance (player movement bending grass)
+    std::unique_ptr<FoliageDisturbanceManager> disturbanceManager_;
+    FoliageDisturbanceConfig disturbanceConfig_;
 
     // Seasonal effects
     SeasonalController seasonalController_;

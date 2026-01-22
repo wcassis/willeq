@@ -10,6 +10,7 @@ namespace Graphics {
 namespace Detail {
 
 class WindController;
+class FoliageDisturbanceManager;
 
 class DetailChunk {
 public:
@@ -31,6 +32,11 @@ public:
 
     // Apply wind animation to vertices (call each frame)
     void applyWind(const WindController& wind, const ZoneDetailConfig& config);
+
+    // Apply wind and foliage disturbance together (call each frame when disturbance is enabled)
+    void applyWindAndDisturbance(const WindController& wind,
+                                  const FoliageDisturbanceManager& disturbance,
+                                  const ZoneDetailConfig& config);
 
     // Scene attachment
     void attach();

@@ -365,6 +365,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/detail/detail_config_loader.cpp
         src/client/graphics/detail/detail_texture_atlas.cpp
         src/client/graphics/detail/seasonal_controller.cpp
+        src/client/graphics/detail/foliage_disturbance.cpp
         # Tree wind animation system
         src/client/graphics/tree_wind_config.cpp
         src/client/graphics/tree_identifier.cpp

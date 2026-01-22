@@ -365,6 +365,49 @@ SurfaceType DetailConfigLoader::parseSurfaceTypeString(const std::string& str) {
     return SurfaceType::Natural;
 }
 
+FoliageDisturbanceConfig DetailConfigLoader::loadFoliageDisturbanceConfig(const std::string& dataPath) const {
+    FoliageDisturbanceConfig config;  // Defaults
+
+    // Try configs/detail_objects.json first
+    std::string configPath = "configs/detail_objects.json";
+    std::ifstream file(configPath);
+    if (!file.is_open()) {
+        // Fall back to data path
+        configPath = dataPath + "/detail/default_config.json";
+        file.open(configPath);
+    }
+
+    if (!file.is_open()) {
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No foliage_disturbance config found, using defaults");
+        return config;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    std::istringstream stream(buffer.str());
+
+    if (!Json::parseFromStream(builder, stream, &root, &errors)) {
+        LOG_ERROR(MOD_GRAPHICS, "DetailConfigLoader: JSON parse error for foliage disturbance: {}", errors);
+        return config;
+    }
+
+    // Look for "foliage_disturbance" section
+    if (root.isMember("foliage_disturbance")) {
+        config = FoliageDisturbanceConfig::loadFromJson(root["foliage_disturbance"]);
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded foliage_disturbance config from {}, enabled={}",
+                 configPath, config.enabled ? "true" : "false");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No foliage_disturbance section in {}, using defaults",
+                 configPath);
+    }
+
+    return config;
+}
+
 AtlasTile DetailConfigLoader::parseAtlasTileString(const std::string& str) {
     // Map string names to AtlasTile enum values
     // Row 0: Temperate grass/flowers

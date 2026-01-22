@@ -23,6 +23,10 @@ DetailManager::DetailManager(irr::scene::ISceneManager* smgr,
     if (smgr_) {
         collisionManager_ = smgr_->getSceneCollisionManager();
     }
+
+    // Initialize foliage disturbance manager with default config
+    disturbanceManager_ = std::make_unique<FoliageDisturbanceManager>(disturbanceConfig_);
+
     LOG_INFO(MOD_GRAPHICS, "DetailManager: Initialized");
 }
 
@@ -176,9 +180,16 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
     windParams.direction = irr::core::vector2df(1.0f, 0.3f).normalize();  // Slight angle
     windController_.setParams(windParams);
 
-    LOG_INFO(MOD_GRAPHICS, "DetailManager: Entered zone '{}', season: {}, {} detail types, density mult: {:.1f}",
+    // Load foliage disturbance config
+    disturbanceConfig_ = loader.loadFoliageDisturbanceConfig("data");
+    if (disturbanceManager_) {
+        disturbanceManager_->setConfig(disturbanceConfig_);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "DetailManager: Entered zone '{}', season: {}, {} detail types, density mult: {:.1f}, foliage disturb: {}",
              zoneName, SeasonalController::getSeasonName(currentSeason_),
-             config_.detailTypes.size(), config_.densityMultiplier);
+             config_.detailTypes.size(), config_.densityMultiplier,
+             disturbanceConfig_.enabled ? "enabled" : "disabled");
 }
 
 void DetailManager::onZoneExit() {
@@ -209,7 +220,10 @@ void DetailManager::addMeshNodeForTextureLookup(irr::scene::IMeshSceneNode* node
     }
 }
 
-void DetailManager::update(const irr::core::vector3df& playerPosIrrlicht, float deltaTimeMs) {
+void DetailManager::update(const irr::core::vector3df& cameraPos, float deltaTimeMs,
+                           const irr::core::vector3df& playerPos,
+                           const irr::core::vector3df& playerVelocity,
+                           bool playerMoving) {
     // Require pre-computed surface map - don't fall back to on-the-fly detection
     if (!enabled_ || density_ < 0.01f || currentZone_.empty() || !surfaceMap_.isLoaded()) {
         return;
@@ -218,13 +232,34 @@ void DetailManager::update(const irr::core::vector3df& playerPosIrrlicht, float 
     // Update wind animation state
     windController_.update(deltaTimeMs);
 
-    // Update which chunks are visible based on player position
-    updateVisibleChunks(playerPosIrrlicht);
+    // Update foliage disturbance state
+    if (disturbanceManager_ && disturbanceConfig_.enabled) {
+        disturbanceManager_->clearSources();
 
-    // Apply wind animation to active chunks
-    if (config_.windStrength > 0.01f) {
-        for (DetailChunk* chunk : activeChunks_) {
-            if (chunk) {
+        // Add player as disturbance source if moving
+        if (playerMoving) {
+            DisturbanceSource source;
+            source.position = playerPos;
+            source.velocity = playerVelocity;
+            source.radius = disturbanceConfig_.playerRadius;
+            source.strength = disturbanceConfig_.playerStrength;
+            disturbanceManager_->addDisturbanceSource(source);
+        }
+
+        disturbanceManager_->update(deltaTimeMs);
+    }
+
+    // Update which chunks are visible based on camera position
+    updateVisibleChunks(cameraPos);
+
+    // Apply wind and disturbance animation to active chunks
+    bool useDisturbance = disturbanceManager_ && disturbanceConfig_.enabled;
+
+    for (DetailChunk* chunk : activeChunks_) {
+        if (chunk) {
+            if (useDisturbance) {
+                chunk->applyWindAndDisturbance(windController_, *disturbanceManager_, config_);
+            } else if (config_.windStrength > 0.01f) {
                 chunk->applyWind(windController_, config_);
             }
         }
@@ -315,13 +350,36 @@ void DetailManager::setEnabled(bool enabled) {
     }
 }
 
+void DetailManager::setFoliageDisturbanceConfig(const FoliageDisturbanceConfig& config) {
+    disturbanceConfig_ = config;
+    if (disturbanceManager_) {
+        disturbanceManager_->setConfig(config);
+    }
+    LOG_INFO(MOD_GRAPHICS, "DetailManager: Foliage disturbance config updated, enabled={}",
+             config.enabled ? "true" : "false");
+}
+
+const FoliageDisturbanceConfig& DetailManager::getFoliageDisturbanceConfig() const {
+    return disturbanceConfig_;
+}
+
+bool DetailManager::isFoliageDisturbanceEnabled() const {
+    return disturbanceConfig_.enabled && disturbanceManager_ != nullptr;
+}
+
 std::string DetailManager::getDebugInfo() const {
-    return fmt::format("Detail: {:.0f}% density, {} chunks, {} placements, season: {}, surfmap: {}",
+    std::string disturbInfo = disturbanceConfig_.enabled ? "on" : "off";
+    if (disturbanceConfig_.enabled && disturbanceManager_) {
+        disturbInfo = fmt::format("on({})", disturbanceManager_->getResidualCount());
+    }
+
+    return fmt::format("Detail: {:.0f}% density, {} chunks, {} placements, season: {}, surfmap: {}, disturb: {}",
                        density_ * 100.0f,
                        activeChunks_.size(),
                        getVisiblePlacementCount(),
                        SeasonalController::getSeasonName(currentSeason_),
-                       surfaceMap_.isLoaded() ? "loaded" : "off");
+                       surfaceMap_.isLoaded() ? "loaded" : "off",
+                       disturbInfo);
 }
 
 size_t DetailManager::getTotalPlacementCount() const {

@@ -4639,7 +4639,24 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (detailManager_ && detailManager_->isEnabled()) {
         // Convert EQ coords (X, Y, Z where Z is up) to Irrlicht coords (X, Y, Z where Y is up)
         irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
-        detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f);
+
+        // Track player velocity for foliage disturbance
+        static float lastPlayerX = playerX_, lastPlayerY = playerY_;
+        irr::core::vector3df playerVelocity(0, 0, 0);
+        if (deltaTime > 0.001f) {
+            // Calculate velocity in Irrlicht coords (EQ X -> Irr X, EQ Y -> Irr Z)
+            float velX = (playerX_ - lastPlayerX) / deltaTime;
+            float velZ = (playerY_ - lastPlayerY) / deltaTime;
+            playerVelocity = irr::core::vector3df(velX, 0, velZ);
+        }
+        lastPlayerX = playerX_;
+        lastPlayerY = playerY_;
+
+        // Determine if player is moving (velocity above threshold)
+        bool playerMoving = playerVelocity.getLengthSQ() > 0.1f;
+
+        detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
+                               playerPosIrrlicht, playerVelocity, playerMoving);
     }
 
     // ===== Weather System Update =====

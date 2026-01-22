@@ -8,6 +8,19 @@
     "baseDensityMultiplier": 1.0
   },
 
+  "foliage_disturbance": {
+    "enabled": true,
+    "player_radius": 5.0,
+    "player_strength": 1.5,
+    "max_displacement": 1.5,
+    "vertical_dip_factor": 0.2,
+    "velocity_influence": 0.7,
+    "height_exponent": 1.5,
+    "recovery_rate": 0.4,
+    "affect_grass": true,
+    "affect_plants": true
+  },
+
   "seasons": {
     "default": {
       "densityMultiplier": 1.0,
@@ -37,8 +50,8 @@
       "category": "Grass",
       "orientation": "CrossedQuads",
       "atlasTile": "GrassShort",
-      "minSize": 1.0,
-      "maxSize": 2.4,
+      "minSize": 1.5,
+      "maxSize": 3.6,
       "baseDensity": 1.0,
       "maxSlope": 0.5,
       "windResponse": 1.0,
@@ -50,13 +63,13 @@
       "category": "Grass",
       "orientation": "CrossedQuads",
       "atlasTile": "GrassTall",
-      "minSize": 2.0,
-      "maxSize": 4.0,
+      "minSize": 3.0,
+      "maxSize": 6.0,
       "baseDensity": 0.3,
       "maxSlope": 0.4,
       "windResponse": 1.0,
       "allowedSurfaces": ["Grass"],
-      "testColor": [255, 0, 200, 0]
+      "testColor": [255, 0, 140, 0]
     },
     {
       "name": "flower",

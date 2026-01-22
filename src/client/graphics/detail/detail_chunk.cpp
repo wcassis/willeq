@@ -1,5 +1,6 @@
 #include "client/graphics/detail/detail_chunk.h"
 #include "client/graphics/detail/wind_controller.h"
+#include "client/graphics/detail/foliage_disturbance.h"
 #include "common/logging.h"
 #include <random>
 #include <cmath>
@@ -571,6 +572,65 @@ void DetailChunk::applyWind(const WindController& wind, const ZoneDetailConfig& 
             basePositions_[i], influence, config.windStrength);
 
         irr::core::vector3df newPos = basePositions_[i] + displacement;
+        if (verts[i].Pos != newPos) {
+            verts[i].Pos = newPos;
+            anyChanged = true;
+        }
+    }
+
+    // Mark buffer as changed if any vertices were updated
+    if (anyChanged) {
+        buffer_->setDirty(irr::scene::EBT_VERTEX);
+    }
+}
+
+void DetailChunk::applyWindAndDisturbance(const WindController& wind,
+                                           const FoliageDisturbanceManager& disturbance,
+                                           const ZoneDetailConfig& config) {
+    if (!buffer_ || basePositions_.empty() || windInfluence_.empty()) {
+        return;
+    }
+
+    irr::u32 vertCount = buffer_->getVertexCount();
+    if (vertCount == 0 || vertCount > basePositions_.size()) {
+        return;
+    }
+
+    // Get direct access to vertex buffer
+    irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(buffer_->getVertices());
+
+    bool anyChanged = false;
+    const auto& disturbConfig = disturbance.getConfig();
+
+    for (irr::u32 i = 0; i < vertCount; ++i) {
+        float influence = windInfluence_[i];
+
+        if (influence < 0.001f) {
+            // No wind/disturbance influence - keep at base position
+            if (verts[i].Pos != basePositions_[i]) {
+                verts[i].Pos = basePositions_[i];
+                anyChanged = true;
+            }
+            continue;
+        }
+
+        // Calculate wind displacement
+        irr::core::vector3df windDisp(0, 0, 0);
+        if (config.windStrength > 0.001f) {
+            windDisp = wind.getDisplacement(basePositions_[i], influence, config.windStrength);
+        }
+
+        // Calculate disturbance displacement
+        irr::core::vector3df disturbDisp(0, 0, 0);
+        if (disturbConfig.enabled) {
+            disturbDisp = disturbance.getDisplacement(basePositions_[i], influence);
+        }
+
+        // Combine displacements - disturbance adds to wind
+        // When disturbance is strong, it dominates; when weak, wind shows through
+        irr::core::vector3df totalDisp = windDisp + disturbDisp;
+
+        irr::core::vector3df newPos = basePositions_[i] + totalDisp;
         if (verts[i].Pos != newPos) {
             verts[i].Pos = newPos;
             anyChanged = true;
