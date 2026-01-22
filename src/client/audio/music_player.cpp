@@ -222,11 +222,13 @@ bool MusicPlayer::play(const std::string& filepath, bool loop) {
     }
 
     // For XMI files in hardware mode, FluidSynth handles playback directly via PulseAudio
-    // No need for OpenAL streaming
-    if (ext == ".xmi" && !softwareRendering_) {
-        LOG_INFO(MOD_AUDIO, "Playing MIDI music: {}", filepath);
+    // No need for OpenAL streaming (but only if audio driver actually exists)
+#ifdef WITH_FLUIDSYNTH
+    if (ext == ".xmi" && !softwareRendering_ && fluidAudioDriver_ != nullptr) {
+        LOG_INFO(MOD_AUDIO, "Playing MIDI music (hardware mode): {}", filepath);
         return true;
     }
+#endif
 
     // For MP3/WAV, or XMI in software rendering mode, use OpenAL streaming
     playing_ = true;
@@ -572,7 +574,9 @@ bool MusicPlayer::loadXMI(const std::string& filepath) {
     channels_ = 2;
     format_ = AL_FORMAT_STEREO16;
 
-    if (softwareRendering_) {
+    // Use software rendering if explicitly enabled OR if hardware audio driver failed
+    bool useSoftwareRendering = softwareRendering_ || (fluidAudioDriver_ == nullptr);
+    if (useSoftwareRendering) {
         // Software rendering mode: manually parse MIDI and sequence events
         // We can't use fluid_player because it relies on audio driver callbacks for timing
         if (!parseMidiEvents(midiData)) {

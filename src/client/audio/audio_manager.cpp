@@ -780,6 +780,11 @@ bool AudioManager::initializeLoopbackDevice() {
 bool AudioManager::enableLoopbackMode() {
     if (loopbackMode_) {
         LOG_DEBUG(MOD_AUDIO, "Already in loopback mode");
+        // Still ensure music player has software rendering enabled
+        // (may not have been set if loopback was enabled at startup before RDP connected)
+        if (musicPlayer_) {
+            musicPlayer_->enableSoftwareRendering();
+        }
         return true;
     }
 
