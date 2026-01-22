@@ -106,9 +106,9 @@ void DustMoteEmitter::updateParticle(Particle& p, float deltaTime, const Environ
 
     // Dust motes in indoor areas are slightly more visible
     if (isIndoor_) {
-        p.alpha *= 0.7f;  // More visible in darker areas
+        p.alpha *= 0.9f;  // More visible in darker areas
     } else {
-        p.alpha *= 0.4f;  // Less visible outdoors
+        p.alpha *= 0.8f;  // Good visibility outdoors
     }
 }
 

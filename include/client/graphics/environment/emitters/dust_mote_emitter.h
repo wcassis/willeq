@@ -52,15 +52,15 @@ protected:
 private:
     // Configuration
     static constexpr int MAX_PARTICLES = 80;
-    static constexpr float BASE_SPAWN_RATE = 8.0f;      // Particles per second
-    static constexpr float SPAWN_RADIUS_MIN = 5.0f;     // Min spawn distance from player
-    static constexpr float SPAWN_RADIUS_MAX = 25.0f;    // Max spawn distance from player
-    static constexpr float SPAWN_HEIGHT_MIN = -2.0f;    // Min height relative to player
-    static constexpr float SPAWN_HEIGHT_MAX = 8.0f;     // Max height relative to player
-    static constexpr float PARTICLE_SIZE_MIN = 0.03f;
-    static constexpr float PARTICLE_SIZE_MAX = 0.08f;
-    static constexpr float LIFETIME_MIN = 8.0f;
-    static constexpr float LIFETIME_MAX = 15.0f;
+    static constexpr float BASE_SPAWN_RATE = 10.0f;     // Particles per second
+    static constexpr float SPAWN_RADIUS_MIN = 3.0f;     // Min spawn distance from player
+    static constexpr float SPAWN_RADIUS_MAX = 20.0f;    // Max spawn distance from player
+    static constexpr float SPAWN_HEIGHT_MIN = -1.0f;    // Min height relative to player
+    static constexpr float SPAWN_HEIGHT_MAX = 6.0f;     // Max height relative to player
+    static constexpr float PARTICLE_SIZE_MIN = 0.15f;
+    static constexpr float PARTICLE_SIZE_MAX = 0.35f;
+    static constexpr float LIFETIME_MIN = 6.0f;         // Seconds
+    static constexpr float LIFETIME_MAX = 10.0f;        // Seconds
     static constexpr float DRIFT_SPEED = 0.3f;          // Base drift speed
     static constexpr float WIND_FACTOR = 2.0f;          // How much wind affects movement
 
