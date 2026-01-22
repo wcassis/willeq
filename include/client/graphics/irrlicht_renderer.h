@@ -17,6 +17,7 @@
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/environment/particle_manager.h"
+#include "client/graphics/environment/boids_manager.h"
 #include "client/input/hotkey_manager.h"
 
 #ifdef WITH_RDP
@@ -877,6 +878,9 @@ public:
     // Environmental particle system access
     Environment::ParticleManager* getParticleManager() { return particleManager_.get(); }
 
+    // Ambient creatures (boids) system access
+    Environment::BoidsManager* getBoidsManager() { return boidsManager_.get(); }
+
 #ifdef WITH_RDP
     // RDP server support (alternative to Xvfb+x11vnc)
 
@@ -967,6 +971,7 @@ private:
     std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
+    std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;

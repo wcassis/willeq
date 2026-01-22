@@ -41,6 +41,7 @@ bool EnvironmentEffectsConfig::load(const std::string& path) {
     loadEmitterSettings(root, "mist", mist_);
     loadEmitterSettings(root, "sandDust", sandDust_);
     loadDetailSettings(root);
+    loadBoidsSettings(root);
 
     loaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "EnvironmentEffectsConfig: Loaded settings from '{}'", path);
@@ -110,6 +111,28 @@ void EnvironmentEffectsConfig::loadDetailSettings(const Json::Value& root) {
     if (json.isMember("debrisEnabled")) detailObjects_.debrisEnabled = json["debrisEnabled"].asBool();
 
     LOG_DEBUG(MOD_GRAPHICS, "EnvironmentEffectsConfig: Loaded detail object settings");
+}
+
+void EnvironmentEffectsConfig::loadBoidsSettings(const Json::Value& root) {
+    if (!root.isMember("boids")) {
+        return;
+    }
+
+    const Json::Value& json = root["boids"];
+
+    if (json.isMember("enabled")) boids_.enabled = json["enabled"].asBool();
+    if (json.isMember("maxFlocks")) boids_.maxFlocks = json["maxFlocks"].asInt();
+    if (json.isMember("flockSizeMin")) boids_.flockSizeMin = json["flockSizeMin"].asInt();
+    if (json.isMember("flockSizeMax")) boids_.flockSizeMax = json["flockSizeMax"].asInt();
+    if (json.isMember("spawnCooldown")) boids_.spawnCooldown = json["spawnCooldown"].asFloat();
+    if (json.isMember("viewDistance")) boids_.viewDistance = json["viewDistance"].asFloat();
+    if (json.isMember("scatterRadius")) boids_.scatterRadius = json["scatterRadius"].asFloat();
+    if (json.isMember("separation")) boids_.separation = json["separation"].asFloat();
+    if (json.isMember("alignment")) boids_.alignment = json["alignment"].asFloat();
+    if (json.isMember("cohesion")) boids_.cohesion = json["cohesion"].asFloat();
+    if (json.isMember("avoidance")) boids_.avoidance = json["avoidance"].asFloat();
+
+    LOG_DEBUG(MOD_GRAPHICS, "EnvironmentEffectsConfig: Loaded boids settings");
 }
 
 void EnvironmentEffectsConfig::setDefaults() {
@@ -209,6 +232,20 @@ void EnvironmentEffectsConfig::setDefaults() {
 
     // Detail objects
     detailObjects_ = DetailSettings{};
+
+    // Boids (ambient creatures)
+    boids_ = BoidsSettings{};
+    boids_.enabled = true;
+    boids_.maxFlocks = 3;
+    boids_.flockSizeMin = 5;
+    boids_.flockSizeMax = 12;
+    boids_.spawnCooldown = 30.0f;
+    boids_.viewDistance = 150.0f;
+    boids_.scatterRadius = 20.0f;
+    boids_.separation = 1.5f;
+    boids_.alignment = 1.0f;
+    boids_.cohesion = 1.0f;
+    boids_.avoidance = 2.0f;
 
     LOG_DEBUG(MOD_GRAPHICS, "EnvironmentEffectsConfig: Using default settings");
 }

@@ -529,6 +529,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
     }
 
+    // Create ambient creatures (boids) system
+    boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
+    if (!boidsManager_->init(config.eqClientPath)) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
+    }
+
     // Apply initial settings
     wireframeMode_ = config.wireframe;
     fogEnabled_ = config.fog;
@@ -664,6 +670,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
+        }
+    }
+
+    // Create ambient creatures (boids) system (needed before loadZone())
+    if (!boidsManager_) {
+        boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
+        if (!boidsManager_->init(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
         }
     }
 
@@ -1983,6 +1997,14 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
                  zoneName, static_cast<int>(biome));
     }
 
+    // Initialize ambient creatures (boids) for this zone
+    if (boidsManager_) {
+        Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(zoneName);
+        boidsManager_->onZoneEnter(zoneName, biome);
+        LOG_INFO(MOD_GRAPHICS, "Ambient creatures enabled for zone '{}' (biome: {})",
+                 zoneName, static_cast<int>(biome));
+    }
+
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
     // Log texture cache stats (cache was frozen at start of zone load)
@@ -2028,6 +2050,11 @@ void IrrlichtRenderer::unloadZone() {
     // Clear environmental particle system
     if (particleManager_) {
         particleManager_->onZoneLeave();
+    }
+
+    // Clear ambient creatures (boids) system
+    if (boidsManager_) {
+        boidsManager_->onZoneLeave();
     }
 
     // Now safe to remove zone collision selectors
@@ -4573,6 +4600,18 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         particleManager_->update(deltaTime);
     }
 
+    // ===== Ambient Creatures (Boids) System Update =====
+    if (boidsManager_ && boidsManager_->isEnabled()) {
+        // Update player position (for scatter behavior when player approaches)
+        boidsManager_->setPlayerPosition(
+            glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
+        // Update time of day (affects which creatures appear)
+        float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+        boidsManager_->setTimeOfDay(timeOfDay);
+        // Update boids
+        boidsManager_->update(deltaTime);
+    }
+
     // ===== Tree Wind Animation Update =====
     if (treeManager_ && treeManager_->isEnabled()) {
         // Use camera position for distance-based animation culling
@@ -4711,6 +4750,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Render environmental particles
     if (particleManager_ && particleManager_->isEnabled()) {
         particleManager_->render();
+    }
+
+    // Render ambient creatures (boids)
+    if (boidsManager_ && boidsManager_->isEnabled()) {
+        boidsManager_->render();
     }
 
     // Draw collision debug lines (if debug mode enabled)
@@ -7214,6 +7258,20 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
 
                 LOG_DEBUG(MOD_GRAPHICS, "Particle settings updated: quality={}, enabled={}, density={}",
                          static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity);
+            }
+
+            // Update boids manager settings
+            if (boidsManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
+                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+
+                // Use same quality setting as particles (0=Off, 1=Low, 2=Medium, 3=High)
+                int quality = static_cast<int>(settings.environmentQuality);
+                boidsManager_->setQuality(quality);
+                boidsManager_->setEnabled(settings.atmosphericParticles);
+                boidsManager_->setDensity(settings.environmentDensity);
+
+                LOG_DEBUG(MOD_GRAPHICS, "Boids settings updated: quality={}, enabled={}, density={}",
+                         quality, settings.atmosphericParticles, settings.environmentDensity);
             }
         });
 

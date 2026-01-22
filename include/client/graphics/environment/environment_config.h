@@ -79,6 +79,24 @@ public:
         bool debrisEnabled = true;
     };
 
+    /**
+     * Settings for ambient creatures (boids flocking system)
+     */
+    struct BoidsSettings {
+        bool enabled = true;
+        int maxFlocks = 3;
+        int flockSizeMin = 5;
+        int flockSizeMax = 12;
+        float spawnCooldown = 30.0f;
+        float viewDistance = 150.0f;
+        float scatterRadius = 20.0f;
+        // Boids behavior weights
+        float separation = 1.5f;
+        float alignment = 1.0f;
+        float cohesion = 1.0f;
+        float avoidance = 2.0f;
+    };
+
     // Getters for emitter settings
     const EmitterSettings& getDustMotes() const { return dustMotes_; }
     const EmitterSettings& getPollen() const { return pollen_; }
@@ -86,6 +104,7 @@ public:
     const EmitterSettings& getMist() const { return mist_; }
     const EmitterSettings& getSandDust() const { return sandDust_; }
     const DetailSettings& getDetailObjects() const { return detailObjects_; }
+    const BoidsSettings& getBoids() const { return boids_; }
 
     /**
      * Callback invoked when config is reloaded.
@@ -108,6 +127,7 @@ private:
 
     void loadEmitterSettings(const Json::Value& json, const std::string& name, EmitterSettings& settings);
     void loadDetailSettings(const Json::Value& json);
+    void loadBoidsSettings(const Json::Value& json);
     void setDefaults();
 
     std::string configPath_;
@@ -119,6 +139,7 @@ private:
     EmitterSettings mist_;
     EmitterSettings sandDust_;
     DetailSettings detailObjects_;
+    BoidsSettings boids_;
 
     ReloadCallback reloadCallback_;
 };

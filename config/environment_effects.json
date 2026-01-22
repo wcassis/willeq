@@ -112,5 +112,18 @@
     "plantsEnabled": true,
     "rocksEnabled": true,
     "debrisEnabled": true
+  },
+  "boids": {
+    "enabled": true,
+    "maxFlocks": 3,
+    "flockSizeMin": 5,
+    "flockSizeMax": 12,
+    "spawnCooldown": 30.0,
+    "viewDistance": 150.0,
+    "scatterRadius": 20.0,
+    "separation": 1.5,
+    "alignment": 1.0,
+    "cohesion": 1.0,
+    "avoidance": 2.0
   }
 }
