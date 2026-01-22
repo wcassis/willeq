@@ -1118,7 +1118,8 @@ private:
     TargetInfo currentTargetInfo_;  // Extended target info for HUD display
 
     // Irrlicht-based collision (using zone geometry directly)
-    irr::scene::ITriangleSelector* zoneTriangleSelector_ = nullptr;
+    irr::scene::ITriangleSelector* zoneTriangleSelector_ = nullptr;  // Full selector (terrain + objects + doors)
+    irr::scene::ITriangleSelector* terrainOnlySelector_ = nullptr;   // Terrain only (for detail system ground queries)
     irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
     bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
 
