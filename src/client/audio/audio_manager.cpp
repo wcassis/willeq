@@ -495,7 +495,6 @@ std::string AudioManager::findZoneMusic(const std::string& zoneName) {
     auto mapIt = zoneMusicMap.find(lowerZone);
     if (mapIt != zoneMusicMap.end()) {
         lowerZone = mapIt->second;
-        std::cout << "[AUDIO] ZONE MUSIC MAPPED: " << zoneName << " -> " << lowerZone << std::endl;
     }
 
     // Try XMI first (original MIDI format)
@@ -775,6 +774,65 @@ bool AudioManager::initializeLoopbackDevice() {
 
     LOG_INFO(MOD_AUDIO, "Loopback audio device initialized ({}Hz, {} channels)",
              LOOPBACK_SAMPLE_RATE, LOOPBACK_CHANNELS);
+    return true;
+}
+
+bool AudioManager::enableLoopbackMode() {
+    if (loopbackMode_) {
+        LOG_DEBUG(MOD_AUDIO, "Already in loopback mode");
+        return true;
+    }
+
+    if (!initialized_) {
+        LOG_ERROR(MOD_AUDIO, "Cannot enable loopback mode - audio not initialized");
+        return false;
+    }
+
+    LOG_INFO(MOD_AUDIO, "Switching to loopback mode for RDP audio streaming");
+
+    // Stop any playing sounds
+    stopAllSounds();
+
+    // Clean up current hardware device
+    if (context_) {
+        alcMakeContextCurrent(nullptr);
+        alcDestroyContext(context_);
+        context_ = nullptr;
+    }
+    if (device_) {
+        alcCloseDevice(device_);
+        device_ = nullptr;
+    }
+
+    // Initialize loopback device
+    if (!initializeLoopbackDevice()) {
+        LOG_ERROR(MOD_AUDIO, "Failed to switch to loopback mode");
+        return false;
+    }
+
+    // Reinitialize OpenAL state (listener, distance model)
+    alListenerf(AL_GAIN, masterVolume_ * effectsVolume_);
+    alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
+    LOG_DEBUG(MOD_AUDIO, "3D audio distance model reconfigured (inverse distance clamped)");
+
+    // Recreate source pool
+    {
+        std::lock_guard<std::mutex> lock(sourceMutex_);
+        availableSources_.clear();
+        activeSources_.clear();
+        availableSources_.resize(MAX_SOURCES);
+        alGenSources(MAX_SOURCES, availableSources_.data());
+        LOG_INFO(MOD_AUDIO, "Audio source pool recreated: {} sources", MAX_SOURCES);
+    }
+
+    // Reinitialize music player's OpenAL resources (old ones are invalid after context change)
+    // Then enable software rendering so FluidSynth routes through OpenAL
+    if (musicPlayer_) {
+        musicPlayer_->reinitializeOpenAL();
+        musicPlayer_->enableSoftwareRendering();
+    }
+
+    LOG_INFO(MOD_AUDIO, "Switched to loopback mode for RDP audio streaming");
     return true;
 }
 

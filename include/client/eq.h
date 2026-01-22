@@ -1651,6 +1651,7 @@ public:
 	std::unique_ptr<EQT::Audio::ZoneAudioManager> m_zone_audio_manager;
 	void InitializeAudio();
 	void ShutdownAudio();
+	void SetupRDPAudio();  // Call after RDP server is started
 
 	// Day/night state for audio (calculated from game time)
 	bool m_is_daytime = true;

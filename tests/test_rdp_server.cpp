@@ -271,6 +271,63 @@ TEST_F(RDPServerCertificateTest, SetCertificateEmptyPaths) {
     EXPECT_EQ(server_.getKeyPath(), "");
 }
 
+TEST_F(RDPServerCertificateTest, GenerateSelfSignedCertificate) {
+    // With no cert paths set, createPeerCertificate should generate one
+    rdpCertificate* cert = server_.createPeerCertificate();
+    rdpPrivateKey* key = server_.createPeerKey();
+
+    ASSERT_NE(cert, nullptr) << "Should generate a self-signed certificate";
+    ASSERT_NE(key, nullptr) << "Should generate a private key";
+
+    // Clean up - caller owns the objects
+    freerdp_certificate_free(cert);
+    freerdp_key_free(key);
+}
+
+TEST_F(RDPServerCertificateTest, GeneratedCertificateIsRSA) {
+    rdpCertificate* cert = server_.createPeerCertificate();
+    rdpPrivateKey* key = server_.createPeerKey();
+
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(key, nullptr);
+
+    // Verify the key is RSA
+    EXPECT_TRUE(freerdp_key_is_rsa(key)) << "Generated key should be RSA";
+    EXPECT_EQ(freerdp_key_get_bits(key), 2048) << "Key should be 2048 bits";
+
+    // Clean up - caller owns the objects
+    freerdp_certificate_free(cert);
+    freerdp_key_free(key);
+}
+
+TEST_F(RDPServerCertificateTest, MultiplePeersGetIndependentCopies) {
+    // Create certificates for two "peers"
+    rdpCertificate* cert1 = server_.createPeerCertificate();
+    rdpPrivateKey* key1 = server_.createPeerKey();
+    rdpCertificate* cert2 = server_.createPeerCertificate();
+    rdpPrivateKey* key2 = server_.createPeerKey();
+
+    ASSERT_NE(cert1, nullptr);
+    ASSERT_NE(key1, nullptr);
+    ASSERT_NE(cert2, nullptr);
+    ASSERT_NE(key2, nullptr);
+
+    // They should be different pointers (independent copies)
+    EXPECT_NE(cert1, cert2) << "Each peer should get its own certificate copy";
+    EXPECT_NE(key1, key2) << "Each peer should get its own key copy";
+
+    // Free first peer's objects
+    freerdp_certificate_free(cert1);
+    freerdp_key_free(key1);
+
+    // Second peer's objects should still be valid
+    EXPECT_TRUE(freerdp_key_is_rsa(key2)) << "Second peer's key should still be valid";
+
+    // Clean up second peer
+    freerdp_certificate_free(cert2);
+    freerdp_key_free(key2);
+}
+
 // =============================================================================
 // RDP Server Thread Safety Tests
 // =============================================================================

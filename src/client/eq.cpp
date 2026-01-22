@@ -2859,12 +2859,13 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 
 		// Update zone music and sound emitters
 #ifdef WITH_AUDIO
-		if (m_audio_manager) {
-			m_audio_manager->onZoneChange(m_current_zone_name);
-		}
-		// Phase 13: Load zone sound emitters
+		// Phase 13: Load zone sound emitters FIRST (unloadZone() stops music)
 		if (m_zone_audio_manager && !m_eq_client_path.empty()) {
 			m_zone_audio_manager->loadZone(m_current_zone_name, m_eq_client_path);
+		}
+		// THEN start zone music (after loadZone to avoid being stopped by unloadZone)
+		if (m_audio_manager) {
+			m_audio_manager->onZoneChange(m_current_zone_name);
 		}
 #endif
 	} else {
@@ -11666,13 +11667,20 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 		}
 
 #ifdef WITH_AUDIO
-		// Play door sound
+		// Play door sound only if player is close to the door
 		if (m_audio_manager) {
 			const Door& door = it->second;
-			EQT::Audio::DoorType doorType = getDoorTypeFromName(door.name);
-			uint32_t soundId = EQT::Audio::DoorSounds::getDoorSound(doorType, is_open);
 			glm::vec3 doorPos(door.x, door.y, door.z);
-			m_audio_manager->playSound(soundId, doorPos);
+			glm::vec3 playerPos(m_x, m_y, m_z);
+			float distance = glm::distance(doorPos, playerPos);
+
+			// Only play door sounds within 10 units
+			constexpr float DOOR_SOUND_MAX_DISTANCE = 10.0f;
+			if (distance <= DOOR_SOUND_MAX_DISTANCE) {
+				EQT::Audio::DoorType doorType = getDoorTypeFromName(door.name);
+				uint32_t soundId = EQT::Audio::DoorSounds::getDoorSound(doorType, is_open);
+				m_audio_manager->playSound(soundId, doorPos);
+			}
 		}
 #endif
 
@@ -19010,22 +19018,6 @@ void EverQuest::InitializeAudio() {
 	// Preload common sounds for faster playback
 	m_audio_manager->preloadCommonSounds();
 
-#if defined(WITH_RDP) && defined(EQT_HAS_GRAPHICS)
-	// Set up RDP audio streaming callback
-	if (m_renderer && m_renderer->getRDPServer()) {
-		auto* rdpServer = m_renderer->getRDPServer();
-		m_audio_manager->setAudioOutputCallback(
-			[rdpServer](const int16_t* samples, size_t count,
-			            uint32_t sampleRate, uint8_t channels) {
-				if (rdpServer && rdpServer->isRunning()) {
-					rdpServer->sendAudioSamples(samples, count, sampleRate, channels);
-				}
-			}
-		);
-		LOG_INFO(MOD_AUDIO, "RDP audio streaming callback configured");
-	}
-#endif
-
 	// Phase 13: Initialize zone audio manager for positioned sound emitters
 	m_zone_audio_manager = std::make_unique<EQT::Audio::ZoneAudioManager>();
 	m_zone_audio_manager->setAudioManager(m_audio_manager.get());
@@ -19046,6 +19038,49 @@ void EverQuest::ShutdownAudio() {
 		m_audio_manager.reset();
 		LOG_INFO(MOD_AUDIO, "Audio system shut down");
 	}
+}
+
+void EverQuest::SetupRDPAudio() {
+	printf("[AUDIO] SetupRDPAudio() called\n"); fflush(stdout);
+#if defined(WITH_RDP) && defined(EQT_HAS_GRAPHICS)
+	// Set up RDP audio streaming callback
+	// This must be called AFTER the RDP server is started
+	if (!m_audio_manager) {
+		printf("[AUDIO] SetupRDPAudio: audio manager not initialized\n"); fflush(stdout);
+		LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - audio manager not initialized");
+		return;
+	}
+
+	if (!m_renderer || !m_renderer->getRDPServer()) {
+		printf("[AUDIO] SetupRDPAudio: RDP server not available\n"); fflush(stdout);
+		LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - RDP server not available");
+		return;
+	}
+
+	auto* rdpServer = m_renderer->getRDPServer();
+	printf("[AUDIO] SetupRDPAudio: calling enableLoopbackMode()\n"); fflush(stdout);
+
+	// Switch to loopback mode for RDP audio streaming
+	// This captures mixed audio and sends it to the callback instead of hardware
+	if (m_audio_manager->enableLoopbackMode()) {
+		printf("[AUDIO] SetupRDPAudio: loopback mode enabled, setting callback\n"); fflush(stdout);
+		m_audio_manager->setAudioOutputCallback(
+			[rdpServer](const int16_t* samples, size_t count,
+			            uint32_t sampleRate, uint8_t channels) {
+				if (rdpServer && rdpServer->isRunning()) {
+					rdpServer->sendAudioSamples(samples, count, sampleRate, channels);
+				}
+			}
+		);
+		printf("[AUDIO] SetupRDPAudio: RDP audio streaming enabled!\n"); fflush(stdout);
+		LOG_INFO(MOD_AUDIO, "RDP audio streaming enabled (loopback mode)");
+	} else {
+		printf("[AUDIO] SetupRDPAudio: enableLoopbackMode() FAILED\n"); fflush(stdout);
+		LOG_WARN(MOD_AUDIO, "Failed to enable loopback mode for RDP audio streaming");
+	}
+#else
+	LOG_DEBUG(MOD_AUDIO, "RDP audio not available (compiled without RDP support)");
+#endif
 }
 
 void EverQuest::UpdateDayNightState() {

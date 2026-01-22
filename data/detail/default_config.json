@@ -1,0 +1,59 @@
+{
+    "version": 1,
+    "chunkSize": 50.0,
+    "viewDistance": 150.0,
+    "densityMultiplier": 1.0,
+    "wind": {
+        "strength": 1.0,
+        "frequency": 0.5
+    },
+    "detailTypes": [
+        {
+            "name": "grass_short",
+            "category": "grass",
+            "orientation": "crossed_quads",
+            "atlas": {"x": 0, "y": 0, "width": 64, "height": 64},
+            "sizeRange": [0.3, 0.6],
+            "maxSlope": 0.5,
+            "baseDensity": 1.0,
+            "windResponse": 1.0,
+            "windHeightBias": 0.8,
+            "testColor": [80, 160, 80, 255]
+        },
+        {
+            "name": "grass_tall",
+            "category": "grass",
+            "orientation": "crossed_quads",
+            "atlas": {"x": 64, "y": 0, "width": 64, "height": 64},
+            "sizeRange": [0.6, 1.2],
+            "maxSlope": 0.4,
+            "baseDensity": 0.4,
+            "windResponse": 1.0,
+            "windHeightBias": 0.7,
+            "testColor": [60, 140, 60, 255]
+        },
+        {
+            "name": "wildflower",
+            "category": "plants",
+            "orientation": "crossed_quads",
+            "atlas": {"x": 128, "y": 0, "width": 64, "height": 64},
+            "sizeRange": [0.4, 0.8],
+            "maxSlope": 0.35,
+            "baseDensity": 0.15,
+            "windResponse": 0.7,
+            "windHeightBias": 0.6,
+            "testColor": [200, 100, 200, 255]
+        },
+        {
+            "name": "small_rock",
+            "category": "rocks",
+            "orientation": "flat_ground",
+            "atlas": {"x": 192, "y": 0, "width": 32, "height": 32},
+            "sizeRange": [0.1, 0.3],
+            "maxSlope": 0.6,
+            "baseDensity": 0.1,
+            "windResponse": 0.0,
+            "testColor": [120, 110, 100, 255]
+        }
+    ]
+}
