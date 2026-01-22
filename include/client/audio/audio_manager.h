@@ -68,7 +68,9 @@ public:
     std::shared_ptr<SoundBuffer> getSoundBufferByName(const std::string& filename);
 
     // Music
-    void playMusic(const std::string& filename, bool loop = true);
+    // trackIndex: for XMI files, selects which sequence to play (0 = first, 1 = second, etc.)
+    //             Use -1 to play all sequences combined. Ignored for non-XMI files.
+    void playMusic(const std::string& filename, bool loop = true, int trackIndex = 0);
     void stopMusic(float fadeOutSeconds = 1.0f);
     void pauseMusic();
     void resumeMusic();

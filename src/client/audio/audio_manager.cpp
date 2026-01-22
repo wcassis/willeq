@@ -266,7 +266,7 @@ void AudioManager::stopAllSounds() {
     activeSources_.clear();
 }
 
-void AudioManager::playMusic(const std::string& filename, bool loop) {
+void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex) {
     if (!initialized_ || !audioEnabled_ || !musicPlayer_) {
         std::cout << "[AUDIO] MUSIC FAILED: file=" << filename << " (not initialized or disabled)" << std::endl;
         return;
@@ -284,15 +284,17 @@ void AudioManager::playMusic(const std::string& filename, bool loop) {
     }
 
     // Skip if the same file is already playing
+    // Note: we don't track current trackIndex, so changing tracks requires stop/play
     if (musicPlayer_->isPlaying() && musicPlayer_->getCurrentFile() == fullPath) {
         std::cout << "[AUDIO] MUSIC SKIP: file=" << fullPath << " (already playing)" << std::endl;
         return;
     }
 
-    std::cout << "[AUDIO] MUSIC PLAY: file=" << fullPath << " loop=" << (loop ? "yes" : "no") << std::endl;
+    std::cout << "[AUDIO] MUSIC PLAY: file=" << fullPath << " track=" << trackIndex
+              << " loop=" << (loop ? "yes" : "no") << std::endl;
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
-    if (!musicPlayer_->play(fullPath, loop)) {
+    if (!musicPlayer_->play(fullPath, loop, trackIndex)) {
         std::cout << "[AUDIO] MUSIC FAILED: file=" << fullPath << " (playback error)" << std::endl;
         LOG_WARN(MOD_AUDIO, "Failed to play music: {}", fullPath);
     }

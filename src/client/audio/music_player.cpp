@@ -190,7 +190,7 @@ void MusicPlayer::shutdown() {
     initialized_ = false;
 }
 
-bool MusicPlayer::play(const std::string& filepath, bool loop) {
+bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex) {
     if (!initialized_) {
         return false;
     }
@@ -209,7 +209,7 @@ bool MusicPlayer::play(const std::string& filepath, bool loop) {
     if (ext == ".mp3") {
         loaded = loadMP3(filepath);
     } else if (ext == ".xmi") {
-        loaded = loadXMI(filepath);
+        loaded = loadXMI(filepath, trackIndex);
     } else if (ext == ".wav") {
         loaded = loadWAV(filepath);
     } else {
@@ -546,7 +546,7 @@ bool MusicPlayer::loadMP3(const std::string& filepath) {
     return true;
 }
 
-bool MusicPlayer::loadXMI(const std::string& filepath) {
+bool MusicPlayer::loadXMI(const std::string& filepath, int trackIndex) {
 #ifdef WITH_FLUIDSYNTH
     if (!fluidSynth_) {
         LOG_ERROR(MOD_AUDIO, "loadXMI: no synth available");
@@ -557,13 +557,16 @@ bool MusicPlayer::loadXMI(const std::string& filepath) {
         return false;
     }
 
-    // Decode XMI to MIDI
+    // Decode XMI to MIDI, selecting specific track/sequence
     XmiDecoder decoder;
-    std::vector<uint8_t> midiData = decoder.decodeFile(filepath);
+    std::vector<uint8_t> midiData = decoder.decodeFile(filepath, trackIndex);
     if (midiData.empty()) {
         LOG_ERROR(MOD_AUDIO, "loadXMI: failed to decode - {}", decoder.getError());
         return false;
     }
+
+    LOG_DEBUG(MOD_AUDIO, "loadXMI: decoded track {} of {} from {}",
+              trackIndex, decoder.getNumSequences(), filepath);
 
     // Reset synth
     fluid_synth_system_reset(fluidSynth_);

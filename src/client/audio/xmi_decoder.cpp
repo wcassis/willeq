@@ -20,7 +20,7 @@ static constexpr uint32_t CAT_MAGIC  = 0x20544143;  // "CAT "
 
 // Use MidiEvent from the class definition in header
 
-std::vector<uint8_t> XmiDecoder::decode(const std::vector<uint8_t>& xmiData) {
+std::vector<uint8_t> XmiDecoder::decode(const std::vector<uint8_t>& xmiData, int sequenceIndex) {
     if (xmiData.size() < 12) {
         error_ = "XMI data too small";
         return {};
@@ -65,15 +65,34 @@ std::vector<uint8_t> XmiDecoder::decode(const std::vector<uint8_t>& xmiData) {
         return {};
     }
 
-    // Parse all sequences and concatenate them
-    if (!parseAllSequences(data, evntChunks)) {
+    // Store actual number of sequences found
+    numSequences_ = static_cast<uint16_t>(evntChunks.size());
+
+    // Handle sequence index selection
+    std::vector<std::pair<size_t, size_t>> chunksToProcess;
+    if (sequenceIndex == -1) {
+        // -1 means all sequences combined
+        chunksToProcess = evntChunks;
+    } else {
+        // sequenceIndex 0 = first, 1 = second, etc.
+        size_t idx = static_cast<size_t>(sequenceIndex);
+        if (idx >= evntChunks.size()) {
+            error_ = "Sequence index " + std::to_string(sequenceIndex) +
+                     " out of range (file has " + std::to_string(evntChunks.size()) + " sequences)";
+            return {};
+        }
+        chunksToProcess.push_back(evntChunks[idx]);
+    }
+
+    // Parse selected sequences
+    if (!parseAllSequences(data, chunksToProcess)) {
         return {};
     }
 
     return midiOutput_;
 }
 
-std::vector<uint8_t> XmiDecoder::decodeFile(const std::string& filepath) {
+std::vector<uint8_t> XmiDecoder::decodeFile(const std::string& filepath, int sequenceIndex) {
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         error_ = "Failed to open file: " + filepath;
@@ -89,7 +108,7 @@ std::vector<uint8_t> XmiDecoder::decodeFile(const std::string& filepath) {
         return {};
     }
 
-    return decode(data);
+    return decode(data, sequenceIndex);
 }
 
 bool XmiDecoder::parseHeader(const uint8_t* data, size_t size) {

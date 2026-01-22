@@ -19,11 +19,16 @@ public:
     XmiDecoder() = default;
 
     // Decode XMI data to standard MIDI
+    // sequenceIndex: 0 = first sequence only (default), 1-N = specific sequence, -1 = all sequences combined
     // Returns empty vector on failure
-    std::vector<uint8_t> decode(const std::vector<uint8_t>& xmiData);
+    std::vector<uint8_t> decode(const std::vector<uint8_t>& xmiData, int sequenceIndex = 0);
 
     // Decode from file
-    std::vector<uint8_t> decodeFile(const std::string& filepath);
+    // sequenceIndex: 0 = first sequence only (default), 1-N = specific sequence, -1 = all sequences combined
+    std::vector<uint8_t> decodeFile(const std::string& filepath, int sequenceIndex = 0);
+
+    // Get number of sequences in last decoded XMI file
+    uint16_t getNumSequences() const { return numSequences_; }
 
     // Get last error message
     const std::string& getError() const { return error_; }
