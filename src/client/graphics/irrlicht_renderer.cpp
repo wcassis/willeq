@@ -4656,7 +4656,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         bool playerMoving = playerVelocity.getLengthSQ() > 0.1f;
 
         detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
-                               playerPosIrrlicht, playerVelocity, playerMoving);
+                               playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
     }
 
     // ===== Weather System Update =====
@@ -4781,6 +4781,12 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // Track polygon count for constrained mode budget
     lastPolygonCount_ = driver_->getPrimitiveCountDrawn();
+
+    // Render footprints (after terrain, before UI)
+    if (detailManager_ && detailManager_->isFootprintEnabled()) {
+        detailManager_->renderFootprints();
+    }
+
     if (config_.constrainedConfig.enabled) {
         // Check if we exceeded the polygon budget (soft limit - just warn)
         if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {

@@ -21,6 +21,21 @@
     "affect_plants": true
   },
 
+  "footprints": {
+    "enabled": true,
+    "fade_duration": 15.0,
+    "placement_interval": 1.5,
+    "footprint_size": 1.2,
+    "ground_offset": 0.05,
+    "player_height_offset": 3.0,
+    "show_on_grass": true,
+    "show_on_dirt": true,
+    "show_on_sand": true,
+    "show_on_snow": true,
+    "show_on_swamp": true,
+    "show_on_jungle": true
+  },
+
   "seasons": {
     "default": {
       "densityMultiplier": 1.0,

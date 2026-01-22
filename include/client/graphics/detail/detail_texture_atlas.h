@@ -52,7 +52,23 @@ enum class AtlasTile {
     SwampMushroom = 33, // Row 4, Col 1 - Swamp fungus
     Reed = 34,         // Row 4, Col 2 - Marsh reeds
     LilyPad = 35,      // Row 4, Col 3 - Small lily pad (ground edge)
-    SwampGrass = 36    // Row 4, Col 4 - Soggy marsh grass
+    SwampGrass = 36,   // Row 4, Col 4 - Soggy marsh grass
+
+    // Row 5: Footprints - Grass/Dirt biome (dark brown-gray)
+    FootprintLeftGrass = 40,    // Row 5, Col 0
+    FootprintRightGrass = 41,   // Row 5, Col 1
+    FootprintLeftDirt = 42,     // Row 5, Col 2
+    FootprintRightDirt = 43,    // Row 5, Col 3
+    FootprintLeftSand = 44,     // Row 5, Col 4 - Tan color
+    FootprintRightSand = 45,    // Row 5, Col 5
+    FootprintLeftSnow = 46,     // Row 5, Col 6 - Light blue-gray
+    FootprintRightSnow = 47,    // Row 5, Col 7
+
+    // Row 6: Footprints - Swamp/Jungle biome
+    FootprintLeftSwamp = 48,    // Row 6, Col 0 - Dark muddy green
+    FootprintRightSwamp = 49,   // Row 6, Col 1
+    FootprintLeftJungle = 50,   // Row 6, Col 2 - Dark humid soil
+    FootprintRightJungle = 51   // Row 6, Col 3
 };
 
 // Get UV coordinates for a tile
@@ -121,6 +137,10 @@ private:
     void drawReed(irr::video::IImage* image, int startX, int startY);
     void drawLilyPad(irr::video::IImage* image, int startX, int startY);
     void drawSwampGrass(irr::video::IImage* image, int startX, int startY);
+
+    // Footprints - biome-specific colors
+    void drawFootprintLeft(irr::video::IImage* image, int startX, int startY, int r, int g, int b);
+    void drawFootprintRight(irr::video::IImage* image, int startX, int startY, int r, int g, int b);
 
     // Helper to set a pixel with bounds checking
     void setPixel(irr::video::IImage* image, int x, int y, irr::video::SColor color);

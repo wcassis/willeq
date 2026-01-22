@@ -27,6 +27,10 @@ DetailManager::DetailManager(irr::scene::ISceneManager* smgr,
     // Initialize foliage disturbance manager with default config
     disturbanceManager_ = std::make_unique<FoliageDisturbanceManager>(disturbanceConfig_);
 
+    // Initialize footprint manager
+    footprintManager_ = std::make_unique<FootprintManager>(smgr_, driver_);
+    footprintManager_->setConfig(footprintConfig_);
+
     LOG_INFO(MOD_GRAPHICS, "DetailManager: Initialized");
 }
 
@@ -186,10 +190,20 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
         disturbanceManager_->setConfig(disturbanceConfig_);
     }
 
-    LOG_INFO(MOD_GRAPHICS, "DetailManager: Entered zone '{}', season: {}, {} detail types, density mult: {:.1f}, foliage disturb: {}",
+    // Load footprint config and set up manager
+    footprintConfig_ = loader.loadFootprintConfig("data");
+    if (footprintManager_) {
+        footprintManager_->setConfig(footprintConfig_);
+        footprintManager_->setSurfaceMap(getSurfaceMap());
+        footprintManager_->setAtlasTexture(atlasTexture_);
+        footprintManager_->setCollisionSelector(zoneSelector_);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "DetailManager: Entered zone '{}', season: {}, {} detail types, density mult: {:.1f}, foliage disturb: {}, footprints: {}",
              zoneName, SeasonalController::getSeasonName(currentSeason_),
              config_.detailTypes.size(), config_.densityMultiplier,
-             disturbanceConfig_.enabled ? "enabled" : "disabled");
+             disturbanceConfig_.enabled ? "enabled" : "disabled",
+             footprintConfig_.enabled ? "enabled" : "disabled");
 }
 
 void DetailManager::onZoneExit() {
@@ -201,6 +215,11 @@ void DetailManager::onZoneExit() {
     }
     chunks_.clear();
     activeChunks_.clear();
+
+    // Clear footprints
+    if (footprintManager_) {
+        footprintManager_->clear();
+    }
 
     zoneSelector_ = nullptr;
     zoneMeshNode_ = nullptr;
@@ -223,6 +242,7 @@ void DetailManager::addMeshNodeForTextureLookup(irr::scene::IMeshSceneNode* node
 void DetailManager::update(const irr::core::vector3df& cameraPos, float deltaTimeMs,
                            const irr::core::vector3df& playerPos,
                            const irr::core::vector3df& playerVelocity,
+                           float playerHeading,
                            bool playerMoving) {
     // Require pre-computed surface map - don't fall back to on-the-fly detection
     if (!enabled_ || density_ < 0.01f || currentZone_.empty() || !surfaceMap_.isLoaded()) {
@@ -247,6 +267,12 @@ void DetailManager::update(const irr::core::vector3df& cameraPos, float deltaTim
         }
 
         disturbanceManager_->update(deltaTimeMs);
+    }
+
+    // Update footprints
+    if (footprintManager_ && footprintConfig_.enabled) {
+        float deltaTimeSec = deltaTimeMs / 1000.0f;
+        footprintManager_->update(deltaTimeSec, playerPos, playerHeading, playerMoving);
     }
 
     // Update which chunks are visible based on camera position
@@ -365,6 +391,29 @@ const FoliageDisturbanceConfig& DetailManager::getFoliageDisturbanceConfig() con
 
 bool DetailManager::isFoliageDisturbanceEnabled() const {
     return disturbanceConfig_.enabled && disturbanceManager_ != nullptr;
+}
+
+void DetailManager::setFootprintConfig(const FootprintConfig& config) {
+    footprintConfig_ = config;
+    if (footprintManager_) {
+        footprintManager_->setConfig(config);
+    }
+    LOG_INFO(MOD_GRAPHICS, "DetailManager: Footprint config updated, enabled={}",
+             config.enabled ? "true" : "false");
+}
+
+const FootprintConfig& DetailManager::getFootprintConfig() const {
+    return footprintConfig_;
+}
+
+bool DetailManager::isFootprintEnabled() const {
+    return footprintConfig_.enabled && footprintManager_ != nullptr;
+}
+
+void DetailManager::renderFootprints() {
+    if (footprintManager_ && footprintConfig_.enabled) {
+        footprintManager_->render();
+    }
 }
 
 std::string DetailManager::getDebugInfo() const {

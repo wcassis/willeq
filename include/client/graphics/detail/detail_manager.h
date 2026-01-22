@@ -11,6 +11,8 @@
 #include "client/graphics/detail/seasonal_controller.h"
 #include "client/graphics/detail/surface_map.h"
 #include "client/graphics/detail/foliage_disturbance.h"
+#include "client/graphics/detail/footprint_config.h"
+#include "client/graphics/detail/footprint_manager.h"
 
 namespace EQT {
 namespace Graphics {
@@ -32,10 +34,12 @@ public:
 
     // Frame update - call from IrrlichtRenderer::processFrame
     // playerPos/playerVelocity: for foliage disturbance (grass bending when walking)
+    // playerHeading: player facing direction in radians (for footprint rotation)
     // playerMoving: true if player is currently moving
     void update(const irr::core::vector3df& cameraPos, float deltaTimeMs,
                 const irr::core::vector3df& playerPos = irr::core::vector3df(0, 0, 0),
                 const irr::core::vector3df& playerVelocity = irr::core::vector3df(0, 0, 0),
+                float playerHeading = 0.0f,
                 bool playerMoving = false);
 
     // Density control (0.0 = off, 1.0 = maximum)
@@ -77,6 +81,14 @@ public:
     void setFoliageDisturbanceConfig(const FoliageDisturbanceConfig& config);
     const FoliageDisturbanceConfig& getFoliageDisturbanceConfig() const;
     bool isFoliageDisturbanceEnabled() const;
+
+    // Footprint system control
+    void setFootprintConfig(const FootprintConfig& config);
+    const FootprintConfig& getFootprintConfig() const;
+    bool isFootprintEnabled() const;
+
+    // Render footprints (called after terrain rendering)
+    void renderFootprints();
 
     // Access for UI/commands
     size_t getActiveChunkCount() const { return activeChunks_.size(); }
@@ -156,6 +168,10 @@ private:
     // Foliage disturbance (player movement bending grass)
     std::unique_ptr<FoliageDisturbanceManager> disturbanceManager_;
     FoliageDisturbanceConfig disturbanceConfig_;
+
+    // Footprint system (fading footprints on soft surfaces)
+    std::unique_ptr<FootprintManager> footprintManager_;
+    FootprintConfig footprintConfig_;
 
     // Seasonal effects
     SeasonalController seasonalController_;

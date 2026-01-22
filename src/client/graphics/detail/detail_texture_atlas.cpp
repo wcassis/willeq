@@ -101,6 +101,44 @@ irr::video::ITexture* DetailTextureAtlas::createAtlas(irr::video::IVideoDriver* 
     getTilePosition(AtlasTile::SwampGrass, x, y);
     drawSwampGrass(image, x, y);
 
+    // === Row 5: Footprints - biome-specific colors ===
+    // Grass - dark green-brown (muddy grass)
+    getTilePosition(AtlasTile::FootprintLeftGrass, x, y);
+    drawFootprintLeft(image, x, y, 40, 35, 25);
+    getTilePosition(AtlasTile::FootprintRightGrass, x, y);
+    drawFootprintRight(image, x, y, 40, 35, 25);
+
+    // Dirt - dark brown (earth)
+    getTilePosition(AtlasTile::FootprintLeftDirt, x, y);
+    drawFootprintLeft(image, x, y, 50, 40, 30);
+    getTilePosition(AtlasTile::FootprintRightDirt, x, y);
+    drawFootprintRight(image, x, y, 50, 40, 30);
+
+    // Sand - tan impression
+    getTilePosition(AtlasTile::FootprintLeftSand, x, y);
+    drawFootprintLeft(image, x, y, 140, 120, 80);
+    getTilePosition(AtlasTile::FootprintRightSand, x, y);
+    drawFootprintRight(image, x, y, 140, 120, 80);
+
+    // Snow - light blue-gray (compressed snow shadow)
+    getTilePosition(AtlasTile::FootprintLeftSnow, x, y);
+    drawFootprintLeft(image, x, y, 180, 190, 210);
+    getTilePosition(AtlasTile::FootprintRightSnow, x, y);
+    drawFootprintRight(image, x, y, 180, 190, 210);
+
+    // === Row 6: More footprints ===
+    // Swamp - dark muddy green
+    getTilePosition(AtlasTile::FootprintLeftSwamp, x, y);
+    drawFootprintLeft(image, x, y, 35, 45, 30);
+    getTilePosition(AtlasTile::FootprintRightSwamp, x, y);
+    drawFootprintRight(image, x, y, 35, 45, 30);
+
+    // Jungle - dark humid soil
+    getTilePosition(AtlasTile::FootprintLeftJungle, x, y);
+    drawFootprintLeft(image, x, y, 45, 40, 35);
+    getTilePosition(AtlasTile::FootprintRightJungle, x, y);
+    drawFootprintRight(image, x, y, 45, 40, 35);
+
     // Save atlas to file for debugging
     if (driver->writeImageToFile(image, "detail_atlas_debug.png")) {
         LOG_INFO(MOD_GRAPHICS, "DetailTextureAtlas: Saved debug image to detail_atlas_debug.png");
@@ -1131,6 +1169,179 @@ void DetailTextureAtlas::drawSwampGrass(irr::video::IImage* image, int startX, i
             int droopX = topX + swayDist(rng) * 2;
             int droopY = baseY - height + 8;
             drawLine(image, topX, baseY - height, droopX, droopY, color);
+        }
+    }
+}
+
+// ============================================================
+// Footprints (for different surface types) - Row 5
+// ============================================================
+
+void DetailTextureAtlas::drawFootprintLeft(irr::video::IImage* image, int startX, int startY, int r, int g, int b) {
+    // Left foot shape with biome-specific color
+    int cx = startX + TILE_SIZE / 2;
+    int cy = startY + TILE_SIZE / 2;
+
+    // Foot dimensions
+    const int heelWidth = 14;
+    const int ballWidth = 18;
+    const int footLength = 28;
+    const int archInset = 4;
+
+    // Toe positions for left foot - big toe on inside (left)
+    struct Toe { int offsetX; int offsetY; int radius; };
+    Toe toes[5] = {
+        {-7, -12, 5},   // Big toe (inside)
+        {-2, -14, 4},   // Second toe
+        {3, -13, 4},    // Middle toe
+        {7, -11, 3},    // Fourth toe
+        {10, -8, 3}     // Little toe (outside)
+    };
+
+    for (int dy = -footLength; dy <= footLength / 2 + 5; ++dy) {
+        for (int dx = -ballWidth - 5; dx <= ballWidth + 5; ++dx) {
+            float alpha = 0.0f;
+
+            float yNorm = static_cast<float>(dy + footLength / 3) / footLength;
+            yNorm = std::max(0.0f, std::min(1.0f, yNorm));
+            float halfWidth = ballWidth * (1.0f - yNorm * 0.3f) - (heelWidth * yNorm * 0.2f);
+
+            float archOffset = 0.0f;
+            if (yNorm > 0.2f && yNorm < 0.8f) {
+                float archT = (yNorm - 0.2f) / 0.6f;
+                archOffset = archInset * std::sin(archT * 3.14159f);
+            }
+
+            float insideEdge = -halfWidth + archOffset;
+            float outsideEdge = halfWidth;
+
+            if (dy > -footLength / 3 && dy < footLength / 2) {
+                if (dx >= insideEdge && dx <= outsideEdge) {
+                    float distFromCenter = std::abs(dx) / halfWidth;
+                    alpha = 1.0f - distFromCenter * 0.3f;
+                    float edgeDist = std::min(dx - insideEdge, outsideEdge - dx);
+                    if (edgeDist < 3.0f) alpha *= edgeDist / 3.0f;
+                }
+            }
+
+            for (int t = 0; t < 5; ++t) {
+                float tdx = dx - toes[t].offsetX;
+                float tdy = dy - toes[t].offsetY;
+                float toeDistSq = tdx * tdx + tdy * tdy;
+                float toeRadiusSq = static_cast<float>(toes[t].radius * toes[t].radius);
+                if (toeDistSq < toeRadiusSq * 1.5f) {
+                    float toeDist = std::sqrt(toeDistSq) / toes[t].radius;
+                    float toeAlpha = 1.0f - toeDist * 0.6f;
+                    if (toeAlpha > 0) alpha = std::max(alpha, toeAlpha);
+                }
+            }
+
+            if (dy < -footLength / 3 + 8 && dy > -footLength / 3 - 5) {
+                float ballY = dy + footLength / 3;
+                float ballDist = std::sqrt(dx * dx / (ballWidth * ballWidth * 0.8f) + ballY * ballY / 64.0f);
+                if (ballDist < 1.0f) alpha = std::max(alpha, 1.0f - ballDist * 0.5f);
+            }
+
+            if (dy > footLength / 2 - 10) {
+                float heelY = dy - footLength / 2 + 5;
+                float heelRx = heelWidth * 0.8f;
+                float heelDist = std::sqrt(dx * dx / (heelRx * heelRx) + heelY * heelY / 64.0f);
+                if (heelDist < 1.0f) alpha = std::max(alpha, 1.0f - heelDist * 0.4f);
+            }
+
+            if (alpha > 0.01f) {
+                alpha = std::min(1.0f, alpha);
+                // Apply slight variation based on alpha for depth
+                int shade_r = r + static_cast<int>((1.0f - alpha) * 20);
+                int shade_g = g + static_cast<int>((1.0f - alpha) * 20);
+                int shade_b = b + static_cast<int>((1.0f - alpha) * 20);
+                irr::video::SColor color(static_cast<irr::u32>(alpha * 200), shade_r, shade_g, shade_b);
+                setPixel(image, cx + dx, cy + dy, color);
+            }
+        }
+    }
+}
+
+void DetailTextureAtlas::drawFootprintRight(irr::video::IImage* image, int startX, int startY, int r, int g, int b) {
+    // Right foot shape with biome-specific color (mirrored from left)
+    int cx = startX + TILE_SIZE / 2;
+    int cy = startY + TILE_SIZE / 2;
+
+    const int heelWidth = 14;
+    const int ballWidth = 18;
+    const int footLength = 28;
+    const int archInset = 4;
+
+    // Toe positions for right foot - big toe on inside (right)
+    struct Toe { int offsetX; int offsetY; int radius; };
+    Toe toes[5] = {
+        {7, -12, 5},    // Big toe (inside - on right)
+        {2, -14, 4},    // Second toe
+        {-3, -13, 4},   // Middle toe
+        {-7, -11, 3},   // Fourth toe
+        {-10, -8, 3}    // Little toe (outside - on left)
+    };
+
+    for (int dy = -footLength; dy <= footLength / 2 + 5; ++dy) {
+        for (int dx = -ballWidth - 5; dx <= ballWidth + 5; ++dx) {
+            float alpha = 0.0f;
+
+            float yNorm = static_cast<float>(dy + footLength / 3) / footLength;
+            yNorm = std::max(0.0f, std::min(1.0f, yNorm));
+            float halfWidth = ballWidth * (1.0f - yNorm * 0.3f) - (heelWidth * yNorm * 0.2f);
+
+            float archOffset = 0.0f;
+            if (yNorm > 0.2f && yNorm < 0.8f) {
+                float archT = (yNorm - 0.2f) / 0.6f;
+                archOffset = archInset * std::sin(archT * 3.14159f);
+            }
+
+            float insideEdge = -halfWidth;
+            float outsideEdge = halfWidth - archOffset;
+
+            if (dy > -footLength / 3 && dy < footLength / 2) {
+                if (dx >= insideEdge && dx <= outsideEdge) {
+                    float distFromCenter = std::abs(dx) / halfWidth;
+                    alpha = 1.0f - distFromCenter * 0.3f;
+                    float edgeDist = std::min(dx - insideEdge, outsideEdge - dx);
+                    if (edgeDist < 3.0f) alpha *= edgeDist / 3.0f;
+                }
+            }
+
+            for (int t = 0; t < 5; ++t) {
+                float tdx = dx - toes[t].offsetX;
+                float tdy = dy - toes[t].offsetY;
+                float toeDistSq = tdx * tdx + tdy * tdy;
+                float toeRadiusSq = static_cast<float>(toes[t].radius * toes[t].radius);
+                if (toeDistSq < toeRadiusSq * 1.5f) {
+                    float toeDist = std::sqrt(toeDistSq) / toes[t].radius;
+                    float toeAlpha = 1.0f - toeDist * 0.6f;
+                    if (toeAlpha > 0) alpha = std::max(alpha, toeAlpha);
+                }
+            }
+
+            if (dy < -footLength / 3 + 8 && dy > -footLength / 3 - 5) {
+                float ballY = dy + footLength / 3;
+                float ballDist = std::sqrt(dx * dx / (ballWidth * ballWidth * 0.8f) + ballY * ballY / 64.0f);
+                if (ballDist < 1.0f) alpha = std::max(alpha, 1.0f - ballDist * 0.5f);
+            }
+
+            if (dy > footLength / 2 - 10) {
+                float heelY = dy - footLength / 2 + 5;
+                float heelRx = heelWidth * 0.8f;
+                float heelDist = std::sqrt(dx * dx / (heelRx * heelRx) + heelY * heelY / 64.0f);
+                if (heelDist < 1.0f) alpha = std::max(alpha, 1.0f - heelDist * 0.4f);
+            }
+
+            if (alpha > 0.01f) {
+                alpha = std::min(1.0f, alpha);
+                // Apply slight variation based on alpha for depth
+                int shade_r = r + static_cast<int>((1.0f - alpha) * 20);
+                int shade_g = g + static_cast<int>((1.0f - alpha) * 20);
+                int shade_b = b + static_cast<int>((1.0f - alpha) * 20);
+                irr::video::SColor color(static_cast<irr::u32>(alpha * 200), shade_r, shade_g, shade_b);
+                setPixel(image, cx + dx, cy + dy, color);
+            }
         }
     }
 }

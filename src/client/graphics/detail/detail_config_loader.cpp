@@ -408,6 +408,49 @@ FoliageDisturbanceConfig DetailConfigLoader::loadFoliageDisturbanceConfig(const 
     return config;
 }
 
+FootprintConfig DetailConfigLoader::loadFootprintConfig(const std::string& dataPath) const {
+    FootprintConfig config;  // Defaults
+
+    // Try configs/detail_objects.json first
+    std::string configPath = "configs/detail_objects.json";
+    std::ifstream file(configPath);
+    if (!file.is_open()) {
+        // Fall back to data path
+        configPath = dataPath + "/detail/default_config.json";
+        file.open(configPath);
+    }
+
+    if (!file.is_open()) {
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No footprints config found, using defaults");
+        return config;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    std::istringstream stream(buffer.str());
+
+    if (!Json::parseFromStream(builder, stream, &root, &errors)) {
+        LOG_ERROR(MOD_GRAPHICS, "DetailConfigLoader: JSON parse error for footprints: {}", errors);
+        return config;
+    }
+
+    // Look for "footprints" section
+    if (root.isMember("footprints")) {
+        config = FootprintConfig::loadFromJson(root["footprints"]);
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded footprints config from {}, enabled={}",
+                 configPath, config.enabled ? "true" : "false");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No footprints section in {}, using defaults",
+                 configPath);
+    }
+
+    return config;
+}
+
 AtlasTile DetailConfigLoader::parseAtlasTileString(const std::string& str) {
     // Map string names to AtlasTile enum values
     // Row 0: Temperate grass/flowers

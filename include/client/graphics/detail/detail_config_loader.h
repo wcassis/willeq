@@ -7,6 +7,7 @@
 #include "client/graphics/detail/detail_texture_atlas.h"
 #include "client/graphics/detail/seasonal_controller.h"
 #include "client/graphics/detail/foliage_disturbance_config.h"
+#include "client/graphics/detail/footprint_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -36,6 +37,10 @@ public:
     // Load foliage disturbance config from JSON file or embedded section
     // Looks for "foliage_disturbance" section in configs/detail_objects.json
     FoliageDisturbanceConfig loadFoliageDisturbanceConfig(const std::string& dataPath) const;
+
+    // Load footprint config from JSON file or embedded section
+    // Looks for "footprints" section in configs/detail_objects.json
+    FootprintConfig loadFootprintConfig(const std::string& dataPath) const;
 
 private:
     // Parse JSON into config structure
