@@ -146,5 +146,21 @@
     "alignment": 1.0,
     "cohesion": 1.0,
     "avoidance": 2.0
+  },
+  "tumbleweeds": {
+    "enabled": true,
+    "maxActive": 8,
+    "spawnRate": 0.15,
+    "spawnDistance": 60.0,
+    "despawnDistance": 120.0,
+    "minSpeed": 3.0,
+    "maxSpeed": 10.0,
+    "windInfluence": 2.0,
+    "bounceDecay": 0.6,
+    "maxLifetime": 45.0,
+    "groundOffset": 0.3,
+    "sizeMin": 1.0,
+    "sizeMax": 2.0,
+    "maxBounces": 15
   }
 }

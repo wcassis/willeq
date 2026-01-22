@@ -43,6 +43,7 @@ bool EnvironmentEffectsConfig::load(const std::string& path) {
     loadEmitterSettings(root, "shorelineWaves", shorelineWaves_);
     loadDetailSettings(root);
     loadBoidsSettings(root);
+    loadTumbleweedSettings(root);
 
     loaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "EnvironmentEffectsConfig: Loaded settings from '{}'", path);
@@ -134,6 +135,31 @@ void EnvironmentEffectsConfig::loadBoidsSettings(const Json::Value& root) {
     if (json.isMember("avoidance")) boids_.avoidance = json["avoidance"].asFloat();
 
     LOG_DEBUG(MOD_GRAPHICS, "EnvironmentEffectsConfig: Loaded boids settings");
+}
+
+void EnvironmentEffectsConfig::loadTumbleweedSettings(const Json::Value& root) {
+    if (!root.isMember("tumbleweeds")) {
+        return;
+    }
+
+    const Json::Value& json = root["tumbleweeds"];
+
+    if (json.isMember("enabled")) tumbleweeds_.enabled = json["enabled"].asBool();
+    if (json.isMember("maxActive")) tumbleweeds_.maxActive = json["maxActive"].asInt();
+    if (json.isMember("spawnRate")) tumbleweeds_.spawnRate = json["spawnRate"].asFloat();
+    if (json.isMember("spawnDistance")) tumbleweeds_.spawnDistance = json["spawnDistance"].asFloat();
+    if (json.isMember("despawnDistance")) tumbleweeds_.despawnDistance = json["despawnDistance"].asFloat();
+    if (json.isMember("minSpeed")) tumbleweeds_.minSpeed = json["minSpeed"].asFloat();
+    if (json.isMember("maxSpeed")) tumbleweeds_.maxSpeed = json["maxSpeed"].asFloat();
+    if (json.isMember("windInfluence")) tumbleweeds_.windInfluence = json["windInfluence"].asFloat();
+    if (json.isMember("bounceDecay")) tumbleweeds_.bounceDecay = json["bounceDecay"].asFloat();
+    if (json.isMember("maxLifetime")) tumbleweeds_.maxLifetime = json["maxLifetime"].asFloat();
+    if (json.isMember("groundOffset")) tumbleweeds_.groundOffset = json["groundOffset"].asFloat();
+    if (json.isMember("sizeMin")) tumbleweeds_.sizeMin = json["sizeMin"].asFloat();
+    if (json.isMember("sizeMax")) tumbleweeds_.sizeMax = json["sizeMax"].asFloat();
+    if (json.isMember("maxBounces")) tumbleweeds_.maxBounces = json["maxBounces"].asInt();
+
+    LOG_DEBUG(MOD_GRAPHICS, "EnvironmentEffectsConfig: Loaded tumbleweed settings");
 }
 
 void EnvironmentEffectsConfig::setDefaults() {
@@ -268,6 +294,23 @@ void EnvironmentEffectsConfig::setDefaults() {
     boids_.alignment = 1.0f;
     boids_.cohesion = 1.0f;
     boids_.avoidance = 2.0f;
+
+    // Tumbleweeds (desert/plains rolling objects)
+    tumbleweeds_ = TumbleweedSettings{};
+    tumbleweeds_.enabled = true;
+    tumbleweeds_.maxActive = 10;
+    tumbleweeds_.spawnRate = 0.1f;
+    tumbleweeds_.spawnDistance = 80.0f;
+    tumbleweeds_.despawnDistance = 120.0f;
+    tumbleweeds_.minSpeed = 2.0f;
+    tumbleweeds_.maxSpeed = 8.0f;
+    tumbleweeds_.windInfluence = 1.5f;
+    tumbleweeds_.bounceDecay = 0.6f;
+    tumbleweeds_.maxLifetime = 60.0f;
+    tumbleweeds_.groundOffset = 0.3f;
+    tumbleweeds_.sizeMin = 0.6f;
+    tumbleweeds_.sizeMax = 1.4f;
+    tumbleweeds_.maxBounces = 20;
 
     LOG_DEBUG(MOD_GRAPHICS, "EnvironmentEffectsConfig: Using default settings");
 }

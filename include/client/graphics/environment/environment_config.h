@@ -97,6 +97,26 @@ public:
         float avoidance = 2.0f;
     };
 
+    /**
+     * Settings for tumbleweeds in desert/plains zones
+     */
+    struct TumbleweedSettings {
+        bool enabled = true;
+        int maxActive = 10;              // Max simultaneous tumbleweeds
+        float spawnRate = 0.1f;          // Spawns per second
+        float spawnDistance = 80.0f;     // Spawn distance from player
+        float despawnDistance = 120.0f;  // Remove when this far from player
+        float minSpeed = 2.0f;           // Minimum roll speed
+        float maxSpeed = 8.0f;           // Maximum roll speed
+        float windInfluence = 1.5f;      // How much wind affects speed
+        float bounceDecay = 0.6f;        // Velocity retention on bounce
+        float maxLifetime = 60.0f;       // Max seconds before despawn
+        float groundOffset = 0.3f;       // Height above ground
+        float sizeMin = 0.6f;            // Minimum scale
+        float sizeMax = 1.4f;            // Maximum scale
+        int maxBounces = 20;             // Max bounces before despawn
+    };
+
     // Getters for emitter settings
     const EmitterSettings& getDustMotes() const { return dustMotes_; }
     const EmitterSettings& getPollen() const { return pollen_; }
@@ -106,6 +126,7 @@ public:
     const EmitterSettings& getShorelineWaves() const { return shorelineWaves_; }
     const DetailSettings& getDetailObjects() const { return detailObjects_; }
     const BoidsSettings& getBoids() const { return boids_; }
+    const TumbleweedSettings& getTumbleweeds() const { return tumbleweeds_; }
 
     /**
      * Callback invoked when config is reloaded.
@@ -129,6 +150,7 @@ private:
     void loadEmitterSettings(const Json::Value& json, const std::string& name, EmitterSettings& settings);
     void loadDetailSettings(const Json::Value& json);
     void loadBoidsSettings(const Json::Value& json);
+    void loadTumbleweedSettings(const Json::Value& json);
     void setDefaults();
 
     std::string configPath_;
@@ -142,6 +164,7 @@ private:
     EmitterSettings shorelineWaves_;
     DetailSettings detailObjects_;
     BoidsSettings boids_;
+    TumbleweedSettings tumbleweeds_;
 
     ReloadCallback reloadCallback_;
 };

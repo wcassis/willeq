@@ -535,6 +535,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
     }
 
+    // Create tumbleweed manager (desert/plains rolling objects)
+    tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
+    if (!tumbleweedManager_->init()) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
+    }
+
     // Apply initial settings
     wireframeMode_ = config.wireframe;
     fogEnabled_ = config.fog;
@@ -678,6 +684,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
         if (!boidsManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
+        }
+    }
+
+    // Create tumbleweed manager (desert/plains rolling objects)
+    if (!tumbleweedManager_) {
+        tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
+        if (!tumbleweedManager_->init()) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
         }
     }
 
@@ -2005,6 +2019,18 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
                  zoneName, static_cast<int>(biome));
     }
 
+    // Initialize tumbleweeds for this zone (desert/plains only)
+    if (tumbleweedManager_) {
+        Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(zoneName);
+        tumbleweedManager_->setCollisionSelector(zoneTriangleSelector_);
+        if (detailManager_) {
+            tumbleweedManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+        }
+        tumbleweedManager_->onZoneEnter(zoneName, biome);
+        LOG_INFO(MOD_GRAPHICS, "Tumbleweeds enabled for zone '{}' (biome: {})",
+                 zoneName, static_cast<int>(biome));
+    }
+
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
     // Log texture cache stats (cache was frozen at start of zone load)
@@ -2055,6 +2081,11 @@ void IrrlichtRenderer::unloadZone() {
     // Clear ambient creatures (boids) system
     if (boidsManager_) {
         boidsManager_->onZoneLeave();
+    }
+
+    // Clear tumbleweed system
+    if (tumbleweedManager_) {
+        tumbleweedManager_->onZoneLeave();
     }
 
     // Now safe to remove zone collision selectors
@@ -4638,6 +4669,24 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         boidsManager_->setTimeOfDay(timeOfDay);
         // Update boids
         boidsManager_->update(deltaTime);
+    }
+
+    // ===== Tumbleweed System Update =====
+    if (tumbleweedManager_ && tumbleweedManager_->isEnabled()) {
+        // Set up environment state for tumbleweeds
+        Environment::EnvironmentState envState;
+        envState.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+        // Get wind intensity from weather system, use fixed direction
+        // (EQ doesn't have dynamic wind direction in most zones)
+        if (weatherSystem_) {
+            envState.windStrength = weatherSystem_->getWindIntensity();
+        } else {
+            envState.windStrength = 0.5f;
+        }
+        // Default wind blows from west to east (positive X direction in EQ coords)
+        envState.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+        tumbleweedManager_->setEnvironmentState(envState);
+        tumbleweedManager_->update(deltaTime);
     }
 
     // ===== Tree Wind Animation Update =====

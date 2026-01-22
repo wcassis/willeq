@@ -18,6 +18,7 @@
 #include "client/graphics/weather_system.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
+#include "client/graphics/environment/tumbleweed_manager.h"
 #include "client/input/hotkey_manager.h"
 
 #ifdef WITH_RDP
@@ -881,6 +882,9 @@ public:
     // Ambient creatures (boids) system access
     Environment::BoidsManager* getBoidsManager() { return boidsManager_.get(); }
 
+    // Tumbleweed system access (desert/plains rolling objects)
+    Environment::TumbleweedManager* getTumbleweedManager() { return tumbleweedManager_.get(); }
+
 #ifdef WITH_RDP
     // RDP server support (alternative to Xvfb+x11vnc)
 
@@ -972,6 +976,7 @@ private:
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
+    std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;

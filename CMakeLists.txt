@@ -386,6 +386,8 @@ IF(EQT_GRAPHICS)
         # Boids (ambient creatures) system
         src/client/graphics/environment/flock_controller.cpp
         src/client/graphics/environment/boids_manager.cpp
+        # Tumbleweed (rolling objects) system
+        src/client/graphics/environment/tumbleweed_manager.cpp
     )
 ENDIF()
 
