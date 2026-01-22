@@ -171,6 +171,11 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_MoveDoor: return "HC_OP_MoveDoor";
 		case HC_OP_ClickDoor: return "HC_OP_ClickDoor";
 		case HC_OP_CompletedTasks: return "HC_OP_CompletedTasks";
+		case HC_OP_TaskDescription: return "HC_OP_TaskDescription";
+		case HC_OP_TaskActivity: return "HC_OP_TaskActivity";
+		case HC_OP_ClearLeadershipAbilities: return "HC_OP_ClearLeadershipAbilities";
+		case HC_OP_ClearAA: return "HC_OP_ClearAA";
+		case HC_OP_AAExpUpdate: return "HC_OP_AAExpUpdate";
 		case HC_OP_DzCompass: return "HC_OP_DzCompass";
 		case HC_OP_DzExpeditionLockoutTimers: return "HC_OP_DzExpeditionLockoutTimers";
 		case HC_OP_BeginCast: return "HC_OP_BeginCast";
@@ -1608,7 +1613,8 @@ void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 		// TODO: Fix UCS implementation to use correct EQStream API
 		// ConnectToUCS(m_ucs_host, m_ucs_port);
 	} else {
-		LOG_WARN(MOD_WORLD, "Invalid chat server info format");
+		LOG_WARN(MOD_WORLD, "Invalid chat server info format: got {} parts, expected 5. Raw: '{}'",
+			parts.size(), chat_info);
 	}
 }
 
@@ -1700,7 +1706,9 @@ void EverQuest::ConnectToZone()
 		LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
 	}
 
-	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
+	zone_opts.skip_crc_validation = true;  // TODO: Remove after CRC bug is fixed
+	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts));
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
 	m_zone_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::ZoneOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_zone_connection_manager->OnPacketRecv(std::bind(&EverQuest::ZoneOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
@@ -1884,6 +1892,26 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_CompletedTasks:
 		ZoneProcessCompletedTasks(p);
+		break;
+	case HC_OP_TaskDescription:
+		// Task description data - not used in P1999
+		LOG_DEBUG(MOD_ZONE, "Received TaskDescription ({} bytes)", p.Length());
+		break;
+	case HC_OP_TaskActivity:
+		// Task activity update - not used in P1999
+		LOG_DEBUG(MOD_ZONE, "Received TaskActivity ({} bytes)", p.Length());
+		break;
+	case HC_OP_ClearLeadershipAbilities:
+		// Clear leadership AA on zone-in
+		LOG_DEBUG(MOD_ZONE, "Received ClearLeadershipAbilities");
+		break;
+	case HC_OP_ClearAA:
+		// Clear AA on zone-in (resets client state)
+		LOG_DEBUG(MOD_ZONE, "Received ClearAA");
+		break;
+	case HC_OP_AAExpUpdate:
+		// AA experience update
+		LOG_DEBUG(MOD_ZONE, "Received AAExpUpdate ({} bytes)", p.Length());
 		break;
 	case HC_OP_DzCompass:
 		ZoneProcessDzCompass(p);
@@ -5328,10 +5356,10 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 			// This ensures the progress bar shows during the entire loading process.
 
 				LOG_DEBUG(MOD_ENTITY, "Loaded spawn {}: {} (ID: {}) Level {} Race {} Size {:.2f} at ({:.2f}, {:.2f}, {:.2f})",
-					spawn_count, entity.name, entity.spawn_id, entity.level,
-					entity.race_id, entity.size, entity.x, entity.y, entity.z);
-			// Log all spawns with position and heading at debug level 3+
-			LOG_WARN(MOD_ENTITY, "ZoneSpawn: {} (ID:{}) pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} npc_type={}",
+				spawn_count, entity.name, entity.spawn_id, entity.level,
+				entity.race_id, entity.size, entity.x, entity.y, entity.z);
+			// Log all spawns with position and heading at trace level
+			LOG_TRACE(MOD_ENTITY, "ZoneSpawn: {} (ID:{}) pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} npc_type={}",
 				entity.name, entity.spawn_id, entity.x, entity.y, entity.z, entity.heading, entity.npc_type);
 		} else {
 			LOG_DEBUG(MOD_ENTITY, "Skipping invalid spawn at offset {}: ID={}, Name='{}'",
@@ -5986,30 +6014,52 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 {
 	// Parse Object_Struct from packet (skip 2-byte opcode)
-	if (p.Length() < 2 + sizeof(EQT::Object_Struct)) {
-		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need {})",
-			p.Length(), 2 + sizeof(EQT::Object_Struct));
+	// Note: Server may send shorter packets (e.g., 97 bytes instead of 102)
+	// Minimum needed: up to y coordinate at offset 52 + 4 bytes = 56 bytes
+	// We need object_type at offset 92 for tradeskill detection, so minimum 96 bytes of data
+	constexpr size_t MIN_REQUIRED = 2 + 56;  // opcode + up to y coordinate
+	constexpr size_t FULL_SIZE = 2 + sizeof(EQT::Object_Struct);  // 102 bytes
+
+	if (p.Length() < MIN_REQUIRED) {
+		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need at least {})",
+			p.Length(), MIN_REQUIRED);
 		return;
 	}
 
-	const auto* obj = reinterpret_cast<const EQT::Object_Struct*>(p.Data() + 2);
+	const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;  // Skip opcode
+	size_t data_len = p.Length() - 2;
 
 	// Create WorldObject from parsed data
+	// Read fields manually to handle variable-length packets
 	eqt::WorldObject worldObj;
-	worldObj.drop_id = obj->drop_id;
-	worldObj.name = std::string(obj->object_name, strnlen(obj->object_name, sizeof(obj->object_name)));
-	worldObj.x = obj->x;
-	worldObj.y = obj->y;
-	worldObj.z = obj->z;
-	worldObj.heading = obj->heading;
-	worldObj.size = obj->size;
-	worldObj.object_type = obj->object_type;
-	worldObj.zone_id = obj->zone_id;
-	worldObj.zone_instance = obj->zone_instance;
-	worldObj.incline = obj->incline;
-	worldObj.tilt_x = obj->tilt_x;
-	worldObj.tilt_y = obj->tilt_y;
-	worldObj.solid_type = obj->solid_type;
+
+	// These fields are always present (offsets 0-55)
+	worldObj.size = *reinterpret_cast<const float*>(data + 8);
+	worldObj.solid_type = *reinterpret_cast<const uint16_t*>(data + 12);
+	worldObj.drop_id = *reinterpret_cast<const uint32_t*>(data + 16);
+	worldObj.zone_id = *reinterpret_cast<const uint16_t*>(data + 20);
+	worldObj.zone_instance = *reinterpret_cast<const uint16_t*>(data + 22);
+	worldObj.incline = *reinterpret_cast<const uint32_t*>(data + 24);
+	worldObj.tilt_x = *reinterpret_cast<const float*>(data + 32);
+	worldObj.tilt_y = *reinterpret_cast<const float*>(data + 36);
+	worldObj.heading = *reinterpret_cast<const float*>(data + 40);
+	worldObj.z = *reinterpret_cast<const float*>(data + 44);
+	worldObj.x = *reinterpret_cast<const float*>(data + 48);
+	worldObj.y = *reinterpret_cast<const float*>(data + 52);
+
+	// Object name at offset 56, 32 bytes
+	if (data_len >= 88) {
+		worldObj.name = std::string(reinterpret_cast<const char*>(data + 56),
+			strnlen(reinterpret_cast<const char*>(data + 56), 32));
+	}
+
+	// Object type at offset 92, 4 bytes (needed for tradeskill detection)
+	if (data_len >= 96) {
+		worldObj.object_type = *reinterpret_cast<const uint32_t*>(data + 92);
+	} else {
+		worldObj.object_type = 0;  // Default if not present
+		LOG_TRACE(MOD_ENTITY, "GroundSpawn packet short ({} bytes), defaulting object_type to 0", p.Length());
+	}
 
 	// Store the world object
 	m_world_objects[worldObj.drop_id] = worldObj;
@@ -6366,6 +6416,10 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 	case 6:
 		AddChatSystemMessage("The raid has disbanded.");
 		break;
+	case 10:
+		// Raid lock state update - ignore silently
+		LOG_TRACE(MOD_ZONE, "Raid lock state update");
+		break;
 	default:
 		LOG_DEBUG(MOD_ZONE, "Unknown raid action: {}", action);
 		break;
@@ -6406,9 +6460,14 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		LOG_WARN(MOD_ZONE, "ClientUpdate packet too small: {} bytes", p.Length());
 		return;
 	}
-	
+
 	// Read spawn_id (first 2 bytes after opcode)
 	uint16_t spawn_id = p.GetUInt16(2);
+
+	// Log if this is potentially our own ClientUpdate
+	if (m_my_spawn_id != 0 && spawn_id == m_my_spawn_id) {
+		LOG_INFO(MOD_ZONE, "*** RECEIVED OUR OWN ClientUpdate! spawn_id={} ***", spawn_id);
+	}
 	
 	// Read the bit-packed data as 5 32-bit integers
 	uint32_t field1 = p.GetUInt32(4);  // delta_heading:10, x_pos:19, padding:3

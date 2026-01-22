@@ -16,6 +16,7 @@
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/weather_system.h"
+#include "client/graphics/environment/particle_manager.h"
 #include "client/input/hotkey_manager.h"
 
 #ifdef WITH_RDP
@@ -236,6 +237,7 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
     bool spellbookToggleRequested() { bool r = spellbookToggleRequested_; spellbookToggleRequested_ = false; return r; }
     bool buffWindowToggleRequested() { bool r = buffWindowToggleRequested_; buffWindowToggleRequested_ = false; return r; }
+    bool optionsToggleRequested() { bool r = optionsToggleRequested_; optionsToggleRequested_ = false; return r; }
 
     // Targeting action requests
     bool targetSelfRequested() { bool r = targetSelfRequested_; targetSelfRequested_ = false; return r; }
@@ -384,6 +386,7 @@ bool zoneLineVisualizationToggleRequested_ = false;
     bool petToggleRequested_ = false;
     bool spellbookToggleRequested_ = false;
     bool buffWindowToggleRequested_ = false;
+    bool optionsToggleRequested_ = false;
     // Targeting action flags
     bool targetSelfRequested_ = false;
     bool targetGroupMember1Requested_ = false;
@@ -960,6 +963,7 @@ private:
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
     std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
+    std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;

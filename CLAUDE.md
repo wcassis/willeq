@@ -67,6 +67,23 @@ cd build && ctest -R TestName --output-on-failure
 
 RDP and VNC can run simultaneously if both X11 and RDP are enabled.
 
+### Linux Capabilities
+
+The client requires specific Linux capabilities for optimal network performance:
+
+```bash
+# Set capabilities on the binary (required for reliable zone loading)
+sudo setcap cap_net_raw,cap_net_admin+ep ./build/bin/willeq
+```
+
+**Why this is needed:**
+- `CAP_NET_RAW`: Required for raw packet capture (diagnostic feature)
+- `CAP_NET_ADMIN`: Required for `SO_RCVBUFFORCE` to set UDP socket receive buffer above kernel limit
+
+**Background:** During zone loading, the EQ server sends a burst of 40+ packets at nearly the same instant. The default Linux socket buffer (~425KB) can overflow, causing packet loss and zone loading failures (typically hanging at 40%). The client uses `SO_RCVBUFFORCE` to request a 1MB buffer, which requires `CAP_NET_ADMIN`.
+
+Without `CAP_NET_ADMIN`, the client falls back to the kernel maximum (`net.core.rmem_max`, typically 212KB), which may cause intermittent zone loading failures on busy servers.
+
 ## Dependencies
 
 Required: libuv, OpenSSL, zlib, fmt, GLM (header-only), jsoncpp
@@ -99,6 +116,7 @@ The client connects through three stages, each with its own connection manager:
 - `DaybreakConnection` - UDP reliable protocol with sequencing, fragmentation, CRC, and compression
 - `Packet` - Base class with `StaticPacket` (fixed buffer) and `DynamicPacket` (resizable)
 - `DaybreakConnectionManager` - Handles connection lifecycle via libuv
+- Socket receive buffer set to 1MB to handle server packet bursts during zone loading
 
 **Pathfinding** (`include/client/pathfinder_*.h`)
 - `IPathfinder` - Abstract interface

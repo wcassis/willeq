@@ -20,6 +20,7 @@
 #include "skills_window.h"
 #include "skill_trainer_window.h"
 #include "note_window.h"
+#include "options_window.h"
 #include "casting_bar.h"
 #include "tradeskill_container_window.h"
 #include "item_tooltip.h"
@@ -311,6 +312,16 @@ public:
     // Read item callback (set by EverQuest to handle book/note reading requests)
     void setOnReadItem(ReadItemCallback callback);
 
+    // Options window management
+    void initOptionsWindow();
+    void toggleOptionsWindow();
+    void openOptionsWindow();
+    void closeOptionsWindow();
+    bool isOptionsWindowOpen() const;
+    OptionsWindow* getOptionsWindow() { return optionsWindow_.get(); }
+    const OptionsWindow* getOptionsWindow() const { return optionsWindow_.get(); }
+    void setDisplaySettingsChangedCallback(DisplaySettingsChangedCallback callback);
+
     // Tradeskill container window management
     void openTradeskillContainer(uint32_t dropId, const std::string& name,
                                   uint8_t objectType, int slotCount);
@@ -531,6 +542,7 @@ private:
     std::unique_ptr<SkillsWindow> skillsWindow_;
     std::unique_ptr<SkillTrainerWindow> skillTrainerWindow_;
     std::unique_ptr<NoteWindow> noteWindow_;
+    std::unique_ptr<OptionsWindow> optionsWindow_;
     std::unique_ptr<TradeskillContainerWindow> tradeskillWindow_;
     std::unique_ptr<PlayerStatusWindow> playerStatusWindow_;
     std::unique_ptr<CastingBar> castingBar_;
@@ -601,6 +613,9 @@ private:
 
     // Read item callback (for book/note reading)
     ReadItemCallback readItemCallback_;
+
+    // Options window callback
+    DisplaySettingsChangedCallback displaySettingsChangedCallback_;
 
     // Tradeskill container callbacks
     TradeskillCombineCallback tradeskillCombineCallback_;

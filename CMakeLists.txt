@@ -336,6 +336,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/trade_request_dialog.cpp
         src/client/graphics/ui/money_input_dialog.cpp
         src/client/graphics/ui/window_manager.cpp
+        src/client/graphics/ui/options_window.cpp
         src/client/graphics/ui/chat_message_buffer.cpp
         src/client/graphics/ui/chat_input_field.cpp
         src/client/graphics/ui/chat_window.cpp
@@ -370,6 +371,16 @@ IF(EQT_GRAPHICS)
         src/client/graphics/tree_wind_controller.cpp
         src/client/graphics/animated_tree_manager.cpp
         src/client/graphics/weather_system.cpp
+        # Environmental particle system
+        src/client/graphics/environment/particle_emitter.cpp
+        src/client/graphics/environment/particle_manager.cpp
+        src/client/graphics/environment/zone_biome.cpp
+        # Particle emitters
+        src/client/graphics/environment/emitters/dust_mote_emitter.cpp
+        src/client/graphics/environment/emitters/pollen_emitter.cpp
+        src/client/graphics/environment/emitters/firefly_emitter.cpp
+        src/client/graphics/environment/emitters/mist_emitter.cpp
+        src/client/graphics/environment/emitters/sand_dust_emitter.cpp
     )
 ENDIF()
 

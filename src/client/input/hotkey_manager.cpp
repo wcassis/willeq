@@ -136,6 +136,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleTrainer", HotkeyAction::ToggleTrainer},
     {"ToggleSpellbook", HotkeyAction::ToggleSpellbook},
     {"ToggleBuffWindow", HotkeyAction::ToggleBuffWindow},
+    {"ToggleOptions", HotkeyAction::ToggleOptions},
     {"ToggleCollision", HotkeyAction::ToggleCollision},
     {"ToggleCollisionDebug", HotkeyAction::ToggleCollisionDebug},
     {"ToggleZoneLineVisualization", HotkeyAction::ToggleZoneLineVisualization},
@@ -482,6 +483,7 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::ToggleRendererMode, HotkeyMode::Global, irr::KEY_F9);
     addBinding(HotkeyAction::Screenshot, HotkeyMode::Global, irr::KEY_F12);
     addBinding(HotkeyAction::Quit, HotkeyMode::Global, irr::KEY_ESCAPE, ModifierFlags::Shift);
+    addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O);
 
     // === Player Mode - Movement ===
     addBinding(HotkeyAction::MoveForward, HotkeyMode::Player, irr::KEY_KEY_W);

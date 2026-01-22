@@ -154,6 +154,11 @@ enum TitaniumZoneOpcodes {
 	HC_OP_MoveDoor = 0x700d,
 	HC_OP_ClickDoor = 0x043b,
 	HC_OP_CompletedTasks = 0x76a2,
+	HC_OP_TaskDescription = 0x5ef7,    // S->C: Task description data
+	HC_OP_TaskActivity = 0x682d,       // S->C: Task activity update
+	HC_OP_ClearLeadershipAbilities = 0x7416,  // S->C: Clear leadership AA
+	HC_OP_ClearAA = 0x5918,            // S->C: Clear AA on zone-in
+	HC_OP_AAExpUpdate = 0x5f58,        // S->C: AA experience update
 	HC_OP_DzCompass = 0x28aa,
 	HC_OP_DzExpeditionLockoutTimers = 0x7c12,
 	HC_OP_BeginCast = 0x3990,
