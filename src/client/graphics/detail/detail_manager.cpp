@@ -470,9 +470,9 @@ bool DetailManager::getGroundInfo(float x, float z, float& outY,
     }
 
     // Raycast DOWNWARD from above to find the ground surface
-    // Start from well above ground level and cast downward
-    // This hits the actual walkable ground surface, not underwater floors
-    irr::core::vector3df start(x, 500.0f, z);
+    // Start from moderate height (below sky domes/ceilings but above terrain)
+    // Many zones have invisible ceilings at Y=80+ that we need to avoid hitting
+    irr::core::vector3df start(x, 60.0f, z);
     irr::core::vector3df end(x, -500.0f, z);
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;

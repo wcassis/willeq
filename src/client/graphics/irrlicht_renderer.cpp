@@ -2001,10 +2001,14 @@ void IrrlichtRenderer::unloadZone() {
         treeManager_->cleanup();
     }
 
-    // Now safe to remove zone collision selector
+    // Now safe to remove zone collision selectors
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
+    }
+    if (terrainOnlySelector_) {
+        terrainOnlySelector_->drop();
+        terrainOnlySelector_ = nullptr;
     }
 
     // Remove zone mesh
@@ -6175,10 +6179,14 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
 // --- Irrlicht-based Collision Detection (using zone mesh) ---
 
 void IrrlichtRenderer::setupZoneCollision() {
-    // Clean up old selector
+    // Clean up old selectors
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
+    }
+    if (terrainOnlySelector_) {
+        terrainOnlySelector_->drop();
+        terrainOnlySelector_ = nullptr;
     }
 
     // Clean up old collision node (used in PVS mode)
@@ -6195,6 +6203,14 @@ void IrrlichtRenderer::setupZoneCollision() {
     irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
     if (!metaSelector) {
         LOG_ERROR(MOD_GRAPHICS, "Failed to create meta triangle selector");
+        return;
+    }
+
+    // Create a separate terrain-only selector for the detail system (excludes placeables)
+    irr::scene::IMetaTriangleSelector* terrainMeta = smgr_->createMetaTriangleSelector();
+    if (!terrainMeta) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create terrain-only triangle selector");
+        metaSelector->drop();
         return;
     }
 
@@ -6220,6 +6236,7 @@ void IrrlichtRenderer::setupZoneCollision() {
                     smgr_->createOctreeTriangleSelector(collisionMesh, zoneCollisionNode_, 128);
                 if (zoneSelector) {
                     metaSelector->addTriangleSelector(zoneSelector);
+                    terrainMeta->addTriangleSelector(zoneSelector);  // Also add to terrain-only
                     zoneCollisionNode_->setTriangleSelector(zoneSelector);
                     zoneSelector->drop();
                     selectorCount++;
@@ -6236,6 +6253,7 @@ void IrrlichtRenderer::setupZoneCollision() {
                 smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
             if (fallbackSelector) {
                 metaSelector->addTriangleSelector(fallbackSelector);
+                terrainMeta->addTriangleSelector(fallbackSelector);  // Also add to terrain-only
                 fallbackMeshNode_->setTriangleSelector(fallbackSelector);
                 fallbackSelector->drop();
                 selectorCount++;
@@ -6250,6 +6268,7 @@ void IrrlichtRenderer::setupZoneCollision() {
                 smgr_->createOctreeTriangleSelector(mesh, zoneMeshNode_, 128);
             if (zoneSelector) {
                 metaSelector->addTriangleSelector(zoneSelector);
+                terrainMeta->addTriangleSelector(zoneSelector);  // Also add to terrain-only
                 zoneMeshNode_->setTriangleSelector(zoneSelector);
                 zoneSelector->drop();
                 selectorCount++;
@@ -6257,6 +6276,9 @@ void IrrlichtRenderer::setupZoneCollision() {
             }
         }
     }
+
+    // Store terrain-only selector (for detail system ground queries)
+    terrainOnlySelector_ = terrainMeta;
 
     // Add placeable object selectors
     for (auto* objectNode : objectNodes_) {
@@ -6307,17 +6329,19 @@ void IrrlichtRenderer::setupZoneCollision() {
     }
 
     // Initialize detail system with collision selector for ground queries
+    // Use terrain-only selector to avoid hitting placeables (trees, buildings, etc.)
     // Also pass WldLoader for BSP-based water/lava/zoneline exclusion
     // and zoneMeshNode for texture lookups
     // Pass the same zone geometry that the mesh was built from to ensure texture indices match
-    if (detailManager_ && zoneTriangleSelector_) {
+    if (detailManager_ && terrainOnlySelector_) {
         std::shared_ptr<WldLoader> wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
         std::shared_ptr<ZoneGeometry> zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
 
         // Pass zone mesh node for texture lookups
         // In non-PVS mode, use zoneMeshNode_
         // In PVS mode, zoneMeshNode_ is null - we'll add region nodes below
-        detailManager_->onZoneEnter(currentZoneName_, zoneTriangleSelector_, zoneMeshNode_, wldLoader, zoneGeom);
+        // Use terrainOnlySelector_ so ground queries don't hit placeables
+        detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_, zoneMeshNode_, wldLoader, zoneGeom);
 
         // In PVS mode, add all region mesh nodes for texture lookup
         if (!regionMeshNodes_.empty()) {
