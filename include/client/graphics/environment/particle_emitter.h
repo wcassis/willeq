@@ -79,6 +79,12 @@ public:
      */
     virtual void onZoneLeave() { clearAllParticles(); }
 
+    /**
+     * Reload settings from config file.
+     * Override in subclasses to update type-specific settings.
+     */
+    virtual void reloadSettings() {}
+
 protected:
     /**
      * Spawn a new particle at the given position.

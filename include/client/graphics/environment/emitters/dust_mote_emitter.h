@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/graphics/environment/particle_emitter.h"
+#include "client/graphics/environment/environment_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -16,6 +17,9 @@ namespace Environment {
  * - Affected by wind (gentle drift)
  * - Active in all zones, especially dungeons/interiors
  * - Density increases when windy (dust gets stirred up)
+ *
+ * Settings are loaded from config/environment_effects.json and can be
+ * reloaded at runtime with /reloadeffects.
  */
 class DustMoteEmitter : public ParticleEmitter {
 public:
@@ -32,6 +36,11 @@ public:
      * Called when entering a zone.
      */
     void onZoneEnter(const std::string& zoneName, ZoneBiome biome) override;
+
+    /**
+     * Reload settings from config file.
+     */
+    void reloadSettings();
 
 protected:
     /**
@@ -50,19 +59,8 @@ protected:
     float getSpawnRate(const EnvironmentState& env) const override;
 
 private:
-    // Configuration
-    static constexpr int MAX_PARTICLES = 80;
-    static constexpr float BASE_SPAWN_RATE = 10.0f;     // Particles per second
-    static constexpr float SPAWN_RADIUS_MIN = 3.0f;     // Min spawn distance from player
-    static constexpr float SPAWN_RADIUS_MAX = 20.0f;    // Max spawn distance from player
-    static constexpr float SPAWN_HEIGHT_MIN = -1.0f;    // Min height relative to player
-    static constexpr float SPAWN_HEIGHT_MAX = 6.0f;     // Max height relative to player
-    static constexpr float PARTICLE_SIZE_MIN = 0.15f;
-    static constexpr float PARTICLE_SIZE_MAX = 0.35f;
-    static constexpr float LIFETIME_MIN = 6.0f;         // Seconds
-    static constexpr float LIFETIME_MAX = 10.0f;        // Seconds
-    static constexpr float DRIFT_SPEED = 0.3f;          // Base drift speed
-    static constexpr float WIND_FACTOR = 2.0f;          // How much wind affects movement
+    // Cached settings from config (reloaded on reloadSettings())
+    EnvironmentEffectsConfig::EmitterSettings settings_;
 
     // State
     ZoneBiome currentBiome_ = ZoneBiome::Unknown;

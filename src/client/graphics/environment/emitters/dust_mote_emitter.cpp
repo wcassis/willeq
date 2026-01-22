@@ -6,14 +6,28 @@ namespace Graphics {
 namespace Environment {
 
 DustMoteEmitter::DustMoteEmitter()
-    : ParticleEmitter(ParticleType::DustMote, MAX_PARTICLES)
+    : ParticleEmitter(ParticleType::DustMote, 100)  // Initial max, will be updated
 {
-    baseSpawnRate_ = BASE_SPAWN_RATE;
-    spawnRadius_ = SPAWN_RADIUS_MAX;
+    reloadSettings();
+}
+
+void DustMoteEmitter::reloadSettings() {
+    settings_ = EnvironmentEffectsConfig::instance().getDustMotes();
+
+    // Update base class values
+    maxParticles_ = settings_.maxParticles;
+    baseSpawnRate_ = settings_.spawnRate;
+    spawnRadius_ = settings_.spawnRadiusMax;
+    enabled_ = settings_.enabled;
+
+    // Resize particle pool if needed
+    if (static_cast<int>(particles_.size()) < settings_.maxParticles) {
+        particles_.resize(settings_.maxParticles);
+    }
 }
 
 bool DustMoteEmitter::shouldBeActive(const EnvironmentState& env) const {
-    if (!enabled_) return false;
+    if (!enabled_ || !settings_.enabled) return false;
 
     // Dust motes are most visible in dungeons and caves
     // but can appear anywhere
@@ -28,31 +42,35 @@ void DustMoteEmitter::onZoneEnter(const std::string& zoneName, ZoneBiome biome) 
 void DustMoteEmitter::initParticle(Particle& p, const EnvironmentState& env) {
     // Random spawn position around player
     p.position = getRandomSpawnPosition(env,
-        SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX,
-        SPAWN_HEIGHT_MIN, SPAWN_HEIGHT_MAX);
+        settings_.spawnRadiusMin, settings_.spawnRadiusMax,
+        settings_.spawnHeightMin, settings_.spawnHeightMax);
 
     // Random size (smaller particles are more common)
     float sizeFactor = randomFloat(0.0f, 1.0f);
     sizeFactor = sizeFactor * sizeFactor; // Bias toward smaller
-    p.size = PARTICLE_SIZE_MIN + sizeFactor * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
+    p.size = settings_.sizeMin + sizeFactor * (settings_.sizeMax - settings_.sizeMin);
 
     // Random lifetime
-    p.lifetime = randomFloat(LIFETIME_MIN, LIFETIME_MAX);
+    p.lifetime = randomFloat(settings_.lifetimeMin, settings_.lifetimeMax);
     p.maxLifetime = p.lifetime;
 
     // Initial velocity - very slow random drift
     glm::vec3 drift = randomDirection();
     drift.z *= 0.3f; // Reduce vertical component
-    p.velocity = drift * DRIFT_SPEED * randomFloat(0.5f, 1.5f);
+    p.velocity = drift * settings_.driftSpeed * randomFloat(0.5f, 1.5f);
 
     // Apply initial wind influence
     if (env.windStrength > 0.1f) {
-        p.velocity += env.windDirection * env.windStrength * WIND_FACTOR * 0.5f;
+        p.velocity += env.windDirection * env.windStrength * settings_.windFactor * 0.5f;
     }
 
-    // Color: white/gray with slight variation
+    // Color from config with slight brightness variation
     float brightness = randomFloat(0.8f, 1.0f);
-    p.color = glm::vec4(brightness, brightness, brightness, 1.0f);
+    p.color = glm::vec4(
+        settings_.colorR * brightness,
+        settings_.colorG * brightness,
+        settings_.colorB * brightness,
+        settings_.colorA);
 
     // Texture: soft circle
     p.textureIndex = ParticleAtlas::SoftCircle;
@@ -68,7 +86,7 @@ void DustMoteEmitter::initParticle(Particle& p, const EnvironmentState& env) {
 void DustMoteEmitter::updateParticle(Particle& p, float deltaTime, const EnvironmentState& env) {
     // Apply wind continuously (dust is very light)
     if (env.windStrength > 0.05f) {
-        glm::vec3 windForce = env.windDirection * env.windStrength * WIND_FACTOR * deltaTime;
+        glm::vec3 windForce = env.windDirection * env.windStrength * settings_.windFactor * deltaTime;
         p.velocity += windForce;
     }
 
@@ -81,7 +99,7 @@ void DustMoteEmitter::updateParticle(Particle& p, float deltaTime, const Environ
 
     // Dampen velocity to prevent runaway speed
     float speed = glm::length(p.velocity);
-    float maxSpeed = DRIFT_SPEED * 3.0f + env.windStrength * WIND_FACTOR;
+    float maxSpeed = settings_.driftSpeed * 3.0f + env.windStrength * settings_.windFactor;
     if (speed > maxSpeed) {
         p.velocity = p.velocity * (maxSpeed / speed);
     }
@@ -104,16 +122,16 @@ void DustMoteEmitter::updateParticle(Particle& p, float deltaTime, const Environ
         p.alpha = 1.0f;
     }
 
-    // Dust motes in indoor areas are slightly more visible
+    // Apply indoor/outdoor alpha from config
     if (isIndoor_) {
-        p.alpha *= 0.9f;  // More visible in darker areas
+        p.alpha *= settings_.alphaIndoor;
     } else {
-        p.alpha *= 0.8f;  // Good visibility outdoors
+        p.alpha *= settings_.alphaOutdoor;
     }
 }
 
 float DustMoteEmitter::getSpawnRate(const EnvironmentState& env) const {
-    float rate = BASE_SPAWN_RATE;
+    float rate = settings_.spawnRate;
 
     // More dust in indoor areas
     if (isIndoor_) {

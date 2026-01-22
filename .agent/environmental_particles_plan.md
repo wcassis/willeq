@@ -647,8 +647,10 @@ data/textures/
 - [x] render() called in processFrame()
 - [x] OptionsWindow callback updates particle settings
 
-### Runtime Testing (Pending)
-- [ ] Dust motes appear visually in dungeons/interiors
+### Runtime Testing (Dust Motes)
+- [x] Dust motes appear visually in urban zones
+- [x] Particles respawn around player as they move
+- [x] Particles fade in/out correctly
 - [ ] Pollen appears in forests during day
 - [ ] Fireflies appear at night near water/forests
 - [ ] Mist appears in swamps
@@ -657,3 +659,119 @@ data/textures/
 - [ ] Quality slider changes particle density
 - [ ] Individual toggles enable/disable specific effects
 - [ ] FPS stays above 30 with all effects on High
+
+---
+
+## Phase 6: JSON Config System (In Progress)
+
+**Goal:** Allow all environmental effect settings to be loaded from JSON config files with runtime reload capability for easy tuning.
+
+### 6.1 Config File Structure
+
+**File:** `config/environment_effects.json`
+
+```json
+{
+  "dustMotes": {
+    "enabled": true,
+    "maxParticles": 80,
+    "spawnRate": 10.0,
+    "spawnRadiusMin": 3.0,
+    "spawnRadiusMax": 20.0,
+    "spawnHeightMin": -1.0,
+    "spawnHeightMax": 6.0,
+    "sizeMin": 0.15,
+    "sizeMax": 0.35,
+    "lifetimeMin": 6.0,
+    "lifetimeMax": 10.0,
+    "driftSpeed": 0.3,
+    "windFactor": 2.0,
+    "alphaIndoor": 0.9,
+    "alphaOutdoor": 0.8
+  },
+  "pollen": {
+    "enabled": true,
+    "maxParticles": 60,
+    "spawnRate": 8.0,
+    ...
+  },
+  "fireflies": { ... },
+  "mist": { ... },
+  "sandDust": { ... },
+  "detailObjects": {
+    "enabled": true,
+    "density": 1.0,
+    "viewDistance": 150.0,
+    "grassEnabled": true,
+    "plantsEnabled": true,
+    "rocksEnabled": true,
+    "debrisEnabled": true
+  }
+}
+```
+
+### 6.2 EnvironmentEffectsConfig Class
+
+**File:** `include/client/graphics/environment/environment_config.h`
+
+```cpp
+class EnvironmentEffectsConfig {
+public:
+    static EnvironmentEffectsConfig& instance();
+
+    bool load(const std::string& path);
+    bool reload();  // Reload from last loaded path
+
+    // Emitter settings structs
+    struct EmitterSettings {
+        bool enabled = true;
+        int maxParticles = 80;
+        float spawnRate = 10.0f;
+        float spawnRadiusMin = 3.0f;
+        float spawnRadiusMax = 20.0f;
+        float spawnHeightMin = -1.0f;
+        float spawnHeightMax = 6.0f;
+        float sizeMin = 0.15f;
+        float sizeMax = 0.35f;
+        float lifetimeMin = 6.0f;
+        float lifetimeMax = 10.0f;
+        float driftSpeed = 0.3f;
+        float windFactor = 2.0f;
+        float alphaIndoor = 0.9f;
+        float alphaOutdoor = 0.8f;
+    };
+
+    const EmitterSettings& getDustMotes() const;
+    const EmitterSettings& getPollen() const;
+    const EmitterSettings& getFireflies() const;
+    const EmitterSettings& getMist() const;
+    const EmitterSettings& getSandDust() const;
+
+    // Callback for reload notifications
+    using ReloadCallback = std::function<void()>;
+    void setReloadCallback(ReloadCallback cb);
+
+private:
+    std::string configPath_;
+    EmitterSettings dustMotes_, pollen_, fireflies_, mist_, sandDust_;
+    ReloadCallback reloadCallback_;
+};
+```
+
+### 6.3 Runtime Reload Command
+
+**Slash command:** `/reloadeffects`
+
+- Reloads `config/environment_effects.json`
+- Updates all active emitters with new settings
+- Prints confirmation to chat
+
+### 6.4 Implementation Checklist
+
+- [x] Create `EnvironmentEffectsConfig` class
+- [x] Create default `config/environment_effects.json`
+- [x] Update `DustMoteEmitter` to use config values
+- [ ] Update other emitters to use config values (pollen, firefly, mist, sand)
+- [x] Add `/reloadeffects` slash command
+- [x] Wire reload callback to ParticleManager
+- [ ] Test runtime reload works correctly

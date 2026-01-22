@@ -141,6 +141,12 @@ public:
      */
     std::string getDebugInfo() const;
 
+    /**
+     * Reload settings from config file for all emitters.
+     * Call after editing config/environment_effects.json.
+     */
+    void reloadSettings();
+
 private:
     /**
      * Create emitters appropriate for the given biome.

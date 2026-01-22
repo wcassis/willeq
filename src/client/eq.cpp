@@ -8602,6 +8602,22 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(perf);
 
+	Command reloadeffects;
+	reloadeffects.name = "reloadeffects";
+	reloadeffects.aliases = {"reloadfx", "reloadparticles"};
+	reloadeffects.usage = "/reloadeffects";
+	reloadeffects.description = "Reload environment effects settings from config/environment_effects.json";
+	reloadeffects.category = "Utility";
+	reloadeffects.handler = [this](const std::string& args) {
+		if (m_renderer && m_renderer->getParticleManager()) {
+			m_renderer->getParticleManager()->reloadSettings();
+			AddChatSystemMessage("Environment effects settings reloaded");
+		} else {
+			AddChatSystemMessage("Particle system not available");
+		}
+	};
+	m_command_registry->registerCommand(reloadeffects);
+
 	Command frametiming;
 	frametiming.name = "frametiming";
 	frametiming.aliases = {"frametime", "ft"};

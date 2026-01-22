@@ -874,6 +874,9 @@ public:
     // Detail system access (grass, plants, debris)
     Detail::DetailManager* getDetailManager() { return detailManager_.get(); }
 
+    // Environmental particle system access
+    Environment::ParticleManager* getParticleManager() { return particleManager_.get(); }
+
 #ifdef WITH_RDP
     // RDP server support (alternative to Xvfb+x11vnc)
 

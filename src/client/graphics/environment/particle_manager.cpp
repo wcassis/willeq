@@ -1,4 +1,5 @@
 #include "client/graphics/environment/particle_manager.h"
+#include "client/graphics/environment/environment_config.h"
 #include "client/graphics/environment/zone_biome.h"
 #include "client/graphics/environment/emitters/dust_mote_emitter.h"
 #include "client/graphics/environment/emitters/pollen_emitter.h"
@@ -35,6 +36,9 @@ bool ParticleManager::init(const std::string& eqClientPath) {
     if (initialized_) {
         return true;
     }
+
+    // Load environment effects config
+    EnvironmentEffectsConfig::instance().load("config/environment_effects.json");
 
     // Try to load particle atlas texture, or create a default one
     std::string atlasPath = eqClientPath + "/data/textures/particle_atlas.png";
@@ -226,6 +230,23 @@ std::string ParticleManager::getDebugInfo() const {
     ss << " | Biome: " << static_cast<int>(currentBiome_);
     ss << " | Time: " << static_cast<int>(envState_.timeOfDay) << ":00";
     return ss.str();
+}
+
+void ParticleManager::reloadSettings() {
+    // Reload the config file
+    if (!EnvironmentEffectsConfig::instance().reload()) {
+        LOG_WARN(MOD_GRAPHICS, "ParticleManager: Failed to reload config");
+        return;
+    }
+
+    // Update all emitters with new settings
+    for (auto& emitter : emitters_) {
+        if (emitter) {
+            emitter->reloadSettings();
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Reloaded settings for {} emitters", emitters_.size());
 }
 
 void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {

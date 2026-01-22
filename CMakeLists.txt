@@ -374,6 +374,7 @@ IF(EQT_GRAPHICS)
         # Environmental particle system
         src/client/graphics/environment/particle_emitter.cpp
         src/client/graphics/environment/particle_manager.cpp
+        src/client/graphics/environment/environment_config.cpp
         src/client/graphics/environment/zone_biome.cpp
         # Particle emitters
         src/client/graphics/environment/emitters/dust_mote_emitter.cpp
