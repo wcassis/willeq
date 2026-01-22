@@ -1,0 +1,20 @@
+{
+    "tree_wind": {
+        "base_strength": 0.3,
+        "base_frequency": 0.4,
+        "gust_strength": 0.5,
+        "gust_frequency": 0.1,
+        "turbulence": 0.2,
+        "influence_start_height": 0.3,
+        "influence_exponent": 2.0,
+        "weather_multipliers": {
+            "calm": 0.5,
+            "normal": 1.0,
+            "rain": 1.5,
+            "storm": 2.5
+        },
+        "update_distance": 300.0,
+        "lod_distance": 150.0,
+        "enabled": true
+    }
+}
