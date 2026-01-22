@@ -4501,9 +4501,9 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 		}
 
 #ifdef WITH_AUDIO
-		// Play vendor music (configurable via audio.vendor_music)
-		if (m_audio_manager && !m_audio_config_vendor_music.empty()) {
-			m_audio_manager->playMusic(m_audio_config_vendor_music, false);
+		// Start vendor/bank music (context-based, will restore on close)
+		if (m_audio_manager) {
+			m_audio_manager->startVendorBankMusic();
 		}
 #endif
 
@@ -4836,9 +4836,9 @@ void EverQuest::CloseVendorWindow()
 	}
 
 #ifdef WITH_AUDIO
-	// Restore zone music
+	// Stop vendor/bank music (context-based, will restore zone music or auto-attack music)
 	if (m_audio_manager) {
-		m_audio_manager->restartZoneMusic();
+		m_audio_manager->stopVendorBankMusic();
 	}
 #endif
 
@@ -4869,6 +4869,13 @@ void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
 		m_renderer->getWindowManager()->openBankWindow();
 	}
 
+#ifdef WITH_AUDIO
+	// Start vendor/bank music (context-based, will restore on close)
+	if (m_audio_manager) {
+		m_audio_manager->startVendorBankMusic();
+	}
+#endif
+
 	AddChatSystemMessage("Bank window opened");
 }
 
@@ -4884,6 +4891,13 @@ void EverQuest::CloseBankWindow()
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeBankWindow();
 	}
+
+#ifdef WITH_AUDIO
+	// Stop vendor/bank music (context-based, will restore zone music or auto-attack music)
+	if (m_audio_manager) {
+		m_audio_manager->stopVendorBankMusic();
+	}
+#endif
 
 	// Clear bank state
 	m_banker_npc_id = 0;

@@ -27,6 +27,14 @@ namespace Audio {
 class SoundBuffer;
 class MusicPlayer;
 
+// Music event configuration (loaded from config/music_events.json)
+struct MusicEventConfig {
+    std::string file;
+    int track = 0;       // 1-based track number (converted to 0-based internally)
+    bool loop = true;
+    bool enabled = true;
+};
+
 // Callback for RDP audio streaming
 using AudioOutputCallback = std::function<void(const int16_t* samples, size_t count,
                                                 uint32_t sampleRate, uint8_t channels)>;
@@ -79,6 +87,15 @@ public:
     // Zone transitions
     void onZoneChange(const std::string& zoneName);
     void restartZoneMusic();  // Restart current zone's music
+
+    // Context-based music (with priority: vendor/bank > auto-attack > zone)
+    // These methods handle saving/restoring the previous music state
+    void startAutoAttackMusic();   // Plays gl.xmi track 3, loops
+    void stopAutoAttackMusic();    // Restores previous music
+    void startVendorBankMusic();   // Plays gl.xmi track 22, loops
+    void stopVendorBankMusic();    // Restores previous music
+    bool isAutoAttackMusicPlaying() const { return autoAttackMusicActive_; }
+    bool isVendorBankMusicPlaying() const { return vendorBankMusicActive_; }
 
     // Volume controls (0.0 - 1.0)
     void setMasterVolume(float volume);
@@ -173,6 +190,16 @@ private:
 
     // Current zone (for music)
     std::string currentZone_;
+
+    // Context-based music state
+    bool autoAttackMusicActive_ = false;
+    bool vendorBankMusicActive_ = false;
+    int savedZoneMusicTrackIndex_ = 0;  // Track index that was playing before context music
+
+    // Music event configurations (loaded from config/music_events.json)
+    MusicEventConfig autoAttackMusicConfig_;
+    MusicEventConfig vendorBankMusicConfig_;
+    void loadMusicEventConfig();
 
     // RDP audio streaming
     AudioOutputCallback audioOutputCallback_;

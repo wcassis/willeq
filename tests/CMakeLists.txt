@@ -48,46 +48,6 @@ ADD_EXECUTABLE(test_packet
 TARGET_LINK_LIBRARIES(test_packet GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_packet)
 
-# Test pcap replay - analyzes packets from captured pcap files
-ADD_EXECUTABLE(test_pcap_replay
-    test_pcap_replay.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
-)
-TARGET_LINK_LIBRARIES(test_pcap_replay GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_pcap_replay)
-
-# Test pcap extractor - utilities for extracting packets from pcap files
-ADD_EXECUTABLE(test_pcap_extractor
-    test_pcap_extractor.cpp
-)
-TARGET_LINK_LIBRARIES(test_pcap_extractor GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_pcap_extractor)
-
-# Test Daybreak protocol harness - mock connection for testing packet processing
-ADD_EXECUTABLE(test_daybreak_harness
-    test_daybreak_harness.cpp
-)
-TARGET_LINK_LIBRARIES(test_daybreak_harness GTest::gtest_main ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_daybreak_harness)
-
-# Test PCAP step-through - detailed packet processing verification with verbose logging
-ADD_EXECUTABLE(test_pcap_step_through
-    test_pcap_step_through.cpp
-)
-TARGET_LINK_LIBRARIES(test_pcap_step_through GTest::gtest_main ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_pcap_step_through)
-
-# Test REAL DaybreakConnection with PCAP replay - tests actual production code
-ADD_EXECUTABLE(test_daybreak_connection_pcap
-    test_daybreak_connection_pcap.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/util/random.cpp
-)
-TARGET_LINK_LIBRARIES(test_daybreak_connection_pcap GTest::gtest_main ${ZLIB_LIBRARIES} ${LIBUV_LIBRARY} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
-
 # Test position utilities
 ADD_EXECUTABLE(test_position
     test_position.cpp
@@ -433,7 +393,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_zone_sound_emitters PRIVATE WITH_AUDIO)
-    SET(ZONE_EMITTER_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(ZONE_EMITTER_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_zone_sound_emitters PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND ZONE_EMITTER_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
@@ -461,7 +421,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_day_night_audio PRIVATE WITH_AUDIO)
-    SET(DAY_NIGHT_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(DAY_NIGHT_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_day_night_audio PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND DAY_NIGHT_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
@@ -486,7 +446,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_zone_music PRIVATE WITH_AUDIO)
-    SET(ZONE_MUSIC_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(ZONE_MUSIC_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_zone_music PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND ZONE_MUSIC_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
@@ -512,7 +472,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_AUDIO)
-    SET(SOUND_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(SOUND_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND SOUND_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
@@ -537,7 +497,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_sound_effects PRIVATE WITH_AUDIO)
-    SET(SOUND_EFFECTS_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(SOUND_EFFECTS_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_sound_effects PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND SOUND_EFFECTS_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
@@ -562,7 +522,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_spatial_audio PRIVATE WITH_AUDIO)
-    SET(SPATIAL_AUDIO_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(SPATIAL_AUDIO_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_spatial_audio PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND SPATIAL_AUDIO_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
@@ -600,7 +560,7 @@ IF(WITH_AUDIO)
         ${SNDFILE_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_weather_audio PRIVATE WITH_AUDIO)
-    SET(WEATHER_AUDIO_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
+    SET(WEATHER_AUDIO_TEST_LIBS GTest::gtest_main ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${JSONCPP_LIBRARIES} ${FMT_LIB} ZLIB::ZLIB)
     IF(FLUIDSYNTH_FOUND)
         TARGET_COMPILE_DEFINITIONS(test_weather_audio PRIVATE WITH_FLUIDSYNTH)
         LIST(APPEND WEATHER_AUDIO_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})

@@ -2,6 +2,9 @@
 #include "client/eq.h"
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
+#ifdef WITH_AUDIO
+#include "client/audio/audio_manager.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <thread>
@@ -414,6 +417,13 @@ void CombatManager::EnableAutoAttack() {
 	packet2.PutUInt32(0, 0);  // Unknown content, server doesn't process it
 	m_eq->QueuePacket(HC_OP_AutoAttack2, &packet2);
 
+	// Start auto-attack music
+#ifdef WITH_AUDIO
+	if (auto* audio = m_eq->GetAudioManager()) {
+		audio->startAutoAttackMusic();
+	}
+#endif
+
 	LOG_DEBUG(MOD_COMBAT, "EnableAutoAttack: Auto attack ENABLED (sent both AutoAttack and AutoAttack2)");
 }
 
@@ -439,6 +449,13 @@ void CombatManager::DisableAutoAttack() {
 	packet2.Resize(4);
 	packet2.PutUInt32(0, 0);  // Unknown content, server doesn't process it
 	m_eq->QueuePacket(HC_OP_AutoAttack2, &packet2);
+
+	// Stop auto-attack music
+#ifdef WITH_AUDIO
+	if (auto* audio = m_eq->GetAudioManager()) {
+		audio->stopAutoAttackMusic();
+	}
+#endif
 }
 
 void CombatManager::EnableAutoFire() {

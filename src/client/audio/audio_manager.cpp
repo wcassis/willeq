@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <cctype>
 #include <iostream>
+#include <fstream>
 #include <unordered_map>
+#include <json/json.h>
 
 namespace EQT {
 namespace Audio {
@@ -99,6 +101,9 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     alListenerfv(AL_POSITION, listenerPos);
     alListenerfv(AL_VELOCITY, listenerVel);
     alListenerfv(AL_ORIENTATION, listenerOri);
+
+    // Load music event configuration
+    loadMusicEventConfig();
 
     initialized_ = true;
     LOG_INFO(MOD_AUDIO, "Audio system initialized");
@@ -366,6 +371,103 @@ void AudioManager::restartZoneMusic() {
     if (!musicFile.empty()) {
         playMusic(musicFile, true);
     }
+}
+
+void AudioManager::startAutoAttackMusic() {
+    if (!initialized_ || !audioEnabled_) {
+        return;
+    }
+
+    if (!autoAttackMusicConfig_.enabled) {
+        return;
+    }
+
+    // Vendor/bank music has higher priority
+    if (vendorBankMusicActive_) {
+        std::cout << "[AUDIO] AUTO-ATTACK MUSIC: skipped (vendor/bank music active)" << std::endl;
+        autoAttackMusicActive_ = true;  // Mark as active so we start it when vendor closes
+        return;
+    }
+
+    if (autoAttackMusicActive_) {
+        return;  // Already playing
+    }
+
+    std::cout << "[AUDIO] AUTO-ATTACK MUSIC: starting " << autoAttackMusicConfig_.file
+              << " track " << autoAttackMusicConfig_.track << std::endl;
+    autoAttackMusicActive_ = true;
+
+    // Track numbers in config are 1-based, convert to 0-based for internal use
+    std::string musicFile = eqPath_ + "/" + autoAttackMusicConfig_.file;
+    if (std::filesystem::exists(musicFile)) {
+        playMusic(musicFile, autoAttackMusicConfig_.loop, autoAttackMusicConfig_.track - 1);
+    } else {
+        std::cout << "[AUDIO] AUTO-ATTACK MUSIC: " << autoAttackMusicConfig_.file << " not found" << std::endl;
+    }
+}
+
+void AudioManager::stopAutoAttackMusic() {
+    if (!autoAttackMusicActive_) {
+        return;
+    }
+
+    std::cout << "[AUDIO] AUTO-ATTACK MUSIC: stopping" << std::endl;
+    autoAttackMusicActive_ = false;
+
+    // If vendor/bank music is active, let it continue
+    if (vendorBankMusicActive_) {
+        return;
+    }
+
+    // Restore zone music
+    restartZoneMusic();
+}
+
+void AudioManager::startVendorBankMusic() {
+    if (!initialized_ || !audioEnabled_) {
+        return;
+    }
+
+    if (!vendorBankMusicConfig_.enabled) {
+        return;
+    }
+
+    if (vendorBankMusicActive_) {
+        return;  // Already playing
+    }
+
+    std::cout << "[AUDIO] VENDOR/BANK MUSIC: starting " << vendorBankMusicConfig_.file
+              << " track " << vendorBankMusicConfig_.track << std::endl;
+    vendorBankMusicActive_ = true;
+
+    // Track numbers in config are 1-based, convert to 0-based for internal use
+    std::string musicFile = eqPath_ + "/" + vendorBankMusicConfig_.file;
+    if (std::filesystem::exists(musicFile)) {
+        playMusic(musicFile, vendorBankMusicConfig_.loop, vendorBankMusicConfig_.track - 1);
+    } else {
+        std::cout << "[AUDIO] VENDOR/BANK MUSIC: " << vendorBankMusicConfig_.file << " not found" << std::endl;
+    }
+}
+
+void AudioManager::stopVendorBankMusic() {
+    if (!vendorBankMusicActive_) {
+        return;
+    }
+
+    std::cout << "[AUDIO] VENDOR/BANK MUSIC: stopping" << std::endl;
+    vendorBankMusicActive_ = false;
+
+    // If auto-attack is still active, play its music
+    if (autoAttackMusicActive_ && autoAttackMusicConfig_.enabled) {
+        std::string musicFile = eqPath_ + "/" + autoAttackMusicConfig_.file;
+        if (std::filesystem::exists(musicFile)) {
+            playMusic(musicFile, autoAttackMusicConfig_.loop, autoAttackMusicConfig_.track - 1);
+        }
+        return;
+    }
+
+    // Restore zone music
+    restartZoneMusic();
 }
 
 void AudioManager::setMasterVolume(float volume) {
@@ -978,6 +1080,64 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSoundFromPfs(const std::string& f
 
     LOG_DEBUG(MOD_AUDIO, "Loaded sound from PFS: {}", filename);
     return buffer;
+}
+
+void AudioManager::loadMusicEventConfig() {
+    // Set defaults
+    autoAttackMusicConfig_.file = "gl.xmi";
+    autoAttackMusicConfig_.track = 3;
+    autoAttackMusicConfig_.loop = true;
+    autoAttackMusicConfig_.enabled = true;
+
+    vendorBankMusicConfig_.file = "gl.xmi";
+    vendorBankMusicConfig_.track = 22;
+    vendorBankMusicConfig_.loop = true;
+    vendorBankMusicConfig_.enabled = true;
+
+    // Try to load from config file
+    std::string configPath = "config/music_events.json";
+    std::ifstream file(configPath);
+    if (!file.is_open()) {
+        std::cout << "[AUDIO] Music events config not found at " << configPath
+                  << ", using defaults" << std::endl;
+        return;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        std::cout << "[AUDIO] Failed to parse music_events.json: " << errors << std::endl;
+        return;
+    }
+
+    // Load auto_attack config
+    if (root.isMember("auto_attack")) {
+        const auto& cfg = root["auto_attack"];
+        if (cfg.isMember("file")) autoAttackMusicConfig_.file = cfg["file"].asString();
+        if (cfg.isMember("track")) autoAttackMusicConfig_.track = cfg["track"].asInt();
+        if (cfg.isMember("loop")) autoAttackMusicConfig_.loop = cfg["loop"].asBool();
+        if (cfg.isMember("enabled")) autoAttackMusicConfig_.enabled = cfg["enabled"].asBool();
+    }
+
+    // Load vendor_bank config
+    if (root.isMember("vendor_bank")) {
+        const auto& cfg = root["vendor_bank"];
+        if (cfg.isMember("file")) vendorBankMusicConfig_.file = cfg["file"].asString();
+        if (cfg.isMember("track")) vendorBankMusicConfig_.track = cfg["track"].asInt();
+        if (cfg.isMember("loop")) vendorBankMusicConfig_.loop = cfg["loop"].asBool();
+        if (cfg.isMember("enabled")) vendorBankMusicConfig_.enabled = cfg["enabled"].asBool();
+    }
+
+    std::cout << "[AUDIO] Loaded music events config:" << std::endl;
+    std::cout << "  auto_attack: " << autoAttackMusicConfig_.file
+              << " track " << autoAttackMusicConfig_.track
+              << " loop=" << autoAttackMusicConfig_.loop
+              << " enabled=" << autoAttackMusicConfig_.enabled << std::endl;
+    std::cout << "  vendor_bank: " << vendorBankMusicConfig_.file
+              << " track " << vendorBankMusicConfig_.track
+              << " loop=" << vendorBankMusicConfig_.loop
+              << " enabled=" << vendorBankMusicConfig_.enabled << std::endl;
 }
 
 } // namespace Audio
