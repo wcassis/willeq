@@ -111,6 +111,26 @@ void ParticleManager::render() {
             }
         }
     }
+
+    // Render external emitters (e.g., weather effects)
+    for (const auto* emitter : externalEmitters_) {
+        if (!emitter || !emitter->isEnabled()) {
+            continue;
+        }
+
+        for (const Particle& p : emitter->getParticles()) {
+            if (p.isAlive()) {
+                // Distance culling
+                glm::vec3 diff = p.position - envState_.playerPosition;
+                float distSq = glm::dot(diff, diff);
+                if (distSq > budget_.cullDistance * budget_.cullDistance) {
+                    continue;
+                }
+
+                renderBillboard(p, cameraPos, cameraUp);
+            }
+        }
+    }
 }
 
 void ParticleManager::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
@@ -263,6 +283,27 @@ void ParticleManager::setSurfaceMap(const Detail::SurfaceMap* surfaceMap) {
     if (surfaceMap) {
         LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Set surface map, propagated to {} emitters",
                   emitters_.size());
+    }
+}
+
+void ParticleManager::registerExternalEmitter(ParticleEmitter* emitter) {
+    if (!emitter) return;
+
+    // Check if already registered
+    auto it = std::find(externalEmitters_.begin(), externalEmitters_.end(), emitter);
+    if (it == externalEmitters_.end()) {
+        externalEmitters_.push_back(emitter);
+        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Registered external emitter");
+    }
+}
+
+void ParticleManager::unregisterExternalEmitter(ParticleEmitter* emitter) {
+    if (!emitter) return;
+
+    auto it = std::find(externalEmitters_.begin(), externalEmitters_.end(), emitter);
+    if (it != externalEmitters_.end()) {
+        externalEmitters_.erase(it);
+        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Unregistered external emitter");
     }
 }
 
@@ -503,8 +544,79 @@ void ParticleManager::createDefaultAtlas() {
     // Tile 9: Water droplet - small blue-white sphere
     drawCircle(1, 2, 0.4f, irr::video::SColor(200, 200, 230, 255));
 
-    // Tiles 10-11: Reserved for future use
-    // (empty for now)
+    // Tile 10: Ripple ring - concentric ring for water ripples
+    auto drawRing = [&](int tileX, int tileY, irr::video::SColor color) {
+        int baseX = tileX * tileSize;
+        int baseY = tileY * tileSize;
+        float centerX = tileSize / 2.0f;
+        float centerY = tileSize / 2.0f;
+        float outerRadius = tileSize / 2.0f - 1.0f;
+        float innerRadius = outerRadius * 0.7f;
+        float ringWidth = outerRadius - innerRadius;
+
+        for (int y = 0; y < tileSize; ++y) {
+            for (int x = 0; x < tileSize; ++x) {
+                float dx = x - centerX + 0.5f;
+                float dy = y - centerY + 0.5f;
+                float dist = std::sqrt(dx * dx + dy * dy);
+
+                float alpha = 0.0f;
+                if (dist >= innerRadius && dist <= outerRadius) {
+                    // Position within the ring (0 at inner, 1 at middle, 0 at outer)
+                    float ringPos = (dist - innerRadius) / ringWidth;
+                    alpha = 1.0f - std::abs(ringPos * 2.0f - 1.0f);
+                    alpha = std::pow(alpha, 0.7f);  // Sharper ring
+                }
+
+                irr::video::SColor pixelColor = color;
+                pixelColor.setAlpha(static_cast<irr::u32>(alpha * color.getAlpha()));
+                img->setPixel(baseX + x, baseY + y, pixelColor);
+            }
+        }
+    };
+    drawRing(2, 2, irr::video::SColor(200, 220, 240, 255));
+
+    // Tile 11: Snow patch - white irregular patch for ground snow
+    auto drawSnowPatch = [&](int tileX, int tileY, irr::video::SColor color) {
+        int baseX = tileX * tileSize;
+        int baseY = tileY * tileSize;
+        float centerX = tileSize / 2.0f;
+        float centerY = tileSize / 2.0f;
+        float baseRadius = tileSize / 2.0f - 2.0f;
+
+        // Simple noise-like pattern using fixed seed
+        auto pseudoNoise = [](int x, int y, int seed) -> float {
+            int n = x + y * 57 + seed;
+            n = (n << 13) ^ n;
+            return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f) * 0.5f + 0.5f;
+        };
+
+        for (int y = 0; y < tileSize; ++y) {
+            for (int x = 0; x < tileSize; ++x) {
+                float dx = x - centerX + 0.5f;
+                float dy = y - centerY + 0.5f;
+                float dist = std::sqrt(dx * dx + dy * dy);
+
+                // Irregular edge using noise
+                float noise = pseudoNoise(x, y, 42) * 2.0f;
+                float radius = baseRadius + noise;
+
+                float alpha = 0.0f;
+                if (dist < radius) {
+                    // Soft edge with noise variation
+                    float edgeDist = radius - dist;
+                    alpha = std::min(1.0f, edgeDist / (radius * 0.4f));
+                    // Add some texture variation
+                    alpha *= 0.7f + 0.3f * pseudoNoise(x * 2, y * 2, 123);
+                }
+
+                irr::video::SColor pixelColor = color;
+                pixelColor.setAlpha(static_cast<irr::u32>(alpha * color.getAlpha()));
+                img->setPixel(baseX + x, baseY + y, pixelColor);
+            }
+        }
+    };
+    drawSnowPatch(3, 2, irr::video::SColor(220, 245, 250, 255));
 
     // Create texture from image
     atlasTexture_ = driver_->addTexture("particle_atlas", img);

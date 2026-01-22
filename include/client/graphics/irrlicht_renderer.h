@@ -46,8 +46,9 @@ namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
 namespace EQT {
 namespace Graphics {
 
-// Forward declaration
+// Forward declarations
 class SkyRenderer;
+class WeatherEffectsController;
 
 // Renderer mode: Player (gameplay), Repair (object adjustment), Admin (debug)
 enum class RendererMode {
@@ -885,6 +886,12 @@ public:
     // Tumbleweed system access (desert/plains rolling objects)
     Environment::TumbleweedManager* getTumbleweedManager() { return tumbleweedManager_.get(); }
 
+    // Weather effects system access (rain, snow, lightning)
+    WeatherEffectsController* getWeatherEffects() { return weatherEffects_.get(); }
+
+    // Set weather from server packet (type: 0=none, 1=rain, 2=snow; intensity: 1-10)
+    void setWeather(uint8_t type, uint8_t intensity);
+
 #ifdef WITH_RDP
     // RDP server support (alternative to Xvfb+x11vnc)
 
@@ -975,6 +982,7 @@ private:
     std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
+    std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
     std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
 

@@ -111,8 +111,10 @@ namespace ParticleAtlas {
     constexpr uint8_t Ember = 7;        // Fire embers
     constexpr uint8_t FoamSpray = 8;    // Wave foam/spray
     constexpr uint8_t WaterDroplet = 9; // Small water droplet
+    constexpr uint8_t RippleRing = 10;  // Water ripple ring (Phase 7)
+    constexpr uint8_t SnowPatch = 11;   // Snow ground patch (Phase 9)
 
-    constexpr uint8_t TileCount = 10;
+    constexpr uint8_t TileCount = 12;
     constexpr uint8_t AtlasColumns = 4; // 4x3 atlas
     constexpr uint8_t AtlasRows = 3;
 }

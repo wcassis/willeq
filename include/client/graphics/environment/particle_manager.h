@@ -157,6 +157,28 @@ public:
      */
     void setSurfaceMap(const Detail::SurfaceMap* surfaceMap);
 
+    /**
+     * Register an external emitter for rendering.
+     * The emitter is not owned by ParticleManager.
+     * Call unregisterExternalEmitter before destroying the emitter.
+     */
+    void registerExternalEmitter(ParticleEmitter* emitter);
+
+    /**
+     * Unregister an external emitter.
+     */
+    void unregisterExternalEmitter(ParticleEmitter* emitter);
+
+    /**
+     * Get the current environment state (for external emitters to use).
+     */
+    const EnvironmentState& getEnvironmentState() const { return envState_; }
+
+    /**
+     * Get the particle atlas texture (for water ripples and other effects).
+     */
+    irr::video::ITexture* getAtlasTexture() const { return atlasTexture_; }
+
 private:
     /**
      * Create emitters appropriate for the given biome.
@@ -215,6 +237,9 @@ private:
 
     // Surface map for shoreline detection (owned externally, e.g., by DetailObjectManager)
     const Detail::SurfaceMap* surfaceMap_ = nullptr;
+
+    // External emitters (not owned, just rendered)
+    std::vector<ParticleEmitter*> externalEmitters_;
 };
 
 } // namespace Environment

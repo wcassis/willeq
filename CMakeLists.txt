@@ -373,6 +373,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/tree_wind_controller.cpp
         src/client/graphics/animated_tree_manager.cpp
         src/client/graphics/weather_system.cpp
+        src/client/graphics/weather_effects_controller.cpp
+        src/client/graphics/weather_config_loader.cpp
+        src/client/graphics/weather_quality_preset.cpp
         # Environmental particle system
         src/client/graphics/environment/particle_emitter.cpp
         src/client/graphics/environment/particle_manager.cpp
@@ -385,6 +388,16 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/mist_emitter.cpp
         src/client/graphics/environment/emitters/sand_dust_emitter.cpp
         src/client/graphics/environment/emitters/shoreline_wave_emitter.cpp
+        src/client/graphics/environment/emitters/rain_emitter.cpp
+        src/client/graphics/environment/emitters/rain_splash_emitter.cpp
+        src/client/graphics/environment/emitters/snow_emitter.cpp
+        # Water effects
+        src/client/graphics/environment/water_ripple_manager.cpp
+        # Storm cloud layer
+        src/client/graphics/environment/storm_cloud_layer.cpp
+        # Snow accumulation system
+        src/client/graphics/environment/accumulation_heightmap.cpp
+        src/client/graphics/environment/snow_accumulation_system.cpp
         # Boids (ambient creatures) system
         src/client/graphics/environment/flock_controller.cpp
         src/client/graphics/environment/boids_manager.cpp

@@ -18,6 +18,9 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/weather_effects_controller.h"
+#include "client/graphics/weather_config_loader.h"
+#include "client/graphics/weather_quality_preset.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/window_manager.h"
@@ -6089,6 +6092,23 @@ void EverQuest::ZoneProcessWeather(const EQ::Net::Packet &p)
 
 	m_weather_received = true;
 
+	// Parse weather packet (8 bytes)
+	// type: 0=rain off, 1=snow off, 2=snow on (type 0 + intensity > 0 = rain on)
+	// intensity: 1-10
+	if (p.Length() >= 10) {  // 2 byte opcode + 8 byte struct
+		uint8_t type = p.GetUInt8(2);
+		uint8_t intensity = p.GetUInt8(6);
+
+		LOG_INFO(MOD_ZONE, "Weather packet: type={}, intensity={}", type, intensity);
+
+		// Forward weather to renderer
+#ifdef EQT_HAS_GRAPHICS
+		if (m_renderer) {
+			m_renderer->setWeather(type, intensity);
+		}
+#endif
+	}
+
 	// Weather is the last packet in Zone Entry phase
 	// Now we can send ReqNewZone
 	if (!m_req_new_zone_sent) {
@@ -8618,6 +8638,60 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(reloadeffects);
+
+	Command reloadweather;
+	reloadweather.name = "reloadweather";
+	reloadweather.aliases = {"weather_reload"};
+	reloadweather.usage = "/reloadweather";
+	reloadweather.description = "Reload weather effects settings from config/weather_effects.json";
+	reloadweather.category = "Utility";
+	reloadweather.handler = [this](const std::string& args) {
+		if (m_renderer && m_renderer->getWeatherEffects()) {
+			if (m_renderer->getWeatherEffects()->reloadConfig()) {
+				AddChatSystemMessage("Weather effects settings reloaded");
+			} else {
+				AddChatSystemMessage("Failed to reload weather settings");
+			}
+		} else {
+			AddChatSystemMessage("Weather effects system not available");
+		}
+	};
+	m_command_registry->registerCommand(reloadweather);
+
+	Command weatherquality;
+	weatherquality.name = "weatherquality";
+	weatherquality.aliases = {"wq", "weatherpreset"};
+	weatherquality.usage = "/weatherquality [low|medium|high|ultra|custom]";
+	weatherquality.description = "Get or set weather effects quality preset";
+	weatherquality.category = "Utility";
+	weatherquality.handler = [this](const std::string& args) {
+		auto& loader = EQT::Graphics::WeatherConfigLoader::instance();
+
+		if (args.empty()) {
+			// Show current preset and particle counts
+			auto preset = loader.getQualityPreset();
+			std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
+			const auto& rain = loader.getRainSettings();
+			const auto& splash = loader.getRainSplashSettings();
+			const auto& snow = loader.getSnowSettings();
+
+			AddChatSystemMessage(fmt::format("Weather quality: {} (rain: {}, splash: {}, snow: {} particles)",
+				presetName, rain.maxParticles, splash.maxParticles, snow.maxParticles));
+			AddChatSystemMessage("Available: low, medium, high, ultra, custom");
+		} else {
+			// Set new preset
+			if (loader.setQualityPreset(args)) {
+				auto preset = loader.getQualityPreset();
+				std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
+				const auto& rain = loader.getRainSettings();
+				AddChatSystemMessage(fmt::format("Weather quality set to: {} (rain: {} particles)",
+					presetName, rain.maxParticles));
+			} else {
+				AddChatSystemMessage("Invalid preset. Use: low, medium, high, ultra, custom");
+			}
+		}
+	};
+	m_command_registry->registerCommand(weatherquality);
 
 	Command frametiming;
 	frametiming.name = "frametiming";

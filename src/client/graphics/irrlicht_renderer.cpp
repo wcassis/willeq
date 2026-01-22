@@ -1,6 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
+#include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/environment/zone_biome.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
@@ -541,6 +542,15 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
     }
 
+    // Create weather effects controller (rain, snow, lightning)
+    weatherEffects_ = std::make_unique<WeatherEffectsController>(
+        smgr_, driver_, particleManager_.get(), skyRenderer_.get());
+    if (!weatherEffects_->initialize()) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
+    }
+    // Connect weather system to weather effects
+    weatherSystem_->addListener(weatherEffects_.get());
+
     // Apply initial settings
     wireframeMode_ = config.wireframe;
     fogEnabled_ = config.fog;
@@ -942,6 +952,15 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     g = std::min(1.0f, g * ambientMultiplier_);
     b = std::min(1.0f, b * ambientMultiplier_);
 
+    // Apply weather effects (darkening for storms)
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        float weatherMod = weatherEffects_->getAmbientLightModifier();
+        r *= weatherMod;
+        g *= weatherMod;
+        b *= weatherMod;
+        sunIntensity *= weatherMod;
+    }
+
     smgr_->setAmbientLight(irr::video::SColorf(r, g, b, 1.0f));
 
     // Update sun light intensity
@@ -964,6 +983,25 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
             irr::f32 fogStart, fogEnd, fogDensity;
             bool pixelFog, rangeFog;
             driver_->getFog(currentFogColor, fogType, fogStart, fogEnd, fogDensity, pixelFog, rangeFog);
+
+            // Apply weather effects to fog
+            if (weatherEffects_ && weatherEffects_->isEnabled()) {
+                // Blend fog color with weather fog color
+                irr::video::SColor weatherFog = weatherEffects_->getWeatherFogColor();
+                float weatherMod = weatherEffects_->getAmbientLightModifier();
+                float blendFactor = 1.0f - weatherMod;  // More blending when darker
+
+                fogColor.setRed(static_cast<uint8_t>(
+                    fogColor.getRed() * (1.0f - blendFactor) + weatherFog.getRed() * blendFactor));
+                fogColor.setGreen(static_cast<uint8_t>(
+                    fogColor.getGreen() * (1.0f - blendFactor) + weatherFog.getGreen() * blendFactor));
+                fogColor.setBlue(static_cast<uint8_t>(
+                    fogColor.getBlue() * (1.0f - blendFactor) + weatherFog.getBlue() * blendFactor));
+
+                // Apply fog density modifier (brings fog closer during storms)
+                float densityMod = weatherEffects_->getFogDensityModifier();
+                fogEnd /= densityMod;
+            }
 
             // Only update fog color if we have valid fog distances
             if (fogEnd > fogStart && fogEnd > 0) {
@@ -3435,6 +3473,13 @@ void IrrlichtRenderer::setNetworkReady(bool ready) {
     // screen stays visible until the player model is fully loaded.
 }
 
+void IrrlichtRenderer::setWeather(uint8_t type, uint8_t intensity) {
+    LOG_DEBUG(MOD_GRAPHICS, "Weather update: type={}, intensity={}", type, intensity);
+    if (weatherEffects_) {
+        weatherEffects_->setWeather(type, intensity);
+    }
+}
+
 void IrrlichtRenderer::checkAndSetZoneReady() {
     // This method is kept for interface compatibility but zone ready
     // is now triggered by player entity creation in createEntity().
@@ -4664,6 +4709,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         weatherSystem_->update(deltaTime);
     }
 
+    // ===== Weather Effects Update =====
+    if (weatherEffects_) {
+        weatherEffects_->update(deltaTime);
+    }
+
     // ===== Environmental Particle System Update =====
     if (particleManager_ && particleManager_->isEnabled()) {
         // Update player position for particle spawning
@@ -4855,6 +4905,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Render ambient creatures (boids)
     if (boidsManager_ && boidsManager_->isEnabled()) {
         boidsManager_->render();
+    }
+
+    // Render weather effects (lightning bolts, etc.)
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        weatherEffects_->render();
     }
 
     // Draw collision debug lines (if debug mode enabled)
@@ -6555,6 +6610,11 @@ void IrrlichtRenderer::setupZoneCollision() {
         // Pass surface map to particle manager for shoreline wave detection
         if (particleManager_ && detailManager_->hasSurfaceMap()) {
             particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+        }
+
+        // Pass surface map to weather effects for water ripples (Phase 7)
+        if (weatherEffects_ && detailManager_->hasSurfaceMap()) {
+            weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
         }
     }
 }
