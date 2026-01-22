@@ -59,3 +59,4 @@ tests/*_tests.cmake
 # Agent screenshots
 .agent/screenshots/
 
+data/detail/zones/
