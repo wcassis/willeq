@@ -6,6 +6,7 @@
 #include <freerdp/freerdp.h>
 #include <freerdp/codec/rfx.h>
 #include <freerdp/codec/nsc.h>
+#include <freerdp/channels/wtsvc.h>
 #include <winpr/stream.h>
 
 #include <iostream>
@@ -25,6 +26,7 @@ BOOL rdpPeerContextNew(freerdp_peer* peer, rdpContext* ctx) {
     context->server = server;
     context->frameId = 0;
     context->activated = false;
+    context->vcm = nullptr;
     context->rfxContext = nullptr;
     context->nscContext = nullptr;
     context->encodeStream = nullptr;
@@ -67,6 +69,9 @@ BOOL rdpPeerContextNew(freerdp_peer* peer, rdpContext* ctx) {
         return FALSE;
     }
 
+    // VCM will be created after freerdp_peer_context_new() returns
+    // (in peerThreadImpl) because some FreeRDP internals aren't ready during ContextNew
+
     return TRUE;
 }
 
@@ -84,6 +89,12 @@ void rdpPeerContextFree(freerdp_peer* peer, rdpContext* ctx) {
     }
     context->audioActivated = false;
     context->selectedAudioFormat = -1;
+
+    // Close virtual channel manager
+    if (context->vcm) {
+        WTSCloseServer(context->vcm);
+        context->vcm = nullptr;
+    }
 
     // Free encoding stream
     if (context->encodeStream) {

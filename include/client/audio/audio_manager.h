@@ -98,6 +98,11 @@ public:
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);
 
+    // Switch to loopback mode for RDP audio streaming
+    // This will reinitialize the audio device in loopback mode
+    // Returns true if already in loopback mode or switch was successful
+    bool enableLoopbackMode();
+
     // Internal: called by sound sources when finished
     void onSoundFinished(ALuint source);
 

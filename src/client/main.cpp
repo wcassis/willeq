@@ -929,6 +929,12 @@ int main(int argc, char *argv[]) {
 					if (renderer->initRDP(rdp_port)) {
 						if (renderer->startRDPServer()) {
 							LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", rdp_port);
+							// Set up RDP audio streaming for all clients
+							for (auto& eq : eq_list) {
+								if (eq) {
+									eq->SetupRDPAudio();
+								}
+							}
 						} else {
 							LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
 						}

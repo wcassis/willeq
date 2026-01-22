@@ -39,6 +39,9 @@ struct RDPPeerContext {
     // Connection state
     bool activated;
 
+    // Virtual channel manager for this peer
+    HANDLE vcm;
+
     // Audio context for RDPSND
     RdpsndServerContext* rdpsndContext;
     bool audioActivated;

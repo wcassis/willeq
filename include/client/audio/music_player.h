@@ -55,6 +55,14 @@ public:
     // Output callback for RDP streaming
     void setOutputCallback(MusicOutputCallback callback);
 
+    // Enable software rendering mode (for loopback/RDP)
+    // When enabled, FluidSynth renders through OpenAL instead of its own audio driver
+    void enableSoftwareRendering();
+    bool isSoftwareRendering() const { return softwareRendering_; }
+
+    // Reinitialize OpenAL resources (call after context change)
+    void reinitializeOpenAL();
+
 private:
     // Streaming thread
     void streamingThread();
@@ -110,10 +118,34 @@ private:
     fluid_audio_driver_t* fluidAudioDriver_ = nullptr;
     fluid_player_t* fluidPlayer_ = nullptr;
     int soundFontId_ = -1;
+
+    // Manual MIDI sequencer for software rendering mode
+    // (fluid_player doesn't work without audio driver callbacks)
+    struct MidiEvent {
+        uint64_t tick;      // Time in MIDI ticks
+        uint8_t type;       // Event type (0x80-0xF0)
+        uint8_t channel;    // MIDI channel (0-15)
+        uint8_t data1;      // First data byte
+        uint8_t data2;      // Second data byte (if applicable)
+    };
+    std::vector<MidiEvent> midiEvents_;
+    size_t midiEventIndex_ = 0;
+    uint64_t midiTickPosition_ = 0;
+    uint32_t midiTicksPerBeat_ = 480;  // Default PPQN
+    uint32_t midiTempo_ = 500000;      // Default tempo (microseconds per beat) = 120 BPM
+    uint64_t samplePosition_ = 0;      // Current sample position for timing
+
+    // Parse MIDI data for software sequencing
+    bool parseMidiEvents(const std::vector<uint8_t>& midiData);
+    void processMidiEvents(size_t samplesToRender);
 #endif
 
     // RDP output callback
     MusicOutputCallback outputCallback_;
+
+    // Software rendering mode (for loopback/RDP)
+    bool softwareRendering_ = false;
+    std::atomic<bool> fluidSynthStreaming_{false};  // true when streaming FluidSynth output
 };
 
 } // namespace Audio

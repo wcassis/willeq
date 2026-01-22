@@ -85,12 +85,10 @@ Particle* ParticleEmitter::spawnParticle() {
 }
 
 void ParticleEmitter::killParticle(Particle& p) {
-    // Note: lifetime may already be <= 0 when called from update loop
-    // Only decrement if we haven't already counted this particle as dead
-    if (p.lifetime != 0.0f) {
+    if (p.isAlive()) {
+        p.lifetime = 0.0f;
         activeCount_--;
     }
-    p.lifetime = 0.0f;
 }
 
 void ParticleEmitter::clearAllParticles() {

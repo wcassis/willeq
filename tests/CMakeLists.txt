@@ -639,7 +639,7 @@ IF(WITH_RDP)
         ${FREERDP_INCLUDE_DIRS}
     )
     TARGET_COMPILE_DEFINITIONS(test_rdp_server PRIVATE WITH_RDP)
-    TARGET_LINK_LIBRARIES(test_rdp_server GTest::gtest_main ${FREERDP_LIBRARIES} freerdp-server3 ${FMT_LIB})
+    TARGET_LINK_LIBRARIES(test_rdp_server GTest::gtest_main ${FREERDP_LIBRARIES} freerdp-server3 ${FMT_LIB} ${OPENSSL_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_rdp_server)
 ENDIF()
 
@@ -726,4 +726,23 @@ IF(WITH_AUDIO)
     ENDIF()
     TARGET_LINK_LIBRARIES(test_combat_music ${COMBAT_MUSIC_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_combat_music)
+
+    # Music loopback compare test (manual test for debugging RDP audio)
+    ADD_EXECUTABLE(test_music_loopback_compare
+        test_music_loopback_compare.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/music_player.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/xmi_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_music_loopback_compare PRIVATE
+        ${OPENAL_INCLUDE_DIRS}
+        ${SNDFILE_INCLUDE_DIRS}
+    )
+    TARGET_COMPILE_DEFINITIONS(test_music_loopback_compare PRIVATE WITH_AUDIO)
+    SET(LOOPBACK_COMPARE_TEST_LIBS GTest::gtest ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES} ${FMT_LIB})
+    IF(FLUIDSYNTH_FOUND)
+        TARGET_COMPILE_DEFINITIONS(test_music_loopback_compare PRIVATE WITH_FLUIDSYNTH)
+        LIST(APPEND LOOPBACK_COMPARE_TEST_LIBS ${FLUIDSYNTH_LIBRARIES})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(test_music_loopback_compare ${LOOPBACK_COMPARE_TEST_LIBS})
+    # Note: Not using GTEST_DISCOVER_TESTS as this is a manual command-line tool
 ENDIF()

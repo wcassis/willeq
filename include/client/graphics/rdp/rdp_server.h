@@ -7,6 +7,8 @@
 #include <freerdp/listener.h>
 #include <freerdp/server/rdpsnd.h>
 #include <freerdp/codec/audio.h>
+#include <freerdp/crypto/certificate.h>
+#include <freerdp/crypto/privatekey.h>
 
 #include <thread>
 #include <atomic>
@@ -193,7 +195,14 @@ public:
     const std::string& getCertPath() const { return certPath_; }
     const std::string& getKeyPath() const { return keyPath_; }
 
+    // Create new certificate and key objects for a peer (caller takes ownership)
+    // Each peer needs its own copy since FreeRDP frees them on disconnect
+    rdpCertificate* createPeerCertificate();
+    rdpPrivateKey* createPeerKey();
+
 private:
+    // Generate a self-signed certificate and key using OpenSSL
+    bool generateSelfSignedCertificate();
     // Listener thread function
     void listenerThread();
 
@@ -221,6 +230,13 @@ private:
     uint32_t height_;
     std::string certPath_;
     std::string keyPath_;
+
+    // Certificate and key PEM data (stored as strings so we can create
+    // fresh copies for each peer - FreeRDP takes ownership of the objects)
+    std::string certPem_;
+    std::string keyPem_;
+    bool certGenerated_ = false;
+    std::mutex certMutex_;  // Protects cert generation
 
     // Frame buffer (double-buffered for thread safety)
     std::mutex frameMutex_;
