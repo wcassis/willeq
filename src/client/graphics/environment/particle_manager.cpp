@@ -6,6 +6,7 @@
 #include "client/graphics/environment/emitters/firefly_emitter.h"
 #include "client/graphics/environment/emitters/mist_emitter.h"
 #include "client/graphics/environment/emitters/sand_dust_emitter.h"
+#include "client/graphics/environment/emitters/shoreline_wave_emitter.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
@@ -249,6 +250,22 @@ void ParticleManager::reloadSettings() {
     LOG_INFO(MOD_GRAPHICS, "ParticleManager: Reloaded settings for {} emitters", emitters_.size());
 }
 
+void ParticleManager::setSurfaceMap(const Detail::SurfaceMap* surfaceMap) {
+    surfaceMap_ = surfaceMap;
+
+    // Propagate to all emitters that need terrain data
+    for (auto& emitter : emitters_) {
+        if (emitter) {
+            emitter->setSurfaceMap(surfaceMap);
+        }
+    }
+
+    if (surfaceMap) {
+        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Set surface map, propagated to {} emitters",
+                  emitters_.size());
+    }
+}
+
 void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Setting up emitters for biome {}",
               static_cast<int>(biome));
@@ -270,6 +287,15 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
     };
 
     // Set up emitters based on biome
+    // Helper to create and configure shoreline wave emitter
+    auto addShorelineEmitter = [&]() {
+        auto emitter = std::make_unique<ShorelineWaveEmitter>();
+        if (surfaceMap_) {
+            emitter->setSurfaceMap(surfaceMap_);
+        }
+        addEmitter(std::move(emitter));
+    };
+
     switch (biome) {
         case ZoneBiome::Forest:
             // Forests: pollen (day), fireflies (night), dust motes
@@ -278,20 +304,25 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
             addEmitter(std::make_unique<DustMoteEmitter>());
             if (zoneHasWater) {
                 addEmitter(std::make_unique<MistEmitter>());
+                addShorelineEmitter();
             }
             break;
 
         case ZoneBiome::Swamp:
-            // Swamps: heavy mist, fireflies, pollen
+            // Swamps: heavy mist, fireflies, pollen, gentle shoreline waves
             addEmitter(std::make_unique<MistEmitter>());
             addEmitter(std::make_unique<FireflyEmitter>());
             addEmitter(std::make_unique<PollenEmitter>());
+            addShorelineEmitter();
             break;
 
         case ZoneBiome::Desert:
-            // Deserts: blowing sand, dust motes
+            // Deserts: blowing sand, dust motes, and shoreline waves for oases
             addEmitter(std::make_unique<SandDustEmitter>());
             addEmitter(std::make_unique<DustMoteEmitter>());
+            if (zoneHasWater) {
+                addShorelineEmitter();
+            }
             break;
 
         case ZoneBiome::Plains:
@@ -301,13 +332,15 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
             if (zoneHasWater) {
                 addEmitter(std::make_unique<MistEmitter>());
                 addEmitter(std::make_unique<FireflyEmitter>());
+                addShorelineEmitter();
             }
             break;
 
         case ZoneBiome::Ocean:
-            // Ocean/coastal: mist, dust motes
+            // Ocean/coastal: mist, dust motes, shoreline waves
             addEmitter(std::make_unique<MistEmitter>());
             addEmitter(std::make_unique<DustMoteEmitter>());
+            addShorelineEmitter();
             break;
 
         case ZoneBiome::Dungeon:
@@ -363,7 +396,7 @@ void ParticleManager::createDefaultAtlas() {
         return;
     }
 
-    // Create a procedural particle atlas (64x32 with 4x2 tiles of 16x16 each)
+    // Create a procedural particle atlas (64x48 with 4x3 tiles of 16x16 each)
     const int tileSize = 16;
     const int atlasWidth = tileSize * ParticleAtlas::AtlasColumns;
     const int atlasHeight = tileSize * ParticleAtlas::AtlasRows;
@@ -462,6 +495,16 @@ void ParticleManager::createDefaultAtlas() {
 
     // Tile 7: Ember - orange-red glow
     drawCircle(3, 1, 0.6f, irr::video::SColor(255, 255, 150, 50));
+
+    // Row 2: Wave particles
+    // Tile 8: Foam spray - white wispy shape
+    drawCircle(0, 2, 0.7f, irr::video::SColor(230, 255, 255, 255));
+
+    // Tile 9: Water droplet - small blue-white sphere
+    drawCircle(1, 2, 0.4f, irr::video::SColor(200, 200, 230, 255));
+
+    // Tiles 10-11: Reserved for future use
+    // (empty for now)
 
     // Create texture from image
     atlasTexture_ = driver_->addTexture("particle_atlas", img);

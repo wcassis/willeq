@@ -2296,8 +2296,15 @@ void IrrlichtRenderer::createZoneMesh() {
             animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
             int animCount = animatedTextureManager_->initialize(
                 *currentZone_->geometry, currentZone_->textures, mesh);
+
+            // Auto-detect water texture animations by naming pattern (water01, water02, etc.)
+            int waterAnimCount = animatedTextureManager_->detectWaterAnimations(
+                currentZone_->textures, mesh);
+            animCount += waterAnimCount;
+
             if (animCount > 0) {
-                LOG_DEBUG(MOD_GRAPHICS, "Initialized {} animated zone textures", animCount);
+                LOG_DEBUG(MOD_GRAPHICS, "Initialized {} animated zone textures ({} water auto-detected)",
+                          animCount, waterAnimCount);
                 // Register the zone scene node for animated texture updates
                 animatedTextureManager_->addSceneNode(zoneMeshNode_);
             }
@@ -2515,12 +2522,33 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
         LOG_INFO(MOD_GRAPHICS, "All {} geometries are referenced by BSP regions", allGeometries.size());
     }
 
-    // Initialize animated texture manager for the combined geometry
-    // (animated textures still use the combined geometry for now)
+    // Initialize animated texture manager for water and other animated textures
     if (currentZone_->geometry) {
         animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
-        // Note: We're not registering individual region nodes for texture animation yet
-        // This could be improved later to animate textures per-region
+
+        // Initialize with zone geometry for WLD-defined animations
+        int animCount = animatedTextureManager_->initialize(
+            *currentZone_->geometry, currentZone_->textures, nullptr);
+
+        // Auto-detect water texture animations by naming pattern (water01, water02, w1, w2, etc.)
+        int waterAnimCount = animatedTextureManager_->detectWaterAnimations(
+            currentZone_->textures, nullptr);
+        animCount += waterAnimCount;
+
+        if (animCount > 0) {
+            LOG_DEBUG(MOD_GRAPHICS, "PVS: Initialized {} animated textures ({} water auto-detected)",
+                      animCount, waterAnimCount);
+
+            // Register all region mesh nodes for animated texture updates
+            for (auto& [regionIdx, node] : regionMeshNodes_) {
+                if (node) {
+                    animatedTextureManager_->addSceneNode(node);
+                }
+            }
+            if (fallbackMeshNode_) {
+                animatedTextureManager_->addSceneNode(fallbackMeshNode_);
+            }
+        }
     }
 }
 
@@ -6450,6 +6478,11 @@ void IrrlichtRenderer::setupZoneCollision() {
                 }
             }
             LOG_DEBUG(MOD_GRAPHICS, "Detail system added {} region meshes for texture lookups", addedCount);
+        }
+
+        // Pass surface map to particle manager for shoreline wave detection
+        if (particleManager_ && detailManager_->hasSurfaceMap()) {
+            particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
         }
     }
 }

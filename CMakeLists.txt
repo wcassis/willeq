@@ -382,6 +382,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/firefly_emitter.cpp
         src/client/graphics/environment/emitters/mist_emitter.cpp
         src/client/graphics/environment/emitters/sand_dust_emitter.cpp
+        src/client/graphics/environment/emitters/shoreline_wave_emitter.cpp
         # Boids (ambient creatures) system
         src/client/graphics/environment/flock_controller.cpp
         src/client/graphics/environment/boids_manager.cpp

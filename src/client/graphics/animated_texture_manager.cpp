@@ -1,8 +1,10 @@
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/eq/dds_decoder.h"
+#include "common/logging.h"
 #include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <iomanip>
 
 namespace EQT {
 namespace Graphics {
@@ -364,6 +366,155 @@ std::string AnimatedTextureManager::getDebugInfo() const {
            << ", " << state.affectedBuffers.size() << " buffers\n";
     }
     return ss.str();
+}
+
+std::vector<std::string> AnimatedTextureManager::findTextureSequence(
+    const std::string& baseName,
+    const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) const {
+
+    std::vector<std::string> frames;
+
+    // Common extensions to try
+    const std::vector<std::string> extensions = {"", ".bmp", ".dds", ".png"};
+
+    // Try numbered patterns: base01, base02, ... or base1, base2, ...
+    for (int num = 0; num <= 99; ++num) {
+        bool found = false;
+
+        // Try two-digit pattern (e.g., water01)
+        std::stringstream ss2;
+        ss2 << baseName << std::setfill('0') << std::setw(2) << num;
+        std::string twoDigit = ss2.str();
+        std::transform(twoDigit.begin(), twoDigit.end(), twoDigit.begin(), ::tolower);
+
+        for (const auto& ext : extensions) {
+            std::string name = twoDigit + ext;
+            auto it = textures.find(name);
+            if (it != textures.end()) {
+                frames.push_back(name);
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        // Try single-digit pattern (e.g., water1, w1)
+        std::stringstream ss1;
+        ss1 << baseName << num;
+        std::string oneDigit = ss1.str();
+        std::transform(oneDigit.begin(), oneDigit.end(), oneDigit.begin(), ::tolower);
+
+        for (const auto& ext : extensions) {
+            std::string name = oneDigit + ext;
+            auto it = textures.find(name);
+            if (it != textures.end()) {
+                frames.push_back(name);
+                found = true;
+                break;
+            }
+        }
+
+        // If we haven't found anything after checking num=10 and no frames yet, stop early
+        if (num >= 10 && frames.empty()) {
+            break;
+        }
+        // If we found frames but this number is missing, stop (sequence ended)
+        if (!found && !frames.empty()) {
+            break;
+        }
+    }
+
+    return frames;
+}
+
+int AnimatedTextureManager::detectWaterAnimations(
+    const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
+    irr::scene::IMesh* mesh) {
+
+    int addedCount = 0;
+
+    // Common water texture base names in EQ
+    // Note: "w" catches w1, w2, w3, w4 pattern used in oasis and other zones
+    std::vector<std::string> waterBases = {
+        "water", "watr", "lava", "lavaf", "lavab", "wtr",
+        "river", "sea", "ocean", "swamp", "pond", "lake", "w"
+    };
+
+    // Look for texture sequences for each base
+    for (const std::string& baseName : waterBases) {
+        std::string lowerBase = baseName;
+        std::transform(lowerBase.begin(), lowerBase.end(), lowerBase.begin(), ::tolower);
+
+        // Skip if we already have this animated
+        if (animatedTextures_.find(lowerBase) != animatedTextures_.end()) {
+            continue;
+        }
+
+        // Find sequence
+        std::vector<std::string> frames = findTextureSequence(baseName, textures);
+
+        // Need at least 2 frames for animation
+        if (frames.size() < 2) {
+            continue;
+        }
+
+        // Create animated texture state
+        AnimatedTextureState state;
+        state.animationDelayMs = 150;  // Default water animation speed
+        state.currentFrame = 0;
+        state.elapsedMs = 0;
+
+        // Load all frame textures
+        for (const std::string& frameName : frames) {
+            auto texIt = textures.find(frameName);
+            if (texIt != textures.end() && texIt->second) {
+                irr::video::ITexture* frameTex = loadTexture(frameName, texIt->second->data);
+                if (frameTex) {
+                    state.frameTextures.push_back(frameTex);
+                }
+            }
+        }
+
+        if (state.frameTextures.size() < 2) {
+            continue;  // Failed to load enough frames
+        }
+
+        // Find mesh buffers using any of these textures
+        if (mesh) {
+            for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
+                irr::scene::IMeshBuffer* buffer = mesh->getMeshBuffer(b);
+                irr::video::ITexture* bufTex = buffer->getMaterial().getTexture(0);
+                if (!bufTex) continue;
+
+                std::string bufTexName = bufTex->getName().getPath().c_str();
+                std::transform(bufTexName.begin(), bufTexName.end(), bufTexName.begin(), ::tolower);
+
+                // Strip dds_ prefix
+                if (bufTexName.substr(0, 4) == "dds_") {
+                    bufTexName = bufTexName.substr(4);
+                }
+
+                // Check if this buffer uses any frame texture
+                for (const std::string& frameName : frames) {
+                    if (bufTexName == frameName) {
+                        state.affectedBuffers.push_back(buffer);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Only add if we found mesh buffers using it
+        if (!state.affectedBuffers.empty() || state.affectedMaterials.empty()) {
+            // Use first frame as key
+            animatedTextures_[frames[0]] = state;
+            addedCount++;
+            LOG_DEBUG(MOD_GRAPHICS, "AnimatedTextureManager: Auto-detected water animation '{}' with {} frames, {} buffers",
+                      frames[0], state.frameTextures.size(), state.affectedBuffers.size());
+        }
+    }
+
+    return addedCount;
 }
 
 } // namespace Graphics

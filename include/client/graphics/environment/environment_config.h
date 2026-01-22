@@ -103,6 +103,7 @@ public:
     const EmitterSettings& getFireflies() const { return fireflies_; }
     const EmitterSettings& getMist() const { return mist_; }
     const EmitterSettings& getSandDust() const { return sandDust_; }
+    const EmitterSettings& getShorelineWaves() const { return shorelineWaves_; }
     const DetailSettings& getDetailObjects() const { return detailObjects_; }
     const BoidsSettings& getBoids() const { return boids_; }
 
@@ -138,6 +139,7 @@ private:
     EmitterSettings fireflies_;
     EmitterSettings mist_;
     EmitterSettings sandDust_;
+    EmitterSettings shorelineWaves_;
     DetailSettings detailObjects_;
     BoidsSettings boids_;
 

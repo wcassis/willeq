@@ -10,6 +10,9 @@
 
 namespace EQT {
 namespace Graphics {
+namespace Detail {
+    class SurfaceMap;  // Forward declaration
+}
 namespace Environment {
 
 /**
@@ -147,6 +150,13 @@ public:
      */
     void reloadSettings();
 
+    /**
+     * Set the surface map for shoreline detection.
+     * Called by renderer after loading zone surface data.
+     * Propagates to all emitters that need terrain data.
+     */
+    void setSurfaceMap(const Detail::SurfaceMap* surfaceMap);
+
 private:
     /**
      * Create emitters appropriate for the given biome.
@@ -202,6 +212,9 @@ private:
 
     // Environment state
     EnvironmentState envState_;
+
+    // Surface map for shoreline detection (owned externally, e.g., by DetailObjectManager)
+    const Detail::SurfaceMap* surfaceMap_ = nullptr;
 };
 
 } // namespace Environment

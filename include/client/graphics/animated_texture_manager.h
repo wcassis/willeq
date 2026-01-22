@@ -66,7 +66,16 @@ public:
     // Get debug info
     std::string getDebugInfo() const;
 
+    // Auto-detect water texture animations by naming pattern (e.g., water01, water02)
+    // Call this after initialize() to add water animations not flagged in WLD
+    // Returns the number of water texture animations added
+    int detectWaterAnimations(const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
+                              irr::scene::IMesh* mesh);
+
 private:
+    // Helper to find animated sequence by base name pattern (e.g., "water" -> water01, water02, ...)
+    std::vector<std::string> findTextureSequence(const std::string& baseName,
+                                                   const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) const;
     // Load a texture from raw data
     irr::video::ITexture* loadTexture(const std::string& name,
                                        const std::vector<char>& data);

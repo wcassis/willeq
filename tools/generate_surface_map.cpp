@@ -81,10 +81,14 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
     // === EXCLUSIONS FIRST - textures that are NOT walkable ground ===
 
     // Water/lava - exclude from detail placement
+    // Common water texture patterns: water*, w1-w9 (oasis, ocean zones), watr*, sea*, ocean*
     if (name.find("water") != std::string::npos ||
         name.find("falls") != std::string::npos ||
         name.find("fount") != std::string::npos ||
-        name.find("agua") != std::string::npos) {
+        name.find("agua") != std::string::npos ||
+        name.find("ocean") != std::string::npos ||
+        name.find("sea") == 0 ||  // sea* but not "seat" etc - startsWith
+        (name.length() >= 2 && name[0] == 'w' && name[1] >= '1' && name[1] <= '9')) {  // w1, w2, w3, w4, etc.
         return SurfaceType::Water;
     }
     if (name.find("lava") != std::string::npos ||
@@ -219,7 +223,8 @@ SurfaceType classifyTexture(const std::string& textureName, const std::string& z
     if (name.find("sand") != std::string::npos ||
         name.find("beach") != std::string::npos ||
         name.find("desert") != std::string::npos ||
-        name.find("dune") != std::string::npos) {
+        name.find("dune") != std::string::npos ||
+        startsWith("sfs")) {  // sfs = sandy floor seaside (oasis zone)
         return SurfaceType::Sand;
     }
 
@@ -546,6 +551,80 @@ int main(int argc, char* argv[]) {
 
                 // Classify surface type
                 SurfaceType surfType = classifyTexture(texName, zoneName);
+
+                // WATER OVERLAP FIX: If we found a water surface, check if there's
+                // a ground surface slightly below it. Water planes in EQ often overlap
+                // beach/shoreline geometry, but we want to classify those areas as their
+                // ground type (Sand, etc.) rather than Water.
+                if (surfType == SurfaceType::Water) {
+                    float groundZ = -10000.0f;
+                    size_t groundTriIdx = SIZE_MAX;
+
+                    for (const auto& aabb : triangleAABBs) {
+                        // Quick AABB rejection
+                        if (worldX < aabb.minX || worldX > aabb.maxX ||
+                            worldY < aabb.minY || worldY > aabb.maxY) {
+                            continue;
+                        }
+
+                        // Skip if this is the water triangle we already found
+                        if (aabb.index == bestTriIdx) continue;
+
+                        // Skip if this triangle is ABOVE our water (ceiling)
+                        if (aabb.minZ > bestZ) continue;
+
+                        const auto& gTri = geom.triangles[aabb.index];
+                        const auto& v1 = geom.vertices[gTri.v1];
+                        const auto& v2 = geom.vertices[gTri.v2];
+                        const auto& v3 = geom.vertices[gTri.v3];
+
+                        // Calculate triangle normal
+                        float ux = v2.x - v1.x, uy = v2.y - v1.y, uz = v2.z - v1.z;
+                        float vx = v3.x - v1.x, vy = v3.y - v1.y, vz = v3.z - v1.z;
+                        float nx = uy * vz - uz * vy;
+                        float ny = uz * vx - ux * vz;
+                        float nz = ux * vy - uy * vx;
+                        float len = std::sqrt(nx*nx + ny*ny + nz*nz);
+                        if (len > 0.0001f) nz /= len;
+
+                        // Only consider walkable surfaces (slope < 60 degrees)
+                        if (nz < 0.5f) continue;
+
+                        // Point-in-triangle test
+                        if (pointInTriangle2D(worldX, worldY, v1.x, v1.y, v2.x, v2.y, v3.x, v3.y)) {
+                            float avgZ = (v1.z + v2.z + v3.z) / 3.0f;
+
+                            // Check if this ground is below the water (within reasonable distance)
+                            // and above any previously found ground
+                            if (avgZ < bestZ && avgZ > groundZ && (bestZ - avgZ) < 10.0f) {
+                                // Check texture type
+                                std::string gTexName;
+                                if (gTri.textureIndex < geom.textureNames.size()) {
+                                    gTexName = geom.textureNames[gTri.textureIndex];
+                                }
+                                SurfaceType gSurfType = classifyTexture(gTexName, zoneName);
+
+                                // If this is a valid ground type (not water/lava/unknown), use it
+                                if (gSurfType != SurfaceType::Water &&
+                                    gSurfType != SurfaceType::Lava &&
+                                    gSurfType != SurfaceType::Unknown) {
+                                    groundZ = avgZ;
+                                    groundTriIdx = aabb.index;
+                                }
+                            }
+                        }
+                    }
+
+                    // If we found ground beneath the water, use that instead
+                    if (groundTriIdx != SIZE_MAX) {
+                        const auto& gTri = geom.triangles[groundTriIdx];
+                        if (gTri.textureIndex < geom.textureNames.size()) {
+                            texName = geom.textureNames[gTri.textureIndex];
+                        }
+                        surfType = classifyTexture(texName, zoneName);
+                        bestZ = groundZ;  // Use ground height, not water height
+                    }
+                }
 
                 // Check BSP for water/lava override
                 if (bspTree) {

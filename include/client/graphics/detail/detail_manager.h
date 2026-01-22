@@ -48,6 +48,7 @@ public:
     // Surface map configuration (pre-computed surface type data)
     void setSurfaceMapsPath(const std::string& path);
     bool hasSurfaceMap() const { return surfaceMap_.isLoaded(); }
+    const SurfaceMap* getSurfaceMap() const { return surfaceMap_.isLoaded() ? &surfaceMap_ : nullptr; }
 
     // Add additional mesh nodes for texture lookup (for PVS mode with multiple region meshes)
     void addMeshNodeForTextureLookup(irr::scene::IMeshSceneNode* node);
