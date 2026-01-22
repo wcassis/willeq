@@ -1,6 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
+#include "client/graphics/environment/zone_biome.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -113,6 +114,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::TogglePetWindow: petToggleRequested_ = true; break;
                     case HA::ToggleSpellbook: spellbookToggleRequested_ = true; break;
                     case HA::ToggleBuffWindow: buffWindowToggleRequested_ = true; break;
+                    case HA::ToggleOptions: optionsToggleRequested_ = true; break;
                     case HA::ToggleVendor: vendorToggleRequested_ = true; break;
                     case HA::ToggleTrainer: trainerToggleRequested_ = true; break;
                     case HA::ToggleCollision: collisionToggleRequested_ = true; break;
@@ -521,6 +523,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         }
     });
 
+    // Create environmental particle system
+    particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
+    if (!particleManager_->init(config.eqClientPath)) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
+    }
+
     // Apply initial settings
     wireframeMode_ = config.wireframe;
     fogEnabled_ = config.fog;
@@ -649,6 +657,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
                 treeManager_->setWeather(weather);
             }
         });
+    }
+
+    // Create environmental particle system (needed before loadZone())
+    if (!particleManager_) {
+        particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
+        if (!particleManager_->init(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
+        }
     }
 
     initialized_ = true;
@@ -1959,6 +1975,14 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         weatherSystem_->setWeatherFromZone(zoneName);
     }
 
+    // Initialize environmental particle system for this zone
+    if (particleManager_) {
+        Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(zoneName);
+        particleManager_->onZoneEnter(zoneName, biome);
+        LOG_INFO(MOD_GRAPHICS, "Environmental particles enabled for zone '{}' (biome: {})",
+                 zoneName, static_cast<int>(biome));
+    }
+
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
     // Log texture cache stats (cache was frozen at start of zone load)
@@ -1999,6 +2023,11 @@ void IrrlichtRenderer::unloadZone() {
     // Clear tree wind animation system
     if (treeManager_) {
         treeManager_->cleanup();
+    }
+
+    // Clear environmental particle system
+    if (particleManager_) {
+        particleManager_->onZoneLeave();
     }
 
     // Now safe to remove zone collision selector
@@ -4312,6 +4341,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle options window toggle (O key) - works in ALL modes, and only if chat is not focused
+    if (eventReceiver_->optionsToggleRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            windowManager_->toggleOptionsWindow();
+        }
+    }
+
     // Handle door interaction (U key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->doorInteractRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
@@ -4521,6 +4557,18 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         weatherSystem_->update(deltaTime);
     }
 
+    // ===== Environmental Particle System Update =====
+    if (particleManager_ && particleManager_->isEnabled()) {
+        // Update player position for particle spawning
+        particleManager_->setPlayerPosition(
+            glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
+        // Update time of day
+        float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+        particleManager_->setTimeOfDay(timeOfDay);
+        // Update particles
+        particleManager_->update(deltaTime);
+    }
+
     // ===== Tree Wind Animation Update =====
     if (treeManager_ && treeManager_->isEnabled()) {
         // Use camera position for distance-based animation culling
@@ -4654,6 +4702,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Draw bounding box around repair target (if in Repair mode with target)
     if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
         drawRepairTargetBoundingBox();
+    }
+
+    // Render environmental particles
+    if (particleManager_ && particleManager_->isEnabled()) {
+        particleManager_->render();
     }
 
     // Draw collision debug lines (if debug mode enabled)
@@ -7105,6 +7158,40 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
                                           entityRenderer_->getRaceModelLoader(),
                                           entityRenderer_->getEquipmentModelLoader());
         }
+
+        // Set up display settings callback for environmental particles
+        windowManager_->setDisplaySettingsChangedCallback([this]() {
+            if (particleManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
+                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+
+                // Map UI EffectQuality to particle system EffectQuality
+                Environment::EffectQuality quality;
+                switch (settings.environmentQuality) {
+                    case eqt::ui::EffectQuality::Off:
+                        quality = Environment::EffectQuality::Off;
+                        break;
+                    case eqt::ui::EffectQuality::Low:
+                        quality = Environment::EffectQuality::Low;
+                        break;
+                    case eqt::ui::EffectQuality::Medium:
+                        quality = Environment::EffectQuality::Medium;
+                        break;
+                    case eqt::ui::EffectQuality::High:
+                        quality = Environment::EffectQuality::High;
+                        break;
+                    default:
+                        quality = Environment::EffectQuality::Medium;
+                        break;
+                }
+
+                particleManager_->setQuality(quality);
+                particleManager_->setEnabled(settings.atmosphericParticles);
+                particleManager_->setDensity(settings.environmentDensity);
+
+                LOG_DEBUG(MOD_GRAPHICS, "Particle settings updated: quality={}, enabled={}, density={}",
+                         static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity);
+            }
+        });
 
         // Set up chat callback if already registered
         if (chatSubmitCallback_) {

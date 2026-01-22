@@ -81,6 +81,7 @@ enum class HotkeyAction : uint32_t {
     ToggleTrainer,
     ToggleSpellbook,    // Spellbook window (Ctrl+B)
     ToggleBuffWindow,   // Buff window (Alt+B)
+    ToggleOptions,      // Options window (O key) - available in all modes
     ToggleCollision,
     ToggleCollisionDebug,
     ToggleZoneLineVisualization,

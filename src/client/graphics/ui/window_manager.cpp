@@ -4316,6 +4316,61 @@ void WindowManager::setHotbarCreateCallback(HotbarCreateCallback callback) {
 }
 
 // ============================================================================
+// Options Window Management
+// ============================================================================
+
+void WindowManager::initOptionsWindow() {
+    optionsWindow_ = std::make_unique<OptionsWindow>();
+    optionsWindow_->setSettingsKey("options");
+    optionsWindow_->positionDefault(screenWidth_, screenHeight_);
+
+    // Set up callback
+    if (displaySettingsChangedCallback_) {
+        optionsWindow_->setDisplaySettingsChangedCallback(displaySettingsChangedCallback_);
+    }
+
+    LOG_DEBUG(MOD_UI, "Options window initialized");
+}
+
+void WindowManager::toggleOptionsWindow() {
+    if (!optionsWindow_) {
+        initOptionsWindow();
+    }
+    if (optionsWindow_->isVisible()) {
+        closeOptionsWindow();
+    } else {
+        openOptionsWindow();
+    }
+}
+
+void WindowManager::openOptionsWindow() {
+    if (!optionsWindow_) {
+        initOptionsWindow();
+    }
+    if (optionsWindow_) {
+        optionsWindow_->show();
+        bringToFront(optionsWindow_.get());
+    }
+}
+
+void WindowManager::closeOptionsWindow() {
+    if (optionsWindow_) {
+        optionsWindow_->hide();
+    }
+}
+
+bool WindowManager::isOptionsWindowOpen() const {
+    return optionsWindow_ && optionsWindow_->isVisible();
+}
+
+void WindowManager::setDisplaySettingsChangedCallback(DisplaySettingsChangedCallback callback) {
+    displaySettingsChangedCallback_ = callback;
+    if (optionsWindow_) {
+        optionsWindow_->setDisplaySettingsChangedCallback(callback);
+    }
+}
+
+// ============================================================================
 // Skill Trainer Window Management
 // ============================================================================
 

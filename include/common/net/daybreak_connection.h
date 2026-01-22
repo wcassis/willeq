@@ -289,6 +289,7 @@ namespace EQ
 				resend_timeout = 30000;
 				connection_close_time = 2000;
 				outgoing_data_rate = 0.0;
+				skip_crc_validation = false;
 			}
 
 			size_t max_packet_size;
@@ -312,6 +313,7 @@ namespace EQ
 			DaybreakEncodeType encode_passes[2];
 			int port;
 			double outgoing_data_rate;
+			bool skip_crc_validation;
 		};
 
 		class DaybreakConnectionManager
