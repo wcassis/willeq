@@ -45,10 +45,10 @@ void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
 	if (!m_attached) {
 		static int manager_counter = 0;
 		int manager_id = manager_counter++;
-		LOG_DEBUG(MOD_NET, "Attach() called, manager_id={} manager_ptr={} loop={} loop_alive={}", manager_id, (void*)this, (void*)loop, uv_loop_alive(loop));
+		LOG_TRACE(MOD_NET, "Attach() called, manager_id={} manager_ptr={} loop={} loop_alive={}", manager_id, (void*)this, (void*)loop, uv_loop_alive(loop));
 
 		int timer_init_result = uv_timer_init(loop, &m_timer);
-		LOG_DEBUG(MOD_NET, "Attach() timer_init={}", timer_init_result);
+		LOG_TRACE(MOD_NET, "Attach() timer_init={}", timer_init_result);
 
 		m_timer.data = this;
 
@@ -75,13 +75,13 @@ void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
 		}, update_rate, update_rate);
 
 		int udp_init_result = uv_udp_init(loop, &m_socket);
-		LOG_DEBUG(MOD_NET, "Attach() udp_init={}", udp_init_result);
+		LOG_TRACE(MOD_NET, "Attach() udp_init={}", udp_init_result);
 
 		m_socket.data = this;
 		struct sockaddr_in recv_addr;
 		uv_ip4_addr("0.0.0.0", m_options.port, &recv_addr);
 		int rc = uv_udp_bind(&m_socket, (const struct sockaddr *)&recv_addr, UV_UDP_REUSEADDR);
-		LOG_DEBUG(MOD_NET, "Attach() udp_bind={} port={}", rc, m_options.port);
+		LOG_TRACE(MOD_NET, "Attach() udp_bind={} port={}", rc, m_options.port);
 
 		// Increase socket receive buffer to handle packet bursts (1MB)
 		// Use SO_RCVBUFFORCE to bypass kernel limit (requires CAP_NET_ADMIN)
@@ -97,7 +97,7 @@ void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
 		}
 		socklen_t optlen = sizeof(rcvbuf_size);
 		getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_size, &optlen);
-		LOG_DEBUG(MOD_NET, "Attach() socket_fd={} rcvbuf_size={}", fd, rcvbuf_size);
+		LOG_TRACE(MOD_NET, "Attach() socket_fd={} rcvbuf_size={}", fd, rcvbuf_size);
 
 		rc = uv_udp_recv_start(
 			&m_socket,
@@ -135,7 +135,7 @@ void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
 			}
 		});
 
-		LOG_DEBUG(MOD_NET, "Attach() udp_recv_start={}", rc);
+		LOG_TRACE(MOD_NET, "Attach() udp_recv_start={}", rc);
 		LOG_INFO(MOD_NET, "Attach() complete, loop_alive={}", uv_loop_alive(loop));
 
 		m_attached = loop;
@@ -145,7 +145,7 @@ void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
 void EQ::Net::DaybreakConnectionManager::Detach()
 {
 	if (m_attached) {
-		LOG_DEBUG(MOD_NET, "Detach() called, closing handles properly...");
+		LOG_TRACE(MOD_NET, "Detach() called, closing handles properly...");
 
 		uv_loop_t* loop = m_attached;
 		int pending_closes = 0;
@@ -180,7 +180,7 @@ void EQ::Net::DaybreakConnectionManager::Detach()
 			uv_run(loop, UV_RUN_ONCE);
 		}
 
-		LOG_DEBUG(MOD_NET, "Detach() handles closed properly");
+		LOG_TRACE(MOD_NET, "Detach() handles closed properly");
 
 		m_attached = nullptr;
 	}
@@ -315,7 +315,7 @@ void EQ::Net::DaybreakConnectionManager::ProcessPacket(const std::string &endpoi
 		snprintf(tmp, sizeof(tmp), "%02x ", (uint8_t)data[i]);
 		hex += tmp;
 	}
-	LOG_DEBUG(MOD_NET, "MGR_PROC[{}] from={}:{} len={} data={}", mgr_packet_counter, endpoint, port, size, hex);
+	LOG_TRACE(MOD_NET, "MGR_PROC[{}] from={}:{} len={} data={}", mgr_packet_counter, endpoint, port, size, hex);
 
 	if (m_options.simulated_in_packet_loss && m_options.simulated_in_packet_loss >= m_rand.Int(0, 100)) {
 		LOG_WARN(MOD_NET, "MGR_PROC[{}] DROPPED by simulated_in_packet_loss", mgr_packet_counter);
@@ -332,17 +332,17 @@ void EQ::Net::DaybreakConnectionManager::ProcessPacket(const std::string &endpoi
 
 	try {
 		auto connection = FindConnectionByEndpoint(endpoint, port);
-		LOG_DEBUG(MOD_NET, "MGR_PROC[{}] connection={}", mgr_packet_counter, connection ? "found" : "null");
+		LOG_TRACE(MOD_NET, "MGR_PROC[{}] connection={}", mgr_packet_counter, connection ? "found" : "null");
 		if (connection) {
-			LOG_DEBUG(MOD_NET, "MGR_PROC[{}] calling connection->ProcessPacket", mgr_packet_counter);
+			LOG_TRACE(MOD_NET, "MGR_PROC[{}] calling connection->ProcessPacket", mgr_packet_counter);
 			StaticPacket p((void*)data, size);
 			connection->ProcessPacket(p);
-			LOG_DEBUG(MOD_NET, "MGR_PROC[{}] connection->ProcessPacket returned", mgr_packet_counter);
+			LOG_TRACE(MOD_NET, "MGR_PROC[{}] connection->ProcessPacket returned", mgr_packet_counter);
 		}
 		else {
-			LOG_DEBUG(MOD_NET, "MGR_PROC[{}] no connection, checking opcode data[0]={:#04x} data[1]={:#04x}", mgr_packet_counter, (uint8_t)data[0], (uint8_t)data[1]);
+			LOG_TRACE(MOD_NET, "MGR_PROC[{}] no connection, checking opcode data[0]={:#04x} data[1]={:#04x}", mgr_packet_counter, (uint8_t)data[0], (uint8_t)data[1]);
 			if (data[0] == 0 && data[1] == OP_SessionRequest) {
-				LOG_DEBUG(MOD_NET, "MGR_PROC[{}] OP_SessionRequest, creating new connection", mgr_packet_counter);
+				LOG_TRACE(MOD_NET, "MGR_PROC[{}] OP_SessionRequest, creating new connection", mgr_packet_counter);
 				StaticPacket p((void*)data, size);
 				auto request = p.GetSerialize<DaybreakConnect>(0);
 
@@ -360,7 +360,7 @@ void EQ::Net::DaybreakConnectionManager::ProcessPacket(const std::string &endpoi
 				SendDisconnect(endpoint, port);
 			}
 			else {
-				LOG_DEBUG(MOD_NET, "MGR_PROC[{}] OP_OutOfSession, ignoring", mgr_packet_counter);
+				LOG_TRACE(MOD_NET, "MGR_PROC[{}] OP_OutOfSession, ignoring", mgr_packet_counter);
 			}
 		}
 	}
@@ -434,13 +434,13 @@ EQ::Net::DaybreakConnection::DaybreakConnection(DaybreakConnectionManager *owner
 	m_outgoing_budget = owner->m_options.outgoing_data_rate;
 	m_flushing_buffer = false;
 
-	LOG_DEBUG(MOD_NET, "New session [{}] with encode key [{}]", m_connect_code, HostToNetwork(m_encode_key));
+	LOG_TRACE(MOD_NET, "New session [{}] with encode key [{}]", m_connect_code, HostToNetwork(m_encode_key));
 }
 
 //new connection made as client
 EQ::Net::DaybreakConnection::DaybreakConnection(DaybreakConnectionManager *owner, const std::string &endpoint, int port)
 {
-	LOG_DEBUG(MOD_NET, "DaybreakConnection created as client to {}:{}", endpoint, port);
+	LOG_TRACE(MOD_NET, "DaybreakConnection created as client to {}:{}", endpoint, port);
 
 	m_owner = owner;
 	m_last_send = Clock::now();
@@ -462,7 +462,7 @@ EQ::Net::DaybreakConnection::DaybreakConnection(DaybreakConnectionManager *owner
 	m_outgoing_budget = owner->m_options.outgoing_data_rate;
 	m_flushing_buffer = false;
 
-	LOG_DEBUG(MOD_NET, "DaybreakConnection constructor complete, status=StatusConnecting");
+	LOG_TRACE(MOD_NET, "DaybreakConnection constructor complete, status=StatusConnecting");
 }
 
 EQ::Net::DaybreakConnection::~DaybreakConnection()
@@ -572,7 +572,7 @@ void EQ::Net::DaybreakConnection::ProcessPacket(Packet &p)
 	};
 
 	// Log EVERY byte of EVERY packet received
-	LOG_DEBUG(MOD_NET, "RECV[{}] len={} data={}", m_stats.recv_packets, p.Length(), full_hex_dump(p));
+	LOG_TRACE(MOD_NET, "RECV[{}] len={} data={}", m_stats.recv_packets, p.Length(), full_hex_dump(p));
 
 	if (p.Length() < 1) {
 		LOG_WARN(MOD_NET, "DROPPED[{}]: packet too short (len={})", m_stats.recv_packets, p.Length());
@@ -642,7 +642,7 @@ void EQ::Net::DaybreakConnection::ProcessPacket(Packet &p)
 				}
 			}
 
-			LOG_DEBUG(MOD_NET, "DECODED[{}] len={} data={}", m_stats.recv_packets, temp.Length(), full_hex_dump_data((const char*)temp.Data(), temp.Length()));
+			LOG_TRACE(MOD_NET, "DECODED[{}] len={} data={}", m_stats.recv_packets, temp.Length(), full_hex_dump_data((const char*)temp.Data(), temp.Length()));
 
 			m_stats.bytes_after_decode += temp.Length();
 			ProcessDecodedPacket(StaticPacket(temp.Data(), temp.Length()));
@@ -663,13 +663,13 @@ void EQ::Net::DaybreakConnection::ProcessPacket(Packet &p)
 				}
 			}
 
-			LOG_DEBUG(MOD_NET, "DECODED_NOCMP[{}] len={} data={}", m_stats.recv_packets, temp.Length(), full_hex_dump_data((const char*)temp.Data(), temp.Length()));
+			LOG_TRACE(MOD_NET, "DECODED_NOCMP[{}] len={} data={}", m_stats.recv_packets, temp.Length(), full_hex_dump_data((const char*)temp.Data(), temp.Length()));
 			m_stats.bytes_after_decode += temp.Length();
 			ProcessDecodedPacket(StaticPacket(temp.Data(), temp.Length()));
 		}
 	}
 	else {
-		LOG_DEBUG(MOD_NET, "DECODED_RAW[{}] len={} data={}", m_stats.recv_packets, p.Length(), full_hex_dump(p));
+		LOG_TRACE(MOD_NET, "DECODED_RAW[{}] len={} data={}", m_stats.recv_packets, p.Length(), full_hex_dump(p));
 		m_stats.bytes_after_decode += p.Length();
 		ProcessDecodedPacket(p);
 	}
@@ -680,7 +680,7 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 	for (int i = 0; i < 4; ++i) {
 		auto stream = &m_streams[i];
 		if (!stream->packet_queue.empty()) {
-			LOG_DEBUG(MOD_NET, "ProcessQueue: stream={} queue_size={} looking_for_seq={}", i, stream->packet_queue.size(), stream->sequence_in);
+			LOG_TRACE(MOD_NET, "ProcessQueue: stream={} queue_size={} looking_for_seq={}", i, stream->packet_queue.size(), stream->sequence_in);
 		}
 		for (;;) {
 			auto iter = stream->packet_queue.find(stream->sequence_in);
@@ -699,7 +699,7 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 				uint8_t opcode = packet->GetUInt8(1);
 				if (opcode >= OP_Fragment && opcode <= OP_Fragment4) {
 					// This is a fragment packet - process it through fragment assembly
-					LOG_DEBUG(MOD_NET, "ProcessQueue: fragment seq={}, sequence_in: {} -> {}", seq_being_processed, stream->sequence_in, stream->sequence_in + 1);
+					LOG_TRACE(MOD_NET, "ProcessQueue: fragment seq={}, sequence_in: {} -> {}", seq_being_processed, stream->sequence_in, stream->sequence_in + 1);
 					stream->sequence_in++;
 
 					if (stream->fragment_total_bytes == 0) {
@@ -729,13 +729,13 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 						if (stream->fragment_current_bytes >= stream->fragment_total_bytes) {
 							stream->fragment_packet.Resize(stream->fragment_current_bytes);
 							uint8_t first_byte = stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0;
-							LOG_DEBUG(MOD_NET, "Fragment complete after first queued packet: {} bytes, first_byte={:#04x}", stream->fragment_current_bytes, first_byte);
+							LOG_TRACE(MOD_NET, "Fragment complete after first queued packet: {} bytes, first_byte={:#04x}", stream->fragment_current_bytes, first_byte);
 
 							// Check if assembled fragment needs decompression
 							if ((first_byte == 0x5a && stream->fragment_packet.Length() > 1 && stream->fragment_packet.GetUInt8(1) == 0x78) || first_byte == 0xa5) {
-								LOG_DEBUG(MOD_NET, "Assembled fragment has compression marker {:#04x}, decompressing", first_byte);
+								LOG_TRACE(MOD_NET, "Assembled fragment has compression marker {:#04x}, decompressing", first_byte);
 								Decompress(stream->fragment_packet, 0, stream->fragment_packet.Length());
-								LOG_DEBUG(MOD_NET, "After decompression: {} bytes, first_byte={:#04x}",
+								LOG_TRACE(MOD_NET, "After decompression: {} bytes, first_byte={:#04x}",
 									stream->fragment_packet.Length(),
 									stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0);
 							}
@@ -766,13 +766,13 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 						if (stream->fragment_current_bytes >= stream->fragment_total_bytes) {
 							stream->fragment_packet.Resize(stream->fragment_current_bytes);
 							uint8_t first_byte = stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0;
-							LOG_DEBUG(MOD_NET, "Fragment complete after queued continuation: {} bytes, first_byte={:#04x}", stream->fragment_current_bytes, first_byte);
+							LOG_TRACE(MOD_NET, "Fragment complete after queued continuation: {} bytes, first_byte={:#04x}", stream->fragment_current_bytes, first_byte);
 
 							// Check if assembled fragment needs decompression
 							if ((first_byte == 0x5a && stream->fragment_packet.Length() > 1 && stream->fragment_packet.GetUInt8(1) == 0x78) || first_byte == 0xa5) {
-								LOG_DEBUG(MOD_NET, "Assembled fragment has compression marker {:#04x}, decompressing", first_byte);
+								LOG_TRACE(MOD_NET, "Assembled fragment has compression marker {:#04x}, decompressing", first_byte);
 								Decompress(stream->fragment_packet, 0, stream->fragment_packet.Length());
-								LOG_DEBUG(MOD_NET, "After decompression: {} bytes, first_byte={:#04x}",
+								LOG_TRACE(MOD_NET, "After decompression: {} bytes, first_byte={:#04x}",
 									stream->fragment_packet.Length(),
 									stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0);
 							}
@@ -790,7 +790,7 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 			}
 
 			// Non-fragment packet - process normally (OP_Packet handler will increment sequence_in)
-			LOG_DEBUG(MOD_NET, "ProcessQueue: non-fragment seq={}, sequence_in={}", seq_being_processed, stream->sequence_in);
+			LOG_TRACE(MOD_NET, "ProcessQueue: non-fragment seq={}, sequence_in={}", seq_being_processed, stream->sequence_in);
 			ProcessDecodedPacket(*packet);
 			delete packet;
 		}
@@ -817,7 +817,7 @@ void EQ::Net::DaybreakConnection::AddToQueue(int stream, uint16_t seq, const Pac
 		out->PutPacket(0, p);
 
 		s->packet_queue.emplace(std::make_pair(seq, out));
-		LOG_DEBUG(MOD_NET, "AddToQueue: stream={} seq={} ({} bytes), queue_size={}", stream, seq, p.Length(), s->packet_queue.size());
+		LOG_TRACE(MOD_NET, "AddToQueue: stream={} seq={} ({} bytes), queue_size={}", stream, seq, p.Length(), s->packet_queue.size());
 	}
 }
 
@@ -864,7 +864,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 	if (p.GetInt8(0) == 0) {
 		if (p.Length() < 2) {
 			LOG_WARN(MOD_NET, "DROPPED: ProcessDecodedPacket packet too short (len={})", p.Length());
-			LOG_DEBUG(MOD_NET, "DROPPED data: {}", hex_dump_pkt(p));
+			LOG_TRACE(MOD_NET, "DROPPED data: {}", hex_dump_pkt(p));
 			return;
 		}
 
@@ -887,7 +887,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 					if (end < current + subpacket_length) {
 						LOG_WARN(MOD_NET, "OP_Combined truncated: subpacket {} claims {} bytes but only {} remain",
 							subpacket_count, subpacket_length, (int)(end - current));
-						LOG_DEBUG(MOD_NET, "DROPPED OP_Combined data: {}", hex_dump_pkt(p));
+						LOG_TRACE(MOD_NET, "DROPPED OP_Combined data: {}", hex_dump_pkt(p));
 						return;
 					}
 
@@ -983,7 +983,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 					p.PutSerialize(0, reply);
 					InternalSend(p);
 
-					LOG_DEBUG(MOD_NET, "[OP_SessionRequest] Session [{}] started with encode key [{}]", m_connect_code, HostToNetwork(m_encode_key));
+					LOG_TRACE(MOD_NET, "[OP_SessionRequest] Session [{}] started with encode key [{}]", m_connect_code, HostToNetwork(m_encode_key));
 				}
 
 				break;
@@ -1002,7 +1002,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 						m_max_packet_size = reply.max_packet_size;
 						ChangeStatus(StatusConnected);
 
-						LOG_DEBUG(MOD_NET, "[OP_SessionResponse] Session [{}] encode_passes=[{},{}] crc_bytes={} max_packet={}",
+						LOG_TRACE(MOD_NET, "[OP_SessionResponse] Session [{}] encode_passes=[{},{}] crc_bytes={} max_packet={}",
 							m_connect_code, (int)m_encode_passes[0], (int)m_encode_passes[1], m_crc_bytes, m_max_packet_size);
 					}
 				}
@@ -1032,12 +1032,12 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 				}
 				else if (order == SequencePast) {
 					SendAck(stream_id, stream->sequence_in - 1);
-					LOG_DEBUG(MOD_NET, "OP_Packet seq={} is PAST (expected={}), skipped", sequence, stream->sequence_in);
+					LOG_TRACE(MOD_NET, "OP_Packet seq={} is PAST (expected={}), skipped", sequence, stream->sequence_in);
 				}
 				else {
 					RemoveFromQueue(stream_id, sequence);
 					SendAck(stream_id, stream->sequence_in);
-					LOG_DEBUG(MOD_NET, "OP_Packet seq={} CURRENT, sequence_in: {} -> {}", sequence, stream->sequence_in, stream->sequence_in + 1);
+					LOG_TRACE(MOD_NET, "OP_Packet seq={} CURRENT, sequence_in: {} -> {}", sequence, stream->sequence_in, stream->sequence_in + 1);
 					stream->sequence_in++;
 					StaticPacket next((char*)p.Data() + DaybreakReliableHeader::size(), p.Length() - DaybreakReliableHeader::size());
 					ProcessDecodedPacket(next);
@@ -1056,26 +1056,26 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 				auto stream_id = header.opcode - OP_Fragment;
 				auto stream = &m_streams[stream_id];
 
-				LOG_DEBUG(MOD_NET, "FRAG_RECV stream={} seq={} len={} data={}", stream_id, sequence, p.Length(), full_hex_dump_pkt(p));
+				LOG_TRACE(MOD_NET, "FRAG_RECV stream={} seq={} len={} data={}", stream_id, sequence, p.Length(), full_hex_dump_pkt(p));
 
 				auto order = CompareSequence(stream->sequence_in, sequence);
 
 				if (order == SequenceFuture) {
 					SendOutOfOrderAck(stream_id, sequence);
 					AddToQueue(stream_id, sequence, p);
-					LOG_DEBUG(MOD_NET, "FRAG_QUEUED stream={} seq={} (expected={}) len={}", stream_id, sequence, stream->sequence_in, p.Length());
+					LOG_TRACE(MOD_NET, "FRAG_QUEUED stream={} seq={} (expected={}) len={}", stream_id, sequence, stream->sequence_in, p.Length());
 					break;
 				}
 				else if (order == SequencePast) {
 					SendAck(stream_id, stream->sequence_in - 1);
-					LOG_DEBUG(MOD_NET, "FRAG_SKIP_PAST stream={} seq={} (expected={})", stream_id, sequence, stream->sequence_in);
+					LOG_TRACE(MOD_NET, "FRAG_SKIP_PAST stream={} seq={} (expected={})", stream_id, sequence, stream->sequence_in);
 					break;
 				}
 
 				// CURRENT - process the fragment
 				RemoveFromQueue(stream_id, sequence);
 				SendAck(stream_id, stream->sequence_in);
-				LOG_DEBUG(MOD_NET, "FRAG_CURRENT stream={} seq={} sequence_in: {} -> {}", stream_id, sequence, stream->sequence_in, stream->sequence_in + 1);
+				LOG_TRACE(MOD_NET, "FRAG_CURRENT stream={} seq={} sequence_in: {} -> {}", stream_id, sequence, stream->sequence_in, stream->sequence_in + 1);
 				stream->sequence_in++;
 
 				// Fragment reassembly
@@ -1085,7 +1085,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 						stream->fragment_total_bytes = NetworkToHost(fragheader.total_size);
 						stream->fragment_current_bytes = 0;
 
-						LOG_DEBUG(MOD_NET, "FRAG_FIRST stream={} seq={} total_size={} packet_len={} data={}", stream_id, sequence, stream->fragment_total_bytes, p.Length(), full_hex_dump_pkt(p));
+						LOG_TRACE(MOD_NET, "FRAG_FIRST stream={} seq={} total_size={} packet_len={} data={}", stream_id, sequence, stream->fragment_total_bytes, p.Length(), full_hex_dump_pkt(p));
 
 						stream->fragment_packet.Clear();
 						stream->fragment_packet.Resize(stream->fragment_total_bytes);
@@ -1107,13 +1107,13 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 						if (stream->fragment_current_bytes >= stream->fragment_total_bytes) {
 							stream->fragment_packet.Resize(stream->fragment_current_bytes);
 							uint8_t first_byte = stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0;
-							LOG_DEBUG(MOD_NET, "FRAG_COMPLETE_FIRST stream={} len={} data={}", stream_id, stream->fragment_current_bytes, full_hex_dump_pkt(stream->fragment_packet));
+							LOG_TRACE(MOD_NET, "FRAG_COMPLETE_FIRST stream={} len={} data={}", stream_id, stream->fragment_current_bytes, full_hex_dump_pkt(stream->fragment_packet));
 
 							// Check if assembled fragment needs decompression
 							if ((first_byte == 0x5a && stream->fragment_packet.Length() > 1 && stream->fragment_packet.GetUInt8(1) == 0x78) || first_byte == 0xa5) {
-								LOG_DEBUG(MOD_NET, "FRAG_DECOMPRESS marker={:#04x}", first_byte);
+								LOG_TRACE(MOD_NET, "FRAG_DECOMPRESS marker={:#04x}", first_byte);
 								Decompress(stream->fragment_packet, 0, stream->fragment_packet.Length());
-								LOG_DEBUG(MOD_NET, "FRAG_DECOMPRESSED len={} data={}", stream->fragment_packet.Length(), full_hex_dump_pkt(stream->fragment_packet));
+								LOG_TRACE(MOD_NET, "FRAG_DECOMPRESSED len={} data={}", stream->fragment_packet.Length(), full_hex_dump_pkt(stream->fragment_packet));
 							}
 
 							ProcessDecodedPacket(stream->fragment_packet);
@@ -1124,7 +1124,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 					}
 					else {
 						size_t data_size = p.Length() - DaybreakReliableHeader::size();
-						LOG_DEBUG(MOD_NET, "FRAG_CONT stream={} seq={} data_size={} progress={}/{}", stream_id, sequence, data_size, stream->fragment_current_bytes, stream->fragment_total_bytes);
+						LOG_TRACE(MOD_NET, "FRAG_CONT stream={} seq={} data_size={} progress={}/{}", stream_id, sequence, data_size, stream->fragment_current_bytes, stream->fragment_total_bytes);
 
 						if (stream->fragment_current_bytes + data_size > stream->fragment_total_bytes) {
 							LOG_WARN(MOD_NET, "FRAG_OVERFLOW stream={} current={} + data={} > total={}", stream_id, stream->fragment_current_bytes, data_size, stream->fragment_total_bytes);
@@ -1142,13 +1142,13 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 						if (stream->fragment_current_bytes >= stream->fragment_total_bytes) {
 							stream->fragment_packet.Resize(stream->fragment_current_bytes);
 							uint8_t first_byte = stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0;
-							LOG_DEBUG(MOD_NET, "FRAG_COMPLETE stream={} len={} data={}", stream_id, stream->fragment_current_bytes, full_hex_dump_pkt(stream->fragment_packet));
+							LOG_TRACE(MOD_NET, "FRAG_COMPLETE stream={} len={} data={}", stream_id, stream->fragment_current_bytes, full_hex_dump_pkt(stream->fragment_packet));
 
 							// Check if assembled fragment needs decompression
 							if ((first_byte == 0x5a && stream->fragment_packet.Length() > 1 && stream->fragment_packet.GetUInt8(1) == 0x78) || first_byte == 0xa5) {
-								LOG_DEBUG(MOD_NET, "FRAG_DECOMPRESS marker={:#04x}", first_byte);
+								LOG_TRACE(MOD_NET, "FRAG_DECOMPRESS marker={:#04x}", first_byte);
 								Decompress(stream->fragment_packet, 0, stream->fragment_packet.Length());
-								LOG_DEBUG(MOD_NET, "FRAG_DECOMPRESSED len={} data={}", stream->fragment_packet.Length(), full_hex_dump_pkt(stream->fragment_packet));
+								LOG_TRACE(MOD_NET, "FRAG_DECOMPRESSED len={} data={}", stream->fragment_packet.Length(), full_hex_dump_pkt(stream->fragment_packet));
 							}
 
 							ProcessDecodedPacket(stream->fragment_packet);
@@ -1192,7 +1192,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 					SendDisconnect();
 				}
 
-				LOG_DEBUG(MOD_NET, "[OP_SessionDisconnect] Session [{}] disconnect with encode key [{}]",
+				LOG_TRACE(MOD_NET, "[OP_SessionDisconnect] Session [{}] disconnect with encode key [{}]",
 					m_connect_code, HostToNetwork(m_encode_key));
 
 				ChangeStatus(StatusDisconnecting);
@@ -1255,7 +1255,7 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 				LOG_TRACE(MOD_NET, "Delivering app packet: opcode={:#06x} len={} spawn_id={}", app_opcode, p.Length(), spawn_id);
 				// ClientUpdate opcode is 0x14cb
 				if (app_opcode == 0x14cb) {
-					LOG_DEBUG(MOD_NET, "Delivering ClientUpdate: spawn_id={}", spawn_id);
+					LOG_TRACE(MOD_NET, "Delivering ClientUpdate: spawn_id={}", spawn_id);
 				}
 			}
 			m_owner->m_on_packet_recv(self, p);
@@ -1270,7 +1270,7 @@ bool EQ::Net::DaybreakConnection::ValidateCRC(Packet &p)
 	}
 
 	if (p.Length() < (size_t)m_crc_bytes) {
-		LOG_DEBUG(MOD_NET, "Session [{}] ignored packet (crc bytes invalid on session)", m_connect_code);
+		LOG_TRACE(MOD_NET, "Session [{}] ignored packet (crc bytes invalid on session)", m_connect_code);
 		return false;
 	}
 
@@ -1319,7 +1319,7 @@ void EQ::Net::DaybreakConnection::AppendCRC(Packet &p)
 void EQ::Net::DaybreakConnection::ChangeStatus(DbProtocolStatus new_status)
 {
 	const char* status_names[] = {"Connecting", "Connected", "Disconnecting", "Disconnected"};
-	LOG_DEBUG(MOD_NET, "ChangeStatus: {}:{} from {} to {}", m_endpoint, m_port, status_names[m_status], status_names[new_status]);
+	LOG_TRACE(MOD_NET, "ChangeStatus: {}:{} from {} to {}", m_endpoint, m_port, status_names[m_status], status_names[new_status]);
 
 	if (m_owner->m_on_connection_state_change) {
 		if (auto self = m_self.lock()) {
@@ -1480,14 +1480,14 @@ void EQ::Net::DaybreakConnection::Decompress(Packet &p, size_t offset, size_t le
 	if (buffer[0] == 0x5a) {
 		// Log the bytes we're about to inflate for debugging
 		if (length >= 5) {
-			LOG_DEBUG(MOD_NET, "Decompress: 0x5a marker, next 4 bytes: {:02x} {:02x} {:02x} {:02x}",
+			LOG_TRACE(MOD_NET, "Decompress: 0x5a marker, next 4 bytes: {:02x} {:02x} {:02x} {:02x}",
 				buffer[1], buffer[2], buffer[3], buffer[4]);
 		}
 		new_length = Inflate(buffer + 1, (uint32_t)length - 1, new_buffer, 4096);
 		if (new_length == 0) {
 			LOG_WARN(MOD_NET, "DECOMPRESS_FAIL: zlib inflate returned 0, input_len={}", length - 1);
 		} else {
-			LOG_DEBUG(MOD_NET, "Decompress: zlib inflated {} -> {} bytes", length - 1, new_length);
+			LOG_TRACE(MOD_NET, "Decompress: zlib inflated {} -> {} bytes", length - 1, new_length);
 		}
 	}
 	else if (buffer[0] == 0xa5) {
@@ -1560,7 +1560,7 @@ void EQ::Net::DaybreakConnection::ProcessResend(int stream)
 		auto time_since_first_sent = std::chrono::duration_cast<std::chrono::milliseconds>(now - first_packet.first_sent).count();
 
 		if (time_since_first_sent >= m_owner->m_options.resend_timeout) {
-			LOG_DEBUG(MOD_NET, "Closing connection for endpoint [{}] port [{}] time_since_first_sent [{}] >= resend_timeout [{}]",
+			LOG_TRACE(MOD_NET, "Closing connection for endpoint [{}] port [{}] time_since_first_sent [{}] >= resend_timeout [{}]",
 				m_endpoint, m_port, time_since_first_sent, m_owner->m_options.resend_timeout);
 			Close();
 			return;
@@ -1738,7 +1738,7 @@ void EQ::Net::DaybreakConnection::InternalBufferedSend(Packet &p)
 
 void EQ::Net::DaybreakConnection::SendConnect()
 {
-	LOG_DEBUG(MOD_NET, "SendConnect() to {}:{}", m_endpoint, m_port);
+	LOG_TRACE(MOD_NET, "SendConnect() to {}:{}", m_endpoint, m_port);
 
 	DaybreakConnect connect;
 	connect.zero = 0;
@@ -1751,7 +1751,7 @@ void EQ::Net::DaybreakConnection::SendConnect()
 	p.PutSerialize(0, connect);
 
 	InternalSend(p);
-	LOG_DEBUG(MOD_NET, "SendConnect() packet sent");
+	LOG_TRACE(MOD_NET, "SendConnect() packet sent");
 }
 
 void EQ::Net::DaybreakConnection::SendKeepAlive()

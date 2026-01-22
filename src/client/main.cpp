@@ -653,13 +653,11 @@ int main(int argc, char *argv[]) {
 	// Initialize logging from command-line args (--log-level, --log-module)
 	InitLogging(argc, argv);
 
-	// Legacy debug level support
+	// Set log level from -d flag
 	EverQuest::SetDebugLevel(debug_level);
 	if (debug_level > 0) {
-		// Only set if not already set by --log-level
-		if (GetLogLevel() < LOG_DEBUG) {
-			SetLogLevel(LOG_DEBUG);
-		}
+		// -d X sets log level to X (1=FATAL, 2=ERROR, 3=WARN, 4=INFO, 5=DEBUG, 6=TRACE)
+		SetLogLevel(debug_level);
 	}
 
 #ifndef _WIN32

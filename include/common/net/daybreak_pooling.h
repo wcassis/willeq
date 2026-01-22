@@ -22,7 +22,7 @@ public:
 	explicit SendBufferPool(size_t initial_capacity = 64)
 		: m_capacity(initial_capacity), m_head(0)
 	{
-		LOG_DEBUG(MOD_NET, "[SendBufferPool] Initializing with capacity [{}]", (int)m_capacity);
+		LOG_TRACE(MOD_NET, "[SendBufferPool] Initializing with capacity [{}]", (int)m_capacity);
 
 		m_pool.reserve(m_capacity);
 		m_locks = std::make_unique<std::atomic_bool[]>(m_capacity);
@@ -50,7 +50,7 @@ public:
 			}
 		}
 
-		LOG_DEBUG(MOD_NET, "[SendBufferPool] Growing from [{}] to [{}]", cap, cap * 2);
+		LOG_TRACE(MOD_NET, "[SendBufferPool] Growing from [{}] to [{}]", cap, cap * 2);
 		grow();
 		return acquireAfterGrowth();
 	}
@@ -104,7 +104,7 @@ private:
 		m_locks = std::move(new_locks);
 		m_capacity.store(new_cap, std::memory_order_release);
 
-		LOG_DEBUG(MOD_NET, "[SendBufferPool] Grew to [{}] from [{}]", new_cap, old_cap);
+		LOG_TRACE(MOD_NET, "[SendBufferPool] Grew to [{}] from [{}]", new_cap, old_cap);
 	}
 
 	std::optional<std::tuple<uv_udp_send_t*, char*, EmbeddedContext*>> acquireAfterGrowth() {
@@ -114,7 +114,7 @@ private:
 			bool expected = false;
 			if (m_locks[index].compare_exchange_strong(expected, true)) {
 				auto* req = m_pool[index].get();
-				LOG_DEBUG(MOD_NET, "[SendBufferPool] Acquired after grow [{}]", index);
+				LOG_TRACE(MOD_NET, "[SendBufferPool] Acquired after grow [{}]", index);
 				return std::make_tuple(&req->uv_req, req->buffer.data(), &req->context);
 			}
 		}
