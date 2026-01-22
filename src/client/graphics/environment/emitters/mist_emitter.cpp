@@ -6,14 +6,28 @@ namespace Graphics {
 namespace Environment {
 
 MistEmitter::MistEmitter()
-    : ParticleEmitter(ParticleType::Mist, MAX_PARTICLES)
+    : ParticleEmitter(ParticleType::Mist, 50)  // Initial max, will be updated
 {
-    baseSpawnRate_ = BASE_SPAWN_RATE;
-    spawnRadius_ = SPAWN_RADIUS_MAX;
+    reloadSettings();
+}
+
+void MistEmitter::reloadSettings() {
+    settings_ = EnvironmentEffectsConfig::instance().getMist();
+
+    // Update base class values
+    maxParticles_ = settings_.maxParticles;
+    baseSpawnRate_ = settings_.spawnRate;
+    spawnRadius_ = settings_.spawnRadiusMax;
+    enabled_ = settings_.enabled;
+
+    // Resize particle pool if needed
+    if (static_cast<int>(particles_.size()) < settings_.maxParticles) {
+        particles_.resize(settings_.maxParticles);
+    }
 }
 
 bool MistEmitter::shouldBeActive(const EnvironmentState& env) const {
-    if (!enabled_) return false;
+    if (!enabled_ || !settings_.enabled) return false;
 
     // Mist is always possible in swamps
     if (currentBiome_ == ZoneBiome::Swamp) {
@@ -47,14 +61,14 @@ void MistEmitter::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
 void MistEmitter::initParticle(Particle& p, const EnvironmentState& env) {
     // Spawn around player at low height
     p.position = getRandomSpawnPosition(env,
-        SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX,
-        SPAWN_HEIGHT_MIN, SPAWN_HEIGHT_MAX);
+        settings_.spawnRadiusMin, settings_.spawnRadiusMax,
+        settings_.spawnHeightMin, settings_.spawnHeightMax);
 
     // Large particle size
-    p.size = randomFloat(PARTICLE_SIZE_MIN, PARTICLE_SIZE_MAX);
+    p.size = randomFloat(settings_.sizeMin, settings_.sizeMax);
 
     // Long lifetime
-    p.lifetime = randomFloat(LIFETIME_MIN, LIFETIME_MAX);
+    p.lifetime = randomFloat(settings_.lifetimeMin, settings_.lifetimeMax);
     p.maxLifetime = p.lifetime;
 
     // Initial velocity - slow horizontal drift
@@ -63,16 +77,21 @@ void MistEmitter::initParticle(Particle& p, const EnvironmentState& env) {
     if (glm::length(dir) > 0.01f) {
         dir = glm::normalize(dir);
     }
-    p.velocity = dir * DRIFT_SPEED * randomFloat(0.5f, 1.0f);
+    p.velocity = dir * settings_.driftSpeed * randomFloat(0.5f, 1.0f);
 
     // Apply wind
     if (env.windStrength > 0.1f) {
-        p.velocity += env.windDirection * env.windStrength * WIND_FACTOR * 0.3f;
+        p.velocity += env.windDirection * env.windStrength * settings_.windFactor * 0.3f;
     }
 
-    // Color: white/gray mist
+    // Color from config with slight brightness variation
     float brightness = randomFloat(0.85f, 1.0f);
-    p.color = glm::vec4(brightness, brightness, brightness, 1.0f);
+    p.color = glm::vec4(
+        settings_.colorR * brightness,
+        settings_.colorG * brightness,
+        settings_.colorB * brightness,
+        settings_.colorA
+    );
 
     // Texture: soft cloud shape
     p.textureIndex = ParticleAtlas::WispyCloud;
@@ -88,7 +107,7 @@ void MistEmitter::initParticle(Particle& p, const EnvironmentState& env) {
 void MistEmitter::updateParticle(Particle& p, float deltaTime, const EnvironmentState& env) {
     // Apply wind
     if (env.windStrength > 0.05f) {
-        glm::vec3 windForce = env.windDirection * env.windStrength * WIND_FACTOR * deltaTime;
+        glm::vec3 windForce = env.windDirection * env.windStrength * settings_.windFactor * deltaTime;
         windForce.z = 0.0f;  // Keep mist low
         p.velocity += windForce;
     }
@@ -102,10 +121,10 @@ void MistEmitter::updateParticle(Particle& p, float deltaTime, const Environment
     p.velocity.y += swirlY;
 
     // Keep mist at low altitude
-    if (p.position.z > SPAWN_HEIGHT_MAX + 1.0f) {
+    if (p.position.z > settings_.spawnHeightMax + 1.0f) {
         p.velocity.z -= 0.1f * deltaTime;  // Push back down
     }
-    if (p.position.z < SPAWN_HEIGHT_MIN - 1.0f) {
+    if (p.position.z < settings_.spawnHeightMin - 1.0f) {
         p.velocity.z += 0.1f * deltaTime;  // Push back up
     }
 
@@ -131,14 +150,14 @@ void MistEmitter::updateParticle(Particle& p, float deltaTime, const Environment
         p.alpha = 1.0f;
     }
 
-    // Mist is translucent
-    float baseAlpha = 0.25f;
+    // Base alpha from config (indoor/outdoor)
+    float baseAlpha = settings_.alphaOutdoor;
 
     // More visible at dawn/dusk and night
     if (env.isDawn() || env.isDusk()) {
-        baseAlpha = 0.35f;
+        baseAlpha *= 1.4f;
     } else if (env.isNighttime()) {
-        baseAlpha = 0.3f;
+        baseAlpha *= 1.2f;
     }
 
     // Rain increases mist visibility
@@ -150,12 +169,12 @@ void MistEmitter::updateParticle(Particle& p, float deltaTime, const Environment
 
     // Size grows slightly as mist dissipates
     float ageFactor = 1.0f - normalizedLife;  // 0 at start, 1 at end
-    p.size = PARTICLE_SIZE_MIN + (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN) *
+    p.size = settings_.sizeMin + (settings_.sizeMax - settings_.sizeMin) *
              (0.5f + ageFactor * 0.5f);
 }
 
 float MistEmitter::getSpawnRate(const EnvironmentState& env) const {
-    float rate = BASE_SPAWN_RATE;
+    float rate = settings_.spawnRate;
 
     // More mist in swamps
     if (currentBiome_ == ZoneBiome::Swamp) {
@@ -181,7 +200,7 @@ float MistEmitter::getSpawnRate(const EnvironmentState& env) const {
 
     // Wind disperses mist
     if (env.windStrength > 0.5f) {
-        rate *= 0.6f;
+        rate *= (1.0f - settings_.windFactor * 0.4f);
     }
 
     return rate;

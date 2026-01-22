@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/graphics/environment/particle_emitter.h"
+#include "client/graphics/environment/environment_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -16,6 +17,9 @@ namespace Environment {
  * - Pulsing glow animation
  * - Spawn near water and in forests
  * - Less wind-affected than other particles
+ *
+ * Settings are loaded from config/environment_effects.json and can be
+ * reloaded at runtime with /reloadeffects.
  */
 class FireflyEmitter : public ParticleEmitter {
 public:
@@ -32,6 +36,11 @@ public:
      * Called when entering a zone.
      */
     void onZoneEnter(const std::string& zoneName, ZoneBiome biome) override;
+
+    /**
+     * Reload settings from config file.
+     */
+    void reloadSettings();
 
 protected:
     /**
@@ -50,20 +59,12 @@ protected:
     float getSpawnRate(const EnvironmentState& env) const override;
 
 private:
-    // Configuration
-    static constexpr int MAX_PARTICLES = 30;
-    static constexpr float BASE_SPAWN_RATE = 2.0f;
-    static constexpr float SPAWN_RADIUS_MIN = 5.0f;
-    static constexpr float SPAWN_RADIUS_MAX = 30.0f;
-    static constexpr float SPAWN_HEIGHT_MIN = 0.5f;
-    static constexpr float SPAWN_HEIGHT_MAX = 4.0f;
-    static constexpr float PARTICLE_SIZE_MIN = 0.05f;
-    static constexpr float PARTICLE_SIZE_MAX = 0.10f;
-    static constexpr float LIFETIME_MIN = 15.0f;
-    static constexpr float LIFETIME_MAX = 30.0f;
-    static constexpr float WANDER_SPEED = 1.0f;
-    static constexpr float GLOW_SPEED_MIN = 1.5f;
-    static constexpr float GLOW_SPEED_MAX = 3.0f;
+    // Cached settings from config (reloaded on reloadSettings())
+    EnvironmentEffectsConfig::EmitterSettings settings_;
+
+    // Glow animation speeds (derived from config)
+    float glowSpeedMin_ = 1.5f;
+    float glowSpeedMax_ = 3.0f;
 
     // State
     ZoneBiome currentBiome_ = ZoneBiome::Unknown;

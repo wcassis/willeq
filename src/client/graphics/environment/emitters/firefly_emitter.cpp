@@ -6,14 +6,32 @@ namespace Graphics {
 namespace Environment {
 
 FireflyEmitter::FireflyEmitter()
-    : ParticleEmitter(ParticleType::Firefly, MAX_PARTICLES)
+    : ParticleEmitter(ParticleType::Firefly, 40)  // Initial max, will be updated
 {
-    baseSpawnRate_ = BASE_SPAWN_RATE;
-    spawnRadius_ = SPAWN_RADIUS_MAX;
+    reloadSettings();
+}
+
+void FireflyEmitter::reloadSettings() {
+    settings_ = EnvironmentEffectsConfig::instance().getFireflies();
+
+    // Update base class values
+    maxParticles_ = settings_.maxParticles;
+    baseSpawnRate_ = settings_.spawnRate;
+    spawnRadius_ = settings_.spawnRadiusMax;
+    enabled_ = settings_.enabled;
+
+    // Glow speed is derived from drift speed (faster drift = faster glow)
+    glowSpeedMin_ = 1.5f;
+    glowSpeedMax_ = 3.0f;
+
+    // Resize particle pool if needed
+    if (static_cast<int>(particles_.size()) < settings_.maxParticles) {
+        particles_.resize(settings_.maxParticles);
+    }
 }
 
 bool FireflyEmitter::shouldBeActive(const EnvironmentState& env) const {
-    if (!enabled_) return false;
+    if (!enabled_ || !settings_.enabled) return false;
 
     // Fireflies only at night
     if (!env.isNighttime()) return false;
@@ -39,28 +57,28 @@ void FireflyEmitter::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
 void FireflyEmitter::initParticle(Particle& p, const EnvironmentState& env) {
     // Spawn around player at low-medium height
     p.position = getRandomSpawnPosition(env,
-        SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX,
-        SPAWN_HEIGHT_MIN, SPAWN_HEIGHT_MAX);
+        settings_.spawnRadiusMin, settings_.spawnRadiusMax,
+        settings_.spawnHeightMin, settings_.spawnHeightMax);
 
     // Random size
-    p.size = randomFloat(PARTICLE_SIZE_MIN, PARTICLE_SIZE_MAX);
+    p.size = randomFloat(settings_.sizeMin, settings_.sizeMax);
 
     // Long lifetime
-    p.lifetime = randomFloat(LIFETIME_MIN, LIFETIME_MAX);
+    p.lifetime = randomFloat(settings_.lifetimeMin, settings_.lifetimeMax);
     p.maxLifetime = p.lifetime;
 
     // Initial velocity - slow random direction
     glm::vec3 dir = randomDirection();
     dir.z *= 0.3f;  // Mostly horizontal movement
-    p.velocity = dir * WANDER_SPEED * randomFloat(0.5f, 1.0f);
+    p.velocity = dir * settings_.driftSpeed * randomFloat(0.5f, 1.0f);
 
-    // Color: yellow-green glow
+    // Color from config with slight green tint variation
     float greenTint = randomFloat(0.8f, 1.0f);
     p.color = glm::vec4(
-        0.8f + randomFloat(0.0f, 0.2f),     // R: yellow
-        greenTint,                           // G: bright green
-        0.2f + randomFloat(0.0f, 0.2f),     // B: slight
-        1.0f
+        settings_.colorR + randomFloat(0.0f, 0.2f),
+        settings_.colorG * greenTint,
+        settings_.colorB + randomFloat(0.0f, 0.2f),
+        settings_.colorA
     );
 
     // Texture: star/glow shape
@@ -68,7 +86,7 @@ void FireflyEmitter::initParticle(Particle& p, const EnvironmentState& env) {
 
     // Glow animation
     p.glowPhase = randomFloat(0.0f, 6.28f);  // Random starting phase
-    p.glowSpeed = randomFloat(GLOW_SPEED_MIN, GLOW_SPEED_MAX);
+    p.glowSpeed = randomFloat(glowSpeedMin_, glowSpeedMax_);
 
     // No rotation needed for glow
     p.rotation = 0.0f;
@@ -90,7 +108,7 @@ void FireflyEmitter::updateParticle(Particle& p, float deltaTime, const Environm
         newDir.z *= 0.3f;  // Keep mostly horizontal
 
         // Blend with current direction for smooth transition
-        p.velocity = p.velocity * 0.3f + newDir * WANDER_SPEED * 0.7f;
+        p.velocity = p.velocity * 0.3f + newDir * settings_.driftSpeed * 0.7f;
     }
 
     // Occasional pause (fireflies stop and hover)
@@ -100,10 +118,10 @@ void FireflyEmitter::updateParticle(Particle& p, float deltaTime, const Environm
     }
 
     // Keep within reasonable height
-    if (p.position.z < SPAWN_HEIGHT_MIN) {
+    if (p.position.z < settings_.spawnHeightMin) {
         p.velocity.z = std::abs(p.velocity.z);
     }
-    if (p.position.z > SPAWN_HEIGHT_MAX + 2.0f) {
+    if (p.position.z > settings_.spawnHeightMax + 2.0f) {
         p.velocity.z = -std::abs(p.velocity.z);
     }
 
@@ -129,15 +147,15 @@ void FireflyEmitter::updateParticle(Particle& p, float deltaTime, const Environm
         lifetimeAlpha = normalizedLife * 10.0f;
     }
 
-    p.alpha = glowIntensity * lifetimeAlpha;
+    p.alpha = glowIntensity * lifetimeAlpha * settings_.alphaOutdoor;
 
     // Size pulses slightly with glow
-    float baseSize = (PARTICLE_SIZE_MIN + PARTICLE_SIZE_MAX) * 0.5f;
+    float baseSize = (settings_.sizeMin + settings_.sizeMax) * 0.5f;
     p.size = baseSize * (0.8f + glowIntensity * 0.4f);
 }
 
 float FireflyEmitter::getSpawnRate(const EnvironmentState& env) const {
-    float rate = BASE_SPAWN_RATE;
+    float rate = settings_.spawnRate;
 
     // More fireflies in swamps and forests
     if (currentBiome_ == ZoneBiome::Swamp) {
@@ -161,9 +179,9 @@ float FireflyEmitter::getSpawnRate(const EnvironmentState& env) const {
         rate *= 0.3f;
     }
 
-    // Fewer when very windy
+    // Fewer when very windy (use config wind factor)
     if (env.windStrength > 0.5f) {
-        rate *= 0.5f;
+        rate *= (1.0f - settings_.windFactor * 0.5f);
     }
 
     return rate;

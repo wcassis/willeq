@@ -6,14 +6,28 @@ namespace Graphics {
 namespace Environment {
 
 PollenEmitter::PollenEmitter()
-    : ParticleEmitter(ParticleType::Pollen, MAX_PARTICLES)
+    : ParticleEmitter(ParticleType::Pollen, 60)  // Initial max, will be updated
 {
-    baseSpawnRate_ = BASE_SPAWN_RATE;
-    spawnRadius_ = SPAWN_RADIUS_MAX;
+    reloadSettings();
+}
+
+void PollenEmitter::reloadSettings() {
+    settings_ = EnvironmentEffectsConfig::instance().getPollen();
+
+    // Update base class values
+    maxParticles_ = settings_.maxParticles;
+    baseSpawnRate_ = settings_.spawnRate;
+    spawnRadius_ = settings_.spawnRadiusMax;
+    enabled_ = settings_.enabled;
+
+    // Resize particle pool if needed
+    if (static_cast<int>(particles_.size()) < settings_.maxParticles) {
+        particles_.resize(settings_.maxParticles);
+    }
 }
 
 bool PollenEmitter::shouldBeActive(const EnvironmentState& env) const {
-    if (!enabled_) return false;
+    if (!enabled_ || !settings_.enabled) return false;
 
     // Pollen only during daytime
     if (!env.isDaytime()) return false;
@@ -36,35 +50,35 @@ void PollenEmitter::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
 void PollenEmitter::initParticle(Particle& p, const EnvironmentState& env) {
     // Spawn near ground level around player
     p.position = getRandomSpawnPosition(env,
-        SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX,
-        SPAWN_HEIGHT_MIN, SPAWN_HEIGHT_MAX);
+        settings_.spawnRadiusMin, settings_.spawnRadiusMax,
+        settings_.spawnHeightMin, settings_.spawnHeightMax);
 
     // Random size
-    p.size = randomFloat(PARTICLE_SIZE_MIN, PARTICLE_SIZE_MAX);
+    p.size = randomFloat(settings_.sizeMin, settings_.sizeMax);
 
     // Random lifetime
-    p.lifetime = randomFloat(LIFETIME_MIN, LIFETIME_MAX);
+    p.lifetime = randomFloat(settings_.lifetimeMin, settings_.lifetimeMax);
     p.maxLifetime = p.lifetime;
 
     // Initial velocity - gentle upward drift
     p.velocity = glm::vec3(
         randomFloat(-0.2f, 0.2f),
         randomFloat(-0.2f, 0.2f),
-        RISE_SPEED * randomFloat(0.8f, 1.2f)
+        settings_.driftSpeed * randomFloat(0.8f, 1.2f)
     );
 
     // Apply wind
     if (env.windStrength > 0.1f) {
-        p.velocity += env.windDirection * env.windStrength * WIND_FACTOR * 0.3f;
+        p.velocity += env.windDirection * env.windStrength * settings_.windFactor * 0.3f;
     }
 
-    // Color: yellow-green pollen
+    // Color from config with slight hue variation
     float hueVariation = randomFloat(-0.1f, 0.1f);
     p.color = glm::vec4(
-        0.95f + hueVariation,           // R: slightly yellow
-        0.95f + hueVariation * 0.5f,    // G: green-yellow
-        0.6f + hueVariation,            // B: less blue
-        1.0f
+        settings_.colorR + hueVariation,
+        settings_.colorG + hueVariation * 0.5f,
+        settings_.colorB + hueVariation,
+        settings_.colorA
     );
 
     // Texture: spore shape
@@ -80,11 +94,11 @@ void PollenEmitter::initParticle(Particle& p, const EnvironmentState& env) {
 
 void PollenEmitter::updateParticle(Particle& p, float deltaTime, const EnvironmentState& env) {
     // Continue upward drift (thermal currents)
-    p.velocity.z += RISE_SPEED * 0.1f * deltaTime;
+    p.velocity.z += settings_.driftSpeed * 0.1f * deltaTime;
 
     // Apply wind
     if (env.windStrength > 0.05f) {
-        glm::vec3 windForce = env.windDirection * env.windStrength * WIND_FACTOR * deltaTime;
+        glm::vec3 windForce = env.windDirection * env.windStrength * settings_.windFactor * deltaTime;
         p.velocity += windForce;
     }
 
@@ -101,8 +115,9 @@ void PollenEmitter::updateParticle(Particle& p, float deltaTime, const Environme
     p.velocity.y *= 0.99f;
 
     // Cap vertical speed
-    if (p.velocity.z > RISE_SPEED * 2.0f) {
-        p.velocity.z = RISE_SPEED * 2.0f;
+    float maxRiseSpeed = settings_.driftSpeed * 2.0f;
+    if (p.velocity.z > maxRiseSpeed) {
+        p.velocity.z = maxRiseSpeed;
     }
 
     // Apply velocity
@@ -123,12 +138,12 @@ void PollenEmitter::updateParticle(Particle& p, float deltaTime, const Environme
         p.alpha = 1.0f;
     }
 
-    // Pollen is fairly visible
-    p.alpha *= 0.6f;
+    // Apply outdoor alpha from config
+    p.alpha *= settings_.alphaOutdoor;
 }
 
 float PollenEmitter::getSpawnRate(const EnvironmentState& env) const {
-    float rate = BASE_SPAWN_RATE;
+    float rate = settings_.spawnRate;
 
     // More pollen in forests
     if (currentBiome_ == ZoneBiome::Forest) {

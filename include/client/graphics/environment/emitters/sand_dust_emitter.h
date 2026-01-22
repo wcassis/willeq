@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/graphics/environment/particle_emitter.h"
+#include "client/graphics/environment/environment_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -15,6 +16,9 @@ namespace Environment {
  * - Sandy brown/tan colors
  * - Only in Desert biome
  * - Intensity scales with wind strength
+ *
+ * Settings are loaded from config/environment_effects.json and can be
+ * reloaded at runtime with /reloadeffects.
  */
 class SandDustEmitter : public ParticleEmitter {
 public:
@@ -31,6 +35,11 @@ public:
      * Called when entering a zone.
      */
     void onZoneEnter(const std::string& zoneName, ZoneBiome biome) override;
+
+    /**
+     * Reload settings from config file.
+     */
+    void reloadSettings();
 
 protected:
     /**
@@ -49,19 +58,8 @@ protected:
     float getSpawnRate(const EnvironmentState& env) const override;
 
 private:
-    // Configuration
-    static constexpr int MAX_PARTICLES = 100;
-    static constexpr float BASE_SPAWN_RATE = 10.0f;
-    static constexpr float SPAWN_RADIUS_MIN = 5.0f;
-    static constexpr float SPAWN_RADIUS_MAX = 25.0f;
-    static constexpr float SPAWN_HEIGHT_MIN = 0.0f;     // Ground level
-    static constexpr float SPAWN_HEIGHT_MAX = 3.0f;     // Low to ground
-    static constexpr float PARTICLE_SIZE_MIN = 0.02f;   // Small particles
-    static constexpr float PARTICLE_SIZE_MAX = 0.06f;
-    static constexpr float LIFETIME_MIN = 3.0f;         // Short-lived
-    static constexpr float LIFETIME_MAX = 6.0f;
-    static constexpr float BASE_SPEED = 2.0f;           // Fast movement
-    static constexpr float WIND_FACTOR = 5.0f;          // Very wind-sensitive
+    // Cached settings from config (reloaded on reloadSettings())
+    EnvironmentEffectsConfig::EmitterSettings settings_;
 
     // State
     ZoneBiome currentBiome_ = ZoneBiome::Unknown;

@@ -6,14 +6,28 @@ namespace Graphics {
 namespace Environment {
 
 SandDustEmitter::SandDustEmitter()
-    : ParticleEmitter(ParticleType::SandDust, MAX_PARTICLES)
+    : ParticleEmitter(ParticleType::SandDust, 100)  // Initial max, will be updated
 {
-    baseSpawnRate_ = BASE_SPAWN_RATE;
-    spawnRadius_ = SPAWN_RADIUS_MAX;
+    reloadSettings();
+}
+
+void SandDustEmitter::reloadSettings() {
+    settings_ = EnvironmentEffectsConfig::instance().getSandDust();
+
+    // Update base class values
+    maxParticles_ = settings_.maxParticles;
+    baseSpawnRate_ = settings_.spawnRate;
+    spawnRadius_ = settings_.spawnRadiusMax;
+    enabled_ = settings_.enabled;
+
+    // Resize particle pool if needed
+    if (static_cast<int>(particles_.size()) < settings_.maxParticles) {
+        particles_.resize(settings_.maxParticles);
+    }
 }
 
 bool SandDustEmitter::shouldBeActive(const EnvironmentState& env) const {
-    if (!enabled_) return false;
+    if (!enabled_ || !settings_.enabled) return false;
 
     // Only in desert biome
     if (currentBiome_ != ZoneBiome::Desert) {
@@ -31,34 +45,34 @@ void SandDustEmitter::onZoneEnter(const std::string& zoneName, ZoneBiome biome) 
 void SandDustEmitter::initParticle(Particle& p, const EnvironmentState& env) {
     // Spawn at ground level around player
     p.position = getRandomSpawnPosition(env,
-        SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX,
-        SPAWN_HEIGHT_MIN, SPAWN_HEIGHT_MAX);
+        settings_.spawnRadiusMin, settings_.spawnRadiusMax,
+        settings_.spawnHeightMin, settings_.spawnHeightMax);
 
     // Small particle size
-    p.size = randomFloat(PARTICLE_SIZE_MIN, PARTICLE_SIZE_MAX);
+    p.size = randomFloat(settings_.sizeMin, settings_.sizeMax);
 
     // Short lifetime
-    p.lifetime = randomFloat(LIFETIME_MIN, LIFETIME_MAX);
+    p.lifetime = randomFloat(settings_.lifetimeMin, settings_.lifetimeMax);
     p.maxLifetime = p.lifetime;
 
     // Initial velocity - primarily wind-driven
-    p.velocity = env.windDirection * env.windStrength * WIND_FACTOR;
+    p.velocity = env.windDirection * env.windStrength * settings_.windFactor;
 
     // Add some random variation
     glm::vec3 randomOffset = randomDirection();
     randomOffset.z *= 0.3f;  // Less vertical variation
-    p.velocity += randomOffset * BASE_SPEED * randomFloat(0.3f, 0.7f);
+    p.velocity += randomOffset * settings_.driftSpeed * randomFloat(0.3f, 0.7f);
 
     // Slight upward lift
     p.velocity.z += 0.5f;
 
-    // Color: sandy tan/brown
+    // Color from config with slight variation
     float hueVariation = randomFloat(-0.1f, 0.1f);
     p.color = glm::vec4(
-        0.85f + hueVariation,               // R: tan base
-        0.70f + hueVariation * 0.8f,        // G: sandy
-        0.50f + hueVariation * 0.5f,        // B: brown tint
-        1.0f
+        settings_.colorR + hueVariation,
+        settings_.colorG + hueVariation * 0.8f,
+        settings_.colorB + hueVariation * 0.5f,
+        settings_.colorA
     );
 
     // Texture: small dust
@@ -74,7 +88,7 @@ void SandDustEmitter::initParticle(Particle& p, const EnvironmentState& env) {
 
 void SandDustEmitter::updateParticle(Particle& p, float deltaTime, const EnvironmentState& env) {
     // Wind is the primary driver
-    glm::vec3 windForce = env.windDirection * env.windStrength * WIND_FACTOR * deltaTime;
+    glm::vec3 windForce = env.windDirection * env.windStrength * settings_.windFactor * deltaTime;
     p.velocity += windForce;
 
     // Gravity pulls down
@@ -114,8 +128,8 @@ void SandDustEmitter::updateParticle(Particle& p, float deltaTime, const Environ
         p.alpha = 1.0f;
     }
 
-    // Base visibility scales with wind
-    float windAlpha = 0.3f + env.windStrength * 0.4f;
+    // Base visibility scales with wind, use config alpha
+    float windAlpha = settings_.alphaOutdoor + env.windStrength * 0.4f;
     p.alpha *= windAlpha;
 
     // Particles near ground are more visible (denser)
@@ -125,7 +139,7 @@ void SandDustEmitter::updateParticle(Particle& p, float deltaTime, const Environ
 }
 
 float SandDustEmitter::getSpawnRate(const EnvironmentState& env) const {
-    float rate = BASE_SPAWN_RATE;
+    float rate = settings_.spawnRate;
 
     // Strong correlation with wind
     rate *= (0.2f + env.windStrength * 2.0f);

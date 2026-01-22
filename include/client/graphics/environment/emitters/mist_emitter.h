@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/graphics/environment/particle_emitter.h"
+#include "client/graphics/environment/environment_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -15,6 +16,9 @@ namespace Environment {
  * - Stays close to ground/water level
  * - Most visible at dawn/dusk and night
  * - Common in Swamp, Coast, and near water
+ *
+ * Settings are loaded from config/environment_effects.json and can be
+ * reloaded at runtime with /reloadeffects.
  */
 class MistEmitter : public ParticleEmitter {
 public:
@@ -31,6 +35,11 @@ public:
      * Called when entering a zone.
      */
     void onZoneEnter(const std::string& zoneName, ZoneBiome biome) override;
+
+    /**
+     * Reload settings from config file.
+     */
+    void reloadSettings();
 
 protected:
     /**
@@ -49,19 +58,8 @@ protected:
     float getSpawnRate(const EnvironmentState& env) const override;
 
 private:
-    // Configuration
-    static constexpr int MAX_PARTICLES = 40;
-    static constexpr float BASE_SPAWN_RATE = 3.0f;
-    static constexpr float SPAWN_RADIUS_MIN = 10.0f;
-    static constexpr float SPAWN_RADIUS_MAX = 40.0f;
-    static constexpr float SPAWN_HEIGHT_MIN = -1.0f;    // Below player (water level)
-    static constexpr float SPAWN_HEIGHT_MAX = 2.0f;     // Low to ground
-    static constexpr float PARTICLE_SIZE_MIN = 2.0f;    // Large particles
-    static constexpr float PARTICLE_SIZE_MAX = 5.0f;
-    static constexpr float LIFETIME_MIN = 15.0f;
-    static constexpr float LIFETIME_MAX = 30.0f;
-    static constexpr float DRIFT_SPEED = 0.5f;          // Slow drift
-    static constexpr float WIND_FACTOR = 1.0f;          // Moderate wind response
+    // Cached settings from config (reloaded on reloadSettings())
+    EnvironmentEffectsConfig::EmitterSettings settings_;
 
     // State
     ZoneBiome currentBiome_ = ZoneBiome::Unknown;
