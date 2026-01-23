@@ -32,6 +32,7 @@ class SnowEmitter;
 class WaterRippleManager;
 class StormCloudLayer;
 class SnowAccumulationSystem;
+class RainOverlay;
 }  // namespace Environment
 
 namespace Detail {
@@ -233,6 +234,26 @@ public:
     bool isSnowAccumulationEnabled() const;
 
     /**
+     * Check if screen-space rain overlay is enabled (vs particle rain).
+     */
+    bool isRainOverlayEnabled() const;
+
+    /**
+     * Get fog distance for rain effect (original EQ behavior).
+     * @param outFogStart Output fog start distance
+     * @param outFogEnd Output fog end distance
+     * @return true if rain fog should override normal fog
+     */
+    bool getRainFogSettings(float& outFogStart, float& outFogEnd) const;
+
+    /**
+     * Get daylight multiplier for rain effect (darker during rain).
+     * @param outMultiplier Output daylight multiplier (0.0-1.0)
+     * @return true if daylight should be reduced
+     */
+    bool getRainDaylightMultiplier(float& outMultiplier) const;
+
+    /**
      * Set the raycast mesh for shelter detection in snow accumulation.
      * Note: RaycastMesh::raycast is not const, so we need a non-const pointer.
      */
@@ -324,6 +345,9 @@ private:
     // Snow accumulation system (Phase 9)
     std::unique_ptr<Environment::SnowAccumulationSystem> snowAccumulationSystem_;
 
+    // Screen-space rain overlay (Phase 10 - replaces particle rain)
+    std::unique_ptr<Environment::RainOverlay> rainOverlay_;
+
     // Surface map for water detection (not owned)
     const Detail::SurfaceMap* surfaceMap_ = nullptr;
 
@@ -335,6 +359,9 @@ private:
     bool enabled_ = true;
     bool initialized_ = false;
     std::string eqClientPath_;
+
+    // Use screen-space rain overlay instead of particle rain (default: true for performance)
+    bool useRainOverlay_ = true;
 
     // Current weather state
     uint8_t currentType_ = 0;       // 0=none, 1=rain, 2=snow

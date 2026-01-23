@@ -137,6 +137,16 @@ void SkyRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     updateSunGlowColor();
 }
 
+void SkyRenderer::setWeatherBrightness(float brightness) {
+    float newBrightness = std::max(0.0f, std::min(1.0f, brightness));
+    if (std::abs(newBrightness - weatherBrightness_) > 0.01f) {
+        weatherBrightness_ = newBrightness;
+        // Re-apply sky colors with new weather brightness
+        updateSkyLayerColors();
+        updateSunGlowColor();
+    }
+}
+
 void SkyRenderer::update(float deltaTime) {
     if (!initialized_ || !enabled_) {
         return;
@@ -991,12 +1001,14 @@ void SkyRenderer::updateSkyLayerColors() {
         (currentSkyColors_.zenith.getBlue() + currentSkyColors_.horizon.getBlue()) / 2
     );
 
-    // Modulate by brightness
+    // Modulate by time-of-day brightness AND weather brightness
+    // Weather darkens the sky during rain/storms
+    float effectiveBrightness = currentSkyColors_.cloudBrightness * weatherBrightness_;
     tint = irr::video::SColor(
         255,
-        static_cast<irr::u32>(tint.getRed() * currentSkyColors_.cloudBrightness),
-        static_cast<irr::u32>(tint.getGreen() * currentSkyColors_.cloudBrightness),
-        static_cast<irr::u32>(tint.getBlue() * currentSkyColors_.cloudBrightness)
+        static_cast<irr::u32>(tint.getRed() * effectiveBrightness),
+        static_cast<irr::u32>(tint.getGreen() * effectiveBrightness),
+        static_cast<irr::u32>(tint.getBlue() * effectiveBrightness)
     );
 
     // Apply tint to legacy sky dome nodes
@@ -1020,8 +1032,7 @@ void SkyRenderer::updateSkyLayerColors() {
         // Calculate opacity based on brightness - darker = more transparent to show background
         // At full brightness (1.0), alpha = 255 (opaque)
         // At low brightness (0.2), alpha = ~100 (semi-transparent, background shows through)
-        float brightness = currentSkyColors_.cloudBrightness;
-        irr::u32 alpha = static_cast<irr::u32>(100 + 155 * brightness);  // Range: 100-255
+        irr::u32 alpha = static_cast<irr::u32>(100 + 155 * effectiveBrightness);  // Range: 100-255
 
         for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
             irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
@@ -1084,6 +1095,12 @@ void SkyRenderer::updateSunGlowColor() {
         float t = (timeOfDay - 19.0f) / 1.0f;
         irr::u32 alpha = static_cast<irr::u32>(40 * (1.0f - t));
         glowColor = irr::video::SColor(alpha, 255, 150, 100);
+    }
+
+    // Apply weather brightness to sun glow (dim/hide sun during storms)
+    if (weatherBrightness_ < 1.0f) {
+        irr::u32 alpha = static_cast<irr::u32>(glowColor.getAlpha() * weatherBrightness_);
+        glowColor.setAlpha(alpha);
     }
 
     sunGlowNode_->getMaterial(0).DiffuseColor = glowColor;

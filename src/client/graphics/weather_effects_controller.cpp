@@ -9,6 +9,7 @@
 #include "client/graphics/environment/water_ripple_manager.h"
 #include "client/graphics/environment/storm_cloud_layer.h"
 #include "client/graphics/environment/snow_accumulation_system.h"
+#include "client/graphics/environment/rain_overlay.h"
 #include "common/logging.h"
 #include <irrlicht.h>
 #include <cmath>
@@ -93,6 +94,12 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
         snowAccumulationSystem_->initialize(smgr_, driver_, particleManager_->getAtlasTexture());
     }
 
+    // Create screen-space rain overlay (Phase 10)
+    rainOverlay_ = std::make_unique<Environment::RainOverlay>();
+    if (rainOverlay_ && driver_ && smgr_) {
+        rainOverlay_->initialize(driver_, smgr_, eqClientPath_);
+    }
+
     // Apply loaded config to emitters
     applyConfigFromLoader();
 
@@ -157,12 +164,27 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
 
         currentIntensity_ = newIntensity;
 
-        // Update rain emitters
-        if (rainEmitter_) {
-            rainEmitter_->setIntensity(newType == 1 ? newIntensity : 0);
+        // Update rain emitters (only if not using screen-space overlay)
+        if (!useRainOverlay_) {
+            if (rainEmitter_) {
+                rainEmitter_->setIntensity(newType == 1 ? newIntensity : 0);
+            }
+            if (rainSplashEmitter_) {
+                rainSplashEmitter_->setIntensity(newType == 1 ? newIntensity : 0);
+            }
+        } else {
+            // Disable particle emitters when using overlay
+            if (rainEmitter_) {
+                rainEmitter_->setIntensity(0);
+            }
+            if (rainSplashEmitter_) {
+                rainSplashEmitter_->setIntensity(0);
+            }
         }
-        if (rainSplashEmitter_) {
-            rainSplashEmitter_->setIntensity(newType == 1 ? newIntensity : 0);
+
+        // Update screen-space rain overlay
+        if (rainOverlay_) {
+            rainOverlay_->setIntensity(newType == 1 ? newIntensity : 0);
         }
 
         // Update snow emitter
@@ -268,6 +290,16 @@ void WeatherEffectsController::applyConfigFromLoader() {
                   loader.getStormCloudSettings().dayBrightness, loader.getStormCloudSettings().nightBrightness);
     }
 
+    // Apply rain overlay settings
+    if (rainOverlay_) {
+        const auto& rainSettings = loader.getRainOverlaySettings();
+        rainOverlay_->setSettings(rainSettings);
+        LOG_DEBUG(MOD_GRAPHICS, "Applied rain overlay config: numLayers={}, baseOpacity={}, maxOpacity={}",
+                  rainSettings.numLayers, rainSettings.baseOpacity, rainSettings.maxOpacity);
+        LOG_DEBUG(MOD_GRAPHICS, "Rain overlay daylight settings: enabled={}, daylightMin={:.3f}, daylightMax={:.3f}",
+                  rainSettings.daylightReductionEnabled, rainSettings.daylightMin, rainSettings.daylightMax);
+    }
+
     LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: Applied config from loader");
 }
 
@@ -309,6 +341,37 @@ bool WeatherEffectsController::isSnowAccumulationEnabled() const {
     // Check both the quality preset flag and the accumulation system state
     const auto& preset = WeatherQualityManager::instance().getCurrentPresetValues();
     return preset.snowAccumulationEnabled && snowAccumulationSystem_ && snowAccumulationSystem_->isEnabled();
+}
+
+bool WeatherEffectsController::isRainOverlayEnabled() const {
+    return useRainOverlay_ && rainOverlay_ && rainOverlay_->isEnabled();
+}
+
+bool WeatherEffectsController::getRainFogSettings(float& outFogStart, float& outFogEnd) const {
+    if (!useRainOverlay_ || !rainOverlay_) {
+        return false;
+    }
+    return rainOverlay_->getFogSettings(outFogStart, outFogEnd);
+}
+
+bool WeatherEffectsController::getRainDaylightMultiplier(float& outMultiplier) const {
+    if (!useRainOverlay_ || !rainOverlay_) {
+        static bool loggedOnce = false;
+        if (!loggedOnce) {
+            LOG_DEBUG(MOD_GRAPHICS, "getRainDaylightMultiplier: skipped (useRainOverlay_={}, rainOverlay_={})",
+                      useRainOverlay_, rainOverlay_ != nullptr);
+            loggedOnce = true;
+        }
+        return false;
+    }
+    bool result = rainOverlay_->getDaylightMultiplier(outMultiplier);
+    static float lastLogged = -1.0f;
+    if (result && std::abs(outMultiplier - lastLogged) > 0.01f) {
+        LOG_DEBUG(MOD_GRAPHICS, "getRainDaylightMultiplier: result={}, outMultiplier={:.3f}",
+                  result, outMultiplier);
+        lastLogged = outMultiplier;
+    }
+    return result;
 }
 
 void WeatherEffectsController::setRaycastMesh(RaycastMesh* raycastMesh) {
@@ -383,33 +446,51 @@ void WeatherEffectsController::updateRain(float deltaTime) {
     if (particleManager_) {
         const auto& env = particleManager_->getEnvironmentState();
 
-        // Update rain drops
-        if (rainEmitter_) {
-            rainEmitter_->update(deltaTime, env);
+        // Update screen-space rain overlay (if enabled)
+        if (useRainOverlay_ && rainOverlay_) {
+            glm::vec3 cameraDir(1, 0, 0);  // Default direction
+            // Get actual camera direction if available from scene manager
+            if (smgr_ && smgr_->getActiveCamera()) {
+                irr::core::vector3df target = smgr_->getActiveCamera()->getTarget();
+                irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
+                irr::core::vector3df dir = target - pos;
+                dir.normalize();
+                // Convert from Irrlicht (Y-up) to EQ (Z-up)
+                cameraDir = glm::vec3(dir.X, dir.Z, dir.Y);
+            }
+            rainOverlay_->update(deltaTime, env.playerPosition, cameraDir);
+        }
 
-            // Debug: periodically log particle state
-            static float debugTimer = 0.0f;
-            debugTimer += deltaTime;
-            if (debugTimer >= 2.0f) {
-                debugTimer = 0.0f;
-                int activeCount = 0;
-                for (const auto& p : rainEmitter_->getParticles()) {
-                    if (p.isAlive()) ++activeCount;
+        // Update particle rain (only if not using overlay)
+        if (!useRainOverlay_) {
+            // Update rain drops
+            if (rainEmitter_) {
+                rainEmitter_->update(deltaTime, env);
+
+                // Debug: periodically log particle state
+                static float debugTimer = 0.0f;
+                debugTimer += deltaTime;
+                if (debugTimer >= 2.0f) {
+                    debugTimer = 0.0f;
+                    int activeCount = 0;
+                    for (const auto& p : rainEmitter_->getParticles()) {
+                        if (p.isAlive()) ++activeCount;
+                    }
+                    LOG_INFO(MOD_GRAPHICS, "Rain debug: intensity={} enabled={} active_particles={} player_pos=({:.1f},{:.1f},{:.1f})",
+                             rainEmitter_->getIntensity(),
+                             rainEmitter_->isEnabled(),
+                             activeCount,
+                             env.playerPosition.x, env.playerPosition.y, env.playerPosition.z);
                 }
-                LOG_INFO(MOD_GRAPHICS, "Rain debug: intensity={} enabled={} active_particles={} player_pos=({:.1f},{:.1f},{:.1f})",
-                         rainEmitter_->getIntensity(),
-                         rainEmitter_->isEnabled(),
-                         activeCount,
-                         env.playerPosition.x, env.playerPosition.y, env.playerPosition.z);
+            }
+
+            // Update rain splashes
+            if (rainSplashEmitter_) {
+                rainSplashEmitter_->update(deltaTime, env);
             }
         }
 
-        // Update rain splashes
-        if (rainSplashEmitter_) {
-            rainSplashEmitter_->update(deltaTime, env);
-        }
-
-        // Update water ripples (Phase 7)
+        // Update water ripples (Phase 7) - always update, even with overlay
         if (waterRippleManager_ && areRipplesEnabled()) {
             waterRippleManager_->setRainIntensity(currentIntensity_);
             // Use player position for both - ripples spawn around player
@@ -610,8 +691,13 @@ void WeatherEffectsController::render() {
         renderLightningBolt();
     }
 
-    // Render rain particles
-    if (rainEmitter_ && currentType_ == 1 && currentIntensity_ > 0) {
+    // Render screen-space rain overlay (if enabled)
+    if (useRainOverlay_ && rainOverlay_ && currentType_ == 1 && currentIntensity_ > 0) {
+        rainOverlay_->render();
+    }
+
+    // Render rain particles (only if not using overlay)
+    if (!useRainOverlay_ && rainEmitter_ && currentType_ == 1 && currentIntensity_ > 0) {
         // Rain particles are rendered through the particle system
         // but we could add additional effects here
     }
@@ -680,6 +766,18 @@ void WeatherEffectsController::renderLightningBolt() {
 float WeatherEffectsController::getAmbientLightModifier() const {
     // Base modifier from storm darkening
     float modifier = 1.0f - currentDarkening_;
+
+    // Apply rain daylight reduction (darker during rain)
+    float rainMultiplier = 1.0f;
+    if (getRainDaylightMultiplier(rainMultiplier)) {
+        modifier *= rainMultiplier;
+        static float lastLoggedMultiplier = -1.0f;
+        if (std::abs(rainMultiplier - lastLoggedMultiplier) > 0.01f) {
+            LOG_DEBUG(MOD_GRAPHICS, "getAmbientLightModifier: rainMultiplier={:.3f}, modifier={:.3f}",
+                      rainMultiplier, modifier);
+            lastLoggedMultiplier = rainMultiplier;
+        }
+    }
 
     // Lightning flash temporarily brightens everything
     if (lightningFlashTimer_ > 0.0f) {

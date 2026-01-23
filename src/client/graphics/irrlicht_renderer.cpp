@@ -970,6 +970,12 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     // Apply weather effects (darkening for storms)
     if (weatherEffects_ && weatherEffects_->isEnabled()) {
         float weatherMod = weatherEffects_->getAmbientLightModifier();
+        static float lastLoggedMod = -1.0f;
+        if (std::abs(weatherMod - lastLoggedMod) > 0.01f && weatherMod < 0.99f) {
+            LOG_DEBUG(MOD_GRAPHICS, "updateTimeOfDay: weatherMod={:.3f}, applying to ambient r={:.3f} g={:.3f} b={:.3f}",
+                      weatherMod, r, g, b);
+            lastLoggedMod = weatherMod;
+        }
         r *= weatherMod;
         g *= weatherMod;
         b *= weatherMod;
@@ -1016,6 +1022,14 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
                 // Apply fog density modifier (brings fog closer during storms)
                 float densityMod = weatherEffects_->getFogDensityModifier();
                 fogEnd /= densityMod;
+
+                // Apply rain overlay fog reduction (original EQ behavior - heavy rain = short fog)
+                float rainFogStart, rainFogEnd;
+                if (weatherEffects_->getRainFogSettings(rainFogStart, rainFogEnd)) {
+                    // Rain fog completely overrides normal fog distances
+                    fogStart = rainFogStart;
+                    fogEnd = rainFogEnd;
+                }
             }
 
             // Only update fog color if we have valid fog distances
@@ -1023,6 +1037,36 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
                 driver_->setFog(fogColor, fogType, fogStart, fogEnd, fogDensity, pixelFog, rangeFog);
             }
         }
+    }
+
+    // Update zone and object lights with weather modifier (only when weather is active)
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        float weatherMod = weatherEffects_->getAmbientLightModifier();
+        static float lastWeatherMod = 1.0f;
+        // Only update light colors when weather modifier changes significantly
+        if (std::abs(weatherMod - lastWeatherMod) > 0.005f) {
+            updateZoneLightColors();
+            updateObjectLightColors();
+            lastWeatherMod = weatherMod;
+        }
+
+        // Update sky brightness based on rain intensity
+        // Intensity 1: 50%, Intensity 5: 25%, Intensity 10: ~10% (like night)
+        // Formula: brightness = 0.5 * pow(0.5, (intensity - 1) / 4)
+        if (skyRenderer_ && weatherEffects_->isRaining()) {
+            uint8_t intensity = weatherEffects_->getCurrentIntensity();
+            if (intensity > 0) {
+                float skyBrightness = 0.5f * std::pow(0.5f, static_cast<float>(intensity - 1) / 4.0f);
+                skyRenderer_->setWeatherBrightness(skyBrightness);
+            } else {
+                skyRenderer_->setWeatherBrightness(1.0f);
+            }
+        } else if (skyRenderer_) {
+            skyRenderer_->setWeatherBrightness(1.0f);
+        }
+    } else if (skyRenderer_) {
+        // No weather active, restore full sky brightness
+        skyRenderer_->setWeatherBrightness(1.0f);
     }
 }
 
@@ -3217,6 +3261,7 @@ void IrrlichtRenderer::createObjectMeshes() {
                 objLight.node = lightNode;
                 objLight.position = lightPos;
                 objLight.objectName = objName;
+                objLight.originalColor = lightColor;  // Store for weather modification
                 objectLights_.push_back(objLight);
             }
         }
@@ -3774,6 +3819,13 @@ void IrrlichtRenderer::updateZoneLightColors() {
             break;
     }
 
+    // Apply weather effects to zone lights (darker during storms)
+    float weatherMod = 1.0f;
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        weatherMod = weatherEffects_->getAmbientLightModifier();
+        intensity *= weatherMod;
+    }
+
     // Update all zone light colors
     for (size_t i = 0; i < zoneLightNodes_.size() && i < currentZone_->lights.size(); ++i) {
         auto* node = zoneLightNodes_[i];
@@ -3794,8 +3846,40 @@ void IrrlichtRenderer::updateZoneLightColors() {
         }
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "Updated {} zone lights: intensity={:.0f}%, redShift={:.0f}%",
-              zoneLightNodes_.size(), intensity * 100.0f, redShift * 100.0f);
+    LOG_DEBUG(MOD_GRAPHICS, "Updated {} zone lights: intensity={:.0f}%, redShift={:.0f}%, weatherMod={:.2f}",
+              zoneLightNodes_.size(), intensity * 100.0f, redShift * 100.0f, weatherMod);
+}
+
+void IrrlichtRenderer::updateObjectLightColors() {
+    if (objectLights_.empty()) {
+        return;
+    }
+
+    // Get weather modifier (darker during storms)
+    float weatherMod = 1.0f;
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        weatherMod = weatherEffects_->getAmbientLightModifier();
+    }
+
+    // Update all object light colors
+    for (auto& objLight : objectLights_) {
+        if (objLight.node) {
+            // Apply weather modifier to original color
+            float r = objLight.originalColor.r * weatherMod;
+            float g = objLight.originalColor.g * weatherMod;
+            float b = objLight.originalColor.b * weatherMod;
+
+            irr::video::SLight& lightData = objLight.node->getLightData();
+            lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
+        }
+    }
+
+    static float lastLoggedMod = -1.0f;
+    if (std::abs(weatherMod - lastLoggedMod) > 0.01f && weatherMod < 0.99f) {
+        LOG_DEBUG(MOD_GRAPHICS, "Updated {} object lights: weatherMod={:.2f}",
+                  objectLights_.size(), weatherMod);
+        lastLoggedMod = weatherMod;
+    }
 }
 
 void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float heading) {

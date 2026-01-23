@@ -11,6 +11,7 @@
     "sizeMin": 0.1,
     "sizeMax": 0.2,
     "lengthScale": 3.0,
+    "intensityScale": 10.0,
     "colorR": 0.7,
     "colorG": 0.8,
     "colorB": 1.0,
@@ -90,6 +91,27 @@
     "duskStartHour": 18.0,
     "duskEndHour": 20.0,
     "lightningFlashMultiplier": 2.0
+  },
+  "rainOverlay": {
+    "enabled": true,
+    "scrollSpeedBase": 2.4,
+    "scrollSpeedIntensity": 0.4,
+    "layerScaleMin": 1.0,
+    "layerScaleMax": 1.8,
+    "layerSpeedMin": 0.5,
+    "layerSpeedMax": 1.0,
+    "baseOpacity": 0.3,
+    "maxOpacity": 0.8,
+    "windTiltBase": 0.0,
+    "windTiltIntensity": 0.3,
+    "fogReductionEnabled": true,
+    "fogStartMin": 10.0,
+    "fogStartMax": 200.0,
+    "fogEndMin": 50.0,
+    "fogEndMax": 500.0,
+    "daylightReductionEnabled": true,
+    "daylightMin": 0.05,
+    "daylightMax": 0.50
   },
   "qualityPreset": "high"
 }

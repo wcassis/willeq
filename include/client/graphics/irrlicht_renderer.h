@@ -91,6 +91,7 @@ struct ObjectLight {
     irr::scene::ILightSceneNode* node = nullptr;
     irr::core::vector3df position;
     std::string objectName;  // For debugging
+    irr::video::SColorf originalColor;  // Original color for weather modification
 };
 
 // Player position update for server synchronization
@@ -956,6 +957,7 @@ private:
     void createObjectMeshes();
     void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
+    void updateObjectLightColors();  // Update object light colors based on weather
 
     // Loading screen
     void drawLoadingScreen(float progress, const std::wstring& stageText);

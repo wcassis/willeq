@@ -61,6 +61,10 @@ public:
     // Update time of day for celestial body positioning
     void updateTimeOfDay(uint8_t hour, uint8_t minute);
 
+    // Set weather brightness modifier (1.0 = normal, 0.0 = completely dark)
+    // Used to darken sky during rain/storms
+    void setWeatherBrightness(float brightness);
+
     // Update sky animation (cloud scrolling, etc.)
     // deltaTime: time since last update in seconds
     void update(float deltaTime);
@@ -194,6 +198,9 @@ private:
 
     // Cached sky colors for current time of day
     SkyColorSet currentSkyColors_;
+
+    // Weather brightness modifier (1.0 = normal, 0.0 = completely dark)
+    float weatherBrightness_ = 1.0f;
 
     // Current background clear color for day/night cycle
     irr::video::SColor currentClearColor_{255, 50, 80, 120};
