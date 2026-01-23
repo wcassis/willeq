@@ -881,14 +881,16 @@ void IrrlichtRenderer::setupCamera() {
         -1
     );
 
-    // Use constrained clip distance if enabled, otherwise use zone render distance
-    float farValue = zoneRenderDistance_;
-    if (config_.constrainedConfig.enabled) {
+    // Camera far plane must be large enough to include the sky dome (1800 units)
+    // Render distance and fog control world object visibility separately
+    float farValue = SKY_FAR_PLANE;
+    if (config_.constrainedConfig.enabled && config_.constrainedConfig.clipDistance > SKY_FAR_PLANE) {
         farValue = config_.constrainedConfig.clipDistance;
         LOG_INFO(MOD_GRAPHICS, "Constrained mode: clip distance set to {}", farValue);
     }
     camera_->setFarValue(farValue);
     camera_->setNearValue(1.0f);
+    LOG_INFO(MOD_GRAPHICS, "Camera far plane: {}, render distance: {}", farValue, renderDistance_);
 
     cameraController_ = std::make_unique<CameraController>(camera_);
     cameraController_->setMoveSpeed(500.0f);
@@ -1029,26 +1031,50 @@ void IrrlichtRenderer::updateObjectVisibility() {
 
     irr::core::vector3df cameraPos = camera_->getPosition();
 
-    // Only update visibility if camera has moved significantly (>10 units)
-    // This avoids per-frame overhead when standing still
-    const float updateThreshold = 10.0f;
+    // Only update visibility if camera has moved significantly
+    const float updateThreshold = 5.0f;
     float cameraMoved = cameraPos.getDistanceFrom(lastCullingCameraPos_);
     if (cameraMoved < updateThreshold && lastCullingCameraPos_.getLength() > 0.01f) {
         return;  // Camera hasn't moved enough, skip update
     }
     lastCullingCameraPos_ = cameraPos;
 
-    // Update scene graph membership based on distance
-    // This removes far objects entirely from the scene graph to skip traversal overhead
+    // Update scene graph membership based on distance to bounding box edge
+    // Objects are kept in scene until their nearest edge exceeds render distance
+    // The fog system handles the visual fade - distant parts fade into fog naturally
     size_t inSceneCount = 0;
     size_t removedCount = 0;
-    const float renderDistSq = objectRenderDistance_ * objectRenderDistance_;
 
     for (size_t i = 0; i < objectNodes_.size(); ++i) {
         if (!objectNodes_[i]) continue;
+        if (i >= objectBoundingBoxes_.size()) continue;  // Safety check
 
-        float distSq = cameraPos.getDistanceFromSQ(objectPositions_[i]);
-        bool shouldBeInScene = (distSq <= renderDistSq);
+        // Calculate distance to the nearest point on the object's bounding box
+        // This ensures large objects come into view gradually (edge first) rather than
+        // popping in all at once when the center comes within range
+        const irr::core::aabbox3df& bbox = objectBoundingBoxes_[i];
+
+        // Check for invalid bounding box (empty or degenerate)
+        // If invalid, fall back to using the cached position
+        float dist;
+        bool validBbox = (bbox.MinEdge.X <= bbox.MaxEdge.X &&
+                          bbox.MinEdge.Y <= bbox.MaxEdge.Y &&
+                          bbox.MinEdge.Z <= bbox.MaxEdge.Z);
+
+        if (validBbox) {
+            // Find the closest point on the bounding box to the camera
+            irr::core::vector3df closestPoint;
+            closestPoint.X = std::max(bbox.MinEdge.X, std::min(cameraPos.X, bbox.MaxEdge.X));
+            closestPoint.Y = std::max(bbox.MinEdge.Y, std::min(cameraPos.Y, bbox.MaxEdge.Y));
+            closestPoint.Z = std::max(bbox.MinEdge.Z, std::min(cameraPos.Z, bbox.MaxEdge.Z));
+            dist = cameraPos.getDistanceFrom(closestPoint);
+        } else {
+            // Fall back to center position distance
+            dist = cameraPos.getDistanceFrom(objectPositions_[i]);
+        }
+
+        // Object should be in scene graph if its nearest edge is within render distance
+        bool shouldBeInScene = (dist <= renderDistance_);
 
         if (shouldBeInScene && !objectInSceneGraph_[i]) {
             // Add back to scene graph
@@ -1068,8 +1094,8 @@ void IrrlichtRenderer::updateObjectVisibility() {
         }
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "Object scene graph: {} in scene, {} removed (dist={})",
-        inSceneCount, removedCount, objectRenderDistance_);
+    LOG_TRACE(MOD_GRAPHICS, "Object visibility: {} in scene, {} culled (renderDist={})",
+        inSceneCount, removedCount, renderDistance_);
 }
 
 void IrrlichtRenderer::updateZoneLightVisibility() {
@@ -1081,7 +1107,7 @@ void IrrlichtRenderer::updateZoneLightVisibility() {
     // This removes far lights entirely from the scene graph to skip traversal overhead
     size_t inSceneCount = 0;
     size_t removedCount = 0;
-    const float renderDistSq = zoneLightRenderDistance_ * zoneLightRenderDistance_;
+    const float renderDistSq = renderDistance_ * renderDistance_;
 
     for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
         if (!zoneLightNodes_[i]) continue;
@@ -1107,7 +1133,7 @@ void IrrlichtRenderer::updateZoneLightVisibility() {
     }
 
     LOG_TRACE(MOD_GRAPHICS, "Zone light scene graph: {} in scene, {} removed (dist={})",
-        inSceneCount, removedCount, zoneLightRenderDistance_);
+        inSceneCount, removedCount, renderDistance_);
 }
 
 void IrrlichtRenderer::updateObjectLights() {
@@ -1380,31 +1406,24 @@ void IrrlichtRenderer::updateVertexAnimations(float deltaMs) {
 }
 
 void IrrlichtRenderer::setupFog() {
-    if (!driver_ || !currentZone_ || !currentZone_->geometry) {
+    if (!driver_) {
         return;
     }
 
-    float fogStart, fogEnd;
+    // Unified fog system:
+    // - fogEnd = renderDistance_ (absolute visibility limit)
+    // - fogStart = renderDistance_ - fogThickness_ (where fade begins)
+    // - Everything beyond renderDistance_ is culled, nothing renders there
+    // - Fog creates a smooth fade zone at the edge
+    float fogEnd = renderDistance_;
+    float fogStart = renderDistance_ - fogThickness_;
+    fogStart = std::max(0.0f, fogStart);  // Ensure non-negative
 
-    // Use constrained mode fog settings if enabled
-    if (config_.constrainedConfig.enabled) {
-        fogStart = config_.constrainedConfig.fogStart();
-        fogEnd = config_.constrainedConfig.fogEnd();
-        LOG_DEBUG(MOD_GRAPHICS, "Constrained mode fog: start={}, end={}", fogStart, fogEnd);
-    } else {
-        // Default fog based on zone size
-        float zoneWidth = currentZone_->geometry->maxX - currentZone_->geometry->minX;
-        float zoneDepth = currentZone_->geometry->maxY - currentZone_->geometry->minY;
-        float zoneSize = std::max(zoneWidth, zoneDepth);
-
-        fogStart = zoneSize * 0.2f;
-        fogEnd = zoneSize * 0.8f;
-
-        fogStart = std::max(100.0f, std::min(fogStart, 5000.0f));
-        fogEnd = std::max(fogStart + 500.0f, std::min(fogEnd, 20000.0f));
+    // Get fog color from sky renderer if available, otherwise use default
+    irr::video::SColor fogColor(255, 128, 128, 160);  // Default: light gray-blue
+    if (skyRenderer_ && skyRenderer_->isInitialized()) {
+        fogColor = skyRenderer_->getRecommendedFogColor();
     }
-
-    irr::video::SColor fogColor(255, 50, 50, 80);
 
     driver_->setFog(
         fogColor,
@@ -1412,9 +1431,12 @@ void IrrlichtRenderer::setupFog() {
         fogStart,
         fogEnd,
         0.01f,
-        true,
-        false
+        true,   // Pixel fog
+        false   // Range fog
     );
+
+    LOG_INFO(MOD_GRAPHICS, "Fog: start={:.0f}, end={:.0f} (renderDistance={:.0f}, fogThickness={:.0f})",
+        fogStart, fogEnd, renderDistance_, fogThickness_);
 }
 
 void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& stageText) {
@@ -2199,6 +2221,7 @@ void IrrlichtRenderer::unloadZone() {
     }
     objectNodes_.clear();
     objectPositions_.clear();
+    objectBoundingBoxes_.clear();
     objectInSceneGraph_.clear();
 
     // Remove zone light nodes
@@ -2269,27 +2292,28 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
                   isDungeon ? "disabled" : "enabled");
     }
 
-    // Apply fog settings from zone data
-    // Use the first fog range (index 0) for now - EQ supports 4 fog ranges
+    // Apply fog color from zone data, but keep our controlled distances
+    // Zone provides atmosphere color, we control visibility distances
     if (driver_ && fogEnabled_) {
         irr::video::SColor fogColor(255, fogRed[0], fogGreen[0], fogBlue[0]);
-        float fogStart = fogMinClip[0];
-        float fogEnd = fogMaxClip[0];
 
-        // Only apply fog if we have valid clip distances
-        if (fogEnd > fogStart && fogEnd > 0) {
-            driver_->setFog(
-                fogColor,
-                irr::video::EFT_FOG_LINEAR,
-                fogStart,
-                fogEnd,
-                0.0f,  // Density (unused for linear fog)
-                true,  // Pixel fog
-                false  // Range fog
-            );
-            LOG_DEBUG(MOD_GRAPHICS, "Zone fog: RGB({},{},{}) range {}-{}",
-                      fogRed[0], fogGreen[0], fogBlue[0], fogStart, fogEnd);
-        }
+        // Use our unified render distance system for fog distances
+        float fogEnd = renderDistance_;
+        float fogStart = renderDistance_ - fogThickness_;
+        fogStart = std::max(0.0f, fogStart);
+
+        driver_->setFog(
+            fogColor,
+            irr::video::EFT_FOG_LINEAR,
+            fogStart,
+            fogEnd,
+            0.0f,  // Density (unused for linear fog)
+            true,  // Pixel fog
+            false  // Range fog
+        );
+
+        LOG_DEBUG(MOD_GRAPHICS, "Zone fog color: RGB({},{},{}), distances: {:.0f}-{:.0f} (renderDistance={:.0f})",
+                  fogRed[0], fogGreen[0], fogBlue[0], fogStart, fogEnd, renderDistance_);
     }
 }
 
@@ -2702,7 +2726,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
 
     // If camera is outside all regions, apply distance culling only (no PVS)
     if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
-        float renderDistSq = zoneRenderDistance_ * zoneRenderDistance_;
+        float renderDistSq = renderDistance_ * renderDistance_;
         size_t visibleCount = 0, distanceCulledCount = 0;
 
         for (auto& [regionIdx, node] : regionMeshNodes_) {
@@ -2729,7 +2753,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
             }
         }
         LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} distance culled (dist={:.0f})",
-            visibleCount, distanceCulledCount, zoneRenderDistance_);
+            visibleCount, distanceCulledCount, renderDistance_);
         return;
     }
 
@@ -2752,7 +2776,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
     size_t distanceCulledCount = 0;
 
     // Pre-compute squared render distance for performance
-    float renderDistSq = zoneRenderDistance_ * zoneRenderDistance_;
+    float renderDistSq = renderDistance_ * renderDistance_;
 
     for (auto& [regionIdx, node] : regionMeshNodes_) {
         if (!node) continue;
@@ -2903,6 +2927,7 @@ void IrrlichtRenderer::createObjectMeshes() {
     }
     objectNodes_.clear();
     objectPositions_.clear();
+    objectBoundingBoxes_.clear();
     objectInSceneGraph_.clear();
 
     // Clear object lights
@@ -3150,6 +3175,20 @@ void IrrlichtRenderer::createObjectMeshes() {
         node->grab();  // Keep alive when removed from scene graph
         objectNodes_.push_back(node);
         objectPositions_.push_back(irr::core::vector3df(x, z, y));  // Cache position for distance culling
+
+        // Update absolute transformation before getting bounding box
+        node->updateAbsolutePosition();
+        irr::core::aabbox3df worldBbox = node->getTransformedBoundingBox();
+        objectBoundingBoxes_.push_back(worldBbox);  // Cache world-space bounding box
+
+        // Debug: log bounding box for large objects
+        irr::core::vector3df extent = worldBbox.getExtent();
+        if (extent.X > 50 || extent.Y > 50 || extent.Z > 50) {
+            LOG_DEBUG(MOD_GRAPHICS, "[PLACEABLE] {} bbox: min=({:.1f},{:.1f},{:.1f}) max=({:.1f},{:.1f},{:.1f}) extent=({:.1f},{:.1f},{:.1f})",
+                objName, worldBbox.MinEdge.X, worldBbox.MinEdge.Y, worldBbox.MinEdge.Z,
+                worldBbox.MaxEdge.X, worldBbox.MaxEdge.Y, worldBbox.MaxEdge.Z,
+                extent.X, extent.Y, extent.Z);
+        }
         objectInSceneGraph_.push_back(true);  // Initially in scene graph
 
         // Check if this object is a light source (torch, lantern, etc.)
@@ -5701,18 +5740,22 @@ void IrrlichtRenderer::setClipDistance(float distance) {
     if (distance < 100.0f) distance = 100.0f;
     if (distance > 50000.0f) distance = 50000.0f;
 
-    // Update the config (for HUD display and fog calculations)
+    // Update render distance for fog/object culling
+    renderDistance_ = distance;
     config_.constrainedConfig.clipDistance = distance;
 
-    // Update the camera's far plane
+    // Camera far plane must stay at least SKY_FAR_PLANE to render sky dome
+    // Only increase it if requested distance is larger
     if (camera_) {
-        camera_->setFarValue(distance);
+        float cameraFar = std::max(SKY_FAR_PLANE, distance);
+        camera_->setFarValue(cameraFar);
     }
 
-    // Update fog to match new clip distance
+    // Update fog to match new render distance
     setupFog();
 
-    LOG_INFO(MOD_GRAPHICS, "Clip distance set to {}", distance);
+    LOG_INFO(MOD_GRAPHICS, "Render distance set to {}, camera far plane: {}",
+             distance, camera_ ? camera_->getFarValue() : SKY_FAR_PLANE);
 }
 
 float IrrlichtRenderer::getClipDistance() const {

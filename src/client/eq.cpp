@@ -8735,22 +8735,20 @@ void EverQuest::RegisterCommands()
 		auto* entityRenderer = m_renderer->getEntityRenderer();
 
 		if (args.empty()) {
-			float entityDist = entityRenderer ? entityRenderer->getRenderDistance() : 0.0f;
-			float objectDist = m_renderer->getObjectRenderDistance();
-			float zoneDist = m_renderer->getZoneRenderDistance();
-			AddChatSystemMessage(fmt::format("Render distance: entities={:.0f}, objects={:.0f}, zone={:.0f} units", entityDist, objectDist, zoneDist));
+			float renderDist = m_renderer->getRenderDistance();
+			float fogThickness = m_renderer->getFogThickness();
+			AddChatSystemMessage(fmt::format("Render distance: {:.0f} units, fog thickness: {:.0f} units", renderDist, fogThickness));
 		} else {
 			try {
 				float dist = std::stof(args);
 				if (dist < 50.0f) dist = 50.0f;
 				if (dist > 10000.0f) dist = 10000.0f;
 
-				// Set entity, object, and zone render distance
+				// Set unified render distance (affects everything: zone, objects, entities, fog)
+				m_renderer->setRenderDistance(dist);
 				if (entityRenderer) {
 					entityRenderer->setRenderDistance(dist);
 				}
-				m_renderer->setObjectRenderDistance(dist);
-				m_renderer->setZoneRenderDistance(dist);
 
 				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units", dist));
 			} catch (...) {

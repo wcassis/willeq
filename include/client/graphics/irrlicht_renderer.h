@@ -673,18 +673,25 @@ public:
     float getRotationY() const;
     float getRotationZ() const;
 
-    // Zone render distance (for geometry culling and camera far plane)
-    void setZoneRenderDistance(float distance) {
-        zoneRenderDistance_ = distance;
-        if (camera_) {
-            camera_->setFarValue(distance);
-        }
+    // Unified render distance (controls fog and object culling, NOT camera far plane)
+    // The camera far plane must be larger to include the sky dome
+    void setRenderDistance(float distance) {
+        renderDistance_ = distance;
+        // Note: Do NOT set camera far value here - it must remain large enough
+        // for the sky dome (SKY_FAR_PLANE). Render distance only controls fog/culling.
+        setupFog();
     }
-    float getZoneRenderDistance() const { return zoneRenderDistance_; }
+    float getRenderDistance() const { return renderDistance_; }
 
-    // Object render distance (for trees, placeables)
-    void setObjectRenderDistance(float distance) { objectRenderDistance_ = distance; }
-    float getObjectRenderDistance() const { return objectRenderDistance_; }
+    // Sky far plane - camera far value must be at least this to render sky
+    static constexpr float SKY_FAR_PLANE = 2000.0f;
+
+    // Fog thickness (fade zone at edge of render distance)
+    void setFogThickness(float thickness) {
+        fogThickness_ = thickness;
+        setupFog();
+    }
+    float getFogThickness() const { return fogThickness_; }
 
     // Get Irrlicht device (for advanced usage)
     irr::IrrlichtDevice* getDevice() { return device_; }
@@ -1000,14 +1007,19 @@ private:
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
+    std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
-    float objectRenderDistance_ = 300.0f;  // Max distance to render objects
-    float zoneRenderDistance_ = 2000.0f;   // Max distance to render zone geometry regions
+
+    // Unified render distance system
+    // renderDistance_ is the absolute limit - nothing renders beyond this
+    // fogThickness_ is the fade zone just inside the render distance
+    // fogEnd = renderDistance_, fogStart = renderDistance_ - fogThickness_
+    float renderDistance_ = 300.0f;   // Absolute render limit (sphere around player)
+    float fogThickness_ = 50.0f;      // Thickness of fog fade zone at edge
     irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
-    float zoneLightRenderDistance_ = 400.0f;  // Max distance to keep lights in scene graph
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
     bool showLightDebugMarkers_ = false;  // Show debug markers for active lights
