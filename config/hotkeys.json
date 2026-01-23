@@ -8,6 +8,7 @@
             "ToggleUILock": "Ctrl+L",
             "SaveUILayout": "Ctrl+S",
             "ResetUIDefaults": "Ctrl+Shift+R",
+            "ToggleOptions": "O",
             "ConfirmDialog": ["Return", "Y"],
             "CancelDialog": ["Escape", "N"],
             "SubmitInput": "Return",

@@ -1574,6 +1574,9 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
     if (inventoryWindow_ && inventoryWindow_->isVisible()) {
         zOrderableWindows.push_back(inventoryWindow_.get());
     }
+    if (optionsWindow_ && optionsWindow_->isVisible()) {
+        zOrderableWindows.push_back(optionsWindow_.get());
+    }
 
     // Sort by z-order (windows in windowZOrder_ at back are on top)
     // Windows not in z-order list go to the bottom
@@ -1757,7 +1760,14 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Windows are checked in reverse render order (topmost first) so that
     // mouse up events go to the visually topmost window, not a window underneath.
 
-    // Check note window first (rendered on top)
+    // Check options window first (rendered on top)
+    if (optionsWindow_ && optionsWindow_->isVisible()) {
+        if (optionsWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check note window (rendered on top)
     if (noteWindow_ && noteWindow_->isVisible()) {
         if (noteWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
@@ -1925,6 +1935,7 @@ bool WindowManager::handleMouseMove(int x, int y) {
     if (checkDragging(playerStatusWindow_.get())) return true;
     if (checkDragging(noteWindow_.get())) return true;
     if (checkDragging(tradeskillWindow_.get())) return true;
+    if (checkDragging(optionsWindow_.get())) return true;
     if (spellGemPanel_ && spellGemPanel_->isDragging()) {
         spellGemPanel_->handleMouseMove(x, y);
         return true;
@@ -1934,6 +1945,12 @@ bool WindowManager::handleMouseMove(int x, int y) {
     }
     for (auto& [slotId, bagWindow] : bankBagWindows_) {
         if (checkDragging(bagWindow.get())) return true;
+    }
+
+    // Handle options window slider dragging
+    if (optionsWindow_ && optionsWindow_->isVisible() && optionsWindow_->isSliderDragging()) {
+        optionsWindow_->handleMouseMove(x, y);
+        return true;
     }
 
     // Handle quantity slider dragging
@@ -2020,6 +2037,9 @@ bool WindowManager::handleMouseMove(int x, int y) {
     }
     if (inventoryWindow_ && inventoryWindow_->isVisible()) {
         zOrderableWindows.push_back(inventoryWindow_.get());
+    }
+    if (optionsWindow_ && optionsWindow_->isVisible()) {
+        zOrderableWindows.push_back(optionsWindow_.get());
     }
 
     // Sort by z-order (windows in windowZOrder_ at back are on top)
@@ -2431,6 +2451,11 @@ void WindowManager::render() {
     // Render note window (on top of inventory/bags)
     if (noteWindow_ && noteWindow_->isVisible()) {
         noteWindow_->render(driver_, gui_);
+    }
+
+    // Render options window
+    if (optionsWindow_ && optionsWindow_->isVisible()) {
+        optionsWindow_->render(driver_, gui_);
     }
 
     // Render tooltip

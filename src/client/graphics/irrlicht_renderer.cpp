@@ -7499,11 +7499,42 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
                 // Use same quality setting as particles (0=Off, 1=Low, 2=Medium, 3=High)
                 int quality = static_cast<int>(settings.environmentQuality);
                 boidsManager_->setQuality(quality);
-                boidsManager_->setEnabled(settings.atmosphericParticles);
+                boidsManager_->setEnabled(settings.ambientCreatures);
                 boidsManager_->setDensity(settings.environmentDensity);
 
                 LOG_DEBUG(MOD_GRAPHICS, "Boids settings updated: quality={}, enabled={}, density={}",
-                         quality, settings.atmosphericParticles, settings.environmentDensity);
+                         quality, settings.ambientCreatures, settings.environmentDensity);
+            }
+
+            // Update detail manager settings (grass, plants, rocks, debris)
+            if (detailManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
+                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+
+                detailManager_->setEnabled(settings.detailObjectsEnabled);
+                detailManager_->setDensity(settings.detailDensity);
+                detailManager_->setCategoryEnabled(Detail::DetailCategory::Grass, settings.detailGrass);
+                detailManager_->setCategoryEnabled(Detail::DetailCategory::Plants, settings.detailPlants);
+                detailManager_->setCategoryEnabled(Detail::DetailCategory::Rocks, settings.detailRocks);
+                detailManager_->setCategoryEnabled(Detail::DetailCategory::Debris, settings.detailDebris);
+
+                // Update reactive foliage (grass bending when player walks through)
+                auto foliageConfig = detailManager_->getFoliageDisturbanceConfig();
+                foliageConfig.enabled = settings.reactiveFoliage;
+                detailManager_->setFoliageDisturbanceConfig(foliageConfig);
+
+                LOG_DEBUG(MOD_GRAPHICS, "Detail settings updated: enabled={}, density={:.2f}, grass={}, plants={}, rocks={}, debris={}, reactiveFoliage={}",
+                         settings.detailObjectsEnabled, settings.detailDensity,
+                         settings.detailGrass, settings.detailPlants, settings.detailRocks, settings.detailDebris,
+                         settings.reactiveFoliage);
+            }
+
+            // Update tumbleweed (rolling objects) settings
+            if (tumbleweedManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
+                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+                tumbleweedManager_->setEnabled(settings.rollingObjects);
+
+                LOG_DEBUG(MOD_GRAPHICS, "Tumbleweed settings updated: enabled={}",
+                         settings.rollingObjects);
             }
         });
 

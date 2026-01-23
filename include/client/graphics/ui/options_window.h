@@ -84,6 +84,9 @@ public:
     bool loadSettings(const std::string& path = "config/display_settings.json");
     bool saveSettings(const std::string& path = "");
 
+    // Slider dragging state (for window manager to route events)
+    bool isSliderDragging() const { return draggingSlider_; }
+
 protected:
     void renderContent(irr::video::IVideoDriver* driver,
                       irr::gui::IGUIEnvironment* gui) override;

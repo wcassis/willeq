@@ -1034,9 +1034,6 @@ void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 	
 	switch (opcode) {
 	case HC_OP_ChatMessage:
-		if (s_debug_level >= 1) {
-			std::cout << "Received HC_OP_ChatMessage, sending login" << std::endl;
-		}
 		LoginSendLogin();
 		break;
 	case HC_OP_LoginAccepted:

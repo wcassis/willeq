@@ -853,7 +853,7 @@ void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uin
     placeable->setScale(scaleFactor, scaleFactor, scaleFactor);
 
     // Debug: log all placeables
-    fmt::print(stderr, "[PLACEABLE] {} pos=({:.2f},{:.2f},{:.2f}) rot=({:.2f},{:.2f},{:.2f}) scale={:.4f} flags=0x{:X}\n",
+    LOG_DEBUG(MOD_GRAPHICS, "[PLACEABLE] {} pos=({:.2f},{:.2f},{:.2f}) rot=({:.2f},{:.2f},{:.2f}) scale={:.4f} flags=0x{:X}",
         placeable->getName(), x, y, z, finalRotX, finalRotY, finalRotZ, scaleFactor, flags);
 
     // If HasSound flag set, read sound name reference (int32)
