@@ -68,7 +68,17 @@ enum class AtlasTile {
     FootprintLeftSwamp = 48,    // Row 6, Col 0 - Dark muddy green
     FootprintRightSwamp = 49,   // Row 6, Col 1
     FootprintLeftJungle = 50,   // Row 6, Col 2 - Dark humid soil
-    FootprintRightJungle = 51   // Row 6, Col 3
+    FootprintRightJungle = 51,  // Row 6, Col 3
+
+    // Row 7: Additional grass varieties (non-desert biomes)
+    GrassMixed1 = 56,           // Row 7, Col 0 - Short grass with dead blades mixed in
+    GrassMixed2 = 57,           // Row 7, Col 1 - Tall grass with dead blades mixed in
+    GrassClump = 58,            // Row 7, Col 2 - Dense clump with varied heights
+    GrassWispy = 59,            // Row 7, Col 3 - Thin delicate blades
+    GrassBroad = 60,            // Row 7, Col 4 - Wide flat leaf blades
+    GrassCurved = 61,           // Row 7, Col 5 - Curved/wind-blown tips
+    GrassSeedHead = 62,         // Row 7, Col 6 - Grass with seed heads
+    GrassBroken = 63            // Row 7, Col 7 - Bent/broken blades
 };
 
 // Get UV coordinates for a tile
@@ -141,6 +151,16 @@ private:
     // Footprints - biome-specific colors
     void drawFootprintLeft(irr::video::IImage* image, int startX, int startY, int r, int g, int b);
     void drawFootprintRight(irr::video::IImage* image, int startX, int startY, int r, int g, int b);
+
+    // Additional grass varieties (Row 7)
+    void drawGrassMixed1(irr::video::IImage* image, int startX, int startY);
+    void drawGrassMixed2(irr::video::IImage* image, int startX, int startY);
+    void drawGrassClump(irr::video::IImage* image, int startX, int startY);
+    void drawGrassWispy(irr::video::IImage* image, int startX, int startY);
+    void drawGrassBroad(irr::video::IImage* image, int startX, int startY);
+    void drawGrassCurved(irr::video::IImage* image, int startX, int startY);
+    void drawGrassSeedHead(irr::video::IImage* image, int startX, int startY);
+    void drawGrassBroken(irr::video::IImage* image, int startX, int startY);
 
     // Helper to set a pixel with bounds checking
     void setPixel(irr::video::IImage* image, int x, int y, irr::video::SColor color);

@@ -1188,6 +1188,136 @@ ZoneDetailConfig DetailManager::createDefaultConfig(const std::string& zoneName)
     getTileUV(AtlasTile::GrassTall, tallGrass.u0, tallGrass.v0, tallGrass.u1, tallGrass.v1);
     config.detailTypes.push_back(tallGrass);
 
+    // ==========================================
+    // Additional grass varieties (Row 7)
+    // These add visual variety with dead blades, different shapes
+    // ==========================================
+
+    // Mixed grass (short) - has ~20% dead/dying blades intermixed
+    DetailType grassMixed1;
+    grassMixed1.name = "grass_mixed_short";
+    grassMixed1.category = DetailCategory::Grass;
+    grassMixed1.orientation = DetailOrientation::CrossedQuads;
+    grassMixed1.minSize = 1.0f;
+    grassMixed1.maxSize = 2.2f;
+    grassMixed1.baseDensity = 0.4f;
+    grassMixed1.maxSlope = 0.5f;
+    grassMixed1.windResponse = 0.9f;
+    grassMixed1.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass) |
+                                   static_cast<uint32_t>(SurfaceType::Dirt);
+    grassMixed1.testColor = irr::video::SColor(255, 100, 180, 60);
+    getTileUV(AtlasTile::GrassMixed1, grassMixed1.u0, grassMixed1.v0, grassMixed1.u1, grassMixed1.v1);
+    config.detailTypes.push_back(grassMixed1);
+
+    // Mixed grass (tall) - has ~20% dead/dying blades intermixed
+    DetailType grassMixed2;
+    grassMixed2.name = "grass_mixed_tall";
+    grassMixed2.category = DetailCategory::Grass;
+    grassMixed2.orientation = DetailOrientation::CrossedQuads;
+    grassMixed2.minSize = 2.0f;
+    grassMixed2.maxSize = 3.8f;
+    grassMixed2.baseDensity = 0.25f;
+    grassMixed2.maxSlope = 0.45f;
+    grassMixed2.windResponse = 1.0f;
+    grassMixed2.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass);
+    grassMixed2.testColor = irr::video::SColor(255, 80, 170, 50);
+    getTileUV(AtlasTile::GrassMixed2, grassMixed2.u0, grassMixed2.v0, grassMixed2.u1, grassMixed2.v1);
+    config.detailTypes.push_back(grassMixed2);
+
+    // Grass clump - dense cluster radiating from center, varied heights
+    DetailType grassClump;
+    grassClump.name = "grass_clump";
+    grassClump.category = DetailCategory::Grass;
+    grassClump.orientation = DetailOrientation::CrossedQuads;
+    grassClump.minSize = 1.8f;
+    grassClump.maxSize = 3.5f;
+    grassClump.baseDensity = 0.2f;
+    grassClump.maxSlope = 0.4f;
+    grassClump.windResponse = 0.85f;
+    grassClump.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass) |
+                                  static_cast<uint32_t>(SurfaceType::Dirt);
+    grassClump.testColor = irr::video::SColor(255, 90, 175, 55);
+    getTileUV(AtlasTile::GrassClump, grassClump.u0, grassClump.v0, grassClump.u1, grassClump.v1);
+    config.detailTypes.push_back(grassClump);
+
+    // Wispy grass - thin, delicate single-pixel blades
+    DetailType grassWispy;
+    grassWispy.name = "grass_wispy";
+    grassWispy.category = DetailCategory::Grass;
+    grassWispy.orientation = DetailOrientation::CrossedQuads;
+    grassWispy.minSize = 1.2f;
+    grassWispy.maxSize = 2.8f;
+    grassWispy.baseDensity = 0.35f;
+    grassWispy.maxSlope = 0.55f;
+    grassWispy.windResponse = 1.2f;  // More responsive - delicate
+    grassWispy.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass);
+    grassWispy.testColor = irr::video::SColor(255, 115, 200, 70);
+    getTileUV(AtlasTile::GrassWispy, grassWispy.u0, grassWispy.v0, grassWispy.u1, grassWispy.v1);
+    config.detailTypes.push_back(grassWispy);
+
+    // Broad grass - wide, flat leaf blades (like ornamental grass)
+    DetailType grassBroad;
+    grassBroad.name = "grass_broad";
+    grassBroad.category = DetailCategory::Grass;
+    grassBroad.orientation = DetailOrientation::CrossedQuads;
+    grassBroad.minSize = 1.5f;
+    grassBroad.maxSize = 3.2f;
+    grassBroad.baseDensity = 0.15f;
+    grassBroad.maxSlope = 0.4f;
+    grassBroad.windResponse = 0.7f;  // Less responsive - sturdy
+    grassBroad.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass) |
+                                  static_cast<uint32_t>(SurfaceType::Dirt);
+    grassBroad.testColor = irr::video::SColor(255, 75, 155, 45);
+    getTileUV(AtlasTile::GrassBroad, grassBroad.u0, grassBroad.v0, grassBroad.u1, grassBroad.v1);
+    config.detailTypes.push_back(grassBroad);
+
+    // Curved grass - wind-blown appearance with curved tips
+    DetailType grassCurved;
+    grassCurved.name = "grass_curved";
+    grassCurved.category = DetailCategory::Grass;
+    grassCurved.orientation = DetailOrientation::CrossedQuads;
+    grassCurved.minSize = 1.6f;
+    grassCurved.maxSize = 3.4f;
+    grassCurved.baseDensity = 0.3f;
+    grassCurved.maxSlope = 0.45f;
+    grassCurved.windResponse = 1.1f;
+    grassCurved.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass);
+    grassCurved.testColor = irr::video::SColor(255, 90, 175, 50);
+    getTileUV(AtlasTile::GrassCurved, grassCurved.u0, grassCurved.v0, grassCurved.u1, grassCurved.v1);
+    config.detailTypes.push_back(grassCurved);
+
+    // Seed head grass - grass with seed heads at top (wheat-like)
+    DetailType grassSeedHead;
+    grassSeedHead.name = "grass_seed_head";
+    grassSeedHead.category = DetailCategory::Grass;
+    grassSeedHead.orientation = DetailOrientation::CrossedQuads;
+    grassSeedHead.minSize = 2.2f;
+    grassSeedHead.maxSize = 4.2f;
+    grassSeedHead.baseDensity = 0.18f;
+    grassSeedHead.maxSlope = 0.4f;
+    grassSeedHead.windResponse = 0.9f;
+    grassSeedHead.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass) |
+                                     static_cast<uint32_t>(SurfaceType::Dirt);
+    grassSeedHead.testColor = irr::video::SColor(255, 180, 165, 100);  // Golden seed heads
+    getTileUV(AtlasTile::GrassSeedHead, grassSeedHead.u0, grassSeedHead.v0, grassSeedHead.u1, grassSeedHead.v1);
+    config.detailTypes.push_back(grassSeedHead);
+
+    // Broken grass - bent/broken blades (trampled or weather-damaged)
+    DetailType grassBroken;
+    grassBroken.name = "grass_broken";
+    grassBroken.category = DetailCategory::Grass;
+    grassBroken.orientation = DetailOrientation::CrossedQuads;
+    grassBroken.minSize = 1.2f;
+    grassBroken.maxSize = 2.6f;
+    grassBroken.baseDensity = 0.12f;  // Less common
+    grassBroken.maxSlope = 0.5f;
+    grassBroken.windResponse = 0.6f;  // Less responsive - damaged
+    grassBroken.allowedSurfaces = static_cast<uint32_t>(SurfaceType::Grass) |
+                                   static_cast<uint32_t>(SurfaceType::Dirt);
+    grassBroken.testColor = irr::video::SColor(255, 95, 165, 55);
+    getTileUV(AtlasTile::GrassBroken, grassBroken.u0, grassBroken.v0, grassBroken.u1, grassBroken.v1);
+    config.detailTypes.push_back(grassBroken);
+
     // Flowers - only on grass surfaces
     DetailType flower;
     flower.name = "flower";

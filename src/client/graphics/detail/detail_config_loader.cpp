@@ -491,6 +491,16 @@ AtlasTile DetailConfigLoader::parseAtlasTileString(const std::string& str) {
     if (str == "LilyPad") return AtlasTile::LilyPad;
     if (str == "SwampGrass") return AtlasTile::SwampGrass;
 
+    // Row 7: Additional grass varieties
+    if (str == "GrassMixed1") return AtlasTile::GrassMixed1;
+    if (str == "GrassMixed2") return AtlasTile::GrassMixed2;
+    if (str == "GrassClump") return AtlasTile::GrassClump;
+    if (str == "GrassWispy") return AtlasTile::GrassWispy;
+    if (str == "GrassBroad") return AtlasTile::GrassBroad;
+    if (str == "GrassCurved") return AtlasTile::GrassCurved;
+    if (str == "GrassSeedHead") return AtlasTile::GrassSeedHead;
+    if (str == "GrassBroken") return AtlasTile::GrassBroken;
+
     LOG_WARN(MOD_GRAPHICS, "DetailConfigLoader: Unknown atlas tile '{}', defaulting to GrassShort", str);
     return AtlasTile::GrassShort;
 }
