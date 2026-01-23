@@ -4,6 +4,8 @@
 #include "common/name_utils.h"
 #include <sstream>
 #include <iomanip>
+#include <chrono>
+#include <cmath>
 
 namespace eqt {
 namespace ui {
@@ -161,6 +163,16 @@ void PlayerStatusWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUI
 
     // Draw window base (background, border)
     WindowBase::render(driver, gui);
+
+    // Draw animated combat border when auto-attack is enabled
+    CombatManager* combat = eq_ ? eq_->GetCombatManager() : nullptr;
+    if (combat && combat->IsAutoAttackEnabled()) {
+        auto now = std::chrono::steady_clock::now();
+        uint32_t currentTimeMs = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()).count());
+        drawCombatBorder(driver, currentTimeMs);
+    }
 }
 
 void PlayerStatusWindow::updateDisplayNames(irr::gui::IGUIFont* font, int contentWidth)
@@ -411,6 +423,93 @@ std::wstring PlayerStatusWindow::truncateText(irr::gui::IGUIFont* font,
         return text.substr(0, bestFit) + ellipsis;
     }
     return ellipsis;
+}
+
+void PlayerStatusWindow::drawCombatBorder(irr::video::IVideoDriver* driver, uint32_t currentTimeMs)
+{
+    if (!driver) return;
+
+    // Update animation offset based on time elapsed
+    // Animation completes one full cycle every 1000ms
+    const float animationSpeed = 0.001f;  // cycles per millisecond
+    if (lastAnimationTime_ == 0) {
+        lastAnimationTime_ = currentTimeMs;
+    }
+    uint32_t deltaMs = currentTimeMs - lastAnimationTime_;
+    lastAnimationTime_ = currentTimeMs;
+    animationOffset_ += deltaMs * animationSpeed;
+    if (animationOffset_ >= 1.0f) {
+        animationOffset_ -= 1.0f;
+    }
+
+    // Get window bounds
+    irr::core::recti bounds = getBounds();
+    const int borderWidth = 3;  // Width of combat border
+
+    // Calculate total perimeter for gradient calculation
+    // Top and bottom edges are extended by borderWidth on each side
+    int width = bounds.getWidth();
+    int height = bounds.getHeight();
+    int extendedWidth = width + 2 * borderWidth;
+    int perimeter = 2 * extendedWidth + 2 * height;
+
+    // Draw border segments with scrolling gradient
+    // The gradient creates alternating light and dark red bands that scroll
+
+    auto getColorAtPosition = [this, perimeter](int position) -> irr::video::SColor {
+        // Normalize position to 0.0 - 1.0
+        float normalizedPos = static_cast<float>(position) / perimeter;
+
+        // Add animation offset and wrap
+        normalizedPos += animationOffset_;
+        if (normalizedPos >= 1.0f) normalizedPos -= 1.0f;
+
+        // Create a wave pattern with 4 cycles around the perimeter
+        float wave = std::sin(normalizedPos * 4.0f * 3.14159f * 2.0f);
+
+        // Map wave (-1 to 1) to color intensity (100 to 255 for red channel)
+        int redIntensity = static_cast<int>(177.5f + 77.5f * wave);  // 100-255 range
+        int otherIntensity = static_cast<int>(30.0f + 20.0f * wave);  // 10-50 range for some color variation
+
+        return irr::video::SColor(255, redIntensity, otherIntensity, otherIntensity);
+    };
+
+    // Draw border as individual pixels/small segments for smooth gradient
+    // Top and bottom edges extend to fill corners
+
+    int position = 0;
+
+    // Top edge (left to right, extended to fill corners)
+    for (int x = bounds.UpperLeftCorner.X - borderWidth; x < bounds.LowerRightCorner.X + borderWidth; x++) {
+        irr::video::SColor color = getColorAtPosition(position++);
+        driver->draw2DRectangle(color,
+            irr::core::recti(x, bounds.UpperLeftCorner.Y - borderWidth,
+                            x + 1, bounds.UpperLeftCorner.Y));
+    }
+
+    // Right edge (top to bottom)
+    for (int y = bounds.UpperLeftCorner.Y; y < bounds.LowerRightCorner.Y; y++) {
+        irr::video::SColor color = getColorAtPosition(position++);
+        driver->draw2DRectangle(color,
+            irr::core::recti(bounds.LowerRightCorner.X, y,
+                            bounds.LowerRightCorner.X + borderWidth, y + 1));
+    }
+
+    // Bottom edge (right to left, extended to fill corners)
+    for (int x = bounds.LowerRightCorner.X + borderWidth - 1; x >= bounds.UpperLeftCorner.X - borderWidth; x--) {
+        irr::video::SColor color = getColorAtPosition(position++);
+        driver->draw2DRectangle(color,
+            irr::core::recti(x, bounds.LowerRightCorner.Y,
+                            x + 1, bounds.LowerRightCorner.Y + borderWidth));
+    }
+
+    // Left edge (bottom to top)
+    for (int y = bounds.LowerRightCorner.Y - 1; y >= bounds.UpperLeftCorner.Y; y--) {
+        irr::video::SColor color = getColorAtPosition(position++);
+        driver->draw2DRectangle(color,
+            irr::core::recti(bounds.UpperLeftCorner.X - borderWidth, y,
+                            bounds.UpperLeftCorner.X, y + 1));
+    }
 }
 
 } // namespace ui

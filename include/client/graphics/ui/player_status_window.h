@@ -125,6 +125,13 @@ private:
 
     // EverQuest reference
     EverQuest* eq_ = nullptr;
+
+    // Auto-attack border animation
+    uint32_t lastAnimationTime_ = 0;
+    float animationOffset_ = 0.0f;  // 0.0 to 1.0, wraps around
+
+    // Draw animated combat border when auto-attack is enabled
+    void drawCombatBorder(irr::video::IVideoDriver* driver, uint32_t currentTimeMs);
 };
 
 } // namespace ui
