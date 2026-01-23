@@ -115,6 +115,14 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleCameraMode", HotkeyAction::ToggleCameraMode},
     {"ToggleOldModels", HotkeyAction::ToggleOldModels},
     {"ToggleRendererMode", HotkeyAction::ToggleRendererMode},
+    {"ToggleUILock", HotkeyAction::ToggleUILock},
+    {"SaveUILayout", HotkeyAction::SaveUILayout},
+    {"ResetUIDefaults", HotkeyAction::ResetUIDefaults},
+    {"ConfirmDialog", HotkeyAction::ConfirmDialog},
+    {"CancelDialog", HotkeyAction::CancelDialog},
+    {"SubmitInput", HotkeyAction::SubmitInput},
+    {"CancelInput", HotkeyAction::CancelInput},
+    {"ChatAutocomplete", HotkeyAction::ChatAutocomplete},
 
     // Player - Movement
     {"MoveForward", HotkeyAction::MoveForward},
@@ -201,6 +209,14 @@ static const ActionNameMapping s_actionNameMappings[] = {
 
     // Player - Lighting
     {"CycleObjectLights", HotkeyAction::CycleObjectLights},
+
+    // Admin - Camera
+    {"CameraForward", HotkeyAction::CameraForward},
+    {"CameraBackward", HotkeyAction::CameraBackward},
+    {"CameraLeft", HotkeyAction::CameraLeft},
+    {"CameraRight", HotkeyAction::CameraRight},
+    {"CameraUp", HotkeyAction::CameraUp},
+    {"CameraDown", HotkeyAction::CameraDown},
 
     // Admin
     {"SaveEntities", HotkeyAction::SaveEntities},

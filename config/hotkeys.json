@@ -4,7 +4,15 @@
         "global": {
             "ToggleRendererMode": "F9",
             "Screenshot": "F12",
-            "Quit": "Shift+Escape"
+            "Quit": "Shift+Escape",
+            "ToggleUILock": "Ctrl+L",
+            "SaveUILayout": "Ctrl+S",
+            "ResetUIDefaults": "Ctrl+Shift+R",
+            "ConfirmDialog": ["Return", "Y"],
+            "CancelDialog": ["Escape", "N"],
+            "SubmitInput": "Return",
+            "CancelInput": "Escape",
+            "ChatAutocomplete": "Tab"
         },
         "player": {
             "MoveForward": ["W", "Up"],
@@ -68,6 +76,12 @@
             "ToggleZoneLights": "Ctrl+F4"
         },
         "admin": {
+            "CameraForward": ["W", "Up"],
+            "CameraBackward": ["S", "Down"],
+            "CameraLeft": ["A", "Left"],
+            "CameraRight": ["D", "Right"],
+            "CameraUp": ["E", "Space"],
+            "CameraDown": ["Q", "Ctrl"],
             "CycleObjectLights": "L",
             "ToggleWireframe": "Ctrl+F1",
             "ToggleHUD": "Ctrl+F2",

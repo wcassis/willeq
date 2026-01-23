@@ -4451,13 +4451,36 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             int mouseDeltaX = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaX();
             int mouseDeltaY = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaY();
 
-            // Skip movement keys if chat has focus
-            bool forward = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_W) || eventReceiver_->isKeyDown(irr::KEY_UP));
-            bool backward = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_S) || eventReceiver_->isKeyDown(irr::KEY_DOWN));
-            bool left = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_A) || eventReceiver_->isKeyDown(irr::KEY_LEFT));
-            bool right = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_D) || eventReceiver_->isKeyDown(irr::KEY_RIGHT));
-            bool up = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_E) || eventReceiver_->isKeyDown(irr::KEY_SPACE));
-            bool down = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_Q) || eventReceiver_->isKeyDown(irr::KEY_LCONTROL));
+            // Use HotkeyManager for admin camera movement bindings
+            auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+
+            // Helper to check if any binding for an action is currently held
+            auto isAdminActionHeld = [&](eqt::input::HotkeyAction action) -> bool {
+                if (chatHasFocus) return false;
+                bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+                bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+                bool alt = eventReceiver_->isKeyDown(irr::KEY_LMENU) || eventReceiver_->isKeyDown(irr::KEY_RMENU);
+
+                for (const auto& binding : hotkeyMgr.getBindingsForAction(action)) {
+                    if (!eventReceiver_->isKeyDown(binding.keyCode)) continue;
+
+                    bool needsCtrl = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Ctrl);
+                    bool needsShift = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Shift);
+                    bool needsAlt = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Alt);
+
+                    if (ctrl == needsCtrl && shift == needsShift && alt == needsAlt) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            bool forward = isAdminActionHeld(eqt::input::HotkeyAction::CameraForward);
+            bool backward = isAdminActionHeld(eqt::input::HotkeyAction::CameraBackward);
+            bool left = isAdminActionHeld(eqt::input::HotkeyAction::CameraLeft);
+            bool right = isAdminActionHeld(eqt::input::HotkeyAction::CameraRight);
+            bool up = isAdminActionHeld(eqt::input::HotkeyAction::CameraUp);
+            bool down = isAdminActionHeld(eqt::input::HotkeyAction::CameraDown);
 
             cameraController_->update(deltaTime, forward, backward, left, right,
                                       up, down, mouseDeltaX, mouseDeltaY, mouseEnabled);
@@ -5777,13 +5800,37 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     bool chatHasFocus = windowManager_ && windowManager_->isChatInputFocused();
 
     // Read keyboard state for EQ-style movement (disabled when chat has focus)
-    bool forward = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_W) || eventReceiver_->isKeyDown(irr::KEY_UP));
-    bool backward = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_S) || eventReceiver_->isKeyDown(irr::KEY_DOWN));
-    bool turnLeft = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_A) || eventReceiver_->isKeyDown(irr::KEY_LEFT));
-    bool turnRight = !chatHasFocus && (eventReceiver_->isKeyDown(irr::KEY_KEY_D) || eventReceiver_->isKeyDown(irr::KEY_RIGHT));
-    bool strafeLeft = !chatHasFocus && eventReceiver_->isKeyDown(irr::KEY_KEY_Q);
-    bool strafeRight = !chatHasFocus && eventReceiver_->isKeyDown(irr::KEY_KEY_E);
-    bool jumpPressed = !chatHasFocus && eventReceiver_->isKeyDown(irr::KEY_SPACE);
+    // Use HotkeyManager to check configured movement bindings
+    auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+
+    // Helper to check if any binding for an action is currently held
+    auto isActionHeld = [&](eqt::input::HotkeyAction action) -> bool {
+        if (chatHasFocus) return false;
+        bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+        bool shiftHeld = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+        bool altHeld = eventReceiver_->isKeyDown(irr::KEY_LMENU) || eventReceiver_->isKeyDown(irr::KEY_RMENU);
+
+        for (const auto& binding : hotkeyMgr.getBindingsForAction(action)) {
+            if (!eventReceiver_->isKeyDown(binding.keyCode)) continue;
+
+            bool needsCtrl = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Ctrl);
+            bool needsShift = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Shift);
+            bool needsAlt = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Alt);
+
+            if (ctrlHeld == needsCtrl && shiftHeld == needsShift && altHeld == needsAlt) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    bool forward = isActionHeld(eqt::input::HotkeyAction::MoveForward);
+    bool backward = isActionHeld(eqt::input::HotkeyAction::MoveBackward);
+    bool turnLeft = isActionHeld(eqt::input::HotkeyAction::TurnLeft);
+    bool turnRight = isActionHeld(eqt::input::HotkeyAction::TurnRight);
+    bool strafeLeft = isActionHeld(eqt::input::HotkeyAction::StrafeLeft);
+    bool strafeRight = isActionHeld(eqt::input::HotkeyAction::StrafeRight);
+    bool jumpPressed = isActionHeld(eqt::input::HotkeyAction::Jump);
 
     // Update movement state
     playerMovement_.moveForward = forward || playerMovement_.autorun;

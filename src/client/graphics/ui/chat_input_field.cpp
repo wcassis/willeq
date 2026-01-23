@@ -1,4 +1,5 @@
 #include "client/graphics/ui/chat_input_field.h"
+#include "client/input/hotkey_manager.h"
 #include <algorithm>
 #include <cctype>
 
@@ -57,16 +58,24 @@ void ChatInputField::render(irr::video::IVideoDriver* driver,
 bool ChatInputField::handleKeyPress(irr::EKEY_CODE key, wchar_t character, bool shift, bool ctrl) {
     if (!focused_) return false;
 
-    switch (key) {
-        case irr::KEY_RETURN:
+    // Use HotkeyManager for SubmitInput and CancelInput
+    auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+    bool alt = false;
+    auto action = hotkeyMgr.getAction(key, ctrl, shift, alt, eqt::input::HotkeyMode::Global);
+
+    if (action.has_value()) {
+        if (action.value() == eqt::input::HotkeyAction::SubmitInput) {
             submit();
             return true;
-
-        case irr::KEY_ESCAPE:
+        }
+        if (action.value() == eqt::input::HotkeyAction::CancelInput) {
             clear();
             setFocused(false);
             return true;
+        }
+    }
 
+    switch (key) {
         case irr::KEY_BACK:
             deleteCharBefore();
             return true;

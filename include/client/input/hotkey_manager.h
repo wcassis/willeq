@@ -59,6 +59,14 @@ enum class HotkeyAction : uint32_t {
     ToggleCameraMode,
     ToggleOldModels,
     ToggleRendererMode,
+    ToggleUILock,
+    SaveUILayout,
+    ResetUIDefaults,
+    ConfirmDialog,
+    CancelDialog,
+    SubmitInput,
+    CancelInput,
+    ChatAutocomplete,
 
     // === Player Mode Actions ===
     // Movement (continuous/held keys)
@@ -134,6 +142,14 @@ enum class HotkeyAction : uint32_t {
     CycleObjectLights,
 
     // === Admin Mode Actions ===
+    // Admin camera movement (free camera)
+    CameraForward,
+    CameraBackward,
+    CameraLeft,
+    CameraRight,
+    CameraUp,
+    CameraDown,
+
     SaveEntities,
     ToggleLighting,
     ToggleHelmDebug,

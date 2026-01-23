@@ -592,29 +592,9 @@ bool SpellGemPanel::handleRightClick(int x, int y)
 
 bool SpellGemPanel::handleKeyPress(int keyCode)
 {
-    if (!visible_) {
-        return false;
-    }
-
-    // Handle 1-8 keys for casting
-    // Irrlicht key codes: KEY_KEY_1 = 0x31, KEY_KEY_8 = 0x38
-    if (keyCode >= 0x31 && keyCode <= 0x38) {
-        uint8_t gemSlot = static_cast<uint8_t>(keyCode - 0x31);
-
-        // Check if gem is castable (not on cooldown or empty)
-        if (spellMgr_) {
-            EQ::GemState state = spellMgr_->getGemState(gemSlot);
-            if (state == EQ::GemState::Refresh || state == EQ::GemState::Empty ||
-                state == EQ::GemState::MemorizeProgress) {
-                // Gem is on cooldown, empty, or memorizing - don't cast
-                return true;  // Still consume the key
-            }
-        }
-
-        castGem(gemSlot);
-        return true;
-    }
-
+    // Key handling for spell gems is now done through HotkeyManager in irrlicht_renderer
+    // HotbarSlot1-8 (1-8 keys) and SpellGem1-8 (Alt+1-8) are configured in hotkeys.json
+    (void)keyCode;  // Unused
     return false;
 }
 

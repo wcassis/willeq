@@ -4,6 +4,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
 #include "client/trade_manager.h"
+#include "client/input/hotkey_manager.h"
 #include <algorithm>
 #include <iostream>
 #include "common/logging.h"
@@ -1306,27 +1307,23 @@ void WindowManager::setOnTradeError(TradeErrorCallback callback) {
 }
 
 bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
-    // Handle UI management key bindings (Ctrl+key)
-    if (ctrl) {
-        switch (key) {
-            case irr::KEY_KEY_L:
-                // Ctrl+L: Toggle UI lock
+    // Use HotkeyManager for key binding lookups
+    auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+    bool alt = false;  // WindowManager doesn't receive alt state currently
+    auto action = hotkeyMgr.getAction(key, ctrl, shift, alt, eqt::input::HotkeyMode::Global);
+
+    // Handle UI management key bindings via HotkeyManager
+    if (action.has_value()) {
+        switch (action.value()) {
+            case eqt::input::HotkeyAction::ToggleUILock:
                 toggleUILock();
                 return true;
-
-            case irr::KEY_KEY_S:
-                // Ctrl+S: Save UI layout
+            case eqt::input::HotkeyAction::SaveUILayout:
                 saveUILayout();
                 return true;
-
-            case irr::KEY_KEY_R:
-                if (shift) {
-                    // Ctrl+Shift+R: Reset UI to defaults
-                    resetUIToDefaults();
-                    return true;
-                }
-                break;
-
+            case eqt::input::HotkeyAction::ResetUIDefaults:
+                resetUIToDefaults();
+                return true;
             default:
                 break;
         }
@@ -1334,27 +1331,26 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
 
     // Handle confirmation dialog first
     if (isConfirmDialogOpen()) {
-        if (key == irr::KEY_ESCAPE) {
-            closeConfirmDialog();
-            return true;
-        }
-        if (key == irr::KEY_RETURN || key == irr::KEY_KEY_Y) {
-            // Confirm
-            if (confirmDialogType_ == ConfirmDialogType::DestroyItem) {
-                invManager_->destroyCursorItem();
+        if (action.has_value()) {
+            if (action.value() == eqt::input::HotkeyAction::CancelDialog) {
+                closeConfirmDialog();
+                return true;
             }
-            closeConfirmDialog();
-            return true;
-        }
-        if (key == irr::KEY_KEY_N) {
-            closeConfirmDialog();
-            return true;
+            if (action.value() == eqt::input::HotkeyAction::ConfirmDialog) {
+                // Confirm
+                if (confirmDialogType_ == ConfirmDialogType::DestroyItem) {
+                    invManager_->destroyCursorItem();
+                }
+                closeConfirmDialog();
+                return true;
+            }
         }
         return true;  // Consume all keys when dialog is open
     }
 
-    // ESC clears spell cursor if active
-    if (key == irr::KEY_ESCAPE && spellCursor_.active) {
+    // ESC/CancelDialog clears spell cursor if active
+    if (spellCursor_.active && action.has_value() &&
+        action.value() == eqt::input::HotkeyAction::CancelDialog) {
         clearSpellCursor();
         return true;
     }
@@ -1363,8 +1359,8 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
     if (moneyInputDialog_ && moneyInputDialog_->isShown()) {
         // Handle numeric input, backspace, enter, and escape
         bool isBackspace = (key == irr::KEY_BACK);
-        bool isEnter = (key == irr::KEY_RETURN);
-        bool isEscape = (key == irr::KEY_ESCAPE);
+        bool isEnter = action.has_value() && action.value() == eqt::input::HotkeyAction::SubmitInput;
+        bool isEscape = action.has_value() && action.value() == eqt::input::HotkeyAction::CancelInput;
         wchar_t keyChar = 0;
         if (key >= irr::KEY_KEY_0 && key <= irr::KEY_KEY_9) {
             keyChar = L'0' + (key - irr::KEY_KEY_0);
@@ -1384,8 +1380,8 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
 
     // Route to chat window if chat input is focused
     if (chatWindow_ && chatWindow_->isInputFocused()) {
-        // ESC unfocuses chat input
-        if (key == irr::KEY_ESCAPE) {
+        // CancelInput unfocuses chat input
+        if (action.has_value() && action.value() == eqt::input::HotkeyAction::CancelInput) {
             chatWindow_->unfocusInput();
             return true;
         }
@@ -1393,30 +1389,16 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
         return chatWindow_->handleKeyPress(key, 0, shift, ctrl);
     }
 
-    // Enter key focuses chat input
-    if (key == irr::KEY_RETURN && chatWindow_) {
-        chatWindow_->focusInput();
-        return true;
-    }
-
-    // I key toggles inventory
-    if (key == irr::KEY_KEY_I) {
-        toggleInventory();
-        return true;
-    }
+    // OpenChat is handled by irrlicht_renderer via HotkeyManager
+    // ToggleInventory is handled by irrlicht_renderer via HotkeyManager
 
     // ESC closes inventory if open
-    if (key == irr::KEY_ESCAPE && isInventoryOpen()) {
+    if (action.has_value() && action.value() == eqt::input::HotkeyAction::CancelDialog && isInventoryOpen()) {
         closeInventory();
         return true;
     }
 
-    // 1-8 keys cast from spell gems
-    if (spellGemPanel_ && spellGemPanel_->isVisible()) {
-        if (spellGemPanel_->handleKeyPress(static_cast<int>(key))) {
-            return true;
-        }
-    }
+    // Spell gem keys (1-8 for HotbarSlot, Alt+1-8 for SpellGem) are handled by irrlicht_renderer
 
     return false;
 }

@@ -1,4 +1,5 @@
 #include "client/graphics/ui/chat_window.h"
+#include "client/input/hotkey_manager.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <fstream>
@@ -689,10 +690,15 @@ bool ChatWindow::handleMouseWheel(float delta) {
 bool ChatWindow::handleKeyPress(irr::EKEY_CODE key, wchar_t character, bool shift, bool ctrl) {
     if (!visible_) return false;
 
+    // Use HotkeyManager for key binding lookups
+    auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+    bool alt = false;  // ChatWindow doesn't receive alt state currently
+    auto action = hotkeyMgr.getAction(key, ctrl, shift, alt, eqt::input::HotkeyMode::Global);
+
     // If input is focused, handle special keys first
     if (inputField_.isFocused()) {
-        // Handle Tab for auto-completion
-        if (key == irr::KEY_TAB) {
+        // Handle Tab for auto-completion (ChatAutocomplete action)
+        if (action.has_value() && action.value() == eqt::input::HotkeyAction::ChatAutocomplete) {
             std::string currentText = inputField_.getText();
             std::string completed;
 
@@ -709,8 +715,8 @@ bool ChatWindow::handleKeyPress(irr::EKEY_CODE key, wchar_t character, bool shif
             return true;
         }
 
-        // Handle Escape to unfocus input
-        if (key == irr::KEY_ESCAPE) {
+        // Handle CancelInput to unfocus input
+        if (action.has_value() && action.value() == eqt::input::HotkeyAction::CancelInput) {
             unfocusInput();
             return true;
         }
