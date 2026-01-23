@@ -391,25 +391,25 @@ void DetailChunk::buildQuadGeometry(const DetailPlacement& p,
 
         // Vertices: bottom-left, bottom-right, top-right, top-left
         verts.push_back(irr::video::S3DVertex(
-            p.position - right, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u0, v1)));
+            p.position - right, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u0, v1)));
         verts.push_back(irr::video::S3DVertex(
-            p.position + right, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u1, v1)));
+            p.position + right, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u1, v1)));
         verts.push_back(irr::video::S3DVertex(
-            p.position + right + up, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u1, v0)));
+            p.position + right + up, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u1, v0)));
         verts.push_back(irr::video::S3DVertex(
-            p.position - right + up, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u0, v0)));
+            p.position - right + up, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u0, v0)));
 
         // Second quad (perpendicular)
         irr::core::vector3df right2(-sinR * halfSize, 0, cosR * halfSize);
 
         verts.push_back(irr::video::S3DVertex(
-            p.position - right2, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u0, v1)));
+            p.position - right2, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u0, v1)));
         verts.push_back(irr::video::S3DVertex(
-            p.position + right2, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u1, v1)));
+            p.position + right2, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u1, v1)));
         verts.push_back(irr::video::S3DVertex(
-            p.position + right2 + up, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u1, v0)));
+            p.position + right2 + up, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u1, v0)));
         verts.push_back(irr::video::S3DVertex(
-            p.position - right2 + up, irr::core::vector3df(0, 0, 1), color, irr::core::vector2df(u0, v0)));
+            p.position - right2 + up, irr::core::vector3df(0, 1, 0), color, irr::core::vector2df(u0, v0)));
 
         // Indices for both quads (both sides visible - 24 total)
         // First quad front
@@ -522,8 +522,10 @@ void DetailChunk::setupMaterial(irr::video::ITexture* atlas) {
         mat.MaterialType = irr::video::EMT_SOLID;
     }
 
-    // Disable lighting for performance
-    mat.Lighting = false;
+    // Enable lighting so grass responds to scene/player lighting
+    mat.Lighting = true;
+    mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+    mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
 
     // Enable fog to match zone
     mat.FogEnable = true;
@@ -649,7 +651,7 @@ void DetailChunk::attach() {
     sceneNode_ = smgr_->addMeshSceneNode(mesh_);
     if (sceneNode_) {
         sceneNode_->setPosition(irr::core::vector3df(0, 0, 0));
-        sceneNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+        sceneNode_->setMaterialFlag(irr::video::EMF_LIGHTING, true);
         sceneNode_->setMaterialFlag(irr::video::EMF_FOG_ENABLE, true);
         sceneNode_->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
 
