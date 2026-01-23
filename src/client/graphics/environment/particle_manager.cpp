@@ -41,10 +41,10 @@ bool ParticleManager::init(const std::string& eqClientPath) {
     // Load environment effects config
     EnvironmentEffectsConfig::instance().load("config/environment_effects.json");
 
-    // Try to load particle atlas texture, or create a default one
-    std::string atlasPath = eqClientPath + "/data/textures/particle_atlas.png";
+    // Try to load particle atlas texture from project's data directory, or create a default one
+    std::string atlasPath = "data/textures/particle_atlas.png";
     if (!loadParticleAtlas(atlasPath)) {
-        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Creating procedural particle atlas");
+        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Pre-built atlas not found at {}, creating procedural atlas", atlasPath);
         createDefaultAtlas();
     }
 
@@ -437,7 +437,7 @@ void ParticleManager::createDefaultAtlas() {
         return;
     }
 
-    // Create a procedural particle atlas (64x48 with 4x3 tiles of 16x16 each)
+    // Create a procedural particle atlas (64x64 with 4x4 tiles of 16x16 each)
     const int tileSize = 16;
     const int atlasWidth = tileSize * ParticleAtlas::AtlasColumns;
     const int atlasHeight = tileSize * ParticleAtlas::AtlasRows;
@@ -618,6 +618,43 @@ void ParticleManager::createDefaultAtlas() {
     };
     drawSnowPatch(3, 2, irr::video::SColor(220, 245, 250, 255));
 
+    // Tile 12: Rain streak - vertical elongated streak for falling rain
+    auto drawRainStreak = [&](int tileX, int tileY, irr::video::SColor color) {
+        int baseX = tileX * tileSize;
+        int baseY = tileY * tileSize;
+        float centerX = tileSize / 2.0f;
+
+        for (int y = 0; y < tileSize; ++y) {
+            for (int x = 0; x < tileSize; ++x) {
+                float dx = std::abs(x - centerX + 0.5f);
+
+                // Very narrow streak (1-2 pixels wide at center)
+                float width = 1.5f;
+
+                // Fade from top to bottom (brighter at bottom like falling drop)
+                float yFactor = static_cast<float>(y) / tileSize;
+
+                // Tapered shape - narrower at top, slightly wider at bottom
+                float localWidth = width * (0.5f + yFactor * 0.5f);
+
+                float alpha = 0.0f;
+                if (dx < localWidth) {
+                    // Soft edge
+                    alpha = 1.0f - (dx / localWidth);
+                    alpha = std::pow(alpha, 0.5f);
+
+                    // Fade in at top, brighter at bottom
+                    alpha *= 0.3f + 0.7f * yFactor;
+                }
+
+                irr::video::SColor pixelColor = color;
+                pixelColor.setAlpha(static_cast<irr::u32>(alpha * color.getAlpha()));
+                img->setPixel(baseX + x, baseY + y, pixelColor);
+            }
+        }
+    };
+    drawRainStreak(0, 3, irr::video::SColor(200, 200, 220, 255));
+
     // Create texture from image
     atlasTexture_ = driver_->addTexture("particle_atlas", img);
     img->drop();
@@ -636,32 +673,54 @@ void ParticleManager::renderBillboard(const Particle& p,
     // Convert particle position to Irrlicht coordinates (EQ uses Z-up, Irrlicht uses Y-up)
     irr::core::vector3df pos(p.position.x, p.position.z, p.position.y);
 
-    // Calculate billboard orientation
+    irr::core::vector3df right, up;
     irr::core::vector3df toCamera = cameraPos - pos;
     toCamera.normalize();
 
-    irr::core::vector3df right = cameraUp.crossProduct(toCamera);
-    right.normalize();
+    if (p.velocityAligned && glm::length(p.velocity) > 0.1f) {
+        // Velocity-aligned billboard (for rain streaks, etc.)
+        // Convert velocity to Irrlicht coordinates
+        irr::core::vector3df vel(p.velocity.x, p.velocity.z, p.velocity.y);
+        vel.normalize();
 
-    irr::core::vector3df up = toCamera.crossProduct(right);
-    up.normalize();
+        // Up direction is the velocity direction (particles fall downward)
+        up = vel;
 
-    // Apply rotation
-    if (std::abs(p.rotation) > 0.001f) {
-        float cosR = std::cos(p.rotation);
-        float sinR = std::sin(p.rotation);
-        irr::core::vector3df newRight = right * cosR + up * sinR;
-        irr::core::vector3df newUp = up * cosR - right * sinR;
-        right = newRight;
-        up = newUp;
+        // Right is perpendicular to both velocity and camera direction
+        right = up.crossProduct(toCamera);
+        right.normalize();
+
+        // Ensure right is perpendicular
+        if (right.getLength() < 0.001f) {
+            // Velocity is pointing at camera, use world up
+            right = irr::core::vector3df(1, 0, 0);
+        }
+    } else {
+        // Standard camera-facing billboard
+        right = cameraUp.crossProduct(toCamera);
+        right.normalize();
+
+        up = toCamera.crossProduct(right);
+        up.normalize();
+
+        // Apply rotation
+        if (std::abs(p.rotation) > 0.001f) {
+            float cosR = std::cos(p.rotation);
+            float sinR = std::sin(p.rotation);
+            irr::core::vector3df newRight = right * cosR + up * sinR;
+            irr::core::vector3df newUp = up * cosR - right * sinR;
+            right = newRight;
+            up = newUp;
+        }
     }
 
-    // Calculate quad vertices
-    float halfSize = p.size * 0.5f;
-    irr::core::vector3df v0 = pos + (-right + up) * halfSize;
-    irr::core::vector3df v1 = pos + (right + up) * halfSize;
-    irr::core::vector3df v2 = pos + (right - up) * halfSize;
-    irr::core::vector3df v3 = pos + (-right - up) * halfSize;
+    // Calculate quad vertices with stretch support
+    float halfWidth = p.size * 0.5f;
+    float halfHeight = p.size * p.stretch * 0.5f;
+    irr::core::vector3df v0 = pos + (-right * halfWidth + up * halfHeight);
+    irr::core::vector3df v1 = pos + (right * halfWidth + up * halfHeight);
+    irr::core::vector3df v2 = pos + (right * halfWidth - up * halfHeight);
+    irr::core::vector3df v3 = pos + (-right * halfWidth - up * halfHeight);
 
     // Get UV coordinates for this particle's texture tile
     float u0, v0Uv, u1, v1Uv;

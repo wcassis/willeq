@@ -106,9 +106,10 @@ public:
 
     /**
      * Initialize weather effects system.
+     * @param eqClientPath Path to EQ client for loading textures
      * @return true if initialized successfully
      */
-    bool initialize();
+    bool initialize(const std::string& eqClientPath = "");
 
     /**
      * Set weather from OP_Weather packet.
@@ -333,6 +334,7 @@ private:
     WeatherEffectsConfig config_;
     bool enabled_ = true;
     bool initialized_ = false;
+    std::string eqClientPath_;
 
     // Current weather state
     uint8_t currentType_ = 0;       // 0=none, 1=rain, 2=snow

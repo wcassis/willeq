@@ -77,12 +77,14 @@ struct Particle {
     glm::vec3 velocity{0.0f};       // Current velocity
     float lifetime = 0.0f;          // Remaining lifetime (seconds)
     float maxLifetime = 1.0f;       // Initial lifetime (for alpha fade)
-    float size = 1.0f;              // Billboard size
+    float size = 1.0f;              // Billboard size (width)
+    float stretch = 1.0f;           // Vertical stretch factor (height = size * stretch)
     float alpha = 1.0f;             // Current alpha (0-1)
     glm::vec4 color{1.0f};          // RGBA color
     uint8_t textureIndex = 0;       // Index into particle atlas
     float rotation = 0.0f;          // Billboard rotation (radians)
     float rotationSpeed = 0.0f;     // Rotation speed (radians/sec)
+    bool velocityAligned = false;   // If true, align billboard with velocity direction
 
     // For fireflies and other pulsing effects
     float glowPhase = 0.0f;         // Current glow animation phase
@@ -113,10 +115,11 @@ namespace ParticleAtlas {
     constexpr uint8_t WaterDroplet = 9; // Small water droplet
     constexpr uint8_t RippleRing = 10;  // Water ripple ring (Phase 7)
     constexpr uint8_t SnowPatch = 11;   // Snow ground patch (Phase 9)
+    constexpr uint8_t RainStreak = 12;  // Vertical rain streak
 
-    constexpr uint8_t TileCount = 12;
-    constexpr uint8_t AtlasColumns = 4; // 4x3 atlas
-    constexpr uint8_t AtlasRows = 3;
+    constexpr uint8_t TileCount = 13;
+    constexpr uint8_t AtlasColumns = 4; // 4x4 atlas
+    constexpr uint8_t AtlasRows = 4;
 }
 
 /**

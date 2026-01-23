@@ -42,6 +42,7 @@ bool WeatherConfigLoader::load(const std::string& path) {
     loadRainSplashSettings(root);
     loadSnowSettings(root);
     loadStormSettings(root);
+    loadStormCloudSettings(root);
 
     // Load quality preset name and apply it
     if (root.isMember("qualityPreset")) {
@@ -87,6 +88,9 @@ void WeatherConfigLoader::setDefaults() {
 
     // Snow defaults
     snowSettings_ = Environment::SnowSettings{};
+
+    // Storm cloud defaults
+    stormCloudSettings_ = Environment::StormCloudSettings{};
 
     // Weather effects config defaults
     weatherConfig_ = WeatherEffectsConfig{};
@@ -330,6 +334,93 @@ void WeatherConfigLoader::loadStormSettings(const Json::Value& root) {
 
     LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded storm settings (lightning={}, darkening={})",
               weatherConfig_.storm.lightningEnabled, weatherConfig_.storm.maxDarkening);
+}
+
+void WeatherConfigLoader::loadStormCloudSettings(const Json::Value& root) {
+    if (!root.isMember("stormClouds")) {
+        LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: No 'stormClouds' section, using defaults");
+        return;
+    }
+
+    const Json::Value& json = root["stormClouds"];
+
+    if (json.isMember("enabled")) {
+        stormCloudSettings_.enabled = json["enabled"].asBool();
+    }
+    if (json.isMember("domeRadius")) {
+        stormCloudSettings_.domeRadius = clampFloat(json["domeRadius"].asFloat(), 100.0f, 2000.0f, "stormClouds.domeRadius");
+    }
+    if (json.isMember("domeHeight")) {
+        stormCloudSettings_.domeHeight = clampFloat(json["domeHeight"].asFloat(), 50.0f, 500.0f, "stormClouds.domeHeight");
+    }
+    if (json.isMember("domeSegments")) {
+        stormCloudSettings_.domeSegments = clampInt(json["domeSegments"].asInt(), 8, 64, "stormClouds.domeSegments");
+    }
+    if (json.isMember("scrollSpeedBase")) {
+        stormCloudSettings_.scrollSpeedBase = clampFloat(json["scrollSpeedBase"].asFloat(), 0.0f, 0.5f, "stormClouds.scrollSpeedBase");
+    }
+    if (json.isMember("scrollSpeedVariance")) {
+        stormCloudSettings_.scrollSpeedVariance = clampFloat(json["scrollSpeedVariance"].asFloat(), 0.0f, 0.2f, "stormClouds.scrollSpeedVariance");
+    }
+    if (json.isMember("windInfluence")) {
+        stormCloudSettings_.windInfluence = clampFloat(json["windInfluence"].asFloat(), 0.0f, 2.0f, "stormClouds.windInfluence");
+    }
+    if (json.isMember("frameCount")) {
+        stormCloudSettings_.frameCount = clampInt(json["frameCount"].asInt(), 1, 16, "stormClouds.frameCount");
+    }
+    if (json.isMember("frameDuration")) {
+        stormCloudSettings_.frameDuration = clampFloat(json["frameDuration"].asFloat(), 0.5f, 30.0f, "stormClouds.frameDuration");
+    }
+    if (json.isMember("blendDuration")) {
+        stormCloudSettings_.blendDuration = clampFloat(json["blendDuration"].asFloat(), 0.1f, 10.0f, "stormClouds.blendDuration");
+    }
+    if (json.isMember("maxOpacity")) {
+        stormCloudSettings_.maxOpacity = clampFloat(json["maxOpacity"].asFloat(), 0.0f, 1.0f, "stormClouds.maxOpacity");
+    }
+    if (json.isMember("fadeInSpeed")) {
+        stormCloudSettings_.fadeInSpeed = clampFloat(json["fadeInSpeed"].asFloat(), 0.01f, 5.0f, "stormClouds.fadeInSpeed");
+    }
+    if (json.isMember("fadeOutSpeed")) {
+        stormCloudSettings_.fadeOutSpeed = clampFloat(json["fadeOutSpeed"].asFloat(), 0.01f, 5.0f, "stormClouds.fadeOutSpeed");
+    }
+    if (json.isMember("intensityThreshold")) {
+        stormCloudSettings_.intensityThreshold = clampInt(json["intensityThreshold"].asInt(), 0, 10, "stormClouds.intensityThreshold");
+    }
+    // Cloud colors
+    if (json.isMember("cloudColorR")) {
+        stormCloudSettings_.cloudColorR = clampFloat(json["cloudColorR"].asFloat(), 0.0f, 1.0f, "stormClouds.cloudColorR");
+    }
+    if (json.isMember("cloudColorG")) {
+        stormCloudSettings_.cloudColorG = clampFloat(json["cloudColorG"].asFloat(), 0.0f, 1.0f, "stormClouds.cloudColorG");
+    }
+    if (json.isMember("cloudColorB")) {
+        stormCloudSettings_.cloudColorB = clampFloat(json["cloudColorB"].asFloat(), 0.0f, 1.0f, "stormClouds.cloudColorB");
+    }
+    // Time-of-day brightness settings
+    if (json.isMember("dayBrightness")) {
+        stormCloudSettings_.dayBrightness = clampFloat(json["dayBrightness"].asFloat(), 0.0f, 1.0f, "stormClouds.dayBrightness");
+    }
+    if (json.isMember("nightBrightness")) {
+        stormCloudSettings_.nightBrightness = clampFloat(json["nightBrightness"].asFloat(), 0.0f, 1.0f, "stormClouds.nightBrightness");
+    }
+    if (json.isMember("dawnStartHour")) {
+        stormCloudSettings_.dawnStartHour = clampFloat(json["dawnStartHour"].asFloat(), 0.0f, 12.0f, "stormClouds.dawnStartHour");
+    }
+    if (json.isMember("dawnEndHour")) {
+        stormCloudSettings_.dawnEndHour = clampFloat(json["dawnEndHour"].asFloat(), 0.0f, 12.0f, "stormClouds.dawnEndHour");
+    }
+    if (json.isMember("duskStartHour")) {
+        stormCloudSettings_.duskStartHour = clampFloat(json["duskStartHour"].asFloat(), 12.0f, 24.0f, "stormClouds.duskStartHour");
+    }
+    if (json.isMember("duskEndHour")) {
+        stormCloudSettings_.duskEndHour = clampFloat(json["duskEndHour"].asFloat(), 12.0f, 24.0f, "stormClouds.duskEndHour");
+    }
+    if (json.isMember("lightningFlashMultiplier")) {
+        stormCloudSettings_.lightningFlashMultiplier = clampFloat(json["lightningFlashMultiplier"].asFloat(), 0.0f, 5.0f, "stormClouds.lightningFlashMultiplier");
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded storm cloud settings (dayBrightness={}, nightBrightness={})",
+              stormCloudSettings_.dayBrightness, stormCloudSettings_.nightBrightness);
 }
 
 WeatherQualityPreset WeatherConfigLoader::getQualityPreset() const {

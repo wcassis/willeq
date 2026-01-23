@@ -3,6 +3,7 @@
 #include "client/graphics/environment/emitters/rain_emitter.h"
 #include "client/graphics/environment/emitters/rain_splash_emitter.h"
 #include "client/graphics/environment/emitters/snow_emitter.h"
+#include "client/graphics/environment/storm_cloud_layer.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_quality_preset.h"
 #include <functional>
@@ -73,6 +74,7 @@ public:
     const Environment::RainSettings& getRainSettings() const { return rainSettings_; }
     const Environment::RainSplashSettings& getRainSplashSettings() const { return rainSplashSettings_; }
     const Environment::SnowSettings& getSnowSettings() const { return snowSettings_; }
+    const Environment::StormCloudSettings& getStormCloudSettings() const { return stormCloudSettings_; }
     const WeatherEffectsConfig& getWeatherEffectsConfig() const { return weatherConfig_; }
 
     /**
@@ -127,6 +129,11 @@ private:
     void loadStormSettings(const Json::Value& root);
 
     /**
+     * Load storm cloud overlay settings from JSON.
+     */
+    void loadStormCloudSettings(const Json::Value& root);
+
+    /**
      * Validate and clamp a float value to range.
      */
     float clampFloat(float value, float minVal, float maxVal, const char* name);
@@ -145,6 +152,7 @@ private:
     Environment::RainSettings rainSettings_;
     Environment::RainSplashSettings rainSplashSettings_;
     Environment::SnowSettings snowSettings_;
+    Environment::StormCloudSettings stormCloudSettings_;
     WeatherEffectsConfig weatherConfig_;
     std::string qualityPreset_;
 

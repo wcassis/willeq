@@ -1,4 +1,5 @@
 #include "client/graphics/environment/emitters/rain_emitter.h"
+#include "common/logging.h"
 #include <cmath>
 
 namespace EQT {
@@ -19,7 +20,12 @@ RainEmitter::RainEmitter()
 }
 
 void RainEmitter::setIntensity(uint8_t intensity) {
-    intensity_ = std::min(intensity, static_cast<uint8_t>(10));
+    uint8_t newIntensity = std::min(intensity, static_cast<uint8_t>(10));
+    if (newIntensity != intensity_) {
+        LOG_INFO(MOD_GRAPHICS, "RainEmitter::setIntensity: {} -> {} (enabled_={} settings_.enabled={})",
+                 intensity_, newIntensity, enabled_, settings_.enabled);
+    }
+    intensity_ = newIntensity;
 }
 
 void RainEmitter::setSettings(const RainSettings& settings) {
@@ -38,18 +44,30 @@ void RainEmitter::setSettings(const RainSettings& settings) {
 }
 
 bool RainEmitter::shouldBeActive(const EnvironmentState& env) const {
-    if (!enabled_ || !settings_.enabled) return false;
+    if (!enabled_ || !settings_.enabled) {
+        LOG_DEBUG(MOD_GRAPHICS, "RainEmitter::shouldBeActive returning false: enabled_={} settings_.enabled={}",
+                  enabled_, settings_.enabled);
+        return false;
+    }
 
     // Only active when it's raining (intensity > 0)
-    return intensity_ > 0;
+    if (intensity_ == 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "RainEmitter::shouldBeActive returning false: intensity_=0");
+        return false;
+    }
+    return true;
 }
 
 void RainEmitter::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
     currentBiome_ = biome;
     // Indoor zones don't get rain
     if (biome == ZoneBiome::Dungeon || biome == ZoneBiome::Cave) {
+        LOG_INFO(MOD_GRAPHICS, "RainEmitter::onZoneEnter: Zone '{}' biome={} -> DISABLING rain (indoor zone)",
+                 zoneName, static_cast<int>(biome));
         enabled_ = false;
     } else {
+        LOG_INFO(MOD_GRAPHICS, "RainEmitter::onZoneEnter: Zone '{}' biome={} -> enabled={}",
+                 zoneName, static_cast<int>(biome), settings_.enabled);
         enabled_ = settings_.enabled;
     }
 }
@@ -76,17 +94,25 @@ void RainEmitter::initParticle(Particle& p, const EnvironmentState& env) {
         p.velocity.y += env.windDirection.y * env.windStrength * settings_.windInfluence * speed;
     }
 
-    // Random size (smaller drops are more common)
+    // Small thin rain drops
     float sizeFactor = randomFloat(0.0f, 1.0f);
     sizeFactor = sizeFactor * sizeFactor;  // Bias toward smaller
     p.size = settings_.sizeMin + sizeFactor * (settings_.sizeMax - settings_.sizeMin);
+
+    // Stretch factor for vertical elongation (rain streak effect)
+    // Faster drops appear more stretched due to motion blur
+    float speedFactor = speed / settings_.dropSpeed;  // Normalize to base speed
+    p.stretch = settings_.lengthScale * (0.8f + 0.4f * speedFactor);
+
+    // Align billboard with velocity direction for streak effect
+    p.velocityAligned = true;
 
     // Lifetime based on fall distance
     float fallDistance = settings_.spawnHeight + 10.0f;  // Some buffer
     p.lifetime = fallDistance / speed;
     p.maxLifetime = p.lifetime;
 
-    // Color with slight variation
+    // Color with slight variation - light blue-white streaks
     float brightness = randomFloat(0.9f, 1.0f);
     p.color = glm::vec4(
         settings_.colorR * brightness,
@@ -94,10 +120,10 @@ void RainEmitter::initParticle(Particle& p, const EnvironmentState& env) {
         settings_.colorB * brightness,
         settings_.colorA);
 
-    // Use water droplet texture
-    p.textureIndex = ParticleAtlas::WaterDroplet;
+    // Use rain streak texture (vertical elongated streak)
+    p.textureIndex = ParticleAtlas::RainStreak;
 
-    // Rotation aligned with fall direction (elongated drop)
+    // No rotation needed - velocity alignment handles orientation
     p.rotation = 0.0f;
     p.rotationSpeed = 0.0f;
 

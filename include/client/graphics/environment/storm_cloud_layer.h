@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <string>
+#include <vector>
 
 namespace irr {
 namespace scene {
@@ -36,15 +37,20 @@ struct StormCloudSettings {
     float scrollSpeedVariance = 0.01f;  // Per-layer speed variation
     float windInfluence = 0.5f;         // How much wind affects scroll direction
 
+    // Frame animation (multi-texture cycling)
+    int frameCount = 4;                 // Number of cloud texture frames
+    float frameDuration = 3.0f;         // Seconds per frame cycle
+    float blendDuration = 1.5f;         // Seconds to blend between frames
+
     // Opacity
     float maxOpacity = 0.7f;            // Maximum cloud opacity
     float fadeInSpeed = 0.5f;           // Fade in rate (units/sec)
     float fadeOutSpeed = 0.3f;          // Fade out rate (units/sec)
     int intensityThreshold = 3;         // Min storm intensity to show clouds
 
-    // Texture
+    // Texture (only used if pre-built textures not found)
     int textureSize = 256;              // Procedural texture size
-    float cloudScale = 4.0f;            // UV tiling scale
+    float cloudScale = 1.0f;            // UV tiling scale (1.0 = no tiling, seamless)
     int octaves = 4;                    // Perlin noise octaves
     float persistence = 0.5f;           // Perlin noise persistence
 
@@ -52,6 +58,15 @@ struct StormCloudSettings {
     float cloudColorR = 0.4f;
     float cloudColorG = 0.42f;
     float cloudColorB = 0.45f;
+
+    // Time-of-day brightness settings
+    float dayBrightness = 0.5f;         // Cloud brightness during day (0-1)
+    float nightBrightness = 0.05f;      // Cloud brightness at night (0-1)
+    float dawnStartHour = 6.0f;         // Hour when dawn starts
+    float dawnEndHour = 8.0f;           // Hour when dawn ends (full day)
+    float duskStartHour = 18.0f;        // Hour when dusk starts
+    float duskEndHour = 20.0f;          // Hour when dusk ends (full night)
+    float lightningFlashMultiplier = 2.0f;  // How much lightning brightens clouds
 };
 
 /**
@@ -80,9 +95,11 @@ public:
      * Initialize the cloud layer.
      * @param smgr Scene manager
      * @param driver Video driver
+     * @param eqClientPath Path to EQ client (for loading textures)
      * @return true if initialized successfully
      */
-    bool initialize(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver);
+    bool initialize(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
+                    const std::string& eqClientPath = "");
 
     /**
      * Clean up resources.
@@ -102,10 +119,11 @@ public:
      * @param windDirection Current wind direction (normalized)
      * @param windStrength Current wind strength (0-1)
      * @param stormIntensity Current storm intensity (0-10)
+     * @param timeOfDay Hour of day (0-24) for lighting adjustment
      */
     void update(float deltaTime, const glm::vec3& playerPos,
                 const glm::vec3& windDirection, float windStrength,
-                int stormIntensity);
+                int stormIntensity, float timeOfDay = 12.0f);
 
     /**
      * Enable/disable the cloud layer.
@@ -134,6 +152,12 @@ public:
     void onZoneLeave();
 
     /**
+     * Set lightning flash intensity (0-1) for brief illumination.
+     * Called by WeatherEffectsController when lightning strikes.
+     */
+    void setLightningFlash(float intensity) { lightningFlashIntensity_ = intensity; }
+
+    /**
      * Get debug info string.
      */
     std::string getDebugInfo() const;
@@ -145,17 +169,36 @@ private:
     void createDomeMesh();
 
     /**
-     * Generate procedural cloud texture using Perlin noise.
+     * Generate all cloud texture frames using Perlin noise.
      */
-    void generateCloudTexture();
+    void generateCloudTextures();
 
     /**
-     * Perlin noise helper functions.
+     * Generate a single seamless cloud texture frame.
+     * @param seed Random seed for this frame
+     * @return The generated texture
      */
-    float noise2D(float x, float y) const;
-    float smoothNoise2D(float x, float y) const;
-    float interpolatedNoise2D(float x, float y) const;
-    float perlinNoise2D(float x, float y, int octaves, float persistence) const;
+    irr::video::ITexture* generateSeamlessCloudTexture(int seed);
+
+    /**
+     * Seamless tileable Perlin noise (uses toroidal mapping).
+     */
+    float seamlessPerlinNoise2D(float x, float y, int seed, int octaves, float persistence) const;
+
+    /**
+     * Basic noise function with seed.
+     */
+    float noise2D(float x, float y, int seed) const;
+
+    /**
+     * Smooth noise with interpolation.
+     */
+    float smoothNoise2D(float x, float y, int seed) const;
+
+    /**
+     * Interpolated noise for smooth gradients.
+     */
+    float interpolatedNoise2D(float x, float y, int seed) const;
 
     /**
      * Update UV offset for scrolling animation.
@@ -166,6 +209,16 @@ private:
      * Update opacity based on storm intensity.
      */
     void updateOpacity(float deltaTime, int stormIntensity);
+
+    /**
+     * Update frame animation and blending.
+     */
+    void updateFrameAnimation(float deltaTime);
+
+    /**
+     * Update the blended texture by combining current and next frames.
+     */
+    void updateBlendedTexture();
 
     /**
      * Update mesh node position and material.
@@ -182,18 +235,30 @@ private:
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::scene::IMesh* domeMesh_ = nullptr;
     irr::scene::IMeshSceneNode* domeNode_ = nullptr;
-    irr::video::ITexture* cloudTexture_ = nullptr;
+
+    // Multi-texture animation
+    std::vector<irr::video::ITexture*> cloudFrames_;  // Source frames
+    irr::video::ITexture* blendedTexture_ = nullptr;  // Current blended output
+    irr::video::IImage* blendImage_ = nullptr;        // Working image for blending
+    int currentFrame_ = 0;                            // Current frame index
+    int nextFrame_ = 1;                               // Next frame to blend to
+    float frameTimer_ = 0.0f;                         // Time in current frame
+    float blendFactor_ = 0.0f;                        // 0-1 blend between frames
 
     // Animation state
     glm::vec2 uvOffset_{0.0f, 0.0f};
     float currentOpacity_ = 0.0f;
     float targetOpacity_ = 0.0f;
 
+    // Lighting state
+    float currentTimeOfDay_ = 12.0f;      // Current time for color adjustment
+    float lightningFlashIntensity_ = 0.0f; // 0-1 lightning brightness
+
     // Zone state
     bool isIndoorZone_ = false;
 
-    // Noise seed (for reproducible procedural texture)
-    int noiseSeed_ = 12345;
+    // Path for loading textures
+    std::string eqClientPath_;
 };
 
 } // namespace Environment

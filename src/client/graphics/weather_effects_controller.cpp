@@ -45,8 +45,17 @@ WeatherEffectsController::~WeatherEffectsController() {
     }
 }
 
-bool WeatherEffectsController::initialize() {
-    if (initialized_) return true;
+bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
+    LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController::initialize() starting");
+    eqClientPath_ = eqClientPath;
+
+    if (initialized_) {
+        LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: Already initialized, returning early");
+        return true;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: smgr={} driver={} particleManager={} skyRenderer={}",
+             (void*)smgr_, (void*)driver_, (void*)particleManager_, (void*)skyRenderer_);
 
     // Load weather config from JSON
     auto& configLoader = WeatherConfigLoader::instance();
@@ -75,7 +84,7 @@ bool WeatherEffectsController::initialize() {
     // Create storm cloud layer (Phase 8)
     stormCloudLayer_ = std::make_unique<Environment::StormCloudLayer>();
     if (stormCloudLayer_ && smgr_ && driver_) {
-        stormCloudLayer_->initialize(smgr_, driver_);
+        stormCloudLayer_->initialize(smgr_, driver_, eqClientPath_);
     }
 
     // Create snow accumulation system (Phase 9)
@@ -128,6 +137,9 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
         newIntensity = intensity > 0 ? intensity : 5;  // Default intensity if not specified
     }
     // type=0 with intensity=0, or type=1 means weather off
+
+    LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController::setWeather: packet type={} intensity={} -> decoded newType={} newIntensity={}",
+             type, intensity, newType, newIntensity);
 
     // Start transition if weather changed
     if (newType != currentType_ || newIntensity != currentIntensity_) {
@@ -249,6 +261,13 @@ void WeatherEffectsController::applyConfigFromLoader() {
     // Apply weather effects config (storm/lightning settings)
     config_ = loader.getWeatherEffectsConfig();
 
+    // Apply storm cloud settings
+    if (stormCloudLayer_) {
+        stormCloudLayer_->setSettings(loader.getStormCloudSettings());
+        LOG_DEBUG(MOD_GRAPHICS, "Applied storm cloud config: dayBrightness={}, nightBrightness={}",
+                  loader.getStormCloudSettings().dayBrightness, loader.getStormCloudSettings().nightBrightness);
+    }
+
     LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: Applied config from loader");
 }
 
@@ -300,7 +319,15 @@ void WeatherEffectsController::setRaycastMesh(RaycastMesh* raycastMesh) {
 }
 
 void WeatherEffectsController::update(float deltaTime) {
-    if (!enabled_ || !initialized_) return;
+    if (!enabled_ || !initialized_) {
+        static bool warnedOnce = false;
+        if (!warnedOnce) {
+            LOG_WARN(MOD_GRAPHICS, "WeatherEffectsController::update skipped - enabled={} initialized={}",
+                     enabled_, initialized_);
+            warnedOnce = true;
+        }
+        return;
+    }
 
     // Update transition progress
     if (transitionProgress_ < 1.0f) {
@@ -310,6 +337,12 @@ void WeatherEffectsController::update(float deltaTime) {
 
     // Update rain
     if (currentType_ == 1 && currentIntensity_ > 0) {
+        static bool rainStartLogged = false;
+        if (!rainStartLogged) {
+            LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: Rain effects starting - type={} intensity={}",
+                     currentType_, currentIntensity_);
+            rainStartLogged = true;
+        }
         updateRain(deltaTime);
     }
 
@@ -328,15 +361,17 @@ void WeatherEffectsController::update(float deltaTime) {
 
     // Update storm cloud layer (Phase 8)
     if (stormCloudLayer_ && isCloudOverlayEnabled()) {
-        // Get wind direction from particle manager or use default
+        // Get wind direction and time of day from particle manager
         glm::vec3 windDirection(1.0f, 0.0f, 0.0f);  // Default wind direction
         float windStrength = 0.5f;
+        float timeOfDay = 12.0f;  // Default to noon
 
         if (particleManager_) {
             const auto& env = particleManager_->getEnvironmentState();
             windDirection = env.windDirection;
             windStrength = env.windStrength;
-            stormCloudLayer_->update(deltaTime, env.playerPosition, windDirection, windStrength, currentIntensity_);
+            timeOfDay = env.timeOfDay;
+            stormCloudLayer_->update(deltaTime, env.playerPosition, windDirection, windStrength, currentIntensity_, timeOfDay);
         }
     }
 }
@@ -351,6 +386,22 @@ void WeatherEffectsController::updateRain(float deltaTime) {
         // Update rain drops
         if (rainEmitter_) {
             rainEmitter_->update(deltaTime, env);
+
+            // Debug: periodically log particle state
+            static float debugTimer = 0.0f;
+            debugTimer += deltaTime;
+            if (debugTimer >= 2.0f) {
+                debugTimer = 0.0f;
+                int activeCount = 0;
+                for (const auto& p : rainEmitter_->getParticles()) {
+                    if (p.isAlive()) ++activeCount;
+                }
+                LOG_INFO(MOD_GRAPHICS, "Rain debug: intensity={} enabled={} active_particles={} player_pos=({:.1f},{:.1f},{:.1f})",
+                         rainEmitter_->getIntensity(),
+                         rainEmitter_->isEnabled(),
+                         activeCount,
+                         env.playerPosition.x, env.playerPosition.y, env.playerPosition.z);
+            }
         }
 
         // Update rain splashes
@@ -428,6 +479,11 @@ void WeatherEffectsController::triggerLightning() {
     lightningFlashTimer_ = config_.storm.flashDuration;
     lightningBoltTimer_ = config_.storm.boltDuration;
     lightningActive_ = true;
+
+    // Illuminate storm clouds during lightning flash
+    if (stormCloudLayer_) {
+        stormCloudLayer_->setLightningFlash(1.0f);
+    }
 
     // Notify callback (for audio sync)
     if (lightningCallback_) {

@@ -12,20 +12,20 @@ namespace Environment {
 struct RainSettings {
     bool enabled = true;
     int maxParticles = 500;
-    float spawnRate = 200.0f;       // Particles per second at max intensity
+    float spawnRate = 300.0f;       // Particles per second at max intensity
     float spawnRadius = 50.0f;      // Cylinder radius around player
     float spawnHeight = 80.0f;      // Height above player to spawn
-    float dropSpeed = 25.0f;        // Fall speed
-    float dropSpeedVariance = 5.0f; // Random variation in fall speed
+    float dropSpeed = 30.0f;        // Fall speed (faster = more streak)
+    float dropSpeedVariance = 8.0f; // Random variation in fall speed
     float windInfluence = 0.3f;     // How much wind affects trajectory
-    float sizeMin = 0.1f;           // Minimum drop size
-    float sizeMax = 0.2f;           // Maximum drop size
-    float lengthScale = 3.0f;       // Stretch factor for motion blur effect
-    // Color (light blue-white for rain)
-    float colorR = 0.7f;
-    float colorG = 0.8f;
+    float sizeMin = 0.03f;          // Minimum drop width (small streaks)
+    float sizeMax = 0.06f;          // Maximum drop width
+    float lengthScale = 4.0f;       // Stretch factor for streak length
+    // Color (light blue-white for rain streaks)
+    float colorR = 0.75f;
+    float colorG = 0.85f;
     float colorB = 1.0f;
-    float colorA = 0.6f;
+    float colorA = 0.5f;
 };
 
 /**

@@ -1,4 +1,5 @@
 #include "client/graphics/environment/particle_emitter.h"
+#include "common/logging.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -43,7 +44,14 @@ void ParticleEmitter::update(float deltaTime, const EnvironmentState& env) {
         if (p.isAlive()) {
             updateParticle(p, deltaTime, env);
 
-            // Update lifetime
+            // Check if derived class killed the particle (set lifetime <= 0)
+            // This must happen BEFORE the natural lifetime decay to properly track activeCount
+            if (p.lifetime <= 0.0f) {
+                killParticle(p);
+                continue;
+            }
+
+            // Natural lifetime decay
             p.lifetime -= deltaTime;
             if (p.lifetime <= 0.0f) {
                 killParticle(p);
@@ -57,12 +65,29 @@ void ParticleEmitter::update(float deltaTime, const EnvironmentState& env) {
 
     spawnAccumulator_ += effectiveSpawnRate * deltaTime;
 
+    int spawnedThisFrame = 0;
     while (spawnAccumulator_ >= 1.0f && activeCount_ < effectiveMaxParticles) {
         Particle* p = spawnParticle();
         if (p) {
             initParticle(*p, env);
+            spawnedThisFrame++;
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "ParticleEmitter: spawnParticle returned nullptr but activeCount ({}) < max ({})",
+                     activeCount_, effectiveMaxParticles);
+            break;  // Prevent infinite loop
         }
         spawnAccumulator_ -= 1.0f;
+    }
+
+    // Debug logging for spawn issues (only when there's an issue)
+    if (effectiveSpawnRate > 0 && spawnedThisFrame == 0 && activeCount_ >= effectiveMaxParticles) {
+        static float logTimer = 0.0f;
+        logTimer += deltaTime;
+        if (logTimer >= 2.0f) {
+            logTimer = 0.0f;
+            LOG_DEBUG(MOD_GRAPHICS, "ParticleEmitter(type={}): No spawn - activeCount={} >= maxParticles={}, spawnRate={:.1f}, accumulator={:.2f}",
+                      static_cast<int>(type_), activeCount_, effectiveMaxParticles, effectiveSpawnRate, spawnAccumulator_);
+        }
     }
 
     // Clamp accumulator to prevent burst spawning after pauses
@@ -85,15 +110,23 @@ Particle* ParticleEmitter::spawnParticle() {
 }
 
 void ParticleEmitter::killParticle(Particle& p) {
-    if (p.isAlive()) {
-        p.lifetime = 0.0f;
-        activeCount_--;
+    // Check if particle hasn't been killed yet using sentinel value (-1)
+    // Lifetime can be slightly negative from delta subtraction (e.g., -0.016),
+    // so we check > -0.5 to distinguish from the -1 sentinel
+    if (p.lifetime > -0.5f) {
+        if (activeCount_ > 0) {
+            activeCount_--;
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "ParticleEmitter: killParticle called but activeCount is already 0 (lifetime was {:.3f})",
+                     p.lifetime);
+        }
+        p.lifetime = -1.0f;  // Mark as dead (sentinel value)
     }
 }
 
 void ParticleEmitter::clearAllParticles() {
     for (auto& p : particles_) {
-        p.lifetime = 0.0f;
+        p.lifetime = -1.0f;  // Use sentinel value for consistency
     }
     activeCount_ = 0;
     spawnAccumulator_ = 0.0f;

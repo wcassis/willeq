@@ -65,5 +65,31 @@
     "lightningIntensityThreshold": 3,
     "maxBranchLevel": 4
   },
+  "stormClouds": {
+    "enabled": true,
+    "domeRadius": 500.0,
+    "domeHeight": 150.0,
+    "domeSegments": 24,
+    "scrollSpeedBase": 0.02,
+    "scrollSpeedVariance": 0.01,
+    "windInfluence": 0.5,
+    "frameCount": 4,
+    "frameDuration": 3.0,
+    "blendDuration": 1.5,
+    "maxOpacity": 0.7,
+    "fadeInSpeed": 0.5,
+    "fadeOutSpeed": 0.3,
+    "intensityThreshold": 3,
+    "cloudColorR": 0.4,
+    "cloudColorG": 0.42,
+    "cloudColorB": 0.45,
+    "dayBrightness": 0.3,
+    "nightBrightness": 0.05,
+    "dawnStartHour": 6.0,
+    "dawnEndHour": 8.0,
+    "duskStartHour": 18.0,
+    "duskEndHour": 20.0,
+    "lightningFlashMultiplier": 2.0
+  },
   "qualityPreset": "high"
 }
