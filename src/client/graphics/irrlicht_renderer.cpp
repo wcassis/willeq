@@ -2724,36 +2724,16 @@ void IrrlichtRenderer::updatePvsVisibility() {
 
     currentPvsRegion_ = newRegionIdx;
 
-    // If camera is outside all regions, apply distance culling only (no PVS)
+    // If camera is outside all regions or no PVS data, show all region meshes
+    // Let the fog system handle visual fade - don't cull zone geometry by distance
     if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
-        float renderDistSq = renderDistance_ * renderDistance_;
-        size_t visibleCount = 0, distanceCulledCount = 0;
-
         for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (!node) continue;
-
-            // Still apply distance culling even without PVS data
-            bool inRenderDistance = true;
-            if (currentZone_ && currentZone_->wldLoader) {
-                auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
-                if (geom) {
-                    float dx = geom->centerX - camX;
-                    float dy = geom->centerY - camY;
-                    float dz = geom->centerZ - camZ;
-                    float distSq = dx*dx + dy*dy + dz*dz;
-                    inRenderDistance = (distSq <= renderDistSq);
-                }
-            }
-
-            node->setVisible(inRenderDistance);
-            if (inRenderDistance) {
-                visibleCount++;
-            } else {
-                distanceCulledCount++;
+            if (node) {
+                node->setVisible(true);
             }
         }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} distance culled (dist={:.0f})",
-            visibleCount, distanceCulledCount, renderDistance_);
+        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> showing all {} regions",
+            regionMeshNodes_.size());
         return;
     }
 
@@ -2769,14 +2749,12 @@ void IrrlichtRenderer::updatePvsVisibility() {
     LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
         newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
 
-    // Update visibility based on PVS data AND distance
+    // Update visibility based on PVS data only
+    // Zone geometry visibility relies on PVS for occlusion culling
+    // Fog handles the visual fade at render distance - no need for explicit distance culling
     size_t visibleCount = 0;
     size_t hiddenCount = 0;
     size_t outOfRangeCount = 0;
-    size_t distanceCulledCount = 0;
-
-    // Pre-compute squared render distance for performance
-    float renderDistSq = renderDistance_ * renderDistance_;
 
     for (auto& [regionIdx, node] : regionMeshNodes_) {
         if (!node) continue;
@@ -2793,29 +2771,11 @@ void IrrlichtRenderer::updatePvsVisibility() {
             outOfRangeCount++;
         }
 
-        // Check distance to region center
-        bool inRenderDistance = true;  // Default to visible if we can't get center
-        if (currentZone_ && currentZone_->wldLoader) {
-            auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
-            if (geom) {
-                float dx = geom->centerX - camX;
-                float dy = geom->centerY - camY;
-                float dz = geom->centerZ - camZ;
-                float distSq = dx*dx + dy*dy + dz*dz;
-                inRenderDistance = (distSq <= renderDistSq);
-            }
-        }
+        node->setVisible(pvsVisible);
 
-        // Combine PVS visibility with distance check
-        bool isVisible = pvsVisible && inRenderDistance;
-        node->setVisible(isVisible);
-
-        if (isVisible) {
+        if (pvsVisible) {
             visibleCount++;
         } else {
-            if (pvsVisible && !inRenderDistance) {
-                distanceCulledCount++;
-            }
             hiddenCount++;
         }
     }
@@ -2858,8 +2818,8 @@ void IrrlichtRenderer::updatePvsVisibility() {
         }
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden ({} distance culled), {} outOfRange",
-        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenCount, distanceCulledCount, outOfRangeCount);
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden, {} outOfRange",
+        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenCount, outOfRangeCount);
 
     // Log the first few visible and hidden region indices to spot patterns
     static size_t logCount = 0;
