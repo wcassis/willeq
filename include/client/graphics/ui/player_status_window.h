@@ -74,6 +74,11 @@ private:
                            const irr::core::recti& bounds,
                            uint8_t percent);
 
+    // Truncate text to fit within maxWidth, adding "..." if truncated
+    std::wstring truncateText(irr::gui::IGUIFont* font,
+                              const std::wstring& text,
+                              int maxWidth) const;
+
     // Layout constants - initialized from UISettings
     int NAME_HEIGHT;
     int BAR_HEIGHT;
@@ -107,6 +112,16 @@ private:
     uint16_t targetCurrentMana_ = 0;
     uint16_t targetMaxMana_ = 0;
     std::wstring targetCastingSpell_;
+
+    // Cached truncated display names (recalculated on resize or name change)
+    std::wstring displayPlayerName_;
+    std::wstring displayTargetName_;
+    std::wstring displayCastingSpell_;
+    int cachedContentWidth_ = 0;
+    irr::gui::IGUIFont* cachedFont_ = nullptr;
+
+    // Update cached display names when needed
+    void updateDisplayNames(irr::gui::IGUIFont* font, int contentWidth);
 
     // EverQuest reference
     EverQuest* eq_ = nullptr;

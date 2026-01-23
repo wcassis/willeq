@@ -70,7 +70,12 @@ void PlayerStatusWindow::update()
             fullName += static_cast<wchar_t>(c);
         }
     }
-    playerName_ = fullName;
+
+    // Invalidate cache if player name changed
+    if (playerName_ != fullName) {
+        playerName_ = fullName;
+        cachedContentWidth_ = 0;  // Force recalculation
+    }
 
     // Get vital stats
     currentHP_ = eq_->GetCurrentHP();
@@ -91,12 +96,21 @@ void PlayerStatusWindow::update()
             const Entity& target = it->second;
 
             // Convert server name to display name
-            targetName_ = EQT::toDisplayNameW(target.name);
+            std::wstring newTargetName = EQT::toDisplayNameW(target.name);
+
+            // Invalidate cache if target name changed
+            if (targetName_ != newTargetName) {
+                targetName_ = newTargetName;
+                cachedContentWidth_ = 0;  // Force recalculation
+            }
 
             targetHpPercent_ = target.hp_percent;
             targetCurrentMana_ = target.cur_mana;
             targetMaxMana_ = target.max_mana;
         } else {
+            if (hasTarget_ || !targetName_.empty()) {
+                cachedContentWidth_ = 0;  // Force recalculation
+            }
             hasTarget_ = false;
             targetName_.clear();
             targetHpPercent_ = 0;
@@ -105,6 +119,9 @@ void PlayerStatusWindow::update()
             targetCastingSpell_.clear();
         }
     } else {
+        if (hasTarget_ || !targetName_.empty()) {
+            cachedContentWidth_ = 0;  // Force recalculation
+        }
         hasTarget_ = false;
         targetName_.clear();
         targetHpPercent_ = 0;
@@ -116,15 +133,24 @@ void PlayerStatusWindow::update()
 
 void PlayerStatusWindow::setTargetCastingSpell(const std::string& spellName)
 {
-    targetCastingSpell_.clear();
+    std::wstring newSpell;
     for (char c : spellName) {
-        targetCastingSpell_ += static_cast<wchar_t>(c);
+        newSpell += static_cast<wchar_t>(c);
+    }
+
+    // Invalidate cache if spell name changed
+    if (targetCastingSpell_ != newSpell) {
+        targetCastingSpell_ = newSpell;
+        cachedContentWidth_ = 0;  // Force recalculation
     }
 }
 
 void PlayerStatusWindow::clearTargetCastingSpell()
 {
-    targetCastingSpell_.clear();
+    if (!targetCastingSpell_.empty()) {
+        targetCastingSpell_.clear();
+        cachedContentWidth_ = 0;  // Force recalculation
+    }
 }
 
 void PlayerStatusWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
@@ -137,6 +163,22 @@ void PlayerStatusWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUI
     WindowBase::render(driver, gui);
 }
 
+void PlayerStatusWindow::updateDisplayNames(irr::gui::IGUIFont* font, int contentWidth)
+{
+    // Check if we need to recalculate (font, width, or source names changed)
+    bool needsUpdate = (font != cachedFont_) ||
+                       (contentWidth != cachedContentWidth_);
+
+    if (needsUpdate) {
+        cachedFont_ = font;
+        cachedContentWidth_ = contentWidth;
+        // Recalculate all display names
+        displayPlayerName_ = truncateText(font, playerName_, contentWidth);
+        displayTargetName_ = truncateText(font, targetName_, contentWidth);
+        displayCastingSpell_ = truncateText(font, targetCastingSpell_, contentWidth);
+    }
+}
+
 void PlayerStatusWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
     if (!driver) return;
@@ -146,18 +188,21 @@ void PlayerStatusWindow::renderContent(irr::video::IVideoDriver* driver, irr::gu
     int contentY = contentArea.UpperLeftCorner.Y;
     int contentWidth = contentArea.getWidth();
 
+    // Update cached display names if needed
+    irr::gui::IGUIFont* font = gui ? gui->getBuiltInFont() : nullptr;
+    if (font) {
+        updateDisplayNames(font, contentWidth);
+    }
+
     int y = contentY + PADDING;
 
-    // Draw player name
-    if (gui) {
-        irr::gui::IGUIFont* font = gui->getBuiltInFont();
-        if (font) {
-            irr::core::recti nameBounds(
-                contentX, y,
-                contentX + contentWidth, y + NAME_HEIGHT
-            );
-            font->draw(playerName_.c_str(), nameBounds, getNameTextColor());
-        }
+    // Draw player name (using cached truncated name)
+    if (gui && font) {
+        irr::core::recti nameBounds(
+            contentX, y,
+            contentX + contentWidth, y + NAME_HEIGHT
+        );
+        font->draw(displayPlayerName_.c_str(), nameBounds, getNameTextColor());
     }
     y += NAME_HEIGHT + BAR_SPACING;
 
@@ -191,19 +236,16 @@ void PlayerStatusWindow::renderContent(irr::video::IVideoDriver* driver, irr::gu
     // --- Target Section ---
     y += BAR_SPACING;  // Extra gap before target
 
-    // Draw target name (or "No Target")
-    if (gui) {
-        irr::gui::IGUIFont* font = gui->getBuiltInFont();
-        if (font) {
-            irr::core::recti nameBounds(
-                contentX, y,
-                contentX + contentWidth, y + NAME_HEIGHT
-            );
-            if (hasTarget_) {
-                font->draw(targetName_.c_str(), nameBounds, getNameTextColor());
-            } else {
-                font->draw(L"No Target", nameBounds, irr::video::SColor(150, 128, 128, 128));
-            }
+    // Draw target name (or "No Target"), using cached truncated name
+    if (gui && font) {
+        irr::core::recti nameBounds(
+            contentX, y,
+            contentX + contentWidth, y + NAME_HEIGHT
+        );
+        if (hasTarget_) {
+            font->draw(displayTargetName_.c_str(), nameBounds, getNameTextColor());
+        } else {
+            font->draw(L"No Target", nameBounds, irr::video::SColor(150, 128, 128, 128));
         }
     }
     y += NAME_HEIGHT + BAR_SPACING;
@@ -233,16 +275,13 @@ void PlayerStatusWindow::renderContent(irr::video::IVideoDriver* driver, irr::gu
         y += BAR_HEIGHT + BAR_SPACING;
     }
 
-    // Draw target casting spell name
-    if (gui && !targetCastingSpell_.empty()) {
-        irr::gui::IGUIFont* font = gui->getBuiltInFont();
-        if (font) {
-            irr::core::recti spellBounds(
-                contentX, y,
-                contentX + contentWidth, y + NAME_HEIGHT
-            );
-            font->draw(targetCastingSpell_.c_str(), spellBounds, irr::video::SColor(255, 200, 200, 255));
-        }
+    // Draw target casting spell name, using cached truncated name
+    if (gui && font && !targetCastingSpell_.empty()) {
+        irr::core::recti spellBounds(
+            contentX, y,
+            contentX + contentWidth, y + NAME_HEIGHT
+        );
+        font->draw(displayCastingSpell_.c_str(), spellBounds, irr::video::SColor(255, 200, 200, 255));
     }
 }
 
@@ -321,6 +360,57 @@ void PlayerStatusWindow::drawPercentBarText(irr::gui::IGUIEnvironment* gui,
 
     // Left-align text in bar, vertically centered
     font->draw(text.c_str(), bounds, getBarTextColor(), false, true);
+}
+
+std::wstring PlayerStatusWindow::truncateText(irr::gui::IGUIFont* font,
+                                              const std::wstring& text,
+                                              int maxWidth) const
+{
+    if (!font || text.empty() || maxWidth <= 0) {
+        return text;
+    }
+
+    // Check if text already fits
+    irr::core::dimension2du dim = font->getDimension(text.c_str());
+    if (static_cast<int>(dim.Width) <= maxWidth) {
+        return text;
+    }
+
+    // Need to truncate - measure ellipsis width
+    const std::wstring ellipsis = L"...";
+    irr::core::dimension2du ellipsisDim = font->getDimension(ellipsis.c_str());
+    int ellipsisWidth = static_cast<int>(ellipsisDim.Width);
+
+    // If ellipsis alone doesn't fit, return empty or just ellipsis
+    if (ellipsisWidth >= maxWidth) {
+        return ellipsis;
+    }
+
+    // Binary search for the right truncation point
+    int availableWidth = maxWidth - ellipsisWidth;
+    size_t left = 0;
+    size_t right = text.length();
+    size_t bestFit = 0;
+
+    while (left <= right && right > 0) {
+        size_t mid = (left + right) / 2;
+        std::wstring truncated = text.substr(0, mid);
+        irr::core::dimension2du truncDim = font->getDimension(truncated.c_str());
+
+        if (static_cast<int>(truncDim.Width) <= availableWidth) {
+            bestFit = mid;
+            left = mid + 1;
+        } else {
+            if (mid == 0) break;
+            right = mid - 1;
+        }
+    }
+
+    // Return truncated text with ellipsis
+    if (bestFit > 0) {
+        return text.substr(0, bestFit) + ellipsis;
+    }
+    return ellipsis;
 }
 
 } // namespace ui
