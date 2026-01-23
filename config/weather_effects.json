@@ -113,5 +113,27 @@
     "daylightMin": 0.05,
     "daylightMax": 0.50
   },
+  "snowOverlay": {
+    "enabled": true,
+    "scrollSpeedBase": 0.03,
+    "scrollSpeedIntensity": 0.02,
+    "swayAmplitude": 30.0,
+    "swayFrequency": 0.5,
+    "swayPhaseVariation": 0.3,
+    "layerScaleMin": 1.0,
+    "layerScaleMax": 2.0,
+    "layerSpeedMin": 0.6,
+    "layerSpeedMax": 1.0,
+    "baseOpacity": 0.3,
+    "maxOpacity": 0.8,
+    "fogReductionEnabled": true,
+    "fogStartMin": 50.0,
+    "fogStartMax": 200.0,
+    "fogEndMin": 300.0,
+    "fogEndMax": 800.0,
+    "skyDarkeningEnabled": true,
+    "skyBrightnessMin": 0.3,
+    "skyBrightnessMax": 0.7
+  },
   "qualityPreset": "high"
 }

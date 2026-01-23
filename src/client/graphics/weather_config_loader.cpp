@@ -44,6 +44,7 @@ bool WeatherConfigLoader::load(const std::string& path) {
     loadStormSettings(root);
     loadStormCloudSettings(root);
     loadRainOverlaySettings(root);
+    loadSnowOverlaySettings(root);
 
     // Load quality preset name and apply it
     if (root.isMember("qualityPreset")) {
@@ -95,6 +96,9 @@ void WeatherConfigLoader::setDefaults() {
 
     // Rain overlay defaults
     rainOverlaySettings_ = Environment::RainOverlaySettings{};
+
+    // Snow overlay defaults
+    snowOverlaySettings_ = Environment::SnowOverlaySettings{};
 
     // Weather effects config defaults
     weatherConfig_ = WeatherEffectsConfig{};
@@ -507,6 +511,88 @@ void WeatherConfigLoader::loadRainOverlaySettings(const Json::Value& root) {
 
     LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded rain overlay settings (numLayers={}, baseOpacity={}, maxOpacity={})",
               rainOverlaySettings_.numLayers, rainOverlaySettings_.baseOpacity, rainOverlaySettings_.maxOpacity);
+}
+
+void WeatherConfigLoader::loadSnowOverlaySettings(const Json::Value& root) {
+    if (!root.isMember("snowOverlay")) {
+        LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: No 'snowOverlay' section, using defaults");
+        return;
+    }
+
+    const Json::Value& json = root["snowOverlay"];
+
+    if (json.isMember("enabled")) {
+        snowOverlaySettings_.enabled = json["enabled"].asBool();
+    }
+    if (json.isMember("scrollSpeedBase")) {
+        snowOverlaySettings_.scrollSpeedBase = clampFloat(json["scrollSpeedBase"].asFloat(), 0.001f, 1.0f, "snowOverlay.scrollSpeedBase");
+    }
+    if (json.isMember("scrollSpeedIntensity")) {
+        snowOverlaySettings_.scrollSpeedIntensity = clampFloat(json["scrollSpeedIntensity"].asFloat(), 0.0f, 0.5f, "snowOverlay.scrollSpeedIntensity");
+    }
+    if (json.isMember("swayAmplitude")) {
+        snowOverlaySettings_.swayAmplitude = clampFloat(json["swayAmplitude"].asFloat(), 0.0f, 100.0f, "snowOverlay.swayAmplitude");
+    }
+    if (json.isMember("swayFrequency")) {
+        snowOverlaySettings_.swayFrequency = clampFloat(json["swayFrequency"].asFloat(), 0.1f, 5.0f, "snowOverlay.swayFrequency");
+    }
+    if (json.isMember("swayPhaseVariation")) {
+        snowOverlaySettings_.swayPhaseVariation = clampFloat(json["swayPhaseVariation"].asFloat(), 0.0f, 1.0f, "snowOverlay.swayPhaseVariation");
+    }
+    if (json.isMember("numLayers")) {
+        snowOverlaySettings_.numLayers = clampInt(json["numLayers"].asInt(), 1, 5, "snowOverlay.numLayers");
+    }
+    if (json.isMember("layerDepthMin")) {
+        snowOverlaySettings_.layerDepthMin = clampFloat(json["layerDepthMin"].asFloat(), 0.5f, 20.0f, "snowOverlay.layerDepthMin");
+    }
+    if (json.isMember("layerDepthMax")) {
+        snowOverlaySettings_.layerDepthMax = clampFloat(json["layerDepthMax"].asFloat(), 1.0f, 50.0f, "snowOverlay.layerDepthMax");
+    }
+    if (json.isMember("layerScaleMin")) {
+        snowOverlaySettings_.layerScaleMin = clampFloat(json["layerScaleMin"].asFloat(), 0.1f, 5.0f, "snowOverlay.layerScaleMin");
+    }
+    if (json.isMember("layerScaleMax")) {
+        snowOverlaySettings_.layerScaleMax = clampFloat(json["layerScaleMax"].asFloat(), 0.1f, 10.0f, "snowOverlay.layerScaleMax");
+    }
+    if (json.isMember("layerSpeedMin")) {
+        snowOverlaySettings_.layerSpeedMin = clampFloat(json["layerSpeedMin"].asFloat(), 0.1f, 2.0f, "snowOverlay.layerSpeedMin");
+    }
+    if (json.isMember("layerSpeedMax")) {
+        snowOverlaySettings_.layerSpeedMax = clampFloat(json["layerSpeedMax"].asFloat(), 0.1f, 2.0f, "snowOverlay.layerSpeedMax");
+    }
+    if (json.isMember("baseOpacity")) {
+        snowOverlaySettings_.baseOpacity = clampFloat(json["baseOpacity"].asFloat(), 0.0f, 1.0f, "snowOverlay.baseOpacity");
+    }
+    if (json.isMember("maxOpacity")) {
+        snowOverlaySettings_.maxOpacity = clampFloat(json["maxOpacity"].asFloat(), 0.0f, 1.0f, "snowOverlay.maxOpacity");
+    }
+    if (json.isMember("fogReductionEnabled")) {
+        snowOverlaySettings_.fogReductionEnabled = json["fogReductionEnabled"].asBool();
+    }
+    if (json.isMember("fogStartMin")) {
+        snowOverlaySettings_.fogStartMin = clampFloat(json["fogStartMin"].asFloat(), 10.0f, 200.0f, "snowOverlay.fogStartMin");
+    }
+    if (json.isMember("fogStartMax")) {
+        snowOverlaySettings_.fogStartMax = clampFloat(json["fogStartMax"].asFloat(), 50.0f, 500.0f, "snowOverlay.fogStartMax");
+    }
+    if (json.isMember("fogEndMin")) {
+        snowOverlaySettings_.fogEndMin = clampFloat(json["fogEndMin"].asFloat(), 100.0f, 500.0f, "snowOverlay.fogEndMin");
+    }
+    if (json.isMember("fogEndMax")) {
+        snowOverlaySettings_.fogEndMax = clampFloat(json["fogEndMax"].asFloat(), 200.0f, 2000.0f, "snowOverlay.fogEndMax");
+    }
+    if (json.isMember("skyDarkeningEnabled")) {
+        snowOverlaySettings_.skyDarkeningEnabled = json["skyDarkeningEnabled"].asBool();
+    }
+    if (json.isMember("skyBrightnessMin")) {
+        snowOverlaySettings_.skyBrightnessMin = clampFloat(json["skyBrightnessMin"].asFloat(), 0.0f, 1.0f, "snowOverlay.skyBrightnessMin");
+    }
+    if (json.isMember("skyBrightnessMax")) {
+        snowOverlaySettings_.skyBrightnessMax = clampFloat(json["skyBrightnessMax"].asFloat(), 0.0f, 1.0f, "snowOverlay.skyBrightnessMax");
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded snow overlay settings (swayAmplitude={}, baseOpacity={}, maxOpacity={})",
+              snowOverlaySettings_.swayAmplitude, snowOverlaySettings_.baseOpacity, snowOverlaySettings_.maxOpacity);
 }
 
 WeatherQualityPreset WeatherConfigLoader::getQualityPreset() const {

@@ -33,6 +33,7 @@ class WaterRippleManager;
 class StormCloudLayer;
 class SnowAccumulationSystem;
 class RainOverlay;
+class SnowOverlay;
 }  // namespace Environment
 
 namespace Detail {
@@ -239,6 +240,11 @@ public:
     bool isRainOverlayEnabled() const;
 
     /**
+     * Check if screen-space snow overlay is enabled (vs particle snow).
+     */
+    bool isSnowOverlayEnabled() const;
+
+    /**
      * Get fog distance for rain effect (original EQ behavior).
      * @param outFogStart Output fog start distance
      * @param outFogEnd Output fog end distance
@@ -252,6 +258,21 @@ public:
      * @return true if daylight should be reduced
      */
     bool getRainDaylightMultiplier(float& outMultiplier) const;
+
+    /**
+     * Get fog distance for snow effect.
+     * @param outFogStart Output fog start distance
+     * @param outFogEnd Output fog end distance
+     * @return true if snow fog should override normal fog
+     */
+    bool getSnowFogSettings(float& outFogStart, float& outFogEnd) const;
+
+    /**
+     * Get sky brightness multiplier for snow effect (overcast during snow).
+     * @param outMultiplier Output brightness multiplier (0.0-1.0)
+     * @return true if sky brightness should be reduced
+     */
+    bool getSnowBrightnessMultiplier(float& outMultiplier) const;
 
     /**
      * Set the raycast mesh for shelter detection in snow accumulation.
@@ -348,6 +369,9 @@ private:
     // Screen-space rain overlay (Phase 10 - replaces particle rain)
     std::unique_ptr<Environment::RainOverlay> rainOverlay_;
 
+    // Screen-space snow overlay (Phase 11 - replaces particle snow)
+    std::unique_ptr<Environment::SnowOverlay> snowOverlay_;
+
     // Surface map for water detection (not owned)
     const Detail::SurfaceMap* surfaceMap_ = nullptr;
 
@@ -362,6 +386,9 @@ private:
 
     // Use screen-space rain overlay instead of particle rain (default: true for performance)
     bool useRainOverlay_ = true;
+
+    // Use screen-space snow overlay instead of particle snow (default: true for performance)
+    bool useSnowOverlay_ = true;
 
     // Current weather state
     uint8_t currentType_ = 0;       // 0=none, 1=rain, 2=snow

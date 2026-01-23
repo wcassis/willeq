@@ -10,6 +10,7 @@
 #include "client/graphics/environment/storm_cloud_layer.h"
 #include "client/graphics/environment/snow_accumulation_system.h"
 #include "client/graphics/environment/rain_overlay.h"
+#include "client/graphics/environment/snow_overlay.h"
 #include "common/logging.h"
 #include <irrlicht.h>
 #include <cmath>
@@ -100,6 +101,12 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
         rainOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
 
+    // Create screen-space snow overlay (Phase 11)
+    snowOverlay_ = std::make_unique<Environment::SnowOverlay>();
+    if (snowOverlay_ && driver_ && smgr_) {
+        snowOverlay_->initialize(driver_, smgr_, eqClientPath_);
+    }
+
     // Apply loaded config to emitters
     applyConfigFromLoader();
 
@@ -187,9 +194,21 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
             rainOverlay_->setIntensity(newType == 1 ? newIntensity : 0);
         }
 
-        // Update snow emitter
-        if (snowEmitter_) {
-            snowEmitter_->setIntensity(newType == 2 ? newIntensity : 0);
+        // Update snow emitter (only if not using screen-space overlay)
+        if (!useSnowOverlay_) {
+            if (snowEmitter_) {
+                snowEmitter_->setIntensity(newType == 2 ? newIntensity : 0);
+            }
+        } else {
+            // Disable particle emitter when using overlay
+            if (snowEmitter_) {
+                snowEmitter_->setIntensity(0);
+            }
+        }
+
+        // Update screen-space snow overlay
+        if (snowOverlay_) {
+            snowOverlay_->setIntensity(newType == 2 ? newIntensity : 0);
         }
 
         // Update target darkening based on weather
@@ -300,6 +319,16 @@ void WeatherEffectsController::applyConfigFromLoader() {
                   rainSettings.daylightReductionEnabled, rainSettings.daylightMin, rainSettings.daylightMax);
     }
 
+    // Apply snow overlay settings
+    if (snowOverlay_) {
+        const auto& snowSettings = loader.getSnowOverlaySettings();
+        snowOverlay_->setSettings(snowSettings);
+        LOG_DEBUG(MOD_GRAPHICS, "Applied snow overlay config: baseOpacity={}, maxOpacity={}, swayAmplitude={}",
+                  snowSettings.baseOpacity, snowSettings.maxOpacity, snowSettings.swayAmplitude);
+        LOG_DEBUG(MOD_GRAPHICS, "Snow overlay sky settings: enabled={}, brightnessMin={:.3f}, brightnessMax={:.3f}",
+                  snowSettings.skyDarkeningEnabled, snowSettings.skyBrightnessMin, snowSettings.skyBrightnessMax);
+    }
+
     LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: Applied config from loader");
 }
 
@@ -347,6 +376,10 @@ bool WeatherEffectsController::isRainOverlayEnabled() const {
     return useRainOverlay_ && rainOverlay_ && rainOverlay_->isEnabled();
 }
 
+bool WeatherEffectsController::isSnowOverlayEnabled() const {
+    return useSnowOverlay_ && snowOverlay_ && snowOverlay_->isEnabled();
+}
+
 bool WeatherEffectsController::getRainFogSettings(float& outFogStart, float& outFogEnd) const {
     if (!useRainOverlay_ || !rainOverlay_) {
         return false;
@@ -368,6 +401,33 @@ bool WeatherEffectsController::getRainDaylightMultiplier(float& outMultiplier) c
     static float lastLogged = -1.0f;
     if (result && std::abs(outMultiplier - lastLogged) > 0.01f) {
         LOG_DEBUG(MOD_GRAPHICS, "getRainDaylightMultiplier: result={}, outMultiplier={:.3f}",
+                  result, outMultiplier);
+        lastLogged = outMultiplier;
+    }
+    return result;
+}
+
+bool WeatherEffectsController::getSnowFogSettings(float& outFogStart, float& outFogEnd) const {
+    if (!useSnowOverlay_ || !snowOverlay_) {
+        return false;
+    }
+    return snowOverlay_->getFogSettings(outFogStart, outFogEnd);
+}
+
+bool WeatherEffectsController::getSnowBrightnessMultiplier(float& outMultiplier) const {
+    if (!useSnowOverlay_ || !snowOverlay_) {
+        static bool loggedOnce = false;
+        if (!loggedOnce) {
+            LOG_DEBUG(MOD_GRAPHICS, "getSnowBrightnessMultiplier: skipped (useSnowOverlay_={}, snowOverlay_={})",
+                      useSnowOverlay_, snowOverlay_ != nullptr);
+            loggedOnce = true;
+        }
+        return false;
+    }
+    bool result = snowOverlay_->getSkyBrightnessMultiplier(outMultiplier);
+    static float lastLogged = -1.0f;
+    if (result && std::abs(outMultiplier - lastLogged) > 0.01f) {
+        LOG_DEBUG(MOD_GRAPHICS, "getSnowBrightnessMultiplier: result={}, outMultiplier={:.3f}",
                   result, outMultiplier);
         lastLogged = outMultiplier;
     }
@@ -503,11 +563,30 @@ void WeatherEffectsController::updateSnow(float deltaTime) {
     if (isIndoorZone_) return;
 
     // Get environment state from particle manager (includes player position)
-    if (particleManager_ && snowEmitter_) {
+    if (particleManager_) {
         const auto& env = particleManager_->getEnvironmentState();
-        snowEmitter_->update(deltaTime, env);
 
-        // Update snow accumulation (Phase 9)
+        // Update screen-space snow overlay (if enabled)
+        if (useSnowOverlay_ && snowOverlay_) {
+            glm::vec3 cameraDir(1, 0, 0);  // Default direction
+            // Get actual camera direction if available from scene manager
+            if (smgr_ && smgr_->getActiveCamera()) {
+                irr::core::vector3df target = smgr_->getActiveCamera()->getTarget();
+                irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
+                irr::core::vector3df dir = target - pos;
+                dir.normalize();
+                // Convert from Irrlicht (Y-up) to EQ (Z-up)
+                cameraDir = glm::vec3(dir.X, dir.Z, dir.Y);
+            }
+            snowOverlay_->update(deltaTime, env.playerPosition, cameraDir);
+        }
+
+        // Update particle snow (only if not using overlay)
+        if (!useSnowOverlay_ && snowEmitter_) {
+            snowEmitter_->update(deltaTime, env);
+        }
+
+        // Update snow accumulation (Phase 9) - always update, even with overlay
         if (snowAccumulationSystem_ && isSnowAccumulationEnabled()) {
             snowAccumulationSystem_->setSnowIntensity(currentIntensity_);
             snowAccumulationSystem_->update(deltaTime, env.playerPosition);
@@ -691,6 +770,11 @@ void WeatherEffectsController::render() {
         renderLightningBolt();
     }
 
+    // Render screen-space snow overlay (if enabled) - render before rain for layering
+    if (useSnowOverlay_ && snowOverlay_ && currentType_ == 2 && currentIntensity_ > 0) {
+        snowOverlay_->render();
+    }
+
     // Render screen-space rain overlay (if enabled)
     if (useRainOverlay_ && rainOverlay_ && currentType_ == 1 && currentIntensity_ > 0) {
         rainOverlay_->render();
@@ -701,6 +785,8 @@ void WeatherEffectsController::render() {
         // Rain particles are rendered through the particle system
         // but we could add additional effects here
     }
+
+    // Snow particles are rendered through the particle system when not using overlay
 
     // Render water ripples (Phase 7)
     if (waterRippleManager_ && areRipplesEnabled() && currentType_ == 1 && currentIntensity_ > 0) {
@@ -771,11 +857,23 @@ float WeatherEffectsController::getAmbientLightModifier() const {
     float rainMultiplier = 1.0f;
     if (getRainDaylightMultiplier(rainMultiplier)) {
         modifier *= rainMultiplier;
-        static float lastLoggedMultiplier = -1.0f;
-        if (std::abs(rainMultiplier - lastLoggedMultiplier) > 0.01f) {
+        static float lastLoggedRain = -1.0f;
+        if (std::abs(rainMultiplier - lastLoggedRain) > 0.01f) {
             LOG_DEBUG(MOD_GRAPHICS, "getAmbientLightModifier: rainMultiplier={:.3f}, modifier={:.3f}",
                       rainMultiplier, modifier);
-            lastLoggedMultiplier = rainMultiplier;
+            lastLoggedRain = rainMultiplier;
+        }
+    }
+
+    // Apply snow brightness reduction (overcast during snow)
+    float snowMultiplier = 1.0f;
+    if (getSnowBrightnessMultiplier(snowMultiplier)) {
+        modifier *= snowMultiplier;
+        static float lastLoggedSnow = -1.0f;
+        if (std::abs(snowMultiplier - lastLoggedSnow) > 0.01f) {
+            LOG_DEBUG(MOD_GRAPHICS, "getAmbientLightModifier: snowMultiplier={:.3f}, modifier={:.3f}",
+                      snowMultiplier, modifier);
+            lastLoggedSnow = snowMultiplier;
         }
     }
 

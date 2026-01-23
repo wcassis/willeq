@@ -400,6 +400,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/snow_accumulation_system.cpp
         # Screen-space rain overlay
         src/client/graphics/environment/rain_overlay.cpp
+        # Screen-space snow overlay
+        src/client/graphics/environment/snow_overlay.cpp
         # Boids (ambient creatures) system
         src/client/graphics/environment/flock_controller.cpp
         src/client/graphics/environment/boids_manager.cpp
