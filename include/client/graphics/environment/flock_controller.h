@@ -2,13 +2,24 @@
 
 #include "boids_types.h"
 #include "particle_types.h"  // For EnvironmentState, ZoneBiome
+#include "tumbleweed_manager.h"  // For PlaceableBounds
 #include <glm/glm.hpp>
 #include <vector>
 #include <random>
 #include <cstdint>
 
+namespace irr {
+namespace scene {
+class ISceneManager;
+class ITriangleSelector;
+}
+}
+
 namespace EQT {
 namespace Graphics {
+namespace Detail {
+class SurfaceMap;
+}
 namespace Environment {
 
 /**
@@ -90,6 +101,14 @@ public:
     void setZoneBounds(const glm::vec3& min, const glm::vec3& max);
 
     /**
+     * Set collision detection objects for terrain/obstacle avoidance.
+     */
+    void setCollisionDetection(irr::scene::ISceneManager* smgr,
+                               irr::scene::ITriangleSelector* selector,
+                               const Detail::SurfaceMap* surfaceMap,
+                               const std::vector<PlaceableBounds>* placeables);
+
+    /**
      * Set a new destination waypoint.
      */
     void setDestination(const glm::vec3& destination);
@@ -114,6 +133,7 @@ private:
     glm::vec3 calculateDestinationSteer(const Creature& creature) const;
     glm::vec3 calculateBoundsAvoidance(const Creature& creature) const;
     glm::vec3 calculatePlayerAvoidance(const Creature& creature, const glm::vec3& playerPos) const;
+    glm::vec3 calculateTerrainAvoidance(const Creature& creature) const;
 
     // Helper methods
     void initializeCreatures(const glm::vec3& spawnPosition);
@@ -150,6 +170,12 @@ private:
 
     // RNG
     std::mt19937& rng_;
+
+    // Collision detection (optional, for terrain avoidance)
+    irr::scene::ISceneManager* smgr_ = nullptr;
+    irr::scene::ITriangleSelector* collisionSelector_ = nullptr;
+    const Detail::SurfaceMap* surfaceMap_ = nullptr;
+    const std::vector<PlaceableBounds>* placeableObjects_ = nullptr;
 };
 
 } // namespace Environment

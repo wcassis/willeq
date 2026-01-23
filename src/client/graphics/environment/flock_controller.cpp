@@ -1,4 +1,6 @@
 #include "client/graphics/environment/flock_controller.h"
+#include "client/graphics/detail/surface_map.h"
+#include <irrlicht.h>
 #include <glm/gtx/norm.hpp>
 #include <algorithm>
 #include <sstream>
@@ -78,15 +80,18 @@ void FlockController::update(float deltaTime, const EnvironmentState& env) {
         glm::vec3 destination = calculateDestinationSteer(creature);
         glm::vec3 avoidance = calculateBoundsAvoidance(creature);
         glm::vec3 playerAvoid = calculatePlayerAvoidance(creature, env.playerPosition);
+        glm::vec3 terrainAvoid = calculateTerrainAvoidance(creature);
 
         // Combine forces with weights
+        // Terrain avoidance uses strong weight (same as bounds avoidance)
         glm::vec3 acceleration =
             separation * config_.behavior.separation +
             alignment * config_.behavior.alignment +
             cohesion * config_.behavior.cohesion +
             destination * config_.behavior.destination +
             avoidance * config_.behavior.avoidance +
-            playerAvoid * config_.behavior.playerAvoidance;
+            playerAvoid * config_.behavior.playerAvoidance +
+            terrainAvoid * config_.behavior.avoidance;
 
         // If scattering, add extra force away from scatter source
         if (scattering_) {
@@ -382,6 +387,134 @@ void FlockController::scatter(const glm::vec3& sourcePosition, float strength) {
     scatterSource_ = sourcePosition;
     scatterStrength_ = glm::clamp(strength, 0.0f, 1.0f);
     scatterTimer_ = 3.0f;  // Scatter for 3 seconds
+}
+
+void FlockController::setCollisionDetection(irr::scene::ISceneManager* smgr,
+                                             irr::scene::ITriangleSelector* selector,
+                                             const Detail::SurfaceMap* surfaceMap,
+                                             const std::vector<PlaceableBounds>* placeables) {
+    smgr_ = smgr;
+    collisionSelector_ = selector;
+    surfaceMap_ = surfaceMap;
+    placeableObjects_ = placeables;
+}
+
+glm::vec3 FlockController::calculateTerrainAvoidance(const Creature& creature) const {
+    glm::vec3 steer{0.0f};
+
+    // Skip if no collision detection is set up
+    if (!smgr_ || !collisionSelector_) {
+        return steer;
+    }
+
+    // Look ahead in the direction of movement
+    float speed = glm::length(creature.velocity);
+    if (speed < 0.1f) {
+        return steer;
+    }
+
+    glm::vec3 direction = glm::normalize(creature.velocity);
+    float lookAhead = 15.0f;  // How far ahead to check for obstacles
+
+    // Cast multiple rays: forward, forward-down, forward-left, forward-right
+    struct RayCheck {
+        glm::vec3 offset;
+        float weight;
+    };
+
+    std::vector<RayCheck> rays = {
+        {{0.0f, 0.0f, 0.0f}, 1.0f},        // Straight ahead
+        {{0.0f, 0.0f, -5.0f}, 0.8f},       // Forward-down
+        {{-3.0f, 0.0f, 0.0f}, 0.5f},       // Forward-left (in XY plane)
+        {{3.0f, 0.0f, 0.0f}, 0.5f},        // Forward-right
+    };
+
+    for (const auto& ray : rays) {
+        // Calculate ray end point
+        glm::vec3 from = creature.position;
+        glm::vec3 to = creature.position + direction * lookAhead + ray.offset;
+
+        // Convert to Irrlicht coordinates (EQ: x,y,z -> Irr: x,z,y)
+        irr::core::vector3df irrFrom(from.x, from.z, from.y);
+        irr::core::vector3df irrTo(to.x, to.z, to.y);
+        irr::core::line3df rayLine(irrFrom, irrTo);
+
+        irr::core::vector3df hitPoint;
+        irr::core::triangle3df hitTri;
+        irr::scene::ISceneNode* hitNode = nullptr;
+
+        if (smgr_->getSceneCollisionManager()->getCollisionPoint(
+                rayLine, collisionSelector_, hitPoint, hitTri, hitNode)) {
+
+            // Calculate distance to hit
+            float hitDist = irrFrom.getDistanceFrom(hitPoint);
+            float rayDist = irrFrom.getDistanceFrom(irrTo);
+
+            if (hitDist < rayDist) {
+                // Obstacle detected - steer away
+                // Get normal in EQ coords
+                irr::core::vector3df triNormal = hitTri.getNormal();
+                glm::vec3 normal(triNormal.X, triNormal.Z, triNormal.Y);
+
+                if (glm::length(normal) > 0.01f) {
+                    normal = glm::normalize(normal);
+                } else {
+                    // Fallback: steer up and away from obstacle
+                    normal = glm::vec3(0.0f, 0.0f, 1.0f);
+                }
+
+                // Stronger avoidance when closer
+                float urgency = 1.0f - (hitDist / rayDist);
+                steer += normal * urgency * ray.weight * 3.0f;
+
+                // Also add upward component to fly over obstacles
+                steer.z += urgency * ray.weight * 2.0f;
+            }
+        }
+    }
+
+    // Check placeable objects (AABB collision)
+    if (placeableObjects_) {
+        glm::vec3 futurePos = creature.position + direction * lookAhead;
+
+        for (const auto& obj : *placeableObjects_) {
+            // Expand AABB by a margin for early detection
+            float margin = 5.0f;
+            glm::vec3 expandedMin = obj.min - glm::vec3(margin);
+            glm::vec3 expandedMax = obj.max + glm::vec3(margin);
+
+            // Check if future position would be inside expanded AABB
+            if (futurePos.x >= expandedMin.x && futurePos.x <= expandedMax.x &&
+                futurePos.y >= expandedMin.y && futurePos.y <= expandedMax.y &&
+                futurePos.z >= expandedMin.z && futurePos.z <= expandedMax.z) {
+
+                // Calculate center and steer away
+                glm::vec3 objCenter = (obj.min + obj.max) * 0.5f;
+                glm::vec3 away = creature.position - objCenter;
+
+                if (glm::length(away) > 0.01f) {
+                    away = glm::normalize(away);
+                } else {
+                    away = glm::vec3(0.0f, 0.0f, 1.0f);
+                }
+
+                // Calculate how deep into the expanded area
+                float penetration = 1.0f;
+                steer += away * penetration * 2.0f;
+
+                // Add upward component
+                steer.z += 1.5f;
+            }
+        }
+    }
+
+    // Limit the magnitude
+    float steerMag = glm::length(steer);
+    if (steerMag > 5.0f) {
+        steer = glm::normalize(steer) * 5.0f;
+    }
+
+    return steer;
 }
 
 std::string FlockController::getDebugInfo() const {

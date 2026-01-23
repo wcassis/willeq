@@ -545,7 +545,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create weather effects controller (rain, snow, lightning)
     weatherEffects_ = std::make_unique<WeatherEffectsController>(
         smgr_, driver_, particleManager_.get(), skyRenderer_.get());
-    if (!weatherEffects_->initialize()) {
+    if (!weatherEffects_->initialize(config.eqClientPath)) {
         LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
     }
     // Connect weather system to weather effects
@@ -702,6 +702,19 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
         if (!tumbleweedManager_->init()) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
+        }
+    }
+
+    // Create weather effects controller (rain, snow, lightning)
+    if (!weatherEffects_) {
+        weatherEffects_ = std::make_unique<WeatherEffectsController>(
+            smgr_, driver_, particleManager_.get(), skyRenderer_.get());
+        if (!weatherEffects_->initialize(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
+        }
+        // Connect weather system to weather effects
+        if (weatherSystem_) {
+            weatherSystem_->addListener(weatherEffects_.get());
         }
     }
 
@@ -2052,6 +2065,10 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // Initialize ambient creatures (boids) for this zone
     if (boidsManager_) {
         Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(zoneName);
+        boidsManager_->setCollisionSelector(zoneTriangleSelector_);
+        if (detailManager_) {
+            boidsManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+        }
         boidsManager_->onZoneEnter(zoneName, biome);
         LOG_INFO(MOD_GRAPHICS, "Ambient creatures enabled for zone '{}' (biome: {})",
                  zoneName, static_cast<int>(biome));

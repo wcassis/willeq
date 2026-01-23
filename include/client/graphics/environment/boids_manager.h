@@ -3,11 +3,20 @@
 #include "boids_types.h"
 #include "flock_controller.h"
 #include "particle_types.h"  // For EnvironmentState, ZoneBiome
+#include "tumbleweed_manager.h"  // For PlaceableBounds
 #include <irrlicht.h>
 #include <memory>
 #include <vector>
 #include <string>
 #include <random>
+
+namespace EQT {
+namespace Graphics {
+namespace Detail {
+class SurfaceMap;
+}
+}
+}
 
 namespace EQT {
 namespace Graphics {
@@ -122,6 +131,41 @@ public:
      * Set zone bounds for flock navigation.
      */
     void setZoneBounds(const glm::vec3& min, const glm::vec3& max);
+
+    // === Collision Detection ===
+
+    /**
+     * Set the zone collision selector for terrain/obstacle avoidance.
+     */
+    void setCollisionSelector(irr::scene::ITriangleSelector* selector) {
+        collisionSelector_ = selector;
+    }
+
+    /**
+     * Set the surface map for ground height queries.
+     */
+    void setSurfaceMap(const Detail::SurfaceMap* surfaceMap) {
+        surfaceMap_ = surfaceMap;
+    }
+
+    /**
+     * Set placeable object bounds for collision avoidance.
+     */
+    void setPlaceableObjects(const std::vector<PlaceableBounds>& objects) {
+        placeableObjects_ = objects;
+    }
+
+    /**
+     * Add a single placeable object's bounds.
+     */
+    void addPlaceableBounds(const glm::vec3& min, const glm::vec3& max) {
+        placeableObjects_.push_back({min, max});
+    }
+
+    /**
+     * Clear all placeable object bounds.
+     */
+    void clearPlaceableObjects() { placeableObjects_.clear(); }
 
     // === Statistics ===
 
@@ -246,6 +290,11 @@ private:
 
     // Environment state
     EnvironmentState envState_;
+
+    // Collision detection
+    irr::scene::ITriangleSelector* collisionSelector_ = nullptr;
+    const Detail::SurfaceMap* surfaceMap_ = nullptr;
+    std::vector<PlaceableBounds> placeableObjects_;
 
     // RNG
     std::mt19937 rng_;

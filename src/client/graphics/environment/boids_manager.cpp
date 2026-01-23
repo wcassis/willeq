@@ -402,6 +402,10 @@ void BoidsManager::spawnFlock(CreatureType type) {
         flock->setZoneBounds(zoneBoundsMin_, zoneBoundsMax_);
     }
 
+    // Set collision detection for terrain/obstacle avoidance
+    const std::vector<PlaceableBounds>* placeablesPtr = placeableObjects_.empty() ? nullptr : &placeableObjects_;
+    flock->setCollisionDetection(smgr_, collisionSelector_, surfaceMap_, placeablesPtr);
+
     // Set initial destination (same height as spawn)
     glm::vec3 destination = getRandomSpawnPosition();
     destination.z = spawnPos.z;  // Keep at spawn height, relative to player
