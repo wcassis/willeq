@@ -6,6 +6,7 @@
 #include <json/json.h>
 #include <fstream>
 #include <algorithm>
+#include <filesystem>
 
 namespace eqt {
 namespace ui {
@@ -228,6 +229,15 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
     int baseY = content.UpperLeftCorner.Y + TAB_HEIGHT + CONTENT_PADDING + 4;
     int y = baseY;
 
+    // Render Distance Section
+    renderSectionHeader(driver, gui, L"Render Distance", y);
+    y += SECTION_HEADER_HEIGHT + ROW_SPACING;
+
+    // Render distance slider (max 2000 = sky dome cutoff)
+    renderSlider(driver, gui, L"Distance:", displaySettings_.renderDistance / 2000.0f,
+                baseX, y, 200, hoveredSlider_ == 3);
+    y += ROW_HEIGHT + ROW_SPACING * 2;
+
     // Environment Effects Section
     renderSectionHeader(driver, gui, L"Environment Effects", y);
     y += SECTION_HEADER_HEIGHT + ROW_SPACING;
@@ -278,8 +288,8 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
                 baseX, y, 200, hoveredSlider_ == 1);
     y += ROW_HEIGHT + ROW_SPACING;
 
-    // View distance slider
-    renderSlider(driver, gui, L"View Distance:", displaySettings_.detailViewDistance / 300.0f,
+    // View distance slider (max 2000 = sky dome cutoff)
+    renderSlider(driver, gui, L"View Distance:", displaySettings_.detailViewDistance / 2000.0f,
                 baseX, y, 200, hoveredSlider_ == 2);
     y += ROW_HEIGHT + ROW_SPACING;
 
@@ -533,8 +543,25 @@ bool OptionsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         int baseX = CONTENT_PADDING;
         int baseY = TAB_HEIGHT + CONTENT_PADDING + 4;
         int rowY = baseY;
+        int sliderTrackX = baseX + 90;
+        int sliderTrackWidth = 200 - 90 - 40;
 
-        // Skip section header
+        // Render Distance section header
+        rowY += SECTION_HEADER_HEIGHT + ROW_SPACING;
+
+        // Render distance slider (max 2000)
+        if (localY >= rowY && localY < rowY + ROW_HEIGHT &&
+            localX >= sliderTrackX && localX < sliderTrackX + sliderTrackWidth) {
+            float newValue = static_cast<float>(localX - sliderTrackX) / sliderTrackWidth;
+            displaySettings_.renderDistance = std::clamp(newValue * 2000.0f, 50.0f, 2000.0f);
+            draggingSlider_ = true;
+            draggingSliderIndex_ = 3;
+            notifyDisplaySettingsChanged();
+            return true;
+        }
+        rowY += ROW_HEIGHT + ROW_SPACING * 2;
+
+        // Environment Effects section header
         rowY += SECTION_HEADER_HEIGHT + ROW_SPACING;
 
         // Quality selector
@@ -547,8 +574,6 @@ bool OptionsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         rowY += ROW_HEIGHT + ROW_SPACING;
 
         // Density slider - check if clicked
-        int sliderTrackX = baseX + 90;
-        int sliderTrackWidth = 200 - 90 - 40;
         if (localY >= rowY && localY < rowY + ROW_HEIGHT &&
             localX >= sliderTrackX && localX < sliderTrackX + sliderTrackWidth) {
             float newValue = static_cast<float>(localX - sliderTrackX) / sliderTrackWidth;
@@ -627,11 +652,11 @@ bool OptionsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
         rowY += ROW_HEIGHT + ROW_SPACING;
 
-        // View distance slider
+        // View distance slider (max 2000 = sky dome cutoff)
         if (localY >= rowY && localY < rowY + ROW_HEIGHT &&
             localX >= sliderTrackX && localX < sliderTrackX + sliderTrackWidth) {
             float newValue = static_cast<float>(localX - sliderTrackX) / sliderTrackWidth;
-            displaySettings_.detailViewDistance = std::clamp(newValue * 300.0f, 0.0f, 300.0f);
+            displaySettings_.detailViewDistance = std::clamp(newValue * 2000.0f, 0.0f, 2000.0f);
             draggingSlider_ = true;
             draggingSliderIndex_ = 2;
             notifyDisplaySettingsChanged();
@@ -701,7 +726,10 @@ bool OptionsWindow::handleMouseMove(int x, int y)
                 displaySettings_.detailDensity = newValue;
                 break;
             case 2:
-                displaySettings_.detailViewDistance = newValue * 300.0f;
+                displaySettings_.detailViewDistance = newValue * 2000.0f;
+                break;
+            case 3:
+                displaySettings_.renderDistance = std::clamp(newValue * 2000.0f, 50.0f, 2000.0f);
                 break;
         }
         notifyDisplaySettingsChanged();
@@ -803,7 +831,14 @@ bool OptionsWindow::loadSettings(const std::string& path)
 
     std::ifstream file(loadPath);
     if (!file.is_open()) {
-        return false;
+        // Try parent directory (for when running from build/)
+        std::string altPath = "../" + loadPath;
+        file.open(altPath);
+        if (!file.is_open()) {
+            return false;
+        }
+        // Update settings path to use the found location for saving
+        settingsPath_ = altPath;
     }
 
     Json::Value root;
@@ -813,6 +848,9 @@ bool OptionsWindow::loadSettings(const std::string& path)
     if (!Json::parseFromStream(builder, file, &root, &errors)) {
         return false;
     }
+
+    // Render Distance
+    displaySettings_.renderDistance = root.get("renderDistance", 300.0).asFloat();
 
     // Environment Effects
     if (root.isMember("environmentEffects")) {
@@ -853,7 +891,18 @@ bool OptionsWindow::saveSettings(const std::string& path)
 {
     std::string savePath = path.empty() ? settingsPath_ : path;
 
+    // Create parent directory if it doesn't exist
+    std::filesystem::path filePath(savePath);
+    if (filePath.has_parent_path()) {
+        std::error_code ec;
+        std::filesystem::create_directories(filePath.parent_path(), ec);
+        // Ignore errors - we'll fail on file open if directory creation failed
+    }
+
     Json::Value root;
+
+    // Render Distance
+    root["renderDistance"] = displaySettings_.renderDistance;
 
     // Environment Effects
     Json::Value env;

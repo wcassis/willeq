@@ -382,7 +382,7 @@ private:
     irr::gui::IGUIFont* nameFont_ = nullptr;
 
     // Visibility settings
-    float renderDistance_ = 500.0f;   // Max distance to render entity models
+    float renderDistance_ = 300.0f;   // Max distance to render entity models (synced from main renderer)
     float nameTagDistance_ = 200.0f;  // Max distance to show name tags
 
     // PVS-based visibility culling

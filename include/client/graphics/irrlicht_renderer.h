@@ -681,6 +681,18 @@ public:
         // Note: Do NOT set camera far value here - it must remain large enough
         // for the sky dome (SKY_FAR_PLANE). Render distance only controls fog/culling.
         setupFog();
+        // Sync render distance to entity renderer
+        if (entityRenderer_) {
+            entityRenderer_->setRenderDistance(distance);
+        }
+        // Sync render distance to tree manager
+        if (treeManager_) {
+            treeManager_->setRenderDistance(distance);
+        }
+        // Force visibility update on next frame by invalidating cached camera position
+        lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
+        // Force PVS recalculation (resets static variables in updatePvsVisibility)
+        forcePvsUpdate_ = true;
     }
     float getRenderDistance() const { return renderDistance_; }
 
@@ -1002,6 +1014,7 @@ private:
     // PVS (Potentially Visible Set) culling state
     bool usePvsCulling_ = false;  // Whether PVS culling is active for this zone
     std::map<size_t, irr::scene::IMeshSceneNode*> regionMeshNodes_;  // Per-region mesh nodes
+    std::map<size_t, irr::core::aabbox3df> regionBoundingBoxes_;  // World-space bounding boxes in EQ coords for distance culling
     std::shared_ptr<EQT::Graphics::BspTree> zoneBspTree_;  // BSP tree for region queries
     size_t currentPvsRegion_ = SIZE_MAX;  // Current camera region (SIZE_MAX = unknown)
     irr::scene::IMeshSceneNode* fallbackMeshNode_ = nullptr;  // Mesh for geometry not in any region
@@ -1019,6 +1032,7 @@ private:
     float renderDistance_ = 300.0f;   // Absolute render limit (sphere around player)
     float fogThickness_ = 50.0f;      // Thickness of fog fade zone at edge
     irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
+    bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph

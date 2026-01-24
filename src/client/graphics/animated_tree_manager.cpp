@@ -74,22 +74,22 @@ void AnimatedTreeManager::update(float deltaTime, const irr::core::vector3df& ca
             continue;
         }
 
-        // Calculate distance to camera
-        float distSq = tree.worldPosition.getDistanceFromSQ(cameraPos);
-        float updateDistSq = updateDistance_ * updateDistance_;
-        float lodDistSq = lodDistance_ * lodDistance_;
+        // Calculate distance from camera to tree's world position
+        float dist = tree.worldPosition.getDistanceFrom(cameraPos);
 
-        // Skip if too far
-        if (distSq > updateDistSq) {
-            // Reset to base positions if we were animating
-            tree.node->setVisible(true);  // Still visible, just not animated
+        // Hide if beyond render distance (respects global render distance setting)
+        if (dist > renderDistance_) {
+            tree.node->setVisible(false);
             continue;
         }
 
+        // Show the tree
         tree.node->setVisible(true);
 
-        // Apply animation (could reduce quality for LOD distance, but for now animate all)
-        updateTreeAnimation(tree);
+        // Only animate if within animation distance
+        if (dist <= updateDistance_) {
+            updateTreeAnimation(tree);
+        }
     }
 }
 

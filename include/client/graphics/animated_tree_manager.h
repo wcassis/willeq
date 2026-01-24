@@ -194,9 +194,18 @@ private:
     std::vector<AnimatedTree> animatedTrees_;
 
     // Configuration
+    float renderDistance_ = 300.0f;  // Max distance to render trees (synced from main renderer)
     float updateDistance_ = 300.0f;  // Max distance to animate trees
     float lodDistance_ = 150.0f;     // Distance for reduced animation quality
     bool initialized_ = false;
+
+public:
+    /**
+     * Set render distance for tree visibility culling.
+     * Should be synced with the main renderer's render distance.
+     */
+    void setRenderDistance(float distance) { renderDistance_ = distance; }
+    float getRenderDistance() const { return renderDistance_; }
 };
 
 } // namespace Graphics

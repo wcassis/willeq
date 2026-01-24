@@ -1634,8 +1634,14 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
     std::vector<uint16_t> nearbyEntities;
     getEntitiesInRange(eqCameraX, eqCameraY, renderDistance_, nearbyEntities);
 
+    LOG_DEBUG(MOD_GRAPHICS, "=== ENTITY VISIBILITY UPDATE === eqCam=({:.1f},{:.1f},{:.1f}) renderDist={} totalEntities={} nearbyFromGrid={}",
+        eqCameraX, eqCameraY, eqCameraZ, renderDistance_, entities_.size(), nearbyEntities.size());
+
     // Track which entities we've processed (those not nearby should be hidden)
     std::unordered_set<uint16_t> processedEntities;
+    size_t visibleCount = 0;
+    size_t hiddenByDistCount = 0;
+    size_t hiddenByPvsCount = 0;
 
     // Process nearby entities
     for (uint16_t spawnId : nearbyEntities) {
@@ -1649,6 +1655,7 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         // Calculate squared distance from camera to entity (avoids sqrt)
         irr::core::vector3df entityPos(visual.lastX, visual.lastZ, visual.lastY);
         float distanceSq = cameraPos.getDistanceFromSQ(entityPos);
+        float distance = std::sqrt(distanceSq);
 
         // Check distance-based visibility
         bool inRenderDistance = (distanceSq <= renderDistanceSq);
@@ -1679,6 +1686,23 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         // Combined visibility: must be in render distance AND PVS visible
         bool isVisible = inRenderDistance && pvsVisible;
 
+        // Log entity visibility decision
+        if (isVisible) {
+            LOG_DEBUG(MOD_GRAPHICS, "[ENTITY VISIBLE] '{}' (id={}) dist={:.1f} pos=({:.1f},{:.1f},{:.1f})",
+                visual.name.c_str(), spawnId, distance, visual.lastX, visual.lastY, visual.lastZ);
+            visibleCount++;
+        } else {
+            if (!inRenderDistance) {
+                LOG_DEBUG(MOD_GRAPHICS, "[ENTITY HIDDEN-DIST] '{}' (id={}) dist={:.1f} > renderDist={} pos=({:.1f},{:.1f},{:.1f})",
+                    visual.name.c_str(), spawnId, distance, renderDistance_, visual.lastX, visual.lastY, visual.lastZ);
+                hiddenByDistCount++;
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "[ENTITY HIDDEN-PVS] '{}' (id={}) dist={:.1f} pos=({:.1f},{:.1f},{:.1f})",
+                    visual.name.c_str(), spawnId, distance, visual.lastX, visual.lastY, visual.lastZ);
+                hiddenByPvsCount++;
+            }
+        }
+
         // Update model visibility (handles both animated and static mesh nodes)
         if (visual.animatedNode) {
             visual.animatedNode->setVisible(isVisible);
@@ -1702,29 +1726,41 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         }
     }
 
-    // Hide entities that weren't in range (optimization: only if we have many entities)
-    if (entities_.size() > nearbyEntities.size() * 2) {
-        for (auto& [spawnId, visual] : entities_) {
-            if (processedEntities.find(spawnId) == processedEntities.end()) {
-                // Entity not in nearby set - hide it
-                if (visual.animatedNode) {
-                    visual.animatedNode->setVisible(false);
-                }
-                if (visual.meshNode) {
-                    visual.meshNode->setVisible(false);
-                }
-                if (visual.nameNode) {
-                    visual.nameNode->setVisible(false);
-                }
-                if (visual.primaryEquipNode) {
-                    visual.primaryEquipNode->setVisible(false);
-                }
-                if (visual.secondaryEquipNode) {
-                    visual.secondaryEquipNode->setVisible(false);
-                }
+    // Hide entities that weren't in range
+    size_t hiddenByGridCount = 0;
+    for (auto& [spawnId, visual] : entities_) {
+        if (processedEntities.find(spawnId) == processedEntities.end()) {
+            // Calculate distance for logging
+            float dx = visual.lastX - eqCameraX;
+            float dy = visual.lastY - eqCameraY;
+            float dz = visual.lastZ - eqCameraZ;
+            float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+            LOG_DEBUG(MOD_GRAPHICS, "[ENTITY HIDDEN-GRID] '{}' (id={}) dist={:.1f} pos=({:.1f},{:.1f},{:.1f}) - not in spatial grid range",
+                visual.name.c_str(), spawnId, distance, visual.lastX, visual.lastY, visual.lastZ);
+            hiddenByGridCount++;
+
+            // Entity not in nearby set - hide it
+            if (visual.animatedNode) {
+                visual.animatedNode->setVisible(false);
+            }
+            if (visual.meshNode) {
+                visual.meshNode->setVisible(false);
+            }
+            if (visual.nameNode) {
+                visual.nameNode->setVisible(false);
+            }
+            if (visual.primaryEquipNode) {
+                visual.primaryEquipNode->setVisible(false);
+            }
+            if (visual.secondaryEquipNode) {
+                visual.secondaryEquipNode->setVisible(false);
             }
         }
     }
+
+    LOG_DEBUG(MOD_GRAPHICS, "=== ENTITY VISIBILITY RESULT: {} VISIBLE, {} hidden(dist), {} hidden(pvs), {} hidden(grid) ===",
+        visibleCount, hiddenByDistCount, hiddenByPvsCount, hiddenByGridCount);
 }
 
 void EntityRenderer::setNameTagsVisible(bool visible) {

@@ -39,6 +39,9 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
         }
     }
 
+    // Create options window early so settings are available
+    initOptionsWindow();
+
     // Create inventory window
     inventoryWindow_ = std::make_unique<InventoryWindow>(invManager_);
     positionInventoryWindow();

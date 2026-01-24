@@ -493,6 +493,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
     entityRenderer_->setClientPath(config.eqClientPath);
     entityRenderer_->setNameTagsVisible(config.showNameTags);
+    entityRenderer_->setRenderDistance(renderDistance_);
 
     // Pass constrained config to entity renderer for visibility limits
     if (config_.constrainedConfig.enabled) {
@@ -514,6 +515,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
     // Create tree wind animation manager
     treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
+    treeManager_->setRenderDistance(renderDistance_);
 
     // Create weather system
     weatherSystem_ = std::make_unique<WeatherSystem>();
@@ -668,6 +670,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Create tree wind animation manager (needed before loadZone())
     if (!treeManager_) {
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
+        treeManager_->setRenderDistance(renderDistance_);
     }
 
     // Create weather system (needed before loadZone())
@@ -745,6 +748,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
         entityRenderer_->setClientPath(config_.eqClientPath);
         entityRenderer_->setNameTagsVisible(config_.showNameTags);
+        entityRenderer_->setRenderDistance(renderDistance_);
         // Pass constrained config to entity renderer for visibility limits
         if (config_.constrainedConfig.enabled) {
             entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
@@ -1081,6 +1085,9 @@ void IrrlichtRenderer::updateObjectVisibility() {
     if (cameraMoved < updateThreshold && lastCullingCameraPos_.getLength() > 0.01f) {
         return;  // Camera hasn't moved enough, skip update
     }
+
+    LOG_DEBUG(MOD_GRAPHICS, "=== OBJECT VISIBILITY UPDATE === camPos=({:.1f},{:.1f},{:.1f}) renderDist={}",
+        cameraPos.X, cameraPos.Y, cameraPos.Z, renderDistance_);
     lastCullingCameraPos_ = cameraPos;
 
     // Update scene graph membership based on distance to bounding box edge
@@ -1131,15 +1138,21 @@ void IrrlichtRenderer::updateObjectVisibility() {
             objectInSceneGraph_[i] = false;
         }
 
+        // Log VISIBLE objects with their distance
         if (objectInSceneGraph_[i]) {
+            const char* name = objectNodes_[i]->getName();
+            LOG_DEBUG(MOD_GRAPHICS, "[OBJ VISIBLE] '{}' dist={:.1f} bbox=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f})",
+                name ? name : "unknown", dist,
+                bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z);
             inSceneCount++;
         } else {
             removedCount++;
         }
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "Object visibility: {} in scene, {} culled (renderDist={})",
-        inSceneCount, removedCount, renderDistance_);
+    LOG_DEBUG(MOD_GRAPHICS, "=== OBJECT VISIBILITY RESULT: {} VISIBLE, {} CULLED ===",
+        inSceneCount, removedCount);
 }
 
 void IrrlichtRenderer::updateZoneLightVisibility() {
@@ -2232,6 +2245,7 @@ void IrrlichtRenderer::unloadZone() {
         }
     }
     regionMeshNodes_.clear();
+    regionBoundingBoxes_.clear();
 
     if (fallbackMeshNode_) {
         fallbackMeshNode_->remove();
@@ -2501,6 +2515,7 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
         }
     }
     regionMeshNodes_.clear();
+    regionBoundingBoxes_.clear();
 
     if (fallbackMeshNode_) {
         fallbackMeshNode_->remove();
@@ -2579,6 +2594,18 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
                 }
 
                 regionMeshNodes_[regionIdx] = node;
+
+                // Cache world-space bounding box in EQ coordinates for distance culling
+                // World bounds = center + relative bounds
+                irr::core::aabbox3df worldBounds;
+                worldBounds.MinEdge.X = geom->centerX + geom->minX;
+                worldBounds.MinEdge.Y = geom->centerY + geom->minY;
+                worldBounds.MinEdge.Z = geom->centerZ + geom->minZ;
+                worldBounds.MaxEdge.X = geom->centerX + geom->maxX;
+                worldBounds.MaxEdge.Y = geom->centerY + geom->maxY;
+                worldBounds.MaxEdge.Z = geom->centerZ + geom->maxZ;
+                regionBoundingBoxes_[regionIdx] = worldBounds;
+
                 createdMeshes++;
             }
             mesh->drop();
@@ -2728,9 +2755,32 @@ void IrrlichtRenderer::updatePvsVisibility() {
     float camY = playerY_;
     float camZ = playerZ_;
 
+    // Track position for distance culling updates (separate from BSP region caching)
+    static float lastDistCullX = -99999.0f, lastDistCullY = -99999.0f, lastDistCullZ = -99999.0f;
+
     // Cache BSP lookup - only recompute if position changed significantly (>5 units)
     static float lastBspX = -99999.0f, lastBspY = -99999.0f, lastBspZ = -99999.0f;
     static std::shared_ptr<EQT::Graphics::BspRegion> cachedRegion;
+
+    // Check if we need to force update (e.g., render distance changed)
+    if (forcePvsUpdate_) {
+        // Reset all static tracking variables to force recalculation
+        lastDistCullX = -99999.0f;
+        lastDistCullY = -99999.0f;
+        lastDistCullZ = -99999.0f;
+        lastBspX = -99999.0f;
+        lastBspY = -99999.0f;
+        lastBspZ = -99999.0f;
+        cachedRegion = nullptr;
+        forcePvsUpdate_ = false;
+        LOG_DEBUG(MOD_GRAPHICS, "Forcing PVS visibility update due to render distance change");
+    }
+
+    float dxCull = camX - lastDistCullX;
+    float dyCull = camY - lastDistCullY;
+    float dzCull = camZ - lastDistCullZ;
+    float distCullSq = dxCull*dxCull + dyCull*dyCull + dzCull*dzCull;
+    bool needsDistanceCullUpdate = (distCullSq > 25.0f);  // Update distance culling if moved >5 units
 
     float dx = camX - lastBspX;
     float dy = camY - lastBspY;
@@ -2761,23 +2811,52 @@ void IrrlichtRenderer::updatePvsVisibility() {
         }
     }
 
-    // Skip update if still in same region
-    if (newRegionIdx == currentPvsRegion_) {
+    // Skip update if still in same region AND no distance cull update needed
+    bool regionChanged = (newRegionIdx != currentPvsRegion_);
+    if (!regionChanged && !needsDistanceCullUpdate) {
         return;
+    }
+
+    // Update distance culling position tracker
+    if (needsDistanceCullUpdate) {
+        lastDistCullX = camX;
+        lastDistCullY = camY;
+        lastDistCullZ = camZ;
     }
 
     currentPvsRegion_ = newRegionIdx;
 
-    // If camera is outside all regions or no PVS data, show all region meshes
-    // Let the fog system handle visual fade - don't cull zone geometry by distance
+    // If camera is outside all regions or no PVS data, skip PVS but still apply distance culling
     if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
+        size_t visibleCount = 0;
+        size_t hiddenByDistCount = 0;
         for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (node) {
-                node->setVisible(true);
+            if (!node) continue;
+
+            // Still apply distance culling even without PVS
+            bool inRenderDistance = true;
+            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+            if (bboxIt != regionBoundingBoxes_.end()) {
+                const auto& bbox = bboxIt->second;
+                float closestX = std::max(bbox.MinEdge.X, std::min(camX, bbox.MaxEdge.X));
+                float closestY = std::max(bbox.MinEdge.Y, std::min(camY, bbox.MaxEdge.Y));
+                float closestZ = std::max(bbox.MinEdge.Z, std::min(camZ, bbox.MaxEdge.Z));
+                float dx = camX - closestX;
+                float dy = camY - closestY;
+                float dz = camZ - closestZ;
+                float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+                inRenderDistance = (dist <= renderDistance_);
+            }
+
+            node->setVisible(inRenderDistance);
+            if (inRenderDistance) {
+                visibleCount++;
+            } else {
+                hiddenByDistCount++;
             }
         }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> showing all {} regions",
-            regionMeshNodes_.size());
+        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} hidden by distance (renderDist={})",
+            visibleCount, hiddenByDistCount, renderDistance_);
         return;
     }
 
@@ -2793,11 +2872,13 @@ void IrrlichtRenderer::updatePvsVisibility() {
     LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
         newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
 
-    // Update visibility based on PVS data only
-    // Zone geometry visibility relies on PVS for occlusion culling
-    // Fog handles the visual fade at render distance - no need for explicit distance culling
+    // Update visibility based on PVS data AND render distance
+    // Zone geometry is culled if:
+    //   1. PVS says it's not visible from current region (occlusion culling)
+    //   2. Nearest edge of region bounding box is beyond render distance
     size_t visibleCount = 0;
-    size_t hiddenCount = 0;
+    size_t hiddenByPvsCount = 0;
+    size_t hiddenByDistCount = 0;
     size_t outOfRangeCount = 0;
 
     for (auto& [regionIdx, node] : regionMeshNodes_) {
@@ -2815,12 +2896,32 @@ void IrrlichtRenderer::updatePvsVisibility() {
             outOfRangeCount++;
         }
 
-        node->setVisible(pvsVisible);
+        // Check distance to nearest edge of region bounding box (in EQ coords)
+        bool inRenderDistance = true;
+        auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+        if (bboxIt != regionBoundingBoxes_.end()) {
+            const auto& bbox = bboxIt->second;
+            // Find closest point on bounding box to camera (camX/Y/Z are EQ coords)
+            float closestX = std::max(bbox.MinEdge.X, std::min(camX, bbox.MaxEdge.X));
+            float closestY = std::max(bbox.MinEdge.Y, std::min(camY, bbox.MaxEdge.Y));
+            float closestZ = std::max(bbox.MinEdge.Z, std::min(camZ, bbox.MaxEdge.Z));
+            float dx = camX - closestX;
+            float dy = camY - closestY;
+            float dz = camZ - closestZ;
+            float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+            inRenderDistance = (dist <= renderDistance_);
+        }
 
-        if (pvsVisible) {
+        // Combine PVS and distance culling
+        bool visible = pvsVisible && inRenderDistance;
+        node->setVisible(visible);
+
+        if (visible) {
             visibleCount++;
+        } else if (!pvsVisible) {
+            hiddenByPvsCount++;
         } else {
-            hiddenCount++;
+            hiddenByDistCount++;
         }
     }
 
@@ -2862,8 +2963,8 @@ void IrrlichtRenderer::updatePvsVisibility() {
         }
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden, {} outOfRange",
-        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenCount, outOfRangeCount);
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden by PVS, {} hidden by distance, {} outOfRange",
+        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, outOfRangeCount);
 
     // Log the first few visible and hidden region indices to spot patterns
     static size_t logCount = 0;
@@ -7143,23 +7244,26 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
         return;
     }
 
-    // In admin mode or if no collision map, fall back to distance-only
+    // ALWAYS call entity visibility update first to handle distance-based model culling
+    // This culls entity models (not just name tags) based on render distance
+    entityRenderer_->updateNameTags(camera_);
+
+    // In admin mode or if no collision map, we're done (updateNameTags handled everything)
     if (rendererMode_ != RendererMode::Player || !collisionMap_) {
-        entityRenderer_->updateNameTags(camera_);
         return;
     }
 
-    // Throttle LOS checks for performance
+    // Throttle LOS checks for performance (only affects name tag LOS refinement)
     lastLOSCheckTime_ += deltaTime;
     if (lastLOSCheckTime_ < playerConfig_.nameTagLOSCheckInterval) {
-        return;  // Skip this frame
+        return;  // Skip LOS refinement this frame
     }
     lastLOSCheckTime_ = 0.0f;
 
     // Player eye position (EQ coordinates)
     glm::vec3 playerEye(playerX_, playerY_, playerZ_ + playerConfig_.eyeHeight);
 
-    // Check each entity for LOS visibility
+    // Refine name tag visibility with LOS checks (on top of distance culling)
     const auto& entities = entityRenderer_->getEntities();
     float nameTagDist = entityRenderer_->getNameTagDistance();
 
@@ -7545,6 +7649,13 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
 
         // Set up display settings callback for environmental particles
         windowManager_->setDisplaySettingsChangedCallback([this]() {
+            // Update render distance first (affects terrain, objects, entities)
+            if (windowManager_ && windowManager_->getOptionsWindow()) {
+                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+                setRenderDistance(settings.renderDistance);
+                LOG_DEBUG(MOD_GRAPHICS, "Render distance updated to {}", settings.renderDistance);
+            }
+
             if (particleManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
                 const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
 
@@ -7621,6 +7732,13 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
                          settings.rollingObjects);
             }
         });
+
+        // Apply initial render distance from saved settings
+        if (windowManager_->getOptionsWindow()) {
+            const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+            setRenderDistance(settings.renderDistance);
+            LOG_INFO(MOD_GRAPHICS, "Initial render distance set to {} from saved settings", settings.renderDistance);
+        }
 
         // Set up chat callback if already registered
         if (chatSubmitCallback_) {

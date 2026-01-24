@@ -29,6 +29,9 @@ enum class EffectQuality {
 
 // Display settings structure (synced to config/display_settings.json)
 struct DisplaySettings {
+    // Render Distance (affects terrain, objects, entities - max 2000 = sky dome cutoff)
+    float renderDistance = 300.0f;
+
     // Environment Effects
     EffectQuality environmentQuality = EffectQuality::Medium;
     bool atmosphericParticles = true;
@@ -165,7 +168,7 @@ private:
 
     // Layout constants
     static constexpr int WINDOW_WIDTH = 400;
-    static constexpr int WINDOW_HEIGHT = 500;
+    static constexpr int WINDOW_HEIGHT = 580;
     static constexpr int TAB_HEIGHT = 24;
     static constexpr int TAB_PADDING = 8;
     static constexpr int SECTION_HEADER_HEIGHT = 22;
