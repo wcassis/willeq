@@ -1383,8 +1383,8 @@ bool WindowManager::handleKeyPress(irr::EKEY_CODE key, bool shift, bool ctrl) {
 
     // Route to chat window if chat input is focused
     if (chatWindow_ && chatWindow_->isInputFocused()) {
-        // CancelInput unfocuses chat input
-        if (action.has_value() && action.value() == eqt::input::HotkeyAction::CancelInput) {
+        // ESC unfocuses chat input (check key directly since CancelInput may conflict with ClearTarget)
+        if (key == irr::KEY_ESCAPE) {
             chatWindow_->unfocusInput();
             return true;
         }

@@ -791,41 +791,39 @@ void EverQuest::DumpPacket(const std::string &prefix, uint16_t opcode, const EQ:
 }
 
 void EverQuest::DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size) {
-	if (s_debug_level < 3) return;
+	if (s_debug_level < 6) return;
 
-	std::cout << fmt::format("[Packet {}] [{}] [{:#06x}] Size [{}]",  
-		prefix, GetOpcodeName(opcode), opcode, size) << std::endl;
+	LOG_TRACE(MOD_NET, "[Packet {}] [{}] [{:#06x}] Size [{}]",
+		prefix, GetOpcodeName(opcode), opcode, size);
 
-	if (s_debug_level >= 3) {
-		// Hex dump
-		std::stringstream ss;
-		for (size_t i = 0; i < size; i += 16) {
-			ss << std::setfill(' ') << std::setw(5) << i << ": ";
-			
-			// Hex bytes
-			for (size_t j = 0; j < 16; j++) {
-				if (i + j < size) {
-					ss << std::setfill('0') << std::setw(2) << std::hex << (int)data[i + j] << " ";
-				} else {
-					ss << "   ";
-				}
-				if (j == 7) ss << "- ";
+	// Hex dump
+	std::stringstream ss;
+	for (size_t i = 0; i < size; i += 16) {
+		ss << std::setfill(' ') << std::setw(5) << i << ": ";
+
+		// Hex bytes
+		for (size_t j = 0; j < 16; j++) {
+			if (i + j < size) {
+				ss << std::setfill('0') << std::setw(2) << std::hex << (int)data[i + j] << " ";
+			} else {
+				ss << "   ";
 			}
-			
-			ss << " | ";
-			
-			// ASCII representation
-			for (size_t j = 0; j < 16 && i + j < size; j++) {
-				char c = data[i + j];
-				ss << (isprint(c) ? c : '.');
-			}
-			
-			if (i + 16 < size) {
-				ss << "\n";
-			}
+			if (j == 7) ss << "- ";
 		}
-		std::cout << ss.str() << std::endl;
+
+		ss << " | ";
+
+		// ASCII representation
+		for (size_t j = 0; j < 16 && i + j < size; j++) {
+			char c = data[i + j];
+			ss << (isprint(c) ? c : '.');
+		}
+
+		if (i + 16 < size) {
+			ss << "\n";
+		}
 	}
+	LOG_TRACE(MOD_NET, "{}", ss.str());
 }
 
 EverQuest::EverQuest(const std::string &host, int port, const std::string &user, const std::string &pass, const std::string &server, const std::string &character)
@@ -12445,10 +12443,9 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 
 	// Notify combat manager if this was our target
 	if (m_combat_manager && victim_id == m_combat_manager->GetTargetId()) {
-		// Target died - combat manager should handle looting if enabled
-		if (s_debug_level >= 1) {
-			LOG_DEBUG(MOD_MAIN, "Our combat target died, checking for loot...");
-		}
+		// Target died - disable auto-attack
+		LOG_DEBUG(MOD_COMBAT, "Our combat target {} died, disabling auto-attack", victim_id);
+		m_combat_manager->DisableAutoAttack();
 	}
 	
 	// If we died, log it prominently

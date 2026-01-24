@@ -68,11 +68,13 @@ bool ChatInputField::handleKeyPress(irr::EKEY_CODE key, wchar_t character, bool 
             submit();
             return true;
         }
-        if (action.value() == eqt::input::HotkeyAction::CancelInput) {
-            clear();
-            setFocused(false);
-            return true;
-        }
+    }
+
+    // ESC clears and unfocuses (check key directly since CancelInput may conflict with ClearTarget)
+    if (key == irr::KEY_ESCAPE) {
+        clear();
+        setFocused(false);
+        return true;
     }
 
     switch (key) {

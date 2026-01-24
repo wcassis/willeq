@@ -558,6 +558,8 @@ void HotkeyManager::setupDefaults() {
     // === Player Mode - Chat ===
     addBinding(HotkeyAction::OpenChat, HotkeyMode::Player, irr::KEY_RETURN);
     addBinding(HotkeyAction::OpenChatSlash, HotkeyMode::Player, irr::KEY_OEM_2);  // Slash
+    addBinding(HotkeyAction::SubmitInput, HotkeyMode::Global, irr::KEY_RETURN);   // Submit chat input
+    // Note: ESC for chat unfocus is handled directly by key check (conflicts with ClearTarget)
 
     // === Player Mode - Spell Gems (Alt+1-8) ===
     addBinding(HotkeyAction::SpellGem1, HotkeyMode::Player, irr::KEY_KEY_1, ModifierFlags::Alt);

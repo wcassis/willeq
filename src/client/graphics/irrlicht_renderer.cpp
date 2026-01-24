@@ -4776,24 +4776,28 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         bool chatFocused = windowManager_->isChatInputFocused();
 
         if (chatFocused) {
-            // Route all key events to chat window
+            // Route all key events directly to chat window (not through windowManager to avoid double handling)
+            auto* chatWindow = windowManager_->getChatWindow();
             while (eventReceiver_->hasPendingKeyEvents()) {
                 auto keyEvent = eventReceiver_->popKeyEvent();
                 bool shift = keyEvent.shift;
                 bool ctrl = keyEvent.ctrl;
-                windowManager_->handleKeyPress(keyEvent.key, shift, ctrl);
 
-                // Also pass character to chat input if it's a printable character
-                auto* chatWindow = windowManager_->getChatWindow();
-                if (chatWindow && keyEvent.character != 0) {
+                // ESC unfocuses chat
+                if (keyEvent.key == irr::KEY_ESCAPE) {
+                    windowManager_->unfocusChatInput();
+                    continue;
+                }
+
+                // Route to chat window
+                if (chatWindow) {
                     chatWindow->handleKeyPress(keyEvent.key, keyEvent.character, shift, ctrl);
                 }
             }
 
-            // Escape unfocuses chat
-            if (eventReceiver_->escapeKeyPressed()) {
-                windowManager_->unfocusChatInput();
-            }
+            // Clear escape and enter flags (already handled in the key event loop above)
+            eventReceiver_->escapeKeyPressed();
+            eventReceiver_->enterKeyPressed();
         } else {
             // Chat not focused - handle Ctrl+key shortcuts for UI management
             // Also route keys when money input dialog is shown

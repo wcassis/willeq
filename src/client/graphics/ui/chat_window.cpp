@@ -715,8 +715,8 @@ bool ChatWindow::handleKeyPress(irr::EKEY_CODE key, wchar_t character, bool shif
             return true;
         }
 
-        // Handle CancelInput to unfocus input
-        if (action.has_value() && action.value() == eqt::input::HotkeyAction::CancelInput) {
+        // ESC unfocuses input (check key directly since CancelInput may conflict with ClearTarget)
+        if (key == irr::KEY_ESCAPE) {
             unfocusInput();
             return true;
         }
