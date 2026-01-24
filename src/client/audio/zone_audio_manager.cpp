@@ -90,22 +90,20 @@ void ZoneAudioManager::update(float deltaTime, const glm::vec3& listenerPos, boo
 
         if (activeMusicEmitter_) {
             // Start new music
-            // For XMI music, we use the zone name + XMI index
-            // The AudioManager handles XMI playback
-            int xmiIndex = isDay_ ? activeMusicEmitter_->getSequence() : activeMusicEmitter_->getSequence();
+            // Get the XMI track index for current day/night state
+            int xmiIndex = activeMusicEmitter_->getXmiIndex(isDay_);
 
             // Get sound file (might be XMI reference or MP3)
-            // For positive IDs 1-31, it's an XMI subsong
             // Use findZoneMusic to apply zone name mappings (e.g., oasis -> nro)
             std::string musicFile = audioManager_->findZoneMusic(currentZone_);
             if (!musicFile.empty()) {
-                audioManager_->playMusic(musicFile, true);
+                audioManager_->playMusic(musicFile, true, xmiIndex);
             }
 
             std::cout << "[ZONE_AUDIO] Music region entered at ("
                       << activeMusicEmitter_->getPosition().x << ", "
                       << activeMusicEmitter_->getPosition().y << ", "
-                      << activeMusicEmitter_->getPosition().z << ")" << std::endl;
+                      << activeMusicEmitter_->getPosition().z << ") xmiIndex=" << xmiIndex << std::endl;
         }
     }
 }
@@ -115,9 +113,29 @@ void ZoneAudioManager::setDayNight(bool isDay) {
         return;
     }
 
+    bool wasDay = isDay_;
     isDay_ = isDay;
 
-    // Notify all emitters with crossfade for those with day/night variants
+    // Handle music emitter day/night transition
+    // If the active music emitter has different xmiIndex for day/night, restart with new track
+    if (activeMusicEmitter_ && audioManager_) {
+        int32_t oldXmiIndex = activeMusicEmitter_->getXmiIndex(wasDay);
+        int32_t newXmiIndex = activeMusicEmitter_->getXmiIndex(isDay);
+
+        if (oldXmiIndex != newXmiIndex) {
+            // Different track for day/night - restart music with new track
+            std::string musicFile = audioManager_->findZoneMusic(currentZone_);
+            if (!musicFile.empty()) {
+                // Stop current music with fade, then start new track
+                audioManager_->stopMusic(1.0f);  // 1 second fade out
+                audioManager_->playMusic(musicFile, true, newXmiIndex);
+                std::cout << "[ZONE_AUDIO] Day/night music transition: track " << oldXmiIndex
+                          << " -> " << newXmiIndex << std::endl;
+            }
+        }
+    }
+
+    // Notify all sound emitters with crossfade for those with day/night variants
     static constexpr int32_t CROSSFADE_MS = 2000;  // 2 second crossfade
     for (auto& emitter : emitters_) {
         if (emitter->hasDayNightVariants()) {

@@ -1,0 +1,14 @@
+{
+    "auto_attack": {
+        "file": "gl.xmi",
+        "track": 3,
+        "loop": true,
+        "enabled": true
+    },
+    "vendor_bank": {
+        "file": "gl.xmi",
+        "track": 22,
+        "loop": true,
+        "enabled": true
+    }
+}

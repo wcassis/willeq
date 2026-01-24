@@ -37,7 +37,9 @@ public:
     void shutdown();
 
     // Playback control
-    bool play(const std::string& filepath, bool loop = true);
+    // trackIndex: for XMI files, selects which sequence to play (0 = first, 1 = second, etc.)
+    //             Use -1 to play all sequences combined. Ignored for non-XMI files.
+    bool play(const std::string& filepath, bool loop = true, int trackIndex = 0);
     void stop(float fadeSeconds = 0.0f);
     void pause();
     void resume();
@@ -70,7 +72,7 @@ private:
 
     // File format handling
     bool loadMP3(const std::string& filepath);
-    bool loadXMI(const std::string& filepath);
+    bool loadXMI(const std::string& filepath, int trackIndex = 0);
     bool loadWAV(const std::string& filepath);
 
     // Buffer management
