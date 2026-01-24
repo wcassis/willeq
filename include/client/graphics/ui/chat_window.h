@@ -243,6 +243,18 @@ private:
     int lastMouseX_ = 0;
     int lastMouseY_ = 0;
 
+    // Fade state - window fades to transparent when not focused/hovered
+    float backgroundOpacity_ = 1.0f;  // 0.0 = fully transparent, 1.0 = fully opaque
+    bool isHovered_ = false;          // Mouse is over the window
+    static constexpr float fadeSpeed_ = 3.0f;  // Opacity change per second
+    uint32_t lastUpdateTimeMs_ = 0;   // For calculating delta time
+
+    // Update fade animation
+    void updateFadeAnimation(uint32_t currentTimeMs);
+
+    // Render with custom background opacity (for fade effect)
+    void renderFadedBackground(irr::video::IVideoDriver* driver, float opacity);
+
     // Helper to render a message with links highlighted
     void renderMessageWithLinks(irr::video::IVideoDriver* driver,
                                 irr::gui::IGUIFont* font,

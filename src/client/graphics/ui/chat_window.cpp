@@ -195,8 +195,116 @@ void ChatWindow::render(irr::video::IVideoDriver* driver,
         combatBuffer_.clearNewMessageFlag();
     }
 
-    // Render window frame
-    WindowBase::render(driver, gui);
+    // Render with fade effect
+    if (backgroundOpacity_ >= 0.99f) {
+        // Fully opaque - render normally
+        WindowBase::render(driver, gui);
+    } else {
+        // Faded - render custom background with opacity, then content
+        renderFadedBackground(driver, backgroundOpacity_);
+        renderContent(driver, gui);
+    }
+}
+
+void ChatWindow::renderFadedBackground(irr::video::IVideoDriver* driver, float opacity) {
+    if (opacity <= 0.01f) {
+        // Fully transparent - don't draw background at all
+        return;
+    }
+
+    // Get colors from UISettings and apply opacity
+    irr::video::SColor borderLight = getBorderLightColor();
+    irr::video::SColor borderDark = getBorderDarkColor();
+    irr::video::SColor windowBg = getWindowBackground();
+
+    // Apply opacity to alpha channel
+    uint8_t alpha = static_cast<uint8_t>(opacity * 255);
+    borderLight.setAlpha(static_cast<uint8_t>(borderLight.getAlpha() * opacity));
+    borderDark.setAlpha(static_cast<uint8_t>(borderDark.getAlpha() * opacity));
+    windowBg.setAlpha(static_cast<uint8_t>(windowBg.getAlpha() * opacity));
+
+    int borderWidth = getBorderWidth();
+    int inputFieldHeight = getInputFieldHeight();
+
+    // Calculate the area above the input field (the part that fades)
+    irr::core::recti content = getContentArea();
+    int inputY = content.LowerRightCorner.Y - inputFieldHeight;
+
+    // Draw faded borders (only for the fading portion - above input field)
+    irr::core::recti fadeBounds(
+        bounds_.UpperLeftCorner.X,
+        bounds_.UpperLeftCorner.Y,
+        bounds_.LowerRightCorner.X,
+        inputY
+    );
+
+    // Top border
+    driver->draw2DRectangle(borderLight,
+        irr::core::recti(fadeBounds.UpperLeftCorner.X,
+                        fadeBounds.UpperLeftCorner.Y,
+                        fadeBounds.LowerRightCorner.X,
+                        fadeBounds.UpperLeftCorner.Y + borderWidth));
+    // Left border
+    driver->draw2DRectangle(borderLight,
+        irr::core::recti(fadeBounds.UpperLeftCorner.X,
+                        fadeBounds.UpperLeftCorner.Y,
+                        fadeBounds.UpperLeftCorner.X + borderWidth,
+                        fadeBounds.LowerRightCorner.Y));
+    // Right border
+    driver->draw2DRectangle(borderDark,
+        irr::core::recti(fadeBounds.LowerRightCorner.X - borderWidth,
+                        fadeBounds.UpperLeftCorner.Y,
+                        fadeBounds.LowerRightCorner.X,
+                        fadeBounds.LowerRightCorner.Y));
+
+    // Background fill (fading area only)
+    irr::core::recti bgRect(
+        fadeBounds.UpperLeftCorner.X + borderWidth,
+        fadeBounds.UpperLeftCorner.Y + borderWidth,
+        fadeBounds.LowerRightCorner.X - borderWidth,
+        fadeBounds.LowerRightCorner.Y
+    );
+    driver->draw2DRectangle(windowBg, bgRect);
+
+    // Draw input field area with full opacity (always visible)
+    irr::video::SColor fullBorderLight = getBorderLightColor();
+    irr::video::SColor fullBorderDark = getBorderDarkColor();
+    irr::video::SColor fullWindowBg = getWindowBackground();
+
+    irr::core::recti inputBounds(
+        bounds_.UpperLeftCorner.X,
+        inputY,
+        bounds_.LowerRightCorner.X,
+        bounds_.LowerRightCorner.Y
+    );
+
+    // Left border for input area
+    driver->draw2DRectangle(fullBorderLight,
+        irr::core::recti(inputBounds.UpperLeftCorner.X,
+                        inputBounds.UpperLeftCorner.Y,
+                        inputBounds.UpperLeftCorner.X + borderWidth,
+                        inputBounds.LowerRightCorner.Y));
+    // Bottom border
+    driver->draw2DRectangle(fullBorderDark,
+        irr::core::recti(inputBounds.UpperLeftCorner.X,
+                        inputBounds.LowerRightCorner.Y - borderWidth,
+                        inputBounds.LowerRightCorner.X,
+                        inputBounds.LowerRightCorner.Y));
+    // Right border for input area
+    driver->draw2DRectangle(fullBorderDark,
+        irr::core::recti(inputBounds.LowerRightCorner.X - borderWidth,
+                        inputBounds.UpperLeftCorner.Y,
+                        inputBounds.LowerRightCorner.X,
+                        inputBounds.LowerRightCorner.Y));
+
+    // Background for input area
+    irr::core::recti inputBgRect(
+        inputBounds.UpperLeftCorner.X + borderWidth,
+        inputBounds.UpperLeftCorner.Y,
+        inputBounds.LowerRightCorner.X - borderWidth,
+        inputBounds.LowerRightCorner.Y - borderWidth
+    );
+    driver->draw2DRectangle(fullWindowBg, inputBgRect);
 }
 
 void ChatWindow::renderContent(irr::video::IVideoDriver* driver,
@@ -208,15 +316,20 @@ void ChatWindow::renderContent(irr::video::IVideoDriver* driver,
     // Get font for tab rendering
     irr::gui::IGUIFont* font = gui->getBuiltInFont();
 
-    // Render tabs first
-    renderTabs(driver, font);
+    // Only render tabs and scrollbar when not faded
+    bool isFaded = (backgroundOpacity_ < 0.99f);
+    if (!isFaded) {
+        renderTabs(driver, font);
+    }
 
     // Calculate areas (message area excludes scrollbar width and starts below tabs)
     int inputY = content.LowerRightCorner.Y - inputFieldHeight;
+
+    // When faded, extend message area to full width (no scrollbar) and start from top (no tabs)
     irr::core::recti messageArea(
         content.UpperLeftCorner.X,
-        content.UpperLeftCorner.Y + tabBarHeight_,  // Start below tab bar
-        content.LowerRightCorner.X - scrollbarWidth - 2,  // Leave room for scrollbar
+        isFaded ? content.UpperLeftCorner.Y : content.UpperLeftCorner.Y + tabBarHeight_,
+        isFaded ? content.LowerRightCorner.X - 2 : content.LowerRightCorner.X - scrollbarWidth - 2,
         inputY - 2  // Small gap between messages and input
     );
 
@@ -230,36 +343,40 @@ void ChatWindow::renderContent(irr::video::IVideoDriver* driver,
     // Render messages
     renderMessages(driver, gui, messageArea);
 
-    // Render scrollbar
-    renderScrollbar(driver);
+    // Render scrollbar only when not faded
+    if (!isFaded) {
+        renderScrollbar(driver);
+    }
 
     // Render input field
     inputField_.render(driver, gui, inputArea);
 
-    // Draw resize grip in upper-right corner
-    const int gripSize = 12;
-    int gripX = bounds_.LowerRightCorner.X - gripSize;
-    int gripY = bounds_.UpperLeftCorner.Y;
+    // Draw resize grip in upper-right corner only when not faded
+    if (!isFaded) {
+        const int gripSize = 12;
+        int gripX = bounds_.LowerRightCorner.X - gripSize;
+        int gripY = bounds_.UpperLeftCorner.Y;
 
-    // Draw diagonal lines pattern for resize grip
-    irr::video::SColor gripColor(200, 200, 200, 200);
-    for (int i = 2; i < gripSize; i += 3) {
-        // Diagonal lines from top-right to bottom-left direction
+        // Draw diagonal lines pattern for resize grip
+        irr::video::SColor gripColor(200, 200, 200, 200);
+        for (int i = 2; i < gripSize; i += 3) {
+            // Diagonal lines from top-right to bottom-left direction
+            driver->draw2DLine(
+                irr::core::vector2di(gripX + i, gripY + 1),
+                irr::core::vector2di(bounds_.LowerRightCorner.X - 1, gripY + gripSize - i),
+                gripColor);
+        }
+
+        // Draw corner border for visibility
         driver->draw2DLine(
-            irr::core::vector2di(gripX + i, gripY + 1),
-            irr::core::vector2di(bounds_.LowerRightCorner.X - 1, gripY + gripSize - i),
+            irr::core::vector2di(gripX, gripY),
+            irr::core::vector2di(gripX, gripY + gripSize),
+            gripColor);
+        driver->draw2DLine(
+            irr::core::vector2di(gripX, gripY + gripSize),
+            irr::core::vector2di(bounds_.LowerRightCorner.X, gripY + gripSize),
             gripColor);
     }
-
-    // Draw corner border for visibility
-    driver->draw2DLine(
-        irr::core::vector2di(gripX, gripY),
-        irr::core::vector2di(gripX, gripY + gripSize),
-        gripColor);
-    driver->draw2DLine(
-        irr::core::vector2di(gripX, gripY + gripSize),
-        irr::core::vector2di(bounds_.LowerRightCorner.X, gripY + gripSize),
-        gripColor);
 }
 
 void ChatWindow::renderTabs(irr::video::IVideoDriver* driver, irr::gui::IGUIFont* font) {
@@ -660,6 +777,9 @@ bool ChatWindow::handleMouseMove(int x, int y) {
     scrollUpHovered_ = isOnScrollUpButton(x, y);
     scrollDownHovered_ = isOnScrollDownButton(x, y);
 
+    // Update hover state for fade effect
+    isHovered_ = containsPoint(x, y);
+
     // Update hover state for links
     lastMouseX_ = x;
     lastMouseY_ = y;
@@ -825,6 +945,30 @@ const MessageLink* ChatWindow::getLinkAtPosition(int x, int y) const {
 
 void ChatWindow::update(uint32_t currentTimeMs) {
     inputField_.update(currentTimeMs);
+    updateFadeAnimation(currentTimeMs);
+}
+
+void ChatWindow::updateFadeAnimation(uint32_t currentTimeMs) {
+    // Calculate delta time
+    float deltaTime = 0.0f;
+    if (lastUpdateTimeMs_ > 0) {
+        deltaTime = (currentTimeMs - lastUpdateTimeMs_) / 1000.0f;
+    }
+    lastUpdateTimeMs_ = currentTimeMs;
+
+    // Update hover state based on last known mouse position
+    // (needed because handleMouseMove won't be called when mouse is outside window)
+    isHovered_ = containsPoint(lastMouseX_, lastMouseY_);
+
+    // Determine target opacity: 1.0 if input focused or hovered, 0.0 otherwise
+    float targetOpacity = (inputField_.isFocused() || isHovered_) ? 1.0f : 0.0f;
+
+    // Animate towards target
+    if (backgroundOpacity_ < targetOpacity) {
+        backgroundOpacity_ = std::min(backgroundOpacity_ + fadeSpeed_ * deltaTime, targetOpacity);
+    } else if (backgroundOpacity_ > targetOpacity) {
+        backgroundOpacity_ = std::max(backgroundOpacity_ - fadeSpeed_ * deltaTime, targetOpacity);
+    }
 }
 
 void ChatWindow::scrollUp(int lines) {
