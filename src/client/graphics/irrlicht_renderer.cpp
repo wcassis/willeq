@@ -7244,48 +7244,53 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
         return;
     }
 
-    // ALWAYS call entity visibility update first to handle distance-based model culling
-    // This culls entity models (not just name tags) based on render distance
-    entityRenderer_->updateNameTags(camera_);
-
-    // In admin mode or if no collision map, we're done (updateNameTags handled everything)
+    // In admin mode or if no collision map, fall back to distance-only
     if (rendererMode_ != RendererMode::Player || !collisionMap_) {
+        entityRenderer_->updateNameTags(camera_);
         return;
     }
 
-    // Throttle LOS checks for performance (only affects name tag LOS refinement)
+    // Throttle LOS checks for performance
     lastLOSCheckTime_ += deltaTime;
     if (lastLOSCheckTime_ < playerConfig_.nameTagLOSCheckInterval) {
-        return;  // Skip LOS refinement this frame
+        return;  // Skip this frame
     }
     lastLOSCheckTime_ = 0.0f;
 
     // Player eye position (EQ coordinates)
     glm::vec3 playerEye(playerX_, playerY_, playerZ_ + playerConfig_.eyeHeight);
 
-    // Refine name tag visibility with LOS checks (on top of distance culling)
+    // Check each entity for LOS visibility
     const auto& entities = entityRenderer_->getEntities();
     float nameTagDist = entityRenderer_->getNameTagDistance();
+    float renderDistSq = renderDistance_ * renderDistance_;
 
     for (const auto& [spawnId, visual] : entities) {
-        if (!visual.nameNode) continue;
-
         // Entity position (approximate chest height)
         glm::vec3 entityPos(visual.lastX, visual.lastY, visual.lastZ + 5.0f);
 
         // Calculate distance
         glm::vec3 diff = entityPos - playerEye;
-        float distance = std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+        float distanceSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
+        float distance = std::sqrt(distanceSq);
 
-        // Check if within name tag distance
-        bool visible = (distance <= nameTagDist);
-
-        // If within distance, also check LOS
-        if (visible) {
-            visible = collisionMap_->CheckLOS(playerEye, entityPos);
+        // Check if within render distance (for entity model visibility)
+        bool modelVisible = (distanceSq <= renderDistSq);
+        if (visual.animatedNode) {
+            visual.animatedNode->setVisible(modelVisible);
+        }
+        if (visual.meshNode) {
+            visual.meshNode->setVisible(modelVisible);
         }
 
-        visual.nameNode->setVisible(visible);
+        // Name tag visibility: within name tag distance AND has LOS
+        if (visual.nameNode) {
+            bool nameVisible = (distance <= nameTagDist);
+            if (nameVisible) {
+                nameVisible = collisionMap_->CheckLOS(playerEye, entityPos);
+            }
+            visual.nameNode->setVisible(nameVisible);
+        }
     }
 }
 
