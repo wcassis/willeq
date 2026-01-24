@@ -56,7 +56,7 @@ tests/*_tests.cmake
 *.wld
 *.s3d
 
-# Agent screenshots
-.agent/screenshots/
+# Agent working directory
+.agent/
 
 data/detail/zones/
