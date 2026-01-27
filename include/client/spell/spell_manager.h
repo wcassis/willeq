@@ -159,6 +159,18 @@ public:
 
 private:
     // ========================================================================
+    // Target Adjustment
+    // ========================================================================
+
+    // Adjust target based on spell target type restrictions
+    // Returns adjusted target_id (may change to self, pet, etc.)
+    // Returns 0 if no valid target available (e.g., pet spell without pet)
+    uint16_t adjustTargetForSpellType(const SpellData& spell, uint16_t target_id) const;
+
+    // Check if target matches creature type restrictions (Animal, Undead, etc.)
+    bool isValidCreatureTarget(const SpellData& spell, uint16_t target_id) const;
+
+    // ========================================================================
     // Cast Validation
     // ========================================================================
 

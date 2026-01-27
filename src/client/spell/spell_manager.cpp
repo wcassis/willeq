@@ -205,6 +205,19 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
             target_id);
     }
 
+    // Adjust target based on spell type (self-only, pet-only, group spells, etc.)
+    uint16_t adjusted_target = adjustTargetForSpellType(*spell, target_id);
+    if (adjusted_target != target_id) {
+        LOG_DEBUG(MOD_SPELL, "beginCastFromGem: adjusted target from {} to {} for spell '{}'",
+            target_id, adjusted_target, spell->name);
+        target_id = adjusted_target;
+    }
+
+    // Check if target adjustment failed (e.g., pet spell without pet)
+    if (target_id == 0 && spell->target_type == SpellTargetType::Pet) {
+        return CastResult::InvalidTarget;
+    }
+
     // Validate the cast
     CastResult result = validateCast(*spell, target_id);
     LOG_DEBUG(MOD_SPELL, "beginCastFromGem: validateCast returned {} for target_id={}",
@@ -251,6 +264,19 @@ CastResult SpellManager::beginCastById(uint32_t spell_id, uint16_t target_id)
     // For non-memorized casts, we still need to validate
     if (target_id == 0) {
         target_id = m_eq->GetCombatManager()->GetTargetId();
+    }
+
+    // Adjust target based on spell type (self-only, pet-only, group spells, etc.)
+    uint16_t adjusted_target = adjustTargetForSpellType(*spell, target_id);
+    if (adjusted_target != target_id) {
+        LOG_DEBUG(MOD_SPELL, "beginCastById: adjusted target from {} to {} for spell '{}'",
+            target_id, adjusted_target, spell->name);
+        target_id = adjusted_target;
+    }
+
+    // Check if target adjustment failed (e.g., pet spell without pet)
+    if (target_id == 0 && spell->target_type == SpellTargetType::Pet) {
+        return CastResult::InvalidTarget;
     }
 
     CastResult result = validateCast(*spell, target_id);
@@ -336,6 +362,112 @@ uint32_t SpellManager::getCastTimeRemaining() const
 }
 
 // ============================================================================
+// Target Adjustment
+// ============================================================================
+
+uint16_t SpellManager::adjustTargetForSpellType(const SpellData& spell, uint16_t target_id) const
+{
+    uint16_t my_id = m_eq->GetEntityID();
+    uint16_t pet_id = m_eq->GetPetSpawnId();
+
+    switch (spell.target_type) {
+        case SpellTargetType::Self:
+            // Self-only spells always target self
+            return my_id;
+
+        case SpellTargetType::Pet:
+            // Pet-only spells always target pet (return 0 if no pet)
+            if (pet_id == 0) {
+                LOG_DEBUG(MOD_SPELL, "Pet-only spell '{}' but no pet available", spell.name);
+                return 0;  // Will trigger InvalidTarget
+            }
+            return pet_id;
+
+        case SpellTargetType::GroupV1:
+        case SpellTargetType::GroupV2:
+        case SpellTargetType::GroupNoPets:
+        case SpellTargetType::GroupedClients:
+        case SpellTargetType::GroupClientsPets:
+            // Group spells target self if no target selected
+            if (target_id == 0) {
+                LOG_DEBUG(MOD_SPELL, "Group spell '{}' with no target, targeting self", spell.name);
+                return my_id;
+            }
+            return target_id;
+
+        case SpellTargetType::AECaster:
+            // PBAE spells are centered on caster, target self
+            return my_id;
+
+        default:
+            // For all other spell types, use the provided target
+            return target_id;
+    }
+}
+
+bool SpellManager::isValidCreatureTarget(const SpellData& spell, uint16_t target_id) const
+{
+    // Get target entity
+    const auto& entities = m_eq->GetEntities();
+    auto it = entities.find(target_id);
+    if (it == entities.end()) {
+        return false;  // Target not found
+    }
+
+    const Entity& target = it->second;
+    uint8_t bodytype = target.bodytype;
+
+    // Body type constants (from EQ)
+    constexpr uint8_t BT_HUMANOID = 0;
+    constexpr uint8_t BT_UNDEAD = 2;
+    constexpr uint8_t BT_GIANT = 3;
+    constexpr uint8_t BT_SUMMONED_UNDEAD = 7;
+    constexpr uint8_t BT_BANE_GIANT = 8;
+    constexpr uint8_t BT_VAMPIRE = 11;
+    constexpr uint8_t BT_ANIMAL = 20;
+    constexpr uint8_t BT_INSECT = 21;
+    constexpr uint8_t BT_SUMMONED = 23;
+    constexpr uint8_t BT_PLANT = 24;
+    constexpr uint8_t BT_DRAGON = 25;
+    constexpr uint8_t BT_SUMMONED2 = 26;
+    constexpr uint8_t BT_SUMMONED3 = 27;
+    constexpr uint8_t BT_DRAGON2 = 28;
+
+    switch (spell.target_type) {
+        case SpellTargetType::Animal:
+            // Animal only - includes insects
+            return bodytype == BT_ANIMAL || bodytype == BT_INSECT;
+
+        case SpellTargetType::Undead:
+        case SpellTargetType::UndeadAE:
+            // Undead only - includes vampires and summoned undead
+            return bodytype == BT_UNDEAD || bodytype == BT_SUMMONED_UNDEAD || bodytype == BT_VAMPIRE;
+
+        case SpellTargetType::Summoned:
+        case SpellTargetType::SummonedAE:
+            // Summoned only - all summoned variants
+            return bodytype == BT_SUMMONED || bodytype == BT_SUMMONED2 || bodytype == BT_SUMMONED3;
+
+        case SpellTargetType::Corpse:
+            // Corpse only - check is_corpse flag
+            return target.is_corpse;
+
+        case SpellTargetType::Plant:
+            return bodytype == BT_PLANT;
+
+        case SpellTargetType::Giant:
+            return bodytype == BT_GIANT || bodytype == BT_BANE_GIANT;
+
+        case SpellTargetType::Dragon:
+            return bodytype == BT_DRAGON || bodytype == BT_DRAGON2;
+
+        default:
+            // Not a creature-restricted spell type
+            return true;
+    }
+}
+
+// ============================================================================
 // Cast Validation
 // ============================================================================
 
@@ -372,10 +504,27 @@ CastResult SpellManager::validateCast(const SpellData& spell, uint16_t target_id
         }
     }
 
-    // Check for self-only spells with target
-    if (spell.target_type == SpellTargetType::Self && target_id != 0 &&
-        target_id != m_eq->GetEntityID()) {
-        // Self-only spell but targeting someone else - that's fine, just cast on self
+    // Check creature type restrictions (Animal, Undead, Summoned, Plant, Giant, Dragon, Corpse)
+    if (target_id != 0) {
+        switch (spell.target_type) {
+            case SpellTargetType::Animal:
+            case SpellTargetType::Undead:
+            case SpellTargetType::UndeadAE:
+            case SpellTargetType::Summoned:
+            case SpellTargetType::SummonedAE:
+            case SpellTargetType::Corpse:
+            case SpellTargetType::Plant:
+            case SpellTargetType::Giant:
+            case SpellTargetType::Dragon:
+                if (!isValidCreatureTarget(spell, target_id)) {
+                    LOG_DEBUG(MOD_SPELL, "Invalid creature target for spell '{}' (target_type={})",
+                        spell.name, static_cast<int>(spell.target_type));
+                    return CastResult::InvalidTarget;
+                }
+                break;
+            default:
+                break;
+        }
     }
 
     // Check reagents
