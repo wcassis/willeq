@@ -1573,6 +1573,81 @@ void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& sta
     driver_->endScene();
 }
 
+void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
+    if (!windowManager_ || !windowManager_->getOptionsWindow()) {
+        return;
+    }
+
+    const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+
+    // Apply particle manager settings
+    if (particleManager_) {
+        Environment::EffectQuality quality;
+        switch (settings.environmentQuality) {
+            case eqt::ui::EffectQuality::Off:
+                quality = Environment::EffectQuality::Off;
+                break;
+            case eqt::ui::EffectQuality::Low:
+                quality = Environment::EffectQuality::Low;
+                break;
+            case eqt::ui::EffectQuality::Medium:
+                quality = Environment::EffectQuality::Medium;
+                break;
+            case eqt::ui::EffectQuality::High:
+                quality = Environment::EffectQuality::High;
+                break;
+            default:
+                quality = Environment::EffectQuality::Medium;
+                break;
+        }
+
+        particleManager_->setQuality(quality);
+        particleManager_->setEnabled(settings.atmosphericParticles);
+        particleManager_->setDensity(settings.environmentDensity);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Applied particle settings: quality={}, enabled={}, density={}",
+                 static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity);
+    }
+
+    // Apply boids manager settings
+    if (boidsManager_) {
+        int quality = static_cast<int>(settings.environmentQuality);
+        boidsManager_->setQuality(quality);
+        boidsManager_->setEnabled(settings.ambientCreatures);
+        boidsManager_->setDensity(settings.environmentDensity);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Applied boids settings: quality={}, enabled={}, density={}",
+                 quality, settings.ambientCreatures, settings.environmentDensity);
+    }
+
+    // Apply detail manager settings (grass, plants, rocks, debris)
+    if (detailManager_) {
+        detailManager_->setEnabled(settings.detailObjectsEnabled);
+        detailManager_->setDensity(settings.detailDensity);
+        detailManager_->setCategoryEnabled(Detail::DetailCategory::Grass, settings.detailGrass);
+        detailManager_->setCategoryEnabled(Detail::DetailCategory::Plants, settings.detailPlants);
+        detailManager_->setCategoryEnabled(Detail::DetailCategory::Rocks, settings.detailRocks);
+        detailManager_->setCategoryEnabled(Detail::DetailCategory::Debris, settings.detailDebris);
+
+        auto foliageConfig = detailManager_->getFoliageDisturbanceConfig();
+        foliageConfig.enabled = settings.reactiveFoliage;
+        detailManager_->setFoliageDisturbanceConfig(foliageConfig);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Applied detail settings: enabled={}, density={:.2f}, grass={}, plants={}, rocks={}, debris={}, reactiveFoliage={}",
+                 settings.detailObjectsEnabled, settings.detailDensity,
+                 settings.detailGrass, settings.detailPlants, settings.detailRocks, settings.detailDebris,
+                 settings.reactiveFoliage);
+    }
+
+    // Apply tumbleweed settings
+    if (tumbleweedManager_) {
+        tumbleweedManager_->setEnabled(settings.rollingObjects);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Applied tumbleweed settings: enabled={}",
+                 settings.rollingObjects);
+    }
+}
+
 void IrrlichtRenderer::setupHUD() {
     if (!guienv_) return;
 
@@ -2164,6 +2239,10 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         LOG_INFO(MOD_GRAPHICS, "Tumbleweeds enabled for zone '{}' (biome: {})",
                  zoneName, static_cast<int>(biome));
     }
+
+    // Apply saved display settings to environmental systems after zone load
+    // This ensures settings like "atmospheric particles off" are respected
+    applyEnvironmentalDisplaySettings();
 
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
 
@@ -7656,7 +7735,7 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
                                           entityRenderer_->getEquipmentModelLoader());
         }
 
-        // Set up display settings callback for environmental particles
+        // Set up display settings callback for environmental systems
         windowManager_->setDisplaySettingsChangedCallback([this]() {
             // Update render distance first (affects terrain, objects, entities)
             if (windowManager_ && windowManager_->getOptionsWindow()) {
@@ -7665,81 +7744,8 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
                 LOG_DEBUG(MOD_GRAPHICS, "Render distance updated to {}", settings.renderDistance);
             }
 
-            if (particleManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
-                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
-
-                // Map UI EffectQuality to particle system EffectQuality
-                Environment::EffectQuality quality;
-                switch (settings.environmentQuality) {
-                    case eqt::ui::EffectQuality::Off:
-                        quality = Environment::EffectQuality::Off;
-                        break;
-                    case eqt::ui::EffectQuality::Low:
-                        quality = Environment::EffectQuality::Low;
-                        break;
-                    case eqt::ui::EffectQuality::Medium:
-                        quality = Environment::EffectQuality::Medium;
-                        break;
-                    case eqt::ui::EffectQuality::High:
-                        quality = Environment::EffectQuality::High;
-                        break;
-                    default:
-                        quality = Environment::EffectQuality::Medium;
-                        break;
-                }
-
-                particleManager_->setQuality(quality);
-                particleManager_->setEnabled(settings.atmosphericParticles);
-                particleManager_->setDensity(settings.environmentDensity);
-
-                LOG_DEBUG(MOD_GRAPHICS, "Particle settings updated: quality={}, enabled={}, density={}",
-                         static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity);
-            }
-
-            // Update boids manager settings
-            if (boidsManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
-                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
-
-                // Use same quality setting as particles (0=Off, 1=Low, 2=Medium, 3=High)
-                int quality = static_cast<int>(settings.environmentQuality);
-                boidsManager_->setQuality(quality);
-                boidsManager_->setEnabled(settings.ambientCreatures);
-                boidsManager_->setDensity(settings.environmentDensity);
-
-                LOG_DEBUG(MOD_GRAPHICS, "Boids settings updated: quality={}, enabled={}, density={}",
-                         quality, settings.ambientCreatures, settings.environmentDensity);
-            }
-
-            // Update detail manager settings (grass, plants, rocks, debris)
-            if (detailManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
-                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
-
-                detailManager_->setEnabled(settings.detailObjectsEnabled);
-                detailManager_->setDensity(settings.detailDensity);
-                detailManager_->setCategoryEnabled(Detail::DetailCategory::Grass, settings.detailGrass);
-                detailManager_->setCategoryEnabled(Detail::DetailCategory::Plants, settings.detailPlants);
-                detailManager_->setCategoryEnabled(Detail::DetailCategory::Rocks, settings.detailRocks);
-                detailManager_->setCategoryEnabled(Detail::DetailCategory::Debris, settings.detailDebris);
-
-                // Update reactive foliage (grass bending when player walks through)
-                auto foliageConfig = detailManager_->getFoliageDisturbanceConfig();
-                foliageConfig.enabled = settings.reactiveFoliage;
-                detailManager_->setFoliageDisturbanceConfig(foliageConfig);
-
-                LOG_DEBUG(MOD_GRAPHICS, "Detail settings updated: enabled={}, density={:.2f}, grass={}, plants={}, rocks={}, debris={}, reactiveFoliage={}",
-                         settings.detailObjectsEnabled, settings.detailDensity,
-                         settings.detailGrass, settings.detailPlants, settings.detailRocks, settings.detailDebris,
-                         settings.reactiveFoliage);
-            }
-
-            // Update tumbleweed (rolling objects) settings
-            if (tumbleweedManager_ && windowManager_ && windowManager_->getOptionsWindow()) {
-                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
-                tumbleweedManager_->setEnabled(settings.rollingObjects);
-
-                LOG_DEBUG(MOD_GRAPHICS, "Tumbleweed settings updated: enabled={}",
-                         settings.rollingObjects);
-            }
+            // Apply environmental display settings (particles, boids, detail, tumbleweeds)
+            applyEnvironmentalDisplaySettings();
         });
 
         // Apply initial render distance from saved settings

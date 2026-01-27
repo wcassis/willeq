@@ -963,6 +963,7 @@ private:
     void setupFog();
     void setupHUD();
     void updateHUD();
+    void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
     void createZoneMesh();
     void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
     void updatePvsVisibility();    // Update region visibility based on camera position
