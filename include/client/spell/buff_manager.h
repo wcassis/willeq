@@ -135,6 +135,22 @@ public:
     size_t getPlayerBuffCount() const { return m_player_buffs.size(); }
 
     // ========================================================================
+    // Pet Buffs
+    // ========================================================================
+
+    // Set pet buffs from OP_PetBuffWindow packet
+    void setPetBuffs(uint16_t petId, const EQT::PetBuff_Struct& buffs);
+
+    // Get all pet buffs
+    const std::vector<ActiveBuff>& getPetBuffs() const { return m_pet_buffs; }
+
+    // Clear pet buffs (e.g., when pet dies or is dismissed)
+    void clearPetBuffs();
+
+    // Get the pet ID associated with current buffs
+    uint16_t getPetBuffsOwnerId() const { return m_pet_buffs_owner_id; }
+
+    // ========================================================================
     // Entity Buffs
     // ========================================================================
 
@@ -222,6 +238,10 @@ private:
 
     // Player buffs
     std::vector<ActiveBuff> m_player_buffs;
+
+    // Pet buffs
+    std::vector<ActiveBuff> m_pet_buffs;
+    uint16_t m_pet_buffs_owner_id = 0;  // Pet spawn ID for these buffs
 
     // Entity buffs (keyed by entity_id)
     std::unordered_map<uint16_t, std::vector<ActiveBuff>> m_entity_buffs;

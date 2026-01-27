@@ -2067,6 +2067,15 @@ bool WindowManager::handleMouseMove(int x, int y) {
                     buffTooltip_.clear();
                 }
             }
+            // Special handling for pet buff tooltip
+            if (window == petWindow_.get()) {
+                const EQ::ActiveBuff* hoveredPetBuff = petWindow_->getHoveredPetBuff();
+                if (hoveredPetBuff) {
+                    buffTooltip_.setBuff(hoveredPetBuff, x, y);
+                } else {
+                    buffTooltip_.clear();
+                }
+            }
             return true;
         }
     }
@@ -2511,6 +2520,7 @@ void WindowManager::update(uint32_t currentTimeMs) {
     // Update pet window (refreshes pet data from EverQuest)
     if (petWindow_) {
         petWindow_->update();
+        petWindow_->updateFlashTimer(currentTimeMs);
     }
     // Update player status window (refreshes HP/mana/stamina from EverQuest)
     if (playerStatusWindow_) {
@@ -4054,7 +4064,7 @@ void WindowManager::setGroupDeclineCallback(GroupDeclineCallback callback) {
 // Pet Window Management
 // ============================================================================
 
-void WindowManager::initPetWindow(EverQuest* eq) {
+void WindowManager::initPetWindow(EverQuest* eq, EQ::BuffManager* buffMgr) {
     if (!eq) {
         LOG_WARN(MOD_UI, "Cannot initialize pet window - EverQuest is null");
         return;
@@ -4062,6 +4072,8 @@ void WindowManager::initPetWindow(EverQuest* eq) {
 
     petWindow_ = std::make_unique<PetWindow>();
     petWindow_->setEQ(eq);
+    petWindow_->setBuffManager(buffMgr);
+    petWindow_->setIconLoader(&iconLoader_);
     petWindow_->positionDefault(screenWidth_, screenHeight_);
     // Pet window starts hidden - shown when pet is created
     petWindow_->hide();
@@ -4071,7 +4083,7 @@ void WindowManager::initPetWindow(EverQuest* eq) {
         petWindow_->setCommandCallback(petCommandCallback_);
     }
 
-    LOG_DEBUG(MOD_UI, "Pet window initialized");
+    LOG_DEBUG(MOD_UI, "Pet window initialized with BuffManager={}", buffMgr ? "yes" : "no");
 }
 
 void WindowManager::togglePetWindow() {

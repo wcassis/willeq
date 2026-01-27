@@ -353,6 +353,21 @@ struct SpellBuff_Struct {
 };
 
 /*
+ * Pet Buff Window structure
+ * Sent when pet buffs change or on zone-in
+ * Size: varies (30 spell slots)
+ */
+static constexpr int PET_BUFF_COUNT = 30;
+
+struct PetBuff_Struct {
+/*000*/ uint32_t petid;                        // Spawn ID of the pet
+/*004*/ uint32_t spellid[PET_BUFF_COUNT];      // Array of spell IDs (0xFFFFFFFF = empty)
+/*124*/ int32_t  ticsremaining[PET_BUFF_COUNT]; // Remaining ticks for each buff
+/*244*/ uint32_t buffcount;                    // Number of active buffs
+/*248*/
+};
+
+/*
  * Consider structure
  * Size: 24 bytes
  */

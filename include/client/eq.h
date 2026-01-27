@@ -271,6 +271,7 @@ enum TitaniumZoneOpcodes {
 	HC_OP_GMEndTrainingResponse = 0x0000, // Server ack for end training (unused in Titanium)
 	// Pet opcodes
 	HC_OP_PetCommands = 0x10a1,          // C->S: Pet command from client
+	HC_OP_PetBuffWindow = 0x4e31,        // S->C: Pet buff window data
 	// Logout/Camp opcodes
 	HC_OP_Camp = 0x78c1,                 // C->S: Camp request (starts 30s timer)
 	HC_OP_Logout = 0x61ff,               // C->S: Logout request (after camp timer)
@@ -1177,6 +1178,8 @@ private:
 	void ZoneProcessGMZoneRequest(const EQ::Net::Packet &p);
 	void ZoneProcessGMFind(const EQ::Net::Packet &p);
 	void ZoneProcessGMSummon(const EQ::Net::Packet &p);
+	// Pet packet handlers
+	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 
 	// Zone transition methods
 	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading);

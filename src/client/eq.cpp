@@ -2595,6 +2595,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_ReadBook:
 		ZoneProcessReadBook(p);
 		break;
+	case HC_OP_PetBuffWindow:
+		ZoneProcessPetBuffWindow(p);
+		break;
 
 	default:
 		if (s_debug_level >= 1) {
@@ -6811,6 +6814,10 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 			LOG_INFO(MOD_MAIN, "Pet {} ({}) despawned", spawn_id, it->second.name);
 			m_pet_spawn_id = 0;
 			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+			// Clear pet buffs
+			if (m_buff_manager) {
+				m_buff_manager->clearPetBuffs();
+			}
 #ifdef EQT_HAS_GRAPHICS
 			OnPetRemoved();
 #endif
@@ -12057,6 +12064,41 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	}
 }
 
+void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
+{
+	// PetBuff_Struct format:
+	//   petid (4 bytes), spellid[30] (120 bytes), ticsremaining[30] (120 bytes), buffcount (4 bytes)
+	// Total: 248 bytes + 2 byte opcode = 250 bytes
+
+	constexpr size_t MIN_PACKET_SIZE = 2 + sizeof(EQT::PetBuff_Struct);
+	if (p.Length() < MIN_PACKET_SIZE) {
+		LOG_WARN(MOD_ZONE, "PetBuffWindow packet too small: {} bytes (expected {})", p.Length(), MIN_PACKET_SIZE);
+		return;
+	}
+
+	const EQT::PetBuff_Struct* petBuffs = reinterpret_cast<const EQT::PetBuff_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Verify this is for our pet
+	if (m_pet_spawn_id == 0) {
+		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow but no pet tracked, petid={}", petBuffs->petid);
+		return;
+	}
+
+	if (petBuffs->petid != m_pet_spawn_id) {
+		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow for different pet: {} (our pet: {})",
+			petBuffs->petid, m_pet_spawn_id);
+		return;
+	}
+
+	LOG_DEBUG(MOD_SPELL, "PetBuffWindow: petid={} buffcount={}", petBuffs->petid, petBuffs->buffcount);
+
+	// Update buff manager with pet buffs
+	if (m_buff_manager) {
+		m_buff_manager->setPetBuffs(static_cast<uint16_t>(petBuffs->petid), *petBuffs);
+	}
+}
+
 void EverQuest::ZoneProcessColoredText(const EQ::Net::Packet &p)
 {
 	// ColoredText_Struct: uint32 color, char msg[variable]
@@ -12816,6 +12858,10 @@ void EverQuest::CleanupZone()
 	if (m_pet_spawn_id != 0) {
 		m_pet_spawn_id = 0;
 		std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+		// Clear pet buffs
+		if (m_buff_manager) {
+			m_buff_manager->clearPetBuffs();
+		}
 #ifdef EQT_HAS_GRAPHICS
 		OnPetRemoved();
 #endif
@@ -18037,7 +18083,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Set up pet window
 	if (m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
-		windowManager->initPetWindow(this);
+		windowManager->initPetWindow(this, m_buff_manager.get());
 
 		// Set up pet command callback
 		windowManager->setPetCommandCallback([this](EQT::PetCommand command, uint16_t targetId) {

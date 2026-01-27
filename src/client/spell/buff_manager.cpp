@@ -41,6 +41,13 @@ void BuffManager::update(float delta_time)
             }
         }
 
+        // Decrement pet buff timers
+        for (auto& buff : m_pet_buffs) {
+            if (!buff.isPermanent() && buff.remaining_seconds > 0) {
+                buff.remaining_seconds--;
+            }
+        }
+
         // Decrement entity buff timers
         for (auto& [entity_id, buffs] : m_entity_buffs) {
             for (auto& buff : buffs) {
@@ -53,6 +60,7 @@ void BuffManager::update(float delta_time)
 
     // Check for expired buffs
     checkBuffExpiration(m_player_buffs, 0);  // 0 = player
+    checkBuffExpiration(m_pet_buffs, m_pet_buffs_owner_id);  // Pet buffs
     for (auto& [entity_id, buffs] : m_entity_buffs) {
         checkBuffExpiration(buffs, entity_id);
     }
@@ -201,6 +209,64 @@ void BuffManager::removePlayerBuffBySlot(uint8_t slot)
             m_on_buff_fade(0, spell_id);  // 0 = player
         }
     }
+}
+
+// ============================================================================
+// Pet Buffs
+// ============================================================================
+
+void BuffManager::setPetBuffs(uint16_t petId, const EQT::PetBuff_Struct& buffs)
+{
+    m_pet_buffs.clear();
+    m_pet_buffs_owner_id = petId;
+
+    for (size_t i = 0; i < EQT::PET_BUFF_COUNT && i < buffs.buffcount; ++i) {
+        uint32_t spell_id = buffs.spellid[i];
+
+        // Skip empty slots (0xFFFFFFFF or 0 = empty)
+        if (spell_id == 0 || spell_id == 0xFFFFFFFF || spell_id == SPELL_UNKNOWN) {
+            continue;
+        }
+
+        ActiveBuff active;
+        active.spell_id = spell_id;
+        active.caster_id = 0;  // Not provided in PetBuff_Struct
+        active.caster_level = 0;  // Not provided in PetBuff_Struct
+
+        // Convert ticks to seconds; -1 or very large = permanent
+        int32_t ticks = buffs.ticsremaining[i];
+        if (ticks < 0 || ticks == static_cast<int32_t>(0xFFFFFFFF)) {
+            active.remaining_seconds = 0xFFFFFFFF;  // Permanent
+        } else {
+            active.remaining_seconds = static_cast<uint32_t>(ticks) * BUFF_TICK_SECONDS;
+        }
+
+        active.counters = 0;
+        active.slot = static_cast<int8_t>(i);
+
+        // Determine effect type from spell data
+        if (m_spell_db) {
+            const SpellData* spell = m_spell_db->getSpell(spell_id);
+            if (spell) {
+                active.effect_type = spell->is_beneficial ? BuffEffectType::Buff : BuffEffectType::Inverse;
+            } else {
+                active.effect_type = BuffEffectType::Buff;  // Default to buff if spell not found
+            }
+        } else {
+            active.effect_type = BuffEffectType::Buff;
+        }
+
+        m_pet_buffs.push_back(active);
+    }
+
+    LOG_DEBUG(MOD_SPELL, "Set {} pet buffs for pet {}", m_pet_buffs.size(), petId);
+}
+
+void BuffManager::clearPetBuffs()
+{
+    m_pet_buffs.clear();
+    m_pet_buffs_owner_id = 0;
+    LOG_DEBUG(MOD_SPELL, "Cleared pet buffs");
 }
 
 // ============================================================================

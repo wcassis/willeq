@@ -243,7 +243,7 @@ public:
     void setGroupDeclineCallback(GroupDeclineCallback callback);
 
     // Pet window management
-    void initPetWindow(EverQuest* eq);
+    void initPetWindow(EverQuest* eq, EQ::BuffManager* buffMgr = nullptr);
     void togglePetWindow();
     void openPetWindow();
     void closePetWindow();
