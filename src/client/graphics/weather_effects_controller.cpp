@@ -33,7 +33,7 @@ WeatherEffectsController::WeatherEffectsController(
 }
 
 WeatherEffectsController::~WeatherEffectsController() {
-    // Unregister emitters from particle manager
+    // Unregister emitters from particle manager before they're destroyed
     if (particleManager_) {
         if (rainEmitter_) {
             particleManager_->unregisterExternalEmitter(rainEmitter_.get());

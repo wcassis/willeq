@@ -862,8 +862,16 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 EverQuest::~EverQuest()
 {
+	LOG_DEBUG(MOD_MAIN, "EverQuest destructor called, outputting performance report...");
+
 	// Output final performance metrics
-	LOG_INFO(MOD_MAIN, "{}", EQT::PerformanceMetrics::instance().generateReport());
+	std::string perfReport = EQT::PerformanceMetrics::instance().generateReport();
+	if (!perfReport.empty()) {
+		LOG_INFO(MOD_MAIN, "{}", perfReport);
+	} else {
+		LOG_WARN(MOD_MAIN, "Performance report is empty");
+	}
+	std::cout.flush();  // Ensure performance report is flushed before cleanup
 
 	// Shutdown audio before other cleanup
 #ifdef WITH_AUDIO
@@ -18279,7 +18287,7 @@ void EverQuest::ShutdownGraphics() {
 		m_renderer.reset();
 	}
 	m_graphics_initialized = false;
-	LOG_DEBUG(MOD_GRAPHICS, "Renderer shut down");
+	LOG_DEBUG(MOD_GRAPHICS, "Graphics shut down");
 }
 
 bool EverQuest::UpdateGraphics(float deltaTime) {

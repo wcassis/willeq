@@ -834,6 +834,17 @@ void IrrlichtRenderer::shutdown() {
     windowManager_.reset();
     eventReceiver_.reset();
 
+    // Weather and environment managers also need the device for cleanup
+    weatherEffects_.reset();
+    particleManager_.reset();
+    boidsManager_.reset();
+    tumbleweedManager_.reset();
+    weatherSystem_.reset();
+    treeManager_.reset();
+    detailManager_.reset();
+    constrainedTextureCache_.reset();
+    spellVisualFX_.reset();
+
     if (device_) {
         device_->drop();
         device_ = nullptr;

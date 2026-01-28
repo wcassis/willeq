@@ -1337,5 +1337,16 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
+	// Output performance report before cleanup (ensures it's shown while logging works)
+	std::string perfReport = EQT::PerformanceMetrics::instance().generateReport();
+	if (!perfReport.empty()) {
+		LOG_INFO(MOD_MAIN, "{}", perfReport);
+	}
+
+	// Explicitly clear clients to ensure proper cleanup order
+	LOG_DEBUG(MOD_MAIN, "Cleaning up {} client(s)...", eq_list.size());
+	eq_list.clear();
+	LOG_DEBUG(MOD_MAIN, "Cleanup complete");
+
 	return 0;
 }
