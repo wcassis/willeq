@@ -407,6 +407,12 @@ glm::vec3 FlockController::calculateTerrainAvoidance(const Creature& creature) c
         return steer;
     }
 
+    // Get collision manager and verify it's valid
+    irr::scene::ISceneCollisionManager* collisionMgr = smgr_->getSceneCollisionManager();
+    if (!collisionMgr) {
+        return steer;
+    }
+
     // Look ahead in the direction of movement
     float speed = glm::length(creature.velocity);
     if (speed < 0.1f) {
@@ -417,22 +423,24 @@ glm::vec3 FlockController::calculateTerrainAvoidance(const Creature& creature) c
     float lookAhead = 15.0f;  // How far ahead to check for obstacles
 
     // Cast multiple rays: forward, forward-down, forward-left, forward-right
+    // Use static array to avoid heap allocation (bad_alloc crash fix)
     struct RayCheck {
-        glm::vec3 offset;
+        float offsetX, offsetY, offsetZ;
         float weight;
     };
 
-    std::vector<RayCheck> rays = {
-        {{0.0f, 0.0f, 0.0f}, 1.0f},        // Straight ahead
-        {{0.0f, 0.0f, -5.0f}, 0.8f},       // Forward-down
-        {{-3.0f, 0.0f, 0.0f}, 0.5f},       // Forward-left (in XY plane)
-        {{3.0f, 0.0f, 0.0f}, 0.5f},        // Forward-right
+    static const RayCheck rays[] = {
+        {0.0f, 0.0f, 0.0f, 1.0f},        // Straight ahead
+        {0.0f, 0.0f, -5.0f, 0.8f},       // Forward-down
+        {-3.0f, 0.0f, 0.0f, 0.5f},       // Forward-left (in XY plane)
+        {3.0f, 0.0f, 0.0f, 0.5f},        // Forward-right
     };
 
     for (const auto& ray : rays) {
         // Calculate ray end point
         glm::vec3 from = creature.position;
-        glm::vec3 to = creature.position + direction * lookAhead + ray.offset;
+        glm::vec3 offset(ray.offsetX, ray.offsetY, ray.offsetZ);
+        glm::vec3 to = creature.position + direction * lookAhead + offset;
 
         // Convert to Irrlicht coordinates (EQ: x,y,z -> Irr: x,z,y)
         irr::core::vector3df irrFrom(from.x, from.z, from.y);
@@ -443,7 +451,7 @@ glm::vec3 FlockController::calculateTerrainAvoidance(const Creature& creature) c
         irr::core::triangle3df hitTri;
         irr::scene::ISceneNode* hitNode = nullptr;
 
-        if (smgr_->getSceneCollisionManager()->getCollisionPoint(
+        if (collisionMgr->getCollisionPoint(
                 rayLine, collisionSelector_, hitPoint, hitTri, hitNode)) {
 
             // Calculate distance to hit

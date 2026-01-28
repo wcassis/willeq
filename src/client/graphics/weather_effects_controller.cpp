@@ -68,14 +68,19 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
         applyConfigFromLoader();
     });
 
-    // Create rain emitter
-    rainEmitter_ = std::make_unique<Environment::RainEmitter>();
+    // Create rain emitter only if not using rain overlay (overlay is default)
+    // This avoids allocating ~1MB for 10k particles that won't be used
+    if (!useRainOverlay_) {
+        rainEmitter_ = std::make_unique<Environment::RainEmitter>();
+    }
 
-    // Create rain splash emitter
+    // Create rain splash emitter (used by both particle and overlay modes for ground splashes)
     rainSplashEmitter_ = std::make_unique<Environment::RainSplashEmitter>();
 
-    // Create snow emitter
-    snowEmitter_ = std::make_unique<Environment::SnowEmitter>();
+    // Create snow emitter only if not using snow overlay
+    if (!useSnowOverlay_) {
+        snowEmitter_ = std::make_unique<Environment::SnowEmitter>();
+    }
 
     // Create water ripple manager (Phase 7)
     waterRippleManager_ = std::make_unique<Environment::WaterRippleManager>();
