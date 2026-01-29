@@ -607,6 +607,9 @@ public:
     // Queue received damage animation into combat buffer (from emote packets)
     void queueReceivedDamageAnimation(uint16_t spawnId);
 
+    // Queue combat skill animation into combat buffer (bash, kick, etc.)
+    void queueSkillAnimation(uint16_t spawnId, const std::string& animCode);
+
     // First-person mode methods
     // Trigger first-person attack animation (weapon swing)
     void triggerFirstPersonAttack();

@@ -2733,6 +2733,38 @@ void EntityRenderer::queueReceivedDamageAnimation(uint16_t spawnId) {
               spawnId, entity.combatBufferActive, entity.pendingCombatAnims.size());
 }
 
+void EntityRenderer::queueSkillAnimation(uint16_t spawnId, const std::string& animCode) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) {
+        return;
+    }
+
+    EntityVisual& entity = it->second;
+    auto now = std::chrono::steady_clock::now();
+
+    // If buffer window has expired (>50ms since start), process the old buffer first
+    if (entity.combatBufferActive) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - entity.combatAnimBufferStart).count();
+        if (elapsed > 50) {
+            // Process the existing buffer
+            processCombatAnimationBufferForEntity(spawnId, 0);
+        }
+    }
+
+    // Start a new buffer window if needed
+    if (!entity.combatBufferActive) {
+        entity.combatAnimBufferStart = now;
+        entity.combatBufferActive = true;
+    }
+
+    // Store the skill animation (overwrites any previous - only one skill per combat round)
+    entity.queuedSkillAnim = animCode;
+
+    LOG_DEBUG(MOD_COMBAT, "Queued skill animation '{}' for spawn={} (bufferActive={} pendingAttacks={})",
+              animCode, spawnId, entity.combatBufferActive, entity.pendingCombatAnims.size());
+}
+
 void EntityRenderer::processCombatAnimationBufferForEntity(uint16_t sourceId, uint16_t /*targetIdHint*/) {
     auto sourceIt = entities_.find(sourceId);
     if (sourceIt == entities_.end()) {
@@ -2741,11 +2773,15 @@ void EntityRenderer::processCombatAnimationBufferForEntity(uint16_t sourceId, ui
 
     EntityVisual& source = sourceIt->second;
 
-    // Check if entity only received damage (no outgoing attacks)
-    // In this case, play the damage animation instead of attack
+    // Check if entity has no outgoing attacks (only skill animation and/or received damage)
     if (source.pendingCombatAnims.empty()) {
-        if (source.receivedDamageInBuffer && source.isAnimated && source.animatedNode) {
-            // No outgoing attacks, but received damage - play damage animation
+        // Play skill animation if queued (takes priority over damage)
+        if (!source.queuedSkillAnim.empty() && source.isAnimated && source.animatedNode) {
+            setEntityAnimation(sourceId, source.queuedSkillAnim, false, true);
+            LOG_DEBUG(MOD_COMBAT, "Playing skill animation '{}' on source={} (no weapon attacks)",
+                      source.queuedSkillAnim, sourceId);
+        } else if (source.receivedDamageInBuffer && source.isAnimated && source.animatedNode) {
+            // No attacks or skills, but received damage - play damage animation
             const char* damageAnim = EQ::ANIM_DAMAGE_MINOR;  // d01
             setEntityAnimation(sourceId, damageAnim, false, true);
             LOG_DEBUG(MOD_COMBAT, "Playing received damage animation '{}' on source={} (no outgoing attacks)",
@@ -2753,14 +2789,22 @@ void EntityRenderer::processCombatAnimationBufferForEntity(uint16_t sourceId, ui
         }
         source.combatBufferActive = false;
         source.receivedDamageInBuffer = false;
+        source.queuedSkillAnim.clear();
         return;
     }
 
-    // Entity has outgoing attacks - these take priority over received damage
-    // If entity was also damaged, skip the damage animation (attack wins)
+    // Entity has outgoing attacks - skill animation plays first, then weapon attacks
+    // Received damage is skipped (attack animations take priority)
     if (source.receivedDamageInBuffer) {
         LOG_DEBUG(MOD_COMBAT, "Skipping received damage animation on source={} (has {} outgoing attacks)",
                   sourceId, source.pendingCombatAnims.size());
+    }
+
+    // Play skill animation first if queued (bash, kick, etc. before weapon swings)
+    if (!source.queuedSkillAnim.empty() && source.isAnimated && source.animatedNode) {
+        setEntityAnimation(sourceId, source.queuedSkillAnim, false, true);
+        LOG_DEBUG(MOD_COMBAT, "Playing skill animation '{}' on source={} (before {} weapon attacks)",
+                  source.queuedSkillAnim, sourceId, source.pendingCombatAnims.size());
     }
 
     // Get target ID from the first packet (all packets in burst should have same target)
@@ -2888,6 +2932,7 @@ void EntityRenderer::processCombatAnimationBufferForEntity(uint16_t sourceId, ui
     source.pendingCombatAnims.clear();
     source.combatBufferActive = false;
     source.receivedDamageInBuffer = false;
+    source.queuedSkillAnim.clear();
 }
 
 void EntityRenderer::processExpiredCombatBuffers() {
@@ -2899,9 +2944,11 @@ void EntityRenderer::processExpiredCombatBuffers() {
     for (auto& [spawnId, visual] : entities_) {
         // Check entities with active combat buffer that have:
         // - pending outgoing attacks, OR
-        // - received damage that needs processing
+        // - received damage that needs processing, OR
+        // - queued skill animation
         if (visual.combatBufferActive &&
-            (!visual.pendingCombatAnims.empty() || visual.receivedDamageInBuffer)) {
+            (!visual.pendingCombatAnims.empty() || visual.receivedDamageInBuffer ||
+             !visual.queuedSkillAnim.empty())) {
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now - visual.combatAnimBufferStart).count();
             if (elapsed > 50) {

@@ -8427,6 +8427,12 @@ void IrrlichtRenderer::queueReceivedDamageAnimation(uint16_t spawnId) {
     }
 }
 
+void IrrlichtRenderer::queueSkillAnimation(uint16_t spawnId, const std::string& animCode) {
+    if (entityRenderer_) {
+        entityRenderer_->queueSkillAnimation(spawnId, animCode);
+    }
+}
+
 void IrrlichtRenderer::triggerFirstPersonAttack() {
     if (entityRenderer_) {
         entityRenderer_->triggerFirstPersonAttack();

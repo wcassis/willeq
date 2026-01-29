@@ -5878,17 +5878,55 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 
 		// Combat skill animations (use correct animation codes from reference)
+		// For the PLAYER, queue these into the combat buffer so they're
+		// processed with proper priority alongside weapon attacks
 		case 10: // Round kick
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_ROUND_KICK);
+				LOG_DEBUG(MOD_COMBAT, "Queued round kick animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_ROUND_KICK;  // c11
 			break;
 		case 11: // ANIM_KICK
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_KICK);
+				LOG_DEBUG(MOD_COMBAT, "Queued kick animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_KICK;  // c01 - basic kick
 			break;
 		case 12: // ANIM_BASH
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_BASH);
+				LOG_DEBUG(MOD_COMBAT, "Queued bash animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_BASH;  // c07 - Shield bash
 			break;
+		case 13: // Tiger Claw / Eagle Strike (rapid strikes)
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_TIGER_STRIKE);
+				LOG_DEBUG(MOD_COMBAT, "Queued tiger claw/eagle strike animation for player");
+				break;
+			}
+			animCode = EQ::ANIM_TIGER_STRIKE;  // t08
+			break;
 		case 14: // Flying kick
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_FLYING_KICK);
+				LOG_DEBUG(MOD_COMBAT, "Queued flying kick animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_FLYING_KICK;  // t07
+			break;
+		case 15: // Dragon Punch
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_DRAGON_PUNCH);
+				LOG_DEBUG(MOD_COMBAT, "Queued dragon punch animation for player");
+				break;
+			}
+			animCode = EQ::ANIM_DRAGON_PUNCH;  // t09
 			break;
 
 		// Damage/hit reaction

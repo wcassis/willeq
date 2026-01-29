@@ -128,6 +128,7 @@ struct EntityVisual {
     std::chrono::steady_clock::time_point combatAnimBufferStart;  // Start of current buffer window
     bool combatBufferActive = false;  // True if we're collecting combat anims in buffer
     bool receivedDamageInBuffer = false;  // True if entity received damage during buffer window
+    std::string queuedSkillAnim;  // Skill animation queued during buffer (bash, kick, etc.) - plays first
 
     // Light source (lantern, lightstone, etc.)
     irr::scene::ILightSceneNode* lightNode = nullptr;  // Point light attached to entity
@@ -260,6 +261,10 @@ public:
     // Queue received damage animation into combat buffer (from emote packets)
     // This integrates with the combat buffer so attack vs damage priority can be decided
     void queueReceivedDamageAnimation(uint16_t spawnId);
+
+    // Queue combat skill animation into combat buffer (bash, kick, etc.)
+    // Skill animations take priority and play before normal weapon attacks
+    void queueSkillAnimation(uint16_t spawnId, const std::string& animCode);
 
     // Set entity light level (from equipped light sources like lanterns, lightstones)
     // lightLevel: 0=no light, higher values=brighter light (max 255)
