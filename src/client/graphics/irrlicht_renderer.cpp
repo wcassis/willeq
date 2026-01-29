@@ -5052,7 +5052,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     // ===== Environmental Particle System Update =====
-    if (particleManager_ && particleManager_->isEnabled()) {
+    // Only update after player has fully loaded and is in zone (zoneReady_)
+    // This prevents issues with uninitialized state during zone load
+    if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
         // Update player position for particle spawning
         particleManager_->setPlayerPosition(
             glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
@@ -5064,7 +5066,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     // ===== Ambient Creatures (Boids) System Update =====
-    if (boidsManager_ && boidsManager_->isEnabled()) {
+    // Only update after player has fully loaded and is in zone (zoneReady_)
+    // This prevents crashes from invalid collision selectors during zone load
+    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
         // Update player position (for scatter behavior when player approaches)
         boidsManager_->setPlayerPosition(
             glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
@@ -5076,7 +5080,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     // ===== Tumbleweed System Update =====
-    if (tumbleweedManager_ && tumbleweedManager_->isEnabled()) {
+    // Only update after player has fully loaded and is in zone (zoneReady_)
+    // This prevents crashes from invalid collision selectors during zone load
+    if (tumbleweedManager_ && tumbleweedManager_->isEnabled() && zoneReady_) {
         // Set up environment state for tumbleweeds
         Environment::EnvironmentState envState;
         envState.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
@@ -5234,13 +5240,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         drawRepairTargetBoundingBox();
     }
 
-    // Render environmental particles
-    if (particleManager_ && particleManager_->isEnabled()) {
+    // Render environmental particles (only after zone fully loaded)
+    if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
         particleManager_->render();
     }
 
-    // Render ambient creatures (boids)
-    if (boidsManager_ && boidsManager_->isEnabled()) {
+    // Render ambient creatures (boids) (only after zone fully loaded)
+    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
         boidsManager_->render();
     }
 
