@@ -44,6 +44,8 @@ irr::video::SColor getChannelColor(ChatChannel channel) {
             return irr::video::SColor(255, 255, 0, 0);      // Red
         case ChatChannel::NPCDialogue:
             return irr::video::SColor(255, 200, 200, 255);  // Light blue/lavender for NPC dialogue
+        case ChatChannel::CombatMiss:
+            return irr::video::SColor(255, 160, 160, 160);  // Gray for misses
         default:
             return irr::video::SColor(255, 200, 200, 200);  // Light gray
     }
@@ -64,6 +66,7 @@ const char* getChannelName(ChatChannel channel) {
         case ChatChannel::Raid:      return "raid";
         case ChatChannel::Combat:    return "combat";
         case ChatChannel::CombatSelf:return "combat";
+        case ChatChannel::CombatMiss:return "miss";
         case ChatChannel::Experience:return "exp";
         case ChatChannel::Loot:      return "loot";
         case ChatChannel::Spell:     return "spell";

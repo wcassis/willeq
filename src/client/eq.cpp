@@ -7207,6 +7207,22 @@ void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
 	LOG_DEBUG(MOD_COMBAT, "{}", text);
 }
 
+void EverQuest::AddChatMissMessage(const std::string &text)
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		auto* windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto* chatWindow = windowManager->getChatWindow();
+			if (chatWindow) {
+				chatWindow->addSystemMessage(text, eqt::ui::ChatChannel::CombatMiss);
+			}
+		}
+	}
+#endif
+	LOG_DEBUG(MOD_COMBAT, "{}", text);
+}
+
 // ============================================================================
 // Hotbar Button Management (Stub for future implementation)
 // ============================================================================
@@ -8816,7 +8832,7 @@ void EverQuest::RegisterCommands()
 	filter.name = "filter";
 	filter.usage = "/filter [channel]";
 	filter.description = "Toggle chat channel filter";
-	filter.detailedHelp = "Channels: say, tell, group, guild, shout, auction, ooc, emote, combat, exp, loot, npc, all";
+	filter.detailedHelp = "Channels: say, tell, group, guild, shout, auction, ooc, emote, combat, miss, exp, loot, npc, all";
 	filter.category = "Utility";
 	filter.handler = [this](const std::string& args) {
 		if (!m_renderer) return;
@@ -8835,6 +8851,7 @@ void EverQuest::RegisterCommands()
 			AddChatSystemMessage(fmt::format("OOC: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::OOC) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Emote: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Emote) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Combat: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Combat) ? "ON" : "OFF"));
+			AddChatSystemMessage(fmt::format("Miss: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::CombatMiss) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Exp: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Experience) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Loot: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Loot) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("NPC: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::NPCDialogue) ? "ON" : "OFF"));
@@ -8865,6 +8882,8 @@ void EverQuest::RegisterCommands()
 			ch = eqt::ui::ChatChannel::Emote;
 		} else if (channel == "combat") {
 			ch = eqt::ui::ChatChannel::Combat;
+		} else if (channel == "miss" || channel == "misses") {
+			ch = eqt::ui::ChatChannel::CombatMiss;
 		} else if (channel == "exp" || channel == "experience") {
 			ch = eqt::ui::ChatChannel::Experience;
 		} else if (channel == "loot") {
@@ -17010,17 +17029,21 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			AddChatCombatMessage(msg, false);
 		}
 	} else if (damage_amount == 0 && !target_name.empty()) {
-		// Miss
+		// Miss - use CombatMiss channel (filterable separately from hits)
 		bool player_is_source = (source_id == m_my_spawn_id);
 		bool player_is_target = (target_id == m_my_spawn_id);
 
 		std::string msg;
 		if (player_is_source) {
 			msg = fmt::format("You try to hit {} but miss!", target_name);
-			AddChatCombatMessage(msg, true);
+			AddChatMissMessage(msg);
 		} else if (player_is_target && !source_name.empty()) {
 			msg = fmt::format("{} tries to hit YOU but misses!", source_name);
-			AddChatCombatMessage(msg, true);
+			AddChatMissMessage(msg);
+		} else if (!source_name.empty()) {
+			// Observing combat between others - also show misses
+			msg = fmt::format("{} tries to hit {} but misses!", source_name, target_name);
+			AddChatMissMessage(msg);
 		}
 	}
 

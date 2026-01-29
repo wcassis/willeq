@@ -33,7 +33,8 @@ enum class ChatChannel : uint8_t {
     Spell = 104,
     System = 105,
     Error = 106,
-    NPCDialogue = 107  // NPC dialogue from FormattedMessage
+    NPCDialogue = 107,  // NPC dialogue from FormattedMessage
+    CombatMiss = 108    // Combat misses (filterable separately)
 };
 
 // A single chat message

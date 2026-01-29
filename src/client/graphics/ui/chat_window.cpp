@@ -1185,9 +1185,9 @@ void ChatWindow::saveSettings(const std::string& filename) {
         ChatChannel::Auction, ChatChannel::OOC, ChatChannel::Broadcast,
         ChatChannel::Tell, ChatChannel::Say, ChatChannel::Emote,
         ChatChannel::GMSay, ChatChannel::Raid, ChatChannel::Combat,
-        ChatChannel::CombatSelf, ChatChannel::Experience, ChatChannel::Loot,
-        ChatChannel::Spell, ChatChannel::System, ChatChannel::Error,
-        ChatChannel::NPCDialogue
+        ChatChannel::CombatSelf, ChatChannel::CombatMiss, ChatChannel::Experience,
+        ChatChannel::Loot, ChatChannel::Spell, ChatChannel::System,
+        ChatChannel::Error, ChatChannel::NPCDialogue
     };
     for (auto ch : allChannels) {
         channelFilters[std::to_string(static_cast<int>(ch))] = isChannelEnabled(ch);
@@ -1273,6 +1273,7 @@ void ChatWindow::initDefaultChannels() {
     enabledChannels_.insert(ChatChannel::Raid);
     enabledChannels_.insert(ChatChannel::Combat);
     enabledChannels_.insert(ChatChannel::CombatSelf);
+    enabledChannels_.insert(ChatChannel::CombatMiss);
     enabledChannels_.insert(ChatChannel::Experience);
     enabledChannels_.insert(ChatChannel::Loot);
     enabledChannels_.insert(ChatChannel::Spell);
@@ -1285,6 +1286,7 @@ void ChatWindow::initCombatChannels() {
     // Default channels routed to combat tab
     combatChannels_.insert(ChatChannel::Combat);
     combatChannels_.insert(ChatChannel::CombatSelf);
+    combatChannels_.insert(ChatChannel::CombatMiss);
     combatChannels_.insert(ChatChannel::Spell);
     combatChannels_.insert(ChatChannel::Loot);
     combatChannels_.insert(ChatChannel::Experience);
