@@ -124,6 +124,7 @@ enum TitaniumZoneOpcodes {
 	HC_OP_SpawnDoor = 0x4c24,
 	HC_OP_ClientReady = 0x5e20,
 	HC_OP_ZoneChange = 0x5dd8,
+	HC_OP_RequestClientZoneChange = 0x7834,  // Server requests client to zone
 	HC_OP_SetServerFilter = 0x6563,
 	HC_OP_GroundSpawn = 0x0f47,
 	HC_OP_Weather = 0x254d,
@@ -488,6 +489,13 @@ enum PositionState {
 	POS_DEAD = 4
 };
 
+// Water states for swimming
+enum class WaterState : uint8_t {
+	NotInWater = 0,   // On land, not touching water
+	OnSurface = 1,    // On water surface (swimming)
+	Submerged = 2     // Fully underwater
+};
+
 // Chat channel types
 enum ChatChannelType {
 	CHAT_CHANNEL_GUILD = 0,
@@ -778,6 +786,17 @@ public:
 	void SendMovementHistory();
 	void Jump();
 	void UpdateJump();
+
+	// Swimming methods
+	void UpdateWaterState();           // Check BSP region and update water state
+	void OnEnterWater();               // Called when entering water
+	void OnExitWater();                // Called when exiting water
+	float GetSwimSpeed() const;        // Get swim speed based on skill
+	WaterState GetWaterState() const { return m_water_state; }
+	bool IsSwimming() const { return m_water_state != WaterState::NotInWater; }
+	void SetSwimUp(bool up) { m_swim_up = up; }
+	void SetSwimDown(bool down) { m_swim_down = down; }
+
 	void StartUpdateLoop();
 	void StopUpdateLoop();
 	void PerformEmote(uint32_t animation);
@@ -1146,6 +1165,7 @@ private:
 	void ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p);
 	void ZoneProcessLevelUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
+	void ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p);
 	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
 	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
 	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);
@@ -1452,6 +1472,12 @@ private:
 	bool m_is_jumping = false;
 	float m_jump_start_z = 0.0f;
 	std::chrono::steady_clock::time_point m_jump_start_time;
+
+	// Swimming state
+	WaterState m_water_state = WaterState::NotInWater;
+	float m_water_surface_z = 0.0f;  // Z coordinate of water surface when swimming
+	bool m_swim_up = false;          // Currently pressing swim up key
+	bool m_swim_down = false;        // Currently pressing swim down key
 
 	// Camp timer
 	bool m_is_camping = false;

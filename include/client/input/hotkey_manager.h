@@ -77,6 +77,8 @@ enum class HotkeyAction : uint32_t {
     TurnLeft,
     TurnRight,
     Jump,
+    SwimUp,     // Swim upward ([ key)
+    SwimDown,   // Swim downward (] key)
 
     // Toggles
     ToggleAutorun,

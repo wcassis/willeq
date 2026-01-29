@@ -2304,11 +2304,13 @@ void IrrlichtRenderer::unloadZone() {
 
     // Clear ambient creatures (boids) system
     if (boidsManager_) {
+        boidsManager_->setCollisionSelector(nullptr);  // Clear before dropping selector
         boidsManager_->onZoneLeave();
     }
 
     // Clear tumbleweed system
     if (tumbleweedManager_) {
+        tumbleweedManager_->setCollisionSelector(nullptr);  // Clear before dropping selector
         tumbleweedManager_->onZoneLeave();
     }
 
@@ -4139,6 +4141,23 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: mode={} playerInBounds={} camera={} (no camera update)",
                  static_cast<int>(cameraMode_), playerInBounds, camera_ != nullptr);
     }
+}
+
+void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {
+    if (playerMovement_.isSwimming != swimming) {
+        LOG_INFO(MOD_GRAPHICS, "[Swimming] {} water (swimSpeed={}, levitating={})",
+                 swimming ? "Entering" : "Exiting", swimSpeed, levitating);
+
+        // When entering water, cancel any jump in progress
+        if (swimming) {
+            playerMovement_.isJumping = false;
+            playerMovement_.verticalVelocity = 0.0f;
+        }
+    }
+
+    playerMovement_.isSwimming = swimming;
+    playerMovement_.swimSpeed = swimSpeed;
+    playerMovement_.isLevitating = levitating;
 }
 
 void IrrlichtRenderer::setCameraMode(CameraMode mode) {
@@ -6070,21 +6089,34 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     bool strafeLeft = isActionHeld(eqt::input::HotkeyAction::StrafeLeft);
     bool strafeRight = isActionHeld(eqt::input::HotkeyAction::StrafeRight);
     bool jumpPressed = isActionHeld(eqt::input::HotkeyAction::Jump);
+    bool swimUpPressed = isActionHeld(eqt::input::HotkeyAction::SwimUp);
+    bool swimDownPressed = isActionHeld(eqt::input::HotkeyAction::SwimDown);
+
+    // Update swimming input state
+    playerMovement_.swimUp = swimUpPressed;
+    playerMovement_.swimDown = swimDownPressed;
 
     // Update movement state
     playerMovement_.moveForward = forward || playerMovement_.autorun;
     playerMovement_.moveBackward = backward;
-    playerMovement_.strafeLeft = strafeLeft;
-    playerMovement_.strafeRight = strafeRight;
+    // Strafing is disabled when swimming (EQ behavior)
+    playerMovement_.strafeLeft = playerMovement_.isSwimming ? false : strafeLeft;
+    playerMovement_.strafeRight = playerMovement_.isSwimming ? false : strafeRight;
     playerMovement_.turnLeft = turnLeft;
     playerMovement_.turnRight = turnRight;
 
-    // Handle jump initiation (only when on ground)
-    if (jumpPressed && !playerMovement_.isJumping) {
-        playerMovement_.isJumping = true;
-        playerMovement_.verticalVelocity = playerMovement_.jumpVelocity;
-        if (playerConfig_.collisionDebug) {
-            LOG_INFO(MOD_GRAPHICS, "[Jump] Started jump with velocity {}", playerMovement_.verticalVelocity);
+    // Handle jump/swim up initiation
+    if (playerMovement_.isSwimming) {
+        // In water: Space = swim up, no jump
+        // Vertical movement is handled in the swimming movement calculation below
+    } else {
+        // On land: Space = jump (only when on ground)
+        if (jumpPressed && !playerMovement_.isJumping) {
+            playerMovement_.isJumping = true;
+            playerMovement_.verticalVelocity = playerMovement_.jumpVelocity;
+            if (playerConfig_.collisionDebug) {
+                LOG_INFO(MOD_GRAPHICS, "[Jump] Started jump with velocity {}", playerMovement_.verticalVelocity);
+            }
         }
     }
 
@@ -6129,36 +6161,68 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     float headingRad = heading / 512.0f * 2.0f * static_cast<float>(M_PI);
 
     // Calculate movement vector
-    float moveX = 0.0f, moveY = 0.0f;
+    float moveX = 0.0f, moveY = 0.0f, moveZ = 0.0f;
 
-    if (playerMovement_.moveForward) {
-        float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
-        moveX += std::sin(headingRad) * speed;
-        moveY += std::cos(headingRad) * speed;
-    }
-    if (playerMovement_.moveBackward) {
-        float speed = playerMovement_.backwardSpeed;
-        moveX -= std::sin(headingRad) * speed;
-        moveY -= std::cos(headingRad) * speed;
-    }
-    if (playerMovement_.strafeLeft) {
-        float strafeRad = headingRad - static_cast<float>(M_PI) / 2.0f;
-        moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
-        moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
-    }
-    if (playerMovement_.strafeRight) {
-        float strafeRad = headingRad + static_cast<float>(M_PI) / 2.0f;
-        moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
-        moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
+    if (playerMovement_.isSwimming) {
+        // Swimming movement - use swim speeds, no strafing
+        if (playerMovement_.moveForward) {
+            float speed = playerMovement_.swimSpeed;
+            moveX += std::sin(headingRad) * speed;
+            moveY += std::cos(headingRad) * speed;
+        }
+        if (playerMovement_.moveBackward) {
+            float speed = playerMovement_.swimBackwardSpeed;
+            moveX -= std::sin(headingRad) * speed;
+            moveY -= std::cos(headingRad) * speed;
+        }
+        // Strafing disabled in water (already handled above but being explicit)
+
+        // Vertical movement in water
+        if (playerMovement_.swimUp) {
+            moveZ += playerMovement_.swimVerticalSpeed;
+        }
+        if (playerMovement_.swimDown) {
+            moveZ -= playerMovement_.swimVerticalSpeed;
+        }
+
+        // Apply sinking when idle (unless swimming up or levitating)
+        bool hasHorizontalMovement = playerMovement_.moveForward || playerMovement_.moveBackward;
+        bool hasVerticalInput = playerMovement_.swimUp || playerMovement_.swimDown;
+        if (!hasHorizontalMovement && !hasVerticalInput && !playerMovement_.isLevitating) {
+            // Sink slowly when idle in water (unless levitating)
+            moveZ -= playerMovement_.sinkRate;
+        }
+    } else {
+        // Normal ground movement
+        if (playerMovement_.moveForward) {
+            float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
+            moveX += std::sin(headingRad) * speed;
+            moveY += std::cos(headingRad) * speed;
+        }
+        if (playerMovement_.moveBackward) {
+            float speed = playerMovement_.backwardSpeed;
+            moveX -= std::sin(headingRad) * speed;
+            moveY -= std::cos(headingRad) * speed;
+        }
+        if (playerMovement_.strafeLeft) {
+            float strafeRad = headingRad - static_cast<float>(M_PI) / 2.0f;
+            moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
+            moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
+        }
+        if (playerMovement_.strafeRight) {
+            float strafeRad = headingRad + static_cast<float>(M_PI) / 2.0f;
+            moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
+            moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
+        }
     }
 
     // Calculate proposed new position
     float newX = playerX_ + moveX * deltaTime;
     float newY = playerY_ + moveY * deltaTime;
-    float newZ = playerZ_;
+    float newZ = playerZ_ + moveZ * deltaTime;
 
-    // Apply jump physics
-    if (playerMovement_.isJumping) {
+    // Apply jump/fall physics (only when not swimming)
+    if (!playerMovement_.isSwimming && playerMovement_.isJumping) {
         // Apply gravity to vertical velocity
         playerMovement_.verticalVelocity -= playerMovement_.gravity * deltaTime;
 
@@ -6170,14 +6234,16 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
     // Apply collision detection if available and we're actually moving
     bool positionChanged = false;
-    bool isMoving = (moveX != 0.0f || moveY != 0.0f);
-    bool isJumpMoving = playerMovement_.isJumping;
+    bool isMoving = (moveX != 0.0f || moveY != 0.0f || moveZ != 0.0f);
+    bool isJumpMoving = playerMovement_.isJumping && !playerMovement_.isSwimming;
+    bool isSwimMoving = playerMovement_.isSwimming && (moveX != 0.0f || moveY != 0.0f || moveZ != 0.0f);
 
-    if (isMoving || isJumpMoving) {
+    if (isMoving || isJumpMoving || isSwimMoving) {
         // Debug: show movement attempt
-        LOG_TRACE(MOD_MOVEMENT, "Attempting move: delta=({}, {}) from ({}, {}, {}){}",
-                  moveX * deltaTime, moveY * deltaTime, playerX_, playerY_, playerZ_,
-                  (isJumpMoving ? " [JUMPING]" : ""));
+        LOG_TRACE(MOD_MOVEMENT, "Attempting move: delta=({}, {}, {}) from ({}, {}, {}){}{}",
+                  moveX * deltaTime, moveY * deltaTime, moveZ * deltaTime, playerX_, playerY_, playerZ_,
+                  (isJumpMoving ? " [JUMPING]" : ""),
+                  (isSwimMoving ? " [SWIMMING]" : ""));
         LOG_TRACE(MOD_MOVEMENT, "Collision: {}, Irrlicht: {}, Map: {}",
                   (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
                   (useIrrlichtCollision_ && zoneTriangleSelector_ ? "YES" : "NO"),
@@ -6261,6 +6327,52 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     }
                     // Allow horizontal movement while in air
                     positionChanged = true;
+                } else if (playerMovement_.isSwimming) {
+                    // Swimming - no ground snap, but stop at floor/ceiling
+                    // Player sinks slowly (handled by sinkRate in movement calc)
+
+                    // Check ceiling collision when swimming up
+                    if (newZ > playerZ_) {
+                        // Cast ray from current head to target head position
+                        // Head is approximately modelYOffset above center (same as feet are below)
+                        float headHeight = modelYOffset;
+                        // Irrlicht coords: (x, z, y) where Irrlicht Y = EQ Z
+                        irr::core::vector3df headStart(playerX_, playerZ_ + headHeight, playerY_);
+                        irr::core::vector3df headEnd(newX, newZ + headHeight, newY);
+                        irr::core::vector3df ceilingHit;
+                        irr::core::triangle3df ceilingTri;
+
+                        float deltaZ = newZ - playerZ_;
+                        LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: from Z={} to Z={} (delta={}), ray ({},{},{}) -> ({},{},{})",
+                            playerZ_, newZ, deltaZ, headStart.X, headStart.Y, headStart.Z, headEnd.X, headEnd.Y, headEnd.Z);
+
+                        if (checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri)) {
+                            // Hit ceiling - clamp newZ to just below the hit point
+                            // ceilingHit.Y is in Irrlicht coords (EQ Z)
+                            // Player center should be headHeight below the ceiling hit
+                            float maxZ = ceilingHit.Y - headHeight - 0.1f;  // Small buffer
+                            LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling at {}, clamping newZ from {} to {}", ceilingHit.Y, newZ, maxZ);
+                            if (newZ > maxZ) {
+                                newZ = maxZ;
+                            }
+                        } else {
+                            LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: no collision detected");
+                        }
+                    }
+
+                    // Check if we'd go below ground and clamp if so
+                    // Note: findGroundZIrrlicht returns feetZ+1000 as a "blocked" sentinel when hitting a ceiling
+                    // We need to ignore that sentinel value for floor clamping
+                    float feetZ = newZ - modelYOffset;
+                    float maxReasonableGround = playerZ_ + 100.0f;  // Ground can't reasonably be 100+ units above current position
+                    if (groundZ < maxReasonableGround && feetZ < groundZ) {
+                        // Would sink below ground - stop at ground level
+                        newZ = groundZ + modelYOffset;
+                        if (playerConfig_.collisionDebug) {
+                            LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom at groundZ={}, serverZ={}", groundZ, newZ);
+                        }
+                    }
+                    positionChanged = true;
                 } else {
                     // Normal ground movement - check step height
                     // Compare feet positions: current feet vs target ground
@@ -6287,7 +6399,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     }
                 }
             } else {
-                // Horizontal movement blocked - try wall sliding or continue jump vertically
+                // Horizontal movement blocked - try wall sliding or continue jump/swim vertically
                 if (playerMovement_.isJumping) {
                     // Even if horizontal is blocked, continue vertical jump movement
                     float groundZ = findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
@@ -6304,6 +6416,42 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     // Keep X/Y at current position but update Z
                     newX = playerX_;
                     newY = playerY_;
+                    positionChanged = true;
+                } else if (playerMovement_.isSwimming) {
+                    // Horizontal blocked while swimming - allow vertical movement at current X/Y
+                    newX = playerX_;
+                    newY = playerY_;
+
+                    // Check ceiling collision when swimming up
+                    if (newZ > playerZ_) {
+                        float headHeight = modelYOffset;
+                        irr::core::vector3df headStart(playerX_, playerZ_ + headHeight, playerY_);
+                        irr::core::vector3df headEnd(playerX_, newZ + headHeight, playerY_);
+                        irr::core::vector3df ceilingHit;
+                        irr::core::triangle3df ceilingTri;
+
+                        if (checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri)) {
+                            float maxZ = ceilingHit.Y - headHeight - 0.1f;
+                            if (newZ > maxZ) {
+                                newZ = maxZ;
+                                if (playerConfig_.collisionDebug) {
+                                    LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (blocked horiz) at {}, clamped to serverZ={}", ceilingHit.Y, newZ);
+                                }
+                            }
+                        }
+                    }
+
+                    // Check floor collision
+                    // Note: findGroundZIrrlicht returns feetZ+1000 as a "blocked" sentinel when hitting a ceiling
+                    float groundZ = findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
+                    float feetZ = newZ - modelYOffset;
+                    float maxReasonableGround = playerZ_ + 100.0f;
+                    if (groundZ < maxReasonableGround && feetZ < groundZ) {
+                        newZ = groundZ + modelYOffset;
+                        if (playerConfig_.collisionDebug) {
+                            LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (blocked horiz) at groundZ={}, serverZ={}", groundZ, newZ);
+                        }
+                    }
                     positionChanged = true;
                 } else {
                     // Try wall sliding - X only
@@ -6375,6 +6523,69 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                         if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap, blocked) at groundZ={}, serverZ={}", currentGroundZ, newZ);
                         }
+                    }
+                    positionChanged = true;
+                }
+            } else if (playerMovement_.isSwimming) {
+                // Swimming with HCMap - no ground snap, but stop at floor/ceiling
+                bool losCheck = checkMovementCollision(playerX_, playerY_, playerZ_, newX, newY, newZ);
+                if (losCheck) {
+                    // Check ceiling collision when swimming up
+                    if (newZ > playerZ_ && collisionMap_) {
+                        // Cast ray from current head to target head position
+                        float headHeight = modelYOffset;
+                        glm::vec3 headStart(playerX_, playerY_, playerZ_ + headHeight);
+                        glm::vec3 headEnd(newX, newY, newZ + headHeight);
+                        glm::vec3 ceilingHit;
+
+                        if (!collisionMap_->CheckLOSWithHit(headStart, headEnd, &ceilingHit)) {
+                            // Hit ceiling - clamp newZ to just below the hit point
+                            float maxZ = ceilingHit.z - headHeight - 0.1f;  // Small buffer
+                            if (newZ > maxZ) {
+                                newZ = maxZ;
+                                if (playerConfig_.collisionDebug) {
+                                    LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
+                                }
+                            }
+                        }
+                    }
+
+                    float feetZ = newZ - modelYOffset;
+                    if (targetGroundZ != BEST_Z_INVALID && feetZ < targetGroundZ) {
+                        // Would sink below ground - stop at ground level
+                        newZ = targetGroundZ + modelYOffset;
+                        if (playerConfig_.collisionDebug) {
+                            LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
+                        }
+                    }
+                    positionChanged = true;
+                } else {
+                    // Horizontal blocked, allow vertical movement at current X/Y
+                    newX = playerX_;
+                    newY = playerY_;
+
+                    // Check ceiling collision for vertical-only movement when swimming up
+                    if (newZ > playerZ_ && collisionMap_) {
+                        float headHeight = modelYOffset;
+                        glm::vec3 headStart(playerX_, playerY_, playerZ_ + headHeight);
+                        glm::vec3 headEnd(playerX_, playerY_, newZ + headHeight);
+                        glm::vec3 ceilingHit;
+
+                        if (!collisionMap_->CheckLOSWithHit(headStart, headEnd, &ceilingHit)) {
+                            float maxZ = ceilingHit.z - headHeight - 0.1f;
+                            if (newZ > maxZ) {
+                                newZ = maxZ;
+                                if (playerConfig_.collisionDebug) {
+                                    LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap, blocked horiz) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
+                                }
+                            }
+                        }
+                    }
+
+                    float currentGroundZ = findGroundZ(playerX_, playerY_, newZ);
+                    float feetZ = newZ - modelYOffset;
+                    if (currentGroundZ != BEST_Z_INVALID && feetZ < currentGroundZ) {
+                        newZ = currentGroundZ + modelYOffset;
                     }
                     positionChanged = true;
                 }
@@ -6606,14 +6817,22 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
     // Update player entity animation based on movement state (runs every frame)
     if (entityRenderer_) {
-        // Jump animation takes priority (playThrough)
-        if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0) {
+        // Jump animation takes priority (playThrough) - but not when swimming
+        if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0 && !playerMovement_.isSwimming) {
             // Only trigger jump animation on the way up (ascending)
             // Use l03 for running jump, l04 for standing jump
             if (hasMovementInput) {
                 entityRenderer_->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
             } else {
                 entityRenderer_->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
+            }
+        } else if (playerMovement_.isSwimming) {
+            // Swimming animations
+            bool hasSwimMovement = hasMovementInput || playerMovement_.swimUp || playerMovement_.swimDown;
+            if (hasSwimMovement) {
+                entityRenderer_->setPlayerEntityAnimation("l09", true, playerMovement_.swimSpeed);  // Swim treading/moving
+            } else {
+                entityRenderer_->setPlayerEntityAnimation("p06", true);  // Swim idle
             }
         } else if (hasMovementInput) {
             // Use run animation for forward movement when running, walk for everything else

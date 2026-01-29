@@ -23,6 +23,8 @@
             "TurnLeft": ["A", "Left"],
             "TurnRight": ["D", "Right"],
             "Jump": "Space",
+            "SwimUp": "BracketLeft",
+            "SwimDown": "BracketRight",
             "ToggleAutoAttack": "Q",
             "Attack": "Ctrl+Q",
             "ToggleAutorun": ["Grave", "NumpadAdd", "NumLock"],

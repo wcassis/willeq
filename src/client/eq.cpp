@@ -21,6 +21,7 @@
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_config_loader.h"
 #include "client/graphics/weather_quality_preset.h"
+#include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/window_manager.h"
@@ -42,6 +43,7 @@
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/sound_assets.h"
 #include "client/audio/door_sounds.h"
+#include "client/audio/water_sounds.h"
 #endif
 
 #include "client/animation_constants.h"
@@ -141,6 +143,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_SpawnDoor: return "HC_OP_SpawnDoor";
 		case HC_OP_ClientReady: return "HC_OP_ClientReady";
 		case HC_OP_ZoneChange: return "HC_OP_ZoneChange";
+		case HC_OP_RequestClientZoneChange: return "HC_OP_RequestClientZoneChange";
 		case HC_OP_SetServerFilter: return "HC_OP_SetServerFilter";
 		case HC_OP_GroundSpawn: return "HC_OP_GroundSpawn";
 		case HC_OP_ClickObject: return "HC_OP_ClickObject";
@@ -2123,6 +2126,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_ZoneChange:
 		ZoneProcessZoneChange(p);
+		break;
+	case HC_OP_RequestClientZoneChange:
+		ZoneProcessRequestClientZoneChange(p);
 		break;
 	case HC_OP_SimpleMessage:
 		ZoneProcessSimpleMessage(p);
@@ -12688,6 +12694,38 @@ void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
 	}
 }
 
+void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
+{
+	// Server is requesting that we initiate a zone change
+	// Uses RequestClientZoneChange_Struct (24 bytes)
+
+	if (p.Length() < 26) {  // 2 bytes opcode + 24 bytes struct
+		LOG_WARN(MOD_ZONE, "RequestClientZoneChange packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	// Parse RequestClientZoneChange_Struct
+	uint16_t zone_id = p.GetUInt16(2);
+	uint16_t instance_id = p.GetUInt16(4);
+	float zone_y = p.GetFloat(6);   // Server sends y first
+	float zone_x = p.GetFloat(10);  // Then x
+	float zone_z = p.GetFloat(14);
+	float heading = p.GetFloat(18);
+	uint32_t type = p.GetUInt32(22);
+
+	// Swap x/y for our coordinate system
+	float target_x = zone_y;
+	float target_y = zone_x;
+	float target_z = zone_z;
+
+	LOG_INFO(MOD_ZONE, "Server requests zone change: zone={} instance={} pos=({:.1f}, {:.1f}, {:.1f}) heading={:.1f} type={}",
+		zone_id, instance_id, target_x, target_y, target_z, heading, type);
+
+	// Respond with OP_ZoneChange to initiate the actual zone change
+	// The server will then respond with OP_ZoneChange with success=1
+	RequestZoneChange(zone_id, target_x, target_y, target_z, heading);
+}
+
 void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 {
 	// Server response to our zone change request (or server-initiated zone change)
@@ -14769,12 +14807,165 @@ void EverQuest::UpdateJump()
 	}
 }
 
+void EverQuest::UpdateWaterState()
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (!m_renderer || !IsFullyZonedIn()) {
+		return;
+	}
+
+	WaterState newState = WaterState::NotInWater;
+	float waterSurfaceZ = 0.0f;
+
+	// Fully underwater zones - these don't have BSP water regions
+	// The entire zone is submerged so we hardcode them here
+	bool isFullyUnderwaterZone = (m_current_zone_name == "kedge");
+
+	if (isFullyUnderwaterZone) {
+		newState = WaterState::Submerged;
+	} else {
+		// Normal water detection via BSP regions
+		auto bspTree = m_renderer->getZoneBspTree();
+		if (bspTree) {
+			// Check the region at current player position
+			// In EQ, the "head" is approximately 6 units above feet position
+			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
+			float headZ = m_z + HEAD_HEIGHT_OFFSET;
+
+			auto region = bspTree->findRegionForPoint(m_x, m_y, m_z);
+
+			if (region) {
+				// Check if this region is water
+				bool isWaterRegion = false;
+				for (auto type : region->regionTypes) {
+					if (type == EQT::Graphics::RegionType::Water ||
+					    type == EQT::Graphics::RegionType::FreezingWater ||
+					    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+						isWaterRegion = true;
+						break;
+					}
+				}
+
+				if (isWaterRegion) {
+					// Check if head is also in water (determines OnSurface vs Submerged)
+					auto headRegion = bspTree->findRegionForPoint(m_x, m_y, headZ);
+					bool headInWater = false;
+					if (headRegion) {
+						for (auto type : headRegion->regionTypes) {
+							if (type == EQT::Graphics::RegionType::Water ||
+							    type == EQT::Graphics::RegionType::FreezingWater ||
+							    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+								headInWater = true;
+								break;
+							}
+						}
+					}
+
+					if (headInWater) {
+						newState = WaterState::Submerged;
+					} else {
+						newState = WaterState::OnSurface;
+						// Estimate water surface Z (head is above water, feet are in)
+						waterSurfaceZ = m_z + (HEAD_HEIGHT_OFFSET / 2.0f);
+					}
+				}
+			}
+		}
+	}
+
+	// Handle state transitions
+	if (newState != m_water_state) {
+		WaterState oldState = m_water_state;
+		m_water_state = newState;
+		m_water_surface_z = waterSurfaceZ;
+
+		if (oldState == WaterState::NotInWater && newState != WaterState::NotInWater) {
+			OnEnterWater();
+		} else if (oldState != WaterState::NotInWater && newState == WaterState::NotInWater) {
+			OnExitWater();
+		}
+	}
+
+	// Update renderer's swimming state
+	float swimSpeed = GetSwimSpeed();
+
+	// Check if player is levitating (flymode 2)
+	bool isLevitating = false;
+	auto myEntity = m_entities.find(m_my_spawn_id);
+	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
+		isLevitating = true;
+	}
+
+	m_renderer->setSwimmingState(m_water_state != WaterState::NotInWater, swimSpeed, isLevitating);
+#endif
+}
+
+void EverQuest::OnEnterWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+	}
+
+	// Cancel any jump in progress
+	m_is_jumping = false;
+
+	// Send flymode=3 (water) to server
+	SendSpawnAppearance(AT_FLYMODE, 3);
+
+#ifdef WITH_AUDIO
+	// Play water entry sound
+	if (m_audio_manager) {
+		PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
+	}
+#endif
+}
+
+void EverQuest::OnExitWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+	}
+
+	// Check if player is levitating (flymode 2 from buffs)
+	// If levitating, keep flymode 2, otherwise reset to 0
+	auto myEntity = m_entities.find(m_my_spawn_id);
+	uint8_t newFlymode = 0;
+	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
+		newFlymode = 2;  // Keep levitating
+	}
+
+	SendSpawnAppearance(AT_FLYMODE, newFlymode);
+
+	m_water_state = WaterState::NotInWater;
+}
+
+float EverQuest::GetSwimSpeed() const
+{
+	// Base swim speed is slower than running
+	constexpr float BASE_SWIM_SPEED = 20.0f;
+
+	// Skill bonus: up to 50% at max skill (200)
+	uint32_t swimSkill = 0;
+	if (m_skill_manager) {
+		swimSkill = m_skill_manager->getSkillValue(50);  // Skill ID 50 = Swimming
+	}
+
+	// Cap skill at 200 for calculation
+	if (swimSkill > 200) swimSkill = 200;
+
+	// Formula: BASE_SPEED * (1.0 + (skill / 200) * 0.5)
+	// At skill 0: 20 units/sec
+	// At skill 200: 30 units/sec
+	float skillBonus = (static_cast<float>(swimSkill) / 200.0f) * 0.5f;
+	return BASE_SWIM_SPEED * (1.0f + skillBonus);
+}
+
 void EverQuest::PerformEmote(uint32_t animation)
 {
 	if (!IsFullyZonedIn()) {
 		return;
 	}
-	
+
 	// Send the emote animation using the proper Animation packet
 	SendAnimation(static_cast<uint8_t>(animation));
 	
@@ -18827,9 +19018,13 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
 	m_heading = update.heading * 360.0f / 512.0f;
 
+	// Check water state at new position
+	UpdateWaterState();
+
 	// Derive movement state from velocity
 	float speed2D = std::sqrt(update.dx * update.dx + update.dy * update.dy);
-	bool isMoving = speed2D > 0.01f;
+	float speed3D = std::sqrt(speed2D * speed2D + update.dz * update.dz);
+	bool isMoving = (m_water_state != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
 	m_is_moving = isMoving;
 
 	// Determine if moving backward by comparing velocity direction to heading
@@ -18844,18 +19039,30 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 	bool isMovingBackward = isMoving && dotProduct < -0.01f;
 
 	// Determine animation based on movement state
-	// Negative animation = play in reverse (e.g., walking backward)
-	if (!isMoving) {
-		m_animation = ANIM_STAND;
-	} else if (speed2D > 5.0f) {  // Running threshold
-		m_animation = isMovingBackward ? -ANIM_RUN : ANIM_RUN;
+	if (m_water_state != WaterState::NotInWater) {
+		// Swimming animations
+		// Animation code 7 = swimming/treading, 6 = swim idle
+		if (isMoving) {
+			m_animation = 7;  // Swim treading (l09)
+		} else {
+			m_animation = 6;  // Swim idle (p06)
+		}
 	} else {
-		m_animation = isMovingBackward ? -ANIM_WALK : ANIM_WALK;
+		// Normal ground animations
+		// Negative animation = play in reverse (e.g., walking backward)
+		if (!isMoving) {
+			m_animation = ANIM_STAND;
+		} else if (speed2D > 5.0f) {  // Running threshold
+			m_animation = isMovingBackward ? -ANIM_RUN : ANIM_RUN;
+		} else {
+			m_animation = isMovingBackward ? -ANIM_WALK : ANIM_WALK;
+		}
 	}
 
 	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={}",
-			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_animation);
+		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={} water={}",
+			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_animation,
+			static_cast<int>(m_water_state));
 	}
 
 	// Check for zone line collision
