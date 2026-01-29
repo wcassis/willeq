@@ -596,6 +596,17 @@ public:
     uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
     uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
 
+    // Combat animation buffering (for double/triple attack and dual wield detection)
+    // Buffers damage packets within 50ms window to detect multi-hit scenarios
+    void queueCombatAnimation(uint16_t sourceId, uint16_t targetId,
+                              uint8_t weaponSkill, int32_t damage, float damagePercent);
+
+    // Check if entity has pending combat animations in buffer
+    bool hasEntityPendingCombatAnims(uint16_t spawnId) const;
+
+    // Queue received damage animation into combat buffer (from emote packets)
+    void queueReceivedDamageAnimation(uint16_t spawnId);
+
     // First-person mode methods
     // Trigger first-person attack animation (weapon swing)
     void triggerFirstPersonAttack();

@@ -4982,6 +4982,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         entityRenderer_->updateInterpolation(deltaTime);
         // Update entity casting bars (timeout checks, etc.)
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
+        // Process expired combat animation buffers (for double/triple attack, dual wield)
+        entityRenderer_->processExpiredCombatBuffers();
         // Update constrained visibility (limits entity count/distance in constrained mode)
         if (camera_) {
             entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
@@ -8403,6 +8405,26 @@ uint8_t IrrlichtRenderer::getEntitySecondaryWeaponSkill(uint16_t spawnId) const 
         return entityRenderer_->getEntitySecondaryWeaponSkill(spawnId);
     }
     return 0;
+}
+
+void IrrlichtRenderer::queueCombatAnimation(uint16_t sourceId, uint16_t targetId,
+                                             uint8_t weaponSkill, int32_t damage, float damagePercent) {
+    if (entityRenderer_) {
+        entityRenderer_->queueCombatAnimation(sourceId, targetId, weaponSkill, damage, damagePercent);
+    }
+}
+
+bool IrrlichtRenderer::hasEntityPendingCombatAnims(uint16_t spawnId) const {
+    if (entityRenderer_) {
+        return entityRenderer_->hasEntityPendingCombatAnims(spawnId);
+    }
+    return false;
+}
+
+void IrrlichtRenderer::queueReceivedDamageAnimation(uint16_t spawnId) {
+    if (entityRenderer_) {
+        entityRenderer_->queueReceivedDamageAnimation(spawnId);
+    }
 }
 
 void IrrlichtRenderer::triggerFirstPersonAttack() {

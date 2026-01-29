@@ -5894,6 +5894,17 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		// Damage/hit reaction
 		case 3:  // Damage from front
 		case 4:  // Damage from back
+			// Server sends damage emote when entity takes melee damage
+			// For the PLAYER, we need to integrate this with the combat buffer system
+			// so that attack animations take priority over damage reactions when the
+			// player is both attacking and being attacked simultaneously
+			if (spawn_id == m_my_spawn_id) {
+				// Queue received damage into player's combat buffer instead of playing immediately
+				// This allows the buffer processing to decide attack vs damage priority
+				m_renderer->queueReceivedDamageAnimation(spawn_id);
+				LOG_DEBUG(MOD_COMBAT, "Queued received damage animation for player (will process with combat buffer)");
+				break;  // Don't play immediately - buffer will handle it
+			}
 			animCode = EQ::ANIM_DAMAGE_MINOR;  // d01
 			break;
 
@@ -17073,41 +17084,47 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 #endif
 
 #ifdef EQT_HAS_GRAPHICS
-	// Trigger damage reaction animation on target (if damage > 0 and not a miss)
-	// Note: Attack animations on source are triggered via ZoneProcessAction
-	if (m_graphics_initialized && m_renderer && damage_amount > 0) {
-		// Play damage reaction animation on target
-		// Don't play on dead entities
-		auto it = m_entities.find(target_id);
-		if (it != m_entities.end() && it->second.hp_percent > 0) {
-			// Calculate damage percentage to determine animation type
-			float damagePercent = 0.0f;
+	// Queue combat animation for buffered processing (handles double/triple attack, dual wield)
+	// Melee damage (type 0-79) is buffered; spells/DoT/environmental are processed immediately
+	if (m_graphics_initialized && m_renderer) {
+		bool isMeleeDamage = (damage_type < 80);
 
-			// For player, use actual max HP
+		// Don't animate dead entities
+		auto target_entity_it = m_entities.find(target_id);
+		bool targetAlive = (target_entity_it != m_entities.end() && target_entity_it->second.hp_percent > 0);
+
+		if (isMeleeDamage && targetAlive) {
+			// Calculate damage percentage for animation selection
+			float damagePercent = 0.0f;
 			if (target_id == m_my_spawn_id && m_max_hp > 0) {
 				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
-			} else {
-				// For NPCs, estimate based on level
-				// Rough HP estimate: level * 10-20 for most NPCs
-				// Use conservative estimate (level * 15) for damage percentage calc
-				uint8_t level = it->second.level > 0 ? it->second.level : 1;
+			} else if (target_entity_it != m_entities.end()) {
+				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
 				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
 				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
 			}
 
-			// Determine damage animation based on damage type and percentage
-			// EQ damage types:
-			// - 0-79: Melee damage (type is skill ID)
-			// - 231: Spell damage (lifetap)
-			// - 252: DoT damage
-			// - 253: Environmental damage (lava, drowning)
-			// - 254: Trap damage
-			// - 255: Fall damage
-			const char* damageAnim = nullptr;
-			bool isDrowning = (damage_type == 253);  // Environmental
-			bool isTrap = (damage_type == 254);      // Trap damage
+			// Queue combat animation - will be processed after 50ms buffer window
+			m_renderer->queueCombatAnimation(source_id, target_id, damage_type, damage_amount, damagePercent);
 
-			damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
+			if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
+				LOG_DEBUG(MOD_COMBAT, "Queued melee anim: source={} target={} skill={} dmg={} pct={:.1f}%",
+					source_id, target_id, damage_type, damage_amount, damagePercent);
+			}
+		} else if (damage_amount > 0 && targetAlive && !isMeleeDamage) {
+			// Non-melee damage (spells, DoT, environmental) - play immediately
+			float damagePercent = 0.0f;
+			if (target_id == m_my_spawn_id && m_max_hp > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
+			} else if (target_entity_it != m_entities.end()) {
+				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
+				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
+				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
+			}
+
+			bool isDrowning = (damage_type == 253);
+			bool isTrap = (damage_type == 254);
+			const char* damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
 
 			m_renderer->setEntityAnimation(target_id, damageAnim, false, true);
 			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
@@ -17116,8 +17133,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			}
 		}
 
-		// Trigger first-person attack animation when player deals damage
-		if (source_id == m_my_spawn_id && m_renderer->isFirstPersonMode()) {
+		// Trigger first-person attack animation when player attacks (including misses)
+		if (source_id == m_my_spawn_id && isMeleeDamage && m_renderer->isFirstPersonMode()) {
 			m_renderer->triggerFirstPersonAttack();
 		}
 	}

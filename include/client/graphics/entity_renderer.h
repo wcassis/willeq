@@ -116,6 +116,19 @@ struct EntityVisual {
     float fpAttackDuration = 0.5f;            // Duration of attack animation in seconds
     bool fpIsAttacking = false;               // True if attack animation is playing
 
+    // Combat animation buffering (for double/triple attack and dual wield detection)
+    struct PendingCombatAnim {
+        uint8_t weaponSkill;     // Weapon skill type (from damage packet)
+        int32_t damage;          // Damage amount (0 = miss)
+        float damagePercent;     // Damage as % of target's max HP
+        uint16_t targetId;       // Target of this attack
+        std::chrono::steady_clock::time_point timestamp;  // When packet received
+    };
+    std::vector<PendingCombatAnim> pendingCombatAnims;
+    std::chrono::steady_clock::time_point combatAnimBufferStart;  // Start of current buffer window
+    bool combatBufferActive = false;  // True if we're collecting combat anims in buffer
+    bool receivedDamageInBuffer = false;  // True if entity received damage during buffer window
+
     // Light source (lantern, lightstone, etc.)
     irr::scene::ILightSceneNode* lightNode = nullptr;  // Point light attached to entity
     uint8_t lightLevel = 0;                            // Current light level (0=none, 1-255=intensity)
@@ -226,6 +239,27 @@ public:
     // Set weapon delay for attack animation speed matching (Phase 6.2)
     // delayMs: weapon delay in milliseconds (EQ delay * 100, e.g., delay 30 = 3000ms)
     void setEntityWeaponDelay(uint16_t spawnId, float delayMs);
+
+    // Combat animation buffering (for double/triple attack and dual wield detection)
+    // Call this for each damage packet received - buffers packets within 50ms window
+    // sourceId: entity dealing damage (plays attack animation)
+    // targetId: entity receiving damage (plays damage reaction)
+    // weaponSkill: weapon skill type from damage packet (0-79 for melee)
+    // damage: damage amount (0 = miss)
+    // damagePercent: damage as % of target's max HP
+    void queueCombatAnimation(uint16_t sourceId, uint16_t targetId,
+                              uint8_t weaponSkill, int32_t damage, float damagePercent);
+
+    // Process expired combat animation buffers (call each frame from update loop)
+    // Checks all entities with pending combat anims and processes buffers where window expired
+    void processExpiredCombatBuffers();
+
+    // Check if entity has pending combat animations in buffer
+    bool hasEntityPendingCombatAnims(uint16_t spawnId) const;
+
+    // Queue received damage animation into combat buffer (from emote packets)
+    // This integrates with the combat buffer so attack vs damage priority can be decided
+    void queueReceivedDamageAnimation(uint16_t spawnId);
 
     // Set entity light level (from equipped light sources like lanterns, lightstones)
     // lightLevel: 0=no light, higher values=brighter light (max 255)
@@ -438,6 +472,9 @@ private:
 
     // Remove entity from spatial grid
     void removeEntityFromGrid(uint16_t spawnId);
+
+    // Process combat animation buffer for a specific entity (internal helper)
+    void processCombatAnimationBufferForEntity(uint16_t sourceId, uint16_t targetId);
 
     // Get entities within distance of a point (uses spatial grid)
     void getEntitiesInRange(float centerX, float centerY, float range,
