@@ -16980,6 +16980,39 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 	// when the entity initiates an attack. The Action packet is for spell/ability effects.
 }
 
+// Helper: Get damage verb based on damage type
+// Returns pair: {second_person, third_person} e.g. {"crush", "crushes"}
+static std::pair<const char*, const char*> getDamageVerb(uint8_t damage_type) {
+	switch (damage_type) {
+		case 0:  // Blunt (1HBlunt, 2HBlunt)
+			return {"crush", "crushes"};
+		case 1:  // Slashing (1HSlashing, 2HSlashing)
+			return {"slash", "slashes"};
+		case 4:  // Hand-to-hand, Feign Death
+			return {"hit", "hits"};
+		case 7:  // Archery
+			return {"hit", "hits"};
+		case 8:  // Backstab
+			return {"backstab", "backstabs"};
+		case 10: // Bash
+			return {"bash", "bashes"};
+		case 21: // Dragon Punch
+			return {"strike", "strikes"};
+		case 23: // Eagle Strike, Tiger Claw
+			return {"strike", "strikes"};
+		case 30: // Kick, Flying Kick, Round Kick
+			return {"kick", "kicks"};
+		case 36: // Piercing (1HPiercing, 2HPiercing)
+			return {"pierce", "pierces"};
+		case 51: // Throwing
+			return {"hit", "hits"};
+		case 74: // Frenzy
+			return {"hit", "hits"};
+		default:
+			return {"hit", "hits"};
+	}
+}
+
 void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 {
 	LOG_INFO(MOD_COMBAT, "ZoneProcessDamage called, packet length={}", p.Length());
@@ -17053,13 +17086,16 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		bool player_is_target = (target_id == m_my_spawn_id);
 		bool player_is_source = (source_id == m_my_spawn_id);
 
+		// Get verb based on damage type (crush, slash, pierce, kick, etc.)
+		auto [verb_second, verb_third] = getDamageVerb(damage_type);
+
 		std::string msg;
 		if (player_is_source) {
 			// Player dealt damage
 			if (spell_id > 0 && spell_id != 0xFFFF) {
 				msg = fmt::format("You hit {} for {} points of non-melee damage.", target_name, damage_amount);
 			} else {
-				msg = fmt::format("You hit {} for {} points of damage.", target_name, damage_amount);
+				msg = fmt::format("You {} {} for {} points of damage.", verb_second, target_name, damage_amount);
 			}
 			AddChatCombatMessage(msg, true);
 		} else if (player_is_target) {
@@ -17067,7 +17103,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			if (spell_id > 0 && spell_id != 0xFFFF) {
 				msg = fmt::format("{} hit you for {} points of non-melee damage.", source_name.empty() ? "Unknown" : source_name, damage_amount);
 			} else {
-				msg = fmt::format("{} hits YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, damage_amount);
+				msg = fmt::format("{} {} YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, verb_third, damage_amount);
 			}
 			AddChatCombatMessage(msg, true);
 		} else if (!source_name.empty()) {
@@ -17075,7 +17111,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			if (spell_id > 0 && spell_id != 0xFFFF) {
 				msg = fmt::format("{} hit {} for {} points of non-melee damage.", source_name, target_name, damage_amount);
 			} else {
-				msg = fmt::format("{} hits {} for {} points of damage.", source_name, target_name, damage_amount);
+				msg = fmt::format("{} {} {} for {} points of damage.", source_name, verb_third, target_name, damage_amount);
 			}
 			AddChatCombatMessage(msg, false);
 		}
@@ -17084,16 +17120,19 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		bool player_is_source = (source_id == m_my_spawn_id);
 		bool player_is_target = (target_id == m_my_spawn_id);
 
+		// Get verb for miss messages too
+		auto [verb_second, verb_third] = getDamageVerb(damage_type);
+
 		std::string msg;
 		if (player_is_source) {
-			msg = fmt::format("You try to hit {} but miss!", target_name);
+			msg = fmt::format("You try to {} {} but miss!", verb_second, target_name);
 			AddChatMissMessage(msg);
 		} else if (player_is_target && !source_name.empty()) {
-			msg = fmt::format("{} tries to hit YOU but misses!", source_name);
+			msg = fmt::format("{} tries to {} YOU but misses!", source_name, verb_second);
 			AddChatMissMessage(msg);
 		} else if (!source_name.empty()) {
 			// Observing combat between others - also show misses
-			msg = fmt::format("{} tries to hit {} but misses!", source_name, target_name);
+			msg = fmt::format("{} tries to {} {} but misses!", source_name, verb_second, target_name);
 			AddChatMissMessage(msg);
 		}
 	}
