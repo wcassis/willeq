@@ -500,6 +500,11 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
     }
 
+    // Set ground finder callback for NPC terrain snapping during interpolation
+    entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
+        return this->findGroundZ(x, y, currentZ);
+    });
+
     // Preload numbered global character models for better coverage
     entityRenderer_->loadNumberedGlobals();
 
@@ -753,6 +758,10 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         if (config_.constrainedConfig.enabled) {
             entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
         }
+        // Set ground finder callback for NPC terrain snapping during interpolation
+        entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
+            return this->findGroundZ(x, y, currentZ);
+        });
     }
 
     // Load main global character models (global_chr.s3d)

@@ -4255,6 +4255,12 @@ void WindowManager::startHotbarCooldown(int buttonIndex, uint32_t durationMs) {
     }
 }
 
+void WindowManager::startSkillCooldown(uint32_t skillId, uint32_t durationMs) {
+    if (hotbarWindow_) {
+        hotbarWindow_->startSkillCooldown(skillId, durationMs);
+    }
+}
+
 void WindowManager::setHotbarCursor(HotbarButtonType type, uint32_t id,
                                      const std::string& emoteText, uint32_t iconId) {
     hotbarCursor_.setItem(type, id, emoteText, iconId);

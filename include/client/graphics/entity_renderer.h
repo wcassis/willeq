@@ -4,6 +4,7 @@
 #include <irrlicht.h>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -494,6 +495,12 @@ public:
     void setNameTagDistance(float distance) { nameTagDistance_ = distance; }
     float getNameTagDistance() const { return nameTagDistance_; }
 
+    // Ground finder callback for NPC terrain snapping during interpolation
+    // Signature: groundZ = callback(x, y, currentZ)
+    // Returns the ground Z at (x, y) considering currentZ, or currentZ if no ground found
+    using GroundFinderCallback = std::function<float(float x, float y, float currentZ)>;
+    void setGroundFinderCallback(GroundFinderCallback callback) { groundFinderCallback_ = std::move(callback); }
+
     // Coordinate offset adjustments
     void adjustOffsetX(float delta);
     void adjustOffsetY(float delta);
@@ -578,6 +585,9 @@ private:
     // Constrained rendering state
     const ConstrainedRendererConfig* constrainedConfig_ = nullptr;
     int visibleEntityCount_ = 0;  // Number of entities currently visible (for debug HUD)
+
+    // Ground finder callback for NPC terrain snapping
+    GroundFinderCallback groundFinderCallback_;
 };
 
 } // namespace Graphics

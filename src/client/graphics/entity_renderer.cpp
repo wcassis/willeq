@@ -1337,6 +1337,18 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         visual.lastY += visual.velocityY * deltaTime * damping;
         visual.lastZ += visual.velocityZ * deltaTime * damping;
 
+        // Snap NPC to ground during interpolation to follow terrain in hilly zones
+        // Only snap if moving horizontally (has XY velocity) and we have a ground finder
+        if (visual.isNPC && groundFinderCallback_ &&
+            (std::abs(visual.velocityX) > 0.01f || std::abs(visual.velocityY) > 0.01f)) {
+            float groundZ = groundFinderCallback_(visual.lastX, visual.lastY, visual.lastZ);
+            // Only snap if ground is within reasonable range (avoid teleporting through floors/ceilings)
+            float heightDiff = groundZ - visual.lastZ;
+            if (std::abs(heightDiff) < 20.0f) {
+                visual.lastZ = groundZ;
+            }
+        }
+
         // Debug moving target periodically
         if (isDebugTarget && targetDebugCounter % 60 == 0) {
             std::string animatorCurrent = visual.currentAnimation;

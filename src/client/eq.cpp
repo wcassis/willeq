@@ -18303,10 +18303,25 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 		// Set up skill activation feedback callback
 		if (m_skill_manager) {
-			m_skill_manager->setOnSkillActivated([this](uint8_t skill_id, bool success, const std::string& message) {
+			m_skill_manager->setOnSkillActivated([this, windowManager](uint8_t skill_id, bool success, const std::string& message) {
 				const char* skill_name = EQ::getSkillName(skill_id);
 				if (success) {
 					AddChatSystemMessage(fmt::format("You use {}!", skill_name));
+					// Calculate adjusted cooldown with haste modifier
+					// Total haste = equipment haste + buff haste
+					int32_t totalHaste = 0;
+					if (m_inventory_manager) {
+						auto equipStats = m_inventory_manager->calculateEquipmentStats();
+						totalHaste += equipStats.haste;
+					}
+					if (m_buff_manager) {
+						totalHaste += m_buff_manager->getPlayerStatMod(EQ::SpellEffect::AttackSpeed);
+					}
+					// Get adjusted recast time with haste applied
+					uint32_t adjustedCooldown = EQ::getAdjustedSkillRecastTime(skill_id, totalHaste);
+					if (adjustedCooldown > 0) {
+						windowManager->startSkillCooldown(skill_id, adjustedCooldown);
+					}
 				} else {
 					AddChatSystemMessage(fmt::format("Cannot use {}: {}", skill_name, message));
 				}
@@ -18459,6 +18474,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 				}
 				case eqt::ui::HotbarButtonType::Skill: {
 					// Activate skill by ID
+					// Cooldown is handled by the onSkillActivated callback
 					if (m_skill_manager) {
 						m_skill_manager->activateSkill(static_cast<uint8_t>(button.id));
 					}

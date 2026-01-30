@@ -405,46 +405,46 @@ inline const char* getSkillAnimationCode(uint8_t skill_id) {
 
 // ============================================================================
 // Skill Recast Times (in milliseconds)
+// Base values from EQEmu server (features.h) - server applies -1 second and
+// haste modifier, which is handled in getAdjustedSkillRecastTime()
 // ============================================================================
 
-inline uint32_t getSkillRecastTime(uint8_t skill_id) {
+inline uint32_t getSkillBaseRecastTime(uint8_t skill_id) {
     switch (skill_id) {
         case 8:  // Backstab
-            return 0;     // Melee timer based
+            return 9000;  // 9 seconds (BackstabReuseTime)
         case 9:  // BindWound
             return 1000;  // 1 second
         case 10: // Bash
-            return 0;     // Melee timer based
+            return 5000;  // 5 seconds (BashReuseTime)
         case 21: // DragonPunch
-            return 0;     // Melee timer based
+            return 6000;  // 6 seconds (TailRakeReuseTime)
         case 23: // EagleStrike
-            return 0;     // Melee timer based
+            return 5000;  // 5 seconds (EagleStrikeReuseTime)
         case 25: // FeignDeath
-            return 6000;  // 6 seconds
+            return 9000;  // 9 seconds (FeignDeathReuseTime)
         case 26: // FlyingKick
-            return 0;     // Melee timer based
+            return 7000;  // 7 seconds (FlyingKickReuseTime)
         case 27: // Forage
             return 10000; // 10 seconds
         case 29: // Hide
-            return 8000;  // 8 seconds
+            return 8000;  // 8 seconds (HideReuseTime)
         case 30: // Kick
-            return 0;     // Melee timer based
+            return 5000;  // 5 seconds (KickReuseTime)
         case 31: // Meditate
             return 0;     // Toggle
         case 32: // Mend
-            return 360000; // 6 minutes
+            return 360000; // 6 minutes (MendReuseTime)
         case 35: // PickLock
             return 1000;  // 1 second
         case 38: // RoundKick
-            return 0;     // Melee timer based
-        case 40: // SenseHeading
-            return 0;     // Instant
+            return 9000;  // 9 seconds (RoundKickReuseTime)
         case 42: // Sneak
-            return 0;     // Toggle
+            return 7000;  // 7 seconds (SneakReuseTime)
         case 48: // PickPocket
             return 8000;  // 8 seconds
         case 52: // TigerClaw
-            return 0;     // Melee timer based
+            return 6000;  // 6 seconds (TigerClawReuseTime)
         case 53: // Tracking
             return 0;     // Opens window
         case 55: // Fishing
@@ -452,10 +452,54 @@ inline uint32_t getSkillRecastTime(uint8_t skill_id) {
         case 67: // Begging
             return 10000; // 10 seconds
         case 73: // Taunt
-            return 5000;  // 5 seconds
+            return 5000;  // 5 seconds (TauntReuseTime)
+        case 74: // Frenzy
+            return 10000; // 10 seconds (FrenzyReuseTime)
         default:
             return 0;
     }
+}
+
+// Calculate adjusted recast time with haste modifier
+// Server formula: reuse_time = (BaseTime - 1) * haste_modifier / 100
+// haste_modifier = 10000 / (100 + haste) for positive haste
+// haste_modifier = (100 - haste) for negative haste (slow)
+// skillReduction is from items/AAs that reduce skill recast times (not currently tracked)
+inline uint32_t getAdjustedSkillRecastTime(uint8_t skill_id, int32_t haste, int32_t skillReduction = 0) {
+    uint32_t baseTime = getSkillBaseRecastTime(skill_id);
+    if (baseTime == 0) {
+        return 0;
+    }
+
+    // Server subtracts 1 second from base time before applying modifiers
+    int32_t recastTime = static_cast<int32_t>(baseTime) - 1000 - (skillReduction * 1000);
+    if (recastTime < 0) {
+        recastTime = 0;
+    }
+
+    // Apply haste modifier
+    int32_t hasteModifier;
+    if (haste >= 0) {
+        // Positive haste reduces cooldown
+        hasteModifier = 10000 / (100 + haste);
+    } else {
+        // Negative haste (slow) increases cooldown
+        hasteModifier = 100 - haste;
+    }
+
+    recastTime = (recastTime * hasteModifier) / 100;
+
+    // Minimum 1 second cooldown for skills that have a base cooldown
+    if (recastTime < 1000 && baseTime > 0) {
+        recastTime = 1000;
+    }
+
+    return static_cast<uint32_t>(recastTime);
+}
+
+// Legacy function for backward compatibility - returns base time without modifiers
+inline uint32_t getSkillRecastTime(uint8_t skill_id) {
+    return getSkillBaseRecastTime(skill_id);
 }
 
 } // namespace EQ
