@@ -12353,7 +12353,7 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 {
 	// SimpleMessage is used for system messages that use string templates
-	// SimpleMessage_Struct: color(4), string_id(4), unknown8(4)
+	// SimpleMessage_Struct: string_id(4), color(4), unknown8(4)
 	// Total: 12 bytes + 2 byte opcode = 14 bytes minimum
 	// Note: SimpleMessage has no argument data - placeholders must be filled from context
 
@@ -12362,8 +12362,10 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 		return;
 	}
 
-	uint32_t color_type = p.GetUInt32(2);   // color/type
-	uint32_t string_id = p.GetUInt32(6);    // string_id
+	// SimpleMessage_Struct: string_id (4 bytes), color (4 bytes), unknown8 (4 bytes)
+	// Offsets include 2-byte opcode prefix
+	uint32_t string_id = p.GetUInt32(2);    // string_id at offset 0
+	uint32_t color_type = p.GetUInt32(6);   // color at offset 4
 
 	// Get the message template for this string ID
 	std::string tmpl = GetStringMessage(string_id);
