@@ -895,6 +895,7 @@ public:
     bool isInventoryOpen() const;
     void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);
     void setCharacterDeity(const std::wstring& deity);
+    void setExpProgress(float progress);  // 0.0 to 1.0
     void updateCharacterStats(uint32_t curHp, uint32_t maxHp,
                               uint32_t curMana, uint32_t maxMana,
                               uint32_t curEnd, uint32_t maxEnd,
