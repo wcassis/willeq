@@ -720,6 +720,22 @@ struct ZoneChange_Struct {
 };
 
 /*
+ * RequestClientZoneChange_Struct
+ * Server requests client to initiate a zone change
+ * Size: 24 bytes
+ */
+struct RequestClientZoneChange_Struct {
+/*00*/ uint16_t zone_id;
+/*02*/ uint16_t instance_id;
+/*04*/ float    y;
+/*08*/ float    x;
+/*12*/ float    z;
+/*16*/ float    heading;
+/*20*/ uint32_t type;  // Usually 0x01, exact meaning unknown
+/*24*/
+};
+
+/*
  * Loot Request structure
  * Size: 4 bytes
  */
