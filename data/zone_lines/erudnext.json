@@ -1,0 +1,66 @@
+{
+  "zone": "erudnext",
+  "long_name": "Erudin",
+  "zone_lines": [
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "erudnint",
+      "target_long_name": "The Erudin Palace",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 189.0,
+        "y": 644.0,
+        "z": 78.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "tox",
+      "target_long_name": "Toxxulia Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 186.0,
+        "y": 1559.0,
+        "z": -44.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "toxxulia",
+      "target_long_name": "Toxxulia Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 186.0,
+        "y": 1559.0,
+        "z": -44.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "zone": "firiona",
+  "long_name": "Firiona Vie",
+  "zone_lines": [
+    {
+      "target_zone": "dreadlands",
+      "target_long_name": "The Dreadlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -6001.0,
+        "y": -309.0,
+        "z": -79.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3529.0,
+        "y": -1314.0,
+        "z": 211.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2385.0,
+        "y": -4997.0,
+        "z": -5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2612.0,
+        "y": -4940.0,
+        "z": 8.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4717.31,
+        "y": 455.367,
+        "z": 10.1273
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

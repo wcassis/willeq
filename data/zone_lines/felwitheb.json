@@ -1,0 +1,90 @@
+{
+  "zone": "felwitheb",
+  "long_name": "Southern Felwithe",
+  "zone_lines": [
+    {
+      "target_zone": "felwithea",
+      "target_long_name": "Northern Felwithe",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 835.0,
+        "y": -240.0,
+        "z": -10.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "zone": "rivervale",
+  "long_name": "Rivervale",
+  "zone_lines": [
+    {
+      "target_zone": "kithicor",
+      "target_long_name": "Kithicor Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 282.0,
+        "y": 373.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "misty",
+      "target_long_name": "Misty Thicket",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -96.0,
+        "y": 77.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "mistythicket",
+      "target_long_name": "The Misty Thicket",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -96.0,
+        "y": 77.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

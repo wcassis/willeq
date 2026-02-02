@@ -1,0 +1,54 @@
+{
+  "zone": "eastkarana",
+  "long_name": "Eastern Plains of Karana",
+  "zone_lines": [
+    {
+      "target_zone": "beholder",
+      "target_long_name": "Gorge of King Xorbb",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2074.0,
+        "y": -3602.0,
+        "z": 11.22
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpass",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 8339.0,
+        "y": 3088.0,
+        "z": 693.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpasshold",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 8339.0,
+        "y": 3088.0,
+        "z": 693.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "northkarana",
+      "target_long_name": "The Northern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1140.0,
+        "y": -8.27,
+        "z": -34.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

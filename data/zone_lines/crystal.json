@@ -1,0 +1,30 @@
+{
+  "zone": "crystal",
+  "long_name": "The Crystal Caverns",
+  "zone_lines": [
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -302.0,
+        "y": -486.0,
+        "z": -74.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -62.0,
+        "y": 576.0,
+        "z": -105.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

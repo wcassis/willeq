@@ -1,0 +1,46 @@
+{
+   "long_name" : "Blackburrow",
+   "zone" : "blackburrow",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : -154.334716796875,
+            "max_y" : 18.738033294677734,
+            "max_z" : 38.421875,
+            "min_x" : -171.33056640625,
+            "min_y" : 18.360347747802734,
+            "min_z" : -1.578125
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Qeynos Hills",
+         "target_zone" : "qeytoqrg",
+         "trigger_coords" : {
+            "x" : -162.8326416015625,
+            "y" : 18.549190521240234,
+            "z" : 8.421875
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 103.14041137695312,
+            "max_y" : -326.91534423828125,
+            "max_z" : 38.421875,
+            "min_x" : 103.14041137695312,
+            "min_y" : -362.18682861328125,
+            "min_z" : -1.578125
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Everfrost",
+         "target_zone" : "everfrost",
+         "trigger_coords" : {
+            "x" : 103.14041137695312,
+            "y" : -344.55108642578125,
+            "z" : 8.421875
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

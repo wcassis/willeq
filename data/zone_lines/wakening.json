@@ -1,0 +1,55 @@
+{
+  "zone": "wakening",
+  "long_name": "The Wakening Land",
+  "zone_lines": [
+    {
+      "target_zone": "growthplane",
+      "target_long_name": "The Plane of Growth",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1070.0,
+        "y": -460.0,
+        "z": -20.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kael",
+      "target_long_name": "Kael Drakkel",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 5055.0,
+        "y": 570.0,
+        "z": -194.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4750.0,
+        "y": -1545.0,
+        "z": -59.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "growthplane",
+      "target_long_name": "The Plane of Growth",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1069.3,
+        "y": -467.828,
+        "z": -24.998
+      },
+      "landing": "fixed",
+      "door_name": "POGTREE200",
+      "source": "doors"
+    }
+  ]
+}

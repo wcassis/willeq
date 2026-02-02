@@ -1,0 +1,95 @@
+{
+  "zone": "necropolis",
+  "long_name": "Dragon Necropolis",
+  "zone_lines": [
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1976.0,
+        "y": 60.0,
+        "z": 2.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -200.281,
+        "y": -879.295,
+        "z": 124.752
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1059.46,
+        "y": 269.355,
+        "z": -259.708
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -2002.33,
+        "y": 99.9916,
+        "z": 0.002
+      },
+      "landing": "fixed",
+      "door_name": "ELECTMONU201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1059.66,
+        "y": 239.935,
+        "z": -260.02
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -200.102,
+        "y": -839.386,
+        "z": 125.002
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR203",
+      "source": "doors"
+    }
+  ]
+}

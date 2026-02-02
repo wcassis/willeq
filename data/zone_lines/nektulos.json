@@ -1,0 +1,213 @@
+{
+  "zone": "nektulos",
+  "long_name": "The Nektulos Forest",
+  "zone_lines": [
+    {
+      "target_zone": "commonlands",
+      "target_long_name": "The Commonlands",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "corathus",
+      "target_long_name": "Corathus Creep",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "ecommons",
+      "target_long_name": "East Commonlands",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "ecommons",
+      "target_long_name": "East Commonlands",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -744.125,
+        "y": -2275.875,
+        "z": 36.569
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -740.0,
+        "y": -2325.0,
+        "z": 56.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -289.0,
+        "y": -3107.0,
+        "z": -17.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -744.125,
+        "y": -2275.875,
+        "z": 36.569
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -740.0,
+        "y": -2325.0,
+        "z": 56.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -289.0,
+        "y": -3107.0,
+        "z": -17.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriaka",
+      "target_long_name": "Neriak - Foreign Quarter",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1001.0,
+        "y": -1798.0,
+        "z": 23.0
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "neriaka",
+      "target_long_name": "Neriak - Foreign Quarter",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1001.0,
+        "y": -1798.0,
+        "z": 23.0
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "corathus",
+      "target_long_name": "Corathus Creep",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1286.0,
+        "y": -81.0,
+        "z": -9.0
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 856.08,
+        "y": 797.229,
+        "z": 5.0335
+      },
+      "landing": "fixed",
+      "door_name": "OBJ_POK_BOOK_",
+      "source": "doors"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 342.478,
+        "y": -742.973,
+        "z": -8.349
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

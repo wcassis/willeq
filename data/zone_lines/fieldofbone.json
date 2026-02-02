@@ -1,0 +1,127 @@
+{
+  "zone": "fieldofbone",
+  "long_name": "The Field of Bone",
+  "zone_lines": [
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3538.0,
+        "y": 2734.0,
+        "z": 8.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3688.0,
+        "y": 2555.0,
+        "z": 8.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "emeraldjungle",
+      "target_long_name": "The Emerald Jungle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1265.0,
+        "y": 1900.0,
+        "z": -2.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kaesora",
+      "target_long_name": "Kaesora",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 153.0,
+        "y": 1893.0,
+        "z": -128.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kurn",
+      "target_long_name": "Kurn's Tower",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1030.0,
+        "y": -460.0,
+        "z": 65.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kurn",
+      "target_long_name": "Kurn's Tower",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -960.0,
+        "y": -460.0,
+        "z": 65.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1125.0,
+        "y": 3380.0,
+        "z": 13.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4325.0,
+        "y": -1410.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1843.5,
+        "y": 3010.88,
+        "z": 8.377
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

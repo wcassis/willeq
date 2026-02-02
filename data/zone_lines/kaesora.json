@@ -1,0 +1,18 @@
+{
+  "zone": "kaesora",
+  "long_name": "Kaesora",
+  "zone_lines": [
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -40.0,
+        "y": -385.0,
+        "z": 100.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

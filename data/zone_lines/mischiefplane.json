@@ -1,0 +1,1774 @@
+{
+  "zone": "mischiefplane",
+  "long_name": "The Plane of Mischief",
+  "zone_lines": [
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 353.7,
+        "y": 1017.0,
+        "z": 91.0007
+      },
+      "landing": "fixed",
+      "door_name": "PURPTREE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 472.763,
+        "y": 18.481,
+        "z": 144.946
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 467.462,
+        "y": 0.9142,
+        "z": 152.996
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -296.36,
+        "y": -661.771,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 311.962,
+        "y": 16.4709,
+        "z": 144.946
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -267.579,
+        "y": -660.344,
+        "z": 177.69
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -22.9663,
+        "y": -539.287,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -116.494,
+        "y": -706.73,
+        "z": 143.982
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 923.639,
+        "y": -328.905,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -252.906,
+        "y": -735.469,
+        "z": 143.944
+      },
+      "landing": "fixed",
+      "door_name": "KNBOOKC101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -71.9691,
+        "y": -727.26,
+        "z": 143.955
+      },
+      "landing": "fixed",
+      "door_name": "KNBOOKC101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -208.406,
+        "y": -706.719,
+        "z": 143.944
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -7.0184,
+        "y": -509.329,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "KNBOOKC101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1073.09,
+        "y": -102.898,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1106.12,
+        "y": -201.988,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 277.04,
+        "y": -17.2007,
+        "z": 144.951
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -314.025,
+        "y": -642.535,
+        "z": 182.94
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -304.528,
+        "y": -439.912,
+        "z": 178.94
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -267.972,
+        "y": -441.923,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "KNBOOKC101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -114.144,
+        "y": -740.009,
+        "z": 151.871
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 820.657,
+        "y": -820.064,
+        "z": 125.006
+      },
+      "landing": "fixed",
+      "door_name": "POMTHRONE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1098.55,
+        "y": -819.985,
+        "z": 125.009
+      },
+      "landing": "fixed",
+      "door_name": "POMTHRONE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -108.624,
+        "y": -226.927,
+        "z": 186.89
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -82.9282,
+        "y": -148.406,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -78.2721,
+        "y": -286.381,
+        "z": 119.573
+      },
+      "landing": "fixed",
+      "door_name": "BOOKREG200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1128.02,
+        "y": -212.827,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 0.0346,
+        "y": -108.481,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -162.501,
+        "y": -45.9188,
+        "z": 122.571
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -173.493,
+        "y": -137.03,
+        "z": 94.9707
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -156.952,
+        "y": -86.4347,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -134.949,
+        "y": -90.8187,
+        "z": 122.721
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -240.787,
+        "y": -114.451,
+        "z": 121.971
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -262.861,
+        "y": -143.387,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1122.54,
+        "y": -141.554,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1021.2,
+        "y": -758.963,
+        "z": 119.832
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 114.504,
+        "y": -231.655,
+        "z": 119.161
+      },
+      "landing": "fixed",
+      "door_name": "BOOKREG200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 186.894,
+        "y": -132.763,
+        "z": 117.821
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 155.0,
+        "y": -152.073,
+        "z": 118.477
+      },
+      "landing": "fixed",
+      "door_name": "ERPLANT4",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 27.6989,
+        "y": -40.9188,
+        "z": 123.027
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 186.838,
+        "y": -62.75,
+        "z": 117.871
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 734.62,
+        "y": -1734.32,
+        "z": -9.8914
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 759.705,
+        "y": -1040.18,
+        "z": -9.9414
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 659.699,
+        "y": -969.362,
+        "z": -9.9914
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 429.852,
+        "y": -1260.08,
+        "z": -9.9414
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 649.707,
+        "y": -1529.23,
+        "z": -9.9311
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -77.9356,
+        "y": -1211.62,
+        "z": -9.9935
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -142.944,
+        "y": -1208.34,
+        "z": -9.9371
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -375.882,
+        "y": -1413.37,
+        "z": -9.9475
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -325.893,
+        "y": -1402.48,
+        "z": -9.9485
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -356.846,
+        "y": -1366.61,
+        "z": -9.9485
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 929.962,
+        "y": -270.806,
+        "z": 123.121
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 826.02,
+        "y": -44.1068,
+        "z": 119.062
+      },
+      "landing": "fixed",
+      "door_name": "BOOKREG200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -77.0,
+        "y": -145.5,
+        "z": 116.8
+      },
+      "landing": "fixed",
+      "door_name": "0",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 544.538,
+        "y": -165.032,
+        "z": 115.22
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -257.0,
+        "y": -140.0,
+        "z": 116.8
+      },
+      "landing": "fixed",
+      "door_name": "0",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 66.5416,
+        "y": -541.785,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 943.455,
+        "y": -54.9901,
+        "z": 115.22
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 754.911,
+        "y": -495.002,
+        "z": 115.47
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 749.75,
+        "y": -495.0,
+        "z": 115.47
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -162.5,
+        "y": -89.3,
+        "z": 116.8
+      },
+      "landing": "fixed",
+      "door_name": "0",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -142.5,
+        "y": -175.0,
+        "z": 98.1
+      },
+      "landing": "fixed",
+      "door_name": "0",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 386.971,
+        "y": -402.292,
+        "z": 69.9768
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -215.0,
+        "y": -97.5,
+        "z": 118.0
+      },
+      "landing": "fixed",
+      "door_name": "0",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 399.466,
+        "y": -1465.13,
+        "z": 270.658
+      },
+      "landing": "fixed",
+      "door_name": "JNTREE104",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -150.524,
+        "y": -681.312,
+        "z": 179.245
+      },
+      "landing": "fixed",
+      "door_name": "POMCHESS201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 469.719,
+        "y": -1901.65,
+        "z": 0.1086
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -398.661,
+        "y": -1443.14,
+        "z": -9.9647
+      },
+      "landing": "fixed",
+      "door_name": "ERPLANT3",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -325.914,
+        "y": -1329.41,
+        "z": -9.8985
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -293.837,
+        "y": -1340.3,
+        "z": -9.9907
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 877.641,
+        "y": -141.386,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 866.734,
+        "y": -223.526,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 911.68,
+        "y": -173.432,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 839.605,
+        "y": -86.4089,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 649.932,
+        "y": -86.3992,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 505.666,
+        "y": -17.0805,
+        "z": 144.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 505.792,
+        "y": -177.857,
+        "z": 144.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 649.859,
+        "y": -108.367,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -141.957,
+        "y": -1428.14,
+        "z": -9.992
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -168.497,
+        "y": -229.889,
+        "z": 184.89
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -295.666,
+        "y": -216.942,
+        "z": 186.89
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 146.571,
+        "y": -412.76,
+        "z": 180.89
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -113.463,
+        "y": -641.779,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -312.847,
+        "y": -536.231,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -269.856,
+        "y": -734.419,
+        "z": 146.644
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 967.522,
+        "y": -222.369,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 732.545,
+        "y": -722.469,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "SLTOME200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -262.936,
+        "y": -1425.4,
+        "z": -9.9485
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -268.328,
+        "y": -322.868,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -246.447,
+        "y": -322.83,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 119.978,
+        "y": -828.597,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 127.791,
+        "y": -754.738,
+        "z": 177.84
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 86.4187,
+        "y": -701.777,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 102.029,
+        "y": -728.469,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 142.028,
+        "y": -728.526,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 121.971,
+        "y": -728.545,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 168.548,
+        "y": -712.646,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 168.538,
+        "y": -692.703,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 168.587,
+        "y": -672.691,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 327.68,
+        "y": -336.946,
+        "z": 70.0768
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 88.1934,
+        "y": -541.852,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 282.074,
+        "y": -911.12,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -270.848,
+        "y": -1383.55,
+        "z": -9.9485
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR204",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -257.147,
+        "y": -159.888,
+        "z": 170.039
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 89.7571,
+        "y": -453.456,
+        "z": 115.414
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 112.935,
+        "y": -646.5,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 86.6188,
+        "y": -661.813,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 132.942,
+        "y": -646.5,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 152.867,
+        "y": -646.5,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -227.861,
+        "y": -1320.52,
+        "z": -9.9935
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 169.907,
+        "y": -1469.62,
+        "z": -9.974
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 49.9891,
+        "y": -1309.52,
+        "z": -9.9239
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 176.89,
+        "y": -1139.4,
+        "z": -9.9239
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 252.963,
+        "y": -1144.7,
+        "z": -9.9095
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 359.905,
+        "y": -1339.4,
+        "z": -9.9095
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 389.829,
+        "y": -1525.55,
+        "z": -9.9095
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -229.656,
+        "y": -222.419,
+        "z": 172.19
+      },
+      "landing": "fixed",
+      "door_name": "CHANDALIER200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 39.4209,
+        "y": -339.875,
+        "z": 178.09
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 404.761,
+        "y": -1247.1,
+        "z": 265.908
+      },
+      "landing": "fixed",
+      "door_name": "JNTREE104",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 86.5188,
+        "y": -681.75,
+        "z": 174.94
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 111.417,
+        "y": -801.734,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 362.772,
+        "y": -911.08,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -262.86,
+        "y": -143.631,
+        "z": 179.879
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR205",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -213.431,
+        "y": -102.875,
+        "z": 179.89
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 2.0065,
+        "y": -86.6493,
+        "z": 179.89
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 155.263,
+        "y": -302.132,
+        "z": 168.001
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR206",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 93.3971,
+        "y": -521.813,
+        "z": 180.924
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 7.9646,
+        "y": -1466.28,
+        "z": -9.9935
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6.9046,
+        "y": -1341.19,
+        "z": -9.9935
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1335.35,
+        "y": -1734.37,
+        "z": -9.9248
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 989.59,
+        "y": -1709.04,
+        "z": -9.9914
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 688.413,
+        "y": -727.611,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 670.469,
+        "y": -722.153,
+        "z": 123.221
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1138.68,
+        "y": -467.527,
+        "z": 123.121
+      },
+      "landing": "fixed",
+      "door_name": "POMTORCH200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1128.09,
+        "y": -392.808,
+        "z": 114.971
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -179.871,
+        "y": -629.286,
+        "z": 181.94
+      },
+      "landing": "fixed",
+      "door_name": "BRISPORT202",
+      "source": "doors"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 950.369,
+        "y": -1379.88,
+        "z": -9.9914
+      },
+      "landing": "fixed",
+      "door_name": "POMDOOR203",
+      "source": "doors"
+    }
+  ]
+}

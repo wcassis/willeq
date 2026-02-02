@@ -1,0 +1,42 @@
+{
+  "zone": "thurgadina",
+  "long_name": "The City of Thurgadin",
+  "zone_lines": [
+    {
+      "target_zone": "greatdivide",
+      "target_long_name": "The Great Divide",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 22.0,
+        "y": 1227.0,
+        "z": -2.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "thurgadinb",
+      "target_long_name": "Icewell Keep",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 88.0,
+        "y": 665.0,
+        "z": -95.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "thurgadinb",
+      "target_long_name": "Icewell Keep",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -35.0,
+        "y": -240.0,
+        "z": 3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

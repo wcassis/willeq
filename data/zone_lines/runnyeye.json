@@ -1,0 +1,42 @@
+{
+  "zone": "runnyeye",
+  "long_name": "The Liberated Citadel of Runnyeye",
+  "zone_lines": [
+    {
+      "target_zone": "beholder",
+      "target_long_name": "Gorge of King Xorbb",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "misty",
+      "target_long_name": "Misty Thicket",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -149.0,
+        "y": -248.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "mistythicket",
+      "target_long_name": "The Misty Thicket",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -149.0,
+        "y": -248.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

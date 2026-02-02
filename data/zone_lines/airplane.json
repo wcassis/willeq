@@ -1,0 +1,346 @@
+{
+  "zone": "airplane",
+  "long_name": "The Plane of Sky",
+  "zone_lines": [
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1425.84,
+        "y": 269.33,
+        "z": 1405.66
+      },
+      "landing": "fixed",
+      "door_name": "AIRWMBLD",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1173.95,
+        "y": -456.103,
+        "z": -6.5201
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -840.839,
+        "y": -1418.58,
+        "z": -686.936
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1340.42,
+        "y": 716.549,
+        "z": 1006.65
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -410.751,
+        "y": 1184.36,
+        "z": 766.095
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -724.927,
+        "y": 189.461,
+        "z": 406.212
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 343.799,
+        "y": -492.924,
+        "z": 124.446
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -532.838,
+        "y": -1614.13,
+        "z": -686.686
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1100.42,
+        "y": -379.391,
+        "z": 9.9609
+      },
+      "landing": "fixed",
+      "door_name": "SHAFT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -233.63,
+        "y": -185.367,
+        "z": -118.139
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1035.65,
+        "y": -377.444,
+        "z": 168.147
+      },
+      "landing": "fixed",
+      "door_name": "AIRWMBLDS",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 530.627,
+        "y": -766.523,
+        "z": 328.856
+      },
+      "landing": "fixed",
+      "door_name": "AIRWMBLDS",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 602.935,
+        "y": -767.882,
+        "z": 175.116
+      },
+      "landing": "fixed",
+      "door_name": "SHAFT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1488.69,
+        "y": 268.268,
+        "z": 1251.04
+      },
+      "landing": "fixed",
+      "door_name": "SHAFT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 578.415,
+        "y": 463.494,
+        "z": -362.874
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -371.054,
+        "y": -1359.67,
+        "z": -685.717
+      },
+      "landing": "fixed",
+      "door_name": "AIRPORT",
+      "source": "doors"
+    }
+  ]
+}

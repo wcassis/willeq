@@ -1,0 +1,54 @@
+{
+  "zone": "citymist",
+  "long_name": "The City of Mist",
+  "zone_lines": [
+    {
+      "target_zone": "emeraldjungle",
+      "target_long_name": "The Emerald Jungle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 899.0,
+        "y": -26.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "emeraldjungle",
+      "target_long_name": "The Emerald Jungle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 899.0,
+        "y": 26.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "emeraldjungle",
+      "target_long_name": "The Emerald Jungle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 899.0,
+        "y": -26.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "emeraldjungle",
+      "target_long_name": "The Emerald Jungle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 899.0,
+        "y": 26.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "zone": "chardok",
+  "long_name": "Chardok",
+  "zone_lines": [
+    {
+      "target_zone": "burningwood",
+      "target_long_name": "The Burning Wood",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -860.0,
+        "y": -140.0,
+        "z": 103.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "chardokb",
+      "target_long_name": "Chardok: The Halls of Betrayal",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -115.0,
+        "y": 170.0,
+        "z": -296.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "chardokb",
+      "target_long_name": "Chardok: The Halls of Betrayal",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -119.75,
+        "y": 169.75,
+        "z": -294.0
+      },
+      "landing": "fixed",
+      "door_name": "CHARLEV400",
+      "source": "doors"
+    }
+  ]
+}

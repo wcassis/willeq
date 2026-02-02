@@ -1,0 +1,18 @@
+{
+  "zone": "mistmoore",
+  "long_name": "The Castle of Mistmoore",
+  "zone_lines": [
+    {
+      "target_zone": "lfaydark",
+      "target_long_name": "The Lesser Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -125.0,
+        "y": 350.0,
+        "z": -178.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

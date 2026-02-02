@@ -1,0 +1,806 @@
+{
+  "zone": "frozenshadow",
+  "long_name": "The Tower of Frozen Shadow",
+  "zone_lines": [
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -798.0,
+        "y": -641.0,
+        "z": 0.0
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -585.675,
+        "y": -781.151,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -589.838,
+        "y": -768.271,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -873.175,
+        "y": -571.412,
+        "z": 20.002
+      },
+      "landing": "fixed",
+      "door_name": "KNBOOKC101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 401.149,
+        "y": -1312.46,
+        "z": 49.252
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 81.4276,
+        "y": -611.056,
+        "z": 217.158
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -172.695,
+        "y": -1175.12,
+        "z": 193.44
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -662.282,
+        "y": -1175.16,
+        "z": 82.7207
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -232.579,
+        "y": -479.056,
+        "z": 2.252
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -161.341,
+        "y": -479.312,
+        "z": 2.002
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -620.837,
+        "y": -666.313,
+        "z": 22.002
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -563.794,
+        "y": -768.004,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -174.834,
+        "y": -987.021,
+        "z": 116.971
+      },
+      "landing": "fixed",
+      "door_name": "BRAZIER200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -23.3174,
+        "y": -238.242,
+        "z": 354.846
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -8.4556,
+        "y": -243.563,
+        "z": 354.596
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 410.87,
+        "y": -311.702,
+        "z": 1.8977
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -767.625,
+        "y": -781.208,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -785.694,
+        "y": -880.161,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -799.117,
+        "y": -953.657,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -743.248,
+        "y": -1065.63,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -795.588,
+        "y": -1135.05,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -826.797,
+        "y": -1051.66,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 399.993,
+        "y": -520.118,
+        "z": 29.252
+      },
+      "landing": "fixed",
+      "door_name": "SBCLAW101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 400.386,
+        "y": -528.361,
+        "z": 30.37
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -739.662,
+        "y": -841.423,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -757.796,
+        "y": -824.229,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -851.572,
+        "y": -841.037,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -785.758,
+        "y": -824.13,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -841.721,
+        "y": -768.277,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -837.595,
+        "y": -781.125,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -799.716,
+        "y": -768.274,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -41.509,
+        "y": -261.265,
+        "z": 354.846
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -37.0015,
+        "y": -247.144,
+        "z": 354.946
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -0.3744,
+        "y": -256.636,
+        "z": 354.846
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -729.715,
+        "y": -768.12,
+        "z": 72.0208
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -16.0286,
+        "y": -390.268,
+        "z": 351.896
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -515.531,
+        "y": -1156.99,
+        "z": 68.2207
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 12.5527,
+        "y": -394.01,
+        "z": 351.946
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -5.9091,
+        "y": -270.598,
+        "z": 354.846
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 312.217,
+        "y": -1200.16,
+        "z": -9.8739
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 172.815,
+        "y": -154.234,
+        "z": 220.908
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 23.0018,
+        "y": -1175.23,
+        "z": 184.69
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -788.652,
+        "y": -634.25,
+        "z": 12.002
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -202.391,
+        "y": -80.5233,
+        "z": 3.502
+      },
+      "landing": "fixed",
+      "door_name": "MIRROR200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -54.3955,
+        "y": -403.837,
+        "z": 351.896
+      },
+      "landing": "fixed",
+      "door_name": "DOOR2",
+      "source": "doors"
+    }
+  ]
+}

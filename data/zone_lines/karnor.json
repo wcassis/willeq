@@ -1,0 +1,30 @@
+{
+  "zone": "karnor",
+  "long_name": "Karnor's Castle",
+  "zone_lines": [
+    {
+      "target_zone": "dreadlands",
+      "target_long_name": "The Dreadlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -405.0,
+        "y": -115.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "dreadlands",
+      "target_long_name": "The Dreadlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -402.0,
+        "y": 82.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

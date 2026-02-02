@@ -1,0 +1,42 @@
+{
+  "zone": "kurn",
+  "long_name": "Kurn's Tower",
+  "zone_lines": [
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -50.0,
+        "y": 282.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 50.0,
+        "y": 282.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 305.0,
+        "y": -45.0,
+        "z": -95.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "zone": "overthere",
+  "long_name": "The Overthere",
+  "zone_lines": [
+    {
+      "target_zone": "charasis",
+      "target_long_name": "The Howling Stones",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1545.0,
+        "y": -85.0,
+        "z": -713.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1410.0,
+        "y": 6060.0,
+        "z": 370.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4223.0,
+        "y": 988.0,
+        "z": 104.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4223.0,
+        "y": 1100.0,
+        "z": 104.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4400.0,
+        "y": 175.0,
+        "z": 242.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "charasis",
+      "target_long_name": "The Howling Stones",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1545.05,
+        "y": -86.8963,
+        "z": -713.872
+      },
+      "landing": "fixed",
+      "door_name": "HOWLER",
+      "source": "doors"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1937.59,
+        "y": -3134.56,
+        "z": -53.3417
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

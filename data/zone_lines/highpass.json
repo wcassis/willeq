@@ -1,0 +1,54 @@
+{
+  "zone": "highpass",
+  "long_name": "Highpass Hold",
+  "zone_lines": [
+    {
+      "target_zone": "eastkarana",
+      "target_long_name": "Eastern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -105.4,
+        "y": -844.8,
+        "z": 4.1
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highkeep",
+      "target_long_name": "High Keep",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 120.0,
+        "y": 90.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highkeep",
+      "target_long_name": "High Keep",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 120.0,
+        "y": -63.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kithicor",
+      "target_long_name": "Kithicor Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -92.0,
+        "y": 981.0,
+        "z": 431.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

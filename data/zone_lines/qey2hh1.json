@@ -1,0 +1,35 @@
+{
+  "zone": "qey2hh1",
+  "long_name": "The Western Plains of Karana",
+  "zone_lines": [
+    {
+      "target_zone": "northkarana",
+      "target_long_name": "The Northern Plains of Karana",
+      "type": "LONG_Y",
+      "trigger_coords": {
+        "x": -3242.0,
+        "y": null,
+        "z": 0.0
+      },
+      "landing": "preserve_y",
+      "source": "zone_points",
+      "boundary": {
+        "span_axis": "y",
+        "width": null,
+        "height": null
+      }
+    },
+    {
+      "target_zone": "qeytoqrg",
+      "target_long_name": "The Qeynos Hills",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -55.0,
+        "y": -45.0,
+        "z": -3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "zone": "greatdivide",
+  "long_name": "The Great Divide",
+  "zone_lines": [
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 5116.0,
+        "y": 1773.0,
+        "z": 225.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 202.6598,
+        "y": 8261.7343,
+        "z": -958.4932
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nexus",
+      "target_long_name": "Nexus",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2697.0,
+        "y": 1898.0,
+        "z": -44.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "thurgadina",
+      "target_long_name": "The City of Thurgadin",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 142.0,
+        "y": -59.0,
+        "z": 100.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "velketor",
+      "target_long_name": "Velketor's Labyrinth",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3336.0,
+        "y": 6780.0,
+        "z": -36.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 202.18,
+        "y": 8267.14,
+        "z": -956.249
+      },
+      "landing": "fixed",
+      "door_name": "MINIPOM200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1811.42,
+        "y": -14.5537,
+        "z": 389.439
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

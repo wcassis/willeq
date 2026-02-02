@@ -1,0 +1,54 @@
+{
+  "zone": "najena",
+  "long_name": "Najena",
+  "zone_lines": [
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -868.0,
+        "y": 17.0,
+        "z": 3.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -868.0,
+        "y": 17.0,
+        "z": 3.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -868.0,
+        "y": 17.0,
+        "z": 3.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -868.0,
+        "y": 17.0,
+        "z": 3.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

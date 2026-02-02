@@ -1,0 +1,104 @@
+{
+  "zone": "westwastes",
+  "long_name": "The Western Wastes",
+  "zone_lines": [
+    {
+      "target_zone": "necropolis",
+      "target_long_name": "Dragon Necropolis",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -495.0,
+        "y": 2850.0,
+        "z": -196.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "necropolis",
+      "target_long_name": "Dragon Necropolis",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -495.0,
+        "y": 2850.0,
+        "z": -196.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sirens",
+      "target_long_name": "Siren's Grotto",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3880.0,
+        "y": 5175.0,
+        "z": -247.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sirens",
+      "target_long_name": "Siren's Grotto",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3880.0,
+        "y": 5175.0,
+        "z": -247.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "templeveeshan",
+      "target_long_name": "The Temple of Veeshan",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -700.0,
+        "y": -1460.0,
+        "z": -195.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "templeveeshan",
+      "target_long_name": "The Temple of Veeshan",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -700.0,
+        "y": -1460.0,
+        "z": -195.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "necropolis",
+      "target_long_name": "Dragon Necropolis",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -465.634,
+        "y": 2861.29,
+        "z": -200.498
+      },
+      "landing": "fixed",
+      "door_name": "ELECTMONU200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "templeveeshan",
+      "target_long_name": "The Temple of Veeshan",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -697.775,
+        "y": -1452.3,
+        "z": -199.717
+      },
+      "landing": "fixed",
+      "door_name": "ELECTMONU200",
+      "source": "doors"
+    }
+  ]
+}

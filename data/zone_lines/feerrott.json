@@ -1,0 +1,103 @@
+{
+  "zone": "feerrott",
+  "long_name": "The Feerrott",
+  "zone_lines": [
+    {
+      "target_zone": "cazicthule",
+      "target_long_name": "Accursed Temple of CazicThule",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 111.83,
+        "y": 1451.82,
+        "z": 1.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fearplane",
+      "target_long_name": "The Plane of Fear",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2601.0,
+        "y": 2380.0,
+        "z": 26.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "innothule",
+      "target_long_name": "Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3130.0,
+        "y": 1130.0,
+        "z": -9.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "innothuleb",
+      "target_long_name": "The Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3130.0,
+        "y": 1130.0,
+        "z": -9.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "oggok",
+      "target_long_name": "Oggok",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -808.0,
+        "y": -1667.0,
+        "z": 60.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "rathemtn",
+      "target_long_name": "The Rathe Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3415.17,
+        "y": -364.44,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 161.403,
+        "y": -867.158,
+        "z": -9.7545
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "zone": "dalnir",
+  "long_name": "The Crypt of Dalnir",
+  "zone_lines": [
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -100.0,
+        "y": 5.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 735.0,
+        "y": -310.0,
+        "z": -80.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 75.0,
+        "y": 335.0,
+        "z": -178.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "zone": "steamfont",
+  "long_name": "Steamfont Mountains",
+  "zone_lines": [
+    {
+      "target_zone": "akanon",
+      "target_long_name": "Ak'Anon",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -528.0,
+        "y": 2062.0,
+        "z": -110.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lfaydark",
+      "target_long_name": "The Lesser Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2208.0,
+        "y": -581.0,
+        "z": -109.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -933.79,
+        "y": 1373.04,
+        "z": -111.662
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

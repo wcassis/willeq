@@ -1,0 +1,78 @@
+{
+  "zone": "swampofnohope",
+  "long_name": "The Swamp of No Hope",
+  "zone_lines": [
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3238.0,
+        "y": -2972.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3056.0,
+        "y": -3131.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1138.0,
+        "y": -5556.0,
+        "z": 12.7
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "firiona",
+      "target_long_name": "Firiona Vie",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2355.0,
+        "y": 4444.0,
+        "z": -3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "firiona",
+      "target_long_name": "Firiona Vie",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2690.0,
+        "y": 4342.0,
+        "z": 0.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "trakanon",
+      "target_long_name": "Trakanon's Teeth",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4536.0,
+        "y": -1739.0,
+        "z": 87.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

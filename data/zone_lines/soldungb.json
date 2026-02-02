@@ -1,0 +1,174 @@
+{
+  "zone": "soldungb",
+  "long_name": "Nagafen's Lair",
+  "zone_lines": [
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 265.0,
+        "y": 410.0,
+        "z": -108.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 265.0,
+        "y": 410.0,
+        "z": -108.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 265.0,
+        "y": 410.0,
+        "z": -108.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 265.0,
+        "y": 410.0,
+        "z": -108.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 400.0,
+        "y": 365.0,
+        "z": 11.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungc",
+      "target_long_name": "The Caverns of Exile",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 490.0,
+        "y": 965.0,
+        "z": -18.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

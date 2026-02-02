@@ -1,0 +1,78 @@
+{
+  "zone": "warslikswood",
+  "long_name": "The Warsliks Woods",
+  "zone_lines": [
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1118.0,
+        "y": 2254.0,
+        "z": 266.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 930.0,
+        "y": 2415.0,
+        "z": 266.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "dalnir",
+      "target_long_name": "The Crypt of Dalnir",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4550.0,
+        "y": -2570.0,
+        "z": -240.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3930.0,
+        "y": -1460.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1180.0,
+        "y": 3655.0,
+        "z": 54.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "overthere",
+      "target_long_name": "The Overthere",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4070.0,
+        "y": 240.0,
+        "z": 243.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

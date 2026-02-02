@@ -1,0 +1,30 @@
+{
+  "zone": "felwithea",
+  "long_name": "Northern Felwithe",
+  "zone_lines": [
+    {
+      "target_zone": "felwitheb",
+      "target_long_name": "Southern Felwithe",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 720.0,
+        "y": -350.0,
+        "z": -10.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "gfaydark",
+      "target_long_name": "The Greater Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -210.0,
+        "y": -40.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

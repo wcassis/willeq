@@ -1,0 +1,30 @@
+{
+  "zone": "beholder",
+  "long_name": "Gorge of King Xorbb",
+  "zone_lines": [
+    {
+      "target_zone": "eastkarana",
+      "target_long_name": "Eastern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 452.33,
+        "y": 1184.86,
+        "z": 37.5
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "runnyeye",
+      "target_long_name": "The Liberated Citadel of Runnyeye",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1846.0,
+        "y": -907.0,
+        "z": 4.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

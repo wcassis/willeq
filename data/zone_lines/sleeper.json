@@ -1,0 +1,31 @@
+{
+  "zone": "sleeper",
+  "long_name": "The Sleeper's Tomb",
+  "zone_lines": [
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 61.8094,
+        "y": 11.746,
+        "z": 0.0019
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 79.8831,
+        "y": 12.9748,
+        "z": 0.002
+      },
+      "landing": "fixed",
+      "door_name": "ELECTMONU201",
+      "source": "doors"
+    }
+  ]
+}

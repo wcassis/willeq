@@ -1,0 +1,90 @@
+{
+  "zone": "qeynos",
+  "long_name": "South Qeynos",
+  "zone_lines": [
+    {
+      "target_zone": "qcat",
+      "target_long_name": "The Qeynos Aqueduct System",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 552.0,
+        "y": -276.0,
+        "z": -52.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qcat",
+      "target_long_name": "The Qeynos Aqueduct System",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 552.2354,
+        "y": -272.8093,
+        "z": -66.3388
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "qcat",
+      "target_long_name": "The Qeynos Aqueduct System",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 477.0,
+        "y": -177.0,
+        "z": -16.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qcat",
+      "target_long_name": "The Qeynos Aqueduct System",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -149.0,
+        "y": 185.0,
+        "z": -64.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qcat",
+      "target_long_name": "The Qeynos Aqueduct System",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 596.0,
+        "y": 151.0,
+        "z": -25.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos2",
+      "target_long_name": "North Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 442.0,
+        "y": -464.0,
+        "z": 1.5
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos2",
+      "target_long_name": "North Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 80.0,
+        "y": -586.0,
+        "z": 1.5
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "zone": "dreadlands",
+  "long_name": "The Dreadlands",
+  "zone_lines": [
+    {
+      "target_zone": "burningwood",
+      "target_long_name": "The Burning Wood",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 820.0,
+        "y": -3390.0,
+        "z": 199.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "firiona",
+      "target_long_name": "Firiona Vie",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 6094.0,
+        "y": -285.0,
+        "z": 139.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3480.0,
+        "y": -2335.0,
+        "z": 139.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "karnor",
+      "target_long_name": "Karnor's Castle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1964.0,
+        "y": -496.0,
+        "z": 30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "karnor",
+      "target_long_name": "Karnor's Castle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1962.0,
+        "y": -702.0,
+        "z": 30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nexus",
+      "target_long_name": "Nexus",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -9650.0,
+        "y": -3050.0,
+        "z": 1050.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

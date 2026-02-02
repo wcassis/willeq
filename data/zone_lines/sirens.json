@@ -1,0 +1,54 @@
+{
+  "zone": "sirens",
+  "long_name": "Siren's Grotto",
+  "zone_lines": [
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -70.0,
+        "y": 608.0,
+        "z": -93.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -71.0,
+        "y": 630.0,
+        "z": 0.0
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 90.0,
+        "y": -216.0,
+        "z": 3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 89.0,
+        "y": -225.0,
+        "z": 0.0
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    }
+  ]
+}

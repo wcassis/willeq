@@ -1,0 +1,18 @@
+{
+  "zone": "unrest",
+  "long_name": "The Estate of Unrest",
+  "zone_lines": [
+    {
+      "target_zone": "cauldron",
+      "target_long_name": "Dagnor's Cauldron",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

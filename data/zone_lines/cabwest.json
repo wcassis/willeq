@@ -1,0 +1,66 @@
+{
+  "zone": "cabwest",
+  "long_name": "Cabilis West",
+  "zone_lines": [
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -321.9536,
+        "y": 74.9331,
+        "z": 8.3036
+      },
+      "landing": "preserve_y",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -584.0,
+        "y": 987.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -767.0,
+        "y": 802.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1144.0,
+        "y": -869.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1327.0,
+        "y": -687.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

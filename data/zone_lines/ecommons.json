@@ -1,0 +1,86 @@
+{
+   "long_name" : "East Commonlands",
+   "zone" : "ecommons",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : 1241.13037109375,
+            "max_y" : 5068.6943359375,
+            "max_z" : -150.84375,
+            "min_x" : -1272.795654296875,
+            "min_y" : 5056.0615234375,
+            "min_z" : -190.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "West Commonlands",
+         "target_zone" : "commons",
+         "trigger_coords" : {
+            "x" : -15.8326416015625,
+            "y" : 5062.3779296875,
+            "z" : -180.84375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 677.80615234375,
+            "max_y" : -2004.9814453125,
+            "max_z" : -20.84375,
+            "min_x" : -724.43408203125,
+            "min_y" : -2017.6142578125,
+            "min_z" : -60.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "West Freeport",
+         "target_zone" : "freportw",
+         "trigger_coords" : {
+            "x" : -23.31396484375,
+            "y" : -2011.2978515625,
+            "z" : -50.84375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 1657.420166015625,
+            "max_y" : 878.54327392578125,
+            "max_z" : -150.84375,
+            "min_x" : 1657.420166015625,
+            "min_y" : 781.133544921875,
+            "min_z" : -190.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Nektulos Forest",
+         "target_zone" : "nektulos",
+         "trigger_coords" : {
+            "x" : 1657.420166015625,
+            "y" : 829.83837890625,
+            "z" : -180.84375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : -3066.716064453125,
+            "max_y" : -1550.1529541015625,
+            "max_z" : 39.15625,
+            "min_x" : -3215.18408203125,
+            "min_y" : -1556.9014892578125,
+            "min_z" : -0.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Northern Desert of Ro",
+         "target_zone" : "nro",
+         "trigger_coords" : {
+            "x" : -3140.9501953125,
+            "y" : -1553.5272216796875,
+            "z" : 9.15625
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

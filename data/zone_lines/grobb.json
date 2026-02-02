@@ -1,0 +1,30 @@
+{
+  "zone": "grobb",
+  "long_name": "Grobb",
+  "zone_lines": [
+    {
+      "target_zone": "innothule",
+      "target_long_name": "Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -50.0,
+        "y": 140.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "innothuleb",
+      "target_long_name": "The Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -50.0,
+        "y": 140.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

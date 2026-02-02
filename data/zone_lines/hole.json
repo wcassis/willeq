@@ -1,0 +1,54 @@
+{
+  "zone": "hole",
+  "long_name": "The Hole",
+  "zone_lines": [
+    {
+      "target_zone": "erudnint",
+      "target_long_name": "The Erudin Palace",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriakc",
+      "target_long_name": "Neriak - 3rd Gate",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 940.3,
+        "y": -616.51,
+        "z": -95.78
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 940.193,
+        "y": -611.4799,
+        "z": -94.8749
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+   "long_name" : "West Commonlands",
+   "zone" : "commons",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : -1163.9183349609375,
+            "max_y" : 606.18524169921875,
+            "max_z" : -4.984375,
+            "min_x" : -1163.9183349609375,
+            "min_y" : 585.064453125,
+            "min_z" : -44.984375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Befallen",
+         "target_zone" : "befallen",
+         "trigger_coords" : {
+            "x" : -1163.9183349609375,
+            "y" : 595.6248779296875,
+            "z" : -34.984375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 931.93963623046875,
+            "max_y" : 4125.3271484375,
+            "max_z" : -14.984375,
+            "min_x" : 930.96221923828125,
+            "min_y" : 4070.591064453125,
+            "min_z" : -54.984375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Kithicor Forest",
+         "target_zone" : "kithicor",
+         "trigger_coords" : {
+            "x" : 931.450927734375,
+            "y" : 4097.958984375,
+            "z" : -44.984375
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

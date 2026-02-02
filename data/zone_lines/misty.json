@@ -1,0 +1,55 @@
+{
+  "zone": "misty",
+  "long_name": "Misty Thicket",
+  "zone_lines": [
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "rivervale",
+      "target_long_name": "Rivervale",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2588.0,
+        "y": -407.0,
+        "z": -7.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "runnyeye",
+      "target_long_name": "The Liberated Citadel of Runnyeye",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1427.0,
+        "y": 835.0,
+        "z": -7.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1262.71,
+        "y": 559.555,
+        "z": 6.8926
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

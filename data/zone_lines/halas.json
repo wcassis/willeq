@@ -1,0 +1,18 @@
+{
+  "zone": "halas",
+  "long_name": "Halas",
+  "zone_lines": [
+    {
+      "target_zone": "everfrost",
+      "target_long_name": "Everfrost Peaks",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 77.88,
+        "y": 692.79,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

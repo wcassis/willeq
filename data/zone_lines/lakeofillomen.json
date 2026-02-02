@@ -1,0 +1,90 @@
+{
+  "zone": "lakeofillomen",
+  "long_name": "Lake of Ill Omen",
+  "zone_lines": [
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 6628.0,
+        "y": -6518.0,
+        "z": 39.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 6791.0,
+        "y": -6330.0,
+        "z": 39.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "firiona",
+      "target_long_name": "Firiona Vie",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4429.0,
+        "y": -1273.0,
+        "z": 211.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3350.0,
+        "y": 410.0,
+        "z": 113.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "veksar",
+      "target_long_name": "Veksar",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 70.0,
+        "y": 340.0,
+        "z": -186.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "veksar",
+      "target_long_name": "Veksar",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 70.0,
+        "y": 418.0,
+        "z": -190.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warslikswood",
+      "target_long_name": "The Warsliks Woods",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1177.0,
+        "y": -4332.0,
+        "z": 51.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

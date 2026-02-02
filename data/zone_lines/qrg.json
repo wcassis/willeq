@@ -1,0 +1,38 @@
+{
+   "long_name" : "The Surefall Glade",
+   "zone" : "qrg",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : -616.683837890625,
+            "max_y" : 138.58096313476562,
+            "max_z" : 37.859375,
+            "min_x" : -617.998046875,
+            "min_y" : 89.29595947265625,
+            "min_z" : -2.140625
+         },
+         "landing" : "fixed",
+         "source" : "zone_points+brewall",
+         "target_long_name" : "The Qeynos Hills",
+         "target_zone" : "qeytoqrg",
+         "trigger_coords" : {
+            "x" : -617.3409423828125,
+            "y" : 113.93846130371094,
+            "z" : 7.859375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "landing" : "fixed",
+         "source" : "doors",
+         "target_long_name" : "The Jaggedpine Forest",
+         "target_zone" : "jaggedpine",
+         "trigger_coords" : {
+            "x" : 513.0,
+            "y" : -36.0,
+            "z" : 48.001998901367188
+         },
+         "type" : "CLICK"
+      }
+   ]
+}

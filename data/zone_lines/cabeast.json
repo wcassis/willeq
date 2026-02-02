@@ -1,0 +1,102 @@
+{
+  "zone": "cabeast",
+  "long_name": "Cabilis East",
+  "zone_lines": [
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabeast",
+      "target_long_name": "Cabilis East",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -292.0,
+        "y": 90.0,
+        "z": 4.0
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -287.0,
+        "y": 44.0,
+        "z": 4.0
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 425.0,
+        "y": -1362.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "fieldofbone",
+      "target_long_name": "The Field of Bone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 620.0,
+        "y": -1175.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 656.0,
+        "y": 96.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 465.0,
+        "y": 282.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

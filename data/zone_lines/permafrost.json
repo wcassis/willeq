@@ -1,0 +1,18 @@
+{
+  "zone": "permafrost",
+  "long_name": "The Permafrost Caverns",
+  "zone_lines": [
+    {
+      "target_zone": "everfrost",
+      "target_long_name": "Everfrost Peaks",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -120.0,
+        "y": 55.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

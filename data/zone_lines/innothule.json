@@ -1,0 +1,79 @@
+{
+  "zone": "innothule",
+  "long_name": "Innothule Swamp",
+  "zone_lines": [
+    {
+      "target_zone": "feerrott",
+      "target_long_name": "The Feerrott",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1893.76,
+        "y": 1131.29,
+        "z": -9.22
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "grobb",
+      "target_long_name": "Grobb",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 615.55,
+        "y": 2763.64,
+        "z": -31.44
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "guktop",
+      "target_long_name": "The City of Guk",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 827.97,
+        "y": -140.98,
+        "z": -8.37
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sro",
+      "target_long_name": "Southern Desert of Ro",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1140.77,
+        "y": -2569.11,
+        "z": -24.78
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 29.9866,
+        "y": 729.133,
+        "z": -29.2157
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "zone": "freportn",
+  "long_name": "North Freeport",
+  "zone_lines": [
+    {
+      "target_zone": "freportw",
+      "target_long_name": "West Freeport",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 83.0,
+        "y": 379.0,
+        "z": -25.0
+      },
+      "landing": "preserve_z",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freportw",
+      "target_long_name": "West Freeport",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -491.0,
+        "y": 415.0,
+        "z": -11.0
+      },
+      "landing": "preserve_z",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freportw",
+      "target_long_name": "West Freeport",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -722.0,
+        "y": -372.0,
+        "z": -11.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freportw",
+      "target_long_name": "West Freeport",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 436.0,
+        "y": 6.0,
+        "z": -20.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

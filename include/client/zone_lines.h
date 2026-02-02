@@ -66,8 +66,12 @@ public:
     // Returns true if any zone lines were found
     bool loadFromZone(const std::string& zoneName, const std::string& eqClientPath);
 
-    // Load pre-extracted zone lines from zone_lines.json
-    // This is the preferred method - uses pre-computed trigger boxes
+    // Load zone lines from zone-specific JSON file (data/zone_lines/<zone>.json)
+    // This is the preferred method - uses manually curated trigger boxes
+    bool loadFromZoneSpecificJson(const std::string& zoneName, const std::string& jsonPath);
+
+    // Load pre-extracted zone lines from zone_lines.json (legacy format)
+    // Falls back to this if zone-specific file not found
     bool loadFromExtractedJson(const std::string& zoneName, const std::string& jsonPath);
 
     // Clear all loaded zone line data

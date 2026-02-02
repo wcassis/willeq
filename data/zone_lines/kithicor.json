@@ -1,0 +1,66 @@
+{
+  "zone": "kithicor",
+  "long_name": "Kithicor Forest",
+  "zone_lines": [
+    {
+      "target_zone": "commonlands",
+      "target_long_name": "The Commonlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1089.0,
+        "y": -1464.0,
+        "z": -48.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "commons",
+      "target_long_name": "West Commonlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1089.0,
+        "y": -1464.0,
+        "z": -48.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpass",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4890.0,
+        "y": -560.0,
+        "z": 693.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpasshold",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4890.0,
+        "y": -560.0,
+        "z": 693.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "rivervale",
+      "target_long_name": "Rivervale",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3825.0,
+        "y": -2007.0,
+        "z": 465.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

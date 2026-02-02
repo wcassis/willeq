@@ -1,0 +1,30 @@
+{
+  "zone": "paw",
+  "long_name": "Lair of the Splitpaw",
+  "zone_lines": [
+    {
+      "target_zone": "southkarana",
+      "target_long_name": "The Southern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -72.0,
+        "y": 126.0,
+        "z": 1.52
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "southkarana",
+      "target_long_name": "The Southern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -72.0,
+        "y": 126.0,
+        "z": 1.52
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    }
+  ]
+}

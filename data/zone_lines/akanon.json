@@ -1,0 +1,30 @@
+{
+  "zone": "akanon",
+  "long_name": "Ak'Anon",
+  "zone_lines": [
+    {
+      "target_zone": "steamfont",
+      "target_long_name": "Steamfont Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 80.0,
+        "y": -52.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "steamfontmts",
+      "target_long_name": "The Steamfont Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 80.0,
+        "y": -52.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

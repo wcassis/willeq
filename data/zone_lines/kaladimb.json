@@ -1,0 +1,30 @@
+{
+  "zone": "kaladimb",
+  "long_name": "North Kaladim",
+  "zone_lines": [
+    {
+      "target_zone": "kaladima",
+      "target_long_name": "South Kaladim",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -340.0,
+        "y": -416.0,
+        "z": -22.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kaladima",
+      "target_long_name": "South Kaladim",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 224.0,
+        "y": -354.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

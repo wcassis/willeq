@@ -1,0 +1,126 @@
+{
+  "zone": "nurga",
+  "long_name": "Mines of Nurga",
+  "zone_lines": [
+    {
+      "target_zone": "droga",
+      "target_long_name": "The Temple of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "The Temple of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "The Temple of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "The Temple of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "Mines of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "Mines of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "Mines of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "Mines of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 919.5118,
+        "y": 836.4388,
+        "z": -175.9368
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1800.0,
+        "y": 2240.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1799.1988,
+        "y": 2237.7656,
+        "z": 0.0008
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    }
+  ]
+}

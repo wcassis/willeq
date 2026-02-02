@@ -1,0 +1,18 @@
+{
+  "zone": "erudsxing",
+  "long_name": "Erud's Crossing",
+  "zone_lines": [
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -0.0,
+        "y": -0.0,
+        "z": 3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

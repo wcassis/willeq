@@ -1,0 +1,42 @@
+{
+  "zone": "lakerathe",
+  "long_name": "Lake Rathetear",
+  "zone_lines": [
+    {
+      "target_zone": "arena",
+      "target_long_name": "The Arena",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2493.0,
+        "y": -2342.0,
+        "z": 95.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "rathemtn",
+      "target_long_name": "The Rathe Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2280.0,
+        "y": -2513.0,
+        "z": 5.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "southkarana",
+      "target_long_name": "The Southern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1155.48,
+        "y": -4376.63,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

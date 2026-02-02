@@ -12,23 +12,92 @@ namespace EQT {
 // Special marker value in EQ meaning "use source coordinate"
 static constexpr float SAME_COORD_MARKER = 999999.0f;
 
+// Zone short name to zone ID mapping (EQ zone IDs are stable)
+static const std::map<std::string, uint16_t> ZONE_NAME_TO_ID = {
+    // Classic
+    {"qeynos", 1}, {"qeynos2", 2}, {"qrg", 3}, {"qeytoqrg", 4}, {"highpass", 5},
+    {"highkeep", 6}, {"freportn", 8}, {"freportw", 9}, {"freporte", 10},
+    {"qey2hh1", 12}, {"northkarana", 13}, {"southkarana", 14}, {"eastkarana", 15},
+    {"beholder", 16}, {"blackburrow", 17}, {"paw", 18}, {"rivervale", 19},
+    {"kithicor", 20}, {"commons", 21}, {"ecommons", 22}, {"erudnint", 23},
+    {"erudnext", 24}, {"nektulos", 25}, {"lavastorm", 27}, {"halas", 29},
+    {"everfrost", 30}, {"soldunga", 31}, {"soldungb", 32}, {"misty", 33},
+    {"nro", 34}, {"sro", 35}, {"befallen", 36}, {"oasis", 37}, {"tox", 38},
+    {"hole", 39}, {"neriaka", 40}, {"neriakb", 41}, {"neriakc", 42},
+    {"najena", 44}, {"qcat", 45}, {"innothule", 46}, {"feerrott", 47},
+    {"cazicthule", 48}, {"oggok", 49}, {"rathemtn", 50}, {"lakerathe", 51},
+    {"grobb", 52}, {"gfaydark", 54}, {"akanon", 55}, {"steamfont", 56},
+    {"lfaydark", 57}, {"crushbone", 58}, {"mistmoore", 59}, {"kaladima", 60},
+    {"kaladimb", 61}, {"felwithea", 62}, {"felwitheb", 63}, {"unrest", 64},
+    {"kedge", 65}, {"guktop", 66}, {"gukbottom", 67}, {"butcher", 68},
+    {"oot", 69}, {"cauldron", 70}, {"airplane", 71}, {"fearplane", 72},
+    {"permafrost", 73}, {"kerraridge", 74}, {"paineel", 75}, {"hateplane", 76},
+    {"arena", 77}, {"erudsxing", 98}, {"soltemple", 80}, {"runnyeye", 11},
+    // Kunark
+    {"fieldofbone", 78}, {"warslikswood", 79}, {"droga", 81}, {"cabwest", 82},
+    {"cabeast", 83}, {"swampofnohope", 85}, {"firiona", 84}, {"lakeofillomen", 86},
+    {"dreadlands", 87}, {"burningwood", 88}, {"kaesora", 89}, {"sebilis", 90},
+    {"citymist", 91}, {"skyfire", 92}, {"frontiermtns", 93}, {"overthere", 94},
+    {"emeraldjungle", 95}, {"trakanon", 96}, {"timorous", 97}, {"kurn", 99},
+    {"charasis", 100}, {"chardok", 101}, {"dalnir", 102}, {"veeshan", 103},
+    // Velious
+    {"eastwastes", 104}, {"cobaltscar", 105}, {"wakening", 106}, {"necropolis", 107},
+    {"velketor", 108}, {"sirens", 109}, {"iceclad", 110}, {"growthplane", 111},
+    {"sleeper", 112}, {"westwastes", 113}, {"crystal", 114}, {"frozenshadow", 117},
+    {"thurgadina", 115}, {"thurgadinb", 116}, {"skyshrine", 118}, {"templeveeshan", 119},
+    {"kael", 120}, {"greatdivide", 121}, {"mischiefplane", 126},
+    // PoP and beyond
+    {"poknowledge", 202}, {"potranquility", 203}, {"ponightmare", 204},
+    {"podisease", 205}, {"poinnovation", 206}, {"povalor", 208}, {"pojustice", 209},
+    {"postorms", 210}, {"hohonora", 211}, {"hohonorb", 212}, {"potorment", 213},
+    {"pofireA", 215}, {"potimea", 217}, {"poairA", 218}, {"powater", 219},
+    {"poearthA", 220}, {"potactics", 221}, {"codecay", 200},
+};
+
+// Get zone ID from short name (returns 0 if not found)
+static uint16_t getZoneIdFromName(const std::string& zoneName) {
+    auto it = ZONE_NAME_TO_ID.find(zoneName);
+    if (it != ZONE_NAME_TO_ID.end()) {
+        return it->second;
+    }
+    LOG_WARN(MOD_MAP, "Unknown zone name '{}', cannot map to zone ID", zoneName);
+    return 0;
+}
+
 bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqClientPath) {
     clear();
 
     bool loadedAny = false;
 
-    // Load from pre-extracted zone_lines.json (trigger boxes from WLD)
-    std::vector<std::string> zoneLinesJsonPaths = {
-        "data/zone_lines.json",                      // Relative to CWD (project root)
-        "../data/zone_lines.json",                   // Relative to CWD (build directory)
-        eqClientPath + "/../data/zone_lines.json"   // Relative to EQ client path
+    // First, try to load from zone-specific file (preferred - manually curated data)
+    std::vector<std::string> zoneSpecificPaths = {
+        "data/zone_lines/" + zoneName + ".json",                      // Relative to CWD (project root)
+        "../data/zone_lines/" + zoneName + ".json",                   // Relative to CWD (build directory)
+        eqClientPath + "/../data/zone_lines/" + zoneName + ".json"   // Relative to EQ client path
     };
-    for (const auto& jsonPath : zoneLinesJsonPaths) {
-        if (loadFromExtractedJson(zoneName, jsonPath)) {
-            LOG_INFO(MOD_MAP, "Loaded {} pre-extracted zone lines for {} from {}",
+    for (const auto& jsonPath : zoneSpecificPaths) {
+        if (loadFromZoneSpecificJson(zoneName, jsonPath)) {
+            LOG_INFO(MOD_MAP, "Loaded {} zone lines for {} from zone-specific file {}",
                      extractedZoneLines_.size(), zoneName, jsonPath);
             loadedAny = true;
             break;
+        }
+    }
+
+    // Fall back to old zone_lines.json format if zone-specific file not found
+    if (!loadedAny) {
+        std::vector<std::string> zoneLinesJsonPaths = {
+            "data/zone_lines.json",                      // Relative to CWD (project root)
+            "../data/zone_lines.json",                   // Relative to CWD (build directory)
+            eqClientPath + "/../data/zone_lines.json"   // Relative to EQ client path
+        };
+        for (const auto& jsonPath : zoneLinesJsonPaths) {
+            if (loadFromExtractedJson(zoneName, jsonPath)) {
+                LOG_INFO(MOD_MAP, "Loaded {} pre-extracted zone lines for {} from {}",
+                         extractedZoneLines_.size(), zoneName, jsonPath);
+                loadedAny = true;
+                break;
+            }
         }
     }
 
@@ -184,6 +253,108 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
         hasZoneBounds_ = true;
     }
 
+    return !extractedZoneLines_.empty();
+}
+
+bool ZoneLines::loadFromZoneSpecificJson(const std::string& zoneName, const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        LOG_TRACE(MOD_MAP, "Could not open zone-specific JSON: {}", jsonPath);
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        LOG_ERROR(MOD_MAP, "Failed to parse zone-specific JSON: {}", errors);
+        return false;
+    }
+
+    if (!root.isObject()) {
+        LOG_ERROR(MOD_MAP, "Zone-specific JSON is not an object");
+        return false;
+    }
+
+    // Verify this is the correct zone
+    std::string fileZone = root.get("zone", "").asString();
+    if (!fileZone.empty() && fileZone != zoneName) {
+        LOG_TRACE(MOD_MAP, "Zone mismatch: file is for '{}', wanted '{}'", fileZone, zoneName);
+        return false;
+    }
+
+    if (!root.isMember("zone_lines") || !root["zone_lines"].isArray()) {
+        LOG_TRACE(MOD_MAP, "Zone-specific file has no zone_lines array");
+        return false;
+    }
+
+    extractedZoneLines_.clear();
+    const Json::Value& zoneLines = root["zone_lines"];
+
+    for (const auto& zl : zoneLines) {
+        // Skip entries without bounds (not yet mapped in editor)
+        if (!zl.isMember("bounds")) {
+            LOG_TRACE(MOD_MAP, "Skipping zone line to '{}' - no bounds defined",
+                zl.get("target_zone", "unknown").asString());
+            continue;
+        }
+
+        ExtractedZoneLine ezl;
+        ezl.destinationZone = zl.get("target_zone", "").asString();
+        ezl.destinationZoneId = getZoneIdFromName(ezl.destinationZone);
+
+        if (ezl.destinationZoneId == 0) {
+            LOG_WARN(MOD_MAP, "Unknown destination zone '{}', skipping", ezl.destinationZone);
+            continue;
+        }
+
+        // Load bounds directly - JSON is already in client coordinate format
+        const Json::Value& bounds = zl["bounds"];
+        ezl.minX = bounds["min_x"].asFloat();
+        ezl.maxX = bounds["max_x"].asFloat();
+        ezl.minY = bounds["min_y"].asFloat();
+        ezl.maxY = bounds["max_y"].asFloat();
+        ezl.minZ = bounds["min_z"].asFloat();
+        ezl.maxZ = bounds["max_z"].asFloat();
+
+        // Parse landing type to determine destination coordinates
+        std::string landing = zl.get("landing", "fixed").asString();
+
+        // For now, we use SAME_COORD_MARKER for preserved coordinates
+        // The actual destination will be resolved by the server or at zone time
+        if (landing == "preserve_x") {
+            ezl.destX = SAME_COORD_MARKER;
+            ezl.destY = 0.0f;
+            ezl.destZ = 0.0f;
+        } else if (landing == "preserve_y") {
+            ezl.destX = 0.0f;
+            ezl.destY = SAME_COORD_MARKER;
+            ezl.destZ = 0.0f;
+        } else if (landing == "preserve_z") {
+            ezl.destX = 0.0f;
+            ezl.destY = 0.0f;
+            ezl.destZ = SAME_COORD_MARKER;
+        } else {
+            // "fixed" landing - use trigger center as placeholder
+            // Server will provide actual destination
+            ezl.destX = 0.0f;
+            ezl.destY = 0.0f;
+            ezl.destZ = 0.0f;
+        }
+        ezl.destHeading = 0.0f;
+
+        // Zone point index (not always available in this format)
+        ezl.zonePointIndex = 0;
+
+        extractedZoneLines_.push_back(ezl);
+
+        LOG_DEBUG(MOD_MAP, "Loaded zone line: {} (id {}) client box ({:.1f},{:.1f},{:.1f}) to ({:.1f},{:.1f},{:.1f})",
+            ezl.destinationZone, ezl.destinationZoneId,
+            ezl.minX, ezl.minY, ezl.minZ, ezl.maxX, ezl.maxY, ezl.maxZ);
+    }
+
+    LOG_INFO(MOD_MAP, "Loaded {} zone lines from zone-specific file", extractedZoneLines_.size());
     return !extractedZoneLines_.empty();
 }
 

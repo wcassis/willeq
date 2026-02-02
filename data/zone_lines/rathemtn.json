@@ -1,0 +1,43 @@
+{
+  "zone": "rathemtn",
+  "long_name": "The Rathe Mountains",
+  "zone_lines": [
+    {
+      "target_zone": "feerrott",
+      "target_long_name": "The Feerrott",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3100.0,
+        "y": -415.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lakerathe",
+      "target_long_name": "Lake Rathetear",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3040.0,
+        "y": -3410.0,
+        "z": 0.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -305.0,
+        "y": 1176.75,
+        "z": -3.0
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

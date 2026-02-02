@@ -1,0 +1,86 @@
+{
+   "long_name" : "The Qeynos Hills",
+   "zone" : "qeytoqrg",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : 3442.96533203125,
+            "max_y" : -1135.9429931640625,
+            "max_z" : 33.734375,
+            "min_x" : 3423.63525390625,
+            "min_y" : -1136.4144287109375,
+            "min_z" : -6.265625
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Blackburrow",
+         "target_zone" : "blackburrow",
+         "trigger_coords" : {
+            "x" : 3433.30029296875,
+            "y" : -1136.1787109375,
+            "z" : 3.734375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 1301.55419921875,
+            "max_y" : -2471.572021484375,
+            "max_z" : 33.734375,
+            "min_x" : 1150.2313232421875,
+            "min_y" : -2471.572021484375,
+            "min_z" : -6.265625
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Western Plains of Karana",
+         "target_zone" : "qey2hh1",
+         "trigger_coords" : {
+            "x" : 1225.892822265625,
+            "y" : -2471.572021484375,
+            "z" : 3.734375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : -740.60205078125,
+            "max_y" : 1263.981689453125,
+            "max_z" : 33,
+            "min_x" : -740.60205078125,
+            "min_y" : -1261.0400390625,
+            "min_z" : -6 
+         },
+         "landing" : "preserve_x",
+         "source" : "zone_points",
+         "target_long_name" : "Qeynos",
+         "target_zone" : "qeynos",
+         "trigger_coords" : {
+            "x" : -740.60205078125,
+            "y" : 1.4708251953125,
+            "z" : 3.734375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 5200.0,
+            "max_y" : 105.2982177734375,
+            "max_z" : 33.734375,
+            "min_x" : 5197.6171875,
+            "min_y" : 65.978118896484375,
+            "min_z" : -6.265625
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Surefall Glade",
+         "target_zone" : "qrg",
+         "trigger_coords" : {
+            "x" : 5198.80859375,
+            "y" : 85.638168334960938,
+            "z" : 3.734375
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

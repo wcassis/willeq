@@ -1,0 +1,126 @@
+{
+  "zone": "droga",
+  "long_name": "Mines of Droga",
+  "zone_lines": [
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -375.0,
+        "y": -1425.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -300.0,
+        "y": -1400.0,
+        "z": 0.0
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "The Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "The Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "The Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "The Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -247.7824,
+        "y": 1380.0861,
+        "z": -191.9354
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    }
+  ]
+}

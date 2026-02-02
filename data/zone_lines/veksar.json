@@ -1,0 +1,30 @@
+{
+  "zone": "veksar",
+  "long_name": "Veksar",
+  "zone_lines": [
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 15.0,
+        "y": 639.0,
+        "z": -25.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -15.0,
+        "y": 639.0,
+        "z": -25.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

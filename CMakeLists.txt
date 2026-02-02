@@ -765,6 +765,31 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(query_surface_map PRIVATE
         ${CMAKE_SOURCE_DIR}/include
     )
+
+    # Zone Line Editor tool (2D editor for marking zone line boundaries)
+    ADD_EXECUTABLE(zone_line_editor
+        tools/zone_line_editor.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(zone_line_editor PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+        ${IRRLICHT_INCLUDE_DIR}
+        ${JSONCPP_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(zone_line_editor
+        ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
 ENDIF()
 
 # Install

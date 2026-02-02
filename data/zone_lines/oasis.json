@@ -1,0 +1,66 @@
+{
+   "long_name" : "Oasis of Marr",
+   "zone" : "oasis",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : 3157.822998046875,
+            "max_y" : 1496.79736328125,
+            "max_z" : 66.875,
+            "min_x" : 3157.822998046875,
+            "min_y" : -975.724853515625,
+            "min_z" : 26.875
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "North Ro",
+         "target_zone" : "nro",
+         "trigger_coords" : {
+            "x" : 3157.822998046875,
+            "y" : 260.5362548828125,
+            "z" : 36.875
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 2424.081787109375,
+            "max_y" : -1225.44384765625,
+            "max_z" : 36.875,
+            "min_x" : 2424.081787109375,
+            "min_y" : -1404.254638671875,
+            "min_z" : -3.125
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Overthere",
+         "target_zone" : "overthere",
+         "trigger_coords" : {
+            "x" : 2424.081787109375,
+            "y" : -1314.8492431640625,
+            "z" : 6.875
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 956.59881591796875,
+            "max_y" : 1937.65869140625,
+            "max_z" : 36.875,
+            "min_x" : 611.3089599609375,
+            "min_y" : 1937.65869140625,
+            "min_z" : -3.125
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Southern Desert of Ro",
+         "target_zone" : "sro",
+         "trigger_coords" : {
+            "x" : 783.953857421875,
+            "y" : 1937.65869140625,
+            "z" : 6.875
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

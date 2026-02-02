@@ -1,0 +1,30 @@
+{
+  "zone": "sro",
+  "long_name": "Southern Desert of Ro",
+  "zone_lines": [
+    {
+      "target_zone": "innothule",
+      "target_long_name": "Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1130.0,
+        "y": 3195.0,
+        "z": -23.1
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "oasis",
+      "target_long_name": "Oasis of Marr",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -184.0,
+        "y": -1528.0,
+        "z": 6.2
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

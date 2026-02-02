@@ -1,0 +1,79 @@
+{
+  "zone": "butcher",
+  "long_name": "Butcherblock Mountains",
+  "zone_lines": [
+    {
+      "target_zone": "cauldron",
+      "target_long_name": "Dagnor's Cauldron",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 344.0,
+        "y": 2929.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "gfaydark",
+      "target_long_name": "The Greater Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3070.0,
+        "y": 1312.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kaladima",
+      "target_long_name": "South Kaladim",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 186.57,
+        "y": -3114.75,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "oot",
+      "target_long_name": "Ocean of Tears",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3239.0,
+        "y": -1355.0,
+        "z": 11.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 506.765,
+        "y": -1754.95,
+        "z": -3.6543
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

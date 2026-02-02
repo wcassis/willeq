@@ -1,0 +1,55 @@
+{
+  "zone": "iceclad",
+  "long_name": "The Iceclad Ocean",
+  "zone_lines": [
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -10661.5,
+        "y": 4499.89,
+        "z": 559.85
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2865.0,
+        "y": -1725.0,
+        "z": 120.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nro",
+      "target_long_name": "Northern Desert of Ro",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 20339.3,
+        "y": -3932.79,
+        "z": -33.61
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frozenshadow",
+      "target_long_name": "The Tower of Frozen Shadow",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -2876.23,
+        "y": -1725.33,
+        "z": 115.367
+      },
+      "landing": "fixed",
+      "door_name": "FRZSHDENT200",
+      "source": "doors"
+    }
+  ]
+}

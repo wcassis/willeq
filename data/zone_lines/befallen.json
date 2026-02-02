@@ -1,0 +1,30 @@
+{
+  "zone": "befallen",
+  "long_name": "Befallen",
+  "zone_lines": [
+    {
+      "target_zone": "commonlands",
+      "target_long_name": "The Commonlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -35.22,
+        "y": 75.27,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "commons",
+      "target_long_name": "West Commonlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -35.22,
+        "y": 75.27,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

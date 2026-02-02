@@ -1,0 +1,78 @@
+{
+  "zone": "neriaka",
+  "long_name": "Neriak - Foreign Quarter",
+  "zone_lines": [
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -155.0,
+        "y": -29.0,
+        "z": 30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -155.0,
+        "y": -29.0,
+        "z": 30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -155.0,
+        "y": -29.0,
+        "z": 30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -155.0,
+        "y": -29.0,
+        "z": 30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriakb",
+      "target_long_name": "Neriak - Commons",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 361.0,
+        "y": -85.0,
+        "z": -13.9969
+      },
+      "landing": "preserve_x",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "neriakb",
+      "target_long_name": "Neriak - Commons",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 354.0,
+        "y": -86.0,
+        "z": -11.0
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    }
+  ]
+}

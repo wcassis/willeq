@@ -1,0 +1,138 @@
+{
+   "long_name" : "North Qeynos",
+   "zone" : "qeynos2",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : 196.87771606445312,
+            "max_y" : 350.39566040039062,
+            "max_z" : -25.4375,
+            "min_x" : 180.7799072265625,
+            "min_y" : 335.30398559570312,
+            "min_z" : -45.4375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points+brewall",
+         "target_long_name" : "The Qeynos Aqueduct System",
+         "target_zone" : "qcat",
+         "trigger_coords" : {
+            "x" : 188.82881164550781,
+            "y" : 342.84982299804688,
+            "z" : -35.4375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 182.19985961914062,
+            "max_y" : 77.045082092285156,
+            "max_z" : -5.4375,
+            "min_x" : 166.7510986328125,
+            "min_y" : 75.401596069335938,
+            "min_z" : -45.4375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Qeynos Aqueduct System",
+         "target_zone" : "qcat",
+         "trigger_coords" : {
+            "x" : 174.47547912597656,
+            "y" : 76.223342895507812,
+            "z" : -35.4375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 307.6746826171875,
+            "max_y" : -154.09732055664062,
+            "max_z" : -15.4375,
+            "min_x" : 293.54071044921875,
+            "min_y" : -168.23127746582031,
+            "min_z" : -35.4375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Qeynos Aqueduct System",
+         "target_zone" : "qcat",
+         "trigger_coords" : {
+            "x" : 300.60769653320312,
+            "y" : -161.164306640625,
+            "z" : -25.4375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : -161.20399475097656,
+            "max_y" : 1.2219533920288086,
+            "max_z" : 30.0,
+            "min_x" : -161.95063781738281,
+            "min_y" : -14.706246376037598,
+            "min_z" : 0.0
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "South Qeynos",
+         "target_zone" : "qeynos",
+         "trigger_coords" : {
+            "x" : -161.57731628417969,
+            "y" : -6.7421464920043945,
+            "z" : 1.5
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : -34.710735321044922,
+            "max_y" : 363.964111328125,
+            "max_z" : 30.0,
+            "min_x" : -35.955123901367188,
+            "min_y" : 349.77804565429688,
+            "min_z" : 0.0
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "South Qeynos",
+         "target_zone" : "qeynos",
+         "trigger_coords" : {
+            "x" : -35.332931518554688,
+            "y" : 356.87109375,
+            "z" : 1.5
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 1767.2142333984375,
+            "max_y" : 1129.6767578125,
+            "max_z" : 30.0,
+            "min_x" : 1755.9129638671875,
+            "min_y" : -1119.29296875,
+            "min_z" : 0.0
+         },
+         "landing" : "preserve_x",
+         "source" : "zone_points",
+         "target_long_name" : "The Qeynos Hills",
+         "target_zone" : "qeytoqrg",
+         "trigger_coords" : {
+            "x" : 1761.5635986328125,
+            "y" : 5.1918563842773438,
+            "z" : 2.5
+         },
+         "type" : "SHORT"
+      },
+      {
+         "landing" : "fixed",
+         "source" : "doors",
+         "target_long_name" : "The Plane of Knowledge",
+         "target_zone" : "poknowledge",
+         "trigger_coords" : {
+            "x" : 183.697998046875,
+            "y" : 484.4840087890625,
+            "z" : 0.0020000000949949026
+         },
+         "type" : "CLICK"
+      }
+   ]
+}

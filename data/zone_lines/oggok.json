@@ -1,0 +1,18 @@
+{
+  "zone": "oggok",
+  "long_name": "Oggok",
+  "zone_lines": [
+    {
+      "target_zone": "feerrott",
+      "target_long_name": "The Feerrott",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 100.0,
+        "y": 395.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

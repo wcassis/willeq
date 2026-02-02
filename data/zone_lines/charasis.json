@@ -1,0 +1,66 @@
+{
+  "zone": "charasis",
+  "long_name": "The Howling Stones",
+  "zone_lines": [
+    {
+      "target_zone": "charasis",
+      "target_long_name": "The Howling Stones",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "charasis",
+      "target_long_name": "The Howling Stones",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "charasis",
+      "target_long_name": "The Howling Stones",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "overthere",
+      "target_long_name": "The Overthere",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 730.0,
+        "y": -0.0,
+        "z": 22.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "overthere",
+      "target_long_name": "The Overthere",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 110.0,
+        "y": 765.0,
+        "z": -3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

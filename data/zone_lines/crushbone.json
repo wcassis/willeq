@@ -1,0 +1,18 @@
+{
+  "zone": "crushbone",
+  "long_name": "Crushbone",
+  "zone_lines": [
+    {
+      "target_zone": "gfaydark",
+      "target_long_name": "The Greater Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -163.0,
+        "y": 632.0,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

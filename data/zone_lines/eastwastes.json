@@ -1,0 +1,222 @@
+{
+  "zone": "eastwastes",
+  "long_name": "Eastern Wastes",
+  "zone_lines": [
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -478.0,
+        "y": 4073.0,
+        "z": 145.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "greatdivide",
+      "target_long_name": "The Great Divide",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -6638.0,
+        "y": 1813.0,
+        "z": 144.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "iceclad",
+      "target_long_name": "The Iceclad Ocean",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 5901.0,
+        "y": 4471.0,
+        "z": 560.0
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kael",
+      "target_long_name": "Kael Drakkel",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -7020.0,
+        "y": 6248.0,
+        "z": -301.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sleeper",
+      "target_long_name": "The Sleeper's Tomb",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -14.0,
+        "y": 7250.0,
+        "z": 160.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6777.37,
+        "y": 6618.99,
+        "z": -185.003
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6784.33,
+        "y": 6425.33,
+        "z": -152.735
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -3532.22,
+        "y": 1501.12,
+        "z": 119.243
+      },
+      "landing": "fixed",
+      "door_name": "ICROCK203C",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6785.04,
+        "y": 6385.55,
+        "z": -153.31
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6772.41,
+        "y": 6194.06,
+        "z": -192.171
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -3516.87,
+        "y": 1501.12,
+        "z": 116.551
+      },
+      "landing": "fixed",
+      "door_name": "ICROCK203C",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6789.43,
+        "y": 6307.42,
+        "z": -151.81
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -471.234,
+        "y": 4027.6,
+        "z": 141.823
+      },
+      "landing": "fixed",
+      "door_name": "MISTGATE",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -477.795,
+        "y": 4077.99,
+        "z": 141.978
+      },
+      "landing": "fixed",
+      "door_name": "TELECRYS200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6786.49,
+        "y": 6345.83,
+        "z": -154.915
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "crystal",
+      "target_long_name": "The Crystal Caverns",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -6782.59,
+        "y": 6539.99,
+        "z": -180.606
+      },
+      "landing": "fixed",
+      "door_name": "DNDOOR201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "sleeper",
+      "target_long_name": "The Sleeper's Tomb",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -12.822,
+        "y": 7251.09,
+        "z": 157.658
+      },
+      "landing": "fixed",
+      "door_name": "SHRINEGLOBE202",
+      "source": "doors"
+    }
+  ]
+}

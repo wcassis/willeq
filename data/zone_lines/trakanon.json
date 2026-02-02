@@ -1,0 +1,55 @@
+{
+  "zone": "trakanon",
+  "long_name": "Trakanon's Teeth",
+  "zone_lines": [
+    {
+      "target_zone": "emeraldjungle",
+      "target_long_name": "The Emerald Jungle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1500.0,
+        "y": -3970.0,
+        "z": -340.0
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sebilis",
+      "target_long_name": "The Ruins of Sebilis",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4765.0,
+        "y": 1575.0,
+        "z": -475.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4475.0,
+        "y": -1675.0,
+        "z": -325.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sebilis",
+      "target_long_name": "The Ruins of Sebilis",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 4764.19,
+        "y": 1573.18,
+        "z": -474.248
+      },
+      "landing": "fixed",
+      "door_name": "HOWLER",
+      "source": "doors"
+    }
+  ]
+}

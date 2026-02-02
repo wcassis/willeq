@@ -1,0 +1,54 @@
+{
+  "zone": "skyfire",
+  "long_name": "The Skyfire Mountains",
+  "zone_lines": [
+    {
+      "target_zone": "burningwood",
+      "target_long_name": "The Burning Wood",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1755.0,
+        "y": 5730.0,
+        "z": -160.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "overthere",
+      "target_long_name": "The Overthere",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4340.0,
+        "y": 1089.0,
+        "z": 44.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "overthere",
+      "target_long_name": "The Overthere",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4340.0,
+        "y": 1199.0,
+        "z": 44.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "veeshan",
+      "target_long_name": "Veeshan's Peak",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2980.0,
+        "y": -2610.0,
+        "z": -77.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

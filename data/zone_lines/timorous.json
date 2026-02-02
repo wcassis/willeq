@@ -1,0 +1,306 @@
+{
+  "zone": "timorous",
+  "long_name": "Timorous Deep",
+  "zone_lines": [
+    {
+      "target_zone": "akanon",
+      "target_long_name": "Ak'Anon",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4328.54,
+        "y": 12197.1552,
+        "z": -281.1278
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "felwithea",
+      "target_long_name": "Northern Felwithe",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4308.8266,
+        "y": 12295.9345,
+        "z": -281.145
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4367.7016,
+        "y": 12307.122,
+        "z": -281.1446
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "gfaydark",
+      "target_long_name": "The Greater Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4309.9638,
+        "y": 12250.1601,
+        "z": -281.1507
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "grobb",
+      "target_long_name": "Grobb",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "halas",
+      "target_long_name": "Halas",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4324.1132,
+        "y": 12309.9257,
+        "z": -281.149
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "kaladima",
+      "target_long_name": "South Kaladim",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriakb",
+      "target_long_name": "Neriak - Commons",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4309.4184,
+        "y": 12202.4062,
+        "z": -281.1468
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "oggok",
+      "target_long_name": "Oggok",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4373.3349,
+        "y": 12200.7656,
+        "z": -281.1336
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "rivervale",
+      "target_long_name": "Rivervale",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4430.7138,
+        "y": 12220.3857,
+        "z": -281.1435
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "akanon",
+      "target_long_name": "Ak'Anon",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4437.0,
+        "y": 12257.0,
+        "z": -282.685
+      },
+      "landing": "fixed",
+      "door_name": "AKALIGHT1",
+      "source": "doors"
+    },
+    {
+      "target_zone": "cabwest",
+      "target_long_name": "Cabilis West",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4424.75,
+        "y": 12321.8,
+        "z": -282.935
+      },
+      "landing": "fixed",
+      "door_name": "KURBRAZIER100",
+      "source": "doors"
+    },
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4330.0,
+        "y": 12189.0,
+        "z": -282.685
+      },
+      "landing": "fixed",
+      "door_name": "ERBRAZIER",
+      "source": "doors"
+    },
+    {
+      "target_zone": "felwithea",
+      "target_long_name": "Northern Felwithe",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4301.75,
+        "y": 12296.0,
+        "z": -282.685
+      },
+      "landing": "fixed",
+      "door_name": "FAYBRAZIER",
+      "source": "doors"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4368.75,
+        "y": 12317.2,
+        "z": -282.935
+      },
+      "landing": "fixed",
+      "door_name": "FREPORTBRAZIER",
+      "source": "doors"
+    },
+    {
+      "target_zone": "gfaydark",
+      "target_long_name": "The Greater Faydark",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4302.0,
+        "y": 12249.8,
+        "z": -282.935
+      },
+      "landing": "fixed",
+      "door_name": "KELBRAZ",
+      "source": "doors"
+    },
+    {
+      "target_zone": "grobb",
+      "target_long_name": "Grobb",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4415.0,
+        "y": 12193.0,
+        "z": -282.935
+      },
+      "landing": "fixed",
+      "door_name": "CAMPFIRE",
+      "source": "doors"
+    },
+    {
+      "target_zone": "halas",
+      "target_long_name": "Halas",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4324.5,
+        "y": 12320.5,
+        "z": -277.935
+      },
+      "landing": "fixed",
+      "door_name": "SACBOWLFIRE",
+      "source": "doors"
+    },
+    {
+      "target_zone": "kaladima",
+      "target_long_name": "South Kaladim",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4439.0,
+        "y": 12299.0,
+        "z": -282.685
+      },
+      "landing": "fixed",
+      "door_name": "KALBRAZ",
+      "source": "doors"
+    },
+    {
+      "target_zone": "neriakb",
+      "target_long_name": "Neriak - Commons",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4301.0,
+        "y": 12204.0,
+        "z": -282.685
+      },
+      "landing": "fixed",
+      "door_name": "NERBRAZIER",
+      "source": "doors"
+    },
+    {
+      "target_zone": "oggok",
+      "target_long_name": "Oggok",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4373.0,
+        "y": 12190.0,
+        "z": -282.685
+      },
+      "landing": "fixed",
+      "door_name": "OGBRAZIER",
+      "source": "doors"
+    },
+    {
+      "target_zone": "rivervale",
+      "target_long_name": "Rivervale",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -4436.0,
+        "y": 12220.0,
+        "z": -282.935
+      },
+      "landing": "fixed",
+      "door_name": "TIKI",
+      "source": "doors"
+    }
+  ]
+}

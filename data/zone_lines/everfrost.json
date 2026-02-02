@@ -1,0 +1,66 @@
+{
+   "long_name" : "Everfrost Peaks",
+   "zone" : "everfrost",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : -3092.31591796875,
+            "max_y" : -507.79901123046875,
+            "max_z" : -75.84375,
+            "min_x" : -3093.20556640625,
+            "min_y" : -546.0626220703125,
+            "min_z" : -115.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Blackburrow",
+         "target_zone" : "blackburrow",
+         "trigger_coords" : {
+            "x" : -3092.7607421875,
+            "y" : -526.9307861328125,
+            "z" : -105.84375
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 3749.046630859375,
+            "max_y" : 401.19036865234375,
+            "max_z" : 34.15625,
+            "min_x" : 3749.046630859375,
+            "min_y" : 347.07070922851562,
+            "min_z" : -5.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "Halas",
+         "target_zone" : "halas",
+         "trigger_coords" : {
+            "x" : 3749.046630859375,
+            "y" : 374.13055419921875,
+            "z" : 4.15625
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 2044.047607421875,
+            "max_y" : -7093.0732421875,
+            "max_z" : -25.84375,
+            "min_x" : 1998.7906494140625,
+            "min_y" : -7094.2333984375,
+            "min_z" : -65.84375
+         },
+         "landing" : "fixed",
+         "source" : "zone_points",
+         "target_long_name" : "The Permafrost Caverns",
+         "target_zone" : "permafrost",
+         "trigger_coords" : {
+            "x" : 2021.419189453125,
+            "y" : -7093.6533203125,
+            "z" : -55.84375
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

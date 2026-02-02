@@ -1,0 +1,66 @@
+{
+  "zone": "lfaydark",
+  "long_name": "The Lesser Faydark",
+  "zone_lines": [
+    {
+      "target_zone": "gfaydark",
+      "target_long_name": "The Greater Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1190.0,
+        "y": -2180.0,
+        "z": 12.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "mistmoore",
+      "target_long_name": "The Castle of Mistmoore",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3360.0,
+        "y": 1110.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriakc",
+      "target_long_name": "Neriak - 3rd Gate",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3875.0,
+        "y": 120.0,
+        "z": -38.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "steamfont",
+      "target_long_name": "Steamfont Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2185.0,
+        "y": -920.0,
+        "z": -1.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "steamfontmts",
+      "target_long_name": "The Steamfont Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2185.0,
+        "y": -920.0,
+        "z": -1.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

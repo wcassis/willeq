@@ -1,0 +1,78 @@
+{
+   "long_name" : "Northern Desert of Ro",
+   "zone" : "nro",
+   "zone_lines" : [
+      {
+         "bounds" : {
+            "max_x" : 3936.0732421875,
+            "max_y" : 4015.1220703125,
+            "max_z" : 34.3125,
+            "min_x" : 3936.0732421875,
+            "min_y" : 3841.681640625,
+            "min_z" : -5.6875
+         },
+         "landing" : "fixed",
+         "source" : "zone_points+brewall",
+         "target_long_name" : "East Commonlands",
+         "target_zone" : "ecommons",
+         "trigger_coords" : {
+            "x" : 3936.0732421875,
+            "y" : 3928.40185546875,
+            "z" : 4.3125
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : 4059.680419921875,
+            "max_y" : 983.6458740234375,
+            "max_z" : -75.6875,
+            "min_x" : 4059.680419921875,
+            "min_y" : -257.822265625,
+            "min_z" : -115.6875
+         },
+         "landing" : "fixed",
+         "source" : "zone_points+brewall",
+         "target_long_name" : "East Freeport",
+         "target_zone" : "freporte",
+         "trigger_coords" : {
+            "x" : 4059.680419921875,
+            "y" : 362.91180419921875,
+            "z" : -105.6875
+         },
+         "type" : "SHORT"
+      },
+      {
+         "landing" : "fixed",
+         "source" : "zone_points+brewall",
+         "target_long_name" : "The Iceclad Ocean",
+         "target_zone" : "iceclad",
+         "trigger_coords" : {
+            "x" : 926.0,
+            "y" : -791.0,
+            "z" : 34.464801788330078
+         },
+         "type" : "SHORT"
+      },
+      {
+         "bounds" : {
+            "max_x" : -1828.4224853515625,
+            "max_y" : 1504.17431640625,
+            "max_z" : -75.6875,
+            "min_x" : -1828.4224853515625,
+            "min_y" : -1161.33056640625,
+            "min_z" : -115.6875
+         },
+         "landing" : "fixed",
+         "source" : "zone_points+brewall",
+         "target_long_name" : "Oasis of Marr",
+         "target_zone" : "oasis",
+         "trigger_coords" : {
+            "x" : -1828.4224853515625,
+            "y" : 171.421875,
+            "z" : -105.6875
+         },
+         "type" : "SHORT"
+      }
+   ]
+}

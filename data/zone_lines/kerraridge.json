@@ -1,0 +1,18 @@
+{
+  "zone": "kerraridge",
+  "long_name": "Kerra Isle",
+  "zone_lines": [
+    {
+      "target_zone": "tox",
+      "target_long_name": "Toxxulia Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 945.0,
+        "y": -417.0,
+        "z": 23.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

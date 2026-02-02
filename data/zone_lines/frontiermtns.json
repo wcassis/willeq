@@ -1,0 +1,102 @@
+{
+  "zone": "frontiermtns",
+  "long_name": "Frontier Mountains",
+  "zone_lines": [
+    {
+      "target_zone": "burningwood",
+      "target_long_name": "The Burning Wood",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -4300.0,
+        "y": 2330.0,
+        "z": -451.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "dreadlands",
+      "target_long_name": "The Dreadlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 3225.0,
+        "y": 3790.0,
+        "z": -346.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "The Temple of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2965.0,
+        "y": -3275.0,
+        "z": 345.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "droga",
+      "target_long_name": "Mines of Droga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2965.0,
+        "y": -3275.0,
+        "z": 345.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lakeofillomen",
+      "target_long_name": "Lake of Ill Omen",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4630.0,
+        "y": 405.0,
+        "z": 113.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "The Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 540.0,
+        "y": 2675.0,
+        "z": -496.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nurga",
+      "target_long_name": "Mines of Nurga",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 540.0,
+        "y": 2675.0,
+        "z": -496.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "overthere",
+      "target_long_name": "The Overthere",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1400.0,
+        "y": -5980.0,
+        "z": 370.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

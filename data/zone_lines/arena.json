@@ -1,0 +1,43 @@
+{
+  "zone": "arena",
+  "long_name": "The Arena",
+  "zone_lines": [
+    {
+      "target_zone": "lakerathe",
+      "target_long_name": "Lake Rathetear",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -15.0,
+        "y": 655.0,
+        "z": -15.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -147.807,
+        "y": 1022.76,
+        "z": 46.7928
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

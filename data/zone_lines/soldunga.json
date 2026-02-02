@@ -1,0 +1,186 @@
+{
+  "zone": "soldunga",
+  "long_name": "Solusek's Eye",
+  "zone_lines": [
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 524.7912,
+        "y": 441.7828,
+        "z": 69.9705
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 524.7912,
+        "y": 441.7828,
+        "z": 69.9705
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 524.7912,
+        "y": 441.7828,
+        "z": 69.9705
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 524.7912,
+        "y": 441.7828,
+        "z": 69.9705
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 507.0,
+        "y": 303.0,
+        "z": 25.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 541.0,
+        "y": 1080.0,
+        "z": -0.9
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 384.0,
+        "y": 361.0,
+        "z": 13.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 551.0,
+        "y": 165.0,
+        "z": 26.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungc",
+      "target_long_name": "The Caverns of Exile",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

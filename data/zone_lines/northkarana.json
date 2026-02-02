@@ -1,0 +1,69 @@
+{
+  "zone": "northkarana",
+  "long_name": "The Northern Plains of Karana",
+  "zone_lines": [
+    {
+      "target_zone": "eastkarana",
+      "target_long_name": "Eastern Plains of Karana",
+      "type": "LONG_Y",
+      "trigger_coords": {
+        "x": -1066.0,
+        "y": null,
+        "z": -3.35
+      },
+      "landing": "fixed",
+      "source": "zone_points",
+      "boundary": {
+        "span_axis": "y",
+        "width": null,
+        "height": null
+      }
+    },
+    {
+      "target_zone": "nexus",
+      "target_long_name": "Nexus",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1206.0,
+        "y": 3686.0,
+        "z": -7.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qey2hh1",
+      "target_long_name": "The Western Plains of Karana",
+      "type": "LONG_Y",
+      "trigger_coords": {
+        "x": -3270.0,
+        "y": null,
+        "z": -1.4
+      },
+      "landing": "preserve_y",
+      "source": "zone_points",
+      "boundary": {
+        "span_axis": "y",
+        "width": null,
+        "height": null
+      }
+    },
+    {
+      "target_zone": "southkarana",
+      "target_long_name": "The Southern Plains of Karana",
+      "type": "LONG_X",
+      "trigger_coords": {
+        "x": null,
+        "y": 4510.0,
+        "z": -30.0
+      },
+      "landing": "fixed",
+      "source": "zone_points",
+      "boundary": {
+        "span_axis": "x",
+        "width": null,
+        "height": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "zone": "qcat",
+  "long_name": "The Qeynos Aqueduct System",
+  "zone_lines": [
+    {
+      "target_zone": "qeynos",
+      "target_long_name": "South Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -147.0,
+        "y": 175.0,
+        "z": -77.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos",
+      "target_long_name": "South Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 301.0,
+        "y": -217.0,
+        "z": -38.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos",
+      "target_long_name": "South Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 184.0,
+        "y": -307.0,
+        "z": -38.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos",
+      "target_long_name": "South Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 175.0,
+        "y": -339.0,
+        "z": -67.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos2",
+      "target_long_name": "North Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -105.0,
+        "y": -637.0,
+        "z": -40.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos2",
+      "target_long_name": "North Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -217.0,
+        "y": -889.0,
+        "z": -50.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "qeynos2",
+      "target_long_name": "North Qeynos",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 49.0,
+        "y": -1051.0,
+        "z": -58.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "tox",
+      "target_long_name": "Toxxulia Forest",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "tox",
+      "target_long_name": "Toxxulia Forest",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -203.16,
+        "y": -234.852,
+        "z": -41.9678
+      },
+      "landing": "fixed",
+      "door_name": "ERBRAZIER",
+      "source": "doors"
+    }
+  ]
+}

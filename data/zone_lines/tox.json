@@ -1,0 +1,117 @@
+{
+  "zone": "tox",
+  "long_name": "Toxxulia Forest",
+  "zone_lines": [
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -296.0,
+        "y": -2550.0,
+        "z": -44.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kerraridge",
+      "target_long_name": "Kerra Isle",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2655.0,
+        "y": 512.0,
+        "z": -34.5
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nexus",
+      "target_long_name": "Nexus",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 910.0,
+        "y": 1515.0,
+        "z": -36.9
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 435.0,
+        "y": 2626.0,
+        "z": -41.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 582.532,
+        "y": -2324.96,
+        "z": -47.8143
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -295.884,
+        "y": 2344.14,
+        "z": -49.748
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    },
+    {
+      "target_zone": "qcat",
+      "target_long_name": "The Qeynos Aqueduct System",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 848.585,
+        "y": -1193.26,
+        "z": -51.8814
+      },
+      "landing": "fixed",
+      "door_name": "ERBRAZIER",
+      "source": "doors"
+    }
+  ]
+}

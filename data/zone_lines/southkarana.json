@@ -1,0 +1,54 @@
+{
+  "zone": "southkarana",
+  "long_name": "The Southern Plains of Karana",
+  "zone_lines": [
+    {
+      "target_zone": "lakerathe",
+      "target_long_name": "Lake Rathetear",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1144.0,
+        "y": 8554.0,
+        "z": 3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "northkarana",
+      "target_long_name": "The Northern Plains of Karana",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -895.0,
+        "y": -2700.0,
+        "z": -31.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paw",
+      "target_long_name": "The Lair of the Splitpaw",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -931.0,
+        "y": 3143.0,
+        "z": -9.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paw",
+      "target_long_name": "Lair of the Splitpaw",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -931.0,
+        "y": 3143.0,
+        "z": -9.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

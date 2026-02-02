@@ -1,0 +1,155 @@
+{
+  "zone": "paineel",
+  "long_name": "Paineel",
+  "zone_lines": [
+    {
+      "target_zone": "hole",
+      "target_long_name": "The Hole",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 946.58,
+        "y": -591.69,
+        "z": -95.78
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "hole",
+      "target_long_name": "The Hole",
+      "type": "LONG_Z",
+      "trigger_coords": {
+        "x": -250.0,
+        "y": -600.0,
+        "z": 999999.0
+      },
+      "landing": "fixed",
+      "source": "zone_points",
+      "boundary": {
+        "span_axis": "z",
+        "width": null,
+        "height": null
+      }
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -755.9,
+        "y": -881.6,
+        "z": -77.2
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "paineel",
+      "target_long_name": "Paineel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "tox",
+      "target_long_name": "Toxxulia Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -100.0,
+        "y": -890.0,
+        "z": 3.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "toxxulia",
+      "target_long_name": "Toxxulia Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -100.0,
+        "y": -890.0,
+        "z": 3.8
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "warrens",
+      "target_long_name": "The Warrens",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 886.0,
+        "y": -733.0,
+        "z": -33.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

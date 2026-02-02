@@ -1,0 +1,54 @@
+{
+  "zone": "soltemple",
+  "long_name": "The Temple of Solusek Ro",
+  "zone_lines": [
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -55.9854,
+        "y": -252.259,
+        "z": -0.9987
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -55.9854,
+        "y": -252.259,
+        "z": -0.9987
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -55.9854,
+        "y": -252.259,
+        "z": -0.9987
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -55.9854,
+        "y": -252.259,
+        "z": -0.9987
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    }
+  ]
+}

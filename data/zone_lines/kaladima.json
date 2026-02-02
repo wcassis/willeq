@@ -1,0 +1,42 @@
+{
+  "zone": "kaladima",
+  "long_name": "South Kaladim",
+  "zone_lines": [
+    {
+      "target_zone": "butcher",
+      "target_long_name": "Butcherblock Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -42.17,
+        "y": 64.45,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kaladimb",
+      "target_long_name": "North Kaladim",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -333.59,
+        "y": -419.97,
+        "z": -18.15
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kaladimb",
+      "target_long_name": "North Kaladim",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 264.0,
+        "y": -390.0,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

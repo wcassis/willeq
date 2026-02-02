@@ -1,0 +1,104 @@
+{
+  "zone": "gfaydark",
+  "long_name": "The Greater Faydark",
+  "zone_lines": [
+    {
+      "target_zone": "butcher",
+      "target_long_name": "Butcherblock Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -2665.0,
+        "y": 1641.0,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "crushbone",
+      "target_long_name": "Crushbone",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 55.0,
+        "y": -2600.0,
+        "z": 19.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "felwithea",
+      "target_long_name": "Northern Felwithe",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 2597.0,
+        "y": 1934.0,
+        "z": 23.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lfaydark",
+      "target_long_name": "The Lesser Faydark",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1112.0,
+        "y": 2612.0,
+        "z": 3.13
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 757.995,
+        "y": 173.6,
+        "z": -4.0918
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    },
+    {
+      "target_zone": "poknowledge",
+      "target_long_name": "The Plane of Knowledge",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1820.6,
+        "y": 2260.51,
+        "z": -1.6831
+      },
+      "landing": "fixed",
+      "door_name": "POKTELE500",
+      "source": "doors"
+    }
+  ]
+}

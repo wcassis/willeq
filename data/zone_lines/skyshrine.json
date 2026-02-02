@@ -1,0 +1,1006 @@
+{
+  "zone": "skyshrine",
+  "long_name": "Skyshrine",
+  "zone_lines": [
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kael",
+      "target_long_name": "Kael Drakkel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kael",
+      "target_long_name": "Kael Drakkel",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 158.0,
+        "y": -690.0,
+        "z": 333.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "wakening",
+      "target_long_name": "The Wakening Land",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 793.0,
+        "y": 249.0,
+        "z": 3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "wakening",
+      "target_long_name": "The Wakening Land",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 793.0,
+        "y": 249.0,
+        "z": 3.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 312.87,
+        "y": -575.956,
+        "z": 44.8161
+      },
+      "landing": "fixed",
+      "door_name": "VEDRSTAT102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "cobaltscar",
+      "target_long_name": "Cobaltscar",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 312.87,
+        "y": -575.956,
+        "z": 44.8161
+      },
+      "landing": "fixed",
+      "door_name": "VEDRSTAT102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -230.659,
+        "y": -119.812,
+        "z": 0.002
+      },
+      "landing": "fixed",
+      "door_name": "SKYTOME200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1272.85,
+        "y": -1999.39,
+        "z": 30.7106
+      },
+      "landing": "fixed",
+      "door_name": "SKYJEWEL200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1273.79,
+        "y": -2063.93,
+        "z": 31.352
+      },
+      "landing": "fixed",
+      "door_name": "SKYJEWEL201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1973.54,
+        "y": -2460.47,
+        "z": -139.905
+      },
+      "landing": "fixed",
+      "door_name": "SKYSYM200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -793.157,
+        "y": -739.602,
+        "z": 366.627
+      },
+      "landing": "fixed",
+      "door_name": "SKYGLOBE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1084.43,
+        "y": -1963.73,
+        "z": 36.252
+      },
+      "landing": "fixed",
+      "door_name": "SKYGLOBE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 910.366,
+        "y": -143.889,
+        "z": 229.89
+      },
+      "landing": "fixed",
+      "door_name": "SSHRINEWAL200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1973.54,
+        "y": -2460.47,
+        "z": -139.905
+      },
+      "landing": "fixed",
+      "door_name": "SKYSYM200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 910.366,
+        "y": -143.889,
+        "z": 229.89
+      },
+      "landing": "fixed",
+      "door_name": "SSHRINEWAL200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1084.43,
+        "y": -1963.73,
+        "z": 36.252
+      },
+      "landing": "fixed",
+      "door_name": "SKYGLOBE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -793.157,
+        "y": -739.602,
+        "z": 366.627
+      },
+      "landing": "fixed",
+      "door_name": "SKYGLOBE200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1273.79,
+        "y": -2063.93,
+        "z": 31.352
+      },
+      "landing": "fixed",
+      "door_name": "SKYJEWEL201",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1272.85,
+        "y": -1999.39,
+        "z": 30.7106
+      },
+      "landing": "fixed",
+      "door_name": "SKYJEWEL200",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -230.659,
+        "y": -119.812,
+        "z": 0.002
+      },
+      "landing": "fixed",
+      "door_name": "SKYTOME200",
+      "source": "doors"
+    }
+  ]
+}

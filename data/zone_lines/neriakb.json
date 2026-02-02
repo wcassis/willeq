@@ -1,0 +1,42 @@
+{
+  "zone": "neriakb",
+  "long_name": "Neriak - Commons",
+  "zone_lines": [
+    {
+      "target_zone": "neriaka",
+      "target_long_name": "Neriak - Foreign Quarter",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 367.613,
+        "y": -85.5376,
+        "z": -13.9979
+      },
+      "landing": "preserve_x",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "neriaka",
+      "target_long_name": "Neriak - Foreign Quarter",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 401.0,
+        "y": -86.0,
+        "z": -11.0
+      },
+      "landing": "preserve_y",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriakc",
+      "target_long_name": "Neriak - 3rd Gate",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 852.0,
+        "y": -200.0,
+        "z": -39.0
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    }
+  ]
+}

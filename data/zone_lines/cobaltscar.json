@@ -1,0 +1,55 @@
+{
+  "zone": "cobaltscar",
+  "long_name": "Cobaltscar",
+  "zone_lines": [
+    {
+      "target_zone": "sirens",
+      "target_long_name": "Siren's Grotto",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1629.0,
+        "y": -1573.0,
+        "z": 71.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "sirens",
+      "target_long_name": "Siren's Grotto",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1629.0,
+        "y": -1573.0,
+        "z": 71.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -893.0,
+        "y": 670.0,
+        "z": 405.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyshrine",
+      "target_long_name": "Skyshrine",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -890.086,
+        "y": 662.045,
+        "z": 393.572
+      },
+      "landing": "fixed",
+      "door_name": "TFSWITCH200",
+      "source": "doors"
+    }
+  ]
+}

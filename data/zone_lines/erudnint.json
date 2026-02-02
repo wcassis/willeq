@@ -1,0 +1,30 @@
+{
+  "zone": "erudnint",
+  "long_name": "The Erudin Palace",
+  "zone_lines": [
+    {
+      "target_zone": "erudnext",
+      "target_long_name": "Erudin",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -793.0,
+        "y": -715.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "erudnint",
+      "target_long_name": "The Erudin Palace",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

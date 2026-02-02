@@ -1,0 +1,30 @@
+{
+  "zone": "kael",
+  "long_name": "Kael Drakkel",
+  "zone_lines": [
+    {
+      "target_zone": "eastwastes",
+      "target_long_name": "Eastern Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 654.08,
+        "y": 14.06,
+        "z": 123.06
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "wakening",
+      "target_long_name": "The Wakening Land",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -3194.0,
+        "y": 125.0,
+        "z": -396.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

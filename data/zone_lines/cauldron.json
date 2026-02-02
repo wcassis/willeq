@@ -1,0 +1,42 @@
+{
+  "zone": "cauldron",
+  "long_name": "Dagnor's Cauldron",
+  "zone_lines": [
+    {
+      "target_zone": "butcher",
+      "target_long_name": "Butcherblock Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -262.0,
+        "y": -2856.0,
+        "z": 472.47
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "kedge",
+      "target_long_name": "Kedge Keep",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1013.0,
+        "y": 1167.0,
+        "z": -330.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "unrest",
+      "target_long_name": "The Estate of Unrest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 627.76,
+        "y": 2002.06,
+        "z": 93.15
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

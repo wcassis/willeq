@@ -1,0 +1,43 @@
+{
+  "zone": "neriakc",
+  "long_name": "Neriak - 3rd Gate",
+  "zone_lines": [
+    {
+      "target_zone": "lfaydark",
+      "target_long_name": "The Lesser Faydark",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "neriakb",
+      "target_long_name": "Neriak - Commons",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 852.0,
+        "y": -205.0,
+        "z": -39.0
+      },
+      "landing": "preserve_x",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lfaydark",
+      "target_long_name": "The Lesser Faydark",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1808.69,
+        "y": -903.056,
+        "z": -83.9654
+      },
+      "landing": "fixed",
+      "door_name": "NERBRAZIER",
+      "source": "doors"
+    }
+  ]
+}

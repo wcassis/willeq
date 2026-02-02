@@ -1,0 +1,54 @@
+{
+  "zone": "highkeep",
+  "long_name": "High Keep",
+  "zone_lines": [
+    {
+      "target_zone": "highpass",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -105.0,
+        "y": -63.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpass",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -105.0,
+        "y": 90.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpasshold",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -105.0,
+        "y": -63.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "highpasshold",
+      "target_long_name": "Highpass Hold",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -105.0,
+        "y": 90.0,
+        "z": 3.75
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

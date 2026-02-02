@@ -1,0 +1,78 @@
+{
+  "zone": "guktop",
+  "long_name": "The City of Guk",
+  "zone_lines": [
+    {
+      "target_zone": "gukbottom",
+      "target_long_name": "The Ruins of Old Guk",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -353.0,
+        "y": -1632.0,
+        "z": -87.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "gukbottom",
+      "target_long_name": "The Ruins of Old Guk",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 71.0,
+        "y": -1535.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "gukbottom",
+      "target_long_name": "The Ruins of Old Guk",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -608.0,
+        "y": -1134.0,
+        "z": -81.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "gukbottom",
+      "target_long_name": "The Ruins of Old Guk",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 192.0,
+        "y": -1196.0,
+        "z": -78.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "innothule",
+      "target_long_name": "Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -40.0,
+        "y": 60.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "innothuleb",
+      "target_long_name": "The Innothule Swamp",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -40.0,
+        "y": 60.0,
+        "z": 4.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

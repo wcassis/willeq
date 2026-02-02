@@ -1,0 +1,54 @@
+{
+  "zone": "burningwood",
+  "long_name": "The Burning Wood",
+  "zone_lines": [
+    {
+      "target_zone": "chardok",
+      "target_long_name": "Chardok",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4150.0,
+        "y": -7060.0,
+        "z": -231.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "dreadlands",
+      "target_long_name": "The Dreadlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 795.0,
+        "y": 5060.0,
+        "z": 200.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "frontiermtns",
+      "target_long_name": "Frontier Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 4625.0,
+        "y": 2804.0,
+        "z": -16.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1700.0,
+        "y": -5245.0,
+        "z": -159.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    }
+  ]
+}

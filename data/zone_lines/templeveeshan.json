@@ -1,0 +1,67 @@
+{
+  "zone": "templeveeshan",
+  "long_name": "The Temple of Veeshan",
+  "zone_lines": [
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -1275.0,
+        "z": 127.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1700.0,
+        "y": 588.0,
+        "z": -7.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1859.0,
+        "y": -1229.0,
+        "z": 193.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "westwastes",
+      "target_long_name": "The Western Wastes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -1433.0,
+        "y": 1190.0,
+        "z": -146.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "mischiefplane",
+      "target_long_name": "The Plane of Mischief",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 705.197,
+        "y": -1274.58,
+        "z": 127.293
+      },
+      "landing": "fixed",
+      "door_name": "MINIPOM200",
+      "source": "doors"
+    }
+  ]
+}

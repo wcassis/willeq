@@ -1,0 +1,691 @@
+{
+  "zone": "veeshan",
+  "long_name": "Veeshan's Peak",
+  "zone_lines": [
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1293.9852,
+        "y": 1109.3318,
+        "z": 281.9174
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1201.27,
+        "y": 1149.9,
+        "z": 281.63
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1276.19,
+        "y": 1103.73,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1249.44,
+        "y": 1161.23,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1389.44,
+        "y": 1106.48,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1357.19,
+        "y": 1045.23,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1394.19,
+        "y": 1114.23,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1223.44,
+        "y": 1152.48,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1294.94,
+        "y": 1194.73,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1395.44,
+        "y": 1122.48,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1394.69,
+        "y": 1158.98,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1320.44,
+        "y": 1193.23,
+        "z": 280.531
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1213.42,
+        "y": 1157.54,
+        "z": 280.734
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1383.69,
+        "y": 1116.73,
+        "z": 280.281
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1245.44,
+        "y": 1080.98,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1291.98,
+        "y": 1069.22,
+        "z": 279.969
+      },
+      "landing": "fixed",
+      "door_name": "VETELE101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1072.97,
+        "y": 717.851,
+        "z": 279.903
+      },
+      "landing": "fixed",
+      "door_name": "VEBRAZ101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1069.47,
+        "y": 797.351,
+        "z": 279.903
+      },
+      "landing": "fixed",
+      "door_name": "VEBRAZ101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1228.22,
+        "y": 1151.6,
+        "z": 281.003
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1243.22,
+        "y": 1084.85,
+        "z": 281.503
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1262.22,
+        "y": 1087.1,
+        "z": 280.052
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1355.19,
+        "y": 1048.23,
+        "z": 280.781
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1190.94,
+        "y": 1142.23,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1156.19,
+        "y": 1105.48,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1202.94,
+        "y": 1151.73,
+        "z": 281.031
+      },
+      "landing": "fixed",
+      "door_name": "VECOINS102",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1388.44,
+        "y": 1113.23,
+        "z": 280.831
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "airplane",
+      "target_long_name": "The Plane of Sky",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1397.19,
+        "y": 1122.98,
+        "z": 281.781
+      },
+      "landing": "fixed",
+      "door_name": "VEJEWL101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 129.76,
+        "y": -1342.16,
+        "z": 439.899
+      },
+      "landing": "fixed",
+      "door_name": "VETELE101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 496.756,
+        "y": -1369.48,
+        "z": 679.785
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "freporte",
+      "target_long_name": "East Freeport",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 496.879,
+        "y": -1429.89,
+        "z": 679.771
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -630.226,
+        "y": -1798.78,
+        "z": 599.774
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -569.826,
+        "y": -1798.72,
+        "z": 599.852
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -269.813,
+        "y": -1741.45,
+        "z": 599.802
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -263.692,
+        "y": -1289.4,
+        "z": 599.786
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -263.625,
+        "y": -1349.76,
+        "z": 599.78
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 483.575,
+        "y": -1180.55,
+        "z": 673.727
+      },
+      "landing": "fixed",
+      "door_name": "VETELE101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "skyfire",
+      "target_long_name": "The Skyfire Mountains",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -209.866,
+        "y": -1741.38,
+        "z": 599.852
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 925.9,
+        "y": -350.259,
+        "z": 459.865
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 237.458,
+        "y": -1642.71,
+        "z": 679.766
+      },
+      "landing": "fixed",
+      "door_name": "VEDRAWBR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1059.05,
+        "y": -1664.42,
+        "z": 679.815
+      },
+      "landing": "fixed",
+      "door_name": "VEDRAWBR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 28.2938,
+        "y": -1408.95,
+        "z": 439.853
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 28.6568,
+        "y": -1469.36,
+        "z": 439.84
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 925.803,
+        "y": -289.762,
+        "z": 459.865
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1189.56,
+        "y": 1023.5,
+        "z": 279.956
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1129.25,
+        "y": 1023.39,
+        "z": 279.966
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 969.442,
+        "y": 667.175,
+        "z": 279.939
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": 1029.73,
+        "y": 667.309,
+        "z": 279.89
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1341.81,
+        "y": -1589.59,
+        "z": 679.742
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1306.9,
+        "y": -1291.18,
+        "z": 759.945
+      },
+      "landing": "fixed",
+      "door_name": "VETELE101",
+      "source": "doors"
+    },
+    {
+      "target_zone": "swampofnohope",
+      "target_long_name": "The Swamp of No Hope",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -1341.93,
+        "y": -1529.14,
+        "z": 679.824
+      },
+      "landing": "fixed",
+      "door_name": "VEDOOR101",
+      "source": "doors"
+    }
+  ]
+}

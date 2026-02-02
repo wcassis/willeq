@@ -1,0 +1,367 @@
+{
+  "zone": "lavastorm",
+  "long_name": "Lavastorm Mountains",
+  "zone_lines": [
+    {
+      "target_zone": "broodlands",
+      "target_long_name": "The Broodlands",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -135.0,
+        "y": -3865.0,
+        "z": 1.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Grounding the Drakes",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: A Halfling's Greed",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Forbin's Elixir",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Lavaspinner's Locals",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: The Drake Menace",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Diving for Lavarocks",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Infested",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Treasure Hunting",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "delvea",
+      "target_long_name": "Lavaspinner's Lair: Volkara's Bite",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 705.0,
+        "y": -2760.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "The Lavastorm Mountains",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "lavastorm",
+      "target_long_name": "Lavastorm Mountains",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "najena",
+      "target_long_name": "Najena",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1785.0,
+        "y": -540.0,
+        "z": -98.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "najena",
+      "target_long_name": "Najena",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1741.7118,
+        "y": -544.2484,
+        "z": -100.3343
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 10.0,
+        "y": -75.0,
+        "z": -53.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 10.0,
+        "y": -75.0,
+        "z": -53.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 10.0,
+        "y": -75.0,
+        "z": -53.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "nektulos",
+      "target_long_name": "The Nektulos Forest",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 10.0,
+        "y": -75.0,
+        "z": -53.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -930.0,
+        "y": -1285.0,
+        "z": -78.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldunga",
+      "target_long_name": "Solusek's Eye",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": -110.0,
+        "y": -2260.0,
+        "z": 15.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soldungb",
+      "target_long_name": "Nagafen's Lair",
+      "type": "UNKNOWN",
+      "trigger_coords": {
+        "x": null,
+        "y": null,
+        "z": null
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soltemple",
+      "target_long_name": "The Temple of Solusek Ro",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1693.9402,
+        "y": -1310.6371,
+        "z": -106.4896
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "soltemple",
+      "target_long_name": "The Temple of Solusek Ro",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1650.0,
+        "y": -1360.0,
+        "z": -105.0
+      },
+      "landing": "fixed",
+      "source": "zone_points"
+    },
+    {
+      "target_zone": "soltemple",
+      "target_long_name": "The Temple of Solusek Ro",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1693.9402,
+        "y": -1310.6371,
+        "z": -106.4896
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "soltemple",
+      "target_long_name": "The Temple of Solusek Ro",
+      "type": "SHORT",
+      "trigger_coords": {
+        "x": 1693.9402,
+        "y": -1310.6371,
+        "z": -106.4896
+      },
+      "landing": "fixed",
+      "source": "zone_points+brewall"
+    },
+    {
+      "target_zone": "soltemple",
+      "target_long_name": "The Temple of Solusek Ro",
+      "type": "CLICK",
+      "trigger_coords": {
+        "x": -331.0,
+        "y": -1370.0,
+        "z": 145.1
+      },
+      "landing": "fixed",
+      "door_name": "SOLPLUG",
+      "source": "doors"
+    }
+  ]
+}
