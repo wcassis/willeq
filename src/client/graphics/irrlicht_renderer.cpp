@@ -8074,6 +8074,12 @@ void IrrlichtRenderer::setCharacterDeity(const std::wstring& deity) {
     }
 }
 
+void IrrlichtRenderer::setExpProgress(float progress) {
+    if (windowManager_) {
+        windowManager_->setExpProgress(progress);
+    }
+}
+
 void IrrlichtRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
                                              uint32_t curMana, uint32_t maxMana,
                                              uint32_t curEnd, uint32_t maxEnd,

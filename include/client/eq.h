@@ -1279,6 +1279,8 @@ private:
 
 	// Character stats
 	uint8_t m_level = 1;
+	uint32_t m_exp = 0;          // Current experience points
+	uint32_t m_exp_aa = 0;       // Current AA experience points
 	uint32_t m_class = 0;
 	uint32_t m_race = 0;
 	uint32_t m_gender = 0;

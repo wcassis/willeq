@@ -77,6 +77,99 @@ const float FOLLOW_FAR_DISTANCE = 30.0f;     // Full speed when this far
 const float FOLLOW_MIN_SPEED_MULT = 0.5f;    // Minimum speed multiplier when close
 const float FOLLOW_MAX_SPEED_MULT = 1.5f;    // Maximum speed multiplier when far
 
+// Experience required for each level (Titanium-era values)
+// These are cumulative totals needed to reach each level (levels 1-65)
+static const uint32_t EXP_FOR_LEVEL[] = {
+    0,          // Level 1 (no exp required)
+    1000,       // Level 2
+    2000,       // Level 3
+    3250,       // Level 4
+    5250,       // Level 5
+    8750,       // Level 6
+    14000,      // Level 7
+    22000,      // Level 8
+    34000,      // Level 9
+    52000,      // Level 10
+    77000,      // Level 11
+    110000,     // Level 12
+    152500,     // Level 13
+    207500,     // Level 14
+    277500,     // Level 15
+    365000,     // Level 16
+    472500,     // Level 17
+    602500,     // Level 18
+    757500,     // Level 19
+    940000,     // Level 20
+    1152500,    // Level 21
+    1397500,    // Level 22
+    1677500,    // Level 23
+    1995000,    // Level 24
+    2352500,    // Level 25
+    2752500,    // Level 26
+    3197500,    // Level 27
+    3690000,    // Level 28
+    4232500,    // Level 29
+    4827500,    // Level 30
+    5477500,    // Level 31
+    6185000,    // Level 32
+    6952500,    // Level 33
+    7782500,    // Level 34
+    8677500,    // Level 35
+    9640000,    // Level 36
+    10672500,   // Level 37
+    11777500,   // Level 38
+    12957500,   // Level 39
+    14215000,   // Level 40
+    15552500,   // Level 41
+    16972500,   // Level 42
+    18477500,   // Level 43
+    20070000,   // Level 44
+    21752500,   // Level 45
+    23527500,   // Level 46
+    25397500,   // Level 47
+    27365000,   // Level 48
+    29432500,   // Level 49
+    31602500,   // Level 50
+    33877500,   // Level 51
+    39677500,   // Level 52
+    46477500,   // Level 53
+    54377500,   // Level 54
+    63477500,   // Level 55
+    73877500,   // Level 56
+    85677500,   // Level 57
+    98977500,   // Level 58
+    113877500,  // Level 59
+    130477500,  // Level 60
+    148877500,  // Level 61
+    169177500,  // Level 62
+    191477500,  // Level 63
+    215877500,  // Level 64
+    242477500,  // Level 65
+};
+static const int MAX_EXP_LEVEL = sizeof(EXP_FOR_LEVEL) / sizeof(EXP_FOR_LEVEL[0]) - 1;
+
+// Calculate experience progress as 0.0 to 1.0 for the current level
+static float CalculateExpProgress(uint32_t exp, uint8_t level) {
+    if (level < 1 || level >= MAX_EXP_LEVEL) {
+        return 0.0f;  // Invalid level or max level
+    }
+
+    uint32_t expForCurrentLevel = EXP_FOR_LEVEL[level];
+    uint32_t expForNextLevel = EXP_FOR_LEVEL[level + 1];
+
+    if (exp < expForCurrentLevel) {
+        return 0.0f;  // Below current level (shouldn't happen)
+    }
+    if (exp >= expForNextLevel) {
+        return 1.0f;  // At or above next level
+    }
+
+    uint32_t expNeeded = expForNextLevel - expForCurrentLevel;
+    uint32_t expGained = exp - expForCurrentLevel;
+
+    return static_cast<float>(expGained) / static_cast<float>(expNeeded);
+}
+
 // Static member definition
 int EverQuest::s_debug_level = 0;
 
@@ -2988,6 +3081,10 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	uint8_t beard = p.GetUInt8(base + 177);      // offset 177
 	uint8_t face = p.GetUInt8(base + 2264);      // offset 2264
 	
+	// Experience points
+	uint32_t exp = p.GetUInt32(base + 2268);     // offset 2268
+	uint32_t exp_aa = p.GetUInt32(base + 2288);  // offset 2288 (AA exp)
+
 	// Stats - these are base stats without equipment
 	uint32_t cur_hp = p.GetUInt32(base + 2232);  // offset 2232
 	uint32_t mana = p.GetUInt32(base + 2228);    // offset 2228
@@ -3070,6 +3167,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 
 	// Store character stats (update both local members and GameState during migration)
 	m_level = level;
+	m_exp = exp;
+	m_exp_aa = exp_aa;
 	m_class = class_;
 	m_race = race;
 	m_gender = gender;
@@ -3347,6 +3446,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 
 		m_renderer->setCharacterInfo(wname, m_level, wclass);
 		m_renderer->setCharacterDeity(wdeity);
+		m_renderer->setExpProgress(CalculateExpProgress(m_exp, m_level));
 
 		// Calculate stats from equipment and update
 		UpdateInventoryStats();
@@ -6469,7 +6569,28 @@ void EverQuest::ZoneProcessWorldObjectsSent(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_ZONE, "Received exp update");
+	// ExpUpdate_Struct: { uint32_t exp; uint32_t aaxp; }
+	const size_t base = 2;  // Skip opcode
+
+	if (p.Length() < base + 8) {
+		LOG_WARN(MOD_ZONE, "ExpUpdate packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	uint32_t exp = p.GetUInt32(base + 0);
+	uint32_t aaxp = p.GetUInt32(base + 4);
+
+	LOG_DEBUG(MOD_ZONE, "Received exp update: exp={} aaxp={} (was exp={} aaxp={})",
+	          exp, aaxp, m_exp, m_exp_aa);
+
+	m_exp = exp;
+	m_exp_aa = aaxp;
+
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		m_renderer->setExpProgress(CalculateExpProgress(m_exp, m_level));
+	}
+#endif
 }
 
 void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)

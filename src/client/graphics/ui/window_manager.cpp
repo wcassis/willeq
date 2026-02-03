@@ -2630,6 +2630,12 @@ void WindowManager::setCharacterDeity(const std::wstring& deity) {
     }
 }
 
+void WindowManager::setExpProgress(float progress) {
+    if (inventoryWindow_) {
+        inventoryWindow_->setExpProgress(progress);
+    }
+}
+
 void WindowManager::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
                                           uint32_t curMana, uint32_t maxMana,
                                           uint32_t curEnd, uint32_t maxEnd,

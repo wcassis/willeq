@@ -458,9 +458,12 @@ void InventoryWindow::renderCharacterInfo(irr::video::IVideoDriver* driver,
         y += lineHeight;
     }
 
-    // Level
+    // Level and Class (e.g., "Level 50 Monk")
     if (characterLevel_ > 0) {
-        std::wstring levelStr = L"Lv " + std::to_wstring(characterLevel_);
+        std::wstring levelStr = L"Level " + std::to_wstring(characterLevel_);
+        if (!characterClass_.empty()) {
+            levelStr += L" " + characterClass_;
+        }
         font->draw(levelStr.c_str(),
                   irr::core::recti(x, y, x + statsWidth, y + lineHeight),
                   textColor);
@@ -473,6 +476,33 @@ void InventoryWindow::renderCharacterInfo(irr::video::IVideoDriver* driver,
                   irr::core::recti(x, y, x + statsWidth, y + lineHeight),
                   textColor);
         y += lineHeight;
+    }
+
+    // Experience bar (below deity, above stats)
+    {
+        int barHeight = 6;
+        int barY = y + 2;
+        int barWidth = statsWidth - 4;
+
+        // Background (dark gray)
+        driver->draw2DRectangle(
+            irr::video::SColor(255, 40, 40, 40),
+            irr::core::recti(x, barY, x + barWidth, barY + barHeight));
+
+        // Progress fill (gold/yellow)
+        int fillWidth = static_cast<int>(barWidth * expProgress_);
+        if (fillWidth > 0) {
+            driver->draw2DRectangle(
+                irr::video::SColor(255, 200, 180, 50),
+                irr::core::recti(x, barY, x + fillWidth, barY + barHeight));
+        }
+
+        // Border (darker outline)
+        driver->draw2DRectangleOutline(
+            irr::core::recti(x, barY, x + barWidth, barY + barHeight),
+            irr::video::SColor(255, 80, 80, 80));
+
+        y += barHeight + 6;
     }
 
     y += 4;  // Gap before resources section
