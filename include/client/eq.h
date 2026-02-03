@@ -124,6 +124,7 @@ enum TitaniumZoneOpcodes {
 	HC_OP_SpawnDoor = 0x4c24,
 	HC_OP_ClientReady = 0x5e20,
 	HC_OP_ZoneChange = 0x5dd8,
+	HC_OP_RequestClientZoneChange = 0x7834,  // Server requests client to zone
 	HC_OP_SetServerFilter = 0x6563,
 	HC_OP_GroundSpawn = 0x0f47,
 	HC_OP_Weather = 0x254d,
@@ -271,6 +272,7 @@ enum TitaniumZoneOpcodes {
 	HC_OP_GMEndTrainingResponse = 0x0000, // Server ack for end training (unused in Titanium)
 	// Pet opcodes
 	HC_OP_PetCommands = 0x10a1,          // C->S: Pet command from client
+	HC_OP_PetBuffWindow = 0x4e31,        // S->C: Pet buff window data
 	// Logout/Camp opcodes
 	HC_OP_Camp = 0x78c1,                 // C->S: Camp request (starts 30s timer)
 	HC_OP_Logout = 0x61ff,               // C->S: Logout request (after camp timer)
@@ -487,6 +489,13 @@ enum PositionState {
 	POS_DEAD = 4
 };
 
+// Water states for swimming
+enum class WaterState : uint8_t {
+	NotInWater = 0,   // On land, not touching water
+	OnSurface = 1,    // On water surface (swimming)
+	Submerged = 2     // Fully underwater
+};
+
 // Chat channel types
 enum ChatChannelType {
 	CHAT_CHANNEL_GUILD = 0,
@@ -649,6 +658,7 @@ public:
 	void ProcessChatInput(const std::string &input);  // Process chat window input (commands or messages)
 	void AddChatSystemMessage(const std::string &text);  // Add system message to chat window
 	void AddChatCombatMessage(const std::string &text, bool is_self = false);  // Add combat message (is_self for player damage)
+	void AddChatMissMessage(const std::string &text);  // Add miss message (filterable separately)
 
 	// Public movement interface
 	void Move(float x, float y, float z);
@@ -777,6 +787,17 @@ public:
 	void SendMovementHistory();
 	void Jump();
 	void UpdateJump();
+
+	// Swimming methods
+	void UpdateWaterState();           // Check BSP region and update water state
+	void OnEnterWater();               // Called when entering water
+	void OnExitWater();                // Called when exiting water
+	float GetSwimSpeed() const;        // Get swim speed based on skill
+	WaterState GetWaterState() const { return m_water_state; }
+	bool IsSwimming() const { return m_water_state != WaterState::NotInWater; }
+	void SetSwimUp(bool up) { m_swim_up = up; }
+	void SetSwimDown(bool down) { m_swim_down = down; }
+
 	void StartUpdateLoop();
 	void StopUpdateLoop();
 	void PerformEmote(uint32_t animation);
@@ -1145,6 +1166,7 @@ private:
 	void ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p);
 	void ZoneProcessLevelUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
+	void ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p);
 	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
 	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
 	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);
@@ -1177,6 +1199,8 @@ private:
 	void ZoneProcessGMZoneRequest(const EQ::Net::Packet &p);
 	void ZoneProcessGMFind(const EQ::Net::Packet &p);
 	void ZoneProcessGMSummon(const EQ::Net::Packet &p);
+	// Pet packet handlers
+	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 
 	// Zone transition methods
 	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading);
@@ -1449,6 +1473,12 @@ private:
 	bool m_is_jumping = false;
 	float m_jump_start_z = 0.0f;
 	std::chrono::steady_clock::time_point m_jump_start_time;
+
+	// Swimming state
+	WaterState m_water_state = WaterState::NotInWater;
+	float m_water_surface_z = 0.0f;  // Z coordinate of water surface when swimming
+	bool m_swim_up = false;          // Currently pressing swim up key
+	bool m_swim_down = false;        // Currently pressing swim down key
 
 	// Camp timer
 	bool m_is_camping = false;

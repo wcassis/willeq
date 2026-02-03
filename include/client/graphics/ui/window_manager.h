@@ -243,7 +243,7 @@ public:
     void setGroupDeclineCallback(GroupDeclineCallback callback);
 
     // Pet window management
-    void initPetWindow(EverQuest* eq);
+    void initPetWindow(EverQuest* eq, EQ::BuffManager* buffMgr = nullptr);
     void togglePetWindow();
     void openPetWindow();
     void closePetWindow();
@@ -263,6 +263,7 @@ public:
     void setHotbarActivateCallback(HotbarActivateCallback callback);
     void setHotbarChangedCallback(HotbarChangedCallback callback);
     void startHotbarCooldown(int buttonIndex, uint32_t durationMs);
+    void startSkillCooldown(uint32_t skillId, uint32_t durationMs);
 
     // Hotbar data persistence (for saving to per-character config)
     Json::Value collectHotbarData() const;

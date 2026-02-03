@@ -84,6 +84,7 @@ public:
 
     // Cooldown management
     void startCooldown(int index, uint32_t durationMs);
+    void startSkillCooldown(uint32_t skillId, uint32_t durationMs);  // Start cooldown for all buttons with this skill
     bool isButtonOnCooldown(int index) const;
 
     // Callbacks

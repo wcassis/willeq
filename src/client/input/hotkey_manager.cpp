@@ -132,6 +132,8 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"TurnLeft", HotkeyAction::TurnLeft},
     {"TurnRight", HotkeyAction::TurnRight},
     {"Jump", HotkeyAction::Jump},
+    {"SwimUp", HotkeyAction::SwimUp},
+    {"SwimDown", HotkeyAction::SwimDown},
 
     // Player - Toggles
     {"ToggleAutorun", HotkeyAction::ToggleAutorun},
@@ -515,6 +517,9 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::TurnRight, HotkeyMode::Player, irr::KEY_KEY_D);
     addBinding(HotkeyAction::TurnRight, HotkeyMode::Player, irr::KEY_RIGHT);
     addBinding(HotkeyAction::Jump, HotkeyMode::Player, irr::KEY_SPACE);
+    // SwimUp/SwimDown - [ and ] for vertical swimming movement
+    addBinding(HotkeyAction::SwimUp, HotkeyMode::Player, irr::KEY_OEM_4);    // [
+    addBinding(HotkeyAction::SwimDown, HotkeyMode::Player, irr::KEY_OEM_6);  // ]
 
     // === Player Mode - Combat ===
     addBinding(HotkeyAction::ToggleAutoAttack, HotkeyMode::Player, irr::KEY_KEY_Q);

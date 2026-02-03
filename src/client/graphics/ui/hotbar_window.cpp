@@ -163,6 +163,20 @@ void HotbarWindow::startCooldown(int index, uint32_t durationMs)
                                        std::chrono::milliseconds(durationMs);
 }
 
+void HotbarWindow::startSkillCooldown(uint32_t skillId, uint32_t durationMs)
+{
+    if (durationMs == 0) return;
+
+    // Find all buttons with this skill and start their cooldowns
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        if (buttons_[i].type == HotbarButtonType::Skill && buttons_[i].id == skillId) {
+            buttons_[i].cooldownDurationMs = durationMs;
+            buttons_[i].cooldownEndTime = std::chrono::steady_clock::now() +
+                                           std::chrono::milliseconds(durationMs);
+        }
+    }
+}
+
 bool HotbarWindow::isButtonOnCooldown(int index) const
 {
     if (index < 0 || index >= MAX_BUTTONS) return false;
@@ -454,22 +468,85 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
     if (button.isOnCooldown()) {
         float progress = button.getCooldownProgress();  // 1.0 = full, 0.0 = done
         if (progress > 0.0f) {
-            // Calculate overlay height based on progress (shrinks from bottom)
             int margin = 2;
             int buttonHeight = absBounds.getHeight() - margin * 2;
+            int buttonWidth = absBounds.getWidth() - margin * 2;
             int overlayHeight = static_cast<int>(buttonHeight * progress);
 
-            // Draw overlay from bottom up
-            irr::core::recti overlayRect(
-                absBounds.UpperLeftCorner.X + margin,
-                absBounds.LowerRightCorner.Y - margin - overlayHeight,
-                absBounds.LowerRightCorner.X - margin,
-                absBounds.LowerRightCorner.Y - margin
-            );
+            // Draw main solid overlay (the cooled-down portion)
+            if (overlayHeight > 0) {
+                irr::core::recti overlayRect(
+                    absBounds.UpperLeftCorner.X + margin,
+                    absBounds.LowerRightCorner.Y - margin - overlayHeight,
+                    absBounds.LowerRightCorner.X - margin,
+                    absBounds.LowerRightCorner.Y - margin
+                );
+                irr::video::SColor overlayColor(180, 0, 0, 0);
+                driver->draw2DRectangle(overlayColor, overlayRect);
+            }
 
-            // Semi-transparent dark overlay
-            irr::video::SColor overlayColor(180, 0, 0, 0);
-            driver->draw2DRectangle(overlayColor, overlayRect);
+            // Draw gradient fade at the top edge of the overlay (sweep effect)
+            int gradientHeight = 8;  // Height of the gradient fade zone
+            int gradientTop = absBounds.LowerRightCorner.Y - margin - overlayHeight - gradientHeight;
+            int gradientBottom = absBounds.LowerRightCorner.Y - margin - overlayHeight;
+
+            // Clamp gradient to button bounds
+            gradientTop = std::max(gradientTop, absBounds.UpperLeftCorner.Y + margin);
+            gradientBottom = std::max(gradientBottom, absBounds.UpperLeftCorner.Y + margin);
+
+            if (gradientBottom > gradientTop) {
+                // Draw gradient lines from transparent (top) to semi-opaque (bottom)
+                for (int y = gradientTop; y < gradientBottom; y++) {
+                    float gradientProgress = static_cast<float>(y - gradientTop) / static_cast<float>(gradientBottom - gradientTop);
+                    int alpha = static_cast<int>(180 * gradientProgress);
+                    irr::video::SColor lineColor(alpha, 0, 0, 0);
+                    driver->draw2DLine(
+                        irr::core::position2di(absBounds.UpperLeftCorner.X + margin, y),
+                        irr::core::position2di(absBounds.LowerRightCorner.X - margin, y),
+                        lineColor
+                    );
+                }
+            }
+
+            // Draw countdown timer text in center of button
+            if (gui && button.cooldownDurationMs > 0) {
+                irr::gui::IGUIFont* font = gui->getBuiltInFont();
+                if (font) {
+                    // Calculate remaining time
+                    auto now = std::chrono::steady_clock::now();
+                    auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        button.cooldownEndTime - now).count();
+                    if (remaining > 0) {
+                        // Format time: show seconds with 1 decimal for < 10s, whole seconds otherwise
+                        std::wstring timeStr;
+                        if (remaining < 10000) {
+                            // Less than 10 seconds - show 1 decimal place
+                            int tenths = (remaining / 100) % 10;
+                            int seconds = remaining / 1000;
+                            timeStr = std::to_wstring(seconds) + L"." + std::to_wstring(tenths);
+                        } else {
+                            // 10+ seconds - show whole seconds
+                            int seconds = (remaining + 500) / 1000;  // Round to nearest second
+                            timeStr = std::to_wstring(seconds);
+                        }
+
+                        // Calculate text position (centered in button)
+                        irr::core::dimension2du textSize = font->getDimension(timeStr.c_str());
+                        int textX = absBounds.UpperLeftCorner.X + (absBounds.getWidth() - textSize.Width) / 2;
+                        int textY = absBounds.UpperLeftCorner.Y + (absBounds.getHeight() - textSize.Height) / 2;
+
+                        // Draw shadow
+                        irr::core::recti shadowRect(textX + 1, textY + 1,
+                            textX + textSize.Width + 1, textY + textSize.Height + 1);
+                        font->draw(timeStr.c_str(), shadowRect, irr::video::SColor(220, 0, 0, 0));
+
+                        // Draw text in white/light color
+                        irr::core::recti textRect(textX, textY,
+                            textX + textSize.Width, textY + textSize.Height);
+                        font->draw(timeStr.c_str(), textRect, irr::video::SColor(255, 255, 255, 255));
+                    }
+                }
+            }
         }
     }
 

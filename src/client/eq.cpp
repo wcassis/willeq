@@ -21,6 +21,7 @@
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_config_loader.h"
 #include "client/graphics/weather_quality_preset.h"
+#include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/window_manager.h"
@@ -42,6 +43,7 @@
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/sound_assets.h"
 #include "client/audio/door_sounds.h"
+#include "client/audio/water_sounds.h"
 #endif
 
 #include "client/animation_constants.h"
@@ -141,6 +143,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_SpawnDoor: return "HC_OP_SpawnDoor";
 		case HC_OP_ClientReady: return "HC_OP_ClientReady";
 		case HC_OP_ZoneChange: return "HC_OP_ZoneChange";
+		case HC_OP_RequestClientZoneChange: return "HC_OP_RequestClientZoneChange";
 		case HC_OP_SetServerFilter: return "HC_OP_SetServerFilter";
 		case HC_OP_GroundSpawn: return "HC_OP_GroundSpawn";
 		case HC_OP_ClickObject: return "HC_OP_ClickObject";
@@ -862,8 +865,16 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 EverQuest::~EverQuest()
 {
+	LOG_DEBUG(MOD_MAIN, "EverQuest destructor called, outputting performance report...");
+
 	// Output final performance metrics
-	LOG_INFO(MOD_MAIN, "{}", EQT::PerformanceMetrics::instance().generateReport());
+	std::string perfReport = EQT::PerformanceMetrics::instance().generateReport();
+	if (!perfReport.empty()) {
+		LOG_INFO(MOD_MAIN, "{}", perfReport);
+	} else {
+		LOG_WARN(MOD_MAIN, "Performance report is empty");
+	}
+	std::cout.flush();  // Ensure performance report is flushed before cleanup
 
 	// Shutdown audio before other cleanup
 #ifdef WITH_AUDIO
@@ -2116,6 +2127,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	case HC_OP_ZoneChange:
 		ZoneProcessZoneChange(p);
 		break;
+	case HC_OP_RequestClientZoneChange:
+		ZoneProcessRequestClientZoneChange(p);
+		break;
 	case HC_OP_SimpleMessage:
 		ZoneProcessSimpleMessage(p);
 		break;
@@ -2594,6 +2608,9 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 	case HC_OP_ReadBook:
 		ZoneProcessReadBook(p);
+		break;
+	case HC_OP_PetBuffWindow:
+		ZoneProcessPetBuffWindow(p);
 		break;
 
 	default:
@@ -5861,22 +5878,71 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 
 		// Combat skill animations (use correct animation codes from reference)
+		// For the PLAYER, queue these into the combat buffer so they're
+		// processed with proper priority alongside weapon attacks
 		case 10: // Round kick
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_ROUND_KICK);
+				LOG_DEBUG(MOD_COMBAT, "Queued round kick animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_ROUND_KICK;  // c11
 			break;
 		case 11: // ANIM_KICK
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_KICK);
+				LOG_DEBUG(MOD_COMBAT, "Queued kick animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_KICK;  // c01 - basic kick
 			break;
 		case 12: // ANIM_BASH
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_BASH);
+				LOG_DEBUG(MOD_COMBAT, "Queued bash animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_BASH;  // c07 - Shield bash
 			break;
+		case 13: // Tiger Claw / Eagle Strike (rapid strikes)
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_TIGER_STRIKE);
+				LOG_DEBUG(MOD_COMBAT, "Queued tiger claw/eagle strike animation for player");
+				break;
+			}
+			animCode = EQ::ANIM_TIGER_STRIKE;  // t08
+			break;
 		case 14: // Flying kick
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_FLYING_KICK);
+				LOG_DEBUG(MOD_COMBAT, "Queued flying kick animation for player");
+				break;
+			}
 			animCode = EQ::ANIM_FLYING_KICK;  // t07
+			break;
+		case 15: // Dragon Punch
+			if (spawn_id == m_my_spawn_id) {
+				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_DRAGON_PUNCH);
+				LOG_DEBUG(MOD_COMBAT, "Queued dragon punch animation for player");
+				break;
+			}
+			animCode = EQ::ANIM_DRAGON_PUNCH;  // t09
 			break;
 
 		// Damage/hit reaction
 		case 3:  // Damage from front
 		case 4:  // Damage from back
+			// Server sends damage emote when entity takes melee damage
+			// For the PLAYER, we need to integrate this with the combat buffer system
+			// so that attack animations take priority over damage reactions when the
+			// player is both attacking and being attacked simultaneously
+			if (spawn_id == m_my_spawn_id) {
+				// Queue received damage into player's combat buffer instead of playing immediately
+				// This allows the buffer processing to decide attack vs damage priority
+				m_renderer->queueReceivedDamageAnimation(spawn_id);
+				LOG_DEBUG(MOD_COMBAT, "Queued received damage animation for player (will process with combat buffer)");
+				break;  // Don't play immediately - buffer will handle it
+			}
 			animCode = EQ::ANIM_DAMAGE_MINOR;  // d01
 			break;
 
@@ -6811,6 +6877,10 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 			LOG_INFO(MOD_MAIN, "Pet {} ({}) despawned", spawn_id, it->second.name);
 			m_pet_spawn_id = 0;
 			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+			// Clear pet buffs
+			if (m_buff_manager) {
+				m_buff_manager->clearPetBuffs();
+			}
 #ifdef EQT_HAS_GRAPHICS
 			OnPetRemoved();
 #endif
@@ -7183,6 +7253,22 @@ void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
 	LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: EQT_HAS_GRAPHICS not defined");
 #endif
 	// Also print to console
+	LOG_DEBUG(MOD_COMBAT, "{}", text);
+}
+
+void EverQuest::AddChatMissMessage(const std::string &text)
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		auto* windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto* chatWindow = windowManager->getChatWindow();
+			if (chatWindow) {
+				chatWindow->addSystemMessage(text, eqt::ui::ChatChannel::CombatMiss);
+			}
+		}
+	}
+#endif
 	LOG_DEBUG(MOD_COMBAT, "{}", text);
 }
 
@@ -8795,7 +8881,7 @@ void EverQuest::RegisterCommands()
 	filter.name = "filter";
 	filter.usage = "/filter [channel]";
 	filter.description = "Toggle chat channel filter";
-	filter.detailedHelp = "Channels: say, tell, group, guild, shout, auction, ooc, emote, combat, exp, loot, npc, all";
+	filter.detailedHelp = "Channels: say, tell, group, guild, shout, auction, ooc, emote, combat, miss, exp, loot, npc, all";
 	filter.category = "Utility";
 	filter.handler = [this](const std::string& args) {
 		if (!m_renderer) return;
@@ -8814,6 +8900,7 @@ void EverQuest::RegisterCommands()
 			AddChatSystemMessage(fmt::format("OOC: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::OOC) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Emote: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Emote) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Combat: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Combat) ? "ON" : "OFF"));
+			AddChatSystemMessage(fmt::format("Miss: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::CombatMiss) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Exp: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Experience) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("Loot: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Loot) ? "ON" : "OFF"));
 			AddChatSystemMessage(fmt::format("NPC: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::NPCDialogue) ? "ON" : "OFF"));
@@ -8844,6 +8931,8 @@ void EverQuest::RegisterCommands()
 			ch = eqt::ui::ChatChannel::Emote;
 		} else if (channel == "combat") {
 			ch = eqt::ui::ChatChannel::Combat;
+		} else if (channel == "miss" || channel == "misses") {
+			ch = eqt::ui::ChatChannel::CombatMiss;
 		} else if (channel == "exp" || channel == "experience") {
 			ch = eqt::ui::ChatChannel::Experience;
 		} else if (channel == "loot") {
@@ -12057,6 +12146,41 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	}
 }
 
+void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
+{
+	// PetBuff_Struct format:
+	//   petid (4 bytes), spellid[30] (120 bytes), ticsremaining[30] (120 bytes), buffcount (4 bytes)
+	// Total: 248 bytes + 2 byte opcode = 250 bytes
+
+	constexpr size_t MIN_PACKET_SIZE = 2 + sizeof(EQT::PetBuff_Struct);
+	if (p.Length() < MIN_PACKET_SIZE) {
+		LOG_WARN(MOD_ZONE, "PetBuffWindow packet too small: {} bytes (expected {})", p.Length(), MIN_PACKET_SIZE);
+		return;
+	}
+
+	const EQT::PetBuff_Struct* petBuffs = reinterpret_cast<const EQT::PetBuff_Struct*>(
+		static_cast<const uint8_t*>(p.Data()) + 2);
+
+	// Verify this is for our pet
+	if (m_pet_spawn_id == 0) {
+		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow but no pet tracked, petid={}", petBuffs->petid);
+		return;
+	}
+
+	if (petBuffs->petid != m_pet_spawn_id) {
+		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow for different pet: {} (our pet: {})",
+			petBuffs->petid, m_pet_spawn_id);
+		return;
+	}
+
+	LOG_DEBUG(MOD_SPELL, "PetBuffWindow: petid={} buffcount={}", petBuffs->petid, petBuffs->buffcount);
+
+	// Update buff manager with pet buffs
+	if (m_buff_manager) {
+		m_buff_manager->setPetBuffs(static_cast<uint16_t>(petBuffs->petid), *petBuffs);
+	}
+}
+
 void EverQuest::ZoneProcessColoredText(const EQ::Net::Packet &p)
 {
 	// ColoredText_Struct: uint32 color, char msg[variable]
@@ -12229,7 +12353,7 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 {
 	// SimpleMessage is used for system messages that use string templates
-	// SimpleMessage_Struct: color(4), string_id(4), unknown8(4)
+	// SimpleMessage_Struct: string_id(4), color(4), unknown8(4)
 	// Total: 12 bytes + 2 byte opcode = 14 bytes minimum
 	// Note: SimpleMessage has no argument data - placeholders must be filled from context
 
@@ -12238,8 +12362,10 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 		return;
 	}
 
-	uint32_t color_type = p.GetUInt32(2);   // color/type
-	uint32_t string_id = p.GetUInt32(6);    // string_id
+	// SimpleMessage_Struct: string_id (4 bytes), color (4 bytes), unknown8 (4 bytes)
+	// Offsets include 2-byte opcode prefix
+	uint32_t string_id = p.GetUInt32(2);    // string_id at offset 0
+	uint32_t color_type = p.GetUInt32(6);   // color at offset 4
 
 	// Get the message template for this string ID
 	std::string tmpl = GetStringMessage(string_id);
@@ -12638,6 +12764,38 @@ void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
 	}
 }
 
+void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
+{
+	// Server is requesting that we initiate a zone change
+	// Uses RequestClientZoneChange_Struct (24 bytes)
+
+	if (p.Length() < 26) {  // 2 bytes opcode + 24 bytes struct
+		LOG_WARN(MOD_ZONE, "RequestClientZoneChange packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	// Parse RequestClientZoneChange_Struct
+	uint16_t zone_id = p.GetUInt16(2);
+	uint16_t instance_id = p.GetUInt16(4);
+	float zone_y = p.GetFloat(6);   // Server sends y first
+	float zone_x = p.GetFloat(10);  // Then x
+	float zone_z = p.GetFloat(14);
+	float heading = p.GetFloat(18);
+	uint32_t type = p.GetUInt32(22);
+
+	// Swap x/y for our coordinate system
+	float target_x = zone_y;
+	float target_y = zone_x;
+	float target_z = zone_z;
+
+	LOG_INFO(MOD_ZONE, "Server requests zone change: zone={} instance={} pos=({:.1f}, {:.1f}, {:.1f}) heading={:.1f} type={}",
+		zone_id, instance_id, target_x, target_y, target_z, heading, type);
+
+	// Respond with OP_ZoneChange to initiate the actual zone change
+	// The server will then respond with OP_ZoneChange with success=1
+	RequestZoneChange(zone_id, target_x, target_y, target_z, heading);
+}
+
 void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 {
 	// Server response to our zone change request (or server-initiated zone change)
@@ -12816,6 +12974,10 @@ void EverQuest::CleanupZone()
 	if (m_pet_spawn_id != 0) {
 		m_pet_spawn_id = 0;
 		std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+		// Clear pet buffs
+		if (m_buff_manager) {
+			m_buff_manager->clearPetBuffs();
+		}
 #ifdef EQT_HAS_GRAPHICS
 		OnPetRemoved();
 #endif
@@ -14715,12 +14877,165 @@ void EverQuest::UpdateJump()
 	}
 }
 
+void EverQuest::UpdateWaterState()
+{
+#ifdef EQT_HAS_GRAPHICS
+	if (!m_renderer || !IsFullyZonedIn()) {
+		return;
+	}
+
+	WaterState newState = WaterState::NotInWater;
+	float waterSurfaceZ = 0.0f;
+
+	// Fully underwater zones - these don't have BSP water regions
+	// The entire zone is submerged so we hardcode them here
+	bool isFullyUnderwaterZone = (m_current_zone_name == "kedge");
+
+	if (isFullyUnderwaterZone) {
+		newState = WaterState::Submerged;
+	} else {
+		// Normal water detection via BSP regions
+		auto bspTree = m_renderer->getZoneBspTree();
+		if (bspTree) {
+			// Check the region at current player position
+			// In EQ, the "head" is approximately 6 units above feet position
+			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
+			float headZ = m_z + HEAD_HEIGHT_OFFSET;
+
+			auto region = bspTree->findRegionForPoint(m_x, m_y, m_z);
+
+			if (region) {
+				// Check if this region is water
+				bool isWaterRegion = false;
+				for (auto type : region->regionTypes) {
+					if (type == EQT::Graphics::RegionType::Water ||
+					    type == EQT::Graphics::RegionType::FreezingWater ||
+					    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+						isWaterRegion = true;
+						break;
+					}
+				}
+
+				if (isWaterRegion) {
+					// Check if head is also in water (determines OnSurface vs Submerged)
+					auto headRegion = bspTree->findRegionForPoint(m_x, m_y, headZ);
+					bool headInWater = false;
+					if (headRegion) {
+						for (auto type : headRegion->regionTypes) {
+							if (type == EQT::Graphics::RegionType::Water ||
+							    type == EQT::Graphics::RegionType::FreezingWater ||
+							    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+								headInWater = true;
+								break;
+							}
+						}
+					}
+
+					if (headInWater) {
+						newState = WaterState::Submerged;
+					} else {
+						newState = WaterState::OnSurface;
+						// Estimate water surface Z (head is above water, feet are in)
+						waterSurfaceZ = m_z + (HEAD_HEIGHT_OFFSET / 2.0f);
+					}
+				}
+			}
+		}
+	}
+
+	// Handle state transitions
+	if (newState != m_water_state) {
+		WaterState oldState = m_water_state;
+		m_water_state = newState;
+		m_water_surface_z = waterSurfaceZ;
+
+		if (oldState == WaterState::NotInWater && newState != WaterState::NotInWater) {
+			OnEnterWater();
+		} else if (oldState != WaterState::NotInWater && newState == WaterState::NotInWater) {
+			OnExitWater();
+		}
+	}
+
+	// Update renderer's swimming state
+	float swimSpeed = GetSwimSpeed();
+
+	// Check if player is levitating (flymode 2)
+	bool isLevitating = false;
+	auto myEntity = m_entities.find(m_my_spawn_id);
+	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
+		isLevitating = true;
+	}
+
+	m_renderer->setSwimmingState(m_water_state != WaterState::NotInWater, swimSpeed, isLevitating);
+#endif
+}
+
+void EverQuest::OnEnterWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+	}
+
+	// Cancel any jump in progress
+	m_is_jumping = false;
+
+	// Send flymode=3 (water) to server
+	SendSpawnAppearance(AT_FLYMODE, 3);
+
+#ifdef WITH_AUDIO
+	// Play water entry sound
+	if (m_audio_manager) {
+		PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
+	}
+#endif
+}
+
+void EverQuest::OnExitWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+	}
+
+	// Check if player is levitating (flymode 2 from buffs)
+	// If levitating, keep flymode 2, otherwise reset to 0
+	auto myEntity = m_entities.find(m_my_spawn_id);
+	uint8_t newFlymode = 0;
+	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
+		newFlymode = 2;  // Keep levitating
+	}
+
+	SendSpawnAppearance(AT_FLYMODE, newFlymode);
+
+	m_water_state = WaterState::NotInWater;
+}
+
+float EverQuest::GetSwimSpeed() const
+{
+	// Base swim speed is slower than running
+	constexpr float BASE_SWIM_SPEED = 20.0f;
+
+	// Skill bonus: up to 50% at max skill (200)
+	uint32_t swimSkill = 0;
+	if (m_skill_manager) {
+		swimSkill = m_skill_manager->getSkillValue(50);  // Skill ID 50 = Swimming
+	}
+
+	// Cap skill at 200 for calculation
+	if (swimSkill > 200) swimSkill = 200;
+
+	// Formula: BASE_SPEED * (1.0 + (skill / 200) * 0.5)
+	// At skill 0: 20 units/sec
+	// At skill 200: 30 units/sec
+	float skillBonus = (static_cast<float>(swimSkill) / 200.0f) * 0.5f;
+	return BASE_SWIM_SPEED * (1.0f + skillBonus);
+}
+
 void EverQuest::PerformEmote(uint32_t animation)
 {
 	if (!IsFullyZonedIn()) {
 		return;
 	}
-	
+
 	// Send the emote animation using the proper Animation packet
 	SendAnimation(static_cast<uint8_t>(animation));
 	
@@ -16665,6 +16980,39 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 	// when the entity initiates an attack. The Action packet is for spell/ability effects.
 }
 
+// Helper: Get damage verb based on damage type
+// Returns pair: {second_person, third_person} e.g. {"crush", "crushes"}
+static std::pair<const char*, const char*> getDamageVerb(uint8_t damage_type) {
+	switch (damage_type) {
+		case 0:  // Blunt (1HBlunt, 2HBlunt)
+			return {"crush", "crushes"};
+		case 1:  // Slashing (1HSlashing, 2HSlashing)
+			return {"slash", "slashes"};
+		case 4:  // Hand-to-hand, Feign Death
+			return {"hit", "hits"};
+		case 7:  // Archery
+			return {"hit", "hits"};
+		case 8:  // Backstab
+			return {"backstab", "backstabs"};
+		case 10: // Bash
+			return {"bash", "bashes"};
+		case 21: // Dragon Punch
+			return {"strike", "strikes"};
+		case 23: // Eagle Strike, Tiger Claw
+			return {"strike", "strikes"};
+		case 30: // Kick, Flying Kick, Round Kick
+			return {"kick", "kicks"};
+		case 36: // Piercing (1HPiercing, 2HPiercing)
+			return {"pierce", "pierces"};
+		case 51: // Throwing
+			return {"hit", "hits"};
+		case 74: // Frenzy
+			return {"hit", "hits"};
+		default:
+			return {"hit", "hits"};
+	}
+}
+
 void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 {
 	LOG_INFO(MOD_COMBAT, "ZoneProcessDamage called, packet length={}", p.Length());
@@ -16738,13 +17086,16 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		bool player_is_target = (target_id == m_my_spawn_id);
 		bool player_is_source = (source_id == m_my_spawn_id);
 
+		// Get verb based on damage type (crush, slash, pierce, kick, etc.)
+		auto [verb_second, verb_third] = getDamageVerb(damage_type);
+
 		std::string msg;
 		if (player_is_source) {
 			// Player dealt damage
 			if (spell_id > 0 && spell_id != 0xFFFF) {
 				msg = fmt::format("You hit {} for {} points of non-melee damage.", target_name, damage_amount);
 			} else {
-				msg = fmt::format("You hit {} for {} points of damage.", target_name, damage_amount);
+				msg = fmt::format("You {} {} for {} points of damage.", verb_second, target_name, damage_amount);
 			}
 			AddChatCombatMessage(msg, true);
 		} else if (player_is_target) {
@@ -16752,7 +17103,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			if (spell_id > 0 && spell_id != 0xFFFF) {
 				msg = fmt::format("{} hit you for {} points of non-melee damage.", source_name.empty() ? "Unknown" : source_name, damage_amount);
 			} else {
-				msg = fmt::format("{} hits YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, damage_amount);
+				msg = fmt::format("{} {} YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, verb_third, damage_amount);
 			}
 			AddChatCombatMessage(msg, true);
 		} else if (!source_name.empty()) {
@@ -16760,22 +17111,29 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			if (spell_id > 0 && spell_id != 0xFFFF) {
 				msg = fmt::format("{} hit {} for {} points of non-melee damage.", source_name, target_name, damage_amount);
 			} else {
-				msg = fmt::format("{} hits {} for {} points of damage.", source_name, target_name, damage_amount);
+				msg = fmt::format("{} {} {} for {} points of damage.", source_name, verb_third, target_name, damage_amount);
 			}
 			AddChatCombatMessage(msg, false);
 		}
 	} else if (damage_amount == 0 && !target_name.empty()) {
-		// Miss
+		// Miss - use CombatMiss channel (filterable separately from hits)
 		bool player_is_source = (source_id == m_my_spawn_id);
 		bool player_is_target = (target_id == m_my_spawn_id);
 
+		// Get verb for miss messages too
+		auto [verb_second, verb_third] = getDamageVerb(damage_type);
+
 		std::string msg;
 		if (player_is_source) {
-			msg = fmt::format("You try to hit {} but miss!", target_name);
-			AddChatCombatMessage(msg, true);
+			msg = fmt::format("You try to {} {} but miss!", verb_second, target_name);
+			AddChatMissMessage(msg);
 		} else if (player_is_target && !source_name.empty()) {
-			msg = fmt::format("{} tries to hit YOU but misses!", source_name);
-			AddChatCombatMessage(msg, true);
+			msg = fmt::format("{} tries to {} YOU but misses!", source_name, verb_second);
+			AddChatMissMessage(msg);
+		} else if (!source_name.empty()) {
+			// Observing combat between others - also show misses
+			msg = fmt::format("{} tries to {} {} but misses!", source_name, verb_second, target_name);
+			AddChatMissMessage(msg);
 		}
 	}
 
@@ -16805,41 +17163,47 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 #endif
 
 #ifdef EQT_HAS_GRAPHICS
-	// Trigger damage reaction animation on target (if damage > 0 and not a miss)
-	// Note: Attack animations on source are triggered via ZoneProcessAction
-	if (m_graphics_initialized && m_renderer && damage_amount > 0) {
-		// Play damage reaction animation on target
-		// Don't play on dead entities
-		auto it = m_entities.find(target_id);
-		if (it != m_entities.end() && it->second.hp_percent > 0) {
-			// Calculate damage percentage to determine animation type
-			float damagePercent = 0.0f;
+	// Queue combat animation for buffered processing (handles double/triple attack, dual wield)
+	// Melee damage (type 0-79) is buffered; spells/DoT/environmental are processed immediately
+	if (m_graphics_initialized && m_renderer) {
+		bool isMeleeDamage = (damage_type < 80);
 
-			// For player, use actual max HP
+		// Don't animate dead entities
+		auto target_entity_it = m_entities.find(target_id);
+		bool targetAlive = (target_entity_it != m_entities.end() && target_entity_it->second.hp_percent > 0);
+
+		if (isMeleeDamage && targetAlive) {
+			// Calculate damage percentage for animation selection
+			float damagePercent = 0.0f;
 			if (target_id == m_my_spawn_id && m_max_hp > 0) {
 				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
-			} else {
-				// For NPCs, estimate based on level
-				// Rough HP estimate: level * 10-20 for most NPCs
-				// Use conservative estimate (level * 15) for damage percentage calc
-				uint8_t level = it->second.level > 0 ? it->second.level : 1;
+			} else if (target_entity_it != m_entities.end()) {
+				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
 				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
 				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
 			}
 
-			// Determine damage animation based on damage type and percentage
-			// EQ damage types:
-			// - 0-79: Melee damage (type is skill ID)
-			// - 231: Spell damage (lifetap)
-			// - 252: DoT damage
-			// - 253: Environmental damage (lava, drowning)
-			// - 254: Trap damage
-			// - 255: Fall damage
-			const char* damageAnim = nullptr;
-			bool isDrowning = (damage_type == 253);  // Environmental
-			bool isTrap = (damage_type == 254);      // Trap damage
+			// Queue combat animation - will be processed after 50ms buffer window
+			m_renderer->queueCombatAnimation(source_id, target_id, damage_type, damage_amount, damagePercent);
 
-			damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
+			if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
+				LOG_DEBUG(MOD_COMBAT, "Queued melee anim: source={} target={} skill={} dmg={} pct={:.1f}%",
+					source_id, target_id, damage_type, damage_amount, damagePercent);
+			}
+		} else if (damage_amount > 0 && targetAlive && !isMeleeDamage) {
+			// Non-melee damage (spells, DoT, environmental) - play immediately
+			float damagePercent = 0.0f;
+			if (target_id == m_my_spawn_id && m_max_hp > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
+			} else if (target_entity_it != m_entities.end()) {
+				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
+				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
+				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
+			}
+
+			bool isDrowning = (damage_type == 253);
+			bool isTrap = (damage_type == 254);
+			const char* damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
 
 			m_renderer->setEntityAnimation(target_id, damageAnim, false, true);
 			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
@@ -16848,8 +17212,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			}
 		}
 
-		// Trigger first-person attack animation when player deals damage
-		if (source_id == m_my_spawn_id && m_renderer->isFirstPersonMode()) {
+		// Trigger first-person attack animation when player attacks (including misses)
+		if (source_id == m_my_spawn_id && isMeleeDamage && m_renderer->isFirstPersonMode()) {
 			m_renderer->triggerFirstPersonAttack();
 		}
 	}
@@ -17980,10 +18344,25 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 		// Set up skill activation feedback callback
 		if (m_skill_manager) {
-			m_skill_manager->setOnSkillActivated([this](uint8_t skill_id, bool success, const std::string& message) {
+			m_skill_manager->setOnSkillActivated([this, windowManager](uint8_t skill_id, bool success, const std::string& message) {
 				const char* skill_name = EQ::getSkillName(skill_id);
 				if (success) {
 					AddChatSystemMessage(fmt::format("You use {}!", skill_name));
+					// Calculate adjusted cooldown with haste modifier
+					// Total haste = equipment haste + buff haste
+					int32_t totalHaste = 0;
+					if (m_inventory_manager) {
+						auto equipStats = m_inventory_manager->calculateEquipmentStats();
+						totalHaste += equipStats.haste;
+					}
+					if (m_buff_manager) {
+						totalHaste += m_buff_manager->getPlayerStatMod(EQ::SpellEffect::AttackSpeed);
+					}
+					// Get adjusted recast time with haste applied
+					uint32_t adjustedCooldown = EQ::getAdjustedSkillRecastTime(skill_id, totalHaste);
+					if (adjustedCooldown > 0) {
+						windowManager->startSkillCooldown(skill_id, adjustedCooldown);
+					}
 				} else {
 					AddChatSystemMessage(fmt::format("Cannot use {}: {}", skill_name, message));
 				}
@@ -18037,7 +18416,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Set up pet window
 	if (m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
-		windowManager->initPetWindow(this);
+		windowManager->initPetWindow(this, m_buff_manager.get());
 
 		// Set up pet command callback
 		windowManager->setPetCommandCallback([this](EQT::PetCommand command, uint16_t targetId) {
@@ -18136,6 +18515,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 				}
 				case eqt::ui::HotbarButtonType::Skill: {
 					// Activate skill by ID
+					// Cooldown is handled by the onSkillActivated callback
 					if (m_skill_manager) {
 						m_skill_manager->activateSkill(static_cast<uint8_t>(button.id));
 					}
@@ -18233,7 +18613,7 @@ void EverQuest::ShutdownGraphics() {
 		m_renderer.reset();
 	}
 	m_graphics_initialized = false;
-	LOG_DEBUG(MOD_GRAPHICS, "Renderer shut down");
+	LOG_DEBUG(MOD_GRAPHICS, "Graphics shut down");
 }
 
 bool EverQuest::UpdateGraphics(float deltaTime) {
@@ -18773,9 +19153,13 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
 	m_heading = update.heading * 360.0f / 512.0f;
 
+	// Check water state at new position
+	UpdateWaterState();
+
 	// Derive movement state from velocity
 	float speed2D = std::sqrt(update.dx * update.dx + update.dy * update.dy);
-	bool isMoving = speed2D > 0.01f;
+	float speed3D = std::sqrt(speed2D * speed2D + update.dz * update.dz);
+	bool isMoving = (m_water_state != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
 	m_is_moving = isMoving;
 
 	// Determine if moving backward by comparing velocity direction to heading
@@ -18790,18 +19174,30 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 	bool isMovingBackward = isMoving && dotProduct < -0.01f;
 
 	// Determine animation based on movement state
-	// Negative animation = play in reverse (e.g., walking backward)
-	if (!isMoving) {
-		m_animation = ANIM_STAND;
-	} else if (speed2D > 5.0f) {  // Running threshold
-		m_animation = isMovingBackward ? -ANIM_RUN : ANIM_RUN;
+	if (m_water_state != WaterState::NotInWater) {
+		// Swimming animations
+		// Animation code 7 = swimming/treading, 6 = swim idle
+		if (isMoving) {
+			m_animation = 7;  // Swim treading (l09)
+		} else {
+			m_animation = 6;  // Swim idle (p06)
+		}
 	} else {
-		m_animation = isMovingBackward ? -ANIM_WALK : ANIM_WALK;
+		// Normal ground animations
+		// Negative animation = play in reverse (e.g., walking backward)
+		if (!isMoving) {
+			m_animation = ANIM_STAND;
+		} else if (speed2D > 5.0f) {  // Running threshold
+			m_animation = isMovingBackward ? -ANIM_RUN : ANIM_RUN;
+		} else {
+			m_animation = isMovingBackward ? -ANIM_WALK : ANIM_WALK;
+		}
 	}
 
 	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={}",
-			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_animation);
+		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={} water={}",
+			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_animation,
+			static_cast<int>(m_water_state));
 	}
 
 	// Check for zone line collision

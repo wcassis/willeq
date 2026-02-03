@@ -84,7 +84,7 @@ bool SkeletalAnimator::playAnimation(const std::string& animCode, bool loop, boo
             LOG_DEBUG(MOD_GRAPHICS, "SkeletalAnimator::playAnimation - QUEUED '{}' (playThrough '{}' active) model={}",
                       animCode, currentAnimCode_, (skeleton_ ? skeleton_->modelCode : "?"));
         }
-        return false;  // Return false to indicate animation wasn't started, just queued
+        return true;  // Animation was queued successfully - will play when current animation completes
     }
 
     // ========================================================================

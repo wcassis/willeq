@@ -151,6 +151,16 @@ struct PlayerMovementState {
     float verticalVelocity = 0.0f; // Current vertical velocity (positive = up)
     float jumpVelocity = 40.0f;    // Initial upward velocity when jumping
     float gravity = 80.0f;         // Gravity acceleration (units/sec^2)
+
+    // Swimming state
+    bool isSwimming = false;       // Currently in water
+    bool isLevitating = false;     // Has levitation effect (flymode 2)
+    bool swimUp = false;           // Pressing swim up key
+    bool swimDown = false;         // Pressing swim down key
+    float swimSpeed = 20.0f;       // Base swim speed (units per second)
+    float swimBackwardSpeed = 10.0f;  // Backward swim speed
+    float swimVerticalSpeed = 15.0f;  // Vertical swim speed (up/down)
+    float sinkRate = 5.0f;         // Rate of sinking when idle (units per second)
 };
 
 // Configuration for player mode
@@ -586,6 +596,20 @@ public:
     uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
     uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
 
+    // Combat animation buffering (for double/triple attack and dual wield detection)
+    // Buffers damage packets within 50ms window to detect multi-hit scenarios
+    void queueCombatAnimation(uint16_t sourceId, uint16_t targetId,
+                              uint8_t weaponSkill, int32_t damage, float damagePercent);
+
+    // Check if entity has pending combat animations in buffer
+    bool hasEntityPendingCombatAnims(uint16_t spawnId) const;
+
+    // Queue received damage animation into combat buffer (from emote packets)
+    void queueReceivedDamageAnimation(uint16_t spawnId);
+
+    // Queue combat skill animation into combat buffer (bash, kick, etc.)
+    void queueSkillAnimation(uint16_t spawnId, const std::string& animCode);
+
     // First-person mode methods
     // Trigger first-person attack animation (weapon swing)
     void triggerFirstPersonAttack();
@@ -617,6 +641,16 @@ public:
 
     // Get player's current Z (may differ from set value if snapped to ground)
     float getPlayerZ() const { return playerZ_; }
+
+    // Swimming state
+    void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
+    bool isSwimming() const { return playerMovement_.isSwimming; }
+    void setSwimUp(bool up) { playerMovement_.swimUp = up; }
+    void setSwimDown(bool down) { playerMovement_.swimDown = down; }
+    void setLevitating(bool levitating) { playerMovement_.isLevitating = levitating; }
+
+    // Get BSP tree for water region detection
+    std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
 
     // Update time of day lighting (hour 0-23, minute 0-59)
     void updateTimeOfDay(uint8_t hour, uint8_t minute);
@@ -963,6 +997,7 @@ private:
     void setupFog();
     void setupHUD();
     void updateHUD();
+    void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
     void createZoneMesh();
     void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
     void updatePvsVisibility();    // Update region visibility based on camera position

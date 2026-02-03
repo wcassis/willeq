@@ -457,6 +457,10 @@ EQAnimatedMeshSceneNode::EQAnimatedMeshSceneNode(
         auto skeleton = eqMesh_->getSkeleton();
         if (skeleton) {
             animator_.setSkeleton(skeleton);
+            LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode: Set skeleton model='{}' animations={}",
+                      skeleton->modelCode, skeleton->animations.size());
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "EQAnimatedMeshSceneNode: No skeleton from mesh!");
         }
 
         // Create per-instance mesh copy for animation
