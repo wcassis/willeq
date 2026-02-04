@@ -21,6 +21,7 @@ struct RainSettings {
     float sizeMin = 0.03f;          // Minimum drop width (small streaks)
     float sizeMax = 0.06f;          // Maximum drop width
     float lengthScale = 4.0f;       // Stretch factor for streak length
+    float intensityScale = 10.0f;   // Multiplier for server intensity (0-10)
     // Color (light blue-white for rain streaks)
     float colorR = 0.75f;
     float colorG = 0.85f;
