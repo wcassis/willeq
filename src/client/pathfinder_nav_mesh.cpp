@@ -50,8 +50,10 @@ IPathfinder::IPath PathfinderNavmesh::FindRoute(const glm::vec3 &start, const gl
 	}
 
 	m_impl->query->init(m_impl->nav_mesh, 2048); // Default max navmesh nodes for HC
-	glm::vec3 current_location(start.x, start.z, start.y);
-	glm::vec3 dest_location(end.x, end.z, end.y);
+	// Convert EQ coords to navmesh coords: EQ (x, y, z) → Navmesh (y, z, x)
+	// Navmesh has X↔Z swapped relative to zone geometry (discovered via visualization alignment)
+	glm::vec3 current_location(start.y, start.z, start.x);
+	glm::vec3 dest_location(end.y, end.z, end.x);
 
 	dtQueryFilter filter;
 	filter.setIncludeFlags(flags);
@@ -111,10 +113,11 @@ IPathfinder::IPath PathfinderNavmesh::FindRoute(const glm::vec3 &start, const gl
 			IPath Route;
 			for (int i = 0; i < n_straight_polys; ++i)
 			{
+				// Convert navmesh coords back to EQ coords: Navmesh (x, y, z) → EQ (z, x, y)
 				glm::vec3 node;
-				node.x = straight_path[i * 3];
-				node.z = straight_path[i * 3 + 1];
-				node.y = straight_path[i * 3 + 2];
+				node.x = straight_path[i * 3 + 2];  // EQ X = Navmesh Z
+				node.y = straight_path[i * 3];      // EQ Y = Navmesh X
+				node.z = straight_path[i * 3 + 1];  // EQ Z = Navmesh Y
 
 				Route.push_back(node);
 
@@ -148,8 +151,10 @@ IPathfinder::IPath PathfinderNavmesh::FindPath(const glm::vec3 &start, const glm
 	}
 
 	m_impl->query->init(m_impl->nav_mesh, 2048); // Default max navmesh nodes for HC
-	glm::vec3 current_location(start.x, start.z, start.y);
-	glm::vec3 dest_location(end.x, end.z, end.y);
+	// Convert EQ coords to navmesh coords: EQ (x, y, z) → Navmesh (y, z, x)
+	// Navmesh has X↔Z swapped relative to zone geometry (discovered via visualization alignment)
+	glm::vec3 current_location(start.y, start.z, start.x);
+	glm::vec3 dest_location(end.y, end.z, end.x);
 
 	dtQueryFilter filter;
 	filter.setIncludeFlags(opts.flags);
@@ -215,7 +220,7 @@ IPathfinder::IPath PathfinderNavmesh::FindPath(const glm::vec3 &start, const glm
 					if (flag & DT_STRAIGHTPATH_OFFMESH_CONNECTION) {
 						auto &p = straight_path[0];
 
-						Route.push_back(glm::vec3(p.x, p.z, p.y));
+						Route.push_back(glm::vec3(p.z, p.x, p.y));
 					}
 					else {
 						auto &p = straight_path[0];
@@ -225,7 +230,7 @@ IPathfinder::IPath PathfinderNavmesh::FindPath(const glm::vec3 &start, const glm
 							p.y = h + opts.offset;
 						}
 
-						Route.push_back(glm::vec3(p.x, p.z, p.y));
+						Route.push_back(glm::vec3(p.z, p.x, p.y));
 					}
 				}
 
@@ -237,7 +242,8 @@ IPathfinder::IPath PathfinderNavmesh::FindPath(const glm::vec3 &start, const glm
 						auto &poly = straight_path_polys[i];
 
 						auto &p2 = straight_path[i + 1];
-						glm::vec3 node(p2.x, p2.z, p2.y);
+						// Convert navmesh coords to EQ: Navmesh (x, y, z) → EQ (z, x, y)
+						glm::vec3 node(p2.z, p2.x, p2.y);
 						Route.push_back(node);
 
 						unsigned short pflag = 0;
@@ -274,7 +280,8 @@ IPathfinder::IPath PathfinderNavmesh::FindPath(const glm::vec3 &start, const glm
 								current_pt.y = h + opts.offset;
 							}
 
-							Route.push_back(glm::vec3(current_pt.x, current_pt.z, current_pt.y));
+							// Convert navmesh coords to EQ: Navmesh (x, y, z) → EQ (z, x, y)
+							Route.push_back(glm::vec3(current_pt.z, current_pt.x, current_pt.y));
 							previous_pt = current_pt;
 						}
 					}

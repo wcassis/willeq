@@ -10946,13 +10946,16 @@ void EverQuest::StopMovement()
 	if (m_is_moving) {
 		m_is_moving = false;
 		m_animation = ANIM_STAND;
-		
+
 		// Clear any active path
 		m_current_path.clear();
 		m_current_path_index = 0;
-		
+
+		// Clear target coordinates so UpdateMovement doesn't keep moving back
+		m_target_x = m_target_y = m_target_z = 0.0f;
+
 		SendPositionUpdate();
-		
+
 		if (s_debug_level >= 1) {
 			std::cout << "Movement stopped" << std::endl;
 		}
@@ -11135,9 +11138,18 @@ void EverQuest::UpdateMovement()
 		// Check if we've reached the current waypoint
 		const auto& waypoint = m_current_path[m_current_path_index];
 		float dist_to_waypoint = CalculateDistance2D(m_x, m_y, waypoint.x, waypoint.y);
-		
+
+		// Always log path progress for debugging coordinate issues
+		static auto last_path_debug = std::chrono::steady_clock::now();
+		auto now_path_debug = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(now_path_debug - last_path_debug).count() >= 500) {
+			LOG_INFO(MOD_MAIN, "Path progress: pos=({:.1f},{:.1f},{:.1f}) waypoint[{}]=({:.1f},{:.1f},{:.1f}) dist={:.1f}",
+				m_x, m_y, m_z, m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
+			last_path_debug = now_path_debug;
+		}
+
 		if (s_debug_level >= 2) {
-			if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Following path: waypoint {}/{}, dist to waypoint: {:.2f}", 
+			if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Following path: waypoint {}/{}, dist to waypoint: {:.2f}",
 				m_current_path_index, m_current_path.size()-1, dist_to_waypoint) << std::endl;
 		}
 		
@@ -11325,7 +11337,14 @@ void EverQuest::UpdateMovement()
 	
 	// Update heading
 	m_heading = CalculateHeading(m_x - dx * factor, m_y - dy * factor, m_x, m_y);
-	
+
+	// Update renderer position for console-driven movement (moveto, follow, etc.)
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		m_renderer->setPlayerPosition(m_x, m_y, m_z, m_heading);
+	}
+#endif
+
 	// Set animation based on actual movement distance
 	// Don't change animation if we're jumping
 	if (!m_is_jumping) {
@@ -17525,6 +17544,16 @@ void EverQuest::StartCombatMovement(uint16_t entity_id)
 void EverQuest::StartMoveForward()
 {
 	if (!IsFullyZonedIn()) return;
+
+	// Clear any console-based movement (moveto, follow) when user takes manual control
+	if (!m_current_path.empty() || m_target_x != 0.0f || m_target_y != 0.0f || m_target_z != 0.0f) {
+		m_current_path.clear();
+		m_current_path_index = 0;
+		m_target_x = m_target_y = m_target_z = 0.0f;
+		m_follow_target.clear();
+		LOG_DEBUG(MOD_MAIN, "Cleared pathfinding state due to manual movement");
+	}
+
 	m_move_forward = true;
 	if (s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting forward movement");
