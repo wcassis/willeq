@@ -1306,18 +1306,49 @@ void IrrlichtRenderer::updateObjectLights() {
     }
 
     // Add zone lights to the pool if zone lights are enabled
-    // Note: Zone lights skip occlusion checks for performance - they are static/decorative
-    // and checking 200+ raycasts per frame is too expensive
+    // Use PVS culling if available - skip lights in regions not visible from player's region
+    // This is much faster than raycasting for 200+ static lights
     if (zoneLightsEnabled_) {
+        // Get current camera region's PVS data for visibility checks
+        std::shared_ptr<BspRegion> cameraRegion;
+        if (usePvsCulling_ && zoneBspTree_ && currentPvsRegion_ != SIZE_MAX &&
+            currentPvsRegion_ < zoneBspTree_->regions.size()) {
+            cameraRegion = zoneBspTree_->regions[currentPvsRegion_];
+        }
+
+        size_t pvsSkipped = 0;
+        size_t distanceSkipped = 0;
         for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
             auto* node = zoneLightNodes_[i];
-            if (node) {
-                irr::core::vector3df lightPos = node->getPosition();
-                float dist = horizontalDistance(cameraPos, lightPos);
-                if (dist <= maxDistance) {
-                    candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i)});
+            if (!node) continue;
+
+            // PVS culling: skip lights in regions not visible from camera
+            if (cameraRegion && !cameraRegion->visibleRegions.empty() &&
+                i < zoneLightRegions_.size()) {
+                size_t lightRegion = zoneLightRegions_[i];
+                if (lightRegion != SIZE_MAX && lightRegion < cameraRegion->visibleRegions.size()) {
+                    if (!cameraRegion->visibleRegions[lightRegion]) {
+                        pvsSkipped++;
+                        continue;  // Light's region not visible from camera's region
+                    }
                 }
+                // If lightRegion == SIZE_MAX or outside visibleRegions array, assume visible (conservative)
             }
+
+            // Distance culling
+            irr::core::vector3df lightPos = node->getPosition();
+            float dist = horizontalDistance(cameraPos, lightPos);
+            if (dist <= maxDistance) {
+                candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i)});
+            } else {
+                distanceSkipped++;
+            }
+        }
+
+        static size_t logCounter = 0;
+        if (++logCounter % 300 == 0) {  // Log every ~5 seconds at 60fps
+            LOG_DEBUG(MOD_GRAPHICS, "Zone light culling: {} PVS-culled, {} distance-culled, {} candidates",
+                pvsSkipped, distanceSkipped, candidates.size());
         }
     }
 
@@ -3503,6 +3534,7 @@ void IrrlichtRenderer::createZoneLights() {
     }
     zoneLightNodes_.clear();
     zoneLightPositions_.clear();
+    zoneLightRegions_.clear();
     zoneLightInSceneGraph_.clear();
 
     if (!currentZone_ || currentZone_->lights.empty()) {
@@ -3539,6 +3571,36 @@ void IrrlichtRenderer::createZoneLights() {
             zoneLightPositions_.push_back(lightNode->getPosition());  // Cache position
             zoneLightInSceneGraph_.push_back(true);  // Initially in scene graph
         }
+    }
+
+    // Cache BSP region for each zone light for PVS-based culling
+    // This allows fast visibility checks without per-frame BSP traversals
+    if (zoneBspTree_ && !zoneBspTree_->regions.empty()) {
+        size_t lightsWithRegion = 0;
+        for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
+            const auto& light = currentZone_->lights[i];
+            // findRegionForPoint expects EQ coordinates
+            auto region = zoneBspTree_->findRegionForPoint(light->x, light->y, light->z);
+            if (region) {
+                // Find the region index
+                size_t regionIdx = SIZE_MAX;
+                for (size_t r = 0; r < zoneBspTree_->regions.size(); ++r) {
+                    if (zoneBspTree_->regions[r].get() == region.get()) {
+                        regionIdx = r;
+                        break;
+                    }
+                }
+                zoneLightRegions_.push_back(regionIdx);
+                if (regionIdx != SIZE_MAX) lightsWithRegion++;
+            } else {
+                zoneLightRegions_.push_back(SIZE_MAX);  // No region found
+            }
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "Cached BSP regions for {} of {} zone lights",
+            lightsWithRegion, zoneLightNodes_.size());
+    } else {
+        // No BSP tree - fill with SIZE_MAX (no PVS culling)
+        zoneLightRegions_.resize(zoneLightNodes_.size(), SIZE_MAX);
     }
 
     LOG_DEBUG(MOD_GRAPHICS, "Created {} zone lights (of {} available)", zoneLightNodes_.size(), currentZone_->lights.size());

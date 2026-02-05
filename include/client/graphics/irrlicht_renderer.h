@@ -1090,6 +1090,7 @@ private:
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
+    std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
     std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
