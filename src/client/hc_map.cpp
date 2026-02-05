@@ -20,8 +20,8 @@ struct HCMap::impl {
 	RaycastMesh* rm;
 
 	// Store vertices and indices for debug visualization
-	// These are in EQ coordinates (Z-up) for easy access
-	std::vector<glm::vec3> eq_verts;  // Vertices in EQ coords
+	// These are in Irrlicht coordinates (Y-up) for direct rendering
+	std::vector<glm::vec3> mesh_verts;  // Vertices in Y-up (Irrlicht) format
 	std::vector<uint32_t> indices;
 	std::vector<bool> triangleIsPlaceable;  // Per-triangle flag: true if from placeable object
 	float minZ = 0.0f;
@@ -196,7 +196,7 @@ bool HCMap::Load(const std::string& filename) {
 		}
 
 		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
-		m_impl->eq_verts = verts;
+		m_impl->mesh_verts = verts;
 		m_impl->indices = indices;
 
 		// V1 format has no placeables - all triangles are terrain
@@ -685,7 +685,7 @@ bool HCMap::Load(const std::string& filename) {
 		}
 
 		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
-		m_impl->eq_verts = verts;
+		m_impl->mesh_verts = verts;
 		m_impl->indices = indices;
 		m_impl->triangleIsPlaceable = triangleIsPlaceable;
 
@@ -815,7 +815,7 @@ HCMap* HCMap::LoadMapFile(const std::string& zone_name, const std::string& maps_
 std::vector<HCMap::Triangle> HCMap::GetTrianglesInRadius(const glm::vec3& center, float radius) const {
 	std::vector<Triangle> result;
 
-	if (!m_impl || m_impl->eq_verts.empty() || m_impl->indices.empty()) {
+	if (!m_impl || m_impl->mesh_verts.empty() || m_impl->indices.empty()) {
 		return result;
 	}
 
@@ -827,13 +827,13 @@ std::vector<HCMap::Triangle> HCMap::GetTrianglesInRadius(const glm::vec3& center
 		uint32_t i2 = m_impl->indices[i * 3 + 1];
 		uint32_t i3 = m_impl->indices[i * 3 + 2];
 
-		if (i1 >= m_impl->eq_verts.size() || i2 >= m_impl->eq_verts.size() || i3 >= m_impl->eq_verts.size()) {
+		if (i1 >= m_impl->mesh_verts.size() || i2 >= m_impl->mesh_verts.size() || i3 >= m_impl->mesh_verts.size()) {
 			continue;
 		}
 
-		const glm::vec3& v1 = m_impl->eq_verts[i1];
-		const glm::vec3& v2 = m_impl->eq_verts[i2];
-		const glm::vec3& v3 = m_impl->eq_verts[i3];
+		const glm::vec3& v1 = m_impl->mesh_verts[i1];
+		const glm::vec3& v2 = m_impl->mesh_verts[i2];
+		const glm::vec3& v3 = m_impl->mesh_verts[i3];
 
 		// Calculate triangle center
 		glm::vec3 triCenter = (v1 + v2 + v3) / 3.0f;

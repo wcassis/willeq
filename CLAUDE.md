@@ -208,9 +208,140 @@ Sound files are loaded from `snd*.pfs` archives and the `sounds/` directory in t
 
 ### Coordinate Systems
 
-- EQ uses Z-up: (x, y, z)
-- Irrlicht uses Y-up: (x, y, z)
-- Transform: EQ (x, y, z) -> Irrlicht (x, z, y)
+This codebase uses multiple coordinate systems. Understanding them is critical for correct operation.
+
+#### 1. EQ Server Coordinates (Z-up, INVERSEXY)
+
+The EQ server sends positions with X and Y swapped relative to zone geometry. This is the "INVERSEXY" convention.
+
+- **Axis orientation**: Z-up (vertical), X/Y horizontal
+- **Used by**: Network packets, `/loc` command output
+- **Heading**: 0-512 units = 0-360 degrees, 0=North(+Y), increases clockwise
+
+When receiving spawn packets, the client **immediately swaps X and Y**:
+```cpp
+// In eq.cpp - server sends (server_x, server_y, z)
+entity.x = server_y;  // Client X = Server Y
+entity.y = server_x;  // Client Y = Server X
+entity.z = z;         // Z unchanged
+```
+
+#### 2. Client Internal Coordinates (Z-up, swapped)
+
+After the X/Y swap from server packets, client stores positions in "zone geometry" format.
+
+- **Axis orientation**: Z-up (vertical), X/Y horizontal (swapped from server)
+- **Used by**: `m_x`, `m_y`, `m_z` player position, `Entity.x/y/z`, movement calculations
+- **Heading**: 0-512 units = 0-360 degrees (same as server)
+
+This matches the zone geometry coordinate system, so client positions align with loaded S3D zones.
+
+#### 3. S3D/WLD File Coordinates (Z-up)
+
+Zone geometry in S3D files uses Z-up, matching client internal coordinates.
+
+- **Axis orientation**: Z-up (vertical), X/Y horizontal
+- **Used by**: Zone meshes, placeables, object positions in WLD files
+- **Rotation in WLD**: 512 units = 360 degrees, converted via `rotModifier = 360.0f / 512.0f`
+
+No coordinate transformation needed between client internal and S3D geometry.
+
+#### 4. Irrlicht Rendering Coordinates (Y-up)
+
+Irrlicht uses Y-up for rendering. All positions must be transformed.
+
+- **Axis orientation**: Y-up (vertical), X/Z horizontal
+- **Used by**: Camera position, rendered meshes, scene nodes
+- **Transform from client**: `EQ(x, y, z) → Irrlicht(x, z, y)` (swap Y and Z)
+
+Example from `zone_geometry.cpp`:
+```cpp
+vertex.Pos.X = v.x;
+vertex.Pos.Y = v.z;  // EQ Z (vertical) → Irrlicht Y (vertical)
+vertex.Pos.Z = v.y;  // EQ Y (horizontal) → Irrlicht Z (horizontal)
+```
+
+Example from `irrlicht_renderer.cpp`:
+```cpp
+irr::core::vector3df camPos(x, camZ, y);  // x, z, y order
+```
+
+#### 5. HCMap Mesh Coordinates (Y-up, for raycast)
+
+HCMap loads map files and stores geometry in Y-up format for internal raycast queries.
+
+- **File format**: V2 files have INVERSEXY applied (X/Y swapped), V1 files use Z-up directly
+- **Internal storage**: Y-up (after Y↔Z swap during loading)
+- **Used by**: `RaycastMesh` collision queries, `GetTrianglesInRadius()` for debug overlays
+
+**Important**: `FindBestZ()` and `CheckLOS()` **accept EQ coordinates** (Z-up) as input/output and convert internally:
+```cpp
+// In FindBestZ - converts EQ input to mesh coords
+glm::vec3 from(start.x, start.z + 10.0f, start.y);  // EQ(x,y,z) → Mesh(x,z,y)
+// Result converted back to EQ coords
+result->x = mesh_result.x;
+result->y = mesh_result.z;  // Mesh Z → EQ Y
+result->z = mesh_result.y;  // Mesh Y → EQ Z
+```
+
+#### 6. Navmesh Coordinates (Permuted X↔Z)
+
+The navmesh files have X and Z axes swapped relative to zone geometry.
+
+- **Axis orientation**: Different permutation than other systems
+- **Transform from EQ**: `EQ(x, y, z) → Navmesh(y, z, x)`
+- **Transform to EQ**: `Navmesh(x, y, z) → EQ(z, x, y)`
+
+```cpp
+// In pathfinder_nav_mesh.cpp
+// Query input
+glm::vec3 current_location(start.y, start.z, start.x);
+
+// Result output
+node.x = straight_path[i * 3 + 2];  // EQ X = Navmesh Z
+node.y = straight_path[i * 3];      // EQ Y = Navmesh X
+node.z = straight_path[i * 3 + 1];  // EQ Z = Navmesh Y
+```
+
+#### 7. Audio Coordinates (Z-up, same as client)
+
+Audio system uses client internal coordinates directly (no transformation).
+
+- **Axis orientation**: Z-up, matches client internal coordinates
+- **Used by**: `ZoneSoundEmitter` positions, spatial audio
+
+#### Coordinate System Summary Table
+
+| System | Up Axis | Transform from Client | Notes |
+|--------|---------|----------------------|-------|
+| **EQ Server** | Z | Swap X↔Y | Packets use INVERSEXY |
+| **Client Internal** | Z | (identity) | Reference coordinate system |
+| **S3D/WLD Files** | Z | (identity) | Matches client after loading |
+| **Irrlicht Render** | Y | Swap Y↔Z | `(x,y,z) → (x,z,y)` |
+| **HCMap Mesh** | Y | Swap Y↔Z | Internal only; API uses client coords |
+| **Navmesh** | - | Permute `(x,y,z) → (y,z,x)` | Different axis convention |
+| **Audio** | Z | (identity) | Uses client coords directly |
+
+#### Heading/Rotation Conventions
+
+- **EQ Heading**: 0-512 units = 0-360 degrees
+  - 0 = North (+Y in client coords)
+  - 128 = West (-X)
+  - 256 = South (-Y)
+  - 384 = East (+X)
+  - Increases clockwise when viewed from above
+
+- **Packet formats vary**:
+  - 11-bit: `raw * 360.0 / 2048.0` = degrees
+  - 12-bit: `raw * 360.0 / 2048.0` = degrees
+  - Position updates: `degrees * 512.0 / 360.0` = EQ units
+
+- **WLD rotation**: 512 units = 360 degrees, with axis remapping:
+  ```cpp
+  finalRotX = 0.0f;                           // Always 0
+  finalRotY = rawRotX * (360/512) * -1.0f;    // Primary yaw, negated
+  finalRotZ = rawRotY * (360/512);            // Secondary rotation
+  ```
 
 ### Packet Structures
 

@@ -8,11 +8,16 @@
 
 // Simplified Map class for headless client
 // Compatible with zone server map files (V1 and V2 formats)
+//
+// Coordinate Systems:
+// - Input/Output (FindBestZ, CheckLOS): EQ Server format (Z-up)
+// - Internal mesh storage: Irrlicht format (Y-up) for raycast queries
+// - GetTrianglesInRadius returns: Irrlicht format (Y-up) for rendering overlays
 class HCMap
 {
 public:
 	// Triangle structure for debug visualization
-	// Coordinates are in EQ format (Z-up)
+	// Coordinates are in Irrlicht format (Y-up) - ready for direct rendering
 	struct Triangle {
 		glm::vec3 v1, v2, v3;
 		glm::vec3 normal;  // Face normal for floor/wall detection
