@@ -1342,10 +1342,13 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         if (visual.isNPC && groundFinderCallback_ &&
             (std::abs(visual.velocityX) > 0.01f || std::abs(visual.velocityY) > 0.01f)) {
             float groundZ = groundFinderCallback_(visual.lastX, visual.lastY, visual.lastZ);
+            // Server Z is the model CENTER, not feet. groundZ is the floor level.
+            // We need to place the model center at groundZ + collisionZOffset (half model height).
+            float targetZ = groundZ + visual.collisionZOffset;
             // Only snap if ground is within reasonable range (avoid teleporting through floors/ceilings)
-            float heightDiff = groundZ - visual.lastZ;
+            float heightDiff = targetZ - visual.lastZ;
             if (std::abs(heightDiff) < 20.0f) {
-                visual.lastZ = groundZ;
+                visual.lastZ = targetZ;
             }
         }
 
