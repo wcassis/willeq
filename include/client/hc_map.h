@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <glm/glm.hpp>
 
 #define BEST_Z_INVALID -99999
@@ -10,6 +11,14 @@
 class HCMap
 {
 public:
+	// Triangle structure for debug visualization
+	// Coordinates are in EQ format (Z-up)
+	struct Triangle {
+		glm::vec3 v1, v2, v3;
+		glm::vec3 normal;  // Face normal for floor/wall detection
+		bool isPlaceable;  // True if this triangle is from a placeable object (not terrain)
+	};
+
 	HCMap();
 	~HCMap();
 
@@ -31,6 +40,13 @@ public:
 
 	// Check if map is loaded
 	bool IsLoaded() const { return m_impl != nullptr; }
+
+	// Get triangles within a radius of a point (for debug visualization)
+	// Returns triangles in EQ coordinates (Z-up)
+	std::vector<Triangle> GetTrianglesInRadius(const glm::vec3& center, float radius) const;
+
+	// Get the min/max Z values in the map (for color gradient scaling)
+	void GetZRange(float& minZ, float& maxZ) const;
 
 	// Static helper to load a map file with proper path
 	static HCMap* LoadMapFile(const std::string& zone_name, const std::string& maps_path);

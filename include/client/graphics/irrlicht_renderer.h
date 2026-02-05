@@ -7,6 +7,7 @@
 #include <functional>
 #include <vector>
 #include <map>
+#include <glm/glm.hpp>
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/entity_renderer.h"
@@ -248,6 +249,9 @@ public:
     bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
     bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
 bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
+    bool mapOverlayToggleRequested() { bool r = mapOverlayToggleRequested_; mapOverlayToggleRequested_ = false; return r; }
+    bool mapOverlayRotateRequested() { bool r = mapOverlayRotateRequested_; mapOverlayRotateRequested_ = false; return r; }
+    bool mapOverlayMirrorXRequested() { bool r = mapOverlayMirrorXRequested_; mapOverlayMirrorXRequested_ = false; return r; }
     bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
     bool spellbookToggleRequested() { bool r = spellbookToggleRequested_; spellbookToggleRequested_ = false; return r; }
     bool buffWindowToggleRequested() { bool r = buffWindowToggleRequested_; buffWindowToggleRequested_ = false; return r; }
@@ -397,6 +401,9 @@ private:
     bool trainerToggleRequested_ = false;
     bool skillsToggleRequested_ = false;
 bool zoneLineVisualizationToggleRequested_ = false;
+    bool mapOverlayToggleRequested_ = false;
+    bool mapOverlayRotateRequested_ = false;
+    bool mapOverlayMirrorXRequested_ = false;
     bool petToggleRequested_ = false;
     bool spellbookToggleRequested_ = false;
     bool buffWindowToggleRequested_ = false;
@@ -1259,6 +1266,23 @@ private:
     bool showZoneLineBoxes_ = true;  // Enabled by default to help debug
     void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
     void drawZoneLineBoxLabels();
+
+    // Map overlay visualization (Ctrl+M)
+    bool showMapOverlay_ = false;
+    glm::vec3 lastMapOverlayUpdatePos_ = glm::vec3(0.0f);
+    float mapOverlayRadius_ = 100.0f;  // Radius around player to show
+    int mapOverlayRotation_ = 0;       // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
+    bool mapOverlayMirrorX_ = false;   // Mirror placeables across YZ plane (negate X)
+    struct MapOverlayTriangle {
+        irr::core::vector3df v1, v2, v3;
+        irr::video::SColor color;  // Based on height and normal
+        bool isPlaceable;          // True if from placeable object (rotation applies)
+    };
+    std::vector<MapOverlayTriangle> mapOverlayTriangles_;
+    void toggleMapOverlay();
+    void updateMapOverlay(const glm::vec3& playerPos);
+    void drawMapOverlay();
+    irr::video::SColor getMapOverlayColor(float z, float minZ, float maxZ, const glm::vec3& normal) const;
 
     // FPS counter (centered at top of screen)
     void drawFPSCounter();

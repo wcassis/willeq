@@ -13,10 +13,19 @@
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
+#include <limits>
 #include <map>
 
 struct HCMap::impl {
 	RaycastMesh* rm;
+
+	// Store vertices and indices for debug visualization
+	// These are in EQ coordinates (Z-up) for easy access
+	std::vector<glm::vec3> eq_verts;  // Vertices in EQ coords
+	std::vector<uint32_t> indices;
+	std::vector<bool> triangleIsPlaceable;  // Per-triangle flag: true if from placeable object
+	float minZ = 0.0f;
+	float maxZ = 0.0f;
 
 	impl() : rm(nullptr) {}
 	~impl() {
@@ -178,6 +187,29 @@ bool HCMap::Load(const std::string& filename) {
 			indices.push_back((uint32_t)sz + 2);
 		}
 
+		// Swap Y and Z coordinates to convert from EQ's Z-up to internal Y-up format
+		// This matches the transformation done by EQEmu server in map.cpp
+		for (auto &v : verts) {
+			float t = v.y;
+			v.y = v.z;
+			v.z = t;
+		}
+
+		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
+		m_impl->eq_verts = verts;
+		m_impl->indices = indices;
+
+		// V1 format has no placeables - all triangles are terrain
+		m_impl->triangleIsPlaceable.resize(face_count, false);
+
+		// Calculate Y range for color gradient (Y is vertical in Y-up format)
+		m_impl->minZ = std::numeric_limits<float>::max();
+		m_impl->maxZ = std::numeric_limits<float>::lowest();
+		for (const auto& v : verts) {
+			if (v.y < m_impl->minZ) m_impl->minZ = v.y;
+			if (v.y > m_impl->maxZ) m_impl->maxZ = v.y;
+		}
+
 		m_impl->rm = createRaycastMesh((RmUint32)verts.size(), (const RmReal*)&verts[0], face_count, &indices[0]);
 		if (m_impl->rm) {
 			loaded = true;
@@ -246,13 +278,15 @@ bool HCMap::Load(const std::string& filename) {
 		verts.reserve(vert_count);
 		std::vector<uint32_t> indices;
 		indices.reserve(ind_count);
+		std::vector<bool> triangleIsPlaceable;  // Track which triangles are from placeables
 
 		// Read main vertices
+		// Note: Map file has INVERSEXY applied (X and Y are swapped), so we swap them back
 		for (uint32_t i = 0; i < vert_count; ++i) {
 			float x = *(float*)buf; buf += sizeof(float);
 			float y = *(float*)buf; buf += sizeof(float);
 			float z = *(float*)buf; buf += sizeof(float);
-			verts.emplace_back(x, y, z);
+			verts.emplace_back(y, x, z);  // Swap X/Y to undo INVERSEXY
 		}
 
 		// Read main indices
@@ -260,6 +294,10 @@ bool HCMap::Load(const std::string& filename) {
 			indices.push_back(*(uint32_t*)buf);
 			buf += sizeof(uint32_t);
 		}
+
+		// Mark main geometry triangles as terrain (not placeables)
+		size_t mainTerrainTriangles = ind_count / 3;
+		triangleIsPlaceable.resize(mainTerrainTriangles, false);
 
 		// Skip non-collidable geometry
 		for (uint32_t i = 0; i < nc_vert_count; ++i) {
@@ -305,7 +343,7 @@ bool HCMap::Load(const std::string& filename) {
 			models[name] = std::move(me);
 		}
 
-		// Read placements
+		// Read placements - these are placeable objects
 		for (uint32_t i = 0; i < plac_count; ++i) {
 			std::string name = buf;
 			buf += name.length() + 1;
@@ -348,17 +386,22 @@ bool HCMap::Load(const std::string& filename) {
 				TranslateVertex(v2, x, y, z);
 				TranslateVertex(v3, x, y, z);
 
-				verts.emplace_back(v1.y, v1.x, v1.z); // x/y swapped
-				verts.emplace_back(v2.y, v2.x, v2.z);
-				verts.emplace_back(v3.y, v3.x, v3.z);
+				// Placeables use original order (not X/Y swapped like terrain)
+				// to align with S3D rendered objects
+				verts.emplace_back(v1.x, v1.y, v1.z);
+				verts.emplace_back(v2.x, v2.y, v2.z);
+				verts.emplace_back(v3.x, v3.y, v3.z);
 
 				indices.emplace_back((uint32_t)verts.size() - 3);
 				indices.emplace_back((uint32_t)verts.size() - 2);
 				indices.emplace_back((uint32_t)verts.size() - 1);
+
+				// Mark this triangle as a placeable
+				triangleIsPlaceable.push_back(true);
 			}
 		}
 
-		// Read placement groups (complex object placements)
+		// Read placement groups (complex object placements) - also placeables
 		for (uint32_t i = 0; i < plac_group_count; ++i) {
 			float x = *(float*)buf; buf += sizeof(float);
 			float y = *(float*)buf; buf += sizeof(float);
@@ -464,18 +507,24 @@ bool HCMap::Load(const std::string& filename) {
 					TranslateVertex(v2, x, y, z);
 					TranslateVertex(v3, x, y, z);
 
-					verts.emplace_back(v1.y, v1.x, v1.z); // x/y swapped
-					verts.emplace_back(v2.y, v2.x, v2.z);
-					verts.emplace_back(v3.y, v3.x, v3.z);
+					// Placeables use original order (not X/Y swapped like terrain)
+					// to align with S3D rendered objects
+					verts.emplace_back(v1.x, v1.y, v1.z);
+					verts.emplace_back(v2.x, v2.y, v2.z);
+					verts.emplace_back(v3.x, v3.y, v3.z);
 
 					indices.emplace_back((uint32_t)verts.size() - 3);
 					indices.emplace_back((uint32_t)verts.size() - 2);
 					indices.emplace_back((uint32_t)verts.size() - 1);
+
+					// Mark this triangle as a placeable
+					triangleIsPlaceable.push_back(true);
 				}
 			}
 		}
 
-		// Read terrain tiles
+		// Read terrain tiles - these are NOT placeables
+		size_t triangleCountBeforeTiles = triangleIsPlaceable.size();
 		uint32_t ter_quad_count = (quads_per_tile * quads_per_tile);
 		uint32_t ter_vert_count = ((quads_per_tile + 1) * (quads_per_tile + 1));
 		std::vector<uint8_t> flags;
@@ -509,10 +558,11 @@ bool HCMap::Load(const std::string& filename) {
 				float QuadVertex4Z = QuadVertex1Z;
 
 				uint32_t current_vert = (uint32_t)verts.size() + 3;
-				verts.emplace_back(QuadVertex1X, QuadVertex1Y, QuadVertex1Z);
-				verts.emplace_back(QuadVertex2X, QuadVertex2Y, QuadVertex2Z);
-				verts.emplace_back(QuadVertex3X, QuadVertex3Y, QuadVertex3Z);
-				verts.emplace_back(QuadVertex4X, QuadVertex4Y, QuadVertex4Z);
+				// Swap X/Y to undo INVERSEXY (same as main vertices)
+				verts.emplace_back(QuadVertex1Y, QuadVertex1X, QuadVertex1Z);
+				verts.emplace_back(QuadVertex2Y, QuadVertex2X, QuadVertex2Z);
+				verts.emplace_back(QuadVertex3Y, QuadVertex3X, QuadVertex3Z);
+				verts.emplace_back(QuadVertex4Y, QuadVertex4X, QuadVertex4Z);
 
 				indices.emplace_back(current_vert);
 				indices.emplace_back(current_vert - 2);
@@ -562,6 +612,8 @@ bool HCMap::Load(const std::string& filename) {
 					float QuadVertex4Z = floats[quad + row_number + 1];
 
 					uint32_t i1, i2, i3, i4;
+					// Note: Tuple keys use file coordinates for deduplication,
+					// but emplace uses swapped X/Y to undo INVERSEXY
 					std::tuple<float, float, float> t = std::make_tuple(QuadVertex1X, QuadVertex1Y, QuadVertex1Z);
 					auto iter = cur_verts.find(t);
 					if (iter != cur_verts.end()) {
@@ -569,7 +621,7 @@ bool HCMap::Load(const std::string& filename) {
 					}
 					else {
 						i1 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex1X, QuadVertex1Y, QuadVertex1Z);
+						verts.emplace_back(QuadVertex1Y, QuadVertex1X, QuadVertex1Z);
 						cur_verts[t] = i1;
 					}
 
@@ -580,7 +632,7 @@ bool HCMap::Load(const std::string& filename) {
 					}
 					else {
 						i2 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex2X, QuadVertex2Y, QuadVertex2Z);
+						verts.emplace_back(QuadVertex2Y, QuadVertex2X, QuadVertex2Z);
 						cur_verts[t] = i2;
 					}
 
@@ -591,7 +643,7 @@ bool HCMap::Load(const std::string& filename) {
 					}
 					else {
 						i3 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex3X, QuadVertex3Y, QuadVertex3Z);
+						verts.emplace_back(QuadVertex3Y, QuadVertex3X, QuadVertex3Z);
 						cur_verts[t] = i3;
 					}
 
@@ -602,7 +654,7 @@ bool HCMap::Load(const std::string& filename) {
 					}
 					else {
 						i4 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex4X, QuadVertex4Y, QuadVertex4Z);
+						verts.emplace_back(QuadVertex4Y, QuadVertex4X, QuadVertex4Z);
 						cur_verts[t] = i4;
 					}
 
@@ -617,12 +669,42 @@ bool HCMap::Load(const std::string& filename) {
 			}
 		}
 
+		// Mark terrain tile triangles as non-placeables
+		size_t totalTriangles = indices.size() / 3;
+		size_t tileTriangles = totalTriangles - triangleIsPlaceable.size();
+		for (size_t i = 0; i < tileTriangles; ++i) {
+			triangleIsPlaceable.push_back(false);
+		}
+
+		// Swap Y and Z coordinates to convert from EQ's Z-up to internal Y-up format
+		// This matches the transformation done by EQEmu server in map.cpp
+		for (auto &v : verts) {
+			float t = v.y;
+			v.y = v.z;
+			v.z = t;
+		}
+
+		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
+		m_impl->eq_verts = verts;
+		m_impl->indices = indices;
+		m_impl->triangleIsPlaceable = triangleIsPlaceable;
+
+		// Calculate Y range for color gradient (Y is vertical in Y-up format)
+		m_impl->minZ = std::numeric_limits<float>::max();
+		m_impl->maxZ = std::numeric_limits<float>::lowest();
+		for (const auto& v : verts) {
+			if (v.y < m_impl->minZ) m_impl->minZ = v.y;
+			if (v.y > m_impl->maxZ) m_impl->maxZ = v.y;
+		}
+
 		uint32_t face_count = indices.size() / 3;
+		size_t placeableCount = std::count(triangleIsPlaceable.begin(), triangleIsPlaceable.end(), true);
 		if (face_count > 0 && verts.size() > 0) {
 			m_impl->rm = createRaycastMesh((RmUint32)verts.size(), (const RmReal*)&verts[0], face_count, &indices[0]);
 			if (m_impl->rm) {
 				loaded = true;
-				LOG_INFO(MOD_MAP, "Loaded V2 map: {} vertices, {} faces", verts.size(), face_count);
+				LOG_INFO(MOD_MAP, "Loaded V2 map: {} vertices, {} faces ({} placeables, {} terrain)",
+				         verts.size(), face_count, placeableCount, face_count - placeableCount);
 			}
 		}
 	}
@@ -648,23 +730,33 @@ float HCMap::FindBestZ(const glm::vec3 &start, glm::vec3 *result) const {
 		result = &tmp;
 	}
 
-	// Cast ray down from start position
-	glm::vec3 from(start.x, start.y, start.z + 10.0f); // Start slightly above
-	glm::vec3 to(start.x, start.y, BEST_Z_INVALID);
+	// Convert EQ coords (Z-up) to mesh coords (Y-up): EQ(x,y,z) -> Mesh(x,z,y)
+	// Cast ray down from start position (down is -Y in mesh coords)
+	glm::vec3 from(start.x, start.z + 10.0f, start.y); // Start slightly above
+	glm::vec3 to(start.x, BEST_Z_INVALID, start.y);    // Cast down in Y direction
+	glm::vec3 mesh_result;
 	float hit_distance;
 	bool hit = false;
 
-	hit = m_impl->rm->raycast((const RmReal*)&from, (const RmReal*)&to, (RmReal*)result, nullptr, &hit_distance);
+	hit = m_impl->rm->raycast((const RmReal*)&from, (const RmReal*)&to, (RmReal*)&mesh_result, nullptr, &hit_distance);
 
 	if (hit) {
+		// Convert mesh coords back to EQ coords: Mesh(x,y,z) -> EQ(x,z,y)
+		result->x = mesh_result.x;
+		result->y = mesh_result.z;
+		result->z = mesh_result.y;
 		return result->z;
 	}
 
 	// Try casting ray up if nothing found below
-	to.z = -BEST_Z_INVALID;
-	hit = m_impl->rm->raycast((const RmReal*)&from, (const RmReal*)&to, (RmReal*)result, nullptr, &hit_distance);
+	to.y = -BEST_Z_INVALID;
+	hit = m_impl->rm->raycast((const RmReal*)&from, (const RmReal*)&to, (RmReal*)&mesh_result, nullptr, &hit_distance);
 
 	if (hit) {
+		// Convert mesh coords back to EQ coords
+		result->x = mesh_result.x;
+		result->y = mesh_result.z;
+		result->z = mesh_result.y;
 		return result->z;
 	}
 
@@ -676,8 +768,12 @@ bool HCMap::CheckLOS(const glm::vec3& start, const glm::vec3& end) const {
 		return true; // No map means no obstacles
 	}
 
+	// Convert EQ coords (Z-up) to mesh coords (Y-up): EQ(x,y,z) -> Mesh(x,z,y)
+	glm::vec3 mesh_start(start.x, start.z, start.y);
+	glm::vec3 mesh_end(end.x, end.z, end.y);
+
 	// Return true if there is NO intersection (clear line of sight)
-	return !m_impl->rm->raycast((const RmReal*)&start, (const RmReal*)&end, nullptr, nullptr, nullptr);
+	return !m_impl->rm->raycast((const RmReal*)&mesh_start, (const RmReal*)&mesh_end, nullptr, nullptr, nullptr);
 }
 
 bool HCMap::CheckLOSWithHit(const glm::vec3& start, const glm::vec3& end, glm::vec3* hitLocation) const {
@@ -685,11 +781,18 @@ bool HCMap::CheckLOSWithHit(const glm::vec3& start, const glm::vec3& end, glm::v
 		return true; // No map means no obstacles
 	}
 
-	glm::vec3 hit;
-	bool hasHit = m_impl->rm->raycast((const RmReal*)&start, (const RmReal*)&end, (RmReal*)&hit, nullptr, nullptr);
+	// Convert EQ coords (Z-up) to mesh coords (Y-up): EQ(x,y,z) -> Mesh(x,z,y)
+	glm::vec3 mesh_start(start.x, start.z, start.y);
+	glm::vec3 mesh_end(end.x, end.z, end.y);
+
+	glm::vec3 mesh_hit;
+	bool hasHit = m_impl->rm->raycast((const RmReal*)&mesh_start, (const RmReal*)&mesh_end, (RmReal*)&mesh_hit, nullptr, nullptr);
 
 	if (hasHit && hitLocation) {
-		*hitLocation = hit;
+		// Convert mesh coords back to EQ coords: Mesh(x,y,z) -> EQ(x,z,y)
+		hitLocation->x = mesh_hit.x;
+		hitLocation->y = mesh_hit.z;
+		hitLocation->z = mesh_hit.y;
 	}
 
 	// Return true if there is NO intersection (clear line of sight)
@@ -707,4 +810,67 @@ HCMap* HCMap::LoadMapFile(const std::string& zone_name, const std::string& maps_
 
 	delete map;
 	return nullptr;
+}
+
+std::vector<HCMap::Triangle> HCMap::GetTrianglesInRadius(const glm::vec3& center, float radius) const {
+	std::vector<Triangle> result;
+
+	if (!m_impl || m_impl->eq_verts.empty() || m_impl->indices.empty()) {
+		return result;
+	}
+
+	float radiusSq = radius * radius;
+	size_t numTriangles = m_impl->indices.size() / 3;
+
+	for (size_t i = 0; i < numTriangles; ++i) {
+		uint32_t i1 = m_impl->indices[i * 3];
+		uint32_t i2 = m_impl->indices[i * 3 + 1];
+		uint32_t i3 = m_impl->indices[i * 3 + 2];
+
+		if (i1 >= m_impl->eq_verts.size() || i2 >= m_impl->eq_verts.size() || i3 >= m_impl->eq_verts.size()) {
+			continue;
+		}
+
+		const glm::vec3& v1 = m_impl->eq_verts[i1];
+		const glm::vec3& v2 = m_impl->eq_verts[i2];
+		const glm::vec3& v3 = m_impl->eq_verts[i3];
+
+		// Calculate triangle center
+		glm::vec3 triCenter = (v1 + v2 + v3) / 3.0f;
+
+		// Check if triangle center is within radius (using XZ distance in Y-up coords)
+		float dx = triCenter.x - center.x;
+		float dz = triCenter.z - center.z;
+		float distSq = dx * dx + dz * dz;
+
+		if (distSq <= radiusSq) {
+			Triangle tri;
+			tri.v1 = v1;
+			tri.v2 = v2;
+			tri.v3 = v3;
+
+			// Calculate face normal using cross product
+			glm::vec3 edge1 = v2 - v1;
+			glm::vec3 edge2 = v3 - v1;
+			tri.normal = glm::normalize(glm::cross(edge1, edge2));
+
+			// Set placeable flag if we have the data
+			tri.isPlaceable = (i < m_impl->triangleIsPlaceable.size()) ? m_impl->triangleIsPlaceable[i] : false;
+
+			result.push_back(tri);
+		}
+	}
+
+	return result;
+}
+
+void HCMap::GetZRange(float& minZ, float& maxZ) const {
+	if (!m_impl) {
+		minZ = 0.0f;
+		maxZ = 0.0f;
+		return;
+	}
+
+	minZ = m_impl->minZ;
+	maxZ = m_impl->maxZ;
 }

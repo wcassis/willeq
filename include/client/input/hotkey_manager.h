@@ -95,6 +95,9 @@ enum class HotkeyAction : uint32_t {
     ToggleCollision,
     ToggleCollisionDebug,
     ToggleZoneLineVisualization,
+    ToggleMapOverlay,       // Map wireframe overlay (Ctrl+M)
+    RotateMapOverlay,       // Rotate map overlay by 90 degrees (Ctrl+Shift+M)
+    MirrorMapOverlayX,      // Mirror map overlay placeables on X axis (Ctrl+Alt+M)
 
     // Interaction
     InteractDoor,

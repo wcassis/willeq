@@ -77,18 +77,20 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             float repairRotStep = 15.0f;
 
             // Look up action from HotkeyManager
+            // Check Alt key state (Irrlicht doesn't expose Alt in KeyInput directly)
+            bool alt = keyIsDown_[irr::KEY_LMENU] || keyIsDown_[irr::KEY_RMENU];
             auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
             auto action = hotkeyMgr.getAction(
                 event.KeyInput.Key,
                 event.KeyInput.Control,
                 event.KeyInput.Shift,
-                false,  // Alt not directly exposed by Irrlicht
+                alt,
                 currentMode_);
 
             // Debug: log key press and action lookup
-            LOG_DEBUG(MOD_INPUT, "Key pressed: {} (ctrl={}, shift={}), mode={}, action={}",
+            LOG_DEBUG(MOD_INPUT, "Key pressed: {} (ctrl={}, shift={}, alt={}), mode={}, action={}",
                 hotkeyMgr.keyCodeToName(event.KeyInput.Key),
-                event.KeyInput.Control, event.KeyInput.Shift,
+                event.KeyInput.Control, event.KeyInput.Shift, alt,
                 hotkeyMgr.modeEnumToName(currentMode_),
                 action.has_value() ? hotkeyMgr.actionEnumToName(*action) : "none");
 
@@ -121,6 +123,9 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleCollision: collisionToggleRequested_ = true; break;
                     case HA::ToggleCollisionDebug: collisionDebugToggleRequested_ = true; break;
                     case HA::ToggleZoneLineVisualization: zoneLineVisualizationToggleRequested_ = true; break;
+                    case HA::ToggleMapOverlay: mapOverlayToggleRequested_ = true; break;
+                    case HA::RotateMapOverlay: mapOverlayRotateRequested_ = true; break;
+                    case HA::MirrorMapOverlayX: mapOverlayMirrorXRequested_ = true; break;
                     case HA::CycleObjectLights: cycleObjectLightsRequested_ = true; break;
                     case HA::Interact:  // Generic interact - tries door first, then world object
                         doorInteractRequested_ = true;
@@ -4797,6 +4802,32 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle map overlay toggle (Ctrl+M) - works in any mode, but only if chat is not focused
+    if (eventReceiver_->mapOverlayToggleRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            toggleMapOverlay();
+        }
+    }
+
+    // Handle map overlay rotation (Ctrl+Shift+M) - cycles through 0°, 90°, 180°, 270° around Y axis
+    // Only affects placeables in the map data, not terrain
+    if (eventReceiver_->mapOverlayRotateRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            mapOverlayRotation_ = (mapOverlayRotation_ + 1) % 4;
+            LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)",
+                     mapOverlayRotation_ * 90);
+        }
+    }
+
+    // Handle map overlay X mirror (Ctrl+Alt+M) - toggles X-axis mirroring for placeables
+    if (eventReceiver_->mapOverlayMirrorXRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            mapOverlayMirrorX_ = !mapOverlayMirrorX_;
+            LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)",
+                     mapOverlayMirrorX_ ? "ON" : "OFF");
+        }
+    }
+
     // Handle pet window toggle (P key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->petToggleRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
@@ -5269,6 +5300,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Draw collision debug lines (if debug mode enabled)
     if (playerConfig_.collisionDebug) {
         drawCollisionDebugLines(deltaTime);
+    }
+
+    // Update and draw map overlay (Ctrl+M debug visualization)
+    if (showMapOverlay_) {
+        // Convert EQ coords (Z-up) to Irrlicht coords (Y-up) for map overlay
+        updateMapOverlay(glm::vec3(playerX_, playerZ_, playerY_));
+        drawMapOverlay();
     }
 
     // ===== FRAME TIMING: Target Box =====
@@ -7671,6 +7709,163 @@ void IrrlichtRenderer::drawCollisionDebugLines(float deltaTime) {
 
 void IrrlichtRenderer::clearCollisionDebugLines() {
     collisionDebugLines_.clear();
+}
+
+void IrrlichtRenderer::toggleMapOverlay() {
+    showMapOverlay_ = !showMapOverlay_;
+    LOG_INFO(MOD_GRAPHICS, "Map overlay: {}", showMapOverlay_ ? "ON" : "OFF");
+
+    if (!showMapOverlay_) {
+        mapOverlayTriangles_.clear();
+    } else {
+        // Force update on next frame
+        lastMapOverlayUpdatePos_ = glm::vec3(std::numeric_limits<float>::max());
+    }
+}
+
+void IrrlichtRenderer::updateMapOverlay(const glm::vec3& playerPos) {
+    if (!showMapOverlay_ || !collisionMap_) {
+        return;
+    }
+
+    // Only update if player moved more than 10 units horizontally (X and Z in Y-up coords)
+    float dx = playerPos.x - lastMapOverlayUpdatePos_.x;
+    float dz = playerPos.z - lastMapOverlayUpdatePos_.z;
+    float distSq = dx * dx + dz * dz;
+    if (distSq < 100.0f) {  // 10^2
+        return;
+    }
+
+    lastMapOverlayUpdatePos_ = playerPos;
+    mapOverlayTriangles_.clear();
+
+    // Get triangles within radius from HCMap
+    auto triangles = collisionMap_->GetTrianglesInRadius(playerPos, mapOverlayRadius_);
+
+    if (triangles.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Map overlay: No triangles found within radius {} at ({}, {}, {})",
+                  mapOverlayRadius_, playerPos.x, playerPos.y, playerPos.z);
+        return;
+    }
+
+    // Get Z range for color gradient
+    float minZ, maxZ;
+    collisionMap_->GetZRange(minZ, maxZ);
+
+    // Triangles are already in Irrlicht Y-up format from HCMap
+    for (const auto& tri : triangles) {
+        MapOverlayTriangle overlayTri;
+
+        // Vertices already in Irrlicht format (Y-up), use directly
+        overlayTri.v1 = irr::core::vector3df(tri.v1.x, tri.v1.y, tri.v1.z);
+        overlayTri.v2 = irr::core::vector3df(tri.v2.x, tri.v2.y, tri.v2.z);
+        overlayTri.v3 = irr::core::vector3df(tri.v3.x, tri.v3.y, tri.v3.z);
+
+        // Calculate average Y for color (Y is vertical in Irrlicht coords)
+        float avgY = (tri.v1.y + tri.v2.y + tri.v3.y) / 3.0f;
+        overlayTri.color = getMapOverlayColor(avgY, minZ, maxZ, tri.normal);
+
+        // Copy placeable flag for rotation
+        overlayTri.isPlaceable = tri.isPlaceable;
+
+        mapOverlayTriangles_.push_back(overlayTri);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Map overlay: Updated with {} triangles", mapOverlayTriangles_.size());
+}
+
+irr::video::SColor IrrlichtRenderer::getMapOverlayColor(float y, float minY, float maxY, const glm::vec3& normal) const {
+    // Normalize Y (height) to 0-1 range
+    float range = maxY - minY;
+    float t = (range > 0.001f) ? (y - minY) / range : 0.5f;
+    t = std::max(0.0f, std::min(1.0f, t));  // Clamp to [0,1]
+
+    // Determine if it's a floor (normal pointing up in Y-up coords, Y > 0.7)
+    // or a wall (normal mostly horizontal)
+    bool isFloor = std::abs(normal.y) > 0.7f;
+
+    irr::u8 r, g, b;
+
+    if (isFloor) {
+        // Floor: Blue (low) -> Green (mid) -> Red (high)
+        if (t < 0.5f) {
+            // Blue to Green
+            float localT = t * 2.0f;
+            r = 0;
+            g = static_cast<irr::u8>(localT * 255);
+            b = static_cast<irr::u8>((1.0f - localT) * 255);
+        } else {
+            // Green to Red
+            float localT = (t - 0.5f) * 2.0f;
+            r = static_cast<irr::u8>(localT * 255);
+            g = static_cast<irr::u8>((1.0f - localT) * 255);
+            b = 0;
+        }
+    } else {
+        // Wall: Use purple/magenta tones to distinguish from floors
+        // Darker purple (low) to brighter magenta (high)
+        r = static_cast<irr::u8>(128 + t * 127);  // 128-255
+        g = static_cast<irr::u8>(t * 100);        // 0-100
+        b = static_cast<irr::u8>(180 + t * 75);   // 180-255
+    }
+
+    return irr::video::SColor(200, r, g, b);  // Slightly transparent
+}
+
+void IrrlichtRenderer::drawMapOverlay() {
+    if (!showMapOverlay_ || !driver_ || mapOverlayTriangles_.empty()) {
+        return;
+    }
+
+    // Set up material for wireframe line drawing
+    irr::video::SMaterial lineMaterial;
+    lineMaterial.Lighting = false;
+    lineMaterial.Thickness = 2.0f;
+    lineMaterial.AntiAliasing = irr::video::EAAM_LINE_SMOOTH;
+    lineMaterial.MaterialType = irr::video::EMT_SOLID;
+    lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;  // Respect depth
+    lineMaterial.ZWriteEnable = false;
+    driver_->setMaterial(lineMaterial);
+
+    // Build transform for placeables (rotation and/or mirroring)
+    // These transforms are around the world origin to test coordinate alignment
+    irr::core::matrix4 placeableTransform;
+    placeableTransform.makeIdentity();
+
+    // Apply X-axis mirror if enabled (scale X by -1)
+    if (mapOverlayMirrorX_) {
+        irr::core::matrix4 mirrorMatrix;
+        mirrorMatrix.makeIdentity();
+        mirrorMatrix.setScale(irr::core::vector3df(-1.0f, 1.0f, 1.0f));
+        placeableTransform *= mirrorMatrix;
+    }
+
+    // Apply rotation if set
+    if (mapOverlayRotation_ != 0) {
+        irr::core::matrix4 rotMatrix;
+        rotMatrix.setRotationDegrees(irr::core::vector3df(0, mapOverlayRotation_ * 90.0f, 0));
+        placeableTransform *= rotMatrix;
+    }
+
+    // Draw terrain triangles first (no transform)
+    driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    for (const auto& tri : mapOverlayTriangles_) {
+        if (!tri.isPlaceable) {
+            driver_->draw3DLine(tri.v1, tri.v2, tri.color);
+            driver_->draw3DLine(tri.v2, tri.v3, tri.color);
+            driver_->draw3DLine(tri.v3, tri.v1, tri.color);
+        }
+    }
+
+    // Draw placeable triangles (with transform if set)
+    driver_->setTransform(irr::video::ETS_WORLD, placeableTransform);
+    for (const auto& tri : mapOverlayTriangles_) {
+        if (tri.isPlaceable) {
+            driver_->draw3DLine(tri.v1, tri.v2, tri.color);
+            driver_->draw3DLine(tri.v2, tri.v3, tri.color);
+            driver_->draw3DLine(tri.v3, tri.v1, tri.color);
+        }
+    }
 }
 
 void IrrlichtRenderer::drawTargetSelectionBox() {

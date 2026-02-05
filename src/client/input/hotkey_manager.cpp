@@ -150,6 +150,9 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleCollision", HotkeyAction::ToggleCollision},
     {"ToggleCollisionDebug", HotkeyAction::ToggleCollisionDebug},
     {"ToggleZoneLineVisualization", HotkeyAction::ToggleZoneLineVisualization},
+    {"ToggleMapOverlay", HotkeyAction::ToggleMapOverlay},
+    {"RotateMapOverlay", HotkeyAction::RotateMapOverlay},
+    {"MirrorMapOverlayX", HotkeyAction::MirrorMapOverlayX},
 
     // Player - Interaction
     {"InteractDoor", HotkeyAction::InteractDoor},
@@ -540,6 +543,9 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::ToggleBuffWindow, HotkeyMode::Player, irr::KEY_KEY_B, ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleCollision, HotkeyMode::Player, irr::KEY_KEY_C, ModifierFlags::Ctrl | ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleZoneLineVisualization, HotkeyMode::Player, irr::KEY_KEY_Z, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ToggleMapOverlay, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::RotateMapOverlay, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl | ModifierFlags::Shift);
+    addBinding(HotkeyAction::MirrorMapOverlayX, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl | ModifierFlags::Alt);
 
     // === Player Mode - Interaction ===
     addBinding(HotkeyAction::Interact, HotkeyMode::Player, irr::KEY_KEY_U);
