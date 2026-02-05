@@ -29,6 +29,9 @@
 // Forward declaration for collision map
 class HCMap;
 
+// Forward declaration for navmesh pathfinder
+class PathfinderNavmesh;
+
 // Forward declaration for zone lines
 namespace EQT { struct ZoneLineBoundingBox; }
 
@@ -252,6 +255,9 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     bool mapOverlayToggleRequested() { bool r = mapOverlayToggleRequested_; mapOverlayToggleRequested_ = false; return r; }
     bool mapOverlayRotateRequested() { bool r = mapOverlayRotateRequested_; mapOverlayRotateRequested_ = false; return r; }
     bool mapOverlayMirrorXRequested() { bool r = mapOverlayMirrorXRequested_; mapOverlayMirrorXRequested_ = false; return r; }
+    bool navmeshOverlayToggleRequested() { bool r = navmeshOverlayToggleRequested_; navmeshOverlayToggleRequested_ = false; return r; }
+    bool navmeshOverlayRotateRequested() { bool r = navmeshOverlayRotateRequested_; navmeshOverlayRotateRequested_ = false; return r; }
+    bool navmeshOverlayMirrorXRequested() { bool r = navmeshOverlayMirrorXRequested_; navmeshOverlayMirrorXRequested_ = false; return r; }
     bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
     bool spellbookToggleRequested() { bool r = spellbookToggleRequested_; spellbookToggleRequested_ = false; return r; }
     bool buffWindowToggleRequested() { bool r = buffWindowToggleRequested_; buffWindowToggleRequested_ = false; return r; }
@@ -404,6 +410,9 @@ bool zoneLineVisualizationToggleRequested_ = false;
     bool mapOverlayToggleRequested_ = false;
     bool mapOverlayRotateRequested_ = false;
     bool mapOverlayMirrorXRequested_ = false;
+    bool navmeshOverlayToggleRequested_ = false;
+    bool navmeshOverlayRotateRequested_ = false;
+    bool navmeshOverlayMirrorXRequested_ = false;
     bool petToggleRequested_ = false;
     bool spellbookToggleRequested_ = false;
     bool buffWindowToggleRequested_ = false;
@@ -853,6 +862,9 @@ public:
     // Collision map for player mode movement
     void setCollisionMap(HCMap* map) { collisionMap_ = map; }
 
+    // Navmesh pathfinder for navmesh overlay visualization
+    void setNavmesh(PathfinderNavmesh* navmesh) { navmesh_ = navmesh; }
+
     // Clip distance (camera far plane) - for constrained rendering mode
     void setClipDistance(float distance);
     float getClipDistance() const;
@@ -1283,6 +1295,23 @@ private:
     void updateMapOverlay(const glm::vec3& playerPos);
     void drawMapOverlay();
     irr::video::SColor getMapOverlayColor(float z, float minZ, float maxZ, const glm::vec3& normal) const;
+
+    // Navmesh overlay visualization (Ctrl+N)
+    PathfinderNavmesh* navmesh_ = nullptr;
+    bool showNavmeshOverlay_ = false;
+    glm::vec3 lastNavmeshOverlayUpdatePos_ = glm::vec3(0.0f);
+    float navmeshOverlayRadius_ = 100.0f;  // Radius around player to show
+    int navmeshOverlayRotation_ = 0;       // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
+    bool navmeshOverlayMirrorX_ = false;   // Mirror across YZ plane (negate X)
+    struct NavmeshOverlayTriangle {
+        irr::core::vector3df v1, v2, v3;
+        irr::video::SColor color;  // Based on area type
+    };
+    std::vector<NavmeshOverlayTriangle> navmeshOverlayTriangles_;
+    void toggleNavmeshOverlay();
+    void updateNavmeshOverlay(const glm::vec3& playerPos);
+    void drawNavmeshOverlay();
+    irr::video::SColor getNavmeshAreaColor(uint8_t areaType) const;
 
     // FPS counter (centered at top of screen)
     void drawFPSCounter();

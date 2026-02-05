@@ -12,6 +12,7 @@
 #include "client/graphics/sky_renderer.h"
 #include "client/zone_lines.h"
 #include "client/hc_map.h"
+#include "client/pathfinder_nav_mesh.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -126,6 +127,9 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleMapOverlay: mapOverlayToggleRequested_ = true; break;
                     case HA::RotateMapOverlay: mapOverlayRotateRequested_ = true; break;
                     case HA::MirrorMapOverlayX: mapOverlayMirrorXRequested_ = true; break;
+                    case HA::ToggleNavmeshOverlay: navmeshOverlayToggleRequested_ = true; break;
+                    case HA::RotateNavmeshOverlay: navmeshOverlayRotateRequested_ = true; break;
+                    case HA::MirrorNavmeshOverlayX: navmeshOverlayMirrorXRequested_ = true; break;
                     case HA::CycleObjectLights: cycleObjectLightsRequested_ = true; break;
                     case HA::Interact:  // Generic interact - tries door first, then world object
                         doorInteractRequested_ = true;
@@ -4828,6 +4832,31 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
+    // Handle navmesh overlay toggle (Ctrl+N) - works in any mode, but only if chat is not focused
+    if (eventReceiver_->navmeshOverlayToggleRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            toggleNavmeshOverlay();
+        }
+    }
+
+    // Handle navmesh overlay rotation (Ctrl+Shift+N) - cycles through 0°, 90°, 180°, 270° around Y axis
+    if (eventReceiver_->navmeshOverlayRotateRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            navmeshOverlayRotation_ = (navmeshOverlayRotation_ + 1) % 4;
+            LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis",
+                     navmeshOverlayRotation_ * 90);
+        }
+    }
+
+    // Handle navmesh overlay X mirror (Ctrl+Alt+N) - toggles X-axis mirroring
+    if (eventReceiver_->navmeshOverlayMirrorXRequested()) {
+        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
+            navmeshOverlayMirrorX_ = !navmeshOverlayMirrorX_;
+            LOG_INFO(MOD_GRAPHICS, "Navmesh overlay X mirror: {}",
+                     navmeshOverlayMirrorX_ ? "ON" : "OFF");
+        }
+    }
+
     // Handle pet window toggle (P key) - only in Player mode, and only if chat is not focused
     if (eventReceiver_->petToggleRequested() && rendererMode_ == RendererMode::Player) {
         if (!windowManager_ || !windowManager_->isChatInputFocused()) {
@@ -5307,6 +5336,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         // Convert EQ coords (Z-up) to Irrlicht coords (Y-up) for map overlay
         updateMapOverlay(glm::vec3(playerX_, playerZ_, playerY_));
         drawMapOverlay();
+    }
+
+    // Update and draw navmesh overlay (Ctrl+N debug visualization)
+    if (showNavmeshOverlay_) {
+        // Pass Irrlicht coords (Y-up) directly - updateNavmeshOverlay handles conversion
+        updateNavmeshOverlay(glm::vec3(playerX_, playerZ_, playerY_));
+        drawNavmeshOverlay();
     }
 
     // ===== FRAME TIMING: Target Box =====
@@ -7865,6 +7901,145 @@ void IrrlichtRenderer::drawMapOverlay() {
             driver_->draw3DLine(tri.v2, tri.v3, tri.color);
             driver_->draw3DLine(tri.v3, tri.v1, tri.color);
         }
+    }
+}
+
+void IrrlichtRenderer::toggleNavmeshOverlay() {
+    showNavmeshOverlay_ = !showNavmeshOverlay_;
+    LOG_INFO(MOD_GRAPHICS, "Navmesh overlay: {}", showNavmeshOverlay_ ? "ON" : "OFF");
+
+    if (!showNavmeshOverlay_) {
+        navmeshOverlayTriangles_.clear();
+    } else {
+        // Force update on next frame
+        lastNavmeshOverlayUpdatePos_ = glm::vec3(std::numeric_limits<float>::max());
+    }
+}
+
+void IrrlichtRenderer::updateNavmeshOverlay(const glm::vec3& playerPos) {
+    if (!showNavmeshOverlay_ || !navmesh_) {
+        return;
+    }
+
+    // Only update if player moved more than 10 units horizontally (X and Z in Y-up coords)
+    float dx = playerPos.x - lastNavmeshOverlayUpdatePos_.x;
+    float dz = playerPos.z - lastNavmeshOverlayUpdatePos_.z;
+    float distSq = dx * dx + dz * dz;
+    if (distSq < 100.0f) {  // 10^2
+        return;
+    }
+
+    lastNavmeshOverlayUpdatePos_ = playerPos;
+    navmeshOverlayTriangles_.clear();
+
+    // Get triangles within radius from navmesh (already in Irrlicht Y-up coords)
+    auto triangles = navmesh_->GetTrianglesInRadius(playerPos, navmeshOverlayRadius_);
+
+    if (triangles.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Navmesh overlay: No triangles found within radius {} at ({}, {}, {})",
+                  navmeshOverlayRadius_, playerPos.x, playerPos.y, playerPos.z);
+        return;
+    }
+
+    // Triangles are already in Irrlicht Y-up format, use directly
+    for (const auto& tri : triangles) {
+        NavmeshOverlayTriangle overlayTri;
+
+        // Vertices already in Irrlicht format (Y-up), use directly
+        overlayTri.v1 = irr::core::vector3df(tri.v1.x, tri.v1.y, tri.v1.z);
+        overlayTri.v2 = irr::core::vector3df(tri.v2.x, tri.v2.y, tri.v2.z);
+        overlayTri.v3 = irr::core::vector3df(tri.v3.x, tri.v3.y, tri.v3.z);
+
+        // Color based on area type
+        overlayTri.color = getNavmeshAreaColor(tri.areaType);
+
+        navmeshOverlayTriangles_.push_back(overlayTri);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Navmesh overlay: Updated with {} triangles", navmeshOverlayTriangles_.size());
+}
+
+irr::video::SColor IrrlichtRenderer::getNavmeshAreaColor(uint8_t areaType) const {
+    // Area types from PathfinderNavmesh (see pathfinder_interface.h):
+    // 0 = Normal (walkable)
+    // 1 = Water
+    // 2 = Lava
+    // 4 = PvP
+    // 5 = Slime
+    // 6 = Ice
+    // 7 = V Water (Frigid Water)
+    // 8 = General Area
+    // 9 = Portal
+    // 10 = Prefer
+
+    switch (areaType) {
+        case 0:  // Normal - Green
+            return irr::video::SColor(180, 0, 200, 0);
+        case 1:  // Water - Blue
+            return irr::video::SColor(180, 0, 100, 255);
+        case 2:  // Lava - Red/Orange
+            return irr::video::SColor(180, 255, 80, 0);
+        case 4:  // PvP - Purple
+            return irr::video::SColor(180, 180, 0, 200);
+        case 5:  // Slime - Yellow-Green
+            return irr::video::SColor(180, 180, 200, 0);
+        case 6:  // Ice - Cyan
+            return irr::video::SColor(180, 0, 220, 220);
+        case 7:  // V Water (Frigid) - Dark Blue
+            return irr::video::SColor(180, 0, 50, 180);
+        case 8:  // General Area - Gray
+            return irr::video::SColor(180, 150, 150, 150);
+        case 9:  // Portal - Magenta
+            return irr::video::SColor(180, 255, 0, 255);
+        case 10: // Prefer - Yellow
+            return irr::video::SColor(180, 255, 255, 0);
+        default: // Unknown - White
+            return irr::video::SColor(180, 255, 255, 255);
+    }
+}
+
+void IrrlichtRenderer::drawNavmeshOverlay() {
+    if (!showNavmeshOverlay_ || !driver_ || navmeshOverlayTriangles_.empty()) {
+        return;
+    }
+
+    // Set up material for wireframe line drawing
+    irr::video::SMaterial lineMaterial;
+    lineMaterial.Lighting = false;
+    lineMaterial.Thickness = 2.0f;
+    lineMaterial.AntiAliasing = irr::video::EAAM_LINE_SMOOTH;
+    lineMaterial.MaterialType = irr::video::EMT_SOLID;
+    lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;  // Respect depth
+    lineMaterial.ZWriteEnable = false;
+    driver_->setMaterial(lineMaterial);
+
+    // Build transform matrix for rotation and/or mirroring
+    // These transforms are around the world origin to test coordinate alignment
+    irr::core::matrix4 navmeshTransform;
+    navmeshTransform.makeIdentity();
+
+    // Apply X-axis mirror if enabled (scale X by -1)
+    if (navmeshOverlayMirrorX_) {
+        irr::core::matrix4 mirrorMatrix;
+        mirrorMatrix.makeIdentity();
+        mirrorMatrix.setScale(irr::core::vector3df(-1.0f, 1.0f, 1.0f));
+        navmeshTransform *= mirrorMatrix;
+    }
+
+    // Apply rotation if set
+    if (navmeshOverlayRotation_ != 0) {
+        irr::core::matrix4 rotMatrix;
+        rotMatrix.setRotationDegrees(irr::core::vector3df(0, navmeshOverlayRotation_ * 90.0f, 0));
+        navmeshTransform *= rotMatrix;
+    }
+
+    // Set transform and draw all triangles as wireframe
+    driver_->setTransform(irr::video::ETS_WORLD, navmeshTransform);
+
+    for (const auto& tri : navmeshOverlayTriangles_) {
+        driver_->draw3DLine(tri.v1, tri.v2, tri.color);
+        driver_->draw3DLine(tri.v2, tri.v3, tri.color);
+        driver_->draw3DLine(tri.v3, tri.v1, tri.color);
     }
 }
 

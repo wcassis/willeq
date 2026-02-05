@@ -98,6 +98,9 @@ enum class HotkeyAction : uint32_t {
     ToggleMapOverlay,       // Map wireframe overlay (Ctrl+M)
     RotateMapOverlay,       // Rotate map overlay by 90 degrees (Ctrl+Shift+M)
     MirrorMapOverlayX,      // Mirror map overlay placeables on X axis (Ctrl+Alt+M)
+    ToggleNavmeshOverlay,   // Navmesh wireframe overlay (Ctrl+N)
+    RotateNavmeshOverlay,   // Rotate navmesh overlay by 90 degrees (Ctrl+Shift+N)
+    MirrorNavmeshOverlayX,  // Mirror navmesh overlay on X axis (Ctrl+Alt+N)
 
     // Interaction
     InteractDoor,

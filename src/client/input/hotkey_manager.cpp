@@ -153,6 +153,9 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleMapOverlay", HotkeyAction::ToggleMapOverlay},
     {"RotateMapOverlay", HotkeyAction::RotateMapOverlay},
     {"MirrorMapOverlayX", HotkeyAction::MirrorMapOverlayX},
+    {"ToggleNavmeshOverlay", HotkeyAction::ToggleNavmeshOverlay},
+    {"RotateNavmeshOverlay", HotkeyAction::RotateNavmeshOverlay},
+    {"MirrorNavmeshOverlayX", HotkeyAction::MirrorNavmeshOverlayX},
 
     // Player - Interaction
     {"InteractDoor", HotkeyAction::InteractDoor},
@@ -546,6 +549,9 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::ToggleMapOverlay, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl);
     addBinding(HotkeyAction::RotateMapOverlay, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl | ModifierFlags::Shift);
     addBinding(HotkeyAction::MirrorMapOverlayX, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl | ModifierFlags::Alt);
+    addBinding(HotkeyAction::ToggleNavmeshOverlay, HotkeyMode::Player, irr::KEY_KEY_N, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::RotateNavmeshOverlay, HotkeyMode::Player, irr::KEY_KEY_N, ModifierFlags::Ctrl | ModifierFlags::Shift);
+    addBinding(HotkeyAction::MirrorNavmeshOverlayX, HotkeyMode::Player, irr::KEY_KEY_N, ModifierFlags::Ctrl | ModifierFlags::Alt);
 
     // === Player Mode - Interaction ===
     addBinding(HotkeyAction::Interact, HotkeyMode::Player, irr::KEY_KEY_U);

@@ -1,5 +1,8 @@
 #include "client/eq.h"
 #include "client/pathfinder_interface.h"
+#ifdef EQT_HAS_NAVMESH
+#include "client/pathfinder_nav_mesh.h"
+#endif
 #include "client/hc_map.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
@@ -13107,7 +13110,12 @@ void EverQuest::CleanupZone()
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
 
-	// Clear pathfinding data
+	// Clear pathfinding data - first clear renderer's reference to avoid dangling pointer
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		m_renderer->setNavmesh(nullptr);
+	}
+#endif
 	m_pathfinder.reset();
 
 	// Clear zone map - but first clear renderer's reference to avoid dangling pointer
@@ -13249,8 +13257,13 @@ void EverQuest::LoadPathfinder(const std::string& zone_name)
 	}
 	
 	LOG_DEBUG(MOD_MAIN, "LoadPathfinder: Loading pathfinder for zone '{}'", zone_name);
-	
-	// Release previous pathfinder if any
+
+	// Release previous pathfinder if any - first clear renderer's reference
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		m_renderer->setNavmesh(nullptr);
+	}
+#endif
 	m_pathfinder.reset();
 	m_current_path.clear();
 	m_current_path_index = 0;
@@ -13266,11 +13279,19 @@ void EverQuest::LoadPathfinder(const std::string& zone_name)
 			bool partial = false, stuck = false;
 			auto test_path = m_pathfinder->FindPath(
 				glm::vec3(0, 0, 0), glm::vec3(1, 1, 1), partial, stuck, test_opts);
-			
+
 			if (s_debug_level >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Loaded pathfinder for zone: {} (type: {})",
 					zone_name, test_path.empty() ? "NavMesh" : "Null");
 			}
+
+#if defined(EQT_HAS_GRAPHICS) && defined(EQT_HAS_NAVMESH)
+			// Pass navmesh to renderer for visualization overlay
+			if (m_renderer) {
+				PathfinderNavmesh* navmesh = dynamic_cast<PathfinderNavmesh*>(m_pathfinder.get());
+				m_renderer->setNavmesh(navmesh);  // nullptr if not a PathfinderNavmesh
+			}
+#endif
 		} else {
 			if (s_debug_level >= 1) {
 				LOG_DEBUG(MOD_MAIN, "No navigation mesh available for zone: {}", zone_name);
