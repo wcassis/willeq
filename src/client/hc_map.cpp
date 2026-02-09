@@ -16,6 +16,15 @@
 #include <limits>
 #include <map>
 
+// Helper for safe unaligned reads from binary buffers (required for ARM)
+template<typename T>
+static inline T read_val(char*& buf) {
+	T value;
+	memcpy(&value, buf, sizeof(T));
+	buf += sizeof(T);
+	return value;
+}
+
 struct HCMap::impl {
 	RaycastMesh* rm;
 
@@ -260,16 +269,16 @@ bool HCMap::Load(const std::string& filename) {
 
 		// Parse decompressed data
 		char *buf = &buffer[0];
-		uint32_t vert_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t ind_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t nc_vert_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t nc_ind_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t model_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t plac_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t plac_group_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t tile_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		uint32_t quads_per_tile = *(uint32_t*)buf; buf += sizeof(uint32_t);
-		float units_per_vertex = *(float*)buf; buf += sizeof(float);
+		uint32_t vert_count = read_val<uint32_t>(buf);
+		uint32_t ind_count = read_val<uint32_t>(buf);
+		uint32_t nc_vert_count = read_val<uint32_t>(buf);
+		uint32_t nc_ind_count = read_val<uint32_t>(buf);
+		uint32_t model_count = read_val<uint32_t>(buf);
+		uint32_t plac_count = read_val<uint32_t>(buf);
+		uint32_t plac_group_count = read_val<uint32_t>(buf);
+		uint32_t tile_count = read_val<uint32_t>(buf);
+		uint32_t quads_per_tile = read_val<uint32_t>(buf);
+		float units_per_vertex = read_val<float>(buf);
 
 		LOG_DEBUG(MOD_MAP, "V2 map counts: verts={}, indices={}, models={}, placements={}, tiles={}",
 			vert_count, ind_count, model_count, plac_count, tile_count);
@@ -283,16 +292,15 @@ bool HCMap::Load(const std::string& filename) {
 		// Read main vertices
 		// Note: Map file has INVERSEXY applied (X and Y are swapped), so we swap them back
 		for (uint32_t i = 0; i < vert_count; ++i) {
-			float x = *(float*)buf; buf += sizeof(float);
-			float y = *(float*)buf; buf += sizeof(float);
-			float z = *(float*)buf; buf += sizeof(float);
+			float x = read_val<float>(buf);
+			float y = read_val<float>(buf);
+			float z = read_val<float>(buf);
 			verts.emplace_back(y, x, z);  // Swap X/Y to undo INVERSEXY
 		}
 
 		// Read main indices
 		for (uint32_t i = 0; i < ind_count; ++i) {
-			indices.push_back(*(uint32_t*)buf);
-			buf += sizeof(uint32_t);
+			indices.push_back(read_val<uint32_t>(buf));
 		}
 
 		// Mark main geometry triangles as terrain (not placeables)
@@ -314,23 +322,23 @@ bool HCMap::Load(const std::string& filename) {
 			std::string name = buf;
 			buf += name.length() + 1;
 
-			uint32_t model_vert_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
-			uint32_t poly_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
+			uint32_t model_vert_count = read_val<uint32_t>(buf);
+			uint32_t poly_count = read_val<uint32_t>(buf);
 
 			me->verts.reserve(model_vert_count);
 			for (uint32_t j = 0; j < model_vert_count; ++j) {
-				float x = *(float*)buf; buf += sizeof(float);
-				float y = *(float*)buf; buf += sizeof(float);
-				float z = *(float*)buf; buf += sizeof(float);
+				float x = read_val<float>(buf);
+				float y = read_val<float>(buf);
+				float z = read_val<float>(buf);
 				me->verts.emplace_back(x, y, z);
 			}
 
 			me->polys.reserve(poly_count);
 			for (uint32_t j = 0; j < poly_count; ++j) {
-				uint32_t v1 = *(uint32_t*)buf; buf += sizeof(uint32_t);
-				uint32_t v2 = *(uint32_t*)buf; buf += sizeof(uint32_t);
-				uint32_t v3 = *(uint32_t*)buf; buf += sizeof(uint32_t);
-				uint8_t vis = *(uint8_t*)buf; buf += sizeof(uint8_t);
+				uint32_t v1 = read_val<uint32_t>(buf);
+				uint32_t v2 = read_val<uint32_t>(buf);
+				uint32_t v3 = read_val<uint32_t>(buf);
+				uint8_t vis = read_val<uint8_t>(buf);
 
 				ModelEntry::Poly p;
 				p.v1 = v1;
@@ -348,17 +356,17 @@ bool HCMap::Load(const std::string& filename) {
 			std::string name = buf;
 			buf += name.length() + 1;
 
-			float x = *(float*)buf; buf += sizeof(float);
-			float y = *(float*)buf; buf += sizeof(float);
-			float z = *(float*)buf; buf += sizeof(float);
+			float x = read_val<float>(buf);
+			float y = read_val<float>(buf);
+			float z = read_val<float>(buf);
 
-			float x_rot = *(float*)buf; buf += sizeof(float);
-			float y_rot = *(float*)buf; buf += sizeof(float);
-			float z_rot = *(float*)buf; buf += sizeof(float);
+			float x_rot = read_val<float>(buf);
+			float y_rot = read_val<float>(buf);
+			float z_rot = read_val<float>(buf);
 
-			float x_scale = *(float*)buf; buf += sizeof(float);
-			float y_scale = *(float*)buf; buf += sizeof(float);
-			float z_scale = *(float*)buf; buf += sizeof(float);
+			float x_scale = read_val<float>(buf);
+			float y_scale = read_val<float>(buf);
+			float z_scale = read_val<float>(buf);
 
 			if (models.count(name) == 0)
 				continue;
@@ -403,39 +411,39 @@ bool HCMap::Load(const std::string& filename) {
 
 		// Read placement groups (complex object placements) - also placeables
 		for (uint32_t i = 0; i < plac_group_count; ++i) {
-			float x = *(float*)buf; buf += sizeof(float);
-			float y = *(float*)buf; buf += sizeof(float);
-			float z = *(float*)buf; buf += sizeof(float);
+			float x = read_val<float>(buf);
+			float y = read_val<float>(buf);
+			float z = read_val<float>(buf);
 
-			float x_rot = *(float*)buf; buf += sizeof(float);
-			float y_rot = *(float*)buf; buf += sizeof(float);
-			float z_rot = *(float*)buf; buf += sizeof(float);
+			float x_rot = read_val<float>(buf);
+			float y_rot = read_val<float>(buf);
+			float z_rot = read_val<float>(buf);
 
-			float x_scale = *(float*)buf; buf += sizeof(float);
-			float y_scale = *(float*)buf; buf += sizeof(float);
-			float z_scale = *(float*)buf; buf += sizeof(float);
+			float x_scale = read_val<float>(buf);
+			float y_scale = read_val<float>(buf);
+			float z_scale = read_val<float>(buf);
 
-			float x_tile = *(float*)buf; buf += sizeof(float);
-			float y_tile = *(float*)buf; buf += sizeof(float);
-			float z_tile = *(float*)buf; buf += sizeof(float);
+			float x_tile = read_val<float>(buf);
+			float y_tile = read_val<float>(buf);
+			float z_tile = read_val<float>(buf);
 
-			uint32_t p_count = *(uint32_t*)buf; buf += sizeof(uint32_t);
+			uint32_t p_count = read_val<uint32_t>(buf);
 
 			for (uint32_t j = 0; j < p_count; ++j) {
 				std::string name = buf;
 				buf += name.length() + 1;
 
-				float p_x = *(float*)buf; buf += sizeof(float);
-				float p_y = *(float*)buf; buf += sizeof(float);
-				float p_z = *(float*)buf; buf += sizeof(float);
+				float p_x = read_val<float>(buf);
+				float p_y = read_val<float>(buf);
+				float p_z = read_val<float>(buf);
 
-				float p_x_rot = *(float*)buf * 3.14159f / 180; buf += sizeof(float);
-				float p_y_rot = *(float*)buf * 3.14159f / 180; buf += sizeof(float);
-				float p_z_rot = *(float*)buf * 3.14159f / 180; buf += sizeof(float);
+				float p_x_rot = read_val<float>(buf) * 3.14159f / 180;
+				float p_y_rot = read_val<float>(buf) * 3.14159f / 180;
+				float p_z_rot = read_val<float>(buf) * 3.14159f / 180;
 
-				float p_x_scale = *(float*)buf; buf += sizeof(float);
-				float p_y_scale = *(float*)buf; buf += sizeof(float);
-				float p_z_scale = *(float*)buf; buf += sizeof(float);
+				float p_x_scale = read_val<float>(buf);
+				float p_y_scale = read_val<float>(buf);
+				float p_z_scale = read_val<float>(buf);
 
 				if (models.count(name) == 0)
 					continue;
@@ -533,13 +541,13 @@ bool HCMap::Load(const std::string& filename) {
 		floats.resize(ter_vert_count);
 
 		for (uint32_t i = 0; i < tile_count; ++i) {
-			bool flat = *(bool*)buf; buf += sizeof(bool);
+			bool flat = read_val<bool>(buf);
 
-			float tile_x = *(float*)buf; buf += sizeof(float);
-			float tile_y = *(float*)buf; buf += sizeof(float);
+			float tile_x = read_val<float>(buf);
+			float tile_y = read_val<float>(buf);
 
 			if (flat) {
-				float tile_z = *(float*)buf; buf += sizeof(float);
+				float tile_z = read_val<float>(buf);
 
 				float QuadVertex1X = tile_x;
 				float QuadVertex1Y = tile_y;
@@ -575,14 +583,12 @@ bool HCMap::Load(const std::string& filename) {
 			else {
 				// Read flags
 				for (uint32_t j = 0; j < ter_quad_count; ++j) {
-					flags[j] = *(uint8_t*)buf;
-					buf += sizeof(uint8_t);
+					flags[j] = read_val<uint8_t>(buf);
 				}
 
 				// Read floats
 				for (uint32_t j = 0; j < ter_vert_count; ++j) {
-					floats[j] = *(float*)buf;
-					buf += sizeof(float);
+					floats[j] = read_val<float>(buf);
 				}
 
 				int row_number = -1;

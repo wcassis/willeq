@@ -4,6 +4,7 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
+#include <sys/stat.h>
 
 namespace EQT {
 namespace Graphics {
@@ -291,26 +292,31 @@ void StormCloudLayer::generateCloudTextures() {
         }
     }
 
-    // Fall back to procedural generation if pre-built textures not found
+    // Fall back to procedural generation if cached textures not found
     if (!loadedFromFiles) {
         cloudFrames_.clear();
-        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Pre-built textures not found, generating procedurally...");
+        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Cached textures not found, generating procedurally (one-time operation)...");
+
+        // Ensure cache directory exists
+        mkdir("data", 0755);
+        mkdir("data/textures", 0755);
 
         for (int i = 0; i < frameCount; ++i) {
             // Different seed for each frame
             int seed = 12345 + i * 7919;  // Use prime number for good distribution
-            irr::video::ITexture* tex = generateSeamlessCloudTexture(seed);
+            std::string savePath = "data/textures/storm_cloud_" + std::to_string(i) + ".png";
+            irr::video::ITexture* tex = generateSeamlessCloudTexture(seed, savePath);
             if (tex) {
                 cloudFrames_.push_back(tex);
             }
         }
-        LOG_DEBUG(MOD_GRAPHICS, "StormCloudLayer: Generated {} cloud texture frames", cloudFrames_.size());
+        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Generated and cached {} cloud texture frames to data/textures/", cloudFrames_.size());
     } else {
-        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} pre-built cloud textures", cloudFrames_.size());
+        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} cached cloud textures", cloudFrames_.size());
     }
 }
 
-irr::video::ITexture* StormCloudLayer::generateSeamlessCloudTexture(int seed) {
+irr::video::ITexture* StormCloudLayer::generateSeamlessCloudTexture(int seed, const std::string& savePath) {
     int size = settings_.textureSize;
 
     // Create image
@@ -345,6 +351,15 @@ irr::video::ITexture* StormCloudLayer::generateSeamlessCloudTexture(int seed) {
             uint8_t alpha = static_cast<uint8_t>(noise * 255.0f);
 
             image->setPixel(x, y, irr::video::SColor(alpha, r, g, b));
+        }
+    }
+
+    // Cache to disk for fast loading on future runs
+    if (!savePath.empty()) {
+        if (driver_->writeImageToFile(image, savePath.c_str())) {
+            LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Cached texture to {}", savePath);
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "StormCloudLayer: Failed to cache texture to {}", savePath);
         }
     }
 

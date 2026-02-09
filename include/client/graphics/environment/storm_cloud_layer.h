@@ -176,9 +176,10 @@ private:
     /**
      * Generate a single seamless cloud texture frame.
      * @param seed Random seed for this frame
+     * @param savePath If non-empty, save the generated image to this path for caching
      * @return The generated texture
      */
-    irr::video::ITexture* generateSeamlessCloudTexture(int seed);
+    irr::video::ITexture* generateSeamlessCloudTexture(int seed, const std::string& savePath = "");
 
     /**
      * Seamless tileable Perlin noise (uses toroidal mapping).

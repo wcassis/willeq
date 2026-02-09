@@ -431,10 +431,12 @@ void PathfinderNavmesh::Load(const std::string &path)
 		char *buf = &buffer[0];
 		m_impl->nav_mesh = dtAllocNavMesh();
 
-		uint32_t number_of_tiles = *(uint32_t*)buf;
+		uint32_t number_of_tiles;
+		memcpy(&number_of_tiles, buf, sizeof(number_of_tiles));
 		buf += sizeof(uint32_t);
 
-		dtNavMeshParams params = *(dtNavMeshParams*)buf;
+		dtNavMeshParams params;
+		memcpy(&params, buf, sizeof(params));
 		buf += sizeof(dtNavMeshParams);
 
 		dtStatus status = m_impl->nav_mesh->init(&params);
@@ -447,10 +449,12 @@ void PathfinderNavmesh::Load(const std::string &path)
 
 		for (unsigned int i = 0; i < number_of_tiles; ++i)
 		{
-			uint32_t tile_ref = *(uint32_t*)buf;
+			uint32_t tile_ref;
+			memcpy(&tile_ref, buf, sizeof(tile_ref));
 			buf += sizeof(uint32_t);
 
-			int32_t data_size = *(uint32_t*)buf;
+			int32_t data_size;
+			memcpy(&data_size, buf, sizeof(data_size));
 			buf += sizeof(uint32_t);
 
 			if (!tile_ref || !data_size) {

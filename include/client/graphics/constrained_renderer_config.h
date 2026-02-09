@@ -14,6 +14,7 @@ enum class ConstrainedRenderingPreset {
     Voodoo1,    // 2MB FBI, 2MB TMU, 256x256 max, 16-bit, 640x480 max
     Voodoo2,    // 4MB FBI, 8MB TMU, 256x256 max, 16-bit, 800x600 max
     TNT,        // 8MB FBI, 16MB TMU, 512x512 max, 16-bit, 1024x768 max
+    OrangePi,   // 4MB FB, 8MB tex, 128x128 max, 16-bit, 800x600 (Mali 400, 512MB shared)
     Custom      // User-defined limits
 };
 

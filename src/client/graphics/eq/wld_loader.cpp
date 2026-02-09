@@ -12,6 +12,14 @@
 namespace EQT {
 namespace Graphics {
 
+// Safe unaligned read helper - uses memcpy to avoid bus errors on ARM
+template<typename T>
+static inline T read_val(const void* ptr) {
+    T val;
+    std::memcpy(&val, ptr, sizeof(T));
+    return val;
+}
+
 // XOR key for decoding WLD string hash
 static const uint8_t HASH_KEY[] = { 0x95, 0x3A, 0xC5, 0x2A, 0x95, 0x7A, 0x95, 0x6A };
 
@@ -65,41 +73,41 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
     }
 
     size_t idx = 0;
-    const WldHeader* header = reinterpret_cast<const WldHeader*>(&buffer[idx]);
+    WldHeader header = read_val<WldHeader>(&buffer[idx]);
     idx += sizeof(WldHeader);
 
     // Store total region count for PVS array sizing
-    totalRegionCount_ = header->bspRegionCount;
+    totalRegionCount_ = header.bspRegionCount;
 
     // Check magic
-    if (header->magic != 0x54503d02) {
+    if (header.magic != 0x54503d02) {
         return false;
     }
 
     // Determine if old format
-    bool oldFormat = (header->version == 0x00015500);
+    bool oldFormat = (header.version == 0x00015500);
 
     // Read and decode string hash
-    if (idx + header->hashLength > buffer.size()) {
+    if (idx + header.hashLength > buffer.size()) {
         return false;
     }
 
-    std::vector<char> hashBuffer(header->hashLength);
-    std::memcpy(hashBuffer.data(), &buffer[idx], header->hashLength);
-    decodeStringHash(hashBuffer.data(), header->hashLength);
-    idx += header->hashLength;
+    std::vector<char> hashBuffer(header.hashLength);
+    std::memcpy(hashBuffer.data(), &buffer[idx], header.hashLength);
+    decodeStringHash(hashBuffer.data(), header.hashLength);
+    idx += header.hashLength;
 
     // Parse fragments
-    std::vector<std::pair<size_t, const WldFragmentHeader*>> fragmentOffsets;
+    std::vector<std::pair<size_t, WldFragmentHeader>> fragmentOffsets;
     size_t fragIdx = idx;
-    for (uint32_t i = 0; i < header->fragmentCount; ++i) {
+    for (uint32_t i = 0; i < header.fragmentCount; ++i) {
         if (fragIdx + sizeof(WldFragmentHeader) > buffer.size()) {
             break;
         }
 
-        const WldFragmentHeader* fragHeader = reinterpret_cast<const WldFragmentHeader*>(&buffer[fragIdx]);
+        WldFragmentHeader fragHeader = read_val<WldFragmentHeader>(&buffer[fragIdx]);
         fragmentOffsets.push_back({fragIdx + sizeof(WldFragmentHeader), fragHeader});
-        fragIdx += sizeof(WldFragmentHeader) + fragHeader->size;
+        fragIdx += sizeof(WldFragmentHeader) + fragHeader.size;
     }
 
     // Parse all fragments
@@ -108,15 +116,15 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
     for (uint32_t i = 0; i < fragmentOffsets.size(); ++i) {
         const auto& [dataOffset, fragHeader] = fragmentOffsets[i];
         const char* fragData = &buffer[dataOffset];
-        uint32_t fragSize = fragHeader->size;
+        uint32_t fragSize = fragHeader.size;
 
         // All fragments start with nameRef (4 bytes, signed int32)
         if (fragSize < 4) continue;
-        int32_t nameRef = *reinterpret_cast<const int32_t*>(fragData);
+        int32_t nameRef = read_val<int32_t>(fragData);
         const char* fragBody = fragData + 4;  // Skip nameRef
         uint32_t fragBodySize = fragSize - 4;
 
-        switch (fragHeader->id) {
+        switch (fragHeader.id) {
             case 0x03:
                 parseFragment03(fragBody, fragBodySize, i + 1, hashBuffer.data(), oldFormat);
                 break;
@@ -200,15 +208,15 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
 
 void WldLoader::parseFragment03(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 const char* hash, bool oldFormat) {
-    const WldFragment03Header* header = reinterpret_cast<const WldFragment03Header*>(fragBuffer);
+    WldFragment03Header header = read_val<WldFragment03Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment03Header);
 
-    uint32_t count = header->textureCount;
+    uint32_t count = header.textureCount;
     if (count == 0) count = 1;
 
     WldTexture tex;
     for (uint32_t i = 0; i < count; ++i) {
-        uint16_t nameLen = *reinterpret_cast<const uint16_t*>(ptr);
+        uint16_t nameLen = read_val<uint16_t>(ptr);
         ptr += sizeof(uint16_t);
 
         std::vector<char> nameBuf(nameLen);
@@ -228,35 +236,35 @@ void WldLoader::parseFragment03(const char* fragBuffer, uint32_t fragLength, uin
 
 void WldLoader::parseFragment04(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 const char* hash, bool oldFormat) {
-    const WldFragment04Header* header = reinterpret_cast<const WldFragment04Header*>(fragBuffer);
+    WldFragment04Header header = read_val<WldFragment04Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment04Header);
 
     WldTextureBrush brush;
-    brush.flags = header->flags;
+    brush.flags = header.flags;
 
     // Check for animated texture (bit 3 set)
-    brush.isAnimated = (header->flags & (1 << 3)) != 0;
+    brush.isAnimated = (header.flags & (1 << 3)) != 0;
 
     // Skip unknown field if bit 2 is set
-    if (header->flags & (1 << 2)) {
+    if (header.flags & (1 << 2)) {
         ptr += sizeof(uint32_t);
     }
 
     // Read animation delay if bit 3 is set (animated texture)
     if (brush.isAnimated) {
-        brush.animationDelayMs = *reinterpret_cast<const int32_t*>(ptr);
+        brush.animationDelayMs = read_val<int32_t>(ptr);
         ptr += sizeof(int32_t);
     }
 
-    uint32_t count = header->textureCount;
+    uint32_t count = header.textureCount;
     if (count == 0) count = 1;
 
     for (uint32_t i = 0; i < count; ++i) {
-        const WldFragmentRef* ref = reinterpret_cast<const WldFragmentRef*>(ptr);
+        WldFragmentRef ref = read_val<WldFragmentRef>(ptr);
         ptr += sizeof(WldFragmentRef);
 
-        if (ref->id > 0) {
-            brush.textureRefs.push_back(ref->id);
+        if (ref.id > 0) {
+            brush.textureRefs.push_back(ref.id);
         }
     }
 
@@ -264,28 +272,28 @@ void WldLoader::parseFragment04(const char* fragBuffer, uint32_t fragLength, uin
 }
 
 void WldLoader::parseFragment05(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
-    const WldFragmentRef* ref = reinterpret_cast<const WldFragmentRef*>(fragBuffer);
-    if (ref->id > 0) {
-        textureRefs_[fragIndex] = ref->id;
+    WldFragmentRef ref = read_val<WldFragmentRef>(fragBuffer);
+    if (ref.id > 0) {
+        textureRefs_[fragIndex] = ref.id;
     }
 }
 
 void WldLoader::parseFragment30(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 const char* hash, bool oldFormat) {
     // Fragment 0x30 structure matches eqsage: sage/lib/s3d/materials/material.js
-    const WldFragment30Header* header = reinterpret_cast<const WldFragment30Header*>(fragBuffer);
+    WldFragment30Header header = read_val<WldFragment30Header>(fragBuffer);
 
     WldTextureBrush material;
 
     // Extract material type from parameters (matches eqsage's materialType masking)
-    uint32_t materialType = header->parameters & ~0x80000000;
+    uint32_t materialType = header.parameters & ~0x80000000;
 
-    if (materialType == 0 || header->bitmapInfoRef == 0) {
+    if (materialType == 0 || header.bitmapInfoRef == 0) {
         // Boundary or invisible material
         material.flags = 1;
     } else {
         // Resolve texture reference chain: 0x30 -> 0x05 -> 0x04
-        int32_t frag05Ref = header->bitmapInfoRef;
+        int32_t frag05Ref = header.bitmapInfoRef;
         auto it05 = textureRefs_.find(frag05Ref);
         if (it05 != textureRefs_.end()) {
             material.textureRefs.push_back(it05->second);
@@ -297,12 +305,12 @@ void WldLoader::parseFragment30(const char* fragBuffer, uint32_t fragLength, uin
 }
 
 void WldLoader::parseFragment31(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
-    const WldFragment31Header* header = reinterpret_cast<const WldFragment31Header*>(fragBuffer);
+    WldFragment31Header header = read_val<WldFragment31Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment31Header);
 
     WldTextureBrushSet brushSet;
-    for (uint32_t i = 0; i < header->count; ++i) {
-        uint32_t refId = *reinterpret_cast<const uint32_t*>(ptr);
+    for (uint32_t i = 0; i < header.count; ++i) {
+        uint32_t refId = read_val<uint32_t>(ptr);
         ptr += sizeof(uint32_t);
 
         if (refId > 0) {
@@ -319,7 +327,7 @@ std::string WldLoader::resolveTextureName(uint32_t texIndex) const {
 
 void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 int32_t nameRef, const char* hash, bool oldFormat) {
-    const WldFragment36Header* header = reinterpret_cast<const WldFragment36Header*>(fragBuffer);
+    WldFragment36Header header = read_val<WldFragment36Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment36Header);
 
     auto geom = std::make_shared<ZoneGeometry>();
@@ -334,83 +342,83 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
     // Debug: Print mesh info for character meshes
     LOG_TRACE(MOD_GRAPHICS, "WLD Frag36 [{}]: fragLen={}", geom->name, fragLength);
     LOG_TRACE(MOD_GRAPHICS, "  Header: flags=0x{:x} frag1={} center=({},{},{})",
-        header->flags, header->frag1, header->centerX, header->centerY, header->centerZ);
+        header.flags, header.frag1, header.centerX, header.centerY, header.centerZ);
     LOG_TRACE(MOD_GRAPHICS, "  verts={} polys={} texcoords={} normals={} colors={}",
-        header->vertexCount, header->polygonCount, header->texCoordCount, header->normalCount, header->colorCount);
+        header.vertexCount, header.polygonCount, header.texCoordCount, header.normalCount, header.colorCount);
     LOG_TRACE(MOD_GRAPHICS, "  size6={} polyTexCnt={} vertTexCnt={} size9={} scale={} oldFmt={}",
-        header->size6, header->polygonTexCount, header->vertexTexCount, header->size9, header->scale, oldFormat);
+        header.size6, header.polygonTexCount, header.vertexTexCount, header.size9, header.scale, oldFormat);
 
-    geom->minX = header->minX;
-    geom->minY = header->minY;
-    geom->minZ = header->minZ;
-    geom->maxX = header->maxX;
-    geom->maxY = header->maxY;
-    geom->maxZ = header->maxZ;
+    geom->minX = header.minX;
+    geom->minY = header.minY;
+    geom->minZ = header.minZ;
+    geom->maxX = header.maxX;
+    geom->maxY = header.maxY;
+    geom->maxZ = header.maxZ;
 
     // Store mesh center for skinning reference
-    geom->centerX = header->centerX;
-    geom->centerY = header->centerY;
-    geom->centerZ = header->centerZ;
+    geom->centerX = header.centerX;
+    geom->centerY = header.centerY;
+    geom->centerZ = header.centerZ;
 
-    float scale = 1.0f / static_cast<float>(1 << header->scale);
+    float scale = 1.0f / static_cast<float>(1 << header.scale);
     float recip256 = 1.0f / 256.0f;
     float recip128 = 1.0f / 128.0f;  // For signed int8 normals: [-128,127] -> [-1,1]
 
     // Read vertices
     // For character meshes, vertices are stored relative to center
     // We keep them that way for proper bone transform application
-    geom->vertices.resize(header->vertexCount);
+    geom->vertices.resize(header.vertexCount);
     const char* vertexStart = ptr;
-    for (uint16_t i = 0; i < header->vertexCount; ++i) {
-        const WldVertex* v = reinterpret_cast<const WldVertex*>(ptr);
+    for (uint16_t i = 0; i < header.vertexCount; ++i) {
+        WldVertex v = read_val<WldVertex>(ptr);
         ptr += sizeof(WldVertex);
 
         // Store vertices relative to center (don't add center yet)
         // Bone transforms will position them correctly
-        geom->vertices[i].x = v->x * scale;
-        geom->vertices[i].y = v->y * scale;
-        geom->vertices[i].z = v->z * scale;
+        geom->vertices[i].x = v.x * scale;
+        geom->vertices[i].y = v.y * scale;
+        geom->vertices[i].z = v.z * scale;
 
         // Debug: Print vertices for character meshes - first few
         if (i < 5) {
             LOG_TRACE(MOD_GRAPHICS, "  Vert[{}]: raw({},{},{}) -> scaled({},{},{})",
-                i, v->x, v->y, v->z, geom->vertices[i].x, geom->vertices[i].y, geom->vertices[i].z);
+                i, v.x, v.y, v.z, geom->vertices[i].x, geom->vertices[i].y, geom->vertices[i].z);
         }
     }
-    LOG_TRACE(MOD_GRAPHICS, "  Total vertex bytes read: {} (expected {})", (ptr - vertexStart), header->vertexCount * 6);
+    LOG_TRACE(MOD_GRAPHICS, "  Total vertex bytes read: {} (expected {})", (ptr - vertexStart), header.vertexCount * 6);
     LOG_TRACE(MOD_GRAPHICS, "  Mesh center: ({},{},{})", geom->centerX, geom->centerY, geom->centerZ);
 
     // Read texture coordinates
     if (oldFormat) {
-        for (uint16_t i = 0; i < header->texCoordCount && i < header->vertexCount; ++i) {
-            const WldTexCoordOld* tc = reinterpret_cast<const WldTexCoordOld*>(ptr);
+        for (uint16_t i = 0; i < header.texCoordCount && i < header.vertexCount; ++i) {
+            WldTexCoordOld tc = read_val<WldTexCoordOld>(ptr);
             ptr += sizeof(WldTexCoordOld);
 
-            geom->vertices[i].u = tc->u * recip256;
-            geom->vertices[i].v = tc->v * recip256;
+            geom->vertices[i].u = tc.u * recip256;
+            geom->vertices[i].v = tc.v * recip256;
         }
-        ptr += sizeof(WldTexCoordOld) * (header->texCoordCount > header->vertexCount ?
-                                         header->texCoordCount - header->vertexCount : 0);
+        ptr += sizeof(WldTexCoordOld) * (header.texCoordCount > header.vertexCount ?
+                                         header.texCoordCount - header.vertexCount : 0);
     } else {
-        for (uint16_t i = 0; i < header->texCoordCount && i < header->vertexCount; ++i) {
-            const WldTexCoordNew* tc = reinterpret_cast<const WldTexCoordNew*>(ptr);
+        for (uint16_t i = 0; i < header.texCoordCount && i < header.vertexCount; ++i) {
+            WldTexCoordNew tc = read_val<WldTexCoordNew>(ptr);
             ptr += sizeof(WldTexCoordNew);
 
-            geom->vertices[i].u = tc->u;
-            geom->vertices[i].v = tc->v;
+            geom->vertices[i].u = tc.u;
+            geom->vertices[i].v = tc.v;
         }
-        ptr += sizeof(WldTexCoordNew) * (header->texCoordCount > header->vertexCount ?
-                                         header->texCoordCount - header->vertexCount : 0);
+        ptr += sizeof(WldTexCoordNew) * (header.texCoordCount > header.vertexCount ?
+                                         header.texCoordCount - header.vertexCount : 0);
     }
 
     // Read normals - int8 values divided by 128 give range [-1, 1], then normalize
-    for (uint16_t i = 0; i < header->normalCount && i < header->vertexCount; ++i) {
-        const WldNormal* n = reinterpret_cast<const WldNormal*>(ptr);
+    for (uint16_t i = 0; i < header.normalCount && i < header.vertexCount; ++i) {
+        WldNormal n = read_val<WldNormal>(ptr);
         ptr += sizeof(WldNormal);
 
-        float nx = static_cast<float>(n->x) * recip128;
-        float ny = static_cast<float>(n->y) * recip128;
-        float nz = static_cast<float>(n->z) * recip128;
+        float nx = static_cast<float>(n.x) * recip128;
+        float ny = static_cast<float>(n.y) * recip128;
+        float nz = static_cast<float>(n.z) * recip128;
 
         // Normalize the vector (eqsage does this)
         float len = std::sqrt(nx * nx + ny * ny + nz * nz);
@@ -425,36 +433,36 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
             geom->vertices[i].nz = 1.0f;
         }
     }
-    ptr += sizeof(WldNormal) * (header->normalCount > header->vertexCount ?
-                                header->normalCount - header->vertexCount : 0);
+    ptr += sizeof(WldNormal) * (header.normalCount > header.vertexCount ?
+                                header.normalCount - header.vertexCount : 0);
 
     // Skip colors (RGBA packed as uint32_t)
-    ptr += sizeof(uint32_t) * header->colorCount;
+    ptr += sizeof(uint32_t) * header.colorCount;
 
     // Read polygons
-    geom->triangles.resize(header->polygonCount);
-    for (uint16_t i = 0; i < header->polygonCount; ++i) {
-        const WldPolygon* p = reinterpret_cast<const WldPolygon*>(ptr);
+    geom->triangles.resize(header.polygonCount);
+    for (uint16_t i = 0; i < header.polygonCount; ++i) {
+        WldPolygon p = read_val<WldPolygon>(ptr);
         ptr += sizeof(WldPolygon);
 
         // Reference implementation reverses winding order: index[2], index[1], index[0]
-        geom->triangles[i].v1 = p->index[2];
-        geom->triangles[i].v2 = p->index[1];
-        geom->triangles[i].v3 = p->index[0];
-        geom->triangles[i].flags = p->flags;
+        geom->triangles[i].v1 = p.index[2];
+        geom->triangles[i].v2 = p.index[1];
+        geom->triangles[i].v3 = p.index[0];
+        geom->triangles[i].flags = p.flags;
         geom->triangles[i].textureIndex = 0;
 
         // Debug: Print first few polygon indices for character meshes
         if (i < 5) {
             LOG_TRACE(MOD_GRAPHICS, "  Poly[{}]: flags={} v1={} v2={} v3={} (max_v={})",
-                i, p->flags, p->index[0], p->index[1], p->index[2], header->vertexCount);
+                i, p.flags, p.index[0], p.index[1], p.index[2], header.vertexCount);
         }
     }
 
     // Validate polygon indices
     bool hasInvalidIdx = false;
     for (const auto& tri : geom->triangles) {
-        if (tri.v1 >= header->vertexCount || tri.v2 >= header->vertexCount || tri.v3 >= header->vertexCount) {
+        if (tri.v1 >= header.vertexCount || tri.v2 >= header.vertexCount || tri.v3 >= header.vertexCount) {
             hasInvalidIdx = true;
             break;
         }
@@ -465,11 +473,12 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
 
     // Parse vertex pieces (bone assignments) - size6 entries of 4 bytes each
     // Each entry is: int16_t count, int16_t boneIndex
-    geom->vertexPieces.resize(header->size6);
-    for (uint16_t i = 0; i < header->size6; ++i) {
-        const int16_t* pieceData = reinterpret_cast<const int16_t*>(ptr);
-        geom->vertexPieces[i].count = pieceData[0];
-        geom->vertexPieces[i].boneIndex = pieceData[1];
+    geom->vertexPieces.resize(header.size6);
+    for (uint16_t i = 0; i < header.size6; ++i) {
+        int16_t pieceCount = read_val<int16_t>(ptr);
+        int16_t pieceBone = read_val<int16_t>(ptr + 2);
+        geom->vertexPieces[i].count = pieceCount;
+        geom->vertexPieces[i].boneIndex = pieceBone;
         ptr += 4;
 
         if (i < 10) {
@@ -477,28 +486,28 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                 i, geom->vertexPieces[i].count, geom->vertexPieces[i].boneIndex);
         }
     }
-    if (header->size6 > 0) {
-        LOG_TRACE(MOD_GRAPHICS, "  Total vertex pieces: {}", header->size6);
+    if (header.size6 > 0) {
+        LOG_TRACE(MOD_GRAPHICS, "  Total vertex pieces: {}", header.size6);
     }
 
     // Read texture mappings (polygonsByTex)
     uint32_t polyIdx = 0;
-    for (uint16_t i = 0; i < header->polygonTexCount; ++i) {
-        const WldTexMap* tm = reinterpret_cast<const WldTexMap*>(ptr);
+    for (uint16_t i = 0; i < header.polygonTexCount; ++i) {
+        WldTexMap tm = read_val<WldTexMap>(ptr);
         ptr += sizeof(WldTexMap);
 
-        for (uint16_t j = 0; j < tm->polyCount && polyIdx < geom->triangles.size(); ++j) {
-            geom->triangles[polyIdx++].textureIndex = tm->tex;
+        for (uint16_t j = 0; j < tm.polyCount && polyIdx < geom->triangles.size(); ++j) {
+            geom->triangles[polyIdx++].textureIndex = tm.tex;
         }
     }
 
     // Skip verticesByTex entries (vertexTexCount * 4 bytes)
     // This data maps vertices to textures but we don't need it for rendering
-    ptr += 4 * header->vertexTexCount;
+    ptr += 4 * header.vertexTexCount;
 
     // Resolve texture names
-    if (header->frag1 > 0) {
-        auto it31 = brushSets_.find(header->frag1);
+    if (header.frag1 > 0) {
+        auto it31 = brushSets_.find(header.frag1);
         if (it31 != brushSets_.end()) {
             const WldTextureBrushSet& brushSet = it31->second;
 
@@ -568,8 +577,8 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
 
     // Link vertex animation data if this mesh has animated vertices
     // frag2 contains the reference to the 0x2F fragment (mesh animated vertices reference)
-    if (header->frag2 > 0) {
-        uint32_t animVertRefFragIdx = header->frag2;
+    if (header.frag2 > 0) {
+        uint32_t animVertRefFragIdx = header.frag2;
         // Look up the 0x2F -> 0x37 mapping
         auto refIt = meshAnimatedVerticesRefs_.find(animVertRefFragIdx);
         if (refIt != meshAnimatedVerticesRefs_.end()) {
@@ -705,7 +714,7 @@ bool WldLoader::hasPvsData() const {
 
 void WldLoader::parseFragment14(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 int32_t nameRef, const char* hash, bool oldFormat) {
-    const WldFragment14Header* header = reinterpret_cast<const WldFragment14Header*>(fragBuffer);
+    WldFragment14Header header = read_val<WldFragment14Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment14Header);
 
     WldObjectDef objDef;
@@ -724,19 +733,19 @@ void WldLoader::parseFragment14(const char* fragBuffer, uint32_t fragLength, uin
         }
     }
 
-    if (header->flags & 1) ptr += sizeof(int32_t);
-    if (header->flags & 2) ptr += sizeof(int32_t);
+    if (header.flags & 1) ptr += sizeof(int32_t);
+    if (header.flags & 2) ptr += sizeof(int32_t);
 
-    for (uint32_t i = 0; i < header->entries; ++i) {
+    for (uint32_t i = 0; i < header.entries; ++i) {
         if (ptr + sizeof(uint32_t) > fragBuffer + fragLength) break;
-        uint32_t sz = *reinterpret_cast<const uint32_t*>(ptr);
+        uint32_t sz = read_val<uint32_t>(ptr);
         ptr += sizeof(uint32_t);
         ptr += sz * (sizeof(int32_t) + sizeof(float));
     }
 
-    for (uint32_t i = 0; i < header->entries2; ++i) {
+    for (uint32_t i = 0; i < header.entries2; ++i) {
         if (ptr + sizeof(uint32_t) > fragBuffer + fragLength) break;
-        uint32_t ref = *reinterpret_cast<const uint32_t*>(ptr);
+        uint32_t ref = read_val<uint32_t>(ptr);
         ptr += sizeof(uint32_t);
 
         if (ref > 0) {
@@ -762,7 +771,7 @@ void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uin
     // Read object definition reference (int32) - this is a STRING reference (negative = string hash offset)
     // per eqsage: objectName = wld.getString(objectRef).replace('_ACTORDEF', '').toLowerCase()
     if (ptr + sizeof(int32_t) > endPtr) return;
-    int32_t objectRef = *reinterpret_cast<const int32_t*>(ptr);
+    int32_t objectRef = read_val<int32_t>(ptr);
     ptr += sizeof(int32_t);
 
     // objectRef < 0 means it's a string hash reference (like _ACTORDEF name)
@@ -789,12 +798,12 @@ void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uin
 
     // Read flags (uint32)
     if (ptr + sizeof(uint32_t) > endPtr) return;
-    uint32_t flags = *reinterpret_cast<const uint32_t*>(ptr);
+    uint32_t flags = read_val<uint32_t>(ptr);
     ptr += sizeof(uint32_t);
 
     // Read sphere reference (uint32) - always present
     if (ptr + sizeof(uint32_t) > endPtr) return;
-    uint32_t sphereRef = *reinterpret_cast<const uint32_t*>(ptr);
+    uint32_t sphereRef = read_val<uint32_t>(ptr);
     ptr += sizeof(uint32_t);
     (void)sphereRef;  // Collision sphere reference, not currently used
 
@@ -811,12 +820,12 @@ void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uin
     if (flags & Fragment15Flags::HasLocation) {
         if (ptr + 6 * sizeof(float) + sizeof(uint32_t) > endPtr) return;
 
-        x = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
-        y = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
-        z = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
-        rawRotX = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
-        rawRotY = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
-        rawRotZ = *reinterpret_cast<const float*>(ptr); ptr += sizeof(float);
+        x = read_val<float>(ptr); ptr += sizeof(float);
+        y = read_val<float>(ptr); ptr += sizeof(float);
+        z = read_val<float>(ptr); ptr += sizeof(float);
+        rawRotX = read_val<float>(ptr); ptr += sizeof(float);
+        rawRotY = read_val<float>(ptr); ptr += sizeof(float);
+        rawRotZ = read_val<float>(ptr); ptr += sizeof(float);
         ptr += sizeof(uint32_t);  // Unknown extra field
     }
 
@@ -845,7 +854,7 @@ void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uin
     float scaleFactor = 1.0f;  // Default to 1.0 if not present
     if (flags & Fragment15Flags::HasScaleFactor) {
         if (ptr + sizeof(float) > endPtr) return;
-        scaleFactor = *reinterpret_cast<const float*>(ptr);
+        scaleFactor = read_val<float>(ptr);
         ptr += sizeof(float);
     }
 
@@ -870,7 +879,7 @@ void WldLoader::parseFragment15(const char* fragBuffer, uint32_t fragLength, uin
 
     // Read userData size and skip userData
     if (ptr + sizeof(uint32_t) > endPtr) return;
-    uint32_t userDataSize = *reinterpret_cast<const uint32_t*>(ptr);
+    uint32_t userDataSize = read_val<uint32_t>(ptr);
     ptr += sizeof(uint32_t);
 
     if (userDataSize > 0 && ptr + userDataSize <= endPtr) {
@@ -885,7 +894,7 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
                                 int32_t nameRef, const char* hash, bool oldFormat) {
     // Legacy Mesh format (0x2C) - found in older character models like global_chr.s3d
     // Uses uncompressed 32-bit floats for vertices, normals, and UVs
-    const WldFragment2CHeader* header = reinterpret_cast<const WldFragment2CHeader*>(fragBuffer);
+    WldFragment2CHeader header = read_val<WldFragment2CHeader>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment2CHeader);
 
     auto geom = std::make_shared<ZoneGeometry>();
@@ -900,59 +909,60 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
     // Debug output for legacy meshes
     LOG_TRACE(MOD_GRAPHICS, "WLD Frag2C (Legacy) [{}]: fragLen={}", geom->name, fragLength);
     LOG_TRACE(MOD_GRAPHICS, "  Header: flags=0x{:x} center=({},{},{}) scale={}",
-        header->flags, header->centerX, header->centerY, header->centerZ, header->scale);
+        header.flags, header.centerX, header.centerY, header.centerZ, header.scale);
     LOG_TRACE(MOD_GRAPHICS, "  verts={} polys={} texcoords={} normals={} colors={}",
-        header->vertexCount, header->polygonCount, header->texCoordCount, header->normalCount, header->colorCount);
+        header.vertexCount, header.polygonCount, header.texCoordCount, header.normalCount, header.colorCount);
     LOG_TRACE(MOD_GRAPHICS, "  vertexPieceCount={} polyTexCnt={} vertTexCnt={}",
-        header->vertexPieceCount, header->polygonTexCount, header->vertexTexCount);
+        header.vertexPieceCount, header.polygonTexCount, header.vertexTexCount);
 
-    geom->minX = header->minX;
-    geom->minY = header->minY;
-    geom->minZ = header->minZ;
-    geom->maxX = header->maxX;
-    geom->maxY = header->maxY;
-    geom->maxZ = header->maxZ;
+    geom->minX = header.minX;
+    geom->minY = header.minY;
+    geom->minZ = header.minZ;
+    geom->maxX = header.maxX;
+    geom->maxY = header.maxY;
+    geom->maxZ = header.maxZ;
 
-    geom->centerX = header->centerX;
-    geom->centerY = header->centerY;
-    geom->centerZ = header->centerZ;
+    geom->centerX = header.centerX;
+    geom->centerY = header.centerY;
+    geom->centerZ = header.centerZ;
 
     // Read vertices - raw 32-bit floats (not compressed)
-    geom->vertices.resize(header->vertexCount);
-    for (uint32_t i = 0; i < header->vertexCount; ++i) {
-        const float* v = reinterpret_cast<const float*>(ptr);
+    geom->vertices.resize(header.vertexCount);
+    for (uint32_t i = 0; i < header.vertexCount; ++i) {
+        float vx = read_val<float>(ptr);
+        float vy = read_val<float>(ptr + 4);
+        float vz = read_val<float>(ptr + 8);
         ptr += sizeof(float) * 3;
 
-        geom->vertices[i].x = v[0];
-        geom->vertices[i].y = v[1];
-        geom->vertices[i].z = v[2];
+        geom->vertices[i].x = vx;
+        geom->vertices[i].y = vy;
+        geom->vertices[i].z = vz;
 
         if (i < 5) {
-            LOG_TRACE(MOD_GRAPHICS, "  Vert[{}]: ({},{},{})", i, v[0], v[1], v[2]);
+            LOG_TRACE(MOD_GRAPHICS, "  Vert[{}]: ({},{},{})", i, vx, vy, vz);
         }
     }
 
     // Read texture coordinates - raw 32-bit floats
-    for (uint32_t i = 0; i < header->texCoordCount && i < header->vertexCount; ++i) {
-        const float* tc = reinterpret_cast<const float*>(ptr);
+    for (uint32_t i = 0; i < header.texCoordCount && i < header.vertexCount; ++i) {
+        float tu = read_val<float>(ptr);
+        float tv = read_val<float>(ptr + 4);
         ptr += sizeof(float) * 2;
 
-        geom->vertices[i].u = tc[0];
-        geom->vertices[i].v = tc[1];
+        geom->vertices[i].u = tu;
+        geom->vertices[i].v = tv;
     }
     // Skip extra tex coords if any
-    if (header->texCoordCount > header->vertexCount) {
-        ptr += sizeof(float) * 2 * (header->texCoordCount - header->vertexCount);
+    if (header.texCoordCount > header.vertexCount) {
+        ptr += sizeof(float) * 2 * (header.texCoordCount - header.vertexCount);
     }
 
     // Read normals - raw 32-bit floats, normalize for consistency
-    for (uint32_t i = 0; i < header->normalCount && i < header->vertexCount; ++i) {
-        const float* n = reinterpret_cast<const float*>(ptr);
+    for (uint32_t i = 0; i < header.normalCount && i < header.vertexCount; ++i) {
+        float nx = read_val<float>(ptr);
+        float ny = read_val<float>(ptr + 4);
+        float nz = read_val<float>(ptr + 8);
         ptr += sizeof(float) * 3;
-
-        float nx = n[0];
-        float ny = n[1];
-        float nz = n[2];
 
         // Normalize the vector
         float len = std::sqrt(nx * nx + ny * ny + nz * nz);
@@ -968,39 +978,40 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
         }
     }
     // Skip extra normals if any
-    if (header->normalCount > header->vertexCount) {
-        ptr += sizeof(float) * 3 * (header->normalCount - header->vertexCount);
+    if (header.normalCount > header.vertexCount) {
+        ptr += sizeof(float) * 3 * (header.normalCount - header.vertexCount);
     }
 
     // Skip colors (RGBA as uint32_t)
-    ptr += sizeof(uint32_t) * header->colorCount;
+    ptr += sizeof(uint32_t) * header.colorCount;
 
     // Read polygons - same format as modern mesh
-    geom->triangles.resize(header->polygonCount);
-    for (uint32_t i = 0; i < header->polygonCount; ++i) {
-        const WldPolygon* p = reinterpret_cast<const WldPolygon*>(ptr);
+    geom->triangles.resize(header.polygonCount);
+    for (uint32_t i = 0; i < header.polygonCount; ++i) {
+        WldPolygon p = read_val<WldPolygon>(ptr);
         ptr += sizeof(WldPolygon);
 
         // Reverse winding order like modern mesh
-        geom->triangles[i].v1 = p->index[2];
-        geom->triangles[i].v2 = p->index[1];
-        geom->triangles[i].v3 = p->index[0];
-        geom->triangles[i].flags = p->flags;
+        geom->triangles[i].v1 = p.index[2];
+        geom->triangles[i].v2 = p.index[1];
+        geom->triangles[i].v3 = p.index[0];
+        geom->triangles[i].flags = p.flags;
         geom->triangles[i].textureIndex = 0;
 
         if (i < 5) {
             LOG_TRACE(MOD_GRAPHICS, "  Poly[{}]: flags={} v={},{},{}",
-                i, p->flags, p->index[0], p->index[1], p->index[2]);
+                i, p.flags, p.index[0], p.index[1], p.index[2]);
         }
     }
 
     // Parse vertex pieces (bone assignments) - Legacy format reads Start directly from file
     // Format: int16_t count, int16_t startIndex
-    geom->vertexPieces.resize(header->vertexPieceCount);
-    for (uint16_t i = 0; i < header->vertexPieceCount; ++i) {
-        const int16_t* pieceData = reinterpret_cast<const int16_t*>(ptr);
-        geom->vertexPieces[i].count = pieceData[0];
-        geom->vertexPieces[i].boneIndex = pieceData[1];  // In legacy, this is the start index used as key
+    geom->vertexPieces.resize(header.vertexPieceCount);
+    for (uint16_t i = 0; i < header.vertexPieceCount; ++i) {
+        int16_t pieceCount = read_val<int16_t>(ptr);
+        int16_t pieceBone = read_val<int16_t>(ptr + 2);
+        geom->vertexPieces[i].count = pieceCount;
+        geom->vertexPieces[i].boneIndex = pieceBone;  // In legacy, this is the start index used as key
         ptr += 4;
 
         if (i < 10) {
@@ -1011,21 +1022,21 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
 
     // Read texture mappings
     uint32_t polyIdx = 0;
-    for (uint16_t i = 0; i < header->polygonTexCount; ++i) {
-        const WldTexMap* tm = reinterpret_cast<const WldTexMap*>(ptr);
+    for (uint16_t i = 0; i < header.polygonTexCount; ++i) {
+        WldTexMap tm = read_val<WldTexMap>(ptr);
         ptr += sizeof(WldTexMap);
 
-        for (uint16_t j = 0; j < tm->polyCount && polyIdx < geom->triangles.size(); ++j) {
-            geom->triangles[polyIdx++].textureIndex = tm->tex;
+        for (uint16_t j = 0; j < tm.polyCount && polyIdx < geom->triangles.size(); ++j) {
+            geom->triangles[polyIdx++].textureIndex = tm.tex;
         }
     }
 
     // Skip verticesByTex entries
-    ptr += 4 * header->vertexTexCount;
+    ptr += 4 * header.vertexTexCount;
 
     // Resolve texture names - try fragment reference from flags
     // Legacy mesh may store texture brush set reference differently
-    uint32_t texBrushSetRef = header->flags & 0xFFFF;  // Lower 16 bits might be the reference
+    uint32_t texBrushSetRef = header.flags & 0xFFFF;  // Lower 16 bits might be the reference
     if (texBrushSetRef > 0) {
         auto it31 = brushSets_.find(texBrushSetRef);
         if (it31 != brushSets_.end()) {
@@ -1104,11 +1115,11 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
 }
 
 void WldLoader::parseFragment2D(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
-    const WldFragment2DHeader* header = reinterpret_cast<const WldFragment2DHeader*>(fragBuffer);
+    WldFragment2DHeader header = read_val<WldFragment2DHeader>(fragBuffer);
 
     WldModelRef modelRef;
-    if (header->ref > 0) {
-        modelRef.geometryFragRef = header->ref;
+    if (header.ref > 0) {
+        modelRef.geometryFragRef = header.ref;
     } else {
         modelRef.geometryFragRef = 0;
     }
@@ -1118,9 +1129,9 @@ void WldLoader::parseFragment2D(const char* fragBuffer, uint32_t fragLength, uin
 
 void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 int32_t nameRef, const char* hash, bool oldFormat,
-                                const std::vector<std::pair<size_t, const WldFragmentHeader*>>& fragments,
+                                const std::vector<std::pair<size_t, WldFragmentHeader>>& fragments,
                                 const std::vector<char>& buffer) {
-    const WldFragment10Header* header = reinterpret_cast<const WldFragment10Header*>(fragBuffer);
+    WldFragment10Header header = read_val<WldFragment10Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment10Header);
 
     auto track = std::make_shared<SkeletonTrack>();
@@ -1133,32 +1144,32 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
         }
     }
 
-    if (header->flags & 1) ptr += sizeof(int32_t) * 3;
-    if (header->flags & 2) ptr += sizeof(float);
+    if (header.flags & 1) ptr += sizeof(int32_t) * 3;
+    if (header.flags & 2) ptr += sizeof(float);
 
     std::vector<std::shared_ptr<SkeletonBone>> allBones;
-    allBones.reserve(header->trackRefCount);
+    allBones.reserve(header.trackRefCount);
 
     // Collect tree relationships: (parent_bone_index, child_bone_index)
     std::vector<std::pair<int, int>> treeRelations;
 
-    for (uint32_t i = 0; i < header->trackRefCount; ++i) {
+    for (uint32_t i = 0; i < header.trackRefCount; ++i) {
         if (ptr + sizeof(WldFragment10BoneEntry) > fragBuffer + fragLength) break;
 
-        const WldFragment10BoneEntry* entry = reinterpret_cast<const WldFragment10BoneEntry*>(ptr);
+        WldFragment10BoneEntry entry = read_val<WldFragment10BoneEntry>(ptr);
         ptr += sizeof(WldFragment10BoneEntry);
 
         auto bone = std::make_shared<SkeletonBone>();
 
-        if (entry->nameRef < 0) {
-            int32_t nameOffset = -entry->nameRef;
+        if (entry.nameRef < 0) {
+            int32_t nameOffset = -entry.nameRef;
             if (nameOffset > 0 ) {
                 bone->name = std::string(&hash[nameOffset]);
             }
         }
 
-        if (entry->orientationRef > 0) {
-            auto it13 = boneOrientationRefs_.find(entry->orientationRef);
+        if (entry.orientationRef > 0) {
+            auto it13 = boneOrientationRefs_.find(entry.orientationRef);
             if (it13 != boneOrientationRefs_.end()) {
                 auto it12 = boneOrientations_.find(it13->second);
                 if (it12 != boneOrientations_.end()) {
@@ -1167,16 +1178,16 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
             }
         }
 
-        if (entry->modelRef > 0) {
-            bone->modelRef = entry->modelRef;
+        if (entry.modelRef > 0) {
+            bone->modelRef = entry.modelRef;
         }
 
         allBones.push_back(bone);
 
         // Read child indices - store for later processing
-        for (uint32_t j = 0; j < entry->childCount; ++j) {
+        for (uint32_t j = 0; j < entry.childCount; ++j) {
             if (ptr + sizeof(int32_t) > fragBuffer + fragLength) break;
-            int32_t childIdx = *reinterpret_cast<const int32_t*>(ptr);
+            int32_t childIdx = read_val<int32_t>(ptr);
             ptr += sizeof(int32_t);
             // Store relationship: current bone (i) has child at childIdx
             treeRelations.push_back(std::make_pair(static_cast<int>(i), childIdx));
@@ -1218,9 +1229,9 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
 }
 
 void WldLoader::parseFragment11(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
-    const WldFragment11Header* header = reinterpret_cast<const WldFragment11Header*>(fragBuffer);
-    if (header->ref > 0) {
-        skeletonRefs_[fragIndex] = header->ref;
+    WldFragment11Header header = read_val<WldFragment11Header>(fragBuffer);
+    if (header.ref > 0) {
+        skeletonRefs_[fragIndex] = header.ref;
     }
 }
 
@@ -1240,11 +1251,11 @@ void WldLoader::parseFragment12(const char* fragBuffer, uint32_t fragLength, uin
     const char* ptr = fragBuffer;
 
     // Read flags
-    uint32_t flags = *reinterpret_cast<const uint32_t*>(ptr);
+    uint32_t flags = read_val<uint32_t>(ptr);
     ptr += sizeof(uint32_t);
 
     // Read frame count
-    int32_t frameCount = *reinterpret_cast<const int32_t*>(ptr);
+    int32_t frameCount = read_val<int32_t>(ptr);
     ptr += sizeof(int32_t);
 
     auto trackDef = std::make_shared<TrackDef>();
@@ -1264,14 +1275,14 @@ void WldLoader::parseFragment12(const char* fragBuffer, uint32_t fragLength, uin
     for (int32_t i = 0; i < frameCount; ++i) {
         BoneTransform frame;
 
-        int16_t rotDenom = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t rotX = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t rotY = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t rotZ = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t shiftX = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t shiftY = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t shiftZ = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
-        int16_t shiftDenom = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
+        int16_t rotDenom = read_val<int16_t>(ptr); ptr += 2;
+        int16_t rotX = read_val<int16_t>(ptr); ptr += 2;
+        int16_t rotY = read_val<int16_t>(ptr); ptr += 2;
+        int16_t rotZ = read_val<int16_t>(ptr); ptr += 2;
+        int16_t shiftX = read_val<int16_t>(ptr); ptr += 2;
+        int16_t shiftY = read_val<int16_t>(ptr); ptr += 2;
+        int16_t shiftZ = read_val<int16_t>(ptr); ptr += 2;
+        int16_t shiftDenom = read_val<int16_t>(ptr); ptr += 2;
 
         // EQ stores rotation as quaternion components (w, x, y, z) as int16 values
         float qw = static_cast<float>(rotDenom);
@@ -1325,10 +1336,10 @@ void WldLoader::parseFragment13(const char* fragBuffer, uint32_t fragLength, uin
 
     const char* ptr = fragBuffer;
 
-    int32_t trackDefRef = *reinterpret_cast<const int32_t*>(ptr);
+    int32_t trackDefRef = read_val<int32_t>(ptr);
     ptr += sizeof(int32_t);
 
-    int32_t flags = *reinterpret_cast<const int32_t*>(ptr);
+    int32_t flags = read_val<int32_t>(ptr);
     ptr += sizeof(int32_t);
 
     auto trackRef = std::make_shared<TrackRef>();
@@ -1347,7 +1358,7 @@ void WldLoader::parseFragment13(const char* fragBuffer, uint32_t fragLength, uin
 
     // Read frameMs if flags bit 0 is set
     if (flags & 1) {
-        trackRef->frameMs = *reinterpret_cast<const int32_t*>(ptr);
+        trackRef->frameMs = read_val<int32_t>(ptr);
         ptr += sizeof(int32_t);
     } else {
         trackRef->frameMs = 0;
@@ -1446,20 +1457,20 @@ void WldLoader::parseFragment1B(const char* fragBuffer, uint32_t fragLength, uin
     light->radius = 0.0f;
 
     // Read flags and frameCount
-    light->flags = *reinterpret_cast<const uint32_t*>(ptr);
+    light->flags = read_val<uint32_t>(ptr);
     ptr += 4;
-    light->frameCount = *reinterpret_cast<const uint32_t*>(ptr);
+    light->frameCount = read_val<uint32_t>(ptr);
     ptr += 4;
 
     // Read optional currentFrame (if flags & 0x01)
     if (light->flags & LIGHT_FLAG_HAS_CURRENT_FRAME) {
-        light->currentFrame = *reinterpret_cast<const uint32_t*>(ptr);
+        light->currentFrame = read_val<uint32_t>(ptr);
         ptr += 4;
     }
 
     // Read optional sleep (if flags & 0x02)
     if (light->flags & LIGHT_FLAG_HAS_SLEEP) {
-        light->sleepMs = *reinterpret_cast<const uint32_t*>(ptr);
+        light->sleepMs = read_val<uint32_t>(ptr);
         ptr += 4;
     }
 
@@ -1467,7 +1478,7 @@ void WldLoader::parseFragment1B(const char* fragBuffer, uint32_t fragLength, uin
     if (light->flags & LIGHT_FLAG_HAS_LIGHT_LEVELS) {
         light->lightLevels.reserve(light->frameCount);
         for (uint32_t i = 0; i < light->frameCount; ++i) {
-            float level = *reinterpret_cast<const float*>(ptr);
+            float level = read_val<float>(ptr);
             light->lightLevels.push_back(level);
             ptr += 4;
         }
@@ -1478,11 +1489,11 @@ void WldLoader::parseFragment1B(const char* fragBuffer, uint32_t fragLength, uin
     if (light->flags & LIGHT_FLAG_HAS_COLOR) {
         light->colors.reserve(light->frameCount);
         for (uint32_t i = 0; i < light->frameCount; ++i) {
-            float r = *reinterpret_cast<const float*>(ptr);
+            float r = read_val<float>(ptr);
             ptr += 4;
-            float g = *reinterpret_cast<const float*>(ptr);
+            float g = read_val<float>(ptr);
             ptr += 4;
-            float b = *reinterpret_cast<const float*>(ptr);
+            float b = read_val<float>(ptr);
             ptr += 4;
             light->colors.push_back({r, g, b});
         }
@@ -1513,11 +1524,11 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
     // Matches eqsage: sage/lib/s3d/lights/light.js LightInstance
     // Places a light source at a position with a radius
 
-    const WldFragmentRef* ref = reinterpret_cast<const WldFragmentRef*>(fragBuffer);
-    const WldFragment28Header* header = reinterpret_cast<const WldFragment28Header*>(
+    WldFragmentRef ref = read_val<WldFragmentRef>(fragBuffer);
+    WldFragment28Header header = read_val<WldFragment28Header>(
         fragBuffer + sizeof(WldFragmentRef));
 
-    uint32_t lightDefIndex = ref->id;
+    uint32_t lightDefIndex = ref.id;
     if (lightDefIndex == 0) {
         return;
     }
@@ -1529,10 +1540,10 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
         light->r = 1.0f;
         light->g = 1.0f;
         light->b = 1.0f;
-        light->x = header->x;
-        light->y = header->y;
-        light->z = header->z;
-        light->radius = header->radius;
+        light->x = header.x;
+        light->y = header.y;
+        light->z = header.z;
+        light->radius = header.radius;
         lights_.push_back(light);
         return;
     }
@@ -1543,10 +1554,10 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
     light->r = it->second->r;
     light->g = it->second->g;
     light->b = it->second->b;
-    light->x = header->x;
-    light->y = header->y;
-    light->z = header->z;
-    light->radius = header->radius;
+    light->x = header.x;
+    light->y = header.y;
+    light->z = header.z;
+    light->radius = header.radius;
 
     // Copy animation data
     light->flags = it->second->flags;
@@ -1582,15 +1593,15 @@ void WldLoader::parseFragment2A(const char* fragBuffer, uint32_t fragLength, uin
     const char* ptr = fragBuffer;
 
     // Read flags and regionCount
-    ambient->flags = *reinterpret_cast<const uint32_t*>(ptr);
+    ambient->flags = read_val<uint32_t>(ptr);
     ptr += 4;
-    uint32_t regionCount = *reinterpret_cast<const uint32_t*>(ptr);
+    uint32_t regionCount = read_val<uint32_t>(ptr);
     ptr += 4;
 
     // Read region references
     ambient->regionRefs.reserve(regionCount);
     for (uint32_t i = 0; i < regionCount; ++i) {
-        int32_t regionRef = *reinterpret_cast<const int32_t*>(ptr);
+        int32_t regionRef = read_val<int32_t>(ptr);
         ambient->regionRefs.push_back(regionRef);
         ptr += 4;
     }
@@ -1634,7 +1645,7 @@ void WldLoader::parseFragment2F(const char* fragBuffer, uint32_t fragLength, uin
 
     // Read the fragment reference (to 0x37)
     const char* ptr = fragBuffer;
-    int32_t meshAnimVertRef = *reinterpret_cast<const int32_t*>(ptr);
+    int32_t meshAnimVertRef = read_val<int32_t>(ptr);
 
     LOG_DEBUG(MOD_GRAPHICS, "Fragment 0x2F: fragIndex={} meshAnimVertRef={}", fragIndex, meshAnimVertRef);
 
@@ -1663,12 +1674,12 @@ void WldLoader::parseFragment37(const char* fragBuffer, uint32_t fragLength, uin
     // Then vertex data: frameCount * vertexCount * 6 bytes
 
     const char* ptr = fragBuffer;
-    uint32_t flags = *reinterpret_cast<const uint32_t*>(ptr); ptr += 4;
-    uint16_t vertexCount = *reinterpret_cast<const uint16_t*>(ptr); ptr += 2;
-    uint16_t frameCount = *reinterpret_cast<const uint16_t*>(ptr); ptr += 2;
-    uint16_t delayMs = *reinterpret_cast<const uint16_t*>(ptr); ptr += 2;
-    uint16_t param2 = *reinterpret_cast<const uint16_t*>(ptr); ptr += 2;
-    int16_t scaleVal = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
+    uint32_t flags = read_val<uint32_t>(ptr); ptr += 4;
+    uint16_t vertexCount = read_val<uint16_t>(ptr); ptr += 2;
+    uint16_t frameCount = read_val<uint16_t>(ptr); ptr += 2;
+    uint16_t delayMs = read_val<uint16_t>(ptr); ptr += 2;
+    uint16_t param2 = read_val<uint16_t>(ptr); ptr += 2;
+    int16_t scaleVal = read_val<int16_t>(ptr); ptr += 2;
 
     // Header is 14 bytes: flags(4) + vertexCount(2) + frameCount(2) + delay(2) + param2(2) + scale(2)
     // ptr is already at byte 14 after reading header fields
@@ -1705,13 +1716,15 @@ void WldLoader::parseFragment37(const char* fragBuffer, uint32_t fragLength, uin
         animVerts->frames[f].positions.resize(vertexCount * 3);
 
         for (uint16_t v = 0; v < vertexCount; ++v) {
-            const int16_t* vertData = reinterpret_cast<const int16_t*>(ptr);
+            int16_t vd0 = read_val<int16_t>(ptr);
+            int16_t vd1 = read_val<int16_t>(ptr + 2);
+            int16_t vd2 = read_val<int16_t>(ptr + 4);
             ptr += 6;  // 3 x int16_t
 
             // Store raw EQ coordinates (transform applied at render time if needed)
-            animVerts->frames[f].positions[v * 3 + 0] = vertData[0] * scale;
-            animVerts->frames[f].positions[v * 3 + 1] = vertData[1] * scale;
-            animVerts->frames[f].positions[v * 3 + 2] = vertData[2] * scale;
+            animVerts->frames[f].positions[v * 3 + 0] = vd0 * scale;
+            animVerts->frames[f].positions[v * 3 + 1] = vd1 * scale;
+            animVerts->frames[f].positions[v * 3 + 2] = vd2 * scale;
         }
     }
 
@@ -1743,7 +1756,7 @@ static std::vector<bool> decodeRlePvs(const char* data, int16_t dataSize, uint32
         } else if (byte == 0x3F) {
             // 0x3F, WORD - skip forward by the amount given in the following 16-bit WORD
             if (i + 2 <= dataSize) {
-                uint16_t skipCount = *reinterpret_cast<const uint16_t*>(&data[i]);
+                uint16_t skipCount = read_val<uint16_t>(&data[i]);
                 i += 2;
                 region += skipCount;
             } else {
@@ -1776,7 +1789,7 @@ static std::vector<bool> decodeRlePvs(const char* data, int16_t dataSize, uint32
         } else { // byte == 0xFF
             // 0xFF, WORD - the number of region IDs given by the following WORD are nearby
             if (i + 2 <= dataSize) {
-                uint16_t includeCount = *reinterpret_cast<const uint16_t*>(&data[i]);
+                uint16_t includeCount = read_val<uint16_t>(&data[i]);
                 i += 2;
                 for (uint16_t j = 0; j < includeCount && region < numRegions; j++) {
                     visible[region++] = true;
@@ -1798,7 +1811,7 @@ void WldLoader::parseFragment21(const char* fragBuffer, uint32_t fragLength, uin
     }
 
     const char* ptr = fragBuffer;
-    uint32_t nodeCount = *reinterpret_cast<const uint32_t*>(ptr);
+    uint32_t nodeCount = read_val<uint32_t>(ptr);
     ptr += sizeof(uint32_t);
 
     LOG_TRACE(MOD_MAP, "[BSP] Fragment 0x21: fragLength={} Loading {} BSP tree nodes", fragLength, nodeCount);
@@ -1822,14 +1835,14 @@ void WldLoader::parseFragment21(const char* fragBuffer, uint32_t fragLength, uin
         if (ptr + 28 > fragBuffer + fragLength) break;
 
         BspNode node;
-        node.normalX = *reinterpret_cast<const float*>(ptr); ptr += 4;
-        node.normalY = *reinterpret_cast<const float*>(ptr); ptr += 4;
-        node.normalZ = *reinterpret_cast<const float*>(ptr); ptr += 4;
-        node.splitDistance = *reinterpret_cast<const float*>(ptr); ptr += 4;
-        node.regionId = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+        node.normalX = read_val<float>(ptr); ptr += 4;
+        node.normalY = read_val<float>(ptr); ptr += 4;
+        node.normalZ = read_val<float>(ptr); ptr += 4;
+        node.splitDistance = read_val<float>(ptr); ptr += 4;
+        node.regionId = read_val<int32_t>(ptr); ptr += 4;
         // Left/right are 1-indexed in file, convert to 0-indexed (-1 for no child)
-        int32_t leftRaw = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
-        int32_t rightRaw = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+        int32_t leftRaw = read_val<int32_t>(ptr); ptr += 4;
+        int32_t rightRaw = read_val<int32_t>(ptr); ptr += 4;
         node.left = leftRaw - 1;
         node.right = rightRaw - 1;
 
@@ -1866,26 +1879,26 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
 
     const char* ptr = fragBuffer;
 
-    int32_t flags = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+    int32_t flags = read_val<int32_t>(ptr); ptr += 4;
     region->containsPolygons = (flags == 0x181);
 
     // Skip unknown1 (always 0)
     ptr += 4;
 
-    int32_t data1Size = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
-    int32_t data2Size = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+    int32_t data1Size = read_val<int32_t>(ptr); ptr += 4;
+    int32_t data2Size = read_val<int32_t>(ptr); ptr += 4;
 
     // Skip unknown2 (always 0)
     ptr += 4;
 
-    int32_t data3Size = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
-    int32_t data4Size = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+    int32_t data3Size = read_val<int32_t>(ptr); ptr += 4;
+    int32_t data4Size = read_val<int32_t>(ptr); ptr += 4;
 
     // Skip unknown3 (always 0)
     ptr += 4;
 
-    int32_t data5Size = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
-    int32_t data6Size = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+    int32_t data5Size = read_val<int32_t>(ptr); ptr += 4;
+    int32_t data6Size = read_val<int32_t>(ptr); ptr += 4;
 
     // Skip data1 and data2 (12 bytes each entry)
     ptr += 12 * data1Size + 12 * data2Size;
@@ -1893,8 +1906,8 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
     // Skip data3 (variable size per entry)
     for (int32_t i = 0; i < data3Size; ++i) {
         if (ptr + 8 > fragBuffer + fragLength) break;
-        int32_t data3Flags = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
-        int32_t data3Size2 = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+        int32_t data3Flags = read_val<int32_t>(ptr); ptr += 4;
+        int32_t data3Size2 = read_val<int32_t>(ptr); ptr += 4;
         ptr += data3Size2 * 4;
     }
 
@@ -1906,7 +1919,7 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
     // Decode PVS (Potentially Visible Set) data
     // This RLE-encoded bitfield indicates which other regions are visible from this region
     if (ptr + 2 <= fragBuffer + fragLength) {
-        int16_t pvsSize = *reinterpret_cast<const int16_t*>(ptr); ptr += 2;
+        int16_t pvsSize = read_val<int16_t>(ptr); ptr += 2;
         if (pvsSize > 0 && totalRegionCount_ > 0 && ptr + pvsSize <= fragBuffer + fragLength) {
             region->visibleRegions = decodeRlePvs(ptr, pvsSize, totalRegionCount_);
             // Count visible regions for logging
@@ -1928,7 +1941,7 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
 
     // Read mesh reference if region contains polygons
     if (region->containsPolygons && ptr + 4 <= fragBuffer + fragLength) {
-        region->meshReference = *reinterpret_cast<const int32_t*>(ptr);
+        region->meshReference = read_val<int32_t>(ptr);
     }
 
     bspTree_->regions.push_back(region);
@@ -1944,14 +1957,14 @@ void WldLoader::parseFragment29(const char* fragBuffer, uint32_t fragLength, uin
 
     const char* ptr = fragBuffer;
 
-    int32_t flags = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
-    int32_t regionCount = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+    int32_t flags = read_val<int32_t>(ptr); ptr += 4;
+    int32_t regionCount = read_val<int32_t>(ptr); ptr += 4;
 
     // Read region indices and link this type to them
     std::vector<int32_t> regionIndices;
     for (int32_t i = 0; i < regionCount; ++i) {
         if (ptr + 4 > fragBuffer + fragLength) break;
-        int32_t regionIdx = *reinterpret_cast<const int32_t*>(ptr); ptr += 4;
+        int32_t regionIdx = read_val<int32_t>(ptr); ptr += 4;
         regionIndices.push_back(regionIdx);
     }
 

@@ -9,6 +9,14 @@
 namespace EQT {
 namespace Graphics {
 
+// Safe unaligned read helper - uses memcpy to avoid bus errors on ARM
+template<typename T>
+static inline T read_val(const void* ptr) {
+    T val;
+    std::memcpy(&val, ptr, sizeof(T));
+    return val;
+}
+
 #define POLYNOMIAL 0x04C11DB7
 
 // --- PfsCrc Implementation ---
@@ -106,7 +114,7 @@ bool PfsArchive::open(const std::string& filename) {
 
     // Read directory offset
     if (idx + sizeof(uint32_t) > buffer.size()) return false;
-    uint32_t dir_offset = *reinterpret_cast<uint32_t*>(&buffer[idx]);
+    uint32_t dir_offset = read_val<uint32_t>(&buffer[idx]);
     idx += sizeof(uint32_t);
 
     // Check magic "PFS "
@@ -119,7 +127,7 @@ bool PfsArchive::open(const std::string& filename) {
 
     // Read directory entries
     if (dir_offset + sizeof(uint32_t) > buffer.size()) return false;
-    uint32_t dir_count = *reinterpret_cast<uint32_t*>(&buffer[dir_offset]);
+    uint32_t dir_count = read_val<uint32_t>(&buffer[dir_offset]);
 
     std::vector<std::tuple<int32_t, uint32_t, uint32_t>> directoryEntries;
     std::vector<std::tuple<int32_t, std::string>> filenameEntries;
@@ -128,9 +136,9 @@ bool PfsArchive::open(const std::string& filename) {
         size_t entryOffset = dir_offset + 4 + (i * 12);
         if (entryOffset + 12 > buffer.size()) return false;
 
-        int32_t crc = *reinterpret_cast<int32_t*>(&buffer[entryOffset]);
-        uint32_t offset = *reinterpret_cast<uint32_t*>(&buffer[entryOffset + 4]);
-        uint32_t entry_size = *reinterpret_cast<uint32_t*>(&buffer[entryOffset + 8]);
+        int32_t crc = read_val<int32_t>(&buffer[entryOffset]);
+        uint32_t offset = read_val<uint32_t>(&buffer[entryOffset + 4]);
+        uint32_t entry_size = read_val<uint32_t>(&buffer[entryOffset + 8]);
 
         // Special CRC for filename table
         if (crc == 0x61580ac9) {
@@ -141,12 +149,12 @@ bool PfsArchive::open(const std::string& filename) {
 
             uint32_t filenamePos = 0;
             if (filenamePos + sizeof(uint32_t) > filenameBuffer.size()) return false;
-            uint32_t filenameCount = *reinterpret_cast<uint32_t*>(&filenameBuffer[filenamePos]);
+            uint32_t filenameCount = read_val<uint32_t>(&filenameBuffer[filenamePos]);
             filenamePos += sizeof(uint32_t);
 
             for (uint32_t j = 0; j < filenameCount; ++j) {
                 if (filenamePos + sizeof(uint32_t) > filenameBuffer.size()) return false;
-                uint32_t filenameLength = *reinterpret_cast<uint32_t*>(&filenameBuffer[filenamePos]);
+                uint32_t filenameLength = read_val<uint32_t>(&filenameBuffer[filenamePos]);
                 filenamePos += sizeof(uint32_t);
 
                 if (filenamePos + filenameLength > filenameBuffer.size()) return false;
@@ -251,8 +259,8 @@ bool PfsArchive::storeBlocksByOffset(uint32_t offset, uint32_t size,
 
     while (inflate_total < size) {
         if (position + 8 > inBuffer.size()) return false;
-        uint32_t deflateLength = *reinterpret_cast<const uint32_t*>(&inBuffer[position]);
-        uint32_t inflateLength = *reinterpret_cast<const uint32_t*>(&inBuffer[position + 4]);
+        uint32_t deflateLength = read_val<uint32_t>(&inBuffer[position]);
+        uint32_t inflateLength = read_val<uint32_t>(&inBuffer[position + 4]);
         inflate_total += inflateLength;
         position += deflateLength + 8;
     }
@@ -277,8 +285,8 @@ bool PfsArchive::inflateByOffset(uint32_t offset, uint32_t size,
 
     while (inflate_total < size) {
         if (position + 8 > inBuffer.size()) return false;
-        uint32_t deflateLength = *reinterpret_cast<const uint32_t*>(&inBuffer[position]);
-        uint32_t inflateLength = *reinterpret_cast<const uint32_t*>(&inBuffer[position + 4]);
+        uint32_t deflateLength = read_val<uint32_t>(&inBuffer[position]);
+        uint32_t inflateLength = read_val<uint32_t>(&inBuffer[position + 4]);
 
         if (position + 8 + deflateLength > inBuffer.size()) return false;
 

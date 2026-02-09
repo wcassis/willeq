@@ -12,7 +12,9 @@
 #include "client/graphics/sky_renderer.h"
 #include "client/zone_lines.h"
 #include "client/hc_map.h"
+#ifdef EQT_HAS_NAVMESH
 #include "client/pathfinder_nav_mesh.h"
+#endif
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -23,7 +25,10 @@
 #endif
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <json/json.h>
 #include <sstream>
 #include <cmath>
 #include <limits>
@@ -35,6 +40,114 @@
 
 namespace EQT {
 namespace Graphics {
+
+// Read display settings directly from config/display_settings.json
+// Used during early initialization before WindowManager/OptionsWindow exist
+static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
+    eqt::ui::DisplaySettings settings;  // defaults: everything enabled
+
+    for (const auto& path : {"config/display_settings.json", "../config/display_settings.json"}) {
+        std::ifstream file(path);
+        if (!file.is_open()) continue;
+
+        Json::Value root;
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        if (!Json::parseFromStream(builder, file, &root, &errors)) break;
+
+        if (root.isMember("environmentEffects")) {
+            const Json::Value& env = root["environmentEffects"];
+            settings.atmosphericParticles = env.get("atmosphericParticles", true).asBool();
+            settings.ambientCreatures = env.get("ambientCreatures", true).asBool();
+            settings.rollingObjects = env.get("rollingObjects", true).asBool();
+        }
+        if (root.isMember("detailObjects")) {
+            const Json::Value& detail = root["detailObjects"];
+            settings.detailObjectsEnabled = detail.get("enabled", true).asBool();
+        }
+        break;
+    }
+
+    return settings;
+}
+
+// Log detailed OpenGL/driver information for debugging GPU issues
+static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevice* device,
+                             const irr::SIrrlichtCreationParameters& params) {
+    if (!driver || !device) return;
+
+    // Driver name and type
+    const wchar_t* driverName = driver->getName();
+    std::wstring wname(driverName);
+    std::string name(wname.begin(), wname.end());
+    LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
+
+    // Requested vs actual parameters
+    auto screenSize = driver->getScreenSize();
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Screen size: {}x{} (requested {}x{})",
+              screenSize.Width, screenSize.Height,
+              params.WindowSize.Width, params.WindowSize.Height);
+
+    // Current color format
+    auto colorFormat = driver->getColorFormat();
+    const char* fmtName = "unknown";
+    switch (colorFormat) {
+        case irr::video::ECF_A1R5G5B5: fmtName = "A1R5G5B5 (16-bit)"; break;
+        case irr::video::ECF_R5G6B5:   fmtName = "R5G6B5 (16-bit)"; break;
+        case irr::video::ECF_R8G8B8:   fmtName = "R8G8B8 (24-bit)"; break;
+        case irr::video::ECF_A8R8G8B8: fmtName = "A8R8G8B8 (32-bit)"; break;
+        default: break;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Color format: {} (enum={})", fmtName, static_cast<int>(colorFormat));
+
+    // Max texture size
+    auto maxTexSize = driver->getMaxTextureSize();
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Max texture size: {}x{}", maxTexSize.Width, maxTexSize.Height);
+
+    // Feature support
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Feature support:");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Hardware TL: {}", driver->queryFeature(irr::video::EVDF_HARDWARE_TL) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Multitexture: {}", driver->queryFeature(irr::video::EVDF_MULTITEXTURE) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Bilinear filter: {}", driver->queryFeature(irr::video::EVDF_BILINEAR_FILTER) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   MipMap: {}", driver->queryFeature(irr::video::EVDF_MIP_MAP) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Stencil buffer: {}", driver->queryFeature(irr::video::EVDF_STENCIL_BUFFER) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Vertex shader 1.1: {}", driver->queryFeature(irr::video::EVDF_VERTEX_SHADER_1_1) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Pixel shader 1.1: {}", driver->queryFeature(irr::video::EVDF_PIXEL_SHADER_1_1) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Render to target: {}", driver->queryFeature(irr::video::EVDF_RENDER_TO_TARGET) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Alpha to coverage: {}", driver->queryFeature(irr::video::EVDF_ALPHA_TO_COVERAGE) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Texture NPOT: {}", driver->queryFeature(irr::video::EVDF_TEXTURE_NPOT) ? "yes" : "no");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL]   Framebuffer object: {}", driver->queryFeature(irr::video::EVDF_FRAMEBUFFER_OBJECT) ? "yes" : "no");
+
+    // Vendor info from Irrlicht (only for OpenGL driver)
+    auto vendorInfo = driver->getVendorInfo();
+    if (vendorInfo.size() > 0) {
+        std::string vendorStr(vendorInfo.c_str());
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Vendor info: {}", vendorStr);
+    }
+
+    // Available video modes
+    auto* videoModeList = device->getVideoModeList();
+    if (videoModeList) {
+        int modeCount = videoModeList->getVideoModeCount();
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Desktop resolution: {}x{} @{}bpp",
+                  videoModeList->getDesktopResolution().Width,
+                  videoModeList->getDesktopResolution().Height,
+                  videoModeList->getDesktopDepth());
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Available video modes: {}", modeCount);
+        for (int i = 0; i < modeCount && i < 10; ++i) {
+            auto res = videoModeList->getVideoModeResolution(i);
+            int depth = videoModeList->getVideoModeDepth(i);
+            LOG_TRACE(MOD_GRAPHICS, "[GL]   Mode {}: {}x{} @{}bpp", i, res.Width, res.Height, depth);
+        }
+    }
+
+    // Primitive counts
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Max primitive count: {}", driver->getMaximalPrimitiveCount());
+
+    // DISPLAY environment variable (important for X11/GLX)
+    const char* display = std::getenv("DISPLAY");
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY env: {}", display ? display : "(not set)");
+}
 
 // --- RendererEventReceiver Implementation ---
 
@@ -429,8 +542,10 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     irr::video::E_DRIVER_TYPE driverType;
     if (config.softwareRenderer) {
         driverType = irr::video::EDT_BURNINGSVIDEO;
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: Burnings Software (--opengl not set)");
     } else {
         driverType = irr::video::EDT_OPENGL;
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL (--opengl flag set)");
     }
 
     // Create device
@@ -442,22 +557,27 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     params.Vsync = true;
     params.AntiAlias = 0;
 
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
+              config.width, config.height, config.fullscreen, true, false, 0);
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
+
     device_ = irr::createDeviceEx(params);
 
     if (!device_) {
+        LOG_WARN(MOD_GRAPHICS, "[GL] Failed to create device with {} driver, falling back to software",
+                 config.softwareRenderer ? "Burnings" : "OpenGL");
         // Fall back to basic software renderer
         params.DriverType = irr::video::EDT_SOFTWARE;
         device_ = irr::createDeviceEx(params);
     }
 
     if (!device_) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device");
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device (all drivers failed)");
         return false;
     }
 
-    // Suppress Irrlicht's internal logging (e.g., "Loaded texture:" messages)
-    // These are too verbose for normal operation
-    device_->getLogger()->setLogLevel(irr::ELL_ERROR);
+    // Allow Irrlicht logging at DEBUG level, suppress at INFO
+    device_->getLogger()->setLogLevel(irr::ELL_WARNING);
 
     device_->setWindowCaption(irr::core::stringw(config.windowTitle.c_str()).c_str());
 
@@ -465,13 +585,8 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     smgr_ = device_->getSceneManager();
     guienv_ = device_->getGUIEnvironment();
 
-    // Log driver info
-    if (driver_) {
-        const wchar_t* driverName = driver_->getName();
-        std::wstring wname(driverName);
-        std::string name(wname.begin(), wname.end());
-        LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
-    }
+    // Log comprehensive driver/OpenGL details
+    logDriverDetails(driver_, device_, params);
 
     // Create constrained texture cache if in constrained mode
     if (config_.constrainedConfig.enabled && driver_) {
@@ -540,32 +655,11 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         }
     });
 
-    // Create environmental particle system
-    particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
-    if (!particleManager_->init(config.eqClientPath)) {
-        LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
-    }
-
-    // Create ambient creatures (boids) system
-    boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
-    if (!boidsManager_->init(config.eqClientPath)) {
-        LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
-    }
-
-    // Create tumbleweed manager (desert/plains rolling objects)
-    tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
-    if (!tumbleweedManager_->init()) {
-        LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
-    }
-
-    // Create weather effects controller (rain, snow, lightning)
-    weatherEffects_ = std::make_unique<WeatherEffectsController>(
-        smgr_, driver_, particleManager_.get(), skyRenderer_.get());
-    if (!weatherEffects_->initialize(config.eqClientPath)) {
-        LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
-    }
-    // Connect weather system to weather effects
-    weatherSystem_->addListener(weatherEffects_.get());
+    // Environmental managers (particleManager_, boidsManager_, tumbleweedManager_,
+    // weatherEffects_, detailManager_) are deferred to initializeForZone() / loadGlobalAssets()
+    // so that display_settings.json can control whether they are created at all.
+    // This prevents crash-causing systems (e.g. boids on ARM) from initializing
+    // when the user has disabled them in settings.
 
     // Apply initial settings
     wireframeMode_ = config.wireframe;
@@ -607,8 +701,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     irr::video::E_DRIVER_TYPE driverType;
     if (config.softwareRenderer) {
         driverType = irr::video::EDT_BURNINGSVIDEO;
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: Burnings Software");
     } else {
         driverType = irr::video::EDT_OPENGL;
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL");
     }
 
     // Create device
@@ -620,34 +716,34 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     params.Vsync = true;
     params.AntiAlias = 0;
 
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
+              config.width, config.height, config.fullscreen, true, false, 0);
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
+
     device_ = irr::createDeviceEx(params);
 
     if (!device_) {
-        // Fall back to basic software renderer
+        LOG_WARN(MOD_GRAPHICS, "[GL] Failed to create device with {} driver, falling back to software",
+                 config.softwareRenderer ? "Burnings" : "OpenGL");
         params.DriverType = irr::video::EDT_SOFTWARE;
         device_ = irr::createDeviceEx(params);
     }
 
     if (!device_) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device");
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device (all drivers failed)");
         return false;
     }
 
-    // Suppress Irrlicht's internal logging
-    device_->getLogger()->setLogLevel(irr::ELL_ERROR);
+    // Allow Irrlicht logging at DEBUG level, suppress at INFO
+    device_->getLogger()->setLogLevel(irr::ELL_WARNING);
     device_->setWindowCaption(irr::core::stringw(config.windowTitle.c_str()).c_str());
 
     driver_ = device_->getVideoDriver();
     smgr_ = device_->getSceneManager();
     guienv_ = device_->getGUIEnvironment();
 
-    // Log driver info
-    if (driver_) {
-        const wchar_t* driverName = driver_->getName();
-        std::wstring wname(driverName);
-        std::string name(wname.begin(), wname.end());
-        LOG_INFO(MOD_GRAPHICS, "Video driver: {}", name);
-    }
+    // Log comprehensive driver/OpenGL details
+    logDriverDetails(driver_, device_, params);
 
     // Create constrained texture cache if in constrained mode
     if (config_.constrainedConfig.enabled && driver_) {
@@ -698,32 +794,51 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         });
     }
 
-    // Create environmental particle system (needed before loadZone())
-    if (!particleManager_) {
+    // Check display settings to determine which environmental managers to create.
+    // Use OptionsWindow settings if available, otherwise read from JSON file directly.
+    eqt::ui::DisplaySettings displaySettings;
+    if (windowManager_ && windowManager_->getOptionsWindow()) {
+        displaySettings = windowManager_->getOptionsWindow()->getDisplaySettings();
+    } else {
+        displaySettings = loadDisplaySettingsFromFile();
+    }
+
+    // Create environmental particle system (only if atmospheric particles enabled)
+    if (!particleManager_ && displaySettings.atmosphericParticles) {
         particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
         }
+        LOG_INFO(MOD_GRAPHICS, "Particle manager initialized (atmospheric particles enabled in settings)");
+    } else if (!particleManager_) {
+        LOG_INFO(MOD_GRAPHICS, "Particle manager skipped (atmospheric particles disabled in settings)");
     }
 
-    // Create ambient creatures (boids) system (needed before loadZone())
-    if (!boidsManager_) {
+    // Create ambient creatures (boids) system (only if ambient creatures enabled)
+    if (!boidsManager_ && displaySettings.ambientCreatures) {
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
         if (!boidsManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
         }
+        LOG_INFO(MOD_GRAPHICS, "Boids manager initialized (ambient creatures enabled in settings)");
+    } else if (!boidsManager_) {
+        LOG_INFO(MOD_GRAPHICS, "Boids manager skipped (ambient creatures disabled in settings)");
     }
 
-    // Create tumbleweed manager (desert/plains rolling objects)
-    if (!tumbleweedManager_) {
+    // Create tumbleweed manager (only if rolling objects enabled)
+    if (!tumbleweedManager_ && displaySettings.rollingObjects) {
         tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
         if (!tumbleweedManager_->init()) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
         }
+        LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager initialized (rolling objects enabled in settings)");
+    } else if (!tumbleweedManager_) {
+        LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager skipped (rolling objects disabled in settings)");
     }
 
-    // Create weather effects controller (rain, snow, lightning)
-    if (!weatherEffects_) {
+    // Create weather effects controller (rain/snow particles, lightning)
+    // Only create if atmospheric particles are enabled, since it relies on particleManager_
+    if (!weatherEffects_ && displaySettings.atmosphericParticles) {
         weatherEffects_ = std::make_unique<WeatherEffectsController>(
             smgr_, driver_, particleManager_.get(), skyRenderer_.get());
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
@@ -733,6 +848,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (weatherSystem_) {
             weatherSystem_->addListener(weatherEffects_.get());
         }
+        LOG_INFO(MOD_GRAPHICS, "Weather effects initialized (atmospheric particles enabled in settings)");
+    } else if (!weatherEffects_) {
+        LOG_INFO(MOD_GRAPHICS, "Weather effects skipped (atmospheric particles disabled in settings)");
     }
 
     initialized_ = true;
@@ -809,11 +927,22 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         }
     }
 
-    // Create detail manager (grass, plants, debris)
+    // Create detail manager (grass, plants, debris) - only if enabled in settings
     if (!detailManager_) {
-        detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-        // Set surface maps path - surface map files are in data/detail/zones/
-        detailManager_->setSurfaceMapsPath("data/detail/zones");
+        eqt::ui::DisplaySettings detailSettings;
+        if (windowManager_ && windowManager_->getOptionsWindow()) {
+            detailSettings = windowManager_->getOptionsWindow()->getDisplaySettings();
+        } else {
+            detailSettings = loadDisplaySettingsFromFile();
+        }
+
+        if (detailSettings.detailObjectsEnabled) {
+            detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
+            detailManager_->setSurfaceMapsPath("data/detail/zones");
+            LOG_INFO(MOD_GRAPHICS, "Detail manager initialized (detail objects enabled in settings)");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Detail manager skipped (detail objects disabled in settings)");
+        }
     }
 
     // Initialize inventory window model view now that entity renderer is available
@@ -1639,8 +1768,37 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     }
 
     const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+    bool zoneLoaded = !currentZoneName_.empty();
 
-    // Apply particle manager settings
+    // --- Particle Manager: lazy create if toggled on ---
+    if (settings.atmosphericParticles && !particleManager_ && smgr_ && driver_) {
+        particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
+        if (!particleManager_->init(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager (lazy)");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Particle manager created (toggled on via settings)");
+        }
+        if (zoneLoaded) {
+            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+            particleManager_->onZoneEnter(currentZoneName_, biome);
+            if (detailManager_ && detailManager_->hasSurfaceMap()) {
+                particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+            }
+        }
+        // Also lazily create weather effects (rain/snow/lightning) now that particles are available
+        if (!weatherEffects_) {
+            weatherEffects_ = std::make_unique<WeatherEffectsController>(
+                smgr_, driver_, particleManager_.get(), skyRenderer_.get());
+            if (!weatherEffects_->initialize(config_.eqClientPath)) {
+                LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
+            }
+            if (weatherSystem_) {
+                weatherSystem_->addListener(weatherEffects_.get());
+            }
+            LOG_INFO(MOD_GRAPHICS, "Weather effects created (toggled on via settings)");
+        }
+    }
+
     if (particleManager_) {
         Environment::EffectQuality quality;
         switch (settings.environmentQuality) {
@@ -1669,7 +1827,24 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
                  static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity);
     }
 
-    // Apply boids manager settings
+    // --- Boids Manager: lazy create if toggled on ---
+    if (settings.ambientCreatures && !boidsManager_ && smgr_ && driver_) {
+        boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
+        if (!boidsManager_->init(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager (lazy)");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Boids manager created (toggled on via settings)");
+        }
+        if (zoneLoaded) {
+            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+            boidsManager_->setCollisionSelector(zoneTriangleSelector_);
+            if (detailManager_ && detailManager_->hasSurfaceMap()) {
+                boidsManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+            }
+            boidsManager_->onZoneEnter(currentZoneName_, biome);
+        }
+    }
+
     if (boidsManager_) {
         int quality = static_cast<int>(settings.environmentQuality);
         boidsManager_->setQuality(quality);
@@ -1680,7 +1855,26 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
                  quality, settings.ambientCreatures, settings.environmentDensity);
     }
 
-    // Apply detail manager settings (grass, plants, rocks, debris)
+    // --- Detail Manager: lazy create if toggled on ---
+    if (settings.detailObjectsEnabled && !detailManager_ && smgr_ && driver_) {
+        detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
+        detailManager_->setSurfaceMapsPath("data/detail/zones");
+        LOG_INFO(MOD_GRAPHICS, "Detail manager created (toggled on via settings)");
+
+        if (zoneLoaded && terrainOnlySelector_) {
+            std::shared_ptr<WldLoader> wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
+            std::shared_ptr<ZoneGeometry> zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
+            detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_, zoneMeshNode_, wldLoader, zoneGeom);
+            if (!regionMeshNodes_.empty()) {
+                for (auto& [regionIdx, node] : regionMeshNodes_) {
+                    if (node && node->getMesh()) {
+                        detailManager_->addMeshNodeForTextureLookup(node);
+                    }
+                }
+            }
+        }
+    }
+
     if (detailManager_) {
         detailManager_->setEnabled(settings.detailObjectsEnabled);
         detailManager_->setDensity(settings.detailDensity);
@@ -1699,7 +1893,24 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
                  settings.reactiveFoliage);
     }
 
-    // Apply tumbleweed settings
+    // --- Tumbleweed Manager: lazy create if toggled on ---
+    if (settings.rollingObjects && !tumbleweedManager_ && smgr_ && driver_) {
+        tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
+        if (!tumbleweedManager_->init()) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager (lazy)");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager created (toggled on via settings)");
+        }
+        if (zoneLoaded) {
+            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+            tumbleweedManager_->setCollisionSelector(zoneTriangleSelector_);
+            if (detailManager_ && detailManager_->hasSurfaceMap()) {
+                tumbleweedManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+            }
+            tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
+        }
+    }
+
     if (tumbleweedManager_) {
         tumbleweedManager_->setEnabled(settings.rollingObjects);
 
@@ -7994,6 +8205,7 @@ void IrrlichtRenderer::updateNavmeshOverlay(const glm::vec3& playerPos) {
     lastNavmeshOverlayUpdatePos_ = playerPos;
     navmeshOverlayTriangles_.clear();
 
+#ifdef EQT_HAS_NAVMESH
     // Get triangles within radius from navmesh (already in Irrlicht Y-up coords)
     auto triangles = navmesh_->GetTrianglesInRadius(playerPos, navmeshOverlayRadius_);
 
@@ -8019,6 +8231,7 @@ void IrrlichtRenderer::updateNavmeshOverlay(const glm::vec3& playerPos) {
     }
 
     LOG_DEBUG(MOD_GRAPHICS, "Navmesh overlay: Updated with {} triangles", navmeshOverlayTriangles_.size());
+#endif
 }
 
 irr::video::SColor IrrlichtRenderer::getNavmeshAreaColor(uint8_t areaType) const {

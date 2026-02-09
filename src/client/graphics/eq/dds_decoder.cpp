@@ -5,6 +5,14 @@
 namespace EQT {
 namespace Graphics {
 
+// Safe unaligned read helper - uses memcpy to avoid bus errors on ARM
+template<typename T>
+static inline T read_val(const void* ptr) {
+    T val;
+    std::memcpy(&val, ptr, sizeof(T));
+    return val;
+}
+
 // FourCC codes
 constexpr uint32_t FOURCC_DXT1 = 0x31545844; // "DXT1"
 constexpr uint32_t FOURCC_DXT3 = 0x33545844; // "DXT3"
@@ -22,18 +30,18 @@ DecodedImage DDSDecoder::decode(const std::vector<char>& data) {
         return result;
     }
 
-    const DDSHeader* header = reinterpret_cast<const DDSHeader*>(data.data());
+    DDSHeader header = read_val<DDSHeader>(data.data());
 
     // Verify magic
-    if (header->magic != 0x20534444) {  // "DDS "
+    if (header.magic != 0x20534444) {  // "DDS "
         return result;
     }
 
-    result.width = header->width;
-    result.height = header->height;
+    result.width = header.width;
+    result.height = header.height;
 
     // Check compression format
-    uint32_t fourCC = header->pixelFormat.fourCC;
+    uint32_t fourCC = header.pixelFormat.fourCC;
     const uint8_t* pixelData = reinterpret_cast<const uint8_t*>(data.data()) + 128;
     size_t pixelDataSize = data.size() - 128;
 

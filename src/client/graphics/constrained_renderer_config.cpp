@@ -73,7 +73,8 @@ std::string ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset pre
         case ConstrainedRenderingPreset::None:    return "None";
         case ConstrainedRenderingPreset::Voodoo1: return "Voodoo1";
         case ConstrainedRenderingPreset::Voodoo2: return "Voodoo2";
-        case ConstrainedRenderingPreset::TNT:     return "TNT";
+        case ConstrainedRenderingPreset::TNT:      return "TNT";
+        case ConstrainedRenderingPreset::OrangePi: return "OrangePi";
         case ConstrainedRenderingPreset::Custom:  return "Custom";
         default:                                   return "Unknown";
     }
@@ -127,6 +128,21 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.maxPolygonsPerFrame = 100000;
             break;
 
+        case ConstrainedRenderingPreset::OrangePi:
+            // Orange Pi One: Allwinner H3, Mali 400, 512MB shared RAM
+            // Tuned for 800x600 OpenGL with audio
+            config.enabled = true;
+            config.framebufferMemoryBytes = 4 * 1024 * 1024;  // 4MB
+            config.textureMemoryBytes = 32 * 1024 * 1024;     // 32MB
+            config.colorDepthBits = 16;
+            config.maxTextureDimension = 128;
+            // Render distance and geometry budgets
+            config.clipDistance = 400.0f;
+            config.entityRenderDistance = 200.0f;
+            config.maxVisibleEntities = 40;
+            config.maxPolygonsPerFrame = 40000;
+            break;
+
         case ConstrainedRenderingPreset::Custom:
             // Custom: enabled but use default values, caller should override
             config.enabled = true;
@@ -161,6 +177,9 @@ ConstrainedRenderingPreset ConstrainedRendererConfig::parsePreset(const std::str
     }
     if (lower == "tnt" || lower == "riva" || lower == "rivatnt") {
         return ConstrainedRenderingPreset::TNT;
+    }
+    if (lower == "orangepi" || lower == "opi") {
+        return ConstrainedRenderingPreset::OrangePi;
     }
     if (lower == "custom") {
         return ConstrainedRenderingPreset::Custom;

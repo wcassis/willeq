@@ -64,9 +64,9 @@ FIND_PACKAGE(Boost 1.70 COMPONENTS graph)
 
 # Find Recast/Detour (optional, for navmesh pathfinding)
 FIND_PATH(RECAST_INCLUDE_DIR Recast.h PATH_SUFFIXES recastnavigation)
-FIND_LIBRARY(RECAST_LIBRARY NAMES Recast PATHS /usr/lib/x86_64-linux-gnu)
+FIND_LIBRARY(RECAST_LIBRARY NAMES Recast)
 FIND_PATH(DETOUR_INCLUDE_DIR DetourNavMesh.h PATH_SUFFIXES recastnavigation)
-FIND_LIBRARY(DETOUR_LIBRARY NAMES Detour PATHS /usr/lib/x86_64-linux-gnu)
+FIND_LIBRARY(DETOUR_LIBRARY NAMES Detour)
 
 # Find Irrlicht (optional, for graphics rendering)
 IF(EQT_GRAPHICS)

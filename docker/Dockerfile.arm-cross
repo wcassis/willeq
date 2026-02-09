@@ -1,0 +1,518 @@
+# Cross-compilation environment for ARM (armhf) targeting Debian Jessie
+# Produces a willeq binary for Orange Pi One (Allwinner H3, Cortex-A7)
+#
+# Build: docker build -f docker/Dockerfile.arm-cross -t willeq-arm-cross .
+# Run:   docker run --rm -v $(pwd):/src -v $(pwd)/build-arm/bin:/output willeq-arm-cross
+#
+# Build options (passed as --build-arg):
+#   ENABLE_GRAPHICS=ON|OFF   (default: ON)
+#   ENABLE_AUDIO=ON|OFF      (default: ON)
+
+FROM debian:bullseye AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install cross-compiler, build tools, and GL headers (arch-independent)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    pkg-config \
+    gcc-arm-linux-gnueabihf \
+    g++-arm-linux-gnueabihf \
+    debootstrap \
+    wget \
+    ca-certificates \
+    git \
+    python3 \
+    xz-utils \
+    libgl-dev \
+    libegl-dev \
+    libgles-dev \
+    libtool \
+    automake \
+    autoconf \
+    xutils-dev \
+    xserver-xorg-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Stage: Create Jessie sysroot via debootstrap
+# ============================================================
+FROM base AS sysroot
+
+# Bootstrap Jessie armhf sysroot using --foreign mode
+# --foreign unpacks packages without running ARM post-install scripts,
+# which is exactly what we need for a cross-compilation sysroot (headers + libs)
+RUN debootstrap --no-check-gpg --foreign --arch=armhf \
+    --include=libssl-dev,zlib1g-dev,libx11-dev,libxxf86vm-dev,libgl1-mesa-dev,mesa-common-dev,libxau-dev,libxdmcp-dev,libxcb1-dev,x11proto-core-dev,x11proto-input-dev,x11proto-kb-dev,libglib2.0-dev,libffi-dev,libpcre3-dev,xserver-xorg-dev,x11proto-dri2-dev,x11proto-fonts-dev,libpixman-1-dev \
+    jessie /opt/jessie-sysroot http://archive.debian.org/debian/
+
+# Extract --include packages (--foreign first stage only extracts base packages;
+# --include packages are downloaded to var/cache/apt/archives but not unpacked)
+RUN for deb in /opt/jessie-sysroot/var/cache/apt/archives/*.deb; do \
+        [ -f "$deb" ] && dpkg-deb -x "$deb" /opt/jessie-sysroot/ || true; \
+    done
+
+# Create missing library symlinks (normally created by ldconfig in post-install)
+# --foreign mode unpacks .so.X.Y.Z files but doesn't create .so symlinks
+RUN cd /opt/jessie-sysroot && \
+    for lib in usr/lib/arm-linux-gnueabihf/lib*.so.*; do \
+        [ -f "$lib" ] || continue; \
+        base=$(echo "$(basename "$lib")" | sed 's/\.so\..*/.so/'); \
+        dir=$(dirname "$lib"); \
+        [ ! -e "$dir/$base" ] && ln -sf "$(basename "$lib")" "$dir/$base" || true; \
+    done && \
+    for lib in lib/arm-linux-gnueabihf/lib*.so.*; do \
+        [ -f "$lib" ] || continue; \
+        base=$(echo "$(basename "$lib")" | sed 's/\.so\..*/.so/'); \
+        dir=$(dirname "$lib"); \
+        [ ! -e "$dir/$base" ] && ln -sf "$(basename "$lib")" "$dir/$base" || true; \
+    done
+
+# Ensure GL headers exist (copy from host as fallback if mesa-dev extraction had issues)
+RUN if [ ! -f /opt/jessie-sysroot/usr/include/GL/gl.h ]; then \
+        mkdir -p /opt/jessie-sysroot/usr/include/GL && \
+        cp /usr/include/GL/*.h /opt/jessie-sysroot/usr/include/GL/; \
+    fi && \
+    if [ ! -d /opt/jessie-sysroot/usr/include/KHR ]; then \
+        mkdir -p /opt/jessie-sysroot/usr/include/KHR && \
+        cp /usr/include/KHR/*.h /opt/jessie-sysroot/usr/include/KHR/ 2>/dev/null || true; \
+    fi
+
+# Ensure EGL/GLES2 headers exist (for gl4es cross-compilation against Mali 400)
+RUN mkdir -p /opt/jessie-sysroot/usr/include/EGL /opt/jessie-sysroot/usr/include/GLES2 && \
+    cp /usr/include/EGL/*.h /opt/jessie-sysroot/usr/include/EGL/ 2>/dev/null || true && \
+    cp /usr/include/GLES2/*.h /opt/jessie-sysroot/usr/include/GLES2/ 2>/dev/null || true
+
+# Create stub libraries for link-time resolution (real ones provided by Mali blob at runtime)
+# libGL.so: only create stub if Mesa's wasn't extracted from Jessie packages
+# libEGL.so/libGLESv2.so: always create stubs (not in Jessie mesa packages)
+RUN echo 'void __gl_stub(void) {}' > /tmp/stub.c && \
+    if [ ! -e /opt/jessie-sysroot/usr/lib/arm-linux-gnueabihf/libGL.so ]; then \
+        arm-linux-gnueabihf-gcc -shared -o /opt/jessie-sysroot/usr/lib/arm-linux-gnueabihf/libGL.so /tmp/stub.c; \
+    fi && \
+    arm-linux-gnueabihf-gcc -shared -o /opt/jessie-sysroot/usr/lib/arm-linux-gnueabihf/libEGL.so /tmp/stub.c && \
+    arm-linux-gnueabihf-gcc -shared -o /opt/jessie-sysroot/usr/lib/arm-linux-gnueabihf/libGLESv2.so /tmp/stub.c && \
+    rm /tmp/stub.c
+
+# Fix any absolute symlinks in the sysroot to point within sysroot
+RUN cd /opt/jessie-sysroot && \
+    find . -type l | while read link; do \
+        target=$(readlink "$link"); \
+        if [ "${target#/}" != "$target" ]; then \
+            ln -sf "/opt/jessie-sysroot$target" "$link" 2>/dev/null || true; \
+        fi; \
+    done
+
+# ============================================================
+# Stage: Cross-compile dependencies from source
+# ============================================================
+FROM base AS deps
+
+COPY --from=sysroot /opt/jessie-sysroot /opt/jessie-sysroot
+
+ENV ARM_SYSROOT=/opt/jessie-sysroot
+ENV CROSS=arm-linux-gnueabihf
+ENV CC=${CROSS}-gcc
+ENV CXX=${CROSS}-g++
+ENV AR=${CROSS}-ar
+ENV RANLIB=${CROSS}-ranlib
+ENV STRIP=${CROSS}-strip
+ENV CFLAGS="--sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2"
+ENV CXXFLAGS="--sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2"
+ENV LDFLAGS="--sysroot=${ARM_SYSROOT}"
+ENV PKG_CONFIG_PATH="${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig:${ARM_SYSROOT}/usr/share/pkgconfig"
+ENV PKG_CONFIG_LIBDIR="${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig"
+ENV PKG_CONFIG_SYSROOT_DIR="${ARM_SYSROOT}"
+
+# Neutralize cross-compiler's Bullseye glibc (2.31) to force use of Jessie's (2.19).
+# The cross-compiler's paths (/usr/arm-linux-gnueabihf/{include,lib}/) are searched
+# even with --sysroot, leaking newer glibc into compilation (fcntl64 from headers)
+# and linking (GLIBC_2.27+ symbol versions from shared libraries).
+# Fix: replace headers with Jessie's, replace .so.N ELF files with Jessie's.
+# Keep linker scripts, CRT objects, and GCC runtime intact.
+RUN echo "=== Replacing cross-compiler glibc .so files with Jessie 2.19 ===" && \
+    for f in ${ARM_SYSROOT}/lib/arm-linux-gnueabihf/lib*.so.[0-9]*; do \
+        [ -e "$f" ] || continue; \
+        base=$(basename "$f"); \
+        rm -f "/usr/arm-linux-gnueabihf/lib/$base"; \
+        cp -L "$f" "/usr/arm-linux-gnueabihf/lib/$base"; \
+    done && \
+    rm -f /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3 && \
+    cp -L ${ARM_SYSROOT}/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 \
+          /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3 2>/dev/null || true && \
+    rm -f /usr/arm-linux-gnueabihf/lib/lib*-2.31.so \
+          /usr/arm-linux-gnueabihf/lib/ld-2.31.so && \
+    echo "Done"
+
+WORKDIR /tmp/deps
+
+# --- libuv 1.44.2 ---
+RUN wget -q https://dist.libuv.org/dist/v1.44.2/libuv-v1.44.2.tar.gz && \
+    tar xzf libuv-v1.44.2.tar.gz && \
+    cd libuv-v1.44.2 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=arm \
+        -DCMAKE_C_COMPILER=${CROSS}-gcc \
+        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+        -DBUILD_TESTING=OFF \
+        -DLIBUV_BUILD_SHARED=OFF && \
+    cmake --build . && \
+    cmake --install . && \
+    # Remove shared lib so cmake finds only static; create libuv.a symlink
+    # (libuv installs static as libuv_a.a, but find_library looks for libuv.a)
+    rm -f ${ARM_SYSROOT}/usr/lib/libuv.so* && \
+    ln -sf libuv_a.a ${ARM_SYSROOT}/usr/lib/libuv.a && \
+    cd /tmp/deps && rm -rf libuv-*
+
+# --- fmt 9.1.0 ---
+RUN wget -q https://github.com/fmtlib/fmt/releases/download/9.1.0/fmt-9.1.0.zip && \
+    python3 -c "import zipfile; zipfile.ZipFile('fmt-9.1.0.zip').extractall()" && \
+    cd fmt-9.1.0 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=arm \
+        -DCMAKE_C_COMPILER=${CROSS}-gcc \
+        -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+        -DFMT_TEST=OFF \
+        -DFMT_DOC=OFF && \
+    cmake --build . && \
+    cmake --install . && \
+    cd /tmp/deps && rm -rf fmt-*
+
+# --- jsoncpp 1.9.5 ---
+RUN wget -q https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.9.5.tar.gz -O jsoncpp-1.9.5.tar.gz && \
+    tar xzf jsoncpp-1.9.5.tar.gz && \
+    cd jsoncpp-1.9.5 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=arm \
+        -DCMAKE_C_COMPILER=${CROSS}-gcc \
+        -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+        -DJSONCPP_WITH_TESTS=OFF \
+        -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF \
+        -DBUILD_SHARED_LIBS=OFF && \
+    cmake --build . && \
+    cmake --install . && \
+    cd /tmp/deps && rm -rf jsoncpp-*
+
+# --- GLM (header-only) ---
+RUN wget -q https://github.com/g-truc/glm/releases/download/0.9.9.8/glm-0.9.9.8.zip && \
+    python3 -c "import zipfile; zipfile.ZipFile('glm-0.9.9.8.zip').extractall()" && \
+    cp -r glm/glm ${ARM_SYSROOT}/usr/include/ && \
+    rm -rf glm*
+
+# --- cereal (header-only serialization library) ---
+RUN wget -q https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.2.tar.gz -O cereal-1.3.2.tar.gz && \
+    tar xzf cereal-1.3.2.tar.gz && \
+    cp -r cereal-1.3.2/include/cereal ${ARM_SYSROOT}/usr/include/ && \
+    rm -rf cereal-*
+
+# --- Irrlicht 1.8.5 (optional, for graphics) ---
+# Built as STATIC library to avoid C++ ABI issues with -static-libstdc++
+# Irrlicht's bundled libpng 1.6.37 is missing the arm/ NEON source directory;
+# we download the upstream libpng 1.6.37 source and copy in the arm/ files
+# to enable hardware-accelerated PNG decoding via NEON intrinsics on Cortex-A7.
+ARG ENABLE_GRAPHICS=ON
+RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
+        wget -q https://downloads.sourceforge.net/irrlicht/irrlicht-1.8.5.zip && \
+        python3 -c "import zipfile; zipfile.ZipFile('irrlicht-1.8.5.zip').extractall()" && \
+        wget -q https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz && \
+        tar xJf libpng-1.6.37.tar.xz && \
+        cp -r libpng-1.6.37/arm irrlicht-1.8.5/source/Irrlicht/libpng/ && \
+        cd irrlicht-1.8.5/source/Irrlicht && \
+        sed -i 's|^LIBPNGOBJ = |LIBPNGOBJ = libpng/arm/arm_init.o libpng/arm/filter_neon_intrinsics.o libpng/arm/palette_neon_intrinsics.o |' Makefile && \
+        python3 -c "s=open('CIrrDeviceLinux.cpp').read();old='os::Printer::log(\"Fatal error, could not get visual.\", ELL_ERROR);';new='XVisualInfo _vt;int _nv;_vt.screen=screennr;_vt.visualid=XVisualIDFromVisual(DefaultVisual(display,screennr));visual=XGetVisualInfo(display,VisualIDMask|VisualScreenMask,&_vt,&_nv);if(visual)os::Printer::log(\"Using default visual (gl4es fallback).\",ELL_WARNING);} if(!visual){os::Printer::log(\"Fatal error, could not get visual.\", ELL_ERROR);';assert old in s,'patch target not found';open('CIrrDeviceLinux.cpp','w').write(s.replace(old,new,1))" && \
+        make NDEBUG=1 \
+            CC="${CROSS}-gcc --sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            CXX="${CROSS}-g++ --sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            AR="${CROSS}-ar" \
+            staticlib && \
+        cp ../../lib/Linux/libIrrlicht.a ${ARM_SYSROOT}/usr/lib/ && \
+        cp -r ../../include ${ARM_SYSROOT}/usr/include/irrlicht && \
+        cd /tmp/deps && rm -rf irrlicht-* libpng-*; \
+    fi
+
+# --- gl4es v1.1.6 (OpenGL-to-GLES2 translation layer for Mali 400 GPU) ---
+# Provides libGL.so.1 that translates desktop OpenGL calls to OpenGL ES 2.0,
+# enabling Irrlicht's EDT_OPENGL driver to work on Mali 400 hardware.
+# Uses ODROID profile (Mali 400 optimizations, same GPU as Orange Pi One).
+# Patched: Mali 400 EGL fallbacks in glXChooseFBConfig and glXCreateContext
+# (Mali blob may return 0 for EGL_NATIVE_VISUAL_ID, and EGL_DEFAULT_DISPLAY
+# used with LIBGL_FB=1 may not support EGL_WINDOW_BIT surface type).
+COPY docker/gl4es-mali400-patch.py /tmp/gl4es-mali400-patch.py
+RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
+        wget -q https://github.com/ptitSeb/gl4es/archive/refs/tags/v1.1.6.tar.gz -O gl4es-1.1.6.tar.gz && \
+        tar xzf gl4es-1.1.6.tar.gz && \
+        cd gl4es-1.1.6 && \
+        python3 /tmp/gl4es-mali400-patch.py src/glx/glx.c && \
+        mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DODROID=1 && \
+        cmake --build . && \
+        mkdir -p ${ARM_SYSROOT}/usr/lib/gl4es && \
+        cp ../lib/libGL.so.1 ${ARM_SYSROOT}/usr/lib/gl4es/ && \
+        cd /tmp/deps && rm -rf gl4es-*; \
+    fi
+
+# --- libUMP headers + stub (Unified Memory Provider for Mali GPU) ---
+# Required by xf86-video-fbturbo for DRI2/Mali acceleration.
+# Real libUMP.so is provided by the Mali blob on the target device.
+# We just need the headers and a stub library for cross-compilation.
+RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
+        mkdir -p ${ARM_SYSROOT}/usr/include/ump && \
+        printf '%s\n' \
+            '#ifndef _UMP_PLATFORM_H_' \
+            '#define _UMP_PLATFORM_H_' \
+            'typedef unsigned int ump_secure_id;' \
+            'typedef void* ump_handle;' \
+            '#define UMP_INVALID_MEMORY_HANDLE ((ump_handle)0)' \
+            '#define UMP_INVALID_SECURE_ID ((ump_secure_id)0)' \
+            '#endif' \
+            > ${ARM_SYSROOT}/usr/include/ump/ump_platform.h && \
+        printf '%s\n' \
+            '#ifndef _UMP_H_' \
+            '#define _UMP_H_' \
+            '#include "ump_platform.h"' \
+            '#ifdef __cplusplus' \
+            'extern "C" {' \
+            '#endif' \
+            'typedef enum { UMP_OK = 0, UMP_ERROR = 1 } ump_result;' \
+            'typedef enum { UMP_USED_BY_CPU = 0, UMP_USED_BY_MALI = 1, UMP_USED_BY_UNKNOWN_DEVICE = 100 } ump_hw_usage;' \
+            'typedef enum { UMP_CACHE_OP_START = 0, UMP_CACHE_OP_FINISH = 1 } ump_cache_op_control;' \
+            'ump_result ump_open(void);' \
+            'void ump_close(void);' \
+            'ump_secure_id ump_secure_id_get(ump_handle);' \
+            'ump_handle ump_handle_create_from_secure_id(ump_secure_id);' \
+            'void *ump_mapped_pointer_get(ump_handle);' \
+            'void ump_mapped_pointer_release(ump_handle);' \
+            'unsigned long ump_size_get(ump_handle);' \
+            'void ump_reference_add(ump_handle);' \
+            'void ump_reference_release(ump_handle);' \
+            'void ump_cache_operations_control(ump_cache_op_control);' \
+            'void ump_switch_hw_usage_secure_id(ump_secure_id, ump_hw_usage);' \
+            '#ifdef __cplusplus' \
+            '}' \
+            '#endif' \
+            '#endif' \
+            > ${ARM_SYSROOT}/usr/include/ump/ump.h && \
+        printf '%s\n' \
+            '#ifndef _UMP_REF_DRV_H_' \
+            '#define _UMP_REF_DRV_H_' \
+            '#include "ump.h"' \
+            '#ifdef __cplusplus' \
+            'extern "C" {' \
+            '#endif' \
+            'typedef enum { UMP_REF_DRV_CONSTRAINT_NONE = 0, UMP_REF_DRV_CONSTRAINT_PHYSICALLY_LINEAR = 1, UMP_REF_DRV_CONSTRAINT_USE_CACHE = 4 } ump_alloc_constraints;' \
+            'ump_handle ump_ref_drv_allocate(unsigned long size, ump_alloc_constraints constraints);' \
+            'void ump_ref_drv_open(void);' \
+            'void ump_ref_drv_close(void);' \
+            '#ifdef __cplusplus' \
+            '}' \
+            '#endif' \
+            '#endif' \
+            > ${ARM_SYSROOT}/usr/include/ump/ump_ref_drv.h && \
+        printf '%s\n' \
+            '#include "ump/ump.h"' \
+            '#include "ump/ump_ref_drv.h"' \
+            'ump_result ump_open(void) { return UMP_OK; }' \
+            'void ump_close(void) {}' \
+            'ump_secure_id ump_secure_id_get(ump_handle h) { return 0; }' \
+            'ump_handle ump_handle_create_from_secure_id(ump_secure_id id) { return 0; }' \
+            'void *ump_mapped_pointer_get(ump_handle h) { return 0; }' \
+            'void ump_mapped_pointer_release(ump_handle h) {}' \
+            'unsigned long ump_size_get(ump_handle h) { return 0; }' \
+            'void ump_reference_add(ump_handle h) {}' \
+            'void ump_reference_release(ump_handle h) {}' \
+            'void ump_cache_operations_control(ump_cache_op_control op) {}' \
+            'void ump_switch_hw_usage_secure_id(ump_secure_id id, ump_hw_usage usage) {}' \
+            'ump_handle ump_ref_drv_allocate(unsigned long s, ump_alloc_constraints c) { return 0; }' \
+            'void ump_ref_drv_open(void) {}' \
+            'void ump_ref_drv_close(void) {}' \
+            > /tmp/ump_stub.c && \
+        ${CROSS}-gcc --sysroot=${ARM_SYSROOT} -shared -Wl,-soname,libUMP.so.3 \
+            -I${ARM_SYSROOT}/usr/include \
+            -o ${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/libUMP.so.3 /tmp/ump_stub.c && \
+        ln -sf libUMP.so.3 ${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/libUMP.so && \
+        rm /tmp/ump_stub.c; \
+    fi
+
+# --- xf86-video-fbturbo 0.4.0 (Xorg driver for Mali 400 DRI2) ---
+# Replaces the basic fbdev Xorg driver with one that provides DRI2,
+# which is required for Mali EGL to work under X11.
+RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
+        cd /tmp/deps && \
+        git clone -b 0.4.0 --depth 1 https://github.com/ssvb/xf86-video-fbturbo.git && \
+        cd xf86-video-fbturbo && \
+        autoreconf -vi && \
+        ./configure --prefix=/usr --host=${CROSS} \
+            CFLAGS="--sysroot=${ARM_SYSROOT} -march=armv7-a -mfloat-abi=hard -I${ARM_SYSROOT}/usr/include" \
+            LDFLAGS="--sysroot=${ARM_SYSROOT} -L${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf" \
+            PKG_CONFIG_PATH="${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig:${ARM_SYSROOT}/usr/share/pkgconfig" \
+            PKG_CONFIG_SYSROOT_DIR="${ARM_SYSROOT}" && \
+        make && \
+        mkdir -p ${ARM_SYSROOT}/usr/lib/fbturbo && \
+        cp src/.libs/fbturbo_drv.so ${ARM_SYSROOT}/usr/lib/fbturbo/ && \
+        cp xorg.conf ${ARM_SYSROOT}/usr/lib/fbturbo/xorg.conf && \
+        cd /tmp/deps && rm -rf xf86-video-fbturbo; \
+    fi
+
+# --- OpenAL Soft 1.21.1 (optional, for audio) ---
+ARG ENABLE_AUDIO=ON
+RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
+        wget -q https://github.com/kcat/openal-soft/archive/refs/tags/1.21.1.tar.gz -O openal-soft-1.21.1.tar.gz && \
+        tar xzf openal-soft-1.21.1.tar.gz && \
+        cd openal-soft-1.21.1 && \
+        mkdir -p build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+            -DALSOFT_UTILS=OFF \
+            -DALSOFT_EXAMPLES=OFF \
+            -DALSOFT_TESTS=OFF \
+            -DLIBTYPE=STATIC && \
+        cmake --build . && \
+        cmake --install . && \
+        cd /tmp/deps && rm -rf openal-soft-*; \
+    fi
+
+# --- libsndfile 1.0.31 (optional, for audio) ---
+RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
+        wget -q https://github.com/libsndfile/libsndfile/releases/download/1.0.31/libsndfile-1.0.31.tar.bz2 && \
+        tar xjf libsndfile-1.0.31.tar.bz2 && \
+        cd libsndfile-1.0.31 && \
+        mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_PROGRAMS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_TESTING=OFF && \
+        cmake --build . && \
+        cmake --install . && \
+        cd /tmp/deps && rm -rf libsndfile-*; \
+    fi
+
+# --- FluidSynth 2.2.9 (optional, for MIDI/XMI music) ---
+RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
+        wget -q https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v2.2.9.tar.gz -O fluidsynth-2.2.9.tar.gz && \
+        tar xzf fluidsynth-2.2.9.tar.gz && \
+        cd fluidsynth-2.2.9 && \
+        mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+            -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
+            -DBUILD_SHARED_LIBS=OFF \
+            -Denable-readline=OFF \
+            -Denable-dbus=OFF \
+            -Denable-pulseaudio=OFF \
+            -Denable-jack=OFF \
+            -Denable-pipewire=OFF \
+            -Denable-sdl2=OFF \
+            -Denable-alsa=OFF \
+            -Denable-oss=OFF \
+            -Denable-libinstpatch=OFF && \
+        cmake --build . && \
+        cmake --install . && \
+        cd /tmp/deps && rm -rf fluidsynth-*; \
+    fi
+
+# ============================================================
+# Stage: Build willeq
+# ============================================================
+FROM base AS builder
+
+ARG ENABLE_GRAPHICS=ON
+ARG ENABLE_AUDIO=ON
+
+COPY --from=deps /opt/jessie-sysroot /opt/jessie-sysroot
+
+ENV ARM_SYSROOT=/opt/jessie-sysroot
+
+# Neutralize cross-compiler's Bullseye glibc .so files (same as deps stage)
+RUN for f in ${ARM_SYSROOT}/lib/arm-linux-gnueabihf/lib*.so.[0-9]*; do \
+        [ -e "$f" ] || continue; \
+        base=$(basename "$f"); \
+        rm -f "/usr/arm-linux-gnueabihf/lib/$base"; \
+        cp -L "$f" "/usr/arm-linux-gnueabihf/lib/$base"; \
+    done && \
+    rm -f /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3 && \
+    cp -L ${ARM_SYSROOT}/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 \
+          /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3 2>/dev/null || true && \
+    rm -f /usr/arm-linux-gnueabihf/lib/lib*-2.31.so \
+          /usr/arm-linux-gnueabihf/lib/ld-2.31.so
+
+# Create fcntl64 compat wrapper: Bullseye headers redirect fcntl->fcntl64,
+# but Jessie's glibc 2.19 doesn't have fcntl64. Provide it as a shim.
+# Compiled with --sysroot so fcntl() is NOT redirected back to fcntl64.
+RUN printf '#include <fcntl.h>\n#include <stdarg.h>\nint fcntl64(int fd, int cmd, ...) {\n  va_list ap; va_start(ap, cmd);\n  void *arg = va_arg(ap, void*);\n  va_end(ap);\n  return fcntl(fd, cmd, arg);\n}\n' > /tmp/compat_fcntl64.c && \
+    arm-linux-gnueabihf-gcc --sysroot=${ARM_SYSROOT} -march=armv7-a -mfloat-abi=hard \
+        -O2 -c /tmp/compat_fcntl64.c -o /tmp/compat_fcntl64.o && \
+    arm-linux-gnueabihf-ar rcs ${ARM_SYSROOT}/usr/lib/libcompat_glibc.a /tmp/compat_fcntl64.o && \
+    rm /tmp/compat_fcntl64.c /tmp/compat_fcntl64.o
+
+WORKDIR /build
+
+ENTRYPOINT ["/bin/bash", "-c", "\
+    cmake /src \
+        -DCMAKE_TOOLCHAIN_FILE=/src/cmake/toolchains/arm-linux-gnueabihf.cmake \
+        -DARM_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_FLAGS_RELEASE='-O2 -DNDEBUG -static-libstdc++' \
+        -DCMAKE_EXE_LINKER_FLAGS='-static-libstdc++' \
+        -DCMAKE_CXX_STANDARD_LIBRARIES='-lcompat_glibc -lglib-2.0 -lgthread-2.0 -lgomp -lffi -lpcre -lpthread -lm -ldl' \
+        -DEQT_GRAPHICS=${ENABLE_GRAPHICS:-ON} \
+        -DIRRLICHT_INCLUDE_DIR=${ARM_SYSROOT}/usr/include/irrlicht \
+        -DIRRLICHT_LIBRARY=${ARM_SYSROOT}/usr/lib/libIrrlicht.a \
+        -DWITH_RDP=OFF \
+        -DEQT_BUILD_TESTS=OFF \
+    && cmake --build . --target willeq \
+    && arm-linux-gnueabihf-strip bin/willeq \
+    && mkdir -p /output/bin && cp bin/willeq /output/bin/willeq \
+    && if [ -f ${ARM_SYSROOT}/usr/lib/gl4es/libGL.so.1 ]; then \
+           mkdir -p /output/lib && \
+           cp ${ARM_SYSROOT}/usr/lib/gl4es/libGL.so.1 /output/lib/; \
+       fi \
+    && if [ -f ${ARM_SYSROOT}/usr/lib/fbturbo/fbturbo_drv.so ]; then \
+           mkdir -p /output/xorg && \
+           cp ${ARM_SYSROOT}/usr/lib/fbturbo/fbturbo_drv.so /output/xorg/ && \
+           cp ${ARM_SYSROOT}/usr/lib/fbturbo/xorg.conf /output/xorg/; \
+       fi \
+    && echo '=== Build complete ===' \
+"]

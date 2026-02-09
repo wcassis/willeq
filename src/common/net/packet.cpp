@@ -1,6 +1,7 @@
 #include "common/net/packet.h"
 #include "common/net/endian.h"
 #include <cctype>
+#include <cstring>
 #include <fmt/format.h>
 
 void EQ::Net::Packet::PutInt8(size_t offset, int8_t value)
@@ -22,7 +23,7 @@ void EQ::Net::Packet::PutInt16(size_t offset, int16_t value)
 		}
 	}
 
-	*(int16_t*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutInt32(size_t offset, int32_t value)
@@ -33,7 +34,7 @@ void EQ::Net::Packet::PutInt32(size_t offset, int32_t value)
 		}
 	}
 
-	*(int32_t*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutInt64(size_t offset, int64_t value)
@@ -44,7 +45,7 @@ void EQ::Net::Packet::PutInt64(size_t offset, int64_t value)
 		}
 	}
 
-	*(int64_t*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutUInt8(size_t offset, uint8_t value)
@@ -66,7 +67,7 @@ void EQ::Net::Packet::PutUInt16(size_t offset, uint16_t value)
 		}
 	}
 
-	*(uint16_t*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutUInt32(size_t offset, uint32_t value)
@@ -77,7 +78,7 @@ void EQ::Net::Packet::PutUInt32(size_t offset, uint32_t value)
 		}
 	}
 
-	*(uint32_t*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutUInt64(size_t offset, uint64_t value)
@@ -88,7 +89,7 @@ void EQ::Net::Packet::PutUInt64(size_t offset, uint64_t value)
 		}
 	}
 
-	*(uint64_t*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutFloat(size_t offset, float value)
@@ -99,7 +100,7 @@ void EQ::Net::Packet::PutFloat(size_t offset, float value)
 		}
 	}
 
-	*(float*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutDouble(size_t offset, double value)
@@ -110,7 +111,7 @@ void EQ::Net::Packet::PutDouble(size_t offset, double value)
 		}
 	}
 
-	*(double*)((char*)Data() + offset) = value;
+	memcpy((char*)Data() + offset, &value, sizeof(value));
 }
 
 void EQ::Net::Packet::PutString(size_t offset, const std::string &str)
@@ -182,7 +183,7 @@ int16_t EQ::Net::Packet::GetInt16(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(int16_t*)((char*)Data() + offset);
+	int16_t value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 int32_t EQ::Net::Packet::GetInt32(size_t offset) const
@@ -191,7 +192,7 @@ int32_t EQ::Net::Packet::GetInt32(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(int32_t*)((char*)Data() + offset);
+	int32_t value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 int64_t EQ::Net::Packet::GetInt64(size_t offset) const
@@ -200,7 +201,7 @@ int64_t EQ::Net::Packet::GetInt64(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(int64_t*)((char*)Data() + offset);
+	int64_t value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 uint8_t EQ::Net::Packet::GetUInt8(size_t offset) const
@@ -218,7 +219,7 @@ uint16_t EQ::Net::Packet::GetUInt16(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(uint16_t*)((char*)Data() + offset);
+	uint16_t value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 uint32_t EQ::Net::Packet::GetUInt32(size_t offset) const
@@ -227,7 +228,7 @@ uint32_t EQ::Net::Packet::GetUInt32(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(uint32_t*)((char*)Data() + offset);
+	uint32_t value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 uint64_t EQ::Net::Packet::GetUInt64(size_t offset) const
@@ -236,7 +237,7 @@ uint64_t EQ::Net::Packet::GetUInt64(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(uint64_t*)((char*)Data() + offset);
+	uint64_t value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 float EQ::Net::Packet::GetFloat(size_t offset) const
@@ -245,7 +246,7 @@ float EQ::Net::Packet::GetFloat(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(float*)((char*)Data() + offset);
+	float value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 double EQ::Net::Packet::GetDouble(size_t offset) const
@@ -254,7 +255,7 @@ double EQ::Net::Packet::GetDouble(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	return *(double*)((char*)Data() + offset);
+	double value; memcpy(&value, (char*)Data() + offset, sizeof(value)); return value;
 }
 
 std::string EQ::Net::Packet::GetString(size_t offset, size_t length) const

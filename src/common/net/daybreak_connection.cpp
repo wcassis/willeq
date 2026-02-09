@@ -3,6 +3,7 @@
 #include "common/util/data_verification.h"
 #include "common/net/crc32.h"
 #include "common/logging.h"
+#include <cstring>
 #include <zlib.h>
 #include <fmt/format.h>
 
@@ -895,9 +896,9 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 					uint16_t app_opcode = 0;
 					uint16_t spawn_id = 0;
 					if (subpacket_length >= 2) {
-						app_opcode = *(uint16_t*)current;
+						memcpy(&app_opcode, current, sizeof(app_opcode));
 						if (subpacket_length >= 4) {
-							spawn_id = *(uint16_t*)(current + 2);
+							memcpy(&spawn_id, current + 2, sizeof(spawn_id));
 						}
 					}
 					LOG_TRACE(MOD_NET, "OP_Combined subpacket {}: {} bytes, first_byte={:#04x}, opcode={:#06x}, spawn_id={}",
@@ -1279,11 +1280,11 @@ bool EQ::Net::DaybreakConnection::ValidateCRC(Packet &p)
 	int actual = 0;
 	switch (m_crc_bytes) {
 		case 2:
-			actual = NetworkToHost(*(int16_t*)&data[p.Length() - (size_t)m_crc_bytes]) & 0xffff;
+			{ int16_t tmp; memcpy(&tmp, &data[p.Length() - (size_t)m_crc_bytes], sizeof(tmp)); actual = NetworkToHost(tmp) & 0xffff; }
 			calculated = Crc32(data, (int)(p.Length() - (size_t)m_crc_bytes), m_encode_key) & 0xffff;
 			break;
 		case 4:
-			actual = NetworkToHost(*(int32_t*)&data[p.Length() - (size_t)m_crc_bytes]);
+			{ int32_t tmp; memcpy(&tmp, &data[p.Length() - (size_t)m_crc_bytes], sizeof(tmp)); actual = NetworkToHost(tmp); }
 			calculated = Crc32(data, (int)(p.Length() - (size_t)m_crc_bytes), m_encode_key);
 			break;
 		default:

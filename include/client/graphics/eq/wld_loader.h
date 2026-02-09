@@ -654,7 +654,7 @@ private:
     void parseFragment2D(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
     void parseFragment10(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash, bool oldFormat,
-                         const std::vector<std::pair<size_t, const WldFragmentHeader*>>& fragments,
+                         const std::vector<std::pair<size_t, WldFragmentHeader>>& fragments,
                          const std::vector<char>& buffer);
     void parseFragment11(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
     void parseFragment12(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
