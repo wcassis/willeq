@@ -229,6 +229,27 @@ private:
 
     ActionResult cmdFilter(const std::string& args);
 
+    // Extended commands from main.cpp ProcessCommand
+    ActionResult cmdWalk(const std::string& args);
+    ActionResult cmdRun(const std::string& args);
+    ActionResult cmdSneak(const std::string& args);
+    ActionResult cmdCrouch(const std::string& args);
+    ActionResult cmdFeign(const std::string& args);
+    ActionResult cmdJump(const std::string& args);
+    ActionResult cmdTurn(const std::string& args);
+    ActionResult cmdList(const std::string& args);
+    ActionResult cmdDump(const std::string& args);
+    ActionResult cmdHunt(const std::string& args);
+    ActionResult cmdAutoLoot(const std::string& args);
+    ActionResult cmdListTargets(const std::string& args);
+    ActionResult cmdLoot(const std::string& args);
+    ActionResult cmdPathfinding(const std::string& args);
+    ActionResult cmdRoleplay(const std::string& args);
+    ActionResult cmdWave(const std::string& args);
+    ActionResult cmdDance(const std::string& args);
+    ActionResult cmdCheer(const std::string& args);
+    ActionResult cmdLaugh(const std::string& args);
+
     // Helper methods
     static std::string toLower(const std::string& str);
     static std::pair<std::string, std::string> parseCommandLine(const std::string& input);

@@ -483,6 +483,59 @@ void EqActionHandler::tradeskillCombine() {
     LOG_DEBUG(MOD_UI, "Tradeskill combine would need to be routed through tradeskill window");
 }
 
+// ========== Extended Movement ==========
+
+void EqActionHandler::setMovementMode(int mode) {
+    m_eq.SetMovementMode(static_cast<MovementMode>(mode));
+}
+
+void EqActionHandler::setPositionState(int state) {
+    m_eq.SetPositionState(static_cast<PositionState>(state));
+}
+
+// ========== Extended Character State ==========
+
+void EqActionHandler::setRoleplay(bool rp) {
+    m_eq.SetRoleplay(rp);
+}
+
+void EqActionHandler::setPathfinding(bool enabled) {
+    m_eq.SetPathfinding(enabled);
+}
+
+// ========== Extended Combat ==========
+
+void EqActionHandler::setAutoHunting(bool enabled) {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->SetAutoHunting(enabled);
+    }
+}
+
+void EqActionHandler::setAutoLoot(bool enabled) {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->SetAutoLootEnabled(enabled);
+    }
+}
+
+void EqActionHandler::listHuntTargets() {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->ListHuntTargets();
+    }
+}
+
+// ========== Entity Query ==========
+
+void EqActionHandler::listEntities(const std::string& filter) {
+    m_eq.ListEntities(filter);
+}
+
+void EqActionHandler::dumpEntityAppearance(const std::string& name) {
+    m_eq.DumpEntityAppearance(name);
+}
+
 // ========== Utility ==========
 
 void EqActionHandler::sendAnimation(uint8_t animationId, uint8_t speed) {

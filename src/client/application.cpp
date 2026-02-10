@@ -1,6 +1,8 @@
 #include "client/application.h"
+#include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/eq_action_handler.h"
+#include "client/combat.h"
 #include "client/mode/automated_mode.h"
 #include "client/mode/headless_mode.h"
 #include "client/mode/graphical_mode.h"
@@ -10,16 +12,44 @@
 #include "common/event/event_loop.h"
 #include "common/util/json_config.h"
 #include "common/logging.h"
+#include "common/performance_metrics.h"
 
 #include <iostream>
 #include <thread>
+#include <algorithm>
+
+#ifndef _WIN32
+#include <signal.h>
+#endif
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/ui/ui_settings.h"
+#include "client/input/hotkey_manager.h"
 #endif
 
 namespace eqt {
+
+// ========== Signal Handlers ==========
+
+#ifndef _WIN32
+static void HandleSigUsr1(int /*sig*/) {
+    LogLevelIncrease();
+}
+
+static void HandleSigUsr2(int /*sig*/) {
+    LogLevelDecrease();
+}
+
+#ifdef EQT_HAS_GRAPHICS
+static void HandleSigHup(int /*sig*/) {
+    eqt::input::HotkeyManager::instance().reload();
+}
+#endif
+#endif
+
+// ========== Application ==========
 
 Application::Application() = default;
 
@@ -34,11 +64,21 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_INFO(MOD_MAIN, "Config: host={}, server={}, character={}",
         config.host, config.server, config.character);
 
+    // Register signal handlers
+#ifndef _WIN32
+    signal(SIGUSR1, HandleSigUsr1);
+    signal(SIGUSR2, HandleSigUsr2);
+#ifdef EQT_HAS_GRAPHICS
+    signal(SIGHUP, HandleSigHup);
+#endif
+#endif
+
     // Create game state
     m_gameState = std::make_unique<state::GameState>();
     LOG_DEBUG(MOD_MAIN, "Game state created");
 
     // Create EverQuest client
+    EQT::PerformanceMetrics::instance().startTimer("Client Creation", EQT::MetricCategory::Startup);
     try {
         m_eqClient = std::make_unique<EverQuest>(
             config.host, config.port,
@@ -62,12 +102,26 @@ bool Application::initialize(const ApplicationConfig& config) {
         m_eqClient->SetConfigPath(config.configFile);
 #endif
 
+#ifdef WITH_AUDIO
+        // Apply audio settings
+        m_eqClient->SetAudioEnabled(config.audioEnabled);
+        m_eqClient->SetMasterVolume(config.audioMasterVolume);
+        m_eqClient->SetMusicVolume(config.audioMusicVolume);
+        m_eqClient->SetEffectsVolume(config.audioEffectsVolume);
+        if (!config.audioSoundfont.empty()) {
+            m_eqClient->SetSoundFont(config.audioSoundfont);
+        }
+        m_eqClient->SetVendorMusic(config.audioVendorMusic);
+#endif
+
         LOG_DEBUG(MOD_MAIN, "EverQuest client created");
 
     } catch (const std::exception& e) {
         LOG_ERROR(MOD_MAIN, "Failed to create EverQuest client: {}", e.what());
+        EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
         return false;
     }
+    EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
 
     // Create action handler adapter
     m_actionHandler = std::make_unique<EqActionHandler>(*m_eqClient);
@@ -128,10 +182,22 @@ bool Application::initialize(const ApplicationConfig& config) {
 
 #ifdef EQT_HAS_GRAPHICS
     // Initialize graphics if graphical mode
+    m_graphicsInitialized = false;
     if (config.graphicsEnabled && config.operatingMode == mode::OperatingMode::GraphicalInteractive) {
         if (!config.eqClientPath.empty()) {
+            // Apply constrained rendering and OpenGL settings before init
+            if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
+                m_eqClient->SetUseOpenGL(true);
+            }
+            if (!config.constrainedPreset.empty()) {
+                auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
+                m_eqClient->SetConstrainedPreset(preset);
+            }
+
             LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
+            EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
             if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight)) {
+                m_graphicsInitialized = true;
                 LOG_INFO(MOD_GRAPHICS, "Graphics initialized");
 
                 // Set initial loading state
@@ -139,12 +205,39 @@ bool Application::initialize(const ApplicationConfig& config) {
                 if (eqRenderer) {
                     eqRenderer->setLoadingTitle(L"EverQuest");
                     eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
+
+                    if (config.frameTimingEnabled) {
+                        eqRenderer->setFrameTimingEnabled(true);
+                    }
+                    if (config.sceneProfileEnabled) {
+                        eqRenderer->runSceneProfile();
+                    }
+
+#ifdef WITH_RDP
+                    // Initialize and start RDP server if enabled
+                    if (config.rdpEnabled) {
+                        LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
+                        if (eqRenderer->initRDP(config.rdpPort)) {
+                            if (eqRenderer->startRDPServer()) {
+                                LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
+                                m_eqClient->SetupRDPAudio();
+                            } else {
+                                LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
+                            }
+                        } else {
+                            LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
+                        }
+                    }
+#endif
                 }
             } else {
                 LOG_WARN(MOD_GRAPHICS, "Failed to initialize graphics - running headless");
+                m_config.graphicsEnabled = false;
             }
+            EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
         } else {
             LOG_INFO(MOD_GRAPHICS, "No eq_client_path - running headless");
+            m_config.graphicsEnabled = false;
         }
     }
 #endif
@@ -172,10 +265,26 @@ void Application::shutdown() {
     m_running.store(false);
 
 #ifdef EQT_HAS_GRAPHICS
+    // Stop RDP server if running
+#ifdef WITH_RDP
+    if (m_graphicsInitialized && m_eqClient) {
+        auto* renderer = m_eqClient->GetRenderer();
+        if (renderer && renderer->isRDPRunning()) {
+            LOG_INFO(MOD_GRAPHICS, "Stopping RDP server...");
+            renderer->stopRDPServer();
+        }
+    }
+#endif
     if (m_eqClient) {
         m_eqClient->ShutdownGraphics();
     }
 #endif
+
+    // Output performance report before cleanup
+    std::string perfReport = EQT::PerformanceMetrics::instance().generateReport();
+    if (!perfReport.empty()) {
+        LOG_INFO(MOD_MAIN, "{}", perfReport);
+    }
 
     if (m_gameMode) {
         m_gameMode->shutdown();
@@ -200,10 +309,28 @@ void Application::requestQuit() {
 }
 
 void Application::mainLoop() {
+    static int loop_counter = 0;
+    LOG_TRACE(MOD_MAIN, "Entering main loop");
+
     while (m_running.load()) {
         try {
-            // Process network events
+            loop_counter++;
+
+            // Log zone change activity
+            bool zone_change_happening = m_eqClient && m_eqClient->IsZoneChangeApproved();
+            if (loop_counter % 100 == 0 || zone_change_happening) {
+                LOG_TRACE(MOD_MAIN, "Main loop iteration {} running={} zone_change={}",
+                          loop_counter, m_running.load(), zone_change_happening);
+            }
+
+            // Process network events with performance tracking
+            auto eventLoopStart = std::chrono::steady_clock::now();
             processNetworkEvents();
+            auto eventLoopEnd = std::chrono::steady_clock::now();
+            auto eventLoopMs = std::chrono::duration_cast<std::chrono::milliseconds>(eventLoopEnd - eventLoopStart).count();
+            if (eventLoopMs > 50) {
+                LOG_WARN(MOD_MAIN, "PERF: EventLoop::Process() took {} ms", eventLoopMs);
+            }
 
             // Check for zone connection
             bool isConnected = m_eqClient && m_eqClient->IsFullyZonedIn();
@@ -216,7 +343,7 @@ void Application::mainLoop() {
                 // NOTE: Zone graphics are now loaded automatically via the LoadingPhase system.
                 // LoadZoneGraphics() is called from OnGameStateComplete() when the game state is ready.
                 // We only need to load the hotbar config here.
-                if (m_config.graphicsEnabled && m_eqClient) {
+                if (m_config.graphicsEnabled && m_graphicsInitialized && m_eqClient) {
                     m_eqClient->LoadHotbarConfig();
                 }
 #endif
@@ -229,7 +356,16 @@ void Application::mainLoop() {
             // Process input and update game state at ~60 fps
             if (deltaTime >= 1.0f / 60.0f) {
                 processInput(deltaTime);
+
+                // Update movement with performance tracking
+                auto movementStart = std::chrono::steady_clock::now();
                 updateGameState(deltaTime);
+                auto movementEnd = std::chrono::steady_clock::now();
+                auto movementMs = std::chrono::duration_cast<std::chrono::milliseconds>(movementEnd - movementStart).count();
+                if (movementMs > 50) {
+                    LOG_WARN(MOD_MAIN, "PERF: UpdateMovement() took {} ms", movementMs);
+                }
+
                 m_lastUpdate = now;
             }
 
@@ -248,6 +384,8 @@ void Application::mainLoop() {
             LOG_ERROR(MOD_MAIN, "Exception in main loop: {}", e.what());
         }
     }
+
+    LOG_TRACE(MOD_MAIN, "Exited main loop running={} loop_counter={}", m_running.load(), loop_counter);
 }
 
 void Application::processNetworkEvents() {
@@ -281,7 +419,7 @@ void Application::updateGameState(float deltaTime) {
 
 void Application::render(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
-    if (m_config.graphicsEnabled && m_eqClient) {
+    if (m_graphicsInitialized && m_eqClient) {
         auto now = std::chrono::steady_clock::now();
         float gfxDeltaTime = std::chrono::duration<float>(now - m_lastGraphicsUpdate).count();
 
@@ -603,21 +741,79 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             }
         } else if (arg == "--opengl" || arg == "--gpu") {
             config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
+        } else if (arg == "--constrained") {
+            if (i + 1 < argc) {
+                config.constrainedPreset = argv[++i];
+            }
+        } else if (arg == "--frame-timing" || arg == "--ft") {
+            config.frameTimingEnabled = true;
+        } else if (arg == "--scene-profile" || arg == "--sp") {
+            config.sceneProfileEnabled = true;
+        } else if (arg == "--no-audio" || arg == "-na") {
+            config.audioEnabled = false;
+        } else if (arg == "--audio-volume") {
+            if (i + 1 < argc) {
+                int vol = std::atoi(argv[++i]);
+                config.audioMasterVolume = std::clamp(vol, 0, 100) / 100.0f;
+            }
+        } else if (arg == "--music-volume") {
+            if (i + 1 < argc) {
+                int vol = std::atoi(argv[++i]);
+                config.audioMusicVolume = std::clamp(vol, 0, 100) / 100.0f;
+            }
+        } else if (arg == "--effects-volume") {
+            if (i + 1 < argc) {
+                int vol = std::atoi(argv[++i]);
+                config.audioEffectsVolume = std::clamp(vol, 0, 100) / 100.0f;
+            }
+        } else if (arg == "--soundfont") {
+            if (i + 1 < argc) {
+                config.audioSoundfont = argv[++i];
+            }
+        } else if (arg == "--rdp" || arg == "--enable-rdp") {
+            config.rdpEnabled = true;
+        } else if (arg == "--rdp-port") {
+            if (i + 1 < argc) {
+                config.rdpPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+            }
         } else if (arg == "--help" || arg == "-h") {
+            config.showHelp = true;
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "Options:\n";
-            std::cout << "  -d, --debug <level>      Set debug level (0-3)\n";
+            std::cout << "  -d, --debug <level>      Set debug level (0-6)\n";
             std::cout << "  -c, --config <file>      Set config file (default: willeq.json)\n";
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
-            std::cout << "  -ng, --no-graphics       Disable graphical rendering (headless mode)\n";
-            std::cout << "  --headless               Run in headless interactive mode\n";
-            std::cout << "  --automated              Run in automated/bot mode\n";
+#ifdef EQT_HAS_GRAPHICS
+            std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
             std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
-            std::cout << "  --log-level=LEVEL        Set log level\n";
-            std::cout << "  --log-module=MOD:LEVEL   Set per-module log level\n";
+            std::cout << "  --constrained <preset>   Enable constrained rendering mode (voodoo1, voodoo2, tnt, orangepi)\n";
+            std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
+            std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
+#ifdef WITH_RDP
+            std::cout << "  --rdp, --enable-rdp      Enable native RDP server for remote access\n";
+            std::cout << "  --rdp-port <port>        RDP server port (default: 3389)\n";
+#endif
+#endif
+#ifdef WITH_AUDIO
+            std::cout << "  -na, --no-audio          Disable audio\n";
+            std::cout << "  --audio-volume <0-100>   Master volume (default: 100)\n";
+            std::cout << "  --music-volume <0-100>   Music volume (default: 50)\n";
+            std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
+            std::cout << "  --soundfont <path>       Path to SoundFont for MIDI playback\n";
+#endif
+            std::cout << "  --headless               Run in headless interactive mode\n";
+            std::cout << "  --automated              Run in automated/bot mode\n";
+            std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
+            std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
+            std::cout << "                           Modules: NET, NET_PACKET, LOGIN, WORLD, ZONE, ENTITY,\n";
+            std::cout << "                                    MOVEMENT, COMBAT, INVENTORY, GRAPHICS, GRAPHICS_LOAD,\n";
+            std::cout << "                                    CAMERA, INPUT, AUDIO, PATHFIND, MAP, UI, CONFIG, MAIN\n";
+#ifndef _WIN32
+            std::cout << "  Signal SIGUSR1           Increase log level at runtime\n";
+            std::cout << "  Signal SIGUSR2           Decrease log level at runtime\n";
+#endif
             std::cout << "  -h, --help               Show this help message\n";
-            // Note: caller should handle help flag and exit
         }
     }
 
@@ -626,6 +822,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
 
 bool Application::loadConfigFile(const std::string& configFile, ApplicationConfig& config) {
     try {
+        EQT::PerformanceMetrics::instance().startTimer("Config Loading", EQT::MetricCategory::Startup);
+
         auto jsonConfig = EQ::JsonConfigFile::Load(configFile);
         auto handle = jsonConfig.RawHandle();
 
@@ -633,14 +831,133 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
         Json::Value clientConfig;
         if (handle.isArray() && handle.size() > 0) {
             clientConfig = handle[0];
+
+#ifdef EQT_HAS_GRAPHICS
+            // Load UI and hotkey settings for legacy config format
+            eqt::ui::UISettings::instance().loadFromFile("config/ui_settings.json");
+            {
+                auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+                hotkeyMgr.resetToDefaults();
+                hotkeyMgr.loadFromFile("config/hotkeys.json");
+                hotkeyMgr.logConflicts();
+            }
+#endif
         } else if (handle.isObject()) {
             if (handle.isMember("clients") && handle["clients"].isArray() && handle["clients"].size() > 0) {
                 clientConfig = handle["clients"][0];
             } else {
                 clientConfig = handle;
             }
+
+            // Parse logging configuration from object format
+            InitLoggingFromJson(handle);
+
+#ifdef EQT_HAS_GRAPHICS
+            // Load UI settings from default file, then apply any overrides from main config
+            {
+                auto& uiSettings = eqt::ui::UISettings::instance();
+                uiSettings.loadFromFile("config/ui_settings.json");
+                if (handle.isMember("uiSettings")) {
+                    LOG_INFO(MOD_UI, "Applying UI settings overrides from main config");
+                    uiSettings.applyOverrides(handle["uiSettings"]);
+                }
+                if (handle.isMember("chatSettings")) {
+                    LOG_INFO(MOD_UI, "Applying chat settings overrides from main config");
+                    uiSettings.applyChatSettingsOverride(handle["chatSettings"]);
+                }
+            }
+
+            // Load hotkey settings
+            {
+                auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+                hotkeyMgr.resetToDefaults();
+                hotkeyMgr.loadFromFile("config/hotkeys.json");
+                if (handle.isMember("hotkeys")) {
+                    LOG_INFO(MOD_INPUT, "Applying hotkey overrides from main config");
+                    hotkeyMgr.applyOverrides(handle["hotkeys"]);
+                }
+                hotkeyMgr.logConflicts();
+            }
+
+            // Parse rendering config
+            if (handle.isMember("rendering")) {
+                const auto& rendering = handle["rendering"];
+                if (rendering.isMember("constrained_mode") && config.constrainedPreset.empty()) {
+                    config.constrainedPreset = rendering["constrained_mode"].asString();
+                    LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode from config: {}", config.constrainedPreset);
+                }
+            }
+
+#ifdef WITH_RDP
+            // Parse RDP config
+            if (handle.isMember("rdp")) {
+                const auto& rdp_config = handle["rdp"];
+                if (rdp_config.isMember("enabled") && rdp_config["enabled"].asBool()) {
+                    config.rdpEnabled = true;
+                    LOG_INFO(MOD_GRAPHICS, "RDP server enabled from config");
+                }
+                if (rdp_config.isMember("port")) {
+                    config.rdpPort = static_cast<uint16_t>(rdp_config["port"].asInt());
+                    LOG_INFO(MOD_GRAPHICS, "RDP port from config: {}", config.rdpPort);
+                }
+            }
+#endif
+#endif
+
+#ifdef WITH_AUDIO
+            // Parse audio config
+            if (handle.isMember("audio")) {
+                const auto& audio_config = handle["audio"];
+                if (audio_config.isMember("enabled")) {
+                    config.audioEnabled = audio_config["enabled"].asBool();
+                    LOG_INFO(MOD_AUDIO, "Audio {} from config", config.audioEnabled ? "enabled" : "disabled");
+                }
+                if (audio_config.isMember("master_volume")) {
+                    int vol = audio_config["master_volume"].asInt();
+                    config.audioMasterVolume = std::clamp(vol, 0, 100) / 100.0f;
+                    LOG_INFO(MOD_AUDIO, "Master volume from config: {}%", vol);
+                }
+                if (audio_config.isMember("music_volume")) {
+                    int vol = audio_config["music_volume"].asInt();
+                    config.audioMusicVolume = std::clamp(vol, 0, 100) / 100.0f;
+                    LOG_INFO(MOD_AUDIO, "Music volume from config: {}%", vol);
+                }
+                if (audio_config.isMember("effects_volume")) {
+                    int vol = audio_config["effects_volume"].asInt();
+                    config.audioEffectsVolume = std::clamp(vol, 0, 100) / 100.0f;
+                    LOG_INFO(MOD_AUDIO, "Effects volume from config: {}%", vol);
+                }
+                if (audio_config.isMember("soundfont")) {
+                    config.audioSoundfont = audio_config["soundfont"].asString();
+                    LOG_INFO(MOD_AUDIO, "SoundFont from config: {}", config.audioSoundfont);
+                }
+                if (audio_config.isMember("vendor_music")) {
+                    config.audioVendorMusic = audio_config["vendor_music"].asString();
+                    LOG_INFO(MOD_AUDIO, "Vendor music from config: {}", config.audioVendorMusic);
+                }
+            }
+#endif
+
+            // Parse mode settings from top-level config
+            if (handle.isMember("mode")) {
+                config.operatingMode = mode::parseModeString(handle["mode"].asString());
+            }
+
+            if (handle.isMember("renderer") && handle["renderer"].isObject()) {
+                auto& renderer = handle["renderer"];
+                if (renderer.isMember("width")) {
+                    config.displayWidth = renderer["width"].asInt();
+                }
+                if (renderer.isMember("height")) {
+                    config.displayHeight = renderer["height"].asInt();
+                }
+                if (renderer.isMember("fullscreen")) {
+                    config.fullscreen = renderer["fullscreen"].asBool();
+                }
+            }
         } else {
             LOG_ERROR(MOD_CONFIG, "Invalid config file format");
+            EQT::PerformanceMetrics::instance().stopTimer("Config Loading");
             return false;
         }
 
@@ -675,39 +992,13 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             config.eqClientPath = clientConfig["eq_client_path"].asString();
         }
 
-        // Parse mode settings from top-level config
-        if (handle.isObject()) {
-            if (handle.isMember("mode")) {
-                config.operatingMode = mode::parseModeString(handle["mode"].asString());
-            }
-
-            if (handle.isMember("renderer") && handle["renderer"].isObject()) {
-                auto& renderer = handle["renderer"];
-                if (renderer.isMember("width")) {
-                    config.displayWidth = renderer["width"].asInt();
-                }
-                if (renderer.isMember("height")) {
-                    config.displayHeight = renderer["height"].asInt();
-                }
-                if (renderer.isMember("fullscreen")) {
-                    config.fullscreen = renderer["fullscreen"].asBool();
-                }
-            }
-
-#ifdef EQT_HAS_GRAPHICS
-            // Load UI settings
-            eqt::ui::UISettings::instance().loadFromFile("config/ui_settings.json");
-            if (handle.isMember("uiSettings")) {
-                eqt::ui::UISettings::instance().applyOverrides(handle["uiSettings"]);
-            }
-#endif
-        }
-
         config.configFile = configFile;
+        EQT::PerformanceMetrics::instance().stopTimer("Config Loading");
         return true;
 
     } catch (const std::exception& e) {
         LOG_ERROR(MOD_CONFIG, "Failed to load config file '{}': {}", configFile, e.what());
+        EQT::PerformanceMetrics::instance().stopTimer("Config Loading");
         return false;
     }
 }

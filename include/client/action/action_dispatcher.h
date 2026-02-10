@@ -177,6 +177,27 @@ public:
     virtual void clickWorldObject(uint32_t dropId) = 0;
     virtual void tradeskillCombine() = 0;
 
+    // ========== Extended Movement ==========
+
+    virtual void setMovementMode(int mode) = 0;
+    virtual void setPositionState(int state) = 0;
+
+    // ========== Extended Character State ==========
+
+    virtual void setRoleplay(bool rp) = 0;
+    virtual void setPathfinding(bool enabled) = 0;
+
+    // ========== Extended Combat ==========
+
+    virtual void setAutoHunting(bool enabled) = 0;
+    virtual void setAutoLoot(bool enabled) = 0;
+    virtual void listHuntTargets() = 0;
+
+    // ========== Entity Query ==========
+
+    virtual void listEntities(const std::string& filter) = 0;
+    virtual void dumpEntityAppearance(const std::string& name) = 0;
+
     // ========== Utility ==========
 
     virtual void sendAnimation(uint8_t animationId, uint8_t speed = 10) = 0;
@@ -643,6 +664,59 @@ public:
      * Combine items in the current tradeskill container.
      */
     ActionResult tradeskillCombine();
+
+    // ========== Extended Movement Actions ==========
+
+    /**
+     * Set movement mode (run/walk/sneak).
+     */
+    ActionResult setMovementMode(int mode);
+
+    /**
+     * Set position state (standing/sitting/crouching/feign death).
+     */
+    ActionResult setPositionState(int state);
+
+    // ========== Extended Character State Actions ==========
+
+    /**
+     * Set roleplay flag.
+     */
+    ActionResult setRoleplay(bool rp);
+
+    /**
+     * Set pathfinding enabled/disabled.
+     */
+    ActionResult setPathfinding(bool enabled);
+
+    // ========== Extended Combat Actions ==========
+
+    /**
+     * Set auto-hunting mode.
+     */
+    ActionResult setAutoHunting(bool enabled);
+
+    /**
+     * Set auto-loot mode.
+     */
+    ActionResult setAutoLoot(bool enabled);
+
+    /**
+     * List hunt targets.
+     */
+    ActionResult listHuntTargets();
+
+    // ========== Entity Query Actions ==========
+
+    /**
+     * List entities matching a filter.
+     */
+    ActionResult listEntities(const std::string& filter);
+
+    /**
+     * Dump entity appearance/equipment info.
+     */
+    ActionResult dumpEntityAppearance(const std::string& name);
 
     // ========== Utility Actions ==========
 

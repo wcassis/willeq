@@ -476,6 +476,87 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "filter", {}, "/filter [channel]", "Toggle channel display", "Chat", false
     }, [this](const std::string& args) { return cmdFilter(args); });
+
+    // Extended movement commands
+    registerCommand({
+        "walk", {}, "/walk", "Set movement speed to walk", "Movement", false
+    }, [this](const std::string& args) { return cmdWalk(args); });
+
+    registerCommand({
+        "run", {}, "/run", "Set movement speed to run", "Movement", false
+    }, [this](const std::string& args) { return cmdRun(args); });
+
+    registerCommand({
+        "sneak", {}, "/sneak", "Set movement speed to sneak", "Movement", false
+    }, [this](const std::string& args) { return cmdSneak(args); });
+
+    registerCommand({
+        "crouch", {"duck"}, "/crouch", "Crouch/duck", "Movement", false
+    }, [this](const std::string& args) { return cmdCrouch(args); });
+
+    registerCommand({
+        "feign", {"fd"}, "/feign", "Feign death", "Movement", false
+    }, [this](const std::string& args) { return cmdFeign(args); });
+
+    registerCommand({
+        "jump", {}, "/jump", "Jump", "Movement", false
+    }, [this](const std::string& args) { return cmdJump(args); });
+
+    registerCommand({
+        "turn", {}, "/turn <degrees>", "Turn to heading (0=N, 90=E, 180=S, 270=W)", "Movement", true
+    }, [this](const std::string& args) { return cmdTurn(args); });
+
+    // Entity query commands
+    registerCommand({
+        "list", {}, "/list [search]", "List nearby entities", "Utility", false
+    }, [this](const std::string& args) { return cmdList(args); });
+
+    registerCommand({
+        "dump", {}, "/dump <name>", "Dump entity appearance/equipment info", "Utility", true
+    }, [this](const std::string& args) { return cmdDump(args); });
+
+    // Extended combat commands
+    registerCommand({
+        "hunt", {}, "/hunt [on|off]", "Toggle auto-hunting mode", "Combat", false
+    }, [this](const std::string& args) { return cmdHunt(args); });
+
+    registerCommand({
+        "autoloot", {}, "/autoloot [on|off]", "Toggle auto-looting", "Combat", false
+    }, [this](const std::string& args) { return cmdAutoLoot(args); });
+
+    registerCommand({
+        "listtargets", {}, "/listtargets", "List potential hunt targets", "Combat", false
+    }, [this](const std::string& args) { return cmdListTargets(args); });
+
+    registerCommand({
+        "loot", {}, "/loot", "Loot nearest corpse", "Combat", false
+    }, [this](const std::string& args) { return cmdLoot(args); });
+
+    // Pathfinding and roleplay
+    registerCommand({
+        "pathfinding", {}, "/pathfinding [on|off]", "Toggle pathfinding", "Utility", false
+    }, [this](const std::string& args) { return cmdPathfinding(args); });
+
+    registerCommand({
+        "roleplay", {"rp"}, "/roleplay [on|off]", "Toggle roleplay status", "Utility", false
+    }, [this](const std::string& args) { return cmdRoleplay(args); });
+
+    // Emote shortcut commands
+    registerCommand({
+        "wave", {}, "/wave", "Wave", "Chat", false
+    }, [this](const std::string& args) { return cmdWave(args); });
+
+    registerCommand({
+        "dance", {}, "/dance", "Dance", "Chat", false
+    }, [this](const std::string& args) { return cmdDance(args); });
+
+    registerCommand({
+        "cheer", {}, "/cheer", "Cheer", "Chat", false
+    }, [this](const std::string& args) { return cmdCheer(args); });
+
+    registerCommand({
+        "laugh", {}, "/laugh", "Laugh", "Chat", false
+    }, [this](const std::string& args) { return cmdLaugh(args); });
 }
 
 // ========== Command Implementations ==========
@@ -525,6 +606,24 @@ ActionResult CommandProcessor::cmdGuildSay(const std::string& args) {
 }
 
 ActionResult CommandProcessor::cmdEmote(const std::string& args) {
+    // Check if the emote is a named animation
+    std::string lower = toLower(args);
+    struct EmoteMapping { const char* name; uint8_t anim; };
+    static const EmoteMapping emotes[] = {
+        {"wave", 29}, {"cheer", 27}, {"dance", 58}, {"cry", 18},
+        {"kneel", 19}, {"laugh", 63}, {"point", 64}, {"salute", 67}, {"shrug", 65}
+    };
+    for (const auto& e : emotes) {
+        if (lower == e.name) {
+            auto result = m_dispatcher.sendAnimation(e.anim);
+            if (result.success) {
+                displayMessage("You " + lower);
+            }
+            return result;
+        }
+    }
+
+    // Otherwise send as emote text
     return m_dispatcher.sendChatMessage(ChatChannel::Emote, args);
 }
 
@@ -829,6 +928,181 @@ ActionResult CommandProcessor::cmdFilter(const std::string& args) {
 
     displayMessage("Filter toggled for: " + args);
     return ActionResult::Success();
+}
+
+// ========== Extended Command Implementations ==========
+
+ActionResult CommandProcessor::cmdWalk(const std::string& args) {
+    auto result = m_dispatcher.setMovementMode(1);  // MOVE_MODE_WALK
+    if (result.success) {
+        displayMessage("Movement mode set to walk");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdRun(const std::string& args) {
+    auto result = m_dispatcher.setMovementMode(0);  // MOVE_MODE_RUN
+    if (result.success) {
+        displayMessage("Movement mode set to run");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdSneak(const std::string& args) {
+    auto result = m_dispatcher.setMovementMode(2);  // MOVE_MODE_SNEAK
+    if (result.success) {
+        displayMessage("Movement mode set to sneak");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdCrouch(const std::string& args) {
+    auto result = m_dispatcher.setPositionState(2);  // POS_CROUCHING
+    if (result.success) {
+        displayMessage("Character is now crouching");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdFeign(const std::string& args) {
+    auto result = m_dispatcher.setPositionState(3);  // POS_FEIGN_DEATH
+    if (result.success) {
+        displayMessage("Character is feigning death");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdJump(const std::string& args) {
+    auto result = m_dispatcher.jump();
+    if (result.success) {
+        displayMessage("Character jumps!");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdTurn(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /turn <degrees> (0=North, 90=East, 180=South, 270=West)");
+    }
+
+    try {
+        float degrees = std::stof(args);
+        auto result = m_dispatcher.setHeading(degrees);
+        if (result.success) {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1);
+            oss << "Turned to heading " << degrees << " degrees";
+            displayMessage(oss.str());
+        }
+        return result;
+    } catch (const std::exception&) {
+        return ActionResult::Failure("Invalid heading value");
+    }
+}
+
+ActionResult CommandProcessor::cmdList(const std::string& args) {
+    return m_dispatcher.listEntities(args);
+}
+
+ActionResult CommandProcessor::cmdDump(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /dump <entity_name>");
+    }
+    return m_dispatcher.dumpEntityAppearance(args);
+}
+
+ActionResult CommandProcessor::cmdHunt(const std::string& args) {
+    if (args.empty()) {
+        // Toggle - we don't track state here, so just default to enabling
+        // The action handler will handle the actual toggle
+        return m_dispatcher.setAutoHunting(true);
+    }
+
+    std::string lower = toLower(args);
+    bool enable = (lower == "on" || lower == "true" || lower == "1");
+    auto result = m_dispatcher.setAutoHunting(enable);
+    if (result.success) {
+        displayMessage(enable ? "Auto-hunting mode enabled" : "Auto-hunting mode disabled");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdAutoLoot(const std::string& args) {
+    if (args.empty()) {
+        displayMessage("Usage: /autoloot <on|off>");
+        return ActionResult::Success();
+    }
+
+    std::string lower = toLower(args);
+    bool enable = (lower == "on" || lower == "true" || lower == "1");
+    auto result = m_dispatcher.setAutoLoot(enable);
+    if (result.success) {
+        displayMessage(enable ? "Auto-loot enabled" : "Auto-loot disabled");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdListTargets(const std::string& args) {
+    return m_dispatcher.listHuntTargets();
+}
+
+ActionResult CommandProcessor::cmdLoot(const std::string& args) {
+    displayMessage("Loot functionality requires corpse detection - use '/list' to find corpse IDs");
+    return ActionResult::Success();
+}
+
+ActionResult CommandProcessor::cmdPathfinding(const std::string& args) {
+    if (args.empty()) {
+        displayMessage("Usage: /pathfinding <on|off>");
+        return ActionResult::Success();
+    }
+
+    std::string lower = toLower(args);
+    bool enable = (lower == "on" || lower == "true" || lower == "1");
+    return m_dispatcher.setPathfinding(enable);
+}
+
+ActionResult CommandProcessor::cmdRoleplay(const std::string& args) {
+    if (args.empty()) {
+        // Toggle - default to enabling since we don't track state here
+        return m_dispatcher.setRoleplay(true);
+    }
+
+    std::string lower = toLower(args);
+    bool enable = (lower == "on" || lower == "true" || lower == "1");
+    return m_dispatcher.setRoleplay(enable);
+}
+
+ActionResult CommandProcessor::cmdWave(const std::string& args) {
+    auto result = m_dispatcher.sendAnimation(29);  // ANIM_WAVE
+    if (result.success) {
+        displayMessage("You wave");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdDance(const std::string& args) {
+    auto result = m_dispatcher.sendAnimation(58);  // ANIM_DANCE
+    if (result.success) {
+        displayMessage("You dance");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdCheer(const std::string& args) {
+    auto result = m_dispatcher.sendAnimation(27);  // ANIM_CHEER
+    if (result.success) {
+        displayMessage("You cheer");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdLaugh(const std::string& args) {
+    auto result = m_dispatcher.sendAnimation(63);  // ANIM_LAUGH
+    if (result.success) {
+        displayMessage("You laugh");
+    }
+    return result;
 }
 
 } // namespace action

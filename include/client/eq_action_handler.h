@@ -133,6 +133,27 @@ public:
     void clickWorldObject(uint32_t dropId) override;
     void tradeskillCombine() override;
 
+    // ========== Extended Movement ==========
+
+    void setMovementMode(int mode) override;
+    void setPositionState(int state) override;
+
+    // ========== Extended Character State ==========
+
+    void setRoleplay(bool rp) override;
+    void setPathfinding(bool enabled) override;
+
+    // ========== Extended Combat ==========
+
+    void setAutoHunting(bool enabled) override;
+    void setAutoLoot(bool enabled) override;
+    void listHuntTargets() override;
+
+    // ========== Entity Query ==========
+
+    void listEntities(const std::string& filter) override;
+    void dumpEntityAppearance(const std::string& name) override;
+
     // ========== Utility ==========
 
     void sendAnimation(uint8_t animationId, uint8_t speed) override;

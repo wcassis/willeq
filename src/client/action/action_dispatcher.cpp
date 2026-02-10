@@ -936,6 +936,86 @@ ActionResult ActionDispatcher::tradeskillCombine() {
     return ActionResult::Success();
 }
 
+// ========== Extended Movement Actions ==========
+
+ActionResult ActionDispatcher::setMovementMode(int mode) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->setMovementMode(mode);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::setPositionState(int state) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->setPositionState(state);
+    return ActionResult::Success();
+}
+
+// ========== Extended Character State Actions ==========
+
+ActionResult ActionDispatcher::setRoleplay(bool rp) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->setRoleplay(rp);
+    return ActionResult::Success(rp ? "Roleplay enabled" : "Roleplay disabled");
+}
+
+ActionResult ActionDispatcher::setPathfinding(bool enabled) {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->setPathfinding(enabled);
+    return ActionResult::Success(enabled ? "Pathfinding enabled" : "Pathfinding disabled");
+}
+
+// ========== Extended Combat Actions ==========
+
+ActionResult ActionDispatcher::setAutoHunting(bool enabled) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->setAutoHunting(enabled);
+    return ActionResult::Success(enabled ? "Auto-hunting enabled" : "Auto-hunting disabled");
+}
+
+ActionResult ActionDispatcher::setAutoLoot(bool enabled) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->setAutoLoot(enabled);
+    return ActionResult::Success(enabled ? "Auto-loot enabled" : "Auto-loot disabled");
+}
+
+ActionResult ActionDispatcher::listHuntTargets() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->listHuntTargets();
+    return ActionResult::Success();
+}
+
+// ========== Entity Query Actions ==========
+
+ActionResult ActionDispatcher::listEntities(const std::string& filter) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->listEntities(filter);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::dumpEntityAppearance(const std::string& name) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->dumpEntityAppearance(name);
+    return ActionResult::Success();
+}
+
 // ========== Utility Actions ==========
 
 ActionResult ActionDispatcher::sendAnimation(uint8_t animationId, uint8_t speed) {

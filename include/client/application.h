@@ -56,6 +56,28 @@ struct ApplicationConfig {
 
     // Logging
     int debugLevel = 0;
+
+    // Audio settings (guarded by WITH_AUDIO at usage sites)
+    bool audioEnabled = true;
+    float audioMasterVolume = 1.0f;
+    float audioMusicVolume = 0.5f;
+    float audioEffectsVolume = 1.0f;
+    std::string audioSoundfont;
+    std::string audioVendorMusic = "gl.xmi";
+
+    // RDP settings (guarded by WITH_RDP at usage sites)
+    bool rdpEnabled = false;
+    uint16_t rdpPort = 3389;
+
+    // Constrained rendering
+    std::string constrainedPreset;
+
+    // Profiling
+    bool frameTimingEnabled = false;
+    bool sceneProfileEnabled = false;
+
+    // Help flag
+    bool showHelp = false;
 };
 
 /**
@@ -234,6 +256,7 @@ private:
 
     std::atomic<bool> m_running{false};
     bool m_fullyConnected = false;
+    bool m_graphicsInitialized = false;
     ApplicationConfig m_config;
 
     // Timing
