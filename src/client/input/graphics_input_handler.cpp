@@ -70,121 +70,60 @@ void GraphicsInputHandler::updateFromEventReceiver() {
     m_state.clickMouseX = m_eventReceiver->getClickMouseX();
     m_state.clickMouseY = m_eventReceiver->getClickMouseY();
 
-    // Check for toggle requests from event receiver
+    // Check for quit
     if (m_eventReceiver->quitRequested()) {
         m_pendingActions[static_cast<size_t>(InputAction::Quit)] = true;
     }
-    if (m_eventReceiver->screenshotRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::Screenshot)] = true;
-    }
-    if (m_eventReceiver->wireframeToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleWireframe)] = true;
-    }
-    if (m_eventReceiver->hudToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleHUD)] = true;
-    }
-    if (m_eventReceiver->nameTagToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleNameTags)] = true;
-    }
-    if (m_eventReceiver->zoneLightsToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleZoneLights)] = true;
-    }
-    if (m_eventReceiver->cycleObjectLightsRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::CycleObjectLights)] = true;
-    }
-    if (m_eventReceiver->cameraModeToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleCameraMode)] = true;
-    }
-    if (m_eventReceiver->oldModelsToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleOldModels)] = true;
-    }
-    if (m_eventReceiver->rendererModeToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleRendererMode)] = true;
-    }
-    if (m_eventReceiver->autorunToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleAutorun)] = true;
-    }
-    if (m_eventReceiver->collisionToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleCollision)] = true;
-    }
-    if (m_eventReceiver->collisionDebugToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleCollisionDebug)] = true;
-    }
-    if (m_eventReceiver->lightingToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleLighting)] = true;
-    }
-    if (m_eventReceiver->helmDebugToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleHelmDebug)] = true;
-    }
-    if (m_eventReceiver->saveEntitiesRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::SaveEntities)] = true;
-    }
-    if (m_eventReceiver->clearTargetRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ClearTarget)] = true;
-    }
 
-    // Targeting actions
-    if (m_eventReceiver->targetSelfRequested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetSelfRequested() returned true, setting TargetSelf action");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetSelf)] = true;
-    }
-    if (m_eventReceiver->targetGroupMember1Requested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember1Requested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember1)] = true;
-    }
-    if (m_eventReceiver->targetGroupMember2Requested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember2Requested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember2)] = true;
-    }
-    if (m_eventReceiver->targetGroupMember3Requested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember3Requested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember3)] = true;
-    }
-    if (m_eventReceiver->targetGroupMember4Requested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember4Requested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember4)] = true;
-    }
-    if (m_eventReceiver->targetGroupMember5Requested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetGroupMember5Requested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember5)] = true;
-    }
-    if (m_eventReceiver->targetNearestPCRequested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetNearestPCRequested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetNearestPC)] = true;
-    }
-    if (m_eventReceiver->targetNearestNPCRequested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: targetNearestNPCRequested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::TargetNearestNPC)] = true;
-    }
-    if (m_eventReceiver->cycleTargetsRequested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: cycleTargetsRequested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::CycleTargets)] = true;
-    }
-    if (m_eventReceiver->cycleTargetsReverseRequested()) {
-        LOG_DEBUG(MOD_INPUT, "GraphicsInputHandler: cycleTargetsReverseRequested() returned true");
-        m_pendingActions[static_cast<size_t>(InputAction::CycleTargetsReverse)] = true;
-    }
+    // Drain bridge queue and map RendererAction -> InputAction
+    // Game actions are routed to bridgeQueue_ (not actionQueue_) to avoid
+    // double-consumption with processFrame()'s drainActions().
+    using RA = EQT::Graphics::RendererAction;
+    bool chatFocused = m_eventReceiver->isChatInputFocused();
+    auto bridgeActions = m_eventReceiver->drainBridgeActions();
+    for (const auto& event : bridgeActions) {
+        switch (event.action) {
+            // Targeting works even when chat is focused
+            case RA::TargetSelf:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetSelf)] = true; break;
+            case RA::TargetGroupMember1:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember1)] = true; break;
+            case RA::TargetGroupMember2:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember2)] = true; break;
+            case RA::TargetGroupMember3:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember3)] = true; break;
+            case RA::TargetGroupMember4:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember4)] = true; break;
+            case RA::TargetGroupMember5:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetGroupMember5)] = true; break;
+            case RA::TargetNearestPC:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetNearestPC)] = true; break;
+            case RA::TargetNearestNPC:
+                m_pendingActions[static_cast<size_t>(InputAction::TargetNearestNPC)] = true; break;
+            case RA::CycleTargets:
+                m_pendingActions[static_cast<size_t>(InputAction::CycleTargets)] = true; break;
+            case RA::CycleTargetsReverse:
+                m_pendingActions[static_cast<size_t>(InputAction::CycleTargetsReverse)] = true; break;
 
-    if (m_eventReceiver->autoAttackToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleAutoAttack)] = true;
-    }
-    if (m_eventReceiver->inventoryToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleInventory)] = true;
-    }
-    if (m_eventReceiver->groupToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleGroup)] = true;
-    }
-    if (m_eventReceiver->doorInteractRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::InteractDoor)] = true;
-    }
-    if (m_eventReceiver->hailRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::Hail)] = true;
-    }
-    if (m_eventReceiver->vendorToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleVendor)] = true;
-    }
-    if (m_eventReceiver->skillsToggleRequested()) {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleSkills)] = true;
+            // Non-targeting actions are gated by chat focus
+            case RA::ToggleAutorun:
+                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::ToggleAutorun)] = true;
+                break;
+            case RA::ToggleAutoAttack:
+                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::ToggleAutoAttack)] = true;
+                break;
+            case RA::Hail:
+                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::Hail)] = true;
+                break;
+            case RA::Consider:
+                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::Consider)] = true;
+                break;
+            case RA::ClearTarget:
+                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::ClearTarget)] = true;
+                break;
+            default:
+                break;
+        }
     }
 
     // Chat input keys
@@ -458,43 +397,24 @@ float GraphicsInputHandler::consumeHelmRotationDelta() {
 }
 
 bool GraphicsInputHandler::consumeHelmUVSwapRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->helmUVSwapRequested() : false;
-#else
+    // Now handled via action queue in IrrlichtRenderer::dispatchRendererAction()
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeHelmVFlipRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->helmVFlipRequested() : false;
-#else
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeHelmUFlipRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->helmUFlipRequested() : false;
-#else
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeHelmResetRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->helmResetRequested() : false;
-#else
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeHelmPrintStateRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->helmPrintStateRequested() : false;
-#else
     return false;
-#endif
 }
 
 int GraphicsInputHandler::consumeHeadVariantCycleDelta() {
@@ -530,35 +450,20 @@ float GraphicsInputHandler::consumeRepairRotateZDelta() {
 }
 
 bool GraphicsInputHandler::consumeRepairFlipXRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->repairFlipXRequested() : false;
-#else
+    // Now handled via action queue in IrrlichtRenderer::dispatchRendererAction()
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeRepairFlipYRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->repairFlipYRequested() : false;
-#else
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeRepairFlipZRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->repairFlipZRequested() : false;
-#else
     return false;
-#endif
 }
 
 bool GraphicsInputHandler::consumeRepairResetRequest() {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver ? m_eventReceiver->repairResetRequested() : false;
-#else
     return false;
-#endif
 }
 
 } // namespace input

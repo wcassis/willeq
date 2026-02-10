@@ -14,7 +14,7 @@
     "ambientCreatures" : true,
     "atmosphericParticles" : false,
     "density" : 0.5,
-    "quality" : "medium",
+    "quality" : "high",
     "reactiveFoliage" : true,
     "rollingObjects" : true,
     "shorelineWaves" : true

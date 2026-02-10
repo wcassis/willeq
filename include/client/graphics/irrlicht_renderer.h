@@ -61,6 +61,43 @@ enum class RendererMode {
     Admin    // Free camera, debug info, no collision, all keys work
 };
 
+// Renderer input action types for event queue
+enum class RendererAction : uint8_t {
+    // Renderer-internal toggles
+    ToggleWireframe, ToggleHUD, ToggleNameTags, ToggleZoneLights,
+    CycleObjectLights, ToggleLighting, ToggleCameraMode, ToggleOldModels,
+    SaveEntities, Screenshot, ToggleRendererMode,
+
+    // Player-mode actions
+    ToggleAutorun, ToggleAutoAttack, Hail, Consider,
+    ToggleVendor, ToggleTrainer, ToggleCollision, ToggleCollisionDebug,
+    ClearTarget, ToggleInventory, ToggleGroup, ToggleSkills,
+    TogglePet, ToggleSpellbook, ToggleBuffWindow, ToggleOptions,
+    DoorInteract, WorldObjectInteract,
+
+    // Targeting
+    TargetSelf, TargetGroupMember1, TargetGroupMember2, TargetGroupMember3,
+    TargetGroupMember4, TargetGroupMember5, TargetNearestPC, TargetNearestNPC,
+    CycleTargets, CycleTargetsReverse,
+
+    // Debug overlays
+    ToggleZoneLineVisualization, ToggleMapOverlay, RotateMapOverlay,
+    MirrorXMapOverlay, ToggleNavmeshOverlay, RotateNavmeshOverlay,
+    MirrorXNavmeshOverlay,
+
+    // Helm debug
+    ToggleHelmDebug, HelmUVSwap, HelmVFlip, HelmUFlip, HelmReset, HelmPrintState,
+
+    // Repair mode
+    RepairFlipX, RepairFlipY, RepairFlipZ, RepairReset,
+};
+
+struct RendererEvent {
+    RendererAction action;
+    int8_t intData;
+    RendererEvent(RendererAction a, int8_t d = -1) : action(a), intData(d) {}
+};
+
 // Vision types affecting zone light visibility
 // Can be upgraded by race, items, or buffs (never downgraded)
 enum class VisionType {
@@ -225,110 +262,45 @@ public:
     // Input state queries
     bool quitRequested() const { return quitRequested_; }
     void setQuitRequested(bool quit) { quitRequested_ = quit; }
-    bool screenshotRequested() { bool r = screenshotRequested_; screenshotRequested_ = false; return r; }
-    bool wireframeToggleRequested() { bool r = wireframeToggleRequested_; wireframeToggleRequested_ = false; return r; }
-    bool hudToggleRequested() { bool r = hudToggleRequested_; hudToggleRequested_ = false; return r; }
-    bool nameTagToggleRequested() { bool r = nameTagToggleRequested_; nameTagToggleRequested_ = false; return r; }
-    bool zoneLightsToggleRequested() { bool r = zoneLightsToggleRequested_; zoneLightsToggleRequested_ = false; return r; }
-    bool cycleObjectLightsRequested() { bool r = cycleObjectLightsRequested_; cycleObjectLightsRequested_ = false; return r; }
-    bool cameraModeToggleRequested() { bool r = cameraModeToggleRequested_; cameraModeToggleRequested_ = false; return r; }
-    bool oldModelsToggleRequested() { bool r = oldModelsToggleRequested_; oldModelsToggleRequested_ = false; return r; }
-    bool saveEntitiesRequested() { bool r = saveEntitiesRequested_; saveEntitiesRequested_ = false; return r; }
-    bool helmDebugToggleRequested() { bool r = helmDebugToggleRequested_; helmDebugToggleRequested_ = false; return r; }
-    bool rendererModeToggleRequested() { bool r = rendererModeToggleRequested_; rendererModeToggleRequested_ = false; return r; }
-    bool autorunToggleRequested() { bool r = autorunToggleRequested_; autorunToggleRequested_ = false; return r; }
-    bool collisionToggleRequested() { bool r = collisionToggleRequested_; collisionToggleRequested_ = false; return r; }
-    bool collisionDebugToggleRequested() { bool r = collisionDebugToggleRequested_; collisionDebugToggleRequested_ = false; return r; }
-    bool lightingToggleRequested() { bool r = lightingToggleRequested_; lightingToggleRequested_ = false; return r; }
-    bool clearTargetRequested() { bool r = clearTargetRequested_; clearTargetRequested_ = false; return r; }
-    bool autoAttackToggleRequested() { bool r = autoAttackToggleRequested_; autoAttackToggleRequested_ = false; return r; }
-    bool inventoryToggleRequested() { bool r = inventoryToggleRequested_; inventoryToggleRequested_ = false; return r; }
-    bool groupToggleRequested() { bool r = groupToggleRequested_; groupToggleRequested_ = false; return r; }
-    bool doorInteractRequested() { bool r = doorInteractRequested_; doorInteractRequested_ = false; return r; }
-    bool worldObjectInteractRequested() { bool r = worldObjectInteractRequested_; worldObjectInteractRequested_ = false; return r; }
-    bool hailRequested() { bool r = hailRequested_; hailRequested_ = false; return r; }
-    bool considerRequested() { bool r = considerRequested_; considerRequested_ = false; return r; }
-    bool vendorToggleRequested() { bool r = vendorToggleRequested_; vendorToggleRequested_ = false; return r; }
-    bool trainerToggleRequested() { bool r = trainerToggleRequested_; trainerToggleRequested_ = false; return r; }
-    bool skillsToggleRequested() { bool r = skillsToggleRequested_; skillsToggleRequested_ = false; return r; }
-bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationToggleRequested_; zoneLineVisualizationToggleRequested_ = false; return r; }
-    bool mapOverlayToggleRequested() { bool r = mapOverlayToggleRequested_; mapOverlayToggleRequested_ = false; return r; }
-    bool mapOverlayRotateRequested() { bool r = mapOverlayRotateRequested_; mapOverlayRotateRequested_ = false; return r; }
-    bool mapOverlayMirrorXRequested() { bool r = mapOverlayMirrorXRequested_; mapOverlayMirrorXRequested_ = false; return r; }
-    bool navmeshOverlayToggleRequested() { bool r = navmeshOverlayToggleRequested_; navmeshOverlayToggleRequested_ = false; return r; }
-    bool navmeshOverlayRotateRequested() { bool r = navmeshOverlayRotateRequested_; navmeshOverlayRotateRequested_ = false; return r; }
-    bool navmeshOverlayMirrorXRequested() { bool r = navmeshOverlayMirrorXRequested_; navmeshOverlayMirrorXRequested_ = false; return r; }
-    bool petToggleRequested() { bool r = petToggleRequested_; petToggleRequested_ = false; return r; }
-    bool spellbookToggleRequested() { bool r = spellbookToggleRequested_; spellbookToggleRequested_ = false; return r; }
-    bool buffWindowToggleRequested() { bool r = buffWindowToggleRequested_; buffWindowToggleRequested_ = false; return r; }
-    bool optionsToggleRequested() { bool r = optionsToggleRequested_; optionsToggleRequested_ = false; return r; }
 
-    // Targeting action requests
-    bool targetSelfRequested() { bool r = targetSelfRequested_; targetSelfRequested_ = false; return r; }
-    bool targetGroupMember1Requested() { bool r = targetGroupMember1Requested_; targetGroupMember1Requested_ = false; return r; }
-    bool targetGroupMember2Requested() { bool r = targetGroupMember2Requested_; targetGroupMember2Requested_ = false; return r; }
-    bool targetGroupMember3Requested() { bool r = targetGroupMember3Requested_; targetGroupMember3Requested_ = false; return r; }
-    bool targetGroupMember4Requested() { bool r = targetGroupMember4Requested_; targetGroupMember4Requested_ = false; return r; }
-    bool targetGroupMember5Requested() { bool r = targetGroupMember5Requested_; targetGroupMember5Requested_ = false; return r; }
-    bool targetNearestPCRequested() { bool r = targetNearestPCRequested_; targetNearestPCRequested_ = false; return r; }
-    bool targetNearestNPCRequested() { bool r = targetNearestNPCRequested_; targetNearestNPCRequested_ = false; return r; }
-    bool cycleTargetsRequested() { bool r = cycleTargetsRequested_; cycleTargetsRequested_ = false; return r; }
-    bool cycleTargetsReverseRequested() { bool r = cycleTargetsReverseRequested_; cycleTargetsReverseRequested_ = false; return r; }
+    // Action queue for renderer-internal actions (UI toggles, debug, camera, etc.)
+    std::vector<RendererEvent> drainActions() { std::vector<RendererEvent> r; r.swap(actionQueue_); return r; }
 
+    // Bridge queue for game actions routed through InputActionBridge
+    // (targeting, combat, movement toggles)
+    std::vector<RendererEvent> drainBridgeActions() { std::vector<RendererEvent> r; r.swap(bridgeQueue_); return r; }
+
+    // Spell gem and hotbar requests (use intData in RendererEvent for new code)
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
+
+    // Delta accumulators (accumulate between frames, consumed once per frame)
     float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
     float getStepHeightDelta() { float d = stepHeightDelta_; stepHeightDelta_ = 0; return d; }
-
-    // Helm UV adjustment requests (for debugging)
     float getHelmUOffsetDelta() { float d = helmUOffsetDelta_; helmUOffsetDelta_ = 0; return d; }
     float getHelmVOffsetDelta() { float d = helmVOffsetDelta_; helmVOffsetDelta_ = 0; return d; }
     float getHelmUScaleDelta() { float d = helmUScaleDelta_; helmUScaleDelta_ = 0; return d; }
     float getHelmVScaleDelta() { float d = helmVScaleDelta_; helmVScaleDelta_ = 0; return d; }
     float getHelmRotationDelta() { float d = helmRotationDelta_; helmRotationDelta_ = 0; return d; }
-    bool helmUVSwapRequested() { bool r = helmUVSwapRequested_; helmUVSwapRequested_ = false; return r; }
-    bool helmVFlipRequested() { bool r = helmVFlipRequested_; helmVFlipRequested_ = false; return r; }
-    bool helmUFlipRequested() { bool r = helmUFlipRequested_; helmUFlipRequested_ = false; return r; }
-    bool helmResetRequested() { bool r = helmResetRequested_; helmResetRequested_ = false; return r; }
-    bool helmPrintStateRequested() { bool r = helmPrintStateRequested_; helmPrintStateRequested_ = false; return r; }
     int getHeadVariantCycleDelta() { int d = headVariantCycleDelta_; headVariantCycleDelta_ = 0; return d; }
-
-    // Offset adjustment requests (returns delta value, 0 if no change)
     float getOffsetXDelta() { float d = offsetXDelta_; offsetXDelta_ = 0; return d; }
     float getOffsetYDelta() { float d = offsetYDelta_; offsetYDelta_ = 0; return d; }
     float getOffsetZDelta() { float d = offsetZDelta_; offsetZDelta_ = 0; return d; }
-
-    // Rotation adjustment requests (returns delta value, 0 if no change)
     float getRotationXDelta() { float d = rotationXDelta_; rotationXDelta_ = 0; return d; }
     float getRotationYDelta() { float d = rotationYDelta_; rotationYDelta_ = 0; return d; }
     float getRotationZDelta() { float d = rotationZDelta_; rotationZDelta_ = 0; return d; }
-
-    // Animation speed adjustment (returns delta value, 0 if no change)
     float getAnimSpeedDelta() { float d = animSpeedDelta_; animSpeedDelta_ = 0; return d; }
-
-    // Camera zoom adjustment for Player mode (+ to zoom in, - to zoom out)
     float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
-
-    // Ambient light adjustment (returns delta value, 0 if no change)
     float getAmbientLightDelta() { float d = ambientLightDelta_; ambientLightDelta_ = 0; return d; }
-
-    // Music volume adjustment (returns delta value, 0 if no change)
     float getMusicVolumeDelta() { float d = musicVolumeDelta_; musicVolumeDelta_ = 0; return d; }
-
-    // Effects volume adjustment (returns delta value, 0 if no change)
     float getEffectsVolumeDelta() { float d = effectsVolumeDelta_; effectsVolumeDelta_ = 0; return d; }
-
-    // Corpse Z offset adjustment (returns delta value, 0 if no change)
     float getCorpseZOffsetDelta() { float d = corpseZOffsetDelta_; corpseZOffsetDelta_ = 0; return d; }
-
-    // Eye height adjustment for first-person camera (returns delta value, 0 if no change)
     float getEyeHeightDelta() { float d = eyeHeightDelta_; eyeHeightDelta_ = 0; return d; }
-
-    // Spell particle multiplier adjustment (- to decrease, = to increase, Shift for fine control)
     float getParticleMultiplierDelta() { float d = particleMultiplierDelta_; particleMultiplierDelta_ = 0; return d; }
-
-    // Detail density adjustment ([ to decrease, ] to increase)
     float getDetailDensityDelta() { float d = detailDensityDelta_; detailDensityDelta_ = 0; return d; }
+    float getRepairRotateXDelta() { float d = repairRotateXDelta_; repairRotateXDelta_ = 0; return d; }
+    float getRepairRotateYDelta() { float d = repairRotateYDelta_; repairRotateYDelta_ = 0; return d; }
+    float getRepairRotateZDelta() { float d = repairRotateZDelta_; repairRotateZDelta_ = 0; return d; }
 
     // Chat input key events
     struct KeyEvent {
@@ -351,6 +323,10 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     bool slashKeyPressed() { bool r = slashKeyPressed_; slashKeyPressed_ = false; return r; }
     bool escapeKeyPressed() { bool r = escapeKeyPressed_; escapeKeyPressed_ = false; return r; }
 
+    // Chat focus state (set by renderer, read by GraphicsInputHandler)
+    void setChatInputFocused(bool focused) { chatInputFocused_ = focused; }
+    bool isChatInputFocused() const { return chatInputFocused_; }
+
     // Current mode (for hotkey lookups)
     void setCurrentMode(RendererMode mode) {
         switch (mode) {
@@ -361,75 +337,30 @@ bool zoneLineVisualizationToggleRequested() { bool r = zoneLineVisualizationTogg
     }
     eqt::input::HotkeyMode getCurrentMode() const { return currentMode_; }
 
-    // Repair mode control requests
-    float getRepairRotateXDelta() { float d = repairRotateXDelta_; repairRotateXDelta_ = 0; return d; }
-    float getRepairRotateYDelta() { float d = repairRotateYDelta_; repairRotateYDelta_ = 0; return d; }
-    float getRepairRotateZDelta() { float d = repairRotateZDelta_; repairRotateZDelta_ = 0; return d; }
-    bool repairFlipXRequested() { bool r = repairFlipXRequested_; repairFlipXRequested_ = false; return r; }
-    bool repairFlipYRequested() { bool r = repairFlipYRequested_; repairFlipYRequested_ = false; return r; }
-    bool repairFlipZRequested() { bool r = repairFlipZRequested_; repairFlipZRequested_ = false; return r; }
-    bool repairResetRequested() { bool r = repairResetRequested_; repairResetRequested_ = false; return r; }
-
 private:
+    // Continuous key/mouse state
     bool keyIsDown_[irr::KEY_KEY_CODES_COUNT] = {false};
     bool keyWasPressed_[irr::KEY_KEY_CODES_COUNT] = {false};
     int mouseX_ = 0, mouseY_ = 0;
     int lastMouseX_ = 0, lastMouseY_ = 0;
     bool leftButtonDown_ = false;
     bool rightButtonDown_ = false;
-    bool leftButtonClicked_ = false;  // Set on click, consumed by wasLeftButtonClicked()
-    bool leftButtonReleased_ = false; // Set on release, consumed by wasLeftButtonReleased()
-    int clickMouseX_ = 0, clickMouseY_ = 0;  // Position where click occurred
-    bool screenshotRequested_ = false;
-    bool wireframeToggleRequested_ = false;
-    bool hudToggleRequested_ = false;
-    bool nameTagToggleRequested_ = false;
-    bool zoneLightsToggleRequested_ = false;
-    bool cycleObjectLightsRequested_ = false;
-    bool cameraModeToggleRequested_ = false;
-    bool oldModelsToggleRequested_ = false;
-    bool saveEntitiesRequested_ = false;
-    bool helmDebugToggleRequested_ = false;
-    bool rendererModeToggleRequested_ = false;
-    bool autorunToggleRequested_ = false;
-    bool collisionToggleRequested_ = false;
-    bool collisionDebugToggleRequested_ = false;
-    bool lightingToggleRequested_ = false;
-    bool clearTargetRequested_ = false;
-    bool autoAttackToggleRequested_ = false;
-    bool inventoryToggleRequested_ = false;
-    bool groupToggleRequested_ = false;
-    bool doorInteractRequested_ = false;
-    bool worldObjectInteractRequested_ = false;
-    bool hailRequested_ = false;
-    bool considerRequested_ = false;
-    bool vendorToggleRequested_ = false;
-    bool trainerToggleRequested_ = false;
-    bool skillsToggleRequested_ = false;
-bool zoneLineVisualizationToggleRequested_ = false;
-    bool mapOverlayToggleRequested_ = false;
-    bool mapOverlayRotateRequested_ = false;
-    bool mapOverlayMirrorXRequested_ = false;
-    bool navmeshOverlayToggleRequested_ = false;
-    bool navmeshOverlayRotateRequested_ = false;
-    bool navmeshOverlayMirrorXRequested_ = false;
-    bool petToggleRequested_ = false;
-    bool spellbookToggleRequested_ = false;
-    bool buffWindowToggleRequested_ = false;
-    bool optionsToggleRequested_ = false;
-    // Targeting action flags
-    bool targetSelfRequested_ = false;
-    bool targetGroupMember1Requested_ = false;
-    bool targetGroupMember2Requested_ = false;
-    bool targetGroupMember3Requested_ = false;
-    bool targetGroupMember4Requested_ = false;
-    bool targetGroupMember5Requested_ = false;
-    bool targetNearestPCRequested_ = false;
-    bool targetNearestNPCRequested_ = false;
-    bool cycleTargetsRequested_ = false;
-    bool cycleTargetsReverseRequested_ = false;
-    int8_t spellGemCastRequest_ = -1;  // -1 = no request, 0-7 = gem slot
-    int8_t hotbarActivationRequest_ = -1;  // -1 = no request, 0-9 = hotbar button
+    bool leftButtonClicked_ = false;
+    bool leftButtonReleased_ = false;
+    int clickMouseX_ = 0, clickMouseY_ = 0;
+    bool quitRequested_ = false;
+    bool chatInputFocused_ = false;  // Set by renderer, read by GraphicsInputHandler
+
+    // Action queue (replaces ~47 boolean flags) — renderer-internal actions
+    std::vector<RendererEvent> actionQueue_;
+    // Bridge queue — game actions routed to GraphicsInputHandler → InputActionBridge
+    std::vector<RendererEvent> bridgeQueue_;
+
+    // Spell gem and hotbar (indexed values, not simple booleans)
+    int8_t spellGemCastRequest_ = -1;
+    int8_t hotbarActivationRequest_ = -1;
+
+    // Delta accumulators (accumulate between frames)
     float collisionHeightDelta_ = 0.0f;
     float stepHeightDelta_ = 0.0f;
     float offsetXDelta_ = 0.0f;
@@ -447,35 +378,21 @@ bool zoneLineVisualizationToggleRequested_ = false;
     float eyeHeightDelta_ = 0.0f;
     float particleMultiplierDelta_ = 0.0f;
     float detailDensityDelta_ = 0.0f;
-    bool quitRequested_ = false;
-
-    // Helm UV debugging
     float helmUOffsetDelta_ = 0.0f;
     float helmVOffsetDelta_ = 0.0f;
     float helmUScaleDelta_ = 0.0f;
     float helmVScaleDelta_ = 0.0f;
     float helmRotationDelta_ = 0.0f;
-    bool helmUVSwapRequested_ = false;
-    bool helmVFlipRequested_ = false;
-    bool helmUFlipRequested_ = false;
-    bool helmResetRequested_ = false;
-    bool helmPrintStateRequested_ = false;
     int headVariantCycleDelta_ = 0;
+    float repairRotateXDelta_ = 0.0f;
+    float repairRotateYDelta_ = 0.0f;
+    float repairRotateZDelta_ = 0.0f;
 
     // Chat input state
     std::vector<KeyEvent> pendingKeyEvents_;
     bool enterKeyPressed_ = false;
     bool slashKeyPressed_ = false;
     bool escapeKeyPressed_ = false;
-
-    // Repair mode controls
-    float repairRotateXDelta_ = 0.0f;
-    float repairRotateYDelta_ = 0.0f;
-    float repairRotateZDelta_ = 0.0f;
-    bool repairFlipXRequested_ = false;
-    bool repairFlipYRequested_ = false;
-    bool repairFlipZRequested_ = false;
-    bool repairResetRequested_ = false;
 
     // Current hotkey mode for key lookups
     eqt::input::HotkeyMode currentMode_ = eqt::input::HotkeyMode::Player;
@@ -691,6 +608,18 @@ public:
     // Returns false if the renderer should stop
     bool processFrame(float deltaTime);
 
+    // Frame phase methods (called by processFrame)
+    void processFrameInput(float deltaTime);
+    void processFrameVisibility();
+    void processFrameSimulation(float deltaTime);
+    bool processFrameRender(float deltaTime);  // Returns false for loading screen early-return
+    void processCommonInput(const std::vector<RendererEvent>& actions);
+    void processPlayerInput(const std::vector<RendererEvent>& actions);
+    void processAdminInput(const std::vector<RendererEvent>& actions);
+    void processRepairInput(const std::vector<RendererEvent>& actions);
+    void processInputDeltas(float deltaTime);
+    void processChatInput();
+
     // Run the main render loop (blocking)
     void run();
 
@@ -741,6 +670,7 @@ public:
         }
         // Force visibility update on next frame by invalidating cached camera position
         lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
+        lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
         // Force PVS recalculation (resets static variables in updatePvsVisibility)
         forcePvsUpdate_ = true;
     }
@@ -781,29 +711,10 @@ public:
     using TargetCallback = std::function<void(uint16_t spawnId)>;
     void setTargetCallback(TargetCallback callback) { targetCallback_ = callback; }
 
-    // Clear target callback (called when player clears target via ESC key)
-    using ClearTargetCallback = std::function<void()>;
-    void setClearTargetCallback(ClearTargetCallback callback) { clearTargetCallback_ = callback; }
-
     // Loot corpse callback (called when player shift+clicks on a corpse)
     using LootCorpseCallback = std::function<void(uint16_t corpseId)>;
     void setLootCorpseCallback(LootCorpseCallback callback) { lootCorpseCallback_ = callback; }
 
-    // Auto attack toggle callback (called when ` key is pressed in Player Mode)
-    using AutoAttackCallback = std::function<void()>;
-    void setAutoAttackCallback(AutoAttackCallback callback) { autoAttackCallback_ = callback; }
-
-    // Auto attack status callback (returns true if auto attack is currently enabled)
-    using AutoAttackStatusCallback = std::function<bool()>;
-    void setAutoAttackStatusCallback(AutoAttackStatusCallback callback) { autoAttackStatusCallback_ = callback; }
-
-    // Hail callback (called when H key is pressed in Player Mode)
-    using HailCallback = std::function<void()>;
-    void setHailCallback(HailCallback callback) { hailCallback_ = callback; }
-
-    // Consider callback (called when C key is pressed in Player Mode)
-    using ConsiderCallback = std::function<void()>;
-    void setConsiderCallback(ConsiderCallback callback) { considerCallback_ = callback; }
 
     // Vendor toggle callback (called when V key is pressed in Player Mode)
     using VendorToggleCallback = std::function<void()>;
@@ -828,22 +739,6 @@ public:
     // Zoning enabled callback (called when zone line visualization is toggled)
     using ZoningEnabledCallback = std::function<void(bool enabled)>;
     void setZoningEnabledCallback(ZoningEnabledCallback callback) { zoningEnabledCallback_ = callback; }
-
-    // Targeting callbacks (F1-F8 hotkeys)
-    using TargetSelfCallback = std::function<void()>;
-    void setTargetSelfCallback(TargetSelfCallback callback) { targetSelfCallback_ = callback; }
-
-    using TargetGroupMemberCallback = std::function<void(int memberIndex)>;  // 0-4 for group members
-    void setTargetGroupMemberCallback(TargetGroupMemberCallback callback) { targetGroupMemberCallback_ = callback; }
-
-    using TargetNearestPCCallback = std::function<void()>;
-    void setTargetNearestPCCallback(TargetNearestPCCallback callback) { targetNearestPCCallback_ = callback; }
-
-    using TargetNearestNPCCallback = std::function<void()>;
-    void setTargetNearestNPCCallback(TargetNearestNPCCallback callback) { targetNearestNPCCallback_ = callback; }
-
-    using CycleTargetsCallback = std::function<void(bool reverse)>;  // true for Shift+Tab
-    void setCycleTargetsCallback(CycleTargetsCallback callback) { cycleTargetsCallback_ = callback; }
 
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
@@ -1087,6 +982,7 @@ private:
     float renderDistance_ = 300.0f;   // Absolute render limit (sphere around player)
     float fogThickness_ = 50.0f;      // Thickness of fog fade zone at edge
     irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
+    irr::core::vector3df lastLightCameraPos_;    // Last camera pos when object lights were updated
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
@@ -1103,6 +999,23 @@ private:
     // Time of day
     uint8_t currentHour_ = 12;
     uint8_t currentMinute_ = 0;
+
+    // Frame phase shared state
+    std::chrono::steady_clock::time_point sectionStart_;
+    int64_t measureSection();
+    bool chatInputFocused_ = false;
+    bool runTier2_ = true;
+    bool runTier3_ = true;
+
+    // Tiered update frequencies
+    uint32_t frameNumber_ = 0;
+    static constexpr uint32_t kTier2Interval = 3;   // ~20Hz at 60fps
+    static constexpr uint32_t kTier3Interval = 6;   // ~10Hz at 60fps
+    float tier3DeltaAccum_ = 0.0f;  // Accumulated delta for Tier 3 simulation
+
+    // Adaptive budget (constrained mode)
+    float frameBudgetMs_ = 33.3f;       // Target budget (default 30fps)
+    bool frameBudgetExceeded_ = false;   // True if last frame exceeded budget
 
     RendererConfig config_;
     bool initialized_ = false;
@@ -1197,12 +1110,7 @@ private:
 
     // Target selection and loot
     TargetCallback targetCallback_;
-    ClearTargetCallback clearTargetCallback_;
     LootCorpseCallback lootCorpseCallback_;
-    AutoAttackCallback autoAttackCallback_;
-    AutoAttackStatusCallback autoAttackStatusCallback_;
-    HailCallback hailCallback_;
-    ConsiderCallback considerCallback_;
     VendorToggleCallback vendorToggleCallback_;
     BankerInteractCallback bankerInteractCallback_;
     TrainerToggleCallback trainerToggleCallback_;
@@ -1211,11 +1119,6 @@ private:
     WorldObjectInteractCallback worldObjectInteractCallback_;
     SpellGemCastCallback spellGemCastCallback_;
     ZoningEnabledCallback zoningEnabledCallback_;
-    TargetSelfCallback targetSelfCallback_;
-    TargetGroupMemberCallback targetGroupMemberCallback_;
-    TargetNearestPCCallback targetNearestPCCallback_;
-    TargetNearestNPCCallback targetNearestNPCCallback_;
-    CycleTargetsCallback cycleTargetsCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
     uint8_t currentTargetHpPercent_ = 100;

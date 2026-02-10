@@ -6,6 +6,7 @@
 #include "client/action/action_dispatcher.h"
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
+#include "client/input/input_handler.h"
 
 #include <memory>
 #include <string>
@@ -19,6 +20,7 @@ namespace eqt {
 
 // Forward declarations
 class EqActionHandler;
+namespace input { class GraphicsInputHandler; }
 
 /**
  * ApplicationConfig - Configuration for the Application.
@@ -251,6 +253,9 @@ private:
     // EverQuest client and adapter
     std::unique_ptr<EverQuest> m_eqClient;
     std::unique_ptr<EqActionHandler> m_actionHandler;
+
+    // Graphics input handler (bridges RendererEventReceiver → InputActionBridge)
+    std::unique_ptr<input::GraphicsInputHandler> m_graphicsInputHandler;
 
     // ========== State ==========
 

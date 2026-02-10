@@ -4,6 +4,10 @@
 #include "client/pet_constants.h"
 #include "common/logging.h"
 
+#ifdef EQT_HAS_GRAPHICS
+#include "client/graphics/irrlicht_renderer.h"
+#endif
+
 namespace eqt {
 
 EqActionHandler::EqActionHandler(EverQuest& eq)
@@ -14,6 +18,34 @@ EqActionHandler::~EqActionHandler() = default;
 
 CombatManager* EqActionHandler::getCombatManager() {
     return m_eq.GetCombatManager();
+}
+
+void EqActionHandler::updateRendererTargetInfo(uint16_t spawnId) {
+#ifdef EQT_HAS_GRAPHICS
+    auto* renderer = m_eq.GetRenderer();
+    if (!renderer) return;
+
+    if (spawnId == 0) {
+        renderer->clearCurrentTarget();
+        return;
+    }
+
+    const auto& entities = m_eq.GetEntities();
+    auto it = entities.find(spawnId);
+    if (it != entities.end()) {
+        const auto& e = it->second;
+        EQT::Graphics::TargetInfo info;
+        info.spawnId = e.spawn_id;
+        info.name = e.name;
+        info.level = e.level;
+        info.hpPercent = e.hp_percent;
+        info.raceId = e.race_id;
+        info.gender = e.gender;
+        info.classId = e.class_id;
+        info.npcType = e.npc_type;
+        renderer->setCurrentTargetInfo(info);
+    }
+#endif
 }
 
 std::string EqActionHandler::channelToString(action::ChatChannel channel) {
@@ -137,6 +169,7 @@ void EqActionHandler::targetEntity(uint16_t spawnId) {
     auto* combat = getCombatManager();
     if (combat) {
         combat->SetTarget(spawnId);
+        updateRendererTargetInfo(spawnId);
     }
 }
 
@@ -163,6 +196,7 @@ void EqActionHandler::targetNearestPC() {
         auto* combat = getCombatManager();
         if (combat) {
             combat->SetTarget(nearestPC->spawnId);
+            updateRendererTargetInfo(nearestPC->spawnId);
         }
     }
 }
@@ -177,6 +211,7 @@ void EqActionHandler::targetNearestNPC() {
         auto* combat = getCombatManager();
         if (combat) {
             combat->SetTarget(nearestNPC->spawnId);
+            updateRendererTargetInfo(nearestNPC->spawnId);
         }
     }
 }
@@ -185,6 +220,7 @@ void EqActionHandler::cycleTargets() {
     auto* combat = getCombatManager();
     if (combat) {
         combat->CycleTargets(true);  // Forward
+        updateRendererTargetInfo(combat->GetTargetId());
     }
 }
 
@@ -192,6 +228,7 @@ void EqActionHandler::cycleTargetsReverse() {
     auto* combat = getCombatManager();
     if (combat) {
         combat->CycleTargets(false);  // Reverse
+        updateRendererTargetInfo(combat->GetTargetId());
     }
 }
 
@@ -199,6 +236,7 @@ void EqActionHandler::clearTarget() {
     auto* combat = getCombatManager();
     if (combat) {
         combat->ClearTarget();
+        updateRendererTargetInfo(0);
     }
 }
 

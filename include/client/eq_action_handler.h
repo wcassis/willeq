@@ -165,6 +165,9 @@ private:
     // Helper to get the combat manager
     CombatManager* getCombatManager();
 
+    // Update renderer's target display after targeting via bridge
+    void updateRendererTargetInfo(uint16_t spawnId);
+
     // Convert ChatChannel enum to EQ channel string
     std::string channelToString(action::ChatChannel channel);
 };

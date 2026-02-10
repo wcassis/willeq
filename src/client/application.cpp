@@ -27,6 +27,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/ui/ui_settings.h"
 #include "client/input/hotkey_manager.h"
+#include "client/input/graphics_input_handler.h"
 #endif
 
 namespace eqt {
@@ -211,6 +212,15 @@ bool Application::initialize(const ApplicationConfig& config) {
                     }
                     if (config.sceneProfileEnabled) {
                         eqRenderer->runSceneProfile();
+                    }
+
+                    // Create GraphicsInputHandler from renderer's event receiver
+                    // and connect it to InputActionBridge for game action routing
+                    auto* eventReceiver = eqRenderer->getEventReceiver();
+                    if (eventReceiver && m_inputBridge) {
+                        m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
+                        m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
+                        LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
                     }
 
 #ifdef WITH_RDP

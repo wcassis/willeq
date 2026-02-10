@@ -210,91 +210,67 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
 
             if (action.has_value()) {
                 using HA = eqt::input::HotkeyAction;
+                using RA = RendererAction;
                 switch (*action) {
                     // === Global Actions ===
                     case HA::Quit: quitRequested_ = true; break;
-                    case HA::Screenshot: screenshotRequested_ = true; break;
-                    case HA::ToggleWireframe: wireframeToggleRequested_ = true; break;
-                    case HA::ToggleHUD: hudToggleRequested_ = true; break;
-                    case HA::ToggleNameTags: nameTagToggleRequested_ = true; break;
-                    case HA::ToggleZoneLights: zoneLightsToggleRequested_ = true; break;
-                    case HA::ToggleCameraMode: cameraModeToggleRequested_ = true; break;
-                    case HA::ToggleOldModels: oldModelsToggleRequested_ = true; break;
-                    case HA::ToggleRendererMode: rendererModeToggleRequested_ = true; break;
+                    case HA::Screenshot: actionQueue_.push_back({RA::Screenshot}); break;
+                    case HA::ToggleWireframe: actionQueue_.push_back({RA::ToggleWireframe}); break;
+                    case HA::ToggleHUD: actionQueue_.push_back({RA::ToggleHUD}); break;
+                    case HA::ToggleNameTags: actionQueue_.push_back({RA::ToggleNameTags}); break;
+                    case HA::ToggleZoneLights: actionQueue_.push_back({RA::ToggleZoneLights}); break;
+                    case HA::ToggleCameraMode: actionQueue_.push_back({RA::ToggleCameraMode}); break;
+                    case HA::ToggleOldModels: actionQueue_.push_back({RA::ToggleOldModels}); break;
+                    case HA::ToggleRendererMode: actionQueue_.push_back({RA::ToggleRendererMode}); break;
 
                     // === Player Mode Actions ===
-                    case HA::ToggleAutorun: autorunToggleRequested_ = true; break;
-                    case HA::ToggleAutoAttack: autoAttackToggleRequested_ = true; break;
-                    case HA::ToggleInventory: inventoryToggleRequested_ = true; break;
-                    case HA::ToggleSkills: skillsToggleRequested_ = true; break;
-                    case HA::ToggleGroup: groupToggleRequested_ = true; break;
-                    case HA::TogglePetWindow: petToggleRequested_ = true; break;
-                    case HA::ToggleSpellbook: spellbookToggleRequested_ = true; break;
-                    case HA::ToggleBuffWindow: buffWindowToggleRequested_ = true; break;
-                    case HA::ToggleOptions: optionsToggleRequested_ = true; break;
-                    case HA::ToggleVendor: vendorToggleRequested_ = true; break;
-                    case HA::ToggleTrainer: trainerToggleRequested_ = true; break;
-                    case HA::ToggleCollision: collisionToggleRequested_ = true; break;
-                    case HA::ToggleCollisionDebug: collisionDebugToggleRequested_ = true; break;
-                    case HA::ToggleZoneLineVisualization: zoneLineVisualizationToggleRequested_ = true; break;
-                    case HA::ToggleMapOverlay: mapOverlayToggleRequested_ = true; break;
-                    case HA::RotateMapOverlay: mapOverlayRotateRequested_ = true; break;
-                    case HA::MirrorMapOverlayX: mapOverlayMirrorXRequested_ = true; break;
-                    case HA::ToggleNavmeshOverlay: navmeshOverlayToggleRequested_ = true; break;
-                    case HA::RotateNavmeshOverlay: navmeshOverlayRotateRequested_ = true; break;
-                    case HA::MirrorNavmeshOverlayX: navmeshOverlayMirrorXRequested_ = true; break;
-                    case HA::CycleObjectLights: cycleObjectLightsRequested_ = true; break;
+                    // Game actions → bridgeQueue (routed through InputActionBridge)
+                    case HA::ToggleAutorun: bridgeQueue_.push_back({RA::ToggleAutorun}); break;
+                    case HA::ToggleAutoAttack: bridgeQueue_.push_back({RA::ToggleAutoAttack}); break;
+                    case HA::ToggleInventory: actionQueue_.push_back({RA::ToggleInventory}); break;
+                    case HA::ToggleSkills: actionQueue_.push_back({RA::ToggleSkills}); break;
+                    case HA::ToggleGroup: actionQueue_.push_back({RA::ToggleGroup}); break;
+                    case HA::TogglePetWindow: actionQueue_.push_back({RA::TogglePet}); break;
+                    case HA::ToggleSpellbook: actionQueue_.push_back({RA::ToggleSpellbook}); break;
+                    case HA::ToggleBuffWindow: actionQueue_.push_back({RA::ToggleBuffWindow}); break;
+                    case HA::ToggleOptions: actionQueue_.push_back({RA::ToggleOptions}); break;
+                    case HA::ToggleVendor: actionQueue_.push_back({RA::ToggleVendor}); break;
+                    case HA::ToggleTrainer: actionQueue_.push_back({RA::ToggleTrainer}); break;
+                    case HA::ToggleCollision: actionQueue_.push_back({RA::ToggleCollision}); break;
+                    case HA::ToggleCollisionDebug: actionQueue_.push_back({RA::ToggleCollisionDebug}); break;
+                    case HA::ToggleZoneLineVisualization: actionQueue_.push_back({RA::ToggleZoneLineVisualization}); break;
+                    case HA::ToggleMapOverlay: actionQueue_.push_back({RA::ToggleMapOverlay}); break;
+                    case HA::RotateMapOverlay: actionQueue_.push_back({RA::RotateMapOverlay}); break;
+                    case HA::MirrorMapOverlayX: actionQueue_.push_back({RA::MirrorXMapOverlay}); break;
+                    case HA::ToggleNavmeshOverlay: actionQueue_.push_back({RA::ToggleNavmeshOverlay}); break;
+                    case HA::RotateNavmeshOverlay: actionQueue_.push_back({RA::RotateNavmeshOverlay}); break;
+                    case HA::MirrorNavmeshOverlayX: actionQueue_.push_back({RA::MirrorXNavmeshOverlay}); break;
+                    case HA::CycleObjectLights: actionQueue_.push_back({RA::CycleObjectLights}); break;
                     case HA::Interact:  // Generic interact - tries door first, then world object
-                        doorInteractRequested_ = true;
-                        worldObjectInteractRequested_ = true;
+                        actionQueue_.push_back({RA::DoorInteract});
+                        actionQueue_.push_back({RA::WorldObjectInteract});
                         break;
-                    case HA::InteractDoor: doorInteractRequested_ = true; break;
-                    case HA::InteractWorldObject: worldObjectInteractRequested_ = true; break;
-                    case HA::Hail: hailRequested_ = true; break;
-                    case HA::Consider: considerRequested_ = true; break;
-                    case HA::ClearTarget: clearTargetRequested_ = true; break;
+                    case HA::InteractDoor: actionQueue_.push_back({RA::DoorInteract}); break;
+                    case HA::InteractWorldObject: actionQueue_.push_back({RA::WorldObjectInteract}); break;
+                    case HA::Hail: bridgeQueue_.push_back({RA::Hail}); break;
+                    case HA::Consider: bridgeQueue_.push_back({RA::Consider}); break;
+                    case HA::ClearTarget:
+                        // Both queues: bridge clears combat target, renderer clears display + repair target
+                        bridgeQueue_.push_back({RA::ClearTarget});
+                        actionQueue_.push_back({RA::ClearTarget});
+                        break;
 
-                    // Targeting
-                    case HA::TargetSelf:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetSelfRequested_ = true");
-                        targetSelfRequested_ = true;
-                        break;
-                    case HA::TargetGroupMember1:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember1Requested_ = true");
-                        targetGroupMember1Requested_ = true;
-                        break;
-                    case HA::TargetGroupMember2:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember2Requested_ = true");
-                        targetGroupMember2Requested_ = true;
-                        break;
-                    case HA::TargetGroupMember3:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember3Requested_ = true");
-                        targetGroupMember3Requested_ = true;
-                        break;
-                    case HA::TargetGroupMember4:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember4Requested_ = true");
-                        targetGroupMember4Requested_ = true;
-                        break;
-                    case HA::TargetGroupMember5:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetGroupMember5Requested_ = true");
-                        targetGroupMember5Requested_ = true;
-                        break;
-                    case HA::TargetNearestPC:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetNearestPCRequested_ = true");
-                        targetNearestPCRequested_ = true;
-                        break;
-                    case HA::TargetNearestNPC:
-                        LOG_DEBUG(MOD_INPUT, "Setting targetNearestNPCRequested_ = true");
-                        targetNearestNPCRequested_ = true;
-                        break;
-                    case HA::CycleTargets:
-                        LOG_DEBUG(MOD_INPUT, "Setting cycleTargetsRequested_ = true");
-                        cycleTargetsRequested_ = true;
-                        break;
-                    case HA::CycleTargetsReverse:
-                        LOG_DEBUG(MOD_INPUT, "Setting cycleTargetsReverseRequested_ = true");
-                        cycleTargetsReverseRequested_ = true;
-                        break;
+                    // Targeting → bridgeQueue (routed through InputActionBridge)
+                    case HA::TargetSelf: bridgeQueue_.push_back({RA::TargetSelf}); break;
+                    case HA::TargetGroupMember1: bridgeQueue_.push_back({RA::TargetGroupMember1}); break;
+                    case HA::TargetGroupMember2: bridgeQueue_.push_back({RA::TargetGroupMember2}); break;
+                    case HA::TargetGroupMember3: bridgeQueue_.push_back({RA::TargetGroupMember3}); break;
+                    case HA::TargetGroupMember4: bridgeQueue_.push_back({RA::TargetGroupMember4}); break;
+                    case HA::TargetGroupMember5: bridgeQueue_.push_back({RA::TargetGroupMember5}); break;
+                    case HA::TargetNearestPC: bridgeQueue_.push_back({RA::TargetNearestPC}); break;
+                    case HA::TargetNearestNPC: bridgeQueue_.push_back({RA::TargetNearestNPC}); break;
+                    case HA::CycleTargets: bridgeQueue_.push_back({RA::CycleTargets}); break;
+                    case HA::CycleTargetsReverse: bridgeQueue_.push_back({RA::CycleTargetsReverse}); break;
 
                     case HA::OpenChat: enterKeyPressed_ = true; break;
                     case HA::OpenChatSlash: slashKeyPressed_ = true; break;
@@ -332,10 +308,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::EffectsVolumeDown: effectsVolumeDelta_ = -0.1f; break;
 
                     // === Admin Mode Actions ===
-                    case HA::SaveEntities: saveEntitiesRequested_ = true; break;
-                    case HA::ToggleLighting: lightingToggleRequested_ = true; break;
-                    case HA::ToggleHelmDebug: helmDebugToggleRequested_ = true; break;
-                    case HA::HelmPrintState: helmPrintStateRequested_ = true; break;
+                    case HA::SaveEntities: actionQueue_.push_back({RA::SaveEntities}); break;
+                    case HA::ToggleLighting: actionQueue_.push_back({RA::ToggleLighting}); break;
+                    case HA::ToggleHelmDebug: actionQueue_.push_back({RA::ToggleHelmDebug}); break;
+                    case HA::HelmPrintState: actionQueue_.push_back({RA::HelmPrintState}); break;
                     case HA::AnimSpeedDecrease: animSpeedDelta_ = -0.1f; break;
                     case HA::AnimSpeedIncrease: animSpeedDelta_ = 0.1f; break;
                     case HA::AmbientLightDecrease:
@@ -374,10 +350,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::HelmVScaleIncrease: helmVScaleDelta_ = scaleStep; break;
                     case HA::HelmRotateLeft: helmRotationDelta_ = -rotStep; break;
                     case HA::HelmRotateRight: helmRotationDelta_ = rotStep; break;
-                    case HA::HelmReset: helmResetRequested_ = true; break;
-                    case HA::HelmUVSwap: helmUVSwapRequested_ = true; break;
-                    case HA::HelmVFlip: helmVFlipRequested_ = true; break;
-                    case HA::HelmUFlip: helmUFlipRequested_ = true; break;
+                    case HA::HelmReset: actionQueue_.push_back({RA::HelmReset}); break;
+                    case HA::HelmUVSwap: actionQueue_.push_back({RA::HelmUVSwap}); break;
+                    case HA::HelmVFlip: actionQueue_.push_back({RA::HelmVFlip}); break;
+                    case HA::HelmUFlip: actionQueue_.push_back({RA::HelmUFlip}); break;
 
                     // Collision height adjustments
                     case HA::CollisionHeightUp:
@@ -400,10 +376,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::RepairRotateYNeg: repairRotateYDelta_ = -repairRotStep; break;
                     case HA::RepairRotateZPos: repairRotateZDelta_ = repairRotStep; break;
                     case HA::RepairRotateZNeg: repairRotateZDelta_ = -repairRotStep; break;
-                    case HA::RepairFlipX: repairFlipXRequested_ = true; break;
-                    case HA::RepairFlipY: repairFlipYRequested_ = true; break;
-                    case HA::RepairFlipZ: repairFlipZRequested_ = true; break;
-                    case HA::RepairReset: repairResetRequested_ = true; break;
+                    case HA::RepairFlipX: actionQueue_.push_back({RA::RepairFlipX}); break;
+                    case HA::RepairFlipY: actionQueue_.push_back({RA::RepairFlipY}); break;
+                    case HA::RepairFlipZ: actionQueue_.push_back({RA::RepairFlipZ}); break;
+                    case HA::RepairReset: actionQueue_.push_back({RA::RepairReset}); break;
 
                     // Movement keys and Jump are handled separately (continuous state)
                     default:
@@ -422,8 +398,8 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             if (event.KeyInput.Key == irr::KEY_NUMPAD3) helmVScaleDelta_ = scaleStep;
             if (event.KeyInput.Key == irr::KEY_ADD) helmRotationDelta_ = rotStep;
             if (event.KeyInput.Key == irr::KEY_SUBTRACT) helmRotationDelta_ = -rotStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD5) helmPrintStateRequested_ = true;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD0) helmResetRequested_ = true;
+            if (event.KeyInput.Key == irr::KEY_NUMPAD5) actionQueue_.push_back({RendererAction::HelmPrintState});
+            if (event.KeyInput.Key == irr::KEY_NUMPAD0) actionQueue_.push_back({RendererAction::HelmReset});
         }
         return true;
     }
@@ -536,6 +512,9 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
                  config_.width, config_.height,
                  config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
                  config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024));
+
+        // Set adaptive frame budget for constrained devices
+        frameBudgetMs_ = 66.6f;  // 15fps target for constrained devices
     }
 
     // Choose driver type
@@ -695,6 +674,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
                  config_.width, config_.height,
                  config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
                  config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024));
+
+        // Set adaptive frame budget for constrained devices
+        frameBudgetMs_ = 66.6f;  // 15fps target for constrained devices
     }
 
     // Choose driver type
@@ -1318,6 +1300,12 @@ void IrrlichtRenderer::updateZoneLightVisibility() {
 
     irr::core::vector3df cameraPos = camera_->getPosition();
 
+    // Movement gate: skip when camera hasn't moved 5+ units (shares threshold with object culling)
+    float cameraMoved = cameraPos.getDistanceFrom(lastCullingCameraPos_);
+    if (cameraMoved < 5.0f && lastCullingCameraPos_.getLengthSQ() > 0.01f && !forcePvsUpdate_) {
+        return;
+    }
+
     // Update scene graph membership based on distance
     // This removes far lights entirely from the scene graph to skip traversal overhead
     size_t inSceneCount = 0;
@@ -1358,6 +1346,19 @@ void IrrlichtRenderer::updateObjectLights() {
     const size_t hardwareLightLimit = 8;  // Software renderer limit
 
     irr::core::vector3df cameraPos = camera_->getPosition();
+
+    // Always update player light position (cheap, must track player movement)
+    if (playerLightNode_) {
+        playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
+    }
+
+    // Movement gate: skip expensive light distance/occlusion calculation
+    // when camera hasn't moved 5+ units since last full update
+    float cameraMoved = cameraPos.getDistanceFrom(lastLightCameraPos_);
+    if (cameraMoved < 5.0f && lastLightCameraPos_.getLengthSQ() > 0.01f) {
+        return;
+    }
+    lastLightCameraPos_ = cameraPos;
 
     // Player position for occlusion checks (EQ coords to Irrlicht: x, z, y)
     // Raise to head height (~5 units) so low geometry doesn't block line of sight
@@ -1425,8 +1426,7 @@ void IrrlichtRenderer::updateObjectLights() {
     }
     if (playerLightNode_) {
         playerLightNode_->setVisible(false);
-        // Update player light position to follow player
-        playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
+        // Player light position already updated at top of updateObjectLights()
     }
 
     // Add player light first with distance 0 (always highest priority)
@@ -3969,6 +3969,8 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
                 LOG_INFO(MOD_GRAPHICS, "Created player light: level={}, radius={:.1f}", lightLevel, radius);
             }
         }
+        // Invalidate light cache to force recalculation with new player light
+        lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
         return;
     }
 
@@ -4525,18 +4527,16 @@ void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
     upZ = up.Z;
 }
 
+int64_t IrrlichtRenderer::measureSection() {
+    auto now = std::chrono::steady_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - sectionStart_).count();
+    sectionStart_ = now;
+    return us;
+}
+
 bool IrrlichtRenderer::processFrame(float deltaTime) {
     auto frameStart = std::chrono::steady_clock::now();
-    auto sectionStart = frameStart;
-    auto sectionEnd = frameStart;
-
-    // Helper to measure section time in microseconds
-    auto measureSection = [&]() -> int64_t {
-        sectionEnd = std::chrono::steady_clock::now();
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(sectionEnd - sectionStart).count();
-        sectionStart = sectionEnd;
-        return us;
-    };
+    sectionStart_ = frameStart;
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: entered");
 
@@ -4551,8 +4551,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         LOG_WARN(MOD_GRAPHICS, "PERF: Previous frame took {} ms (slow!)", static_cast<int>(deltaTime * 1000.0f));
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checking isRunning...");
-
     if (!isRunning()) {
         LOG_INFO(MOD_GRAPHICS, "processFrame: isRunning() returned false");
         LOG_INFO(MOD_GRAPHICS, "initialized_={} device_={} device_run={} quitRequested={}",
@@ -4561,15 +4559,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         return false;
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: isRunning check passed");
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: getting timer...");
-
     // Update FPS
     irr::u32 currentTime = device_->getTimer()->getTime();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: timer ok, time={}", currentTime);
-
     frameCount_++;
     if (currentTime - lastFpsTime_ >= 1000) {
         currentFps_ = frameCount_;
@@ -4577,1094 +4568,38 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         lastFpsTime_ = currentTime;
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checking input events...");
-
-    // Handle input
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check wireframe...");
-    if (eventReceiver_->wireframeToggleRequested()) {
-        toggleWireframe();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check hud...");
-    if (eventReceiver_->hudToggleRequested()) {
-        toggleHUD();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check nametags...");
-    if (eventReceiver_->nameTagToggleRequested()) {
-        toggleNameTags();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check zonelights...");
-    if (eventReceiver_->zoneLightsToggleRequested()) {
-        toggleZoneLights();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check cycleObjectLights...");
-    if (eventReceiver_->cycleObjectLightsRequested()) {
-        cycleObjectLights();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check lighting...");
-    if (eventReceiver_->lightingToggleRequested()) {
-        toggleLighting();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: input events done");
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check screenshot...");
-    if (eventReceiver_->screenshotRequested()) {
-        saveScreenshot("screenshot.png");
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check cameraMode...");
-    if (eventReceiver_->cameraModeToggleRequested()) {
-        cycleCameraMode();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check oldModels...");
-    if (eventReceiver_->oldModelsToggleRequested()) {
-        toggleOldModels();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check saveEntities...");
-    if (eventReceiver_->saveEntitiesRequested() && saveEntitiesCallback_) {
-        saveEntitiesCallback_();
-    }
-
-    // ===== FRAME TIMING: Input Handling =====
-    if (frameTimingEnabled_) frameTimings_.inputHandling = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check clearTarget...");
-    // Handle clear target (Escape key)
-    if (eventReceiver_->clearTargetRequested()) {
-        // In Repair mode, ESC clears the repair target
-        if (rendererMode_ == RendererMode::Repair) {
-            if (repairTargetNode_) {
-                clearRepairTarget();
-            }
-        } else {
-            // In other modes, ESC clears entity target
-            if (currentTargetId_ != 0) {
-                LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                clearCurrentTarget();
-                SetTrackedTargetId(0);  // Clear tracked target for debug logging
-            }
-        }
-    }
-
-    // Handle targeting hotkeys (F1-F8, Tab) - only in Player mode
-    if (rendererMode_ == RendererMode::Player) {
-        // F1 - Target Self
-        if (eventReceiver_->targetSelfRequested() && targetSelfCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F1 pressed - calling targetSelfCallback_");
-            targetSelfCallback_();
-        }
-        // F2-F6 - Target Group Members
-        if (eventReceiver_->targetGroupMember1Requested() && targetGroupMemberCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F2 pressed - calling targetGroupMemberCallback_(0)");
-            targetGroupMemberCallback_(0);
-        }
-        if (eventReceiver_->targetGroupMember2Requested() && targetGroupMemberCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F3 pressed - calling targetGroupMemberCallback_(1)");
-            targetGroupMemberCallback_(1);
-        }
-        if (eventReceiver_->targetGroupMember3Requested() && targetGroupMemberCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F4 pressed - calling targetGroupMemberCallback_(2)");
-            targetGroupMemberCallback_(2);
-        }
-        if (eventReceiver_->targetGroupMember4Requested() && targetGroupMemberCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F5 pressed - calling targetGroupMemberCallback_(3)");
-            targetGroupMemberCallback_(3);
-        }
-        if (eventReceiver_->targetGroupMember5Requested() && targetGroupMemberCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F6 pressed - calling targetGroupMemberCallback_(4)");
-            targetGroupMemberCallback_(4);
-        }
-        // F7 - Target Nearest PC
-        if (eventReceiver_->targetNearestPCRequested() && targetNearestPCCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F7 pressed - calling targetNearestPCCallback_");
-            targetNearestPCCallback_();
-        }
-        // F8 - Target Nearest NPC
-        if (eventReceiver_->targetNearestNPCRequested() && targetNearestNPCCallback_) {
-            LOG_DEBUG(MOD_INPUT, "F8 pressed - calling targetNearestNPCCallback_");
-            targetNearestNPCCallback_();
-        }
-        // Tab - Cycle Targets
-        if (eventReceiver_->cycleTargetsRequested() && cycleTargetsCallback_) {
-            LOG_DEBUG(MOD_INPUT, "Tab pressed - calling cycleTargetsCallback_(false)");
-            cycleTargetsCallback_(false);
-        }
-        // Shift+Tab - Cycle Targets Reverse
-        if (eventReceiver_->cycleTargetsReverseRequested() && cycleTargetsCallback_) {
-            LOG_DEBUG(MOD_INPUT, "Shift+Tab pressed - calling cycleTargetsCallback_(true)");
-            cycleTargetsCallback_(true);
-        }
-    }
-
-    // Handle Repair mode controls (only when in Repair mode with a target)
-    if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
-        // Rotation: X/Y/Z keys (Shift for negative direction)
-        float rotX = eventReceiver_->getRepairRotateXDelta();
-        float rotY = eventReceiver_->getRepairRotateYDelta();
-        float rotZ = eventReceiver_->getRepairRotateZDelta();
-        if (rotX != 0.0f || rotY != 0.0f || rotZ != 0.0f) {
-            applyRepairRotation(rotX, rotY, rotZ);
-        }
-
-        // Flip toggles: Ctrl+1/2/3 keys
-        if (eventReceiver_->repairFlipXRequested()) {
-            toggleRepairFlip(0);  // X axis
-        }
-        if (eventReceiver_->repairFlipYRequested()) {
-            toggleRepairFlip(1);  // Y axis
-        }
-        if (eventReceiver_->repairFlipZRequested()) {
-            toggleRepairFlip(2);  // Z axis
-        }
-
-        // Reset: Ctrl+R key
-        if (eventReceiver_->repairResetRequested()) {
-            resetRepairAdjustments();
-        }
-    } else {
-        // Consume the events even if not in Repair mode to prevent accumulation
-        eventReceiver_->getRepairRotateXDelta();
-        eventReceiver_->getRepairRotateYDelta();
-        eventReceiver_->getRepairRotateZDelta();
-        eventReceiver_->repairFlipXRequested();
-        eventReceiver_->repairFlipYRequested();
-        eventReceiver_->repairFlipZRequested();
-        eventReceiver_->repairResetRequested();
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check rendererMode...");
-
-    // Handle renderer mode toggle (F9)
-    if (eventReceiver_->rendererModeToggleRequested()) {
-        toggleRendererMode();
-    }
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: check autorun...");
-
-    // Check if chat input is focused (skip game hotkeys if so)
-    bool chatInputFocused = windowManager_ && windowManager_->isChatInputFocused();
-
-    // Handle autorun toggle (R or Numlock) - only in Player mode, not when chat focused
-    if (eventReceiver_->autorunToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        playerMovement_.autorun = !playerMovement_.autorun;
-        LOG_INFO(MOD_GRAPHICS, "Autorun: {}", (playerMovement_.autorun ? "ON" : "OFF"));
-    }
-
-    // Handle auto attack toggle (` backtick key) - only in Player mode, not when chat focused
-    if (eventReceiver_->autoAttackToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        if (autoAttackCallback_) {
-            autoAttackCallback_();
-        }
-    }
-
-    // Handle hail (H key) - only in Player mode, not when chat focused
-    if (eventReceiver_->hailRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        if (hailCallback_) {
-            hailCallback_();
-        }
-    }
-
-    // Handle consider (C key) - only in Player mode, not when chat focused
-    if (eventReceiver_->considerRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        if (considerCallback_) {
-            considerCallback_();
-        }
-    }
-
-    // Handle vendor toggle (V key) - only in Player mode, not when chat focused
-    if (eventReceiver_->vendorToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        if (vendorToggleCallback_) {
-            vendorToggleCallback_();
-        }
-    }
-
-    // Handle trainer toggle (T key) - only in Player mode, not when chat focused
-    if (eventReceiver_->trainerToggleRequested() && rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        if (trainerToggleCallback_) {
-            trainerToggleCallback_();
-        }
-    }
-
-    // Handle collision debug controls - only in Player mode, not when chat focused
-    if (rendererMode_ == RendererMode::Player && !chatInputFocused) {
-        if (eventReceiver_->collisionToggleRequested()) {
-            playerConfig_.collisionEnabled = !playerConfig_.collisionEnabled;
-            LOG_INFO(MOD_GRAPHICS, "Collision: {}", (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"));
-        }
-        if (eventReceiver_->collisionDebugToggleRequested()) {
-            playerConfig_.collisionDebug = !playerConfig_.collisionDebug;
-            LOG_INFO(MOD_GRAPHICS, "Collision Debug: {}", (playerConfig_.collisionDebug ? "ON" : "OFF"));
-            if (playerConfig_.collisionDebug) {
-                LOG_INFO(MOD_GRAPHICS, "  Collision Height: {}", playerConfig_.collisionCheckHeight);
-                LOG_INFO(MOD_GRAPHICS, "  Step Height: {}", playerConfig_.collisionStepHeight);
-                LOG_INFO(MOD_GRAPHICS, "  Controls: C=toggle collision, Ctrl+C=toggle debug");
-                LOG_INFO(MOD_GRAPHICS, "            T/G=collision height +/-, Y/B=step height +/-");
-            }
-        }
-        float collisionHeightDelta = eventReceiver_->getCollisionHeightDelta();
-        if (collisionHeightDelta != 0.0f) {
-            playerConfig_.collisionCheckHeight += collisionHeightDelta;
-            if (playerConfig_.collisionCheckHeight < 0.5f) playerConfig_.collisionCheckHeight = 0.5f;
-            LOG_INFO(MOD_GRAPHICS, "Collision Check Height: {}", playerConfig_.collisionCheckHeight);
-        }
-        float stepHeightDelta = eventReceiver_->getStepHeightDelta();
-        if (stepHeightDelta != 0.0f) {
-            playerConfig_.collisionStepHeight += stepHeightDelta;
-            if (playerConfig_.collisionStepHeight < 0.5f) playerConfig_.collisionStepHeight = 0.5f;
-            LOG_INFO(MOD_GRAPHICS, "Step Height: {}", playerConfig_.collisionStepHeight);
-        }
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint A (after collision controls)");
-
-    // Handle animation speed adjustments ([ and ] keys) - not when chat focused
-    if (!chatInputFocused) {
-        float animSpeedDelta = eventReceiver_->getAnimSpeedDelta();
-        if (animSpeedDelta != 0.0f && entityRenderer_) {
-            entityRenderer_->adjustGlobalAnimationSpeed(animSpeedDelta);
-        }
-    }
-
-    // Handle particle multiplier adjustments (Ctrl+- and Ctrl+=)
-    float particleDelta = eventReceiver_->getParticleMultiplierDelta();
-    if (particleDelta != 0.0f && spellVisualFX_) {
-        spellVisualFX_->adjustParticleMultiplier(particleDelta);
-    }
-
-    // Handle ambient light adjustments (Page Up/Down are OK even when chat focused - they're not text)
-    float ambientDelta = eventReceiver_->getAmbientLightDelta();
-    if (ambientDelta != 0.0f) {
-        ambientMultiplier_ = std::max(0.0f, std::min(3.0f, ambientMultiplier_ + ambientDelta));
-        // Force time of day update to apply new multiplier
-        updateTimeOfDay(currentHour_, currentMinute_);
-        LOG_INFO(MOD_GRAPHICS, "Ambient light multiplier: {}", ambientMultiplier_);
-    }
-
-    // Handle detail density adjustments ([ = decrease, ] = increase)
-    float detailDelta = eventReceiver_->getDetailDensityDelta();
-    if (detailDelta != 0.0f && detailManager_) {
-        detailManager_->adjustDensity(detailDelta);
-        LOG_INFO(MOD_GRAPHICS, "Detail density: {:.0f}%", detailManager_->getDensity() * 100.0f);
-    }
-
-    // Handle corpse Z offset adjustments (P = raise, Shift+P = lower) - not when chat focused
-    if (!chatInputFocused) {
-        float corpseZDelta = eventReceiver_->getCorpseZOffsetDelta();
-        if (corpseZDelta != 0.0f && entityRenderer_) {
-            entityRenderer_->adjustCorpseZOffset(corpseZDelta);
-        }
-    }
-
-    // Handle eye height adjustments (Y = raise, Shift+Y = lower) - not when chat focused
-    if (!chatInputFocused) {
-        float eyeHeightDelta = eventReceiver_->getEyeHeightDelta();
-        if (eyeHeightDelta != 0.0f) {
-            playerConfig_.eyeHeight += eyeHeightDelta;
-            if (playerConfig_.eyeHeight < 0.0f) playerConfig_.eyeHeight = 0.0f;
-            LOG_INFO(MOD_GRAPHICS, "Eye height: {:.1f}", playerConfig_.eyeHeight);
-        }
-    }
-
-    // Handle camera zoom adjustments (+/- keys) - only in Player/Repair mode with Follow camera
-    if (!chatInputFocused && (rendererMode_ == RendererMode::Player || rendererMode_ == RendererMode::Repair)) {
-        float zoomDelta = eventReceiver_->getCameraZoomDelta();
-        if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
-            cameraController_->adjustFollowDistance(zoomDelta);
-            // Immediately update the view with the new zoom distance
-            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
-            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
-        }
-    }
-
-    // Handle helm debug mode toggle (F7 is OK even when chat focused - it's a function key)
-    if (eventReceiver_->helmDebugToggleRequested() && entityRenderer_) {
-        bool newState = !entityRenderer_->isHelmDebugEnabled();
-        entityRenderer_->setHelmDebugEnabled(newState);
-        LOG_INFO(MOD_GRAPHICS, "Helm debug mode: {}", (newState ? "ENABLED" : "DISABLED"));
-        if (newState) {
-            LOG_INFO(MOD_GRAPHICS, "Helm UV Controls (hold Shift for fine adjustment):");
-            LOG_INFO(MOD_GRAPHICS, "  I/K: U offset (decrease/increase)");
-            LOG_INFO(MOD_GRAPHICS, "  J/L: V offset (decrease/increase)");
-            LOG_INFO(MOD_GRAPHICS, "  O/P: U scale (decrease/increase)");
-            LOG_INFO(MOD_GRAPHICS, "  ,/.: V scale (decrease/increase)");
-            LOG_INFO(MOD_GRAPHICS, "  -/=: Rotation (CCW/CW, 15 deg steps)");
-            LOG_INFO(MOD_GRAPHICS, "  F8: Print state");
-            LOG_INFO(MOD_GRAPHICS, "  0: Reset all");
-            LOG_INFO(MOD_GRAPHICS, "  Ctrl+S: Swap UV");
-            LOG_INFO(MOD_GRAPHICS, "  Ctrl+V: Toggle V flip");
-            LOG_INFO(MOD_GRAPHICS, "  Ctrl+U: Toggle U flip");
-            LOG_INFO(MOD_GRAPHICS, "  H/N: Cycle head variant (prev/next)");
-            entityRenderer_->printHelmDebugState();
-        }
-    }
-
-    // Handle helm debug adjustments - only in Admin mode, not when chat focused (uses letter/number keys)
-    if (rendererMode_ == RendererMode::Admin && entityRenderer_ && entityRenderer_->isHelmDebugEnabled() && !chatInputFocused) {
-        float uDelta = eventReceiver_->getHelmUOffsetDelta();
-        float vDelta = eventReceiver_->getHelmVOffsetDelta();
-        float uScaleDelta = eventReceiver_->getHelmUScaleDelta();
-        float vScaleDelta = eventReceiver_->getHelmVScaleDelta();
-        float rotDelta = eventReceiver_->getHelmRotationDelta();
-
-        if (uDelta != 0.0f) {
-            entityRenderer_->adjustHelmUOffset(uDelta);
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (vDelta != 0.0f) {
-            entityRenderer_->adjustHelmVOffset(vDelta);
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (uScaleDelta != 0.0f) {
-            entityRenderer_->adjustHelmUScale(uScaleDelta);
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (vScaleDelta != 0.0f) {
-            entityRenderer_->adjustHelmVScale(vScaleDelta);
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (rotDelta != 0.0f) {
-            entityRenderer_->adjustHelmRotation(rotDelta);
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (eventReceiver_->helmUVSwapRequested()) {
-            entityRenderer_->toggleHelmUVSwap();
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (eventReceiver_->helmVFlipRequested()) {
-            entityRenderer_->toggleHelmVFlip();
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (eventReceiver_->helmUFlipRequested()) {
-            entityRenderer_->toggleHelmUFlip();
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (eventReceiver_->helmResetRequested()) {
-            entityRenderer_->resetHelmUVParams();
-            entityRenderer_->applyHelmUVTransform();
-        }
-        if (eventReceiver_->helmPrintStateRequested()) {
-            entityRenderer_->printHelmDebugState();
-        }
-
-        int variantDelta = eventReceiver_->getHeadVariantCycleDelta();
-        if (variantDelta != 0) {
-            entityRenderer_->cycleHeadVariant(variantDelta);
-        }
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint B (before camera update)");
-
-    // ===== FRAME TIMING: Input Handling (accumulated from all prior input handling) =====
-    if (frameTimingEnabled_) frameTimings_.inputHandling += measureSection();
-
-    // Check if chat input has focus (skip movement keys if so)
-    bool chatHasFocus = windowManager_ && windowManager_->isChatInputFocused();
-
-    // Handle window manager mouse capture BEFORE camera/movement updates
-    // This ensures UI interactions don't also move the camera/player
-    bool hadClick = eventReceiver_->wasLeftButtonClicked();
-    bool hadRelease = eventReceiver_->wasLeftButtonReleased();
-    int clickX = eventReceiver_->getClickMouseX();
-    int clickY = eventReceiver_->getClickMouseY();
-
-    if (windowManager_) {
-        // Handle mouse down on click - check if window captures it
-        if (hadClick) {
-            bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
-            bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
-            windowManagerCapture_ = windowManager_->handleMouseDown(clickX, clickY, true, shift, ctrl);
-        }
-
-        // Handle mouse up on release
-        if (hadRelease) {
-            int mouseX = eventReceiver_->getMouseX();
-            int mouseY = eventReceiver_->getMouseY();
-            windowManager_->handleMouseUp(mouseX, mouseY, true);
-            windowManagerCapture_ = false;
-        }
-    }
-
-    // Update camera based on renderer mode
-    if (rendererMode_ == RendererMode::Admin) {
-        // Admin mode: Free camera when in Free mode
-        if (cameraMode_ == CameraMode::Free && cameraController_) {
-            // Mouse look enabled when any of these conditions are met and UI doesn't have capture:
-            // 1. Left mouse button held (current WillEQ behavior)
-            // 2. Right mouse button held (traditional 3D game control)
-            // 3. Ctrl+Left mouse button (single-button mouse workaround)
-            bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
-            bool mouseEnabled = (eventReceiver_->isLeftButtonDown() ||
-                                 eventReceiver_->isRightButtonDown() ||
-                                 (ctrlHeld && eventReceiver_->isLeftButtonDown())) &&
-                                !windowManagerCapture_;
-            int mouseDeltaX = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaX();
-            int mouseDeltaY = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaY();
-
-            // Use HotkeyManager for admin camera movement bindings
-            auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
-
-            // Helper to check if any binding for an action is currently held
-            auto isAdminActionHeld = [&](eqt::input::HotkeyAction action) -> bool {
-                if (chatHasFocus) return false;
-                bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
-                bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
-                bool alt = eventReceiver_->isKeyDown(irr::KEY_LMENU) || eventReceiver_->isKeyDown(irr::KEY_RMENU);
-
-                for (const auto& binding : hotkeyMgr.getBindingsForAction(action)) {
-                    if (!eventReceiver_->isKeyDown(binding.keyCode)) continue;
-
-                    bool needsCtrl = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Ctrl);
-                    bool needsShift = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Shift);
-                    bool needsAlt = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Alt);
-
-                    if (ctrl == needsCtrl && shift == needsShift && alt == needsAlt) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-            bool forward = isAdminActionHeld(eqt::input::HotkeyAction::CameraForward);
-            bool backward = isAdminActionHeld(eqt::input::HotkeyAction::CameraBackward);
-            bool left = isAdminActionHeld(eqt::input::HotkeyAction::CameraLeft);
-            bool right = isAdminActionHeld(eqt::input::HotkeyAction::CameraRight);
-            bool up = isAdminActionHeld(eqt::input::HotkeyAction::CameraUp);
-            bool down = isAdminActionHeld(eqt::input::HotkeyAction::CameraDown);
-
-            cameraController_->update(deltaTime, forward, backward, left, right,
-                                      up, down, mouseDeltaX, mouseDeltaY, mouseEnabled);
-        }
-        // Admin mode: Update name tags by distance only
-        if (entityRenderer_) {
-            entityRenderer_->updateNameTags(camera_);
-        }
-    } else {
-        // Player mode: Handle movement with collision
-        updatePlayerMovement(deltaTime);
-        // Player mode: Update name tags with LOS checking
-        updateNameTagsWithLOS(deltaTime);
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint C (after camera update)");
-
-    // Update sky position to follow camera (makes sky appear infinitely far away)
-    if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
-        skyRenderer_->setCameraPosition(camera_->getPosition());
-    }
-
-    // ===== FRAME TIMING: Camera Update =====
-    if (frameTimingEnabled_) frameTimings_.cameraUpdate = measureSection();
-
-    // Handle inventory toggle (I key) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->inventoryToggleRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            toggleInventory();
-        }
-    }
-
-    // Handle group window toggle (G key) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->groupToggleRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            windowManager_->toggleGroupWindow();
-        }
-    }
-
-    // Handle skills window toggle (K key) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->skillsToggleRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            windowManager_->toggleSkillsWindow();
-        }
-    }
-
-// Handle zone line visualization toggle (Z key) - works in any mode, but only if chat is not focused
-    if (eventReceiver_->zoneLineVisualizationToggleRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            toggleZoneLineVisualization();
-        }
-    }
-
-    // Handle map overlay toggle (Ctrl+M) - works in any mode, but only if chat is not focused
-    if (eventReceiver_->mapOverlayToggleRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            toggleMapOverlay();
-        }
-    }
-
-    // Handle map overlay rotation (Ctrl+Shift+M) - cycles through 0°, 90°, 180°, 270° around Y axis
-    // Only affects placeables in the map data, not terrain
-    if (eventReceiver_->mapOverlayRotateRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            mapOverlayRotation_ = (mapOverlayRotation_ + 1) % 4;
-            LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)",
-                     mapOverlayRotation_ * 90);
-        }
-    }
-
-    // Handle map overlay X mirror (Ctrl+Alt+M) - toggles X-axis mirroring for placeables
-    if (eventReceiver_->mapOverlayMirrorXRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            mapOverlayMirrorX_ = !mapOverlayMirrorX_;
-            LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)",
-                     mapOverlayMirrorX_ ? "ON" : "OFF");
-        }
-    }
-
-    // Handle navmesh overlay toggle (Ctrl+N) - works in any mode, but only if chat is not focused
-    if (eventReceiver_->navmeshOverlayToggleRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            toggleNavmeshOverlay();
-        }
-    }
-
-    // Handle navmesh overlay rotation (Ctrl+Shift+N) - cycles through 0°, 90°, 180°, 270° around Y axis
-    if (eventReceiver_->navmeshOverlayRotateRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            navmeshOverlayRotation_ = (navmeshOverlayRotation_ + 1) % 4;
-            LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis",
-                     navmeshOverlayRotation_ * 90);
-        }
-    }
-
-    // Handle navmesh overlay X mirror (Ctrl+Alt+N) - toggles X-axis mirroring
-    if (eventReceiver_->navmeshOverlayMirrorXRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            navmeshOverlayMirrorX_ = !navmeshOverlayMirrorX_;
-            LOG_INFO(MOD_GRAPHICS, "Navmesh overlay X mirror: {}",
-                     navmeshOverlayMirrorX_ ? "ON" : "OFF");
-        }
-    }
-
-    // Handle pet window toggle (P key) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->petToggleRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            windowManager_->togglePetWindow();
-        }
-    }
-
-    // Handle spellbook toggle (Ctrl+B) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->spellbookToggleRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            windowManager_->toggleSpellbook();
-        }
-    }
-
-    // Handle buff window toggle (Alt+B) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->buffWindowToggleRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            windowManager_->toggleBuffWindow();
-        }
-    }
-
-    // Handle options window toggle (O key) - works in ALL modes, and only if chat is not focused
-    if (eventReceiver_->optionsToggleRequested()) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            windowManager_->toggleOptionsWindow();
-        }
-    }
-
-    // Handle door interaction (U key) - only in Player mode, and only if chat is not focused
-    if (eventReceiver_->doorInteractRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            if (doorManager_ && doorInteractCallback_) {
-                // Use playerHeading_ directly - in first person mode, this is updated by mouse look
-                // (cameraController_->getHeadingEQ() only returns the camera's internal yaw which
-                // is not updated in first person mode where we control playerHeading_ directly)
-                LOG_DEBUG(MOD_GRAPHICS, "U key pressed: pos=({:.1f}, {:.1f}, {:.1f}) heading={:.1f} (512 fmt) = {:.1f} deg",
-                    playerX_, playerY_, playerZ_, playerHeading_, playerHeading_ * 360.0f / 512.0f);
-
-                // Find nearest door player is facing
-                uint8_t doorId = doorManager_->getNearestDoor(playerX_, playerY_, playerZ_, playerHeading_);
-                if (doorId != 0) {
-                    LOG_INFO(MOD_GRAPHICS, "Door interaction (U key): ID {}", doorId);
-                    doorInteractCallback_(doorId);
-                } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "U key: No door found in range or facing wrong direction");
-                }
-            }
-        }
-    }
-
-    // Handle world object (tradeskill container) interaction (O key) - only in Player mode
-    if (eventReceiver_->worldObjectInteractRequested() && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            if (worldObjectInteractCallback_) {
-                LOG_DEBUG(MOD_GRAPHICS, "O key pressed: pos=({:.1f}, {:.1f}, {:.1f})",
-                    playerX_, playerY_, playerZ_);
-
-                // Find nearest world object (tradeskill container)
-                uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
-                if (objectId != 0) {
-                    LOG_INFO(MOD_GRAPHICS, "World object interaction (O key): dropId {}", objectId);
-                    worldObjectInteractCallback_(objectId);
-                } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "O key: No world object found in range");
-                }
-            }
-        }
-    }
-
-    // Handle spell gem shortcuts (1-8 keys) - only in Player mode, and only if chat is not focused
-    int8_t spellGemRequest = eventReceiver_->getSpellGemCastRequest();
-    if (spellGemRequest >= 0 && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            if (spellGemCastCallback_) {
-                LOG_DEBUG(MOD_GRAPHICS, "Spell gem {} pressed (key {})", spellGemRequest + 1, spellGemRequest + 1);
-                spellGemCastCallback_(static_cast<uint8_t>(spellGemRequest));
-            }
-        }
-    }
-
-    // Handle hotbar shortcuts (Ctrl+1-9, Ctrl+0) - only in Player mode, and only if chat is not focused
-    int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
-    if (hotbarRequest >= 0 && rendererMode_ == RendererMode::Player) {
-        if (!windowManager_ || !windowManager_->isChatInputFocused()) {
-            if (windowManager_ && windowManager_->getHotbarWindow()) {
-                LOG_DEBUG(MOD_GRAPHICS, "Hotbar button {} activated (Ctrl+{})", hotbarRequest + 1,
-                         hotbarRequest == 9 ? 0 : hotbarRequest + 1);
-                windowManager_->getHotbarWindow()->activateButton(hotbarRequest);
-            }
-        }
-    }
-
-    // Handle chat input (Player mode)
-    if (windowManager_ && rendererMode_ == RendererMode::Player) {
-        bool chatFocused = windowManager_->isChatInputFocused();
-
-        if (chatFocused) {
-            // Route all key events directly to chat window (not through windowManager to avoid double handling)
-            auto* chatWindow = windowManager_->getChatWindow();
-            while (eventReceiver_->hasPendingKeyEvents()) {
-                auto keyEvent = eventReceiver_->popKeyEvent();
-                bool shift = keyEvent.shift;
-                bool ctrl = keyEvent.ctrl;
-
-                // ESC unfocuses chat
-                if (keyEvent.key == irr::KEY_ESCAPE) {
-                    windowManager_->unfocusChatInput();
-                    continue;
-                }
-
-                // Route to chat window
-                if (chatWindow) {
-                    chatWindow->handleKeyPress(keyEvent.key, keyEvent.character, shift, ctrl);
-                }
-            }
-
-            // Clear escape and enter flags (already handled in the key event loop above)
-            eventReceiver_->escapeKeyPressed();
-            eventReceiver_->enterKeyPressed();
-        } else {
-            // Chat not focused - handle Ctrl+key shortcuts for UI management
-            // Also route keys when money input dialog is shown
-            bool moneyDialogShown = windowManager_->isMoneyInputDialogShown();
-            while (eventReceiver_->hasPendingKeyEvents()) {
-                auto keyEvent = eventReceiver_->popKeyEvent();
-                if (keyEvent.ctrl || moneyDialogShown) {
-                    // Route Ctrl+key combinations and money dialog input through WindowManager
-                    windowManager_->handleKeyPress(keyEvent.key, keyEvent.shift, keyEvent.ctrl);
-                }
-            }
-
-            // Enter focuses chat (but not if money dialog is handling input)
-            if (eventReceiver_->enterKeyPressed() && !moneyDialogShown) {
-                windowManager_->focusChatInput();
-            }
-
-            // Slash focuses chat and inserts /
-            if (eventReceiver_->slashKeyPressed()) {
-                windowManager_->focusChatInput();
-                auto* chatWindow = windowManager_->getChatWindow();
-                if (chatWindow) {
-                    chatWindow->insertText("/");
-                }
-            }
-
-            // Escape: close vendor window if open, otherwise clear target
-            // (but not if money dialog is handling ESC)
-            if (eventReceiver_->escapeKeyPressed() && !moneyDialogShown) {
-                if (windowManager_->isVendorWindowOpen()) {
-                    // Close vendor window - the callback will send the close packet
-                    if (vendorToggleCallback_) {
-                        vendorToggleCallback_();
-                    }
-                } else if (currentTargetId_ != 0) {
-                    // Clear target
-                    LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                    clearCurrentTarget();
-                    SetTrackedTargetId(0);
-                }
-            }
-        }
-    } else {
-        // Not in player mode or no window manager - clear pending events
-        eventReceiver_->clearPendingKeyEvents();
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint D (before window manager)");
-
-    // Update window manager (for tooltip timing, etc.)
-    if (windowManager_) {
-        irr::u32 currentTimeMs = device_->getTimer()->getTime();
-        windowManager_->update(currentTimeMs);
-
-        // Pass mouse movement to window manager
-        int mouseX = eventReceiver_->getMouseX();
-        int mouseY = eventReceiver_->getMouseY();
-        windowManager_->handleMouseMove(mouseX, mouseY);
-    }
-
-    // Handle mouse click targeting (both modes) - but skip if window consumed the click
-    // Note: hadClick, hadRelease, clickX, clickY were captured earlier before camera update
-    // and windowManagerCapture_ was set there too
-    if (!windowManagerCapture_ && hadClick) {
-        handleMouseTargeting(clickX, clickY);
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint E (before entity update)");
-
-    // ===== FRAME TIMING: Entity Update =====
-    sectionStart = std::chrono::steady_clock::now();
-    if (entityRenderer_) {
-        entityRenderer_->updateInterpolation(deltaTime);
-        // Update entity casting bars (timeout checks, etc.)
-        entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
-        // Process expired combat animation buffers (for double/triple attack, dual wield)
-        entityRenderer_->processExpiredCombatBuffers();
-        // Update constrained visibility (limits entity count/distance in constrained mode)
-        if (camera_) {
-            entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
-        }
-    }
-    if (frameTimingEnabled_) frameTimings_.entityUpdate = measureSection();
-
-    // ===== FRAME TIMING: Door Update =====
-    if (doorManager_) {
-        doorManager_->update(deltaTime);
-    }
-    if (frameTimingEnabled_) frameTimings_.doorUpdate = measureSection();
-
-    // ===== FRAME TIMING: Spell VFX Update =====
-    if (spellVisualFX_) {
-        spellVisualFX_->update(deltaTime);
-    }
-    if (frameTimingEnabled_) frameTimings_.spellVfxUpdate = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint F (before animated textures)");
-
-    // ===== FRAME TIMING: Animated Textures =====
-    if (animatedTextureManager_) {
-        animatedTextureManager_->update(deltaTime * 1000.0f);  // Convert to milliseconds
-    }
-    if (frameTimingEnabled_) frameTimings_.animatedTextures = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint G (before vertex animations)");
-
-    // ===== FRAME TIMING: Vertex Animations =====
-    updateVertexAnimations(deltaTime * 1000.0f);  // Convert to milliseconds
-    if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
-
-    // ===== Detail System Update (grass, plants, debris) =====
-    // Use player position (converted to Irrlicht coords), not camera position
-    // Camera can be in free-fly mode, follow mode, etc. - player position is authoritative
-    if (detailManager_ && detailManager_->isEnabled()) {
-        // Convert EQ coords (X, Y, Z where Z is up) to Irrlicht coords (X, Y, Z where Y is up)
-        irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
-
-        // Track player velocity for foliage disturbance
-        static float lastPlayerX = playerX_, lastPlayerY = playerY_;
-        irr::core::vector3df playerVelocity(0, 0, 0);
-        if (deltaTime > 0.001f) {
-            // Calculate velocity in Irrlicht coords (EQ X -> Irr X, EQ Y -> Irr Z)
-            float velX = (playerX_ - lastPlayerX) / deltaTime;
-            float velZ = (playerY_ - lastPlayerY) / deltaTime;
-            playerVelocity = irr::core::vector3df(velX, 0, velZ);
-        }
-        lastPlayerX = playerX_;
-        lastPlayerY = playerY_;
-
-        // Determine if player is moving (velocity above threshold)
-        bool playerMoving = playerVelocity.getLengthSQ() > 0.1f;
-
-        detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
-                               playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
-    }
-
-    // ===== Weather System Update =====
-    if (weatherSystem_) {
-        weatherSystem_->update(deltaTime);
-    }
-
-    // ===== Weather Effects Update =====
-    if (weatherEffects_) {
-        weatherEffects_->update(deltaTime);
-    }
-
-    // ===== Environmental Particle System Update =====
-    // Only update after player has fully loaded and is in zone (zoneReady_)
-    // This prevents issues with uninitialized state during zone load
-    if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
-        // Update player position for particle spawning
-        particleManager_->setPlayerPosition(
-            glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
-        // Update time of day
-        float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
-        particleManager_->setTimeOfDay(timeOfDay);
-        // Update particles
-        particleManager_->update(deltaTime);
-    }
-
-    // ===== Ambient Creatures (Boids) System Update =====
-    // Only update after player has fully loaded and is in zone (zoneReady_)
-    // This prevents crashes from invalid collision selectors during zone load
-    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
-        // Update player position (for scatter behavior when player approaches)
-        boidsManager_->setPlayerPosition(
-            glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
-        // Update time of day (affects which creatures appear)
-        float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
-        boidsManager_->setTimeOfDay(timeOfDay);
-        // Update boids
-        boidsManager_->update(deltaTime);
-    }
-
-    // ===== Tumbleweed System Update =====
-    // Only update after player has fully loaded and is in zone (zoneReady_)
-    // This prevents crashes from invalid collision selectors during zone load
-    if (tumbleweedManager_ && tumbleweedManager_->isEnabled() && zoneReady_) {
-        // Set up environment state for tumbleweeds
-        Environment::EnvironmentState envState;
-        envState.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
-        // Get wind intensity from weather system, use fixed direction
-        // (EQ doesn't have dynamic wind direction in most zones)
-        if (weatherSystem_) {
-            envState.windStrength = weatherSystem_->getWindIntensity();
-        } else {
-            envState.windStrength = 0.5f;
-        }
-        // Default wind blows from west to east (positive X direction in EQ coords)
-        envState.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
-        tumbleweedManager_->setEnvironmentState(envState);
-        tumbleweedManager_->update(deltaTime);
-    }
-
-    // ===== Tree Wind Animation Update =====
-    if (treeManager_ && treeManager_->isEnabled()) {
-        // Use camera position for distance-based animation culling
-        irr::core::vector3df cameraPos = camera_ ? camera_->getPosition() : irr::core::vector3df(0, 0, 0);
-        treeManager_->update(deltaTime, cameraPos);
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H (before object visibility)");
-
-    // ===== FRAME TIMING: Object Visibility =====
-    updateObjectVisibility();
-    updateZoneLightVisibility();
-    if (frameTimingEnabled_) frameTimings_.objectVisibility = measureSection();
-
-    // ===== FRAME TIMING: PVS Visibility =====
-    updatePvsVisibility();
-    if (frameTimingEnabled_) frameTimings_.pvsVisibility = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint H2 (before object lights)");
-
-    // ===== FRAME TIMING: Object Lights =====
-    updateObjectLights();
-    if (frameTimingEnabled_) frameTimings_.objectLights = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint I (before HUD)");
-
-    // Update HUD animation timer
-    hudAnimTimer_ += deltaTime;
-    if (hudAnimTimer_ > 10000.0f) {
-        hudAnimTimer_ = 0.0f;  // Prevent overflow
-    }
-
-    // Update HUD
-    updateHUD();
-
-    // ===== FRAME TIMING: HUD Update =====
-    if (frameTimingEnabled_) frameTimings_.hudUpdate = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint J (before render)");
-
-    // If loading screen is visible, show it instead of rendering zone
-    // Loading screen is shown during initial load, zoning, and until explicitly hidden
-    if (loadingScreenVisible_) {
-        drawLoadingScreen(loadingProgress_, loadingText_);
-        LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint M (done - loading screen)");
+    // Tiered update: increment frame counter and accumulate delta for Tier 3
+    frameNumber_++;
+    tier3DeltaAccum_ += deltaTime;
+    runTier2_ = (frameNumber_ % kTier2Interval == 0);
+    runTier3_ = (frameNumber_ % kTier3Interval == 0);
+
+    // Adaptive budget: skip lower-priority tiers when behind frame budget
+    float lastFrameMs = deltaTime * 1000.0f;
+    frameBudgetExceeded_ = config_.constrainedConfig.enabled && (lastFrameMs > frameBudgetMs_);
+    if (frameBudgetExceeded_) {
+        runTier3_ = false;
+        if (lastFrameMs > frameBudgetMs_ * 1.5f) {
+            runTier2_ = false;
+        }
+    }
+    // Safety: force Tier 2 at least once per second (~60 frames at target)
+    if (frameNumber_ % 30 == 0) runTier2_ = true;
+
+    // Phase 1: Input
+    processFrameInput(deltaTime);
+
+    // Phase 2: Visibility
+    processFrameVisibility();
+
+    // Phase 3: Simulation
+    processFrameSimulation(deltaTime);
+
+    // Phase 4: Render
+    if (!processFrameRender(deltaTime)) {
+        // Loading screen was shown - skip rest of render
         return true;
     }
-
-    // Run scene breakdown profile if scheduled (waits for frame count to reach 0)
-    if (sceneProfileEnabled_) {
-        if (sceneProfileFrameCount_ < 0) {
-            sceneProfileFrameCount_++;
-        } else {
-            profileSceneBreakdown();
-        }
-    }
-
-    // Render - use sky renderer's clear color for day/night effect
-    irr::video::SColor clearColor(255, 50, 50, 80);  // Default dark blue
-    if (skyRenderer_ && skyRenderer_->isEnabled() && skyRenderer_->isInitialized()) {
-        clearColor = skyRenderer_->getCurrentClearColor();
-    }
-    driver_->beginScene(true, true, clearColor);
-    sectionStart = std::chrono::steady_clock::now();  // Reset for accurate sceneDrawAll timing
-    smgr_->drawAll();
-    if (frameTimingEnabled_) {
-        frameTimings_.sceneDrawAll = measureSection();
-        // Also warn if scene draw is slow (>50ms)
-        if (frameTimings_.sceneDrawAll > 50000) {  // 50ms in microseconds
-            LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
-        }
-    }
-
-    // Track polygon count for constrained mode budget
-    lastPolygonCount_ = driver_->getPrimitiveCountDrawn();
-
-    // Render footprints (after terrain, before UI)
-    if (detailManager_ && detailManager_->isFootprintEnabled()) {
-        detailManager_->renderFootprints();
-    }
-
-    if (config_.constrainedConfig.enabled) {
-        // Check if we exceeded the polygon budget (soft limit - just warn)
-        if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {
-            if (++polygonBudgetExceededFrames_ >= 60) {  // Throttle to once per ~60 frames
-                LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
-                         lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame);
-                polygonBudgetExceededFrames_ = 0;
-            }
-        } else {
-            polygonBudgetExceededFrames_ = 0;
-        }
-
-        // Periodic stats logging (every ~5 seconds at 30fps = 150 frames)
-        if (++constrainedStatsLogCounter_ >= 150) {
-            constrainedStatsLogCounter_ = 0;
-
-            // Get entity stats
-            int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
-            int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
-
-            // Get texture cache stats
-            size_t tmuUsed = 0, tmuLimit = 0;
-            float hitRate = 0.0f;
-            size_t evictions = 0;
-            if (constrainedTextureCache_) {
-                tmuUsed = constrainedTextureCache_->getCurrentUsage();
-                tmuLimit = constrainedTextureCache_->getMemoryLimit();
-                hitRate = constrainedTextureCache_->getHitRate();
-                evictions = constrainedTextureCache_->getEvictionCount();
-            }
-
-            // Calculate framebuffer usage
-            size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
-            size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
-
-            LOG_INFO(MOD_GRAPHICS, "=== CONSTRAINED MODE STATS [{}] ===",
-                     ConstrainedRendererConfig::presetName(config_.constrainedPreset));
-            LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
-                     config_.width, config_.height, config_.constrainedConfig.colorDepthBits,
-                     fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
-            LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
-                     tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
-            LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
-                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
-                     visibleEntities, totalEntities, config_.constrainedConfig.maxVisibleEntities,
-                     config_.constrainedConfig.clipDistance);
-            LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
-        }
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint K (after drawAll)");
-
-    // Draw selection box around targeted entity
-    drawTargetSelectionBox();
-
-    // Draw bounding box around repair target (if in Repair mode with target)
-    if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
-        drawRepairTargetBoundingBox();
-    }
-
-    // Render environmental particles (only after zone fully loaded)
-    if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
-        particleManager_->render();
-    }
-
-    // Render ambient creatures (boids) (only after zone fully loaded)
-    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
-        boidsManager_->render();
-    }
-
-    // Render weather effects (lightning bolts, etc.)
-    if (weatherEffects_ && weatherEffects_->isEnabled()) {
-        weatherEffects_->render();
-    }
-
-    // Draw collision debug lines (if debug mode enabled)
-    if (playerConfig_.collisionDebug) {
-        drawCollisionDebugLines(deltaTime);
-    }
-
-    // Update and draw map overlay (Ctrl+M debug visualization)
-    if (showMapOverlay_) {
-        // Convert EQ coords (Z-up) to Irrlicht coords (Y-up) for map overlay
-        updateMapOverlay(glm::vec3(playerX_, playerZ_, playerY_));
-        drawMapOverlay();
-    }
-
-    // Update and draw navmesh overlay (Ctrl+N debug visualization)
-    if (showNavmeshOverlay_) {
-        // Pass Irrlicht coords (Y-up) directly - updateNavmeshOverlay handles conversion
-        updateNavmeshOverlay(glm::vec3(playerX_, playerZ_, playerY_));
-        drawNavmeshOverlay();
-    }
-
-    // ===== FRAME TIMING: Target Box =====
-    if (frameTimingEnabled_) frameTimings_.targetBox = measureSection();
-
-    // Draw entity casting bars (above other entities' heads)
-    if (entityRenderer_) {
-        entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
-    }
-
-    // ===== FRAME TIMING: Casting Bars =====
-    if (frameTimingEnabled_) frameTimings_.castingBars = measureSection();
-
-    guienv_->drawAll();
-
-    // Draw FPS counter at top center
-    drawFPSCounter();
-
-    // ===== FRAME TIMING: GUI Draw All =====
-    if (frameTimingEnabled_) frameTimings_.guiDrawAll = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint L (after GUI)");
-
-    // Render inventory UI windows (on top of HUD)
-    if (windowManager_) {
-        windowManager_->render();
-    }
-
-    // ===== FRAME TIMING: Window Manager =====
-    if (frameTimingEnabled_) frameTimings_.windowManager = measureSection();
-
-    // Draw zone line overlay (pink border when in zone line)
-    drawZoneLineOverlay();
-
-    // Draw zone line bounding box labels
-    drawZoneLineBoxLabels();
-
-    // ===== FRAME TIMING: Zone Line Overlay =====
-    if (frameTimingEnabled_) frameTimings_.zoneLineOverlay = measureSection();
-
-#ifdef WITH_RDP
-    // Capture frame for RDP streaming before presenting
-    captureFrameForRDP();
-#endif
-
-    driver_->endScene();
-
-    // ===== FRAME TIMING: End Scene =====
-    if (frameTimingEnabled_) frameTimings_.endScene = measureSection();
 
     // ===== FRAME TIMING: Total Frame =====
     if (frameTimingEnabled_) {
@@ -5703,7 +4638,706 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         }
     }
 
-    LOG_TRACE(MOD_GRAPHICS, "processFrame: checkpoint M (done)");
+    return true;
+}
+
+// ===== Phase 1: Input =====
+void IrrlichtRenderer::processFrameInput(float deltaTime) {
+    chatInputFocused_ = windowManager_ && windowManager_->isChatInputFocused();
+    if (eventReceiver_) eventReceiver_->setChatInputFocused(chatInputFocused_);
+
+    // Drain action queue and dispatch by mode
+    auto actions = eventReceiver_->drainActions();
+    processCommonInput(actions);
+    switch (rendererMode_) {
+        case RendererMode::Player: processPlayerInput(actions); break;
+        case RendererMode::Admin:  processAdminInput(actions);  break;
+        case RendererMode::Repair: processRepairInput(actions); break;
+    }
+
+    // ===== FRAME TIMING: Input Handling =====
+    if (frameTimingEnabled_) frameTimings_.inputHandling = measureSection();
+
+    processInputDeltas(deltaTime);
+
+    // ===== FRAME TIMING: Input Handling (accumulated) =====
+    if (frameTimingEnabled_) frameTimings_.inputHandling += measureSection();
+
+    // Handle window manager mouse capture BEFORE camera/movement updates
+    bool hadClick = eventReceiver_->wasLeftButtonClicked();
+    bool hadRelease = eventReceiver_->wasLeftButtonReleased();
+    int clickX = eventReceiver_->getClickMouseX();
+    int clickY = eventReceiver_->getClickMouseY();
+
+    if (windowManager_) {
+        if (hadClick) {
+            bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+            bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+            windowManagerCapture_ = windowManager_->handleMouseDown(clickX, clickY, true, shift, ctrl);
+        }
+        if (hadRelease) {
+            int mouseX = eventReceiver_->getMouseX();
+            int mouseY = eventReceiver_->getMouseY();
+            windowManager_->handleMouseUp(mouseX, mouseY, true);
+            windowManagerCapture_ = false;
+        }
+    }
+
+    // Update camera based on renderer mode
+    if (rendererMode_ == RendererMode::Admin) {
+        if (cameraMode_ == CameraMode::Free && cameraController_) {
+            bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+            bool mouseEnabled = (eventReceiver_->isLeftButtonDown() ||
+                                 eventReceiver_->isRightButtonDown() ||
+                                 (ctrlHeld && eventReceiver_->isLeftButtonDown())) &&
+                                !windowManagerCapture_;
+            int mouseDeltaX = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaX();
+            int mouseDeltaY = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaY();
+
+            auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
+            auto isAdminActionHeld = [&](eqt::input::HotkeyAction action) -> bool {
+                if (chatInputFocused_) return false;
+                bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+                bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+                bool alt = eventReceiver_->isKeyDown(irr::KEY_LMENU) || eventReceiver_->isKeyDown(irr::KEY_RMENU);
+                for (const auto& binding : hotkeyMgr.getBindingsForAction(action)) {
+                    if (!eventReceiver_->isKeyDown(binding.keyCode)) continue;
+                    bool needsCtrl = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Ctrl);
+                    bool needsShift = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Shift);
+                    bool needsAlt = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Alt);
+                    if (ctrl == needsCtrl && shift == needsShift && alt == needsAlt) return true;
+                }
+                return false;
+            };
+
+            bool forward = isAdminActionHeld(eqt::input::HotkeyAction::CameraForward);
+            bool backward = isAdminActionHeld(eqt::input::HotkeyAction::CameraBackward);
+            bool left = isAdminActionHeld(eqt::input::HotkeyAction::CameraLeft);
+            bool right = isAdminActionHeld(eqt::input::HotkeyAction::CameraRight);
+            bool up = isAdminActionHeld(eqt::input::HotkeyAction::CameraUp);
+            bool down = isAdminActionHeld(eqt::input::HotkeyAction::CameraDown);
+            cameraController_->update(deltaTime, forward, backward, left, right,
+                                      up, down, mouseDeltaX, mouseDeltaY, mouseEnabled);
+        }
+        if (entityRenderer_) entityRenderer_->updateNameTags(camera_);
+    } else {
+        updatePlayerMovement(deltaTime);
+        updateNameTagsWithLOS(deltaTime);
+    }
+
+    // Update sky position to follow camera
+    if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
+        skyRenderer_->setCameraPosition(camera_->getPosition());
+    }
+
+    // ===== FRAME TIMING: Camera Update =====
+    if (frameTimingEnabled_) frameTimings_.cameraUpdate = measureSection();
+
+    processChatInput();
+
+    // Handle mouse targeting - skip if window consumed the click
+    if (!windowManagerCapture_ && hadClick) {
+        handleMouseTargeting(clickX, clickY);
+    }
+}
+
+void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& actions) {
+    using RA = RendererAction;
+    for (const auto& event : actions) {
+        switch (event.action) {
+            case RA::Screenshot: saveScreenshot("screenshot.png"); break;
+            case RA::ToggleRendererMode: toggleRendererMode(); break;
+            case RA::ToggleLighting: toggleLighting(); break;
+            case RA::ToggleZoneLights: toggleZoneLights(); break;
+            case RA::CycleObjectLights: cycleObjectLights(); break;
+            case RA::ToggleOptions:
+                if (!chatInputFocused_ && windowManager_) windowManager_->toggleOptionsWindow();
+                break;
+            case RA::ClearTarget:
+                if (rendererMode_ == RendererMode::Repair) {
+                    if (repairTargetNode_) clearRepairTarget();
+                } else {
+                    if (currentTargetId_ != 0) {
+                        LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
+                        clearCurrentTarget();
+                        SetTrackedTargetId(0);
+                    }
+                }
+                break;
+            default: break;
+        }
+    }
+}
+
+void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& actions) {
+    using RA = RendererAction;
+    for (const auto& event : actions) {
+        // Note: Targeting, combat (autorun, autoattack, hail, consider), and clear target
+        // actions are now routed through bridgeQueue_ → GraphicsInputHandler → InputActionBridge.
+        // They no longer appear in actionQueue_, so only renderer-local actions remain here.
+        if (chatInputFocused_) {
+            // No renderer-local actions work when chat is focused
+            continue;
+        }
+        switch (event.action) {
+            case RA::ToggleVendor:
+                if (vendorToggleCallback_) vendorToggleCallback_();
+                break;
+            case RA::ToggleTrainer:
+                if (trainerToggleCallback_) trainerToggleCallback_();
+                break;
+            case RA::DoorInteract:
+                if (doorManager_ && doorInteractCallback_) {
+                    uint8_t doorId = doorManager_->getNearestDoor(playerX_, playerY_, playerZ_, playerHeading_);
+                    if (doorId != 0) {
+                        LOG_INFO(MOD_GRAPHICS, "Door interaction: ID {}", doorId);
+                        doorInteractCallback_(doorId);
+                    }
+                }
+                break;
+            case RA::WorldObjectInteract:
+                if (worldObjectInteractCallback_) {
+                    uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
+                    if (objectId != 0) {
+                        LOG_INFO(MOD_GRAPHICS, "World object interaction: dropId {}", objectId);
+                        worldObjectInteractCallback_(objectId);
+                    }
+                }
+                break;
+
+            // Collision
+            case RA::ToggleCollision:
+                playerConfig_.collisionEnabled = !playerConfig_.collisionEnabled;
+                LOG_INFO(MOD_GRAPHICS, "Collision: {}", (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"));
+                break;
+            case RA::ToggleCollisionDebug:
+                playerConfig_.collisionDebug = !playerConfig_.collisionDebug;
+                LOG_INFO(MOD_GRAPHICS, "Collision Debug: {}", (playerConfig_.collisionDebug ? "ON" : "OFF"));
+                if (playerConfig_.collisionDebug) {
+                    LOG_INFO(MOD_GRAPHICS, "  Collision Height: {}", playerConfig_.collisionCheckHeight);
+                    LOG_INFO(MOD_GRAPHICS, "  Step Height: {}", playerConfig_.collisionStepHeight);
+                }
+                break;
+
+            // UI Windows
+            case RA::ToggleInventory: toggleInventory(); break;
+            case RA::ToggleGroup:
+                if (windowManager_) windowManager_->toggleGroupWindow();
+                break;
+            case RA::ToggleSkills:
+                if (windowManager_) windowManager_->toggleSkillsWindow();
+                break;
+            case RA::TogglePet:
+                if (windowManager_) windowManager_->togglePetWindow();
+                break;
+            case RA::ToggleSpellbook:
+                if (windowManager_) windowManager_->toggleSpellbook();
+                break;
+            case RA::ToggleBuffWindow:
+                if (windowManager_) windowManager_->toggleBuffWindow();
+                break;
+
+            // Debug overlays
+            case RA::ToggleZoneLineVisualization: toggleZoneLineVisualization(); break;
+            case RA::ToggleMapOverlay: toggleMapOverlay(); break;
+            case RA::RotateMapOverlay:
+                mapOverlayRotation_ = (mapOverlayRotation_ + 1) % 4;
+                LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)", mapOverlayRotation_ * 90);
+                break;
+            case RA::MirrorXMapOverlay:
+                mapOverlayMirrorX_ = !mapOverlayMirrorX_;
+                LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)", mapOverlayMirrorX_ ? "ON" : "OFF");
+                break;
+            case RA::ToggleNavmeshOverlay: toggleNavmeshOverlay(); break;
+            case RA::RotateNavmeshOverlay:
+                navmeshOverlayRotation_ = (navmeshOverlayRotation_ + 1) % 4;
+                LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis", navmeshOverlayRotation_ * 90);
+                break;
+            case RA::MirrorXNavmeshOverlay:
+                navmeshOverlayMirrorX_ = !navmeshOverlayMirrorX_;
+                LOG_INFO(MOD_GRAPHICS, "Navmesh overlay X mirror: {}", navmeshOverlayMirrorX_ ? "ON" : "OFF");
+                break;
+
+            default: break;
+        }
+    }
+}
+
+void IrrlichtRenderer::processAdminInput(const std::vector<RendererEvent>& actions) {
+    using RA = RendererAction;
+    for (const auto& event : actions) {
+        switch (event.action) {
+            case RA::ToggleWireframe: toggleWireframe(); break;
+            case RA::ToggleHUD: toggleHUD(); break;
+            case RA::ToggleNameTags: toggleNameTags(); break;
+            case RA::ToggleCameraMode: cycleCameraMode(); break;
+            case RA::ToggleOldModels: toggleOldModels(); break;
+            case RA::SaveEntities:
+                if (saveEntitiesCallback_) saveEntitiesCallback_();
+                break;
+            case RA::ToggleHelmDebug:
+                if (entityRenderer_) {
+                    bool newState = !entityRenderer_->isHelmDebugEnabled();
+                    entityRenderer_->setHelmDebugEnabled(newState);
+                    LOG_INFO(MOD_GRAPHICS, "Helm debug mode: {}", (newState ? "ENABLED" : "DISABLED"));
+                    if (newState) {
+                        LOG_INFO(MOD_GRAPHICS, "Helm UV Controls (hold Shift for fine adjustment):");
+                        LOG_INFO(MOD_GRAPHICS, "  I/K: U offset, J/L: V offset, O/P: U scale");
+                        LOG_INFO(MOD_GRAPHICS, "  ,/.: V scale, -/=: Rotation, F8: Print, 0: Reset");
+                        LOG_INFO(MOD_GRAPHICS, "  Ctrl+S: Swap UV, Ctrl+V: V flip, Ctrl+U: U flip");
+                        LOG_INFO(MOD_GRAPHICS, "  H/N: Cycle head variant (prev/next)");
+                        entityRenderer_->printHelmDebugState();
+                    }
+                }
+                break;
+            case RA::HelmUVSwap:
+                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
+                    entityRenderer_->toggleHelmUVSwap(); entityRenderer_->applyHelmUVTransform();
+                }
+                break;
+            case RA::HelmVFlip:
+                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
+                    entityRenderer_->toggleHelmVFlip(); entityRenderer_->applyHelmUVTransform();
+                }
+                break;
+            case RA::HelmUFlip:
+                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
+                    entityRenderer_->toggleHelmUFlip(); entityRenderer_->applyHelmUVTransform();
+                }
+                break;
+            case RA::HelmReset:
+                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
+                    entityRenderer_->resetHelmUVParams(); entityRenderer_->applyHelmUVTransform();
+                }
+                break;
+            case RA::HelmPrintState:
+                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
+                    entityRenderer_->printHelmDebugState();
+                }
+                break;
+            default: break;
+        }
+    }
+}
+
+void IrrlichtRenderer::processRepairInput(const std::vector<RendererEvent>& actions) {
+    using RA = RendererAction;
+    for (const auto& event : actions) {
+        if (!repairTargetNode_) continue;
+        switch (event.action) {
+            case RA::RepairFlipX: toggleRepairFlip(0); break;
+            case RA::RepairFlipY: toggleRepairFlip(1); break;
+            case RA::RepairFlipZ: toggleRepairFlip(2); break;
+            case RA::RepairReset: resetRepairAdjustments(); break;
+            default: break;
+        }
+    }
+}
+
+void IrrlichtRenderer::processInputDeltas(float deltaTime) {
+    // Repair mode rotation deltas
+    if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
+        float rotX = eventReceiver_->getRepairRotateXDelta();
+        float rotY = eventReceiver_->getRepairRotateYDelta();
+        float rotZ = eventReceiver_->getRepairRotateZDelta();
+        if (rotX != 0.0f || rotY != 0.0f || rotZ != 0.0f) applyRepairRotation(rotX, rotY, rotZ);
+    } else {
+        eventReceiver_->getRepairRotateXDelta();
+        eventReceiver_->getRepairRotateYDelta();
+        eventReceiver_->getRepairRotateZDelta();
+    }
+
+    // Player mode deltas
+    if (rendererMode_ == RendererMode::Player && !chatInputFocused_) {
+        float collisionHeightDelta = eventReceiver_->getCollisionHeightDelta();
+        if (collisionHeightDelta != 0.0f) {
+            playerConfig_.collisionCheckHeight += collisionHeightDelta;
+            if (playerConfig_.collisionCheckHeight < 0.5f) playerConfig_.collisionCheckHeight = 0.5f;
+            LOG_INFO(MOD_GRAPHICS, "Collision Check Height: {}", playerConfig_.collisionCheckHeight);
+        }
+        float stepHeightDelta = eventReceiver_->getStepHeightDelta();
+        if (stepHeightDelta != 0.0f) {
+            playerConfig_.collisionStepHeight += stepHeightDelta;
+            if (playerConfig_.collisionStepHeight < 0.5f) playerConfig_.collisionStepHeight = 0.5f;
+            LOG_INFO(MOD_GRAPHICS, "Step Height: {}", playerConfig_.collisionStepHeight);
+        }
+    }
+
+    // Admin mode deltas
+    if (rendererMode_ == RendererMode::Admin && !chatInputFocused_) {
+        float animSpeedDelta = eventReceiver_->getAnimSpeedDelta();
+        if (animSpeedDelta != 0.0f && entityRenderer_) entityRenderer_->adjustGlobalAnimationSpeed(animSpeedDelta);
+
+        float corpseZDelta = eventReceiver_->getCorpseZOffsetDelta();
+        if (corpseZDelta != 0.0f && entityRenderer_) entityRenderer_->adjustCorpseZOffset(corpseZDelta);
+
+        float eyeHeightDelta = eventReceiver_->getEyeHeightDelta();
+        if (eyeHeightDelta != 0.0f) {
+            playerConfig_.eyeHeight += eyeHeightDelta;
+            if (playerConfig_.eyeHeight < 0.0f) playerConfig_.eyeHeight = 0.0f;
+            LOG_INFO(MOD_GRAPHICS, "Eye height: {:.1f}", playerConfig_.eyeHeight);
+        }
+
+        if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
+            float uDelta = eventReceiver_->getHelmUOffsetDelta();
+            float vDelta = eventReceiver_->getHelmVOffsetDelta();
+            float uScaleDelta = eventReceiver_->getHelmUScaleDelta();
+            float vScaleDelta = eventReceiver_->getHelmVScaleDelta();
+            float rotDelta = eventReceiver_->getHelmRotationDelta();
+
+            if (uDelta != 0.0f) { entityRenderer_->adjustHelmUOffset(uDelta); entityRenderer_->applyHelmUVTransform(); }
+            if (vDelta != 0.0f) { entityRenderer_->adjustHelmVOffset(vDelta); entityRenderer_->applyHelmUVTransform(); }
+            if (uScaleDelta != 0.0f) { entityRenderer_->adjustHelmUScale(uScaleDelta); entityRenderer_->applyHelmUVTransform(); }
+            if (vScaleDelta != 0.0f) { entityRenderer_->adjustHelmVScale(vScaleDelta); entityRenderer_->applyHelmUVTransform(); }
+            if (rotDelta != 0.0f) { entityRenderer_->adjustHelmRotation(rotDelta); entityRenderer_->applyHelmUVTransform(); }
+            int variantDelta = eventReceiver_->getHeadVariantCycleDelta();
+            if (variantDelta != 0) entityRenderer_->cycleHeadVariant(variantDelta);
+        }
+    }
+
+    // Common deltas (any mode)
+    float particleDelta = eventReceiver_->getParticleMultiplierDelta();
+    if (particleDelta != 0.0f && spellVisualFX_) spellVisualFX_->adjustParticleMultiplier(particleDelta);
+
+    float ambientDelta = eventReceiver_->getAmbientLightDelta();
+    if (ambientDelta != 0.0f) {
+        ambientMultiplier_ = std::max(0.0f, std::min(3.0f, ambientMultiplier_ + ambientDelta));
+        updateTimeOfDay(currentHour_, currentMinute_);
+        LOG_INFO(MOD_GRAPHICS, "Ambient light multiplier: {}", ambientMultiplier_);
+    }
+
+    float detailDelta = eventReceiver_->getDetailDensityDelta();
+    if (detailDelta != 0.0f && detailManager_) {
+        detailManager_->adjustDensity(detailDelta);
+        LOG_INFO(MOD_GRAPHICS, "Detail density: {:.0f}%", detailManager_->getDensity() * 100.0f);
+    }
+
+    // Camera zoom - Player/Repair mode with Follow camera
+    if (!chatInputFocused_ && (rendererMode_ == RendererMode::Player || rendererMode_ == RendererMode::Repair)) {
+        float zoomDelta = eventReceiver_->getCameraZoomDelta();
+        if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
+            cameraController_->adjustFollowDistance(zoomDelta);
+            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
+            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
+        }
+    }
+}
+
+void IrrlichtRenderer::processChatInput() {
+    // Handle spell gem shortcuts (1-8 keys)
+    int8_t spellGemRequest = eventReceiver_->getSpellGemCastRequest();
+    if (spellGemRequest >= 0 && rendererMode_ == RendererMode::Player && !chatInputFocused_) {
+        if (spellGemCastCallback_) {
+            LOG_DEBUG(MOD_GRAPHICS, "Spell gem {} pressed", spellGemRequest + 1);
+            spellGemCastCallback_(static_cast<uint8_t>(spellGemRequest));
+        }
+    }
+
+    // Handle hotbar shortcuts
+    int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
+    if (hotbarRequest >= 0 && rendererMode_ == RendererMode::Player && !chatInputFocused_) {
+        if (windowManager_ && windowManager_->getHotbarWindow()) {
+            LOG_DEBUG(MOD_GRAPHICS, "Hotbar button {} activated", hotbarRequest + 1);
+            windowManager_->getHotbarWindow()->activateButton(hotbarRequest);
+        }
+    }
+
+    // Handle chat input (Player mode)
+    if (windowManager_ && rendererMode_ == RendererMode::Player) {
+        bool chatFocused = windowManager_->isChatInputFocused();
+        if (chatFocused) {
+            auto* chatWindow = windowManager_->getChatWindow();
+            while (eventReceiver_->hasPendingKeyEvents()) {
+                auto keyEvent = eventReceiver_->popKeyEvent();
+                if (keyEvent.key == irr::KEY_ESCAPE) { windowManager_->unfocusChatInput(); continue; }
+                if (chatWindow) chatWindow->handleKeyPress(keyEvent.key, keyEvent.character, keyEvent.shift, keyEvent.ctrl);
+            }
+            eventReceiver_->escapeKeyPressed();
+            eventReceiver_->enterKeyPressed();
+        } else {
+            bool moneyDialogShown = windowManager_->isMoneyInputDialogShown();
+            while (eventReceiver_->hasPendingKeyEvents()) {
+                auto keyEvent = eventReceiver_->popKeyEvent();
+                if (keyEvent.ctrl || moneyDialogShown) {
+                    windowManager_->handleKeyPress(keyEvent.key, keyEvent.shift, keyEvent.ctrl);
+                }
+            }
+            if (eventReceiver_->enterKeyPressed() && !moneyDialogShown) windowManager_->focusChatInput();
+            if (eventReceiver_->slashKeyPressed()) {
+                windowManager_->focusChatInput();
+                auto* chatWindow = windowManager_->getChatWindow();
+                if (chatWindow) chatWindow->insertText("/");
+            }
+            if (eventReceiver_->escapeKeyPressed() && !moneyDialogShown) {
+                if (windowManager_->isVendorWindowOpen()) {
+                    if (vendorToggleCallback_) vendorToggleCallback_();
+                } else if (currentTargetId_ != 0) {
+                    LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
+                    clearCurrentTarget();
+                    SetTrackedTargetId(0);
+                }
+            }
+        }
+    } else {
+        eventReceiver_->clearPendingKeyEvents();
+    }
+}
+
+// ===== Phase 2: Visibility =====
+void IrrlichtRenderer::processFrameVisibility() {
+    if (runTier2_) {
+        updateObjectVisibility();
+        updateZoneLightVisibility();
+        if (frameTimingEnabled_) frameTimings_.objectVisibility = measureSection();
+
+        updatePvsVisibility();
+        if (frameTimingEnabled_) frameTimings_.pvsVisibility = measureSection();
+
+        updateObjectLights();
+        if (frameTimingEnabled_) frameTimings_.objectLights = measureSection();
+    }
+}
+
+// ===== Phase 3: Simulation =====
+void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
+    // Update window manager (for tooltip timing, etc.)
+    if (windowManager_) {
+        irr::u32 currentTimeMs = device_->getTimer()->getTime();
+        windowManager_->update(currentTimeMs);
+        int mouseX = eventReceiver_->getMouseX();
+        int mouseY = eventReceiver_->getMouseY();
+        windowManager_->handleMouseMove(mouseX, mouseY);
+    }
+
+    // Entity update
+    sectionStart_ = std::chrono::steady_clock::now();
+    if (entityRenderer_) {
+        entityRenderer_->updateInterpolation(deltaTime);
+        entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
+        entityRenderer_->processExpiredCombatBuffers();
+        if (camera_) entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
+    }
+    if (frameTimingEnabled_) frameTimings_.entityUpdate = measureSection();
+
+    // Door update
+    if (doorManager_) doorManager_->update(deltaTime);
+    if (frameTimingEnabled_) frameTimings_.doorUpdate = measureSection();
+
+    // Spell VFX update
+    if (spellVisualFX_) spellVisualFX_->update(deltaTime);
+    if (frameTimingEnabled_) frameTimings_.spellVfxUpdate = measureSection();
+
+    // Animated textures
+    if (animatedTextureManager_) animatedTextureManager_->update(deltaTime * 1000.0f);
+    if (frameTimingEnabled_) frameTimings_.animatedTextures = measureSection();
+
+    // Vertex animations
+    updateVertexAnimations(deltaTime * 1000.0f);
+    if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
+
+    // Tier 2: Detail + Tree
+    if (runTier2_) {
+        if (detailManager_ && detailManager_->isEnabled()) {
+            irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
+            static float lastPlayerX = playerX_, lastPlayerY = playerY_;
+            irr::core::vector3df playerVelocity(0, 0, 0);
+            if (deltaTime > 0.001f) {
+                float velX = (playerX_ - lastPlayerX) / deltaTime;
+                float velZ = (playerY_ - lastPlayerY) / deltaTime;
+                playerVelocity = irr::core::vector3df(velX, 0, velZ);
+            }
+            lastPlayerX = playerX_;
+            lastPlayerY = playerY_;
+            bool playerMoving = playerVelocity.getLengthSQ() > 0.1f;
+            detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
+                                   playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
+        }
+        if (treeManager_ && treeManager_->isEnabled()) {
+            irr::core::vector3df cameraPos = camera_ ? camera_->getPosition() : irr::core::vector3df(0, 0, 0);
+            treeManager_->update(deltaTime, cameraPos);
+        }
+    }
+
+    // Tier 3: Environmental simulation
+    {
+        if (weatherSystem_) weatherSystem_->update(deltaTime);
+
+        if (runTier3_) {
+            float accDelta = tier3DeltaAccum_;
+            tier3DeltaAccum_ = 0.0f;
+
+            if (weatherEffects_) weatherEffects_->update(accDelta);
+
+            if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
+                particleManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
+                float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+                particleManager_->setTimeOfDay(timeOfDay);
+                particleManager_->update(accDelta);
+            }
+
+            if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
+                boidsManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
+                float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+                boidsManager_->setTimeOfDay(timeOfDay);
+                boidsManager_->update(accDelta);
+            }
+
+            if (tumbleweedManager_ && tumbleweedManager_->isEnabled() && zoneReady_) {
+                Environment::EnvironmentState envState;
+                envState.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+                envState.windStrength = weatherSystem_ ? weatherSystem_->getWindIntensity() : 0.5f;
+                envState.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+                tumbleweedManager_->setEnvironmentState(envState);
+                tumbleweedManager_->update(accDelta);
+            }
+        }
+    }
+
+    // HUD
+    hudAnimTimer_ += deltaTime;
+    if (hudAnimTimer_ > 10000.0f) hudAnimTimer_ = 0.0f;
+    updateHUD();
+    if (frameTimingEnabled_) frameTimings_.hudUpdate = measureSection();
+}
+
+// ===== Phase 4: Render =====
+bool IrrlichtRenderer::processFrameRender(float deltaTime) {
+    // If loading screen is visible, show it instead of rendering zone
+    if (loadingScreenVisible_) {
+        drawLoadingScreen(loadingProgress_, loadingText_);
+        return false;  // Signal loading screen was shown
+    }
+
+    // Run scene breakdown profile if scheduled
+    if (sceneProfileEnabled_) {
+        if (sceneProfileFrameCount_ < 0) {
+            sceneProfileFrameCount_++;
+        } else {
+            profileSceneBreakdown();
+        }
+    }
+
+    // Render - use sky renderer's clear color for day/night effect
+    irr::video::SColor clearColor(255, 50, 50, 80);
+    if (skyRenderer_ && skyRenderer_->isEnabled() && skyRenderer_->isInitialized()) {
+        clearColor = skyRenderer_->getCurrentClearColor();
+    }
+    driver_->beginScene(true, true, clearColor);
+    sectionStart_ = std::chrono::steady_clock::now();
+    smgr_->drawAll();
+    if (frameTimingEnabled_) {
+        frameTimings_.sceneDrawAll = measureSection();
+        if (frameTimings_.sceneDrawAll > 50000) {
+            LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
+        }
+    }
+
+    // Track polygon count for constrained mode budget
+    lastPolygonCount_ = driver_->getPrimitiveCountDrawn();
+
+    // Render footprints (after terrain, before UI)
+    if (detailManager_ && detailManager_->isFootprintEnabled()) {
+        detailManager_->renderFootprints();
+    }
+
+    if (config_.constrainedConfig.enabled) {
+        if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {
+            if (++polygonBudgetExceededFrames_ >= 60) {
+                LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
+                         lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame);
+                polygonBudgetExceededFrames_ = 0;
+            }
+        } else {
+            polygonBudgetExceededFrames_ = 0;
+        }
+
+        if (++constrainedStatsLogCounter_ >= 150) {
+            constrainedStatsLogCounter_ = 0;
+            int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
+            int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
+            size_t tmuUsed = 0, tmuLimit = 0;
+            float hitRate = 0.0f;
+            size_t evictions = 0;
+            if (constrainedTextureCache_) {
+                tmuUsed = constrainedTextureCache_->getCurrentUsage();
+                tmuLimit = constrainedTextureCache_->getMemoryLimit();
+                hitRate = constrainedTextureCache_->getHitRate();
+                evictions = constrainedTextureCache_->getEvictionCount();
+            }
+            size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
+            size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
+            LOG_INFO(MOD_GRAPHICS, "=== CONSTRAINED MODE STATS [{}] ===",
+                     ConstrainedRendererConfig::presetName(config_.constrainedPreset));
+            LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
+                     config_.width, config_.height, config_.constrainedConfig.colorDepthBits,
+                     fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
+            LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
+                     tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
+            LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
+                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
+                     visibleEntities, totalEntities, config_.constrainedConfig.maxVisibleEntities,
+                     config_.constrainedConfig.clipDistance);
+            LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
+        }
+    }
+
+    // Draw selection box around targeted entity
+    drawTargetSelectionBox();
+
+    // Draw bounding box around repair target
+    if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
+        drawRepairTargetBoundingBox();
+    }
+
+    // Render environmental particles (render every frame, update at Tier 3)
+    if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
+
+    // Render ambient creatures (render every frame, update at Tier 3)
+    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) boidsManager_->render();
+
+    // Render weather effects
+    if (weatherEffects_ && weatherEffects_->isEnabled()) weatherEffects_->render();
+
+    // Draw collision debug lines
+    if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);
+
+    // Map overlay
+    if (showMapOverlay_) {
+        updateMapOverlay(glm::vec3(playerX_, playerZ_, playerY_));
+        drawMapOverlay();
+    }
+
+    // Navmesh overlay
+    if (showNavmeshOverlay_) {
+        updateNavmeshOverlay(glm::vec3(playerX_, playerZ_, playerY_));
+        drawNavmeshOverlay();
+    }
+
+    if (frameTimingEnabled_) frameTimings_.targetBox = measureSection();
+
+    // Draw entity casting bars
+    if (entityRenderer_) entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
+    if (frameTimingEnabled_) frameTimings_.castingBars = measureSection();
+
+    guienv_->drawAll();
+    drawFPSCounter();
+    if (frameTimingEnabled_) frameTimings_.guiDrawAll = measureSection();
+
+    // Render inventory UI windows (on top of HUD)
+    if (windowManager_) windowManager_->render();
+    if (frameTimingEnabled_) frameTimings_.windowManager = measureSection();
+
+    // Draw zone line overlay
+    drawZoneLineOverlay();
+    drawZoneLineBoxLabels();
+    if (frameTimingEnabled_) frameTimings_.zoneLineOverlay = measureSection();
+
+#ifdef WITH_RDP
+    captureFrameForRDP();
+#endif
+
+    driver_->endScene();
+    if (frameTimingEnabled_) frameTimings_.endScene = measureSection();
 
     return true;
 }
@@ -5945,6 +5579,8 @@ void IrrlichtRenderer::toggleZoneLights() {
         LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: OFF (dark mode)");
     }
     // Note: light visibility is managed by updateObjectLights() unified light management
+    // Invalidate light cache to force recalculation
+    lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
 }
 
 void IrrlichtRenderer::cycleObjectLights() {
@@ -5957,6 +5593,8 @@ void IrrlichtRenderer::cycleObjectLights() {
 
     // Clear previous to force re-logging of active lights on next update
     previousActiveLights_.clear();
+    // Invalidate light cache to force recalculation
+    lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
 
     LOG_INFO(MOD_GRAPHICS, "Object lights: {} max", maxObjectLights_);
 }
@@ -8407,10 +8045,6 @@ void IrrlichtRenderer::clearCurrentTarget() {
     // Disable animation debugging
     if (entityRenderer_) {
         entityRenderer_->setDebugTargetId(0);
-    }
-    // Notify EverQuest class to clear combat target
-    if (clearTargetCallback_) {
-        clearTargetCallback_();
     }
 }
 
