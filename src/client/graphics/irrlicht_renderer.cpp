@@ -60,6 +60,7 @@ static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
             settings.atmosphericParticles = env.get("atmosphericParticles", true).asBool();
             settings.ambientCreatures = env.get("ambientCreatures", true).asBool();
             settings.rollingObjects = env.get("rollingObjects", true).asBool();
+            settings.skyEnabled = env.get("skyEnabled", true).asBool();
         }
         if (root.isMember("detailObjects")) {
             const Json::Value& detail = root["detailObjects"];
@@ -1917,6 +1918,14 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         LOG_DEBUG(MOD_GRAPHICS, "Applied tumbleweed settings: enabled={}",
                  settings.rollingObjects);
     }
+
+    // --- Sky Renderer: toggle based on setting + indoor zone state ---
+    if (skyRenderer_) {
+        bool skyAllowed = !isIndoorZone_ && settings.skyEnabled;
+        skyRenderer_->setEnabled(skyAllowed);
+        LOG_DEBUG(MOD_GRAPHICS, "Applied sky settings: enabled={} (setting={}, indoor={})",
+                 skyAllowed, settings.skyEnabled, isIndoorZone_);
+    }
 }
 
 void IrrlichtRenderer::setupHUD() {
@@ -2682,6 +2691,7 @@ void IrrlichtRenderer::unloadZone() {
 
     currentZone_.reset();
     currentZoneName_.clear();
+    isIndoorZone_ = false;
 }
 
 void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
@@ -2691,15 +2701,25 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
     if (skyRenderer_ && skyRenderer_->isInitialized()) {
         skyRenderer_->setSkyType(skyType, currentZoneName_);
 
-        // Determine if sky should be shown based on zone type
+        // Determine if sky should be shown based on zone type and user settings
         // zoneType values from server: 1=Outdoors, 2=Dungeons, 255(0xFF)=Any/default
         // Only disable sky for explicit dungeon zones (type 2)
         bool isDungeon = (zoneType == 2);
-        skyRenderer_->setEnabled(!isDungeon);
+        isIndoorZone_ = isDungeon;
 
-        LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {}",
+        // Check user setting
+        bool skySettingEnabled = true;
+        if (windowManager_ && windowManager_->getOptionsWindow()) {
+            skySettingEnabled = windowManager_->getOptionsWindow()->getDisplaySettings().skyEnabled;
+        } else {
+            skySettingEnabled = loadDisplaySettingsFromFile().skyEnabled;
+        }
+        skyRenderer_->setEnabled(!isDungeon && skySettingEnabled);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {} (setting={})",
                   skyType, zoneType, isDungeon ? "dungeon" : "outdoor",
-                  isDungeon ? "disabled" : "enabled");
+                  (!isDungeon && skySettingEnabled) ? "enabled" : "disabled",
+                  skySettingEnabled ? "on" : "off");
     }
 
     // Apply fog color from zone data, but keep our controlled distances

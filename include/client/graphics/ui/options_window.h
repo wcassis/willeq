@@ -39,6 +39,7 @@ struct DisplaySettings {
     bool shorelineWaves = true;
     bool reactiveFoliage = true;
     bool rollingObjects = true;
+    bool skyEnabled = true;
     float environmentDensity = 0.5f;
 
     // Detail Objects (grass, plants, debris)

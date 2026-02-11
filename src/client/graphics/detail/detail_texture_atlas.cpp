@@ -157,11 +157,6 @@ irr::video::ITexture* DetailTextureAtlas::createAtlas(irr::video::IVideoDriver* 
     getTilePosition(AtlasTile::GrassBroken, x, y);
     drawGrassBroken(image, x, y);
 
-    // Save atlas to file for debugging
-    if (driver->writeImageToFile(image, "detail_atlas_debug.png")) {
-        LOG_INFO(MOD_GRAPHICS, "DetailTextureAtlas: Saved debug image to detail_atlas_debug.png");
-    }
-
     // Create texture from image
     irr::video::ITexture* texture = driver->addTexture("detail_atlas", image);
     image->drop();

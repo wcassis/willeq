@@ -4,7 +4,6 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
-#include <sys/stat.h>
 
 namespace EQT {
 namespace Graphics {
@@ -277,191 +276,18 @@ void StormCloudLayer::generateCloudTextures() {
 
     int frameCount = std::max(1, settings_.frameCount);
 
-    // Try to load pre-built textures first (much faster than generating)
-    // Look in project's data/textures directory (relative to executable)
-    bool loadedFromFiles = true;
     for (int i = 0; i < frameCount; ++i) {
         std::string texPath = "data/textures/storm_cloud_" + std::to_string(i) + ".png";
         irr::video::ITexture* tex = driver_->getTexture(texPath.c_str());
-        if (tex) {
-            cloudFrames_.push_back(tex);
-            LOG_DEBUG(MOD_GRAPHICS, "StormCloudLayer: Loaded pre-built texture: {}", texPath);
-        } else {
-            loadedFromFiles = false;
-            break;
+        if (!tex) {
+            LOG_WARN(MOD_GRAPHICS, "StormCloudLayer: Cloud texture {} not found, disabling storm clouds. Run generate_textures tool.", texPath);
+            cloudFrames_.clear();
+            enabled_ = false;
+            return;
         }
+        cloudFrames_.push_back(tex);
     }
-
-    // Fall back to procedural generation if cached textures not found
-    if (!loadedFromFiles) {
-        cloudFrames_.clear();
-        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Cached textures not found, generating procedurally (one-time operation)...");
-
-        // Ensure cache directory exists
-        mkdir("data", 0755);
-        mkdir("data/textures", 0755);
-
-        for (int i = 0; i < frameCount; ++i) {
-            // Different seed for each frame
-            int seed = 12345 + i * 7919;  // Use prime number for good distribution
-            std::string savePath = "data/textures/storm_cloud_" + std::to_string(i) + ".png";
-            irr::video::ITexture* tex = generateSeamlessCloudTexture(seed, savePath);
-            if (tex) {
-                cloudFrames_.push_back(tex);
-            }
-        }
-        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Generated and cached {} cloud texture frames to data/textures/", cloudFrames_.size());
-    } else {
-        LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} cached cloud textures", cloudFrames_.size());
-    }
-}
-
-irr::video::ITexture* StormCloudLayer::generateSeamlessCloudTexture(int seed, const std::string& savePath) {
-    int size = settings_.textureSize;
-
-    // Create image
-    irr::video::IImage* image = driver_->createImage(irr::video::ECF_A8R8G8B8,
-                                                      irr::core::dimension2d<irr::u32>(size, size));
-    if (!image) {
-        LOG_ERROR(MOD_GRAPHICS, "StormCloudLayer: Failed to create image");
-        return nullptr;
-    }
-
-    // Cloud color
-    uint8_t r = static_cast<uint8_t>(settings_.cloudColorR * 255.0f);
-    uint8_t g = static_cast<uint8_t>(settings_.cloudColorG * 255.0f);
-    uint8_t b = static_cast<uint8_t>(settings_.cloudColorB * 255.0f);
-
-    // Generate seamless cloud pattern
-    for (int y = 0; y < size; ++y) {
-        for (int x = 0; x < size; ++x) {
-            // Normalized coordinates 0-1
-            float nx = static_cast<float>(x) / size;
-            float ny = static_cast<float>(y) / size;
-
-            // Get seamless noise value (0 to 1)
-            float noise = seamlessPerlinNoise2D(nx, ny, seed, settings_.octaves, settings_.persistence);
-
-            // Apply cloud shaping - make it more cloud-like
-            // Clamp and enhance contrast
-            noise = std::max(0.0f, noise - 0.35f) * 1.6f;
-            noise = std::min(1.0f, noise);
-
-            // Alpha based on noise (clouds are transparent where noise is low)
-            uint8_t alpha = static_cast<uint8_t>(noise * 255.0f);
-
-            image->setPixel(x, y, irr::video::SColor(alpha, r, g, b));
-        }
-    }
-
-    // Cache to disk for fast loading on future runs
-    if (!savePath.empty()) {
-        if (driver_->writeImageToFile(image, savePath.c_str())) {
-            LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Cached texture to {}", savePath);
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "StormCloudLayer: Failed to cache texture to {}", savePath);
-        }
-    }
-
-    // Create texture from image with unique name
-    std::string texName = "storm_cloud_frame_" + std::to_string(seed);
-    irr::video::ITexture* texture = driver_->addTexture(texName.c_str(), image);
-    image->drop();
-
-    return texture;
-}
-
-float StormCloudLayer::seamlessPerlinNoise2D(float x, float y, int seed, int octaves, float persistence) const {
-    // Use proper toroidal mapping for seamless tiling
-    // Map 2D coordinates onto a 4D torus: (x,y) -> (cos(2πx), sin(2πx), cos(2πy), sin(2πy))
-    // This creates perfect seamless tiling because trig functions wrap naturally
-
-    const float PI2 = 6.28318530718f;  // 2 * PI
-
-    // Convert x,y (0-1) to angles (0-2π)
-    float angleX = x * PI2;
-    float angleY = y * PI2;
-
-    // Map to points on two circles (4D torus projected to 4 coordinates)
-    float nx = std::cos(angleX);
-    float ny = std::sin(angleX);
-    float nz = std::cos(angleY);
-    float nw = std::sin(angleY);
-
-    float total = 0.0f;
-    float frequency = 2.0f;  // Base frequency for noise
-    float amplitude = 1.0f;
-    float maxValue = 0.0f;
-
-    for (int i = 0; i < octaves; ++i) {
-        // Sample 4D noise using the torus coordinates
-        // We approximate 4D noise by combining 2D noise samples
-        float fx = nx * frequency;
-        float fy = ny * frequency;
-        float fz = nz * frequency;
-        float fw = nw * frequency;
-
-        // Combine multiple 2D noise samples to simulate 4D noise
-        // This creates proper seamless tiling
-        float n1 = interpolatedNoise2D(fx + fz, fy + fw, seed + i * 1000);
-        float n2 = interpolatedNoise2D(fx - fz, fy - fw, seed + i * 1000 + 500);
-        float n3 = interpolatedNoise2D(fx + fw, fy + fz, seed + i * 1000 + 250);
-
-        float n = (n1 + n2 + n3) / 3.0f;
-
-        total += n * amplitude;
-        maxValue += amplitude;
-        amplitude *= persistence;
-        frequency *= 2.0f;
-    }
-
-    // Normalize to 0-1 range
-    return (total / maxValue + 1.0f) * 0.5f;
-}
-
-float StormCloudLayer::noise2D(float x, float y, int seed) const {
-    // Simple hash-based noise with seed
-    int xi = static_cast<int>(std::floor(x)) & 255;
-    int yi = static_cast<int>(std::floor(y)) & 255;
-
-    // Hash function incorporating seed
-    int n = xi + yi * 57 + seed;
-    n = (n << 13) ^ n;
-    return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
-}
-
-float StormCloudLayer::smoothNoise2D(float x, float y, int seed) const {
-    // Corners
-    float corners = (noise2D(x - 1, y - 1, seed) + noise2D(x + 1, y - 1, seed) +
-                     noise2D(x - 1, y + 1, seed) + noise2D(x + 1, y + 1, seed)) / 16.0f;
-    // Sides
-    float sides = (noise2D(x - 1, y, seed) + noise2D(x + 1, y, seed) +
-                   noise2D(x, y - 1, seed) + noise2D(x, y + 1, seed)) / 8.0f;
-    // Center
-    float center = noise2D(x, y, seed) / 4.0f;
-
-    return corners + sides + center;
-}
-
-float StormCloudLayer::interpolatedNoise2D(float x, float y, int seed) const {
-    int intX = static_cast<int>(std::floor(x));
-    int intY = static_cast<int>(std::floor(y));
-    float fracX = x - intX;
-    float fracY = y - intY;
-
-    // Cosine interpolation for smoother results
-    float fx = (1.0f - std::cos(fracX * 3.14159f)) * 0.5f;
-    float fy = (1.0f - std::cos(fracY * 3.14159f)) * 0.5f;
-
-    float v1 = smoothNoise2D(static_cast<float>(intX), static_cast<float>(intY), seed);
-    float v2 = smoothNoise2D(static_cast<float>(intX + 1), static_cast<float>(intY), seed);
-    float v3 = smoothNoise2D(static_cast<float>(intX), static_cast<float>(intY + 1), seed);
-    float v4 = smoothNoise2D(static_cast<float>(intX + 1), static_cast<float>(intY + 1), seed);
-
-    float i1 = v1 * (1.0f - fx) + v2 * fx;
-    float i2 = v3 * (1.0f - fx) + v4 * fx;
-
-    return i1 * (1.0f - fy) + i2 * fy;
+    LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} cloud textures", cloudFrames_.size());
 }
 
 void StormCloudLayer::updateScrolling(float deltaTime, const glm::vec3& windDirection, float windStrength) {

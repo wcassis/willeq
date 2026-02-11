@@ -237,11 +237,6 @@ private:
     bool loadCreatureAtlas(const std::string& path);
 
     /**
-     * Create a default creature atlas (procedurally generated).
-     */
-    void createDefaultAtlas();
-
-    /**
      * Render a single billboard-oriented quad.
      */
     void renderBillboard(const Creature& c, const irr::core::vector3df& cameraPos,

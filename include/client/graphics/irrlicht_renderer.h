@@ -959,6 +959,7 @@ private:
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;
+    bool isIndoorZone_ = false;
     irr::scene::IMeshSceneNode* zoneMeshNode_ = nullptr;
 
     // PVS (Potentially Visible Set) culling state

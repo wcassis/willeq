@@ -569,6 +569,41 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ENDIF()
 ENDIF()
 
+# Texture Generator tool (offline procedural texture generation)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(generate_textures
+        tools/generate_textures.cpp
+        src/client/graphics/texture_generators.cpp
+        src/client/graphics/detail/detail_texture_atlas.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(generate_textures PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${IRRLICHT_INCLUDE_DIR}
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    IF(APPLE)
+        TARGET_LINK_LIBRARIES(generate_textures
+            ${IRRLICHT_LIBRARY}
+            ${ZLIB_LIBRARIES}
+            fmt::fmt
+            ${COCOA_FRAMEWORK}
+            ${OPENGL_FRAMEWORK}
+            ${IOKIT_FRAMEWORK}
+            ${CARBON_FRAMEWORK}
+        )
+    ELSE()
+        TARGET_LINK_LIBRARIES(generate_textures
+            ${IRRLICHT_LIBRARY}
+            ${ZLIB_LIBRARIES}
+            fmt::fmt
+            X11
+            Xxf86vm
+            GL
+        )
+    ENDIF()
+ENDIF()
+
 # S3D Dump tool (for analyzing S3D archive contents)
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(s3d_dump

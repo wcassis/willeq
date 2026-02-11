@@ -32,11 +32,12 @@ bool BoidsManager::init(const std::string& eqClientPath) {
         return true;
     }
 
-    // Try to load creature atlas texture, or create a default one
-    std::string atlasPath = eqClientPath + "/data/textures/creature_atlas.png";
+    // Load creature atlas texture from project's data directory
+    std::string atlasPath = "data/textures/creature_atlas.png";
     if (!loadCreatureAtlas(atlasPath)) {
-        LOG_DEBUG(MOD_GRAPHICS, "BoidsManager: Creating procedural creature atlas");
-        createDefaultAtlas();
+        LOG_WARN(MOD_GRAPHICS, "BoidsManager: Creature atlas not found at {}, disabling boids. Run generate_textures tool.", atlasPath);
+        enabled_ = false;
+        return true;
     }
 
     // Set up creature material
@@ -462,175 +463,6 @@ bool BoidsManager::loadCreatureAtlas(const std::string& path) {
 
     atlasTexture_ = driver_->getTexture(path.c_str());
     return atlasTexture_ != nullptr;
-}
-
-void BoidsManager::createDefaultAtlas() {
-    if (!driver_) {
-        return;
-    }
-
-    // Create a procedural creature atlas (64x64 with 4x4 tiles of 16x16 each)
-    const int tileSize = 16;
-    const int atlasWidth = tileSize * CreatureAtlas::AtlasColumns;
-    const int atlasHeight = tileSize * CreatureAtlas::AtlasRows;
-
-    // Create image
-    irr::video::IImage* img = driver_->createImage(
-        irr::video::ECF_A8R8G8B8,
-        irr::core::dimension2d<irr::u32>(atlasWidth, atlasHeight));
-
-    if (!img) {
-        LOG_ERROR(MOD_GRAPHICS, "BoidsManager: Failed to create atlas image");
-        return;
-    }
-
-    // Clear to transparent
-    img->fill(irr::video::SColor(0, 0, 0, 0));
-
-    // Helper to draw a simple bird shape
-    auto drawBird = [&](int tileX, int tileY, bool wingsUp, irr::video::SColor bodyColor) {
-        int baseX = tileX * tileSize;
-        int baseY = tileY * tileSize;
-        int cx = baseX + tileSize / 2;
-        int cy = baseY + tileSize / 2;
-
-        // Body (oval)
-        for (int y = -2; y <= 2; ++y) {
-            for (int x = -4; x <= 4; ++x) {
-                if (x * x / 16.0f + y * y / 4.0f <= 1.0f) {
-                    img->setPixel(cx + x, cy + y, bodyColor);
-                }
-            }
-        }
-
-        // Wings
-        int wingY = wingsUp ? -3 : 2;
-        for (int x = -6; x <= 6; ++x) {
-            int wx = cx + x;
-            int wy = cy + wingY;
-            if (std::abs(x) > 2) {
-                img->setPixel(wx, wy, bodyColor);
-                if (wingsUp) {
-                    img->setPixel(wx, wy + 1, bodyColor);
-                } else {
-                    img->setPixel(wx, wy - 1, bodyColor);
-                }
-            }
-        }
-    };
-
-    // Helper to draw a bat shape
-    auto drawBat = [&](int tileX, int tileY, bool wingsUp, irr::video::SColor bodyColor) {
-        int baseX = tileX * tileSize;
-        int baseY = tileY * tileSize;
-        int cx = baseX + tileSize / 2;
-        int cy = baseY + tileSize / 2;
-
-        // Body (small)
-        for (int y = -1; y <= 1; ++y) {
-            for (int x = -2; x <= 2; ++x) {
-                if (std::abs(x) + std::abs(y) <= 2) {
-                    img->setPixel(cx + x, cy + y, bodyColor);
-                }
-            }
-        }
-
-        // Wings (angular)
-        int wingY = wingsUp ? -2 : 2;
-        for (int x = -6; x <= 6; ++x) {
-            int absX = std::abs(x);
-            if (absX > 2) {
-                int wy = cy + wingY * (wingsUp ? (absX - 2) / 4 : 1);
-                img->setPixel(cx + x, wy, bodyColor);
-                img->setPixel(cx + x, wy + (wingsUp ? 1 : -1), bodyColor);
-            }
-        }
-    };
-
-    // Helper to draw a butterfly shape
-    auto drawButterfly = [&](int tileX, int tileY, bool wingsUp, irr::video::SColor color) {
-        int baseX = tileX * tileSize;
-        int baseY = tileY * tileSize;
-        int cx = baseX + tileSize / 2;
-        int cy = baseY + tileSize / 2;
-
-        // Body (thin line)
-        for (int y = -3; y <= 3; ++y) {
-            img->setPixel(cx, cy + y, irr::video::SColor(255, 80, 60, 40));
-        }
-
-        // Wings (circles on each side)
-        int wingOffset = wingsUp ? 3 : 5;
-        for (int side = -1; side <= 1; side += 2) {
-            int wcx = cx + side * wingOffset;
-            for (int dy = -3; dy <= 3; ++dy) {
-                for (int dx = -3; dx <= 3; ++dx) {
-                    if (dx * dx + dy * dy <= 9) {
-                        img->setPixel(wcx + dx, cy + dy, color);
-                    }
-                }
-            }
-        }
-    };
-
-    // Helper to draw firefly (glowing dot)
-    auto drawFirefly = [&](int tileX, int tileY, float glow, irr::video::SColor color) {
-        int baseX = tileX * tileSize;
-        int baseY = tileY * tileSize;
-        int cx = baseX + tileSize / 2;
-        int cy = baseY + tileSize / 2;
-
-        float radius = 4.0f + glow * 2.0f;
-        for (int y = 0; y < tileSize; ++y) {
-            for (int x = 0; x < tileSize; ++x) {
-                float dx = x - tileSize / 2.0f + 0.5f;
-                float dy = y - tileSize / 2.0f + 0.5f;
-                float dist = std::sqrt(dx * dx + dy * dy);
-                if (dist < radius) {
-                    float alpha = 1.0f - (dist / radius);
-                    alpha = alpha * alpha;
-                    irr::video::SColor c = color;
-                    c.setAlpha(static_cast<irr::u32>(alpha * 255));
-                    img->setPixel(baseX + x, baseY + y, c);
-                }
-            }
-        }
-    };
-
-    // Draw creature tiles with bright, visible colors
-    // Row 0: Bird, Bat (wings up/down)
-    drawBird(0, 0, true, irr::video::SColor(255, 180, 140, 100));   // Bird wings up (tan/brown)
-    drawBird(1, 0, false, irr::video::SColor(255, 180, 140, 100));  // Bird wings down
-    drawBat(2, 0, true, irr::video::SColor(255, 80, 60, 90));       // Bat wings up (dark purple)
-    drawBat(3, 0, false, irr::video::SColor(255, 80, 60, 90));      // Bat wings down
-
-    // Row 1: Butterfly, Dragonfly
-    drawButterfly(0, 1, true, irr::video::SColor(255, 255, 200, 50));   // Butterfly wings up (yellow/orange)
-    drawButterfly(1, 1, false, irr::video::SColor(255, 255, 200, 50));  // Butterfly wings down
-
-    // Dragonfly (blue/teal)
-    drawBird(2, 1, true, irr::video::SColor(255, 80, 180, 220));   // Dragonfly wings up
-    drawBird(3, 1, false, irr::video::SColor(255, 80, 180, 220));  // Dragonfly wings down
-
-    // Row 2: Crow, Seagull
-    drawBird(0, 2, true, irr::video::SColor(255, 40, 40, 45));     // Crow wings up (dark gray)
-    drawBird(1, 2, false, irr::video::SColor(255, 40, 40, 45));    // Crow wings down
-    drawBird(2, 2, true, irr::video::SColor(255, 240, 240, 245));  // Seagull wings up (white)
-    drawBird(3, 2, false, irr::video::SColor(255, 240, 240, 245)); // Seagull wings down
-
-    // Row 3: Firefly glow states (bright yellow-green)
-    drawFirefly(0, 3, 0.5f, irr::video::SColor(255, 200, 255, 50)); // Firefly glow 1
-    drawFirefly(1, 3, 1.0f, irr::video::SColor(255, 220, 255, 80)); // Firefly glow 2
-
-    // Create texture from image
-    atlasTexture_ = driver_->addTexture("creature_atlas", img);
-    img->drop();
-
-    if (atlasTexture_) {
-        LOG_DEBUG(MOD_GRAPHICS, "BoidsManager: Created procedural creature atlas");
-    } else {
-        LOG_ERROR(MOD_GRAPHICS, "BoidsManager: Failed to create atlas texture");
-    }
 }
 
 void BoidsManager::renderBillboard(const Creature& c,

@@ -196,11 +196,6 @@ private:
     bool loadParticleAtlas(const std::string& path);
 
     /**
-     * Create a default particle atlas (procedurally generated).
-     */
-    void createDefaultAtlas();
-
-    /**
      * Render a single billboard-oriented quad.
      */
     void renderBillboard(const Particle& p, const irr::core::vector3df& cameraPos,

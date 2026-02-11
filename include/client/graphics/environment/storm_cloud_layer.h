@@ -48,7 +48,7 @@ struct StormCloudSettings {
     float fadeOutSpeed = 0.3f;          // Fade out rate (units/sec)
     int intensityThreshold = 3;         // Min storm intensity to show clouds
 
-    // Texture (only used if pre-built textures not found)
+    // Texture (used by generate_textures tool, not at runtime)
     int textureSize = 256;              // Procedural texture size
     float cloudScale = 1.0f;            // UV tiling scale (1.0 = no tiling, seamless)
     int octaves = 4;                    // Perlin noise octaves
@@ -169,37 +169,9 @@ private:
     void createDomeMesh();
 
     /**
-     * Generate all cloud texture frames using Perlin noise.
+     * Load all cloud texture frames from pre-generated PNG files.
      */
     void generateCloudTextures();
-
-    /**
-     * Generate a single seamless cloud texture frame.
-     * @param seed Random seed for this frame
-     * @param savePath If non-empty, save the generated image to this path for caching
-     * @return The generated texture
-     */
-    irr::video::ITexture* generateSeamlessCloudTexture(int seed, const std::string& savePath = "");
-
-    /**
-     * Seamless tileable Perlin noise (uses toroidal mapping).
-     */
-    float seamlessPerlinNoise2D(float x, float y, int seed, int octaves, float persistence) const;
-
-    /**
-     * Basic noise function with seed.
-     */
-    float noise2D(float x, float y, int seed) const;
-
-    /**
-     * Smooth noise with interpolation.
-     */
-    float smoothNoise2D(float x, float y, int seed) const;
-
-    /**
-     * Interpolated noise for smooth gradients.
-     */
-    float interpolatedNoise2D(float x, float y, int seed) const;
 
     /**
      * Update UV offset for scrolling animation.

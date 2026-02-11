@@ -244,11 +244,6 @@ private:
     irr::scene::IMesh* tumbleweedMesh_ = nullptr;
     irr::video::ITexture* tumbleweedTexture_ = nullptr;
 
-    /**
-     * Create procedural tumbleweed texture with branchy pattern.
-     */
-    irr::video::ITexture* createTumbleweedTexture();
-
     // State
     EnvironmentState envState_;
     TumbleweedSettings settings_;

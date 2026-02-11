@@ -2,22 +2,23 @@
   "detailObjects" : 
   {
     "debris" : true,
-    "density" : 1.0,
+    "density" : 0.5,
     "enabled" : true,
     "grass" : true,
     "plants" : true,
     "rocks" : true,
-    "viewDistance" : 2000.0
+    "viewDistance" : 1000.0
   },
   "environmentEffects" : 
   {
-    "ambientCreatures" : true,
+    "ambientCreatures" : false,
     "atmosphericParticles" : false,
     "density" : 0.5,
     "quality" : "high",
-    "reactiveFoliage" : true,
-    "rollingObjects" : true,
-    "shorelineWaves" : true
+    "reactiveFoliage" : false,
+    "rollingObjects" : false,
+    "shorelineWaves" : false,
+    "skyEnabled" : true
   },
-  "renderDistance" : 2000.0
+  "renderDistance" : 500.0
 }

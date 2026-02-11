@@ -46,10 +46,13 @@ bool TumbleweedManager::init() {
     // Load settings
     reloadSettings();
 
-    // Create procedural texture first
-    tumbleweedTexture_ = createTumbleweedTexture();
+    // Load tumbleweed texture from file
+    std::string texPath = "data/textures/tumbleweed.png";
+    tumbleweedTexture_ = driver_->getTexture(texPath.c_str());
     if (!tumbleweedTexture_) {
-        LOG_WARN(MOD_GRAPHICS, "TumbleweedManager: Failed to create texture, using untextured mesh");
+        LOG_WARN(MOD_GRAPHICS, "TumbleweedManager: Texture not found at {}, disabling tumbleweeds. Run generate_textures tool.", texPath);
+        initialized_ = false;
+        return false;
     }
 
     // Create tumbleweed mesh
@@ -691,129 +694,6 @@ void TumbleweedManager::addPlaceableBounds(const glm::vec3& min, const glm::vec3
 float TumbleweedManager::randomFloat(float min, float max) const {
     std::uniform_real_distribution<float> dist(min, max);
     return dist(gen);
-}
-
-irr::video::ITexture* TumbleweedManager::createTumbleweedTexture() {
-    if (!driver_) {
-        return nullptr;
-    }
-
-    // Create a 64x64 texture with circular branch pattern
-    const int texSize = 64;
-    irr::video::IImage* image = driver_->createImage(
-        irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(texSize, texSize));
-
-    if (!image) {
-        return nullptr;
-    }
-
-    // Tumbleweed colors
-    irr::video::SColor branchColor(255, 160, 130, 80);   // Tan branch
-    irr::video::SColor branchDark(255, 120, 95, 55);     // Darker branch
-    irr::video::SColor transparent(0, 0, 0, 0);          // Fully transparent
-
-    // Fill with transparent
-    for (int y = 0; y < texSize; ++y) {
-        for (int x = 0; x < texSize; ++x) {
-            image->setPixel(x, y, transparent);
-        }
-    }
-
-    const float centerX = texSize / 2.0f;
-    const float centerY = texSize / 2.0f;
-    const float maxRadius = texSize / 2.0f - 2.0f;
-
-    std::uniform_real_distribution<float> angleJitter(-0.25f, 0.25f);
-    std::uniform_real_distribution<float> lengthJitter(0.7f, 1.1f);
-    std::uniform_real_distribution<float> waveJitter(0.1f, 0.25f);
-    std::uniform_real_distribution<float> branchOffsetJitter(0.3f, 0.6f);
-    std::uniform_int_distribution<int> colorChoice(0, 1);
-
-    // Draw radial spokes from center outward (irregular circular pattern)
-    const int numSpokes = 11;  // Odd number for asymmetry
-    for (int spoke = 0; spoke < numSpokes; ++spoke) {
-        // Base angle with random offset for irregularity
-        float baseAngle = (spoke / (float)numSpokes) * 6.28318f + angleJitter(gen);
-        float spokeLength = maxRadius * lengthJitter(gen);
-        float waveAmount = waveJitter(gen);
-        irr::video::SColor color = (colorChoice(gen) == 0) ? branchColor : branchDark;
-
-        // Draw main spoke with irregular waviness
-        float angle = baseAngle;
-        float startRadius = 3.0f + angleJitter(gen) * 4.0f;
-        for (float r = startRadius; r < spokeLength; r += 1.0f) {
-            // Add irregular curve to the branch
-            angle = baseAngle + std::sin(r * 0.3f + spoke) * waveAmount;
-
-            int px = static_cast<int>(centerX + std::cos(angle) * r);
-            int py = static_cast<int>(centerY + std::sin(angle) * r);
-
-            if (px >= 0 && px < texSize && py >= 0 && py < texSize) {
-                image->setPixel(px, py, color);
-            }
-        }
-
-        // Add sub-branch with random position and angle
-        float branchStart = spokeLength * branchOffsetJitter(gen);
-        float branchAngle = baseAngle + 0.3f + angleJitter(gen);
-        float branchLen = spokeLength * 0.3f * lengthJitter(gen);
-        for (float r = 0; r < branchLen; r += 1.0f) {
-            int px = static_cast<int>(centerX + std::cos(baseAngle) * branchStart + std::cos(branchAngle) * r);
-            int py = static_cast<int>(centerY + std::sin(baseAngle) * branchStart + std::sin(branchAngle) * r);
-
-            if (px >= 0 && px < texSize && py >= 0 && py < texSize) {
-                image->setPixel(px, py, color);
-            }
-        }
-
-        // Occasionally add a second sub-branch
-        if (spoke % 3 == 0) {
-            branchStart = spokeLength * branchOffsetJitter(gen);
-            branchAngle = baseAngle - 0.4f + angleJitter(gen);
-            branchLen = spokeLength * 0.25f * lengthJitter(gen);
-            for (float r = 0; r < branchLen; r += 1.0f) {
-                int px = static_cast<int>(centerX + std::cos(baseAngle) * branchStart + std::cos(branchAngle) * r);
-                int py = static_cast<int>(centerY + std::sin(baseAngle) * branchStart + std::sin(branchAngle) * r);
-
-                if (px >= 0 && px < texSize && py >= 0 && py < texSize) {
-                    image->setPixel(px, py, color);
-                }
-            }
-        }
-    }
-
-    // Draw irregular arcs connecting some spokes
-    for (int ring = 0; ring < 2; ++ring) {
-        float baseRadius = maxRadius * (0.45f + ring * 0.35f);
-        irr::video::SColor color = (ring == 0) ? branchDark : branchColor;
-
-        // Draw partial arcs with variation
-        for (int arc = 0; arc < 3; ++arc) {
-            float startAngle = arc * 2.1f + angleJitter(gen);
-            float arcLength = 0.5f + lengthJitter(gen) * 0.4f;
-
-            for (float a = startAngle; a < startAngle + arcLength; a += 0.05f) {
-                // Vary radius along arc for wobbly effect
-                float radius = baseRadius + std::sin(a * 3.0f) * 2.0f;
-                int px = static_cast<int>(centerX + std::cos(a) * radius);
-                int py = static_cast<int>(centerY + std::sin(a) * radius);
-
-                if (px >= 0 && px < texSize && py >= 0 && py < texSize) {
-                    image->setPixel(px, py, color);
-                }
-            }
-        }
-    }
-
-    // Create texture from image
-    irr::video::ITexture* texture = driver_->addTexture("tumbleweed_procedural", image);
-    image->drop();
-
-    if (texture) {
-        LOG_DEBUG(MOD_GRAPHICS, "TumbleweedManager: Created procedural texture {}x{}", texSize, texSize);
-    }
-
-    return texture;
 }
 
 } // namespace Environment

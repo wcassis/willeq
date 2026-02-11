@@ -118,10 +118,15 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
         }
     }
 
-    // Create texture atlas if not already created
+    // Load texture atlas from pre-generated file
     if (!atlasTexture_ && driver_) {
-        DetailTextureAtlas atlasGenerator;
-        atlasTexture_ = atlasGenerator.createAtlas(driver_);
+        std::string atlasPath = "data/textures/detail_atlas.png";
+        atlasTexture_ = driver_->getTexture(atlasPath.c_str());
+        if (!atlasTexture_) {
+            LOG_WARN(MOD_GRAPHICS, "DetailManager: Atlas not found at {}, disabling detail objects. Run generate_textures tool.", atlasPath);
+            enabled_ = false;
+            return;
+        }
     }
 
     // Store BSP tree for water/lava/zoneline exclusion queries
