@@ -524,6 +524,198 @@ void UISettings::resetToDefaults() {
 }
 
 // ============================================================================
+// Resolution Scaling
+// ============================================================================
+
+int UISettings::scaleInt(int val, float scale) {
+    if (val == -1) return -1;
+    return static_cast<int>(std::round(val * scale));
+}
+
+void UISettings::scaleWindowSettings(WindowSettings& ws, float sx, float sy, float su) {
+    ws.x = scaleInt(ws.x, sx);
+    ws.y = scaleInt(ws.y, sy);
+    ws.width = scaleInt(ws.width, su);
+    ws.height = scaleInt(ws.height, su);
+    ws.minWidth = scaleInt(ws.minWidth, su);
+    ws.minHeight = scaleInt(ws.minHeight, su);
+    ws.maxWidth = scaleInt(ws.maxWidth, su);
+    ws.maxHeight = scaleInt(ws.maxHeight, su);
+}
+
+void UISettings::scaleAllFields(float sx, float sy, float su) {
+    // Global theme layout constants
+    m_globalTheme.titleBarHeight = scaleInt(m_globalTheme.titleBarHeight, su);
+    m_globalTheme.borderWidth = scaleInt(m_globalTheme.borderWidth, su);
+    m_globalTheme.buttonHeight = scaleInt(m_globalTheme.buttonHeight, su);
+    m_globalTheme.buttonPadding = scaleInt(m_globalTheme.buttonPadding, su);
+    m_globalTheme.contentPadding = scaleInt(m_globalTheme.contentPadding, su);
+
+    // Chat
+    scaleWindowSettings(m_chat.window, sx, sy, su);
+    m_chat.inputFieldHeight = scaleInt(m_chat.inputFieldHeight, su);
+    m_chat.scrollbarWidth = scaleInt(m_chat.scrollbarWidth, su);
+    m_chat.scrollButtonHeight = scaleInt(m_chat.scrollButtonHeight, su);
+    m_chat.resizeEdgeWidth = scaleInt(m_chat.resizeEdgeWidth, su);
+
+    // Inventory
+    scaleWindowSettings(m_inventory.window, sx, sy, su);
+    m_inventory.slotSize = scaleInt(m_inventory.slotSize, su);
+    m_inventory.slotSpacing = scaleInt(m_inventory.slotSpacing, su);
+    m_inventory.equipmentStartX = scaleInt(m_inventory.equipmentStartX, su);
+    m_inventory.equipmentStartY = scaleInt(m_inventory.equipmentStartY, su);
+    m_inventory.generalStartX = scaleInt(m_inventory.generalStartX, su);
+    m_inventory.generalStartY = scaleInt(m_inventory.generalStartY, su);
+    m_inventory.statsWidth = scaleInt(m_inventory.statsWidth, su);
+
+    // Loot (columns/rows are counts, not scaled)
+    scaleWindowSettings(m_loot.window, sx, sy, su);
+    m_loot.slotSize = scaleInt(m_loot.slotSize, su);
+    m_loot.slotSpacing = scaleInt(m_loot.slotSpacing, su);
+    m_loot.padding = scaleInt(m_loot.padding, su);
+    m_loot.buttonWidth = scaleInt(m_loot.buttonWidth, su);
+    m_loot.buttonSpacing = scaleInt(m_loot.buttonSpacing, su);
+    m_loot.scrollbarWidth = scaleInt(m_loot.scrollbarWidth, su);
+    m_loot.scrollButtonHeight = scaleInt(m_loot.scrollButtonHeight, su);
+    m_loot.topButtonRowHeight = scaleInt(m_loot.topButtonRowHeight, su);
+    m_loot.bottomButtonRowHeight = scaleInt(m_loot.bottomButtonRowHeight, su);
+
+    // Buff (columns/rows are counts, not scaled)
+    scaleWindowSettings(m_buff.window, sx, sy, su);
+    m_buff.iconSize = scaleInt(m_buff.iconSize, su);
+    m_buff.spacing = scaleInt(m_buff.spacing, su);
+    m_buff.padding = scaleInt(m_buff.padding, su);
+
+    // Group
+    scaleWindowSettings(m_group.window, sx, sy, su);
+    m_group.nameHeight = scaleInt(m_group.nameHeight, su);
+    m_group.barHeight = scaleInt(m_group.barHeight, su);
+    m_group.barSpacing = scaleInt(m_group.barSpacing, su);
+    m_group.memberSpacing = scaleInt(m_group.memberSpacing, su);
+    m_group.buttonWidth = scaleInt(m_group.buttonWidth, su);
+    m_group.buttonHeight = scaleInt(m_group.buttonHeight, su);
+    m_group.padding = scaleInt(m_group.padding, su);
+    m_group.buttonPadding = scaleInt(m_group.buttonPadding, su);
+
+    // Player status
+    scaleWindowSettings(m_playerStatus.window, sx, sy, su);
+    m_playerStatus.nameHeight = scaleInt(m_playerStatus.nameHeight, su);
+    m_playerStatus.barHeight = scaleInt(m_playerStatus.barHeight, su);
+    m_playerStatus.barSpacing = scaleInt(m_playerStatus.barSpacing, su);
+    m_playerStatus.barLabelWidth = scaleInt(m_playerStatus.barLabelWidth, su);
+    m_playerStatus.padding = scaleInt(m_playerStatus.padding, su);
+
+    // Spell gems (position uses per-axis, sizes use uniform)
+    m_spellGems.x = scaleInt(m_spellGems.x, sx);
+    m_spellGems.y = scaleInt(m_spellGems.y, sy);
+    m_spellGems.gemWidth = scaleInt(m_spellGems.gemWidth, su);
+    m_spellGems.gemHeight = scaleInt(m_spellGems.gemHeight, su);
+    m_spellGems.gemSpacing = scaleInt(m_spellGems.gemSpacing, su);
+    m_spellGems.panelPadding = scaleInt(m_spellGems.panelPadding, su);
+    m_spellGems.spellbookButtonSize = scaleInt(m_spellGems.spellbookButtonSize, su);
+    m_spellGems.spellbookButtonMargin = scaleInt(m_spellGems.spellbookButtonMargin, su);
+
+    // Skills
+    scaleWindowSettings(m_skills.window, sx, sy, su);
+
+    // Spellbook (spellsPerPage is a count, not scaled)
+    scaleWindowSettings(m_spellBook.window, sx, sy, su);
+    m_spellBook.pageWidth = scaleInt(m_spellBook.pageWidth, su);
+    m_spellBook.pageSpacing = scaleInt(m_spellBook.pageSpacing, su);
+    m_spellBook.iconSize = scaleInt(m_spellBook.iconSize, su);
+    m_spellBook.rowHeight = scaleInt(m_spellBook.rowHeight, su);
+    m_spellBook.rowSpacing = scaleInt(m_spellBook.rowSpacing, su);
+    m_spellBook.leftPageX = scaleInt(m_spellBook.leftPageX, su);
+    m_spellBook.slotsStartY = scaleInt(m_spellBook.slotsStartY, su);
+    m_spellBook.nameOffsetX = scaleInt(m_spellBook.nameOffsetX, su);
+    m_spellBook.nameMaxWidth = scaleInt(m_spellBook.nameMaxWidth, su);
+    m_spellBook.navButtonWidth = scaleInt(m_spellBook.navButtonWidth, su);
+    m_spellBook.navButtonHeight = scaleInt(m_spellBook.navButtonHeight, su);
+
+    // Hotbar (buttonCount is a count, not scaled)
+    scaleWindowSettings(m_hotbar.window, sx, sy, su);
+    m_hotbar.buttonSize = scaleInt(m_hotbar.buttonSize, su);
+    m_hotbar.buttonSpacing = scaleInt(m_hotbar.buttonSpacing, su);
+    m_hotbar.padding = scaleInt(m_hotbar.padding, su);
+
+    // Trade
+    scaleWindowSettings(m_trade.window, sx, sy, su);
+
+    // Bank
+    scaleWindowSettings(m_bank.window, sx, sy, su);
+    m_bank.slotSize = scaleInt(m_bank.slotSize, su);
+    m_bank.slotSpacing = scaleInt(m_bank.slotSpacing, su);
+    m_bank.padding = scaleInt(m_bank.padding, su);
+
+    // Bag window positions
+    for (auto& pos : m_bagWindows.positions) {
+        pos.x = scaleInt(pos.x, sx);
+        pos.y = scaleInt(pos.y, sy);
+    }
+
+    // Bank bag window positions
+    for (auto& pos : m_bankBagWindows.mainBankPositions) {
+        pos.x = scaleInt(pos.x, sx);
+        pos.y = scaleInt(pos.y, sy);
+    }
+    for (auto& pos : m_bankBagWindows.sharedBankPositions) {
+        pos.x = scaleInt(pos.x, sx);
+        pos.y = scaleInt(pos.y, sy);
+    }
+
+    // Skill trainer
+    scaleWindowSettings(m_skillTrainer.window, sx, sy, su);
+
+    // Casting bars
+    m_castingBar.playerBar.x = scaleInt(m_castingBar.playerBar.x, sx);
+    m_castingBar.playerBar.y = scaleInt(m_castingBar.playerBar.y, sy);
+    m_castingBar.playerBar.width = scaleInt(m_castingBar.playerBar.width, su);
+    m_castingBar.playerBar.height = scaleInt(m_castingBar.playerBar.height, su);
+    m_castingBar.targetBar.x = scaleInt(m_castingBar.targetBar.x, sx);
+    m_castingBar.targetBar.y = scaleInt(m_castingBar.targetBar.y, sy);
+    m_castingBar.targetBar.width = scaleInt(m_castingBar.targetBar.width, su);
+    m_castingBar.targetBar.height = scaleInt(m_castingBar.targetBar.height, su);
+
+    // Item tooltip
+    m_itemTooltip.minWidth = scaleInt(m_itemTooltip.minWidth, su);
+    m_itemTooltip.maxWidth = scaleInt(m_itemTooltip.maxWidth, su);
+    m_itemTooltip.lineHeight = scaleInt(m_itemTooltip.lineHeight, su);
+    m_itemTooltip.padding = scaleInt(m_itemTooltip.padding, su);
+    m_itemTooltip.sectionSpacing = scaleInt(m_itemTooltip.sectionSpacing, su);
+    m_itemTooltip.mouseOffset = scaleInt(m_itemTooltip.mouseOffset, su);
+
+    // Buff tooltip
+    m_buffTooltip.minWidth = scaleInt(m_buffTooltip.minWidth, su);
+    m_buffTooltip.maxWidth = scaleInt(m_buffTooltip.maxWidth, su);
+    m_buffTooltip.lineHeight = scaleInt(m_buffTooltip.lineHeight, su);
+    m_buffTooltip.padding = scaleInt(m_buffTooltip.padding, su);
+    m_buffTooltip.mouseOffset = scaleInt(m_buffTooltip.mouseOffset, su);
+
+    // Slot settings
+    m_slots.defaultSize = scaleInt(m_slots.defaultSize, su);
+    m_slots.iconPadding = scaleInt(m_slots.iconPadding, su);
+}
+
+void UISettings::applyScaling(int screenWidth, int screenHeight) {
+    if (scaled_) return;
+    scaleX_ = static_cast<float>(screenWidth) / DESIGN_WIDTH;
+    scaleY_ = static_cast<float>(screenHeight) / DESIGN_HEIGHT;
+    scaleUniform_ = std::min(scaleX_, scaleY_);
+    if (scaleX_ == 1.0f && scaleY_ == 1.0f) return;
+    scaleAllFields(scaleX_, scaleY_, scaleUniform_);
+    scaled_ = true;
+}
+
+void UISettings::removeScaling() {
+    if (!scaled_) return;
+    float invX = 1.0f / scaleX_;
+    float invY = 1.0f / scaleY_;
+    float invU = 1.0f / scaleUniform_;
+    scaleAllFields(invX, invY, invU);
+    scaled_ = false;
+}
+
+// ============================================================================
 // Position Resolution Helper
 // ============================================================================
 

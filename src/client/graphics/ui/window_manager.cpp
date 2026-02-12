@@ -30,6 +30,9 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     screenWidth_ = screenWidth;
     screenHeight_ = screenHeight;
 
+    // Scale UI settings from design resolution (800x600) to actual screen resolution
+    UISettings::instance().applyScaling(screenWidth, screenHeight);
+
     // Initialize icon loader
     if (!eqClientPath.empty()) {
         if (iconLoader_.init(driver, eqClientPath)) {
@@ -125,8 +128,13 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
 }
 
 void WindowManager::onResize(int screenWidth, int screenHeight) {
+    // Re-scale UI settings from old resolution to new resolution
+    auto& settings = UISettings::instance();
+    settings.removeScaling();
     screenWidth_ = screenWidth;
     screenHeight_ = screenHeight;
+    settings.applyScaling(screenWidth, screenHeight);
+
     positionInventoryWindow();
     positionLootWindow();
     // Note: Bag windows maintain their saved positions on resize
@@ -168,9 +176,16 @@ bool WindowManager::saveUILayout(const std::string& path) {
     // Collect current window positions into UISettings
     collectWindowPositions();
 
+    // Convert from screen coordinates to design coordinates for saving
+    auto& settings = UISettings::instance();
+    settings.removeScaling();
+
     // Save to file
     std::string savePath = path.empty() ? "config/ui_settings.json" : path;
-    bool success = UISettings::instance().saveToFile(savePath);
+    bool success = settings.saveToFile(savePath);
+
+    // Restore scaling for continued use
+    settings.applyScaling(screenWidth_, screenHeight_);
 
     if (success) {
         LOG_INFO(MOD_UI, "UI layout saved to {}", savePath);
@@ -189,9 +204,13 @@ bool WindowManager::saveUILayout(const std::string& path) {
 
 bool WindowManager::loadUILayout(const std::string& path) {
     std::string loadPath = path.empty() ? "config/ui_settings.json" : path;
-    bool success = UISettings::instance().loadFromFile(loadPath);
+    auto& settings = UISettings::instance();
+    settings.removeScaling();  // Clear any existing scaling before loading
+    bool success = settings.loadFromFile(loadPath);
 
     if (success) {
+        // Scale from design coordinates to screen coordinates
+        settings.applyScaling(screenWidth_, screenHeight_);
         // Apply loaded settings to all windows
         applyWindowPositions();
         LOG_INFO(MOD_UI, "UI layout loaded from {}", loadPath);
@@ -210,6 +229,7 @@ bool WindowManager::loadUILayout(const std::string& path) {
 
 void WindowManager::resetUIToDefaults() {
     UISettings::instance().resetToDefaults();
+    UISettings::instance().applyScaling(screenWidth_, screenHeight_);
     applyWindowPositions();
     LOG_INFO(MOD_UI, "UI layout reset to defaults");
     if (chatWindow_) {

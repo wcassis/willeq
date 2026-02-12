@@ -2,7 +2,9 @@
 
 #include <irrlicht.h>
 #include <json/json.h>
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <map>
 #include <set>
@@ -42,6 +44,11 @@ public:
     void applyOverrides(const Json::Value& overrides, const std::string& overrideSourcePath = "");
     void applyChatSettingsOverride(const Json::Value& chatSettingsJson);
     void resetToDefaults();
+
+    // Resolution scaling
+    void applyScaling(int screenWidth, int screenHeight);
+    void removeScaling();
+    bool isScaled() const { return scaled_; }
 
     // Get/set the config file path (for saving)
     const std::string& getConfigPath() const { return m_configPath; }
@@ -662,6 +669,20 @@ private:
     // Color serialization
     static irr::video::SColor jsonToColor(const Json::Value& json, const irr::video::SColor& defaultColor);
     static Json::Value colorToJson(const irr::video::SColor& color);
+
+    // Scaling state
+    bool scaled_ = false;
+    float scaleX_ = 1.0f;
+    float scaleY_ = 1.0f;
+    float scaleUniform_ = 1.0f;
+
+    static constexpr int DESIGN_WIDTH = 800;
+    static constexpr int DESIGN_HEIGHT = 600;
+
+    // Scaling helpers
+    static int scaleInt(int val, float scale);
+    void scaleWindowSettings(WindowSettings& ws, float sx, float sy, float su);
+    void scaleAllFields(float sx, float sy, float su);
 
     // Config file path (for saving)
     std::string m_configPath = "config/ui_settings.json";
