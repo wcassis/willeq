@@ -362,9 +362,27 @@ void SkeletalAnimator::computeBoneTransforms() {
             const BoneMat4& prev = blendFromStates_[i].worldTransform;
 
             // Linear interpolation of matrix elements (works well for small changes)
+#ifdef EQT_HAS_NEON
+            float32x4_t blend = vdupq_n_f32(blendFactor);
+            for (int j = 0; j < 16; j += 4) {
+                float32x4_t prev4 = vld1q_f32(&prev.m[j]);
+                float32x4_t curr4 = vld1q_f32(&curr.m[j]);
+                // lerp: prev + (curr - prev) * blend
+                vst1q_f32(&curr.m[j], vmlaq_f32(prev4, vsubq_f32(curr4, prev4), blend));
+            }
+#elif defined(EQT_HAS_SSE2)
+            __m128 blend = _mm_set1_ps(blendFactor);
+            for (int j = 0; j < 16; j += 4) {
+                __m128 prev4 = _mm_loadu_ps(&prev.m[j]);
+                __m128 curr4 = _mm_loadu_ps(&curr.m[j]);
+                __m128 res = _mm_add_ps(prev4, _mm_mul_ps(_mm_sub_ps(curr4, prev4), blend));
+                _mm_storeu_ps(&curr.m[j], res);
+            }
+#else
             for (int j = 0; j < 16; ++j) {
                 curr.m[j] = prev.m[j] + (curr.m[j] - prev.m[j]) * blendFactor;
             }
+#endif
         }
     }
 }

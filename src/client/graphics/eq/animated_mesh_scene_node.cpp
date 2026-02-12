@@ -1,4 +1,5 @@
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "common/simd_detect.h"
 #include "common/logging.h"
 #include <iostream>
 #include <cmath>
@@ -7,6 +8,86 @@
 
 namespace EQT {
 namespace Graphics {
+
+// ============================================================================
+// SIMD Normal Transform + Normalize Helper
+// ============================================================================
+
+// Transform normal by bone matrix rotation (no translation) and normalize.
+// Modifies tnx/tny/tnz in place.
+static inline void transformAndNormalizeNormal(
+    const BoneMat4& boneMat,
+    float nx, float ny, float nz,
+    float& tnx, float& tny, float& tnz)
+{
+#ifdef EQT_HAS_NEON
+    // Normal rotation: 3 dot products using matrix columns (rotation only)
+    float32x4_t col0 = vld1q_f32(&boneMat.m[0]);
+    float32x4_t col1 = vld1q_f32(&boneMat.m[4]);
+    float32x4_t col2 = vld1q_f32(&boneMat.m[8]);
+    float32x4_t nRes = vmulq_n_f32(col0, nx);
+    nRes = vmlaq_n_f32(nRes, col1, ny);
+    nRes = vmlaq_n_f32(nRes, col2, nz);
+
+    // Fast normalize using NEON reciprocal sqrt estimate + Newton-Raphson
+    float32x4_t sq = vmulq_f32(nRes, nRes);
+    float32x2_t sum = vadd_f32(vget_low_f32(sq), vget_high_f32(sq));
+    float32x2_t lenSq = vpadd_f32(sum, sum);  // x+z, y+w -> sum in both lanes
+    // Guard against zero-length normals
+    if (vget_lane_f32(lenSq, 0) > 0.00000001f) {
+        float32x2_t invLen = vrsqrte_f32(lenSq);
+        // Newton-Raphson refinement: invLen = invLen * (3 - lenSq * invLen^2) / 2
+        invLen = vmul_f32(invLen, vrsqrts_f32(vmul_f32(lenSq, invLen), invLen));
+        nRes = vmulq_f32(nRes, vdupq_lane_f32(invLen, 0));
+    }
+
+    tnx = vgetq_lane_f32(nRes, 0);
+    tny = vgetq_lane_f32(nRes, 1);
+    tnz = vgetq_lane_f32(nRes, 2);
+#elif defined(EQT_HAS_SSE2)
+    __m128 col0 = _mm_loadu_ps(&boneMat.m[0]);
+    __m128 col1 = _mm_loadu_ps(&boneMat.m[4]);
+    __m128 col2 = _mm_loadu_ps(&boneMat.m[8]);
+    __m128 vnx = _mm_set1_ps(nx);
+    __m128 vny = _mm_set1_ps(ny);
+    __m128 vnz = _mm_set1_ps(nz);
+    __m128 nRes = _mm_add_ps(_mm_add_ps(_mm_mul_ps(col0, vnx), _mm_mul_ps(col1, vny)),
+                              _mm_mul_ps(col2, vnz));
+
+    // Normalize: compute dot(nRes, nRes) then multiply by rsqrt
+    __m128 sq = _mm_mul_ps(nRes, nRes);
+    __m128 shuf = _mm_shuffle_ps(sq, sq, _MM_SHUFFLE(2,3,0,1));
+    __m128 sums = _mm_add_ps(sq, shuf);
+    shuf = _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(0,1,2,3));
+    __m128 lenSqV = _mm_add_ps(sums, shuf);  // lenSq broadcast in all lanes
+
+    // Guard against zero
+    if (_mm_cvtss_f32(lenSqV) > 0.00000001f) {
+        __m128 invLen = _mm_rsqrt_ps(lenSqV);
+        // Newton-Raphson: invLen = invLen * (1.5 - 0.5 * lenSq * invLen * invLen)
+        __m128 half = _mm_set1_ps(0.5f);
+        __m128 three_half = _mm_set1_ps(1.5f);
+        __m128 refined = _mm_mul_ps(invLen, _mm_sub_ps(three_half,
+            _mm_mul_ps(half, _mm_mul_ps(lenSqV, _mm_mul_ps(invLen, invLen)))));
+        nRes = _mm_mul_ps(nRes, refined);
+    }
+
+    EQT_ALIGN(16) float out[4];
+    _mm_store_ps(out, nRes);
+    tnx = out[0]; tny = out[1]; tnz = out[2];
+#else
+    tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
+    tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
+    tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+
+    float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
+    if (nlen > 0.0001f) {
+        tnx /= nlen;
+        tny /= nlen;
+        tnz /= nlen;
+    }
+#endif
+}
 
 // ============================================================================
 // Shared Vertex Transformation Helper (Phase 4 Consolidation)
@@ -84,10 +165,9 @@ static void applyBoneTransformsToMeshImpl(
                 // Transform position using bone matrix (in EQ coordinate space)
                 boneMat.transformPoint(px, py, pz);
 
-                // Transform normal (rotation only, from bone)
-                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
-                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
-                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+                // Transform normal and normalize (SIMD-optimized)
+                float tnx, tny, tnz;
+                transformAndNormalizeNormal(boneMat, nx, ny, nz, tnx, tny, tnz);
 
                 // Apply extra Y-rotation if requested (for player with follow camera)
                 // In EQ coordinates (Z-up), Y-rotation = rotation around Z axis
@@ -100,14 +180,6 @@ static void applyBoneTransformsToMeshImpl(
                     float rny = tnx * extraRotSin + tny * extraRotCos;
                     tnx = rnx;
                     tny = rny;
-                }
-
-                // Normalize
-                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
-                if (nlen > 0.0001f) {
-                    tnx /= nlen;
-                    tny /= nlen;
-                    tnz /= nlen;
                 }
 
                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
@@ -172,10 +244,9 @@ static void applyBoneTransformsToMeshImpl(
                 // Transform position using bone matrix (in EQ coordinate space)
                 boneMat.transformPoint(px, py, pz);
 
-                // Transform normal (rotation only, from bone)
-                float tnx = boneMat.m[0]*nx + boneMat.m[4]*ny + boneMat.m[8]*nz;
-                float tny = boneMat.m[1]*nx + boneMat.m[5]*ny + boneMat.m[9]*nz;
-                float tnz = boneMat.m[2]*nx + boneMat.m[6]*ny + boneMat.m[10]*nz;
+                // Transform normal and normalize (SIMD-optimized)
+                float tnx, tny, tnz;
+                transformAndNormalizeNormal(boneMat, nx, ny, nz, tnx, tny, tnz);
 
                 // Apply extra Y-rotation if requested (for player with follow camera)
                 if (extraRotCos != 1.0f || extraRotSin != 0.0f) {
@@ -187,14 +258,6 @@ static void applyBoneTransformsToMeshImpl(
                     float rny = tnx * extraRotSin + tny * extraRotCos;
                     tnx = rnx;
                     tny = rny;
-                }
-
-                // Normalize
-                float nlen = std::sqrt(tnx*tnx + tny*tny + tnz*tnz);
-                if (nlen > 0.0001f) {
-                    tnx /= nlen;
-                    tny /= nlen;
-                    tnz /= nlen;
                 }
 
                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)

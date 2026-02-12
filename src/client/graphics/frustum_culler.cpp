@@ -1,4 +1,5 @@
 #include "client/graphics/frustum_culler.h"
+#include "common/simd_detect.h"
 #include <cmath>
 
 namespace EQT {
@@ -130,6 +131,48 @@ bool FrustumCuller::testAABB(float minX, float minY, float minZ,
                               float maxX, float maxY, float maxZ) const {
     if (!enabled_) return true;
 
+#ifdef EQT_HAS_NEON
+    float32x4_t minVec = {minX, minY, minZ, 1.0f};
+    float32x4_t maxVec = {maxX, maxY, maxZ, 1.0f};
+    float32x4_t zero = vdupq_n_f32(0.0f);
+
+    for (int i = 0; i < 6; ++i) {
+        float32x4_t plane = vld1q_f32(planes_[i]);
+        // P-vertex: select max where plane >= 0, min otherwise (branchless)
+        uint32x4_t mask = vcgeq_f32(plane, zero);
+        float32x4_t pvert = vbslq_f32(mask, maxVec, minVec);
+        // Dot product: plane.xyzd * pvert.xyz1 (4th lane = d * 1.0 = d)
+        float32x4_t prod = vmulq_f32(plane, pvert);
+        // Horizontal sum: add pairs then add result
+        float32x2_t sum01 = vadd_f32(vget_low_f32(prod), vget_high_f32(prod));
+        float32x2_t total = vpadd_f32(sum01, sum01);
+        if (vget_lane_f32(total, 0) < 0.0f) {
+            return false;
+        }
+    }
+    return true;
+#elif defined(EQT_HAS_SSE2)
+    __m128 minVec = _mm_setr_ps(minX, minY, minZ, 1.0f);
+    __m128 maxVec = _mm_setr_ps(maxX, maxY, maxZ, 1.0f);
+    __m128 zero = _mm_setzero_ps();
+
+    for (int i = 0; i < 6; ++i) {
+        __m128 plane = _mm_load_ps(planes_[i]);
+        // P-vertex: select max where plane >= 0, min otherwise
+        __m128 mask = _mm_cmpge_ps(plane, zero);
+        __m128 pvert = _mm_or_ps(_mm_and_ps(mask, maxVec), _mm_andnot_ps(mask, minVec));
+        // Dot product via horizontal sum
+        __m128 prod = _mm_mul_ps(plane, pvert);
+        __m128 shuf = _mm_shuffle_ps(prod, prod, _MM_SHUFFLE(2,3,0,1));
+        __m128 sums = _mm_add_ps(prod, shuf);
+        shuf = _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(0,1,2,3));
+        sums = _mm_add_ps(sums, shuf);
+        if (_mm_cvtss_f32(sums) < 0.0f) {
+            return false;
+        }
+    }
+    return true;
+#else
     // P-vertex test: for each plane, find the corner of the AABB most aligned
     // with the plane normal (the P-vertex). If the P-vertex is outside ANY plane,
     // the AABB is fully outside the frustum.
@@ -150,11 +193,43 @@ bool FrustumCuller::testAABB(float minX, float minY, float minZ,
         }
     }
     return true;
+#endif
 }
 
 bool FrustumCuller::testSphere(float cx, float cy, float cz, float radius) const {
     if (!enabled_) return true;
 
+#ifdef EQT_HAS_NEON
+    float32x4_t center = {cx, cy, cz, 1.0f};
+    float negRadius = -radius;
+
+    for (int i = 0; i < 6; ++i) {
+        float32x4_t plane = vld1q_f32(planes_[i]);
+        float32x4_t prod = vmulq_f32(plane, center);
+        float32x2_t sum01 = vadd_f32(vget_low_f32(prod), vget_high_f32(prod));
+        float32x2_t total = vpadd_f32(sum01, sum01);
+        if (vget_lane_f32(total, 0) < negRadius) {
+            return false;
+        }
+    }
+    return true;
+#elif defined(EQT_HAS_SSE2)
+    __m128 center = _mm_setr_ps(cx, cy, cz, 1.0f);
+    float negRadius = -radius;
+
+    for (int i = 0; i < 6; ++i) {
+        __m128 plane = _mm_load_ps(planes_[i]);
+        __m128 prod = _mm_mul_ps(plane, center);
+        __m128 shuf = _mm_shuffle_ps(prod, prod, _MM_SHUFFLE(2,3,0,1));
+        __m128 sums = _mm_add_ps(prod, shuf);
+        shuf = _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(0,1,2,3));
+        sums = _mm_add_ps(sums, shuf);
+        if (_mm_cvtss_f32(sums) < negRadius) {
+            return false;
+        }
+    }
+    return true;
+#else
     // Test sphere center against each plane, offset by radius
     for (int i = 0; i < 6; ++i) {
         float dist = planes_[i][0] * cx + planes_[i][1] * cy +
@@ -164,6 +239,7 @@ bool FrustumCuller::testSphere(float cx, float cy, float cz, float radius) const
         }
     }
     return true;
+#endif
 }
 
 } // namespace Graphics

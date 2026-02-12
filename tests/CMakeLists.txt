@@ -172,6 +172,15 @@ ADD_EXECUTABLE(test_frustum_culler
 TARGET_LINK_LIBRARIES(test_frustum_culler GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_frustum_culler)
 
+# Test SIMD math optimizations (pure math, no external dependencies)
+ADD_EXECUTABLE(test_simd_math
+    test_simd_math.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
+)
+TARGET_LINK_LIBRARIES(test_simd_math GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_simd_math)
+
 # Test StringDatabase loading and formatting
 ADD_EXECUTABLE(test_string_database
     test_string_database.cpp

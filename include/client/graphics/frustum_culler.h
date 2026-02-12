@@ -1,6 +1,8 @@
 #ifndef EQT_GRAPHICS_FRUSTUM_CULLER_H
 #define EQT_GRAPHICS_FRUSTUM_CULLER_H
 
+#include "common/simd_detect.h"
+
 namespace EQT {
 namespace Graphics {
 
@@ -66,7 +68,7 @@ private:
 
     // 6 frustum planes: left, right, top, bottom, near, far
     // Each plane: (nx, ny, nz, d) where nx*x + ny*y + nz*z + d >= 0 means inside
-    float planes_[6][4] = {};
+    EQT_ALIGN(16) float planes_[6][4] = {};
 
     // Cached camera state for dirty checking
     float lastCamX_ = -99999.0f, lastCamY_ = -99999.0f, lastCamZ_ = -99999.0f;

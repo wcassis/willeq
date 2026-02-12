@@ -3,6 +3,7 @@
 
 #include "wld_loader.h"
 #include "s3d_loader.h"
+#include "common/simd_detect.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -59,6 +60,42 @@ struct BoneMat4 {
     }
 
     BoneMat4 operator*(const BoneMat4& rhs) const {
+#ifdef EQT_HAS_NEON
+        BoneMat4 result;
+        // Load this matrix columns
+        float32x4_t col0 = vld1q_f32(&m[0]);
+        float32x4_t col1 = vld1q_f32(&m[4]);
+        float32x4_t col2 = vld1q_f32(&m[8]);
+        float32x4_t col3 = vld1q_f32(&m[12]);
+        // For each output column, multiply-accumulate
+        for (int c = 0; c < 4; ++c) {
+            float32x4_t rhsCol = vld1q_f32(&rhs.m[c * 4]);
+            float32x4_t res = vmulq_lane_f32(col0, vget_low_f32(rhsCol), 0);
+            res = vmlaq_lane_f32(res, col1, vget_low_f32(rhsCol), 1);
+            res = vmlaq_lane_f32(res, col2, vget_high_f32(rhsCol), 0);
+            res = vmlaq_lane_f32(res, col3, vget_high_f32(rhsCol), 1);
+            vst1q_f32(&result.m[c * 4], res);
+        }
+        return result;
+#elif defined(EQT_HAS_SSE2)
+        BoneMat4 result;
+        __m128 col0 = _mm_loadu_ps(&m[0]);
+        __m128 col1 = _mm_loadu_ps(&m[4]);
+        __m128 col2 = _mm_loadu_ps(&m[8]);
+        __m128 col3 = _mm_loadu_ps(&m[12]);
+        for (int c = 0; c < 4; ++c) {
+            __m128 rhsCol = _mm_loadu_ps(&rhs.m[c * 4]);
+            __m128 r0 = _mm_shuffle_ps(rhsCol, rhsCol, _MM_SHUFFLE(0,0,0,0));
+            __m128 r1 = _mm_shuffle_ps(rhsCol, rhsCol, _MM_SHUFFLE(1,1,1,1));
+            __m128 r2 = _mm_shuffle_ps(rhsCol, rhsCol, _MM_SHUFFLE(2,2,2,2));
+            __m128 r3 = _mm_shuffle_ps(rhsCol, rhsCol, _MM_SHUFFLE(3,3,3,3));
+            __m128 res = _mm_add_ps(
+                _mm_add_ps(_mm_mul_ps(col0, r0), _mm_mul_ps(col1, r1)),
+                _mm_add_ps(_mm_mul_ps(col2, r2), _mm_mul_ps(col3, r3)));
+            _mm_storeu_ps(&result.m[c * 4], res);
+        }
+        return result;
+#else
         BoneMat4 result;
         for (int c = 0; c < 4; ++c) {
             for (int r = 0; r < 4; ++r) {
@@ -70,13 +107,42 @@ struct BoneMat4 {
             }
         }
         return result;
+#endif
     }
 
     void transformPoint(float& x, float& y, float& z) const {
+#ifdef EQT_HAS_NEON
+        float32x4_t col0 = vld1q_f32(&m[0]);
+        float32x4_t col1 = vld1q_f32(&m[4]);
+        float32x4_t col2 = vld1q_f32(&m[8]);
+        float32x4_t col3 = vld1q_f32(&m[12]);
+        float32x4_t res = vmulq_n_f32(col0, x);
+        res = vmlaq_n_f32(res, col1, y);
+        res = vmlaq_n_f32(res, col2, z);
+        res = vaddq_f32(res, col3);
+        x = vgetq_lane_f32(res, 0);
+        y = vgetq_lane_f32(res, 1);
+        z = vgetq_lane_f32(res, 2);
+#elif defined(EQT_HAS_SSE2)
+        __m128 col0 = _mm_loadu_ps(&m[0]);
+        __m128 col1 = _mm_loadu_ps(&m[4]);
+        __m128 col2 = _mm_loadu_ps(&m[8]);
+        __m128 col3 = _mm_loadu_ps(&m[12]);
+        __m128 vx = _mm_set1_ps(x);
+        __m128 vy = _mm_set1_ps(y);
+        __m128 vz = _mm_set1_ps(z);
+        __m128 res = _mm_add_ps(
+            _mm_add_ps(_mm_mul_ps(col0, vx), _mm_mul_ps(col1, vy)),
+            _mm_add_ps(_mm_mul_ps(col2, vz), col3));
+        EQT_ALIGN(16) float out[4];
+        _mm_store_ps(out, res);
+        x = out[0]; y = out[1]; z = out[2];
+#else
         float nx = m[0]*x + m[4]*y + m[8]*z  + m[12];
         float ny = m[1]*x + m[5]*y + m[9]*z  + m[13];
         float nz = m[2]*x + m[6]*y + m[10]*z + m[14];
         x = nx; y = ny; z = nz;
+#endif
     }
 };
 
