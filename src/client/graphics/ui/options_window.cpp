@@ -277,6 +277,11 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
                   indentX, y, hoveredCheckbox_ == 4);
     renderCheckbox(driver, gui, L"Sky", displaySettings_.skyEnabled,
                   col2X, y, hoveredCheckbox_ == 5);
+    y += ROW_HEIGHT + ROW_SPACING;
+
+    // Row 4: Animated Trees
+    renderCheckbox(driver, gui, L"Animated Trees", displaySettings_.animatedTrees,
+                  indentX, y, hoveredCheckbox_ == 11);
     y += ROW_HEIGHT + ROW_SPACING * 2;
 
     // Detail Objects Section
@@ -629,6 +634,14 @@ bool OptionsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, b
             notifyDisplaySettingsChanged();
             return true;
         }
+        rowY += ROW_HEIGHT + ROW_SPACING;
+
+        // Row 4: Animated Trees
+        if (isInCheckbox(indentX, rowY, localX, localY)) {
+            displaySettings_.animatedTrees = !displaySettings_.animatedTrees;
+            notifyDisplaySettingsChanged();
+            return true;
+        }
         rowY += ROW_HEIGHT + ROW_SPACING * 2;
 
         // Detail Objects section
@@ -871,6 +884,7 @@ bool OptionsWindow::loadSettings(const std::string& path)
         displaySettings_.reactiveFoliage = env.get("reactiveFoliage", true).asBool();
         displaySettings_.rollingObjects = env.get("rollingObjects", true).asBool();
         displaySettings_.skyEnabled = env.get("skyEnabled", true).asBool();
+        displaySettings_.animatedTrees = env.get("animatedTrees", true).asBool();
         displaySettings_.environmentDensity = env.get("density", 0.5).asFloat();
     }
 
@@ -922,6 +936,7 @@ bool OptionsWindow::saveSettings(const std::string& path)
     env["reactiveFoliage"] = displaySettings_.reactiveFoliage;
     env["rollingObjects"] = displaySettings_.rollingObjects;
     env["skyEnabled"] = displaySettings_.skyEnabled;
+    env["animatedTrees"] = displaySettings_.animatedTrees;
     env["density"] = displaySettings_.environmentDensity;
     root["environmentEffects"] = env;
 

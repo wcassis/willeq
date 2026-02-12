@@ -61,6 +61,7 @@ static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
             settings.ambientCreatures = env.get("ambientCreatures", true).asBool();
             settings.rollingObjects = env.get("rollingObjects", true).asBool();
             settings.skyEnabled = env.get("skyEnabled", true).asBool();
+            settings.animatedTrees = env.get("animatedTrees", true).asBool();
         }
         if (root.isMember("detailObjects")) {
             const Json::Value& detail = root["detailObjects"];
@@ -2040,6 +2041,12 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         skyRenderer_->setEnabled(skyAllowed);
         LOG_DEBUG(MOD_GRAPHICS, "Applied sky settings: enabled={} (setting={}, indoor={})",
                  skyAllowed, settings.skyEnabled, isIndoorZone_);
+    }
+
+    // --- Animated Tree Manager: toggle wind animation ---
+    if (treeManager_) {
+        treeManager_->setEnabled(settings.animatedTrees);
+        LOG_DEBUG(MOD_GRAPHICS, "Applied tree animation settings: enabled={}", settings.animatedTrees);
     }
 }
 

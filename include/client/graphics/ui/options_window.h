@@ -40,6 +40,7 @@ struct DisplaySettings {
     bool reactiveFoliage = true;
     bool rollingObjects = true;
     bool skyEnabled = true;
+    bool animatedTrees = true;
     float environmentDensity = 0.5f;
 
     // Detail Objects (grass, plants, debris)
