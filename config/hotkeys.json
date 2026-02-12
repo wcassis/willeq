@@ -44,6 +44,7 @@
             "ToggleNavmeshOverlay": "Ctrl+N",
             "RotateNavmeshOverlay": "Ctrl+Shift+N",
             "MirrorNavmeshOverlayX": "Ctrl+Alt+N",
+            "ToggleFrustumCulling": "Ctrl+V",
             "Interact": "U",
             "Hail": "H",
             "ClearTarget": "Escape",

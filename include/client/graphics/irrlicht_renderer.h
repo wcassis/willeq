@@ -14,6 +14,7 @@
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/frustum_culler.h"
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/weather_system.h"
@@ -87,6 +88,9 @@ enum class RendererAction : uint8_t {
 
     // Helm debug
     ToggleHelmDebug, HelmUVSwap, HelmVFlip, HelmUFlip, HelmReset, HelmPrintState,
+
+    // Frustum culling
+    ToggleFrustumCulling,
 
     // Repair mode
     RepairFlipX, RepairFlipY, RepairFlipZ, RepairReset,
@@ -657,19 +661,21 @@ public:
     // Unified render distance (controls fog and object culling, NOT camera far plane)
     // The camera far plane must be larger to include the sky dome
     void setRenderDistance(float distance) {
-        renderDistance_ = distance;
+        userRenderDistance_ = distance;
+        // Cap effective render distance by server-provided zone max clip plane
+        renderDistance_ = (zoneMaxClip_ > 0.0f) ? std::min(distance, zoneMaxClip_) : distance;
         // Sync camera far plane to render distance (must be at least render distance)
         if (camera_) {
-            camera_->setFarValue(std::max(distance, SKY_FAR_PLANE));
+            camera_->setFarValue(std::max(renderDistance_, SKY_FAR_PLANE));
         }
         setupFog();
         // Sync render distance to entity renderer
         if (entityRenderer_) {
-            entityRenderer_->setRenderDistance(distance);
+            entityRenderer_->setRenderDistance(renderDistance_);
         }
         // Sync render distance to tree manager
         if (treeManager_) {
-            treeManager_->setRenderDistance(distance);
+            treeManager_->setRenderDistance(renderDistance_);
         }
         // Force visibility update on next frame by invalidating cached camera position
         lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
@@ -920,6 +926,7 @@ private:
     void createZoneMesh();
     void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
     void updatePvsVisibility();    // Update region visibility based on camera position
+    void updateFrustumCulling();   // Re-test visible nodes against frustum (for rotation-only changes)
     void createObjectMeshes();
     void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
@@ -948,6 +955,9 @@ private:
     irr::video::ITexture* softwareCursorTexture_ = nullptr;  // DRM mode software cursor
 
     std::unique_ptr<CameraController> cameraController_;
+    std::unique_ptr<FrustumCuller> frustumCuller_;
+    float lastFrustumFwdX_ = 0.0f, lastFrustumFwdY_ = 1.0f, lastFrustumFwdZ_ = 0.0f;
+    bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
@@ -980,13 +990,16 @@ private:
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
     std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
+    std::vector<size_t> objectRegions_;  // BSP region per object (SIZE_MAX = unknown)
 
     // Unified render distance system
-    // renderDistance_ is the absolute limit - nothing renders beyond this
-    // fogThickness_ is the fade zone just inside the render distance
+    // renderDistance_ is the effective limit - nothing renders beyond this
+    // It is capped by zoneMaxClip_ (server-provided maximum for the current zone)
     // fogEnd = renderDistance_, fogStart = renderDistance_ - fogThickness_
-    float renderDistance_ = 300.0f;   // Absolute render limit (sphere around player)
-    float fogThickness_ = 50.0f;      // Thickness of fog fade zone at edge
+    float renderDistance_ = 300.0f;    // Effective render limit (sphere around player)
+    float userRenderDistance_ = 300.0f; // User's desired render distance (slider value)
+    float zoneMaxClip_ = 99999.0f;     // Server-provided max clip plane for current zone (0 = no limit)
+    float fogThickness_ = 50.0f;       // Thickness of fog fade zone at edge
     irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
     irr::core::vector3df lastLightCameraPos_;    // Last camera pos when object lights were updated
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)

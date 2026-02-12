@@ -95,6 +95,11 @@ struct BspTree {
     // Returns nullptr if not in any region
     std::shared_ptr<BspRegion> findRegionForPoint(float x, float y, float z) const;
 
+    // Find the 0-based region index for a point by traversing the BSP tree
+    // Returns SIZE_MAX if not in any region
+    // More efficient than findRegionForPoint() when only the index is needed
+    size_t findRegionIndexForPoint(float x, float y, float z) const;
+
     // Check if a point is in a zone line region
     // Returns the zone line info if in a zone line, nullopt otherwise
     std::optional<ZoneLineInfo> checkZoneLine(float x, float y, float z) const;

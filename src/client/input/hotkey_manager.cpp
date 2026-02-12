@@ -156,6 +156,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleNavmeshOverlay", HotkeyAction::ToggleNavmeshOverlay},
     {"RotateNavmeshOverlay", HotkeyAction::RotateNavmeshOverlay},
     {"MirrorNavmeshOverlayX", HotkeyAction::MirrorNavmeshOverlayX},
+    {"ToggleFrustumCulling", HotkeyAction::ToggleFrustumCulling},
 
     // Player - Interaction
     {"InteractDoor", HotkeyAction::InteractDoor},
@@ -552,6 +553,7 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::ToggleNavmeshOverlay, HotkeyMode::Player, irr::KEY_KEY_N, ModifierFlags::Ctrl);
     addBinding(HotkeyAction::RotateNavmeshOverlay, HotkeyMode::Player, irr::KEY_KEY_N, ModifierFlags::Ctrl | ModifierFlags::Shift);
     addBinding(HotkeyAction::MirrorNavmeshOverlayX, HotkeyMode::Player, irr::KEY_KEY_N, ModifierFlags::Ctrl | ModifierFlags::Alt);
+    addBinding(HotkeyAction::ToggleFrustumCulling, HotkeyMode::Player, irr::KEY_KEY_V, ModifierFlags::Ctrl);
 
     // === Player Mode - Interaction ===
     addBinding(HotkeyAction::Interact, HotkeyMode::Player, irr::KEY_KEY_U);

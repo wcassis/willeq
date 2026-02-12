@@ -15,6 +15,7 @@
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/wld_loader.h"
+#include "client/graphics/frustum_culler.h"
 
 namespace EQT {
 namespace Graphics {
@@ -372,6 +373,9 @@ public:
     // When set, entities in regions not visible from the camera's region will be hidden
     void setBspTree(std::shared_ptr<BspTree> bspTree);
 
+    // Set frustum culler for directional entity visibility culling
+    void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
+
     // Clear BSP tree (call when changing zones)
     void clearBspTree();
 
@@ -429,6 +433,9 @@ private:
     std::shared_ptr<BspTree> bspTree_;                  // BSP tree for region lookups
     size_t currentCameraRegionIdx_ = SIZE_MAX;          // Camera's current region index
     std::shared_ptr<BspRegion> currentCameraRegion_;    // Camera's current region (has visibleRegions)
+
+    // Frustum culling (non-owning pointer, owned by IrrlichtRenderer)
+    FrustumCuller* frustumCuller_ = nullptr;
 
     // Debug: Target ID for animation debugging
     uint16_t debugTargetId_ = 0;

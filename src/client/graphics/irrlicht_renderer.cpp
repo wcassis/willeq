@@ -246,6 +246,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleNavmeshOverlay: actionQueue_.push_back({RA::ToggleNavmeshOverlay}); break;
                     case HA::RotateNavmeshOverlay: actionQueue_.push_back({RA::RotateNavmeshOverlay}); break;
                     case HA::MirrorNavmeshOverlayX: actionQueue_.push_back({RA::MirrorXNavmeshOverlay}); break;
+                    case HA::ToggleFrustumCulling: actionQueue_.push_back({RA::ToggleFrustumCulling}); break;
                     case HA::CycleObjectLights: actionQueue_.push_back({RA::CycleObjectLights}); break;
                     case HA::Interact:  // Generic interact - tries door first, then world object
                         actionQueue_.push_back({RA::DoorInteract});
@@ -1123,6 +1124,8 @@ void IrrlichtRenderer::setupCamera() {
     cameraController_ = std::make_unique<CameraController>(camera_);
     cameraController_->setMoveSpeed(500.0f);
     cameraController_->setMouseSensitivity(0.2f);
+
+    frustumCuller_ = std::make_unique<FrustumCuller>();
 }
 
 void IrrlichtRenderer::setupLighting() {
@@ -1350,6 +1353,29 @@ void IrrlichtRenderer::updateObjectVisibility() {
 
         // Object should be in scene graph if its nearest edge is within render distance
         bool shouldBeInScene = (dist <= renderDistance_);
+
+        // PVS check for objects with known BSP regions
+        if (shouldBeInScene && usePvsCulling_ && i < objectRegions_.size()
+            && objectRegions_[i] != SIZE_MAX && currentPvsRegion_ != SIZE_MAX
+            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
+            auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
+            size_t objReg = objectRegions_[i];
+            if (camRegion && !camRegion->visibleRegions.empty()
+                && objReg < camRegion->visibleRegions.size()) {
+                if (!camRegion->visibleRegions[objReg]) {
+                    shouldBeInScene = false;
+                }
+            }
+        }
+
+        // Frustum check (object bboxes are in Irrlicht Y-up coords; always swap Y<->Z for EQ)
+        if (shouldBeInScene && frustumCuller_ && frustumCuller_->isEnabled() && validBbox) {
+            if (!frustumCuller_->testAABB(
+                    bbox.MinEdge.X, bbox.MinEdge.Z, bbox.MinEdge.Y,
+                    bbox.MaxEdge.X, bbox.MaxEdge.Z, bbox.MaxEdge.Y)) {
+                shouldBeInScene = false;
+            }
+        }
 
         if (shouldBeInScene && !objectInSceneGraph_[i]) {
             // Add back to scene graph
@@ -1693,6 +1719,12 @@ void IrrlichtRenderer::updateVertexAnimations(float deltaMs) {
         if (vam.elapsedMs >= static_cast<float>(vam.animData->delayMs)) {
             vam.elapsedMs = std::fmod(vam.elapsedMs, static_cast<float>(vam.animData->delayMs));
             vam.currentFrame = (vam.currentFrame + 1) % static_cast<int>(vam.animData->frames.size());
+
+            // Skip expensive per-vertex work for non-visible meshes
+            // Frame counter is still advanced above so animation stays in sync
+            if (vam.node && !vam.node->isVisible()) {
+                continue;
+            }
 
             // Update mesh buffer vertices with the new frame's positions
             const VertexAnimFrame& frame = vam.animData->frames[vam.currentFrame];
@@ -2707,6 +2739,10 @@ void IrrlichtRenderer::unloadZone() {
     zoneBspTree_.reset();
     currentPvsRegion_ = SIZE_MAX;
 
+    // Reset zone clip plane so previous zone's cap doesn't linger
+    zoneMaxClip_ = 99999.0f;
+    setRenderDistance(userRenderDistance_);
+
     // Clear BSP tree from entity renderer
     if (entityRenderer_) {
         entityRenderer_->clearBspTree();
@@ -2805,12 +2841,19 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
                   skySettingEnabled ? "on" : "off");
     }
 
-    // Apply fog color from zone data, but keep our controlled distances
-    // Zone provides atmosphere color, we control visibility distances
+    // Apply server-provided max clip plane as ceiling on render distance
+    // fogMaxClip[0] is the primary clip distance for the zone
+    zoneMaxClip_ = (fogMaxClip[0] > 0.0f) ? fogMaxClip[0] : 99999.0f;
+    // Re-apply render distance with the new zone cap
+    setRenderDistance(userRenderDistance_);
+
+    LOG_INFO(MOD_GRAPHICS, "Zone max clip plane: {:.0f} (effective render distance: {:.0f}, user setting: {:.0f})",
+             zoneMaxClip_, renderDistance_, userRenderDistance_);
+
+    // Apply fog color from zone data
     if (driver_ && fogEnabled_) {
         irr::video::SColor fogColor(255, fogRed[0], fogGreen[0], fogBlue[0]);
 
-        // Use our unified render distance system for fog distances
         float fogEnd = renderDistance_;
         float fogStart = renderDistance_ - fogThickness_;
         fogStart = std::max(0.0f, fogStart);
@@ -2982,9 +3025,10 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
     usePvsCulling_ = true;
     currentPvsRegion_ = SIZE_MAX;
 
-    // Pass BSP tree to entity renderer for PVS-based entity culling
+    // Pass BSP tree and frustum culler to entity renderer for visibility culling
     if (entityRenderer_) {
         entityRenderer_->setBspTree(bspTree);
+        entityRenderer_->setFrustumCuller(frustumCuller_.get());
     }
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
@@ -3050,16 +3094,34 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
 
                 regionMeshNodes_[regionIdx] = node;
 
-                // Cache world-space bounding box in EQ coordinates for distance culling
-                // World bounds = center + relative bounds
-                irr::core::aabbox3df worldBounds;
-                worldBounds.MinEdge.X = geom->centerX + geom->minX;
-                worldBounds.MinEdge.Y = geom->centerY + geom->minY;
-                worldBounds.MinEdge.Z = geom->centerZ + geom->minZ;
-                worldBounds.MaxEdge.X = geom->centerX + geom->maxX;
-                worldBounds.MaxEdge.Y = geom->centerY + geom->maxY;
-                worldBounds.MaxEdge.Z = geom->centerZ + geom->maxZ;
-                regionBoundingBoxes_[regionIdx] = worldBounds;
+                // Compute world-space bounding box from actual vertex data (EQ coords).
+                // WLD fragment headers often store zero bounds for region meshes,
+                // so we compute from vertices instead. Vertices are relative to center.
+                if (!geom->vertices.empty()) {
+                    float vMinX = std::numeric_limits<float>::max();
+                    float vMinY = vMinX, vMinZ = vMinX;
+                    float vMaxX = std::numeric_limits<float>::lowest();
+                    float vMaxY = vMaxX, vMaxZ = vMaxX;
+                    for (const auto& v : geom->vertices) {
+                        float wx = geom->centerX + v.x;
+                        float wy = geom->centerY + v.y;
+                        float wz = geom->centerZ + v.z;
+                        if (wx < vMinX) vMinX = wx;
+                        if (wy < vMinY) vMinY = wy;
+                        if (wz < vMinZ) vMinZ = wz;
+                        if (wx > vMaxX) vMaxX = wx;
+                        if (wy > vMaxY) vMaxY = wy;
+                        if (wz > vMaxZ) vMaxZ = wz;
+                    }
+                    irr::core::aabbox3df worldBounds;
+                    worldBounds.MinEdge.X = vMinX;
+                    worldBounds.MinEdge.Y = vMinY;
+                    worldBounds.MinEdge.Z = vMinZ;
+                    worldBounds.MaxEdge.X = vMaxX;
+                    worldBounds.MaxEdge.Y = vMaxY;
+                    worldBounds.MaxEdge.Z = vMaxZ;
+                    regionBoundingBoxes_[regionIdx] = worldBounds;
+                }
 
                 createdMeshes++;
             }
@@ -3213,6 +3275,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
     // Cache BSP lookup - only recompute if position changed significantly (>5 units)
     static float lastBspX = -99999.0f, lastBspY = -99999.0f, lastBspZ = -99999.0f;
     static std::shared_ptr<EQT::Graphics::BspRegion> cachedRegion;
+    static size_t cachedRegionIdx = SIZE_MAX;
 
     // Check if we need to force update (e.g., render distance changed)
     if (forcePvsUpdate_) {
@@ -3221,6 +3284,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
         lastBspY = -99999.0f;
         lastBspZ = -99999.0f;
         cachedRegion = nullptr;
+        cachedRegionIdx = SIZE_MAX;
         forcePvsUpdate_ = false;
         LOG_DEBUG(MOD_GRAPHICS, "Forcing PVS visibility update due to render distance change");
     }
@@ -3230,28 +3294,23 @@ void IrrlichtRenderer::updatePvsVisibility() {
     float dz = camZ - lastBspZ;
     float distSq = dx*dx + dy*dy + dz*dz;
 
+    size_t newRegionIdx = SIZE_MAX;
     std::shared_ptr<EQT::Graphics::BspRegion> region;
     if (distSq > 25.0f) {  // 5 units squared
         // Position changed enough, do BSP lookup
-        region = zoneBspTree_->findRegionForPoint(camX, camY, camZ);
+        newRegionIdx = zoneBspTree_->findRegionIndexForPoint(camX, camY, camZ);
+        if (newRegionIdx != SIZE_MAX && newRegionIdx < zoneBspTree_->regions.size()) {
+            region = zoneBspTree_->regions[newRegionIdx];
+        }
         cachedRegion = region;
+        cachedRegionIdx = newRegionIdx;
         lastBspX = camX;
         lastBspY = camY;
         lastBspZ = camZ;
     } else {
         // Use cached result
         region = cachedRegion;
-    }
-
-    // Find region index
-    size_t newRegionIdx = SIZE_MAX;
-    if (region) {
-        for (size_t i = 0; i < zoneBspTree_->regions.size(); ++i) {
-            if (zoneBspTree_->regions[i].get() == region.get()) {
-                newRegionIdx = i;
-                break;
-            }
-        }
+        newRegionIdx = cachedRegionIdx;
     }
 
     // Always run visibility loop when position changes.
@@ -3260,15 +3319,11 @@ void IrrlichtRenderer::updatePvsVisibility() {
     bool regionChanged = (newRegionIdx != currentPvsRegion_);
     currentPvsRegion_ = newRegionIdx;
 
-    // NOTE: Frustum pre-culling is not possible here because Irrlicht only updates the
-    // camera's view/projection matrices during render()/drawAll(). Both getViewFrustum()
-    // and getViewMatrix()/getProjectionMatrix() return stale data from the previous frame.
-    // Irrlicht's own frustum culling during drawAll() handles directional filtering instead.
-
-    // If camera is outside all regions or no PVS data, skip PVS but still apply distance culling
+    // If camera is outside all regions or no PVS data, skip PVS but still apply distance + frustum culling
     if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
         size_t visibleCount = 0;
         size_t hiddenByDistCount = 0;
+        size_t hiddenByFrustumCount = 0;
         for (auto& [regionIdx, node] : regionMeshNodes_) {
             if (!node) continue;
 
@@ -3293,11 +3348,23 @@ void IrrlichtRenderer::updatePvsVisibility() {
                 continue;
             }
 
+            // Frustum culling (region bboxes are in EQ Z-up coords, same as frustum)
+            if (frustumCuller_ && frustumCuller_->isEnabled() && bboxIt != regionBoundingBoxes_.end()) {
+                const auto& bbox = bboxIt->second;
+                if (!frustumCuller_->testAABB(
+                        bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                        bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
+                    node->setVisible(false);
+                    hiddenByFrustumCount++;
+                    continue;
+                }
+            }
+
             node->setVisible(true);
             visibleCount++;
         }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} dist-culled (renderDist={})",
-            visibleCount, hiddenByDistCount, renderDistance_);
+        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} dist-culled, {} frustum-culled (renderDist={})",
+            visibleCount, hiddenByDistCount, hiddenByFrustumCount, renderDistance_);
         return;
     }
 
@@ -3315,15 +3382,15 @@ void IrrlichtRenderer::updatePvsVisibility() {
             newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
     }
 
-    // Update visibility based on PVS + render distance culling
-    // Zone geometry is culled if EITHER of these fail:
+    // Update visibility based on PVS + distance + frustum culling
+    // Zone geometry is culled if ANY of these fail:
     //   1. PVS says it's not visible from current region (occlusion culling)
     //   2. Nearest edge of region bounding box is beyond render distance
-    // Frustum culling is handled by Irrlicht during drawAll() - we can't do it here
-    // because camera matrices are only updated during the render phase.
+    //   3. Region bounding box is outside the camera frustum
     size_t visibleCount = 0;
     size_t hiddenByPvsCount = 0;
     size_t hiddenByDistCount = 0;
+    size_t hiddenByFrustumCount = 0;
     size_t outOfRangeCount = 0;
 
     for (auto& [regionIdx, node] : regionMeshNodes_) {
@@ -3366,6 +3433,18 @@ void IrrlichtRenderer::updatePvsVisibility() {
             continue;
         }
 
+        // 3. Frustum culling (region bboxes are in EQ Z-up coords, same as frustum)
+        if (frustumCuller_ && frustumCuller_->isEnabled() && bboxIt != regionBoundingBoxes_.end()) {
+            const auto& bbox = bboxIt->second;
+            if (!frustumCuller_->testAABB(
+                    bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                    bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
+                node->setVisible(false);
+                hiddenByFrustumCount++;
+                continue;
+            }
+        }
+
         node->setVisible(true);
         visibleCount++;
     }
@@ -3376,8 +3455,64 @@ void IrrlichtRenderer::updatePvsVisibility() {
             outOfRangeCount, region->visibleRegions.size());
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden",
-        newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount);
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden, {} frustum-hidden",
+        newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, hiddenByFrustumCount);
+}
+
+void IrrlichtRenderer::updateFrustumCulling() {
+    if (!frustumCuller_ || !frustumCuller_->isEnabled() || regionMeshNodes_.empty()) return;
+
+    // Re-test currently visible region nodes against the updated frustum.
+    // This is called on non-Tier2 frames when the camera has rotated.
+    // Does NOT re-run BSP lookup - uses cached PVS state.
+    size_t hiddenCount = 0;
+    size_t visibleCount = 0;
+
+    for (auto& [regionIdx, node] : regionMeshNodes_) {
+        if (!node) continue;
+
+        // Only test nodes that PVS/distance already approved (currently visible)
+        // Nodes hidden by PVS stay hidden - we can only HIDE more, not reveal
+        if (!node->isVisible()) continue;
+
+        auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+        if (bboxIt != regionBoundingBoxes_.end()) {
+            const auto& bbox = bboxIt->second;
+            // Region bboxes are in EQ Z-up coords, same as frustum
+            if (!frustumCuller_->testAABB(
+                    bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                    bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
+                node->setVisible(false);
+                hiddenCount++;
+                continue;
+            }
+        }
+        visibleCount++;
+    }
+
+    // Also re-test objects against frustum
+    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+        if (!objectNodes_[i] || !objectInSceneGraph_[i]) continue;
+        if (!objectNodes_[i]->isVisible()) continue;
+
+        if (i < objectBoundingBoxes_.size()) {
+            const irr::core::aabbox3df& bbox = objectBoundingBoxes_[i];
+            bool validBbox = (bbox.MinEdge.X <= bbox.MaxEdge.X &&
+                              bbox.MinEdge.Y <= bbox.MaxEdge.Y &&
+                              bbox.MinEdge.Z <= bbox.MaxEdge.Z);
+            if (validBbox) {
+                // Object bboxes are in Irrlicht coords (Y-up), swap Y<->Z for EQ
+                if (!frustumCuller_->testAABB(
+                        bbox.MinEdge.X, bbox.MinEdge.Z, bbox.MinEdge.Y,
+                        bbox.MaxEdge.X, bbox.MaxEdge.Z, bbox.MaxEdge.Y)) {
+                    objectNodes_[i]->setVisible(false);
+                }
+            }
+        }
+    }
+
+    LOG_TRACE(MOD_GRAPHICS, "Frustum re-cull: {} visible, {} hidden (rotation-only update)",
+        visibleCount, hiddenCount);
 }
 
 void IrrlichtRenderer::createObjectMeshes() {
@@ -3398,6 +3533,7 @@ void IrrlichtRenderer::createObjectMeshes() {
     objectPositions_.clear();
     objectBoundingBoxes_.clear();
     objectInSceneGraph_.clear();
+    objectRegions_.clear();
 
     // Clear object lights
     for (auto& objLight : objectLights_) {
@@ -3644,6 +3780,13 @@ void IrrlichtRenderer::createObjectMeshes() {
         node->grab();  // Keep alive when removed from scene graph
         objectNodes_.push_back(node);
         objectPositions_.push_back(irr::core::vector3df(x, z, y));  // Cache position for distance culling
+
+        // Pre-assign object to BSP region for PVS culling
+        if (zoneBspTree_) {
+            objectRegions_.push_back(zoneBspTree_->findRegionIndexForPoint(x, y, z));
+        } else {
+            objectRegions_.push_back(SIZE_MAX);
+        }
 
         // Update absolute transformation before getting bounding box
         node->updateAbsolutePosition();
@@ -4870,6 +5013,72 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                 LOG_INFO(MOD_GRAPHICS, "Navmesh overlay X mirror: {}", navmeshOverlayMirrorX_ ? "ON" : "OFF");
                 break;
 
+            case RA::ToggleFrustumCulling:
+                if (frustumCuller_) {
+                    // Cycle: ON → ON+DEBUG → OFF → ON ...
+                    if (frustumCuller_->isEnabled() && !frustumDebugDraw_) {
+                        frustumDebugDraw_ = true;
+                        LOG_INFO(MOD_GRAPHICS, "Frustum culling: ON + DEBUG DRAW (Ctrl+V to cycle)");
+                    } else if (frustumCuller_->isEnabled() && frustumDebugDraw_) {
+                        frustumCuller_->setEnabled(false);
+                        frustumDebugDraw_ = false;
+                        LOG_INFO(MOD_GRAPHICS, "Frustum culling: OFF (Ctrl+V to cycle)");
+                    } else {
+                        frustumCuller_->setEnabled(true);
+                        frustumDebugDraw_ = false;
+                        LOG_INFO(MOD_GRAPHICS, "Frustum culling: ON (Ctrl+V to cycle)");
+                    }
+
+                    // Diagnostic: log camera direction and nearby region bboxes
+                    if (camera_ && cameraController_) {
+                        irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
+                        float camX, camY, camZ;
+                        cameraController_->getPositionEQ(camX, camY, camZ);
+                        float eqFwdX = irrFwd.X, eqFwdY = irrFwd.Z, eqFwdZ = irrFwd.Y;
+                        float fwdLen = std::sqrt(eqFwdX*eqFwdX + eqFwdY*eqFwdY + eqFwdZ*eqFwdZ);
+                        if (fwdLen > 0.001f) { eqFwdX /= fwdLen; eqFwdY /= fwdLen; eqFwdZ /= fwdLen; }
+                        LOG_INFO(MOD_GRAPHICS, "FRUSTUM DIAG: cam EQ=({:.1f},{:.1f},{:.1f}) fwd EQ=({:.3f},{:.3f},{:.3f})",
+                            camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ);
+                        LOG_INFO(MOD_GRAPHICS, "FRUSTUM DIAG: Irrlicht cam=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f})",
+                            camera_->getPosition().X, camera_->getPosition().Y, camera_->getPosition().Z,
+                            camera_->getTarget().X, camera_->getTarget().Y, camera_->getTarget().Z);
+
+                        // Log 10 closest region bboxes with sizes and frustum results
+                        struct RegionDiag { size_t idx; float dist; float sizeX, sizeY, sizeZ; bool frustum; };
+                        std::vector<RegionDiag> diags;
+                        for (auto& [regionIdx, bbox] : regionBoundingBoxes_) {
+                            float cx = (bbox.MinEdge.X + bbox.MaxEdge.X) * 0.5f;
+                            float cy = (bbox.MinEdge.Y + bbox.MaxEdge.Y) * 0.5f;
+                            float cz = (bbox.MinEdge.Z + bbox.MaxEdge.Z) * 0.5f;
+                            float dx = camX - cx, dy = camY - cy, dz = camZ - cz;
+                            float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+                            bool inFrustum = !frustumCuller_->isEnabled() || frustumCuller_->testAABB(
+                                bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                                bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z);
+                            diags.push_back({regionIdx, dist,
+                                bbox.MaxEdge.X - bbox.MinEdge.X,
+                                bbox.MaxEdge.Y - bbox.MinEdge.Y,
+                                bbox.MaxEdge.Z - bbox.MinEdge.Z, inFrustum});
+                        }
+                        std::sort(diags.begin(), diags.end(), [](const RegionDiag& a, const RegionDiag& b) { return a.dist < b.dist; });
+                        for (int i = 0; i < 15 && i < (int)diags.size(); ++i) {
+                            auto& d = diags[i];
+                            auto& bbox = regionBoundingBoxes_[d.idx];
+                            LOG_INFO(MOD_GRAPHICS, "FRUSTUM DIAG: region {} dist={:.0f} size=({:.1f},{:.1f},{:.1f}) "
+                                "bbox=({:.1f},{:.1f},{:.1f})->({:.1f},{:.1f},{:.1f}) {}",
+                                d.idx, d.dist, d.sizeX, d.sizeY, d.sizeZ,
+                                bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                                bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z,
+                                d.frustum ? "VISIBLE" : "CULLED");
+                        }
+                    }
+
+                    // Force visibility rebuild
+                    forcePvsUpdate_ = true;
+                    lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
+                }
+                break;
+
             default: break;
         }
     }
@@ -5097,6 +5306,43 @@ void IrrlichtRenderer::processChatInput() {
 
 // ===== Phase 2: Visibility =====
 void IrrlichtRenderer::processFrameVisibility() {
+    // Update frustum planes every frame from actual Irrlicht camera direction.
+    // We derive the direction from camera target - position (not CameraController yaw/pitch,
+    // which can be stale or represent player facing rather than camera view in follow mode).
+    bool orientationChanged = false;
+    if (frustumCuller_ && camera_) {
+        irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
+        // Convert Irrlicht Y-up direction to EQ Z-up: (irrX, irrY, irrZ) -> (irrX, irrZ, irrY)
+        float eqFwdX = irrFwd.X;
+        float eqFwdY = irrFwd.Z;
+        float eqFwdZ = irrFwd.Y;
+
+        float fovV = camera_->getFOV();
+        auto screenSize = driver_->getScreenSize();
+        float aspect = (float)screenSize.Width / (float)screenSize.Height;
+        float camX, camY, camZ;
+        cameraController_->getPositionEQ(camX, camY, camZ);
+
+        // The dirty check inside update() will skip if nothing changed
+        frustumCuller_->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
+            fovV, aspect, 1.0f, renderDistance_);
+
+        // Detect camera direction change for inter-tier frustum re-cull.
+        // Use the actual forward direction components instead of yaw/pitch.
+        float fwdLen = std::sqrt(eqFwdX*eqFwdX + eqFwdY*eqFwdY + eqFwdZ*eqFwdZ);
+        if (fwdLen > 0.0001f) {
+            float nfx = eqFwdX / fwdLen, nfy = eqFwdY / fwdLen, nfz = eqFwdZ / fwdLen;
+            // Dot product with last direction - if < ~0.9999 (~0.8 degree change), re-cull
+            float dot = nfx * lastFrustumFwdX_ + nfy * lastFrustumFwdY_ + nfz * lastFrustumFwdZ_;
+            if (dot < 0.9999f) {
+                orientationChanged = true;
+                lastFrustumFwdX_ = nfx;
+                lastFrustumFwdY_ = nfy;
+                lastFrustumFwdZ_ = nfz;
+            }
+        }
+    }
+
     if (runTier2_) {
         updateObjectVisibility();
         updateZoneLightVisibility();
@@ -5107,6 +5353,9 @@ void IrrlichtRenderer::processFrameVisibility() {
 
         updateObjectLights();
         if (frameTimingEnabled_) frameTimings_.objectLights = measureSection();
+    } else if (orientationChanged && usePvsCulling_) {
+        // Camera rotated on a non-Tier2 frame: re-run frustum test only
+        updateFrustumCulling();
     }
 }
 
@@ -5312,6 +5561,48 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     // Draw collision debug lines
     if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);
+
+    // Frustum culling debug: draw region bounding boxes as wireframe
+    // Green = passes frustum test (visible), Red = culled by frustum
+    if (frustumDebugDraw_ && frustumCuller_) {
+        for (auto& [regionIdx, eqBbox] : regionBoundingBoxes_) {
+            // Convert EQ Z-up bbox to Irrlicht Y-up corners: EQ(x,y,z) -> Irr(x,z,y)
+            irr::core::vector3df corners[8];
+            corners[0] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
+            corners[1] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
+            corners[2] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
+            corners[3] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
+            corners[4] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
+            corners[5] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
+            corners[6] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
+            corners[7] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
+
+            // Test against frustum (in EQ coords)
+            bool inFrustum = frustumCuller_->testAABB(
+                eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
+                eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
+
+            irr::video::SColor color = inFrustum
+                ? irr::video::SColor(255, 0, 255, 0)
+                : irr::video::SColor(255, 255, 0, 0);
+
+            // Bottom face
+            driver_->draw3DLine(corners[0], corners[1], color);
+            driver_->draw3DLine(corners[1], corners[2], color);
+            driver_->draw3DLine(corners[2], corners[3], color);
+            driver_->draw3DLine(corners[3], corners[0], color);
+            // Top face
+            driver_->draw3DLine(corners[4], corners[5], color);
+            driver_->draw3DLine(corners[5], corners[6], color);
+            driver_->draw3DLine(corners[6], corners[7], color);
+            driver_->draw3DLine(corners[7], corners[4], color);
+            // Vertical edges
+            driver_->draw3DLine(corners[0], corners[4], color);
+            driver_->draw3DLine(corners[1], corners[5], color);
+            driver_->draw3DLine(corners[2], corners[6], color);
+            driver_->draw3DLine(corners[3], corners[7], color);
+        }
+    }
 
     // Map overlay
     if (showMapOverlay_) {

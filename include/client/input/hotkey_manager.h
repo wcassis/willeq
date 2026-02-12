@@ -101,6 +101,7 @@ enum class HotkeyAction : uint32_t {
     ToggleNavmeshOverlay,   // Navmesh wireframe overlay (Ctrl+N)
     RotateNavmeshOverlay,   // Rotate navmesh overlay by 90 degrees (Ctrl+Shift+N)
     MirrorNavmeshOverlayX,  // Mirror navmesh overlay on X axis (Ctrl+Alt+N)
+    ToggleFrustumCulling,   // Toggle frustum culling on/off (Ctrl+V)
 
     // Interaction
     InteractDoor,

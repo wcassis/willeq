@@ -755,10 +755,13 @@ bool OptionsWindow::handleMouseMove(int x, int y)
     if (currentTab_ == Tab::Display) {
         int baseX = CONTENT_PADDING;
         int baseY = TAB_HEIGHT + CONTENT_PADDING + 4;
-        int rowY = baseY + SECTION_HEADER_HEIGHT + ROW_SPACING;
+        // Match renderDisplayTab layout: section header + slider row + section header
+        int qualityY = baseY + SECTION_HEADER_HEIGHT + ROW_SPACING  // "Render Distance" header
+                     + ROW_HEIGHT + ROW_SPACING * 2                 // Distance slider row
+                     + SECTION_HEADER_HEIGHT + ROW_SPACING;         // "Environment Effects" header
 
         // Quality selector hover
-        hoveredQualityOption_ = getQualityOptionAtPosition(baseX + 70, rowY, localX, localY);
+        hoveredQualityOption_ = getQualityOptionAtPosition(baseX + 70, qualityY, localX, localY);
     }
 
     return WindowBase::handleMouseMove(x, y);

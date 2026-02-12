@@ -1614,35 +1614,33 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         // Cache BSP lookup - only recompute if position changed significantly (>5 units)
         static float lastBspCamX = -99999.0f, lastBspCamY = -99999.0f, lastBspCamZ = -99999.0f;
         static std::shared_ptr<BspRegion> cachedCamRegion;
+        static size_t cachedCamRegionIdx = SIZE_MAX;
 
         float dx = eqCameraX - lastBspCamX;
         float dy = eqCameraY - lastBspCamY;
         float dz = eqCameraZ - lastBspCamZ;
         float distSq = dx*dx + dy*dy + dz*dz;
 
-        std::shared_ptr<BspRegion> region;
+        size_t regionIdx = SIZE_MAX;
         if (distSq > 25.0f) {  // 5 units squared
-            region = bspTree_->findRegionForPoint(eqCameraX, eqCameraY, eqCameraZ);
-            cachedCamRegion = region;
+            regionIdx = bspTree_->findRegionIndexForPoint(eqCameraX, eqCameraY, eqCameraZ);
+            if (regionIdx != SIZE_MAX && regionIdx < bspTree_->regions.size()) {
+                cachedCamRegion = bspTree_->regions[regionIdx];
+            } else {
+                cachedCamRegion = nullptr;
+            }
+            cachedCamRegionIdx = regionIdx;
             lastBspCamX = eqCameraX;
             lastBspCamY = eqCameraY;
             lastBspCamZ = eqCameraZ;
         } else {
-            region = cachedCamRegion;
+            regionIdx = cachedCamRegionIdx;
         }
 
-        if (region) {
-            // Find the region's index
-            size_t regionIdx = SIZE_MAX;
-            for (size_t i = 0; i < bspTree_->regions.size(); ++i) {
-                if (bspTree_->regions[i] == region) {
-                    regionIdx = i;
-                    break;
-                }
-            }
+        if (regionIdx != SIZE_MAX) {
             if (regionIdx != currentCameraRegionIdx_) {
                 currentCameraRegionIdx_ = regionIdx;
-                currentCameraRegion_ = region;
+                currentCameraRegion_ = cachedCamRegion;
                 LOG_TRACE(MOD_GRAPHICS, "EntityRenderer: Camera entered region {}", regionIdx);
             }
         } else {
@@ -1681,17 +1679,9 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         // Check PVS visibility (if BSP tree is set)
         bool pvsVisible = true;  // Default to visible if no PVS data
         if (bspTree_ && currentCameraRegion_ && !currentCameraRegion_->visibleRegions.empty()) {
-            // Find which region the entity is in
-            auto entityRegion = bspTree_->findRegionForPoint(visual.lastX, visual.lastY, visual.lastZ);
-            if (entityRegion) {
-                // Find the entity region's index
-                size_t entityRegionIdx = SIZE_MAX;
-                for (size_t i = 0; i < bspTree_->regions.size(); ++i) {
-                    if (bspTree_->regions[i] == entityRegion) {
-                        entityRegionIdx = i;
-                        break;
-                    }
-                }
+            // Find which region the entity is in (direct index lookup, no linear scan)
+            size_t entityRegionIdx = bspTree_->findRegionIndexForPoint(visual.lastX, visual.lastY, visual.lastZ);
+            if (entityRegionIdx != SIZE_MAX) {
                 // Check if entity's region is visible from camera's region
                 if (entityRegionIdx < currentCameraRegion_->visibleRegions.size()) {
                     pvsVisible = currentCameraRegion_->visibleRegions[entityRegionIdx];
@@ -1701,7 +1691,14 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
             // If entity is outside BSP tree, assume visible
         }
 
-        // Combined visibility: must be in render distance AND PVS visible
+        // Frustum culling (sphere test, entities are small)
+        if (pvsVisible && inRenderDistance && frustumCuller_) {
+            if (!frustumCuller_->testSphere(visual.lastX, visual.lastY, visual.lastZ, 5.0f)) {
+                pvsVisible = false;  // Re-use flag to hide entity
+            }
+        }
+
+        // Combined visibility: must be in render distance AND PVS visible AND in frustum
         bool isVisible = inRenderDistance && pvsVisible;
 
         // Update model visibility (handles both animated and static mesh nodes)

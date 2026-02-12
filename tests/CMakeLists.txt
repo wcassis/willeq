@@ -164,6 +164,14 @@ ADD_EXECUTABLE(test_formatted_message
 TARGET_LINK_LIBRARIES(test_formatted_message GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_formatted_message)
 
+# Test frustum culler (pure math, no external dependencies)
+ADD_EXECUTABLE(test_frustum_culler
+    test_frustum_culler.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
+)
+TARGET_LINK_LIBRARIES(test_frustum_culler GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_frustum_culler)
+
 # Test StringDatabase loading and formatting
 ADD_EXECUTABLE(test_string_database
     test_string_database.cpp

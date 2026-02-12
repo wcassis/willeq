@@ -2352,6 +2352,32 @@ std::shared_ptr<BspRegion> BspTree::findRegionForPoint(float x, float y, float z
     return nullptr;
 }
 
+size_t BspTree::findRegionIndexForPoint(float x, float y, float z) const {
+    if (nodes.empty()) return SIZE_MAX;
+
+    int nodeIdx = 0;
+
+    while (nodeIdx >= 0 && static_cast<size_t>(nodeIdx) < nodes.size()) {
+        const BspNode& node = nodes[nodeIdx];
+
+        // Check if this node has a region
+        if (node.regionId > 0 && static_cast<size_t>(node.regionId - 1) < regions.size()) {
+            return static_cast<size_t>(node.regionId - 1);
+        }
+
+        // Determine which side of the split plane the point is on
+        float dot = x * node.normalX + y * node.normalY + z * node.normalZ + node.splitDistance;
+
+        if (dot >= 0) {
+            nodeIdx = node.left;   // front_tree
+        } else {
+            nodeIdx = node.right;  // back_tree
+        }
+    }
+
+    return SIZE_MAX;
+}
+
 std::optional<ZoneLineInfo> BspTree::checkZoneLine(float x, float y, float z) const {
     static int checkCounter = 0;
     checkCounter++;
