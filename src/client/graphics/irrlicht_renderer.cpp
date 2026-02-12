@@ -8792,25 +8792,30 @@ void IrrlichtRenderer::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineB
     for (const auto& box : boxes) {
         createZoneLineBoxMesh(box);
     }
+    zoneLineBoxesCreated_ = showZoneLineBoxes_;
 }
 
 void IrrlichtRenderer::clearZoneLineBoundingBoxes() {
     for (auto& boxNode : zoneLineBoxNodes_) {
         if (boxNode.node) {
             boxNode.node->remove();
+            boxNode.node = nullptr;
         }
     }
     zoneLineBoxNodes_.clear();
+    zoneLineBoxesCreated_ = false;
 }
 
 void IrrlichtRenderer::toggleZoneLineVisualization() {
     showZoneLineBoxes_ = !showZoneLineBoxes_;
 
-    // Update visibility of all zone line box nodes
-    for (auto& boxNode : zoneLineBoxNodes_) {
-        if (boxNode.node) {
-            boxNode.node->setVisible(showZoneLineBoxes_);
-        }
+    // Remove/recreate scene nodes instead of toggling visibility.
+    // Calling setVisible(false) on nodes with EMT_TRANSPARENT_VERTEX_ALPHA
+    // triggers a GPU hang on Lima (Mali 400) driver.
+    if (showZoneLineBoxes_) {
+        recreateZoneLineBoxSceneNodes();
+    } else {
+        removeZoneLineBoxSceneNodes();
     }
 
     // Notify EverQuest to enable/disable zoning when zone lines are toggled
@@ -8821,7 +8826,52 @@ void IrrlichtRenderer::toggleZoneLineVisualization() {
     LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");
 }
 
+void IrrlichtRenderer::removeZoneLineBoxSceneNodes() {
+    for (auto& boxNode : zoneLineBoxNodes_) {
+        if (boxNode.node) {
+            boxNode.node->remove();
+            boxNode.node = nullptr;
+        }
+    }
+    zoneLineBoxesCreated_ = false;
+}
+
+void IrrlichtRenderer::recreateZoneLineBoxSceneNodes() {
+    if (zoneLineBoxesCreated_ || !smgr_ || !driver_) return;
+
+    // Recreate scene nodes from stored bounding box data
+    for (auto& boxNode : zoneLineBoxNodes_) {
+        if (boxNode.node) continue;  // Already has a node
+
+        // Reconstruct bounding box from stored data
+        EQT::ZoneLineBoundingBox box;
+        box.targetZoneId = boxNode.targetZoneId;
+        box.isProximityBased = boxNode.isProximityBased;
+        box.minX = boxNode.minX; box.minY = boxNode.minY; box.minZ = boxNode.minZ;
+        box.maxX = boxNode.maxX; box.maxY = boxNode.maxY; box.maxZ = boxNode.maxZ;
+        createZoneLineBoxMeshForNode(box, boxNode);
+    }
+    zoneLineBoxesCreated_ = true;
+}
+
 void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box) {
+    // Store metadata and coordinates for later recreation
+    ZoneLineBoxNode boxNode;
+    boxNode.node = nullptr;
+    boxNode.targetZoneId = box.targetZoneId;
+    boxNode.isProximityBased = box.isProximityBased;
+    boxNode.minX = box.minX; boxNode.minY = box.minY; boxNode.minZ = box.minZ;
+    boxNode.maxX = box.maxX; boxNode.maxY = box.maxY; boxNode.maxZ = box.maxZ;
+
+    // Only create scene nodes if visualization is currently enabled
+    if (showZoneLineBoxes_ && smgr_ && driver_) {
+        createZoneLineBoxMeshForNode(box, boxNode);
+    }
+
+    zoneLineBoxNodes_.push_back(boxNode);
+}
+
+void IrrlichtRenderer::createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode) {
     if (!smgr_ || !driver_) return;
 
     // Convert EQ coordinates to Irrlicht coordinates
@@ -8871,29 +8921,27 @@ void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box
     // Position the box
     node->setPosition(irr::core::vector3df(centerX, centerY, centerZ));
 
-    // Set up semi-transparent material
-    // Use different colors for BSP vs proximity-based boxes
+    // Use wireframe rendering - avoids EMT_TRANSPARENT_VERTEX_ALPHA which
+    // causes GPU hangs on Lima (Mali 400) driver when toggling visibility
     irr::video::SColor color;
     if (box.isProximityBased) {
-        // Cyan for proximity-based zone points
-        color = irr::video::SColor(80, 0, 255, 255);
+        color = irr::video::SColor(255, 0, 255, 255);  // Cyan
     } else {
-        // Magenta/purple for BSP-based zone lines
-        color = irr::video::SColor(80, 255, 0, 255);
+        color = irr::video::SColor(255, 255, 0, 255);  // Magenta
     }
 
-    // Apply semi-transparent material to all mesh buffers
     for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
         irr::video::SMaterial& mat = node->getMaterial(i);
-        mat.MaterialType = irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
+        mat.MaterialType = irr::video::EMT_SOLID;
+        mat.Wireframe = true;
         mat.Lighting = false;
         mat.BackfaceCulling = false;
-        mat.ZWriteEnable = false;  // Don't write to depth buffer
+        mat.Thickness = 2.0f;
         mat.AmbientColor = color;
         mat.DiffuseColor = color;
     }
 
-    // Also modify the mesh vertex colors directly for vertex alpha transparency
+    // Set vertex colors for wireframe
     irr::scene::IMeshBuffer* meshBuffer = node->getMesh()->getMeshBuffer(0);
     if (meshBuffer) {
         irr::video::S3DVertex* vertices = static_cast<irr::video::S3DVertex*>(meshBuffer->getVertices());
@@ -8903,14 +8951,8 @@ void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box
         }
     }
 
-    node->setVisible(showZoneLineBoxes_);
-
-    // Store the node
-    ZoneLineBoxNode boxNode;
+    node->setVisible(true);
     boxNode.node = node;
-    boxNode.targetZoneId = box.targetZoneId;
-    boxNode.isProximityBased = box.isProximityBased;
-    zoneLineBoxNodes_.push_back(boxNode);
 
     LOG_TRACE(MOD_GRAPHICS, "Created zone line box for zone {} at ({},{},{}) size ({},{},{})",
         box.targetZoneId, centerX, centerY, centerZ, width, height, depth);

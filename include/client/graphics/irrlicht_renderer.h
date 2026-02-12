@@ -1196,10 +1196,17 @@ private:
         irr::scene::IMeshSceneNode* node = nullptr;
         uint16_t targetZoneId = 0;
         bool isProximityBased = false;
+        // Store original EQ coords for recreating scene nodes
+        float minX = 0, minY = 0, minZ = 0;
+        float maxX = 0, maxY = 0, maxZ = 0;
     };
     std::vector<ZoneLineBoxNode> zoneLineBoxNodes_;
     bool showZoneLineBoxes_ = true;  // Enabled by default to help debug
+    bool zoneLineBoxesCreated_ = false;  // Whether scene nodes exist
     void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
+    void createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode);
+    void removeZoneLineBoxSceneNodes();
+    void recreateZoneLineBoxSceneNodes();
     void drawZoneLineBoxLabels();
 
     // Map overlay visualization (Ctrl+M)
