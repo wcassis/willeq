@@ -71,6 +71,9 @@ struct ApplicationConfig {
     bool rdpEnabled = false;
     uint16_t rdpPort = 3389;
 
+    // DRM/KMS settings (guarded by EQT_HAS_DRM at usage sites)
+    bool useDRM = false;
+
     // Constrained rendering
     std::string constrainedPreset;
 

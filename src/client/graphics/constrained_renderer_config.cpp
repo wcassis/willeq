@@ -137,7 +137,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.colorDepthBits = 16;
             config.maxTextureDimension = 128;
             // Render distance and geometry budgets
-            config.clipDistance = 400.0f;
+            config.clipDistance = 200.0f;
             config.entityRenderDistance = 200.0f;
             config.maxVisibleEntities = 40;
             config.maxPolygonsPerFrame = 40000;

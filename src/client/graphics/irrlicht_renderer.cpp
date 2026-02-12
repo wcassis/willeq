@@ -537,9 +537,19 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     params.Vsync = true;
     params.AntiAlias = 0;
 
+#ifdef EQT_HAS_DRM
+    // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
+    if (config.useDRM) {
+        params.DeviceType = irr::EIDT_FRAMEBUFFER;
+        LOG_INFO(MOD_GRAPHICS, "[GL] Using DRM/KMS framebuffer device (no X11)");
+    }
+#endif
+
     LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
               config.width, config.height, config.fullscreen, true, false, 0);
-    LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
+    if (!config.useDRM) {
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
+    }
 
     device_ = irr::createDeviceEx(params);
 
@@ -567,6 +577,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
     // Log comprehensive driver/OpenGL details
     logDriverDetails(driver_, device_, params);
+
+    // In DRM mode, enable and create software cursor (no hardware cursor available)
+    if (config_.useDRM && device_->getCursorControl()) {
+        device_->getCursorControl()->setVisible(true);
+    }
+    createSoftwareCursor();
 
     // Create constrained texture cache if in constrained mode
     if (config_.constrainedConfig.enabled && driver_) {
@@ -699,9 +715,19 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     params.Vsync = true;
     params.AntiAlias = 0;
 
+#ifdef EQT_HAS_DRM
+    // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
+    if (config.useDRM) {
+        params.DeviceType = irr::EIDT_FRAMEBUFFER;
+        LOG_INFO(MOD_GRAPHICS, "[GL] Loading screen: using DRM/KMS framebuffer device");
+    }
+#endif
+
     LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
               config.width, config.height, config.fullscreen, true, false, 0);
-    LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
+    if (!config.useDRM) {
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
+    }
 
     device_ = irr::createDeviceEx(params);
 
@@ -727,6 +753,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Log comprehensive driver/OpenGL details
     logDriverDetails(driver_, device_, params);
+
+    // In DRM mode, enable and create software cursor (no hardware cursor available)
+    if (config_.useDRM && device_->getCursorControl()) {
+        device_->getCursorControl()->setVisible(true);
+    }
+    createSoftwareCursor();
 
     // Create constrained texture cache if in constrained mode
     if (config_.constrainedConfig.enabled && driver_) {
@@ -1018,6 +1050,64 @@ void IrrlichtRenderer::requestQuit() {
     }
 }
 
+void IrrlichtRenderer::createSoftwareCursor() {
+    if (!driver_ || !config_.useDRM) return;
+
+    // Create a 16x20 arrow cursor texture with alpha transparency
+    const int W = 16, H = 20;
+    irr::video::IImage* img = driver_->createImage(irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2du(W, H));
+    if (!img) return;
+
+    const irr::video::SColor transparent(0, 0, 0, 0);
+    const irr::video::SColor black(255, 0, 0, 0);
+    const irr::video::SColor white(255, 255, 255, 255);
+
+    // Clear to transparent
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            img->setPixel(x, y, transparent);
+
+    // Classic arrow cursor shape (1=black outline, 2=white fill)
+    static const char* shape[20] = {
+        "1               ",
+        "11              ",
+        "121             ",
+        "1221            ",
+        "12221           ",
+        "122221          ",
+        "1222221         ",
+        "12222221        ",
+        "122222221       ",
+        "1222222221      ",
+        "12222222221     ",
+        "122222222221    ",
+        "1222222111111   ",
+        "12212221        ",
+        "121 12221       ",
+        "11  12221       ",
+        "1    12221      ",
+        "      1222      ",
+        "      1221      ",
+        "       11       ",
+    };
+
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            char c = shape[y][x];
+            if (c == '1') img->setPixel(x, y, black);
+            else if (c == '2') img->setPixel(x, y, white);
+        }
+    }
+
+    softwareCursorTexture_ = driver_->addTexture("softwareCursor", img);
+    img->drop();
+
+    if (softwareCursorTexture_) {
+        LOG_INFO(MOD_GRAPHICS, "Software cursor texture created for DRM mode");
+    }
+}
+
 void IrrlichtRenderer::setupCamera() {
     camera_ = smgr_->addCameraSceneNode(
         nullptr,
@@ -1026,16 +1116,9 @@ void IrrlichtRenderer::setupCamera() {
         -1
     );
 
-    // Camera far plane must be large enough to include the sky dome (1800 units)
-    // Render distance and fog control world object visibility separately
-    float farValue = SKY_FAR_PLANE;
-    if (config_.constrainedConfig.enabled && config_.constrainedConfig.clipDistance > SKY_FAR_PLANE) {
-        farValue = config_.constrainedConfig.clipDistance;
-        LOG_INFO(MOD_GRAPHICS, "Constrained mode: clip distance set to {}", farValue);
-    }
-    camera_->setFarValue(farValue);
+    camera_->setFarValue(SKY_FAR_PLANE);
     camera_->setNearValue(1.0f);
-    LOG_INFO(MOD_GRAPHICS, "Camera far plane: {}, render distance: {}", farValue, renderDistance_);
+    LOG_INFO(MOD_GRAPHICS, "Camera far plane: {}, render distance: {}", SKY_FAR_PLANE, renderDistance_);
 
     cameraController_ = std::make_unique<CameraController>(camera_);
     cameraController_->setMoveSpeed(500.0f);
@@ -3127,9 +3210,6 @@ void IrrlichtRenderer::updatePvsVisibility() {
     float camY = playerY_;
     float camZ = playerZ_;
 
-    // Track position for distance culling updates (separate from BSP region caching)
-    static float lastDistCullX = -99999.0f, lastDistCullY = -99999.0f, lastDistCullZ = -99999.0f;
-
     // Cache BSP lookup - only recompute if position changed significantly (>5 units)
     static float lastBspX = -99999.0f, lastBspY = -99999.0f, lastBspZ = -99999.0f;
     static std::shared_ptr<EQT::Graphics::BspRegion> cachedRegion;
@@ -3137,9 +3217,6 @@ void IrrlichtRenderer::updatePvsVisibility() {
     // Check if we need to force update (e.g., render distance changed)
     if (forcePvsUpdate_) {
         // Reset all static tracking variables to force recalculation
-        lastDistCullX = -99999.0f;
-        lastDistCullY = -99999.0f;
-        lastDistCullZ = -99999.0f;
         lastBspX = -99999.0f;
         lastBspY = -99999.0f;
         lastBspZ = -99999.0f;
@@ -3147,12 +3224,6 @@ void IrrlichtRenderer::updatePvsVisibility() {
         forcePvsUpdate_ = false;
         LOG_DEBUG(MOD_GRAPHICS, "Forcing PVS visibility update due to render distance change");
     }
-
-    float dxCull = camX - lastDistCullX;
-    float dyCull = camY - lastDistCullY;
-    float dzCull = camZ - lastDistCullZ;
-    float distCullSq = dxCull*dxCull + dyCull*dyCull + dzCull*dzCull;
-    bool needsDistanceCullUpdate = (distCullSq > 25.0f);  // Update distance culling if moved >5 units
 
     float dx = camX - lastBspX;
     float dy = camY - lastBspY;
@@ -3183,20 +3254,16 @@ void IrrlichtRenderer::updatePvsVisibility() {
         }
     }
 
-    // Skip update if still in same region AND no distance cull update needed
+    // Always run visibility loop when position changes.
+    // BSP lookup is cached above (the expensive part). The visibility loop itself is cheap:
+    // ~1900 iterations with simple array lookup + distance calc.
     bool regionChanged = (newRegionIdx != currentPvsRegion_);
-    if (!regionChanged && !needsDistanceCullUpdate) {
-        return;
-    }
-
-    // Update distance culling position tracker
-    if (needsDistanceCullUpdate) {
-        lastDistCullX = camX;
-        lastDistCullY = camY;
-        lastDistCullZ = camZ;
-    }
-
     currentPvsRegion_ = newRegionIdx;
+
+    // NOTE: Frustum pre-culling is not possible here because Irrlicht only updates the
+    // camera's view/projection matrices during render()/drawAll(). Both getViewFrustum()
+    // and getViewMatrix()/getProjectionMatrix() return stale data from the previous frame.
+    // Irrlicht's own frustum culling during drawAll() handles directional filtering instead.
 
     // If camera is outside all regions or no PVS data, skip PVS but still apply distance culling
     if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
@@ -3205,7 +3272,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
         for (auto& [regionIdx, node] : regionMeshNodes_) {
             if (!node) continue;
 
-            // Still apply distance culling even without PVS
+            // Distance culling
             bool inRenderDistance = true;
             auto bboxIt = regionBoundingBoxes_.find(regionIdx);
             if (bboxIt != regionBoundingBoxes_.end()) {
@@ -3213,41 +3280,47 @@ void IrrlichtRenderer::updatePvsVisibility() {
                 float closestX = std::max(bbox.MinEdge.X, std::min(camX, bbox.MaxEdge.X));
                 float closestY = std::max(bbox.MinEdge.Y, std::min(camY, bbox.MaxEdge.Y));
                 float closestZ = std::max(bbox.MinEdge.Z, std::min(camZ, bbox.MaxEdge.Z));
-                float dx = camX - closestX;
-                float dy = camY - closestY;
-                float dz = camZ - closestZ;
-                float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+                float ddx = camX - closestX;
+                float ddy = camY - closestY;
+                float ddz = camZ - closestZ;
+                float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
                 inRenderDistance = (dist <= renderDistance_);
             }
 
-            node->setVisible(inRenderDistance);
-            if (inRenderDistance) {
-                visibleCount++;
-            } else {
+            if (!inRenderDistance) {
+                node->setVisible(false);
                 hiddenByDistCount++;
+                continue;
             }
+
+            node->setVisible(true);
+            visibleCount++;
         }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} hidden by distance (renderDist={})",
+        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} dist-culled (renderDist={})",
             visibleCount, hiddenByDistCount, renderDistance_);
         return;
     }
 
-    // Log PVS array details for debugging
-    LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} has visibleRegions.size()={}, regionMeshNodes_.size()={}",
-        newRegionIdx, region->visibleRegions.size(), regionMeshNodes_.size());
+    // Log PVS array details for debugging (only when region changes)
+    if (regionChanged) {
+        LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} has visibleRegions.size()={}, regionMeshNodes_.size()={}",
+            newRegionIdx, region->visibleRegions.size(), regionMeshNodes_.size());
 
-    // Count how many regions the PVS says are visible
-    size_t pvsVisibleCount = 0;
-    for (size_t i = 0; i < region->visibleRegions.size(); ++i) {
-        if (region->visibleRegions[i]) pvsVisibleCount++;
+        // Count how many regions the PVS says are visible
+        size_t pvsVisibleCount = 0;
+        for (size_t i = 0; i < region->visibleRegions.size(); ++i) {
+            if (region->visibleRegions[i]) pvsVisibleCount++;
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
+            newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
     }
-    LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
-        newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
 
-    // Update visibility based on PVS data AND render distance
-    // Zone geometry is culled if:
+    // Update visibility based on PVS + render distance culling
+    // Zone geometry is culled if EITHER of these fail:
     //   1. PVS says it's not visible from current region (occlusion culling)
     //   2. Nearest edge of region bounding box is beyond render distance
+    // Frustum culling is handled by Irrlicht during drawAll() - we can't do it here
+    // because camera matrices are only updated during the render phase.
     size_t visibleCount = 0;
     size_t hiddenByPvsCount = 0;
     size_t hiddenByDistCount = 0;
@@ -3256,45 +3329,45 @@ void IrrlichtRenderer::updatePvsVisibility() {
     for (auto& [regionIdx, node] : regionMeshNodes_) {
         if (!node) continue;
 
-        // Check if this region is visible from current region (PVS)
+        // 1. Check PVS (cheapest - simple array lookup)
         bool pvsVisible = false;
         if (regionIdx == newRegionIdx) {
-            // Always visible to self
-            pvsVisible = true;
+            pvsVisible = true;  // Always visible to self
         } else if (regionIdx < region->visibleRegions.size()) {
             pvsVisible = region->visibleRegions[regionIdx];
         } else {
-            // Region index outside PVS array - count for debugging
             outOfRangeCount++;
         }
 
-        // Check distance to nearest edge of region bounding box (in EQ coords)
+        if (!pvsVisible) {
+            node->setVisible(false);
+            hiddenByPvsCount++;
+            continue;
+        }
+
+        // 2. Check distance to nearest edge of region bounding box (EQ coords)
         bool inRenderDistance = true;
         auto bboxIt = regionBoundingBoxes_.find(regionIdx);
         if (bboxIt != regionBoundingBoxes_.end()) {
             const auto& bbox = bboxIt->second;
-            // Find closest point on bounding box to camera (camX/Y/Z are EQ coords)
             float closestX = std::max(bbox.MinEdge.X, std::min(camX, bbox.MaxEdge.X));
             float closestY = std::max(bbox.MinEdge.Y, std::min(camY, bbox.MaxEdge.Y));
             float closestZ = std::max(bbox.MinEdge.Z, std::min(camZ, bbox.MaxEdge.Z));
-            float dx = camX - closestX;
-            float dy = camY - closestY;
-            float dz = camZ - closestZ;
-            float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+            float ddx = camX - closestX;
+            float ddy = camY - closestY;
+            float ddz = camZ - closestZ;
+            float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
             inRenderDistance = (dist <= renderDistance_);
         }
 
-        // Combine PVS and distance culling
-        bool visible = pvsVisible && inRenderDistance;
-        node->setVisible(visible);
-
-        if (visible) {
-            visibleCount++;
-        } else if (!pvsVisible) {
-            hiddenByPvsCount++;
-        } else {
+        if (!inRenderDistance) {
+            node->setVisible(false);
             hiddenByDistCount++;
+            continue;
         }
+
+        node->setVisible(true);
+        visibleCount++;
     }
 
     // Log warning if many regions are outside PVS array
@@ -3303,89 +3376,8 @@ void IrrlichtRenderer::updatePvsVisibility() {
             outOfRangeCount, region->visibleRegions.size());
     }
 
-    // Check if the current region has its own mesh
-    bool currentRegionHasMesh = (regionMeshNodes_.find(newRegionIdx) != regionMeshNodes_.end());
-
-    // Get the mesh position and bounds for the current region if it exists
-    float meshX = 0, meshY = 0, meshZ = 0;
-    bool camInMeshBounds = false;
-    if (currentRegionHasMesh && currentZone_ && currentZone_->wldLoader) {
-        auto pos = regionMeshNodes_[newRegionIdx]->getPosition();
-        meshX = pos.X;
-        meshY = pos.Y;
-        meshZ = pos.Z;
-
-        // Check if camera is within mesh bounds (in EQ coordinates)
-        auto geom = currentZone_->wldLoader->getGeometryForRegion(newRegionIdx);
-        if (geom) {
-            // Mesh world bounds = center + relative bounds
-            float worldMinX = geom->centerX + geom->minX;
-            float worldMaxX = geom->centerX + geom->maxX;
-            float worldMinY = geom->centerY + geom->minY;
-            float worldMaxY = geom->centerY + geom->maxY;
-            float worldMinZ = geom->centerZ + geom->minZ;
-            float worldMaxZ = geom->centerZ + geom->maxZ;
-
-            camInMeshBounds = (camX >= worldMinX && camX <= worldMaxX &&
-                              camY >= worldMinY && camY <= worldMaxY &&
-                              camZ >= worldMinZ && camZ <= worldMaxZ);
-
-            LOG_DEBUG(MOD_GRAPHICS, "PVS region {} mesh bounds: ({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}), cam in bounds: {}",
-                newRegionIdx, worldMinX, worldMinY, worldMinZ, worldMaxX, worldMaxY, worldMaxZ, camInMeshBounds);
-        }
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} (hasMesh={}) at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} hidden by PVS, {} hidden by distance, {} outOfRange",
-        newRegionIdx, currentRegionHasMesh, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, outOfRangeCount);
-
-    // Log the first few visible and hidden region indices to spot patterns
-    static size_t logCount = 0;
-    if (logCount < 5) {
-        std::string visibleStr, hiddenStr;
-        size_t visibleLogged = 0, hiddenLogged = 0;
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (!node) continue;
-            if (node->isVisible() && visibleLogged < 10) {
-                visibleStr += std::to_string(regionIdx) + " ";
-                visibleLogged++;
-            } else if (!node->isVisible() && hiddenLogged < 10) {
-                hiddenStr += std::to_string(regionIdx) + " ";
-                hiddenLogged++;
-            }
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS sample: visible regions=[{}], hidden regions=[{}]",
-            visibleStr, hiddenStr);
-        logCount++;
-    }
-
-    // If current region has no mesh, log which visible regions are nearby the camera
-    if (!currentRegionHasMesh && currentZone_ && currentZone_->wldLoader && visibleCount > 0) {
-        size_t nearbyCount = 0;
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (!node || !node->isVisible()) continue;
-            auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
-            if (geom) {
-                // Check if this visible region's mesh contains the camera position
-                float worldMinX = geom->centerX + geom->minX;
-                float worldMaxX = geom->centerX + geom->maxX;
-                float worldMinY = geom->centerY + geom->minY;
-                float worldMaxY = geom->centerY + geom->maxY;
-                float worldMinZ = geom->centerZ + geom->minZ;
-                float worldMaxZ = geom->centerZ + geom->maxZ;
-
-                if (camX >= worldMinX && camX <= worldMaxX &&
-                    camY >= worldMinY && camY <= worldMaxY &&
-                    camZ >= worldMinZ && camZ <= worldMaxZ) {
-                    nearbyCount++;
-                    if (nearbyCount <= 3) {
-                        LOG_DEBUG(MOD_GRAPHICS, "  -> Visible region {} contains camera: bounds ({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f})",
-                            regionIdx, worldMinX, worldMinY, worldMinZ, worldMaxX, worldMaxY, worldMaxZ);
-                    }
-                }
-            }
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "  -> {} visible regions contain camera position", nearbyCount);
-    }
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden",
+        newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount);
 }
 
 void IrrlichtRenderer::createObjectMeshes() {
@@ -5356,6 +5348,18 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     captureFrameForRDP();
 #endif
 
+    // Draw software mouse cursor for DRM/KMS mode (no hardware cursor available)
+    if (softwareCursorTexture_) {
+        auto* cursor = device_->getCursorControl();
+        if (cursor && cursor->isVisible()) {
+            auto pos = cursor->getPosition();
+            irr::core::position2di destPos(pos.X, pos.Y);
+            irr::core::rect<irr::s32> srcRect(0, 0, 16, 20);
+            driver_->draw2DImage(softwareCursorTexture_, destPos, srcRect,
+                nullptr, irr::video::SColor(255, 255, 255, 255), true);
+        }
+    }
+
     driver_->endScene();
     if (frameTimingEnabled_) frameTimings_.endScene = measureSection();
 
@@ -6047,11 +6051,9 @@ void IrrlichtRenderer::setClipDistance(float distance) {
     renderDistance_ = distance;
     config_.constrainedConfig.clipDistance = distance;
 
-    // Camera far plane must stay at least SKY_FAR_PLANE to render sky dome
-    // Only increase it if requested distance is larger
+    // In constrained mode, set far plane = render distance for Z-precision
     if (camera_) {
-        float cameraFar = std::max(SKY_FAR_PLANE, distance);
-        camera_->setFarValue(cameraFar);
+        camera_->setFarValue(std::max(SKY_FAR_PLANE, distance));
     }
 
     // Update fog to match new render distance

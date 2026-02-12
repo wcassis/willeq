@@ -221,6 +221,7 @@ struct RendererConfig {
     int height = 600;
     bool fullscreen = false;
     bool softwareRenderer = true;  // Use Burnings software renderer by default (no GPU)
+    bool useDRM = false;           // Use DRM/KMS framebuffer device (no X11)
     std::string windowTitle = "WillEQ";
     std::string eqClientPath;      // Path to EQ client files
 
@@ -657,8 +658,10 @@ public:
     // The camera far plane must be larger to include the sky dome
     void setRenderDistance(float distance) {
         renderDistance_ = distance;
-        // Note: Do NOT set camera far value here - it must remain large enough
-        // for the sky dome (SKY_FAR_PLANE). Render distance only controls fog/culling.
+        // Sync camera far plane to render distance (must be at least render distance)
+        if (camera_) {
+            camera_->setFarValue(std::max(distance, SKY_FAR_PLANE));
+        }
         setupFog();
         // Sync render distance to entity renderer
         if (entityRenderer_) {
@@ -903,6 +906,7 @@ public:
 #endif // WITH_RDP
 
 private:
+    void createSoftwareCursor();
     void setupCamera();
     void setupLighting();
     void updateObjectLights();  // Distance-based culling of object lights
@@ -941,6 +945,7 @@ private:
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::gui::IGUIEnvironment* guienv_ = nullptr;
     irr::scene::ICameraSceneNode* camera_ = nullptr;
+    irr::video::ITexture* softwareCursorTexture_ = nullptr;  // DRM mode software cursor
 
     std::unique_ptr<CameraController> cameraController_;
     std::unique_ptr<EntityRenderer> entityRenderer_;

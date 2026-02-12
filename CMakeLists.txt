@@ -10,6 +10,7 @@ SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 OPTION(EQT_DEBUG "Enable debug logging" ON)
 OPTION(EQT_BUILD_TESTS "Build tests" ON)
 OPTION(EQT_GRAPHICS "Enable Irrlicht graphics rendering" ON)
+OPTION(EQT_DRM "Use DRM/KMS/GBM/EGL instead of X11 (for ARM boards without X11)" OFF)
 
 # Output directories
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -489,6 +490,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         FIND_LIBRARY(IOKIT_FRAMEWORK IOKit)
         FIND_LIBRARY(CARBON_FRAMEWORK Carbon)
         LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK} ${OPENGL_FRAMEWORK} ${IOKIT_FRAMEWORK} ${CARBON_FRAMEWORK})
+    ELSEIF(EQT_DRM)
+        # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost
+        ADD_DEFINITIONS(-DEQT_HAS_DRM)
+        LIST(APPEND LINK_LIBS EGL GL drm gbm)
     ELSE()
         # Linux/X11
         LIST(APPEND LINK_LIBS X11 Xxf86vm GL)
@@ -556,6 +561,14 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${IOKIT_FRAMEWORK}
             ${CARBON_FRAMEWORK}
         )
+    ELSEIF(EQT_DRM)
+        TARGET_LINK_LIBRARIES(model_viewer
+            ${IRRLICHT_LIBRARY}
+            ${ZLIB_LIBRARIES}
+            ${JSONCPP_LIBRARIES}
+            fmt::fmt
+            EGL GL drm gbm
+        )
     ELSE()
         TARGET_LINK_LIBRARIES(model_viewer
             ${IRRLICHT_LIBRARY}
@@ -591,6 +604,13 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${OPENGL_FRAMEWORK}
             ${IOKIT_FRAMEWORK}
             ${CARBON_FRAMEWORK}
+        )
+    ELSEIF(EQT_DRM)
+        TARGET_LINK_LIBRARIES(generate_textures
+            ${IRRLICHT_LIBRARY}
+            ${ZLIB_LIBRARIES}
+            fmt::fmt
+            EGL GL drm gbm
         )
     ELSE()
         TARGET_LINK_LIBRARIES(generate_textures
@@ -882,6 +902,11 @@ ELSE()
 ENDIF()
 IF(EQT_GRAPHICS)
     MESSAGE(STATUS "Irrlicht: ${IRRLICHT_LIBRARY}")
+    IF(EQT_DRM)
+        MESSAGE(STATUS "Display backend: DRM/KMS/GBM/EGL (no X11)")
+    ELSE()
+        MESSAGE(STATUS "Display backend: X11/GLX")
+    ENDIF()
 ELSE()
     MESSAGE(STATUS "Irrlicht: NOT FOUND (graphics disabled)")
 ENDIF()

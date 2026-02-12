@@ -1,0 +1,323 @@
+# Cross-compilation environment for ARM (armhf) targeting Armbian Noble (Ubuntu 24.04)
+# Produces a willeq binary for Orange Pi One (Allwinner H3, Cortex-A7)
+# Uses Lima open-source GPU driver (Mesa GL 2.1) via DRM/KMS/GBM/EGL - no X11 needed
+#
+# Build: docker build -f docker/Dockerfile.arm-noble -t willeq-arm-noble .
+# Run:   docker run --rm -v $(pwd):/src -v $(pwd)/build-arm-noble/bin:/output willeq-arm-noble
+#
+# Build options (passed as --build-arg):
+#   ENABLE_GRAPHICS=ON|OFF   (default: ON)
+#   ENABLE_AUDIO=ON|OFF      (default: ON)
+
+FROM ubuntu:24.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install cross-compiler and build tools
+# No gl4es/fbturbo deps needed (Lima provides native GL 2.1 via Mesa)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    pkg-config \
+    gcc-arm-linux-gnueabihf \
+    g++-arm-linux-gnueabihf \
+    debootstrap \
+    wget \
+    ca-certificates \
+    git \
+    python3 \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Stage: Create Noble sysroot via debootstrap
+# ============================================================
+FROM base AS sysroot
+
+# Bootstrap Noble armhf sysroot using --foreign mode
+# Noble's glibc matches Docker host (both Ubuntu 24.04) - no version mismatch hacks needed
+# DRM/GBM/EGL instead of X11 - renders directly via kernel mode setting
+RUN debootstrap --no-check-gpg --foreign --arch=armhf \
+    --include=libssl-dev,zlib1g-dev,libdrm-dev,libgbm-dev,libegl-dev,libgl-dev,mesa-common-dev,libglib2.0-dev,libffi-dev,libpcre2-dev \
+    noble /opt/noble-sysroot http://ports.ubuntu.com/ubuntu-ports/
+
+# Extract --include packages (--foreign first stage only extracts base packages;
+# --include packages are downloaded to var/cache/apt/archives but not unpacked)
+RUN for deb in /opt/noble-sysroot/var/cache/apt/archives/*.deb; do \
+        [ -f "$deb" ] && dpkg-deb -x "$deb" /opt/noble-sysroot/ || true; \
+    done
+
+# Create missing library symlinks (normally created by ldconfig in post-install)
+# --foreign mode unpacks .so.X.Y.Z files but doesn't create .so symlinks
+RUN cd /opt/noble-sysroot && \
+    for lib in usr/lib/arm-linux-gnueabihf/lib*.so.*; do \
+        [ -f "$lib" ] || continue; \
+        base=$(echo "$(basename "$lib")" | sed 's/\.so\..*/.so/'); \
+        dir=$(dirname "$lib"); \
+        [ ! -e "$dir/$base" ] && ln -sf "$(basename "$lib")" "$dir/$base" || true; \
+    done && \
+    for lib in lib/arm-linux-gnueabihf/lib*.so.*; do \
+        [ -f "$lib" ] || continue; \
+        base=$(echo "$(basename "$lib")" | sed 's/\.so\..*/.so/'); \
+        dir=$(dirname "$lib"); \
+        [ ! -e "$dir/$base" ] && ln -sf "$(basename "$lib")" "$dir/$base" || true; \
+    done
+
+# Ensure GL and EGL headers exist (copy from host as fallback if mesa-dev extraction had issues)
+RUN if [ ! -f /opt/noble-sysroot/usr/include/GL/gl.h ]; then \
+        apt-get update && apt-get install -y --no-install-recommends libgl-dev libegl-dev && \
+        mkdir -p /opt/noble-sysroot/usr/include/GL /opt/noble-sysroot/usr/include/EGL && \
+        cp /usr/include/GL/*.h /opt/noble-sysroot/usr/include/GL/ && \
+        cp /usr/include/EGL/*.h /opt/noble-sysroot/usr/include/EGL/; \
+    fi
+
+# Fix any absolute symlinks in the sysroot to point within sysroot
+RUN cd /opt/noble-sysroot && \
+    find . -type l | while read link; do \
+        target=$(readlink "$link"); \
+        if [ "${target#/}" != "$target" ]; then \
+            ln -sf "/opt/noble-sysroot$target" "$link" 2>/dev/null || true; \
+        fi; \
+    done
+
+# ============================================================
+# Stage: Cross-compile dependencies from source
+# ============================================================
+FROM base AS deps
+
+COPY --from=sysroot /opt/noble-sysroot /opt/noble-sysroot
+
+ENV ARM_SYSROOT=/opt/noble-sysroot
+ENV CROSS=arm-linux-gnueabihf
+ENV CC=${CROSS}-gcc
+ENV CXX=${CROSS}-g++
+ENV AR=${CROSS}-ar
+ENV RANLIB=${CROSS}-ranlib
+ENV STRIP=${CROSS}-strip
+ENV CFLAGS="--sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2"
+ENV CXXFLAGS="--sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2"
+ENV LDFLAGS="--sysroot=${ARM_SYSROOT}"
+ENV PKG_CONFIG_PATH="${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig:${ARM_SYSROOT}/usr/share/pkgconfig"
+ENV PKG_CONFIG_LIBDIR="${ARM_SYSROOT}/usr/lib/arm-linux-gnueabihf/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig"
+ENV PKG_CONFIG_SYSROOT_DIR="${ARM_SYSROOT}"
+
+# No glibc .so replacement needed - Docker (Noble) and target (Noble) use the same glibc
+
+WORKDIR /tmp/deps
+
+# --- libuv 1.44.2 ---
+RUN wget -q https://dist.libuv.org/dist/v1.44.2/libuv-v1.44.2.tar.gz && \
+    tar xzf libuv-v1.44.2.tar.gz && \
+    cd libuv-v1.44.2 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=arm \
+        -DCMAKE_C_COMPILER=${CROSS}-gcc \
+        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+        -DBUILD_TESTING=OFF \
+        -DLIBUV_BUILD_SHARED=OFF && \
+    cmake --build . && \
+    cmake --install . && \
+    rm -f ${ARM_SYSROOT}/usr/lib/libuv.so* && \
+    ln -sf libuv_a.a ${ARM_SYSROOT}/usr/lib/libuv.a && \
+    cd /tmp/deps && rm -rf libuv-*
+
+# --- fmt 9.1.0 ---
+RUN wget -q https://github.com/fmtlib/fmt/releases/download/9.1.0/fmt-9.1.0.zip && \
+    python3 -c "import zipfile; zipfile.ZipFile('fmt-9.1.0.zip').extractall()" && \
+    cd fmt-9.1.0 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=arm \
+        -DCMAKE_C_COMPILER=${CROSS}-gcc \
+        -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+        -DFMT_TEST=OFF \
+        -DFMT_DOC=OFF && \
+    cmake --build . && \
+    cmake --install . && \
+    cd /tmp/deps && rm -rf fmt-*
+
+# --- jsoncpp 1.9.5 ---
+RUN wget -q https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.9.5.tar.gz -O jsoncpp-1.9.5.tar.gz && \
+    tar xzf jsoncpp-1.9.5.tar.gz && \
+    cd jsoncpp-1.9.5 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=arm \
+        -DCMAKE_C_COMPILER=${CROSS}-gcc \
+        -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+        -DJSONCPP_WITH_TESTS=OFF \
+        -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF \
+        -DBUILD_SHARED_LIBS=OFF && \
+    cmake --build . && \
+    cmake --install . && \
+    cd /tmp/deps && rm -rf jsoncpp-*
+
+# --- GLM (header-only) ---
+RUN wget -q https://github.com/g-truc/glm/releases/download/0.9.9.8/glm-0.9.9.8.zip && \
+    python3 -c "import zipfile; zipfile.ZipFile('glm-0.9.9.8.zip').extractall()" && \
+    cp -r glm/glm ${ARM_SYSROOT}/usr/include/ && \
+    rm -rf glm*
+
+# --- cereal (header-only serialization library) ---
+RUN wget -q https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.2.tar.gz -O cereal-1.3.2.tar.gz && \
+    tar xzf cereal-1.3.2.tar.gz && \
+    cp -r cereal-1.3.2/include/cereal ${ARM_SYSROOT}/usr/include/ && \
+    rm -rf cereal-*
+
+# --- Irrlicht 1.8.5 (optional, for graphics) ---
+# Built as STATIC library to avoid C++ ABI issues with -static-libstdc++
+# Irrlicht's bundled libpng 1.6.37 is missing the arm/ NEON source directory;
+# we download the upstream libpng 1.6.37 source and copy in the arm/ files
+# to enable hardware-accelerated PNG decoding via NEON intrinsics on Cortex-A7.
+# DRM/KMS/GBM/EGL patches replace X11 with direct framebuffer rendering.
+ARG ENABLE_GRAPHICS=ON
+COPY docker/irrlicht-drm/CIrrDeviceFB.h /tmp/irrlicht-drm/CIrrDeviceFB.h
+COPY docker/irrlicht-drm/CIrrDeviceFB.cpp /tmp/irrlicht-drm/CIrrDeviceFB.cpp
+COPY docker/irrlicht-drm-patch.py /tmp/irrlicht-drm-patch.py
+RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
+        wget -q https://downloads.sourceforge.net/irrlicht/irrlicht-1.8.5.zip && \
+        python3 -c "import zipfile; zipfile.ZipFile('irrlicht-1.8.5.zip').extractall()" && \
+        wget -q https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz && \
+        tar xJf libpng-1.6.37.tar.xz && \
+        cp -r libpng-1.6.37/arm irrlicht-1.8.5/source/Irrlicht/libpng/ && \
+        cp /tmp/irrlicht-drm/CIrrDeviceFB.h irrlicht-1.8.5/source/Irrlicht/CIrrDeviceFB.h && \
+        cp /tmp/irrlicht-drm/CIrrDeviceFB.cpp irrlicht-1.8.5/source/Irrlicht/CIrrDeviceFB.cpp && \
+        python3 /tmp/irrlicht-drm-patch.py irrlicht-1.8.5 && \
+        cd irrlicht-1.8.5/source/Irrlicht && \
+        sed -i 's|^LIBPNGOBJ = |LIBPNGOBJ = libpng/arm/arm_init.o libpng/arm/filter_neon_intrinsics.o libpng/arm/palette_neon_intrinsics.o |' Makefile && \
+        make NDEBUG=1 \
+            CC="${CROSS}-gcc --sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -I${ARM_SYSROOT}/usr/include/libdrm" \
+            CXX="${CROSS}-g++ --sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -I${ARM_SYSROOT}/usr/include/libdrm" \
+            AR="${CROSS}-ar" \
+            staticlib && \
+        cp ../../lib/Linux/libIrrlicht.a ${ARM_SYSROOT}/usr/lib/ && \
+        cp -r ../../include ${ARM_SYSROOT}/usr/include/irrlicht && \
+        cd /tmp/deps && rm -rf irrlicht-* libpng-*; \
+    fi
+
+# --- OpenAL Soft 1.21.1 (optional, for audio) ---
+ARG ENABLE_AUDIO=ON
+RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
+        wget -q https://github.com/kcat/openal-soft/archive/refs/tags/1.21.1.tar.gz -O openal-soft-1.21.1.tar.gz && \
+        tar xzf openal-soft-1.21.1.tar.gz && \
+        cd openal-soft-1.21.1 && \
+        mkdir -p build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+            -DALSOFT_UTILS=OFF \
+            -DALSOFT_EXAMPLES=OFF \
+            -DALSOFT_TESTS=OFF \
+            -DLIBTYPE=STATIC && \
+        cmake --build . && \
+        cmake --install . && \
+        cd /tmp/deps && rm -rf openal-soft-*; \
+    fi
+
+# --- libsndfile 1.0.31 (optional, for audio) ---
+RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
+        wget -q https://github.com/libsndfile/libsndfile/releases/download/1.0.31/libsndfile-1.0.31.tar.bz2 && \
+        tar xjf libsndfile-1.0.31.tar.bz2 && \
+        cd libsndfile-1.0.31 && \
+        mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_PROGRAMS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_TESTING=OFF && \
+        cmake --build . && \
+        cmake --install . && \
+        cd /tmp/deps && rm -rf libsndfile-*; \
+    fi
+
+# --- FluidSynth 2.2.9 (optional, for MIDI/XMI music) ---
+RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
+        wget -q https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v2.2.9.tar.gz -O fluidsynth-2.2.9.tar.gz && \
+        tar xzf fluidsynth-2.2.9.tar.gz && \
+        cd fluidsynth-2.2.9 && \
+        mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=${CROSS}-gcc \
+            -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
+            -DCMAKE_SYSROOT=${ARM_SYSROOT} \
+            -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+            -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
+            -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
+            -DBUILD_SHARED_LIBS=OFF \
+            -Denable-readline=OFF \
+            -Denable-dbus=OFF \
+            -Denable-pulseaudio=OFF \
+            -Denable-jack=OFF \
+            -Denable-pipewire=OFF \
+            -Denable-sdl2=OFF \
+            -Denable-alsa=OFF \
+            -Denable-oss=OFF \
+            -Denable-libinstpatch=OFF && \
+        cmake --build . && \
+        cmake --install . && \
+        cd /tmp/deps && rm -rf fluidsynth-*; \
+    fi
+
+# ============================================================
+# Stage: Build willeq
+# ============================================================
+FROM base AS builder
+
+ARG ENABLE_GRAPHICS=ON
+ARG ENABLE_AUDIO=ON
+
+COPY --from=deps /opt/noble-sysroot /opt/noble-sysroot
+
+ENV ARM_SYSROOT=/opt/noble-sysroot
+
+# No glibc .so replacement needed (same glibc on both sides)
+# No fcntl64 compat wrapper needed (same glibc on both sides)
+
+WORKDIR /build
+
+ENTRYPOINT ["/bin/bash", "-c", "\
+    cmake /src \
+        -DCMAKE_TOOLCHAIN_FILE=/src/cmake/toolchains/arm-linux-gnueabihf.cmake \
+        -DARM_SYSROOT=${ARM_SYSROOT} \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_FLAGS_RELEASE='-O2 -DNDEBUG -static-libstdc++' \
+        -DCMAKE_EXE_LINKER_FLAGS='-static-libstdc++' \
+        -DCMAKE_CXX_STANDARD_LIBRARIES='-lglib-2.0 -lgthread-2.0 -lgomp -lffi -lpcre2-8 -lpthread -lm -ldl' \
+        -DEQT_GRAPHICS=${ENABLE_GRAPHICS:-ON} \
+        -DEQT_DRM=ON \
+        -DIRRLICHT_INCLUDE_DIR=${ARM_SYSROOT}/usr/include/irrlicht \
+        -DIRRLICHT_LIBRARY=${ARM_SYSROOT}/usr/lib/libIrrlicht.a \
+        -DWITH_RDP=OFF \
+        -DEQT_BUILD_TESTS=OFF \
+    && cmake --build . --target willeq \
+    && arm-linux-gnueabihf-strip bin/willeq \
+    && mkdir -p /output && cp bin/willeq /output/willeq \
+    && echo '=== Build complete ===' \
+"]

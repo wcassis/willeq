@@ -190,6 +190,9 @@ bool Application::initialize(const ApplicationConfig& config) {
             if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
                 m_eqClient->SetUseOpenGL(true);
             }
+            if (config.useDRM) {
+                m_eqClient->SetUseDRM(true);
+            }
             if (!config.constrainedPreset.empty()) {
                 auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
                 m_eqClient->SetConstrainedPreset(preset);
@@ -780,6 +783,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.audioSoundfont = argv[++i];
             }
+        } else if (arg == "--drm") {
+            config.useDRM = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {
             config.rdpEnabled = true;
         } else if (arg == "--rdp-port") {
@@ -798,6 +803,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
             std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
             std::cout << "  --constrained <preset>   Enable constrained rendering mode (voodoo1, voodoo2, tnt, orangepi)\n";
+            std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
             std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
 #ifdef WITH_RDP
