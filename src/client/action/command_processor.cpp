@@ -1,6 +1,7 @@
 #include "client/action/command_processor.h"
 #include "client/state/game_state.h"
 #include "client/output/output_renderer.h"
+#include "common/logging.h"
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -557,6 +558,23 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "laugh", {}, "/laugh", "Laugh", "Chat", false
     }, [this](const std::string& args) { return cmdLaugh(args); });
+
+    // Logging filter commands
+    registerCommand({
+        "logonly", {}, "/logonly [MOD1,MOD2,...]", "Whitelist log modules (suppress all others)", "Utility", false
+    }, [this](const std::string& args) { return cmdLogOnly(args); });
+
+    registerCommand({
+        "logexclude", {}, "/logexclude [MOD1,MOD2,...]", "Blacklist log modules", "Utility", false
+    }, [this](const std::string& args) { return cmdLogExclude(args); });
+
+    registerCommand({
+        "logmodule", {}, "/logmodule <MOD:LEVEL>", "Set a module's log level", "Utility", false
+    }, [this](const std::string& args) { return cmdLogModule(args); });
+
+    registerCommand({
+        "logclear", {}, "/logclear", "Clear all module log filters", "Utility", false
+    }, [this](const std::string& args) { return cmdLogClear(args); });
 }
 
 // ========== Command Implementations ==========
@@ -807,8 +825,9 @@ ActionResult CommandProcessor::cmdDebug(const std::string& args) {
         if (level < 0 || level > 6) {
             return ActionResult::Failure("Debug level must be 0-6");
         }
-        // Note: This would need to be connected to the logging system
-        displayMessage("Debug level set to " + std::to_string(level));
+        SetDebugLevel(level);
+        displayMessage("Debug level set to " + std::to_string(level) + " (" +
+                       GetLevelName(static_cast<LogLevel>(level)) + ")");
         return ActionResult::Success();
     } catch (const std::exception&) {
         return ActionResult::Failure("Invalid debug level");
@@ -1103,6 +1122,69 @@ ActionResult CommandProcessor::cmdLaugh(const std::string& args) {
         displayMessage("You laugh");
     }
     return result;
+}
+
+ActionResult CommandProcessor::cmdLogOnly(const std::string& args) {
+    if (args.empty()) {
+        displayMessage(GetModuleFilterStatus());
+        displayMessage("Modules: " + GetAllModuleNames());
+        displayMessage("Usage: /logonly MOD1,MOD2,...");
+        return ActionResult::Success();
+    }
+    ApplyLogOnly(args.c_str());
+    displayMessage("Log whitelist applied: " + args);
+    displayMessage(GetModuleFilterStatus());
+    return ActionResult::Success();
+}
+
+ActionResult CommandProcessor::cmdLogExclude(const std::string& args) {
+    if (args.empty()) {
+        displayMessage(GetModuleFilterStatus());
+        displayMessage("Modules: " + GetAllModuleNames());
+        displayMessage("Usage: /logexclude MOD1,MOD2,...");
+        return ActionResult::Success();
+    }
+    ApplyLogExclude(args.c_str());
+    displayMessage("Log blacklist applied: " + args);
+    displayMessage(GetModuleFilterStatus());
+    return ActionResult::Success();
+}
+
+ActionResult CommandProcessor::cmdLogModule(const std::string& args) {
+    if (args.empty()) {
+        displayMessage(GetModuleFilterStatus());
+        displayMessage("Usage: /logmodule MOD:LEVEL (e.g., /logmodule NET:TRACE)");
+        return ActionResult::Success();
+    }
+
+    // Parse MOD:LEVEL
+    size_t colonPos = args.find(':');
+    if (colonPos == std::string::npos) {
+        return ActionResult::Failure("Usage: /logmodule MOD:LEVEL (e.g., /logmodule NET:TRACE)");
+    }
+
+    std::string modStr = args.substr(0, colonPos);
+    std::string levelStr = args.substr(colonPos + 1);
+
+    // Convert to uppercase
+    std::transform(modStr.begin(), modStr.end(), modStr.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    std::transform(levelStr.begin(), levelStr.end(), levelStr.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+
+    LogModule mod = ParseModuleName(modStr.c_str());
+    LogLevel level = ParseLevelName(levelStr.c_str());
+    SetModuleLogLevel(mod, level);
+
+    displayMessage("Module " + modStr + " set to " + GetLevelName(level));
+    return ActionResult::Success();
+}
+
+ActionResult CommandProcessor::cmdLogClear(const std::string& args) {
+    ClearModuleFilters();
+    displayMessage("All module filters cleared (using global level)");
+    displayMessage(GetModuleFilterStatus());
+    return ActionResult::Success();
 }
 
 } // namespace action

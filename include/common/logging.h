@@ -221,6 +221,106 @@ inline bool ShouldLog(LogModule mod, LogLevel level) {
     return LogManager::Instance().ShouldLog(mod, level);
 }
 
+// Apply whitelist filter: set all modules NOT in the comma-separated list to LOG_NONE.
+// Modules in the list get reset to -1 (use global level).
+inline void ApplyLogOnly(const char* modules) {
+    // First, set all modules to LOG_NONE
+    for (int i = 0; i < MOD_COUNT; i++) {
+        SetModuleLogLevel(static_cast<LogModule>(i), LOG_NONE);
+    }
+    // Then, reset listed modules to use global level
+    const char* p = modules;
+    while (*p) {
+        // Skip leading whitespace and commas
+        while (*p == ',' || *p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+        // Find end of module name
+        const char* start = p;
+        while (*p && *p != ',' && *p != ' ' && *p != '\t') p++;
+        char modName[32] = {0};
+        size_t len = p - start;
+        if (len > 0 && len < sizeof(modName)) {
+            strncpy(modName, start, len);
+            // Convert to uppercase for matching
+            for (size_t i = 0; i < len; i++) {
+                if (modName[i] >= 'a' && modName[i] <= 'z')
+                    modName[i] -= 32;
+            }
+            LogModule mod = ParseModuleName(modName);
+            SetModuleLogLevel(mod, -1);  // Use global level
+        }
+    }
+}
+
+// Apply blacklist filter: set listed modules to LOG_NONE.
+inline void ApplyLogExclude(const char* modules) {
+    const char* p = modules;
+    while (*p) {
+        while (*p == ',' || *p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+        const char* start = p;
+        while (*p && *p != ',' && *p != ' ' && *p != '\t') p++;
+        char modName[32] = {0};
+        size_t len = p - start;
+        if (len > 0 && len < sizeof(modName)) {
+            strncpy(modName, start, len);
+            for (size_t i = 0; i < len; i++) {
+                if (modName[i] >= 'a' && modName[i] <= 'z')
+                    modName[i] -= 32;
+            }
+            LogModule mod = ParseModuleName(modName);
+            SetModuleLogLevel(mod, LOG_NONE);
+        }
+    }
+}
+
+// Clear all module filters (reset all to use global level).
+inline void ClearModuleFilters() {
+    for (int i = 0; i < MOD_COUNT; i++) {
+        SetModuleLogLevel(static_cast<LogModule>(i), -1);
+    }
+}
+
+// Get a comma-separated string of all module names.
+inline std::string GetAllModuleNames() {
+    std::string result;
+    for (int i = 0; i < MOD_COUNT; i++) {
+        if (i > 0) result += ", ";
+        result += GetModuleName(static_cast<LogModule>(i));
+    }
+    return result;
+}
+
+// Get a summary of current module filter state.
+inline std::string GetModuleFilterStatus() {
+    std::string active, suppressed;
+    int globalLevel = GetLogLevel();
+    for (int i = 0; i < MOD_COUNT; i++) {
+        int modLevel = LogManager::Instance().GetModuleLevel(static_cast<LogModule>(i));
+        const char* name = GetModuleName(static_cast<LogModule>(i));
+        if (modLevel == LOG_NONE) {
+            if (!suppressed.empty()) suppressed += ", ";
+            suppressed += name;
+        } else if (modLevel > 0) {
+            if (!active.empty()) active += ", ";
+            active += name;
+            active += ":";
+            active += GetLevelName(static_cast<LogLevel>(modLevel));
+        }
+    }
+    std::string result = "Global level: ";
+    result += GetLevelName(static_cast<LogLevel>(globalLevel));
+    if (!active.empty()) {
+        result += " | Active overrides: ";
+        result += active;
+    }
+    if (!suppressed.empty()) {
+        result += " | Suppressed: ";
+        result += suppressed;
+    }
+    return result;
+}
+
 // =============================================================================
 // Legacy Debug Level Support (for gradual migration)
 // =============================================================================
@@ -451,15 +551,35 @@ inline void LogLevelDecrease() {
 // Call from main() to set up logging from command-line or config
 
 inline void InitLogging(int argc, char* argv[]) {
+    // Two-pass parsing: first apply level/only/exclude, then per-module overrides
+    const char* logOnly = nullptr;
+    const char* logExclude = nullptr;
+
+    // Pass 1: collect level, only, exclude
     for (int i = 1; i < argc; i++) {
         const char* arg = argv[i];
-
-        // --log-level=LEVEL
         if (strncmp(arg, "--log-level=", 12) == 0) {
             SetLogLevel(ParseLevelName(arg + 12));
         }
-        // --log-module=MODULE:LEVEL
-        else if (strncmp(arg, "--log-module=", 13) == 0) {
+        else if (strncmp(arg, "--log-only=", 11) == 0) {
+            logOnly = arg + 11;
+        }
+        else if (strncmp(arg, "--log-exclude=", 14) == 0) {
+            logExclude = arg + 14;
+        }
+    }
+
+    // Apply only/exclude (only takes precedence if both specified)
+    if (logOnly) {
+        ApplyLogOnly(logOnly);
+    } else if (logExclude) {
+        ApplyLogExclude(logExclude);
+    }
+
+    // Pass 2: apply per-module overrides (these win over only/exclude)
+    for (int i = 1; i < argc; i++) {
+        const char* arg = argv[i];
+        if (strncmp(arg, "--log-module=", 13) == 0) {
             const char* spec = arg + 13;
             const char* colon = strchr(spec, ':');
             if (colon) {
@@ -505,7 +625,32 @@ inline void InitLoggingFromJson(const Json::Value& config) {
         SetLogLevel(ParseLevelName(levelStr.c_str()));
     }
 
-    // Per-module levels
+    // Whitelist/blacklist filters (only takes precedence over exclude)
+    if (logging.isMember("only") && logging["only"].isArray()) {
+        std::string modules;
+        for (const auto& mod : logging["only"]) {
+            if (mod.isString()) {
+                if (!modules.empty()) modules += ",";
+                modules += mod.asString();
+            }
+        }
+        if (!modules.empty()) {
+            ApplyLogOnly(modules.c_str());
+        }
+    } else if (logging.isMember("exclude") && logging["exclude"].isArray()) {
+        std::string modules;
+        for (const auto& mod : logging["exclude"]) {
+            if (mod.isString()) {
+                if (!modules.empty()) modules += ",";
+                modules += mod.asString();
+            }
+        }
+        if (!modules.empty()) {
+            ApplyLogExclude(modules.c_str());
+        }
+    }
+
+    // Per-module levels (override only/exclude)
     if (logging.isMember("modules") && logging["modules"].isObject()) {
         const Json::Value& modules = logging["modules"];
         for (const auto& modName : modules.getMemberNames()) {

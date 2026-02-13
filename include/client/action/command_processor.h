@@ -229,6 +229,11 @@ private:
 
     ActionResult cmdFilter(const std::string& args);
 
+    ActionResult cmdLogOnly(const std::string& args);
+    ActionResult cmdLogExclude(const std::string& args);
+    ActionResult cmdLogModule(const std::string& args);
+    ActionResult cmdLogClear(const std::string& args);
+
     // Extended commands from main.cpp ProcessCommand
     ActionResult cmdWalk(const std::string& args);
     ActionResult cmdRun(const std::string& args);
