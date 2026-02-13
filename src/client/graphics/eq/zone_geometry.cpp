@@ -2,6 +2,7 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/constrained_texture_cache.h"
+#include "common/logging.h"
 #include <cmath>
 #include <algorithm>
 #include <unordered_map>
@@ -243,8 +244,10 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         if (texture) {
             // Also cache locally for quick lookups (cache owns the texture)
             textureCache_[name] = texture;
+            return texture;
         }
-        return texture;
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), falling back to direct load", name, data.size());
+        // Fall through to unconstrained loading path below
     }
 
     // Check cache first (unconstrained mode)
@@ -399,6 +402,24 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                 auto texIt = textures.find(lowerTexName);
                 if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
                     texture = loadTextureFromBMP(texName, texIt->second->data);
+                    if (!texture) {
+                        LOG_DEBUG(MOD_GRAPHICS, "buildTexturedMesh: loadTextureFromBMP returned null for '{}' ({} bytes)",
+                            texName, texIt->second->data.size());
+                    }
+                } else if (texIt == textures.end()) {
+                    LOG_DEBUG(MOD_GRAPHICS, "buildTexturedMesh: texture '{}' not found in textures map ({} entries)",
+                        lowerTexName, textures.size());
+                } else if (texIt->second && texIt->second->data.empty()) {
+                    LOG_DEBUG(MOD_GRAPHICS, "buildTexturedMesh: texture '{}' has empty data", lowerTexName);
+                }
+
+                if (!texture && constrainedCache_) {
+                    // Pixel data may have been released after initial load;
+                    // check the constrained cache which retains GPU textures
+                    texture = constrainedCache_->getTexture(lowerTexName);
+                    if (!texture) {
+                        texture = constrainedCache_->getTexture(texName);
+                    }
                 }
             }
         }

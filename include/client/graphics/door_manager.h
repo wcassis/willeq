@@ -18,6 +18,7 @@ namespace Graphics {
 
 // Forward declarations
 struct S3DZone;
+class ConstrainedTextureCache;
 
 // Visual representation of a door in the scene
 struct DoorVisual {
@@ -58,6 +59,9 @@ public:
 
     // Set the current zone data (for finding door meshes)
     void setZone(const std::shared_ptr<S3DZone>& zone);
+
+    // Set constrained texture cache (for memory-managed texture loading after pixel data release)
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
 
     // Create a door visual from server data
     // Returns true if door was created successfully (or skipped for invisible types)
@@ -118,6 +122,7 @@ private:
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     std::shared_ptr<S3DZone> currentZone_;
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     // Animation speed (complete animation in ~0.5 seconds)
     static constexpr float ANIM_SPEED = 2.0f;

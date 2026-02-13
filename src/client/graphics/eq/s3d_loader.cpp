@@ -338,6 +338,7 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
 
     // Load textures from _obj.s3d archive for object rendering
     loadObjectTextures(objArchive);
+    LOG_DEBUG(MOD_GRAPHICS, "Loaded {} object textures from _obj archive", zone_->objectTextures.size());
 
     WldLoader objDefLoader;
     if (!objDefLoader.parseFromArchive(objArchivePath, objWldName)) {

@@ -1,4 +1,5 @@
 #include "client/graphics/door_manager.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/eq.h"
@@ -68,6 +69,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         LOG_DEBUG(MOD_GRAPHICS, "Found door mesh '{}' in objectGeometries ({} verts, {} tris)",
             upperDoorName, geomIt->second->vertices.size(), geomIt->second->triangles.size());
         ZoneMeshBuilder builder(smgr_, driver_, nullptr);
+        if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
         irr::scene::IMesh* mesh = nullptr;
         if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames.empty()) {
             mesh = builder.buildTexturedMesh(*geomIt->second, currentZone_->objectTextures);
@@ -91,6 +93,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             LOG_DEBUG(MOD_GRAPHICS, "Found door mesh via partial match: '{}' -> '{}' ({} verts)",
                 upperDoorName, name, geom->vertices.size());
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
+            if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
             if (!currentZone_->objectTextures.empty() && !geom->textureNames.empty()) {
                 return builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
             } else {
@@ -111,6 +114,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         // Try exact match first
         if (objName == upperDoorName) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
+            if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
                 return builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
@@ -122,6 +126,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (objName.find(upperDoorName) != std::string::npos ||
             upperDoorName.find(objName) != std::string::npos) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
+            if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
                 return builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {

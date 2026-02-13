@@ -40,6 +40,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     bool hasAlpha = false;
 
     if (!processTextureData(data, processedData, width, height, hasAlpha)) {
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: processTextureData failed for '{}' ({} bytes)", name, data.size());
         return nullptr;
     }
 
@@ -48,7 +49,8 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
 
     // Evict textures if needed to make room
     if (!evictUntilAvailable(textureSize)) {
-        // Cannot free enough space - texture is too large for budget
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: eviction failed for '{}' (need {} bytes, budget {} bytes, used {} bytes)",
+            name, textureSize, config_.textureMemoryBytes, currentUsage_);
         return nullptr;
     }
 
@@ -75,9 +77,17 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         image->drop();
     }
 
-    if (!texture) {
+    if (!image) {
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: createImageFromData returned null for '{}' ({}x{})", name, width, height);
         return nullptr;
     }
+
+    if (!texture) {
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: addTexture returned null for '{}'", name);
+        return nullptr;
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: loaded '{}' {}x{} ({} bytes)", name, width, height, textureSize);
 
     // Add to cache
     lruOrder_.push_back(name);
