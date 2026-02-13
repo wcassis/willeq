@@ -19,6 +19,7 @@
 #include <atomic>
 #include <deque>
 #include <array>
+#include <optional>
 
 // Forward declarations
 class IPathfinder;
@@ -66,6 +67,7 @@ namespace Graphics {
     enum class ConstrainedRenderingPreset;
 }
 }
+#include "client/graphics/constrained_renderer_config.h"
 namespace eqt {
 namespace inventory {
     class InventoryManager;
@@ -974,6 +976,8 @@ public:
 	bool GetUseDRM() const { return m_use_drm; }
 	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
 	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
+	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
+	std::optional<EQT::Graphics::ConstrainedRendererConfig> GetConstrainedConfig() const { return m_constrained_config; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
 	const std::string& GetConfigPath() const { return m_config_path; }
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
@@ -1559,6 +1563,7 @@ private:
 	bool m_use_opengl = false;  // Use OpenGL renderer instead of software
 	bool m_use_drm = false;     // Use DRM/KMS framebuffer device (no X11)
 	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset{};  // Constrained rendering preset (startup-only)
+	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
 
 	// Inventory manager

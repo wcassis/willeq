@@ -46,6 +46,18 @@ struct ConstrainedRendererConfig {
     float fogStart() const { return clipDistance * fogStartRatio; }
     float fogEnd() const { return clipDistance * fogEndRatio; }
 
+    // System RAM budget (0 = no constraint)
+    size_t totalMemoryBudgetBytes = 0;
+
+    // Derived limits (computed by calculateMemoryLimits())
+    size_t soundBufferCacheBytes = 0;       // Max decoded sound buffer cache
+    size_t chrCacheMaxEntries = 0;          // Max otherChrCaches_ entries in RaceModelLoader
+    bool lazyPfsLoading = false;            // Don't keep PFS archives decompressed in memory
+    bool releaseTextureDataAfterUpload = false;  // Free raw pixel data post-GPU upload
+
+    // Compute memory-related derived limits from totalMemoryBudgetBytes
+    void calculateMemoryLimits();
+
     // Derived limits (calculated at startup via calculateMaxResolution())
     int maxResolutionWidth = 640;
     int maxResolutionHeight = 480;
@@ -72,6 +84,10 @@ struct ConstrainedRendererConfig {
     // Parse preset from string (case-insensitive)
     // Returns None if string is not recognized
     static ConstrainedRenderingPreset parsePreset(const std::string& name);
+
+    // Parse "NxNxN" format: totalMB x textureCacheMB x framebufferMB
+    // Returns true and fills outConfig if string matches NxNxN pattern
+    static bool parseMemorySpec(const std::string& spec, ConstrainedRendererConfig& outConfig);
 };
 
 } // namespace Graphics

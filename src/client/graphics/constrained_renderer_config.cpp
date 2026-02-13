@@ -2,9 +2,24 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstdio>
 
 namespace EQT {
 namespace Graphics {
+
+void ConstrainedRendererConfig::calculateMemoryLimits() {
+    if (totalMemoryBudgetBytes > 0) {
+        lazyPfsLoading = true;
+        releaseTextureDataAfterUpload = true;
+
+        // Sound buffer cache: min(8MB, totalBudget/16)
+        size_t eightMB = 8 * 1024 * 1024;
+        soundBufferCacheBytes = std::min(eightMB, totalMemoryBudgetBytes / 16);
+
+        // Keep at most 4 other-zone _chr.s3d caches
+        chrCacheMaxEntries = 4;
+    }
+}
 
 void ConstrainedRendererConfig::calculateMaxResolution() {
     // Calculate bytes per pixel for framebuffer
@@ -97,6 +112,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 150.0f;
             config.maxVisibleEntities = 30;
             config.maxPolygonsPerFrame = 30000;
+            // System RAM budget
+            config.totalMemoryBudgetBytes = 32 * 1024 * 1024;  // 32MB
             break;
 
         case ConstrainedRenderingPreset::Voodoo2:
@@ -112,6 +129,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 250.0f;
             config.maxVisibleEntities = 50;
             config.maxPolygonsPerFrame = 50000;
+            // System RAM budget
+            config.totalMemoryBudgetBytes = 64 * 1024 * 1024;  // 64MB
             break;
 
         case ConstrainedRenderingPreset::TNT:
@@ -126,6 +145,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 400.0f;
             config.maxVisibleEntities = 75;
             config.maxPolygonsPerFrame = 100000;
+            // System RAM budget
+            config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             break;
 
         case ConstrainedRenderingPreset::OrangePi:
@@ -141,6 +162,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 200.0f;
             config.maxVisibleEntities = 40;
             config.maxPolygonsPerFrame = 40000;
+            // System RAM budget
+            config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             break;
 
         case ConstrainedRenderingPreset::Custom:
@@ -155,9 +178,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             break;
     }
 
-    // Calculate derived max resolution
+    // Calculate derived limits
     if (config.enabled) {
         config.calculateMaxResolution();
+        config.calculateMemoryLimits();
     }
 
     return config;
@@ -190,6 +214,60 @@ ConstrainedRenderingPreset ConstrainedRendererConfig::parsePreset(const std::str
 
     // Unrecognized preset name
     return ConstrainedRenderingPreset::None;
+}
+
+bool ConstrainedRendererConfig::parseMemorySpec(const std::string& spec, ConstrainedRendererConfig& outConfig) {
+    int totalMB = 0, texMB = 0, fbMB = 0;
+
+    // Parse NxNxN pattern (case-insensitive 'x' or 'X')
+    if (std::sscanf(spec.c_str(), "%dx%dx%d", &totalMB, &texMB, &fbMB) != 3 &&
+        std::sscanf(spec.c_str(), "%dX%dX%d", &totalMB, &texMB, &fbMB) != 3) {
+        return false;
+    }
+
+    if (totalMB <= 0 || texMB <= 0 || fbMB <= 0) {
+        return false;
+    }
+
+    outConfig.enabled = true;
+    outConfig.totalMemoryBudgetBytes = static_cast<size_t>(totalMB) * 1024 * 1024;
+    outConfig.textureMemoryBytes = static_cast<size_t>(texMB) * 1024 * 1024;
+    outConfig.framebufferMemoryBytes = static_cast<size_t>(fbMB) * 1024 * 1024;
+
+    // Set sensible defaults based on total memory budget
+    if (totalMB <= 64) {
+        outConfig.colorDepthBits = 16;
+        outConfig.maxTextureDimension = 64;
+        outConfig.clipDistance = 300.0f;
+        outConfig.entityRenderDistance = 150.0f;
+        outConfig.maxVisibleEntities = 30;
+        outConfig.maxPolygonsPerFrame = 30000;
+    } else if (totalMB <= 128) {
+        outConfig.colorDepthBits = 16;
+        outConfig.maxTextureDimension = 128;
+        outConfig.clipDistance = 400.0f;
+        outConfig.entityRenderDistance = 200.0f;
+        outConfig.maxVisibleEntities = 40;
+        outConfig.maxPolygonsPerFrame = 40000;
+    } else if (totalMB <= 256) {
+        outConfig.colorDepthBits = 16;
+        outConfig.maxTextureDimension = 256;
+        outConfig.clipDistance = 600.0f;
+        outConfig.entityRenderDistance = 300.0f;
+        outConfig.maxVisibleEntities = 60;
+        outConfig.maxPolygonsPerFrame = 75000;
+    } else {
+        outConfig.colorDepthBits = 16;
+        outConfig.maxTextureDimension = 512;
+        outConfig.clipDistance = 800.0f;
+        outConfig.entityRenderDistance = 400.0f;
+        outConfig.maxVisibleEntities = 75;
+        outConfig.maxPolygonsPerFrame = 100000;
+    }
+
+    outConfig.calculateMaxResolution();
+    outConfig.calculateMemoryLimits();
+    return true;
 }
 
 } // namespace Graphics

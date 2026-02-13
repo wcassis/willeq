@@ -110,6 +110,30 @@ struct S3DZone {
 
     // Light sources loaded from lights.wld
     std::vector<std::shared_ptr<ZoneLight>> lights;
+
+    // Release raw pixel data from all texture infos (zone, object, character).
+    // Call after all Irrlicht textures and animated texture frames have been uploaded.
+    // Returns the number of bytes freed.
+    size_t releaseTexturePixelData() {
+        size_t freed = 0;
+        auto releaseMap = [&freed](std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
+            for (auto& [name, texInfo] : texMap) {
+                if (!texInfo) continue;
+                freed += texInfo->data.capacity();
+                texInfo->data.clear();
+                texInfo->data.shrink_to_fit();
+                for (auto& frame : texInfo->frames) {
+                    freed += frame.data.capacity();
+                    frame.data.clear();
+                    frame.data.shrink_to_fit();
+                }
+            }
+        };
+        releaseMap(textures);
+        releaseMap(objectTextures);
+        releaseMap(characterTextures);
+        return freed;
+    }
 };
 
 // High-level S3D zone loader

@@ -21,6 +21,7 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_config_loader.h"
 #include "client/graphics/weather_quality_preset.h"
@@ -17703,6 +17704,11 @@ void EverQuest::SetEQClientPath(const std::string& path) {
 	LoadStringFiles(path);
 }
 
+void EverQuest::SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config) {
+	m_constrained_config = config;
+	m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
+}
+
 bool EverQuest::InitGraphics(int width, int height) {
 	if (m_graphics_initialized) {
 		return true;
@@ -17726,6 +17732,10 @@ bool EverQuest::InitGraphics(int width, int height) {
 	config.lighting = false;  // Fullbright mode
 	config.showNameTags = true;
 	config.constrainedPreset = m_constrained_preset;  // Constrained rendering mode (startup-only)
+	if (m_constrained_config) {
+		config.constrainedPreset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
+		config.constrainedConfig = *m_constrained_config;
+	}
 
 	// Use initLoadingScreen() for early progress display - only creates window + progress bar
 	// Model loading is deferred to loadGlobalAssets() which is called during graphics loading phase
@@ -19451,6 +19461,23 @@ void EverQuest::InitializeAudio() {
 		LOG_WARN(MOD_AUDIO, "Failed to initialize audio system");
 		m_audio_manager.reset();
 		return;
+	}
+
+	// Apply memory constraints from constrained rendering config
+	if (m_constrained_config && m_constrained_config->totalMemoryBudgetBytes > 0) {
+		m_audio_manager->setMemoryConstraints(
+			m_constrained_config->soundBufferCacheBytes,
+			m_constrained_config->lazyPfsLoading);
+		LOG_INFO(MOD_AUDIO, "Audio memory constraints: soundCache={}KB, lazyPfs={}",
+			m_constrained_config->soundBufferCacheBytes / 1024,
+			m_constrained_config->lazyPfsLoading ? "yes" : "no");
+	} else if (m_constrained_preset != EQT::Graphics::ConstrainedRenderingPreset::None) {
+		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(m_constrained_preset);
+		if (cfg.totalMemoryBudgetBytes > 0) {
+			m_audio_manager->setMemoryConstraints(cfg.soundBufferCacheBytes, cfg.lazyPfsLoading);
+			LOG_INFO(MOD_AUDIO, "Audio memory constraints (from preset): soundCache={}KB, lazyPfs={}",
+				cfg.soundBufferCacheBytes / 1024, cfg.lazyPfsLoading ? "yes" : "no");
+		}
 	}
 
 	// Apply configured volume levels
