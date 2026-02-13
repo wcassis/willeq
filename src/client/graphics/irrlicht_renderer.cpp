@@ -497,27 +497,35 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     config_ = config;
 
     // Apply constrained rendering mode if enabled
-    if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
-        // Load preset configuration
-        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
-
-        // Calculate max resolution from framebuffer budget
+    if (config_.constrainedConfig.enabled) {
+        // Custom config already set (from NxNxN spec) — just ensure derived limits are computed
         config_.constrainedConfig.calculateMaxResolution();
-
-        // Clamp resolution to max allowed by framebuffer memory limit
+        config_.constrainedConfig.calculateMemoryLimits();
         if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
             LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
                      config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
         }
-
-        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer)",
+        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
                  ConstrainedRendererConfig::presetName(config_.constrainedPreset),
                  config_.width, config_.height,
                  config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024));
-
-        // Set adaptive frame budget for constrained devices
-        frameBudgetMs_ = 66.6f;  // 15fps target for constrained devices
+                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+        frameBudgetMs_ = 66.6f;
+    } else if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
+        config_.constrainedConfig.calculateMaxResolution();
+        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
+            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
+                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
+        }
+        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
+                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
+                 config_.width, config_.height,
+                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+        frameBudgetMs_ = 66.6f;
     }
 
     // Choose driver type
@@ -620,6 +628,10 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Pass constrained config to entity renderer for visibility limits
     if (config_.constrainedConfig.enabled) {
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+        // Apply chr cache limit to race model loader
+        if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
+            entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
+        }
     }
 
     // Set ground finder callback for NPC terrain snapping during interpolation
@@ -675,27 +687,35 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     config_ = config;
 
     // Apply constrained rendering mode if enabled
-    if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
-        // Load preset configuration
-        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
-
-        // Calculate max resolution from framebuffer budget
+    if (config_.constrainedConfig.enabled) {
+        // Custom config already set (from NxNxN spec) — just ensure derived limits are computed
         config_.constrainedConfig.calculateMaxResolution();
-
-        // Clamp resolution to max allowed by framebuffer memory limit
+        config_.constrainedConfig.calculateMemoryLimits();
         if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
             LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
                      config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
         }
-
-        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer)",
+        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
                  ConstrainedRendererConfig::presetName(config_.constrainedPreset),
                  config_.width, config_.height,
                  config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024));
-
-        // Set adaptive frame budget for constrained devices
-        frameBudgetMs_ = 66.6f;  // 15fps target for constrained devices
+                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+        frameBudgetMs_ = 66.6f;
+    } else if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
+        config_.constrainedConfig.calculateMaxResolution();
+        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
+            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
+                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
+        }
+        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
+                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
+                 config_.width, config_.height,
+                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
+                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+        frameBudgetMs_ = 66.6f;
     }
 
     // Choose driver type
@@ -901,6 +921,9 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         // Pass constrained config to entity renderer for visibility limits
         if (config_.constrainedConfig.enabled) {
             entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+            if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
+                entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
+            }
         }
         // Set ground finder callback for NPC terrain snapping during interpolation
         entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
@@ -928,6 +951,9 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     // Create door manager (if not already created)
     if (!doorManager_) {
         doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
+        if (constrainedTextureCache_) {
+            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
         // If zone was already loaded before doorManager_ was created, set it now
         if (currentZone_) {
             doorManager_->setZone(currentZone_);
@@ -1055,8 +1081,8 @@ void IrrlichtRenderer::requestQuit() {
 void IrrlichtRenderer::createSoftwareCursor() {
     if (!driver_ || !config_.useDRM) return;
 
-    // Create a 16x20 arrow cursor texture with alpha transparency
-    const int W = 16, H = 20;
+    // Create an 8x10 arrow cursor texture with alpha transparency
+    const int W = 8, H = 10;
     irr::video::IImage* img = driver_->createImage(irr::video::ECF_A8R8G8B8,
         irr::core::dimension2du(W, H));
     if (!img) return;
@@ -1071,27 +1097,17 @@ void IrrlichtRenderer::createSoftwareCursor() {
             img->setPixel(x, y, transparent);
 
     // Classic arrow cursor shape (1=black outline, 2=white fill)
-    static const char* shape[20] = {
-        "1               ",
-        "11              ",
-        "121             ",
-        "1221            ",
-        "12221           ",
-        "122221          ",
-        "1222221         ",
-        "12222221        ",
-        "122222221       ",
-        "1222222221      ",
-        "12222222221     ",
-        "122222222221    ",
-        "1222222111111   ",
-        "12212221        ",
-        "121 12221       ",
-        "11  12221       ",
-        "1    12221      ",
-        "      1222      ",
-        "      1221      ",
-        "       11       ",
+    static const char* shape[10] = {
+        "11      ",
+        "121     ",
+        "1221    ",
+        "12221   ",
+        "122221  ",
+        "1222211 ",
+        "111111   ",
+        "   121  ",
+        "    121 ",
+        "     11 ",
     };
 
     for (int y = 0; y < H; y++) {
@@ -2290,7 +2306,7 @@ void IrrlichtRenderer::updateHUD() {
         text << L"  Time: " << (int)currentHour_ << L":" << (currentMinute_ < 10 ? L"0" : L"") << (int)currentMinute_ << L"\n";
 
         // Constrained mode debug info
-        if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+        if (config_.constrainedConfig.enabled) {
             // Preset name and resolution
             std::string presetName = ConstrainedRendererConfig::presetName(config_.constrainedPreset);
             std::wstring wPresetName(presetName.begin(), presetName.end());
@@ -2542,6 +2558,9 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // Set zone data for door manager (for finding door meshes)
     if (doorManager_) {
         doorManager_->setZone(currentZone_);
+        if (constrainedTextureCache_) {
+            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
     }
 
     // Sky initialization is deferred to setZoneEnvironment() which is called
@@ -2603,6 +2622,16 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         treeManager_->loadConfig("", zoneName);  // Load zone-specific config
         treeManager_->initialize(currentZone_->objects, currentZone_->objectTextures);
         LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
+    }
+
+    // Release raw texture pixel data now that all zone meshes, objects, and trees
+    // have been built and their textures uploaded to the GPU/constrained cache.
+    // Door textures are also safe because buildTexturedMesh() checks the constrained
+    // texture cache by name before requiring raw pixel data.
+    if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_) {
+        size_t freed = currentZone_->releaseTexturePixelData();
+        LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
+                 freed / (1024.0f * 1024.0f));
     }
 
     // Initialize weather system for this zone
@@ -5652,7 +5681,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         if (cursor && cursor->isVisible()) {
             auto pos = cursor->getPosition();
             irr::core::position2di destPos(pos.X, pos.Y);
-            irr::core::rect<irr::s32> srcRect(0, 0, 16, 20);
+            irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
             driver_->draw2DImage(softwareCursorTexture_, destPos, srcRect,
                 nullptr, irr::video::SColor(255, 255, 255, 255), true);
         }
