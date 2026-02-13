@@ -411,8 +411,12 @@ void Application::processNetworkEvents() {
 }
 
 void Application::processInput(float deltaTime) {
-    // Update game mode (handles internal input processing)
-    if (m_gameMode) {
+    // Update game mode input only when graphics are NOT handling input.
+    // When graphics are active, IrrlichtRenderer handles all input through evdev/X11.
+    // The game mode's ConsoleInputHandler must not run in parallel because in DRM mode
+    // the same keystrokes reach both evdev and stdin, causing ESC to trigger both
+    // ClearTarget (evdev) and Quit (stdin) simultaneously.
+    if (m_gameMode && !m_graphicsInitialized) {
         m_gameMode->update(deltaTime);
     }
 
