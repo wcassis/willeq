@@ -69,6 +69,9 @@ public:
     // Get the rendered texture for drawing in UI
     irr::video::ITexture* getTexture() const { return renderTarget_; }
 
+    // Force RTT re-render next frame
+    void markDirty();
+
     // Get/set current Y rotation (degrees, for persistence)
     float getRotationY() const { return rotationY_; }
     void setRotationY(float angle);
@@ -183,6 +186,11 @@ private:
 
     // Initialization state
     bool initialized_ = false;
+
+    // RTT throttling - skip re-render when nothing changed
+    bool dirty_ = true;                    // Needs re-render
+    float animationTimer_ = 0.0f;          // Accumulated time since last animation render
+    float animationInterval_ = 200.0f;     // ms between animation RTT updates (~5 FPS)
 
     // Background color for render target
     irr::video::SColor backgroundColor_{255, 30, 30, 35};

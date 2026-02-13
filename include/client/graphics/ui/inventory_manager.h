@@ -220,6 +220,10 @@ public:
     // Debug
     void dumpInventory() const;
 
+    // Change counter - incremented on every item add/remove/move
+    // Used by UI to detect when inventory content has changed
+    uint32_t getChangeCounter() const { return changeCounter_; }
+
 private:
     // Item storage - slot ID to item
     std::map<int16_t, std::unique_ptr<ItemInstance>> items_;
@@ -252,6 +256,9 @@ private:
 
     // NPC trade state - when true, NO_DROP restrictions are bypassed for trade slots
     bool isNpcTrade_ = false;
+
+    // Change counter - bumped on every mutation
+    uint32_t changeCounter_ = 0;
 
     // Callbacks
     MoveItemCallback moveItemCallback_;

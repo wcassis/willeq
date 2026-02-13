@@ -31,6 +31,102 @@ InventoryWindow::InventoryWindow(inventory::InventoryManager* manager)
     initializeSlots();
 }
 
+void InventoryWindow::ensureContentRT(irr::video::IVideoDriver* driver) {
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+
+    // Recreate if size changed or not yet created
+    if (contentRT_ && contentRTWidth_ == w && contentRTHeight_ == h) {
+        return;
+    }
+
+    // Remove old texture if size changed
+    if (contentRT_) {
+        driver->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+
+    contentRT_ = driver->addRenderTargetTexture(
+        irr::core::dimension2d<irr::u32>(w, h), "InvWindowCache",
+        irr::video::ECF_A8R8G8B8);
+
+    if (contentRT_) {
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        contentDirty_ = true;
+        LOG_DEBUG(MOD_UI, "InventoryWindow: Created content cache RTT {}x{}", w, h);
+    } else {
+        LOG_WARN(MOD_UI, "InventoryWindow: Failed to create content cache RTT {}x{}", w, h);
+    }
+
+    cachedDriver_ = driver;
+}
+
+void InventoryWindow::render(irr::video::IVideoDriver* driver,
+                              irr::gui::IGUIEnvironment* gui) {
+    if (!visible_) return;
+
+    ensureContentRT(driver);
+
+    // If RTT not available, fall back to direct rendering
+    if (!contentRT_) {
+        WindowBase::render(driver, gui);
+        return;
+    }
+
+    // Ensure paperdoll RTT is up to date before content cache render
+    // (must happen outside content RTT to avoid nested setRenderTarget)
+    if (modelView_ && modelView_->isReady()) {
+        modelView_->renderToTexture();
+    }
+
+    // Check if inventory items changed since last render
+    if (manager_) {
+        uint32_t currentCounter = manager_->getChangeCounter();
+        if (currentCounter != lastInventoryChangeCounter_) {
+            lastInventoryChangeCounter_ = currentCounter;
+            contentDirty_ = true;
+        }
+    }
+
+    if (contentDirty_) {
+        // Save real bounds and shift to origin for RTT rendering
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        int w = bounds_.getWidth();
+        int h = bounds_.getHeight();
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        // Render everything to the cache texture
+        driver->setRenderTarget(contentRT_, true, true,
+                                irr::video::SColor(0, 0, 0, 0));
+
+        drawWindow(driver);
+        drawUnlockedHighlight(driver);
+        if (showTitleBar_) {
+            drawTitleBar(driver, gui);
+        }
+        renderContent(driver, gui);
+
+        driver->setRenderTarget(nullptr, false, false);
+
+        // Restore real bounds
+        bounds_ = realBounds;
+        titleBar_ = realTitleBar;
+        contentDirty_ = false;
+    }
+
+    // Blit cached content to screen
+    irr::core::recti destRect = bounds_;
+    irr::core::recti srcRect(0, 0, contentRTWidth_, contentRTHeight_);
+    driver->draw2DImage(contentRT_, destRect, srcRect, nullptr, nullptr, true);
+}
+
 void InventoryWindow::initializeSlots() {
     // Equipment slot layout - paper doll style in middle section
     // All positions relative to window content area
@@ -295,6 +391,7 @@ bool InventoryWindow::handleMouseMove(int x, int y) {
         int modelX = relX - modelViewBounds_.UpperLeftCorner.X;
         int modelY = relY - modelViewBounds_.UpperLeftCorner.Y;
         modelView_->onMouseMove(modelX, modelY);
+        contentDirty_ = true;  // Paperdoll rotation changed
         return true;
     }
 
@@ -312,8 +409,13 @@ bool InventoryWindow::handleMouseMove(int x, int y) {
     int relY = y - bounds_.UpperLeftCorner.Y;
 
     // Check buttons
-    destroyButtonHighlighted_ = destroyButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
-    doneButtonHighlighted_ = doneButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
+    bool newDestroyHL = destroyButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
+    bool newDoneHL = doneButtonBounds_.isPointInside(irr::core::vector2di(relX, relY));
+    if (newDestroyHL != destroyButtonHighlighted_ || newDoneHL != doneButtonHighlighted_) {
+        contentDirty_ = true;
+    }
+    destroyButtonHighlighted_ = newDestroyHL;
+    doneButtonHighlighted_ = newDoneHL;
 
     // Find slot under cursor
     int16_t hoveredSlot = inventory::SLOT_INVALID;
@@ -369,6 +471,7 @@ int16_t InventoryWindow::getSlotAtPosition(int x, int y) const {
 }
 
 void InventoryWindow::setHighlightedSlot(int16_t slotId) {
+    if (highlightedSlot_ == slotId) return;  // No change
     highlightedSlot_ = slotId;
 
     // Update slot highlighting
@@ -378,9 +481,11 @@ void InventoryWindow::setHighlightedSlot(int16_t slotId) {
     for (int i = 0; i < inventory::GENERAL_COUNT; i++) {
         generalSlots_[i].setHighlighted(generalSlots_[i].getSlotId() == slotId);
     }
+    contentDirty_ = true;
 }
 
 void InventoryWindow::setInvalidDropSlot(int16_t slotId) {
+    if (invalidDropSlot_ == slotId) return;  // No change
     invalidDropSlot_ = slotId;
 
     for (int i = 0; i < inventory::EQUIPMENT_COUNT; i++) {
@@ -389,9 +494,12 @@ void InventoryWindow::setInvalidDropSlot(int16_t slotId) {
     for (int i = 0; i < inventory::GENERAL_COUNT; i++) {
         generalSlots_[i].setInvalidDrop(generalSlots_[i].getSlotId() == slotId);
     }
+    contentDirty_ = true;
 }
 
 void InventoryWindow::clearHighlights() {
+    bool hadHighlight = (highlightedSlot_ != inventory::SLOT_INVALID ||
+                         invalidDropSlot_ != inventory::SLOT_INVALID);
     highlightedSlot_ = inventory::SLOT_INVALID;
     invalidDropSlot_ = inventory::SLOT_INVALID;
 
@@ -402,6 +510,9 @@ void InventoryWindow::clearHighlights() {
     for (int i = 0; i < inventory::GENERAL_COUNT; i++) {
         generalSlots_[i].setHighlighted(false);
         generalSlots_[i].setInvalidDrop(false);
+    }
+    if (hadHighlight) {
+        contentDirty_ = true;
     }
 }
 
@@ -805,6 +916,7 @@ void InventoryWindow::setPlayerAppearance(uint16_t raceId, uint8_t gender,
     if (modelView_) {
         modelView_->setCharacter(raceId, gender, appearance);
     }
+    contentDirty_ = true;
 }
 
 void InventoryWindow::updateModelView(float deltaTimeMs) {
@@ -819,8 +931,9 @@ void InventoryWindow::renderModelView(irr::video::IVideoDriver* driver,
         return;
     }
 
-    // Render model to its internal texture
-    modelView_->renderToTexture();
+    // Note: renderToTexture() is called from InventoryWindow::render() before
+    // the content cache render, so the paperdoll texture is already up to date.
+    // Do NOT call renderToTexture() here - it would nest setRenderTarget calls.
 
     // Get the rendered texture
     irr::video::ITexture* tex = modelView_->getTexture();

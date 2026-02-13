@@ -637,6 +637,7 @@ void InventoryManager::setItem(int16_t slotId, const ItemInstance& item) {
     } else {
         items_[slotId] = std::move(newItem);
     }
+    ++changeCounter_;
 }
 
 void InventoryManager::setItem(int16_t slotId, std::unique_ptr<ItemInstance> item) {
@@ -677,6 +678,7 @@ void InventoryManager::setItem(int16_t slotId, std::unique_ptr<ItemInstance> ite
                 items_[slotId] = std::move(item);
             }
         }
+        ++changeCounter_;
     }
 }
 
@@ -696,6 +698,7 @@ void InventoryManager::removeItem(int16_t slotId) {
     } else {
         items_.erase(slotId);
     }
+    ++changeCounter_;
 }
 
 void InventoryManager::clearAll() {
@@ -703,6 +706,7 @@ void InventoryManager::clearAll() {
     cursorQueue_.clear();
     cursorSourceSlot_ = SLOT_INVALID;
     itemCacheById_.clear();
+    ++changeCounter_;
 }
 
 void InventoryManager::clearTradeSlots() {

@@ -259,6 +259,8 @@ void CharacterModelView::updateCharacterModel() {
         LOG_WARN(MOD_UI, "CharacterModelView: Failed to create model for race={} gender={}",
                  currentRaceId_, currentGender_);
     }
+
+    dirty_ = true;
 }
 
 void CharacterModelView::setupScene() {
@@ -419,6 +421,8 @@ void CharacterModelView::onMouseMove(int x, int y) {
         pos.Z = -cameraDistance_;
         camera_->setPosition(pos);
     }
+
+    dirty_ = true;
 }
 
 void CharacterModelView::onMouseUp() {
@@ -436,14 +440,23 @@ void CharacterModelView::setRotationY(float angle) {
     if (characterNode_) {
         characterNode_->setRotation(irr::core::vector3df(0, rotationY_, 0));
     }
+
+    dirty_ = true;
+}
+
+void CharacterModelView::markDirty() {
+    dirty_ = true;
 }
 
 void CharacterModelView::update(float deltaTimeMs) {
     if (!modelSmgr_ || !characterNode_) return;
 
-    // The animated mesh scene node updates automatically via OnAnimate
-    // which is called during drawAll(). We just need to ensure the scene
-    // manager's timer is updated, which happens in renderToTexture().
+    // Periodically mark dirty so idle animation (breathing) still updates
+    animationTimer_ += deltaTimeMs;
+    if (animationTimer_ >= animationInterval_ && isAnimating()) {
+        dirty_ = true;
+        animationTimer_ = 0.0f;
+    }
 }
 
 // Helper to extract rotation from BoneMat4 (copied from model_viewer.cpp)
@@ -763,6 +776,11 @@ void CharacterModelView::renderToTexture() {
         return;
     }
 
+    // Skip re-render if nothing changed - cached texture is still valid
+    if (!dirty_) {
+        return;
+    }
+
     // Update weapon transforms before rendering
     updateWeaponTransforms();
 
@@ -783,6 +801,8 @@ void CharacterModelView::renderToTexture() {
 
     // Reset render target to default (screen)
     driver_->setRenderTarget(nullptr, false, false);
+
+    dirty_ = false;
 }
 
 bool CharacterModelView::hasTextures() const {

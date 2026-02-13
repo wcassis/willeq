@@ -38,6 +38,10 @@ class InventoryWindow : public WindowBase {
 public:
     InventoryWindow(inventory::InventoryManager* manager);
 
+    // Override render to use content cache RTT
+    void render(irr::video::IVideoDriver* driver,
+               irr::gui::IGUIEnvironment* gui) override;
+
     // Input handling
     bool handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl) override;
     bool handleMouseUp(int x, int y, bool leftButton) override;
@@ -61,32 +65,33 @@ public:
     void clearHighlights();
 
     // Character info (for left panel display)
-    void setCharacterName(const std::wstring& name) { characterName_ = name; }
-    void setCharacterLevel(int level) { characterLevel_ = level; }
-    void setCharacterClass(const std::wstring& className) { characterClass_ = className; }
-    void setCharacterDeity(const std::wstring& deity) { characterDeity_ = deity; }
-    void setHP(int current, int max) { currentHP_ = current; maxHP_ = max; }
-    void setMana(int current, int max) { currentMana_ = current; maxMana_ = max; }
-    void setStamina(int current, int max) { currentStamina_ = current; maxStamina_ = max; }
-    void setAC(int ac) { ac_ = ac; }
-    void setATK(int atk) { atk_ = atk; }
-    void setExpProgress(float progress) { expProgress_ = progress; }
+    // All setters mark content cache dirty to trigger re-render
+    void setCharacterName(const std::wstring& name) { characterName_ = name; contentDirty_ = true; }
+    void setCharacterLevel(int level) { characterLevel_ = level; contentDirty_ = true; }
+    void setCharacterClass(const std::wstring& className) { characterClass_ = className; contentDirty_ = true; }
+    void setCharacterDeity(const std::wstring& deity) { characterDeity_ = deity; contentDirty_ = true; }
+    void setHP(int current, int max) { currentHP_ = current; maxHP_ = max; contentDirty_ = true; }
+    void setMana(int current, int max) { currentMana_ = current; maxMana_ = max; contentDirty_ = true; }
+    void setStamina(int current, int max) { currentStamina_ = current; maxStamina_ = max; contentDirty_ = true; }
+    void setAC(int ac) { ac_ = ac; contentDirty_ = true; }
+    void setATK(int atk) { atk_ = atk; contentDirty_ = true; }
+    void setExpProgress(float progress) { expProgress_ = progress; contentDirty_ = true; }
     void setStats(int str, int sta, int agi, int dex, int wis, int intel, int cha) {
         stats_[0] = str; stats_[1] = sta; stats_[2] = agi; stats_[3] = dex;
-        stats_[4] = wis; stats_[5] = intel; stats_[6] = cha;
+        stats_[4] = wis; stats_[5] = intel; stats_[6] = cha; contentDirty_ = true;
     }
     void setResists(int poison, int magic, int disease, int fire, int cold) {
         resists_[0] = poison; resists_[1] = magic; resists_[2] = disease;
-        resists_[3] = fire; resists_[4] = cold;
+        resists_[3] = fire; resists_[4] = cold; contentDirty_ = true;
     }
-    void setHaste(int haste) { haste_ = haste; }
-    void setSpellDmg(int spellDmg) { spellDmg_ = spellDmg; }
-    void setHealAmt(int healAmt) { healAmt_ = healAmt; }
-    void setRegenHP(int regen) { regenHP_ = regen; }
-    void setRegenMana(int regen) { regenMana_ = regen; }
-    void setWeight(float current, float max) { weight_ = current; maxWeight_ = max; }
+    void setHaste(int haste) { haste_ = haste; contentDirty_ = true; }
+    void setSpellDmg(int spellDmg) { spellDmg_ = spellDmg; contentDirty_ = true; }
+    void setHealAmt(int healAmt) { healAmt_ = healAmt; contentDirty_ = true; }
+    void setRegenHP(int regen) { regenHP_ = regen; contentDirty_ = true; }
+    void setRegenMana(int regen) { regenMana_ = regen; contentDirty_ = true; }
+    void setWeight(float current, float max) { weight_ = current; maxWeight_ = max; contentDirty_ = true; }
     void setCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
-        platinum_ = platinum; gold_ = gold; silver_ = silver; copper_ = copper;
+        platinum_ = platinum; gold_ = gold; silver_ = silver; copper_ = copper; contentDirty_ = true;
     }
 
     // Character model view (3D preview in equipment area)
@@ -210,6 +215,20 @@ private:
     // Character model view (3D preview)
     std::unique_ptr<CharacterModelView> modelView_;
     irr::core::recti modelViewBounds_;  // Bounds relative to window content area
+
+    // Content cache RTT - caches the entire window to avoid 70+ draw calls per frame
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    uint32_t lastInventoryChangeCounter_ = 0;
+
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+public:
+    // Mark content cache dirty (forces re-render next frame)
+    void markContentDirty() { contentDirty_ = true; }
 };
 
 } // namespace ui
