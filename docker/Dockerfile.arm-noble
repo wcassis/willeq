@@ -38,7 +38,7 @@ FROM base AS sysroot
 # Noble's glibc matches Docker host (both Ubuntu 24.04) - no version mismatch hacks needed
 # DRM/GBM/EGL instead of X11 - renders directly via kernel mode setting
 RUN debootstrap --no-check-gpg --foreign --arch=armhf \
-    --include=libssl-dev,zlib1g-dev,libdrm-dev,libgbm-dev,libegl-dev,libgl-dev,mesa-common-dev,libglib2.0-dev,libffi-dev,libpcre2-dev \
+    --include=libssl-dev,zlib1g-dev,libdrm-dev,libgbm-dev,libegl-dev,libgl-dev,mesa-common-dev,libglib2.0-dev,libffi-dev,libpcre2-dev,libasound2-dev \
     noble /opt/noble-sysroot http://ports.ubuntu.com/ubuntu-ports/
 
 # Extract --include packages (--foreign first stage only extracts base packages;

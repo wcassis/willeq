@@ -53,8 +53,11 @@ public:
     // forceLoopback: true = use loopback device (no hardware needed)
     //                false = try hardware first, fall back to loopback
     // soundFontPath: path to SoundFont file for MIDI/XMI music playback
+    // tickCallback: optional function called between heavy init stages,
+    // allowing the caller to pump the network event loop on slow hardware
     bool initialize(const std::string& eqPath, bool forceLoopback = false,
-                    const std::string& soundFontPath = "");
+                    const std::string& soundFontPath = "",
+                    std::function<void()> tickCallback = nullptr);
     void shutdown();
     bool isInitialized() const { return initialized_; }
     bool isLoopbackMode() const { return loopbackMode_; }
@@ -160,6 +163,7 @@ private:
     bool initialized_ = false;
     bool audioEnabled_ = true;
     std::string eqPath_;
+    std::function<void()> tickCallback_;  // Called during init to pump event loop
     std::string soundFontPath_;
 
     // OpenAL context

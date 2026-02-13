@@ -25,13 +25,15 @@ AudioManager::~AudioManager() {
 }
 
 bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
-                              const std::string& soundFontPath) {
+                              const std::string& soundFontPath,
+                              std::function<void()> tickCallback) {
     if (initialized_) {
         return true;
     }
 
     eqPath_ = eqPath;
     soundFontPath_ = soundFontPath;
+    tickCallback_ = std::move(tickCallback);
 
     // Try to initialize device
     bool deviceReady = false;
@@ -80,6 +82,9 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
 
     LOG_INFO(MOD_AUDIO, "Audio source pool: {} sources", availableSources_.size());
 
+    // Pump event loop before heavy music player init (SoundFont loading)
+    if (tickCallback_) tickCallback_();
+
     // Initialize music player
     musicPlayer_ = std::make_unique<MusicPlayer>();
     std::cout << "[AUDIO] Initializing music player with eqPath: " << eqPath_
@@ -88,10 +93,13 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
         LOG_WARN(MOD_AUDIO, "Music player initialization failed, music will be disabled");
     }
 
+    // Pump event loop after music player init
+    if (tickCallback_) tickCallback_();
+
     // Load sound asset mapping
     loadSoundAssets();
 
-    // Scan PFS archives for sound files
+    // Scan PFS archives for sound files (pumps event loop per-archive internally)
     scanPfsArchives();
 
     // Set initial listener position
@@ -1074,6 +1082,9 @@ void AudioManager::scanPfsArchives() {
             pfsArchives_[archivePath] = std::move(archive);
         }
         // In lazy mode, archive unique_ptr goes out of scope here — all decompressed data freed
+
+        // Pump event loop between archives to prevent network timeouts
+        if (tickCallback_) tickCallback_();
     }
 
     LOG_INFO(MOD_AUDIO, "Indexed {} sound files from {} archives (cached: {})",

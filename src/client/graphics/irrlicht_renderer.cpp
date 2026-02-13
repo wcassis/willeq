@@ -938,8 +938,14 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
     }
 
+    // Pump network after global character model load
+    if (networkTickCallback_) networkTickCallback_();
+
     // Preload numbered global character models for better coverage (global2-7_chr.s3d)
     entityRenderer_->loadNumberedGlobals();
+
+    // Pump network after numbered globals load
+    if (networkTickCallback_) networkTickCallback_();
 
     // Load equipment models from gequip.s3d archives
     if (entityRenderer_->loadEquipmentModels()) {
@@ -947,6 +953,9 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     } else {
         LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
     }
+
+    // Pump network after equipment model load
+    if (networkTickCallback_) networkTickCallback_();
 
     // Create door manager (if not already created)
     if (!doorManager_) {
@@ -2545,6 +2554,9 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     }
     EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
 
+    // Pump network after S3D archive load (can take several seconds on ARM)
+    if (networkTickCallback_) networkTickCallback_();
+
     drawLoadingScreen(scaleProgress(0.30f), L"Processing zone data...");
 
     currentZone_ = loader.getZone();
@@ -2572,10 +2584,16 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     createZoneMeshWithPvs();
     EQT::PerformanceMetrics::instance().stopTimer("Zone Mesh Creation");
 
+    // Pump network after zone mesh creation (can take several seconds on ARM)
+    if (networkTickCallback_) networkTickCallback_();
+
     drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
     EQT::PerformanceMetrics::instance().startTimer("Object Mesh Creation", EQT::MetricCategory::Zoning);
     createObjectMeshes();
     EQT::PerformanceMetrics::instance().stopTimer("Object Mesh Creation");
+
+    // Pump network after object mesh creation
+    if (networkTickCallback_) networkTickCallback_();
 
     drawLoadingScreen(scaleProgress(0.85f), L"Setting up zone lights...");
     EQT::PerformanceMetrics::instance().startTimer("Zone Lights Setup", EQT::MetricCategory::Zoning);

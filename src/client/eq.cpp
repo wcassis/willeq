@@ -50,6 +50,7 @@
 #include "client/audio/water_sounds.h"
 #endif
 
+#include "common/event/event_loop.h"
 #include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
@@ -17749,6 +17750,14 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// They are loaded in loadGlobalAssets() during GRAPHICS_LOADING_MODELS phase.
 	// This allows the progress bar to show during the entire loading process.
 
+	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
+	EQ::EventLoop::Get().Process();
+
+	// Set network tick callback so renderer can pump event loop during heavy loading stages
+	m_renderer->setNetworkTickCallback([]() {
+		EQ::EventLoop::Get().Process();
+	});
+
 	// Set up HUD callback to display player stats (HP/Mana bars)
 	// Zone, location, entities are displayed by the renderer HUD
 	m_renderer->setHUDCallback([this]() -> std::wstring {
@@ -18083,6 +18092,8 @@ bool EverQuest::InitGraphics(int width, int height) {
 		if (!m_spell_manager->initialize(m_eq_client_path)) {
 			LOG_WARN(MOD_SPELL, "Could not load spell database - spell system will be limited");
 		}
+		// Pump network after spell DB loading (can take ~1s on ARM)
+		EQ::EventLoop::Get().Process();
 	}
 
 	// Initialize buff manager with spell database
@@ -18682,6 +18693,9 @@ void EverQuest::LoadZoneGraphics() {
 
 	}
 
+	// Pump network after zone S3D loading (can take 8+ seconds on ARM)
+	EQ::EventLoop::Get().Process();
+
 	// Phase 12: Load character models (global assets)
 	// NOTE: This also initializes the sky renderer, so must be done before setZoneEnvironment
 	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_MODELS, "Loading character models...");
@@ -18694,6 +18708,9 @@ void EverQuest::LoadZoneGraphics() {
 			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
 			m_zone_fog_minclip, m_zone_fog_maxclip);
 	}
+
+	// Pump network after global assets loading (can take 10+ seconds on ARM)
+	EQ::EventLoop::Get().Process();
 
 	// Phase 13: Create entity scene nodes for all entities in m_entities
 	SetLoadingPhase(LoadingPhase::GRAPHICS_CREATING_ENTITIES, "Creating entities...");
@@ -18720,6 +18737,7 @@ void EverQuest::LoadZoneGraphics() {
 
 	// Create entities for all current spawns INCLUDING our own player
 	// Note: unloadZone() clears all entities, so we must recreate the player here
+	size_t entityCount = 0;
 	for (const auto& [spawn_id, entity] : m_entities) {
 		bool isPlayer = (entity.name == m_character);
 
@@ -18765,6 +18783,11 @@ void EverQuest::LoadZoneGraphics() {
 			if (entity.light > 0) {
 				m_renderer->setEntityLight(spawn_id, entity.light);
 			}
+		}
+
+		// Pump network every 10 entities (entity creation with model loading is slow on ARM)
+		if (++entityCount % 10 == 0) {
+			EQ::EventLoop::Get().Process();
 		}
 	}
 
@@ -19457,7 +19480,13 @@ void EverQuest::InitializeAudio() {
 	}
 
 	m_audio_manager = std::make_unique<EQT::Audio::AudioManager>();
-	if (!m_audio_manager->initialize(eqPath, false, m_audio_config_soundfont)) {
+
+	// Pass event loop pump as tick callback so network stays alive during slow audio init
+	auto networkTick = []() {
+		EQ::EventLoop::Get().Process();
+	};
+
+	if (!m_audio_manager->initialize(eqPath, false, m_audio_config_soundfont, networkTick)) {
 		LOG_WARN(MOD_AUDIO, "Failed to initialize audio system");
 		m_audio_manager.reset();
 		return;
@@ -19489,6 +19518,9 @@ void EverQuest::InitializeAudio() {
 		m_audio_config_master_volume * 100.0f,
 		m_audio_config_music_volume * 100.0f,
 		m_audio_config_effects_volume * 100.0f);
+
+	// Pump network before sound preloading
+	EQ::EventLoop::Get().Process();
 
 	// Preload common sounds for faster playback
 	m_audio_manager->preloadCommonSounds();

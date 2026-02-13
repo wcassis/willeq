@@ -420,6 +420,10 @@ public:
     // This is the heavy loading that was previously done in init()
     bool loadGlobalAssets();
 
+    // Set a callback that will be called between heavy loading stages to allow
+    // the caller to pump the network event loop (prevents connection timeouts on slow hardware)
+    void setNetworkTickCallback(std::function<void()> callback) { networkTickCallback_ = std::move(callback); }
+
     // Show/hide loading screen (progress bar overlay)
     void showLoadingScreen();
     void hideLoadingScreen();
@@ -1037,6 +1041,7 @@ private:
     bool frameBudgetExceeded_ = false;   // True if last frame exceeded budget
 
     RendererConfig config_;
+    std::function<void()> networkTickCallback_;  // Called between heavy loading stages to pump network
     bool initialized_ = false;
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool globalAssetsLoaded_ = false;  // True when loadGlobalAssets() has completed

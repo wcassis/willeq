@@ -116,18 +116,11 @@ bool MusicPlayer::initialize(const std::string& eqPath, const std::string& sound
                 }
             }
 
-            // Create audio driver if any soundfont was loaded
-            if (anySoundFontLoaded) {
-                fluidAudioDriver_ = new_fluid_audio_driver(fluidSettings_, fluidSynth_);
-                if (!fluidAudioDriver_) {
-                    // Try ALSA as fallback
-                    fluid_settings_setstr(fluidSettings_, "audio.driver", "alsa");
-                    fluidAudioDriver_ = new_fluid_audio_driver(fluidSettings_, fluidSynth_);
-                    if (!fluidAudioDriver_) {
-                        LOG_WARN(MOD_AUDIO, "Failed to create FluidSynth audio driver");
-                    }
-                }
-            } else {
+            // Skip FluidSynth audio driver creation - we always use software rendering
+            // mode which renders MIDI to PCM via fluid_synth_write_s16() and feeds it
+            // through OpenAL. This avoids issues with missing audio drivers on embedded
+            // platforms and removes a redundant audio output path.
+            if (!anySoundFontLoaded) {
                 LOG_WARN(MOD_AUDIO, "No soundfonts loaded - XMI playback disabled");
             }
         } else {
@@ -580,6 +573,7 @@ bool MusicPlayer::loadXMI(const std::string& filepath, int trackIndex) {
     // Use software rendering if explicitly enabled OR if hardware audio driver failed
     bool useSoftwareRendering = softwareRendering_ || (fluidAudioDriver_ == nullptr);
     if (useSoftwareRendering) {
+        softwareRendering_ = true;  // Ensure member is set so fillBuffer() processes MIDI events
         // Software rendering mode: manually parse MIDI and sequence events
         // We can't use fluid_player because it relies on audio driver callbacks for timing
         if (!parseMidiEvents(midiData)) {
