@@ -21,11 +21,13 @@ SoundBuffer::SoundBuffer(SoundBuffer&& other) noexcept
     , sampleRate_(other.sampleRate_)
     , channels_(other.channels_)
     , duration_(other.duration_)
+    , memorySize_(other.memorySize_)
 {
     other.buffer_ = 0;
     other.sampleRate_ = 0;
     other.channels_ = 0;
     other.duration_ = 0.0f;
+    other.memorySize_ = 0;
 }
 
 SoundBuffer& SoundBuffer::operator=(SoundBuffer&& other) noexcept {
@@ -36,11 +38,13 @@ SoundBuffer& SoundBuffer::operator=(SoundBuffer&& other) noexcept {
         sampleRate_ = other.sampleRate_;
         channels_ = other.channels_;
         duration_ = other.duration_;
+        memorySize_ = other.memorySize_;
 
         other.buffer_ = 0;
         other.sampleRate_ = 0;
         other.channels_ = 0;
         other.duration_ = 0.0f;
+        other.memorySize_ = 0;
     }
     return *this;
 }
@@ -77,6 +81,7 @@ bool SoundBuffer::loadFromFile(const std::string& filepath) {
     sampleRate_ = sfInfo.samplerate;
     channels_ = sfInfo.channels;
     duration_ = static_cast<float>(sfInfo.frames) / static_cast<float>(sfInfo.samplerate);
+    memorySize_ = samples.size() * sizeof(int16_t);
 
     // Determine OpenAL format
     ALenum format = (channels_ == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
@@ -178,6 +183,7 @@ bool SoundBuffer::loadFromPCM(const int16_t* samples, size_t sampleCount,
 
     size_t frameCount = sampleCount / channels;
     duration_ = static_cast<float>(frameCount) / static_cast<float>(sampleRate);
+    memorySize_ = sampleCount * sizeof(int16_t);
 
     ALenum format = (channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
 
@@ -204,6 +210,7 @@ void SoundBuffer::cleanup() {
     sampleRate_ = 0;
     channels_ = 0;
     duration_ = 0.0f;
+    memorySize_ = 0;
 }
 
 } // namespace Audio

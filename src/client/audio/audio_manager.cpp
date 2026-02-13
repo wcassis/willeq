@@ -139,6 +139,8 @@ void AudioManager::shutdown() {
     {
         std::lock_guard<std::mutex> lock(bufferMutex_);
         bufferCache_.clear();
+        bufferLruOrder_.clear();
+        soundBufferCacheSizeBytes_ = 0;
     }
 
     // Delete sources
@@ -526,6 +528,17 @@ void AudioManager::setAudioOutputCallback(AudioOutputCallback callback) {
     }
 }
 
+void AudioManager::setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs) {
+    soundBufferCacheMaxBytes_ = soundCacheBytes;
+    lazyPfsLoading_ = lazyPfs;
+
+    if (lazyPfs && !pfsArchives_.empty()) {
+        // If we already scanned with archives held open, release them now
+        LOG_INFO(MOD_AUDIO, "Lazy PFS mode: releasing {} cached archives", pfsArchives_.size());
+        pfsArchives_.clear();
+    }
+}
+
 void AudioManager::onSoundFinished(ALuint source) {
     releaseSource(source);
 }
@@ -536,6 +549,11 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
     // Check cache
     auto it = bufferCache_.find(filename);
     if (it != bufferCache_.end()) {
+        // LRU: move to front on cache hit
+        if (soundBufferCacheMaxBytes_ > 0) {
+            bufferLruOrder_.remove(filename);
+            bufferLruOrder_.push_front(filename);
+        }
         return it->second;
     }
 
@@ -547,15 +565,38 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
 
     // Try loading from filesystem first
     auto buffer = std::make_shared<SoundBuffer>();
+    bool loaded = false;
     if (std::filesystem::exists(fullPath) && buffer->loadFromFile(fullPath)) {
-        bufferCache_[filename] = buffer;
-        return buffer;
+        loaded = true;
+    } else {
+        // Try loading from PFS archives
+        buffer = loadSoundFromPfs(filename);
+        if (buffer) {
+            loaded = true;
+        }
     }
 
-    // Try loading from PFS archives
-    buffer = loadSoundFromPfs(filename);
-    if (buffer) {
+    if (loaded && buffer) {
         bufferCache_[filename] = buffer;
+
+        // LRU tracking
+        if (soundBufferCacheMaxBytes_ > 0) {
+            bufferLruOrder_.push_front(filename);
+            soundBufferCacheSizeBytes_ += buffer->getMemorySize();
+
+            // Evict oldest entries while over budget
+            while (soundBufferCacheSizeBytes_ > soundBufferCacheMaxBytes_ &&
+                   bufferLruOrder_.size() > 1) {
+                const std::string& oldest = bufferLruOrder_.back();
+                auto evictIt = bufferCache_.find(oldest);
+                if (evictIt != bufferCache_.end()) {
+                    soundBufferCacheSizeBytes_ -= evictIt->second->getMemorySize();
+                    bufferCache_.erase(evictIt);
+                }
+                bufferLruOrder_.pop_back();
+            }
+        }
+
         return buffer;
     }
 
@@ -1003,7 +1044,8 @@ void AudioManager::scanPfsArchives() {
         return;
     }
 
-    LOG_INFO(MOD_AUDIO, "Scanning {} sound archives...", archivePaths.size());
+    LOG_INFO(MOD_AUDIO, "Scanning {} sound archives{}...", archivePaths.size(),
+             lazyPfsLoading_ ? " (lazy mode)" : "");
 
     // Scan each archive and build index
     size_t totalFiles = 0;
@@ -1027,12 +1069,15 @@ void AudioManager::scanPfsArchives() {
             totalFiles++;
         }
 
-        // Keep archive open for later use
-        pfsArchives_[archivePath] = std::move(archive);
+        if (!lazyPfsLoading_) {
+            // Keep archive open for later use (traditional mode)
+            pfsArchives_[archivePath] = std::move(archive);
+        }
+        // In lazy mode, archive unique_ptr goes out of scope here — all decompressed data freed
     }
 
-    LOG_INFO(MOD_AUDIO, "Indexed {} sound files from {} archives",
-             totalFiles, pfsArchives_.size());
+    LOG_INFO(MOD_AUDIO, "Indexed {} sound files from {} archives (cached: {})",
+             totalFiles, archivePaths.size(), pfsArchives_.size());
 }
 
 bool AudioManager::loadSoundDataFromPfs(const std::string& filename,
@@ -1050,7 +1095,22 @@ bool AudioManager::loadSoundDataFromPfs(const std::string& filename,
 
     const std::string& archivePath = indexIt->second;
 
-    // Get or open archive
+    if (lazyPfsLoading_) {
+        // Lazy mode: open archive, extract file, don't cache the archive
+        Graphics::PfsArchive archive;
+        if (!archive.open(archivePath)) {
+            LOG_WARN(MOD_AUDIO, "Failed to open archive (lazy): {}", archivePath);
+            return false;
+        }
+        if (!archive.get(lowerFilename, outData)) {
+            LOG_DEBUG(MOD_AUDIO, "Failed to extract {} from {} (lazy)", lowerFilename, archivePath);
+            return false;
+        }
+        return true;
+        // archive destroyed here — no persistent memory
+    }
+
+    // Traditional mode: get or open cached archive
     auto archiveIt = pfsArchives_.find(archivePath);
     if (archiveIt == pfsArchives_.end()) {
         // Archive not cached, try to open it

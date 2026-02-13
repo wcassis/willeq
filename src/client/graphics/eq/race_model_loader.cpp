@@ -92,6 +92,7 @@ void RaceModelLoader::clearCache() {
 
     // Clear cached _chr.s3d files from other zones
     otherChrCaches_.clear();
+    chrCacheLruOrder_.clear();
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cache cleared");
 }

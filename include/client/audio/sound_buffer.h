@@ -39,6 +39,7 @@ public:
     uint32_t getSampleRate() const { return sampleRate_; }
     uint8_t getChannels() const { return channels_; }
     float getDuration() const { return duration_; }
+    size_t getMemorySize() const { return memorySize_; }
 
 private:
     void cleanup();
@@ -48,6 +49,7 @@ private:
     uint32_t sampleRate_ = 0;
     uint8_t channels_ = 0;
     float duration_ = 0.0f;
+    size_t memorySize_ = 0;  // Size of decoded audio data in bytes
 };
 
 } // namespace Audio

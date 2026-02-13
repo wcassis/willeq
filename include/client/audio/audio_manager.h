@@ -15,6 +15,7 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#include <list>
 
 namespace EQT {
 namespace Graphics {
@@ -122,6 +123,9 @@ public:
     // Returns true if already in loopback mode or switch was successful
     bool enableLoopbackMode();
 
+    // Memory constraints for constrained rendering mode
+    void setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs);
+
     // Internal: called by sound sources when finished
     void onSoundFinished(ALuint source);
 
@@ -171,6 +175,11 @@ private:
     mutable std::mutex bufferMutex_;
     std::unordered_map<std::string, std::shared_ptr<SoundBuffer>> bufferCache_;
 
+    // Sound buffer LRU cache eviction
+    size_t soundBufferCacheMaxBytes_ = 0;    // 0 = unlimited
+    size_t soundBufferCacheSizeBytes_ = 0;   // Current tracked size
+    std::list<std::string> bufferLruOrder_;  // Front = most recently used
+
     // Sound ID to filename mapping (from SoundAssets.txt)
     std::unordered_map<uint32_t, std::string> soundIdMap_;
 
@@ -178,6 +187,8 @@ private:
     std::unordered_map<std::string, std::string> pfsFileIndex_;
     // Cached open PFS archives
     std::unordered_map<std::string, std::unique_ptr<Graphics::PfsArchive>> pfsArchives_;
+    // Lazy PFS loading mode — don't keep archives decompressed in memory
+    bool lazyPfsLoading_ = false;
 
     // Source pool for sound effects
     static constexpr size_t MAX_SOURCES = 32;

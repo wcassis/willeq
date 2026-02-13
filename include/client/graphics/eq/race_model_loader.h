@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <list>
 
 // Forward declaration for EntityAppearance
 namespace EQT { namespace Graphics { struct EntityAppearance; } }
@@ -122,6 +123,9 @@ public:
 
     // Get number of loaded race models
     size_t getLoadedModelCount() const { return loadedModels_.size(); }
+
+    // Set maximum cached _chr.s3d entries (0 = unlimited)
+    void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
 
     // Old models mode - when true, only load from global_chr.s3d (classic models)
     // When false, prefer race-specific S3D files (Luclin+ models)
@@ -252,6 +256,8 @@ private:
         std::map<std::string, std::shared_ptr<TextureInfo>> textures;
     };
     std::map<std::string, OtherChrCache> otherChrCaches_;
+    size_t maxChrCacheEntries_ = 0;          // 0 = unlimited
+    std::list<std::string> chrCacheLruOrder_; // Front = most recently used
 
     // Temporary storage for vertex data during animated mesh building
     // (populated by buildMeshFromGeometry, consumed by getAnimatedMeshForRace)

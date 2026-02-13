@@ -1336,6 +1336,11 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
     // First, search already-cached _chr.s3d files
     for (const auto& [filename, cache] : otherChrCaches_) {
         if (searchAndBuildModel(cache.characters, cache.textures, filename)) {
+            // LRU: move to front on cache hit
+            if (maxChrCacheEntries_ > 0) {
+                chrCacheLruOrder_.remove(filename);
+                chrCacheLruOrder_.push_front(filename);
+            }
             return true;
         }
     }
@@ -1410,7 +1415,20 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             // Invalidate merged textures cache since we added new textures
             mergedTexturesCacheValid_ = false;
 
-            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {}", cache.characters.size(), lowerFilename);
+            // LRU tracking and eviction
+            if (maxChrCacheEntries_ > 0) {
+                chrCacheLruOrder_.push_front(lowerFilename);
+                while (otherChrCaches_.size() > maxChrCacheEntries_ &&
+                       chrCacheLruOrder_.size() > 1) {
+                    const std::string& oldest = chrCacheLruOrder_.back();
+                    otherChrCaches_.erase(oldest);
+                    chrCacheLruOrder_.pop_back();
+                    mergedTexturesCacheValid_ = false;
+                }
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {} (total cached: {})",
+                      cache.characters.size(), lowerFilename, otherChrCaches_.size());
 
             // Search the newly loaded file
             if (searchAndBuildModel(cache.characters, cache.textures, lowerFilename)) {
