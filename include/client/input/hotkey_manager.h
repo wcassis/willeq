@@ -38,10 +38,8 @@ inline bool hasModifier(ModifierFlags flags, ModifierFlags mod) {
  * Bindings in Global mode are always active regardless of current mode.
  */
 enum class HotkeyMode : uint8_t {
-    Global,   // Always active (F9, F12, Shift+Escape)
-    Player,   // Active in Player mode (WASD, Q, F1-F8, 1-0, Alt+1-8)
-    Repair,   // Active in Repair mode (X/Y/Z rotation, Ctrl+1/2/3 flip)
-    Admin     // Active in Admin mode (Ctrl+F1-F8, [/], PageUp/Down)
+    Global,   // Always active (F12, Shift+Escape)
+    Player    // Active in Player mode (WASD, Q, F1-F8, 1-0, Alt+1-8)
 };
 
 /**
@@ -58,7 +56,7 @@ enum class HotkeyAction : uint32_t {
     ToggleZoneLights,
     ToggleCameraMode,
     ToggleOldModels,
-    ToggleRendererMode,
+    ToggleAllUI,
     ToggleUILock,
     SaveUILayout,
     ResetUIDefaults,
@@ -150,68 +148,6 @@ enum class HotkeyAction : uint32_t {
     // Lighting
     CycleObjectLights,
 
-    // === Admin Mode Actions ===
-    // Admin camera movement (free camera)
-    CameraForward,
-    CameraBackward,
-    CameraLeft,
-    CameraRight,
-    CameraUp,
-    CameraDown,
-
-    SaveEntities,
-    ToggleLighting,
-    ToggleHelmDebug,
-    HelmPrintState,
-    AnimSpeedDecrease,
-    AnimSpeedIncrease,
-    AmbientLightDecrease,
-    AmbientLightIncrease,
-    CorpseZOffsetUp,
-    CorpseZOffsetDown,
-    EyeHeightUp,
-    EyeHeightDown,
-    ParticleMultiplierDecrease,
-    ParticleMultiplierIncrease,
-    DetailDensityDecrease,
-    DetailDensityIncrease,
-    HeadVariantPrev,
-    HeadVariantNext,
-
-    // Helm UV adjustments (Admin/HelmDebug mode)
-    HelmUOffsetLeft,
-    HelmUOffsetRight,
-    HelmVOffsetUp,
-    HelmVOffsetDown,
-    HelmUScaleDecrease,
-    HelmUScaleIncrease,
-    HelmVScaleDecrease,
-    HelmVScaleIncrease,
-    HelmRotateLeft,
-    HelmRotateRight,
-    HelmReset,
-    HelmUVSwap,
-    HelmVFlip,
-    HelmUFlip,
-
-    // Collision height adjustments
-    CollisionHeightUp,
-    CollisionHeightDown,
-    StepHeightUp,
-    StepHeightDown,
-
-    // === Repair Mode Actions ===
-    RepairRotateXPos,
-    RepairRotateXNeg,
-    RepairRotateYPos,
-    RepairRotateYNeg,
-    RepairRotateZPos,
-    RepairRotateZNeg,
-    RepairFlipX,
-    RepairFlipY,
-    RepairFlipZ,
-    RepairReset,
-
     Count
 };
 
@@ -253,7 +189,7 @@ struct ConflictInfo {
  *
  * Features:
  * - Load/save hotkey configurations from JSON files
- * - Mode-based namespacing (Global, Player, Repair, Admin)
+ * - Mode-based namespacing (Global, Player)
  * - Conflict detection with warnings
  * - Support for modifier key combinations (Ctrl+Alt+Key)
  * - Runtime reloading

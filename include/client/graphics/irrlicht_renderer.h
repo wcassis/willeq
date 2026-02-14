@@ -55,19 +55,12 @@ namespace Graphics {
 class SkyRenderer;
 class WeatherEffectsController;
 
-// Renderer mode: Player (gameplay), Repair (object adjustment), Admin (debug)
-enum class RendererMode {
-    Player,  // First-person/follow, collision, server sync, simplified HUD
-    Repair,  // Object targeting and adjustment for diagnosing rendering issues
-    Admin    // Free camera, debug info, no collision, all keys work
-};
-
 // Renderer input action types for event queue
 enum class RendererAction : uint8_t {
     // Renderer-internal toggles
     ToggleWireframe, ToggleHUD, ToggleNameTags, ToggleZoneLights,
-    CycleObjectLights, ToggleLighting, ToggleCameraMode, ToggleOldModels,
-    SaveEntities, Screenshot, ToggleRendererMode,
+    CycleObjectLights, ToggleCameraMode, ToggleOldModels,
+    Screenshot, ToggleAllUI,
 
     // Player-mode actions
     ToggleAutorun, ToggleAutoAttack, Hail, Consider,
@@ -86,14 +79,8 @@ enum class RendererAction : uint8_t {
     MirrorXMapOverlay, ToggleNavmeshOverlay, RotateNavmeshOverlay,
     MirrorXNavmeshOverlay,
 
-    // Helm debug
-    ToggleHelmDebug, HelmUVSwap, HelmVFlip, HelmUFlip, HelmReset, HelmPrintState,
-
     // Frustum culling
     ToggleFrustumCulling,
-
-    // Repair mode
-    RepairFlipX, RepairFlipY, RepairFlipZ, RepairReset,
 };
 
 struct RendererEvent {
@@ -280,32 +267,9 @@ public:
     int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
 
     // Delta accumulators (accumulate between frames, consumed once per frame)
-    float getCollisionHeightDelta() { float d = collisionHeightDelta_; collisionHeightDelta_ = 0; return d; }
-    float getStepHeightDelta() { float d = stepHeightDelta_; stepHeightDelta_ = 0; return d; }
-    float getHelmUOffsetDelta() { float d = helmUOffsetDelta_; helmUOffsetDelta_ = 0; return d; }
-    float getHelmVOffsetDelta() { float d = helmVOffsetDelta_; helmVOffsetDelta_ = 0; return d; }
-    float getHelmUScaleDelta() { float d = helmUScaleDelta_; helmUScaleDelta_ = 0; return d; }
-    float getHelmVScaleDelta() { float d = helmVScaleDelta_; helmVScaleDelta_ = 0; return d; }
-    float getHelmRotationDelta() { float d = helmRotationDelta_; helmRotationDelta_ = 0; return d; }
-    int getHeadVariantCycleDelta() { int d = headVariantCycleDelta_; headVariantCycleDelta_ = 0; return d; }
-    float getOffsetXDelta() { float d = offsetXDelta_; offsetXDelta_ = 0; return d; }
-    float getOffsetYDelta() { float d = offsetYDelta_; offsetYDelta_ = 0; return d; }
-    float getOffsetZDelta() { float d = offsetZDelta_; offsetZDelta_ = 0; return d; }
-    float getRotationXDelta() { float d = rotationXDelta_; rotationXDelta_ = 0; return d; }
-    float getRotationYDelta() { float d = rotationYDelta_; rotationYDelta_ = 0; return d; }
-    float getRotationZDelta() { float d = rotationZDelta_; rotationZDelta_ = 0; return d; }
-    float getAnimSpeedDelta() { float d = animSpeedDelta_; animSpeedDelta_ = 0; return d; }
     float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
-    float getAmbientLightDelta() { float d = ambientLightDelta_; ambientLightDelta_ = 0; return d; }
     float getMusicVolumeDelta() { float d = musicVolumeDelta_; musicVolumeDelta_ = 0; return d; }
     float getEffectsVolumeDelta() { float d = effectsVolumeDelta_; effectsVolumeDelta_ = 0; return d; }
-    float getCorpseZOffsetDelta() { float d = corpseZOffsetDelta_; corpseZOffsetDelta_ = 0; return d; }
-    float getEyeHeightDelta() { float d = eyeHeightDelta_; eyeHeightDelta_ = 0; return d; }
-    float getParticleMultiplierDelta() { float d = particleMultiplierDelta_; particleMultiplierDelta_ = 0; return d; }
-    float getDetailDensityDelta() { float d = detailDensityDelta_; detailDensityDelta_ = 0; return d; }
-    float getRepairRotateXDelta() { float d = repairRotateXDelta_; repairRotateXDelta_ = 0; return d; }
-    float getRepairRotateYDelta() { float d = repairRotateYDelta_; repairRotateYDelta_ = 0; return d; }
-    float getRepairRotateZDelta() { float d = repairRotateZDelta_; repairRotateZDelta_ = 0; return d; }
 
     // Chat input key events
     struct KeyEvent {
@@ -333,13 +297,6 @@ public:
     bool isChatInputFocused() const { return chatInputFocused_; }
 
     // Current mode (for hotkey lookups)
-    void setCurrentMode(RendererMode mode) {
-        switch (mode) {
-            case RendererMode::Player: currentMode_ = eqt::input::HotkeyMode::Player; break;
-            case RendererMode::Repair: currentMode_ = eqt::input::HotkeyMode::Repair; break;
-            case RendererMode::Admin: currentMode_ = eqt::input::HotkeyMode::Admin; break;
-        }
-    }
     eqt::input::HotkeyMode getCurrentMode() const { return currentMode_; }
 
 private:
@@ -366,32 +323,9 @@ private:
     int8_t hotbarActivationRequest_ = -1;
 
     // Delta accumulators (accumulate between frames)
-    float collisionHeightDelta_ = 0.0f;
-    float stepHeightDelta_ = 0.0f;
-    float offsetXDelta_ = 0.0f;
-    float offsetYDelta_ = 0.0f;
-    float offsetZDelta_ = 0.0f;
-    float rotationXDelta_ = 0.0f;
-    float rotationYDelta_ = 0.0f;
-    float rotationZDelta_ = 0.0f;
-    float animSpeedDelta_ = 0.0f;
     float cameraZoomDelta_ = 0.0f;
-    float ambientLightDelta_ = 0.0f;
     float musicVolumeDelta_ = 0.0f;
     float effectsVolumeDelta_ = 0.0f;
-    float corpseZOffsetDelta_ = 0.0f;
-    float eyeHeightDelta_ = 0.0f;
-    float particleMultiplierDelta_ = 0.0f;
-    float detailDensityDelta_ = 0.0f;
-    float helmUOffsetDelta_ = 0.0f;
-    float helmVOffsetDelta_ = 0.0f;
-    float helmUScaleDelta_ = 0.0f;
-    float helmVScaleDelta_ = 0.0f;
-    float helmRotationDelta_ = 0.0f;
-    int headVariantCycleDelta_ = 0;
-    float repairRotateXDelta_ = 0.0f;
-    float repairRotateYDelta_ = 0.0f;
-    float repairRotateZDelta_ = 0.0f;
 
     // Chat input state
     std::vector<KeyEvent> pendingKeyEvents_;
@@ -624,8 +558,6 @@ public:
     bool processFrameRender(float deltaTime);  // Returns false for loading screen early-return
     void processCommonInput(const std::vector<RendererEvent>& actions);
     void processPlayerInput(const std::vector<RendererEvent>& actions);
-    void processAdminInput(const std::vector<RendererEvent>& actions);
-    void processRepairInput(const std::vector<RendererEvent>& actions);
     void processInputDeltas(float deltaTime);
     void processChatInput();
 
@@ -638,9 +570,9 @@ public:
     // Toggle rendering options
     void toggleWireframe();
     void toggleHUD();
+    void toggleAllUI();
     void toggleNameTags();
     void toggleFog();
-    void toggleLighting();
     void toggleZoneLights();
     void cycleObjectLights();
     void toggleOldModels();
@@ -712,10 +644,6 @@ public:
     using HUDCallback = std::function<std::wstring()>;
     void setHUDCallback(HUDCallback callback) { hudCallback_ = callback; }
 
-    // Save entities callback (called when F10 is pressed)
-    using SaveEntitiesCallback = std::function<void()>;
-    void setSaveEntitiesCallback(SaveEntitiesCallback callback) { saveEntitiesCallback_ = callback; }
-
     // Movement callback (for notifying EverQuest class of position changes in Player Mode)
     using MovementCallback = std::function<void(const PlayerPositionUpdate& update)>;
     void setMovementCallback(MovementCallback callback) { movementCallback_ = callback; }
@@ -760,12 +688,6 @@ public:
     void clearCurrentTarget();
     uint16_t getCurrentTargetId() const { return currentTargetId_; }
     const TargetInfo& getCurrentTargetInfo() const { return currentTargetInfo_; }
-
-    // Renderer mode (Admin vs Player)
-    void setRendererMode(RendererMode mode);
-    void toggleRendererMode();
-    RendererMode getRendererMode() const { return rendererMode_; }
-    std::string getRendererModeString() const;
 
     // Collision map for player mode movement
     void setCollisionMap(HCMap* map) { collisionMap_ = map; }
@@ -1055,6 +977,7 @@ private:
     std::wstring loadingTitle_ = L"EverQuest";  // Loading screen title
     bool wireframeMode_ = false;
     bool hudEnabled_ = true;
+    bool allUIHidden_ = false;
     bool fogEnabled_ = true;
     bool lightingEnabled_ = true;   // Lighting enabled by default
     bool zoneLightsEnabled_ = false; // Zone lights off by default
@@ -1077,7 +1000,6 @@ private:
     irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
     irr::gui::IGUIStaticText* headingDebugText_ = nullptr;  // Heading debug info (right side)
     HUDCallback hudCallback_;
-    SaveEntitiesCallback saveEntitiesCallback_;
     float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)
 
     // Performance: HUD dirty tracking to avoid rebuilding every frame
@@ -1087,15 +1009,12 @@ private:
     std::wstring cachedHeadingDebugText_;
     // Cached state values to detect changes
     struct HudCachedState {
-        RendererMode rendererMode = RendererMode::Player;
         int fps = 0;
         int playerX = 0, playerY = 0, playerZ = 0;
         size_t entityCount = 0;
         size_t modeledEntityCount = 0;
         uint16_t targetId = 0;
         uint8_t targetHpPercent = 0;
-        float animSpeed = 1.0f;
-        float corpseZ = 0.0f;
         bool wireframeMode = false;
         bool oldModels = true;
         std::string cameraMode;
@@ -1113,21 +1032,9 @@ private:
     int polygonBudgetExceededFrames_ = 0;  // Throttle warnings
     int constrainedStatsLogCounter_ = 0;   // Periodic stats logging
 
-    // Renderer mode (Player / Repair / Admin)
-    RendererMode rendererMode_ = RendererMode::Player;
     PlayerMovementState playerMovement_;
     PlayerModeConfig playerConfig_;
     MovementCallback movementCallback_;
-
-    // Repair mode state
-    irr::scene::ISceneNode* repairTargetNode_ = nullptr;
-    std::string repairTargetName_;
-    irr::core::vector3df repairOriginalRotation_{0, 0, 0};
-    irr::core::vector3df repairRotationOffset_{0, 0, 0};
-    irr::core::vector3df repairOriginalScale_{1, 1, 1};
-    bool repairFlipX_ = false;
-    bool repairFlipY_ = false;
-    bool repairFlipZ_ = false;
 
     // Collision detection for player mode
     HCMap* collisionMap_ = nullptr;
@@ -1160,16 +1067,6 @@ private:
                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
     // Find ground Z at position. currentZ is model center (server Z), modelYOffset is offset from center to feet.
     float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
-
-    // Repair mode methods
-    irr::scene::ISceneNode* findZoneObjectAtScreenPosition(int screenX, int screenY);
-    void selectRepairTarget(irr::scene::ISceneNode* node);
-    void clearRepairTarget();
-    void drawRepairTargetBoundingBox();  // Draw white wireframe box around repair target
-    void applyRepairRotation(float deltaX, float deltaY, float deltaZ);  // Apply rotation offset
-    void toggleRepairFlip(int axis);  // Toggle flip on axis (0=X, 1=Y, 2=Z)
-    void resetRepairAdjustments();  // Reset all adjustments to original
-    void logRepairAdjustment();  // Log current adjustment state
 
     // LOS checking for name tags (Player Mode)
     float lastLOSCheckTime_ = 0.0f;

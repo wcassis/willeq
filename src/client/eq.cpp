@@ -17790,12 +17790,6 @@ bool EverQuest::InitGraphics(int width, int height) {
 		return ss.str();
 	});
 
-	// Set up save entities callback (F10 key)
-	m_renderer->setSaveEntitiesCallback([this]() {
-		std::string filename = "entities_" + m_current_zone_name + ".json";
-		SaveEntityDataToFile(filename);
-	});
-
 	// Set up movement callback for Player Mode server sync
 	m_renderer->setMovementCallback([this](const EQT::Graphics::PlayerPositionUpdate& update) {
 		OnGraphicsMovement(update);
@@ -18563,12 +18557,6 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 	try {
 		// Update player position in renderer (only in Admin mode)
 		// In Player/Repair mode, the renderer drives position via OnGraphicsMovement callback
-		// Convert m_heading from degrees (0-360) to EQ format (0-512)
-		if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Admin) {
-			float heading512 = m_heading * 512.0f / 360.0f;
-			m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
-		}
-
 		if (zone_transition_logging) {
 			LOG_TRACE(MOD_GRAPHICS, "Position set, updating target...");
 		}
@@ -18806,12 +18794,8 @@ void EverQuest::LoadZoneGraphics() {
 	// Phase 14: Camera, lighting, final setup
 	SetLoadingPhase(LoadingPhase::GRAPHICS_FINALIZING, "Preparing world...");
 
-	// Set camera mode based on renderer mode
-	if (m_renderer->getRendererMode() == EQT::Graphics::RendererMode::Player) {
-		m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
-	} else {
-		m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Free);
-	}
+	// Set camera to follow mode
+	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
 
 	// Convert m_heading from degrees (0-360) to EQ format (0-512)
 	float heading512 = m_heading * 512.0f / 360.0f;
@@ -19069,8 +19053,7 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 	// Called by the renderer when the player moves in Player Mode
 	// This syncs the player's position with the server
 
-	// Only accept graphics movement when in Player mode
-	if (!m_renderer || m_renderer->getRendererMode() != EQT::Graphics::RendererMode::Player) {
+	if (!m_renderer) {
 		return;
 	}
 

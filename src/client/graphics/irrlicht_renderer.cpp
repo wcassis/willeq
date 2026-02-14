@@ -186,12 +186,6 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 slashKeyPressed_ = true;
             }
 
-            // Step sizes for delta-based adjustments
-            float uvStep = event.KeyInput.Shift ? 0.01f : 0.1f;
-            float scaleStep = event.KeyInput.Shift ? 0.01f : 0.1f;
-            float rotStep = event.KeyInput.Shift ? 1.0f : 15.0f;
-            float repairRotStep = 15.0f;
-
             // Look up action from HotkeyManager
             // Check Alt key state (Irrlicht doesn't expose Alt in KeyInput directly)
             bool alt = keyIsDown_[irr::KEY_LMENU] || keyIsDown_[irr::KEY_RMENU];
@@ -223,7 +217,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleZoneLights: actionQueue_.push_back({RA::ToggleZoneLights}); break;
                     case HA::ToggleCameraMode: actionQueue_.push_back({RA::ToggleCameraMode}); break;
                     case HA::ToggleOldModels: actionQueue_.push_back({RA::ToggleOldModels}); break;
-                    case HA::ToggleRendererMode: actionQueue_.push_back({RA::ToggleRendererMode}); break;
+                    case HA::ToggleAllUI: actionQueue_.push_back({RA::ToggleAllUI}); break;
 
                     // === Player Mode Actions ===
                     // Game actions → bridgeQueue (routed through InputActionBridge)
@@ -258,7 +252,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::Hail: bridgeQueue_.push_back({RA::Hail}); break;
                     case HA::Consider: bridgeQueue_.push_back({RA::Consider}); break;
                     case HA::ClearTarget:
-                        // Both queues: bridge clears combat target, renderer clears display + repair target
+                        // Both queues: bridge clears combat target, renderer clears display
                         bridgeQueue_.push_back({RA::ClearTarget});
                         actionQueue_.push_back({RA::ClearTarget});
                         break;
@@ -310,99 +304,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::EffectsVolumeUp: effectsVolumeDelta_ = 0.1f; break;
                     case HA::EffectsVolumeDown: effectsVolumeDelta_ = -0.1f; break;
 
-                    // === Admin Mode Actions ===
-                    case HA::SaveEntities: actionQueue_.push_back({RA::SaveEntities}); break;
-                    case HA::ToggleLighting: actionQueue_.push_back({RA::ToggleLighting}); break;
-                    case HA::ToggleHelmDebug: actionQueue_.push_back({RA::ToggleHelmDebug}); break;
-                    case HA::HelmPrintState: actionQueue_.push_back({RA::HelmPrintState}); break;
-                    case HA::AnimSpeedDecrease: animSpeedDelta_ = -0.1f; break;
-                    case HA::AnimSpeedIncrease: animSpeedDelta_ = 0.1f; break;
-                    case HA::AmbientLightDecrease:
-                        ambientLightDelta_ = event.KeyInput.Shift ? -0.01f : -0.05f;
-                        break;
-                    case HA::AmbientLightIncrease:
-                        ambientLightDelta_ = event.KeyInput.Shift ? 0.01f : 0.05f;
-                        break;
-                    case HA::CorpseZOffsetUp: corpseZOffsetDelta_ = 1.0f; break;
-                    case HA::CorpseZOffsetDown: corpseZOffsetDelta_ = -1.0f; break;
-                    case HA::EyeHeightUp: eyeHeightDelta_ = 1.0f; break;
-                    case HA::EyeHeightDown: eyeHeightDelta_ = -1.0f; break;
-                    case HA::ParticleMultiplierDecrease:
-                        particleMultiplierDelta_ = event.KeyInput.Shift ? -0.1f : -0.5f;
-                        break;
-                    case HA::ParticleMultiplierIncrease:
-                        particleMultiplierDelta_ = event.KeyInput.Shift ? 0.1f : 0.5f;
-                        break;
-                    case HA::DetailDensityDecrease:
-                        detailDensityDelta_ = event.KeyInput.Shift ? -0.05f : -0.1f;
-                        break;
-                    case HA::DetailDensityIncrease:
-                        detailDensityDelta_ = event.KeyInput.Shift ? 0.05f : 0.1f;
-                        break;
-                    case HA::HeadVariantPrev: headVariantCycleDelta_ = -1; break;
-                    case HA::HeadVariantNext: headVariantCycleDelta_ = 1; break;
-
-                    // Helm UV adjustments
-                    case HA::HelmUOffsetLeft: helmUOffsetDelta_ = -uvStep; break;
-                    case HA::HelmUOffsetRight: helmUOffsetDelta_ = uvStep; break;
-                    case HA::HelmVOffsetUp: helmVOffsetDelta_ = uvStep; break;
-                    case HA::HelmVOffsetDown: helmVOffsetDelta_ = -uvStep; break;
-                    case HA::HelmUScaleDecrease: helmUScaleDelta_ = -scaleStep; break;
-                    case HA::HelmUScaleIncrease: helmUScaleDelta_ = scaleStep; break;
-                    case HA::HelmVScaleDecrease: helmVScaleDelta_ = -scaleStep; break;
-                    case HA::HelmVScaleIncrease: helmVScaleDelta_ = scaleStep; break;
-                    case HA::HelmRotateLeft: helmRotationDelta_ = -rotStep; break;
-                    case HA::HelmRotateRight: helmRotationDelta_ = rotStep; break;
-                    case HA::HelmReset: actionQueue_.push_back({RA::HelmReset}); break;
-                    case HA::HelmUVSwap: actionQueue_.push_back({RA::HelmUVSwap}); break;
-                    case HA::HelmVFlip: actionQueue_.push_back({RA::HelmVFlip}); break;
-                    case HA::HelmUFlip: actionQueue_.push_back({RA::HelmUFlip}); break;
-
-                    // Collision height adjustments
-                    case HA::CollisionHeightUp:
-                        collisionHeightDelta_ = event.KeyInput.Shift ? 0.1f : 1.0f;
-                        break;
-                    case HA::CollisionHeightDown:
-                        collisionHeightDelta_ = event.KeyInput.Shift ? -0.1f : -1.0f;
-                        break;
-                    case HA::StepHeightUp:
-                        stepHeightDelta_ = event.KeyInput.Shift ? 0.1f : 1.0f;
-                        break;
-                    case HA::StepHeightDown:
-                        stepHeightDelta_ = event.KeyInput.Shift ? -0.1f : -1.0f;
-                        break;
-
-                    // === Repair Mode Actions ===
-                    case HA::RepairRotateXPos: repairRotateXDelta_ = repairRotStep; break;
-                    case HA::RepairRotateXNeg: repairRotateXDelta_ = -repairRotStep; break;
-                    case HA::RepairRotateYPos: repairRotateYDelta_ = repairRotStep; break;
-                    case HA::RepairRotateYNeg: repairRotateYDelta_ = -repairRotStep; break;
-                    case HA::RepairRotateZPos: repairRotateZDelta_ = repairRotStep; break;
-                    case HA::RepairRotateZNeg: repairRotateZDelta_ = -repairRotStep; break;
-                    case HA::RepairFlipX: actionQueue_.push_back({RA::RepairFlipX}); break;
-                    case HA::RepairFlipY: actionQueue_.push_back({RA::RepairFlipY}); break;
-                    case HA::RepairFlipZ: actionQueue_.push_back({RA::RepairFlipZ}); break;
-                    case HA::RepairReset: actionQueue_.push_back({RA::RepairReset}); break;
-
                     // Movement keys and Jump are handled separately (continuous state)
                     default:
                         break;
                 }
             }
-
-            // Numpad helm controls (not in HotkeyManager, kept as hardcoded fallback)
-            if (event.KeyInput.Key == irr::KEY_NUMPAD4) helmUOffsetDelta_ = -uvStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD6) helmUOffsetDelta_ = uvStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD8) helmVOffsetDelta_ = uvStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD2) helmVOffsetDelta_ = -uvStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD7) helmUScaleDelta_ = -scaleStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD9) helmUScaleDelta_ = scaleStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD1) helmVScaleDelta_ = -scaleStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD3) helmVScaleDelta_ = scaleStep;
-            if (event.KeyInput.Key == irr::KEY_ADD) helmRotationDelta_ = rotStep;
-            if (event.KeyInput.Key == irr::KEY_SUBTRACT) helmRotationDelta_ = -rotStep;
-            if (event.KeyInput.Key == irr::KEY_NUMPAD5) actionQueue_.push_back({RendererAction::HelmPrintState});
-            if (event.KeyInput.Key == irr::KEY_NUMPAD0) actionQueue_.push_back({RendererAction::HelmReset});
         }
         return true;
     }
@@ -608,7 +514,6 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create event receiver
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
     device_->setEventReceiver(eventReceiver_.get());
-    eventReceiver_->setCurrentMode(rendererMode_);  // Initialize hotkey mode
 
     // Setup camera
     setupCamera();
@@ -2134,7 +2039,6 @@ void IrrlichtRenderer::updateHUD() {
     // Performance optimization: check if HUD state has changed
     // Build current state snapshot for comparison
     HudCachedState currentState;
-    currentState.rendererMode = rendererMode_;
     currentState.fps = currentFps_;
     currentState.playerX = static_cast<int>(playerX_);
     currentState.playerY = static_cast<int>(playerY_);
@@ -2142,8 +2046,6 @@ void IrrlichtRenderer::updateHUD() {
     if (entityRenderer_) {
         currentState.entityCount = entityRenderer_->getEntityCount();
         currentState.modeledEntityCount = entityRenderer_->getModeledEntityCount();
-        currentState.animSpeed = entityRenderer_->getGlobalAnimationSpeed();
-        currentState.corpseZ = entityRenderer_->getCorpseZOffset();
     }
     currentState.targetId = currentTargetId_;
     currentState.targetHpPercent = currentTargetHpPercent_;
@@ -2153,8 +2055,7 @@ void IrrlichtRenderer::updateHUD() {
     currentState.zoneName = currentZoneName_;
 
     // Check if state has changed
-    bool stateChanged = (currentState.rendererMode != hudCachedState_.rendererMode ||
-                         currentState.fps != hudCachedState_.fps ||
+    bool stateChanged = (currentState.fps != hudCachedState_.fps ||
                          currentState.playerX != hudCachedState_.playerX ||
                          currentState.playerY != hudCachedState_.playerY ||
                          currentState.playerZ != hudCachedState_.playerZ ||
@@ -2162,8 +2063,6 @@ void IrrlichtRenderer::updateHUD() {
                          currentState.modeledEntityCount != hudCachedState_.modeledEntityCount ||
                          currentState.targetId != hudCachedState_.targetId ||
                          currentState.targetHpPercent != hudCachedState_.targetHpPercent ||
-                         currentState.animSpeed != hudCachedState_.animSpeed ||
-                         currentState.corpseZ != hudCachedState_.corpseZ ||
                          currentState.wireframeMode != hudCachedState_.wireframeMode ||
                          currentState.oldModels != hudCachedState_.oldModels ||
                          currentState.cameraMode != hudCachedState_.cameraMode ||
@@ -2183,7 +2082,7 @@ void IrrlichtRenderer::updateHUD() {
     // Heading debug text (right side, used in Player mode)
     std::wstringstream headingDebug;
 
-    if (rendererMode_ == RendererMode::Player) {
+    {
         // === PLAYER MODE HUD ===
         // Show heading debug info for current target (on right side)
         if (currentTargetId_ != 0 && entityRenderer_) {
@@ -2212,300 +2111,6 @@ void IrrlichtRenderer::updateHUD() {
                 headingDebug << hdgBuf;
             }
         }
-    } else if (rendererMode_ == RendererMode::Repair) {
-        // === REPAIR MODE HUD ===
-        text << L"[REPAIR MODE]\n";
-
-        // Zone info
-        if (!currentZoneName_.empty()) {
-            std::wstring wzone(currentZoneName_.begin(), currentZoneName_.end());
-            text << L"Zone: " << wzone << L"\n";
-        }
-
-        // Location
-        text << L"Loc: " << (int)playerX_ << L", " << (int)playerY_ << L", " << (int)playerZ_ << L"\n";
-        text << L"FPS: " << currentFps_ << L"\n";
-
-        // Repair target info
-        if (repairTargetNode_) {
-            text << L"\n--- REPAIR TARGET ---\n";
-            std::wstring wTargetName = EQT::toDisplayNameW(repairTargetName_);
-            text << L"Object: " << wTargetName << L"\n";
-
-            // Position
-            irr::core::vector3df pos = repairTargetNode_->getPosition();
-            text << L"Pos: (" << (int)pos.X << L", " << (int)pos.Z << L", " << (int)pos.Y << L")\n";
-
-            // Current rotation (original + offset)
-            irr::core::vector3df rot = repairTargetNode_->getRotation();
-            text << L"Rot: (" << (int)rot.X << L", " << (int)rot.Y << L", " << (int)rot.Z << L")\n";
-
-            // Rotation offset applied
-            text << L"Offset: (" << (int)repairRotationOffset_.X << L", "
-                 << (int)repairRotationOffset_.Y << L", " << (int)repairRotationOffset_.Z << L")\n";
-
-            // Flip state
-            text << L"Flip: ";
-            if (repairFlipX_) text << L"X ";
-            if (repairFlipY_) text << L"Y ";
-            if (repairFlipZ_) text << L"Z ";
-            if (!repairFlipX_ && !repairFlipY_ && !repairFlipZ_) text << L"None";
-            text << L"\n";
-        } else {
-            text << L"\nClick on zone object to select\n";
-        }
-
-        // Repair mode hotkeys
-        hotkeys << L"Click=Select  ESC=Clear\n";
-        hotkeys << L"X/Y/Z=Rotate (+Shift=-)\n";
-        hotkeys << L"Ctrl+1/2/3=Flip  Ctrl+R=Reset\n";
-        hotkeys << L"F9=Admin";
-    } else {
-        // === ADMIN MODE HUD (full debug info) ===
-        text << L"[ADMIN MODE]\n";
-
-        // Zone info
-        if (!currentZoneName_.empty()) {
-            text << L"Zone: ";
-            std::wstring wzone(currentZoneName_.begin(), currentZoneName_.end());
-            text << wzone;
-            if (currentZone_ && currentZone_->geometry) {
-                text << L" (" << currentZone_->geometry->vertices.size() << L" verts)";
-            }
-            text << L"\n";
-        }
-
-        // Camera position (convert Irrlicht coords back to EQ x,y,z format)
-        // Irrlicht (X, Y, Z) = EQ (x, z, y), so EQ (x, y, z) = Irrlicht (X, Z, Y)
-        if (camera_) {
-            irr::core::vector3df pos = camera_->getPosition();
-            text << L"Pos: (" << (int)pos.X << L", " << (int)pos.Z << L", " << (int)pos.Y << L")\n";
-        }
-
-        // Entity count and animation speed
-        if (entityRenderer_) {
-            size_t total = entityRenderer_->getEntityCount();
-            size_t modeled = entityRenderer_->getModeledEntityCount();
-            text << L"Entities: " << total << L" (" << modeled << L" with 3D models)";
-            // Animation speed
-            float speed = entityRenderer_->getGlobalAnimationSpeed();
-            int speedInt = static_cast<int>(speed * 10);
-            text << L"  AnimSpeed: " << (speedInt / 10) << L"." << (speedInt % 10) << L"x";
-            // Corpse Z offset (if non-zero)
-            float corpseZ = entityRenderer_->getCorpseZOffset();
-            if (corpseZ != 0.0f) {
-                int corpseZInt = static_cast<int>(corpseZ * 10);
-                text << L"  CorpseZ: " << (corpseZInt / 10) << L"." << (std::abs(corpseZInt) % 10);
-            }
-            text << L"\n";
-        }
-
-        // Render mode and camera
-        text << L"Mode: " << (wireframeMode_ ? L"Wireframe" : L"Solid");
-        std::string camMode = getCameraModeString();
-        std::wstring wCamMode(camMode.begin(), camMode.end());
-        text << L"  Camera: " << wCamMode;
-        text << L"  Models: " << (isUsingOldModels() ? L"Classic" : L"Luclin");
-        text << L"  FPS: " << currentFps_ << L"\n";
-
-        // Sky info
-        std::string skyInfo = getSkyDebugInfo();
-        std::wstring wSkyInfo(skyInfo.begin(), skyInfo.end());
-        text << wSkyInfo;
-        text << L"  Time: " << (int)currentHour_ << L":" << (currentMinute_ < 10 ? L"0" : L"") << (int)currentMinute_ << L"\n";
-
-        // Constrained mode debug info
-        if (config_.constrainedConfig.enabled) {
-            // Preset name and resolution
-            std::string presetName = ConstrainedRendererConfig::presetName(config_.constrainedPreset);
-            std::wstring wPresetName(presetName.begin(), presetName.end());
-            text << L"\n[" << wPresetName << L"] " << config_.width << L"x" << config_.height;
-            text << L" @ " << config_.constrainedConfig.colorDepthBits << L"-bit\n";
-
-            // Framebuffer memory (calculated from current resolution)
-            size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
-            size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
-            float fbiUsedMB = static_cast<float>(fbiUsed) / (1024.0f * 1024.0f);
-            float fbiLimitMB = static_cast<float>(fbiLimit) / (1024.0f * 1024.0f);
-            wchar_t fbiBuf[64];
-            swprintf(fbiBuf, 64, L"FBI: %.1fMB/%.1fMB", fbiUsedMB, fbiLimitMB);
-            text << fbiBuf;
-
-            // Texture memory (from cache)
-            if (constrainedTextureCache_) {
-                size_t tmuUsed = constrainedTextureCache_->getCurrentUsage();
-                size_t tmuLimit = constrainedTextureCache_->getMemoryLimit();
-                float tmuUsedMB = static_cast<float>(tmuUsed) / (1024.0f * 1024.0f);
-                float tmuLimitMB = static_cast<float>(tmuLimit) / (1024.0f * 1024.0f);
-                wchar_t tmuBuf[64];
-                swprintf(tmuBuf, 64, L" | TMU: %.1fMB/%.1fMB\n", tmuUsedMB, tmuLimitMB);
-                text << tmuBuf;
-
-                // Texture count and cache statistics
-                size_t texCount = constrainedTextureCache_->getTextureCount();
-                float hitRate = constrainedTextureCache_->getHitRate();
-                size_t evictions = constrainedTextureCache_->getEvictionCount();
-                wchar_t statsBuf[64];
-                swprintf(statsBuf, 64, L"Textures: %zu | Hit: %.0f%% | Evict: %zu\n",
-                         texCount, hitRate, evictions);
-                text << statsBuf;
-            } else {
-                text << L" | TMU: N/A\n";
-            }
-
-            // Geometry stats: polygon count, entity count, clip distance
-            wchar_t geomBuf[128];
-            int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
-            int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
-            swprintf(geomBuf, 128, L"Polys: %u/%d | Entities: %d/%d | Clip: %.0f\n",
-                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
-                     visibleEntities, totalEntities,
-                     config_.constrainedConfig.clipDistance);
-            text << geomBuf;
-        }
-
-        // Detail system info (grass, plants, debris)
-        if (detailManager_ && detailManager_->isEnabled()) {
-            std::string detailInfo = detailManager_->getDebugInfo();
-            std::wstring wDetailInfo(detailInfo.begin(), detailInfo.end());
-            text << wDetailInfo << L"\n";
-        }
-
-        // Current target display
-        if (currentTargetId_ != 0) {
-            text << L"\n--- TARGET ---\n";
-            std::wstring wTargetName = EQT::toDisplayNameW(currentTargetName_);
-            text << wTargetName << L" (ID: " << currentTargetId_ << L")";
-            if (currentTargetLevel_ > 0) {
-                text << L" Lvl " << (int)currentTargetLevel_;
-            }
-            text << L"\n";
-            // HP bar
-            text << L"HP: [";
-            int barLen = 20;
-            int filled = (currentTargetHpPercent_ * barLen) / 100;
-            for (int i = 0; i < barLen; ++i) {
-                text << (i < filled ? L"|" : L" ");
-            }
-            text << L"] " << (int)currentTargetHpPercent_ << L"%\n";
-
-            // Extended target info (Admin mode shows all details)
-            if (currentTargetInfo_.spawnId != 0) {
-                // Race/Gender/Class
-                std::string raceName = getRaceName(currentTargetInfo_.raceId);
-                std::string genderName = getGenderName(currentTargetInfo_.gender);
-                std::string className = getClassName(currentTargetInfo_.classId);
-                std::wstring wRace(raceName.begin(), raceName.end());
-                std::wstring wGender(genderName.begin(), genderName.end());
-                text << L"Race: " << wRace << L" (" << currentTargetInfo_.raceId << L") " << wGender;
-                if (!className.empty()) {
-                    std::wstring wClass(className.begin(), className.end());
-                    text << L" " << wClass;
-                }
-                text << L"\n";
-
-                // Body/Helm/Texture variants
-                text << L"Body: " << (int)currentTargetInfo_.bodyType
-                     << L"  Tex: " << (int)currentTargetInfo_.texture
-                     << L"  Helm: " << (int)currentTargetInfo_.helm;
-                if (currentTargetInfo_.showHelm) {
-                    text << L" (shown)";
-                }
-                text << L"\n";
-
-                // Equipment slots (only show non-zero)
-                bool hasEquip = false;
-                for (int i = 0; i < 9; ++i) {
-                    if (currentTargetInfo_.equipment[i] != 0) {
-                        hasEquip = true;
-                        break;
-                    }
-                }
-                if (hasEquip) {
-                    text << L"Equip: ";
-                    static const wchar_t* slotNames[] = {
-                        L"Hd", L"Ch", L"Ar", L"Wr", L"Hn", L"Lg", L"Ft", L"Pri", L"Sec"
-                    };
-                    bool first = true;
-                    for (int i = 0; i < 9; ++i) {
-                        if (currentTargetInfo_.equipment[i] != 0) {
-                            if (!first) text << L" ";
-                            text << slotNames[i] << L"=" << currentTargetInfo_.equipment[i];
-                            first = false;
-                        }
-                    }
-                    text << L"\n";
-                }
-
-                // Tints (only show non-zero, format as RGB hex)
-                bool hasTint = false;
-                for (int i = 0; i < 9; ++i) {
-                    if (currentTargetInfo_.equipmentTint[i] != 0) {
-                        hasTint = true;
-                        break;
-                    }
-                }
-                if (hasTint) {
-                    text << L"Tint: ";
-                    static const wchar_t* slotNames[] = {
-                        L"Hd", L"Ch", L"Ar", L"Wr", L"Hn", L"Lg", L"Ft", L"Pri", L"Sec"
-                    };
-                    bool first = true;
-                    for (int i = 0; i < 9; ++i) {
-                        if (currentTargetInfo_.equipmentTint[i] != 0) {
-                            if (!first) text << L" ";
-                            uint32_t tint = currentTargetInfo_.equipmentTint[i];
-                            // Format as RGB (ignore alpha)
-                            wchar_t hexBuf[16];
-                            swprintf(hexBuf, 16, L"%s=#%02X%02X%02X", slotNames[i],
-                                     (tint >> 16) & 0xFF, (tint >> 8) & 0xFF, tint & 0xFF);
-                            text << hexBuf;
-                            first = false;
-                        }
-                    }
-                    text << L"\n";
-                }
-
-                // Heading debug info - get real-time data from EntityRenderer
-                if (entityRenderer_) {
-                    const auto& entities = entityRenderer_->getEntities();
-                    auto it = entities.find(currentTargetId_);
-                    if (it != entities.end()) {
-                        const EntityVisual& visual = it->second;
-                        // Entity position (EQ coords: x, y, z)
-                        text << L"Pos: (" << static_cast<int>(visual.serverX)
-                             << L", " << static_cast<int>(visual.serverY)
-                             << L", " << static_cast<int>(visual.serverZ) << L")\n";
-                        // Server heading (from entity data, degrees 0-360)
-                        wchar_t hdgBuf[64];
-                        swprintf(hdgBuf, 64, L"Server Heading: %.1f deg\n", visual.serverHeading);
-                        text << hdgBuf;
-                        // Model rotation (from Irrlicht scene node)
-                        if (visual.sceneNode) {
-                            irr::core::vector3df rot = visual.sceneNode->getRotation();
-                            swprintf(hdgBuf, 64, L"Model Rotation: (%.1f, %.1f, %.1f)\n",
-                                     rot.X, rot.Y, rot.Z);
-                            text << hdgBuf;
-                        }
-                        // Interpolated heading (visual.lastHeading)
-                        swprintf(hdgBuf, 64, L"Interp Heading: %.1f deg\n", visual.lastHeading);
-                        text << hdgBuf;
-                    }
-                }
-            }
-        }
-
-        // External HUD callback
-        if (hudCallback_) {
-            text << hudCallback_();
-        }
-
-        // Admin mode hotkeys in upper right
-        hotkeys << L"F1=Wire  F2=HUD  F3=Names\n";
-        hotkeys << L"F4=Lights  F5=Cam  F6=Models\n";
-        hotkeys << L"F9=Player  F12=Screenshot\n";
-        hotkeys << L"[/]=AnimSpd  P=CorpseZ\n";
-        hotkeys << L"{/}=Detail  /season";
     }
 
     hudText_->setText(text.str().c_str());
@@ -4082,8 +3687,8 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
         // Set player race for vision-based lighting
         setPlayerRace(raceId);
 
-        // In Player mode with FirstPerson camera, hide the player entity
-        bool shouldHide = (rendererMode_ == RendererMode::Player && cameraMode_ == CameraMode::FirstPerson);
+        // In FirstPerson camera, hide the player entity
+        bool shouldHide = (cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerEntityVisible(!shouldHide);
 
         // Player entity creation is the final step - mark zone as ready
@@ -4406,8 +4011,8 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
     if (entityRenderer_) {
         entityRenderer_->setPlayerSpawnId(spawnId);
 
-        // Apply correct visibility based on current mode
-        bool shouldHide = (rendererMode_ == RendererMode::Player && cameraMode_ == CameraMode::FirstPerson);
+        // Apply correct visibility based on camera mode
+        bool shouldHide = (cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerEntityVisible(!shouldHide);
 
         // Get player model info now that the model is loaded
@@ -4665,8 +4270,8 @@ void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool lev
 void IrrlichtRenderer::setCameraMode(CameraMode mode) {
     cameraMode_ = mode;
 
-    // In Player mode, show/hide player entity based on camera mode
-    if (rendererMode_ == RendererMode::Player && entityRenderer_) {
+    // Show/hide player entity based on camera mode
+    if (entityRenderer_) {
         entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
     }
 }
@@ -4684,8 +4289,8 @@ void IrrlichtRenderer::cycleCameraMode() {
             break;
     }
 
-    // In Player mode, show/hide player entity based on camera mode
-    if (rendererMode_ == RendererMode::Player && entityRenderer_) {
+    // Show/hide player entity based on camera mode
+    if (entityRenderer_) {
         entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
     }
 
@@ -4855,14 +4460,10 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     chatInputFocused_ = windowManager_ && windowManager_->isChatInputFocused();
     if (eventReceiver_) eventReceiver_->setChatInputFocused(chatInputFocused_);
 
-    // Drain action queue and dispatch by mode
+    // Drain action queue and dispatch
     auto actions = eventReceiver_->drainActions();
     processCommonInput(actions);
-    switch (rendererMode_) {
-        case RendererMode::Player: processPlayerInput(actions); break;
-        case RendererMode::Admin:  processAdminInput(actions);  break;
-        case RendererMode::Repair: processRepairInput(actions); break;
-    }
+    processPlayerInput(actions);
 
     // ===== FRAME TIMING: Input Handling =====
     if (frameTimingEnabled_) frameTimings_.inputHandling = measureSection();
@@ -4892,47 +4493,9 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
         }
     }
 
-    // Update camera based on renderer mode
-    if (rendererMode_ == RendererMode::Admin) {
-        if (cameraMode_ == CameraMode::Free && cameraController_) {
-            bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
-            bool mouseEnabled = (eventReceiver_->isLeftButtonDown() ||
-                                 eventReceiver_->isRightButtonDown() ||
-                                 (ctrlHeld && eventReceiver_->isLeftButtonDown())) &&
-                                !windowManagerCapture_;
-            int mouseDeltaX = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaX();
-            int mouseDeltaY = windowManagerCapture_ ? 0 : eventReceiver_->getMouseDeltaY();
-
-            auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
-            auto isAdminActionHeld = [&](eqt::input::HotkeyAction action) -> bool {
-                if (chatInputFocused_) return false;
-                bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
-                bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
-                bool alt = eventReceiver_->isKeyDown(irr::KEY_LMENU) || eventReceiver_->isKeyDown(irr::KEY_RMENU);
-                for (const auto& binding : hotkeyMgr.getBindingsForAction(action)) {
-                    if (!eventReceiver_->isKeyDown(binding.keyCode)) continue;
-                    bool needsCtrl = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Ctrl);
-                    bool needsShift = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Shift);
-                    bool needsAlt = eqt::input::hasModifier(binding.modifiers, eqt::input::ModifierFlags::Alt);
-                    if (ctrl == needsCtrl && shift == needsShift && alt == needsAlt) return true;
-                }
-                return false;
-            };
-
-            bool forward = isAdminActionHeld(eqt::input::HotkeyAction::CameraForward);
-            bool backward = isAdminActionHeld(eqt::input::HotkeyAction::CameraBackward);
-            bool left = isAdminActionHeld(eqt::input::HotkeyAction::CameraLeft);
-            bool right = isAdminActionHeld(eqt::input::HotkeyAction::CameraRight);
-            bool up = isAdminActionHeld(eqt::input::HotkeyAction::CameraUp);
-            bool down = isAdminActionHeld(eqt::input::HotkeyAction::CameraDown);
-            cameraController_->update(deltaTime, forward, backward, left, right,
-                                      up, down, mouseDeltaX, mouseDeltaY, mouseEnabled);
-        }
-        if (entityRenderer_) entityRenderer_->updateNameTags(camera_);
-    } else {
-        updatePlayerMovement(deltaTime);
-        updateNameTagsWithLOS(deltaTime);
-    }
+    // Update camera and player movement
+    updatePlayerMovement(deltaTime);
+    updateNameTagsWithLOS(deltaTime);
 
     // Update sky position to follow camera
     if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
@@ -4955,22 +4518,17 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
     for (const auto& event : actions) {
         switch (event.action) {
             case RA::Screenshot: saveScreenshot("screenshot.png"); break;
-            case RA::ToggleRendererMode: toggleRendererMode(); break;
-            case RA::ToggleLighting: toggleLighting(); break;
+            case RA::ToggleAllUI: toggleAllUI(); break;
             case RA::ToggleZoneLights: toggleZoneLights(); break;
             case RA::CycleObjectLights: cycleObjectLights(); break;
             case RA::ToggleOptions:
                 if (!chatInputFocused_ && windowManager_) windowManager_->toggleOptionsWindow();
                 break;
             case RA::ClearTarget:
-                if (rendererMode_ == RendererMode::Repair) {
-                    if (repairTargetNode_) clearRepairTarget();
-                } else {
-                    if (currentTargetId_ != 0) {
-                        LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                        clearCurrentTarget();
-                        SetTrackedTargetId(0);
-                    }
+                if (currentTargetId_ != 0) {
+                    LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
+                    clearCurrentTarget();
+                    SetTrackedTargetId(0);
                 }
                 break;
             default: break;
@@ -5138,157 +4696,9 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
     }
 }
 
-void IrrlichtRenderer::processAdminInput(const std::vector<RendererEvent>& actions) {
-    using RA = RendererAction;
-    for (const auto& event : actions) {
-        switch (event.action) {
-            case RA::ToggleWireframe: toggleWireframe(); break;
-            case RA::ToggleHUD: toggleHUD(); break;
-            case RA::ToggleNameTags: toggleNameTags(); break;
-            case RA::ToggleCameraMode: cycleCameraMode(); break;
-            case RA::ToggleOldModels: toggleOldModels(); break;
-            case RA::SaveEntities:
-                if (saveEntitiesCallback_) saveEntitiesCallback_();
-                break;
-            case RA::ToggleHelmDebug:
-                if (entityRenderer_) {
-                    bool newState = !entityRenderer_->isHelmDebugEnabled();
-                    entityRenderer_->setHelmDebugEnabled(newState);
-                    LOG_INFO(MOD_GRAPHICS, "Helm debug mode: {}", (newState ? "ENABLED" : "DISABLED"));
-                    if (newState) {
-                        LOG_INFO(MOD_GRAPHICS, "Helm UV Controls (hold Shift for fine adjustment):");
-                        LOG_INFO(MOD_GRAPHICS, "  I/K: U offset, J/L: V offset, O/P: U scale");
-                        LOG_INFO(MOD_GRAPHICS, "  ,/.: V scale, -/=: Rotation, F8: Print, 0: Reset");
-                        LOG_INFO(MOD_GRAPHICS, "  Ctrl+S: Swap UV, Ctrl+V: V flip, Ctrl+U: U flip");
-                        LOG_INFO(MOD_GRAPHICS, "  H/N: Cycle head variant (prev/next)");
-                        entityRenderer_->printHelmDebugState();
-                    }
-                }
-                break;
-            case RA::HelmUVSwap:
-                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
-                    entityRenderer_->toggleHelmUVSwap(); entityRenderer_->applyHelmUVTransform();
-                }
-                break;
-            case RA::HelmVFlip:
-                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
-                    entityRenderer_->toggleHelmVFlip(); entityRenderer_->applyHelmUVTransform();
-                }
-                break;
-            case RA::HelmUFlip:
-                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
-                    entityRenderer_->toggleHelmUFlip(); entityRenderer_->applyHelmUVTransform();
-                }
-                break;
-            case RA::HelmReset:
-                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
-                    entityRenderer_->resetHelmUVParams(); entityRenderer_->applyHelmUVTransform();
-                }
-                break;
-            case RA::HelmPrintState:
-                if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
-                    entityRenderer_->printHelmDebugState();
-                }
-                break;
-            default: break;
-        }
-    }
-}
-
-void IrrlichtRenderer::processRepairInput(const std::vector<RendererEvent>& actions) {
-    using RA = RendererAction;
-    for (const auto& event : actions) {
-        if (!repairTargetNode_) continue;
-        switch (event.action) {
-            case RA::RepairFlipX: toggleRepairFlip(0); break;
-            case RA::RepairFlipY: toggleRepairFlip(1); break;
-            case RA::RepairFlipZ: toggleRepairFlip(2); break;
-            case RA::RepairReset: resetRepairAdjustments(); break;
-            default: break;
-        }
-    }
-}
-
 void IrrlichtRenderer::processInputDeltas(float deltaTime) {
-    // Repair mode rotation deltas
-    if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
-        float rotX = eventReceiver_->getRepairRotateXDelta();
-        float rotY = eventReceiver_->getRepairRotateYDelta();
-        float rotZ = eventReceiver_->getRepairRotateZDelta();
-        if (rotX != 0.0f || rotY != 0.0f || rotZ != 0.0f) applyRepairRotation(rotX, rotY, rotZ);
-    } else {
-        eventReceiver_->getRepairRotateXDelta();
-        eventReceiver_->getRepairRotateYDelta();
-        eventReceiver_->getRepairRotateZDelta();
-    }
-
-    // Player mode deltas
-    if (rendererMode_ == RendererMode::Player && !chatInputFocused_) {
-        float collisionHeightDelta = eventReceiver_->getCollisionHeightDelta();
-        if (collisionHeightDelta != 0.0f) {
-            playerConfig_.collisionCheckHeight += collisionHeightDelta;
-            if (playerConfig_.collisionCheckHeight < 0.5f) playerConfig_.collisionCheckHeight = 0.5f;
-            LOG_INFO(MOD_GRAPHICS, "Collision Check Height: {}", playerConfig_.collisionCheckHeight);
-        }
-        float stepHeightDelta = eventReceiver_->getStepHeightDelta();
-        if (stepHeightDelta != 0.0f) {
-            playerConfig_.collisionStepHeight += stepHeightDelta;
-            if (playerConfig_.collisionStepHeight < 0.5f) playerConfig_.collisionStepHeight = 0.5f;
-            LOG_INFO(MOD_GRAPHICS, "Step Height: {}", playerConfig_.collisionStepHeight);
-        }
-    }
-
-    // Admin mode deltas
-    if (rendererMode_ == RendererMode::Admin && !chatInputFocused_) {
-        float animSpeedDelta = eventReceiver_->getAnimSpeedDelta();
-        if (animSpeedDelta != 0.0f && entityRenderer_) entityRenderer_->adjustGlobalAnimationSpeed(animSpeedDelta);
-
-        float corpseZDelta = eventReceiver_->getCorpseZOffsetDelta();
-        if (corpseZDelta != 0.0f && entityRenderer_) entityRenderer_->adjustCorpseZOffset(corpseZDelta);
-
-        float eyeHeightDelta = eventReceiver_->getEyeHeightDelta();
-        if (eyeHeightDelta != 0.0f) {
-            playerConfig_.eyeHeight += eyeHeightDelta;
-            if (playerConfig_.eyeHeight < 0.0f) playerConfig_.eyeHeight = 0.0f;
-            LOG_INFO(MOD_GRAPHICS, "Eye height: {:.1f}", playerConfig_.eyeHeight);
-        }
-
-        if (entityRenderer_ && entityRenderer_->isHelmDebugEnabled()) {
-            float uDelta = eventReceiver_->getHelmUOffsetDelta();
-            float vDelta = eventReceiver_->getHelmVOffsetDelta();
-            float uScaleDelta = eventReceiver_->getHelmUScaleDelta();
-            float vScaleDelta = eventReceiver_->getHelmVScaleDelta();
-            float rotDelta = eventReceiver_->getHelmRotationDelta();
-
-            if (uDelta != 0.0f) { entityRenderer_->adjustHelmUOffset(uDelta); entityRenderer_->applyHelmUVTransform(); }
-            if (vDelta != 0.0f) { entityRenderer_->adjustHelmVOffset(vDelta); entityRenderer_->applyHelmUVTransform(); }
-            if (uScaleDelta != 0.0f) { entityRenderer_->adjustHelmUScale(uScaleDelta); entityRenderer_->applyHelmUVTransform(); }
-            if (vScaleDelta != 0.0f) { entityRenderer_->adjustHelmVScale(vScaleDelta); entityRenderer_->applyHelmUVTransform(); }
-            if (rotDelta != 0.0f) { entityRenderer_->adjustHelmRotation(rotDelta); entityRenderer_->applyHelmUVTransform(); }
-            int variantDelta = eventReceiver_->getHeadVariantCycleDelta();
-            if (variantDelta != 0) entityRenderer_->cycleHeadVariant(variantDelta);
-        }
-    }
-
-    // Common deltas (any mode)
-    float particleDelta = eventReceiver_->getParticleMultiplierDelta();
-    if (particleDelta != 0.0f && spellVisualFX_) spellVisualFX_->adjustParticleMultiplier(particleDelta);
-
-    float ambientDelta = eventReceiver_->getAmbientLightDelta();
-    if (ambientDelta != 0.0f) {
-        ambientMultiplier_ = std::max(0.0f, std::min(3.0f, ambientMultiplier_ + ambientDelta));
-        updateTimeOfDay(currentHour_, currentMinute_);
-        LOG_INFO(MOD_GRAPHICS, "Ambient light multiplier: {}", ambientMultiplier_);
-    }
-
-    float detailDelta = eventReceiver_->getDetailDensityDelta();
-    if (detailDelta != 0.0f && detailManager_) {
-        detailManager_->adjustDensity(detailDelta);
-        LOG_INFO(MOD_GRAPHICS, "Detail density: {:.0f}%", detailManager_->getDensity() * 100.0f);
-    }
-
-    // Camera zoom - Player/Repair mode with Follow camera
-    if (!chatInputFocused_ && (rendererMode_ == RendererMode::Player || rendererMode_ == RendererMode::Repair)) {
+    // Camera zoom with Follow camera
+    if (!chatInputFocused_) {
         float zoomDelta = eventReceiver_->getCameraZoomDelta();
         if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
             cameraController_->adjustFollowDistance(zoomDelta);
@@ -5301,7 +4711,7 @@ void IrrlichtRenderer::processInputDeltas(float deltaTime) {
 void IrrlichtRenderer::processChatInput() {
     // Handle spell gem shortcuts (1-8 keys)
     int8_t spellGemRequest = eventReceiver_->getSpellGemCastRequest();
-    if (spellGemRequest >= 0 && rendererMode_ == RendererMode::Player && !chatInputFocused_) {
+    if (spellGemRequest >= 0 && !chatInputFocused_) {
         if (spellGemCastCallback_) {
             LOG_DEBUG(MOD_GRAPHICS, "Spell gem {} pressed", spellGemRequest + 1);
             spellGemCastCallback_(static_cast<uint8_t>(spellGemRequest));
@@ -5310,7 +4720,7 @@ void IrrlichtRenderer::processChatInput() {
 
     // Handle hotbar shortcuts
     int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
-    if (hotbarRequest >= 0 && rendererMode_ == RendererMode::Player && !chatInputFocused_) {
+    if (hotbarRequest >= 0 && !chatInputFocused_) {
         if (windowManager_ && windowManager_->getHotbarWindow()) {
             LOG_DEBUG(MOD_GRAPHICS, "Hotbar button {} activated", hotbarRequest + 1);
             windowManager_->getHotbarWindow()->activateButton(hotbarRequest);
@@ -5318,7 +4728,7 @@ void IrrlichtRenderer::processChatInput() {
     }
 
     // Handle chat input (Player mode)
-    if (windowManager_ && rendererMode_ == RendererMode::Player) {
+    if (windowManager_) {
         bool chatFocused = windowManager_->isChatInputFocused();
         if (chatFocused) {
             auto* chatWindow = windowManager_->getChatWindow();
@@ -5599,11 +5009,6 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     // Draw selection box around targeted entity
     drawTargetSelectionBox();
 
-    // Draw bounding box around repair target
-    if (rendererMode_ == RendererMode::Repair && repairTargetNode_) {
-        drawRepairTargetBoundingBox();
-    }
-
     // Render environmental particles (render every frame, update at Tier 3)
     if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
 
@@ -5673,15 +5078,17 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (frameTimingEnabled_) frameTimings_.targetBox = measureSection();
 
     // Draw entity casting bars
-    if (entityRenderer_) entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
+    if (!allUIHidden_ && entityRenderer_) entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
     if (frameTimingEnabled_) frameTimings_.castingBars = measureSection();
 
-    guienv_->drawAll();
-    drawFPSCounter();
+    if (!allUIHidden_) {
+        guienv_->drawAll();
+        drawFPSCounter();
+    }
     if (frameTimingEnabled_) frameTimings_.guiDrawAll = measureSection();
 
     // Render inventory UI windows (on top of HUD)
-    if (windowManager_) windowManager_->render();
+    if (!allUIHidden_ && windowManager_) windowManager_->render();
     if (frameTimingEnabled_) frameTimings_.windowManager = measureSection();
 
     // Draw zone line overlay
@@ -5783,6 +5190,11 @@ void IrrlichtRenderer::toggleHUD() {
     LOG_INFO(MOD_GRAPHICS, "HUD: {}", (hudEnabled_ ? "ON" : "OFF"));
 }
 
+void IrrlichtRenderer::toggleAllUI() {
+    allUIHidden_ = !allUIHidden_;
+    LOG_INFO(MOD_GRAPHICS, "All UI: {}", (allUIHidden_ ? "HIDDEN" : "VISIBLE"));
+}
+
 void IrrlichtRenderer::toggleNameTags() {
     if (entityRenderer_) {
         bool visible = !config_.showNameTags;
@@ -5810,49 +5222,6 @@ void IrrlichtRenderer::toggleFog() {
     }
 
     LOG_INFO(MOD_GRAPHICS, "Fog: {}", (fogEnabled_ ? "ON" : "OFF"));
-}
-
-void IrrlichtRenderer::toggleLighting() {
-    lightingEnabled_ = !lightingEnabled_;
-
-    if (zoneMeshNode_) {
-        for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
-            zoneMeshNode_->getMaterial(i).Lighting = lightingEnabled_;
-            zoneMeshNode_->getMaterial(i).NormalizeNormals = true;
-            zoneMeshNode_->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-            zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-        }
-    }
-
-    // Update PVS region mesh nodes
-    for (auto& [regionIdx, node] : regionMeshNodes_) {
-        if (node) {
-            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                node->getMaterial(i).Lighting = lightingEnabled_;
-                node->getMaterial(i).NormalizeNormals = true;
-                node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-            }
-        }
-    }
-
-    for (auto* node : objectNodes_) {
-        if (node) {
-            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                node->getMaterial(i).Lighting = lightingEnabled_;
-                node->getMaterial(i).NormalizeNormals = true;
-                node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-            }
-        }
-    }
-
-    // Update entity materials
-    if (entityRenderer_) {
-        entityRenderer_->setLightingEnabled(lightingEnabled_);
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "Lighting: {}", (lightingEnabled_ ? "ON" : "OFF"));
 }
 
 void IrrlichtRenderer::toggleZoneLights() {
@@ -6284,109 +5653,6 @@ void IrrlichtRenderer::profileSceneBreakdown() {
 
 // --- Renderer Mode Implementation ---
 
-void IrrlichtRenderer::setRendererMode(RendererMode mode) {
-    if (rendererMode_ == mode) {
-        return;
-    }
-
-    rendererMode_ = mode;
-
-    // Update event receiver's mode for hotkey lookups
-    if (eventReceiver_) {
-        eventReceiver_->setCurrentMode(mode);
-    }
-
-    if (mode == RendererMode::Player) {
-        // Switch to Player mode
-        // Default to Follow camera (third-person) if coming from Free mode
-        if (cameraMode_ == CameraMode::Free) {
-            cameraMode_ = CameraMode::Follow;
-        }
-        // Reset movement state and pitch
-        playerMovement_ = PlayerMovementState();
-        playerPitch_ = 0;
-        // Hide player entity only in first-person view
-        if (entityRenderer_) {
-            entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
-            // Update player entity position to current player position
-            entityRenderer_->updatePlayerEntityPosition(playerX_, playerY_, playerZ_, playerHeading_);
-        }
-        // Log warning if no collision map
-        if (!collisionMap_) {
-            static bool warned = false;
-            if (!warned) {
-                LOG_WARN(MOD_GRAPHICS, "Player mode enabled without collision map - movement will not respect geometry");
-                warned = true;
-            }
-        }
-        LOG_INFO(MOD_GRAPHICS, "Switched to PLAYER mode (F9 to cycle modes)");
-        LOG_INFO(MOD_GRAPHICS, "Controls: WASD=Move, QE=Strafe, R=Autorun, LMB+Mouse=Look");
-        LOG_INFO(MOD_GRAPHICS, "Debug: C=Toggle Collision, Ctrl+C=Debug Output, T/G=CollisionHeight");
-        LOG_INFO(MOD_GRAPHICS, "Collision: {}, Map: {}", (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"), (collisionMap_ ? "LOADED" : "NONE"));
-        if (cameraMode_ == CameraMode::FirstPerson) {
-            LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", playerConfig_.eyeHeight);
-        }
-    } else if (mode == RendererMode::Repair) {
-        // Switch to Repair mode - similar to Player mode but for object adjustment
-        // Default to Follow camera if coming from Free mode
-        if (cameraMode_ == CameraMode::Free) {
-            cameraMode_ = CameraMode::Follow;
-        }
-        // Reset movement state and pitch (same as Player mode)
-        playerMovement_ = PlayerMovementState();
-        playerPitch_ = 0;
-        // Show player entity (visible in Repair mode for positioning reference)
-        if (entityRenderer_) {
-            entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
-            // Update player entity position to current player position
-            entityRenderer_->updatePlayerEntityPosition(playerX_, playerY_, playerZ_, playerHeading_);
-        }
-        // Clear any repair target when entering mode
-        repairTargetNode_ = nullptr;
-        repairTargetName_.clear();
-
-        LOG_INFO(MOD_GRAPHICS, "Switched to REPAIR mode (F9 to cycle modes)");
-        LOG_INFO(MOD_GRAPHICS, "Click on zone objects to select. ESC to clear target.");
-        LOG_INFO(MOD_GRAPHICS, "X/Y/Z (+Shift): Rotate. 1/2/3: Flip axis. R: Reset.");
-    } else {
-        // Switch to Admin mode
-        playerMovement_.autorun = false;
-        // Show player entity again
-        if (entityRenderer_) {
-            entityRenderer_->setPlayerEntityVisible(true);
-        }
-        // Clear repair target when leaving repair mode
-        repairTargetNode_ = nullptr;
-        repairTargetName_.clear();
-
-        LOG_INFO(MOD_GRAPHICS, "Switched to ADMIN mode (F9 to cycle modes)");
-    }
-}
-
-void IrrlichtRenderer::toggleRendererMode() {
-    // Cycle through: Player -> Repair -> Admin -> Player
-    switch (rendererMode_) {
-        case RendererMode::Player:
-            setRendererMode(RendererMode::Repair);
-            break;
-        case RendererMode::Repair:
-            setRendererMode(RendererMode::Admin);
-            break;
-        case RendererMode::Admin:
-            setRendererMode(RendererMode::Player);
-            break;
-    }
-}
-
-std::string IrrlichtRenderer::getRendererModeString() const {
-    switch (rendererMode_) {
-        case RendererMode::Player: return "Player";
-        case RendererMode::Repair: return "Repair";
-        case RendererMode::Admin: return "Admin";
-        default: return "Unknown";
-    }
-}
-
 void IrrlichtRenderer::setClipDistance(float distance) {
     // Clamp to reasonable range
     if (distance < 100.0f) distance = 100.0f;
@@ -6418,11 +5684,6 @@ float IrrlichtRenderer::getClipDistance() const {
 // --- Player Mode Movement Implementation ---
 
 void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
-    // Allow movement in both Player and Repair modes
-    if (rendererMode_ != RendererMode::Player && rendererMode_ != RendererMode::Repair) {
-        return;
-    }
-
     // Check if chat has focus - skip movement keys if so
     bool chatHasFocus = windowManager_ && windowManager_->isChatInputFocused();
 
@@ -7698,236 +6959,13 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
     return groundZ;
 }
 
-// --- Repair Mode Methods ---
-
-irr::scene::ISceneNode* IrrlichtRenderer::findZoneObjectAtScreenPosition(int screenX, int screenY) {
-    if (!collisionManager_ || !camera_ || objectNodes_.empty()) {
-        return nullptr;
-    }
-
-    // Get ray from camera through screen position
-    irr::core::line3df ray = collisionManager_->getRayFromScreenCoordinates(
-        irr::core::position2di(screenX, screenY), camera_);
-
-    irr::scene::ISceneNode* closestNode = nullptr;
-    float closestDist = std::numeric_limits<float>::max();
-
-    for (auto* node : objectNodes_) {
-        if (!node || !node->isVisible()) {
-            continue;
-        }
-
-        // Get the transformed bounding box (world space)
-        irr::core::aabbox3df bbox = node->getTransformedBoundingBox();
-
-        // Expand box slightly for easier clicking
-        bbox.MinEdge -= irr::core::vector3df(0.5f, 0.5f, 0.5f);
-        bbox.MaxEdge += irr::core::vector3df(0.5f, 0.5f, 0.5f);
-
-        if (bbox.intersectsWithLine(ray)) {
-            // Calculate distance to object center
-            irr::core::vector3df center = bbox.getCenter();
-            float dist = ray.start.getDistanceFrom(center);
-
-            if (dist < closestDist) {
-                closestDist = dist;
-                closestNode = node;
-            }
-        }
-    }
-
-    return closestNode;
-}
-
-void IrrlichtRenderer::selectRepairTarget(irr::scene::ISceneNode* node) {
-    if (!node) {
-        clearRepairTarget();
-        return;
-    }
-
-    repairTargetNode_ = node;
-    repairTargetName_ = node->getName();
-
-    // Store original transform
-    repairOriginalRotation_ = node->getRotation();
-    repairOriginalScale_ = node->getScale();
-
-    // Reset adjustment state
-    repairRotationOffset_ = irr::core::vector3df(0, 0, 0);
-    repairFlipX_ = false;
-    repairFlipY_ = false;
-    repairFlipZ_ = false;
-
-    // Log selection
-    irr::core::vector3df pos = node->getPosition();
-    // Convert Irrlicht coords (x, y, z) back to EQ coords (x, z, y) for logging
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR] Selected object: '{}' at EQ pos ({:.1f}, {:.1f}, {:.1f})",
-        repairTargetName_, pos.X, pos.Z, pos.Y);
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR]   Original rotation: ({:.1f}, {:.1f}, {:.1f})",
-        repairOriginalRotation_.X, repairOriginalRotation_.Y, repairOriginalRotation_.Z);
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR]   Original scale: ({:.2f}, {:.2f}, {:.2f})",
-        repairOriginalScale_.X, repairOriginalScale_.Y, repairOriginalScale_.Z);
-}
-
-void IrrlichtRenderer::clearRepairTarget() {
-    if (repairTargetNode_) {
-        LOG_INFO(MOD_GRAPHICS, "[REPAIR] Cleared target: '{}'", repairTargetName_);
-    }
-
-    repairTargetNode_ = nullptr;
-    repairTargetName_.clear();
-    repairOriginalRotation_ = irr::core::vector3df(0, 0, 0);
-    repairOriginalScale_ = irr::core::vector3df(1, 1, 1);
-    repairRotationOffset_ = irr::core::vector3df(0, 0, 0);
-    repairFlipX_ = false;
-    repairFlipY_ = false;
-    repairFlipZ_ = false;
-}
-
-void IrrlichtRenderer::drawRepairTargetBoundingBox() {
-    if (!repairTargetNode_ || !driver_) {
-        return;
-    }
-
-    // Get the transformed bounding box (world space)
-    irr::core::aabbox3df bbox = repairTargetNode_->getTransformedBoundingBox();
-
-    // Draw white wireframe box
-    irr::video::SColor white(255, 255, 255, 255);
-
-    // Get the 8 corners of the bounding box
-    irr::core::vector3df corners[8];
-    corners[0] = irr::core::vector3df(bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z);
-    corners[1] = irr::core::vector3df(bbox.MaxEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z);
-    corners[2] = irr::core::vector3df(bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MinEdge.Z);
-    corners[3] = irr::core::vector3df(bbox.MinEdge.X, bbox.MaxEdge.Y, bbox.MinEdge.Z);
-    corners[4] = irr::core::vector3df(bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MaxEdge.Z);
-    corners[5] = irr::core::vector3df(bbox.MaxEdge.X, bbox.MinEdge.Y, bbox.MaxEdge.Z);
-    corners[6] = irr::core::vector3df(bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z);
-    corners[7] = irr::core::vector3df(bbox.MinEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z);
-
-    // Draw 12 edges of the box
-    // Bottom face
-    driver_->draw3DLine(corners[0], corners[1], white);
-    driver_->draw3DLine(corners[1], corners[2], white);
-    driver_->draw3DLine(corners[2], corners[3], white);
-    driver_->draw3DLine(corners[3], corners[0], white);
-    // Top face
-    driver_->draw3DLine(corners[4], corners[5], white);
-    driver_->draw3DLine(corners[5], corners[6], white);
-    driver_->draw3DLine(corners[6], corners[7], white);
-    driver_->draw3DLine(corners[7], corners[4], white);
-    // Vertical edges
-    driver_->draw3DLine(corners[0], corners[4], white);
-    driver_->draw3DLine(corners[1], corners[5], white);
-    driver_->draw3DLine(corners[2], corners[6], white);
-    driver_->draw3DLine(corners[3], corners[7], white);
-}
-
-void IrrlichtRenderer::applyRepairRotation(float deltaX, float deltaY, float deltaZ) {
-    if (!repairTargetNode_) {
-        return;
-    }
-
-    // Accumulate rotation offset
-    repairRotationOffset_.X += deltaX;
-    repairRotationOffset_.Y += deltaY;
-    repairRotationOffset_.Z += deltaZ;
-
-    // Normalize to 0-360 range
-    while (repairRotationOffset_.X >= 360.0f) repairRotationOffset_.X -= 360.0f;
-    while (repairRotationOffset_.X < 0.0f) repairRotationOffset_.X += 360.0f;
-    while (repairRotationOffset_.Y >= 360.0f) repairRotationOffset_.Y -= 360.0f;
-    while (repairRotationOffset_.Y < 0.0f) repairRotationOffset_.Y += 360.0f;
-    while (repairRotationOffset_.Z >= 360.0f) repairRotationOffset_.Z -= 360.0f;
-    while (repairRotationOffset_.Z < 0.0f) repairRotationOffset_.Z += 360.0f;
-
-    // Apply combined rotation to node
-    irr::core::vector3df newRotation = repairOriginalRotation_ + repairRotationOffset_;
-    repairTargetNode_->setRotation(newRotation);
-
-    // Log the adjustment
-    logRepairAdjustment();
-}
-
-void IrrlichtRenderer::toggleRepairFlip(int axis) {
-    if (!repairTargetNode_) {
-        return;
-    }
-
-    // Toggle the appropriate flip flag
-    switch (axis) {
-        case 0: repairFlipX_ = !repairFlipX_; break;
-        case 1: repairFlipY_ = !repairFlipY_; break;
-        case 2: repairFlipZ_ = !repairFlipZ_; break;
-        default: return;
-    }
-
-    // Apply scale with flips
-    irr::core::vector3df newScale = repairOriginalScale_;
-    if (repairFlipX_) newScale.X *= -1.0f;
-    if (repairFlipY_) newScale.Y *= -1.0f;
-    if (repairFlipZ_) newScale.Z *= -1.0f;
-    repairTargetNode_->setScale(newScale);
-
-    // Log the adjustment
-    logRepairAdjustment();
-}
-
-void IrrlichtRenderer::resetRepairAdjustments() {
-    if (!repairTargetNode_) {
-        return;
-    }
-
-    // Reset rotation offset
-    repairRotationOffset_ = irr::core::vector3df(0, 0, 0);
-    repairTargetNode_->setRotation(repairOriginalRotation_);
-
-    // Reset flip flags and scale
-    repairFlipX_ = false;
-    repairFlipY_ = false;
-    repairFlipZ_ = false;
-    repairTargetNode_->setScale(repairOriginalScale_);
-
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR] Reset adjustments for '{}'", repairTargetName_);
-}
-
-void IrrlichtRenderer::logRepairAdjustment() {
-    if (!repairTargetNode_) {
-        return;
-    }
-
-    irr::core::vector3df pos = repairTargetNode_->getAbsolutePosition();
-    irr::core::vector3df finalRot = repairTargetNode_->getRotation();
-    irr::core::vector3df finalScale = repairTargetNode_->getScale();
-
-    // Build flip string
-    std::string flipStr;
-    if (repairFlipX_ || repairFlipY_ || repairFlipZ_) {
-        flipStr = " flip=(";
-        if (repairFlipX_) flipStr += "X";
-        if (repairFlipY_) flipStr += "Y";
-        if (repairFlipZ_) flipStr += "Z";
-        flipStr += ")";
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR] Object: '{}' at ({:.1f}, {:.1f}, {:.1f})",
-             repairTargetName_, pos.X, pos.Y, pos.Z);
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR]   Original rotation: ({:.1f}, {:.1f}, {:.1f})",
-             repairOriginalRotation_.X, repairOriginalRotation_.Y, repairOriginalRotation_.Z);
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR]   Applied offset: rotation=({:.1f}, {:.1f}, {:.1f}){}",
-             repairRotationOffset_.X, repairRotationOffset_.Y, repairRotationOffset_.Z, flipStr);
-    LOG_INFO(MOD_GRAPHICS, "[REPAIR]   Final: rotation=({:.1f}, {:.1f}, {:.1f}) scale=({:.1f}, {:.1f}, {:.1f})",
-             finalRot.X, finalRot.Y, finalRot.Z, finalScale.X, finalScale.Y, finalScale.Z);
-}
-
 void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
     if (!entityRenderer_) {
         return;
     }
 
-    // In admin mode or if no collision map, fall back to distance-only
-    if (rendererMode_ != RendererMode::Player || !collisionMap_) {
+    // If no collision map, fall back to distance-only
+    if (!collisionMap_) {
         entityRenderer_->updateNameTags(camera_);
         return;
     }
@@ -8436,17 +7474,6 @@ void IrrlichtRenderer::updateCurrentTargetHP(uint8_t hpPercent) {
 void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
     if (!eventReceiver_ || !camera_ || !entityRenderer_) {
         return;
-    }
-
-    // In Repair mode, target zone objects instead of entities
-    if (rendererMode_ == RendererMode::Repair) {
-        irr::scene::ISceneNode* objectNode = findZoneObjectAtScreenPosition(clickX, clickY);
-        if (objectNode) {
-            selectRepairTarget(objectNode);
-        } else {
-            LOG_DEBUG(MOD_GRAPHICS, "[REPAIR] No zone object at click position ({}, {})", clickX, clickY);
-        }
-        return;  // Don't fall through to entity targeting in Repair mode
     }
 
     bool shiftHeld = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);

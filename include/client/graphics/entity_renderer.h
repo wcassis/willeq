@@ -281,11 +281,6 @@ public:
     // Global animation speed control
     void setGlobalAnimationSpeed(float speed);
     float getGlobalAnimationSpeed() const { return globalAnimationSpeed_; }
-    void adjustGlobalAnimationSpeed(float delta);  // Adjust by delta amount
-
-    // Corpse Z offset control (for tuning corpse vertical position)
-    void adjustCorpseZOffset(float delta);
-    float getCorpseZOffset() const { return corpseZOffset_; }
 
     // Get entities map for LOS checking (read-only access)
     const std::map<uint16_t, EntityVisual>& getEntities() const { return entities_; }
@@ -525,35 +520,6 @@ public:
     float getRotationY() const { return rotationY_; }
     float getRotationZ() const { return rotationZ_; }
 
-    // Helm texture debugging (for race 71 QCM NPCs)
-    void setHelmDebugEnabled(bool enabled);
-    bool isHelmDebugEnabled() const { return helmDebugEnabled_; }
-    void adjustHelmUOffset(float delta);
-    void adjustHelmVOffset(float delta);
-    void adjustHelmUScale(float delta);
-    void adjustHelmVScale(float delta);
-    void adjustHelmRotation(float delta);  // UV rotation in degrees
-    void toggleHelmUVSwap();               // Swap U and V coordinates
-    void toggleHelmVFlip();                // Toggle V coordinate flip
-    void toggleHelmUFlip();                // Toggle U coordinate flip
-    void resetHelmUVParams();
-    void printHelmDebugState() const;
-    void applyHelmUVTransform();           // Apply current UV transform to helm meshes
-
-    // Get current helm UV parameters
-    float getHelmUOffset() const { return helmUOffset_; }
-    float getHelmVOffset() const { return helmVOffset_; }
-    float getHelmUScale() const { return helmUScale_; }
-    float getHelmVScale() const { return helmVScale_; }
-    float getHelmRotation() const { return helmRotation_; }
-    bool getHelmUVSwap() const { return helmUVSwap_; }
-    bool getHelmVFlip() const { return helmVFlip_; }
-    bool getHelmUFlip() const { return helmUFlip_; }
-
-    // Cycle head variant for QCM entities (for debugging)
-    void cycleHeadVariant(int direction);
-    int getCurrentHeadVariant() const { return debugHeadVariant_; }
-
 private:
     float offsetX_ = 0.0f;  // X offset for all entities
     float offsetY_ = 0.0f;  // Y offset (height) for all entities
@@ -562,29 +528,6 @@ private:
     float rotationY_ = 0.0f;  // Rotation around Y axis (degrees)
     float rotationZ_ = 0.0f;  // Rotation around Z axis (degrees)
     float globalAnimationSpeed_ = 1.0f;  // Global animation speed multiplier (1.0 = normal speed)
-    float corpseZOffset_ = 0.0f;         // Global Z offset for corpse positioning (debug/tuning)
-
-    // Helm texture debugging parameters
-    bool helmDebugEnabled_ = false;
-    float helmUOffset_ = 0.0f;
-    float helmVOffset_ = 0.0f;
-    float helmUScale_ = 1.0f;
-    float helmVScale_ = 1.0f;
-    float helmRotation_ = 0.0f;  // Rotation in degrees
-    bool helmUVSwap_ = false;    // Swap U and V
-    bool helmVFlip_ = false;     // Flip V coordinate
-    bool helmUFlip_ = false;     // Flip U coordinate
-
-    // Store original UV coords for helm meshes (for reverting)
-    struct HelmUVData {
-        uint16_t spawnId;
-        int bufferIndex;
-        std::vector<irr::core::vector2df> originalUVs;
-    };
-    std::vector<HelmUVData> helmOriginalUVs_;
-
-    // Debug head variant cycling
-    int debugHeadVariant_ = -1;  // -1 = use default, 0+ = override variant
 
     // Player spawn ID (for filtering player from entity casting bars)
     uint16_t playerSpawnId_ = 0;

@@ -505,35 +505,24 @@ Use the GDB helper script to capture crash backtraces:
 
 Graphics is enabled by default (`EQT_GRAPHICS=ON` in CMake). Requires EQ Titanium client files for zone geometry and character models.
 
-### Renderer Modes
-
-The renderer has two modes, toggled with **F9**:
-
-**Player Mode** (default for gameplay):
-- First-person or follow camera with collision
-- Movement synced to server
-- Simplified HUD showing player/target info
-- Controls: WASD=Move, Q/E=Strafe, R=Autorun, `=Attack, I=Inventory, U=Door
-
-**Admin Mode** (for debugging):
-- Free-fly camera (requires F5 to cycle to Free camera mode)
-- No collision, full debug HUD
-- Animation speed control, corpse Z offset, helm UV adjustments
-- Entity/model inspection tools
-
 ### Key Bindings
 
-**Both Modes:**
+**Global:**
 | Key | Action |
 |-----|--------|
-| F9 | Toggle Admin/Player mode |
 | F12 | Screenshot |
 | LMB+drag | Look around (camera) |
 | RMB+drag | Look around (camera) |
 | Ctrl+LMB+drag | Look around (single-button mouse) |
 | Shift+ESC | Quit |
+| Ctrl+F1 | Toggle wireframe |
+| Ctrl+F2 | Toggle HUD |
+| Ctrl+F3 | Toggle name tags |
+| Ctrl+F4 | Toggle zone lights |
+| Ctrl+F5 | Cycle camera mode |
+| Ctrl+F6 | Toggle Classic/Luclin models |
 
-**Player Mode Only:**
+**Player Mode:**
 | Key | Action |
 |-----|--------|
 | WASD/Arrows | Move (with collision) |
@@ -565,32 +554,10 @@ The renderer has two modes, toggled with **F9**:
 | L | Cycle object lights |
 | ESC | Clear target |
 | +/- | Camera zoom in/out |
-| Ctrl+F5 | Cycle camera mode |
 | Ctrl+Alt+C | Toggle collision |
 | Ctrl+Z | Toggle zone line visualization |
 | Enter | Open chat input |
 | / | Open chat with slash |
-
-**Admin Mode Only:**
-| Key | Action |
-|-----|--------|
-| WASD | Camera movement (Free camera) |
-| E/Q | Camera up/down |
-| Ctrl+F1 | Toggle wireframe |
-| Ctrl+F2 | Toggle HUD |
-| Ctrl+F3 | Toggle name tags |
-| Ctrl+F4 | Toggle zone lights |
-| Ctrl+F5 | Cycle camera mode |
-| Ctrl+F6 | Toggle Classic/Luclin models |
-| Ctrl+F7 | Toggle helm debug mode |
-| Ctrl+F8 | Print helm state |
-| F10 | Save entities to JSON |
-| F11 | Toggle lighting |
-| [ / ] | Decrease/increase animation speed |
-| P / Shift+P | Adjust corpse Z offset |
-| Page Up/Down | Adjust ambient light |
-| H/N | Cycle head variant |
-| Ctrl+Shift+C | Toggle collision debug
 
 ### Slash Commands
 

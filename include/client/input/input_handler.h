@@ -67,12 +67,8 @@ enum class InputAction {
     CycleObjectLights,
     ToggleCameraMode,
     ToggleOldModels,
-    ToggleRendererMode,
     ToggleCollision,
     ToggleCollisionDebug,
-    ToggleLighting,
-    ToggleHelmDebug,
-    SaveEntities,
 
     // Chat input
     OpenChat,       // Enter key pressed - open chat input
@@ -288,51 +284,6 @@ public:
      */
     virtual std::optional<std::string> consumeRawCommand() = 0;
 
-    // ========== Graphics-specific (for debug adjustments) ==========
-
-    /**
-     * Get adjustment deltas for debug controls.
-     * These are accumulated values since last consume.
-     */
-    virtual float consumeAnimSpeedDelta() { return 0.0f; }
-    virtual float consumeAmbientLightDelta() { return 0.0f; }
-    virtual float consumeCorpseZOffsetDelta() { return 0.0f; }
-    virtual float consumeEyeHeightDelta() { return 0.0f; }
-    virtual float consumeParticleMultiplierDelta() { return 0.0f; }
-    virtual float consumeCollisionHeightDelta() { return 0.0f; }
-    virtual float consumeStepHeightDelta() { return 0.0f; }
-
-    // Coordinate offset adjustments
-    virtual float consumeOffsetXDelta() { return 0.0f; }
-    virtual float consumeOffsetYDelta() { return 0.0f; }
-    virtual float consumeOffsetZDelta() { return 0.0f; }
-
-    // Rotation adjustments
-    virtual float consumeRotationXDelta() { return 0.0f; }
-    virtual float consumeRotationYDelta() { return 0.0f; }
-    virtual float consumeRotationZDelta() { return 0.0f; }
-
-    // Helm UV adjustments
-    virtual float consumeHelmUOffsetDelta() { return 0.0f; }
-    virtual float consumeHelmVOffsetDelta() { return 0.0f; }
-    virtual float consumeHelmUScaleDelta() { return 0.0f; }
-    virtual float consumeHelmVScaleDelta() { return 0.0f; }
-    virtual float consumeHelmRotationDelta() { return 0.0f; }
-    virtual bool consumeHelmUVSwapRequest() { return false; }
-    virtual bool consumeHelmVFlipRequest() { return false; }
-    virtual bool consumeHelmUFlipRequest() { return false; }
-    virtual bool consumeHelmResetRequest() { return false; }
-    virtual bool consumeHelmPrintStateRequest() { return false; }
-    virtual int consumeHeadVariantCycleDelta() { return 0; }
-
-    // Repair mode adjustments
-    virtual float consumeRepairRotateXDelta() { return 0.0f; }
-    virtual float consumeRepairRotateYDelta() { return 0.0f; }
-    virtual float consumeRepairRotateZDelta() { return 0.0f; }
-    virtual bool consumeRepairFlipXRequest() { return false; }
-    virtual bool consumeRepairFlipYRequest() { return false; }
-    virtual bool consumeRepairFlipZRequest() { return false; }
-    virtual bool consumeRepairResetRequest() { return false; }
 };
 
 } // namespace input

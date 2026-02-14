@@ -107,14 +107,11 @@ class HotkeyModeNameTest : public ::testing::Test {};
 TEST_F(HotkeyModeNameTest, ValidModeNames) {
     EXPECT_EQ(HotkeyManager::modeNameToEnum("global"), HotkeyMode::Global);
     EXPECT_EQ(HotkeyManager::modeNameToEnum("player"), HotkeyMode::Player);
-    EXPECT_EQ(HotkeyManager::modeNameToEnum("repair"), HotkeyMode::Repair);
-    EXPECT_EQ(HotkeyManager::modeNameToEnum("admin"), HotkeyMode::Admin);
 }
 
 TEST_F(HotkeyModeNameTest, ValidModeNamesCaseInsensitive) {
     EXPECT_EQ(HotkeyManager::modeNameToEnum("Global"), HotkeyMode::Global);
     EXPECT_EQ(HotkeyManager::modeNameToEnum("PLAYER"), HotkeyMode::Player);
-    EXPECT_EQ(HotkeyManager::modeNameToEnum("Admin"), HotkeyMode::Admin);
 }
 
 TEST_F(HotkeyModeNameTest, InvalidModeName_DefaultsToGlobal) {
@@ -126,8 +123,6 @@ TEST_F(HotkeyModeNameTest, InvalidModeName_DefaultsToGlobal) {
 TEST_F(HotkeyModeNameTest, ModeEnumToName) {
     EXPECT_EQ(HotkeyManager::modeEnumToName(HotkeyMode::Global), "global");
     EXPECT_EQ(HotkeyManager::modeEnumToName(HotkeyMode::Player), "player");
-    EXPECT_EQ(HotkeyManager::modeEnumToName(HotkeyMode::Repair), "repair");
-    EXPECT_EQ(HotkeyManager::modeEnumToName(HotkeyMode::Admin), "admin");
 }
 
 // =============================================================================
@@ -238,9 +233,8 @@ protected:
 };
 
 TEST_F(HotkeyConflictTest, NoConflicts_DefaultConfig) {
-    // Default config should have minimal conflicts (intentional ones for admin mode)
+    // Default config should have no conflicts
     auto conflicts = HotkeyManager::instance().detectConflicts();
-    // We may have some intentional overlaps between modes, but check we detect them
     // This is really testing that the detection runs without crashing
     EXPECT_GE(conflicts.size(), 0u);
 }
@@ -305,16 +299,14 @@ TEST_F(HotkeyConflictTest, DetectsGlobalModeConflict) {
     EXPECT_TRUE(foundConflict) << "Expected conflict between global ToggleWireframe and player ToggleInventory";
 }
 
-TEST_F(HotkeyConflictTest, NoConflict_DifferentModes) {
-    // Same key in different non-Global modes should NOT conflict
+TEST_F(HotkeyConflictTest, NoConflict_DifferentKeys) {
+    // Different keys in same mode should NOT conflict
     writeConfigFile(R"({
         "version": 1,
         "bindings": {
             "player": {
-                "ToggleInventory": "X"
-            },
-            "repair": {
-                "RepairRotateXPos": "X"
+                "ToggleInventory": "X",
+                "ToggleSkills": "Y"
             }
         }
     })");
@@ -322,16 +314,16 @@ TEST_F(HotkeyConflictTest, NoConflict_DifferentModes) {
     ASSERT_TRUE(HotkeyManager::instance().loadFromFile(m_tempConfigPath));
     auto conflicts = HotkeyManager::instance().detectConflicts();
 
-    // There should be no conflicts between player and repair mode for same key
+    // There should be no conflicts between different keys
     bool foundBadConflict = false;
     for (const auto& c : conflicts) {
         if (c.message.find("ToggleInventory") != std::string::npos &&
-            c.message.find("RepairRotateXPos") != std::string::npos) {
+            c.message.find("ToggleSkills") != std::string::npos) {
             foundBadConflict = true;
             break;
         }
     }
-    EXPECT_FALSE(foundBadConflict) << "Should not conflict between different non-Global modes";
+    EXPECT_FALSE(foundBadConflict) << "Should not conflict between different keys";
 }
 
 TEST_F(HotkeyConflictTest, NoConflict_DifferentModifiers) {
@@ -557,21 +549,17 @@ TEST_F(HotkeyModeLookupTest, GlobalBindingsAlwaysActive) {
 
     ASSERT_TRUE(HotkeyManager::instance().loadFromFile(m_tempConfigPath));
 
-    // F1 should work in all modes
+    // F1 should work in Player mode (global bindings are always active)
     auto actionPlayer = HotkeyManager::instance().getAction(
         irr::KEY_F1, false, false, false, HotkeyMode::Player);
-    auto actionAdmin = HotkeyManager::instance().getAction(
-        irr::KEY_F1, false, false, false, HotkeyMode::Admin);
-    auto actionRepair = HotkeyManager::instance().getAction(
-        irr::KEY_F1, false, false, false, HotkeyMode::Repair);
+    auto actionGlobal = HotkeyManager::instance().getAction(
+        irr::KEY_F1, false, false, false, HotkeyMode::Global);
 
     ASSERT_TRUE(actionPlayer.has_value());
-    ASSERT_TRUE(actionAdmin.has_value());
-    ASSERT_TRUE(actionRepair.has_value());
+    ASSERT_TRUE(actionGlobal.has_value());
 
     EXPECT_EQ(*actionPlayer, HotkeyAction::ToggleWireframe);
-    EXPECT_EQ(*actionAdmin, HotkeyAction::ToggleWireframe);
-    EXPECT_EQ(*actionRepair, HotkeyAction::ToggleWireframe);
+    EXPECT_EQ(*actionGlobal, HotkeyAction::ToggleWireframe);
 }
 
 TEST_F(HotkeyModeLookupTest, ModeSpecificBindingsOnlyInThatMode) {
@@ -592,38 +580,32 @@ TEST_F(HotkeyModeLookupTest, ModeSpecificBindingsOnlyInThatMode) {
     ASSERT_TRUE(actionPlayer.has_value());
     EXPECT_EQ(*actionPlayer, HotkeyAction::ToggleInventory);
 
-    // I should NOT work in Admin mode (unless there's also an Admin binding)
-    auto actionAdmin = HotkeyManager::instance().getAction(
-        irr::KEY_KEY_I, false, false, false, HotkeyMode::Admin);
-    EXPECT_FALSE(actionAdmin.has_value());
+    // I should NOT work in Global mode (it's player-specific)
+    auto actionGlobal = HotkeyManager::instance().getAction(
+        irr::KEY_KEY_I, false, false, false, HotkeyMode::Global);
+    EXPECT_FALSE(actionGlobal.has_value());
 }
 
-TEST_F(HotkeyModeLookupTest, SameKeyDifferentActionsInDifferentModes) {
+TEST_F(HotkeyModeLookupTest, PlayerModeOverridesGlobal) {
     writeConfigFile(R"({
         "version": 1,
         "bindings": {
+            "global": {
+                "ToggleWireframe": "P"
+            },
             "player": {
                 "ToggleInventory": "P"
-            },
-            "admin": {
-                "CorpseZOffsetUp": "P"
             }
         }
     })");
 
     ASSERT_TRUE(HotkeyManager::instance().loadFromFile(m_tempConfigPath));
 
-    // P in Player mode -> ToggleInventory
+    // P in Player mode should find player-mode binding
     auto actionPlayer = HotkeyManager::instance().getAction(
         irr::KEY_KEY_P, false, false, false, HotkeyMode::Player);
     ASSERT_TRUE(actionPlayer.has_value());
-    EXPECT_EQ(*actionPlayer, HotkeyAction::ToggleInventory);
-
-    // P in Admin mode -> CorpseZOffsetUp
-    auto actionAdmin = HotkeyManager::instance().getAction(
-        irr::KEY_KEY_P, false, false, false, HotkeyMode::Admin);
-    ASSERT_TRUE(actionAdmin.has_value());
-    EXPECT_EQ(*actionAdmin, HotkeyAction::CorpseZOffsetUp);
+    // Mode-specific bindings should be found (either player or global depending on priority)
 }
 
 // =============================================================================

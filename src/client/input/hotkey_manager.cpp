@@ -114,7 +114,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleZoneLights", HotkeyAction::ToggleZoneLights},
     {"ToggleCameraMode", HotkeyAction::ToggleCameraMode},
     {"ToggleOldModels", HotkeyAction::ToggleOldModels},
-    {"ToggleRendererMode", HotkeyAction::ToggleRendererMode},
+    {"ToggleAllUI", HotkeyAction::ToggleAllUI},
     {"ToggleUILock", HotkeyAction::ToggleUILock},
     {"SaveUILayout", HotkeyAction::SaveUILayout},
     {"ResetUIDefaults", HotkeyAction::ResetUIDefaults},
@@ -219,68 +219,6 @@ static const ActionNameMapping s_actionNameMappings[] = {
     // Player - Lighting
     {"CycleObjectLights", HotkeyAction::CycleObjectLights},
 
-    // Admin - Camera
-    {"CameraForward", HotkeyAction::CameraForward},
-    {"CameraBackward", HotkeyAction::CameraBackward},
-    {"CameraLeft", HotkeyAction::CameraLeft},
-    {"CameraRight", HotkeyAction::CameraRight},
-    {"CameraUp", HotkeyAction::CameraUp},
-    {"CameraDown", HotkeyAction::CameraDown},
-
-    // Admin
-    {"SaveEntities", HotkeyAction::SaveEntities},
-    {"ToggleLighting", HotkeyAction::ToggleLighting},
-    {"ToggleHelmDebug", HotkeyAction::ToggleHelmDebug},
-    {"HelmPrintState", HotkeyAction::HelmPrintState},
-    {"AnimSpeedDecrease", HotkeyAction::AnimSpeedDecrease},
-    {"AnimSpeedIncrease", HotkeyAction::AnimSpeedIncrease},
-    {"AmbientLightDecrease", HotkeyAction::AmbientLightDecrease},
-    {"AmbientLightIncrease", HotkeyAction::AmbientLightIncrease},
-    {"CorpseZOffsetUp", HotkeyAction::CorpseZOffsetUp},
-    {"CorpseZOffsetDown", HotkeyAction::CorpseZOffsetDown},
-    {"EyeHeightUp", HotkeyAction::EyeHeightUp},
-    {"EyeHeightDown", HotkeyAction::EyeHeightDown},
-    {"ParticleMultiplierDecrease", HotkeyAction::ParticleMultiplierDecrease},
-    {"ParticleMultiplierIncrease", HotkeyAction::ParticleMultiplierIncrease},
-    {"DetailDensityDecrease", HotkeyAction::DetailDensityDecrease},
-    {"DetailDensityIncrease", HotkeyAction::DetailDensityIncrease},
-    {"HeadVariantPrev", HotkeyAction::HeadVariantPrev},
-    {"HeadVariantNext", HotkeyAction::HeadVariantNext},
-
-    // Admin - Helm UV
-    {"HelmUOffsetLeft", HotkeyAction::HelmUOffsetLeft},
-    {"HelmUOffsetRight", HotkeyAction::HelmUOffsetRight},
-    {"HelmVOffsetUp", HotkeyAction::HelmVOffsetUp},
-    {"HelmVOffsetDown", HotkeyAction::HelmVOffsetDown},
-    {"HelmUScaleDecrease", HotkeyAction::HelmUScaleDecrease},
-    {"HelmUScaleIncrease", HotkeyAction::HelmUScaleIncrease},
-    {"HelmVScaleDecrease", HotkeyAction::HelmVScaleDecrease},
-    {"HelmVScaleIncrease", HotkeyAction::HelmVScaleIncrease},
-    {"HelmRotateLeft", HotkeyAction::HelmRotateLeft},
-    {"HelmRotateRight", HotkeyAction::HelmRotateRight},
-    {"HelmReset", HotkeyAction::HelmReset},
-    {"HelmUVSwap", HotkeyAction::HelmUVSwap},
-    {"HelmVFlip", HotkeyAction::HelmVFlip},
-    {"HelmUFlip", HotkeyAction::HelmUFlip},
-
-    // Admin - Collision
-    {"CollisionHeightUp", HotkeyAction::CollisionHeightUp},
-    {"CollisionHeightDown", HotkeyAction::CollisionHeightDown},
-    {"StepHeightUp", HotkeyAction::StepHeightUp},
-    {"StepHeightDown", HotkeyAction::StepHeightDown},
-
-    // Repair
-    {"RepairRotateXPos", HotkeyAction::RepairRotateXPos},
-    {"RepairRotateXNeg", HotkeyAction::RepairRotateXNeg},
-    {"RepairRotateYPos", HotkeyAction::RepairRotateYPos},
-    {"RepairRotateYNeg", HotkeyAction::RepairRotateYNeg},
-    {"RepairRotateZPos", HotkeyAction::RepairRotateZPos},
-    {"RepairRotateZNeg", HotkeyAction::RepairRotateZNeg},
-    {"RepairFlipX", HotkeyAction::RepairFlipX},
-    {"RepairFlipY", HotkeyAction::RepairFlipY},
-    {"RepairFlipZ", HotkeyAction::RepairFlipZ},
-    {"RepairReset", HotkeyAction::RepairReset},
-
     {nullptr, HotkeyAction::Count}  // Sentinel
 };
 
@@ -290,9 +228,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
 
 static const char* s_modeNames[] = {
     "global",
-    "player",
-    "repair",
-    "admin"
+    "player"
 };
 
 // =============================================================================
@@ -505,10 +441,10 @@ void HotkeyManager::setupDefaults() {
     };
 
     // === Global Bindings (always active) ===
-    addBinding(HotkeyAction::ToggleRendererMode, HotkeyMode::Global, irr::KEY_F9);
     addBinding(HotkeyAction::Screenshot, HotkeyMode::Global, irr::KEY_F12);
     addBinding(HotkeyAction::Quit, HotkeyMode::Global, irr::KEY_ESCAPE, ModifierFlags::Shift);
     addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O);
+    addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F11);
 
     // === Player Mode - Movement ===
     addBinding(HotkeyAction::MoveForward, HotkeyMode::Player, irr::KEY_KEY_W);
@@ -617,69 +553,6 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::EffectsVolumeDown, HotkeyMode::Player, irr::KEY_F10, ModifierFlags::Shift);  // Shift+F10
     addBinding(HotkeyAction::EffectsVolumeUp, HotkeyMode::Player, irr::KEY_F11, ModifierFlags::Shift);    // Shift+F11
 
-    // === Admin Mode - Debug toggles (Ctrl+F1-F8) ===
-    addBinding(HotkeyAction::ToggleWireframe, HotkeyMode::Admin, irr::KEY_F1, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleHUD, HotkeyMode::Admin, irr::KEY_F2, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleNameTags, HotkeyMode::Admin, irr::KEY_F3, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleZoneLights, HotkeyMode::Admin, irr::KEY_F4, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Admin, irr::KEY_F5, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleOldModels, HotkeyMode::Admin, irr::KEY_F6, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleHelmDebug, HotkeyMode::Admin, irr::KEY_F7, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HelmPrintState, HotkeyMode::Admin, irr::KEY_F8, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ToggleCollisionDebug, HotkeyMode::Admin, irr::KEY_KEY_C, ModifierFlags::Ctrl | ModifierFlags::Shift);
-
-    // === Admin Mode - Other controls ===
-    addBinding(HotkeyAction::SaveEntities, HotkeyMode::Admin, irr::KEY_F10);
-    addBinding(HotkeyAction::ToggleLighting, HotkeyMode::Admin, irr::KEY_F11);
-    addBinding(HotkeyAction::AnimSpeedDecrease, HotkeyMode::Admin, irr::KEY_OEM_4);  // [
-    addBinding(HotkeyAction::AnimSpeedIncrease, HotkeyMode::Admin, irr::KEY_OEM_6);  // ]
-    addBinding(HotkeyAction::AmbientLightIncrease, HotkeyMode::Admin, irr::KEY_PRIOR);  // Page Up
-    addBinding(HotkeyAction::AmbientLightDecrease, HotkeyMode::Admin, irr::KEY_NEXT);   // Page Down
-    addBinding(HotkeyAction::CorpseZOffsetUp, HotkeyMode::Admin, irr::KEY_KEY_P);
-    addBinding(HotkeyAction::CorpseZOffsetDown, HotkeyMode::Admin, irr::KEY_KEY_P, ModifierFlags::Shift);
-    addBinding(HotkeyAction::EyeHeightUp, HotkeyMode::Admin, irr::KEY_KEY_Y);
-    addBinding(HotkeyAction::EyeHeightDown, HotkeyMode::Admin, irr::KEY_KEY_Y, ModifierFlags::Shift);
-    addBinding(HotkeyAction::ParticleMultiplierDecrease, HotkeyMode::Admin, irr::KEY_MINUS, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ParticleMultiplierIncrease, HotkeyMode::Admin, irr::KEY_PLUS, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::DetailDensityDecrease, HotkeyMode::Admin, irr::KEY_OEM_4);  // [ key
-    addBinding(HotkeyAction::DetailDensityIncrease, HotkeyMode::Admin, irr::KEY_OEM_6);  // ] key
-    addBinding(HotkeyAction::HeadVariantPrev, HotkeyMode::Admin, irr::KEY_KEY_H);
-    addBinding(HotkeyAction::HeadVariantNext, HotkeyMode::Admin, irr::KEY_KEY_N);
-
-    // Admin - Helm UV adjustments
-    addBinding(HotkeyAction::HelmUOffsetLeft, HotkeyMode::Admin, irr::KEY_KEY_I);
-    addBinding(HotkeyAction::HelmUOffsetRight, HotkeyMode::Admin, irr::KEY_KEY_K);
-    addBinding(HotkeyAction::HelmVOffsetUp, HotkeyMode::Admin, irr::KEY_KEY_L);
-    addBinding(HotkeyAction::HelmVOffsetDown, HotkeyMode::Admin, irr::KEY_KEY_J);
-    addBinding(HotkeyAction::HelmUScaleDecrease, HotkeyMode::Admin, irr::KEY_KEY_O);
-    addBinding(HotkeyAction::HelmUScaleIncrease, HotkeyMode::Admin, irr::KEY_KEY_P);
-    addBinding(HotkeyAction::HelmVScaleDecrease, HotkeyMode::Admin, irr::KEY_COMMA);
-    addBinding(HotkeyAction::HelmVScaleIncrease, HotkeyMode::Admin, irr::KEY_PERIOD);
-    addBinding(HotkeyAction::HelmRotateLeft, HotkeyMode::Admin, irr::KEY_MINUS);
-    addBinding(HotkeyAction::HelmRotateRight, HotkeyMode::Admin, irr::KEY_PLUS);
-    addBinding(HotkeyAction::HelmReset, HotkeyMode::Admin, irr::KEY_KEY_0);
-    addBinding(HotkeyAction::HelmUVSwap, HotkeyMode::Admin, irr::KEY_KEY_S, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HelmVFlip, HotkeyMode::Admin, irr::KEY_KEY_V, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::HelmUFlip, HotkeyMode::Admin, irr::KEY_KEY_U, ModifierFlags::Ctrl);
-
-    // Admin - Collision height adjustments
-    addBinding(HotkeyAction::CollisionHeightUp, HotkeyMode::Admin, irr::KEY_KEY_T);
-    addBinding(HotkeyAction::CollisionHeightDown, HotkeyMode::Admin, irr::KEY_KEY_G);
-    addBinding(HotkeyAction::StepHeightUp, HotkeyMode::Admin, irr::KEY_KEY_Y);
-    addBinding(HotkeyAction::StepHeightDown, HotkeyMode::Admin, irr::KEY_KEY_B);
-
-    // === Repair Mode ===
-    addBinding(HotkeyAction::RepairRotateXPos, HotkeyMode::Repair, irr::KEY_KEY_X);
-    addBinding(HotkeyAction::RepairRotateXNeg, HotkeyMode::Repair, irr::KEY_KEY_X, ModifierFlags::Shift);
-    addBinding(HotkeyAction::RepairRotateYPos, HotkeyMode::Repair, irr::KEY_KEY_Y);
-    addBinding(HotkeyAction::RepairRotateYNeg, HotkeyMode::Repair, irr::KEY_KEY_Y, ModifierFlags::Shift);
-    addBinding(HotkeyAction::RepairRotateZPos, HotkeyMode::Repair, irr::KEY_KEY_Z);
-    addBinding(HotkeyAction::RepairRotateZNeg, HotkeyMode::Repair, irr::KEY_KEY_Z, ModifierFlags::Shift);
-    addBinding(HotkeyAction::RepairFlipX, HotkeyMode::Repair, irr::KEY_KEY_1, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::RepairFlipY, HotkeyMode::Repair, irr::KEY_KEY_2, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::RepairFlipZ, HotkeyMode::Repair, irr::KEY_KEY_3, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::RepairReset, HotkeyMode::Repair, irr::KEY_KEY_R, ModifierFlags::Ctrl);
-
     rebuildIndex();
 }
 
@@ -735,12 +608,6 @@ bool HotkeyManager::loadFromFile(const std::string& path) {
         }
         if (bindings.isMember("player")) {
             loadModeBindings(bindings["player"], HotkeyMode::Player);
-        }
-        if (bindings.isMember("repair")) {
-            loadModeBindings(bindings["repair"], HotkeyMode::Repair);
-        }
-        if (bindings.isMember("admin")) {
-            loadModeBindings(bindings["admin"], HotkeyMode::Admin);
         }
     }
 
@@ -863,12 +730,6 @@ void HotkeyManager::applyOverrides(const Json::Value& overrides) {
     if (overrides.isMember("player")) {
         loadModeBindings(overrides["player"], HotkeyMode::Player);
     }
-    if (overrides.isMember("repair")) {
-        loadModeBindings(overrides["repair"], HotkeyMode::Repair);
-    }
-    if (overrides.isMember("admin")) {
-        loadModeBindings(overrides["admin"], HotkeyMode::Admin);
-    }
 
     rebuildIndex();
     logConflicts();
@@ -902,11 +763,19 @@ std::optional<HotkeyAction> HotkeyManager::getAction(
     uint32_t hash = makeKeyHash(keyCode, inputMods);
 
     auto range = m_keyIndex.equal_range(hash);
+
+    // First pass: prefer Global bindings (always take priority)
     for (auto it = range.first; it != range.second; ++it) {
         const auto& binding = m_bindings[it->second];
+        if (binding.mode == HotkeyMode::Global) {
+            return binding.action;
+        }
+    }
 
-        // Check if mode matches (Global bindings always match)
-        if (binding.mode == HotkeyMode::Global || binding.mode == currentMode) {
+    // Second pass: check mode-specific bindings
+    for (auto it = range.first; it != range.second; ++it) {
+        const auto& binding = m_bindings[it->second];
+        if (binding.mode == currentMode) {
             return binding.action;
         }
     }

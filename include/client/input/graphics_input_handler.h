@@ -59,43 +59,6 @@ public:
     std::optional<MoveCommand> consumeMoveCommand() override { return std::nullopt; }
     std::optional<std::string> consumeRawCommand() override { return std::nullopt; }
 
-    // Graphics-specific debug adjustments
-    float consumeAnimSpeedDelta() override;
-    float consumeAmbientLightDelta() override;
-    float consumeCorpseZOffsetDelta() override;
-    float consumeEyeHeightDelta() override;
-    float consumeParticleMultiplierDelta() override;
-    float consumeCollisionHeightDelta() override;
-    float consumeStepHeightDelta() override;
-
-    float consumeOffsetXDelta() override;
-    float consumeOffsetYDelta() override;
-    float consumeOffsetZDelta() override;
-
-    float consumeRotationXDelta() override;
-    float consumeRotationYDelta() override;
-    float consumeRotationZDelta() override;
-
-    float consumeHelmUOffsetDelta() override;
-    float consumeHelmVOffsetDelta() override;
-    float consumeHelmUScaleDelta() override;
-    float consumeHelmVScaleDelta() override;
-    float consumeHelmRotationDelta() override;
-    bool consumeHelmUVSwapRequest() override;
-    bool consumeHelmVFlipRequest() override;
-    bool consumeHelmUFlipRequest() override;
-    bool consumeHelmResetRequest() override;
-    bool consumeHelmPrintStateRequest() override;
-    int consumeHeadVariantCycleDelta() override;
-
-    float consumeRepairRotateXDelta() override;
-    float consumeRepairRotateYDelta() override;
-    float consumeRepairRotateZDelta() override;
-    bool consumeRepairFlipXRequest() override;
-    bool consumeRepairFlipYRequest() override;
-    bool consumeRepairFlipZRequest() override;
-    bool consumeRepairResetRequest() override;
-
     /**
      * Inject a target request (called by IrrlichtRenderer when entity is clicked).
      */
