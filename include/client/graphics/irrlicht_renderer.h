@@ -7,6 +7,7 @@
 #include <functional>
 #include <vector>
 #include <map>
+#include <unordered_set>
 #include <glm/glm.hpp>
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/camera_controller.h"
@@ -15,6 +16,7 @@
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/frustum_culler.h"
+#include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/weather_system.h"
@@ -882,6 +884,8 @@ private:
 
     std::unique_ptr<CameraController> cameraController_;
     std::unique_ptr<FrustumCuller> frustumCuller_;
+    std::unique_ptr<SoftwareOcclusionCuller> occlusionCuller_;
+    std::unordered_set<size_t> occlusionCulledRegions_;
     float lastFrustumFwdX_ = 0.0f, lastFrustumFwdY_ = 1.0f, lastFrustumFwdZ_ = 0.0f;
     bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;

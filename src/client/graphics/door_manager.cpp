@@ -1,6 +1,9 @@
 #include "client/graphics/door_manager.h"
+#include "client/graphics/frustum_culler.h"
+#include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/eq.h"
 #include "common/logging.h"
@@ -301,6 +304,11 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     // Store bounding box for interaction (in world coordinates)
     visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
 
+    // Compute BSP region for occlusion culling
+    if (bspTree_) {
+        visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
+    }
+
     doors_[doorId] = visual;
 
     LOG_DEBUG(MOD_GRAPHICS, "Created door {} '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} opentype={}{} state={}",
@@ -347,6 +355,29 @@ void DoorManager::update(float deltaTime)
     for (auto& [id, visual] : doors_) {
         if (!visual.sceneNode) {
             continue;
+        }
+
+        // Visibility culling: frustum → region-level PVS → per-door depth test
+        bool doorOccluded = false;
+        if (frustumCuller_ && frustumCuller_->isEnabled()) {
+            if (!frustumCuller_->testSphere(visual.x, visual.y, visual.z, 5.0f)) {
+                doorOccluded = true;
+            }
+        }
+        if (!doorOccluded && visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
+            && occlusionCulledRegions_->count(visual.bspRegion)) {
+            doorOccluded = true;
+        }
+        if (!doorOccluded && occlusionCuller_ && occlusionCuller_->isEnabled()) {
+            doorOccluded = occlusionCuller_->testPoint(visual.x, visual.y, visual.z);
+        }
+        if (doorOccluded) {
+            if (visual.pivotNode) visual.pivotNode->setVisible(false);
+            else if (visual.sceneNode) visual.sceneNode->setVisible(false);
+            continue;
+        } else {
+            if (visual.pivotNode) visual.pivotNode->setVisible(true);
+            else if (visual.sceneNode) visual.sceneNode->setVisible(true);
         }
 
         // Handle spinning objects (opentype 100 = Y-spin, 105 = Z-spin)

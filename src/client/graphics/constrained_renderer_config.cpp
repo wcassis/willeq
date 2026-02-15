@@ -151,9 +151,9 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
 
         case ConstrainedRenderingPreset::OrangePi:
             // Orange Pi One: Allwinner H3, Mali 400, 512MB shared RAM
-            // Tuned for 800x600 OpenGL with audio
+            // 8MB framebuffer supports up to 1280x720 at 16-bit (front+back+Z = 5.3MB)
             config.enabled = true;
-            config.framebufferMemoryBytes = 4 * 1024 * 1024;  // 4MB
+            config.framebufferMemoryBytes = 8 * 1024 * 1024;  // 8MB
             config.textureMemoryBytes = 32 * 1024 * 1024;     // 32MB
             config.colorDepthBits = 16;
             config.maxTextureDimension = 128;
@@ -162,6 +162,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 200.0f;
             config.maxVisibleEntities = 40;
             config.maxPolygonsPerFrame = 40000;
+            // Software occlusion culling (128x64 depth buffer = 32KB)
+            config.occlusionBufferWidth = 128;
+            config.occlusionBufferHeight = 64;
+            config.occlusionMaxOccluderRegions = 48;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             break;

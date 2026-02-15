@@ -834,6 +834,17 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
             return this->findGroundZ(x, y, currentZ);
         });
+        // If zone was already loaded before entity renderer was created,
+        // pass BSP tree, frustum culler, and occlusion culler now
+        if (zoneBspTree_) {
+            entityRenderer_->setBspTree(zoneBspTree_);
+        }
+        if (frustumCuller_) {
+            entityRenderer_->setFrustumCuller(frustumCuller_.get());
+        }
+        if (occlusionCuller_) {
+            entityRenderer_->setOcclusionCuller(occlusionCuller_.get());
+        }
     }
 
     // Load main global character models (global_chr.s3d)
@@ -871,6 +882,15 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         // If zone was already loaded before doorManager_ was created, set it now
         if (currentZone_) {
             doorManager_->setZone(currentZone_);
+        }
+        if (zoneBspTree_) {
+            doorManager_->setBspTree(zoneBspTree_.get());
+        }
+        if (frustumCuller_) {
+            doorManager_->setFrustumCuller(frustumCuller_.get());
+        }
+        if (occlusionCuller_) {
+            doorManager_->setOcclusionCuller(occlusionCuller_.get());
         }
     }
 
@@ -1057,6 +1077,19 @@ void IrrlichtRenderer::setupCamera() {
     cameraController_->setMouseSensitivity(0.2f);
 
     frustumCuller_ = std::make_unique<FrustumCuller>();
+
+    // Create software occlusion culler if constrained config has it enabled
+    if (config_.constrainedConfig.enabled &&
+        config_.constrainedConfig.occlusionBufferWidth > 0 &&
+        config_.constrainedConfig.occlusionBufferHeight > 0) {
+        OcclusionCullerConfig occConfig;
+        occConfig.width = config_.constrainedConfig.occlusionBufferWidth;
+        occConfig.height = config_.constrainedConfig.occlusionBufferHeight;
+        occConfig.maxOccluderRegions = config_.constrainedConfig.occlusionMaxOccluderRegions;
+        occlusionCuller_ = std::make_unique<SoftwareOcclusionCuller>(occConfig);
+        LOG_INFO(MOD_GRAPHICS, "Software occlusion culler enabled: {}x{} depth buffer, max {} occluder regions",
+            occConfig.width, occConfig.height, occConfig.maxOccluderRegions);
+    }
 }
 
 void IrrlichtRenderer::setupLighting() {
@@ -1299,6 +1332,13 @@ void IrrlichtRenderer::updateObjectVisibility() {
             }
         }
 
+        // Occlusion culling for objects with known BSP regions
+        if (shouldBeInScene && !occlusionCulledRegions_.empty()
+            && i < objectRegions_.size() && objectRegions_[i] != SIZE_MAX
+            && occlusionCulledRegions_.count(objectRegions_[i])) {
+            shouldBeInScene = false;
+        }
+
         // Frustum check (object bboxes are in Irrlicht Y-up coords; always swap Y<->Z for EQ)
         if (shouldBeInScene && frustumCuller_ && frustumCuller_->isEnabled() && validBbox) {
             if (!frustumCuller_->testAABB(
@@ -1358,6 +1398,34 @@ void IrrlichtRenderer::updateZoneLightVisibility() {
 
         float distSq = cameraPos.getDistanceFromSQ(zoneLightPositions_[i]);
         bool shouldBeInScene = (distSq <= renderDistSq);
+
+        // Frustum culling for zone lights
+        // zoneLightPositions_ are in Irrlicht coords (Y-up), frustum expects EQ (Z-up)
+        if (shouldBeInScene && frustumCuller_ && frustumCuller_->isEnabled()) {
+            const auto& p = zoneLightPositions_[i];
+            if (!frustumCuller_->testSphere(p.X, p.Z, p.Y, 5.0f)) {
+                shouldBeInScene = false;
+            }
+        }
+
+        // PVS + occlusion culling for zone lights
+        if (shouldBeInScene && usePvsCulling_ && i < zoneLightRegions_.size()
+            && zoneLightRegions_[i] != SIZE_MAX && currentPvsRegion_ != SIZE_MAX
+            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
+            auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
+            size_t lightReg = zoneLightRegions_[i];
+            if (camRegion && !camRegion->visibleRegions.empty()
+                && lightReg < camRegion->visibleRegions.size()) {
+                if (!camRegion->visibleRegions[lightReg]) {
+                    shouldBeInScene = false;
+                }
+            }
+            // Occlusion check
+            if (shouldBeInScene && !occlusionCulledRegions_.empty()
+                && occlusionCulledRegions_.count(lightReg)) {
+                shouldBeInScene = false;
+            }
+        }
 
         if (shouldBeInScene && !zoneLightInSceneGraph_[i]) {
             // Add back to scene graph
@@ -1503,6 +1571,15 @@ void IrrlichtRenderer::updateObjectLights() {
                     }
                 }
                 // If lightRegion == SIZE_MAX or outside visibleRegions array, assume visible (conservative)
+            }
+
+            // Occlusion culling: skip lights in occlusion-culled regions
+            if (!occlusionCulledRegions_.empty() && i < zoneLightRegions_.size()) {
+                size_t lightRegion = zoneLightRegions_[i];
+                if (lightRegion != SIZE_MAX && occlusionCulledRegions_.count(lightRegion)) {
+                    pvsSkipped++;
+                    continue;
+                }
             }
 
             // Distance culling
@@ -2398,13 +2475,23 @@ void IrrlichtRenderer::unloadZone() {
     zoneBspTree_.reset();
     currentPvsRegion_ = SIZE_MAX;
 
+    // Clear occlusion culler data
+    if (occlusionCuller_) {
+        occlusionCuller_->clearOccluders();
+    }
+    occlusionCulledRegions_.clear();
+
     // Reset zone clip plane so previous zone's cap doesn't linger
     zoneMaxClip_ = 99999.0f;
     setRenderDistance(userRenderDistance_);
 
-    // Clear BSP tree from entity renderer
+    // Clear BSP tree from entity renderer and door manager
     if (entityRenderer_) {
         entityRenderer_->clearBspTree();
+    }
+    if (doorManager_) {
+        doorManager_->setBspTree(nullptr);
+        doorManager_->setOcclusionCulledRegions(nullptr);
     }
 
     // Remove object nodes
@@ -2684,10 +2771,16 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
     usePvsCulling_ = true;
     currentPvsRegion_ = SIZE_MAX;
 
-    // Pass BSP tree and frustum culler to entity renderer for visibility culling
+    // Pass BSP tree and frustum culler to entity renderer and door manager
     if (entityRenderer_) {
         entityRenderer_->setBspTree(bspTree);
         entityRenderer_->setFrustumCuller(frustumCuller_.get());
+        entityRenderer_->setOcclusionCuller(occlusionCuller_.get());
+    }
+    if (doorManager_) {
+        doorManager_->setBspTree(bspTree.get());
+        doorManager_->setFrustumCuller(frustumCuller_.get());
+        doorManager_->setOcclusionCuller(occlusionCuller_.get());
     }
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
@@ -2789,6 +2882,90 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
     }
 
     LOG_INFO(MOD_GRAPHICS, "Created {} region mesh nodes for PVS culling", createdMeshes);
+
+    // Extract occluder triangles for software occlusion culling
+    if (occlusionCuller_) {
+        occlusionCuller_->clearOccluders();
+        const auto& occConfig = occlusionCuller_->getConfig();
+        size_t totalOccluders = 0;
+        size_t regionsWithOccluders = 0;
+
+        for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
+            auto geom = wldLoader->getGeometryForRegion(regionIdx);
+            if (!geom || geom->vertices.empty() || geom->triangles.empty()) continue;
+
+            // Collect candidate occluder triangles for this region
+            std::vector<OccluderTriangle> candidates;
+            for (const auto& tri : geom->triangles) {
+                // Skip invisible textures (water surfaces, invisible walls)
+                if (tri.textureIndex < geom->textureInvisible.size() &&
+                    geom->textureInvisible[tri.textureIndex]) {
+                    continue;
+                }
+
+                if (tri.v1 >= geom->vertices.size() ||
+                    tri.v2 >= geom->vertices.size() ||
+                    tri.v3 >= geom->vertices.size()) continue;
+
+                const auto& vert0 = geom->vertices[tri.v1];
+                const auto& vert1 = geom->vertices[tri.v2];
+                const auto& vert2 = geom->vertices[tri.v3];
+
+                // Compute world-space vertices (add center offset)
+                float w0[3] = {vert0.x + geom->centerX, vert0.y + geom->centerY, vert0.z + geom->centerZ};
+                float w1[3] = {vert1.x + geom->centerX, vert1.y + geom->centerY, vert1.z + geom->centerZ};
+                float w2[3] = {vert2.x + geom->centerX, vert2.y + geom->centerY, vert2.z + geom->centerZ};
+
+                // Compute edge vectors
+                float e1[3] = {w1[0]-w0[0], w1[1]-w0[1], w1[2]-w0[2]};
+                float e2[3] = {w2[0]-w0[0], w2[1]-w0[1], w2[2]-w0[2]};
+
+                // Cross product (normal)
+                float nx = e1[1]*e2[2] - e1[2]*e2[1];
+                float ny = e1[2]*e2[0] - e1[0]*e2[2];
+                float nz = e1[0]*e2[1] - e1[1]*e2[0];
+
+                // Area = 0.5 * |cross product|
+                float area = 0.5f * std::sqrt(nx*nx + ny*ny + nz*nz);
+                if (area < occConfig.minOccluderArea) continue;
+
+                // Normal filter: keep walls (horizontal normal length > 0.5) and floors/ceilings (|nz| > 0.7)
+                float normalLen = std::sqrt(nx*nx + ny*ny + nz*nz);
+                if (normalLen < 0.001f) continue;
+                float invNLen = 1.0f / normalLen;
+                float nnx = nx * invNLen, nny = ny * invNLen, nnz = nz * invNLen;
+                float horizontalNormal = std::sqrt(nnx*nnx + nny*nny);
+                bool isWall = (horizontalNormal > 0.5f);
+                bool isFloorCeiling = (std::abs(nnz) > 0.7f);
+                if (!isWall && !isFloorCeiling) continue;
+
+                OccluderTriangle occ;
+                occ.v0[0] = w0[0]; occ.v0[1] = w0[1]; occ.v0[2] = w0[2];
+                occ.v1[0] = w1[0]; occ.v1[1] = w1[1]; occ.v1[2] = w1[2];
+                occ.v2[0] = w2[0]; occ.v2[1] = w2[1]; occ.v2[2] = w2[2];
+                occ.area = area;
+                candidates.push_back(occ);
+            }
+
+            // Sort by area descending, keep top N
+            if (candidates.size() > static_cast<size_t>(occConfig.maxTrianglesPerRegion)) {
+                std::sort(candidates.begin(), candidates.end(),
+                    [](const OccluderTriangle& a, const OccluderTriangle& b) {
+                        return a.area > b.area;
+                    });
+                candidates.resize(occConfig.maxTrianglesPerRegion);
+            }
+
+            if (!candidates.empty()) {
+                totalOccluders += candidates.size();
+                regionsWithOccluders++;
+                occlusionCuller_->setRegionOccluders(regionIdx, std::move(candidates));
+            }
+        }
+
+        LOG_INFO(MOD_GRAPHICS, "Extracted {} occluder triangles from {} regions for software occlusion culling",
+            totalOccluders, regionsWithOccluders);
+    }
 
     // Check for geometry not associated with any BSP region (fallback geometry)
     // This geometry should always be visible
@@ -2926,10 +3103,16 @@ void IrrlichtRenderer::updatePvsVisibility() {
         return;
     }
 
-    // Get camera position (use player position for consistency)
+    // Player position for BSP/PVS lookup (which region is the player in)
     float camX = playerX_;
     float camY = playerY_;
     float camZ = playerZ_;
+
+    // Actual camera position for occlusion culler (projection origin)
+    float occCamX = playerX_, occCamY = playerY_, occCamZ = playerZ_;
+    if (cameraController_) {
+        cameraController_->getPositionEQ(occCamX, occCamY, occCamZ);
+    }
 
     // Cache BSP lookup - only recompute if position changed significantly (>5 units)
     static float lastBspX = -99999.0f, lastBspY = -99999.0f, lastBspZ = -99999.0f;
@@ -3108,14 +3291,119 @@ void IrrlichtRenderer::updatePvsVisibility() {
         visibleCount++;
     }
 
+    // 4. Software occlusion culling pass
+    // After PVS + distance + frustum, test remaining visible regions against a CPU depth buffer
+    // populated by rasterizing nearby wall triangles.
+    size_t hiddenByOcclusionCount = 0;
+    occlusionCulledRegions_.clear();
+
+    if (occlusionCuller_ && occlusionCuller_->isEnabled() && occlusionCuller_->hasOccluders() && frustumCuller_) {
+        occlusionCuller_->resetStats();
+        occlusionCuller_->clear();
+
+        // Set camera from actual camera position + frustum culler's basis vectors
+        occlusionCuller_->setCamera(occCamX, occCamY, occCamZ,
+            frustumCuller_->getFwdX(), frustumCuller_->getFwdY(), frustumCuller_->getFwdZ(),
+            frustumCuller_->getRightX(), frustumCuller_->getRightY(), 0.0f,
+            frustumCuller_->getUpX(), frustumCuller_->getUpY(), frustumCuller_->getUpZ(),
+            camera_ ? camera_->getFOV() : 1.0f,
+            camera_ ? (static_cast<float>(driver_->getScreenSize().Width) /
+                        static_cast<float>(driver_->getScreenSize().Height)) : 1.33f);
+
+        // Collect visible regions with their distances for front-to-back sorting
+        struct RegionDist {
+            size_t regionIdx;
+            float distance;
+        };
+        std::vector<RegionDist> visibleRegionDists;
+        visibleRegionDists.reserve(visibleCount);
+
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (!node || !node->isVisible()) continue;
+            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+            if (bboxIt == regionBoundingBoxes_.end()) continue;
+            const auto& bbox = bboxIt->second;
+
+            // Distance from camera to nearest edge of bbox
+            float closestX = std::max(bbox.MinEdge.X, std::min(occCamX, bbox.MaxEdge.X));
+            float closestY = std::max(bbox.MinEdge.Y, std::min(occCamY, bbox.MaxEdge.Y));
+            float closestZ = std::max(bbox.MinEdge.Z, std::min(occCamZ, bbox.MaxEdge.Z));
+            float ddx = occCamX - closestX, ddy = occCamY - closestY, ddz = occCamZ - closestZ;
+            float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+
+            visibleRegionDists.push_back({regionIdx, dist});
+        }
+
+        // Sort front-to-back by distance
+        std::sort(visibleRegionDists.begin(), visibleRegionDists.end(),
+            [](const RegionDist& a, const RegionDist& b) { return a.distance < b.distance; });
+
+        // Rasterize occluder triangles from closest N regions
+        // Track which regions were used as occluders so we skip them during testing
+        const int maxOccRegions = occlusionCuller_->getConfig().maxOccluderRegions;
+        std::unordered_set<size_t> rasterizedRegionIndices;
+        int rasterizedRegionCount = 0;
+        for (const auto& rd : visibleRegionDists) {
+            if (rasterizedRegionCount >= maxOccRegions) break;
+            const auto& occluders = occlusionCuller_->getRegionOccluders(rd.regionIdx);
+            if (occluders.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} has NO occluders", rd.regionIdx, rd.distance);
+                continue;
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} rasterizing {} occluder tris", rd.regionIdx, rd.distance, occluders.size());
+            for (const auto& occ : occluders) {
+                occlusionCuller_->rasterizeTriangle(occ.v0, occ.v1, occ.v2);
+            }
+            rasterizedRegionIndices.insert(rd.regionIdx);
+            rasterizedRegionCount++;
+        }
+
+        // Update rasterization stat and compute buffer fill
+        occlusionCuller_->getStatsMutable().regionsRasterized = rasterizedRegionCount;
+        occlusionCuller_->computeBufferFillStats();
+
+        // Test ALL visible regions against the depth buffer.
+        // Rasterized regions are NOT skipped — the depth buffer uses min-depth writes,
+        // so closer walls from other regions correctly occlude farther regions even if
+        // the farther region's own walls were also rasterized. The camera's own region
+        // is naturally excluded by testAABB's projectedCount<8 check (corners behind camera).
+        for (size_t i = 0; i < visibleRegionDists.size(); ++i) {
+            size_t regionIdx = visibleRegionDists[i].regionIdx;
+
+            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+            if (bboxIt == regionBoundingBoxes_.end()) continue;
+            const auto& bbox = bboxIt->second;
+
+            // regionsTested incremented inside testAABB along with rejection reasons
+            if (occlusionCuller_->testAABB(
+                    bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                    bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
+                // Fully occluded - hide region
+                auto nodeIt = regionMeshNodes_.find(regionIdx);
+                if (nodeIt != regionMeshNodes_.end() && nodeIt->second) {
+                    nodeIt->second->setVisible(false);
+                    hiddenByOcclusionCount++;
+                    visibleCount--;
+                    occlusionCulledRegions_.insert(regionIdx);
+                }
+            }
+        }
+
+        // Notify entity renderer that the depth buffer was rebuilt
+        if (entityRenderer_) {
+            entityRenderer_->invalidateOcclusionCache();
+        }
+    }
+
     // Log warning if many regions are outside PVS array
     if (outOfRangeCount > 0) {
         LOG_WARN(MOD_GRAPHICS, "PVS: {} region meshes have index >= visibleRegions.size() ({})",
             outOfRangeCount, region->visibleRegions.size());
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden, {} frustum-hidden",
-        newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, hiddenByFrustumCount);
+    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden, {} frustum-hidden, {} occlusion-hidden",
+        newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, hiddenByFrustumCount, hiddenByOcclusionCount);
 }
 
 void IrrlichtRenderer::updateFrustumCulling() {
@@ -4685,6 +4973,61 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                         }
                     }
 
+                    // Log occlusion culler stats if available
+                    if (occlusionCuller_ && occlusionCuller_->isEnabled()) {
+                        const auto& occStats = occlusionCuller_->getStats();
+                        int fillPct = occStats.depthBufferTotalPixels > 0
+                            ? (occStats.depthBufferFilledPixels * 100 / occStats.depthBufferTotalPixels) : 0;
+                        LOG_INFO(MOD_GRAPHICS, "OCCLUSION: {} rasterized ({} tris, {} clipped), buf {}/{} px ({}%), "
+                            "{} tested, {} culled [reject: {} behind, {} offscreen, {} too-large, {} low-coverage]",
+                            occStats.regionsRasterized, occStats.trianglesRasterized, occStats.trianglesClipped,
+                            occStats.depthBufferFilledPixels, occStats.depthBufferTotalPixels, fillPct,
+                            occStats.regionsTested, occStats.regionsCulled,
+                            occStats.rejectedBehindCamera, occStats.rejectedOffScreen,
+                            occStats.rejectedScreenTooLarge, occStats.rejectedLowCoverage);
+                        occlusionCuller_->dumpDepthBufferPGM("occlusion_depth.pgm");
+                        LOG_INFO(MOD_GRAPHICS, "OCCLUSION: depth buffer dumped to occlusion_depth.pgm");
+
+                        // Detailed per-region occluder diagnostic (use camera position)
+                        float occDiagX = playerX_, occDiagY = playerY_, occDiagZ = playerZ_;
+                        if (cameraController_) {
+                            cameraController_->getPositionEQ(occDiagX, occDiagY, occDiagZ);
+                        }
+                        struct OccDiag { size_t regionIdx; float dist; size_t triCount; };
+                        std::vector<OccDiag> occDiags;
+                        for (auto& [regionIdx, node] : regionMeshNodes_) {
+                            if (!node || !node->isVisible()) continue;
+                            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+                            if (bboxIt == regionBoundingBoxes_.end()) continue;
+                            const auto& bbox = bboxIt->second;
+                            float closestX = std::max(bbox.MinEdge.X, std::min(occDiagX, bbox.MaxEdge.X));
+                            float closestY = std::max(bbox.MinEdge.Y, std::min(occDiagY, bbox.MaxEdge.Y));
+                            float closestZ = std::max(bbox.MinEdge.Z, std::min(occDiagZ, bbox.MaxEdge.Z));
+                            float ddx = occDiagX - closestX, ddy = occDiagY - closestY, ddz = occDiagZ - closestZ;
+                            float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+                            const auto& occ = occlusionCuller_->getRegionOccluders(regionIdx);
+                            occDiags.push_back({regionIdx, dist, occ.size()});
+                        }
+                        std::sort(occDiags.begin(), occDiags.end(),
+                            [](const OccDiag& a, const OccDiag& b) { return a.dist < b.dist; });
+                        LOG_INFO(MOD_GRAPHICS, "OCCL REGIONS (closest 20 visible):");
+                        for (int i = 0; i < 20 && i < (int)occDiags.size(); ++i) {
+                            auto& d = occDiags[i];
+                            const auto& occ = occlusionCuller_->getRegionOccluders(d.regionIdx);
+                            if (occ.empty()) {
+                                LOG_INFO(MOD_GRAPHICS, "  region {} dist={:.1f} NO occluders", d.regionIdx, d.dist);
+                            } else {
+                                LOG_INFO(MOD_GRAPHICS, "  region {} dist={:.1f} {} occluder tris:", d.regionIdx, d.dist, occ.size());
+                                for (size_t t = 0; t < occ.size() && t < 4; ++t) {
+                                    LOG_INFO(MOD_GRAPHICS, "    tri{}: ({:.1f},{:.1f},{:.1f}) ({:.1f},{:.1f},{:.1f}) ({:.1f},{:.1f},{:.1f}) area={:.1f}",
+                                        t, occ[t].v0[0], occ[t].v0[1], occ[t].v0[2],
+                                        occ[t].v1[0], occ[t].v1[1], occ[t].v1[2],
+                                        occ[t].v2[0], occ[t].v2[1], occ[t].v2[2], occ[t].area);
+                                }
+                            }
+                        }
+                    }
+
                     // Force visibility rebuild
                     forcePvsUpdate_ = true;
                     lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
@@ -4808,12 +5151,12 @@ void IrrlichtRenderer::processFrameVisibility() {
     }
 
     if (runTier2_) {
+        updatePvsVisibility();
+        if (frameTimingEnabled_) frameTimings_.pvsVisibility = measureSection();
+
         updateObjectVisibility();
         updateZoneLightVisibility();
         if (frameTimingEnabled_) frameTimings_.objectVisibility = measureSection();
-
-        updatePvsVisibility();
-        if (frameTimingEnabled_) frameTimings_.pvsVisibility = measureSection();
 
         updateObjectLights();
         if (frameTimingEnabled_) frameTimings_.objectLights = measureSection();
@@ -4840,12 +5183,19 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         entityRenderer_->updateInterpolation(deltaTime);
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
         entityRenderer_->processExpiredCombatBuffers();
+        // Pass occlusion-culled regions to entity renderer for entity visibility
+        entityRenderer_->setOcclusionCulledRegions(
+            occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
         if (camera_) entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
     }
     if (frameTimingEnabled_) frameTimings_.entityUpdate = measureSection();
 
     // Door update
-    if (doorManager_) doorManager_->update(deltaTime);
+    if (doorManager_) {
+        doorManager_->setOcclusionCulledRegions(
+            occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
+        doorManager_->update(deltaTime);
+    }
     if (frameTimingEnabled_) frameTimings_.doorUpdate = measureSection();
 
     // Spell VFX update
@@ -5021,10 +5371,73 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     // Draw collision debug lines
     if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);
 
-    // Frustum culling debug: draw region bounding boxes as wireframe
-    // Green = passes frustum test (visible), Red = culled by frustum
+    // Culling debug: draw region bounding boxes as wireframe
+    // Green = rendered (passes PVS + distance + frustum)
+    // Blue = PVS-culled (occluded by walls/geometry)
+    // Yellow = distance-culled (beyond render distance)
+    // Red = frustum-culled (outside camera view cone)
     if (frustumDebugDraw_ && frustumCuller_) {
+        // Disable depth test so debug lines are always visible on top of geometry
+        irr::video::SMaterial debugMat;
+        debugMat.Lighting = false;
+        debugMat.ZBuffer = irr::video::ECFN_ALWAYS;
+        debugMat.ZWriteEnable = false;
+        debugMat.AntiAliasing = false;
+        debugMat.Thickness = 2.0f;
+        driver_->setMaterial(debugMat);
+        driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+
+        // Get current PVS region for occlusion check
+        std::shared_ptr<EQT::Graphics::BspRegion> pvsRegion;
+        if (usePvsCulling_ && zoneBspTree_ && currentPvsRegion_ != SIZE_MAX
+            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
+            pvsRegion = zoneBspTree_->regions[currentPvsRegion_];
+        }
+
+        float camX = playerX_, camY = playerY_, camZ = playerZ_;
+
         for (auto& [regionIdx, eqBbox] : regionBoundingBoxes_) {
+            // Determine culling state using the same logic as the rendering pipeline
+            irr::video::SColor color;
+
+            // 1. PVS check
+            bool pvsVisible = true;
+            if (pvsRegion && !pvsRegion->visibleRegions.empty()) {
+                if (regionIdx == currentPvsRegion_) {
+                    pvsVisible = true;
+                } else if (regionIdx < pvsRegion->visibleRegions.size()) {
+                    pvsVisible = pvsRegion->visibleRegions[regionIdx];
+                }
+            }
+
+            if (!pvsVisible) {
+                color = irr::video::SColor(255, 64, 64, 255);  // Blue = PVS-culled
+            } else {
+                // 2. Distance check
+                float closestX = std::max(eqBbox.MinEdge.X, std::min(camX, eqBbox.MaxEdge.X));
+                float closestY = std::max(eqBbox.MinEdge.Y, std::min(camY, eqBbox.MaxEdge.Y));
+                float closestZ = std::max(eqBbox.MinEdge.Z, std::min(camZ, eqBbox.MaxEdge.Z));
+                float ddx = camX - closestX, ddy = camY - closestY, ddz = camZ - closestZ;
+                float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+
+                if (dist > renderDistance_) {
+                    color = irr::video::SColor(255, 255, 255, 0);  // Yellow = distance-culled
+                } else {
+                    // 3. Frustum check
+                    bool inFrustum = frustumCuller_->testAABB(
+                        eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
+                        eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
+
+                    if (!inFrustum) {
+                        color = irr::video::SColor(255, 255, 0, 0);  // Red = frustum-culled
+                    } else if (occlusionCulledRegions_.count(regionIdx)) {
+                        color = irr::video::SColor(200, 255, 0, 255);  // Magenta = occlusion-culled
+                    } else {
+                        color = irr::video::SColor(255, 0, 255, 0);  // Green = rendered
+                    }
+                }
+            }
+
             // Convert EQ Z-up bbox to Irrlicht Y-up corners: EQ(x,y,z) -> Irr(x,z,y)
             irr::core::vector3df corners[8];
             corners[0] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
@@ -5035,15 +5448,6 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
             corners[5] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
             corners[6] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
             corners[7] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
-
-            // Test against frustum (in EQ coords)
-            bool inFrustum = frustumCuller_->testAABB(
-                eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
-                eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
-
-            irr::video::SColor color = inFrustum
-                ? irr::video::SColor(255, 0, 255, 0)
-                : irr::video::SColor(255, 255, 0, 0);
 
             // Bottom face
             driver_->draw3DLine(corners[0], corners[1], color);
@@ -6994,8 +7398,18 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
         float distanceSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
         float distance = std::sqrt(distanceSq);
 
-        // Check if within render distance (for entity model visibility)
-        bool modelVisible = (distanceSq <= renderDistSq);
+        // Skip entities already removed from scene graph by updateConstrainedVisibility
+        // (frustum-culled, occlusion-culled, or beyond constrained distance/count limits)
+        if (!visual.inSceneGraph) {
+            if (visual.nameNode && visual.nameNode->isVisible()) {
+                visual.nameNode->setVisible(false);
+            }
+            continue;
+        }
+
+        // Check if within render distance AND not occluded (for entity model visibility)
+        // Use cached occlusion result from updateConstrainedVisibility (computed every frame)
+        bool modelVisible = (distanceSq <= renderDistSq) && !visual.occlusionHidden;
         if (visual.animatedNode) {
             visual.animatedNode->setVisible(modelVisible);
         }
@@ -7003,9 +7417,9 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
             visual.meshNode->setVisible(modelVisible);
         }
 
-        // Name tag visibility: within name tag distance AND has LOS
+        // Name tag visibility: within name tag distance AND not occluded AND has LOS
         if (visual.nameNode) {
-            bool nameVisible = (distance <= nameTagDist);
+            bool nameVisible = (distance <= nameTagDist) && !visual.occlusionHidden;
             if (nameVisible) {
                 nameVisible = collisionMap_->CheckLOS(playerEye, entityPos);
             }

@@ -104,6 +104,8 @@ enum LinuxKey {
 #include <dirent.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <linux/kd.h>
+#include <linux/vt.h>
 
 #include "IEventReceiver.h"
 #include "os.h"
@@ -135,6 +137,7 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
       previousBo_(nullptr), previousFb_(0),
       eglDisplay_(EGL_NO_DISPLAY), eglSurface_(EGL_NO_SURFACE),
       eglContext_(EGL_NO_CONTEXT), eglConfig_(nullptr),
+      ttyFd_(-1), savedKbMode_(-1),
       keyboardFd_(-1), mouseFd_(-1),
       shiftDown_(false), ctrlDown_(false), altDown_(false),
       Close(false), firstFrame_(true)
@@ -205,6 +208,13 @@ CIrrDeviceFB::~CIrrDeviceFB()
     // Close DRM
     if (drmFd_ >= 0)
         close(drmFd_);
+
+    // Restore VT keyboard mode before closing evdev
+    if (ttyFd_ >= 0) {
+        if (savedKbMode_ >= 0)
+            ioctl(ttyFd_, KDSKBMODE, savedKbMode_);
+        close(ttyFd_);
+    }
 
     // Close evdev
     if (keyboardFd_ >= 0)
@@ -636,6 +646,29 @@ void CIrrDeviceFB::initEvdev()
         os::Printer::log("evdev: No keyboard found", ELL_WARNING);
     if (mouseFd_ < 0)
         os::Printer::log("evdev: No mouse found", ELL_WARNING);
+
+    // Disable VT keyboard processing so the console layer doesn't
+    // intercept Ctrl+key combinations (Ctrl+C = SIGINT, Ctrl+V = lnext, etc.)
+    if (keyboardFd_ >= 0) {
+        ttyFd_ = open("/dev/tty0", O_RDWR | O_CLOEXEC);
+        if (ttyFd_ < 0)
+            ttyFd_ = open("/dev/tty", O_RDWR | O_CLOEXEC);
+        if (ttyFd_ >= 0) {
+            if (ioctl(ttyFd_, KDGKBMODE, &savedKbMode_) == 0) {
+                if (ioctl(ttyFd_, KDSKBMODE, K_OFF) == 0) {
+                    os::Printer::log("evdev: VT keyboard processing disabled (K_OFF)", ELL_INFORMATION);
+                } else {
+                    os::Printer::log("evdev: Failed to set K_OFF on tty", ELL_WARNING);
+                    savedKbMode_ = -1;
+                }
+            } else {
+                os::Printer::log("evdev: Failed to get keyboard mode from tty", ELL_WARNING);
+                savedKbMode_ = -1;
+            }
+        } else {
+            os::Printer::log("evdev: Cannot open tty for keyboard mode control", ELL_WARNING);
+        }
+    }
 }
 
 void CIrrDeviceFB::pollEvdev()
@@ -671,6 +704,13 @@ void CIrrDeviceFB::pollEvdev()
                     event.KeyInput.Shift = shiftDown_;
                     event.KeyInput.Control = ctrlDown_;
                     event.KeyInput.Char = 0;
+
+                    // For keys where shift produces a different logical key,
+                    // clear the shift flag since it was "consumed" by the
+                    // keymap translation (e.g. Shift+"=" → "+", not Shift+"+")
+                    if (shiftDown_ && ev.code == KEY_EQUAL) {
+                        event.KeyInput.Shift = false;
+                    }
 
                     // Generate character for printable keys
                     // (KEY_KEY_A etc. are Irrlicht-only names, no conflict)

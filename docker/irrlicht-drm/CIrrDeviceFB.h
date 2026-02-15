@@ -131,6 +131,10 @@ private:
     EGLContext eglContext_;
     EGLConfig eglConfig_;
 
+    // TTY keyboard mode (for disabling VT key processing)
+    int ttyFd_;
+    int savedKbMode_;
+
     // evdev input
     int keyboardFd_;
     int mouseFd_;

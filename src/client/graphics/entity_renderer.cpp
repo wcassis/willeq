@@ -1686,6 +1686,10 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
                 if (entityRegionIdx < currentCameraRegion_->visibleRegions.size()) {
                     pvsVisible = currentCameraRegion_->visibleRegions[entityRegionIdx];
                 }
+                // Check if entity's region was culled by software occlusion
+                if (pvsVisible && occlusionCulledRegions_ && occlusionCulledRegions_->count(entityRegionIdx)) {
+                    pvsVisible = false;
+                }
                 // If entity region is outside PVS array, assume visible (conservative)
             }
             // If entity is outside BSP tree, assume visible
@@ -1698,7 +1702,33 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
             }
         }
 
-        // Combined visibility: must be in render distance AND PVS visible AND in frustum
+        // Per-entity occlusion test against depth buffer
+        // Skip for player entity (always visible) and only test if PVS+frustum passed
+        if (pvsVisible && inRenderDistance && !visual.isPlayer && occlusionCuller_ && occlusionCuller_->isEnabled()) {
+            // Use cached result if depth buffer hasn't changed and entity hasn't moved
+            float dx = visual.lastX - visual.occlusionTestX;
+            float dy = visual.lastY - visual.occlusionTestY;
+            float dz = visual.lastZ - visual.occlusionTestZ;
+            bool posChanged = (dx*dx + dy*dy + dz*dz) > 1.0f;  // Moved > 1 unit
+
+            if (visual.occlusionFrame != occlusionFrameCounter_ || posChanged) {
+                // Test entity center point (use lastZ + half typical entity height for chest level)
+                visual.occlusionHidden = occlusionCuller_->testPoint(
+                    visual.lastX, visual.lastY, visual.lastZ + 3.0f);
+                visual.occlusionFrame = occlusionFrameCounter_;
+                visual.occlusionTestX = visual.lastX;
+                visual.occlusionTestY = visual.lastY;
+                visual.occlusionTestZ = visual.lastZ;
+                occlusionTestedCount_++;
+                if (visual.occlusionHidden) occlusionHiddenCount_++;
+            }
+
+            if (visual.occlusionHidden) {
+                pvsVisible = false;
+            }
+        }
+
+        // Combined visibility: must be in render distance AND PVS visible AND in frustum AND not occluded
         bool isVisible = inRenderDistance && pvsVisible;
 
         // Update model visibility (handles both animated and static mesh nodes)
@@ -3403,6 +3433,38 @@ void EntityRenderer::setBspTree(std::shared_ptr<BspTree> bspTree) {
               bspTree_ ? bspTree_->regions.size() : 0);
 }
 
+void EntityRenderer::invalidateOcclusionCache() {
+    // Always log diagnostic info about entity occlusion state
+    LOG_INFO(MOD_GRAPHICS, "ENTITY_OCC: frustum={} occ_tested={} occ_hidden={} occ_visible={} (frame {}) entities={}",
+        frustumCulledCount_, occlusionTestedCount_, occlusionHiddenCount_,
+        occlusionTestedCount_ - occlusionHiddenCount_, occlusionFrameCounter_,
+        entities_.size());
+
+    // Detailed debug: test a few entities with testPointDebug when none are hidden
+    if (occlusionHiddenCount_ == 0 && occlusionCuller_ && occlusionCuller_->isEnabled()) {
+        int debugCount = 0;
+        for (const auto& [spawnId, visual] : entities_) {
+            if (visual.isPlayer || debugCount >= 5) break;
+            auto result = occlusionCuller_->testPointDebug(
+                visual.lastX, visual.lastY, visual.lastZ + 3.0f);
+            LOG_INFO(MOD_GRAPHICS,
+                "  ENTITY_OCC_DBG: id={} pos=({:.1f},{:.1f},{:.1f}) viewZ={:.1f} "
+                "screen=({:.1f},{:.1f}) px=({},{}) entDepth={:.1f} bufDepth={:.1f} "
+                "behind={} offscreen={} occluded={}",
+                spawnId, visual.lastX, visual.lastY, visual.lastZ,
+                result.viewZ, result.screenX, result.screenY,
+                result.pixelX, result.pixelY,
+                result.entityDepth, result.bufferDepth,
+                result.behindCamera, result.offScreen, result.occluded);
+            debugCount++;
+        }
+    }
+    frustumCulledCount_ = 0;
+    occlusionTestedCount_ = 0;
+    occlusionHiddenCount_ = 0;
+    occlusionFrameCounter_++;
+}
+
 void EntityRenderer::clearBspTree() {
     bspTree_ = nullptr;
     currentCameraRegionIdx_ = SIZE_MAX;
@@ -3469,12 +3531,47 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
 
         EntityVisual& visual = it->second;
 
-        // Check if entity should be visible
+        // Check if entity should be visible (distance + count limit)
         bool shouldBeVisible = (visibleEntityCount_ < maxEntities) && (ed.distanceSq <= maxDistSq);
 
         // Always show the player entity
         if (visual.isPlayer) {
             shouldBeVisible = true;
+        }
+
+        // Frustum culling - reject entities outside the camera view cone
+        // Skip for player (always visible) and entities already culled by distance/count
+        if (shouldBeVisible && !visual.isPlayer && frustumCuller_ && frustumCuller_->isEnabled()) {
+            if (!frustumCuller_->testSphere(visual.lastX, visual.lastY, visual.lastZ, 5.0f)) {
+                shouldBeVisible = false;
+                frustumCulledCount_++;
+            }
+        }
+
+        // Per-entity software occlusion test against depth buffer
+        // Skip for player (always visible) and entities already culled by distance/count/frustum
+        if (shouldBeVisible && !visual.isPlayer && occlusionCuller_ && occlusionCuller_->isEnabled()) {
+            // Use cached result if depth buffer hasn't changed and entity hasn't moved
+            float dx = visual.lastX - visual.occlusionTestX;
+            float dy = visual.lastY - visual.occlusionTestY;
+            float dz = visual.lastZ - visual.occlusionTestZ;
+            bool posChanged = (dx*dx + dy*dy + dz*dz) > 1.0f;
+
+            if (visual.occlusionFrame != occlusionFrameCounter_ || posChanged) {
+                // Test entity center point (chest level)
+                visual.occlusionHidden = occlusionCuller_->testPoint(
+                    visual.lastX, visual.lastY, visual.lastZ + 3.0f);
+                visual.occlusionFrame = occlusionFrameCounter_;
+                visual.occlusionTestX = visual.lastX;
+                visual.occlusionTestY = visual.lastY;
+                visual.occlusionTestZ = visual.lastZ;
+                occlusionTestedCount_++;
+                if (visual.occlusionHidden) occlusionHiddenCount_++;
+            }
+
+            if (visual.occlusionHidden) {
+                shouldBeVisible = false;
+            }
         }
 
         // Update scene graph membership (not just visibility)

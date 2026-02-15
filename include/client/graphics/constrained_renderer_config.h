@@ -42,6 +42,11 @@ struct ConstrainedRendererConfig {
     int maxPolygonsPerFrame = 50000;       // Soft limit for zone geometry
     float entityRenderDistance = 200.0f;   // Max distance to render entities
 
+    // Software occlusion culling
+    int occlusionBufferWidth = 0;              // Depth buffer width (0 = disabled)
+    int occlusionBufferHeight = 0;             // Depth buffer height (0 = disabled)
+    int occlusionMaxOccluderRegions = 16;      // Max nearby regions to rasterize
+
     // Helper methods for fog distances
     float fogStart() const { return clipDistance * fogStartRatio; }
     float fogEnd() const { return clipDistance * fogEndRatio; }

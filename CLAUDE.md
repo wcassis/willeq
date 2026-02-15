@@ -84,6 +84,31 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./build/bin/willeq
 
 Without `CAP_NET_ADMIN`, the client falls back to the kernel maximum (`net.core.rmem_max`, typically 212KB), which may cause intermittent zone loading failures on busy servers.
 
+### Orange Pi (ARM) Cross-Compilation
+
+The client cross-compiles for Orange Pi One (Allwinner H3, ARMv7-A Cortex-A7, Mali 400 GPU).
+
+**Current target platform**: Ubuntu Noble (24.04) with mainline kernel and Lima open-source driver.
+- **GPU driver**: Lima (Mesa) provides OpenGL 2.1 natively - no translation layer needed
+- **Display**: DRM/KMS direct rendering without X11 (`--drm` flag)
+- **Build**: `docker/Dockerfile.arm-noble` + `scripts/build-arm-noble.sh`
+- **Output**: `build-arm-noble/bin/willeq` (ELF 32-bit ARM, ~9.7MB stripped)
+
+```bash
+# Cross-compile
+bash scripts/build-arm-noble.sh
+
+# Run on Orange Pi (DRM/KMS, no X11)
+./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600
+
+# Run on Orange Pi (with X11, if Xorg is running)
+DISPLAY=:0 ./willeq -c config.json --opengl --constrained orangepi -r 800 600
+```
+
+**Legacy platform** (Debian Jessie, kernel 3.4): Used the proprietary Mali blob driver with no desktop OpenGL support, requiring gl4es (OpenGL-to-GLES translation). Build files: `docker/Dockerfile.arm-cross` + `scripts/build-arm.sh`. This is superseded by the Noble build.
+
+**DRM input handling**: The DRM device (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev (`/dev/input/event*`). VT keyboard processing is disabled via `KDSKBMODE(K_OFF)` to prevent the console layer from intercepting Ctrl+key combinations.
+
 ## Dependencies
 
 Required: libuv, OpenSSL, zlib, fmt, GLM (header-only), jsoncpp

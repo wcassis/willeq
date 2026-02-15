@@ -16,6 +16,7 @@
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/frustum_culler.h"
+#include "client/graphics/software_occlusion_culler.h"
 
 namespace EQT {
 namespace Graphics {
@@ -99,6 +100,11 @@ struct EntityVisual {
     float weaponDelayMs = 3000.0f;       // Primary weapon delay in ms (for attack animation speed)
 
     // Casting state (for other entities - shows casting bar above head)
+    // Occlusion culling cache - avoids retesting every frame
+    bool occlusionHidden = false;              // Cached: entity is behind wall geometry
+    uint32_t occlusionFrame = 0;               // Frame counter when occlusion was last tested
+    float occlusionTestX = 0, occlusionTestY = 0, occlusionTestZ = 0; // Position when last tested
+
     bool isCasting = false;                   // True if entity is currently casting
     uint32_t castSpellId = 0;                 // Spell being cast
     std::string castSpellName;                // Name of spell being cast
@@ -371,6 +377,15 @@ public:
     // Set frustum culler for directional entity visibility culling
     void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
 
+    // Set occlusion-culled regions (non-owning pointer, cleared each frame)
+    void setOcclusionCulledRegions(const std::unordered_set<size_t>* regions) { occlusionCulledRegions_ = regions; }
+
+    // Set software occlusion culler for per-entity depth buffer testing
+    void setOcclusionCuller(SoftwareOcclusionCuller* culler) { occlusionCuller_ = culler; }
+
+    // Notify that the occlusion depth buffer was rebuilt (forces retest of all entities)
+    void invalidateOcclusionCache();
+
     // Clear BSP tree (call when changing zones)
     void clearBspTree();
 
@@ -431,6 +446,16 @@ private:
 
     // Frustum culling (non-owning pointer, owned by IrrlichtRenderer)
     FrustumCuller* frustumCuller_ = nullptr;
+
+    // Occlusion-culled regions (non-owning pointer, owned by IrrlichtRenderer)
+    const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
+
+    // Per-entity occlusion culler (non-owning pointer, owned by IrrlichtRenderer)
+    SoftwareOcclusionCuller* occlusionCuller_ = nullptr;
+    uint32_t occlusionFrameCounter_ = 0;  // Incremented when depth buffer is rebuilt
+    uint32_t occlusionTestedCount_ = 0;   // Debug: entities tested this invalidation cycle
+    uint32_t occlusionHiddenCount_ = 0;   // Debug: entities hidden by testPoint
+    uint32_t frustumCulledCount_ = 0;     // Debug: entities culled by frustum test
 
     // Debug: Target ID for animation debugging
     uint16_t debugTargetId_ = 0;

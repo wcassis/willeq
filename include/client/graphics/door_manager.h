@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include <memory>
 #include <cmath>
@@ -18,7 +19,10 @@ namespace Graphics {
 
 // Forward declarations
 struct S3DZone;
+struct BspTree;
 class ConstrainedTextureCache;
+class FrustumCuller;
+class SoftwareOcclusionCuller;
 
 // Visual representation of a door in the scene
 struct DoorVisual {
@@ -49,6 +53,9 @@ struct DoorVisual {
 
     // Bounding box for interaction
     irr::core::aabbox3df boundingBox;
+
+    // BSP region for occlusion culling
+    size_t bspRegion = SIZE_MAX;
 };
 
 // Manages door rendering and interaction
@@ -62,6 +69,18 @@ public:
 
     // Set constrained texture cache (for memory-managed texture loading after pixel data release)
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
+
+    // Set BSP tree for occlusion region lookup
+    void setBspTree(const BspTree* tree) { bspTree_ = tree; }
+
+    // Set occlusion-culled regions (pass nullptr when no occlusion data)
+    void setOcclusionCulledRegions(const std::unordered_set<size_t>* regions) { occlusionCulledRegions_ = regions; }
+
+    // Set frustum culler for directional door visibility culling
+    void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
+
+    // Set software occlusion culler for per-door depth buffer testing
+    void setOcclusionCuller(SoftwareOcclusionCuller* culler) { occlusionCuller_ = culler; }
 
     // Create a door visual from server data
     // Returns true if door was created successfully (or skipped for invisible types)
@@ -123,6 +142,10 @@ private:
     irr::video::IVideoDriver* driver_ = nullptr;
     std::shared_ptr<S3DZone> currentZone_;
     ConstrainedTextureCache* constrainedCache_ = nullptr;
+    const BspTree* bspTree_ = nullptr;
+    FrustumCuller* frustumCuller_ = nullptr;
+    const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
+    SoftwareOcclusionCuller* occlusionCuller_ = nullptr;
 
     // Animation speed (complete animation in ~0.5 seconds)
     static constexpr float ANIM_SPEED = 2.0f;

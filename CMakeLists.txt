@@ -313,6 +313,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/irrlicht_renderer.cpp
         src/client/graphics/frustum_culler.cpp
+        src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
         src/client/graphics/door_manager.cpp
