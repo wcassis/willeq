@@ -66,7 +66,7 @@ public:
     static constexpr int MAX_BUTTONS = 10;
 
     HotbarWindow();
-    ~HotbarWindow() = default;
+    ~HotbarWindow();
 
     // Configuration
     void setButtonCount(int count);  // 1-10 buttons
@@ -102,6 +102,10 @@ public:
     // Position helpers
     void positionDefault(int screenWidth, int screenHeight);
 
+    // Override render to use content cache RTT
+    void render(irr::video::IVideoDriver* driver,
+                irr::gui::IGUIEnvironment* gui) override;
+
     // WindowBase overrides
     bool handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl = false) override;
     bool handleMouseUp(int x, int y, bool leftButton) override;
@@ -120,9 +124,27 @@ protected:
 private:
     void initializeLayout();
     void updateWindowSize();
-    void drawButton(irr::video::IVideoDriver* driver,
-                   irr::gui::IGUIEnvironment* gui,
-                   const HotbarButton& button, int index);
+    void drawButtonBase(irr::video::IVideoDriver* driver,
+                       irr::gui::IGUIEnvironment* gui,
+                       const HotbarButton& button, int index);
+    void drawButtonCooldown(irr::video::IVideoDriver* driver,
+                           irr::gui::IGUIEnvironment* gui,
+                           const HotbarButton& button);
+
+    // RTT content cache
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+    // Dirty detection
+    std::array<HotbarButtonType, MAX_BUTTONS> lastButtonTypes_{};
+    std::array<uint32_t, MAX_BUTTONS> lastButtonIds_{};
+    std::array<uint32_t, MAX_BUTTONS> lastButtonIconIds_{};
+    std::array<bool, MAX_BUTTONS> lastButtonHovered_{};
+    bool lastWindowHovered_ = false;
 
     // Layout from UISettings
     int getButtonSize() const;

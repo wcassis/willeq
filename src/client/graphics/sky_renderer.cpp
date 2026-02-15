@@ -89,8 +89,17 @@ void SkyRenderer::setSkyType(uint8_t skyTypeId, const std::string& zoneName) {
     currentSkyType_ = effectiveSkyType;
     currentSkyCategory_ = determineSkyCategory(effectiveSkyType);
 
-    LOG_INFO(MOD_GRAPHICS, "Setting sky type {} (weather: {}, category: {}) for zone: {}",
-             effectiveSkyType, weatherType, static_cast<int>(currentSkyCategory_), zoneName);
+    // Store zone config for horizon fade parameters
+    currentZoneConfig_ = skyConfig_->getConfigForZone(zoneName);
+
+    LOG_INFO(MOD_GRAPHICS, "Setting sky type {} (weather: {}, category: {}) for zone: {} "
+             "(opaqueAngle={:.2f} transparentAngle={:.2f} minAngle={:.2f} maxAngle={:.2f} "
+             "minWidth={:.2f} maxWidth={:.2f} minCameraZ={:.1f} maxCameraZ={:.1f})",
+             effectiveSkyType, weatherType, static_cast<int>(currentSkyCategory_), zoneName,
+             currentZoneConfig_.opaqueAngle, currentZoneConfig_.transparentAngle,
+             currentZoneConfig_.minAngle, currentZoneConfig_.maxAngle,
+             currentZoneConfig_.minWidth, currentZoneConfig_.maxWidth,
+             currentZoneConfig_.minCameraZ, currentZoneConfig_.maxCameraZ);
 
     // Rebuild sky scene nodes
     clearSkyNodes();
@@ -167,11 +176,20 @@ void SkyRenderer::setCameraPosition(const irr::core::vector3df& cameraPos) {
         return;
     }
 
-    // Update camera position for celestial body positioning
     lastCameraPos_ = cameraPos;
 
-    // Note: Irrlicht's built-in sky dome automatically follows the camera
-    // We only need to update celestial body positions
+    // Move custom dome mesh to follow camera
+    if (skyDomeMeshNode_) {
+        skyDomeMeshNode_->setPosition(cameraPos);
+    }
+
+    // Convert Irrlicht Y-up camera position to EQ Z-up: cameraZ = cameraPos.Y
+    float newCameraZ = cameraPos.Y;
+    if (std::abs(newCameraZ - lastCameraZ_) > 1.0f) {
+        lastCameraZ_ = newCameraZ;
+        updateDomeVertexAlpha();
+    }
+
     updateCelestialPositions();
 }
 
@@ -204,74 +222,215 @@ void SkyRenderer::createSkyDome() {
 
     const SkyType& skyType = skyTypeIt->second;
 
-    // Use Irrlicht's built-in sky dome for the background layer
-    // This ensures proper rendering order (sky renders first in sky pass)
+    // Load sky texture from the first background layer
     if (!skyType.backgroundLayers.empty()) {
         int layerNum = skyType.backgroundLayers[0];
         auto layerIt = skyData->layers.find(layerNum);
         if (layerIt != skyData->layers.end() && layerIt->second) {
             const SkyLayer& layer = *layerIt->second;
 
-            // Load the sky texture
             irr::video::ITexture* texture = loadSkyTexture(layer.textureName);
             if (texture) {
-                // Check actual texture dimensions from Irrlicht
                 irr::core::dimension2d<irr::u32> texSize = texture->getOriginalSize();
                 LOG_INFO(MOD_GRAPHICS, "Sky texture {} actual size: {}x{}",
                          layer.textureName, texSize.Width, texSize.Height);
 
-                if (texSize.Width == 0 || texSize.Height == 0) {
-                    LOG_ERROR(MOD_GRAPHICS, "Sky texture has zero size, skipping sky box");
+                if (texSize.Width > 0 && texSize.Height > 0) {
+                    createCustomSkyDome(texture);
                 } else {
-                    // Use sky box instead of sky dome - better texture tiling
-                    // Sky box uses the same texture on all 6 faces
-                    irrlichtSkyDome_ = smgr_->addSkyBoxSceneNode(
-                        texture,  // top
-                        texture,  // bottom
-                        texture,  // left
-                        texture,  // right
-                        texture,  // front
-                        texture   // back
-                    );
-
-                    if (irrlichtSkyDome_) {
-                        // Set texture tiling and filtering on all 6 materials
-                        for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
-                            irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
-                            // Enable lighting so material colors can affect the texture
-                            mat.setFlag(irr::video::EMF_LIGHTING, true);
-                            mat.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-                            mat.setFlag(irr::video::EMF_TRILINEAR_FILTER, true);
-                            mat.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, true);
-                            mat.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
-                            mat.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
-                            mat.TextureLayer[0].BilinearFilter = true;
-                            mat.TextureLayer[0].TrilinearFilter = true;
-
-                            // Set up material colors for day/night tinting
-                            // Use full white as base so tinting can darken
-                            mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-                            mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                            mat.EmissiveColor = irr::video::SColor(0, 0, 0, 0);
-                            // ECM_DIFFUSE_AND_AMBIENT: material colors modulate the texture
-                            mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
-
-                            // Scale UV to tile the texture
-                            irr::core::matrix4 texMat;
-                            texMat.setTextureScale(3.0f, 3.0f);  // Tile 3x3 per face
-                            mat.setTextureMatrix(0, texMat);
-                        }
-
-                        LOG_INFO(MOD_GRAPHICS, "Created Irrlicht sky box with texture: {} (tiled, filtered)", layer.textureName);
-                    }
+                    LOG_ERROR(MOD_GRAPHICS, "Sky texture has zero size, skipping sky dome");
                 }
             } else {
                 LOG_ERROR(MOD_GRAPHICS, "Failed to load sky texture: {}", layer.textureName);
             }
         }
     }
+}
 
-    LOG_INFO(MOD_GRAPHICS, "Sky dome created using Irrlicht built-in sky dome");
+void SkyRenderer::createCustomSkyDome(irr::video::ITexture* texture) {
+    // Build a hemisphere mesh: SKY_DOME_HORI_SEGMENTS around, SKY_DOME_VERT_RINGS from bottom to zenith
+    // Bottom ring starts below horizon (SKY_DOME_BOTTOM_PITCH radians)
+    // Top is zenith (PI/2 radians)
+
+    const int hSegs = SKY_DOME_HORI_SEGMENTS;
+    const int vRings = SKY_DOME_VERT_RINGS;
+    const float bottomPitch = SKY_DOME_BOTTOM_PITCH;
+    const float topPitch = static_cast<float>(M_PI) / 2.0f;
+    const float pitchRange = topPitch - bottomPitch;
+
+    // Vertex count: (vRings + 1) rings of (hSegs + 1) vertices (duplicated seam for UV wrapping)
+    const int vertCount = (vRings + 1) * (hSegs + 1);
+    // Triangle count: vRings * hSegs * 2 triangles per quad
+    const int indexCount = vRings * hSegs * 6;
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+    buffer->Vertices.set_used(vertCount);
+    buffer->Indices.set_used(indexCount);
+
+    // Generate vertices
+    int vi = 0;
+    for (int ring = 0; ring <= vRings; ++ring) {
+        float pitchFrac = static_cast<float>(ring) / static_cast<float>(vRings);
+        float pitch = bottomPitch + pitchFrac * pitchRange;
+        float cosPitch = std::cos(pitch);
+        float sinPitch = std::sin(pitch);
+        float v = 1.0f - pitchFrac; // UV V: 0 at zenith, 1 at bottom
+
+        for (int seg = 0; seg <= hSegs; ++seg) {
+            float thetaFrac = static_cast<float>(seg) / static_cast<float>(hSegs);
+            float theta = thetaFrac * 2.0f * static_cast<float>(M_PI);
+            float cosTheta = std::cos(theta);
+            float sinTheta = std::sin(theta);
+
+            irr::video::S3DVertex& vert = buffer->Vertices[vi];
+            // Irrlicht Y-up: X = cos(pitch)*sin(theta), Y = sin(pitch), Z = cos(pitch)*cos(theta)
+            vert.Pos.X = SKY_DOME_RADIUS * cosPitch * sinTheta;
+            vert.Pos.Y = SKY_DOME_RADIUS * sinPitch;
+            vert.Pos.Z = SKY_DOME_RADIUS * cosPitch * cosTheta;
+
+            // Normal points inward (we view from inside)
+            vert.Normal.X = -cosPitch * sinTheta;
+            vert.Normal.Y = -sinPitch;
+            vert.Normal.Z = -cosPitch * cosTheta;
+
+            // UV: horizontal tiling (3x wrap), vertical from zenith to horizon
+            vert.TCoords.X = thetaFrac * 3.0f;
+            vert.TCoords.Y = v * 2.0f; // Stretch vertically
+
+            // Initial color: white with alpha from pitch (will be updated by updateDomeVertexAlpha)
+            vert.Color = irr::video::SColor(255, 255, 255, 255);
+
+            ++vi;
+        }
+    }
+
+    // Generate indices (viewed from inside, wind counter-clockwise)
+    int ii = 0;
+    for (int ring = 0; ring < vRings; ++ring) {
+        for (int seg = 0; seg < hSegs; ++seg) {
+            int topLeft = ring * (hSegs + 1) + seg;
+            int topRight = topLeft + 1;
+            int botLeft = topLeft + (hSegs + 1);
+            int botRight = botLeft + 1;
+
+            // Triangle 1 (viewed from inside: clockwise winding = front face)
+            buffer->Indices[ii++] = topLeft;
+            buffer->Indices[ii++] = botLeft;
+            buffer->Indices[ii++] = topRight;
+
+            // Triangle 2
+            buffer->Indices[ii++] = topRight;
+            buffer->Indices[ii++] = botLeft;
+            buffer->Indices[ii++] = botRight;
+        }
+    }
+
+    buffer->recalculateBoundingBox();
+    mesh->addMeshBuffer(buffer);
+    mesh->recalculateBoundingBox();
+    buffer->drop(); // mesh holds the reference now
+
+    // Create scene node
+    skyDomeMeshNode_ = smgr_->addMeshSceneNode(mesh);
+    mesh->drop(); // scene node holds the reference now
+
+    if (!skyDomeMeshNode_) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create sky dome mesh node");
+        return;
+    }
+
+    // Keep pointer to buffer for fast vertex updates (node owns mesh which owns buffer)
+    skyDomeMeshBuffer_ = static_cast<irr::scene::SMeshBuffer*>(
+        skyDomeMeshNode_->getMesh()->getMeshBuffer(0));
+
+    // Set material properties
+    skyDomeMeshNode_->setMaterialTexture(0, texture);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
+    skyDomeMeshNode_->setMaterialType(irr::video::EMT_TRANSPARENT_VERTEX_ALPHA);
+
+    irr::video::SMaterial& mat = skyDomeMeshNode_->getMaterial(0);
+    mat.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+    mat.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+    mat.TextureLayer[0].BilinearFilter = true;
+
+    // Render early (sky behind everything)
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_FOG_ENABLE, false);
+
+    // Position at camera (will be updated in setCameraPosition)
+    skyDomeMeshNode_->setPosition(lastCameraPos_);
+
+    // Apply initial vertex alpha from zone config
+    updateDomeVertexAlpha();
+
+    LOG_INFO(MOD_GRAPHICS, "Created custom sky dome: {} vertices, {} triangles",
+             vertCount, indexCount / 3);
+}
+
+void SkyRenderer::updateDomeVertexAlpha() {
+    if (!skyDomeMeshBuffer_) {
+        return;
+    }
+
+    const float bottomPitch = SKY_DOME_BOTTOM_PITCH;
+    const float topPitch = static_cast<float>(M_PI) / 2.0f;
+    const float pitchRange = topPitch - bottomPitch;
+    const int hSegs = SKY_DOME_HORI_SEGMENTS;
+    const int vRings = SKY_DOME_VERT_RINGS;
+
+    // Compute camera-height-interpolated parameters
+    float cameraZ = lastCameraZ_;
+    float camRange = currentZoneConfig_.maxCameraZ - currentZoneConfig_.minCameraZ;
+    float t = 0.0f;
+    if (camRange != 0.0f) {
+        t = (cameraZ - currentZoneConfig_.minCameraZ) / camRange;
+        t = std::max(0.0f, std::min(1.0f, t));
+    }
+
+    float interpAngle = currentZoneConfig_.minAngle + (currentZoneConfig_.maxAngle - currentZoneConfig_.minAngle) * t;
+    float interpWidth = currentZoneConfig_.minWidth + (currentZoneConfig_.maxWidth - currentZoneConfig_.minWidth) * t;
+
+    float effectiveOpaqueAngle = currentZoneConfig_.opaqueAngle + interpAngle;
+    float effectiveFadeWidth = currentZoneConfig_.transparentAngle + interpWidth;
+    float effectiveTransparentBoundary = effectiveOpaqueAngle - effectiveFadeWidth;
+
+    // Update vertex alpha based on pitch angle
+    int vi = 0;
+    for (int ring = 0; ring <= vRings; ++ring) {
+        float pitchFrac = static_cast<float>(ring) / static_cast<float>(vRings);
+        float pitch = bottomPitch + pitchFrac * pitchRange;
+
+        // Compute alpha based on pitch relative to fade zone
+        irr::u32 alpha;
+        if (pitch >= effectiveOpaqueAngle) {
+            alpha = 255;
+        } else if (pitch <= effectiveTransparentBoundary) {
+            alpha = 0;
+        } else {
+            float fadeRange = effectiveOpaqueAngle - effectiveTransparentBoundary;
+            if (fadeRange > 0.0001f) {
+                float fadeT = (pitch - effectiveTransparentBoundary) / fadeRange;
+                alpha = static_cast<irr::u32>(255.0f * fadeT);
+            } else {
+                alpha = 255;
+            }
+        }
+
+        for (int seg = 0; seg <= hSegs; ++seg) {
+            irr::video::S3DVertex& vert = skyDomeMeshBuffer_->Vertices[vi];
+            // Preserve RGB, set new alpha
+            vert.Color.setAlpha(alpha);
+            ++vi;
+        }
+    }
+
+    // Mark buffer dirty so Irrlicht re-uploads vertices to GPU
+    skyDomeMeshBuffer_->setDirty(irr::scene::EBT_VERTEX);
 }
 
 irr::scene::SMesh* SkyRenderer::createMeshFromGeometry(const ZoneGeometry* geometry) {
@@ -738,9 +897,9 @@ void SkyRenderer::updateSkyVisibility() {
         }
     }
 
-    // Update Irrlicht built-in sky dome
-    if (irrlichtSkyDome_) {
-        irrlichtSkyDome_->setVisible(enabled_);
+    // Update custom dome mesh node
+    if (skyDomeMeshNode_) {
+        skyDomeMeshNode_->setVisible(enabled_);
     }
 
     if (sunNode_) {
@@ -770,10 +929,11 @@ void SkyRenderer::clearSkyNodes() {
     skyDomeNodes_.clear();
     cloudLayerNodes_.clear();  // Cloud nodes are subset of skyDomeNodes_, already removed
 
-    // Remove Irrlicht built-in sky dome
-    if (irrlichtSkyDome_) {
-        irrlichtSkyDome_->remove();
-        irrlichtSkyDome_ = nullptr;
+    // Remove custom dome mesh node
+    if (skyDomeMeshNode_) {
+        skyDomeMeshNode_->remove();
+        skyDomeMeshNode_ = nullptr;
+        skyDomeMeshBuffer_ = nullptr; // owned by mesh, already freed
     }
 
     if (sunNode_) {
@@ -1024,25 +1184,15 @@ void SkyRenderer::updateSkyLayerColors() {
         }
     }
 
-    // Apply tint to Irrlicht built-in sky box for day/night cycle
-    // Irrlicht sky boxes don't respond well to lighting, so we use two techniques:
-    // 1. Set the background clear color to match the tint (for the "base" sky color)
-    // 2. Adjust sky box opacity - more transparent at night so background shows through
-    if (irrlichtSkyDome_) {
-        // Calculate opacity based on brightness - darker = more transparent to show background
-        // At full brightness (1.0), alpha = 255 (opaque)
-        // At low brightness (0.2), alpha = ~100 (semi-transparent, background shows through)
-        irr::u32 alpha = static_cast<irr::u32>(100 + 155 * effectiveBrightness);  // Range: 100-255
-
-        for (irr::u32 i = 0; i < irrlichtSkyDome_->getMaterialCount(); ++i) {
-            irr::video::SMaterial& mat = irrlichtSkyDome_->getMaterial(i);
-            // Use vertex alpha for transparency
-            mat.DiffuseColor = irr::video::SColor(alpha, tint.getRed(), tint.getGreen(), tint.getBlue());
-            mat.AmbientColor = irr::video::SColor(alpha, tint.getRed(), tint.getGreen(), tint.getBlue());
-            // Use transparent material type to enable alpha blending
-            mat.MaterialType = irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
-            mat.ColorMaterial = irr::video::ECM_DIFFUSE_AND_AMBIENT;
+    // Apply tint to custom dome mesh vertex colors
+    // Set vertex RGB to tint color while preserving per-vertex alpha (horizon fade)
+    if (skyDomeMeshBuffer_) {
+        for (irr::u32 i = 0; i < skyDomeMeshBuffer_->Vertices.size(); ++i) {
+            irr::video::S3DVertex& vert = skyDomeMeshBuffer_->Vertices[i];
+            irr::u32 existingAlpha = vert.Color.getAlpha();
+            vert.Color = irr::video::SColor(existingAlpha, tint.getRed(), tint.getGreen(), tint.getBlue());
         }
+        skyDomeMeshBuffer_->setDirty(irr::scene::EBT_VERTEX);
     }
 
     // Set the background/clear color to match the tint for proper day/night effect
@@ -1268,25 +1418,21 @@ bool SkyRenderer::hasDayNightCycle(SkyCategory category) const {
 }
 
 void SkyRenderer::updateCloudScrolling() {
-    if (cloudLayerNodes_.empty()) {
-        return;
-    }
-
-    // Apply UV scrolling to cloud layers via texture matrix
-    // This creates a slow drifting cloud effect
+    // Apply UV scrolling to cloud layer nodes (legacy)
     for (auto* node : cloudLayerNodes_) {
         if (!node) continue;
-
         for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-            irr::video::SMaterial& mat = node->getMaterial(i);
-
-            // Create a texture matrix with UV offset for scrolling
             irr::core::matrix4 texMat;
             texMat.setTextureTranslate(cloudScrollOffset_, cloudScrollOffset_ * 0.5f);
-
-            // Apply to texture layer 0
-            mat.setTextureMatrix(0, texMat);
+            node->getMaterial(i).setTextureMatrix(0, texMat);
         }
+    }
+
+    // Apply UV scrolling to custom dome mesh via texture matrix
+    if (skyDomeMeshNode_) {
+        irr::core::matrix4 texMat;
+        texMat.setTextureTranslate(cloudScrollOffset_, cloudScrollOffset_ * 0.5f);
+        skyDomeMeshNode_->getMaterial(0).setTextureMatrix(0, texMat);
     }
 }
 

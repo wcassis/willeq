@@ -51,6 +51,37 @@ PlayerStatusWindow::PlayerStatusWindow()
     }
 }
 
+PlayerStatusWindow::~PlayerStatusWindow()
+{
+    if (contentRT_ && cachedDriver2_) {
+        cachedDriver2_->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+}
+
+void PlayerStatusWindow::ensureContentRT(irr::video::IVideoDriver* driver)
+{
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+    if (w <= 0 || h <= 0) return;
+
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    if (!contentRT_ || contentRTWidth_ != w || contentRTHeight_ != h || cachedDriver2_ != driver) {
+        if (contentRT_ && cachedDriver2_) {
+            cachedDriver2_->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        }
+        contentRT_ = driver->addRenderTargetTexture(
+            irr::core::dimension2du(w, h), "PlayerStatusCache", irr::video::ECF_A8R8G8B8);
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        cachedDriver2_ = driver;
+        contentDirty_ = true;
+    }
+}
+
 void PlayerStatusWindow::update()
 {
     if (!eq_) {
@@ -157,21 +188,106 @@ void PlayerStatusWindow::clearTargetCastingSpell()
 
 void PlayerStatusWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
-    if (!visible_) {
+    if (!visible_ || !driver) {
         return;
     }
 
-    // Draw window base (background, border)
-    WindowBase::render(driver, gui);
+    ensureContentRT(driver);
+    if (!contentRT_) {
+        // Fallback: render directly
+        WindowBase::render(driver, gui);
+        CombatManager* combat = eq_ ? eq_->GetCombatManager() : nullptr;
+        if (combat && combat->IsAutoAttackEnabled()) {
+            auto now = std::chrono::steady_clock::now();
+            uint32_t currentTimeMs = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch()).count());
+            drawCombatBorder(driver, currentTimeMs);
+        }
+        return;
+    }
 
-    // Draw animated combat border when auto-attack is enabled
-    CombatManager* combat = eq_ ? eq_->GetCombatManager() : nullptr;
-    if (combat && combat->IsAutoAttackEnabled()) {
-        auto now = std::chrono::steady_clock::now();
-        uint32_t currentTimeMs = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                now.time_since_epoch()).count());
-        drawCombatBorder(driver, currentTimeMs);
+    // Dirty detection: check all stat values
+    if (lastCachedHP_ != currentHP_ || lastCachedMaxHP_ != maxHP_ ||
+        lastCachedMana_ != currentMana_ || lastCachedMaxMana_ != maxMana_ ||
+        lastCachedStamina_ != currentStamina_ || lastCachedMaxStamina_ != maxStamina_ ||
+        lastCachedHasTarget_ != hasTarget_ || lastCachedTargetHp_ != targetHpPercent_ ||
+        lastCachedTargetMana_ != targetCurrentMana_ || lastCachedTargetMaxMana_ != targetMaxMana_ ||
+        lastCachedTargetName_ != targetName_ || lastCachedCastingSpell_ != targetCastingSpell_ ||
+        lastCachedPlayerName_ != playerName_ || lastWindowHovered_ != hovered_) {
+        lastCachedHP_ = currentHP_;
+        lastCachedMaxHP_ = maxHP_;
+        lastCachedMana_ = currentMana_;
+        lastCachedMaxMana_ = maxMana_;
+        lastCachedStamina_ = currentStamina_;
+        lastCachedMaxStamina_ = maxStamina_;
+        lastCachedHasTarget_ = hasTarget_;
+        lastCachedTargetHp_ = targetHpPercent_;
+        lastCachedTargetMana_ = targetCurrentMana_;
+        lastCachedTargetMaxMana_ = targetMaxMana_;
+        lastCachedTargetName_ = targetName_;
+        lastCachedCastingSpell_ = targetCastingSpell_;
+        lastCachedPlayerName_ = playerName_;
+        lastWindowHovered_ = hovered_;
+        contentDirty_ = true;
+    }
+
+    if (contentDirty_) {
+        // Save bounds and shift to origin for RTT rendering
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        int w = bounds_.getWidth();
+        int h = bounds_.getHeight();
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        if (!driver->setRenderTarget(contentRT_, true, true,
+                                     irr::video::SColor(0, 0, 0, 0))) {
+            // RTT not supported - destroy and fall back
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            driver->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        } else {
+            drawWindow(driver);
+            drawUnlockedHighlight(driver);
+            renderContent(driver, gui);
+
+            driver->setRenderTarget(nullptr, false, false);
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            contentDirty_ = false;
+        }
+    }
+
+    // Combat border helper lambda
+    auto drawCombat = [&]() {
+        CombatManager* combat = eq_ ? eq_->GetCombatManager() : nullptr;
+        if (combat && combat->IsAutoAttackEnabled()) {
+            auto now = std::chrono::steady_clock::now();
+            uint32_t currentTimeMs = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch()).count());
+            drawCombatBorder(driver, currentTimeMs);
+        }
+    };
+
+    if (contentRT_) {
+        // Blit cached content to screen
+        driver->draw2DImage(contentRT_,
+            irr::core::recti(bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y,
+                             bounds_.LowerRightCorner.X, bounds_.LowerRightCorner.Y),
+            irr::core::recti(0, 0, contentRTWidth_, contentRTHeight_),
+            nullptr, nullptr, true);
+        drawCombat();
+    } else {
+        // Direct rendering fallback
+        WindowBase::render(driver, gui);
+        drawCombat();
     }
 }
 

@@ -23,7 +23,7 @@ using LinkClickCallback = std::function<void(const MessageLink& link)>;
 class ChatWindow : public WindowBase {
 public:
     ChatWindow();
-    ~ChatWindow() override = default;
+    ~ChatWindow() override;
 
     // Initialize with screen dimensions (for default positioning)
     void init(int screenWidth, int screenHeight);
@@ -237,6 +237,26 @@ private:
         wrappedLineCacheWidth_ = -1;
         combatWrappedLineCacheWidth_ = -1;
     }
+
+    // RTT content cache (message area, not input field)
+    irr::video::ITexture* messageAreaRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool messageAreaDirty_ = true;
+    int messageAreaRTWidth_ = 0;
+    int messageAreaRTHeight_ = 0;
+    void ensureMessageAreaRT(irr::video::IVideoDriver* driver);
+    void renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui);
+
+    // Dirty detection
+    size_t lastMessageCount_ = 0;
+    size_t lastCombatMessageCount_ = 0;
+    int lastScrollOffset_ = -1;
+    int lastCombatScrollOffset_ = -1;
+    int lastActiveTabIndex_ = -1;
+    bool lastShowTimestamps_ = false;
+    int lastWindowWidth_ = 0;
+    int lastWindowHeight_ = 0;
+    int lastHoveredLink_ = -1;
 
     // Hovered link tracking for visual feedback
     int hoveredLinkIndex_ = -1;  // Index into renderedLinks_, -1 means none

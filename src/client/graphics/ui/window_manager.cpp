@@ -6,6 +6,7 @@
 #include "client/trade_manager.h"
 #include "client/input/hotkey_manager.h"
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include "common/logging.h"
 
@@ -2335,6 +2336,14 @@ void WindowManager::render() {
         return;
     }
 
+    // Timing helpers - zero overhead when disabled
+    auto now = []() { return std::chrono::steady_clock::now(); };
+    std::chrono::steady_clock::time_point t0, t1;
+    if (renderTimingEnabled_) {
+        renderTimings_ = RenderTimings();
+        t0 = now();
+    }
+
     // Check for pending loot auto-placement
     // When user clicks inventory with loot cursor, we send loot request and store target slot.
     // When item arrives on cursor, we auto-place it to avoid requiring a second click.
@@ -2366,13 +2375,24 @@ void WindowManager::render() {
     }
 
     // Render spell gem panel (always visible when initialized)
+    if (renderTimingEnabled_) t0 = now();
     if (spellGemPanel_ && spellGemPanel_->isVisible()) {
         spellGemPanel_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.spellGems = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render spellbook window
     if (spellBookWindow_ && spellBookWindow_->isVisible()) {
         spellBookWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.spellbook = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render casting bar (above spell gems)
@@ -2391,13 +2411,24 @@ void WindowManager::render() {
     }
 
     // Render buff window
+    if (renderTimingEnabled_) t0 = now();
     if (buffWindow_ && buffWindow_->isVisible()) {
         buffWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.buffs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render group window
     if (groupWindow_ && groupWindow_->isVisible()) {
         groupWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.group = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render pet window
@@ -2406,8 +2437,14 @@ void WindowManager::render() {
     }
 
     // Render hotbar window
+    if (renderTimingEnabled_) t0 = now();
     if (hotbarWindow_ && hotbarWindow_->isVisible()) {
         hotbarWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.hotbar = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render skills window
@@ -2419,30 +2456,60 @@ void WindowManager::render() {
     if (skillTrainerWindow_ && skillTrainerWindow_->isVisible()) {
         skillTrainerWindow_->render(driver_, gui_);
     }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.skills = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
 
     // Render player status window (upper left)
     if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
         playerStatusWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.playerStatus = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render chat window first (behind other windows)
     if (chatWindow_ && chatWindow_->isVisible()) {
         chatWindow_->render(driver_, gui_);
     }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.chat = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
 
     // Render inventory window
     if (inventoryWindow_ && inventoryWindow_->isVisible()) {
         inventoryWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.inventory = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render loot window
     if (lootWindow_ && lootWindow_->isOpen()) {
         lootWindow_->render(driver_, gui_);
     }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.loot = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
 
     // Render vendor window
     if (vendorWindow_ && vendorWindow_->isOpen()) {
         vendorWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.vendor = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render trade window
@@ -2475,11 +2542,6 @@ void WindowManager::render() {
         moneyInputDialog_->render(driver_, gui_);
     }
 
-    // Render bag windows
-    for (auto& [slotId, bagWindow] : bagWindows_) {
-        bagWindow->render(driver_, gui_);
-    }
-
     // Render note window (on top of inventory/bags)
     if (noteWindow_ && noteWindow_->isVisible()) {
         noteWindow_->render(driver_, gui_);
@@ -2488,6 +2550,21 @@ void WindowManager::render() {
     // Render options window
     if (optionsWindow_ && optionsWindow_->isVisible()) {
         optionsWindow_->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.other = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
+
+    // Render bag windows
+    for (auto& [slotId, bagWindow] : bagWindows_) {
+        bagWindow->render(driver_, gui_);
+    }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.bags = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
     }
 
     // Render tooltip
@@ -2498,6 +2575,11 @@ void WindowManager::render() {
 
     // Render spell tooltip (from spell gem panel hover)
     renderSpellTooltip();
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.tooltips = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
 
     // Render cursor item
     renderCursorItem();
@@ -2525,6 +2607,10 @@ void WindowManager::render() {
 
     // Render lock indicator (shows lock state in corner of screen)
     renderLockIndicator();
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.overlays = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    }
 }
 
 void WindowManager::update(uint32_t currentTimeMs) {

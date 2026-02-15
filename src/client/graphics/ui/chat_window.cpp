@@ -82,6 +82,14 @@ static std::vector<std::wstring> wrapText(const std::string& text, irr::gui::IGU
     return lines;
 }
 
+ChatWindow::~ChatWindow()
+{
+    if (messageAreaRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(messageAreaRT_);
+        messageAreaRT_ = nullptr;
+    }
+}
+
 ChatWindow::ChatWindow()
     : WindowBase(L"Chat", 600, 120) {
 
@@ -177,6 +185,165 @@ void ChatWindow::onResize(int screenWidth, int screenHeight) {
 
     // Invalidate wrapped line cache (width may have changed)
     invalidateWrappedLineCache();
+    messageAreaDirty_ = true;
+}
+
+void ChatWindow::ensureMessageAreaRT(irr::video::IVideoDriver* driver)
+{
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+
+    if (messageAreaRT_ && messageAreaRTWidth_ == w && messageAreaRTHeight_ == h) {
+        return;
+    }
+
+    if (messageAreaRT_) {
+        driver->removeTexture(messageAreaRT_);
+        messageAreaRT_ = nullptr;
+    }
+
+    messageAreaRT_ = driver->addRenderTargetTexture(
+        irr::core::dimension2d<irr::u32>(w, h), "ChatMsgCache",
+        irr::video::ECF_A8R8G8B8);
+
+    if (messageAreaRT_) {
+        messageAreaRTWidth_ = w;
+        messageAreaRTHeight_ = h;
+        messageAreaDirty_ = true;
+    }
+
+    cachedDriver_ = driver;
+}
+
+void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
+{
+    // Check dirty: message count, scroll, tab, resize, timestamps, link hover
+    size_t msgCount = messageBuffer_.getMessages().size();
+    size_t combatMsgCount = combatBuffer_.getMessages().size();
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+
+    if (msgCount != lastMessageCount_ || combatMsgCount != lastCombatMessageCount_ ||
+        scrollOffset_ != lastScrollOffset_ || combatScrollOffset_ != lastCombatScrollOffset_ ||
+        activeTabIndex_ != lastActiveTabIndex_ || showTimestamps_ != lastShowTimestamps_ ||
+        w != lastWindowWidth_ || h != lastWindowHeight_ || hoveredLinkIndex_ != lastHoveredLink_) {
+        messageAreaDirty_ = true;
+    }
+
+    if (messageAreaDirty_) {
+        // Save real bounds and shift to origin
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        if (!driver->setRenderTarget(messageAreaRT_, true, true,
+                                     irr::video::SColor(0, 0, 0, 0))) {
+            // RTT not supported - destroy and fall back
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            driver->removeTexture(messageAreaRT_);
+            messageAreaRT_ = nullptr;
+            return;
+        }
+
+        // Save dirty detection state
+        lastMessageCount_ = msgCount;
+        lastCombatMessageCount_ = combatMsgCount;
+        lastScrollOffset_ = scrollOffset_;
+        lastCombatScrollOffset_ = combatScrollOffset_;
+        lastActiveTabIndex_ = activeTabIndex_;
+        lastShowTimestamps_ = showTimestamps_;
+        lastWindowWidth_ = w;
+        lastWindowHeight_ = h;
+        lastHoveredLink_ = hoveredLinkIndex_;
+
+        // Render at full opacity into RTT
+        bool isFaded = (backgroundOpacity_ < 0.99f);
+        if (isFaded) {
+            renderFadedBackground(driver, 1.0f);  // Full opacity in RTT
+        } else {
+            drawWindow(driver);
+            drawUnlockedHighlight(driver);
+        }
+
+        // Render message content (tabs, messages, scrollbar, resize grip) but NOT input field
+        irr::core::recti content = getContentArea();
+        int scrollbarWidth = getScrollbarWidth();
+        int inputFieldHeight = getInputFieldHeight();
+
+        irr::gui::IGUIFont* font = gui->getBuiltInFont();
+
+        if (!isFaded) {
+            renderTabs(driver, font);
+        }
+
+        int inputY = content.LowerRightCorner.Y - inputFieldHeight;
+
+        irr::core::recti messageArea(
+            content.UpperLeftCorner.X,
+            isFaded ? content.UpperLeftCorner.Y : content.UpperLeftCorner.Y + tabBarHeight_,
+            isFaded ? content.LowerRightCorner.X - 2 : content.LowerRightCorner.X - scrollbarWidth - 2,
+            inputY - 2
+        );
+
+        renderMessages(driver, gui, messageArea);
+
+        if (!isFaded) {
+            renderScrollbar(driver);
+
+            // Draw resize grip
+            const int gripSize = 12;
+            int gripX = bounds_.LowerRightCorner.X - gripSize;
+            int gripY = bounds_.UpperLeftCorner.Y;
+            irr::video::SColor gripColor(200, 200, 200, 200);
+            for (int i = 2; i < gripSize; i += 3) {
+                driver->draw2DLine(
+                    irr::core::vector2di(gripX + i, gripY + 1),
+                    irr::core::vector2di(bounds_.LowerRightCorner.X - 1, gripY + gripSize - i),
+                    gripColor);
+            }
+            driver->draw2DLine(
+                irr::core::vector2di(gripX, gripY),
+                irr::core::vector2di(gripX, gripY + gripSize),
+                gripColor);
+            driver->draw2DLine(
+                irr::core::vector2di(gripX, gripY + gripSize),
+                irr::core::vector2di(bounds_.LowerRightCorner.X, gripY + gripSize),
+                gripColor);
+        }
+
+        driver->setRenderTarget(nullptr, false, false);
+
+        bounds_ = realBounds;
+        titleBar_ = realTitleBar;
+        messageAreaDirty_ = false;
+    }
+
+    // Blit cached content with alpha modulation for fade
+    if (messageAreaRT_) {
+        uint8_t alpha = static_cast<uint8_t>(backgroundOpacity_ * 255);
+        // For faded state, use alpha modulation; for opaque, full alpha
+        bool isFaded = (backgroundOpacity_ < 0.99f);
+        uint8_t blitAlpha = isFaded ? std::max(alpha, static_cast<uint8_t>(1)) : 255;
+        irr::video::SColor blitColors[4] = {
+            irr::video::SColor(blitAlpha, 255, 255, 255),
+            irr::video::SColor(blitAlpha, 255, 255, 255),
+            irr::video::SColor(blitAlpha, 255, 255, 255),
+            irr::video::SColor(blitAlpha, 255, 255, 255)
+        };
+
+        irr::core::recti destRect = bounds_;
+        irr::core::recti srcRect(0, 0, messageAreaRTWidth_, messageAreaRTHeight_);
+        driver->draw2DImage(messageAreaRT_, destRect, srcRect, nullptr, blitColors, true);
+    }
 }
 
 void ChatWindow::render(irr::video::IVideoDriver* driver,
@@ -190,20 +357,82 @@ void ChatWindow::render(irr::video::IVideoDriver* driver,
     // Auto-scroll to bottom if we were at bottom and new messages arrived
     if (scrollOffset_ == 0 && messageBuffer_.hasNewMessages()) {
         messageBuffer_.clearNewMessageFlag();
+        messageAreaDirty_ = true;
     }
     if (combatScrollOffset_ == 0 && combatBuffer_.hasNewMessages()) {
         combatBuffer_.clearNewMessageFlag();
+        messageAreaDirty_ = true;
     }
 
-    // Render with fade effect
-    if (backgroundOpacity_ >= 0.99f) {
-        // Fully opaque - render normally
-        WindowBase::render(driver, gui);
-    } else {
-        // Faded - render custom background with opacity, then content
-        renderFadedBackground(driver, backgroundOpacity_);
-        renderContent(driver, gui);
+    ensureMessageAreaRT(driver);
+
+    if (!messageAreaRT_) {
+        // Fallback to direct rendering
+        if (backgroundOpacity_ >= 0.99f) {
+            WindowBase::render(driver, gui);
+        } else {
+            renderFadedBackground(driver, backgroundOpacity_);
+            renderContent(driver, gui);
+        }
+        return;
     }
+
+    // Render cached message area (bg, tabs, messages, scrollbar, grip)
+    renderCachedMessageArea(driver, gui);
+
+    // Draw input field live at screen coords (always full opacity)
+    irr::core::recti content = getContentArea();
+    int scrollbarWidth = getScrollbarWidth();
+    int inputFieldHeight = getInputFieldHeight();
+    int inputY = content.LowerRightCorner.Y - inputFieldHeight;
+
+    // Draw input field background at full opacity
+    bool isFaded = (backgroundOpacity_ < 0.99f);
+    if (isFaded) {
+        int borderWidth = getBorderWidth();
+        irr::video::SColor fullBorderLight = getBorderLightColor();
+        irr::video::SColor fullBorderDark = getBorderDarkColor();
+        irr::video::SColor fullWindowBg = getWindowBackground();
+
+        irr::core::recti inputBounds(
+            bounds_.UpperLeftCorner.X,
+            inputY,
+            bounds_.LowerRightCorner.X,
+            bounds_.LowerRightCorner.Y
+        );
+
+        driver->draw2DRectangle(fullBorderLight,
+            irr::core::recti(inputBounds.UpperLeftCorner.X,
+                            inputBounds.UpperLeftCorner.Y,
+                            inputBounds.UpperLeftCorner.X + borderWidth,
+                            inputBounds.LowerRightCorner.Y));
+        driver->draw2DRectangle(fullBorderDark,
+            irr::core::recti(inputBounds.UpperLeftCorner.X,
+                            inputBounds.LowerRightCorner.Y - borderWidth,
+                            inputBounds.LowerRightCorner.X,
+                            inputBounds.LowerRightCorner.Y));
+        driver->draw2DRectangle(fullBorderDark,
+            irr::core::recti(inputBounds.LowerRightCorner.X - borderWidth,
+                            inputBounds.UpperLeftCorner.Y,
+                            inputBounds.LowerRightCorner.X,
+                            inputBounds.LowerRightCorner.Y));
+
+        irr::core::recti inputBgRect(
+            inputBounds.UpperLeftCorner.X + borderWidth,
+            inputBounds.UpperLeftCorner.Y,
+            inputBounds.LowerRightCorner.X - borderWidth,
+            inputBounds.LowerRightCorner.Y - borderWidth
+        );
+        driver->draw2DRectangle(fullWindowBg, inputBgRect);
+    }
+
+    irr::core::recti inputArea(
+        content.UpperLeftCorner.X,
+        inputY,
+        content.LowerRightCorner.X - scrollbarWidth - 2,
+        content.LowerRightCorner.Y
+    );
+    inputField_.render(driver, gui, inputArea);
 }
 
 void ChatWindow::renderFadedBackground(irr::video::IVideoDriver* driver, float opacity) {
@@ -975,16 +1204,19 @@ void ChatWindow::scrollUp(int lines) {
     int maxScroll = getMaxScrollOffset();
     int& activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
     activeScrollOffset = std::min(activeScrollOffset + lines, maxScroll);
+    messageAreaDirty_ = true;
 }
 
 void ChatWindow::scrollDown(int lines) {
     int& activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
     activeScrollOffset = std::max(0, activeScrollOffset - lines);
+    messageAreaDirty_ = true;
 }
 
 void ChatWindow::scrollToBottom() {
     int& activeScrollOffset = (activeTabIndex_ == 1) ? combatScrollOffset_ : scrollOffset_;
     activeScrollOffset = 0;
+    messageAreaDirty_ = true;
 }
 
 bool ChatWindow::isScrolledToBottom() const {
@@ -1331,6 +1563,7 @@ void ChatWindow::setChannelEnabled(ChatChannel channel, bool enabled) {
     }
     // Invalidate cache since visible messages changed
     invalidateWrappedLineCache();
+    messageAreaDirty_ = true;
 }
 
 bool ChatWindow::isChannelEnabled(ChatChannel channel) const {
@@ -1351,12 +1584,14 @@ void ChatWindow::toggleChannel(ChatChannel channel) {
     }
     // Invalidate cache since visible messages changed
     invalidateWrappedLineCache();
+    messageAreaDirty_ = true;
 }
 
 void ChatWindow::enableAllChannels() {
     initDefaultChannels();
     // Invalidate cache since visible messages changed
     invalidateWrappedLineCache();
+    messageAreaDirty_ = true;
 }
 
 void ChatWindow::disableAllChannels() {
@@ -1366,6 +1601,7 @@ void ChatWindow::disableAllChannels() {
     enabledChannels_.insert(ChatChannel::Error);
     // Invalidate cache since visible messages changed
     invalidateWrappedLineCache();
+    messageAreaDirty_ = true;
 }
 
 void ChatWindow::renderMessageWithLinks(irr::video::IVideoDriver* driver,

@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <irrlicht.h>
+#include "client/graphics/sky_config.h"
 
 namespace EQT {
 namespace Graphics {
@@ -121,6 +122,12 @@ private:
     // Create sky dome mesh from layer geometry
     void createSkyDome();
 
+    // Build custom hemisphere dome mesh with per-vertex alpha
+    void createCustomSkyDome(irr::video::ITexture* texture);
+
+    // Recalculate vertex alpha from zone config + camera Z
+    void updateDomeVertexAlpha();
+
     // Create celestial body billboards (sun, moon)
     void createCelestialBodies();
 
@@ -167,8 +174,9 @@ private:
     // Sky dome scene nodes (one per layer) - legacy, kept for cloud layers
     std::vector<irr::scene::IMeshSceneNode*> skyDomeNodes_;
 
-    // Irrlicht built-in sky dome (handles render order automatically)
-    irr::scene::ISceneNode* irrlichtSkyDome_ = nullptr;
+    // Custom hemisphere dome mesh node and buffer for per-vertex alpha
+    irr::scene::IMeshSceneNode* skyDomeMeshNode_ = nullptr;
+    irr::scene::SMeshBuffer* skyDomeMeshBuffer_ = nullptr;
 
     // Celestial body scene nodes
     irr::scene::IBillboardSceneNode* sunNode_ = nullptr;
@@ -207,6 +215,17 @@ private:
 
     // Cloud layer nodes for UV scrolling (subset of skyDomeNodes_)
     std::vector<irr::scene::IMeshSceneNode*> cloudLayerNodes_;
+
+    // Current zone's sky.ini config (horizon fade, camera height params)
+    ZoneSkyConfig currentZoneConfig_;
+
+    // Last camera Z in EQ coords (for height-based interpolation)
+    float lastCameraZ_ = 0.0f;
+
+    // Dome geometry parameters
+    static constexpr int SKY_DOME_HORI_SEGMENTS = 32;
+    static constexpr int SKY_DOME_VERT_RINGS = 20;
+    static constexpr float SKY_DOME_BOTTOM_PITCH = -0.5f; // radians below horizon
 
     // Sky dome radius (must be within camera far clip plane, which is 2000 by default)
     static constexpr float SKY_DOME_RADIUS = 1800.0f;

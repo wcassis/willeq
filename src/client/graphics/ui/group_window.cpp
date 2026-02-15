@@ -85,6 +85,37 @@ void GroupWindow::initializeLayout()
     declineButtonBounds_ = disbandButtonBounds_;
 }
 
+GroupWindow::~GroupWindow()
+{
+    if (contentRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+}
+
+void GroupWindow::ensureContentRT(irr::video::IVideoDriver* driver)
+{
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+    if (w <= 0 || h <= 0) return;
+
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    if (!contentRT_ || contentRTWidth_ != w || contentRTHeight_ != h || cachedDriver_ != driver) {
+        if (contentRT_ && cachedDriver_) {
+            cachedDriver_->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        }
+        contentRT_ = driver->addRenderTargetTexture(
+            irr::core::dimension2du(w, h), "GroupCache", irr::video::ECF_A8R8G8B8);
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        cachedDriver_ = driver;
+        contentDirty_ = true;
+    }
+}
+
 void GroupWindow::positionDefault(int screenWidth, int screenHeight)
 {
     // Position below buff window (buff is at y=100, ~100 height)
@@ -127,12 +158,93 @@ void GroupWindow::update()
 
 void GroupWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
-    if (!visible_) {
+    if (!visible_ || !driver) {
         return;
     }
 
-    // Draw window base (title bar, background, border)
-    WindowBase::render(driver, gui);
+    ensureContentRT(driver);
+    if (!contentRT_) {
+        // Fallback: render directly
+        WindowBase::render(driver, gui);
+        return;
+    }
+
+    // Dirty detection: check member states
+    for (int i = 0; i < MAX_MEMBERS; i++) {
+        const auto& slot = memberSlots_[i];
+        auto& cached = lastMemberStates_[i];
+        if (cached.name != slot.name || cached.hpPercent != slot.hpPercent ||
+            cached.manaPercent != slot.manaPercent || cached.isLeader != slot.isLeader ||
+            cached.inZone != slot.inZone || cached.isEmpty != slot.isEmpty) {
+            cached.name = slot.name;
+            cached.hpPercent = slot.hpPercent;
+            cached.manaPercent = slot.manaPercent;
+            cached.isLeader = slot.isLeader;
+            cached.inZone = slot.inZone;
+            cached.isEmpty = slot.isEmpty;
+            contentDirty_ = true;
+        }
+    }
+
+    // Check button hover and state changes
+    if (lastInviteHover_ != inviteButtonHovered_ ||
+        lastDisbandHover_ != disbandButtonHovered_ ||
+        lastAcceptHover_ != acceptButtonHovered_ ||
+        lastDeclineHover_ != declineButtonHovered_ ||
+        lastShowingPendingInvite_ != showingPendingInvite_ ||
+        lastWindowHovered_ != hovered_) {
+        lastInviteHover_ = inviteButtonHovered_;
+        lastDisbandHover_ = disbandButtonHovered_;
+        lastAcceptHover_ = acceptButtonHovered_;
+        lastDeclineHover_ = declineButtonHovered_;
+        lastShowingPendingInvite_ = showingPendingInvite_;
+        lastWindowHovered_ = hovered_;
+        contentDirty_ = true;
+    }
+
+    if (contentDirty_) {
+        // Save bounds and shift to origin for RTT rendering
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        int w = bounds_.getWidth();
+        int h = bounds_.getHeight();
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        if (!driver->setRenderTarget(contentRT_, true, true,
+                                     irr::video::SColor(0, 0, 0, 0))) {
+            // RTT not supported - destroy and fall back
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            driver->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        } else {
+            drawWindow(driver);
+            drawUnlockedHighlight(driver);
+            renderContent(driver, gui);
+
+            driver->setRenderTarget(nullptr, false, false);
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            contentDirty_ = false;
+        }
+    }
+
+    if (contentRT_) {
+        // Blit cached content to screen
+        driver->draw2DImage(contentRT_,
+            irr::core::recti(bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y,
+                             bounds_.LowerRightCorner.X, bounds_.LowerRightCorner.Y),
+            irr::core::recti(0, 0, contentRTWidth_, contentRTHeight_),
+            nullptr, nullptr, true);
+    } else {
+        // Direct rendering fallback
+        WindowBase::render(driver, gui);
+    }
 }
 
 void GroupWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
@@ -503,12 +615,14 @@ void GroupWindow::showPendingInvite(const std::string& inviterName)
 {
     showingPendingInvite_ = true;
     pendingInviterName_ = inviterName;
+    contentDirty_ = true;
 }
 
 void GroupWindow::hidePendingInvite()
 {
     showingPendingInvite_ = false;
     pendingInviterName_.clear();
+    contentDirty_ = true;
 }
 
 bool GroupWindow::hasPlayerTarget() const

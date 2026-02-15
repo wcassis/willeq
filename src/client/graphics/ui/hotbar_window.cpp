@@ -16,6 +16,14 @@ HotbarWindow::HotbarWindow()
     initializeLayout();
 }
 
+HotbarWindow::~HotbarWindow()
+{
+    if (contentRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+}
+
 void HotbarWindow::initializeLayout()
 {
     const auto& hotbarSettings = UISettings::instance().hotbar();
@@ -90,6 +98,7 @@ void HotbarWindow::setButton(int index, HotbarButtonType type, uint32_t id,
     buttons_[index].id = id;
     buttons_[index].emoteText = emoteText;
     buttons_[index].iconId = iconId;
+    contentDirty_ = true;
 
     // Notify that hotbar configuration changed
     if (changedCallback_) {
@@ -105,6 +114,7 @@ void HotbarWindow::clearButton(int index)
     buttons_[index].id = 0;
     buttons_[index].emoteText.clear();
     buttons_[index].iconId = 0;
+    contentDirty_ = true;
 
     // Notify that hotbar configuration changed
     if (changedCallback_) {
@@ -129,6 +139,7 @@ void HotbarWindow::swapButtons(int indexA, int indexB)
     std::swap(buttons_[indexA].id, buttons_[indexB].id);
     std::swap(buttons_[indexA].emoteText, buttons_[indexB].emoteText);
     std::swap(buttons_[indexA].iconId, buttons_[indexB].iconId);
+    contentDirty_ = true;
 
     // Notify that hotbar configuration changed
     if (changedCallback_) {
@@ -314,23 +325,140 @@ bool HotbarWindow::handleMouseMove(int x, int y)
     return WindowBase::handleMouseMove(x, y);
 }
 
+void HotbarWindow::ensureContentRT(irr::video::IVideoDriver* driver)
+{
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+
+    if (contentRT_ && contentRTWidth_ == w && contentRTHeight_ == h) {
+        return;
+    }
+
+    if (contentRT_) {
+        driver->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+
+    contentRT_ = driver->addRenderTargetTexture(
+        irr::core::dimension2d<irr::u32>(w, h), "HotbarCache",
+        irr::video::ECF_A8R8G8B8);
+
+    if (contentRT_) {
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        contentDirty_ = true;
+    }
+
+    cachedDriver_ = driver;
+}
+
+void HotbarWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
+{
+    if (!visible_) return;
+
+    ensureContentRT(driver);
+
+    if (!contentRT_) {
+        WindowBase::render(driver, gui);
+        return;
+    }
+
+    // Check dirty: button types/ids/icons/hover
+    if (!contentDirty_) {
+        for (int i = 0; i < buttonCount_; i++) {
+            if (buttons_[i].type != lastButtonTypes_[i] ||
+                buttons_[i].id != lastButtonIds_[i] ||
+                buttons_[i].iconId != lastButtonIconIds_[i] ||
+                buttons_[i].hovered != lastButtonHovered_[i]) {
+                contentDirty_ = true;
+                break;
+            }
+        }
+    }
+    if (!contentDirty_) {
+        bool currentHovered = hovered_ || dragging_;
+        if (currentHovered != lastWindowHovered_) {
+            contentDirty_ = true;
+        }
+    }
+
+    if (contentDirty_) {
+        // Save real bounds and shift to origin
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        int w = bounds_.getWidth();
+        int h = bounds_.getHeight();
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        if (!driver->setRenderTarget(contentRT_, true, true,
+                                     irr::video::SColor(0, 0, 0, 0))) {
+            // RTT not supported - destroy and fall back
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            driver->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        } else {
+            // Save dirty detection state
+            for (int i = 0; i < MAX_BUTTONS; i++) {
+                lastButtonTypes_[i] = buttons_[i].type;
+                lastButtonIds_[i] = buttons_[i].id;
+                lastButtonIconIds_[i] = buttons_[i].iconId;
+                lastButtonHovered_[i] = buttons_[i].hovered;
+            }
+            lastWindowHovered_ = hovered_ || dragging_;
+
+            drawWindow(driver);
+            drawUnlockedHighlight(driver);
+            renderContent(driver, gui);
+
+            driver->setRenderTarget(nullptr, false, false);
+
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            contentDirty_ = false;
+        }
+    }
+
+    if (contentRT_) {
+        // Blit cached content to screen
+        irr::core::recti destRect = bounds_;
+        irr::core::recti srcRect(0, 0, contentRTWidth_, contentRTHeight_);
+        driver->draw2DImage(contentRT_, destRect, srcRect, nullptr, nullptr, true);
+
+        // Draw cooldown overlays live at screen coordinates
+        for (int i = 0; i < buttonCount_; i++) {
+            if (buttons_[i].isOnCooldown()) {
+                drawButtonCooldown(driver, gui, buttons_[i]);
+            }
+        }
+    } else {
+        // Direct rendering fallback
+        WindowBase::render(driver, gui);
+        // Cooldowns are included in renderContent via drawButtonBase
+    }
+}
+
 void HotbarWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
     if (!driver) return;
 
-    irr::core::recti contentArea = getContentArea();
-    int contentX = contentArea.UpperLeftCorner.X;
-    int contentY = contentArea.UpperLeftCorner.Y;
-
     // Draw visible buttons
     for (int i = 0; i < buttonCount_; i++) {
-        drawButton(driver, gui, buttons_[i], i);
+        drawButtonBase(driver, gui, buttons_[i], i);
     }
 }
 
-void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
-                               irr::gui::IGUIEnvironment* gui,
-                               const HotbarButton& button, int index)
+void HotbarWindow::drawButtonBase(irr::video::IVideoDriver* driver,
+                                   irr::gui::IGUIEnvironment* gui,
+                                   const HotbarButton& button, int index)
 {
     irr::core::recti contentArea = getContentArea();
     int contentX = contentArea.UpperLeftCorner.X;
@@ -349,7 +477,7 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
     if (button.hovered) {
         bgColor = getButtonHighlightColor();
     } else if (button.type == HotbarButtonType::Empty) {
-        bgColor = irr::video::SColor(200, 32, 32, 32);  // Darker for empty slots
+        bgColor = irr::video::SColor(200, 32, 32, 32);
     } else {
         bgColor = getButtonBackground();
     }
@@ -357,19 +485,16 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
 
     // Draw icon or text if button has content
     if (button.type != HotbarButtonType::Empty) {
-        // For skills, draw skill name text instead of icon (supports multiple lines)
         if (button.type == HotbarButtonType::Skill && gui && !button.emoteText.empty()) {
             irr::gui::IGUIFont* font = gui->getBuiltInFont();
             if (font) {
                 std::string skillName = button.emoteText;
-                int buttonWidth = absBounds.getWidth() - 4;  // 2px margin each side
-                int buttonHeight = absBounds.getHeight() - 14;  // Leave room for number label
-                int lineHeight = 10;  // Built-in font is ~10px tall
+                int buttonWidth = absBounds.getWidth() - 4;
+                int buttonHeight = absBounds.getHeight() - 14;
+                int lineHeight = 10;
 
-                // Convert skill name to uppercase for display
                 std::transform(skillName.begin(), skillName.end(), skillName.begin(), ::toupper);
 
-                // Split skill name into words and arrange into lines that fit
                 std::vector<std::string> lines;
                 std::string currentLine;
                 std::istringstream wordStream(skillName);
@@ -385,11 +510,9 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
 
                     irr::core::dimension2du testSize = font->getDimension(testLine.c_str());
                     if (static_cast<int>(testSize.Width) <= buttonWidth) {
-                        // Word fits on current line
                         if (!currentLine.empty()) currentLine += " ";
                         currentLine += word;
                     } else if (currentLine.empty()) {
-                        // Single word too long - truncate it
                         while (!word.empty()) {
                             std::wstring wTrunc(word.begin(), word.end());
                             if (static_cast<int>(font->getDimension(wTrunc.c_str()).Width) <= buttonWidth) {
@@ -399,7 +522,6 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
                         }
                         lines.push_back(word);
                     } else {
-                        // Start new line with this word
                         lines.push_back(currentLine);
                         currentLine = word;
                     }
@@ -408,45 +530,35 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
                     lines.push_back(currentLine);
                 }
 
-                // Limit lines to fit in button height
                 int maxLines = buttonHeight / lineHeight;
                 if (static_cast<int>(lines.size()) > maxLines && maxLines > 0) {
                     lines.resize(maxLines);
                 }
 
-                // Calculate total text block height and starting Y position (centered)
                 int totalHeight = static_cast<int>(lines.size()) * lineHeight;
                 int startY = absBounds.UpperLeftCorner.Y + (buttonHeight - totalHeight) / 2 + 2;
 
-                // Draw each line centered horizontally
                 for (size_t i = 0; i < lines.size(); i++) {
                     std::wstring wLine(lines[i].begin(), lines[i].end());
                     irr::core::dimension2du lineSize = font->getDimension(wLine.c_str());
                     int textX = absBounds.UpperLeftCorner.X + (absBounds.getWidth() - lineSize.Width) / 2;
                     int textY = startY + static_cast<int>(i) * lineHeight;
 
-                    // Draw shadow
                     irr::core::recti shadowRect(textX + 1, textY + 1, textX + lineSize.Width + 1, textY + lineSize.Height + 1);
                     font->draw(wLine.c_str(), shadowRect, irr::video::SColor(200, 0, 0, 0));
 
-                    // Draw text in gold/yellow color
                     irr::core::recti textRect(textX, textY, textX + lineSize.Width, textY + lineSize.Height);
                     font->draw(wLine.c_str(), textRect, irr::video::SColor(255, 255, 215, 0));
                 }
             }
         } else if (iconLoader_) {
-            // Draw icon for other button types
             uint32_t iconId = button.iconId;
-
-            // Use default icons for types without specific icons
             if (iconId == 0 && button.type == HotbarButtonType::Emote) {
                 iconId = EMOTE_ICON_ID;
             }
-
             if (iconId > 0) {
                 irr::video::ITexture* iconTex = iconLoader_->getIcon(iconId);
                 if (iconTex) {
-                    // Draw icon centered in button with small margin
                     int margin = 2;
                     irr::core::recti iconRect(
                         absBounds.UpperLeftCorner.X + margin,
@@ -454,97 +566,9 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
                         absBounds.LowerRightCorner.X - margin,
                         absBounds.LowerRightCorner.Y - margin
                     );
-
                     irr::core::dimension2du texSize = iconTex->getOriginalSize();
                     irr::core::recti srcRect(0, 0, texSize.Width, texSize.Height);
-
                     driver->draw2DImage(iconTex, iconRect, srcRect, nullptr, nullptr, true);
-                }
-            }
-        }
-    }
-
-    // Draw cooldown overlay if on cooldown
-    if (button.isOnCooldown()) {
-        float progress = button.getCooldownProgress();  // 1.0 = full, 0.0 = done
-        if (progress > 0.0f) {
-            int margin = 2;
-            int buttonHeight = absBounds.getHeight() - margin * 2;
-            int buttonWidth = absBounds.getWidth() - margin * 2;
-            int overlayHeight = static_cast<int>(buttonHeight * progress);
-
-            // Draw main solid overlay (the cooled-down portion)
-            if (overlayHeight > 0) {
-                irr::core::recti overlayRect(
-                    absBounds.UpperLeftCorner.X + margin,
-                    absBounds.LowerRightCorner.Y - margin - overlayHeight,
-                    absBounds.LowerRightCorner.X - margin,
-                    absBounds.LowerRightCorner.Y - margin
-                );
-                irr::video::SColor overlayColor(180, 0, 0, 0);
-                driver->draw2DRectangle(overlayColor, overlayRect);
-            }
-
-            // Draw gradient fade at the top edge of the overlay (sweep effect)
-            int gradientHeight = 8;  // Height of the gradient fade zone
-            int gradientTop = absBounds.LowerRightCorner.Y - margin - overlayHeight - gradientHeight;
-            int gradientBottom = absBounds.LowerRightCorner.Y - margin - overlayHeight;
-
-            // Clamp gradient to button bounds
-            gradientTop = std::max(gradientTop, absBounds.UpperLeftCorner.Y + margin);
-            gradientBottom = std::max(gradientBottom, absBounds.UpperLeftCorner.Y + margin);
-
-            if (gradientBottom > gradientTop) {
-                // Draw gradient lines from transparent (top) to semi-opaque (bottom)
-                for (int y = gradientTop; y < gradientBottom; y++) {
-                    float gradientProgress = static_cast<float>(y - gradientTop) / static_cast<float>(gradientBottom - gradientTop);
-                    int alpha = static_cast<int>(180 * gradientProgress);
-                    irr::video::SColor lineColor(alpha, 0, 0, 0);
-                    driver->draw2DLine(
-                        irr::core::position2di(absBounds.UpperLeftCorner.X + margin, y),
-                        irr::core::position2di(absBounds.LowerRightCorner.X - margin, y),
-                        lineColor
-                    );
-                }
-            }
-
-            // Draw countdown timer text in center of button
-            if (gui && button.cooldownDurationMs > 0) {
-                irr::gui::IGUIFont* font = gui->getBuiltInFont();
-                if (font) {
-                    // Calculate remaining time
-                    auto now = std::chrono::steady_clock::now();
-                    auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        button.cooldownEndTime - now).count();
-                    if (remaining > 0) {
-                        // Format time: show seconds with 1 decimal for < 10s, whole seconds otherwise
-                        std::wstring timeStr;
-                        if (remaining < 10000) {
-                            // Less than 10 seconds - show 1 decimal place
-                            int tenths = (remaining / 100) % 10;
-                            int seconds = remaining / 1000;
-                            timeStr = std::to_wstring(seconds) + L"." + std::to_wstring(tenths);
-                        } else {
-                            // 10+ seconds - show whole seconds
-                            int seconds = (remaining + 500) / 1000;  // Round to nearest second
-                            timeStr = std::to_wstring(seconds);
-                        }
-
-                        // Calculate text position (centered in button)
-                        irr::core::dimension2du textSize = font->getDimension(timeStr.c_str());
-                        int textX = absBounds.UpperLeftCorner.X + (absBounds.getWidth() - textSize.Width) / 2;
-                        int textY = absBounds.UpperLeftCorner.Y + (absBounds.getHeight() - textSize.Height) / 2;
-
-                        // Draw shadow
-                        irr::core::recti shadowRect(textX + 1, textY + 1,
-                            textX + textSize.Width + 1, textY + textSize.Height + 1);
-                        font->draw(timeStr.c_str(), shadowRect, irr::video::SColor(220, 0, 0, 0));
-
-                        // Draw text in white/light color
-                        irr::core::recti textRect(textX, textY,
-                            textX + textSize.Width, textY + textSize.Height);
-                        font->draw(timeStr.c_str(), textRect, irr::video::SColor(255, 255, 255, 255));
-                    }
                 }
             }
         }
@@ -554,7 +578,6 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
     if (gui) {
         irr::gui::IGUIFont* font = gui->getBuiltInFont();
         if (font) {
-            // Number label (1-9, 0 for 10th)
             std::wstring label;
             if (index < 9) {
                 label = std::to_wstring(index + 1);
@@ -562,15 +585,12 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
                 label = L"0";
             }
 
-            // Draw in bottom-right corner
             int labelX = absBounds.LowerRightCorner.X - 8;
             int labelY = absBounds.LowerRightCorner.Y - 10;
 
-            // Shadow
             irr::core::recti shadowRect(labelX + 1, labelY + 1, labelX + 9, labelY + 11);
             font->draw(label.c_str(), shadowRect, irr::video::SColor(180, 0, 0, 0));
 
-            // Text
             irr::core::recti textRect(labelX, labelY, labelX + 8, labelY + 10);
             font->draw(label.c_str(), textRect, irr::video::SColor(220, 200, 200, 200));
         }
@@ -580,6 +600,86 @@ void HotbarWindow::drawButton(irr::video::IVideoDriver* driver,
     irr::video::SColor borderColor = button.hovered ?
         getBorderLightColor() : getBorderDarkColor();
     driver->draw2DRectangleOutline(absBounds, borderColor);
+}
+
+void HotbarWindow::drawButtonCooldown(irr::video::IVideoDriver* driver,
+                                       irr::gui::IGUIEnvironment* gui,
+                                       const HotbarButton& button)
+{
+    float progress = button.getCooldownProgress();
+    if (progress <= 0.0f) return;
+
+    irr::core::recti contentArea = getContentArea();
+    int contentX = contentArea.UpperLeftCorner.X;
+    int contentY = contentArea.UpperLeftCorner.Y;
+
+    irr::core::recti absBounds(
+        contentX + button.bounds.UpperLeftCorner.X,
+        contentY + button.bounds.UpperLeftCorner.Y,
+        contentX + button.bounds.LowerRightCorner.X,
+        contentY + button.bounds.LowerRightCorner.Y
+    );
+
+    int margin = 2;
+    int buttonHeight = absBounds.getHeight() - margin * 2;
+    int overlayHeight = static_cast<int>(buttonHeight * progress);
+
+    // Draw solid overlay
+    if (overlayHeight > 0) {
+        irr::core::recti overlayRect(
+            absBounds.UpperLeftCorner.X + margin,
+            absBounds.LowerRightCorner.Y - margin - overlayHeight,
+            absBounds.LowerRightCorner.X - margin,
+            absBounds.LowerRightCorner.Y - margin
+        );
+        driver->draw2DRectangle(irr::video::SColor(180, 0, 0, 0), overlayRect);
+    }
+
+    // Simplified gradient: single semi-transparent rectangle at sweep edge
+    int gradientHeight = 8;
+    int gradientTop = absBounds.LowerRightCorner.Y - margin - overlayHeight - gradientHeight;
+    int gradientBottom = absBounds.LowerRightCorner.Y - margin - overlayHeight;
+    gradientTop = std::max(gradientTop, absBounds.UpperLeftCorner.Y + margin);
+    gradientBottom = std::max(gradientBottom, absBounds.UpperLeftCorner.Y + margin);
+
+    if (gradientBottom > gradientTop) {
+        driver->draw2DRectangle(irr::video::SColor(90, 0, 0, 0),
+            irr::core::recti(absBounds.UpperLeftCorner.X + margin, gradientTop,
+                            absBounds.LowerRightCorner.X - margin, gradientBottom));
+    }
+
+    // Draw countdown timer text
+    if (gui && button.cooldownDurationMs > 0) {
+        irr::gui::IGUIFont* font = gui->getBuiltInFont();
+        if (font) {
+            auto now = std::chrono::steady_clock::now();
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                button.cooldownEndTime - now).count();
+            if (remaining > 0) {
+                std::wstring timeStr;
+                if (remaining < 10000) {
+                    int tenths = (remaining / 100) % 10;
+                    int seconds = remaining / 1000;
+                    timeStr = std::to_wstring(seconds) + L"." + std::to_wstring(tenths);
+                } else {
+                    int seconds = (remaining + 500) / 1000;
+                    timeStr = std::to_wstring(seconds);
+                }
+
+                irr::core::dimension2du textSize = font->getDimension(timeStr.c_str());
+                int textX = absBounds.UpperLeftCorner.X + (absBounds.getWidth() - textSize.Width) / 2;
+                int textY = absBounds.UpperLeftCorner.Y + (absBounds.getHeight() - textSize.Height) / 2;
+
+                irr::core::recti shadowRect(textX + 1, textY + 1,
+                    textX + textSize.Width + 1, textY + textSize.Height + 1);
+                font->draw(timeStr.c_str(), shadowRect, irr::video::SColor(220, 0, 0, 0));
+
+                irr::core::recti textRect(textX, textY,
+                    textX + textSize.Width, textY + textSize.Height);
+                font->draw(timeStr.c_str(), textRect, irr::video::SColor(255, 255, 255, 255));
+            }
+        }
+    }
 }
 
 } // namespace ui

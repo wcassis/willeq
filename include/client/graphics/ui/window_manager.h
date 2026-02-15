@@ -384,6 +384,28 @@ public:
     void render();
     void update(uint32_t currentTimeMs);
 
+    // Per-window render timing breakdown (populated during render() when enabled)
+    struct RenderTimings {
+        int64_t chat = 0;
+        int64_t inventory = 0;
+        int64_t spellGems = 0;
+        int64_t hotbar = 0;
+        int64_t playerStatus = 0;
+        int64_t buffs = 0;
+        int64_t group = 0;
+        int64_t spellbook = 0;
+        int64_t skills = 0;
+        int64_t loot = 0;
+        int64_t vendor = 0;
+        int64_t bags = 0;
+        int64_t tooltips = 0;
+        int64_t overlays = 0;  // cursors, dialogs, lock indicator, etc.
+        int64_t other = 0;     // casting bars, pet, trade, bank, tradeskill, notes, options
+    };
+    RenderTimings renderTimings_;
+    bool renderTimingEnabled_ = false;
+    void setRenderTimingEnabled(bool enabled) { renderTimingEnabled_ = enabled; }
+
     // State queries
     bool isInventoryOpen() const;
     bool hasOpenWindows() const;

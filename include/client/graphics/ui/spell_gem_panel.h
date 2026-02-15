@@ -50,7 +50,7 @@ struct GemSlotLayout {
 class SpellGemPanel {
 public:
     SpellGemPanel(EQ::SpellManager* spellMgr, ItemIconLoader* iconLoader);
-    ~SpellGemPanel() = default;
+    ~SpellGemPanel();
 
     // Position (typically right side of screen, vertical layout)
     void setPosition(int x, int y);
@@ -103,8 +103,8 @@ public:
 
 private:
     void initializeLayout();
-    void drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui,
-                 uint8_t slot, const GemSlotLayout& gem);
+    void drawGemBase(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui,
+                     uint8_t slot, const GemSlotLayout& gem);
     void drawCooldownOverlay(irr::video::IVideoDriver* driver,
                              const GemSlotLayout& gem, float progress);
     void drawMemorizeProgress(irr::video::IVideoDriver* driver,
@@ -112,6 +112,22 @@ private:
     void drawCastingHighlight(irr::video::IVideoDriver* driver,
                               const GemSlotLayout& gem);
     void drawSpellbookButton(irr::video::IVideoDriver* driver);
+    void renderDynamicOverlays(irr::video::IVideoDriver* driver);
+
+    // RTT content cache
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+    // Dirty detection - track last known state
+    std::array<uint32_t, EQ::MAX_SPELL_GEMS> lastSpellIds_{};
+    std::array<int, EQ::MAX_SPELL_GEMS> lastGemStates_{};
+    int lastHoveredGem_ = -1;
+    bool lastSpellbookHovered_ = false;
+    bool lastPanelHovered_ = false;
 
     // Managers
     EQ::SpellManager* spellMgr_;

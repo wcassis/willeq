@@ -886,6 +886,9 @@ private:
     std::unique_ptr<FrustumCuller> frustumCuller_;
     std::unique_ptr<SoftwareOcclusionCuller> occlusionCuller_;
     std::unordered_set<size_t> occlusionCulledRegions_;
+    // Occlusion camera-movement gating
+    float lastOccCamX_ = 0.0f, lastOccCamY_ = 0.0f, lastOccCamZ_ = 0.0f;
+    float lastOccFwdX_ = 0.0f, lastOccFwdY_ = 1.0f, lastOccFwdZ_ = 0.0f;
     float lastFrustumFwdX_ = 0.0f, lastFrustumFwdY_ = 1.0f, lastFrustumFwdZ_ = 0.0f;
     bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
@@ -1186,10 +1189,33 @@ private:
         int64_t objectLights = 0;
         int64_t hudUpdate = 0;
         int64_t sceneDrawAll = 0;
+        // Scene Draw All sub-timings (from render pass timer)
+        int64_t sceneAnimate = 0;       // OnAnimate + OnRegisterSceneNode
+        int64_t sceneSolid = 0;         // ESNRP_SOLID pass
+        int64_t sceneTransparent = 0;   // ESNRP_TRANSPARENT + TRANSPARENT_EFFECT passes
+        int64_t sceneSkybox = 0;        // ESNRP_SKY_BOX pass
+        int64_t sceneOther = 0;         // Camera + light + shadow passes
+        int sceneNodeCount = 0;         // Nodes rendered in drawAll
         int64_t targetBox = 0;
         int64_t castingBars = 0;
         int64_t guiDrawAll = 0;
         int64_t windowManager = 0;
+        // Window Manager sub-timings
+        int64_t wmChat = 0;
+        int64_t wmInventory = 0;
+        int64_t wmSpellGems = 0;
+        int64_t wmHotbar = 0;
+        int64_t wmPlayerStatus = 0;
+        int64_t wmBuffs = 0;
+        int64_t wmGroup = 0;
+        int64_t wmSpellbook = 0;
+        int64_t wmSkills = 0;
+        int64_t wmLoot = 0;
+        int64_t wmVendor = 0;
+        int64_t wmBags = 0;
+        int64_t wmTooltips = 0;
+        int64_t wmOverlays = 0;
+        int64_t wmOther = 0;
         int64_t zoneLineOverlay = 0;
         int64_t endScene = 0;
         int64_t totalFrame = 0;
@@ -1199,6 +1225,66 @@ private:
     int frameTimingsSampleCount_ = 0;
     bool frameTimingEnabled_ = false;  // Enable with /frametiming command
     void logFrameTimings();  // Log accumulated frame timings
+
+    // Render pass timer - hooks into Irrlicht's ILightManager to time individual render passes
+    class RenderPassTimer : public irr::scene::ILightManager {
+    public:
+        // Per-pass accumulated times (reset each frame via reset())
+        int64_t solidTime = 0;
+        int64_t transparentTime = 0;  // TRANSPARENT + TRANSPARENT_EFFECT
+        int64_t skyboxTime = 0;
+        int64_t otherTime = 0;        // CAMERA + LIGHT + SHADOW
+        int nodeCount = 0;
+
+        void reset() {
+            solidTime = 0; transparentTime = 0; skyboxTime = 0; otherTime = 0;
+            nodeCount = 0; firstPassSeen_ = false;
+        }
+
+        void OnPreRender(irr::core::array<irr::scene::ISceneNode*>& lightList) override {
+            preRenderTime_ = std::chrono::steady_clock::now();
+        }
+        void OnPostRender() override {}
+        void OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
+            passStart_ = std::chrono::steady_clock::now();
+            if (!firstPassSeen_) {
+                firstPassStart_ = passStart_;
+                firstPassSeen_ = true;
+            }
+            currentPass_ = renderPass;
+        }
+        void OnRenderPassPostRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
+            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - passStart_).count();
+            switch (renderPass) {
+                case irr::scene::ESNRP_SOLID:
+                    solidTime += elapsed; break;
+                case irr::scene::ESNRP_TRANSPARENT:
+                case irr::scene::ESNRP_TRANSPARENT_EFFECT:
+                    transparentTime += elapsed; break;
+                case irr::scene::ESNRP_SKY_BOX:
+                    skyboxTime += elapsed; break;
+                default:
+                    otherTime += elapsed; break;
+            }
+        }
+        void OnNodePreRender(irr::scene::ISceneNode* node) override { nodeCount++; }
+        void OnNodePostRender(irr::scene::ISceneNode* node) override {}
+
+        // Time between OnPreRender and first pass = animate+register overhead
+        int64_t getAnimateTime() const {
+            if (!firstPassSeen_) return 0;
+            return std::chrono::duration_cast<std::chrono::microseconds>(
+                firstPassStart_ - preRenderTime_).count();
+        }
+    private:
+        std::chrono::steady_clock::time_point passStart_;
+        std::chrono::steady_clock::time_point firstPassStart_;
+        std::chrono::steady_clock::time_point preRenderTime_;
+        bool firstPassSeen_ = false;
+        irr::scene::E_SCENE_NODE_RENDER_PASS currentPass_ = irr::scene::ESNRP_NONE;
+    };
+    RenderPassTimer* renderPassTimer_ = nullptr;  // Owned by Irrlicht (ref counted)
 
     // Scene breakdown profiler - profiles drawAll() by node category
     struct SceneBreakdown {

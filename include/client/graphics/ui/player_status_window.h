@@ -26,7 +26,7 @@ namespace ui {
 class PlayerStatusWindow : public WindowBase {
 public:
     PlayerStatusWindow();
-    ~PlayerStatusWindow() = default;
+    ~PlayerStatusWindow();
 
     // Set EverQuest reference for player data
     void setEQ(EverQuest* eq) { eq_ = eq; }
@@ -122,6 +122,30 @@ private:
 
     // Update cached display names when needed
     void updateDisplayNames(irr::gui::IGUIFont* font, int contentWidth);
+
+    // RTT content cache
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver2_ = nullptr;  // cachedDriver_ name taken by font cache
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+    // Dirty detection
+    uint32_t lastCachedHP_ = 0;
+    uint32_t lastCachedMaxHP_ = 0;
+    uint32_t lastCachedMana_ = 0;
+    uint32_t lastCachedMaxMana_ = 0;
+    uint32_t lastCachedStamina_ = 0;
+    uint32_t lastCachedMaxStamina_ = 0;
+    bool lastCachedHasTarget_ = false;
+    uint8_t lastCachedTargetHp_ = 0;
+    uint16_t lastCachedTargetMana_ = 0;
+    uint16_t lastCachedTargetMaxMana_ = 0;
+    std::wstring lastCachedTargetName_;
+    std::wstring lastCachedCastingSpell_;
+    std::wstring lastCachedPlayerName_;
+    bool lastWindowHovered_ = false;
 
     // EverQuest reference
     EverQuest* eq_ = nullptr;

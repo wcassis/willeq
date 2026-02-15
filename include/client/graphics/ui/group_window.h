@@ -36,7 +36,7 @@ struct GroupMemberSlot {
 class GroupWindow : public WindowBase {
 public:
     GroupWindow();
-    ~GroupWindow() = default;
+    ~GroupWindow();
 
     // Set EverQuest reference for group data
     void setEQ(EverQuest* eq) { eq_ = eq; }
@@ -119,6 +119,31 @@ private:
     bool disbandButtonHovered_ = false;
     bool acceptButtonHovered_ = false;
     bool declineButtonHovered_ = false;
+
+    // RTT content cache
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+    // Dirty detection
+    struct CachedMemberState {
+        std::wstring name;
+        uint8_t hpPercent = 100;
+        uint8_t manaPercent = 100;
+        bool isLeader = false;
+        bool inZone = false;
+        bool isEmpty = true;
+    };
+    std::array<CachedMemberState, MAX_MEMBERS> lastMemberStates_{};
+    bool lastInviteHover_ = false;
+    bool lastDisbandHover_ = false;
+    bool lastAcceptHover_ = false;
+    bool lastDeclineHover_ = false;
+    bool lastShowingPendingInvite_ = false;
+    bool lastWindowHovered_ = false;
 
     // State
     EverQuest* eq_ = nullptr;

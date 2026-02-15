@@ -19,7 +19,7 @@
     "reactiveFoliage" : false,
     "rollingObjects" : false,
     "shorelineWaves" : false,
-    "skyEnabled" : false
+    "skyEnabled" : true
   },
-  "renderDistance" : 485.71429443359375
+  "renderDistance" : 1000.0
 }

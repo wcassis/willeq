@@ -3434,8 +3434,8 @@ void EntityRenderer::setBspTree(std::shared_ptr<BspTree> bspTree) {
 }
 
 void EntityRenderer::invalidateOcclusionCache() {
-    // Always log diagnostic info about entity occlusion state
-    LOG_INFO(MOD_GRAPHICS, "ENTITY_OCC: frustum={} occ_tested={} occ_hidden={} occ_visible={} (frame {}) entities={}",
+    // Log diagnostic info about entity occlusion state
+    LOG_DEBUG(MOD_GRAPHICS, "ENTITY_OCC: frustum={} occ_tested={} occ_hidden={} occ_visible={} (frame {}) entities={}",
         frustumCulledCount_, occlusionTestedCount_, occlusionHiddenCount_,
         occlusionTestedCount_ - occlusionHiddenCount_, occlusionFrameCounter_,
         entities_.size());
@@ -3447,7 +3447,7 @@ void EntityRenderer::invalidateOcclusionCache() {
             if (visual.isPlayer || debugCount >= 5) break;
             auto result = occlusionCuller_->testPointDebug(
                 visual.lastX, visual.lastY, visual.lastZ + 3.0f);
-            LOG_INFO(MOD_GRAPHICS,
+            LOG_DEBUG(MOD_GRAPHICS,
                 "  ENTITY_OCC_DBG: id={} pos=({:.1f},{:.1f},{:.1f}) viewZ={:.1f} "
                 "screen=({:.1f},{:.1f}) px=({},{}) entDepth={:.1f} bufDepth={:.1f} "
                 "behind={} offscreen={} occluded={}",

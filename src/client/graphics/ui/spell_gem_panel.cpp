@@ -9,6 +9,14 @@
 namespace eqt {
 namespace ui {
 
+SpellGemPanel::~SpellGemPanel()
+{
+    if (contentRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+}
+
 SpellGemPanel::SpellGemPanel(EQ::SpellManager* spellMgr, ItemIconLoader* iconLoader)
     : spellMgr_(spellMgr)
     , iconLoader_(iconLoader)
@@ -86,60 +94,194 @@ int SpellGemPanel::getGemAtPosition(int x, int y) const
     return -1;
 }
 
+void SpellGemPanel::ensureContentRT(irr::video::IVideoDriver* driver)
+{
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    irr::core::recti panelBounds = getBounds();
+    int w = panelBounds.getWidth();
+    int h = panelBounds.getHeight();
+
+    if (contentRT_ && contentRTWidth_ == w && contentRTHeight_ == h) {
+        return;
+    }
+
+    if (contentRT_) {
+        driver->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+
+    contentRT_ = driver->addRenderTargetTexture(
+        irr::core::dimension2d<irr::u32>(w, h), "SpellGemCache",
+        irr::video::ECF_A8R8G8B8);
+
+    if (contentRT_) {
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        contentDirty_ = true;
+        LOG_DEBUG(MOD_UI, "SpellGemPanel: Created content cache RTT {}x{}", w, h);
+    }
+
+    cachedDriver_ = driver;
+}
+
 void SpellGemPanel::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
     if (!visible_ || !driver) {
         return;
     }
 
-    // Draw panel background
-    irr::core::recti panelBounds = getBounds();
-    driver->draw2DRectangle(irr::video::SColor(200, 20, 20, 30), panelBounds);
-    driver->draw2DRectangleOutline(panelBounds, irr::video::SColor(255, 60, 60, 80));
+    ensureContentRT(driver);
 
-    // Draw unlock highlight when UI is unlocked and hovered/dragging
-    bool canMove = !UISettings::instance().isUILocked();
-    if (canMove && (hovered_ || dragging_)) {
-        irr::video::SColor highlightColor(200, 255, 200, 0);  // Semi-transparent yellow
-        const int highlightWidth = 2;
+    if (contentRT_) {
+        // RTT path: check dirty, render to texture, blit
 
-        // Top
-        driver->draw2DRectangle(highlightColor,
-            irr::core::recti(panelBounds.UpperLeftCorner.X - highlightWidth,
-                            panelBounds.UpperLeftCorner.Y - highlightWidth,
-                            panelBounds.LowerRightCorner.X + highlightWidth,
-                            panelBounds.UpperLeftCorner.Y));
-        // Bottom
-        driver->draw2DRectangle(highlightColor,
-            irr::core::recti(panelBounds.UpperLeftCorner.X - highlightWidth,
-                            panelBounds.LowerRightCorner.Y,
-                            panelBounds.LowerRightCorner.X + highlightWidth,
-                            panelBounds.LowerRightCorner.Y + highlightWidth));
-        // Left
-        driver->draw2DRectangle(highlightColor,
-            irr::core::recti(panelBounds.UpperLeftCorner.X - highlightWidth,
-                            panelBounds.UpperLeftCorner.Y,
-                            panelBounds.UpperLeftCorner.X,
-                            panelBounds.LowerRightCorner.Y));
-        // Right
-        driver->draw2DRectangle(highlightColor,
-            irr::core::recti(panelBounds.LowerRightCorner.X,
-                            panelBounds.UpperLeftCorner.Y,
-                            panelBounds.LowerRightCorner.X + highlightWidth,
-                            panelBounds.LowerRightCorner.Y));
+        // Check dirty: spell IDs, gem states (transitions only), hover state
+        if (spellMgr_ && !contentDirty_) {
+            for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
+                uint32_t spellId = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(i));
+                int gemState = static_cast<int>(spellMgr_->getGemState(static_cast<uint8_t>(i)));
+                if (spellId != lastSpellIds_[i] || gemState != lastGemStates_[i]) {
+                    contentDirty_ = true;
+                    break;
+                }
+            }
+        }
+        if (!contentDirty_) {
+            if (hoveredGem_ != lastHoveredGem_ ||
+                spellbookButtonHovered_ != lastSpellbookHovered_ ||
+                (hovered_ || dragging_) != lastPanelHovered_) {
+                contentDirty_ = true;
+            }
+        }
+
+        if (contentDirty_) {
+            // Save real position and shift to origin for RTT rendering
+            auto savedPosition = position_;
+            position_ = irr::core::position2di(0, 0);
+
+            if (!driver->setRenderTarget(contentRT_, true, true,
+                                         irr::video::SColor(0, 0, 0, 0))) {
+                // RTT not supported - destroy and fall back to direct rendering
+                position_ = savedPosition;
+                driver->removeTexture(contentRT_);
+                contentRT_ = nullptr;
+            } else {
+                // Save state for dirty detection
+                if (spellMgr_) {
+                    for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
+                        lastSpellIds_[i] = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(i));
+                        lastGemStates_[i] = static_cast<int>(spellMgr_->getGemState(static_cast<uint8_t>(i)));
+                    }
+                }
+                lastHoveredGem_ = hoveredGem_;
+                lastSpellbookHovered_ = spellbookButtonHovered_;
+                lastPanelHovered_ = (hovered_ || dragging_);
+
+                // Draw panel background at origin
+                irr::core::recti localBounds(0, 0, contentRTWidth_, contentRTHeight_);
+                driver->draw2DRectangle(irr::video::SColor(200, 20, 20, 30), localBounds);
+                driver->draw2DRectangleOutline(localBounds, irr::video::SColor(255, 60, 60, 80));
+
+                // Draw unlock highlight (clipped to RTT bounds to avoid negative coords)
+                bool canMove = !UISettings::instance().isUILocked();
+                if (canMove && (hovered_ || dragging_)) {
+                    irr::video::SColor highlightColor(200, 255, 200, 0);
+                    const int hw = 2;
+                    // Draw inside the bounds instead of outside (RTT can't render at negative coords)
+                    driver->draw2DRectangle(highlightColor,
+                        irr::core::recti(0, 0, localBounds.LowerRightCorner.X, hw));
+                    driver->draw2DRectangle(highlightColor,
+                        irr::core::recti(0, localBounds.LowerRightCorner.Y - hw,
+                                        localBounds.LowerRightCorner.X, localBounds.LowerRightCorner.Y));
+                    driver->draw2DRectangle(highlightColor,
+                        irr::core::recti(0, 0, hw, localBounds.LowerRightCorner.Y));
+                    driver->draw2DRectangle(highlightColor,
+                        irr::core::recti(localBounds.LowerRightCorner.X - hw, 0,
+                                        localBounds.LowerRightCorner.X, localBounds.LowerRightCorner.Y));
+                }
+
+                // Draw each gem base (bg, border, icon, number)
+                for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
+                    drawGemBase(driver, gui, static_cast<uint8_t>(i), gems_[i]);
+                }
+
+                // Draw spellbook button
+                drawSpellbookButton(driver);
+
+                driver->setRenderTarget(nullptr, false, false);
+                position_ = savedPosition;
+                contentDirty_ = false;
+            }
+        }
     }
 
-    // Draw each gem
-    for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
-        drawGem(driver, gui, static_cast<uint8_t>(i), gems_[i]);
-    }
+    if (contentRT_) {
+        // Blit cached content to screen
+        irr::core::recti panelBounds = getBounds();
+        irr::core::recti srcRect(0, 0, contentRTWidth_, contentRTHeight_);
+        driver->draw2DImage(contentRT_, panelBounds, srcRect, nullptr, nullptr, true);
 
-    // Draw spellbook button
-    drawSpellbookButton(driver);
+        // Draw dynamic overlays at screen coordinates
+        renderDynamicOverlays(driver);
+    } else {
+        // Direct rendering fallback (no RTT support)
+        irr::core::recti panelBounds = getBounds();
+        driver->draw2DRectangle(irr::video::SColor(200, 20, 20, 30), panelBounds);
+        driver->draw2DRectangleOutline(panelBounds, irr::video::SColor(255, 60, 60, 80));
+
+        bool canMove = !UISettings::instance().isUILocked();
+        if (canMove && (hovered_ || dragging_)) {
+            irr::video::SColor highlightColor(200, 255, 200, 0);
+            const int hw = 2;
+            driver->draw2DRectangle(highlightColor,
+                irr::core::recti(panelBounds.UpperLeftCorner.X - hw, panelBounds.UpperLeftCorner.Y - hw,
+                                panelBounds.LowerRightCorner.X + hw, panelBounds.UpperLeftCorner.Y));
+            driver->draw2DRectangle(highlightColor,
+                irr::core::recti(panelBounds.UpperLeftCorner.X - hw, panelBounds.LowerRightCorner.Y,
+                                panelBounds.LowerRightCorner.X + hw, panelBounds.LowerRightCorner.Y + hw));
+            driver->draw2DRectangle(highlightColor,
+                irr::core::recti(panelBounds.UpperLeftCorner.X - hw, panelBounds.UpperLeftCorner.Y,
+                                panelBounds.UpperLeftCorner.X, panelBounds.LowerRightCorner.Y));
+            driver->draw2DRectangle(highlightColor,
+                irr::core::recti(panelBounds.LowerRightCorner.X, panelBounds.UpperLeftCorner.Y,
+                                panelBounds.LowerRightCorner.X + hw, panelBounds.LowerRightCorner.Y));
+        }
+
+        for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
+            drawGemBase(driver, gui, static_cast<uint8_t>(i), gems_[i]);
+        }
+        drawSpellbookButton(driver);
+        renderDynamicOverlays(driver);
+    }
 }
 
-void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui,
-                            uint8_t slot, const GemSlotLayout& gem)
+void SpellGemPanel::renderDynamicOverlays(irr::video::IVideoDriver* driver)
+{
+    if (!spellMgr_) return;
+
+    for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
+        EQ::GemState state = spellMgr_->getGemState(static_cast<uint8_t>(i));
+
+        if (state == EQ::GemState::Refresh) {
+            float progress = spellMgr_->getGemCooldownProgress(static_cast<uint8_t>(i));
+            drawCooldownOverlay(driver, gems_[i], progress);
+        }
+
+        if (state == EQ::GemState::MemorizeProgress) {
+            float progress = spellMgr_->getMemorizeProgress(static_cast<uint8_t>(i));
+            drawMemorizeProgress(driver, gems_[i], progress);
+        }
+
+        if (state == EQ::GemState::Casting) {
+            drawCastingHighlight(driver, gems_[i]);
+        }
+    }
+}
+
+void SpellGemPanel::drawGemBase(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui,
+                                uint8_t slot, const GemSlotLayout& gem)
 {
     if (!spellMgr_) {
         return;
@@ -148,7 +290,7 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
     uint32_t spellId = spellMgr_->getMemorizedSpell(slot);
     EQ::GemState state = spellMgr_->getGemState(slot);
 
-    // Calculate absolute position
+    // Calculate absolute position (using current position_, which is origin during RTT render)
     irr::core::recti absRect(
         position_.X + gem.bounds.UpperLeftCorner.X,
         position_.Y + gem.bounds.UpperLeftCorner.Y,
@@ -196,7 +338,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
     if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
         const EQ::SpellData* spell = spellMgr_->getSpell(spellId);
         if (!spell) {
-            // Log once per spell ID to avoid spam
             static std::set<uint32_t> loggedMissing;
             if (loggedMissing.find(spellId) == loggedMissing.end()) {
                 LOG_WARN(MOD_UI, "SpellGem slot {} - spell ID {} not found in database", slot, spellId);
@@ -204,8 +345,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
             }
         }
         if (spell && iconLoader_) {
-            // Use gem_icon for the spell gem display
-            // Log once per slot to debug icon loading
             static std::set<uint8_t> loggedSlots;
             if (loggedSlots.find(slot) == loggedSlots.end()) {
                 LOG_DEBUG(MOD_UI, "SpellGem slot {} spell '{}' (ID {}) requesting gem_icon {}",
@@ -214,7 +353,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
             }
             irr::video::ITexture* icon = iconLoader_->getIcon(spell->gem_icon);
             if (!icon) {
-                // Log once per gem_icon to avoid spam
                 static std::set<uint16_t> loggedMissingIcons;
                 if (loggedMissingIcons.find(spell->gem_icon) == loggedMissingIcons.end()) {
                     LOG_WARN(MOD_UI, "SpellGem slot {} spell '{}' (ID {}) - icon not found for gem_icon {}",
@@ -224,7 +362,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
             }
             if (icon) {
                 irr::core::dimension2du iconSize = icon->getOriginalSize();
-                // Log once per slot to debug rendering
                 static std::set<uint8_t> loggedRender;
                 if (loggedRender.find(slot) == loggedRender.end()) {
                     LOG_DEBUG(MOD_UI, "SpellGem slot {} drawing icon {}x{} to rect ({},{} - {},{})",
@@ -233,7 +370,6 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
                              absIconRect.LowerRightCorner.X, absIconRect.LowerRightCorner.Y);
                     loggedRender.insert(slot);
                 }
-                // Scale icon to fit within the gem slot - use color array for proper alpha
                 irr::video::SColor colors[4] = {
                     irr::video::SColor(255, 255, 255, 255),
                     irr::video::SColor(255, 255, 255, 255),
@@ -241,30 +377,11 @@ void SpellGemPanel::drawGem(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
                     irr::video::SColor(255, 255, 255, 255)
                 };
                 driver->draw2DImage(icon,
-                    absIconRect,  // Destination rect (scaled to gem size)
-                    irr::core::recti(0, 0, iconSize.Width, iconSize.Height),  // Source rect (full icon)
-                    nullptr,   // No clip rect
-                    colors,    // Corner colors
-                    true);     // Use alpha
+                    absIconRect,
+                    irr::core::recti(0, 0, iconSize.Width, iconSize.Height),
+                    nullptr, colors, true);
             }
         }
-    }
-
-    // Draw cooldown overlay
-    if (state == EQ::GemState::Refresh) {
-        float progress = spellMgr_->getGemCooldownProgress(slot);
-        drawCooldownOverlay(driver, gem, progress);
-    }
-
-    // Draw memorization progress
-    if (state == EQ::GemState::MemorizeProgress) {
-        float progress = spellMgr_->getMemorizeProgress(slot);
-        drawMemorizeProgress(driver, gem, progress);
-    }
-
-    // Draw casting highlight
-    if (state == EQ::GemState::Casting) {
-        drawCastingHighlight(driver, gem);
     }
 
     // Draw gem number (1-8) in top-left corner

@@ -32,6 +32,9 @@ InventoryWindow::InventoryWindow(inventory::InventoryManager* manager)
 }
 
 void InventoryWindow::ensureContentRT(irr::video::IVideoDriver* driver) {
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();
 
@@ -66,18 +69,18 @@ void InventoryWindow::render(irr::video::IVideoDriver* driver,
                               irr::gui::IGUIEnvironment* gui) {
     if (!visible_) return;
 
+    // Ensure paperdoll RTT is up to date before content cache render
+    // (must happen outside content RTT to avoid nested setRenderTarget)
+    if (modelView_ && modelView_->isReady()) {
+        modelView_->renderToTexture();
+    }
+
     ensureContentRT(driver);
 
     // If RTT not available, fall back to direct rendering
     if (!contentRT_) {
         WindowBase::render(driver, gui);
         return;
-    }
-
-    // Ensure paperdoll RTT is up to date before content cache render
-    // (must happen outside content RTT to avoid nested setRenderTarget)
-    if (modelView_ && modelView_->isReady()) {
-        modelView_->renderToTexture();
     }
 
     // Check if inventory items changed since last render

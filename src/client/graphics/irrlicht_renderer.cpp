@@ -3272,104 +3272,145 @@ void IrrlichtRenderer::updatePvsVisibility() {
     // After PVS + distance + frustum, test remaining visible regions against a CPU depth buffer
     // populated by rasterizing nearby wall triangles.
     size_t hiddenByOcclusionCount = 0;
-    occlusionCulledRegions_.clear();
 
     if (occlusionCuller_ && occlusionCuller_->isEnabled() && occlusionCuller_->hasOccluders() && frustumCuller_) {
-        occlusionCuller_->resetStats();
-        occlusionCuller_->clear();
+        // Camera-movement gating: skip full recalc when camera hasn't moved/rotated significantly
+        float fwdX = frustumCuller_->getFwdX(), fwdY = frustumCuller_->getFwdY(), fwdZ = frustumCuller_->getFwdZ();
+        float posDx = occCamX - lastOccCamX_, posDy = occCamY - lastOccCamY_, posDz = occCamZ - lastOccCamZ_;
+        float posDist2 = posDx*posDx + posDy*posDy + posDz*posDz;
+        float fwdDot = fwdX*lastOccFwdX_ + fwdY*lastOccFwdY_ + fwdZ*lastOccFwdZ_;
 
-        // Set camera from actual camera position + frustum culler's basis vectors
-        occlusionCuller_->setCamera(occCamX, occCamY, occCamZ,
-            frustumCuller_->getFwdX(), frustumCuller_->getFwdY(), frustumCuller_->getFwdZ(),
-            frustumCuller_->getRightX(), frustumCuller_->getRightY(), 0.0f,
-            frustumCuller_->getUpX(), frustumCuller_->getUpY(), frustumCuller_->getUpZ(),
-            camera_ ? camera_->getFOV() : 1.0f,
-            camera_ ? (static_cast<float>(driver_->getScreenSize().Width) /
-                        static_cast<float>(driver_->getScreenSize().Height)) : 1.33f);
+        bool cameraStatic = (posDist2 < 4.0f) && (fwdDot > 0.996f);
 
-        // Collect visible regions with their distances for front-to-back sorting
-        struct RegionDist {
-            size_t regionIdx;
-            float distance;
-        };
-        std::vector<RegionDist> visibleRegionDists;
-        visibleRegionDists.reserve(visibleCount);
-
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (!node || !node->isVisible()) continue;
-            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-            if (bboxIt == regionBoundingBoxes_.end()) continue;
-            const auto& bbox = bboxIt->second;
-
-            // Distance from camera to nearest edge of bbox
-            float closestX = std::max(bbox.MinEdge.X, std::min(occCamX, bbox.MaxEdge.X));
-            float closestY = std::max(bbox.MinEdge.Y, std::min(occCamY, bbox.MaxEdge.Y));
-            float closestZ = std::max(bbox.MinEdge.Z, std::min(occCamZ, bbox.MaxEdge.Z));
-            float ddx = occCamX - closestX, ddy = occCamY - closestY, ddz = occCamZ - closestZ;
-            float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-
-            visibleRegionDists.push_back({regionIdx, dist});
-        }
-
-        // Sort front-to-back by distance
-        std::sort(visibleRegionDists.begin(), visibleRegionDists.end(),
-            [](const RegionDist& a, const RegionDist& b) { return a.distance < b.distance; });
-
-        // Rasterize occluder triangles from closest N regions
-        // Track which regions were used as occluders so we skip them during testing
-        const int maxOccRegions = occlusionCuller_->getConfig().maxOccluderRegions;
-        std::unordered_set<size_t> rasterizedRegionIndices;
-        int rasterizedRegionCount = 0;
-        for (const auto& rd : visibleRegionDists) {
-            if (rasterizedRegionCount >= maxOccRegions) break;
-            const auto& occluders = occlusionCuller_->getRegionOccluders(rd.regionIdx);
-            if (occluders.empty()) {
-                LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} has NO occluders", rd.regionIdx, rd.distance);
-                continue;
-            }
-
-            LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} rasterizing {} occluder tris", rd.regionIdx, rd.distance, occluders.size());
-            for (const auto& occ : occluders) {
-                occlusionCuller_->rasterizeTriangle(occ.v0, occ.v1, occ.v2);
-            }
-            rasterizedRegionIndices.insert(rd.regionIdx);
-            rasterizedRegionCount++;
-        }
-
-        // Update rasterization stat and compute buffer fill
-        occlusionCuller_->getStatsMutable().regionsRasterized = rasterizedRegionCount;
-        occlusionCuller_->computeBufferFillStats();
-
-        // Test ALL visible regions against the depth buffer.
-        // Rasterized regions are NOT skipped — the depth buffer uses min-depth writes,
-        // so closer walls from other regions correctly occlude farther regions even if
-        // the farther region's own walls were also rasterized. The camera's own region
-        // is naturally excluded by testAABB's projectedCount<8 check (corners behind camera).
-        for (size_t i = 0; i < visibleRegionDists.size(); ++i) {
-            size_t regionIdx = visibleRegionDists[i].regionIdx;
-
-            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-            if (bboxIt == regionBoundingBoxes_.end()) continue;
-            const auto& bbox = bboxIt->second;
-
-            // regionsTested incremented inside testAABB along with rejection reasons
-            if (occlusionCuller_->testAABB(
-                    bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                    bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
-                // Fully occluded - hide region
+        if (cameraStatic && !occlusionCulledRegions_.empty()) {
+            // Reuse previous frame's results — re-hide previously-occluded regions
+            // (PVS/frustum already reset visibility, so we must re-apply)
+            for (size_t regionIdx : occlusionCulledRegions_) {
                 auto nodeIt = regionMeshNodes_.find(regionIdx);
-                if (nodeIt != regionMeshNodes_.end() && nodeIt->second) {
+                if (nodeIt != regionMeshNodes_.end() && nodeIt->second && nodeIt->second->isVisible()) {
                     nodeIt->second->setVisible(false);
                     hiddenByOcclusionCount++;
                     visibleCount--;
-                    occlusionCulledRegions_.insert(regionIdx);
                 }
             }
-        }
+            LOG_DEBUG(MOD_GRAPHICS, "OCCL: skipped (camera static), reapplied {} culled regions",
+                      occlusionCulledRegions_.size());
+        } else {
+            // Full occlusion recalculation
+            occlusionCulledRegions_.clear();
+            occlusionCuller_->resetStats();
+            occlusionCuller_->clear();
 
-        // Notify entity renderer that the depth buffer was rebuilt
-        if (entityRenderer_) {
-            entityRenderer_->invalidateOcclusionCache();
+            // Set camera from actual camera position + frustum culler's basis vectors
+            occlusionCuller_->setCamera(occCamX, occCamY, occCamZ,
+                fwdX, fwdY, fwdZ,
+                frustumCuller_->getRightX(), frustumCuller_->getRightY(), 0.0f,
+                frustumCuller_->getUpX(), frustumCuller_->getUpY(), frustumCuller_->getUpZ(),
+                camera_ ? camera_->getFOV() : 1.0f,
+                camera_ ? (static_cast<float>(driver_->getScreenSize().Width) /
+                            static_cast<float>(driver_->getScreenSize().Height)) : 1.33f);
+
+            // Collect visible regions with their distances for front-to-back sorting
+            struct RegionDist {
+                size_t regionIdx;
+                float distance;
+            };
+            std::vector<RegionDist> visibleRegionDists;
+            visibleRegionDists.reserve(visibleCount);
+
+            for (auto& [regionIdx, node] : regionMeshNodes_) {
+                if (!node || !node->isVisible()) continue;
+                auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+                if (bboxIt == regionBoundingBoxes_.end()) continue;
+                const auto& bbox = bboxIt->second;
+
+                // Distance from camera to nearest edge of bbox
+                float closestX = std::max(bbox.MinEdge.X, std::min(occCamX, bbox.MaxEdge.X));
+                float closestY = std::max(bbox.MinEdge.Y, std::min(occCamY, bbox.MaxEdge.Y));
+                float closestZ = std::max(bbox.MinEdge.Z, std::min(occCamZ, bbox.MaxEdge.Z));
+                float ddx = occCamX - closestX, ddy = occCamY - closestY, ddz = occCamZ - closestZ;
+                float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+
+                visibleRegionDists.push_back({regionIdx, dist});
+            }
+
+            // Sort front-to-back by distance
+            std::sort(visibleRegionDists.begin(), visibleRegionDists.end(),
+                [](const RegionDist& a, const RegionDist& b) { return a.distance < b.distance; });
+
+            // Rasterize occluder triangles from closest N regions
+            // Track which regions were used as occluders so we skip them during testing
+            const int maxOccRegions = occlusionCuller_->getConfig().maxOccluderRegions;
+            float maxOccluderDist = std::min(renderDistance_ * 0.5f, 150.0f);
+            std::unordered_set<size_t> rasterizedRegionIndices;
+            int rasterizedRegionCount = 0;
+            for (const auto& rd : visibleRegionDists) {
+                if (rd.distance > maxOccluderDist) break;  // Sorted front-to-back; all remaining are farther
+                if (rasterizedRegionCount >= maxOccRegions) break;
+                const auto& occluders = occlusionCuller_->getRegionOccluders(rd.regionIdx);
+                if (occluders.empty()) {
+                    LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} has NO occluders", rd.regionIdx, rd.distance);
+                    continue;
+                }
+
+                LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} rasterizing {} occluder tris", rd.regionIdx, rd.distance, occluders.size());
+                for (const auto& occ : occluders) {
+                    occlusionCuller_->rasterizeTriangle(occ.v0, occ.v1, occ.v2);
+                }
+                rasterizedRegionIndices.insert(rd.regionIdx);
+                rasterizedRegionCount++;
+            }
+
+            // Update rasterization stat and compute buffer fill
+            occlusionCuller_->getStatsMutable().regionsRasterized = rasterizedRegionCount;
+            occlusionCuller_->computeBufferFillStats();
+
+            // Early-out: if depth buffer is mostly empty, no region can be 95% covered
+            const auto& stats = occlusionCuller_->getStats();
+            float fillRatio = (stats.depthBufferTotalPixels > 0)
+                ? static_cast<float>(stats.depthBufferFilledPixels) / stats.depthBufferTotalPixels
+                : 0.0f;
+
+            if (fillRatio < 0.10f) {
+                LOG_DEBUG(MOD_GRAPHICS, "OCCL: skipping AABB tests, buffer fill {:.1f}% too low",
+                          fillRatio * 100.0f);
+            } else {
+                // Test ALL visible regions against the depth buffer.
+                // Rasterized regions are NOT skipped — the depth buffer uses min-depth writes,
+                // so closer walls from other regions correctly occlude farther regions even if
+                // the farther region's own walls were also rasterized. The camera's own region
+                // is naturally excluded by testAABB's projectedCount<8 check (corners behind camera).
+                for (size_t i = 0; i < visibleRegionDists.size(); ++i) {
+                    size_t regionIdx = visibleRegionDists[i].regionIdx;
+
+                    auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+                    if (bboxIt == regionBoundingBoxes_.end()) continue;
+                    const auto& bbox = bboxIt->second;
+
+                    // regionsTested incremented inside testAABB along with rejection reasons
+                    if (occlusionCuller_->testAABB(
+                            bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                            bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
+                        // Fully occluded - hide region
+                        auto nodeIt = regionMeshNodes_.find(regionIdx);
+                        if (nodeIt != regionMeshNodes_.end() && nodeIt->second) {
+                            nodeIt->second->setVisible(false);
+                            hiddenByOcclusionCount++;
+                            visibleCount--;
+                            occlusionCulledRegions_.insert(regionIdx);
+                        }
+                    }
+                }
+            }
+
+            // Update camera gating state
+            lastOccCamX_ = occCamX; lastOccCamY_ = occCamY; lastOccCamZ_ = occCamZ;
+            lastOccFwdX_ = fwdX; lastOccFwdY_ = fwdY; lastOccFwdZ_ = fwdZ;
+
+            // Notify entity renderer that the depth buffer was rebuilt
+            if (entityRenderer_) {
+                entityRenderer_->invalidateOcclusionCache();
+            }
         }
     }
 
@@ -4699,10 +4740,31 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.objectLights += frameTimings_.objectLights;
         frameTimingsAccum_.hudUpdate += frameTimings_.hudUpdate;
         frameTimingsAccum_.sceneDrawAll += frameTimings_.sceneDrawAll;
+        frameTimingsAccum_.sceneAnimate += frameTimings_.sceneAnimate;
+        frameTimingsAccum_.sceneSolid += frameTimings_.sceneSolid;
+        frameTimingsAccum_.sceneTransparent += frameTimings_.sceneTransparent;
+        frameTimingsAccum_.sceneSkybox += frameTimings_.sceneSkybox;
+        frameTimingsAccum_.sceneOther += frameTimings_.sceneOther;
+        frameTimingsAccum_.sceneNodeCount += frameTimings_.sceneNodeCount;
         frameTimingsAccum_.targetBox += frameTimings_.targetBox;
         frameTimingsAccum_.castingBars += frameTimings_.castingBars;
         frameTimingsAccum_.guiDrawAll += frameTimings_.guiDrawAll;
         frameTimingsAccum_.windowManager += frameTimings_.windowManager;
+        frameTimingsAccum_.wmChat += frameTimings_.wmChat;
+        frameTimingsAccum_.wmInventory += frameTimings_.wmInventory;
+        frameTimingsAccum_.wmSpellGems += frameTimings_.wmSpellGems;
+        frameTimingsAccum_.wmHotbar += frameTimings_.wmHotbar;
+        frameTimingsAccum_.wmPlayerStatus += frameTimings_.wmPlayerStatus;
+        frameTimingsAccum_.wmBuffs += frameTimings_.wmBuffs;
+        frameTimingsAccum_.wmGroup += frameTimings_.wmGroup;
+        frameTimingsAccum_.wmSpellbook += frameTimings_.wmSpellbook;
+        frameTimingsAccum_.wmSkills += frameTimings_.wmSkills;
+        frameTimingsAccum_.wmLoot += frameTimings_.wmLoot;
+        frameTimingsAccum_.wmVendor += frameTimings_.wmVendor;
+        frameTimingsAccum_.wmBags += frameTimings_.wmBags;
+        frameTimingsAccum_.wmTooltips += frameTimings_.wmTooltips;
+        frameTimingsAccum_.wmOverlays += frameTimings_.wmOverlays;
+        frameTimingsAccum_.wmOther += frameTimings_.wmOther;
         frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
         frameTimingsAccum_.endScene += frameTimings_.endScene;
         frameTimingsAccum_.totalFrame += frameTimings_.totalFrame;
@@ -5220,6 +5282,10 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
 
             if (weatherEffects_) weatherEffects_->update(accDelta);
 
+            if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+                skyRenderer_->update(accDelta);
+            }
+
             if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
                 particleManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
                 float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
@@ -5276,9 +5342,18 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
     driver_->beginScene(true, true, clearColor);
     sectionStart_ = std::chrono::steady_clock::now();
+    if (renderPassTimer_) renderPassTimer_->reset();
     smgr_->drawAll();
     if (frameTimingEnabled_) {
         frameTimings_.sceneDrawAll = measureSection();
+        if (renderPassTimer_) {
+            frameTimings_.sceneAnimate = renderPassTimer_->getAnimateTime();
+            frameTimings_.sceneSolid = renderPassTimer_->solidTime;
+            frameTimings_.sceneTransparent = renderPassTimer_->transparentTime;
+            frameTimings_.sceneSkybox = renderPassTimer_->skyboxTime;
+            frameTimings_.sceneOther = renderPassTimer_->otherTime;
+            frameTimings_.sceneNodeCount = renderPassTimer_->nodeCount;
+        }
         if (frameTimings_.sceneDrawAll > 50000) {
             LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
         }
@@ -5468,7 +5543,27 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     // Render inventory UI windows (on top of HUD)
     if (!allUIHidden_ && windowManager_) windowManager_->render();
-    if (frameTimingEnabled_) frameTimings_.windowManager = measureSection();
+    if (frameTimingEnabled_) {
+        frameTimings_.windowManager = measureSection();
+        if (windowManager_) {
+            const auto& wt = windowManager_->renderTimings_;
+            frameTimings_.wmChat = wt.chat;
+            frameTimings_.wmInventory = wt.inventory;
+            frameTimings_.wmSpellGems = wt.spellGems;
+            frameTimings_.wmHotbar = wt.hotbar;
+            frameTimings_.wmPlayerStatus = wt.playerStatus;
+            frameTimings_.wmBuffs = wt.buffs;
+            frameTimings_.wmGroup = wt.group;
+            frameTimings_.wmSpellbook = wt.spellbook;
+            frameTimings_.wmSkills = wt.skills;
+            frameTimings_.wmLoot = wt.loot;
+            frameTimings_.wmVendor = wt.vendor;
+            frameTimings_.wmBags = wt.bags;
+            frameTimings_.wmTooltips = wt.tooltips;
+            frameTimings_.wmOverlays = wt.overlays;
+            frameTimings_.wmOther = wt.other;
+        }
+    }
 
     // Draw zone line overlay
     drawZoneLineOverlay();
@@ -5753,8 +5848,21 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
         frameTimings_ = FrameTimings();
         frameTimingsAccum_ = FrameTimings();
         frameTimingsSampleCount_ = 0;
+        // Install render pass timer for per-pass breakdown of drawAll()
+        if (smgr_ && !renderPassTimer_) {
+            renderPassTimer_ = new RenderPassTimer();
+            smgr_->setLightManager(renderPassTimer_);
+        }
+        // Enable per-window timing in WindowManager
+        if (windowManager_) windowManager_->setRenderTimingEnabled(true);
         LOG_INFO(MOD_GRAPHICS, "Frame timing profiler ENABLED - timing data will be logged every 60 frames");
     } else {
+        // Remove render pass timer
+        if (smgr_ && renderPassTimer_) {
+            smgr_->setLightManager(nullptr);
+            renderPassTimer_ = nullptr;  // Irrlicht drops the ref
+        }
+        if (windowManager_) windowManager_->setRenderTimingEnabled(false);
         LOG_INFO(MOD_GRAPHICS, "Frame timing profiler DISABLED");
     }
 }
@@ -5791,11 +5899,34 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
     LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
     LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.hudUpdate), pct(frameTimingsAccum_.hudUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneDrawAll), pct(frameTimingsAccum_.sceneDrawAll));
+    LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)  [{} nodes, {} polys]",
+             avg(frameTimingsAccum_.sceneDrawAll), pct(frameTimingsAccum_.sceneDrawAll),
+             frameTimingsSampleCount_ > 0 ? frameTimingsAccum_.sceneNodeCount / frameTimingsSampleCount_ : 0,
+             lastPolygonCount_);
+    LOG_INFO(MOD_GRAPHICS, "    Animate+Register: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneAnimate), pct(frameTimingsAccum_.sceneAnimate));
+    LOG_INFO(MOD_GRAPHICS, "    Solid Pass:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneSolid), pct(frameTimingsAccum_.sceneSolid));
+    LOG_INFO(MOD_GRAPHICS, "    Transparent Pass: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneTransparent), pct(frameTimingsAccum_.sceneTransparent));
+    LOG_INFO(MOD_GRAPHICS, "    Skybox Pass:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneSkybox), pct(frameTimingsAccum_.sceneSkybox));
+    LOG_INFO(MOD_GRAPHICS, "    Other Passes:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneOther), pct(frameTimingsAccum_.sceneOther));
     LOG_INFO(MOD_GRAPHICS, "  Target Box:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.targetBox), pct(frameTimingsAccum_.targetBox));
     LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.castingBars), pct(frameTimingsAccum_.castingBars));
     LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.guiDrawAll), pct(frameTimingsAccum_.guiDrawAll));
     LOG_INFO(MOD_GRAPHICS, "  Window Manager:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManager), pct(frameTimingsAccum_.windowManager));
+    LOG_INFO(MOD_GRAPHICS, "    Chat:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmChat), pct(frameTimingsAccum_.wmChat));
+    LOG_INFO(MOD_GRAPHICS, "    Inventory:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmInventory), pct(frameTimingsAccum_.wmInventory));
+    LOG_INFO(MOD_GRAPHICS, "    Spell Gems:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSpellGems), pct(frameTimingsAccum_.wmSpellGems));
+    LOG_INFO(MOD_GRAPHICS, "    Hotbar:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmHotbar), pct(frameTimingsAccum_.wmHotbar));
+    LOG_INFO(MOD_GRAPHICS, "    Player Status:    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmPlayerStatus), pct(frameTimingsAccum_.wmPlayerStatus));
+    LOG_INFO(MOD_GRAPHICS, "    Buffs:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmBuffs), pct(frameTimingsAccum_.wmBuffs));
+    LOG_INFO(MOD_GRAPHICS, "    Group:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmGroup), pct(frameTimingsAccum_.wmGroup));
+    LOG_INFO(MOD_GRAPHICS, "    Spellbook:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSpellbook), pct(frameTimingsAccum_.wmSpellbook));
+    LOG_INFO(MOD_GRAPHICS, "    Skills:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSkills), pct(frameTimingsAccum_.wmSkills));
+    LOG_INFO(MOD_GRAPHICS, "    Loot:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmLoot), pct(frameTimingsAccum_.wmLoot));
+    LOG_INFO(MOD_GRAPHICS, "    Vendor:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmVendor), pct(frameTimingsAccum_.wmVendor));
+    LOG_INFO(MOD_GRAPHICS, "    Bags:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmBags), pct(frameTimingsAccum_.wmBags));
+    LOG_INFO(MOD_GRAPHICS, "    Tooltips:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmTooltips), pct(frameTimingsAccum_.wmTooltips));
+    LOG_INFO(MOD_GRAPHICS, "    Overlays:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmOverlays), pct(frameTimingsAccum_.wmOverlays));
+    LOG_INFO(MOD_GRAPHICS, "    Other:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmOther), pct(frameTimingsAccum_.wmOther));
     LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLineOverlay), pct(frameTimingsAccum_.zoneLineOverlay));
     LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.endScene), pct(frameTimingsAccum_.endScene));
 }
