@@ -265,14 +265,11 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
         lastWindowHeight_ = h;
         lastHoveredLink_ = hoveredLinkIndex_;
 
-        // Render at full opacity into RTT
-        bool isFaded = (backgroundOpacity_ < 0.99f);
-        if (isFaded) {
-            renderFadedBackground(driver, 1.0f);  // Full opacity in RTT
-        } else {
-            drawWindow(driver);
-            drawUnlockedHighlight(driver);
-        }
+        // Always render full window layout into RTT — fade is handled
+        // entirely by alpha modulation during blit, so RTT content is the
+        // same regardless of fade state.
+        drawWindow(driver);
+        drawUnlockedHighlight(driver);
 
         // Render message content (tabs, messages, scrollbar, resize grip) but NOT input field
         irr::core::recti content = getContentArea();
@@ -281,25 +278,23 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
 
         irr::gui::IGUIFont* font = gui->getBuiltInFont();
 
-        if (!isFaded) {
-            renderTabs(driver, font);
-        }
+        renderTabs(driver, font);
 
         int inputY = content.LowerRightCorner.Y - inputFieldHeight;
 
         irr::core::recti messageArea(
             content.UpperLeftCorner.X,
-            isFaded ? content.UpperLeftCorner.Y : content.UpperLeftCorner.Y + tabBarHeight_,
-            isFaded ? content.LowerRightCorner.X - 2 : content.LowerRightCorner.X - scrollbarWidth - 2,
+            content.UpperLeftCorner.Y + tabBarHeight_,
+            content.LowerRightCorner.X - scrollbarWidth - 2,
             inputY - 2
         );
 
         renderMessages(driver, gui, messageArea);
 
-        if (!isFaded) {
-            renderScrollbar(driver);
+        renderScrollbar(driver);
 
-            // Draw resize grip
+        // Draw resize grip
+        {
             const int gripSize = 12;
             int gripX = bounds_.LowerRightCorner.X - gripSize;
             int gripY = bounds_.UpperLeftCorner.Y;
@@ -385,46 +380,6 @@ void ChatWindow::render(irr::video::IVideoDriver* driver,
     int scrollbarWidth = getScrollbarWidth();
     int inputFieldHeight = getInputFieldHeight();
     int inputY = content.LowerRightCorner.Y - inputFieldHeight;
-
-    // Draw input field background at full opacity
-    bool isFaded = (backgroundOpacity_ < 0.99f);
-    if (isFaded) {
-        int borderWidth = getBorderWidth();
-        irr::video::SColor fullBorderLight = getBorderLightColor();
-        irr::video::SColor fullBorderDark = getBorderDarkColor();
-        irr::video::SColor fullWindowBg = getWindowBackground();
-
-        irr::core::recti inputBounds(
-            bounds_.UpperLeftCorner.X,
-            inputY,
-            bounds_.LowerRightCorner.X,
-            bounds_.LowerRightCorner.Y
-        );
-
-        driver->draw2DRectangle(fullBorderLight,
-            irr::core::recti(inputBounds.UpperLeftCorner.X,
-                            inputBounds.UpperLeftCorner.Y,
-                            inputBounds.UpperLeftCorner.X + borderWidth,
-                            inputBounds.LowerRightCorner.Y));
-        driver->draw2DRectangle(fullBorderDark,
-            irr::core::recti(inputBounds.UpperLeftCorner.X,
-                            inputBounds.LowerRightCorner.Y - borderWidth,
-                            inputBounds.LowerRightCorner.X,
-                            inputBounds.LowerRightCorner.Y));
-        driver->draw2DRectangle(fullBorderDark,
-            irr::core::recti(inputBounds.LowerRightCorner.X - borderWidth,
-                            inputBounds.UpperLeftCorner.Y,
-                            inputBounds.LowerRightCorner.X,
-                            inputBounds.LowerRightCorner.Y));
-
-        irr::core::recti inputBgRect(
-            inputBounds.UpperLeftCorner.X + borderWidth,
-            inputBounds.UpperLeftCorner.Y,
-            inputBounds.LowerRightCorner.X - borderWidth,
-            inputBounds.LowerRightCorner.Y - borderWidth
-        );
-        driver->draw2DRectangle(fullWindowBg, inputBgRect);
-    }
 
     irr::core::recti inputArea(
         content.UpperLeftCorner.X,
