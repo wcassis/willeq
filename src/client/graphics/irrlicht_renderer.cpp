@@ -4758,6 +4758,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.wmBuffs += frameTimings_.wmBuffs;
         frameTimingsAccum_.wmGroup += frameTimings_.wmGroup;
         frameTimingsAccum_.wmSpellbook += frameTimings_.wmSpellbook;
+        frameTimingsAccum_.wmCastingBars += frameTimings_.wmCastingBars;
+        frameTimingsAccum_.wmPet += frameTimings_.wmPet;
         frameTimingsAccum_.wmSkills += frameTimings_.wmSkills;
         frameTimingsAccum_.wmLoot += frameTimings_.wmLoot;
         frameTimingsAccum_.wmVendor += frameTimings_.wmVendor;
@@ -5555,6 +5557,8 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
             frameTimings_.wmBuffs = wt.buffs;
             frameTimings_.wmGroup = wt.group;
             frameTimings_.wmSpellbook = wt.spellbook;
+            frameTimings_.wmCastingBars = wt.castingBars;
+            frameTimings_.wmPet = wt.pet;
             frameTimings_.wmSkills = wt.skills;
             frameTimings_.wmLoot = wt.loot;
             frameTimings_.wmVendor = wt.vendor;
@@ -5920,6 +5924,8 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "    Buffs:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmBuffs), pct(frameTimingsAccum_.wmBuffs));
     LOG_INFO(MOD_GRAPHICS, "    Group:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmGroup), pct(frameTimingsAccum_.wmGroup));
     LOG_INFO(MOD_GRAPHICS, "    Spellbook:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSpellbook), pct(frameTimingsAccum_.wmSpellbook));
+    LOG_INFO(MOD_GRAPHICS, "    Casting Bars:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmCastingBars), pct(frameTimingsAccum_.wmCastingBars));
+    LOG_INFO(MOD_GRAPHICS, "    Pet:              {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmPet), pct(frameTimingsAccum_.wmPet));
     LOG_INFO(MOD_GRAPHICS, "    Skills:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSkills), pct(frameTimingsAccum_.wmSkills));
     LOG_INFO(MOD_GRAPHICS, "    Loot:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmLoot), pct(frameTimingsAccum_.wmLoot));
     LOG_INFO(MOD_GRAPHICS, "    Vendor:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmVendor), pct(frameTimingsAccum_.wmVendor));

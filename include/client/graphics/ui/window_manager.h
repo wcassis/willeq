@@ -394,13 +394,15 @@ public:
         int64_t buffs = 0;
         int64_t group = 0;
         int64_t spellbook = 0;
+        int64_t castingBars = 0;
+        int64_t pet = 0;
         int64_t skills = 0;
         int64_t loot = 0;
         int64_t vendor = 0;
         int64_t bags = 0;
         int64_t tooltips = 0;
         int64_t overlays = 0;  // cursors, dialogs, lock indicator, etc.
-        int64_t other = 0;     // casting bars, pet, trade, bank, tradeskill, notes, options
+        int64_t other = 0;     // trade, bank, tradeskill, notes, options
     };
     RenderTimings renderTimings_;
     bool renderTimingEnabled_ = false;
@@ -708,6 +710,15 @@ private:
         irr::video::ITexture* icon = nullptr;
     };
     SpellCursorState spellCursor_;
+
+    // Lock indicator cache
+    irr::video::ITexture* lockIndicatorRT_ = nullptr;
+    bool lockIndicatorDirty_ = true;
+    bool lastLockState_ = true;
+    int lockIndicatorWidth_ = 0;
+    int lockIndicatorHeight_ = 0;
+    int lockIndicatorX_ = 0;
+    int lockIndicatorY_ = 0;
 
     // Layout constants
     static constexpr int INVENTORY_X = 50;

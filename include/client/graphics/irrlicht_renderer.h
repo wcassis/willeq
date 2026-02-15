@@ -1209,6 +1209,8 @@ private:
         int64_t wmBuffs = 0;
         int64_t wmGroup = 0;
         int64_t wmSpellbook = 0;
+        int64_t wmCastingBars = 0;
+        int64_t wmPet = 0;
         int64_t wmSkills = 0;
         int64_t wmLoot = 0;
         int64_t wmVendor = 0;

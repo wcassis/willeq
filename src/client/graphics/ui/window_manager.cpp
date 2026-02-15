@@ -14,7 +14,12 @@ namespace eqt {
 namespace ui {
 
 WindowManager::WindowManager() = default;
-WindowManager::~WindowManager() = default;
+WindowManager::~WindowManager() {
+    if (lockIndicatorRT_ && driver_) {
+        driver_->removeTexture(lockIndicatorRT_);
+        lockIndicatorRT_ = nullptr;
+    }
+}
 
 irr::video::ITexture* WindowManager::getItemIcon(uint32_t iconId) {
     return iconLoader_.getIcon(iconId);
@@ -134,6 +139,7 @@ void WindowManager::onResize(int screenWidth, int screenHeight) {
     settings.removeScaling();
     screenWidth_ = screenWidth;
     screenHeight_ = screenHeight;
+    lockIndicatorDirty_ = true;  // Position depends on screenWidth_
     settings.applyScaling(screenWidth, screenHeight);
 
     positionInventoryWindow();
@@ -151,6 +157,7 @@ void WindowManager::onResize(int screenWidth, int screenHeight) {
 void WindowManager::toggleUILock() {
     UISettings::instance().toggleUILock();
     bool locked = UISettings::instance().isUILocked();
+    lockIndicatorDirty_ = true;
     LOG_INFO(MOD_UI, "UI {} - windows {}", locked ? "locked" : "unlocked",
              locked ? "cannot be moved" : "can be moved");
 
@@ -2409,9 +2416,13 @@ void WindowManager::render() {
     if (memorizingBar_) {
         memorizingBar_->render(driver_, gui_);
     }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.castingBars = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
 
     // Render buff window
-    if (renderTimingEnabled_) t0 = now();
     if (buffWindow_ && buffWindow_->isVisible()) {
         buffWindow_->render(driver_, gui_);
     }
@@ -2435,9 +2446,13 @@ void WindowManager::render() {
     if (petWindow_ && petWindow_->isVisible()) {
         petWindow_->render(driver_, gui_);
     }
+    if (renderTimingEnabled_) {
+        t1 = now();
+        renderTimings_.pet = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        t0 = t1;
+    }
 
     // Render hotbar window
-    if (renderTimingEnabled_) t0 = now();
     if (hotbarWindow_ && hotbarWindow_->isVisible()) {
         hotbarWindow_->render(driver_, gui_);
     }
@@ -5149,51 +5164,99 @@ void WindowManager::renderSpellTooltip() {
 void WindowManager::renderLockIndicator() {
     if (!driver_ || !gui_) return;
 
-    irr::gui::IGUIFont* font = gui_->getBuiltInFont();
-    if (!font) return;
-
     bool locked = isUILocked();
 
-    // Create indicator text with lock symbol
-    std::wstring indicatorText;
-    irr::video::SColor bgColor;
-    irr::video::SColor textColor;
-
-    if (locked) {
-        indicatorText = L"[=] UI Locked";
-        bgColor = irr::video::SColor(180, 40, 40, 40);      // Dark gray background
-        textColor = irr::video::SColor(255, 150, 150, 150); // Gray text
-    } else {
-        indicatorText = L"[O] UI Unlocked - Drag windows to move";
-        bgColor = irr::video::SColor(200, 60, 60, 20);      // Dark yellow/brown background
-        textColor = irr::video::SColor(255, 255, 220, 100); // Yellow text
+    // Check if lock state changed or screen dimensions changed (position depends on screenWidth_)
+    if (locked != lastLockState_) {
+        lockIndicatorDirty_ = true;
+        lastLockState_ = locked;
     }
 
-    // Calculate text dimensions
-    irr::core::dimension2du textSize = font->getDimension(indicatorText.c_str());
+    // RTT caching only on OpenGL
+    bool useRTT = (driver_->getDriverType() == irr::video::EDT_OPENGL);
 
-    // Position in top-right corner with padding
-    const int padding = 6;
-    const int margin = 10;
-    int width = textSize.Width + padding * 2;
-    int height = textSize.Height + padding * 2;
-    int x = screenWidth_ - width - margin;
-    int y = margin;
+    if (lockIndicatorDirty_ || !useRTT) {
+        irr::gui::IGUIFont* font = gui_->getBuiltInFont();
+        if (!font) return;
 
-    irr::core::recti bgRect(x, y, x + width, y + height);
+        // Create indicator text with lock symbol
+        std::wstring indicatorText;
+        irr::video::SColor bgColor;
+        irr::video::SColor textColor;
 
-    // Draw background
-    driver_->draw2DRectangle(bgColor, bgRect);
+        if (locked) {
+            indicatorText = L"[=] UI Locked";
+            bgColor = irr::video::SColor(180, 40, 40, 40);
+            textColor = irr::video::SColor(255, 150, 150, 150);
+        } else {
+            indicatorText = L"[O] UI Unlocked - Drag windows to move";
+            bgColor = irr::video::SColor(200, 60, 60, 20);
+            textColor = irr::video::SColor(255, 255, 220, 100);
+        }
 
-    // Draw border
-    irr::video::SColor borderColor = locked ?
-        irr::video::SColor(255, 80, 80, 80) :    // Gray border when locked
-        irr::video::SColor(255, 200, 180, 60);   // Yellow border when unlocked
-    driver_->draw2DRectangleOutline(bgRect, borderColor);
+        // Calculate text dimensions
+        irr::core::dimension2du textSize = font->getDimension(indicatorText.c_str());
 
-    // Draw text
-    irr::core::recti textRect(x + padding, y + padding, x + width - padding, y + height - padding);
-    font->draw(indicatorText.c_str(), textRect, textColor);
+        const int padding = 6;
+        const int margin = 10;
+        int width = textSize.Width + padding * 2;
+        int height = textSize.Height + padding * 2;
+        int x = screenWidth_ - width - margin;
+        int y = margin;
+
+        if (!useRTT) {
+            // Software renderer: draw directly every frame
+            irr::core::recti bgRect(x, y, x + width, y + height);
+            driver_->draw2DRectangle(bgColor, bgRect);
+            irr::video::SColor borderColor = locked ?
+                irr::video::SColor(255, 80, 80, 80) :
+                irr::video::SColor(255, 200, 180, 60);
+            driver_->draw2DRectangleOutline(bgRect, borderColor);
+            irr::core::recti textRect(x + padding, y + padding, x + width - padding, y + height - padding);
+            font->draw(indicatorText.c_str(), textRect, textColor);
+            return;
+        }
+
+        // Recreate RTT if size changed
+        if (!lockIndicatorRT_ || lockIndicatorWidth_ != width || lockIndicatorHeight_ != height) {
+            if (lockIndicatorRT_) {
+                driver_->removeTexture(lockIndicatorRT_);
+            }
+            lockIndicatorRT_ = driver_->addRenderTargetTexture(
+                irr::core::dimension2du(width, height), "LockIndicator", irr::video::ECF_A8R8G8B8);
+            lockIndicatorWidth_ = width;
+            lockIndicatorHeight_ = height;
+        }
+
+        lockIndicatorX_ = x;
+        lockIndicatorY_ = y;
+
+        if (lockIndicatorRT_ && driver_->setRenderTarget(lockIndicatorRT_, true, true,
+                                                          irr::video::SColor(0, 0, 0, 0))) {
+            // Render to RTT at origin
+            irr::core::recti bgRect(0, 0, width, height);
+            driver_->draw2DRectangle(bgColor, bgRect);
+            irr::video::SColor borderColor = locked ?
+                irr::video::SColor(255, 80, 80, 80) :
+                irr::video::SColor(255, 200, 180, 60);
+            driver_->draw2DRectangleOutline(bgRect, borderColor);
+            irr::core::recti textRect(padding, padding, width - padding, height - padding);
+            font->draw(indicatorText.c_str(), textRect, textColor);
+
+            driver_->setRenderTarget(nullptr, false, false);
+            lockIndicatorDirty_ = false;
+        }
+    }
+
+    // Blit cached RTT
+    if (lockIndicatorRT_) {
+        driver_->draw2DImage(lockIndicatorRT_,
+            irr::core::recti(lockIndicatorX_, lockIndicatorY_,
+                             lockIndicatorX_ + lockIndicatorWidth_,
+                             lockIndicatorY_ + lockIndicatorHeight_),
+            irr::core::recti(0, 0, lockIndicatorWidth_, lockIndicatorHeight_),
+            nullptr, nullptr, true);
+    }
 }
 
 // ============================================================================

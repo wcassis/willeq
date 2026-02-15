@@ -116,6 +116,35 @@ private:
     // Flash timer for expiring buffs (toggles every ~250ms)
     uint32_t flashTimer_ = 0;
     bool flashOn_ = true;
+
+    // Current time (stored during update() for use in render())
+    uint32_t currentTimeMs_ = 0;
+
+    // RTT content cache
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+    // Rate limiting - max 1 update per second
+    uint32_t lastRenderTimeMs_ = 0;
+    static constexpr uint32_t RENDER_INTERVAL_MS = 1000;
+
+    // Dirty detection state
+    struct CachedBuffSlot {
+        uint32_t spellId = 0;
+        uint32_t remainingSeconds = 0;
+        EQ::BuffEffectType effectType = EQ::BuffEffectType::None;
+        bool aboutToExpire = false;
+    };
+    std::vector<CachedBuffSlot> lastBuffStates_;
+    bool lastFlashOn_ = true;
+    int lastHoveredSlot_ = -1;
+    bool lastShowingTarget_ = false;
+    uint16_t lastTargetId_ = 0;
+    bool lastWindowHovered_ = false;
 };
 
 } // namespace ui

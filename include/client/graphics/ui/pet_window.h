@@ -38,7 +38,7 @@ struct PetButton {
 class PetWindow : public WindowBase {
 public:
     PetWindow();
-    ~PetWindow() = default;
+    ~PetWindow();
 
     // Set EverQuest reference for pet data
     void setEQ(EverQuest* eq) { eq_ = eq; }
@@ -157,6 +157,40 @@ private:
 
     // Callbacks
     PetCommandCallback commandCallback_;
+
+    // Current time (stored during updateFlashTimer() for use in render())
+    uint32_t currentTimeMs_ = 0;
+
+    // RTT content cache
+    irr::video::ITexture* contentRT_ = nullptr;
+    irr::video::IVideoDriver* cachedDriver_ = nullptr;
+    bool contentDirty_ = true;
+    int contentRTWidth_ = 0;
+    int contentRTHeight_ = 0;
+    void ensureContentRT(irr::video::IVideoDriver* driver);
+
+    // Rate limiting - max 1 update per second
+    uint32_t lastRenderTimeMs_ = 0;
+    static constexpr uint32_t RENDER_INTERVAL_MS = 1000;
+
+    // Dirty detection
+    bool lastHasPet_ = false;
+    std::wstring lastPetName_;
+    uint8_t lastPetLevel_ = 0;
+    uint8_t lastHpPercent_ = 0;
+    uint8_t lastManaPercent_ = 0;
+    std::array<bool, 9> lastButtonHovered_{};
+    bool lastFlashOn_ = true;
+    int lastHoveredBuffSlot_ = -1;
+    bool lastWindowHovered_ = false;
+
+    // Pet buff dirty detection
+    struct CachedPetBuff {
+        uint32_t spellId = 0;
+        uint32_t remainingSeconds = 0;
+        bool aboutToExpire = false;
+    };
+    std::array<CachedPetBuff, MAX_VISIBLE_BUFFS> lastPetBuffStates_{};
 };
 
 } // namespace ui

@@ -29,7 +29,36 @@ BuffWindow::BuffWindow(EQ::BuffManager* buffMgr, ItemIconLoader* iconLoader)
     layoutBuffSlots();
 }
 
-BuffWindow::~BuffWindow() = default;
+BuffWindow::~BuffWindow()
+{
+    if (contentRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+}
+
+void BuffWindow::ensureContentRT(irr::video::IVideoDriver* driver)
+{
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+    if (w <= 0 || h <= 0) return;
+
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    if (!contentRT_ || contentRTWidth_ != w || contentRTHeight_ != h || cachedDriver_ != driver) {
+        if (contentRT_ && cachedDriver_) {
+            cachedDriver_->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        }
+        contentRT_ = driver->addRenderTargetTexture(
+            irr::core::dimension2du(w, h), "BuffCache", irr::video::ECF_A8R8G8B8);
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        cachedDriver_ = driver;
+        contentDirty_ = true;
+    }
+}
 
 void BuffWindow::layoutBuffSlots()
 {
@@ -59,12 +88,125 @@ void BuffWindow::positionDefault(int screenWidth, int screenHeight)
 
 void BuffWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
-    if (!visible_) {
+    if (!visible_ || !driver) {
         return;
     }
 
-    // Draw window base (title bar, background, border)
-    WindowBase::render(driver, gui);
+    ensureContentRT(driver);
+    if (!contentRT_) {
+        // Fallback: render directly (software renderer)
+        WindowBase::render(driver, gui);
+        return;
+    }
+
+    // Hover change triggers immediate re-render (no rate limit)
+    if (lastHoveredSlot_ != hoveredSlot_ || lastWindowHovered_ != hovered_) {
+        lastHoveredSlot_ = hoveredSlot_;
+        lastWindowHovered_ = hovered_;
+        contentDirty_ = true;
+    }
+
+    // Rate-limited dirty detection: only check buff state every RENDER_INTERVAL_MS
+    if (currentTimeMs_ - lastRenderTimeMs_ >= RENDER_INTERVAL_MS) {
+        lastRenderTimeMs_ = currentTimeMs_;
+
+        // Check view mode changes
+        if (lastShowingTarget_ != showingTarget_ || lastTargetId_ != targetId_) {
+            lastShowingTarget_ = showingTarget_;
+            lastTargetId_ = targetId_;
+            contentDirty_ = true;
+        }
+
+        // Snapshot buff states and compare
+        const std::vector<EQ::ActiveBuff>* buffs = nullptr;
+        if (showingTarget_) {
+            buffs = buffMgr_ ? buffMgr_->getEntityBuffs(targetId_) : nullptr;
+        } else {
+            buffs = buffMgr_ ? &buffMgr_->getPlayerBuffs() : nullptr;
+        }
+
+        // Ensure lastBuffStates_ has correct size
+        if (lastBuffStates_.size() != buffSlots_.size()) {
+            lastBuffStates_.resize(buffSlots_.size());
+            contentDirty_ = true;
+        }
+
+        bool hasExpiringBuff = false;
+        for (size_t i = 0; i < buffSlots_.size(); i++) {
+            CachedBuffSlot current{};
+            if (buffs) {
+                for (const auto& b : *buffs) {
+                    if (b.slot >= 0 && static_cast<size_t>(b.slot) == i) {
+                        current.spellId = b.spell_id;
+                        current.remainingSeconds = b.remaining_seconds;
+                        current.effectType = b.effect_type;
+                        current.aboutToExpire = b.isAboutToExpire();
+                        if (current.aboutToExpire) hasExpiringBuff = true;
+                        break;
+                    }
+                }
+            }
+
+            auto& cached = lastBuffStates_[i];
+            if (cached.spellId != current.spellId ||
+                cached.remainingSeconds != current.remainingSeconds ||
+                cached.effectType != current.effectType ||
+                cached.aboutToExpire != current.aboutToExpire) {
+                cached = current;
+                contentDirty_ = true;
+            }
+        }
+
+        // Only track flash state when there's actually an expiring buff
+        if (hasExpiringBuff && lastFlashOn_ != flashOn_) {
+            lastFlashOn_ = flashOn_;
+            contentDirty_ = true;
+        }
+    }
+
+    if (contentDirty_) {
+        // Save bounds and shift to origin for RTT rendering
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        int w = bounds_.getWidth();
+        int h = bounds_.getHeight();
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        if (!driver->setRenderTarget(contentRT_, true, true,
+                                     irr::video::SColor(0, 0, 0, 0))) {
+            // RTT not supported - destroy and fall back
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            driver->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        } else {
+            drawWindow(driver);
+            drawUnlockedHighlight(driver);
+            renderContent(driver, gui);
+
+            driver->setRenderTarget(nullptr, false, false);
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            contentDirty_ = false;
+        }
+    }
+
+    if (contentRT_) {
+        // Blit cached content to screen
+        driver->draw2DImage(contentRT_,
+            irr::core::recti(bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y,
+                             bounds_.LowerRightCorner.X, bounds_.LowerRightCorner.Y),
+            irr::core::recti(0, 0, contentRTWidth_, contentRTHeight_),
+            nullptr, nullptr, true);
+    } else {
+        // Direct rendering fallback
+        WindowBase::render(driver, gui);
+    }
 }
 
 void BuffWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
@@ -241,6 +383,8 @@ int BuffWindow::getBuffAtPosition(int x, int y) const
 
 void BuffWindow::update(uint32_t currentTimeMs)
 {
+    currentTimeMs_ = currentTimeMs;
+
     // Update flash timer for expiring buffs (toggle every ~250ms)
     static constexpr uint32_t FLASH_INTERVAL_MS = 250;
 
@@ -260,6 +404,7 @@ void BuffWindow::showTargetBuffs(uint16_t targetId)
     showingTarget_ = true;
     targetId_ = targetId;
     setTitle(L"Target Buffs");
+    contentDirty_ = true;
 }
 
 void BuffWindow::showPlayerBuffs()
@@ -267,6 +412,7 @@ void BuffWindow::showPlayerBuffs()
     showingTarget_ = false;
     targetId_ = 0;
     setTitle(L"Buffs");
+    contentDirty_ = true;
 }
 
 bool BuffWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool ctrl)

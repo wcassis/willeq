@@ -169,16 +169,18 @@ void GroupWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnviron
         return;
     }
 
-    // Dirty detection: check member states
+    // Dirty detection: check member states (HP/mana quantized to 2% steps)
     for (int i = 0; i < MAX_MEMBERS; i++) {
         const auto& slot = memberSlots_[i];
         auto& cached = lastMemberStates_[i];
-        if (cached.name != slot.name || cached.hpPercent != slot.hpPercent ||
-            cached.manaPercent != slot.manaPercent || cached.isLeader != slot.isLeader ||
+        uint8_t quantizedHp = (slot.hpPercent / 2) * 2;
+        uint8_t quantizedMana = (slot.manaPercent / 2) * 2;
+        if (cached.name != slot.name || cached.hpPercent != quantizedHp ||
+            cached.manaPercent != quantizedMana || cached.isLeader != slot.isLeader ||
             cached.inZone != slot.inZone || cached.isEmpty != slot.isEmpty) {
             cached.name = slot.name;
-            cached.hpPercent = slot.hpPercent;
-            cached.manaPercent = slot.manaPercent;
+            cached.hpPercent = quantizedHp;
+            cached.manaPercent = quantizedMana;
             cached.isLeader = slot.isLeader;
             cached.inZone = slot.inZone;
             cached.isEmpty = slot.isEmpty;

@@ -162,14 +162,153 @@ void PetWindow::update()
     manaPercent_ = 0;
 }
 
+PetWindow::~PetWindow()
+{
+    if (contentRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(contentRT_);
+        contentRT_ = nullptr;
+    }
+}
+
+void PetWindow::ensureContentRT(irr::video::IVideoDriver* driver)
+{
+    int w = bounds_.getWidth();
+    int h = bounds_.getHeight();
+    if (w <= 0 || h <= 0) return;
+
+    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
+    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+
+    if (!contentRT_ || contentRTWidth_ != w || contentRTHeight_ != h || cachedDriver_ != driver) {
+        if (contentRT_ && cachedDriver_) {
+            cachedDriver_->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        }
+        contentRT_ = driver->addRenderTargetTexture(
+            irr::core::dimension2du(w, h), "PetCache", irr::video::ECF_A8R8G8B8);
+        contentRTWidth_ = w;
+        contentRTHeight_ = h;
+        cachedDriver_ = driver;
+        contentDirty_ = true;
+    }
+}
+
 void PetWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
-    if (!visible_) {
+    if (!visible_ || !driver) {
         return;
     }
 
-    // Draw window base (title bar, background, border)
-    WindowBase::render(driver, gui);
+    ensureContentRT(driver);
+    if (!contentRT_) {
+        // Fallback: render directly (software renderer)
+        WindowBase::render(driver, gui);
+        return;
+    }
+
+    // Immediate dirty detection: hover changes (no rate limit)
+    if (lastHoveredBuffSlot_ != hoveredBuffSlot_ || lastWindowHovered_ != hovered_) {
+        lastHoveredBuffSlot_ = hoveredBuffSlot_;
+        lastWindowHovered_ = hovered_;
+        contentDirty_ = true;
+    }
+    for (size_t i = 0; i < buttons_.size(); i++) {
+        if (lastButtonHovered_[i] != buttons_[i].hovered) {
+            lastButtonHovered_[i] = buttons_[i].hovered;
+            contentDirty_ = true;
+        }
+    }
+
+    // Rate-limited dirty detection: pet state and buffs (max 1/sec)
+    if (currentTimeMs_ - lastRenderTimeMs_ >= RENDER_INTERVAL_MS) {
+        lastRenderTimeMs_ = currentTimeMs_;
+
+        if (lastHasPet_ != hasPet_ || lastPetName_ != petName_ ||
+            lastPetLevel_ != petLevel_ || lastHpPercent_ != hpPercent_ ||
+            lastManaPercent_ != manaPercent_) {
+            lastHasPet_ = hasPet_;
+            lastPetName_ = petName_;
+            lastPetLevel_ = petLevel_;
+            lastHpPercent_ = hpPercent_;
+            lastManaPercent_ = manaPercent_;
+            contentDirty_ = true;
+        }
+
+        // Check pet buff states
+        bool hasExpiringBuff = false;
+        if (buffMgr_) {
+            const std::vector<EQ::ActiveBuff>& petBuffs = buffMgr_->getPetBuffs();
+            for (int i = 0; i < MAX_VISIBLE_BUFFS; i++) {
+                CachedPetBuff current{};
+                for (const auto& b : petBuffs) {
+                    if (b.slot >= 0 && b.slot == i) {
+                        current.spellId = b.spell_id;
+                        current.remainingSeconds = b.remaining_seconds;
+                        current.aboutToExpire = b.isAboutToExpire();
+                        if (current.aboutToExpire) hasExpiringBuff = true;
+                        break;
+                    }
+                }
+                auto& cached = lastPetBuffStates_[i];
+                if (cached.spellId != current.spellId ||
+                    cached.remainingSeconds != current.remainingSeconds ||
+                    cached.aboutToExpire != current.aboutToExpire) {
+                    cached = current;
+                    contentDirty_ = true;
+                }
+            }
+        }
+
+        // Only track flash state when there's actually an expiring buff
+        if (hasExpiringBuff && lastFlashOn_ != flashOn_) {
+            lastFlashOn_ = flashOn_;
+            contentDirty_ = true;
+        }
+    }
+
+    if (contentDirty_) {
+        // Save bounds and shift to origin for RTT rendering
+        auto realBounds = bounds_;
+        auto realTitleBar = titleBar_;
+        int w = bounds_.getWidth();
+        int h = bounds_.getHeight();
+        bounds_ = irr::core::recti(0, 0, w, h);
+        titleBar_ = irr::core::recti(
+            realTitleBar.UpperLeftCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.UpperLeftCorner.Y - realBounds.UpperLeftCorner.Y,
+            realTitleBar.LowerRightCorner.X - realBounds.UpperLeftCorner.X,
+            realTitleBar.LowerRightCorner.Y - realBounds.UpperLeftCorner.Y);
+
+        if (!driver->setRenderTarget(contentRT_, true, true,
+                                     irr::video::SColor(0, 0, 0, 0))) {
+            // RTT not supported - destroy and fall back
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            driver->removeTexture(contentRT_);
+            contentRT_ = nullptr;
+        } else {
+            drawWindow(driver);
+            drawUnlockedHighlight(driver);
+            renderContent(driver, gui);
+
+            driver->setRenderTarget(nullptr, false, false);
+            bounds_ = realBounds;
+            titleBar_ = realTitleBar;
+            contentDirty_ = false;
+        }
+    }
+
+    if (contentRT_) {
+        // Blit cached content to screen
+        driver->draw2DImage(contentRT_,
+            irr::core::recti(bounds_.UpperLeftCorner.X, bounds_.UpperLeftCorner.Y,
+                             bounds_.LowerRightCorner.X, bounds_.LowerRightCorner.Y),
+            irr::core::recti(0, 0, contentRTWidth_, contentRTHeight_),
+            nullptr, nullptr, true);
+    } else {
+        // Direct rendering fallback
+        WindowBase::render(driver, gui);
+    }
 }
 
 void PetWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
@@ -427,6 +566,8 @@ bool PetWindow::handleMouseMove(int x, int y)
 
 void PetWindow::updateFlashTimer(uint32_t currentTimeMs)
 {
+    currentTimeMs_ = currentTimeMs;
+
     // Update flash timer for expiring buffs (toggle every ~250ms)
     static constexpr uint32_t FLASH_INTERVAL_MS = 250;
 
