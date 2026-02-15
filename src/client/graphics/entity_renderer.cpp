@@ -3474,17 +3474,15 @@ void EntityRenderer::clearBspTree() {
 
 void EntityRenderer::setConstrainedConfig(const ConstrainedRendererConfig* config) {
     constrainedConfig_ = config;
-    if (config && config->enabled) {
-        LOG_INFO(MOD_GRAPHICS, "EntityRenderer: Constrained mode enabled - max {} entities within {} units",
+    if (config) {
+        LOG_INFO(MOD_GRAPHICS, "EntityRenderer: max {} entities within {} units",
                  config->maxVisibleEntities, config->entityRenderDistance);
-    } else {
-        LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: Constrained mode disabled");
     }
 }
 
 void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cameraPos) {
-    // If constrained mode is not enabled, show all entities
-    if (!constrainedConfig_ || !constrainedConfig_->enabled) {
+    // If no config set, show all entities
+    if (!constrainedConfig_) {
         visibleEntityCount_ = static_cast<int>(entities_.size());
         return;
     }
@@ -3588,15 +3586,11 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
                 visual.inSceneGraph = false;
             }
         }
-        if (visual.nameNode) {
-            if (shouldBeVisible && nameTagsVisible_) {
-                if (!visual.nameNode->isVisible()) {
-                    visual.nameNode->setVisible(true);
-                }
-            } else {
-                if (visual.nameNode->isVisible()) {
-                    visual.nameNode->setVisible(false);
-                }
+        // Only hide name tags for culled entities; visible entity name tags
+        // are managed by updateNameTagsWithLOS() which runs separately
+        if (visual.nameNode && !shouldBeVisible) {
+            if (visual.nameNode->isVisible()) {
+                visual.nameNode->setVisible(false);
             }
         }
 

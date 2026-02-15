@@ -402,35 +402,26 @@ IrrlichtRenderer::~IrrlichtRenderer() {
 bool IrrlichtRenderer::init(const RendererConfig& config) {
     config_ = config;
 
-    // Apply constrained rendering mode if enabled
-    if (config_.constrainedConfig.enabled) {
-        // Custom config already set (from NxNxN spec) — just ensure derived limits are computed
-        config_.constrainedConfig.calculateMaxResolution();
-        config_.constrainedConfig.calculateMemoryLimits();
-        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
-            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
-                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
-        }
-        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
-                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
-                 config_.width, config_.height,
-                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
-        frameBudgetMs_ = 66.6f;
-    } else if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+    // Apply constrained rendering configuration
+    // Constrained mode is always active; Max preset has no practical limits
+    // Populate config from preset (unless custom NxNxN config was already set)
+    if (config_.constrainedPreset != ConstrainedRenderingPreset::Custom) {
         config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
-        config_.constrainedConfig.calculateMaxResolution();
-        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
-            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
-                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
-        }
-        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
-                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
-                 config_.width, config_.height,
-                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+    }
+    config_.constrainedConfig.calculateMaxResolution();
+    config_.constrainedConfig.calculateMemoryLimits();
+    if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
+        LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
+                 config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
+    }
+    LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
+             ConstrainedRendererConfig::presetName(config_.constrainedPreset),
+             config_.width, config_.height,
+             config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
+             config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
+             config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+    // Apply frame budget throttling for non-Max presets
+    if (config_.constrainedPreset != ConstrainedRenderingPreset::Max) {
         frameBudgetMs_ = 66.6f;
     }
 
@@ -500,12 +491,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     }
     createSoftwareCursor();
 
-    // Create constrained texture cache if in constrained mode
-    if (config_.constrainedConfig.enabled && driver_) {
+    // Create constrained texture cache (always active; Max preset has generous limits)
+    if (driver_) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
-        LOG_INFO(MOD_GRAPHICS, "Constrained texture cache created ({}KB limit, {}x{} max texture)",
+        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture)",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
                  config_.constrainedConfig.maxTextureDimension);
@@ -531,12 +522,10 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     entityRenderer_->setRenderDistance(renderDistance_);
 
     // Pass constrained config to entity renderer for visibility limits
-    if (config_.constrainedConfig.enabled) {
-        entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
-        // Apply chr cache limit to race model loader
-        if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
-            entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
-        }
+    entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+    // Apply chr cache limit to race model loader
+    if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
+        entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
     }
 
     // Set ground finder callback for NPC terrain snapping during interpolation
@@ -591,35 +580,26 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     config_ = config;
 
-    // Apply constrained rendering mode if enabled
-    if (config_.constrainedConfig.enabled) {
-        // Custom config already set (from NxNxN spec) — just ensure derived limits are computed
-        config_.constrainedConfig.calculateMaxResolution();
-        config_.constrainedConfig.calculateMemoryLimits();
-        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
-            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
-                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
-        }
-        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
-                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
-                 config_.width, config_.height,
-                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
-        frameBudgetMs_ = 66.6f;
-    } else if (config_.constrainedPreset != ConstrainedRenderingPreset::None) {
+    // Apply constrained rendering configuration
+    // Constrained mode is always active; Max preset has no practical limits
+    // Populate config from preset (unless custom NxNxN config was already set)
+    if (config_.constrainedPreset != ConstrainedRenderingPreset::Custom) {
         config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
-        config_.constrainedConfig.calculateMaxResolution();
-        if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
-            LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
-                     config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
-        }
-        LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
-                 ConstrainedRendererConfig::presetName(config_.constrainedPreset),
-                 config_.width, config_.height,
-                 config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
-                 config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+    }
+    config_.constrainedConfig.calculateMaxResolution();
+    config_.constrainedConfig.calculateMemoryLimits();
+    if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
+        LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
+                 config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
+    }
+    LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
+             ConstrainedRendererConfig::presetName(config_.constrainedPreset),
+             config_.width, config_.height,
+             config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
+             config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
+             config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
+    // Apply frame budget throttling for non-Max presets
+    if (config_.constrainedPreset != ConstrainedRenderingPreset::Max) {
         frameBudgetMs_ = 66.6f;
     }
 
@@ -687,12 +667,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
     createSoftwareCursor();
 
-    // Create constrained texture cache if in constrained mode
-    if (config_.constrainedConfig.enabled && driver_) {
+    // Create constrained texture cache (always active; Max preset has generous limits)
+    if (driver_) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
-        LOG_INFO(MOD_GRAPHICS, "Constrained texture cache created ({}KB limit, {}x{} max texture)",
+        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture)",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
                  config_.constrainedConfig.maxTextureDimension);
@@ -824,11 +804,9 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         entityRenderer_->setNameTagsVisible(config_.showNameTags);
         entityRenderer_->setRenderDistance(renderDistance_);
         // Pass constrained config to entity renderer for visibility limits
-        if (config_.constrainedConfig.enabled) {
-            entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
-            if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
-                entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
-            }
+        entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+        if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
+            entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
         }
         // Set ground finder callback for NPC terrain snapping during interpolation
         entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
@@ -1078,9 +1056,8 @@ void IrrlichtRenderer::setupCamera() {
 
     frustumCuller_ = std::make_unique<FrustumCuller>();
 
-    // Create software occlusion culler if constrained config has it enabled
-    if (config_.constrainedConfig.enabled &&
-        config_.constrainedConfig.occlusionBufferWidth > 0 &&
+    // Create software occlusion culler if configured (non-zero buffer dimensions)
+    if (config_.constrainedConfig.occlusionBufferWidth > 0 &&
         config_.constrainedConfig.occlusionBufferHeight > 0) {
         OcclusionCullerConfig occConfig;
         occConfig.width = config_.constrainedConfig.occlusionBufferWidth;
@@ -5315,45 +5292,43 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         detailManager_->renderFootprints();
     }
 
-    if (config_.constrainedConfig.enabled) {
-        if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {
-            if (++polygonBudgetExceededFrames_ >= 60) {
-                LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
-                         lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame);
-                polygonBudgetExceededFrames_ = 0;
-            }
-        } else {
+    if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {
+        if (++polygonBudgetExceededFrames_ >= 60) {
+            LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
+                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame);
             polygonBudgetExceededFrames_ = 0;
         }
+    } else {
+        polygonBudgetExceededFrames_ = 0;
+    }
 
-        if (++constrainedStatsLogCounter_ >= 150) {
-            constrainedStatsLogCounter_ = 0;
-            int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
-            int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
-            size_t tmuUsed = 0, tmuLimit = 0;
-            float hitRate = 0.0f;
-            size_t evictions = 0;
-            if (constrainedTextureCache_) {
-                tmuUsed = constrainedTextureCache_->getCurrentUsage();
-                tmuLimit = constrainedTextureCache_->getMemoryLimit();
-                hitRate = constrainedTextureCache_->getHitRate();
-                evictions = constrainedTextureCache_->getEvictionCount();
-            }
-            size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
-            size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
-            LOG_INFO(MOD_GRAPHICS, "=== CONSTRAINED MODE STATS [{}] ===",
-                     ConstrainedRendererConfig::presetName(config_.constrainedPreset));
-            LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
-                     config_.width, config_.height, config_.constrainedConfig.colorDepthBits,
-                     fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
-            LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
-                     tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
-            LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
-                     lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
-                     visibleEntities, totalEntities, config_.constrainedConfig.maxVisibleEntities,
-                     config_.constrainedConfig.clipDistance);
-            LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
+    if (++constrainedStatsLogCounter_ >= 150) {
+        constrainedStatsLogCounter_ = 0;
+        int visibleEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
+        int totalEntities = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
+        size_t tmuUsed = 0, tmuLimit = 0;
+        float hitRate = 0.0f;
+        size_t evictions = 0;
+        if (constrainedTextureCache_) {
+            tmuUsed = constrainedTextureCache_->getCurrentUsage();
+            tmuLimit = constrainedTextureCache_->getMemoryLimit();
+            hitRate = constrainedTextureCache_->getHitRate();
+            evictions = constrainedTextureCache_->getEvictionCount();
         }
+        size_t fbiUsed = config_.constrainedConfig.calculateFramebufferUsage(config_.width, config_.height);
+        size_t fbiLimit = config_.constrainedConfig.framebufferMemoryBytes;
+        LOG_INFO(MOD_GRAPHICS, "=== RENDERER STATS [{}] ===",
+                 ConstrainedRendererConfig::presetName(config_.constrainedPreset));
+        LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
+                 config_.width, config_.height, config_.constrainedConfig.colorDepthBits,
+                 fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
+        LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
+                 tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
+        LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
+                 lastPolygonCount_, config_.constrainedConfig.maxPolygonsPerFrame,
+                 visibleEntities, totalEntities, config_.constrainedConfig.maxVisibleEntities,
+                 config_.constrainedConfig.clipDistance);
+        LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
     }
 
     // Draw selection box around targeted entity

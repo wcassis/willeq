@@ -19483,7 +19483,7 @@ void EverQuest::InitializeAudio() {
 		LOG_INFO(MOD_AUDIO, "Audio memory constraints: soundCache={}KB, lazyPfs={}",
 			m_constrained_config->soundBufferCacheBytes / 1024,
 			m_constrained_config->lazyPfsLoading ? "yes" : "no");
-	} else if (m_constrained_preset != EQT::Graphics::ConstrainedRenderingPreset::None) {
+	} else if (m_constrained_preset != EQT::Graphics::ConstrainedRenderingPreset::Max) {
 		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(m_constrained_preset);
 		if (cfg.totalMemoryBudgetBytes > 0) {
 			m_audio_manager->setMemoryConstraints(cfg.soundBufferCacheBytes, cfg.lazyPfsLoading);

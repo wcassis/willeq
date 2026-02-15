@@ -227,7 +227,7 @@ struct RendererConfig {
 
     // Constrained rendering mode (startup-only, cannot change at runtime)
     // When enabled, enforces memory limits for texture and framebuffer
-    ConstrainedRenderingPreset constrainedPreset = ConstrainedRenderingPreset::None;
+    ConstrainedRenderingPreset constrainedPreset = ConstrainedRenderingPreset::Max;
     ConstrainedRendererConfig constrainedConfig;
 };
 

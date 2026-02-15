@@ -1562,7 +1562,7 @@ private:
 	bool m_graphics_initialized = false;
 	bool m_use_opengl = false;  // Use OpenGL renderer instead of software
 	bool m_use_drm = false;     // Use DRM/KMS framebuffer device (no X11)
-	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset{};  // Constrained rendering preset (startup-only)
+	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Max;  // Constrained rendering preset (startup-only)
 	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
 

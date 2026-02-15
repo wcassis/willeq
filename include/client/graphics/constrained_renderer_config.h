@@ -10,7 +10,7 @@ namespace Graphics {
 
 // Preset configurations for different hardware classes
 enum class ConstrainedRenderingPreset {
-    None,       // No constraints (modern hardware)
+    Max,        // No practical limits (modern hardware) - default
     Voodoo1,    // 2MB FBI, 2MB TMU, 256x256 max, 16-bit, 640x480 max
     Voodoo2,    // 4MB FBI, 8MB TMU, 256x256 max, 16-bit, 800x600 max
     TNT,        // 8MB FBI, 16MB TMU, 512x512 max, 16-bit, 1024x768 max
@@ -21,7 +21,7 @@ enum class ConstrainedRenderingPreset {
 // Configuration for resource-constrained rendering
 // Enforces hard memory limits for both framebuffer and texture memory
 struct ConstrainedRendererConfig {
-    bool enabled = false;
+    bool enabled = true;
 
     // Framebuffer memory (determines max resolution)
     // Includes: front buffer + back buffer + Z-buffer

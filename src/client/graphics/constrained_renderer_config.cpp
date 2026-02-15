@@ -85,7 +85,7 @@ size_t ConstrainedRendererConfig::calculateFramebufferUsage(int width, int heigh
 
 std::string ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset preset) {
     switch (preset) {
-        case ConstrainedRenderingPreset::None:    return "None";
+        case ConstrainedRenderingPreset::Max:     return "Max";
         case ConstrainedRenderingPreset::Voodoo1: return "Voodoo1";
         case ConstrainedRenderingPreset::Voodoo2: return "Voodoo2";
         case ConstrainedRenderingPreset::TNT:      return "TNT";
@@ -175,18 +175,28 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enabled = true;
             break;
 
-        case ConstrainedRenderingPreset::None:
+        case ConstrainedRenderingPreset::Max:
         default:
-            // No constraints
-            config.enabled = false;
+            // Max: no practical limits (modern hardware)
+            config.enabled = true;
+            config.framebufferMemoryBytes = 256 * 1024 * 1024;  // 256MB
+            config.textureMemoryBytes = 256 * 1024 * 1024;      // 256MB
+            config.colorDepthBits = 32;
+            config.maxTextureDimension = 4096;
+            config.clipDistance = 99999.0f;
+            config.entityRenderDistance = 99999.0f;
+            config.maxVisibleEntities = 10000;
+            config.maxPolygonsPerFrame = 10000000;
+            config.occlusionBufferWidth = 256;
+            config.occlusionBufferHeight = 128;
+            config.occlusionMaxOccluderRegions = 64;
+            config.totalMemoryBudgetBytes = 0;  // No RAM constraint
             break;
     }
 
     // Calculate derived limits
-    if (config.enabled) {
-        config.calculateMaxResolution();
-        config.calculateMemoryLimits();
-    }
+    config.calculateMaxResolution();
+    config.calculateMemoryLimits();
 
     return config;
 }
@@ -212,12 +222,12 @@ ConstrainedRenderingPreset ConstrainedRendererConfig::parsePreset(const std::str
     if (lower == "custom") {
         return ConstrainedRenderingPreset::Custom;
     }
-    if (lower == "none" || lower == "off" || lower == "disabled") {
-        return ConstrainedRenderingPreset::None;
+    if (lower == "max" || lower == "none" || lower == "off" || lower == "disabled") {
+        return ConstrainedRenderingPreset::Max;
     }
 
     // Unrecognized preset name
-    return ConstrainedRenderingPreset::None;
+    return ConstrainedRenderingPreset::Max;
 }
 
 bool ConstrainedRendererConfig::parseMemorySpec(const std::string& spec, ConstrainedRendererConfig& outConfig) {

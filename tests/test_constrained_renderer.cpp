@@ -31,15 +31,22 @@ TEST_F(ConstrainedRendererConfigTest, ParsePreset_TNT) {
     EXPECT_EQ(ConstrainedRendererConfig::parsePreset("TNT"), ConstrainedRenderingPreset::TNT);
 }
 
-TEST_F(ConstrainedRendererConfigTest, ParsePreset_None) {
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("none"), ConstrainedRenderingPreset::None);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("NONE"), ConstrainedRenderingPreset::None);
+TEST_F(ConstrainedRendererConfigTest, ParsePreset_Max) {
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("max"), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("MAX"), ConstrainedRenderingPreset::Max);
+}
+
+TEST_F(ConstrainedRendererConfigTest, ParsePreset_NoneOffDisabled_MapToMax) {
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("none"), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("NONE"), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("off"), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("disabled"), ConstrainedRenderingPreset::Max);
 }
 
 TEST_F(ConstrainedRendererConfigTest, ParsePreset_Invalid) {
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("invalid"), ConstrainedRenderingPreset::None);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset(""), ConstrainedRenderingPreset::None);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("voodoo3"), ConstrainedRenderingPreset::None);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("invalid"), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset(""), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("voodoo3"), ConstrainedRenderingPreset::Max);
 }
 
 // =============================================================================
@@ -58,8 +65,8 @@ TEST_F(ConstrainedRendererConfigTest, PresetName_TNT) {
     EXPECT_EQ(ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset::TNT), "TNT");
 }
 
-TEST_F(ConstrainedRendererConfigTest, PresetName_None) {
-    EXPECT_EQ(ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset::None), "None");
+TEST_F(ConstrainedRendererConfigTest, PresetName_Max) {
+    EXPECT_EQ(ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset::Max), "Max");
 }
 
 // =============================================================================
@@ -96,10 +103,24 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_TNT) {
     EXPECT_EQ(config.colorDepthBits, 16);
 }
 
-TEST_F(ConstrainedRendererConfigTest, FromPreset_None) {
-    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::None);
+TEST_F(ConstrainedRendererConfigTest, FromPreset_Max) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Max);
 
-    EXPECT_FALSE(config.enabled);
+    EXPECT_TRUE(config.enabled);
+    EXPECT_EQ(config.framebufferMemoryBytes, 256 * 1024 * 1024);  // 256MB
+    EXPECT_EQ(config.textureMemoryBytes, 256 * 1024 * 1024);      // 256MB
+    EXPECT_EQ(config.colorDepthBits, 32);
+    EXPECT_EQ(config.maxTextureDimension, 4096);
+    EXPECT_FLOAT_EQ(config.clipDistance, 99999.0f);
+    EXPECT_FLOAT_EQ(config.entityRenderDistance, 99999.0f);
+    EXPECT_EQ(config.maxVisibleEntities, 10000);
+    EXPECT_EQ(config.maxPolygonsPerFrame, 10000000);
+    EXPECT_EQ(config.occlusionBufferWidth, 256);
+    EXPECT_EQ(config.occlusionBufferHeight, 128);
+    EXPECT_EQ(config.occlusionMaxOccluderRegions, 64);
+    EXPECT_EQ(config.totalMemoryBudgetBytes, 0);  // No RAM constraint
+    EXPECT_FALSE(config.lazyPfsLoading);
+    EXPECT_FALSE(config.releaseTextureDataAfterUpload);
 }
 
 // =============================================================================

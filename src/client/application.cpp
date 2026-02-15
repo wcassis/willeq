@@ -201,6 +201,9 @@ bool Application::initialize(const ApplicationConfig& config) {
                     auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
                     m_eqClient->SetConstrainedPreset(preset);
                 }
+            } else {
+                // Default to Max preset (no practical limits)
+                m_eqClient->SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset::Max);
             }
 
             LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
