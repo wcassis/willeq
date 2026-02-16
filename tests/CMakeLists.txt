@@ -224,6 +224,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_constrained_renderer
         test_constrained_renderer.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
     )
     TARGET_LINK_LIBRARIES(test_constrained_renderer GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_constrained_renderer)

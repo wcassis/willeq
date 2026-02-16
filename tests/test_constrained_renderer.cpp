@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/eq/dds_decoder.h"
 #include <string>
 #include <cmath>
 #include <fstream>
+#include <cstring>
 
 using namespace EQT::Graphics;
 
@@ -399,7 +401,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     EXPECT_TRUE(config.enableStencilBuffer);
     EXPECT_TRUE(config.enableAlphaToCoverage);
     EXPECT_EQ(config.antiAliasLevel, 4);
-    EXPECT_FALSE(config.enableCompressedTextures);  // Deferred
+    EXPECT_TRUE(config.enableCompressedTextures);
 }
 
 TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1_NoGpuFeatures) {
@@ -572,4 +574,102 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_PartialOverride) {
     EXPECT_TRUE(config.enableMipmaps);  // Kept from preset
 
     std::remove(testJsonPath.c_str());
+}
+
+// =============================================================================
+// DDSDecoder::extractCompressed Tests
+// =============================================================================
+
+// Helper to build a synthetic DDS file header
+static std::vector<char> makeSyntheticDDS(uint32_t fourCC, uint32_t width, uint32_t height, size_t blockDataSize) {
+    std::vector<char> data(128 + blockDataSize, 0);
+    // Magic: "DDS "
+    data[0] = 'D'; data[1] = 'D'; data[2] = 'S'; data[3] = ' ';
+    // Header size (124)
+    uint32_t headerSize = 124;
+    std::memcpy(&data[4], &headerSize, 4);
+    // Flags
+    uint32_t flags = 0x1 | 0x2 | 0x4 | 0x1000;  // CAPS | HEIGHT | WIDTH | PIXELFORMAT
+    std::memcpy(&data[8], &flags, 4);
+    // Height
+    std::memcpy(&data[12], &height, 4);
+    // Width
+    std::memcpy(&data[16], &width, 4);
+    // Pixel format offset = 76
+    uint32_t pfSize = 32;
+    std::memcpy(&data[76], &pfSize, 4);
+    uint32_t pfFlags = 0x4;  // DDPF_FOURCC
+    std::memcpy(&data[80], &pfFlags, 4);
+    std::memcpy(&data[84], &fourCC, 4);
+    // Fill block data with non-zero pattern
+    for (size_t i = 128; i < data.size(); ++i) {
+        data[i] = static_cast<char>(i & 0xFF);
+    }
+    return data;
+}
+
+TEST_F(ConstrainedRendererConfigTest, ExtractCompressed_DXT1) {
+    // 4x4 DXT1: 1 block = 8 bytes
+    auto dds = makeSyntheticDDS(0x31545844, 4, 4, 8);  // "DXT1"
+    auto result = EQT::Graphics::DDSDecoder::extractCompressed(dds);
+
+    EXPECT_TRUE(result.isValid());
+    EXPECT_EQ(result.glFormat, 0x83F0u);  // GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+    EXPECT_EQ(result.width, 4u);
+    EXPECT_EQ(result.height, 4u);
+    EXPECT_EQ(result.dataSize, 8u);
+}
+
+TEST_F(ConstrainedRendererConfigTest, ExtractCompressed_DXT3) {
+    // 8x8 DXT3: 4 blocks * 16 bytes = 64 bytes
+    auto dds = makeSyntheticDDS(0x33545844, 8, 8, 64);  // "DXT3"
+    auto result = EQT::Graphics::DDSDecoder::extractCompressed(dds);
+
+    EXPECT_TRUE(result.isValid());
+    EXPECT_EQ(result.glFormat, 0x83F2u);  // GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
+    EXPECT_EQ(result.width, 8u);
+    EXPECT_EQ(result.height, 8u);
+    EXPECT_EQ(result.dataSize, 64u);
+}
+
+TEST_F(ConstrainedRendererConfigTest, ExtractCompressed_DXT5) {
+    // 4x4 DXT5: 1 block = 16 bytes
+    auto dds = makeSyntheticDDS(0x35545844, 4, 4, 16);  // "DXT5"
+    auto result = EQT::Graphics::DDSDecoder::extractCompressed(dds);
+
+    EXPECT_TRUE(result.isValid());
+    EXPECT_EQ(result.glFormat, 0x83F3u);  // GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+    EXPECT_EQ(result.width, 4u);
+    EXPECT_EQ(result.height, 4u);
+    EXPECT_EQ(result.dataSize, 16u);
+}
+
+TEST_F(ConstrainedRendererConfigTest, ExtractCompressed_NotDDS) {
+    std::vector<char> bmp = {'B', 'M', 0, 0};
+    auto result = EQT::Graphics::DDSDecoder::extractCompressed(bmp);
+    EXPECT_FALSE(result.isValid());
+}
+
+TEST_F(ConstrainedRendererConfigTest, ExtractCompressed_TooSmall) {
+    std::vector<char> tiny = {'D', 'D', 'S', ' '};
+    auto result = EQT::Graphics::DDSDecoder::extractCompressed(tiny);
+    EXPECT_FALSE(result.isValid());
+}
+
+TEST_F(ConstrainedRendererConfigTest, CompressedSize_DXT1) {
+    // 256x256 DXT1: 64*64 blocks * 8 bytes = 32768
+    size_t size = EQT::Graphics::DDSDecoder::compressedSize(0x83F0, 256, 256);
+    EXPECT_EQ(size, 32768u);
+}
+
+TEST_F(ConstrainedRendererConfigTest, CompressedSize_DXT5) {
+    // 256x256 DXT5: 64*64 blocks * 16 bytes = 65536
+    size_t size = EQT::Graphics::DDSDecoder::compressedSize(0x83F3, 256, 256);
+    EXPECT_EQ(size, 65536u);
+}
+
+TEST_F(ConstrainedRendererConfigTest, CompressedSize_NPOT) {
+    // 5x5 DXT1: ceil(5/4)*ceil(5/4) = 2*2 = 4 blocks * 8 = 32
+    size_t size = EQT::Graphics::DDSDecoder::compressedSize(0x83F0, 5, 5);
+    EXPECT_EQ(size, 32u);
 }

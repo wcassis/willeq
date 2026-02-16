@@ -178,6 +178,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableStencilBuffer = true;
             config.enableAlphaToCoverage = true;
             config.enableShaders = true;
+            config.enableCompressedTextures = true;
             config.antiAliasLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB

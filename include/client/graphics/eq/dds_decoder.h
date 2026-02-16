@@ -47,6 +47,17 @@ struct DecodedImage {
     bool isValid() const { return width > 0 && height > 0 && !pixels.empty(); }
 };
 
+// Compressed texture data (raw DXT blocks, not decompressed)
+struct CompressedTextureData {
+    uint32_t glFormat = 0;       // GL_COMPRESSED_RGB_S3TC_DXT1_EXT etc.
+    uint32_t width = 0;
+    uint32_t height = 0;
+    const uint8_t* data = nullptr;  // Points into original DDS buffer (not owned)
+    size_t dataSize = 0;
+
+    bool isValid() const { return glFormat != 0 && width > 0 && height > 0 && data && dataSize > 0; }
+};
+
 // DDS decoder class
 class DDSDecoder {
 public:
@@ -56,6 +67,14 @@ public:
     // Decode DDS data to RGBA pixels
     // Returns empty DecodedImage on failure
     static DecodedImage decode(const std::vector<char>& data);
+
+    // Extract compressed DXT data without decompressing
+    // Returns invalid CompressedTextureData if not a supported DXT format
+    // The returned data pointer points into the original buffer — caller must keep it alive
+    static CompressedTextureData extractCompressed(const std::vector<char>& data);
+
+    // Calculate compressed data size in bytes for a given GL format and dimensions
+    static size_t compressedSize(uint32_t glFormat, uint32_t width, uint32_t height);
 
 private:
     // Decode DXT1 compressed data

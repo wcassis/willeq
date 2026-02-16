@@ -5,6 +5,18 @@
 #include <cstring>
 #include <functional>
 
+#ifdef EQT_HAS_DRM
+#include <GL/gl.h>
+#include <GL/glext.h>
+// glGenerateMipmap and glCompressedTexImage2D may not be directly available
+// in all GL headers; get function pointers via EGL at runtime
+#include <EGL/egl.h>
+typedef void (*PFNGLGENERATEMIPMAPPROC_)(GLenum target);
+typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC_)(GLenum target, GLint level,
+    GLenum internalformat, GLsizei width, GLsizei height, GLint border,
+    GLsizei imageSize, const void* data);
+#endif
+
 namespace EQT {
 namespace Graphics {
 
@@ -13,6 +25,7 @@ ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig
     : config_(config)
     , driver_(driver)
 {
+    probeCompressedTextureSupport();
 }
 
 ConstrainedTextureCache::~ConstrainedTextureCache() {
@@ -33,6 +46,14 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     }
 
     ++cacheMisses_;
+
+    // Try compressed upload first (skips CPU decode, saves GPU memory)
+    if (compressedTexturesAvailable_) {
+        irr::video::ITexture* compressed = tryCompressedUpload(name, data);
+        if (compressed) {
+            return compressed;
+        }
+    }
 
     // Process texture data: decode, downsample, convert to 16-bit
     std::vector<uint8_t> processedData;
@@ -494,6 +515,155 @@ void ConstrainedTextureCache::clearTextureReferences(irr::video::ITexture* textu
 
     // Start scan from root
     scanNode(smgr_->getRootSceneNode());
+}
+
+void ConstrainedTextureCache::probeCompressedTextureSupport() {
+    if (!config_.enableCompressedTextures) {
+        compressedTexturesAvailable_ = false;
+        return;
+    }
+
+#ifdef EQT_HAS_DRM
+    const char* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+    if (extensions && strstr(extensions, "GL_EXT_texture_compression_s3tc")) {
+        compressedTexturesAvailable_ = true;
+        LOG_INFO(MOD_GRAPHICS, "Compressed textures: S3TC support detected, enabled");
+    } else {
+        compressedTexturesAvailable_ = false;
+        LOG_WARN(MOD_GRAPHICS, "Compressed textures: S3TC not available, falling back to software decode");
+    }
+#else
+    compressedTexturesAvailable_ = false;
+#endif
+}
+
+irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
+        const std::string& name, const std::vector<char>& data) {
+#ifdef EQT_HAS_DRM
+    // Extract compressed DXT data without decompressing
+    CompressedTextureData compressed = DDSDecoder::extractCompressed(data);
+    if (!compressed.isValid()) {
+        return nullptr;  // Not DDS or unsupported format
+    }
+
+    // Cannot downsample compressed data — skip if oversized
+    if (static_cast<int>(compressed.width) > config_.maxTextureDimension ||
+        static_cast<int>(compressed.height) > config_.maxTextureDimension) {
+        LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: '{}' {}x{} exceeds max dimension {}, falling back",
+            name, compressed.width, compressed.height, config_.maxTextureDimension);
+        return nullptr;
+    }
+
+    // Use compressed size for memory budget tracking
+    size_t textureSize = compressed.dataSize;
+
+    // Evict textures if needed to make room
+    if (!evictUntilAvailable(textureSize)) {
+        LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: eviction failed for '{}' (need {} bytes)", name, textureSize);
+        return nullptr;
+    }
+
+    // Create 1x1 dummy Irrlicht texture to get a managed ITexture* with a GL name
+    irr::video::IImage* dummyImage = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2d<irr::u32>(1, 1),
+        nullptr, false);
+
+    // Fallback: create a tiny pixel
+    uint32_t dummyPixel = 0xFF000000;
+    if (!dummyImage) {
+        dummyImage = driver_->createImageFromData(
+            irr::video::ECF_A8R8G8B8,
+            irr::core::dimension2d<irr::u32>(1, 1),
+            &dummyPixel, false);
+    }
+
+    if (!dummyImage) {
+        return nullptr;
+    }
+
+    irr::video::ITexture* texture = driver_->addTexture(name.c_str(), dummyImage);
+    dummyImage->drop();
+
+    if (!texture) {
+        return nullptr;
+    }
+
+    // Get the underlying OpenGL texture name
+    irr::u32 glName = texture->getDriverTextureHandle();
+    if (glName == 0) {
+        driver_->removeTexture(texture);
+        return nullptr;
+    }
+
+    // Copy compressed data to aligned buffer (ARM bus error safety)
+    std::vector<uint8_t> alignedData(compressed.data, compressed.data + compressed.dataSize);
+
+    // Resolve GL function pointers via EGL
+    static auto pfnCompressedTexImage2D = reinterpret_cast<PFNGLCOMPRESSEDTEXIMAGE2DPROC_>(
+        eglGetProcAddress("glCompressedTexImage2D"));
+    static auto pfnGenerateMipmap = reinterpret_cast<PFNGLGENERATEMIPMAPPROC_>(
+        eglGetProcAddress("glGenerateMipmap"));
+
+    if (!pfnCompressedTexImage2D) {
+        LOG_WARN(MOD_GRAPHICS, "Compressed upload: glCompressedTexImage2D not available");
+        driver_->removeTexture(texture);
+        return nullptr;
+    }
+
+    // Upload compressed data directly to the GPU
+    glBindTexture(GL_TEXTURE_2D, glName);
+    pfnCompressedTexImage2D(GL_TEXTURE_2D, 0, compressed.glFormat,
+                            compressed.width, compressed.height, 0,
+                            static_cast<GLsizei>(alignedData.size()),
+                            alignedData.data());
+
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        LOG_WARN(MOD_GRAPHICS, "Compressed upload: glCompressedTexImage2D failed for '{}' (GL error 0x{:X})",
+            name, static_cast<unsigned>(err));
+        driver_->removeTexture(texture);
+        return nullptr;
+    }
+
+    // Generate mipmaps if enabled
+    if (config_.enableMipmaps && pfnGenerateMipmap) {
+        pfnGenerateMipmap(GL_TEXTURE_2D);
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            // Mipmap generation failed — not fatal, texture still usable
+            LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: glGenerateMipmap failed for '{}' (GL error 0x{:X})", name, static_cast<unsigned>(err));
+        }
+    }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Calculate uncompressed equivalent for savings logging
+    size_t uncompressedSize = static_cast<size_t>(compressed.width) * compressed.height * 4;
+    float savings = (uncompressedSize > 0) ? static_cast<float>(uncompressedSize) / textureSize : 1.0f;
+
+    LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: '{}' {}x{} {} ({} bytes, {:.1f}x savings)",
+        name, compressed.width, compressed.height,
+        (compressed.glFormat == 0x83F0 ? "DXT1" :
+         compressed.glFormat == 0x83F2 ? "DXT3" : "DXT5"),
+        textureSize, savings);
+
+    // Add to cache
+    lruOrder_.push_back(name);
+    CachedTexture entry;
+    entry.texture = texture;
+    entry.sizeBytes = textureSize;
+    entry.lruIterator = std::prev(lruOrder_.end());
+    cache_[name] = entry;
+    currentUsage_ += textureSize;
+    ++compressedUploadCount_;
+
+    return texture;
+#else
+    (void)name;
+    (void)data;
+    return nullptr;
+#endif
 }
 
 } // namespace Graphics

@@ -386,5 +386,38 @@ s = s.replace(old11, new11, 1)
 open(drv_cpp, 'w').write(s)
 print(f"  Patched: COpenGLDriver.cpp")
 
-print(f"\nAll 11 patches applied successfully to {base}")
-print("DRM/KMS/GBM/EGL support enabled, X11 disabled")
+# ============================================================
+# Patch 12: ITexture.h - Add getDriverTextureHandle() virtual method
+# ============================================================
+print("Patch 12: ITexture.h (getDriverTextureHandle)")
+
+itex_h = os.path.join(inc, 'ITexture.h')
+
+old12 = '\t//! Get name of texture'
+
+new12 = '''\t//! Get the driver-specific texture handle (e.g. OpenGL texture name)
+\t/** Returns 0 if not available (software renderer). */
+\tvirtual u32 getDriverTextureHandle() const { return 0; }
+
+\t//! Get name of texture'''
+
+patch(itex_h, old12, new12)
+
+# ============================================================
+# Patch 13: COpenGLTexture.h - Override getDriverTextureHandle()
+# ============================================================
+print("Patch 13: COpenGLTexture.h (getDriverTextureHandle override)")
+
+ogltex_h = os.path.join(src, 'COpenGLTexture.h')
+
+old13 = '\t//! return open gl texture name'
+
+new13 = '''\t//! Get the driver-specific texture handle (OpenGL texture name)
+\tvirtual u32 getDriverTextureHandle() const { return TextureName; }
+
+\t//! return open gl texture name'''
+
+patch(ogltex_h, old13, new13)
+
+print(f"\nAll 13 patches applied successfully to {base}")
+print("DRM/KMS/GBM/EGL support enabled, X11 disabled, GL texture handle exposed")

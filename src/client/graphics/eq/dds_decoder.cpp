@@ -18,6 +18,12 @@ constexpr uint32_t FOURCC_DXT1 = 0x31545844; // "DXT1"
 constexpr uint32_t FOURCC_DXT3 = 0x33545844; // "DXT3"
 constexpr uint32_t FOURCC_DXT5 = 0x35545844; // "DXT5"
 
+// GL compressed format constants (avoid GL header dependency in decoder)
+constexpr uint32_t GL_COMPRESSED_RGB_S3TC_DXT1  = 0x83F0;
+constexpr uint32_t GL_COMPRESSED_RGBA_S3TC_DXT1 = 0x83F1;
+constexpr uint32_t GL_COMPRESSED_RGBA_S3TC_DXT3 = 0x83F2;
+constexpr uint32_t GL_COMPRESSED_RGBA_S3TC_DXT5 = 0x83F3;
+
 bool DDSDecoder::isDDS(const std::vector<char>& data) {
     if (data.size() < 4) return false;
     return data[0] == 'D' && data[1] == 'D' && data[2] == 'S' && data[3] == ' ';
@@ -321,6 +327,60 @@ void DDSDecoder::decodeDXT5Block(const uint8_t* block, uint8_t* outPixels,
             outPixels[pixelOffset + 3] = alphas[alphaIdx];
         }
     }
+}
+
+CompressedTextureData DDSDecoder::extractCompressed(const std::vector<char>& data) {
+    CompressedTextureData result;
+
+    if (data.size() < sizeof(DDSHeader)) {
+        return result;
+    }
+
+    DDSHeader header = read_val<DDSHeader>(data.data());
+
+    // Verify magic
+    if (header.magic != 0x20534444) {  // "DDS "
+        return result;
+    }
+
+    uint32_t fourCC = header.pixelFormat.fourCC;
+    uint32_t glFormat = 0;
+
+    if (fourCC == FOURCC_DXT1) {
+        glFormat = GL_COMPRESSED_RGB_S3TC_DXT1;
+    } else if (fourCC == FOURCC_DXT3) {
+        glFormat = GL_COMPRESSED_RGBA_S3TC_DXT3;
+    } else if (fourCC == FOURCC_DXT5) {
+        glFormat = GL_COMPRESSED_RGBA_S3TC_DXT5;
+    } else {
+        return result;  // Unsupported format
+    }
+
+    size_t expectedSize = compressedSize(glFormat, header.width, header.height);
+    size_t availableSize = data.size() - 128;
+
+    if (availableSize < expectedSize) {
+        return result;
+    }
+
+    result.glFormat = glFormat;
+    result.width = header.width;
+    result.height = header.height;
+    result.data = reinterpret_cast<const uint8_t*>(data.data()) + 128;
+    result.dataSize = expectedSize;
+
+    return result;
+}
+
+size_t DDSDecoder::compressedSize(uint32_t glFormat, uint32_t width, uint32_t height) {
+    uint32_t blocksX = (width + 3) / 4;
+    uint32_t blocksY = (height + 3) / 4;
+
+    // DXT1 = 8 bytes per block, DXT3/DXT5 = 16 bytes per block
+    size_t blockSize = (glFormat == GL_COMPRESSED_RGB_S3TC_DXT1 ||
+                        glFormat == GL_COMPRESSED_RGBA_S3TC_DXT1) ? 8 : 16;
+
+    return static_cast<size_t>(blocksX) * blocksY * blockSize;
 }
 
 } // namespace Graphics

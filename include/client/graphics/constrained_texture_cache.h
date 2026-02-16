@@ -50,6 +50,7 @@ public:
     size_t getCacheHits() const { return cacheHits_; }
     size_t getCacheMisses() const { return cacheMisses_; }
     size_t getEvictionCount() const { return evictionCount_; }
+    size_t getCompressedUploadCount() const { return compressedUploadCount_; }
 
     // Get hit rate as percentage (0-100)
     float getHitRate() const;
@@ -77,6 +78,14 @@ private:
     // Remove all references to a texture from mesh materials in the scene
     // This must be called before driver_->removeTexture() to prevent dangling pointers
     void clearTextureReferences(irr::video::ITexture* texture);
+    // Probe for GL compressed texture support (called once in constructor)
+    void probeCompressedTextureSupport();
+
+    // Try uploading DDS data as compressed texture directly to GPU
+    // Returns nullptr if compressed upload not available or data not suitable
+    irr::video::ITexture* tryCompressedUpload(const std::string& name,
+                                               const std::vector<char>& data);
+
     // Evict least recently used texture(s) until we have at least 'bytesNeeded' available
     // Returns true if successful, false if cannot free enough space
     bool evictUntilAvailable(size_t bytesNeeded);
@@ -147,6 +156,10 @@ private:
     size_t cacheHits_ = 0;
     size_t cacheMisses_ = 0;
     size_t evictionCount_ = 0;
+    size_t compressedUploadCount_ = 0;
+
+    // Compressed texture support
+    bool compressedTexturesAvailable_ = false;
 
     // Frozen flag - when true, no evictions occur
     bool frozen_ = false;
