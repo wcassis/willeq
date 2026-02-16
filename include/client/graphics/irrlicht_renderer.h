@@ -851,6 +851,7 @@ private:
     void updateObjectVisibility();  // Distance-based scene graph management for placeable objects
     void updateZoneLightVisibility();  // Distance-based scene graph management for zone lights
     void updateVertexAnimations(float deltaMs);  // Update vertex animated meshes
+    void updateLightAnimations(float deltaMs);   // Update animated zone light colors
     void setupFog();
     void setupHUD();
     void updateHUD();
@@ -945,6 +946,9 @@ private:
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
     std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
+    std::vector<std::string> zoneLightNames_;  // Light names from WLD data
+    std::vector<float> zoneLightAnimElapsed_;   // Per-light animation elapsed time (ms)
+    std::vector<uint32_t> zoneLightAnimFrame_;  // Per-light current animation frame
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
     bool showLightDebugMarkers_ = false;  // Show debug markers for active lights

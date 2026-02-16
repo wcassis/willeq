@@ -2636,6 +2636,9 @@ void IrrlichtRenderer::unloadZone() {
     zoneLightNodes_.clear();
     zoneLightPositions_.clear();
     zoneLightInSceneGraph_.clear();
+    zoneLightNames_.clear();
+    zoneLightAnimElapsed_.clear();
+    zoneLightAnimFrame_.clear();
 
     // Clear entity renderer
     if (entityRenderer_) {
@@ -4029,6 +4032,9 @@ void IrrlichtRenderer::createZoneLights() {
     zoneLightPositions_.clear();
     zoneLightRegions_.clear();
     zoneLightInSceneGraph_.clear();
+    zoneLightNames_.clear();
+    zoneLightAnimElapsed_.clear();
+    zoneLightAnimFrame_.clear();
 
     if (!currentZone_ || currentZone_->lights.empty()) {
         return;
@@ -4067,6 +4073,9 @@ void IrrlichtRenderer::createZoneLights() {
             zoneLightNodes_.push_back(lightNode);
             zoneLightPositions_.push_back(lightNode->getPosition());  // Cache position
             zoneLightInSceneGraph_.push_back(true);  // Initially in scene graph
+            zoneLightNames_.push_back(light->name);
+            zoneLightAnimElapsed_.push_back(0.0f);
+            zoneLightAnimFrame_.push_back(light->currentFrame);
         }
     }
 
@@ -4101,6 +4110,32 @@ void IrrlichtRenderer::createZoneLights() {
     }
 
     LOG_DEBUG(MOD_GRAPHICS, "Created {} zone lights (of {} available)", zoneLightNodes_.size(), currentZone_->lights.size());
+
+    // Log animated vs static light summary with names
+    {
+        size_t animatedCount = 0;
+        for (const auto& light : currentZone_->lights) {
+            if (light->isAnimated()) animatedCount++;
+        }
+        if (animatedCount > 0) {
+            LOG_INFO(MOD_GRAPHICS, "Zone lights: {} animated, {} static (of {} total)",
+                     animatedCount, zoneLightNodes_.size() - animatedCount, zoneLightNodes_.size());
+            // Log a few animated light names for debugging
+            size_t logged = 0;
+            for (size_t i = 0; i < currentZone_->lights.size() && logged < 5; ++i) {
+                const auto& light = currentZone_->lights[i];
+                if (light->isAnimated()) {
+                    LOG_DEBUG(MOD_GRAPHICS, "  Animated light [{}]: '{}' frames={} sleep={}ms colors={} levels={}",
+                              i, light->name, light->frameCount, light->sleepMs,
+                              light->colors.size(), light->lightLevels.size());
+                    logged++;
+                }
+            }
+            if (animatedCount > 5) {
+                LOG_DEBUG(MOD_GRAPHICS, "  ... and {} more animated lights", animatedCount - 5);
+            }
+        }
+    }
 
     // Enable lighting and zone lights by default so vision system works on initial load
     if (!zoneLightNodes_.empty()) {
@@ -4620,6 +4655,73 @@ void IrrlichtRenderer::updateZoneLightColors() {
 
     LOG_DEBUG(MOD_GRAPHICS, "Updated {} zone lights: intensity={:.0f}%, redShift={:.0f}%, weatherMod={:.2f}",
               zoneLightNodes_.size(), intensity * 100.0f, redShift * 100.0f, weatherMod);
+}
+
+void IrrlichtRenderer::updateLightAnimations(float deltaMs) {
+    if (!currentZone_ || zoneLightNodes_.empty()) return;
+
+    // Compute vision/weather modifiers (same logic as updateZoneLightColors)
+    float intensity = 0.25f;
+    float redShift = 0.0f;
+    switch (currentVision_) {
+        case VisionType::Ultravision:
+            intensity = 1.0f; break;
+        case VisionType::Infravision:
+            intensity = 0.75f; redShift = 0.3f; break;
+        default: break;
+    }
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        intensity *= weatherEffects_->getAmbientLightModifier();
+    }
+
+    for (size_t i = 0; i < zoneLightNodes_.size() && i < currentZone_->lights.size(); ++i) {
+        const auto& light = currentZone_->lights[i];
+        if (!light->isAnimated()) continue;
+
+        auto* node = zoneLightNodes_[i];
+        if (!node) continue;
+
+        // Advance elapsed time
+        zoneLightAnimElapsed_[i] += deltaMs;
+        float sleepMs = static_cast<float>(light->sleepMs);
+        if (sleepMs <= 0.0f) sleepMs = 100.0f;  // Default 100ms if unset
+
+        if (zoneLightAnimElapsed_[i] < sleepMs) continue;
+
+        // Advance frame(s), consuming elapsed time
+        while (zoneLightAnimElapsed_[i] >= sleepMs) {
+            zoneLightAnimElapsed_[i] -= sleepMs;
+            zoneLightAnimFrame_[i] = (zoneLightAnimFrame_[i] + 1) % light->frameCount;
+        }
+
+        uint32_t frame = zoneLightAnimFrame_[i];
+
+        // Compute frame color
+        float baseR, baseG, baseB;
+        if (!light->colors.empty() && frame < light->colors.size()) {
+            // Per-frame RGB colors
+            std::tie(baseR, baseG, baseB) = light->colors[frame];
+        } else if (!light->lightLevels.empty() && frame < light->lightLevels.size()) {
+            // Scale base color by light level
+            float level = light->lightLevels[frame];
+            baseR = light->r * level;
+            baseG = light->g * level;
+            baseB = light->b * level;
+        } else {
+            continue;  // No animation data for this frame
+        }
+
+        // Apply vision/weather modifiers
+        float r = baseR * intensity;
+        float g = baseG * intensity * (1.0f - redShift * 0.5f);
+        float b = baseB * intensity * (1.0f - redShift);
+        if (redShift > 0.0f) {
+            r = std::min(1.0f, r * (1.0f + redShift));
+        }
+
+        irr::video::SLight& lightData = node->getLightData();
+        lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
+    }
 }
 
 void IrrlichtRenderer::updateObjectLightColors() {
@@ -5417,6 +5519,8 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
 
     // Vertex animations
     updateVertexAnimations(deltaTime * 1000.0f);
+    // Light animations (flickering torches, etc.)
+    updateLightAnimations(deltaTime * 1000.0f);
     if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
 
     // Tier 2: Detail + Tree
