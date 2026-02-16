@@ -645,6 +645,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(s3d_dump
         ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
 
@@ -727,6 +728,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(analyze_hum_model
         ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
 
@@ -747,6 +749,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(test_animation
         ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
 
@@ -812,6 +815,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(generate_surface_map
         ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
 

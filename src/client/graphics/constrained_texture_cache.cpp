@@ -193,7 +193,12 @@ void ConstrainedTextureCache::evictTexture(const std::string& name) {
 
 size_t ConstrainedTextureCache::calculateTextureSize(int width, int height) const {
     // Always use 4 bytes per pixel (32-bit ARGB) for compatibility with software renderer
-    return static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    size_t base = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    if (config_.enableMipmaps) {
+        // Mipmap chain adds ~33% overhead (sum of 1/4 + 1/16 + ... converges to 1/3)
+        return base + base / 3;
+    }
+    return base;
 }
 
 bool ConstrainedTextureCache::processTextureData(const std::vector<char>& rawData,

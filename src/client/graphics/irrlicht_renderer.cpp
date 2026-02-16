@@ -440,9 +440,9 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     params.DriverType = driverType;
     params.WindowSize = irr::core::dimension2d<irr::u32>(config.width, config.height);
     params.Fullscreen = config.fullscreen;
-    params.Stencilbuffer = false;
+    params.Stencilbuffer = config_.constrainedConfig.enableStencilBuffer;
     params.Vsync = true;
-    params.AntiAlias = 0;
+    params.AntiAlias = config_.constrainedConfig.antiAliasLevel;
 
 #ifdef EQT_HAS_DRM
     // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
@@ -453,7 +453,9 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 #endif
 
     LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
-              config.width, config.height, config.fullscreen, true, false, 0);
+              config.width, config.height, config.fullscreen, true,
+              config_.constrainedConfig.enableStencilBuffer,
+              config_.constrainedConfig.antiAliasLevel);
     if (!config.useDRM) {
         LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
     }
@@ -491,15 +493,24 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     }
     createSoftwareCursor();
 
+    // Configure mipmap generation based on constrained config
+    if (driver_) {
+        driver_->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS,
+                                         config_.constrainedConfig.enableMipmaps);
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Mipmap generation: {}",
+                  config_.constrainedConfig.enableMipmaps ? "enabled" : "disabled");
+    }
+
     // Create constrained texture cache (always active; Max preset has generous limits)
     if (driver_) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
-        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture)",
+        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
-                 config_.constrainedConfig.maxTextureDimension);
+                 config_.constrainedConfig.maxTextureDimension,
+                 config_.constrainedConfig.enableMipmaps ? "yes" : "no");
     }
 
     // Create event receiver
@@ -618,9 +629,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     params.DriverType = driverType;
     params.WindowSize = irr::core::dimension2d<irr::u32>(config.width, config.height);
     params.Fullscreen = config.fullscreen;
-    params.Stencilbuffer = false;
+    params.Stencilbuffer = config_.constrainedConfig.enableStencilBuffer;
     params.Vsync = true;
-    params.AntiAlias = 0;
+    params.AntiAlias = config_.constrainedConfig.antiAliasLevel;
 
 #ifdef EQT_HAS_DRM
     // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
@@ -631,7 +642,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 #endif
 
     LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
-              config.width, config.height, config.fullscreen, true, false, 0);
+              config.width, config.height, config.fullscreen, true,
+              config_.constrainedConfig.enableStencilBuffer,
+              config_.constrainedConfig.antiAliasLevel);
     if (!config.useDRM) {
         LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
     }
@@ -667,15 +680,24 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
     createSoftwareCursor();
 
+    // Configure mipmap generation based on constrained config
+    if (driver_) {
+        driver_->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS,
+                                         config_.constrainedConfig.enableMipmaps);
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Mipmap generation: {}",
+                  config_.constrainedConfig.enableMipmaps ? "enabled" : "disabled");
+    }
+
     // Create constrained texture cache (always active; Max preset has generous limits)
     if (driver_) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
-        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture)",
+        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
-                 config_.constrainedConfig.maxTextureDimension);
+                 config_.constrainedConfig.maxTextureDimension,
+                 config_.constrainedConfig.enableMipmaps ? "yes" : "no");
     }
 
     // Create event receiver
@@ -1577,8 +1599,11 @@ void IrrlichtRenderer::updateObjectLights() {
     }
 
     // Add object lights to the pool (up to maxObjectLights_ candidates)
-    // Performance: Only do occlusion checks on closest 16 lights, not all in range
-    const size_t maxOcclusionChecks = 16;
+    // Performance: Raycast occlusion checks are expensive on low-end hardware (16 raycasts
+    // against full zone triangle selector = ~20ms on ARM). Skip them when render distance
+    // is constrained (PVS + distance culling is sufficient).
+    const bool skipLightOcclusion = (config_.constrainedConfig.clipDistance < 500.0f);
+    const size_t maxOcclusionChecks = skipLightOcclusion ? 0 : 16;
 
     // First collect ALL lights in range by distance (no occlusion check yet)
     std::vector<std::pair<float, size_t>> objectDistances;
@@ -1591,19 +1616,24 @@ void IrrlichtRenderer::updateObjectLights() {
     }
     std::sort(objectDistances.begin(), objectDistances.end());
 
-    // Only do occlusion checks on the closest N lights
+    // Only do occlusion checks on the closest N lights (skipped on constrained presets)
     size_t inRangeCount = objectDistances.size();
     size_t occludedCount = 0;
     size_t checksPerformed = std::min(objectDistances.size(), maxOcclusionChecks);
 
     std::vector<std::pair<float, size_t>> visibleLights;
-    visibleLights.reserve(checksPerformed);
-    for (size_t i = 0; i < checksPerformed; ++i) {
-        size_t idx = objectDistances[i].second;
-        if (isLightVisible(objectLights_[idx].position)) {
-            visibleLights.push_back(objectDistances[i]);
-        } else {
-            occludedCount++;
+    if (skipLightOcclusion) {
+        // No occlusion checks - use all in-range lights sorted by distance
+        visibleLights = objectDistances;
+    } else {
+        visibleLights.reserve(checksPerformed);
+        for (size_t i = 0; i < checksPerformed; ++i) {
+            size_t idx = objectDistances[i].second;
+            if (isLightVisible(objectLights_[idx].position)) {
+                visibleLights.push_back(objectDistances[i]);
+            } else {
+                occludedCount++;
+            }
         }
     }
 
@@ -4738,6 +4768,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.objectVisibility += frameTimings_.objectVisibility;
         frameTimingsAccum_.pvsVisibility += frameTimings_.pvsVisibility;
         frameTimingsAccum_.objectLights += frameTimings_.objectLights;
+        frameTimingsAccum_.tier2Update += frameTimings_.tier2Update;
+        frameTimingsAccum_.tier3Update += frameTimings_.tier3Update;
         frameTimingsAccum_.hudUpdate += frameTimings_.hudUpdate;
         frameTimingsAccum_.sceneDrawAll += frameTimings_.sceneDrawAll;
         frameTimingsAccum_.sceneAnimate += frameTimings_.sceneAnimate;
@@ -5273,6 +5305,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             treeManager_->update(deltaTime, cameraPos);
         }
     }
+    if (frameTimingEnabled_) frameTimings_.tier2Update = measureSection();
 
     // Tier 3: Environmental simulation
     {
@@ -5312,6 +5345,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             }
         }
     }
+    if (frameTimingEnabled_) frameTimings_.tier3Update = measureSection();
 
     // HUD
     hudAnimTimer_ += deltaTime;
@@ -5902,6 +5936,8 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectVisibility), pct(frameTimingsAccum_.objectVisibility));
     LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
     LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
+    LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier2Update), pct(frameTimingsAccum_.tier2Update));
+    LOG_INFO(MOD_GRAPHICS, "  Tier3 (Env/Sky):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier3Update), pct(frameTimingsAccum_.tier3Update));
     LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.hudUpdate), pct(frameTimingsAccum_.hudUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)  [{} nodes, {} polys]",
              avg(frameTimingsAccum_.sceneDrawAll), pct(frameTimingsAccum_.sceneDrawAll),

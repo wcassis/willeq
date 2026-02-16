@@ -225,7 +225,7 @@ IF(EQT_GRAPHICS)
         test_constrained_renderer.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
     )
-    TARGET_LINK_LIBRARIES(test_constrained_renderer GTest::gtest_main ${FMT_LIB})
+    TARGET_LINK_LIBRARIES(test_constrained_renderer GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_constrained_renderer)
 ENDIF()
 
@@ -316,7 +316,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_door_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(test_door_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY})
+    TARGET_LINK_LIBRARIES(test_door_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_door_loading)
 ENDIF()
 

@@ -4,6 +4,9 @@
 #include <cctype>
 #include <cstdio>
 
+#include <fstream>
+#include <json/json.h>
+
 namespace EQT {
 namespace Graphics {
 
@@ -145,27 +148,36 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 400.0f;
             config.maxVisibleEntities = 75;
             config.maxPolygonsPerFrame = 100000;
+            // GPU feature flags
+            config.enableMipmaps = true;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             break;
 
         case ConstrainedRenderingPreset::OrangePi:
-            // Orange Pi One: Allwinner H3, Mali 400, 512MB shared RAM
-            // 8MB framebuffer supports up to 1280x720 at 16-bit (front+back+Z = 5.3MB)
+            // Orange Pi One: Allwinner H3, Mali 400 (Lima/Mesa GL 2.1), 512MB shared RAM
+            // 24MB framebuffer supports 1280x720 @ 16-bit + 4x MSAA
+            // 64MB texture budget: 512x512 textures with mipmaps = ~349KB each, ~187 textures
             config.enabled = true;
-            config.framebufferMemoryBytes = 8 * 1024 * 1024;  // 8MB
-            config.textureMemoryBytes = 32 * 1024 * 1024;     // 32MB
+            config.framebufferMemoryBytes = 24 * 1024 * 1024;  // 24MB
+            config.textureMemoryBytes = 64 * 1024 * 1024;      // 64MB
             config.colorDepthBits = 16;
-            config.maxTextureDimension = 128;
+            config.maxTextureDimension = 512;
             // Render distance and geometry budgets
-            config.clipDistance = 200.0f;
-            config.entityRenderDistance = 200.0f;
+            config.clipDistance = 300.0f;
+            config.entityRenderDistance = 300.0f;
             config.maxVisibleEntities = 40;
-            config.maxPolygonsPerFrame = 40000;
+            config.maxPolygonsPerFrame = 80000;
             // Software occlusion culling (128x64 depth buffer = 32KB)
             config.occlusionBufferWidth = 128;
             config.occlusionBufferHeight = 64;
             config.occlusionMaxOccluderRegions = 48;
+            // GPU feature flags (Mali 400 via Lima supports these)
+            config.enableMipmaps = true;
+            config.enableNPOT = true;
+            config.enableStencilBuffer = true;
+            config.enableAlphaToCoverage = true;
+            config.antiAliasLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             break;
@@ -190,6 +202,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.occlusionBufferWidth = 256;
             config.occlusionBufferHeight = 128;
             config.occlusionMaxOccluderRegions = 64;
+            // GPU feature flags
+            config.enableMipmaps = true;
+            config.enableNPOT = true;
+            config.enableStencilBuffer = true;
             config.totalMemoryBudgetBytes = 0;  // No RAM constraint
             break;
     }
@@ -281,6 +297,82 @@ bool ConstrainedRendererConfig::parseMemorySpec(const std::string& spec, Constra
 
     outConfig.calculateMaxResolution();
     outConfig.calculateMemoryLimits();
+    return true;
+}
+
+bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
+                                                   const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        return false;
+    }
+
+    if (!root.isMember("presets") || !root["presets"].isObject()) {
+        return false;
+    }
+
+    // Case-insensitive preset lookup
+    std::string lowerName = presetName;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    const Json::Value& presets = root["presets"];
+    Json::Value preset;
+    for (const auto& key : presets.getMemberNames()) {
+        std::string lowerKey = key;
+        std::transform(lowerKey.begin(), lowerKey.end(), lowerKey.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (lowerKey == lowerName) {
+            preset = presets[key];
+            break;
+        }
+    }
+
+    if (preset.isNull()) {
+        return false;
+    }
+
+    // Override fields that are present in the JSON
+    if (preset.isMember("maxTextureDimension"))
+        maxTextureDimension = preset["maxTextureDimension"].asInt();
+    if (preset.isMember("maxPolygonsPerFrame"))
+        maxPolygonsPerFrame = preset["maxPolygonsPerFrame"].asInt();
+    if (preset.isMember("clipDistance"))
+        clipDistance = preset["clipDistance"].asFloat();
+    if (preset.isMember("entityRenderDistance"))
+        entityRenderDistance = preset["entityRenderDistance"].asFloat();
+    if (preset.isMember("framebufferMemoryBytes"))
+        framebufferMemoryBytes = static_cast<size_t>(preset["framebufferMemoryBytes"].asUInt64());
+    if (preset.isMember("textureMemoryBytes"))
+        textureMemoryBytes = static_cast<size_t>(preset["textureMemoryBytes"].asUInt64());
+    if (preset.isMember("colorDepthBits"))
+        colorDepthBits = preset["colorDepthBits"].asInt();
+    if (preset.isMember("maxVisibleEntities"))
+        maxVisibleEntities = preset["maxVisibleEntities"].asInt();
+    if (preset.isMember("fogStartRatio"))
+        fogStartRatio = preset["fogStartRatio"].asFloat();
+    if (preset.isMember("fogEndRatio"))
+        fogEndRatio = preset["fogEndRatio"].asFloat();
+    if (preset.isMember("enableMipmaps"))
+        enableMipmaps = preset["enableMipmaps"].asBool();
+    if (preset.isMember("enableCompressedTextures"))
+        enableCompressedTextures = preset["enableCompressedTextures"].asBool();
+    if (preset.isMember("enableNPOT"))
+        enableNPOT = preset["enableNPOT"].asBool();
+    if (preset.isMember("enableStencilBuffer"))
+        enableStencilBuffer = preset["enableStencilBuffer"].asBool();
+    if (preset.isMember("enableAlphaToCoverage"))
+        enableAlphaToCoverage = preset["enableAlphaToCoverage"].asBool();
+    if (preset.isMember("antiAliasLevel"))
+        antiAliasLevel = preset["antiAliasLevel"].asInt();
+
     return true;
 }
 

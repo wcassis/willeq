@@ -458,6 +458,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                 if (hasAlpha) {
                     // Use alpha test for transparency (cheaper than blending)
                     buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    // Alpha-to-coverage produces smoother edges on vegetation when MSAA is active
+                    if (constrainedCache_ && constrainedCache_->getConfig().enableAlphaToCoverage) {
+                        buffer->Material.AntiAliasing |= irr::video::EAAM_ALPHA_TO_COVERAGE;
+                    }
                 } else {
                     buffer->Material.MaterialType = irr::video::EMT_SOLID;
                 }

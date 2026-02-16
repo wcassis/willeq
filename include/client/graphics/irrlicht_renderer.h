@@ -1187,6 +1187,8 @@ private:
         int64_t objectVisibility = 0;
         int64_t pvsVisibility = 0;
         int64_t objectLights = 0;
+        int64_t tier2Update = 0;     // Detail objects, trees
+        int64_t tier3Update = 0;     // Weather, sky, particles, boids
         int64_t hudUpdate = 0;
         int64_t sceneDrawAll = 0;
         // Scene Draw All sub-timings (from render pass timer)

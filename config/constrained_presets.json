@@ -1,0 +1,18 @@
+{
+  "presets": {
+    "orangepi": {
+      "maxTextureDimension": 512,
+      "maxPolygonsPerFrame": 80000,
+      "clipDistance": 300.0,
+      "entityRenderDistance": 300.0,
+      "textureMemoryBytes": 67108864,
+      "framebufferMemoryBytes": 25165824,
+      "enableMipmaps": true,
+      "enableCompressedTextures": false,
+      "enableNPOT": true,
+      "enableStencilBuffer": true,
+      "enableAlphaToCoverage": true,
+      "antiAliasLevel": 4
+    }
+  }
+}

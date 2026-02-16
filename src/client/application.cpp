@@ -196,10 +196,15 @@ bool Application::initialize(const ApplicationConfig& config) {
             if (!config.constrainedPreset.empty()) {
                 EQT::Graphics::ConstrainedRendererConfig customConfig;
                 if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, customConfig)) {
+                    // Try loading JSON overrides on top of memory-spec config
+                    customConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                     m_eqClient->SetConstrainedConfig(customConfig);
                 } else {
                     auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
-                    m_eqClient->SetConstrainedPreset(preset);
+                    auto presetConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
+                    // Apply JSON overrides on top of preset defaults
+                    presetConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    m_eqClient->SetConstrainedConfig(presetConfig);
                 }
             } else {
                 // Default to Max preset (no practical limits)

@@ -2,6 +2,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include <string>
 #include <cmath>
+#include <fstream>
 
 using namespace EQT::Graphics;
 
@@ -121,6 +122,12 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_Max) {
     EXPECT_EQ(config.totalMemoryBudgetBytes, 0);  // No RAM constraint
     EXPECT_FALSE(config.lazyPfsLoading);
     EXPECT_FALSE(config.releaseTextureDataAfterUpload);
+    // GPU feature flags
+    EXPECT_TRUE(config.enableMipmaps);
+    EXPECT_TRUE(config.enableNPOT);
+    EXPECT_TRUE(config.enableStencilBuffer);
+    EXPECT_FALSE(config.enableAlphaToCoverage);  // Off by default (needs MSAA)
+    EXPECT_EQ(config.antiAliasLevel, 0);
 }
 
 // =============================================================================
@@ -368,4 +375,201 @@ TEST_F(ConstrainedRendererConfigTest, FramebufferUsage_ZeroResolution) {
 
     size_t usage = config.calculateFramebufferUsage(0, 0);
     EXPECT_EQ(usage, 0);
+}
+
+// =============================================================================
+// GPU Feature Flag Tests
+// =============================================================================
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+
+    EXPECT_TRUE(config.enabled);
+    EXPECT_EQ(config.framebufferMemoryBytes, 24 * 1024 * 1024);  // 24MB
+    EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
+    EXPECT_EQ(config.maxTextureDimension, 512);
+    EXPECT_EQ(config.colorDepthBits, 16);
+    EXPECT_FLOAT_EQ(config.clipDistance, 300.0f);
+    EXPECT_FLOAT_EQ(config.entityRenderDistance, 300.0f);
+    EXPECT_EQ(config.maxPolygonsPerFrame, 80000);
+
+    // GPU feature flags
+    EXPECT_TRUE(config.enableMipmaps);
+    EXPECT_TRUE(config.enableNPOT);
+    EXPECT_TRUE(config.enableStencilBuffer);
+    EXPECT_TRUE(config.enableAlphaToCoverage);
+    EXPECT_EQ(config.antiAliasLevel, 4);
+    EXPECT_FALSE(config.enableCompressedTextures);  // Deferred
+}
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1_NoGpuFeatures) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo1);
+
+    // Legacy presets should not have GPU features enabled
+    EXPECT_FALSE(config.enableMipmaps);
+    EXPECT_FALSE(config.enableNPOT);
+    EXPECT_FALSE(config.enableStencilBuffer);
+    EXPECT_FALSE(config.enableAlphaToCoverage);
+    EXPECT_EQ(config.antiAliasLevel, 0);
+    EXPECT_FALSE(config.enableCompressedTextures);
+}
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo2_NoGpuFeatures) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo2);
+
+    EXPECT_FALSE(config.enableMipmaps);
+    EXPECT_FALSE(config.enableStencilBuffer);
+    EXPECT_EQ(config.antiAliasLevel, 0);
+}
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_TNT_Mipmaps) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+
+    EXPECT_TRUE(config.enableMipmaps);
+    // TNT doesn't have stencil/NPOT/A2C by default
+    EXPECT_FALSE(config.enableStencilBuffer);
+    EXPECT_FALSE(config.enableAlphaToCoverage);
+    EXPECT_EQ(config.antiAliasLevel, 0);
+}
+
+TEST_F(ConstrainedRendererConfigTest, DefaultConfig_NoGpuFeatures) {
+    // Default-constructed config should have all GPU features disabled
+    ConstrainedRendererConfig config;
+
+    EXPECT_FALSE(config.enableMipmaps);
+    EXPECT_FALSE(config.enableCompressedTextures);
+    EXPECT_FALSE(config.enableNPOT);
+    EXPECT_FALSE(config.enableStencilBuffer);
+    EXPECT_FALSE(config.enableAlphaToCoverage);
+    EXPECT_EQ(config.antiAliasLevel, 0);
+}
+
+// =============================================================================
+// OrangePi Resolution Tests
+// =============================================================================
+
+TEST_F(ConstrainedRendererConfigTest, MaxResolution_24MB_OrangePi) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+
+    // Max resolution should fit in 24MB
+    size_t usage = config.calculateFramebufferUsage(config.maxResolutionWidth, config.maxResolutionHeight);
+    EXPECT_LE(usage, 24 * 1024 * 1024);
+
+    // Should support at least 1280x720
+    EXPECT_GE(config.maxResolutionWidth, 1280);
+    EXPECT_GE(config.maxResolutionHeight, 720);
+
+    // Resolution should be multiples of 8
+    EXPECT_EQ(config.maxResolutionWidth % 8, 0);
+    EXPECT_EQ(config.maxResolutionHeight % 8, 0);
+}
+
+// =============================================================================
+// JSON Override Tests
+// =============================================================================
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_AppliesValues) {
+    // Create a temporary JSON file
+    const std::string testJsonPath = "/tmp/test_constrained_presets.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "testpreset": {
+                    "maxTextureDimension": 1024,
+                    "clipDistance": 500.0,
+                    "enableMipmaps": true,
+                    "antiAliasLevel": 8
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.maxTextureDimension = 256;
+    config.clipDistance = 200.0f;
+    config.enableMipmaps = false;
+    config.antiAliasLevel = 0;
+
+    bool applied = config.loadJsonOverrides("testpreset", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.maxTextureDimension, 1024);
+    EXPECT_FLOAT_EQ(config.clipDistance, 500.0f);
+    EXPECT_TRUE(config.enableMipmaps);
+    EXPECT_EQ(config.antiAliasLevel, 8);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_CaseInsensitive) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_ci.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "OrangePi": {
+                    "maxTextureDimension": 256
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.maxTextureDimension = 128;
+
+    bool applied = config.loadJsonOverrides("orangepi", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.maxTextureDimension, 256);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_MissingFile) {
+    ConstrainedRendererConfig config;
+    config.maxTextureDimension = 128;
+
+    bool applied = config.loadJsonOverrides("orangepi", "/tmp/nonexistent.json");
+    EXPECT_FALSE(applied);
+    EXPECT_EQ(config.maxTextureDimension, 128);  // Unchanged
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_MissingPreset) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_mp.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({ "presets": { "other": { "maxTextureDimension": 1024 } } })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.maxTextureDimension = 128;
+
+    bool applied = config.loadJsonOverrides("orangepi", testJsonPath);
+    EXPECT_FALSE(applied);
+    EXPECT_EQ(config.maxTextureDimension, 128);  // Unchanged
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_PartialOverride) {
+    // Only override some fields, leave others at preset defaults
+    const std::string testJsonPath = "/tmp/test_constrained_presets_po.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "orangepi": {
+                    "maxTextureDimension": 256
+                }
+            }
+        })";
+    }
+
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    bool applied = config.loadJsonOverrides("orangepi", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.maxTextureDimension, 256);  // Overridden
+    EXPECT_FLOAT_EQ(config.clipDistance, 300.0f);  // Kept from preset
+    EXPECT_TRUE(config.enableMipmaps);  // Kept from preset
+
+    std::remove(testJsonPath.c_str());
 }

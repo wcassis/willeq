@@ -14,7 +14,7 @@ enum class ConstrainedRenderingPreset {
     Voodoo1,    // 2MB FBI, 2MB TMU, 256x256 max, 16-bit, 640x480 max
     Voodoo2,    // 4MB FBI, 8MB TMU, 256x256 max, 16-bit, 800x600 max
     TNT,        // 8MB FBI, 16MB TMU, 512x512 max, 16-bit, 1024x768 max
-    OrangePi,   // 4MB FB, 8MB tex, 128x128 max, 16-bit, 800x600 (Mali 400, 512MB shared)
+    OrangePi,   // 24MB FB, 64MB tex, 512x512 max, 16-bit, Mali 400 Lima GL 2.1, 512MB shared
     Custom      // User-defined limits
 };
 
@@ -50,6 +50,14 @@ struct ConstrainedRendererConfig {
     // Helper methods for fog distances
     float fogStart() const { return clipDistance * fogStartRatio; }
     float fogEnd() const { return clipDistance * fogEndRatio; }
+
+    // GPU feature flags (queried/enabled per preset)
+    bool enableMipmaps = false;              // Generate mipmaps for textures
+    bool enableCompressedTextures = false;   // Upload DXT compressed (future - not yet implemented)
+    bool enableNPOT = false;                 // Allow non-power-of-two textures
+    bool enableStencilBuffer = false;        // Request stencil buffer from driver
+    bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
+    int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
 
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;
@@ -89,6 +97,11 @@ struct ConstrainedRendererConfig {
     // Parse preset from string (case-insensitive)
     // Returns None if string is not recognized
     static ConstrainedRenderingPreset parsePreset(const std::string& name);
+
+    // Load JSON overrides from a preset file
+    // Looks up presets[presetName] and overrides matching fields
+    // Returns true if overrides were applied, false if file not found or no matching preset
+    bool loadJsonOverrides(const std::string& presetName, const std::string& jsonPath);
 
     // Parse "NxNxN" format: totalMB x textureCacheMB x framebufferMB
     // Returns true and fills outConfig if string matches NxNxN pattern
