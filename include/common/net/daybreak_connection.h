@@ -11,6 +11,8 @@
 #include <map>
 #include <queue>
 #include <list>
+#include <mutex>
+#include <vector>
 
 namespace EQ
 {
@@ -316,6 +318,13 @@ namespace EQ
 			bool skip_crc_validation;
 		};
 
+		struct PendingAsyncPacket {
+			std::weak_ptr<DaybreakConnection> connection;
+			DynamicPacket packet;
+			int stream;
+			bool reliable;
+		};
+
 		class DaybreakConnectionManager
 		{
 		public:
@@ -333,6 +342,9 @@ namespace EQ
 			void OnErrorMessage(std::function<void(const std::string&)> func) { m_on_error_message = func; }
 
 			DaybreakConnectionManagerOptions& GetOptions() { return m_options; }
+
+			// Thread-safe packet queueing via uv_async
+			void QueuePacketAsync(std::shared_ptr<DaybreakConnection> conn, Packet& p, int stream = 0, bool reliable = true);
 		private:
 			void Attach(uv_loop_t *loop);
 			void Detach();
@@ -347,6 +359,13 @@ namespace EQ
 			std::function<void(std::shared_ptr<DaybreakConnection>, const Packet&)> m_on_packet_recv;
 			std::function<void(const std::string&)> m_on_error_message;
 			std::map<std::pair<std::string, int>, std::shared_ptr<DaybreakConnection>> m_connections;
+
+			// Async packet queue for thread-safe sends from non-main threads
+			uv_async_t m_async;
+			bool m_async_initialized = false;
+			std::mutex m_async_mutex;
+			std::vector<PendingAsyncPacket> m_async_queue;
+			void ProcessAsyncQueue();
 
 			void ProcessPacket(const std::string &endpoint, int port, const char *data, size_t size);
 			std::shared_ptr<DaybreakConnection> FindConnectionByEndpoint(std::string addr, int port);

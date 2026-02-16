@@ -137,6 +137,15 @@ void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
 		});
 
 		LOG_TRACE(MOD_NET, "Attach() udp_recv_start={}", rc);
+
+		// Initialize async handle for thread-safe packet queueing
+		uv_async_init(loop, &m_async, [](uv_async_t* handle) {
+			auto* mgr = static_cast<DaybreakConnectionManager*>(handle->data);
+			mgr->ProcessAsyncQueue();
+		});
+		m_async.data = this;
+		m_async_initialized = true;
+
 		LOG_INFO(MOD_NET, "Attach() complete, loop_alive={}", uv_loop_alive(loop));
 
 		m_attached = loop;
@@ -165,6 +174,14 @@ void EQ::Net::DaybreakConnectionManager::Detach()
 			m_timer.data = &pending_closes;
 			pending_closes++;
 			uv_close(reinterpret_cast<uv_handle_t*>(&m_timer), close_cb);
+		}
+
+		// Close async handle
+		if (m_async_initialized && !uv_is_closing(reinterpret_cast<uv_handle_t*>(&m_async))) {
+			m_async.data = &pending_closes;
+			pending_closes++;
+			uv_close(reinterpret_cast<uv_handle_t*>(&m_async), close_cb);
+			m_async_initialized = false;
 		}
 
 		// Stop UDP recv first, then close it
@@ -408,6 +425,37 @@ void EQ::Net::DaybreakConnectionManager::SendDisconnect(const std::string &addr,
 		delete[](char*)req->data;
 		delete req;
 	});
+}
+
+void EQ::Net::DaybreakConnectionManager::QueuePacketAsync(
+	std::shared_ptr<DaybreakConnection> conn, Packet& p, int stream, bool reliable)
+{
+	{
+		std::lock_guard<std::mutex> lock(m_async_mutex);
+		PendingAsyncPacket pkt;
+		pkt.connection = conn;
+		pkt.packet.PutPacket(0, p);
+		pkt.stream = stream;
+		pkt.reliable = reliable;
+		m_async_queue.push_back(std::move(pkt));
+	}
+	if (m_async_initialized) {
+		uv_async_send(&m_async);
+	}
+}
+
+void EQ::Net::DaybreakConnectionManager::ProcessAsyncQueue()
+{
+	std::vector<PendingAsyncPacket> packets;
+	{
+		std::lock_guard<std::mutex> lock(m_async_mutex);
+		packets.swap(m_async_queue);
+	}
+	for (auto& pkt : packets) {
+		if (auto conn = pkt.connection.lock()) {
+			conn->QueuePacket(pkt.packet, pkt.stream, pkt.reliable);
+		}
+	}
 }
 
 //new connection made as server

@@ -936,6 +936,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_server = server;
 	m_character = character;
 	m_dbid = 0;
+	m_main_thread_id = std::this_thread::get_id();
 	
 	// Initialize combat manager
 	m_combat_manager = std::make_unique<CombatManager>(this);
@@ -14852,6 +14853,15 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 		return false;
 	}
 
+	// Update thread must use async to avoid libuv thread-safety violation
+	if (std::this_thread::get_id() != m_main_thread_id) {
+		if (m_zone_connection_manager) {
+			m_zone_connection_manager->QueuePacketAsync(m_zone_connection, p, stream, reliable);
+			return true;
+		}
+		return false;
+	}
+
 	// Add debugging for large reliable packets
 	if (reliable && p.Length() > 400 && s_debug_level >= 2) {
 		uint16_t opcode = p.GetUInt16(0);
@@ -17499,14 +17509,23 @@ void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 	if (!m_zone_connection || !packet) {
 		return;
 	}
-	
+
 	EQ::Net::DynamicPacket p;
 	p.Resize(packet->Length() + 2); // Add space for opcode
 	p.PutUInt16(0, opcode);
 	if (packet->Length() > 0) {
 		memcpy(static_cast<uint8_t*>(p.Data()) + 2, packet->Data(), packet->Length());
 	}
-	
+
+	// Update thread must use async to avoid libuv thread-safety violation
+	if (std::this_thread::get_id() != m_main_thread_id) {
+		if (m_zone_connection_manager) {
+			m_zone_connection_manager->QueuePacketAsync(m_zone_connection, p);
+			return;
+		}
+		return;
+	}
+
 	m_zone_connection->QueuePacket(p);
 }
 

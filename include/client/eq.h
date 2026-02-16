@@ -1382,6 +1382,7 @@ private:
 	// Update loop
 	std::thread m_update_thread;
 	std::atomic<bool> m_update_running{false};
+	std::thread::id m_main_thread_id;
 	bool m_use_pathfinding = true;
 	std::string m_navmesh_path;
 
