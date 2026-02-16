@@ -62,16 +62,19 @@ docker build \
     -t "$IMAGE_NAME" \
     "$PROJECT_DIR"
 
-# Create output directory
+# Create output directory and persistent build cache
 OUTPUT_DIR="$PROJECT_DIR/build-arm-noble"
-mkdir -p "$OUTPUT_DIR/bin"
+BUILD_CACHE="$OUTPUT_DIR/cache"
+mkdir -p "$OUTPUT_DIR/bin" "$BUILD_CACHE"
 
 # Run the build inside Docker
+# Mount build cache for incremental compilation (only recompiles changed files)
 echo ""
 echo "--- Cross-compiling willeq ---"
 docker run --rm \
     -v "$PROJECT_DIR:/src:ro" \
     -v "$OUTPUT_DIR/bin:/output" \
+    -v "$BUILD_CACHE:/build" \
     -e "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     -e "ENABLE_AUDIO=${ENABLE_AUDIO}" \
     "$IMAGE_NAME"

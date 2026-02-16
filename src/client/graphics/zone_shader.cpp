@@ -5,21 +5,23 @@
 namespace EQT {
 namespace Graphics {
 
-// GLSL 1.20 vertex shader — fog, directional lighting, day/night tint
+// GLSL 1.20 vertex shader — fog, directional + point lighting, day/night tint
 static const char* VERTEX_SHADER_SRC = R"(
 #version 120
 
-// Irrlicht built-in matrices (set automatically)
 uniform mat4 mWorldViewProj;
 uniform mat4 mWorld;
 
-// Custom uniforms
-uniform vec3 uSunDir;       // world-space sun direction (unnormalized OK)
+uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uAmbientColor;
 uniform vec3 uTintColor;
 uniform float uFogStart;
 uniform float uFogEnd;
+
+uniform vec3 uLightPos[8];
+uniform vec3 uLightColor[8];
+uniform vec3 uLightAtten[8];
 
 varying vec2 vTexCoord;
 varying vec4 vColor;
@@ -27,21 +29,32 @@ varying float vFogFactor;
 
 void main() {
     gl_Position = mWorldViewProj * gl_Vertex;
-
     vTexCoord = gl_MultiTexCoord0.xy;
 
-    // Compute world-space normal for lighting
-    vec3 N = normalize((mWorld * vec4(gl_Normal, 0.0)).xyz);
-    vec3 L = normalize(-uSunDir);
-    float NdotL = max(dot(N, L), 0.0);
+    vec3 worldPos = (mWorld * gl_Vertex).xyz;
+    vec3 worldN = normalize((mWorld * vec4(gl_Normal, 0.0)).xyz);
 
-    // Directional diffuse + ambient, modulated by tint and vertex color
-    vec3 lighting = uAmbientColor + NdotL * uSunColor;
+    // Directional sun light
+    vec3 sunL = normalize(-uSunDir);
+    float sunNdotL = max(dot(worldN, sunL), 0.0);
+    vec3 lighting = uAmbientColor + sunNdotL * uSunColor;
+
+    // Point lights (world space, always iterate all 8)
+    for (int i = 0; i < 8; i++) {
+        vec3 lVec = uLightPos[i] - worldPos;
+        float d = length(lVec) + 0.001;
+        float atten = 1.0 / (uLightAtten[i].x
+                            + uLightAtten[i].y * d
+                            + uLightAtten[i].z * d * d + 0.0001);
+        float nl = max(dot(worldN, normalize(lVec)), 0.0);
+        lighting += uLightColor[i] * nl * atten;
+    }
+
     vColor = vec4(lighting * uTintColor, 1.0) * gl_Color;
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
-    float dist = length((mWorldViewProj * gl_Vertex).xyz);
-    vFogFactor = clamp((uFogEnd - dist) / (uFogEnd - uFogStart), 0.0, 1.0);
+    float fogDist = length((mWorldViewProj * gl_Vertex).xyz);
+    vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
 }
 )";
 
@@ -113,6 +126,12 @@ public:
         float fogEnd = owner_->fogEnd();
         services->setVertexShaderConstant("uFogStart", &fogStart, 1);
         services->setVertexShaderConstant("uFogEnd", &fogEnd, 1);
+
+        // Point lights — data fed directly from updateObjectLights()
+        // Lima/Mesa returns "uLightPos[0]" from glGetActiveUniform (confirmed via logging).
+        services->setVertexShaderConstant("uLightPos[0]", owner_->lightPos(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        services->setVertexShaderConstant("uLightColor[0]", owner_->lightColor(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        services->setVertexShaderConstant("uLightAtten[0]", owner_->lightAtten(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
 
         // Fragment shader uniforms
         float fogColor[4];

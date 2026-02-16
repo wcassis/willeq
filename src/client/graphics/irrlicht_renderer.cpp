@@ -1732,6 +1732,27 @@ void IrrlichtRenderer::updateObjectLights() {
         }
     }
 
+    // Feed point light data to GLSL shader (bypasses Irrlicht's dynamic light list)
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        zoneShader_->clearPointLights();
+        int shaderLightIdx = 0;
+        for (size_t i = 0; i < enabledCount; ++i) {
+            if (!candidates[i].node) continue;
+            // Only feed point lights to shader (skip directional sun)
+            irr::video::SLight& ld = candidates[i].node->getLightData();
+            if (ld.Type != irr::video::ELT_POINT) continue;
+            irr::core::vector3df pos = candidates[i].node->getAbsolutePosition();
+            zoneShader_->setPointLight(shaderLightIdx,
+                pos.X, pos.Y, pos.Z,
+                ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b,
+                ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
+            shaderLightIdx++;
+        }
+        zoneShader_->setNumPointLights(shaderLightIdx);
+
+        LOG_DEBUG(MOD_GRAPHICS, "Shader lights: {} fed to GLSL", shaderLightIdx);
+    }
+
     // Check if active lights changed and log if so (cleared by cycleObjectLights)
     // Use "_none_" sentinel when 0 lights so we can distinguish "0 lights logged" from "needs re-log"
     bool needsLog = previousActiveLights_.empty() ||
@@ -4033,7 +4054,11 @@ void IrrlichtRenderer::createZoneLights() {
         if (lightNode) {
             irr::video::SLight& lightData = lightNode->getLightData();
             lightData.Type = irr::video::ELT_POINT;
-            lightData.Attenuation = irr::core::vector3df(1.0f, 0.0f, 0.00001f);
+            // Compute attenuation from radius so light falls off naturally
+            // At d=radius: atten = 1/(1 + radius/radius + 1) = 1/3 ≈ 33%
+            // At d=0: atten = 1/1 = 100%
+            float r = std::max(light->radius, 1.0f);
+            lightData.Attenuation = irr::core::vector3df(1.0f, 1.0f / r, 1.0f / (r * r));
 
             // Start hidden - updateObjectLights() manages visibility
             lightNode->setVisible(false);
