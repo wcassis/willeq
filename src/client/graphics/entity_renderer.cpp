@@ -558,12 +558,24 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
     // Set material properties
     for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
-        visual.meshNode->getMaterial(i).Lighting = lightingEnabled_;
-        visual.meshNode->getMaterial(i).BackfaceCulling = false;
-        if (lightingEnabled_) {
-            visual.meshNode->getMaterial(i).NormalizeNormals = true;
-            visual.meshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-            visual.meshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+        auto& mat = visual.meshNode->getMaterial(i);
+        mat.BackfaceCulling = false;
+        // Apply GLSL shader material if available, otherwise use fixed-function lighting
+        if (shaderMaterialSolid_ >= 0) {
+            // Preserve alpha-test materials, replace only solid ones
+            if (mat.MaterialType == irr::video::EMT_SOLID) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+            } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+            }
+            mat.Lighting = false;  // Shader handles lighting
+        } else {
+            mat.Lighting = lightingEnabled_;
+            if (lightingEnabled_) {
+                mat.NormalizeNormals = true;
+                mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+            }
         }
     }
 

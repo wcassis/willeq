@@ -57,6 +57,7 @@ struct ConstrainedRendererConfig {
     bool enableNPOT = false;                 // Allow non-power-of-two textures
     bool enableStencilBuffer = false;        // Request stencil buffer from driver
     bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
+    bool enableShaders = false;              // Use GLSL shaders for fog/lighting/tint
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
 
     // System RAM budget (0 = no constraint)

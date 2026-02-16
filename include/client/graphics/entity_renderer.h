@@ -209,6 +209,12 @@ public:
     // Enable/disable lighting on entity materials
     void setLightingEnabled(bool enabled);
 
+    // Set GLSL shader material type IDs for entity meshes (-1 = not available)
+    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+        shaderMaterialSolid_ = solidType;
+        shaderMaterialAlphaTest_ = alphaTestType;
+    }
+
     // Get race model loader (for preloading)
     RaceModelLoader* getRaceModelLoader() { return raceModelLoader_.get(); }
 
@@ -433,6 +439,8 @@ private:
 
     bool nameTagsVisible_ = true;
     bool lightingEnabled_ = false;
+    irr::s32 shaderMaterialSolid_ = -1;
+    irr::s32 shaderMaterialAlphaTest_ = -1;
     irr::gui::IGUIFont* nameFont_ = nullptr;
 
     // Visibility settings

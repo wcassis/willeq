@@ -198,6 +198,8 @@ private:
     float updateDistance_ = 300.0f;  // Max distance to animate trees
     float lodDistance_ = 150.0f;     // Distance for reduced animation quality
     bool initialized_ = false;
+    irr::s32 shaderMaterialSolid_ = -1;
+    irr::s32 shaderMaterialAlphaTest_ = -1;
 
 public:
     /**
@@ -206,6 +208,12 @@ public:
      */
     void setRenderDistance(float distance) { renderDistance_ = distance; }
     float getRenderDistance() const { return renderDistance_; }
+
+    // Set GLSL shader material type IDs for tree meshes (-1 = not available)
+    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+        shaderMaterialSolid_ = solidType;
+        shaderMaterialAlphaTest_ = alphaTestType;
+    }
 };
 
 } // namespace Graphics

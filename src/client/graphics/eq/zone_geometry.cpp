@@ -456,14 +456,23 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                 // Check if this texture has alpha transparency
                 bool hasAlpha = (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
                 if (hasAlpha) {
-                    // Use alpha test for transparency (cheaper than blending)
-                    buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    // Use GLSL shader alpha-test material if available, else fixed-function
+                    if (shaderMaterialAlphaTest_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    } else {
+                        buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    }
                     // Alpha-to-coverage produces smoother edges on vegetation when MSAA is active
                     if (constrainedCache_ && constrainedCache_->getConfig().enableAlphaToCoverage) {
                         buffer->Material.AntiAliasing |= irr::video::EAAM_ALPHA_TO_COVERAGE;
                     }
                 } else {
-                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                    // Use GLSL shader solid material if available, else fixed-function
+                    if (shaderMaterialSolid_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                    } else {
+                        buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                    }
                 }
 
                 // Enable bilinear filtering for smoother textures

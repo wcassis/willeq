@@ -177,6 +177,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableNPOT = true;
             config.enableStencilBuffer = true;
             config.enableAlphaToCoverage = true;
+            config.enableShaders = true;
             config.antiAliasLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
@@ -206,6 +207,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableMipmaps = true;
             config.enableNPOT = true;
             config.enableStencilBuffer = true;
+            config.enableShaders = true;
             config.totalMemoryBudgetBytes = 0;  // No RAM constraint
             break;
     }
@@ -370,6 +372,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableStencilBuffer = preset["enableStencilBuffer"].asBool();
     if (preset.isMember("enableAlphaToCoverage"))
         enableAlphaToCoverage = preset["enableAlphaToCoverage"].asBool();
+    if (preset.isMember("enableShaders"))
+        enableShaders = preset["enableShaders"].asBool();
     if (preset.isMember("antiAliasLevel"))
         antiAliasLevel = preset["antiAliasLevel"].asInt();
 

@@ -20,6 +20,7 @@
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/weather_system.h"
+#include "client/graphics/zone_shader.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
@@ -780,6 +781,9 @@ public:
     // Check if constrained rendering mode is active
     bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
+    // Zone shader access (returns nullptr if shaders not available/enabled)
+    ZoneShaderManager* getZoneShader() { return zoneShader_.get(); }
+
     // Detail system access (grass, plants, debris)
     Detail::DetailManager* getDetailManager() { return detailManager_.get(); }
 
@@ -902,6 +906,7 @@ private:
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)
+    std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
     std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
 

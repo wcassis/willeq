@@ -269,9 +269,13 @@ void AnimatedTreeManager::createAnimatedTree(const ObjectInstance& object,
             mat.Lighting = false;
             mat.BackfaceCulling = false;
             mat.FogEnable = true;
-            // Use alpha test for transparent leaves (alpha channel cutout)
-            mat.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-            mat.MaterialTypeParam = 0.5f;  // Alpha threshold (0-1)
+            // Use GLSL shader alpha-test material if available, else fixed-function
+            if (shaderMaterialAlphaTest_ >= 0) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+            } else {
+                mat.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                mat.MaterialTypeParam = 0.5f;  // Alpha threshold (0-1)
+            }
         }
 
         animatedTrees_.push_back(std::move(tree));

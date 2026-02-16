@@ -55,6 +55,12 @@ public:
     // Get the constrained texture cache (may be nullptr)
     ConstrainedTextureCache* getConstrainedTextureCache() const { return constrainedCache_; }
 
+    // Set GLSL shader material type IDs (negative = not available, use fixed-function)
+    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+        shaderMaterialSolid_ = solidType;
+        shaderMaterialAlphaTest_ = alphaTestType;
+    }
+
 private:
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
@@ -71,6 +77,10 @@ private:
 
     // Optional constrained texture cache for memory-limited rendering
     ConstrainedTextureCache* constrainedCache_ = nullptr;
+
+    // GLSL shader material type IDs (-1 = not available)
+    irr::s32 shaderMaterialSolid_ = -1;
+    irr::s32 shaderMaterialAlphaTest_ = -1;
 };
 
 // Helper to generate colors for visualization

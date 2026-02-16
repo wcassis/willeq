@@ -523,6 +523,18 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Setup lighting
     setupLighting();
 
+    // Initialize GLSL shader pipeline (if enabled and driver supports it)
+    if (config_.constrainedConfig.enableShaders && !config_.softwareRenderer) {
+        auto* gpu = driver_->getGPUProgrammingServices();
+        if (gpu) {
+            zoneShader_ = std::make_unique<ZoneShaderManager>(driver_, gpu);
+            if (!zoneShader_->isAvailable()) {
+                LOG_WARN(MOD_GRAPHICS, "GLSL shaders requested but compilation failed; using fixed-function fallback");
+                zoneShader_.reset();
+            }
+        }
+    }
+
     // Setup HUD
     setupHUD();
 
@@ -534,6 +546,11 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
     // Pass constrained config to entity renderer for visibility limits
     entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+    // Pass GLSL shader material types if available
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                                zoneShader_->getMaterialTypeAlphaTest());
+    }
     // Apply chr cache limit to race model loader
     if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
         entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
@@ -560,6 +577,10 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create tree wind animation manager
     treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
     treeManager_->setRenderDistance(renderDistance_);
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        treeManager_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                             zoneShader_->getMaterialTypeAlphaTest());
+    }
 
     // Create weather system
     weatherSystem_ = std::make_unique<WeatherSystem>();
@@ -710,6 +731,18 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Setup lighting (basic setup)
     setupLighting();
 
+    // Initialize GLSL shader pipeline (if enabled and driver supports it)
+    if (config_.constrainedConfig.enableShaders && !config_.softwareRenderer) {
+        auto* gpu = driver_->getGPUProgrammingServices();
+        if (gpu) {
+            zoneShader_ = std::make_unique<ZoneShaderManager>(driver_, gpu);
+            if (!zoneShader_->isAvailable()) {
+                LOG_WARN(MOD_GRAPHICS, "GLSL shaders requested but compilation failed; using fixed-function fallback");
+                zoneShader_.reset();
+            }
+        }
+    }
+
     // Setup HUD (needed for loading screen text)
     setupHUD();
 
@@ -725,6 +758,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     if (!treeManager_) {
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
         treeManager_->setRenderDistance(renderDistance_);
+        if (zoneShader_ && zoneShader_->isAvailable()) {
+            treeManager_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                                 zoneShader_->getMaterialTypeAlphaTest());
+        }
     }
 
     // Create weather system (needed before loadZone())
@@ -827,6 +864,11 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         entityRenderer_->setRenderDistance(renderDistance_);
         // Pass constrained config to entity renderer for visibility limits
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+        // Pass GLSL shader material types if available
+        if (zoneShader_ && zoneShader_->isAvailable()) {
+            entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                                    zoneShader_->getMaterialTypeAlphaTest());
+        }
         if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
             entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
         }
@@ -1261,6 +1303,32 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     } else if (skyRenderer_) {
         // No weather active, restore full sky brightness
         skyRenderer_->setWeatherBrightness(1.0f);
+    }
+
+    // Update shader uniforms with current lighting state
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        zoneShader_->setAmbientColor(r, g, b);
+        zoneShader_->setSunColor(sunIntensity, sunIntensity, sunIntensity * 0.9f);
+
+        // Sun direction matches setupLighting() directional light
+        zoneShader_->setSunDirection(0.5f, -1.0f, 0.5f);
+
+        // Compute day/night tint color from ambient values
+        // Dawn/dusk: warm orange; night: cool blue; day: neutral white
+        float maxAmb = std::max({r, g, b, 0.01f});
+        zoneShader_->setTintColor(r / maxAmb, g / maxAmb, b / maxAmb);
+
+        // Also sync fog with any weather-modified values
+        irr::video::SColor currentFogColor;
+        irr::video::E_FOG_TYPE fogType;
+        irr::f32 fogStart, fogEnd, fogDensity;
+        bool pixelFog, rangeFog;
+        driver_->getFog(currentFogColor, fogType, fogStart, fogEnd, fogDensity, pixelFog, rangeFog);
+        zoneShader_->setFog(fogStart, fogEnd,
+                            currentFogColor.getRed() / 255.0f,
+                            currentFogColor.getGreen() / 255.0f,
+                            currentFogColor.getBlue() / 255.0f,
+                            currentFogColor.getAlpha() / 255.0f);
     }
 }
 
@@ -1811,6 +1879,15 @@ void IrrlichtRenderer::setupFog() {
         true,   // Pixel fog
         false   // Range fog
     );
+
+    // Update shader fog uniforms
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        zoneShader_->setFog(fogStart, fogEnd,
+                            fogColor.getRed() / 255.0f,
+                            fogColor.getGreen() / 255.0f,
+                            fogColor.getBlue() / 255.0f,
+                            fogColor.getAlpha() / 255.0f);
+    }
 
     LOG_INFO(MOD_GRAPHICS, "Fog: start={:.0f}, end={:.0f} (renderDistance={:.0f}, fogThickness={:.0f})",
         fogStart, fogEnd, renderDistance_, fogThickness_);
@@ -2680,6 +2757,11 @@ void IrrlichtRenderer::createZoneMesh() {
     if (constrainedTextureCache_) {
         builder.setConstrainedTextureCache(constrainedTextureCache_.get());
     }
+    // Pass GLSL shader material types if available
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                       zoneShader_->getMaterialTypeAlphaTest());
+    }
 
     irr::scene::IMesh* mesh = nullptr;
 
@@ -2795,6 +2877,11 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
     // Pass constrained texture cache if in constrained mode
     if (constrainedTextureCache_) {
         builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+    // Pass GLSL shader material types if available
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                       zoneShader_->getMaterialTypeAlphaTest());
     }
 
     // Count regions with geometry for progress tracking
@@ -3550,6 +3637,11 @@ void IrrlichtRenderer::createObjectMeshes() {
     // Pass constrained texture cache if in constrained mode
     if (constrainedTextureCache_) {
         builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+    // Pass GLSL shader material types if available
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                       zoneShader_->getMaterialTypeAlphaTest());
     }
 
     std::map<std::string, irr::scene::IMesh*> meshCache;
