@@ -348,7 +348,7 @@ void SkyRenderer::createCustomSkyDome(irr::video::ITexture* texture) {
     // Set material properties
     skyDomeMeshNode_->setMaterialTexture(0, texture);
     skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, true);
     skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
     skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
     skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
@@ -512,7 +512,7 @@ void SkyRenderer::createCelestialBodies() {
                     sunGlowNode_->setMaterialTexture(0, texture);
                 }
                 sunGlowNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-                sunGlowNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
+                sunGlowNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, true);
                 sunGlowNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
                 sunGlowNode_->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
                 // Reduce glow intensity with vertex color
@@ -532,7 +532,7 @@ void SkyRenderer::createCelestialBodies() {
                     sunNode_->setMaterialTexture(0, texture);
                 }
                 sunNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-                sunNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
+                sunNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, true);
                 sunNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
                 sunNode_->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
 
@@ -557,7 +557,7 @@ void SkyRenderer::createCelestialBodies() {
                     moonNode_->setMaterialTexture(0, texture);
                 }
                 moonNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-                moonNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, false);
+                moonNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, true);
                 moonNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
                 // Use ADD_COLOR like sun - BMP textures don't have alpha channel
                 // This makes bright parts of moon visible against dark sky
