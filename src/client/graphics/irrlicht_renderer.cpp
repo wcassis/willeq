@@ -2482,7 +2482,14 @@ void IrrlichtRenderer::unloadZone() {
     loadedEntityCount_ = 0;
     zoneReady_ = false;
 
-    // Reset animated texture manager
+    // Log texture counts before cleanup
+    if (constrainedTextureCache_) {
+        LOG_INFO(MOD_GRAPHICS, "unloadZone: constrained texture cache has {} textures, {} bytes before cleanup",
+                 constrainedTextureCache_->getTextureCount(),
+                 constrainedTextureCache_->getCurrentUsage());
+    }
+
+    // Reset animated texture manager (removes its textures from driver)
     animatedTextureManager_.reset();
 
     // Clear camera collision selector FIRST to prevent use-after-free during zone transitions
@@ -2637,6 +2644,14 @@ void IrrlichtRenderer::unloadZone() {
 
     // Clear zone line visualization boxes
     clearZoneLineBoundingBoxes();
+
+    // Clear constrained texture cache to free old zone textures from driver
+    if (constrainedTextureCache_) {
+        constrainedTextureCache_->unfreeze();
+        constrainedTextureCache_->clear();
+        constrainedTextureCache_->resetStatistics();
+        LOG_INFO(MOD_GRAPHICS, "unloadZone: constrained texture cache cleared");
+    }
 
     currentZone_.reset();
     currentZoneName_.clear();

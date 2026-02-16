@@ -32,7 +32,7 @@ struct AnimatedTextureState {
 class AnimatedTextureManager {
 public:
     AnimatedTextureManager(irr::video::IVideoDriver* driver, irr::io::IFileSystem* fileSystem);
-    ~AnimatedTextureManager() = default;
+    ~AnimatedTextureManager();
 
     // Initialize from zone geometry and textures
     // Returns the number of animated textures found

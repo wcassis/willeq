@@ -106,7 +106,15 @@ void AnimatedTreeManager::cleanup() {
         tree.buffers.clear();  // Buffers are owned by mesh
     }
     animatedTrees_.clear();
-    textureCache_.clear();  // Clear texture cache (driver still owns the textures)
+    // Remove textures from driver before clearing cache
+    if (driver_) {
+        for (auto& [name, texture] : textureCache_) {
+            if (texture) {
+                driver_->removeTexture(texture);
+            }
+        }
+    }
+    textureCache_.clear();
     initialized_ = false;
 }
 

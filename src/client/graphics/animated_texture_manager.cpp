@@ -14,6 +14,18 @@ AnimatedTextureManager::AnimatedTextureManager(irr::video::IVideoDriver* driver,
     : driver_(driver), fileSystem_(fileSystem) {
 }
 
+AnimatedTextureManager::~AnimatedTextureManager() {
+    if (driver_) {
+        for (auto& [name, texture] : textureCache_) {
+            if (texture) {
+                driver_->removeTexture(texture);
+            }
+        }
+    }
+    textureCache_.clear();
+    animatedTextures_.clear();
+}
+
 irr::video::ITexture* AnimatedTextureManager::loadTexture(const std::string& name,
                                                            const std::vector<char>& data) {
     // Check cache first
