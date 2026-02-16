@@ -988,6 +988,7 @@ private:
     std::wstring loadingText_ = L"Initializing...";  // Loading stage text
     std::wstring loadingTitle_ = L"EverQuest";  // Loading screen title
     bool wireframeMode_ = false;
+    bool pendingScreenshot_ = false;  // Deferred to after render, before swap
     bool hudEnabled_ = true;
     bool allUIHidden_ = false;
     bool fogEnabled_ = true;

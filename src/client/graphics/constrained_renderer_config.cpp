@@ -178,7 +178,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableStencilBuffer = true;
             config.enableAlphaToCoverage = true;
             config.enableShaders = true;
-            config.enableCompressedTextures = true;
+            config.enableCompressedTextures = false;  // Mali 400 via Lima software-decodes S3TC; no GPU savings, extra CPU cost
             config.antiAliasLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB

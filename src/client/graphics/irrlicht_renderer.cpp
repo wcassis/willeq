@@ -23,9 +23,13 @@
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
 #endif
+#ifdef EQT_HAS_DRM
+#include <GL/gl.h>
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <json/json.h>
@@ -4985,7 +4989,7 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
     using RA = RendererAction;
     for (const auto& event : actions) {
         switch (event.action) {
-            case RA::Screenshot: saveScreenshot("screenshot.png"); break;
+            case RA::Screenshot: pendingScreenshot_ = true; break;
             case RA::ToggleAllUI: toggleAllUI(); break;
             case RA::ToggleZoneLights: toggleZoneLights(); break;
             case RA::CycleObjectLights: cycleObjectLights(); break;
@@ -5731,6 +5735,12 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         }
     }
 
+    // Take deferred screenshot after all rendering, before swap
+    if (pendingScreenshot_) {
+        pendingScreenshot_ = false;
+        saveScreenshot("screenshot.png");
+    }
+
     driver_->endScene();
     if (frameTimingEnabled_) frameTimings_.endScene = measureSection();
 
@@ -5765,6 +5775,51 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
     if (!driver_) {
         return false;
     }
+
+#ifdef EQT_HAS_DRM
+    // DRM/EGL: Irrlicht's createScreenShot() reads GL_FRONT which doesn't exist
+    // in EGL (only GLX has separate front/back read targets).  Read GL_BACK instead.
+    if (config_.useDRM) {
+        irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+        uint32_t w = screenSize.Width;
+        uint32_t h = screenSize.Height;
+
+        std::vector<uint8_t> pixels(w * h * 4);
+        glReadBuffer(GL_BACK);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+        // glReadPixels returns bottom-to-top; flip to top-to-bottom
+        size_t rowBytes = w * 4;
+        std::vector<uint8_t> rowBuf(rowBytes);
+        for (uint32_t y = 0; y < h / 2; ++y) {
+            uint8_t* top = pixels.data() + y * rowBytes;
+            uint8_t* bot = pixels.data() + (h - 1 - y) * rowBytes;
+            std::memcpy(rowBuf.data(), top, rowBytes);
+            std::memcpy(top, bot, rowBytes);
+            std::memcpy(bot, rowBuf.data(), rowBytes);
+        }
+
+        // Convert RGBA to ARGB for Irrlicht (swap R and B)
+        for (size_t i = 0; i < pixels.size(); i += 4) {
+            std::swap(pixels[i], pixels[i + 2]);  // R <-> B
+        }
+
+        irr::video::IImage* image = driver_->createImageFromData(
+            irr::video::ECF_A8R8G8B8,
+            irr::core::dimension2d<irr::u32>(w, h),
+            pixels.data(), false);
+
+        if (image) {
+            bool result = driver_->writeImageToFile(image, filename.c_str());
+            image->drop();
+            if (result) {
+                LOG_INFO(MOD_GRAPHICS, "Screenshot saved: {}", filename);
+            }
+            return result;
+        }
+        return false;
+    }
+#endif
 
     irr::video::IImage* screenshot = driver_->createScreenShot();
     if (screenshot) {

@@ -554,8 +554,10 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
         return nullptr;
     }
 
-    // Use compressed size for memory budget tracking
-    size_t textureSize = compressed.dataSize;
+    // Track uncompressed size for memory budget.  On Lima/Mesa the driver
+    // software-decodes S3TC and stores textures uncompressed in GPU memory,
+    // so the budget must reflect the real GPU footprint.
+    size_t textureSize = static_cast<size_t>(compressed.width) * compressed.height * 4;
 
     // Evict textures if needed to make room
     if (!evictUntilAvailable(textureSize)) {
@@ -563,27 +565,25 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
         return nullptr;
     }
 
-    // Create 1x1 dummy Irrlicht texture to get a managed ITexture* with a GL name
-    irr::video::IImage* dummyImage = driver_->createImageFromData(
+    // Create a correctly-sized Irrlicht texture so its internal state (dimensions,
+    // format tracking) matches the compressed data we'll upload.  Using a zeroed
+    // buffer is a temporary allocation that is freed after addTexture.
+    size_t dummyBytes = static_cast<size_t>(compressed.width) * compressed.height * 4;
+    std::vector<uint8_t> dummyPixels(dummyBytes, 0);
+
+    irr::video::IImage* image = driver_->createImageFromData(
         irr::video::ECF_A8R8G8B8,
-        irr::core::dimension2d<irr::u32>(1, 1),
-        nullptr, false);
+        irr::core::dimension2d<irr::u32>(compressed.width, compressed.height),
+        dummyPixels.data(), false);
 
-    // Fallback: create a tiny pixel
-    uint32_t dummyPixel = 0xFF000000;
-    if (!dummyImage) {
-        dummyImage = driver_->createImageFromData(
-            irr::video::ECF_A8R8G8B8,
-            irr::core::dimension2d<irr::u32>(1, 1),
-            &dummyPixel, false);
-    }
-
-    if (!dummyImage) {
+    if (!image) {
         return nullptr;
     }
 
-    irr::video::ITexture* texture = driver_->addTexture(name.c_str(), dummyImage);
-    dummyImage->drop();
+    irr::video::ITexture* texture = driver_->addTexture(name.c_str(), image);
+    image->drop();
+    // Release the temporary dummy buffer immediately
+    { std::vector<uint8_t>().swap(dummyPixels); }
 
     if (!texture) {
         return nullptr;
@@ -610,6 +610,9 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
         driver_->removeTexture(texture);
         return nullptr;
     }
+
+    // Drain any stale GL errors left by Irrlicht's addTexture
+    while (glGetError() != GL_NO_ERROR) {}
 
     // Upload compressed data directly to the GPU
     glBindTexture(GL_TEXTURE_2D, glName);
@@ -638,15 +641,11 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // Calculate uncompressed equivalent for savings logging
-    size_t uncompressedSize = static_cast<size_t>(compressed.width) * compressed.height * 4;
-    float savings = (uncompressedSize > 0) ? static_cast<float>(uncompressedSize) / textureSize : 1.0f;
-
-    LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: '{}' {}x{} {} ({} bytes, {:.1f}x savings)",
+    LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: '{}' {}x{} {} (DXT {} bytes, GPU {} bytes)",
         name, compressed.width, compressed.height,
         (compressed.glFormat == 0x83F0 ? "DXT1" :
          compressed.glFormat == 0x83F2 ? "DXT3" : "DXT5"),
-        textureSize, savings);
+        compressed.dataSize, textureSize);
 
     // Add to cache
     lruOrder_.push_back(name);

@@ -53,7 +53,7 @@ struct ConstrainedRendererConfig {
 
     // GPU feature flags (queried/enabled per preset)
     bool enableMipmaps = false;              // Generate mipmaps for textures
-    bool enableCompressedTextures = false;   // Upload DXT compressed (future - not yet implemented)
+    bool enableCompressedTextures = false;   // Upload DXT compressed via glCompressedTexImage2D
     bool enableNPOT = false;                 // Allow non-power-of-two textures
     bool enableStencilBuffer = false;        // Request stencil buffer from driver
     bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
