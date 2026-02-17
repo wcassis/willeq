@@ -2,12 +2,12 @@
 # Cross-compile willeq for ARM (armhf) targeting Orange Pi One / Debian Jessie
 #
 # Usage:
-#   ./scripts/build-arm.sh                # Build with graphics + audio (default)
-#   ./scripts/build-arm.sh --headless     # Build without graphics
-#   ./scripts/build-arm.sh --no-audio     # Build without audio
-#   ./scripts/build-arm.sh --headless --no-audio  # Minimal build
+#   ./scripts/build-arm-jessie.sh                # Build with graphics + audio (default)
+#   ./scripts/build-arm-jessie.sh --headless     # Build without graphics
+#   ./scripts/build-arm-jessie.sh --no-audio     # Build without audio
+#   ./scripts/build-arm-jessie.sh --headless --no-audio  # Minimal build
 #
-# Output: build-arm/bin/willeq
+# Output: build-arm-jessie/bin/willeq
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ for arg in "$@"; do
             echo "  --headless    Build without graphics (Irrlicht)"
             echo "  --no-audio    Build without audio (OpenAL/FluidSynth)"
             echo ""
-            echo "Output: build-arm/bin/willeq"
+            echo "Output: build-arm-jessie/bin/willeq"
             exit 0
             ;;
         *)
@@ -61,7 +61,7 @@ docker build \
     "$PROJECT_DIR"
 
 # Create output directories
-OUTPUT_DIR="$PROJECT_DIR/build-arm"
+OUTPUT_DIR="$PROJECT_DIR/build-arm-jessie"
 mkdir -p "$OUTPUT_DIR/bin" "$OUTPUT_DIR/lib" "$OUTPUT_DIR/xorg"
 
 # Run the build inside Docker

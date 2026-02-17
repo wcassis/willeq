@@ -2,7 +2,7 @@
 # Produces a willeq binary for Orange Pi One (Allwinner H3, Cortex-A7)
 #
 # Build: docker build -f docker/Dockerfile.arm-cross -t willeq-arm-cross .
-# Run:   docker run --rm -v $(pwd):/src -v $(pwd)/build-arm/bin:/output willeq-arm-cross
+# Run:   docker run --rm -v $(pwd):/src -v $(pwd)/build-arm-jessie/bin:/output willeq-arm-cross
 #
 # Build options (passed as --build-arg):
 #   ENABLE_GRAPHICS=ON|OFF   (default: ON)

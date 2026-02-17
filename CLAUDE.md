@@ -105,7 +105,7 @@ bash scripts/build-arm-noble.sh
 DISPLAY=:0 ./willeq -c config.json --opengl --constrained orangepi -r 800 600
 ```
 
-**Legacy platform** (Debian Jessie, kernel 3.4): Used the proprietary Mali blob driver with no desktop OpenGL support, requiring gl4es (OpenGL-to-GLES translation). Build files: `docker/Dockerfile.arm-cross` + `scripts/build-arm.sh`. This is superseded by the Noble build.
+**Legacy platform** (Debian Jessie, kernel 3.4): Used the proprietary Mali blob driver with no desktop OpenGL support, requiring gl4es (OpenGL-to-GLES translation). Build files: `docker/Dockerfile.arm-cross` + `scripts/build-arm-jessie.sh`. This is superseded by the Noble build.
 
 **DRM input handling**: The DRM device (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev (`/dev/input/event*`). VT keyboard processing is disabled via `KDSKBMODE(K_OFF)` to prevent the console layer from intercepting Ctrl+key combinations.
 
