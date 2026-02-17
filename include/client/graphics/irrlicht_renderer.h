@@ -867,6 +867,7 @@ private:
     void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
+    void refreshShaderLightColors();  // Push updated fire-flicker colors to GLSL shader
 
     // Loading screen
     void drawLoadingScreen(float progress, const std::wstring& stageText);
@@ -956,6 +957,7 @@ private:
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
     bool showLightDebugMarkers_ = false;  // Show debug markers for active lights
     std::vector<std::string> previousActiveLights_;  // Track active lights to detect changes
+    std::vector<irr::scene::ILightSceneNode*> activeLightNodes_;  // Currently enabled lights (max 8)
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
     irr::scene::ILightSceneNode* sunLight_ = nullptr;  // Directional sun light
     float ambientMultiplier_ = 1.0f;  // User-adjustable ambient light multiplier (Page Up/Down)
@@ -976,6 +978,7 @@ private:
     static constexpr uint32_t kTier2Interval = 3;   // ~20Hz at 60fps
     static constexpr uint32_t kTier3Interval = 6;   // ~10Hz at 60fps
     float tier3DeltaAccum_ = 0.0f;  // Accumulated delta for Tier 3 simulation
+    float tier2DeltaAccum_ = 0.0f;  // Accumulated delta for fire flicker phase
 
     // Adaptive budget (constrained mode)
     float frameBudgetMs_ = 33.3f;       // Target budget (default 30fps)
@@ -1198,6 +1201,7 @@ private:
         int64_t spellVfxUpdate = 0;
         int64_t animatedTextures = 0;
         int64_t vertexAnimations = 0;
+        int64_t fireFlicker = 0;
         int64_t objectVisibility = 0;
         int64_t pvsVisibility = 0;
         int64_t objectLights = 0;

@@ -1730,6 +1730,14 @@ void IrrlichtRenderer::updateObjectLights() {
         }
     }
 
+    // Store active nodes for lightweight shader color refresh
+    activeLightNodes_.clear();
+    for (size_t i = 0; i < enabledCount; ++i) {
+        if (candidates[i].node) {
+            activeLightNodes_.push_back(candidates[i].node);
+        }
+    }
+
     // Feed point light data to GLSL shader (bypasses Irrlicht's dynamic light list)
     if (zoneShader_ && zoneShader_->isAvailable()) {
         zoneShader_->clearPointLights();
@@ -2071,8 +2079,6 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     }
 
     // Fire effects (light flickering)
-    LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] applyEnvironmentalDisplaySettings: fireEffects={} (was {})",
-             settings.fireEffects, fireEffectsEnabled_);
     fireEffectsEnabled_ = settings.fireEffects;
 
     // --- Boids Manager: lazy create if toggled on ---
@@ -4843,31 +4849,21 @@ void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
         }
     }
 
-    // Periodic debug logging for fire flicker
-    static uint32_t flickerUpdateLog = 0;
-    if (++flickerUpdateLog % 120 == 0) {
-        int flickered = 0;
-        float sampleR = 0, sampleG = 0, sampleB = 0;
-        for (const auto& ol : objectLights_) {
-            if (ol.isFireSource && ol.node && ol.node->isVisible()) {
-                flickered++;
-                if (sampleR == 0) {
-                    const auto& c = ol.node->getLightData().DiffuseColor;
-                    sampleR = c.r; sampleG = c.g; sampleB = c.b;
-                }
-            }
-        }
-        if (flickered > 0) {
-            LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] updateObjectLightColors: dt={:.4f} weatherMod={:.2f} flickered={} sampleColor=({:.3f},{:.3f},{:.3f})",
-                     deltaTime, weatherMod, flickered, sampleR, sampleG, sampleB);
-        }
-    }
+}
 
-    static float lastLoggedMod = -1.0f;
-    if (std::abs(weatherMod - lastLoggedMod) > 0.01f && weatherMod < 0.99f) {
-        LOG_DEBUG(MOD_GRAPHICS, "Updated {} object lights: weatherMod={:.2f}",
-                  objectLights_.size(), weatherMod);
-        lastLoggedMod = weatherMod;
+void IrrlichtRenderer::refreshShaderLightColors() {
+    if (!zoneShader_ || !zoneShader_->isAvailable() || activeLightNodes_.empty()) return;
+
+    for (int i = 0; i < static_cast<int>(activeLightNodes_.size()); ++i) {
+        auto* node = activeLightNodes_[i];
+        if (!node) continue;
+        const irr::video::SLight& ld = node->getLightData();
+        if (ld.Type != irr::video::ELT_POINT) continue;
+        irr::core::vector3df pos = node->getAbsolutePosition();
+        zoneShader_->setPointLight(i,
+            pos.X, pos.Y, pos.Z,
+            ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b,
+            ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
     }
 }
 
@@ -5074,6 +5070,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Tiered update: increment frame counter and accumulate delta for Tier 3
     frameNumber_++;
     tier3DeltaAccum_ += deltaTime;
+    tier2DeltaAccum_ += deltaTime;
     runTier2_ = (frameNumber_ % kTier2Interval == 0);
     runTier3_ = (frameNumber_ % kTier3Interval == 0);
 
@@ -5118,6 +5115,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.spellVfxUpdate += frameTimings_.spellVfxUpdate;
         frameTimingsAccum_.animatedTextures += frameTimings_.animatedTextures;
         frameTimingsAccum_.vertexAnimations += frameTimings_.vertexAnimations;
+        frameTimingsAccum_.fireFlicker += frameTimings_.fireFlicker;
         frameTimingsAccum_.objectVisibility += frameTimings_.objectVisibility;
         frameTimingsAccum_.pvsVisibility += frameTimings_.pvsVisibility;
         frameTimingsAccum_.objectLights += frameTimings_.objectLights;
@@ -5636,66 +5634,6 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     updateVertexAnimations(deltaTime * 1000.0f);
     // Light animations (flickering torches, etc.)
     updateLightAnimations(deltaTime * 1000.0f);
-    // Fire light flickering (every frame for smooth effect)
-    {
-        bool optionsOpen = windowManager_ && windowManager_->isOptionsWindowOpen();
-        static uint32_t flickerLogCounter = 0;
-        static bool lastOptionsOpen = false;
-
-        // Log on every options window state change
-        if (optionsOpen != lastOptionsOpen) {
-            // Count fire sources
-            int fireCount = 0;
-            for (const auto& ol : objectLights_) {
-                if (ol.isFireSource) fireCount++;
-            }
-            LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] Options window {} -> {} | fireEffectsEnabled_={} | objectLights_={} | fireSources={} | deltaTime={:.4f}",
-                     lastOptionsOpen ? "OPEN" : "CLOSED",
-                     optionsOpen ? "OPEN" : "CLOSED",
-                     fireEffectsEnabled_, objectLights_.size(), fireCount, deltaTime);
-            lastOptionsOpen = optionsOpen;
-        }
-
-        // Log fire flicker state every 120 frames (~2sec)
-        if (++flickerLogCounter % 120 == 0) {
-            int fireCount = 0;
-            int visibleFireCount = 0;
-            float samplePhase = 0, sampleFlicker = 0;
-            for (const auto& ol : objectLights_) {
-                if (ol.isFireSource) {
-                    fireCount++;
-                    if (ol.node && ol.node->isVisible()) {
-                        visibleFireCount++;
-                        if (samplePhase == 0) {
-                            samplePhase = ol.flickerPhase;
-                            sampleFlicker = 0.85f + 0.10f * std::sin(ol.flickerPhase * 6.7f)
-                                                  + 0.05f * std::sin(ol.flickerPhase * 13.1f);
-                        }
-                    }
-                }
-            }
-            LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] frame={} fireEnabled={} optionsOpen={} fires={}/{} visible={} phase={:.2f} flicker={:.3f} dt={:.4f}",
-                     frameNumber_, fireEffectsEnabled_, optionsOpen,
-                     fireCount, (int)objectLights_.size(), visibleFireCount,
-                     samplePhase, sampleFlicker, deltaTime);
-        }
-
-        if (fireEffectsEnabled_) {
-            updateObjectLightColors(deltaTime);
-            // Invalidate the light cache so updateObjectLights() does a full
-            // re-registration next frame. Without this, Irrlicht doesn't pick up
-            // SLight.DiffuseColor changes on Lima/Mesa GL 2.1 because the light
-            // nodes aren't re-registered when the camera hasn't moved.
-            lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
-        } else {
-            // Log why we're skipping (once)
-            static bool loggedSkip = false;
-            if (!loggedSkip) {
-                LOG_WARN(MOD_GRAPHICS, "[FIRE-DBG] Skipping fire flicker: fireEffectsEnabled_=false");
-                loggedSkip = true;
-            }
-        }
-    }
     if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
 
     // Tier 2: Detail + Tree
@@ -5721,6 +5659,15 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         }
     }
     if (frameTimingEnabled_) frameTimings_.tier2Update = measureSection();
+
+    // Fire light flickering (Tier 2 frequency)
+    if (runTier2_ && fireEffectsEnabled_ && !objectLights_.empty()) {
+        float accDelta = tier2DeltaAccum_;
+        tier2DeltaAccum_ = 0.0f;
+        updateObjectLightColors(accDelta);
+        refreshShaderLightColors();
+    }
+    if (frameTimingEnabled_) frameTimings_.fireFlicker = measureSection();
 
     // Tier 3: Environmental simulation
     {
@@ -6399,6 +6346,7 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.animatedTextures), pct(frameTimingsAccum_.animatedTextures));
     LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.vertexAnimations), pct(frameTimingsAccum_.vertexAnimations));
+    LOG_INFO(MOD_GRAPHICS, "  Fire Flicker:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.fireFlicker), pct(frameTimingsAccum_.fireFlicker));
     LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectVisibility), pct(frameTimingsAccum_.objectVisibility));
     LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
     LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
