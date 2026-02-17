@@ -14,6 +14,7 @@
     "ambientCreatures" : false,
     "animatedTrees" : true,
     "atmosphericParticles" : false,
+    "fireEffects" : true,
     "density" : 0.5,
     "quality" : "off",
     "reactiveFoliage" : false,

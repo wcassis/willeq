@@ -211,7 +211,10 @@ def generate_particle_atlas(tile_size=16):
     # Tile 12: Rain streak
     draw_rain_streak(img, 0, 3, tile_size, (200, 220, 255, 255))
 
-    # Tiles 13-15: Reserved (leave transparent)
+    # Tile 13: Smoke wisp - soft gray circle, low opacity
+    draw_soft_circle(img, 1, 3, tile_size, 0.95, (180, 180, 180, 80))
+
+    # Tiles 14-15: Reserved (leave transparent)
 
     return img
 

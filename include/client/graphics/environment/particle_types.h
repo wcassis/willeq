@@ -20,6 +20,7 @@ enum class ParticleType : uint8_t {
     Snowflake,      // Snow particles
     Ember,          // Fire embers/sparks
     ShorelineWave,  // Foam and spray at water edges
+    Smoke,          // Fire smoke wisps
 
     Count
 };
@@ -116,8 +117,9 @@ namespace ParticleAtlas {
     constexpr uint8_t RippleRing = 10;  // Water ripple ring (Phase 7)
     constexpr uint8_t SnowPatch = 11;   // Snow ground patch (Phase 9)
     constexpr uint8_t RainStreak = 12;  // Vertical rain streak
+    constexpr uint8_t SmokeWisp = 13;  // Fire smoke wisp
 
-    constexpr uint8_t TileCount = 13;
+    constexpr uint8_t TileCount = 14;
     constexpr uint8_t AtlasColumns = 4; // 4x4 atlas
     constexpr uint8_t AtlasRows = 4;
 }

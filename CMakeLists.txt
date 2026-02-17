@@ -395,6 +395,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/rain_emitter.cpp
         src/client/graphics/environment/emitters/rain_splash_emitter.cpp
         src/client/graphics/environment/emitters/snow_emitter.cpp
+        src/client/graphics/environment/emitters/ember_emitter.cpp
+        src/client/graphics/environment/emitters/smoke_emitter.cpp
         # Water effects
         src/client/graphics/environment/water_ripple_manager.cpp
         # Storm cloud layer

@@ -127,6 +127,9 @@ struct ObjectLight {
     irr::core::vector3df position;
     std::string objectName;  // For debugging
     irr::video::SColorf originalColor;  // Original color for weather modification
+    bool isFireSource = false;    // True for torches, fires, braziers, flames, candles
+    float flickerPhase = 0.0f;   // Randomized phase for fire flickering
+    float flickerSpeed = 1.0f;   // Randomized speed multiplier for flickering
 };
 
 // Player position update for server synchronization
@@ -863,7 +866,7 @@ private:
     void createObjectMeshes();
     void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
-    void updateObjectLightColors();  // Update object light colors based on weather
+    void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
 
     // Loading screen
     void drawLoadingScreen(float progress, const std::wstring& stageText);
@@ -1001,6 +1004,7 @@ private:
     VisionType baseVision_ = VisionType::Normal;    // Base vision from race
     VisionType currentVision_ = VisionType::Normal; // Current vision (may be upgraded by items/buffs)
     int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
+    bool fireEffectsEnabled_ = true;  // Fire light flickering and ember/smoke particles
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
     // Player position (for Follow and FirstPerson modes)

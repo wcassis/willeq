@@ -41,6 +41,8 @@ bool EnvironmentEffectsConfig::load(const std::string& path) {
     loadEmitterSettings(root, "mist", mist_);
     loadEmitterSettings(root, "sandDust", sandDust_);
     loadEmitterSettings(root, "shorelineWaves", shorelineWaves_);
+    loadEmitterSettings(root, "embers", embers_);
+    loadEmitterSettings(root, "smoke", smoke_);
     loadDetailSettings(root);
     loadBoidsSettings(root);
     loadTumbleweedSettings(root);
@@ -277,6 +279,48 @@ void EnvironmentEffectsConfig::setDefaults() {
     shorelineWaves_.colorG = 0.98f;
     shorelineWaves_.colorB = 1.0f;
     shorelineWaves_.colorA = 0.8f;
+
+    // Embers - fire sparks rising from fire sources
+    embers_ = EmitterSettings{};
+    embers_.maxParticles = 40;
+    embers_.spawnRate = 8.0f;
+    embers_.spawnRadiusMin = 0.0f;
+    embers_.spawnRadiusMax = 1.0f;
+    embers_.spawnHeightMin = 0.0f;
+    embers_.spawnHeightMax = 0.5f;
+    embers_.sizeMin = 0.1f;
+    embers_.sizeMax = 0.25f;
+    embers_.lifetimeMin = 1.0f;
+    embers_.lifetimeMax = 2.5f;
+    embers_.driftSpeed = 0.3f;
+    embers_.windFactor = 1.0f;
+    embers_.alphaIndoor = 1.0f;
+    embers_.alphaOutdoor = 1.0f;
+    embers_.colorR = 1.0f;
+    embers_.colorG = 0.6f;
+    embers_.colorB = 0.1f;
+    embers_.colorA = 1.0f;
+
+    // Smoke - wisps rising from fire sources
+    smoke_ = EmitterSettings{};
+    smoke_.maxParticles = 20;
+    smoke_.spawnRate = 3.0f;
+    smoke_.spawnRadiusMin = 0.0f;
+    smoke_.spawnRadiusMax = 0.5f;
+    smoke_.spawnHeightMin = 0.5f;
+    smoke_.spawnHeightMax = 1.5f;
+    smoke_.sizeMin = 0.8f;
+    smoke_.sizeMax = 1.5f;
+    smoke_.lifetimeMin = 3.0f;
+    smoke_.lifetimeMax = 5.0f;
+    smoke_.driftSpeed = 0.2f;
+    smoke_.windFactor = 1.5f;
+    smoke_.alphaIndoor = 0.25f;
+    smoke_.alphaOutdoor = 0.2f;
+    smoke_.colorR = 0.7f;
+    smoke_.colorG = 0.7f;
+    smoke_.colorB = 0.7f;
+    smoke_.colorA = 0.2f;
 
     // Detail objects
     detailObjects_ = DetailSettings{};

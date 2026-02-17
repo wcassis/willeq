@@ -66,6 +66,7 @@ static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
             settings.rollingObjects = env.get("rollingObjects", true).asBool();
             settings.skyEnabled = env.get("skyEnabled", true).asBool();
             settings.animatedTrees = env.get("animatedTrees", true).asBool();
+            settings.fireEffects = env.get("fireEffects", true).asBool();
         }
         if (root.isMember("detailObjects")) {
             const Json::Value& detail = root["detailObjects"];
@@ -2014,6 +2015,16 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
             if (detailManager_ && detailManager_->hasSurfaceMap()) {
                 particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
             }
+            // Collect fire source positions for ember/smoke emitters
+            std::vector<glm::vec3> fireSources;
+            for (const auto& objLight : objectLights_) {
+                if (objLight.isFireSource) {
+                    fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+                }
+            }
+            if (!fireSources.empty()) {
+                particleManager_->setFireSources(fireSources);
+            }
         }
         // Also lazily create weather effects (rain/snow/lightning) now that particles are available
         if (!weatherEffects_) {
@@ -2052,10 +2063,17 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         particleManager_->setQuality(quality);
         particleManager_->setEnabled(settings.atmosphericParticles);
         particleManager_->setDensity(settings.environmentDensity);
+        particleManager_->setTypeEnabled(Environment::ParticleType::Ember, settings.fireEffects);
+        particleManager_->setTypeEnabled(Environment::ParticleType::Smoke, settings.fireEffects);
 
-        LOG_DEBUG(MOD_GRAPHICS, "Applied particle settings: quality={}, enabled={}, density={}",
-                 static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity);
+        LOG_DEBUG(MOD_GRAPHICS, "Applied particle settings: quality={}, enabled={}, density={}, fire={}",
+                 static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity, settings.fireEffects);
     }
+
+    // Fire effects (light flickering)
+    LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] applyEnvironmentalDisplaySettings: fireEffects={} (was {})",
+             settings.fireEffects, fireEffectsEnabled_);
+    fireEffectsEnabled_ = settings.fireEffects;
 
     // --- Boids Manager: lazy create if toggled on ---
     if (settings.ambientCreatures && !boidsManager_ && smgr_ && driver_) {
@@ -2471,6 +2489,20 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     if (particleManager_) {
         Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(zoneName);
         particleManager_->onZoneEnter(zoneName, biome);
+
+        // Collect fire source positions for ember/smoke emitters
+        std::vector<glm::vec3> fireSources;
+        for (const auto& objLight : objectLights_) {
+            if (objLight.isFireSource) {
+                // Convert Irrlicht (x,y,z) back to EQ (x,z,y) for particle system
+                fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+            }
+        }
+        if (!fireSources.empty()) {
+            particleManager_->setFireSources(fireSources);
+            LOG_INFO(MOD_GRAPHICS, "Set {} fire sources for ember/smoke particles", fireSources.size());
+        }
+
         LOG_INFO(MOD_GRAPHICS, "Environmental particles enabled for zone '{}' (biome: {})",
                  zoneName, static_cast<int>(biome));
     }
@@ -3955,6 +3987,23 @@ void IrrlichtRenderer::createObjectMeshes() {
         std::string upperName = objName;
         std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
 
+        // Also check texture names for fire detection (catches objects with non-obvious names)
+        bool hasFireTexture = false;
+        bool hasLanternTexture = false;
+        for (const auto& texName : objInstance.geometry->textureNames) {
+            std::string upperTex = texName;
+            std::transform(upperTex.begin(), upperTex.end(), upperTex.begin(), ::toupper);
+            if (upperTex.find("FIRE") != std::string::npos ||
+                upperTex.find("COAL") != std::string::npos ||
+                upperTex.find("TORCH") != std::string::npos) {
+                hasFireTexture = true;
+            }
+            if (upperTex.find("LANTERN") != std::string::npos ||
+                upperTex.find("LANT") != std::string::npos) {
+                hasLanternTexture = true;
+            }
+        }
+
         bool isLightSource = false;
         irr::video::SColorf lightColor(1.0f, 0.6f, 0.2f, 1.0f);  // Default: warm orange
         float lightRadius = 100.0f;
@@ -3962,15 +4011,18 @@ void IrrlichtRenderer::createObjectMeshes() {
         if (upperName.find("TORCH") != std::string::npos ||
             upperName.find("FIRE") != std::string::npos ||
             upperName.find("BRAZIER") != std::string::npos ||
-            upperName.find("FLAME") != std::string::npos) {
-            // Torches/fire - orange-red
+            upperName.find("FLAME") != std::string::npos ||
+            hasFireTexture) {
+            // Torches/fire/campfires/braziers - orange-red
             isLightSource = true;
             lightColor = irr::video::SColorf(1.0f, 0.5f, 0.15f, 1.0f);
             lightRadius = 120.0f;
         } else if (upperName.find("LANTERN") != std::string::npos ||
+                   upperName.find("LANT") != std::string::npos ||
                    upperName.find("LAMP") != std::string::npos ||
-                   upperName.find("LIGHT") != std::string::npos) {
-            // Lanterns/lamps/lightpoles - warm yellow, reduced intensity (1/4 strength)
+                   upperName.find("LIGHT") != std::string::npos ||
+                   hasLanternTexture) {
+            // Lanterns/lamps/lightpoles (incl. HANGLANT) - warm yellow, reduced intensity (1/4 strength)
             isLightSource = true;
             lightColor = irr::video::SColorf(0.25f, 0.21f, 0.15f, 1.0f);
             lightRadius = 100.0f;
@@ -4018,6 +4070,21 @@ void IrrlichtRenderer::createObjectMeshes() {
                 objLight.position = lightPos;
                 objLight.objectName = objName;
                 objLight.originalColor = lightColor;  // Store for weather modification
+
+                // Mark fire sources for flickering effect
+                // Includes: torches, fires, campfires (BFIRE), braziers (NERBRAZIER),
+                // flames, candles, and objects with fire/coal/torch textures
+                if (upperName.find("TORCH") != std::string::npos ||
+                    upperName.find("FIRE") != std::string::npos ||
+                    upperName.find("BRAZIER") != std::string::npos ||
+                    upperName.find("FLAME") != std::string::npos ||
+                    upperName.find("CANDLE") != std::string::npos ||
+                    hasFireTexture) {
+                    objLight.isFireSource = true;
+                    objLight.flickerPhase = static_cast<float>(rand()) / RAND_MAX * 6.2832f;
+                    objLight.flickerSpeed = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+                }
+
                 objectLights_.push_back(objLight);
             }
         }
@@ -4742,7 +4809,7 @@ void IrrlichtRenderer::updateLightAnimations(float deltaMs) {
     }
 }
 
-void IrrlichtRenderer::updateObjectLightColors() {
+void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
     if (objectLights_.empty()) {
         return;
     }
@@ -4761,8 +4828,38 @@ void IrrlichtRenderer::updateObjectLightColors() {
             float g = objLight.originalColor.g * weatherMod;
             float b = objLight.originalColor.b * weatherMod;
 
+            // Fire flickering: modulate intensity with layered sine waves
+            if (objLight.isFireSource && fireEffectsEnabled_) {
+                objLight.flickerPhase += objLight.flickerSpeed * deltaTime;
+                float flicker = 0.85f + 0.10f * std::sin(objLight.flickerPhase * 6.7f)
+                                      + 0.05f * std::sin(objLight.flickerPhase * 13.1f);
+                r *= flicker;
+                g *= flicker;
+                b *= flicker;
+            }
+
             irr::video::SLight& lightData = objLight.node->getLightData();
             lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
+        }
+    }
+
+    // Periodic debug logging for fire flicker
+    static uint32_t flickerUpdateLog = 0;
+    if (++flickerUpdateLog % 120 == 0) {
+        int flickered = 0;
+        float sampleR = 0, sampleG = 0, sampleB = 0;
+        for (const auto& ol : objectLights_) {
+            if (ol.isFireSource && ol.node && ol.node->isVisible()) {
+                flickered++;
+                if (sampleR == 0) {
+                    const auto& c = ol.node->getLightData().DiffuseColor;
+                    sampleR = c.r; sampleG = c.g; sampleB = c.b;
+                }
+            }
+        }
+        if (flickered > 0) {
+            LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] updateObjectLightColors: dt={:.4f} weatherMod={:.2f} flickered={} sampleColor=({:.3f},{:.3f},{:.3f})",
+                     deltaTime, weatherMod, flickered, sampleR, sampleG, sampleB);
         }
     }
 
@@ -5539,6 +5636,66 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     updateVertexAnimations(deltaTime * 1000.0f);
     // Light animations (flickering torches, etc.)
     updateLightAnimations(deltaTime * 1000.0f);
+    // Fire light flickering (every frame for smooth effect)
+    {
+        bool optionsOpen = windowManager_ && windowManager_->isOptionsWindowOpen();
+        static uint32_t flickerLogCounter = 0;
+        static bool lastOptionsOpen = false;
+
+        // Log on every options window state change
+        if (optionsOpen != lastOptionsOpen) {
+            // Count fire sources
+            int fireCount = 0;
+            for (const auto& ol : objectLights_) {
+                if (ol.isFireSource) fireCount++;
+            }
+            LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] Options window {} -> {} | fireEffectsEnabled_={} | objectLights_={} | fireSources={} | deltaTime={:.4f}",
+                     lastOptionsOpen ? "OPEN" : "CLOSED",
+                     optionsOpen ? "OPEN" : "CLOSED",
+                     fireEffectsEnabled_, objectLights_.size(), fireCount, deltaTime);
+            lastOptionsOpen = optionsOpen;
+        }
+
+        // Log fire flicker state every 120 frames (~2sec)
+        if (++flickerLogCounter % 120 == 0) {
+            int fireCount = 0;
+            int visibleFireCount = 0;
+            float samplePhase = 0, sampleFlicker = 0;
+            for (const auto& ol : objectLights_) {
+                if (ol.isFireSource) {
+                    fireCount++;
+                    if (ol.node && ol.node->isVisible()) {
+                        visibleFireCount++;
+                        if (samplePhase == 0) {
+                            samplePhase = ol.flickerPhase;
+                            sampleFlicker = 0.85f + 0.10f * std::sin(ol.flickerPhase * 6.7f)
+                                                  + 0.05f * std::sin(ol.flickerPhase * 13.1f);
+                        }
+                    }
+                }
+            }
+            LOG_INFO(MOD_GRAPHICS, "[FIRE-DBG] frame={} fireEnabled={} optionsOpen={} fires={}/{} visible={} phase={:.2f} flicker={:.3f} dt={:.4f}",
+                     frameNumber_, fireEffectsEnabled_, optionsOpen,
+                     fireCount, (int)objectLights_.size(), visibleFireCount,
+                     samplePhase, sampleFlicker, deltaTime);
+        }
+
+        if (fireEffectsEnabled_) {
+            updateObjectLightColors(deltaTime);
+            // Invalidate the light cache so updateObjectLights() does a full
+            // re-registration next frame. Without this, Irrlicht doesn't pick up
+            // SLight.DiffuseColor changes on Lima/Mesa GL 2.1 because the light
+            // nodes aren't re-registered when the camera hasn't moved.
+            lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+        } else {
+            // Log why we're skipping (once)
+            static bool loggedSkip = false;
+            if (!loggedSkip) {
+                LOG_WARN(MOD_GRAPHICS, "[FIRE-DBG] Skipping fire flicker: fireEffectsEnabled_=false");
+                loggedSkip = true;
+            }
+        }
+    }
     if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
 
     // Tier 2: Detail + Tree

@@ -7,6 +7,8 @@
 #include "client/graphics/environment/emitters/mist_emitter.h"
 #include "client/graphics/environment/emitters/sand_dust_emitter.h"
 #include "client/graphics/environment/emitters/shoreline_wave_emitter.h"
+#include "client/graphics/environment/emitters/ember_emitter.h"
+#include "client/graphics/environment/emitters/smoke_emitter.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
@@ -308,6 +310,17 @@ void ParticleManager::unregisterExternalEmitter(ParticleEmitter* emitter) {
     }
 }
 
+void ParticleManager::setFireSources(const std::vector<glm::vec3>& positions) {
+    for (auto& emitter : emitters_) {
+        if (emitter->getType() == ParticleType::Ember) {
+            static_cast<EmberEmitter*>(emitter.get())->setFireSources(positions);
+        } else if (emitter->getType() == ParticleType::Smoke) {
+            static_cast<SmokeEmitter*>(emitter.get())->setFireSources(positions);
+        }
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Set {} fire sources for ember/smoke emitters", positions.size());
+}
+
 void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Setting up emitters for biome {}",
               static_cast<int>(biome));
@@ -330,12 +343,10 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
 
     // Set up emitters based on biome
     // Helper to create and configure shoreline wave emitter
+    // Shoreline wave emitter disabled - crashes on ARM after surface map lookup
+    // even when disabled in config (the emitter is still created and updated)
     auto addShorelineEmitter = [&]() {
-        auto emitter = std::make_unique<ShorelineWaveEmitter>();
-        if (surfaceMap_) {
-            emitter->setSurfaceMap(surfaceMap_);
-        }
-        addEmitter(std::move(emitter));
+        // Hard-coded disable: do not create ShorelineWaveEmitter
     };
 
     switch (biome) {
@@ -416,6 +427,10 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
             addEmitter(std::make_unique<DustMoteEmitter>());
             break;
     }
+
+    // Fire emitters (embers + smoke) - added to all biomes, activated when fire sources are set
+    addEmitter(std::make_unique<EmberEmitter>());
+    addEmitter(std::make_unique<SmokeEmitter>());
 
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created {} emitters", emitters_.size());
 }

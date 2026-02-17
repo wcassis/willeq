@@ -124,6 +124,8 @@ public:
     const EmitterSettings& getMist() const { return mist_; }
     const EmitterSettings& getSandDust() const { return sandDust_; }
     const EmitterSettings& getShorelineWaves() const { return shorelineWaves_; }
+    const EmitterSettings& getEmbers() const { return embers_; }
+    const EmitterSettings& getSmoke() const { return smoke_; }
     const DetailSettings& getDetailObjects() const { return detailObjects_; }
     const BoidsSettings& getBoids() const { return boids_; }
     const TumbleweedSettings& getTumbleweeds() const { return tumbleweeds_; }
@@ -162,6 +164,8 @@ private:
     EmitterSettings mist_;
     EmitterSettings sandDust_;
     EmitterSettings shorelineWaves_;
+    EmitterSettings embers_;
+    EmitterSettings smoke_;
     DetailSettings detailObjects_;
     BoidsSettings boids_;
     TumbleweedSettings tumbleweeds_;

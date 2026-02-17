@@ -151,6 +151,12 @@ public:
     void reloadSettings();
 
     /**
+     * Set fire source positions for ember/smoke emitters.
+     * Positions are in EQ coordinates (Z-up).
+     */
+    void setFireSources(const std::vector<glm::vec3>& positions);
+
+    /**
      * Set the surface map for shoreline detection.
      * Called by renderer after loading zone surface data.
      * Propagates to all emitters that need terrain data.

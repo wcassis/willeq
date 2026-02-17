@@ -279,9 +279,11 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
                   col2X, y, hoveredCheckbox_ == 5);
     y += ROW_HEIGHT + ROW_SPACING;
 
-    // Row 4: Animated Trees
+    // Row 4: Animated Trees | Fire Effects
     renderCheckbox(driver, gui, L"Animated Trees", displaySettings_.animatedTrees,
                   indentX, y, hoveredCheckbox_ == 11);
+    renderCheckbox(driver, gui, L"Fire Effects", displaySettings_.fireEffects,
+                  col2X, y, hoveredCheckbox_ == 12);
     y += ROW_HEIGHT + ROW_SPACING * 2;
 
     // Detail Objects Section
@@ -636,9 +638,14 @@ bool OptionsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
         rowY += ROW_HEIGHT + ROW_SPACING;
 
-        // Row 4: Animated Trees
+        // Row 4: Animated Trees | Fire Effects
         if (isInCheckbox(indentX, rowY, localX, localY)) {
             displaySettings_.animatedTrees = !displaySettings_.animatedTrees;
+            notifyDisplaySettingsChanged();
+            return true;
+        }
+        if (isInCheckbox(col2X, rowY, localX, localY)) {
+            displaySettings_.fireEffects = !displaySettings_.fireEffects;
             notifyDisplaySettingsChanged();
             return true;
         }
@@ -885,6 +892,7 @@ bool OptionsWindow::loadSettings(const std::string& path)
         displaySettings_.rollingObjects = env.get("rollingObjects", true).asBool();
         displaySettings_.skyEnabled = env.get("skyEnabled", true).asBool();
         displaySettings_.animatedTrees = env.get("animatedTrees", true).asBool();
+        displaySettings_.fireEffects = env.get("fireEffects", true).asBool();
         displaySettings_.environmentDensity = env.get("density", 0.5).asFloat();
     }
 
@@ -937,6 +945,7 @@ bool OptionsWindow::saveSettings(const std::string& path)
     env["rollingObjects"] = displaySettings_.rollingObjects;
     env["skyEnabled"] = displaySettings_.skyEnabled;
     env["animatedTrees"] = displaySettings_.animatedTrees;
+    env["fireEffects"] = displaySettings_.fireEffects;
     env["density"] = displaySettings_.environmentDensity;
     root["environmentEffects"] = env;
 

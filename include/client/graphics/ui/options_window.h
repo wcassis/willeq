@@ -41,6 +41,7 @@ struct DisplaySettings {
     bool rollingObjects = true;
     bool skyEnabled = true;
     bool animatedTrees = true;
+    bool fireEffects = true;
     float environmentDensity = 0.5f;
 
     // Detail Objects (grass, plants, debris)
