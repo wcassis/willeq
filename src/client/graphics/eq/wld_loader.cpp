@@ -45,6 +45,7 @@ bool WldLoader::parseFromArchive(const std::string& archivePath, const std::stri
     boneOrientations_.clear();
     boneOrientationRefs_.clear();
     lightDefs_.clear();
+    lightDefRefs_.clear();
     lights_.clear();
     geometryByFragIndex_.clear();
     trackDefs_.clear();
@@ -173,6 +174,9 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
             case 0x1B:
                 parseFragment1B(fragBody, fragBodySize, i + 1, nameRef,
                                hashBuffer.data(), oldFormat);
+                break;
+            case 0x1C:
+                parseFragment1C(fragBody, fragBodySize, i + 1);
                 break;
             case 0x28:
                 parseFragment28(fragBody, fragBodySize, i + 1);
@@ -1519,6 +1523,16 @@ void WldLoader::parseFragment1B(const char* fragBuffer, uint32_t fragLength, uin
     lightDefs_[fragIndex] = light;
 }
 
+void WldLoader::parseFragment1C(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
+    // Fragment 0x1C - Light Source Reference
+    // Simple indirection: 0x28 (instance) -> 0x1C (ref) -> 0x1B (definition)
+    if (fragLength < 4) return;
+    WldFragmentRef ref = read_val<WldFragmentRef>(fragBuffer);
+    if (ref.id > 0) {
+        lightDefRefs_[fragIndex] = static_cast<uint32_t>(ref.id);
+    }
+}
+
 void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
     // Fragment 0x28 - Light Instance
     // Matches eqsage: sage/lib/s3d/lights/light.js LightInstance
@@ -1531,6 +1545,13 @@ void WldLoader::parseFragment28(const char* fragBuffer, uint32_t fragLength, uin
     uint32_t lightDefIndex = ref.id;
     if (lightDefIndex == 0) {
         return;
+    }
+
+    // Follow through Fragment 0x1C reference if needed
+    // 0x28 may reference a 0x1C (which references a 0x1B), or directly reference a 0x1B
+    auto refIt = lightDefRefs_.find(lightDefIndex);
+    if (refIt != lightDefRefs_.end()) {
+        lightDefIndex = refIt->second;
     }
 
     auto it = lightDefs_.find(lightDefIndex);

@@ -668,6 +668,7 @@ private:
                          int32_t nameRef, const char* hash);
     void parseFragment1B(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash, bool oldFormat);
+    void parseFragment1C(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
     void parseFragment28(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
     void parseFragment2A(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash);
@@ -701,6 +702,7 @@ private:
     std::map<uint32_t, std::shared_ptr<BoneOrientation>> boneOrientations_;
     std::map<uint32_t, uint32_t> boneOrientationRefs_;
     std::map<uint32_t, std::shared_ptr<ZoneLight>> lightDefs_;
+    std::map<uint32_t, uint32_t> lightDefRefs_;  // Fragment 0x1C: maps ref index -> 0x1B def index
     std::vector<std::shared_ptr<ZoneLight>> lights_;
     std::vector<std::shared_ptr<AmbientLightRegion>> ambientLightRegions_;
     std::shared_ptr<GlobalAmbientLight> globalAmbientLight_;

@@ -30,17 +30,23 @@ std::string getFragmentTypeName(uint32_t type) {
         case 0x13: return "TrackDefRef";
         case 0x14: return "Actor";
         case 0x15: return "ActorInstance";
+        case 0x1B: return "LightDef";
+        case 0x1C: return "LightDefRef";
         case 0x21: return "BspTree";
         case 0x22: return "BspRegion";
+        case 0x28: return "LightInstance";
         case 0x29: return "Region";
-        case 0x2a: return "AmbientLight";
-        case 0x2c: return "LegacyMesh";
-        case 0x2d: return "MeshReference";
+        case 0x2A: return "AmbientLight";
+        case 0x2C: return "LegacyMesh";
+        case 0x2D: return "MeshReference";
+        case 0x2F: return "MeshAnimatedVertices";
         case 0x30: return "Material";
         case 0x31: return "MaterialList";
         case 0x32: return "VertexColors";
         case 0x33: return "VertexColorsRef";
+        case 0x35: return "GlobalAmbientLight";
         case 0x36: return "Mesh";
+        case 0x37: return "MeshAnimatedVerticesRef";
         default: return "Unknown";
     }
 }
@@ -336,6 +342,238 @@ void dumpWld(const std::vector<char>& data, const std::string& name) {
 
         offset += fragSize + 8;
     }
+
+    // Dump light definitions (0x1B)
+    std::cout << "## Light Definitions (0x1B)" << std::endl;
+    std::cout << std::endl;
+
+    offset = 0;
+    for (uint32_t i = 0; i < fragmentCount && offset + 8 <= remaining; i++) {
+        uint32_t fragSize = *reinterpret_cast<const uint32_t*>(fragPtr + offset);
+        uint32_t fragType = *reinterpret_cast<const uint32_t*>(fragPtr + offset + 4);
+
+        if (fragType == 0x1B) {
+            int32_t nameRef = *reinterpret_cast<const int32_t*>(fragPtr + offset + 8);
+
+            std::string name = "";
+            if (nameRef < 0) {
+                int idx = -nameRef;
+                for (const auto& [sIdx, sName] : strings) {
+                    if (sIdx == -idx) {
+                        name = sName;
+                        break;
+                    }
+                }
+            }
+
+            std::cout << "### Fragment #" << (i + 1) << ": " << name << " (size=" << fragSize << ")" << std::endl;
+            std::cout << std::endl;
+
+            // Raw hex dump of fragment body (after nameRef)
+            const char* lightData = fragPtr + offset + 8 + 4; // skip nameRef
+            size_t lightSize = fragSize - 4;
+            std::cout << "- Raw: ";
+            dumpHex(lightData, lightSize);
+
+            if (lightSize >= 8) {
+                uint32_t flags = *reinterpret_cast<const uint32_t*>(lightData);
+                uint32_t frameCount = *reinterpret_cast<const uint32_t*>(lightData + 4);
+                const char* p = lightData + 8;
+
+                std::cout << "- Flags: 0x" << std::hex << flags << std::dec;
+                if (flags & 0x01) std::cout << " [HasCurrentFrame]";
+                if (flags & 0x02) std::cout << " [HasSleep]";
+                if (flags & 0x04) std::cout << " [HasLightLevels]";
+                if (flags & 0x08) std::cout << " [SkipFrames]";
+                if (flags & 0x10) std::cout << " [HasColor]";
+                std::cout << std::endl;
+                std::cout << "- Frame Count: " << frameCount;
+                if (frameCount > 1) std::cout << " **(ANIMATED)**";
+                std::cout << std::endl;
+
+                if (flags & 0x01) {
+                    uint32_t currentFrame = *reinterpret_cast<const uint32_t*>(p);
+                    std::cout << "- Current Frame: " << currentFrame << std::endl;
+                    p += 4;
+                }
+
+                if (flags & 0x02) {
+                    uint32_t sleepMs = *reinterpret_cast<const uint32_t*>(p);
+                    std::cout << "- Sleep: " << sleepMs << " ms" << std::endl;
+                    p += 4;
+                }
+
+                if (flags & 0x04) {
+                    std::cout << "- Light Levels: [";
+                    for (uint32_t f = 0; f < frameCount && f < 16; f++) {
+                        if (f > 0) std::cout << ", ";
+                        float level = *reinterpret_cast<const float*>(p);
+                        std::cout << std::fixed << std::setprecision(3) << level;
+                        p += 4;
+                    }
+                    if (frameCount > 16) {
+                        std::cout << ", ...(" << (frameCount - 16) << " more)";
+                        p += (frameCount - 16) * 4;
+                    }
+                    std::cout << "]" << std::defaultfloat << std::endl;
+                }
+
+                if (flags & 0x10) {
+                    std::cout << "- Colors:" << std::endl;
+                    for (uint32_t f = 0; f < frameCount && f < 8; f++) {
+                        float r = *reinterpret_cast<const float*>(p);
+                        float g = *reinterpret_cast<const float*>(p + 4);
+                        float b = *reinterpret_cast<const float*>(p + 8);
+                        std::cout << "    [" << f << "] RGB("
+                                  << std::fixed << std::setprecision(3)
+                                  << r << ", " << g << ", " << b << ")" << std::defaultfloat << std::endl;
+                        p += 12;
+                    }
+                    if (frameCount > 8) {
+                        std::cout << "    ...(" << (frameCount - 8) << " more frames)" << std::endl;
+                    }
+                }
+            }
+            std::cout << std::endl;
+        }
+
+        offset += fragSize + 8;
+    }
+
+    // Dump light references (0x1C)
+    std::cout << "## Light References (0x1C)" << std::endl;
+    std::cout << std::endl;
+
+    offset = 0;
+    for (uint32_t i = 0; i < fragmentCount && offset + 8 <= remaining; i++) {
+        uint32_t fragSize = *reinterpret_cast<const uint32_t*>(fragPtr + offset);
+        uint32_t fragType = *reinterpret_cast<const uint32_t*>(fragPtr + offset + 4);
+
+        if (fragType == 0x1C) {
+            const char* refData = fragPtr + offset + 8 + 4; // skip nameRef
+            if (fragSize >= 8) {
+                int32_t ref = *reinterpret_cast<const int32_t*>(refData);
+                std::cout << "- Fragment #" << (i + 1) << " -> LightDef #" << ref << std::endl;
+            }
+        }
+
+        offset += fragSize + 8;
+    }
+    std::cout << std::endl;
+
+    // Dump light instances (0x28)
+    std::cout << "## Light Instances (0x28)" << std::endl;
+    std::cout << std::endl;
+
+    offset = 0;
+    for (uint32_t i = 0; i < fragmentCount && offset + 8 <= remaining; i++) {
+        uint32_t fragSize = *reinterpret_cast<const uint32_t*>(fragPtr + offset);
+        uint32_t fragType = *reinterpret_cast<const uint32_t*>(fragPtr + offset + 4);
+
+        if (fragType == 0x28) {
+            const char* instData = fragPtr + offset + 8;
+            // No nameRef for 0x28 - starts directly with ref
+            if (fragSize >= 20) {
+                int32_t ref = *reinterpret_cast<const int32_t*>(instData);
+                uint32_t instFlags = *reinterpret_cast<const uint32_t*>(instData + 4);
+                float x = *reinterpret_cast<const float*>(instData + 8);
+                float y = *reinterpret_cast<const float*>(instData + 12);
+                float z = *reinterpret_cast<const float*>(instData + 16);
+                float radius = *reinterpret_cast<const float*>(instData + 20);
+
+                std::cout << "- Fragment #" << (i + 1)
+                          << " -> Ref #" << ref
+                          << "  pos=(" << std::fixed << std::setprecision(1)
+                          << x << ", " << y << ", " << z << ")"
+                          << "  radius=" << radius
+                          << "  flags=0x" << std::hex << instFlags << std::dec
+                          << std::defaultfloat << std::endl;
+            }
+        }
+
+        offset += fragSize + 8;
+    }
+    std::cout << std::endl;
+
+    // Dump ambient light regions (0x2A)
+    std::cout << "## Ambient Light Regions (0x2A)" << std::endl;
+    std::cout << std::endl;
+
+    offset = 0;
+    for (uint32_t i = 0; i < fragmentCount && offset + 8 <= remaining; i++) {
+        uint32_t fragSize = *reinterpret_cast<const uint32_t*>(fragPtr + offset);
+        uint32_t fragType = *reinterpret_cast<const uint32_t*>(fragPtr + offset + 4);
+
+        if (fragType == 0x2A) {
+            int32_t nameRef = *reinterpret_cast<const int32_t*>(fragPtr + offset + 8);
+
+            std::string name = "";
+            if (nameRef < 0) {
+                int idx = -nameRef;
+                for (const auto& [sIdx, sName] : strings) {
+                    if (sIdx == -idx) {
+                        name = sName;
+                        break;
+                    }
+                }
+            }
+
+            const char* ambData = fragPtr + offset + 8 + 4; // skip nameRef
+            size_t ambSize = fragSize - 4;
+
+            if (ambSize >= 8) {
+                uint32_t ambFlags = *reinterpret_cast<const uint32_t*>(ambData);
+                uint32_t regionCount = *reinterpret_cast<const uint32_t*>(ambData + 4);
+
+                std::cout << "- Fragment #" << (i + 1) << ": " << name
+                          << "  flags=0x" << std::hex << ambFlags << std::dec
+                          << "  regions=" << regionCount;
+
+                if (regionCount > 0 && ambSize >= 8 + regionCount * 4) {
+                    std::cout << " [";
+                    for (uint32_t r = 0; r < regionCount && r < 10; r++) {
+                        if (r > 0) std::cout << ", ";
+                        int32_t regionRef = *reinterpret_cast<const int32_t*>(ambData + 8 + r * 4);
+                        std::cout << regionRef;
+                    }
+                    if (regionCount > 10) std::cout << ", ...(" << (regionCount - 10) << " more)";
+                    std::cout << "]";
+                }
+                std::cout << std::endl;
+            }
+        }
+
+        offset += fragSize + 8;
+    }
+    std::cout << std::endl;
+
+    // Dump global ambient light (0x35)
+    offset = 0;
+    for (uint32_t i = 0; i < fragmentCount && offset + 8 <= remaining; i++) {
+        uint32_t fragSize = *reinterpret_cast<const uint32_t*>(fragPtr + offset);
+        uint32_t fragType = *reinterpret_cast<const uint32_t*>(fragPtr + offset + 4);
+
+        if (fragType == 0x35) {
+            std::cout << "## Global Ambient Light (0x35)" << std::endl;
+            std::cout << std::endl;
+
+            const char* globData = fragPtr + offset + 8;
+            // 0x35 has no nameRef, starts with 4 bytes (unknown/flags) then RGBA color
+            if (fragSize >= 20) {
+                // Skip first 4 bytes (flags/unknown), then read 4 floats
+                float r = *reinterpret_cast<const float*>(globData + 4);
+                float g = *reinterpret_cast<const float*>(globData + 8);
+                float b = *reinterpret_cast<const float*>(globData + 12);
+                float a = *reinterpret_cast<const float*>(globData + 16);
+                std::cout << "- RGBA(" << std::fixed << std::setprecision(3)
+                          << r << ", " << g << ", " << b << ", " << a << ")"
+                          << std::defaultfloat << std::endl;
+            }
+            std::cout << std::endl;
+        }
+
+        offset += fragSize + 8;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -511,6 +749,110 @@ int main(int argc, char* argv[]) {
             std::cout << "| Other | " << otherCount << " |" << std::endl;
         } else {
             std::cout << "No BSP tree found." << std::endl;
+        }
+
+        // Dump resolved lights (after 0x1C indirection)
+        const auto& lights = loader.getLights();
+        if (!lights.empty()) {
+            size_t animatedCount = 0;
+            for (const auto& light : lights) {
+                if (light->isAnimated()) animatedCount++;
+            }
+
+            std::cout << std::endl;
+            std::cout << "### Resolved Lights" << std::endl;
+            std::cout << std::endl;
+            std::cout << "Total: " << lights.size()
+                      << " (" << animatedCount << " animated, "
+                      << (lights.size() - animatedCount) << " static)" << std::endl;
+            std::cout << std::endl;
+
+            std::cout << "| # | Name | Position | Radius | Color | Frames | Sleep |" << std::endl;
+            std::cout << "|---|------|----------|--------|-------|--------|-------|" << std::endl;
+
+            for (size_t i = 0; i < lights.size(); i++) {
+                const auto& light = lights[i];
+                std::cout << "| " << i
+                          << " | " << (light->name.empty() ? "(unnamed)" : light->name)
+                          << " | (" << std::fixed << std::setprecision(1)
+                          << light->x << ", " << light->y << ", " << light->z << ")"
+                          << " | " << light->radius
+                          << " | (" << std::setprecision(3)
+                          << light->r << ", " << light->g << ", " << light->b << ")"
+                          << " | " << std::defaultfloat << light->frameCount;
+                if (light->isAnimated()) std::cout << " **ANIM**";
+                std::cout << " | " << light->sleepMs << "ms"
+                          << " |" << std::endl;
+            }
+            std::cout << std::endl;
+
+            // Detail for animated lights
+            if (animatedCount > 0) {
+                std::cout << "### Animated Light Details" << std::endl;
+                std::cout << std::endl;
+                for (size_t i = 0; i < lights.size(); i++) {
+                    const auto& light = lights[i];
+                    if (!light->isAnimated()) continue;
+
+                    std::cout << "**" << (light->name.empty() ? "(unnamed)" : light->name)
+                              << "** (light #" << i << "): "
+                              << light->frameCount << " frames, "
+                              << light->sleepMs << "ms sleep, flags=0x"
+                              << std::hex << light->flags << std::dec << std::endl;
+
+                    if (!light->colors.empty()) {
+                        std::cout << "  Colors:" << std::endl;
+                        for (size_t f = 0; f < light->colors.size() && f < 16; f++) {
+                            auto& [r, g, b] = light->colors[f];
+                            std::cout << "    [" << f << "] RGB("
+                                      << std::fixed << std::setprecision(3)
+                                      << r << ", " << g << ", " << b << ")"
+                                      << std::defaultfloat << std::endl;
+                        }
+                        if (light->colors.size() > 16) {
+                            std::cout << "    ...(" << (light->colors.size() - 16) << " more)" << std::endl;
+                        }
+                    }
+
+                    if (!light->lightLevels.empty()) {
+                        std::cout << "  Light Levels: [";
+                        for (size_t f = 0; f < light->lightLevels.size() && f < 16; f++) {
+                            if (f > 0) std::cout << ", ";
+                            std::cout << std::fixed << std::setprecision(3) << light->lightLevels[f];
+                        }
+                        if (light->lightLevels.size() > 16) {
+                            std::cout << ", ...(" << (light->lightLevels.size() - 16) << " more)";
+                        }
+                        std::cout << "]" << std::defaultfloat << std::endl;
+                    }
+                    std::cout << std::endl;
+                }
+            }
+        }
+
+        // Dump ambient light info
+        const auto& ambientRegions = loader.getAmbientLightRegions();
+        if (!ambientRegions.empty()) {
+            std::cout << "### Ambient Light Regions (resolved)" << std::endl;
+            std::cout << std::endl;
+            for (size_t i = 0; i < ambientRegions.size(); i++) {
+                const auto& region = ambientRegions[i];
+                std::cout << "- " << region->name
+                          << "  flags=0x" << std::hex << region->flags << std::dec
+                          << "  regionRefs=" << region->regionRefs.size() << std::endl;
+            }
+            std::cout << std::endl;
+        }
+
+        const auto& globalAmbient = loader.getGlobalAmbientLight();
+        if (globalAmbient) {
+            std::cout << "### Global Ambient Light (resolved)" << std::endl;
+            std::cout << std::endl;
+            std::cout << "- RGBA(" << std::fixed << std::setprecision(3)
+                      << globalAmbient->r << ", " << globalAmbient->g << ", "
+                      << globalAmbient->b << ", " << globalAmbient->a << ")"
+                      << std::defaultfloat << std::endl;
+            std::cout << std::endl;
         }
     }
 
