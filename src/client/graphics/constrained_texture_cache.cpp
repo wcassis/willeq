@@ -115,6 +115,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     CachedTexture entry;
     entry.texture = texture;
     entry.sizeBytes = textureSize;
+    entry.hasAlpha = hasAlpha;
     entry.lruIterator = std::prev(lruOrder_.end());
     cache_[name] = entry;
     currentUsage_ += textureSize;
@@ -143,6 +144,11 @@ irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& nam
         return it->second.texture;
     }
     return nullptr;
+}
+
+bool ConstrainedTextureCache::hasAlpha(const std::string& name) const {
+    auto it = cache_.find(name);
+    return it != cache_.end() && it->second.hasAlpha;
 }
 
 void ConstrainedTextureCache::clear() {
@@ -647,11 +653,15 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
          compressed.glFormat == 0x83F2 ? "DXT3" : "DXT5"),
         compressed.dataSize, textureSize);
 
+    // DXT3 and DXT5 always have alpha; DXT1 RGBA has 1-bit alpha
+    bool compressedHasAlpha = (compressed.glFormat != 0x83F0);  // Not GL_COMPRESSED_RGB_S3TC_DXT1
+
     // Add to cache
     lruOrder_.push_back(name);
     CachedTexture entry;
     entry.texture = texture;
     entry.sizeBytes = textureSize;
+    entry.hasAlpha = compressedHasAlpha;
     entry.lruIterator = std::prev(lruOrder_.end());
     cache_[name] = entry;
     currentUsage_ += textureSize;

@@ -37,6 +37,9 @@ public:
     // Get a cached texture without loading (returns nullptr if not cached)
     irr::video::ITexture* getTexture(const std::string& name);
 
+    // Check if a cached texture has alpha transparency
+    bool hasAlpha(const std::string& name) const;
+
     // Clear all cached textures
     void clear();
 
@@ -133,6 +136,7 @@ private:
     struct CachedTexture {
         irr::video::ITexture* texture;
         size_t sizeBytes;
+        bool hasAlpha = false;
         std::list<std::string>::iterator lruIterator;
     };
 

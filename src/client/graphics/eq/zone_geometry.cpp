@@ -244,6 +244,10 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         if (texture) {
             // Also cache locally for quick lookups (cache owns the texture)
             textureCache_[name] = texture;
+            // Track alpha so materials get transparency type instead of EMT_SOLID
+            if (constrainedCache_->hasAlpha(name)) {
+                texturesWithAlpha_.insert(name);
+            }
             return texture;
         }
         LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), falling back to direct load", name, data.size());
