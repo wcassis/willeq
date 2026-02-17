@@ -22,7 +22,6 @@ struct S3DZone;
 struct BspTree;
 class ConstrainedTextureCache;
 class FrustumCuller;
-class SoftwareOcclusionCuller;
 
 // Visual representation of a door in the scene
 struct DoorVisual {
@@ -89,8 +88,6 @@ public:
     // Set frustum culler for directional door visibility culling
     void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
 
-    // Set software occlusion culler for per-door depth buffer testing
-    void setOcclusionCuller(SoftwareOcclusionCuller* culler) { occlusionCuller_ = culler; }
 
     // Create a door visual from server data
     // Returns true if door was created successfully (or skipped for invisible types)
@@ -157,8 +154,6 @@ private:
     const BspTree* bspTree_ = nullptr;
     FrustumCuller* frustumCuller_ = nullptr;
     const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
-    SoftwareOcclusionCuller* occlusionCuller_ = nullptr;
-
     // Animation speed (complete animation in ~0.5 seconds)
     static constexpr float ANIM_SPEED = 2.0f;
 

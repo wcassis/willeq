@@ -265,13 +265,12 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
         lastWindowHeight_ = h;
         lastHoveredLink_ = hoveredLinkIndex_;
 
-        // Always render full window layout into RTT — fade is handled
-        // entirely by alpha modulation during blit, so RTT content is the
-        // same regardless of fade state.
+        // Render window chrome into RTT (background, border, tabs, scrollbar, grip)
+        // Messages are rendered directly to screen after blit so they stay visible
+        // while chrome fades out.
         drawWindow(driver);
         drawUnlockedHighlight(driver);
 
-        // Render message content (tabs, messages, scrollbar, resize grip) but NOT input field
         irr::core::recti content = getContentArea();
         int scrollbarWidth = getScrollbarWidth();
         int inputFieldHeight = getInputFieldHeight();
@@ -279,17 +278,6 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
         irr::gui::IGUIFont* font = gui->getBuiltInFont();
 
         renderTabs(driver, font);
-
-        int inputY = content.LowerRightCorner.Y - inputFieldHeight;
-
-        irr::core::recti messageArea(
-            content.UpperLeftCorner.X,
-            content.UpperLeftCorner.Y + tabBarHeight_,
-            content.LowerRightCorner.X - scrollbarWidth - 2,
-            inputY - 2
-        );
-
-        renderMessages(driver, gui, messageArea);
 
         renderScrollbar(driver);
 
@@ -372,15 +360,25 @@ void ChatWindow::render(irr::video::IVideoDriver* driver,
         return;
     }
 
-    // Render cached message area (bg, tabs, messages, scrollbar, grip)
+    // Render cached chrome (bg, tabs, scrollbar, grip) with fade alpha
     renderCachedMessageArea(driver, gui);
 
-    // Draw input field live at screen coords (always full opacity)
+    // Render messages directly to screen (always full opacity, survives chrome fade)
     irr::core::recti content = getContentArea();
     int scrollbarWidth = getScrollbarWidth();
     int inputFieldHeight = getInputFieldHeight();
     int inputY = content.LowerRightCorner.Y - inputFieldHeight;
 
+    bool isFaded = (backgroundOpacity_ < 0.99f);
+    irr::core::recti messageArea(
+        content.UpperLeftCorner.X,
+        isFaded ? content.UpperLeftCorner.Y : content.UpperLeftCorner.Y + tabBarHeight_,
+        isFaded ? content.LowerRightCorner.X - 2 : content.LowerRightCorner.X - scrollbarWidth - 2,
+        inputY - 2
+    );
+    renderMessages(driver, gui, messageArea);
+
+    // Draw input field live at screen coords (always full opacity)
     irr::core::recti inputArea(
         content.UpperLeftCorner.X,
         inputY,

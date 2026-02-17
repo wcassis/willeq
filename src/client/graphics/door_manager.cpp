@@ -1,6 +1,5 @@
 #include "client/graphics/door_manager.h"
 #include "client/graphics/frustum_culler.h"
-#include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/wld_loader.h"
@@ -362,7 +361,7 @@ void DoorManager::update(float deltaTime)
             continue;
         }
 
-        // Visibility culling: frustum → region-level PVS → per-door depth test
+        // Visibility culling: frustum → region-level PVS
         bool doorOccluded = false;
         if (frustumCuller_ && frustumCuller_->isEnabled()) {
             if (!frustumCuller_->testSphere(visual.x, visual.y, visual.z, 5.0f)) {
@@ -372,9 +371,6 @@ void DoorManager::update(float deltaTime)
         if (!doorOccluded && visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
             && occlusionCulledRegions_->count(visual.bspRegion)) {
             doorOccluded = true;
-        }
-        if (!doorOccluded && occlusionCuller_ && occlusionCuller_->isEnabled()) {
-            doorOccluded = occlusionCuller_->testPoint(visual.x, visual.y, visual.z);
         }
         if (doorOccluded) {
             if (visual.pivotNode) visual.pivotNode->setVisible(false);

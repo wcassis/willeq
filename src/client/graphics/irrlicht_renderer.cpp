@@ -935,9 +935,6 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         if (frustumCuller_) {
             doorManager_->setFrustumCuller(frustumCuller_.get());
         }
-        if (occlusionCuller_) {
-            doorManager_->setOcclusionCuller(occlusionCuller_.get());
-        }
     }
 
     // Create sky renderer (if not already created)
@@ -2934,7 +2931,6 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
     if (doorManager_) {
         doorManager_->setBspTree(bspTree.get());
         doorManager_->setFrustumCuller(frustumCuller_.get());
-        doorManager_->setOcclusionCuller(occlusionCuller_.get());
     }
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
