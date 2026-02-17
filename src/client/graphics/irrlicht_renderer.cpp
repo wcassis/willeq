@@ -2433,10 +2433,32 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
     }
 
-    // Release raw texture pixel data now that all zone meshes, objects, and trees
-    // have been built and their textures uploaded to the GPU/constrained cache.
-    // Door textures are also safe because buildTexturedMesh() checks the constrained
-    // texture cache by name before requiring raw pixel data.
+    // Pre-load all object textures into constrained cache so door-only textures
+    // (used by door models but not pre-placed objects) survive pixel data release
+    if (constrainedTextureCache_ && currentZone_) {
+        int preloaded = 0;
+        for (const auto& [name, texInfo] : currentZone_->objectTextures) {
+            if (!texInfo || texInfo->data.empty()) continue;
+            auto* existing = constrainedTextureCache_->getOrLoad(name, texInfo->data);
+            if (existing) ++preloaded;
+        }
+        if (preloaded > 0) {
+            LOG_DEBUG(MOD_GRAPHICS, "Pre-loaded {} object textures into constrained cache for doors", preloaded);
+        }
+    }
+
+    // Rebuild any doors that were created with placeholder meshes before zone data loaded.
+    // Set shader material types first so rebuilt doors get proper GLSL materials.
+    if (doorManager_) {
+        if (zoneShader_ && zoneShader_->isAvailable()) {
+            doorManager_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                                  zoneShader_->getMaterialTypeAlphaTest());
+        }
+        doorManager_->rebuildPlaceholderDoors();
+    }
+
+    // Release raw texture pixel data now that all zone meshes, objects, trees,
+    // and rebuilt doors have their textures uploaded to the GPU/constrained cache.
     if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_) {
         size_t freed = currentZone_->releaseTexturePixelData();
         LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",

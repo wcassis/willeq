@@ -45,6 +45,7 @@ struct DoorVisual {
     // Animation state
     bool isOpen = false;
     bool isAnimating = false;
+    bool usePlaceholder = false;   // True if using placeholder cube (zone data wasn't loaded yet)
     float animProgress = 0.0f;     // 0.0 = closed, 1.0 = open
 
     // Spinning animation (for opentype 100/105)
@@ -75,6 +76,15 @@ public:
 
     // Set occlusion-culled regions (pass nullptr when no occlusion data)
     void setOcclusionCulledRegions(const std::unordered_set<size_t>* regions) { occlusionCulledRegions_ = regions; }
+
+    // Set GLSL shader material types for textured door meshes
+    void setShaderMaterialTypes(irr::s32 solid, irr::s32 alphaTest) {
+        shaderMaterialSolid_ = solid;
+        shaderMaterialAlphaTest_ = alphaTest;
+    }
+
+    // Rebuild doors that were created with placeholder meshes (zone data wasn't loaded yet)
+    void rebuildPlaceholderDoors();
 
     // Set frustum culler for directional door visibility culling
     void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
@@ -142,6 +152,8 @@ private:
     irr::video::IVideoDriver* driver_ = nullptr;
     std::shared_ptr<S3DZone> currentZone_;
     ConstrainedTextureCache* constrainedCache_ = nullptr;
+    irr::s32 shaderMaterialSolid_ = -1;
+    irr::s32 shaderMaterialAlphaTest_ = -1;
     const BspTree* bspTree_ = nullptr;
     FrustumCuller* frustumCuller_ = nullptr;
     const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;

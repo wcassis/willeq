@@ -73,6 +73,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             upperDoorName, geomIt->second->vertices.size(), geomIt->second->triangles.size());
         ZoneMeshBuilder builder(smgr_, driver_, nullptr);
         if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
+        if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
         irr::scene::IMesh* mesh = nullptr;
         if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames.empty()) {
             mesh = builder.buildTexturedMesh(*geomIt->second, currentZone_->objectTextures);
@@ -97,6 +98,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
                 upperDoorName, name, geom->vertices.size());
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
+            if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !geom->textureNames.empty()) {
                 return builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
             } else {
@@ -118,6 +120,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (objName == upperDoorName) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
+            if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
                 return builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
@@ -130,6 +133,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             upperDoorName.find(objName) != std::string::npos) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
+            if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
                 return builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
@@ -195,6 +199,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     DoorVisual visual;
     visual.doorId = doorId;
     visual.modelName = name;
+    visual.usePlaceholder = usePlaceholder;
     visual.x = x;
     visual.y = y;
     visual.z = z;
@@ -555,6 +560,48 @@ void DoorManager::clearDoors()
     doors_.clear();
     invisibleDoors_.clear();
     LOG_DEBUG(MOD_GRAPHICS, "Cleared all doors");
+}
+
+void DoorManager::rebuildPlaceholderDoors()
+{
+    if (!currentZone_ || !smgr_) {
+        return;
+    }
+
+    int rebuilt = 0;
+    int failed = 0;
+
+    for (auto& [id, visual] : doors_) {
+        if (!visual.usePlaceholder || !visual.sceneNode) {
+            continue;
+        }
+
+        irr::scene::IMesh* mesh = findDoorMesh(visual.modelName);
+        if (!mesh) {
+            ++failed;
+            continue;
+        }
+
+        // Swap the mesh on the existing scene node
+        visual.sceneNode->setMesh(mesh);
+
+        // Update materials for the new textured mesh
+        for (irr::u32 i = 0; i < visual.sceneNode->getMaterialCount(); ++i) {
+            visual.sceneNode->getMaterial(i).Lighting = false;
+            visual.sceneNode->getMaterial(i).BackfaceCulling = false;
+        }
+
+        visual.usePlaceholder = false;
+        ++rebuilt;
+
+        LOG_DEBUG(MOD_GRAPHICS, "Rebuilt placeholder door {} '{}' with textured mesh",
+                  id, visual.modelName);
+    }
+
+    if (rebuilt > 0 || failed > 0) {
+        LOG_INFO(MOD_GRAPHICS, "Door rebuild: {} replaced with textured meshes, {} still placeholder",
+                 rebuilt, failed);
+    }
 }
 
 void DoorManager::setAllDoorsVisible(bool visible)

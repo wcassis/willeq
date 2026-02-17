@@ -424,6 +424,12 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                     if (!texture) {
                         texture = constrainedCache_->getTexture(texName);
                     }
+                    // Track alpha from cache (loadTextureFromBMP was skipped due to empty data)
+                    if (texture) {
+                        if (constrainedCache_->hasAlpha(lowerTexName) || constrainedCache_->hasAlpha(texName)) {
+                            texturesWithAlpha_.insert(texName);
+                        }
+                    }
                 }
             }
         }
