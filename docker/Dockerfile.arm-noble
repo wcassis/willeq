@@ -316,7 +316,7 @@ ENTRYPOINT ["/bin/bash", "-c", "\
         -DIRRLICHT_LIBRARY=${ARM_SYSROOT}/usr/lib/libIrrlicht.a \
         -DWITH_RDP=OFF \
         -DEQT_BUILD_TESTS=OFF \
-    && cmake --build . --target willeq \
+    && cmake --build . --target willeq -j$(nproc) \
     && arm-linux-gnueabihf-strip bin/willeq \
     && mkdir -p /output && cp bin/willeq /output/willeq \
     && echo '=== Build complete ===' \
