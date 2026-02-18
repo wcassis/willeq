@@ -39,6 +39,13 @@ struct TextureInfo {
 
     // Helper to get frame count
     size_t frameCount() const { return isAnimated ? frames.size() : 1; }
+
+    // Get total raw data bytes (for memory reporting)
+    size_t rawDataBytes() const {
+        size_t total = data.capacity();
+        for (const auto& f : frames) total += f.data.capacity();
+        return total;
+    }
 };
 
 // Character model part with bone transform

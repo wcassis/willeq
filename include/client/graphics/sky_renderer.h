@@ -84,6 +84,9 @@ public:
     // Check if sky was successfully initialized
     bool isInitialized() const { return initialized_; }
 
+    // Get number of cached sky textures (for memory reporting)
+    size_t getTextureCount() const { return textureCache_.size(); }
+
     // Get current sky colors for time of day (for external fog/lighting use)
     SkyColorSet getCurrentSkyColors() const;
 

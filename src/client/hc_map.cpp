@@ -880,3 +880,15 @@ void HCMap::GetZRange(float& minZ, float& maxZ) const {
 	minZ = m_impl->minZ;
 	maxZ = m_impl->maxZ;
 }
+
+HCMap::MemoryStats HCMap::GetMemoryStats() const {
+	MemoryStats stats;
+	if (!m_impl) return stats;
+
+	stats.vertexCount = m_impl->mesh_verts.size();
+	stats.faceCount = m_impl->indices.size() / 3;
+	stats.totalBytes = m_impl->mesh_verts.capacity() * sizeof(glm::vec3)
+	                  + m_impl->indices.capacity() * sizeof(uint32_t)
+	                  + m_impl->triangleIsPlaceable.capacity() / 8;  // vector<bool> packs bits
+	return stats;
+}

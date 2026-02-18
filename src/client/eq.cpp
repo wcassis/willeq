@@ -9823,6 +9823,25 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(detailinfo);
 
+	Command pmem;
+	pmem.name = "pmem";
+	pmem.aliases = {"memory", "mem_report"};
+	pmem.usage = "/pmem";
+	pmem.description = "Show graphics memory usage breakdown";
+	pmem.category = "Utility";
+	pmem.handler = [this](const std::string& args) {
+		if (!m_renderer) {
+			AddChatSystemMessage("Graphics renderer not available");
+			return;
+		}
+		auto report = m_renderer->getMemoryReport();
+		for (const auto& line : report) {
+			LOG_INFO(MOD_MAIN, "{}", line);
+		}
+		AddChatSystemMessage("Memory report written to console.");
+	};
+	m_command_registry->registerCommand(pmem);
+
 #ifdef WITH_AUDIO
 	// === Audio Commands ===
 

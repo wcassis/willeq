@@ -53,6 +53,14 @@ public:
 	// Get the min/max Z values in the map (for color gradient scaling)
 	void GetZRange(float& minZ, float& maxZ) const;
 
+	// Get memory usage stats (vertices, faces, total bytes)
+	struct MemoryStats {
+		size_t vertexCount = 0;
+		size_t faceCount = 0;
+		size_t totalBytes = 0;
+	};
+	MemoryStats GetMemoryStats() const;
+
 	// Static helper to load a map file with proper path
 	static HCMap* LoadMapFile(const std::string& zone_name, const std::string& maps_path);
 
