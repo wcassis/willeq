@@ -12,6 +12,7 @@
 #include <cctype>
 #include <iostream>
 #include <fstream>
+#include <set>
 #include <unordered_map>
 #include <json/json.h>
 
@@ -298,10 +299,10 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
         return;
     }
 
-    // Skip if the same file is already playing
-    // Note: we don't track current trackIndex, so changing tracks requires stop/play
-    if (musicPlayer_->isPlaying() && musicPlayer_->getCurrentFile() == fullPath) {
-        std::cout << "[AUDIO] MUSIC SKIP: file=" << fullPath << " (already playing)" << std::endl;
+    // Skip if the same file and track is already playing
+    if (musicPlayer_->isPlaying() && musicPlayer_->getCurrentFile() == fullPath &&
+        musicPlayer_->getCurrentTrackIndex() == trackIndex) {
+        std::cout << "[AUDIO] MUSIC SKIP: file=" << fullPath << " track=" << trackIndex << " (already playing)" << std::endl;
         return;
     }
 
@@ -353,21 +354,9 @@ void AudioManager::onZoneChange(const std::string& zoneName) {
     LOG_INFO(MOD_AUDIO, "Zone change: {} -> {}", currentZone_, zoneName);
     currentZone_ = zoneName;
 
-    // Find and play zone music
-    std::string musicFile = findZoneMusic(zoneName);
-    std::cout << "[AUDIO] ZONE MUSIC SEARCH: zone=" << zoneName << " found=" << (musicFile.empty() ? "none" : musicFile) << std::endl;
-
-    if (!musicFile.empty()) {
-        // Fade out current, then start new
-        if (musicPlayer_ && musicPlayer_->isPlaying()) {
-            std::cout << "[AUDIO] STOPPING CURRENT MUSIC (fade 2s)" << std::endl;
-            musicPlayer_->stop(2.0f);
-        }
-        // Start new music after fade (handled by music player)
-        playMusic(musicFile, true);
-    } else {
-        // No music for this zone, just stop
-        std::cout << "[AUDIO] NO MUSIC FOR ZONE: " << zoneName << std::endl;
+    // Stop current music — ZoneAudioManager will start the correct track
+    // via its music emitters once its first update() runs
+    if (musicPlayer_ && musicPlayer_->isPlaying()) {
         stopMusic(2.0f);
     }
 }
@@ -1020,12 +1009,122 @@ void AudioManager::update() {
     }
 }
 
+bool AudioManager::loadPfsIndexCache() {
+    std::string cachePath = "config/snd_index_cache.json";
+    std::ifstream cacheFile(cachePath);
+    if (!cacheFile.is_open()) {
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, cacheFile, &root, &errors)) {
+        LOG_DEBUG(MOD_AUDIO, "PFS index cache parse error: {}", errors);
+        return false;
+    }
+
+    if (!root.isMember("archives") || !root.isMember("index") || !root.isMember("eqPath")) {
+        return false;
+    }
+
+    // Validate EQ path matches
+    if (root["eqPath"].asString() != eqPath_) {
+        LOG_DEBUG(MOD_AUDIO, "PFS index cache stale: eqPath changed");
+        return false;
+    }
+
+    // Validate that all cached archives still exist with same size
+    const Json::Value& archives = root["archives"];
+    for (const auto& name : archives.getMemberNames()) {
+        std::string archivePath = eqPath_ + "/" + name;
+        if (!std::filesystem::exists(archivePath)) {
+            LOG_DEBUG(MOD_AUDIO, "PFS index cache stale: {} missing", name);
+            return false;
+        }
+        auto fileSize = std::filesystem::file_size(archivePath);
+        if (fileSize != static_cast<uintmax_t>(archives[name].asUInt64())) {
+            LOG_DEBUG(MOD_AUDIO, "PFS index cache stale: {} size changed", name);
+            return false;
+        }
+    }
+
+    // Check that no new snd*.pfs files have appeared
+    size_t pfsCount = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(eqPath_)) {
+        if (!entry.is_regular_file()) continue;
+        std::string filename = entry.path().filename().string();
+        std::string lower = filename;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if (lower.length() > 7 && lower.substr(0, 3) == "snd" &&
+            lower.substr(lower.length() - 4) == ".pfs") {
+            pfsCount++;
+        }
+    }
+    if (pfsCount != archives.size()) {
+        LOG_DEBUG(MOD_AUDIO, "PFS index cache stale: archive count changed ({} vs {})",
+                  pfsCount, archives.size());
+        return false;
+    }
+
+    // Load the index
+    const Json::Value& index = root["index"];
+    for (const auto& filename : index.getMemberNames()) {
+        pfsFileIndex_[filename] = eqPath_ + "/" + index[filename].asString();
+    }
+
+    LOG_INFO(MOD_AUDIO, "Loaded PFS index cache: {} sound files from {}",
+             pfsFileIndex_.size(), cachePath);
+    return true;
+}
+
+void AudioManager::savePfsIndexCache() {
+    Json::Value root;
+    root["eqPath"] = eqPath_;
+
+    // Store archive filenames and sizes for cache validation
+    Json::Value archives(Json::objectValue);
+    std::set<std::string> archiveNames;
+    for (const auto& [filename, archivePath] : pfsFileIndex_) {
+        std::string name = std::filesystem::path(archivePath).filename().string();
+        if (archiveNames.insert(name).second) {
+            auto fileSize = std::filesystem::file_size(archivePath);
+            archives[name] = static_cast<Json::UInt64>(fileSize);
+        }
+    }
+    root["archives"] = archives;
+
+    // Store index with relative archive paths (just the filename)
+    Json::Value index(Json::objectValue);
+    for (const auto& [filename, archivePath] : pfsFileIndex_) {
+        index[filename] = std::filesystem::path(archivePath).filename().string();
+    }
+    root["index"] = index;
+
+    std::string cachePath = "config/snd_index_cache.json";
+    std::ofstream out(cachePath);
+    if (!out.is_open()) {
+        LOG_WARN(MOD_AUDIO, "Failed to save PFS index cache to {}", cachePath);
+        return;
+    }
+
+    Json::StreamWriterBuilder writerBuilder;
+    writerBuilder["indentation"] = "";  // Compact output
+    out << Json::writeString(writerBuilder, root);
+    LOG_INFO(MOD_AUDIO, "Saved PFS index cache: {} entries to {}", pfsFileIndex_.size(), cachePath);
+}
+
 void AudioManager::scanPfsArchives() {
     pfsFileIndex_.clear();
 
     // Check if EQ path exists
     if (!std::filesystem::exists(eqPath_) || !std::filesystem::is_directory(eqPath_)) {
         LOG_DEBUG(MOD_AUDIO, "EQ path does not exist or is not a directory: {}", eqPath_);
+        return;
+    }
+
+    // Try loading from cache first (avoids decompressing all archives)
+    if (loadPfsIndexCache()) {
         return;
     }
 
@@ -1052,8 +1151,7 @@ void AudioManager::scanPfsArchives() {
         return;
     }
 
-    LOG_INFO(MOD_AUDIO, "Scanning {} sound archives{}...", archivePaths.size(),
-             lazyPfsLoading_ ? " (lazy mode)" : "");
+    LOG_INFO(MOD_AUDIO, "Scanning {} sound archives (building index)...", archivePaths.size());
 
     // Scan each archive and build index
     size_t totalFiles = 0;
@@ -1089,6 +1187,9 @@ void AudioManager::scanPfsArchives() {
 
     LOG_INFO(MOD_AUDIO, "Indexed {} sound files from {} archives (cached: {})",
              totalFiles, archivePaths.size(), pfsArchives_.size());
+
+    // Save cache for next startup
+    savePfsIndexCache();
 }
 
 bool AudioManager::loadSoundDataFromPfs(const std::string& filename,

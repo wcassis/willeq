@@ -49,6 +49,7 @@ public:
     bool isPaused() const { return paused_; }
     float getPosition() const;  // Current playback position in seconds
     const std::string& getCurrentFile() const { return currentFile_; }
+    int getCurrentTrackIndex() const { return currentTrackIndex_; }
 
     // Volume (0.0 - 1.0)
     void setVolume(float volume);
@@ -112,6 +113,7 @@ private:
 
     // Current file info
     std::string currentFile_;
+    int currentTrackIndex_ = 0;
 
 #ifdef WITH_FLUIDSYNTH
     // FluidSynth for MIDI/XMI playback

@@ -150,6 +150,8 @@ private:
 
     // PFS archive management
     void scanPfsArchives();
+    bool loadPfsIndexCache();   // Load cached filename→archive index from disk
+    void savePfsIndexCache();   // Save filename→archive index to disk
     bool loadSoundDataFromPfs(const std::string& filename, std::vector<char>& outData);
 
     // Source management

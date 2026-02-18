@@ -192,6 +192,7 @@ bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex) {
     stop();
 
     currentFile_ = filepath;
+    currentTrackIndex_ = trackIndex;
     looping_ = loop;
 
     // Determine file type and load
