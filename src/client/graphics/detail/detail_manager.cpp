@@ -79,9 +79,6 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
     }
 
     if (zoneGeometry_) {
-        // Texture names are stored in the geometry itself, not WldLoader
-        LOG_INFO(MOD_GRAPHICS, "DetailManager: Zone geometry ptr={}, triangles={}, textureNames.size={}",
-                 (void*)zoneGeometry_.get(), zoneGeometry_->triangles.size(), zoneGeometry_->textureNames.size());
         zoneTextureNames_ = zoneGeometry_->textureNames;
         LOG_INFO(MOD_GRAPHICS, "DetailManager: Loaded zone geometry with {} triangles, {} textures",
                  zoneGeometry_->triangles.size(), zoneTextureNames_.size());
@@ -97,23 +94,23 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
                 }
             }
         }
-        LOG_INFO(MOD_GRAPHICS, "DetailManager: {} unique texture indices used, {} triangles point to empty textures",
+        LOG_DEBUG(MOD_GRAPHICS, "DetailManager: {} unique texture indices, {} triangles point to empty textures",
                  textureIndexCounts.size(), emptyTextureCount);
 
-        // Log first few texture names by index
+        // Log texture names at debug level
         size_t texCount = zoneTextureNames_.size();
-        LOG_INFO(MOD_GRAPHICS, "DetailManager: Texture names array size: {}", texCount);
+        LOG_DEBUG(MOD_GRAPHICS, "DetailManager: Texture names array size: {}", texCount);
         for (size_t i = 0; i < std::min(texCount, size_t(10)); ++i) {
             const std::string& tn = zoneTextureNames_[i];
-            LOG_INFO(MOD_GRAPHICS, "  [{}] = '{}' (len={})", i, tn, tn.size());
+            LOG_DEBUG(MOD_GRAPHICS, "  [{}] = '{}' (len={})", i, tn, tn.size());
         }
 
         // Log all unique texture names for debugging
         std::set<std::string> uniqueTextures(zoneTextureNames_.begin(), zoneTextureNames_.end());
-        LOG_INFO(MOD_GRAPHICS, "DetailManager: Unique textures in zone:");
+        LOG_DEBUG(MOD_GRAPHICS, "DetailManager: Unique textures in zone:");
         for (const auto& tex : uniqueTextures) {
             if (!tex.empty()) {
-                LOG_INFO(MOD_GRAPHICS, "  - {}", tex);
+                LOG_DEBUG(MOD_GRAPHICS, "  - {}", tex);
             }
         }
     }

@@ -5705,10 +5705,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	uint16_t type = p.GetUInt16(4);
 	uint32_t parameter = p.GetUInt32(6);
 
-	if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-		std::cout << fmt::format("[SpawnAppearance] spawn_id={}, type={}, parameter={}",
-			spawn_id, type, parameter) << std::endl;
-	}
+	LogTargetEntity(spawn_id, "SpawnAppearance spawn_id={}, type={}, parameter={}",
+		spawn_id, type, parameter);
 
 	switch (type) {
 	case AT_ANIMATION:
@@ -5777,10 +5775,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 						m_renderer->setEntityPoseState(spawn_id, poseState);
 					}
 					m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
-					if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
-						std::cout << fmt::format("[SpawnAppearance] Set animation '{}' pose={} on spawn_id={}",
-							animCode, static_cast<int>(poseState), spawn_id) << std::endl;
-					}
+					LogTargetEntity(spawn_id, "SpawnAppearance set animation '{}' pose={} on spawn_id={}",
+						animCode, static_cast<int>(poseState), spawn_id);
 				}
 			}
 #endif
@@ -11445,15 +11441,8 @@ void EverQuest::UpdateMovement()
 void EverQuest::SendPositionUpdate()
 {
 	if (!IsFullyZonedIn() || !m_zone_connection) {
-		if (s_debug_level >= 2) {
-			auto now = std::chrono::system_clock::now();
-			auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-			auto time_t_now = std::chrono::system_clock::to_time_t(now);
-			std::tm* tm_now = std::localtime(&time_t_now);
-			std::cout << fmt::format("[{:02d}:{:02d}:{:02d}.{:03d}] [POS] SendPositionUpdate skipped: zoned_in={} zone_conn={}",
-				tm_now->tm_hour, tm_now->tm_min, tm_now->tm_sec, static_cast<int>(ms.count()),
-				IsFullyZonedIn(), m_zone_connection != nullptr) << std::endl;
-		}
+		LOG_DEBUG(MOD_MOVEMENT, "SendPositionUpdate skipped: zoned_in={} zone_conn={}",
+			IsFullyZonedIn(), m_zone_connection != nullptr);
 		return;
 	}
 
@@ -11809,12 +11798,8 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 	uint32_t color = p.GetUInt32(6);         // offset 4 in struct, 6 in packet
 	uint8_t wear_slot = p.GetUInt8(10);      // offset 8 in struct, 10 in packet
 
-	if (s_debug_level >= 2) {
-		auto it = m_entities.find(spawn_id);
-		std::string name = (it != m_entities.end()) ? it->second.name : "Unknown";
-		std::cout << fmt::format("Equipment change for {} (ID: {}): slot {} material {} color {:08X}",
-			name, spawn_id, wear_slot, material, color) << std::endl;
-	}
+	LOG_DEBUG(MOD_ENTITY, "Equipment change for spawn_id={}: slot {} material {} color {:08X}",
+		spawn_id, wear_slot, material, color);
 
 	// Update the entity's equipment data
 	auto it = m_entities.find(spawn_id);

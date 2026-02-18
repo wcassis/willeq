@@ -1,5 +1,6 @@
 #include "client/output/console_renderer.h"
 #include "client/state/game_state.h"
+#include "common/logging.h"
 
 #include <iostream>
 #include <iomanip>
@@ -206,9 +207,7 @@ void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
         case state::GameEventType::PetCreated: {
             const auto& data = std::get<state::PetCreatedData>(event.data);
             displayPetInfo(data.name, data.level, 100, 100);
-            std::cout << getTimestamp() << getChannelColor("pet")
-                      << "Pet: " << data.name << " (Level " << static_cast<int>(data.level) << ") summoned."
-                      << colorReset() << std::endl;
+            LOG_INFO(MOD_MAIN, "Pet: {} (Level {}) summoned.", data.name, static_cast<int>(data.level));
             break;
         }
 

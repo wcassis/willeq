@@ -238,13 +238,13 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
     }
 
     if (logZoneIn_) {
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] CameraController::setFollowPosition: EQ({:.2f},{:.2f},{:.2f}) heading={:.2f}",
+        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] CameraController::setFollowPosition: EQ({:.2f},{:.2f},{:.2f}) heading={:.2f}",
                  eqX, eqY, eqZ, eqHeading);
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   preferredDist={:.2f} actualDist={:.2f} firstPerson={}",
+        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN]   preferredDist={:.2f} actualDist={:.2f} firstPerson={}",
                  preferredFollowDistance_, actualFollowDistance_, preferredFollowDistance_ <= 1.0f);
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   Camera pos: Irrlicht({:.2f},{:.2f},{:.2f})",
+        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN]   Camera pos: Irrlicht({:.2f},{:.2f},{:.2f})",
                  pos.X, pos.Y, pos.Z);
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN]   Camera target: Irrlicht({:.2f},{:.2f},{:.2f})",
+        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN]   Camera target: Irrlicht({:.2f},{:.2f},{:.2f})",
                  target.X, target.Y, target.Z);
         logZoneIn_ = false;  // Only log once per zone-in
     }

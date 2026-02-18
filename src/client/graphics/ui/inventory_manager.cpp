@@ -112,7 +112,7 @@ std::unique_ptr<ItemInstance> TitaniumItemParser::parseItem(const std::string& d
 
     // Debug: log what's before the quote
     std::string instancePreview(instanceSection.substr(0, std::min(size_t(80), instanceSection.size())));
-    LOG_INFO(MOD_UI, "TitaniumItemParser BEFORE QUOTE (first 80 chars): '{}' (quote at pos {})", instancePreview, firstQuote);
+    LOG_DEBUG(MOD_UI, "TitaniumItemParser BEFORE QUOTE (first 80 chars): '{}' (quote at pos {})", instancePreview, firstQuote);
 
     auto instanceFields = splitByPipe(instanceSection);
 
@@ -126,7 +126,7 @@ std::unique_ptr<ItemInstance> TitaniumItemParser::parseItem(const std::string& d
 
     // Debug: log raw static section (first 100 chars)
     std::string rawPreview(staticSection.substr(0, std::min(size_t(100), staticSection.size())));
-    LOG_INFO(MOD_UI, "TitaniumItemParser RAW STATIC (first 100 chars): '{}'", rawPreview);
+    LOG_DEBUG(MOD_UI, "TitaniumItemParser RAW STATIC (first 100 chars): '{}'", rawPreview);
 
     if (!parseStaticData(staticSection, *item)) {
         LOG_DEBUG(MOD_UI, "Failed to parse static data");
@@ -170,7 +170,7 @@ bool TitaniumItemParser::parseInstanceData(const std::vector<std::string_view>& 
     int32_t attuned = toInt(fields[9]);
 
     // Debug: log ALL instance data fields for debugging NO_DROP issue
-    LOG_INFO(MOD_UI, "TitaniumItemParser INSTANCE: slot={} stackCount={} count={} price={} charges={} attuned={} [fields: 0='{}' 1='{}' 2='{}' 3='{}' 4='{}' 5='{}' 6='{}' 7='{}' 8='{}' 9='{}' 10='{}']",
+    LOG_DEBUG(MOD_UI, "TitaniumItemParser INSTANCE: slot={} stackCount={} count={} price={} charges={} attuned={} [fields: 0='{}' 1='{}' 2='{}' 3='{}' 4='{}' 5='{}' 6='{}' 7='{}' 8='{}' 9='{}' 10='{}']",
         slotId, stackCount, count, item.price, item.charges, attuned,
         std::string(fields[0]), std::string(fields[1]), std::string(fields[2]),
         std::string(fields[3]), std::string(fields[4]), std::string(fields[5]),
@@ -217,7 +217,7 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
     item.icon = static_cast<uint32_t>(toInt(fields[11]));
 
     // Log item with emphasis on noDrop field for debugging
-    LOG_INFO(MOD_UI, "TitaniumItemParser STATIC: '{}' itemId={} noRent={} noDrop={} (field[6]='{}' field[7]='{}')",
+    LOG_DEBUG(MOD_UI, "TitaniumItemParser STATIC: '{}' itemId={} noRent={} noDrop={} (field[6]='{}' field[7]='{}')",
         item.name, item.itemId, item.noRent, item.noDrop, std::string(fields[6]), std::string(fields[7]));
     // fields[12-13] = 0, 0
     // fields[14] = BenefitFlag
@@ -368,7 +368,7 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
     item.stackable = toInt(fields[133]) != 0;
 
     // Log NoTransfer field and final noDrop status
-    LOG_INFO(MOD_UI, "TitaniumItemParser FINAL: '{}' noDrop={} (field[7]={}, field[132]/NoTransfer={}, field[124]/Attuneable='{}')",
+    LOG_DEBUG(MOD_UI, "TitaniumItemParser FINAL: '{}' noDrop={} (field[7]={}, field[132]/NoTransfer={}, field[124]/Attuneable='{}')",
         item.name, item.noDrop, noDropFromField7 ? 1 : 0, noTransferField132,
         fields.size() > 124 ? std::string(fields[124]) : "N/A");
 

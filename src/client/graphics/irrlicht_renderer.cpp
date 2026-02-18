@@ -5056,7 +5056,7 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
     playerZ_ = z;
     playerHeading_ = heading;
 
-    LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerPosition: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} (EQ units, EQ heading 0-512)",
+    LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] setPlayerPosition: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} (EQ units, EQ heading 0-512)",
              x, y, z, heading);
 
     // Trust the server's Z position - the server places entities at a consistent height
@@ -5076,7 +5076,7 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
     }
 
     if (cameraMode_ == CameraMode::Follow && playerInBounds) {
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Follow, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
+        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Follow, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
                  x, y, z, heading);
         cameraController_->enableZoneInLogging();  // Enable one-time detailed logging
         cameraController_->setFollowPosition(x, y, z, heading);
