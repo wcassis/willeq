@@ -562,8 +562,8 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
 
     // Track uncompressed size for memory budget.  On Lima/Mesa the driver
     // software-decodes S3TC and stores textures uncompressed in GPU memory,
-    // so the budget must reflect the real GPU footprint.
-    size_t textureSize = static_cast<size_t>(compressed.width) * compressed.height * 4;
+    // so the budget must reflect the real GPU footprint (including mipmaps).
+    size_t textureSize = calculateTextureSize(compressed.width, compressed.height);
 
     // Evict textures if needed to make room
     if (!evictUntilAvailable(textureSize)) {
