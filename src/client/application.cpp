@@ -268,6 +268,11 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
 #endif
 
+    // Start login connection AFTER graphics init to avoid timeout on slow devices.
+    // DRM/EGL initialization can take 4-5 seconds on first run (Orange Pi), and the
+    // login server will disconnect if no network pumping occurs during that window.
+    m_eqClient->ConnectToLogin();
+
     m_running.store(true);
     m_lastUpdate = std::chrono::steady_clock::now();
     m_lastGraphicsUpdate = std::chrono::steady_clock::now();

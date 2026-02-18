@@ -167,6 +167,8 @@ protected:
             std::cout << "Graphics initialized successfully" << std::endl;
 #endif
 
+            eq_->ConnectToLogin();
+
             return true;
         } catch (const std::exception& e) {
             std::cerr << "Failed to create client: " << e.what() << std::endl;

@@ -195,6 +195,8 @@ protected:
                 eq_->SetEQClientPath(config_.eqClientPath);
             }
 
+            eq_->ConnectToLogin();
+
             return true;
         } catch (const std::exception& e) {
             std::cerr << "Failed to create client: " << e.what() << std::endl;

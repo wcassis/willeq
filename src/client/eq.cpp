@@ -951,7 +951,13 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// Initialize skill manager
 	m_skill_manager = std::make_unique<EQ::SkillManager>(this);
 
-	// Direct connection without DNS lookup (assume host is already IP or will be resolved by OS)
+	// Connection is deferred to ConnectToLogin() so that graphics initialization
+	// (which can take several seconds on slow devices like Orange Pi) completes first.
+	// This prevents the login server from timing out while waiting for a response.
+}
+
+void EverQuest::ConnectToLogin()
+{
 	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
 
 	m_login_connection_manager->OnNewConnection(std::bind(&EverQuest::LoginOnNewConnection, this, std::placeholders::_1));

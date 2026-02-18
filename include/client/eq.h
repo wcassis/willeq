@@ -652,6 +652,9 @@ public:
 	EverQuest(const std::string &host, int port, const std::string &user, const std::string &pass, const std::string &server, const std::string &character);
 	~EverQuest();
 
+	// Initiate login server connection (call after graphics init to avoid timeout during slow startup)
+	void ConnectToLogin();
+
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
 
