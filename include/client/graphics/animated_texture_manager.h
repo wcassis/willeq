@@ -50,6 +50,9 @@ public:
     // This scans the node's materials and registers any that use animated textures
     void addSceneNode(irr::scene::ISceneNode* node);
 
+    // Remove all references to a scene node (call before node->remove() during eviction)
+    void removeSceneNode(irr::scene::ISceneNode* node);
+
     // Update all animated textures based on elapsed time
     // Call this once per frame with the frame delta time
     void update(float deltaMs);

@@ -326,6 +326,17 @@ void AnimatedTextureManager::addSceneNode(irr::scene::ISceneNode* node) {
     }
 }
 
+void AnimatedTextureManager::removeSceneNode(irr::scene::ISceneNode* node) {
+    if (!node) return;
+
+    for (auto& [name, state] : animatedTextures_) {
+        state.affectedMaterials.erase(
+            std::remove_if(state.affectedMaterials.begin(), state.affectedMaterials.end(),
+                [node](const AnimatedMaterial& am) { return am.node == node; }),
+            state.affectedMaterials.end());
+    }
+}
+
 void AnimatedTextureManager::update(float deltaMs) {
     for (auto& [name, state] : animatedTextures_) {
         if (state.frameTextures.size() <= 1) {

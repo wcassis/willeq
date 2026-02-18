@@ -19,6 +19,11 @@ void ConstrainedRendererConfig::calculateMemoryLimits() {
         size_t eightMB = 8 * 1024 * 1024;
         soundBufferCacheBytes = std::min(eightMB, totalMemoryBudgetBytes / 16);
 
+        // Mesh cache: derive from total if not explicitly set by preset
+        if (meshMemoryBytes == 0) {
+            meshMemoryBytes = totalMemoryBudgetBytes / 5;
+        }
+
         // Keep at most 4 other-zone _chr.s3d caches
         chrCacheMaxEntries = 4;
     }
@@ -117,6 +122,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.maxPolygonsPerFrame = 30000;
             // System RAM budget
             config.totalMemoryBudgetBytes = 32 * 1024 * 1024;  // 32MB
+            config.meshMemoryBytes = 4 * 1024 * 1024;  // 4MB mesh cache
             break;
 
         case ConstrainedRenderingPreset::Voodoo2:
@@ -134,6 +140,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.maxPolygonsPerFrame = 50000;
             // System RAM budget
             config.totalMemoryBudgetBytes = 64 * 1024 * 1024;  // 64MB
+            config.meshMemoryBytes = 8 * 1024 * 1024;  // 8MB mesh cache
             break;
 
         case ConstrainedRenderingPreset::TNT:
@@ -152,6 +159,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableMipmaps = true;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
+            config.meshMemoryBytes = 16 * 1024 * 1024;  // 16MB mesh cache
             break;
 
         case ConstrainedRenderingPreset::OrangePi:
@@ -182,6 +190,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.antiAliasLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
+            config.meshMemoryBytes = 24 * 1024 * 1024;  // 24MB mesh cache
             break;
 
         case ConstrainedRenderingPreset::Custom:
@@ -377,6 +386,10 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableShaders = preset["enableShaders"].asBool();
     if (preset.isMember("antiAliasLevel"))
         antiAliasLevel = preset["antiAliasLevel"].asInt();
+    if (preset.isMember("mesh_memory_mb"))
+        meshMemoryBytes = static_cast<size_t>(preset["mesh_memory_mb"].asUInt64()) * 1024 * 1024;
+    if (preset.isMember("meshMemoryBytes"))
+        meshMemoryBytes = static_cast<size_t>(preset["meshMemoryBytes"].asUInt64());
 
     return true;
 }

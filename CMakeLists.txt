@@ -323,6 +323,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/sky_renderer.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/constrained_mesh_cache.cpp
         # Inventory UI sources
         src/client/graphics/ui/inventory_constants.cpp
         src/client/graphics/ui/inventory_manager.cpp

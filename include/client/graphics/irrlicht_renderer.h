@@ -48,8 +48,9 @@ namespace inventory { class InventoryManager; }
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
 
-// Forward declaration for constrained texture cache
+// Forward declaration for constrained texture cache and mesh cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
+namespace EQT { namespace Graphics { class ConstrainedMeshCache; } }
 
 namespace EQT {
 namespace Graphics {
@@ -781,6 +782,9 @@ public:
     // Constrained texture cache access (may return nullptr if not in constrained mode)
     ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_.get(); }
 
+    // Constrained mesh cache access (may return nullptr if not in constrained mode)
+    ConstrainedMeshCache* getConstrainedMeshCache() { return constrainedMeshCache_.get(); }
+
     // Check if constrained rendering mode is active
     bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
@@ -801,6 +805,9 @@ public:
 
     // Weather effects system access (rain, snow, lightning)
     WeatherEffectsController* getWeatherEffects() { return weatherEffects_.get(); }
+
+    // Memory usage report for /pmem command
+    std::vector<std::string> getMemoryReport() const;
 
     // Set weather from server packet (type: 0=none, 1=rain, 2=snow; intensity: 1-10)
     void setWeather(uint8_t type, uint8_t intensity);
@@ -859,10 +866,13 @@ private:
     void setupHUD();
     void updateHUD();
     void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
+    void initDeferredEnvironmentSystems();   // Called on first frame after zoneReady_
     void createZoneMesh();
     void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
     void updatePvsVisibility();    // Update region visibility based on camera position
     void updateFrustumCulling();   // Re-test visible nodes against frustum (for rotation-only changes)
+    void processFrameLazyLoad();   // FPS-budgeted lazy mesh loading (constrained mode)
+    bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
     void createObjectMeshes();
     void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
@@ -906,6 +916,7 @@ private:
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
     std::unique_ptr<SkyRenderer> skyRenderer_;
     std::unique_ptr<ConstrainedTextureCache> constrainedTextureCache_;  // Optional, for memory-limited rendering
+    std::unique_ptr<ConstrainedMeshCache> constrainedMeshCache_;      // Optional, lazy mesh loading in constrained mode
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
     std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
@@ -927,6 +938,14 @@ private:
     std::shared_ptr<EQT::Graphics::BspTree> zoneBspTree_;  // BSP tree for region queries
     size_t currentPvsRegion_ = SIZE_MAX;  // Current camera region (SIZE_MAX = unknown)
     irr::scene::IMeshSceneNode* fallbackMeshNode_ = nullptr;  // Mesh for geometry not in any region
+
+    // Lazy mesh loading state (constrained mode)
+    struct MeshLoadEntry {
+        size_t regionIdx;
+        float distance;  // for priority sorting
+    };
+    std::vector<MeshLoadEntry> meshLoadQueue_;
+    std::unordered_set<size_t> protectedRegions_;  // visible + buffer ring (skip during eviction)
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
@@ -968,6 +987,7 @@ private:
 
     // Frame phase shared state
     std::chrono::steady_clock::time_point sectionStart_;
+    std::chrono::steady_clock::time_point frameStart_;  // Start of current frame (for lazy load budgeting)
     int64_t measureSection();
     bool chatInputFocused_ = false;
     bool runTier2_ = true;
@@ -990,6 +1010,7 @@ private:
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool globalAssetsLoaded_ = false;  // True when loadGlobalAssets() has completed
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
+    bool environmentInitPending_ = false;  // Deferred init after game becomes playable
     bool networkReady_ = false;  // True when network packet exchange is complete
     bool entitiesLoaded_ = false;  // True when all entities have been loaded with models/textures
     size_t expectedEntityCount_ = 0;  // Expected number of entities from ZoneSpawns
@@ -1204,6 +1225,7 @@ private:
         int64_t fireFlicker = 0;
         int64_t objectVisibility = 0;
         int64_t pvsVisibility = 0;
+        int64_t meshLoading = 0;
         int64_t objectLights = 0;
         int64_t tier2Update = 0;     // Detail objects, trees
         int64_t tier3Update = 0;     // Weather, sky, particles, boids
@@ -1217,6 +1239,10 @@ private:
         int64_t sceneOther = 0;         // Camera + light + shadow passes
         int sceneNodeCount = 0;         // Nodes rendered in drawAll
         int64_t targetBox = 0;
+        int64_t particles = 0;
+        int64_t boids = 0;
+        int64_t weatherRender = 0;
+        int64_t debugOverlays = 0;
         int64_t castingBars = 0;
         int64_t guiDrawAll = 0;
         int64_t windowManager = 0;

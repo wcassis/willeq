@@ -64,6 +64,7 @@ struct ConstrainedRendererConfig {
     size_t totalMemoryBudgetBytes = 0;
 
     // Derived limits (computed by calculateMemoryLimits())
+    size_t meshMemoryBytes = 0;            // Max region mesh cache (0 = no constraint / no lazy loading)
     size_t soundBufferCacheBytes = 0;       // Max decoded sound buffer cache
     size_t chrCacheMaxEntries = 0;          // Max otherChrCaches_ entries in RaceModelLoader
     bool lazyPfsLoading = false;            // Don't keep PFS archives decompressed in memory
