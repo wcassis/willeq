@@ -371,13 +371,21 @@ void DetailManager::setEnabled(bool enabled) {
 
     enabled_ = enabled;
 
-    // Show/hide all chunks
-    for (auto* chunk : activeChunks_) {
-        if (enabled) {
-            chunk->attach();
-        } else {
-            chunk->detach();
+    if (!enabled) {
+        // Release chunk mesh data and placements to free memory
+        for (auto& [key, chunk] : chunks_) {
+            if (chunk) chunk->detach();
         }
+        size_t freedChunks = chunks_.size();
+        chunks_.clear();
+        activeChunks_.clear();
+        if (footprintManager_) footprintManager_->clear();
+        // Reset so updateVisibleChunks() rebuilds on re-enable
+        lastCameraChunk_ = {INT32_MAX, INT32_MAX};
+        LOG_INFO(MOD_GRAPHICS, "DetailManager: Disabled, released {} chunks", freedChunks);
+    } else {
+        // Chunks rebuild on next update() via updateVisibleChunks()
+        LOG_INFO(MOD_GRAPHICS, "DetailManager: Enabled, chunks will rebuild on next update");
     }
 }
 
@@ -386,7 +394,7 @@ void DetailManager::setFoliageDisturbanceConfig(const FoliageDisturbanceConfig& 
     if (disturbanceManager_) {
         disturbanceManager_->setConfig(config);
     }
-    LOG_INFO(MOD_GRAPHICS, "DetailManager: Foliage disturbance config updated, enabled={}",
+    LOG_DEBUG(MOD_GRAPHICS, "DetailManager: Foliage disturbance config updated, enabled={}",
              config.enabled ? "true" : "false");
 }
 
@@ -403,7 +411,7 @@ void DetailManager::setFootprintConfig(const FootprintConfig& config) {
     if (footprintManager_) {
         footprintManager_->setConfig(config);
     }
-    LOG_INFO(MOD_GRAPHICS, "DetailManager: Footprint config updated, enabled={}",
+    LOG_DEBUG(MOD_GRAPHICS, "DetailManager: Footprint config updated, enabled={}",
              config.enabled ? "true" : "false");
 }
 

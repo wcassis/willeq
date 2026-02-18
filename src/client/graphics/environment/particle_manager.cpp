@@ -435,6 +435,22 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created {} emitters", emitters_.size());
 }
 
+void ParticleManager::setEnabled(bool enabled) {
+    if (enabled_ == enabled) return;
+    enabled_ = enabled;
+
+    if (!enabled) {
+        clearEmitters();
+        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Disabled, emitters released");
+    } else if (!currentZoneName_.empty()) {
+        setupEmittersForBiome(currentBiome_);
+        for (auto& emitter : emitters_) {
+            if (emitter) emitter->onZoneEnter(currentZoneName_, currentBiome_);
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Re-enabled, {} emitters recreated", emitters_.size());
+    }
+}
+
 void ParticleManager::clearEmitters() {
     emitters_.clear();
 }

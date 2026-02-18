@@ -154,6 +154,17 @@ void BoidsManager::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
     spawnTimer_ = 5.0f;  // First flock spawns after 5 seconds
 }
 
+void BoidsManager::setEnabled(bool enabled) {
+    if (enabled_ == enabled) return;
+    enabled_ = enabled;
+
+    if (!enabled) {
+        flocks_.clear();
+        LOG_DEBUG(MOD_GRAPHICS, "BoidsManager: Disabled, flocks released");
+    }
+    // On re-enable, updateSpawning() in update() naturally spawns new flocks
+}
+
 void BoidsManager::onZoneLeave() {
     LOG_DEBUG(MOD_GRAPHICS, "BoidsManager: Leaving zone '{}'", currentZoneName_);
 

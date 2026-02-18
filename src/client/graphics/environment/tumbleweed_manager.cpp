@@ -672,6 +672,19 @@ void TumbleweedManager::onZoneEnter(const std::string& zoneName, ZoneBiome biome
     LOG_DEBUG(MOD_GRAPHICS, "TumbleweedManager: Zone '{}' biome={}", zoneName, static_cast<int>(biome));
 }
 
+void TumbleweedManager::setEnabled(bool enabled) {
+    if (enabled_ == enabled) return;
+    enabled_ = enabled;
+
+    if (!enabled) {
+        for (auto& tw : tumbleweeds_) {
+            if (tw.active) despawnTumbleweed(tw);
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "TumbleweedManager: Disabled, tumbleweeds despawned");
+    }
+    // On re-enable, update() naturally spawns new tumbleweeds
+}
+
 void TumbleweedManager::onZoneLeave() {
     // Despawn all tumbleweeds
     for (auto& tw : tumbleweeds_) {

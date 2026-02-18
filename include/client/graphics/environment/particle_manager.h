@@ -93,7 +93,7 @@ public:
     /**
      * Enable or disable the entire particle system.
      */
-    void setEnabled(bool enabled) { enabled_ = enabled; }
+    void setEnabled(bool enabled);
     bool isEnabled() const { return enabled_; }
 
     // === Environment State ===

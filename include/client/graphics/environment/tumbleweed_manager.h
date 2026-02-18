@@ -141,7 +141,7 @@ public:
     /**
      * Enable/disable tumbleweeds.
      */
-    void setEnabled(bool enabled) { enabled_ = enabled; }
+    void setEnabled(bool enabled);
     bool isEnabled() const { return enabled_ && settings_.enabled; }
 
     /**
