@@ -2475,7 +2475,7 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 
     // Release raw texture pixel data now that all zone meshes, objects, trees,
     // and rebuilt doors have their textures uploaded to the GPU/constrained cache.
-    if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_) {
+    if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_ && !constrainedMeshCache_) {
         size_t freed = currentZone_->releaseTexturePixelData();
         LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
                  freed / (1024.0f * 1024.0f));
@@ -9561,9 +9561,9 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport() const {
         if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
             auto stats = eml->getMemoryStats();
             totalEstimate += stats.rawTextureBytes;
-            lines.push_back(fmt::format("[Equipment Models] {} raw textures, {} cached meshes ({} models, {} mappings)",
+            lines.push_back(fmt::format("[Equipment Models] {} raw textures, {} cached meshes ({}/{} loaded/indexed, {} mappings)",
                 formatBytes(stats.rawTextureBytes), stats.meshCacheCount,
-                stats.modelCount, stats.mappingCount));
+                stats.loadedGeometryCount, stats.indexedModelCount, stats.mappingCount));
         }
     }
 

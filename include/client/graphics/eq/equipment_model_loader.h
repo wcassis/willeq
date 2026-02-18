@@ -60,17 +60,15 @@ public:
     // Check if equipment archives have been loaded
     bool isLoaded() const { return archivesLoaded_; }
 
-    // Get number of loaded equipment models
-    size_t getLoadedModelCount() const { return equipmentModels_.size(); }
+    // Get total number of indexed equipment models
+    size_t getLoadedModelCount() const { return equipmentModelIndex_.size(); }
 
     // Get number of item ID mappings
     size_t getMappingCount() const { return itemToModelMap_.size(); }
 
     // Get equipment model data by model ID (for debugging/inspection)
-    const EquipmentModelData* getEquipmentModelData(int modelId) const {
-        auto it = equipmentModels_.find(modelId);
-        return (it != equipmentModels_.end()) ? it->second.get() : nullptr;
-    }
+    // Triggers on-demand loading if model is indexed but not yet loaded
+    const EquipmentModelData* getEquipmentModelData(int modelId);
 
     // Release raw texture data after GPU upload (frees CPU-side pixel data)
     // Returns the number of bytes freed
@@ -80,7 +78,8 @@ public:
     struct MemoryStats {
         size_t rawTextureBytes = 0;      // Raw texture data (CPU-side)
         size_t meshCacheCount = 0;       // Number of cached meshes
-        size_t modelCount = 0;           // Number of loaded equipment models
+        size_t indexedModelCount = 0;    // Total models indexed from archives
+        size_t loadedGeometryCount = 0;  // Models with geometry loaded on demand
         size_t mappingCount = 0;         // Number of item-to-model mappings
     };
     MemoryStats getMemoryStats() const;
@@ -92,8 +91,14 @@ public:
     void removeMeshRef(int modelId);
 
 private:
-    // Load equipment models from a single S3D archive
+    // Index-only scan of a single S3D archive (no geometry or texture data loaded)
     bool loadEquipmentArchive(const std::string& archivePath);
+
+    // Load a single equipment model on demand from its indexed archive
+    bool loadEquipmentModelOnDemand(int modelId);
+
+    // Load a single equipment texture on demand from its indexed archive
+    std::shared_ptr<TextureInfo> getEquipmentTexture(const std::string& lowerName);
 
     // Build an Irrlicht mesh from equipment geometry
     irr::scene::IMesh* buildMeshFromGeometry(
@@ -113,13 +118,33 @@ private:
     // Database item ID -> IT model number mapping
     std::map<uint32_t, int> itemToModelMap_;
 
-    // IT model ID -> equipment model data
+    // Index entry: where to find an equipment model (no geometry loaded)
+    struct EquipmentModelRef {
+        std::string archivePath;
+        std::string wldName;
+        std::string actorName;
+        std::vector<std::string> textureNames;  // Textures used by this model
+    };
+
+    // Index entry: where to find an equipment texture
+    struct EquipmentTextureRef {
+        std::string archivePath;
+        std::string entryName;
+    };
+
+    // Model index: modelId -> location (populated at startup, no geometry)
+    std::map<int, EquipmentModelRef> equipmentModelIndex_;
+
+    // Texture index: lowercase name -> archive location (populated at startup, no data)
+    std::map<std::string, EquipmentTextureRef> textureIndex_;
+
+    // IT model ID -> equipment model data (populated on demand)
     std::map<int, std::shared_ptr<EquipmentModelData>> equipmentModels_;
 
     // IT model ID -> cached Irrlicht mesh
     std::map<int, irr::scene::IMesh*> meshCache_;
 
-    // Textures loaded from equipment archives
+    // On-demand loaded textures (cache to avoid re-extracting from archives)
     std::map<std::string, std::shared_ptr<TextureInfo>> textures_;
 
     // Reference counts for cached meshes (model ID -> ref count)

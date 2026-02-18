@@ -97,7 +97,7 @@ bool EquipmentModelLoader::loadEquipmentArchives() {
         return false;
     }
 
-    // Load all gequip archives (lower priority first, higher priority last for duplicates)
+    // Index all gequip archives (lower priority first, higher priority last for duplicates)
     // gequip.s3d: IT27-153, gequip2: IT11-656, gequip3: IT10000-10105
     // gequip4: IT10015-11502, gequip5: IT10501-10523, gequip6: IT661-668, gequip8: IT10524-10733
     std::vector<std::string> archiveNames = {
@@ -112,7 +112,7 @@ bool EquipmentModelLoader::loadEquipmentArchives() {
 
     archivesLoaded_ = true;
 
-    return !equipmentModels_.empty();
+    return !equipmentModelIndex_.empty();
 }
 
 bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) {
@@ -122,9 +122,10 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
         return false;
     }
 
-    LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: Loading equipment archive: {}", archivePath);
+    LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: Indexing equipment archive: {}", archivePath);
 
-    // Load textures from archive
+    // Index texture filenames (no data loaded)
+    size_t texCount = 0;
     std::vector<std::string> texFiles;
     archive.getFilenames(".bmp", texFiles);
 
@@ -134,19 +135,13 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
     }
 
     for (const auto& texName : texFiles) {
-        std::vector<char> data;
-        if (archive.get(texName, data)) {
-            auto tex = std::make_shared<TextureInfo>();
-            tex->name = texName;
-            tex->data = std::move(data);
-            tex->width = 0;
-            tex->height = 0;
-
-            // Store with lowercase key for case-insensitive lookup
-            std::string lowerName = texName;
-            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                          [](unsigned char c) { return std::tolower(c); });
-            textures_[lowerName] = tex;
+        std::string lowerName = texName;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                      [](unsigned char c) { return std::tolower(c); });
+        // Don't overwrite if already indexed (earlier archives have priority)
+        if (textureIndex_.find(lowerName) == textureIndex_.end()) {
+            textureIndex_[lowerName] = {archivePath, texName};
+            texCount++;
         }
     }
 
@@ -159,7 +154,8 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
         return false;
     }
 
-    // Parse each WLD file
+    // Parse each WLD to discover actor -> model ID mapping (needed for index)
+    size_t modelCount = 0;
     for (const auto& wldName : wldFiles) {
         WldLoader wldLoader;
         if (!wldLoader.parseFromArchive(archivePath, wldName)) {
@@ -167,130 +163,231 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
             continue;
         }
 
-        // Get actors (Fragment 0x14) and geometries
         const auto& objectDefs = wldLoader.getObjectDefs();
-        const auto& modelRefs = wldLoader.getModelRefs();
         const auto& geometries = wldLoader.getGeometries();
 
-        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: WLD {}: {} actors, {} geometries",
+        LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: WLD {}: {} actors, {} geometries",
                 wldName, objectDefs.size(), geometries.size());
-
-        // Debug: Log first few actor names to see what pattern they use
-        int debugCount = 0;
-        for (const auto& [name, _] : objectDefs) {
-            if (debugCount++ < 5) {
-                LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Sample actor name: '{}'", name);
-            }
-        }
 
         // Process each actor that matches IT### pattern
         for (const auto& [actorName, objDef] : objectDefs) {
             int modelId = parseModelIdFromActorName(actorName);
             if (modelId < 0) {
-                continue;  // Not an equipment actor
-            }
-
-            // Skip if already loaded (from earlier archive)
-            if (equipmentModels_.find(modelId) != equipmentModels_.end()) {
                 continue;
             }
 
-            // Find geometries by name pattern matching IT{modelId}
-            // Equipment models use naming like IT10653_DMSPRITEDEF
-            std::vector<std::shared_ptr<ZoneGeometry>> actorGeometries;
+            // Skip if already indexed (from earlier archive)
+            if (equipmentModelIndex_.find(modelId) != equipmentModelIndex_.end()) {
+                continue;
+            }
+
+            // Discover texture names used by this model's geometries
             std::string prefix = "IT" + std::to_string(modelId);
+            std::vector<std::string> modelTexNames;
+            bool hasGeometry = false;
 
             for (const auto& geom : geometries) {
                 if (geom && !geom->name.empty()) {
                     std::string geomName = geom->name;
                     std::transform(geomName.begin(), geomName.end(), geomName.begin(),
                                   [](unsigned char c) { return std::toupper(c); });
-                    // Match IT{id}_ pattern (e.g., IT10653_DMSPRITEDEF)
                     if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
-                        actorGeometries.push_back(geom);
-                    }
-                }
-            }
-
-            if (actorGeometries.empty()) {
-                continue;  // No geometry found for this actor
-            }
-
-            // Debug: log what we're storing
-            LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: Storing model IT{} from actor {} with {} geometries",
-                    modelId, actorName, actorGeometries.size());
-
-            // Combine geometries into a single equipment model
-            auto equipModel = std::make_shared<EquipmentModelData>();
-            equipModel->modelName = "IT" + std::to_string(modelId);
-            equipModel->modelId = modelId;
-
-            // Extract archive name from path
-            size_t lastSlash = archivePath.find_last_of("/\\");
-            equipModel->sourceArchive = (lastSlash != std::string::npos)
-                ? archivePath.substr(lastSlash + 1) : archivePath;
-            equipModel->sourceWld = wldName;
-
-            // Combine all geometries (in case there are multiple mesh parts)
-            auto combinedGeom = std::make_shared<ZoneGeometry>();
-            combinedGeom->name = equipModel->modelName;
-
-            for (const auto& geom : actorGeometries) {
-                size_t vertexOffset = combinedGeom->vertices.size();
-
-                // Track geometry names used
-                if (!geom->name.empty()) {
-                    equipModel->geometryName += (equipModel->geometryName.empty() ? "" : ", ") + geom->name;
-                }
-
-                // Add vertices
-                for (const auto& v : geom->vertices) {
-                    combinedGeom->vertices.push_back(v);
-                }
-
-                // Add triangles with adjusted indices
-                for (const auto& tri : geom->triangles) {
-                    Triangle newTri = tri;
-                    newTri.v1 += static_cast<uint32_t>(vertexOffset);
-                    newTri.v2 += static_cast<uint32_t>(vertexOffset);
-                    newTri.v3 += static_cast<uint32_t>(vertexOffset);
-                    combinedGeom->triangles.push_back(newTri);
-                }
-
-                // Add texture names
-                for (const auto& texName : geom->textureNames) {
-                    // Check if already added
-                    bool found = false;
-                    for (const auto& existing : combinedGeom->textureNames) {
-                        if (existing == texName) {
-                            found = true;
-                            break;
+                        hasGeometry = true;
+                        for (const auto& texName : geom->textureNames) {
+                            bool found = false;
+                            for (const auto& existing : modelTexNames) {
+                                if (existing == texName) { found = true; break; }
+                            }
+                            if (!found) {
+                                modelTexNames.push_back(texName);
+                            }
                         }
                     }
-                    if (!found) {
-                        combinedGeom->textureNames.push_back(texName);
-                        equipModel->textureNames.push_back(texName);
-                    }
                 }
             }
 
-            equipModel->geometry = combinedGeom;
-            // Only copy textures actually used by this model (not the entire archive)
-            for (const auto& texName : equipModel->textureNames) {
-                std::string lowerName = texName;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                              [](unsigned char c) { return std::tolower(c); });
-                auto it = textures_.find(lowerName);
-                if (it != textures_.end()) {
-                    equipModel->textures[lowerName] = it->second;
-                }
+            if (!hasGeometry) {
+                continue;
             }
 
-            equipmentModels_[modelId] = equipModel;
+            LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Indexing model IT{} from actor {}",
+                    modelId, actorName);
+
+            equipmentModelIndex_[modelId] = {archivePath, wldName, actorName, modelTexNames};
+            modelCount++;
         }
     }
 
+    // Extract archive name for summary log
+    size_t lastSlash = archivePath.find_last_of("/\\");
+    std::string archiveName = (lastSlash != std::string::npos)
+        ? archivePath.substr(lastSlash + 1) : archivePath;
+    LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: Indexed {} models, {} textures from {}",
+             modelCount, texCount, archiveName);
+
     return true;
+}
+
+bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
+    auto indexIt = equipmentModelIndex_.find(modelId);
+    if (indexIt == equipmentModelIndex_.end()) {
+        return false;
+    }
+
+    const auto& ref = indexIt->second;
+
+    // Open the archive
+    PfsArchive archive;
+    if (!archive.open(ref.archivePath)) {
+        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to open archive for model IT{}: {}",
+                 modelId, ref.archivePath);
+        return false;
+    }
+
+    // Parse WLD
+    WldLoader wldLoader;
+    if (!wldLoader.parseFromArchive(ref.archivePath, ref.wldName)) {
+        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to parse WLD for model IT{}: {}",
+                 modelId, ref.wldName);
+        return false;
+    }
+
+    const auto& geometries = wldLoader.getGeometries();
+
+    // Find geometries for this model
+    std::string prefix = "IT" + std::to_string(modelId);
+    std::vector<std::shared_ptr<ZoneGeometry>> actorGeometries;
+
+    for (const auto& geom : geometries) {
+        if (geom && !geom->name.empty()) {
+            std::string geomName = geom->name;
+            std::transform(geomName.begin(), geomName.end(), geomName.begin(),
+                          [](unsigned char c) { return std::toupper(c); });
+            if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
+                actorGeometries.push_back(geom);
+            }
+        }
+    }
+
+    if (actorGeometries.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: No geometry found for model IT{}", modelId);
+        return false;
+    }
+
+    // Build equipment model data (same as old loadEquipmentArchive logic, for one model)
+    auto equipModel = std::make_shared<EquipmentModelData>();
+    equipModel->modelName = "IT" + std::to_string(modelId);
+    equipModel->modelId = modelId;
+
+    size_t lastSlash = ref.archivePath.find_last_of("/\\");
+    equipModel->sourceArchive = (lastSlash != std::string::npos)
+        ? ref.archivePath.substr(lastSlash + 1) : ref.archivePath;
+    equipModel->sourceWld = ref.wldName;
+
+    auto combinedGeom = std::make_shared<ZoneGeometry>();
+    combinedGeom->name = equipModel->modelName;
+
+    for (const auto& geom : actorGeometries) {
+        size_t vertexOffset = combinedGeom->vertices.size();
+
+        if (!geom->name.empty()) {
+            equipModel->geometryName += (equipModel->geometryName.empty() ? "" : ", ") + geom->name;
+        }
+
+        for (const auto& v : geom->vertices) {
+            combinedGeom->vertices.push_back(v);
+        }
+
+        for (const auto& tri : geom->triangles) {
+            Triangle newTri = tri;
+            newTri.v1 += static_cast<uint32_t>(vertexOffset);
+            newTri.v2 += static_cast<uint32_t>(vertexOffset);
+            newTri.v3 += static_cast<uint32_t>(vertexOffset);
+            combinedGeom->triangles.push_back(newTri);
+        }
+
+        for (const auto& texName : geom->textureNames) {
+            bool found = false;
+            for (const auto& existing : combinedGeom->textureNames) {
+                if (existing == texName) { found = true; break; }
+            }
+            if (!found) {
+                combinedGeom->textureNames.push_back(texName);
+                equipModel->textureNames.push_back(texName);
+            }
+        }
+    }
+
+    equipModel->geometry = combinedGeom;
+
+    // Load textures on demand
+    for (const auto& texName : equipModel->textureNames) {
+        std::string lowerName = texName;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                      [](unsigned char c) { return std::tolower(c); });
+        auto tex = getEquipmentTexture(lowerName);
+        if (tex) {
+            equipModel->textures[lowerName] = tex;
+        }
+    }
+
+    equipmentModels_[modelId] = equipModel;
+
+    LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Loaded model IT{} on demand ({} verts, {} tris, {} textures)",
+             modelId, combinedGeom->vertices.size(), combinedGeom->triangles.size(),
+             equipModel->textures.size());
+
+    return true;
+}
+
+std::shared_ptr<TextureInfo> EquipmentModelLoader::getEquipmentTexture(const std::string& lowerName) {
+    // Check cache first
+    auto cacheIt = textures_.find(lowerName);
+    if (cacheIt != textures_.end()) {
+        return cacheIt->second;
+    }
+
+    // Look up in index
+    auto indexIt = textureIndex_.find(lowerName);
+    if (indexIt == textureIndex_.end()) {
+        return nullptr;
+    }
+
+    // Extract from archive on demand
+    const auto& ref = indexIt->second;
+    PfsArchive archive;
+    if (!archive.open(ref.archivePath)) {
+        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to open archive for texture: {}", ref.archivePath);
+        return nullptr;
+    }
+
+    std::vector<char> data;
+    if (!archive.get(ref.entryName, data)) {
+        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to extract texture: {} from {}", ref.entryName, ref.archivePath);
+        return nullptr;
+    }
+
+    auto tex = std::make_shared<TextureInfo>();
+    tex->name = ref.entryName;
+    tex->data = std::move(data);
+
+    textures_[lowerName] = tex;
+
+    LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Loaded texture on demand: {} ({} bytes)",
+              lowerName, tex->data.size());
+
+    return tex;
+}
+
+const EquipmentModelData* EquipmentModelLoader::getEquipmentModelData(int modelId) {
+    // Trigger on-demand loading if indexed but not yet loaded
+    if (equipmentModels_.find(modelId) == equipmentModels_.end()) {
+        if (equipmentModelIndex_.find(modelId) != equipmentModelIndex_.end()) {
+            loadEquipmentModelOnDemand(modelId);
+        }
+    }
+    auto it = equipmentModels_.find(modelId);
+    return (it != equipmentModels_.end()) ? it->second.get() : nullptr;
 }
 
 irr::scene::IMesh* EquipmentModelLoader::getEquipmentMeshByModelId(int modelId) {
@@ -298,16 +395,23 @@ irr::scene::IMesh* EquipmentModelLoader::getEquipmentMeshByModelId(int modelId) 
         return nullptr;
     }
 
-    // Check cache first
+    // Check mesh cache first
     auto cacheIt = meshCache_.find(modelId);
     if (cacheIt != meshCache_.end()) {
         return cacheIt->second;
     }
 
+    // On-demand: load model from index if not yet loaded
+    if (equipmentModels_.find(modelId) == equipmentModels_.end()) {
+        if (equipmentModelIndex_.find(modelId) != equipmentModelIndex_.end()) {
+            loadEquipmentModelOnDemand(modelId);
+        }
+    }
+
     // Find equipment model data
     auto modelIt = equipmentModels_.find(modelId);
     if (modelIt == equipmentModels_.end()) {
-        return nullptr;  // Model not found
+        return nullptr;
     }
 
     const auto& equipModel = modelIt->second;
@@ -557,11 +661,12 @@ size_t EquipmentModelLoader::releaseRawTextureData() {
 
 EquipmentModelLoader::MemoryStats EquipmentModelLoader::getMemoryStats() const {
     MemoryStats stats;
-    stats.modelCount = equipmentModels_.size();
+    stats.indexedModelCount = equipmentModelIndex_.size();
+    stats.loadedGeometryCount = equipmentModels_.size();
     stats.meshCacheCount = meshCache_.size();
     stats.mappingCount = itemToModelMap_.size();
 
-    // Count raw texture bytes in master map
+    // Count raw texture bytes in on-demand loaded textures
     for (const auto& [name, tex] : textures_) {
         if (tex) stats.rawTextureBytes += tex->rawDataBytes();
     }

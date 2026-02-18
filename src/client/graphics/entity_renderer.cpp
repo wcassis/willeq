@@ -2249,7 +2249,7 @@ bool EntityRenderer::loadEquipmentModels() {
     // Load equipment archives
     bool loaded = equipmentModelLoader_->loadEquipmentArchives();
     if (loaded) {
-        LOG_INFO(MOD_ENTITY, "EntityRenderer: Loaded {} equipment models", equipmentModelLoader_->getLoadedModelCount());
+        LOG_INFO(MOD_ENTITY, "EntityRenderer: Indexed {} equipment models (lazy loading)", equipmentModelLoader_->getLoadedModelCount());
     }
     return loaded;
 }
