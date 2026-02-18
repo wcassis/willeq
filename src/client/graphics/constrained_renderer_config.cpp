@@ -188,6 +188,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableShaders = true;
             config.enableCompressedTextures = false;  // Mali 400 via Lima software-decodes S3TC; no GPU savings, extra CPU cost
             config.antiAliasLevel = 4;
+            config.anisotropicFilterLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             config.meshMemoryBytes = 24 * 1024 * 1024;  // 24MB mesh cache
@@ -386,6 +387,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableShaders = preset["enableShaders"].asBool();
     if (preset.isMember("antiAliasLevel"))
         antiAliasLevel = preset["antiAliasLevel"].asInt();
+    if (preset.isMember("anisotropicFilterLevel"))
+        anisotropicFilterLevel = preset["anisotropicFilterLevel"].asInt();
     if (preset.isMember("mesh_memory_mb"))
         meshMemoryBytes = static_cast<size_t>(preset["mesh_memory_mb"].asUInt64()) * 1024 * 1024;
     if (preset.isMember("meshMemoryBytes"))

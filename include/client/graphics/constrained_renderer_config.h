@@ -59,6 +59,7 @@ struct ConstrainedRendererConfig {
     bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
     bool enableShaders = false;              // Use GLSL shaders for fog/lighting/tint
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
+    int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)
 
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;
