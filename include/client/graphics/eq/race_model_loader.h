@@ -124,6 +124,32 @@ public:
     // Get number of loaded race models
     size_t getLoadedModelCount() const { return loadedModels_.size(); }
 
+    // Release raw texture data after GPU upload (frees CPU-side pixel data)
+    // Armor texture cache is also released (reconstructible from index)
+    // Returns the number of bytes freed
+    size_t releaseRawTextureData();
+
+    // Memory stats for /pmem reporting
+    struct MemoryStats {
+        size_t globalTextureBytes = 0;     // Raw bytes in globalTextures_
+        size_t numberedTextureBytes = 0;   // Raw bytes in numberedGlobalTextures_
+        size_t armorTextureBytes = 0;      // Raw bytes in armorTextureCache_
+        size_t zoneTextureBytes = 0;       // Raw bytes in zoneTextures_
+        size_t otherChrTextureBytes = 0;   // Raw bytes in otherChrCaches_ textures
+        size_t loadedModelCount = 0;       // Number of loaded race models
+        size_t meshCacheCount = 0;         // meshCache_ entries
+        size_t variantMeshCacheCount = 0;  // variantMeshCache_ entries
+        size_t animatedMeshCacheCount = 0; // animatedMeshCache_ + variantAnimatedMeshCache_
+        size_t armorTextureCount = 0;      // Number of armor textures
+    };
+    MemoryStats getMemoryStats() const;
+
+    // Reference counting for mesh cache eviction
+    // Call addMeshRef when creating an entity with this race/gender
+    // Call removeMeshRef when removing that entity
+    void addMeshRef(uint16_t raceId, uint8_t gender);
+    void removeMeshRef(uint16_t raceId, uint8_t gender);
+
     // Set maximum cached _chr.s3d entries (0 = unlimited)
     void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
 
@@ -232,9 +258,17 @@ private:
     std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>> numberedGlobalTextures_;
     bool numberedGlobalsLoaded_ = false;
 
-    // Armor textures from global17-23_amr.s3d
-    std::map<std::string, std::shared_ptr<TextureInfo>> armorTextures_;
+    // Armor texture lazy-loading: index maps texture name -> archive location
+    struct ArmorTextureRef {
+        std::string archivePath;   // Full path to the S3D archive
+        std::string entryName;     // Original filename inside the archive
+    };
+    std::map<std::string, ArmorTextureRef> armorTextureIndex_;   // Lowercase name -> ref
+    std::map<std::string, std::shared_ptr<TextureInfo>> armorTextureCache_; // On-demand loaded
     bool armorTexturesLoaded_ = false;
+
+    // Load a single armor texture on demand from its archive
+    std::shared_ptr<TextureInfo> getArmorTexture(const std::string& lowerName);
 
     // Zone-specific character data
     std::string currentZoneName_;
@@ -258,6 +292,9 @@ private:
     std::map<std::string, OtherChrCache> otherChrCaches_;
     size_t maxChrCacheEntries_ = 0;          // 0 = unlimited
     std::list<std::string> chrCacheLruOrder_; // Front = most recently used
+
+    // Reference counts for cached meshes (cache key -> ref count)
+    std::map<uint32_t, int> meshRefCounts_;
 
     // Temporary storage for vertex data during animated mesh building
     // (populated by buildMeshFromGeometry, consumed by getAnimatedMeshForRace)

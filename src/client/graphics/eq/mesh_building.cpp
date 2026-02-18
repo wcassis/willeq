@@ -42,8 +42,8 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
         }
     }
 
-    // 3. Add armor textures (global17-23_amr.s3d - only add new, don't override)
-    for (const auto& [name, tex] : armorTextures_) {
+    // 3. Add already-cached armor textures (loaded on demand from global17-23_amr.s3d)
+    for (const auto& [name, tex] : armorTextureCache_) {
         if (merged.find(name) == merged.end()) {
             merged[name] = tex;
         }
@@ -207,13 +207,23 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     }
                 }
 
+                // Helper lambda: try to find texture data from passed map or armor index
+                auto findTextureData = [&](const std::string& name) -> std::shared_ptr<TextureInfo> {
+                    auto texIt = textures.find(name);
+                    if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                        return texIt->second;
+                    }
+                    // Fallback: try lazy-loading from armor texture archives
+                    return getArmorTexture(name);
+                };
+
                 // Performance: Try cache first via getOrLoadTexture, then lazy load if needed
                 texture = meshBuilder_->getOrLoadTexture(finalTexName);
                 if (!texture) {
                     // Not in cache, register for lazy loading and load now
-                    auto texIt = textures.find(finalTexName);
-                    if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texIt->second->data);
+                    auto texInfo = findTextureData(finalTexName);
+                    if (texInfo && !texInfo->data.empty()) {
+                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data);
                         LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded texture \"{}\"{}",
                                   bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
                     } else {
@@ -221,9 +231,9 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                         if (overrideApplied) {
                             texture = meshBuilder_->getOrLoadTexture(lowerTexName);
                             if (!texture) {
-                                texIt = textures.find(lowerTexName);
-                                if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                                    texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texIt->second->data);
+                                texInfo = findTextureData(lowerTexName);
+                                if (texInfo && !texInfo->data.empty()) {
+                                    texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data);
                                     LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded fallback texture \"{}\"", bufferIndex, lowerTexName);
                                 } else {
                                     LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\" or fallback \"{}\"", bufferIndex, finalTexName, lowerTexName);

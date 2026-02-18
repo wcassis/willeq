@@ -275,7 +275,16 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
             }
 
             equipModel->geometry = combinedGeom;
-            equipModel->textures = textures_;  // Share texture map
+            // Only copy textures actually used by this model (not the entire archive)
+            for (const auto& texName : equipModel->textureNames) {
+                std::string lowerName = texName;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                              [](unsigned char c) { return std::tolower(c); });
+                auto it = textures_.find(lowerName);
+                if (it != textures_.end()) {
+                    equipModel->textures[lowerName] = it->second;
+                }
+            }
 
             equipmentModels_[modelId] = equipModel;
         }
@@ -468,6 +477,96 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
 
     mesh->recalculateBoundingBox();
     return mesh;
+}
+
+void EquipmentModelLoader::addMeshRef(int modelId) {
+    if (modelId < 0) return;
+    meshRefCounts_[modelId]++;
+}
+
+void EquipmentModelLoader::removeMeshRef(int modelId) {
+    if (modelId < 0) return;
+    auto it = meshRefCounts_.find(modelId);
+    if (it == meshRefCounts_.end()) return;
+
+    it->second--;
+    if (it->second <= 0) {
+        meshRefCounts_.erase(it);
+
+        // Evict mesh from cache
+        auto meshIt = meshCache_.find(modelId);
+        if (meshIt != meshCache_.end()) {
+            if (meshIt->second) {
+                // Remove associated textures from driver
+                auto modelIt = equipmentModels_.find(modelId);
+                if (modelIt != equipmentModels_.end() && modelIt->second) {
+                    for (const auto& texName : modelIt->second->textureNames) {
+                        std::string lowerName = texName;
+                        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                      [](unsigned char c) { return std::tolower(c); });
+                        auto* tex = driver_->getTexture(lowerName.c_str());
+                        if (tex) {
+                            driver_->removeTexture(tex);
+                        }
+                    }
+                }
+                meshIt->second->drop();
+            }
+            meshCache_.erase(meshIt);
+            LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Evicted mesh for model IT{}", modelId);
+        }
+    }
+}
+
+size_t EquipmentModelLoader::releaseRawTextureData() {
+    size_t freed = 0;
+
+    // Release from the master texture map
+    for (auto& [name, tex] : textures_) {
+        if (!tex) continue;
+        freed += tex->rawDataBytes();
+        tex->data.clear();
+        tex->data.shrink_to_fit();
+        for (auto& frame : tex->frames) {
+            frame.data.clear();
+            frame.data.shrink_to_fit();
+        }
+    }
+
+    // Release from per-model texture maps (shared_ptrs may alias master map,
+    // but data vectors are already cleared above; handle any unique copies)
+    for (auto& [id, model] : equipmentModels_) {
+        if (!model) continue;
+        for (auto& [name, tex] : model->textures) {
+            if (!tex) continue;
+            size_t bytes = tex->rawDataBytes();
+            if (bytes > 0) {
+                freed += bytes;
+                tex->data.clear();
+                tex->data.shrink_to_fit();
+                for (auto& frame : tex->frames) {
+                    frame.data.clear();
+                    frame.data.shrink_to_fit();
+                }
+            }
+        }
+    }
+
+    return freed;
+}
+
+EquipmentModelLoader::MemoryStats EquipmentModelLoader::getMemoryStats() const {
+    MemoryStats stats;
+    stats.modelCount = equipmentModels_.size();
+    stats.meshCacheCount = meshCache_.size();
+    stats.mappingCount = itemToModelMap_.size();
+
+    // Count raw texture bytes in master map
+    for (const auto& [name, tex] : textures_) {
+        if (tex) stats.rawTextureBytes += tex->rawDataBytes();
+    }
+
+    return stats;
 }
 
 } // namespace Graphics

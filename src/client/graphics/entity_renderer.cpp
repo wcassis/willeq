@@ -463,6 +463,11 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 
 	entities_[spawnId] = visual;
 
+	// Track race model reference for cache eviction
+	if (raceModelLoader_) {
+		raceModelLoader_->addMeshRef(raceId, gender);
+	}
+
 	// Attach equipment models to bone attachment points
 	attachEquipment(entities_[spawnId]);
 
@@ -621,6 +626,11 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     }
 
     entities_[spawnId] = visual;
+
+    // Track race model reference for cache eviction
+    if (raceModelLoader_) {
+        raceModelLoader_->addMeshRef(raceId, gender);
+    }
 
     // Log entity creation with model status
     if (!usesPlaceholder) {
@@ -1428,6 +1438,25 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
     removeEntityFromGrid(spawnId);
 
     EntityVisual& visual = it->second;
+
+    // Release mesh ref counts for equipment
+    if (equipmentModelLoader_) {
+        if (visual.currentPrimaryId != 0) {
+            int modelId = equipmentModelLoader_->getModelIdForItem(visual.currentPrimaryId);
+            if (modelId < 0) modelId = static_cast<int>(visual.currentPrimaryId);
+            equipmentModelLoader_->removeMeshRef(modelId);
+        }
+        if (visual.currentSecondaryId != 0) {
+            int modelId = equipmentModelLoader_->getModelIdForItem(visual.currentSecondaryId);
+            if (modelId < 0) modelId = static_cast<int>(visual.currentSecondaryId);
+            equipmentModelLoader_->removeMeshRef(modelId);
+        }
+    }
+
+    // Release mesh ref count for race model
+    if (raceModelLoader_) {
+        raceModelLoader_->removeMeshRef(visual.raceId, visual.gender);
+    }
 
     // Remove equipment nodes first (they're children of sceneNode)
     if (visual.primaryEquipNode) {
@@ -2262,6 +2291,10 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                     visual.primaryEquipNode->getMaterial(i).BackfaceCulling = false;
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached primary equipment {} to entity {}", primaryId, visual.spawnId);
+                // Track reference for cache eviction
+                int modelId = equipmentModelLoader_->getModelIdForItem(primaryId);
+                if (modelId < 0) modelId = static_cast<int>(primaryId);
+                equipmentModelLoader_->addMeshRef(modelId);
             }
         }
     }
@@ -2280,6 +2313,10 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                     visual.secondaryEquipNode->getMaterial(i).BackfaceCulling = false;
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached secondary equipment {} to entity {}", secondaryId, visual.spawnId);
+                // Track reference for cache eviction
+                int modelId = equipmentModelLoader_->getModelIdForItem(secondaryId);
+                if (modelId < 0) modelId = static_cast<int>(secondaryId);
+                equipmentModelLoader_->addMeshRef(modelId);
             }
         }
     }

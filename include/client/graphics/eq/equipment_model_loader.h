@@ -72,6 +72,25 @@ public:
         return (it != equipmentModels_.end()) ? it->second.get() : nullptr;
     }
 
+    // Release raw texture data after GPU upload (frees CPU-side pixel data)
+    // Returns the number of bytes freed
+    size_t releaseRawTextureData();
+
+    // Memory stats for /pmem reporting
+    struct MemoryStats {
+        size_t rawTextureBytes = 0;      // Raw texture data (CPU-side)
+        size_t meshCacheCount = 0;       // Number of cached meshes
+        size_t modelCount = 0;           // Number of loaded equipment models
+        size_t mappingCount = 0;         // Number of item-to-model mappings
+    };
+    MemoryStats getMemoryStats() const;
+
+    // Reference counting for mesh cache eviction
+    // Call addMeshRef when attaching equipment to an entity
+    // Call removeMeshRef when detaching - mesh is evicted when refcount hits 0
+    void addMeshRef(int modelId);
+    void removeMeshRef(int modelId);
+
 private:
     // Load equipment models from a single S3D archive
     bool loadEquipmentArchive(const std::string& archivePath);
@@ -102,6 +121,9 @@ private:
 
     // Textures loaded from equipment archives
     std::map<std::string, std::shared_ptr<TextureInfo>> textures_;
+
+    // Reference counts for cached meshes (model ID -> ref count)
+    std::map<int, int> meshRefCounts_;
 
     bool archivesLoaded_ = false;
     bool mappingLoaded_ = false;

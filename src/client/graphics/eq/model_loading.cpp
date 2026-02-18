@@ -96,68 +96,86 @@ bool RaceModelLoader::loadArmorTextures() {
         return true;
     }
 
-    // Load global17_amr.s3d through global23_amr.s3d
-    // These contain armor textures for equipment variants 17-23
+    // Build index of armor textures from global17-23_amr.s3d
+    // Only scan filenames - don't extract data until needed
     int loadedCount = 0;
     for (int num = 17; num <= 23; ++num) {
-        std::string filename = clientPath_ + "global" + std::to_string(num) + "_amr.s3d";
+        std::string archivePath = clientPath_ + "global" + std::to_string(num) + "_amr.s3d";
 
         PfsArchive archive;
-        if (!archive.open(filename)) {
-            // Not all armor archives may exist
+        if (!archive.open(archivePath)) {
             continue;
         }
 
-        // Load BMP textures
-        std::vector<std::string> texFiles;
-        archive.getFilenames(".bmp", texFiles);
-
         int texCount = 0;
-        for (const auto& texName : texFiles) {
-            std::vector<char> data;
-            if (archive.get(texName, data)) {
-                auto tex = std::make_shared<TextureInfo>();
-                tex->name = texName;
-                tex->data.assign(data.begin(), data.end());
-
-                // Store with lowercase name for consistent lookup
+        auto indexExtension = [&](const std::string& ext) {
+            std::vector<std::string> files;
+            archive.getFilenames(ext, files);
+            for (const auto& texName : files) {
                 std::string lowerName = texName;
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                               [](unsigned char c) { return std::tolower(c); });
-                armorTextures_[lowerName] = tex;
-                texCount++;
-            }
-        }
-
-        // Also load DDS textures if present
-        std::vector<std::string> ddsFiles;
-        if (archive.getFilenames(".dds", ddsFiles)) {
-            for (const auto& texName : ddsFiles) {
-                std::vector<char> data;
-                if (archive.get(texName, data)) {
-                    auto tex = std::make_shared<TextureInfo>();
-                    tex->name = texName;
-                    tex->data.assign(data.begin(), data.end());
-
-                    std::string lowerName = texName;
-                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                  [](unsigned char c) { return std::tolower(c); });
-                    armorTextures_[lowerName] = tex;
+                // Don't overwrite if already indexed (earlier archives have priority)
+                if (armorTextureIndex_.find(lowerName) == armorTextureIndex_.end()) {
+                    armorTextureIndex_[lowerName] = {archivePath, texName};
                     texCount++;
                 }
             }
-        }
+        };
 
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Loaded {} armor textures from global{}_amr.s3d",
+        indexExtension(".bmp");
+        indexExtension(".dds");
+
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Indexed {} armor textures from global{}_amr.s3d",
                  texCount, num);
         loadedCount++;
     }
 
     armorTexturesLoaded_ = true;
 
-    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Total armor textures loaded: {}", armorTextures_.size());
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Total armor textures indexed: {} (0 bytes loaded)",
+             armorTextureIndex_.size());
 
     return loadedCount > 0;
+}
+
+std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string& lowerName) {
+    // Check cache first
+    auto cacheIt = armorTextureCache_.find(lowerName);
+    if (cacheIt != armorTextureCache_.end()) {
+        return cacheIt->second;
+    }
+
+    // Look up in index
+    auto indexIt = armorTextureIndex_.find(lowerName);
+    if (indexIt == armorTextureIndex_.end()) {
+        return nullptr;
+    }
+
+    // Extract from archive on demand
+    const auto& ref = indexIt->second;
+    PfsArchive archive;
+    if (!archive.open(ref.archivePath)) {
+        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to open archive for armor texture: {}", ref.archivePath);
+        return nullptr;
+    }
+
+    std::vector<char> data;
+    if (!archive.get(ref.entryName, data)) {
+        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to extract armor texture: {} from {}", ref.entryName, ref.archivePath);
+        return nullptr;
+    }
+
+    auto tex = std::make_shared<TextureInfo>();
+    tex->name = ref.entryName;
+    tex->data = std::move(data);
+
+    armorTextureCache_[lowerName] = tex;
+
+    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand: {} ({} bytes)",
+              lowerName, tex->data.size());
+
+    return tex;
 }
 
 bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
@@ -1440,6 +1458,153 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
     }
 
     return false;
+}
+
+void RaceModelLoader::addMeshRef(uint16_t raceId, uint8_t gender) {
+    uint32_t key = makeCacheKey(raceId, gender);
+    meshRefCounts_[key]++;
+}
+
+void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
+    uint32_t key = makeCacheKey(raceId, gender);
+    auto it = meshRefCounts_.find(key);
+    if (it == meshRefCounts_.end()) return;
+
+    it->second--;
+    if (it->second <= 0) {
+        meshRefCounts_.erase(it);
+
+        // Evict meshes from caches
+        auto meshIt = meshCache_.find(key);
+        if (meshIt != meshCache_.end()) {
+            if (meshIt->second) {
+                meshIt->second->drop();
+            }
+            meshCache_.erase(meshIt);
+        }
+
+        // Remove model data
+        loadedModels_.erase(key);
+
+        // Also evict variant and animated caches for this race/gender
+        // Variant keys encode raceId in upper 32 bits, gender in bits 24-31
+        auto varIt = variantMeshCache_.begin();
+        while (varIt != variantMeshCache_.end()) {
+            uint64_t vkey = varIt->first;
+            uint16_t vRace = static_cast<uint16_t>(vkey >> 32);
+            uint8_t vGender = static_cast<uint8_t>((vkey >> 24) & 0xFF);
+            if (vRace == raceId && vGender == gender) {
+                if (varIt->second) varIt->second->drop();
+                varIt = variantMeshCache_.erase(varIt);
+            } else {
+                ++varIt;
+            }
+        }
+
+        // Erase variant models
+        auto vmIt = variantModels_.begin();
+        while (vmIt != variantModels_.end()) {
+            uint64_t vkey = vmIt->first;
+            uint16_t vRace = static_cast<uint16_t>(vkey >> 32);
+            uint8_t vGender = static_cast<uint8_t>((vkey >> 24) & 0xFF);
+            if (vRace == raceId && vGender == gender) {
+                vmIt = variantModels_.erase(vmIt);
+            } else {
+                ++vmIt;
+            }
+        }
+
+        // Erase animated mesh caches
+        animatedMeshCache_.erase(key);
+
+        auto vaIt = variantAnimatedMeshCache_.begin();
+        while (vaIt != variantAnimatedMeshCache_.end()) {
+            uint64_t vkey = vaIt->first;
+            uint16_t vRace = static_cast<uint16_t>(vkey >> 32);
+            uint8_t vGender = static_cast<uint8_t>((vkey >> 24) & 0xFF);
+            if (vRace == raceId && vGender == gender) {
+                vaIt = variantAnimatedMeshCache_.erase(vaIt);
+            } else {
+                ++vaIt;
+            }
+        }
+
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Evicted caches for race {} gender {}", raceId, gender);
+    }
+}
+
+size_t RaceModelLoader::releaseRawTextureData() {
+    size_t freed = 0;
+
+    auto releaseMap = [&freed](std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
+        for (auto& [name, tex] : texMap) {
+            if (!tex) continue;
+            freed += tex->rawDataBytes();
+            tex->data.clear();
+            tex->data.shrink_to_fit();
+            for (auto& frame : tex->frames) {
+                frame.data.clear();
+                frame.data.shrink_to_fit();
+            }
+        }
+    };
+
+    // Release global textures
+    releaseMap(globalTextures_);
+
+    // Release numbered global textures
+    for (auto& [num, texMap] : numberedGlobalTextures_) {
+        releaseMap(texMap);
+    }
+
+    // Release zone textures
+    releaseMap(zoneTextures_);
+
+    // Release other chr cache textures
+    for (auto& [filename, cache] : otherChrCaches_) {
+        releaseMap(cache.textures);
+    }
+
+    // Release cached merged textures (they're copies referencing same shared_ptrs)
+    releaseMap(cachedMergedTextures_);
+
+    // Release armor texture cache (can be re-loaded on demand from index)
+    releaseMap(armorTextureCache_);
+
+    return freed;
+}
+
+RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
+    MemoryStats stats;
+
+    auto sumMapBytes = [](const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) -> size_t {
+        size_t total = 0;
+        for (const auto& [name, tex] : texMap) {
+            if (tex) total += tex->rawDataBytes();
+        }
+        return total;
+    };
+
+    stats.globalTextureBytes = sumMapBytes(globalTextures_);
+
+    for (const auto& [num, texMap] : numberedGlobalTextures_) {
+        stats.numberedTextureBytes += sumMapBytes(texMap);
+    }
+
+    stats.armorTextureBytes = sumMapBytes(armorTextureCache_);
+    stats.armorTextureCount = armorTextureIndex_.size();
+    stats.zoneTextureBytes = sumMapBytes(zoneTextures_);
+
+    for (const auto& [filename, cache] : otherChrCaches_) {
+        stats.otherChrTextureBytes += sumMapBytes(cache.textures);
+    }
+
+    stats.loadedModelCount = loadedModels_.size();
+    stats.meshCacheCount = meshCache_.size();
+    stats.variantMeshCacheCount = variantMeshCache_.size();
+    stats.animatedMeshCacheCount = animatedMeshCache_.size() + variantAnimatedMeshCache_.size();
+
+    return stats;
 }
 
 } // namespace Graphics
