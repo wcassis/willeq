@@ -6058,10 +6058,12 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         initDeferredEnvironmentSystems();
 
         // Release raw texture data from equipment and race model loaders.
-        // All initial entity models have been built and GPU textures uploaded.
         // New entities spawning later will still find their textures in the
         // Irrlicht driver cache (looked up by name), so raw data is no longer needed.
-        if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_) {
+        // Skip if progressive loading is active — entity meshes still being built
+        // need the raw texture data from cached model entries.
+        if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_
+            && !progressiveLoadingActive_) {
             size_t totalFreed = 0;
             if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
                 totalFreed += eml->releaseRawTextureData();
@@ -8253,8 +8255,31 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
 
     zoneTriangleSelector_ = metaSelector;
 
-    // Also create a terrain-only selector (same as main for now)
+    // Also create a terrain-only selector and populate with zone geometry
+    // (DetailManager uses this for ground raycasts when generating detail objects)
     terrainOnlySelector_ = smgr_->createMetaTriangleSelector();
+    if (terrainOnlySelector_) {
+        auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_);
+        if (playerRegion != SIZE_MAX) {
+            auto regionIt = regionMeshNodes_.find(playerRegion);
+            if (regionIt != regionMeshNodes_.end() && regionIt->second && regionIt->second->getMesh()) {
+                irr::scene::ITriangleSelector* regionSelector =
+                    smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
+                if (regionSelector) {
+                    terrainMeta->addTriangleSelector(regionSelector);
+                    regionSelector->drop();
+                }
+            }
+        }
+        if (fallbackMeshNode_ && fallbackMeshNode_->getMesh()) {
+            irr::scene::ITriangleSelector* fallbackSelector =
+                smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
+            if (fallbackSelector) {
+                terrainMeta->addTriangleSelector(fallbackSelector);
+                fallbackSelector->drop();
+            }
+        }
+    }
 
     collisionManager_ = smgr_->getSceneCollisionManager();
 
@@ -8289,6 +8314,13 @@ void IrrlichtRenderer::addRegionToCollision(size_t regionIdx) {
         smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
     if (selector) {
         metaSelector->addTriangleSelector(selector);
+
+        // Also add to terrain-only selector (used by DetailManager for ground raycasts)
+        if (terrainOnlySelector_) {
+            auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_);
+            terrainMeta->addTriangleSelector(selector);
+        }
+
         selector->drop();
     }
 }
@@ -8556,6 +8588,14 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - progressiveLoadStartTime_).count();
         LOG_INFO(MOD_GRAPHICS, "Progressive loading complete: {}ms total streaming time", elapsed);
+
+        // Regenerate detail chunks now that all terrain is in the selector
+        // (chunks generated during progressive loading had incomplete terrain raycasts)
+        if (detailManager_ && detailManager_->isEnabled()) {
+            detailManager_->setEnabled(false);
+            detailManager_->setEnabled(true);
+            LOG_INFO(MOD_GRAPHICS, "Regenerating detail chunks with complete terrain");
+        }
 
         // Release raw texture data now that all models are built
         if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_) {
