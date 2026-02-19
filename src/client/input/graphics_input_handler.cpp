@@ -40,19 +40,22 @@ void GraphicsInputHandler::updateFromEventReceiver() {
                         m_eventReceiver->isKeyDown(irr::KEY_RSHIFT);
 
     // Update movement state from held keys using HotkeyManager
-    auto& hotkeyMgr = HotkeyManager::instance();
-    for (int keyCode = 0; keyCode < irr::KEY_KEY_CODES_COUNT; ++keyCode) {
-        if (m_eventReceiver->isKeyDown(static_cast<irr::EKEY_CODE>(keyCode))) {
-            HotkeyAction action;
-            if (hotkeyMgr.isMovementKey(static_cast<irr::EKEY_CODE>(keyCode), action)) {
-                switch (action) {
-                    case HotkeyAction::MoveForward: m_state.moveForward = true; break;
-                    case HotkeyAction::MoveBackward: m_state.moveBackward = true; break;
-                    case HotkeyAction::StrafeLeft: m_state.strafeLeft = true; break;
-                    case HotkeyAction::StrafeRight: m_state.strafeRight = true; break;
-                    case HotkeyAction::TurnLeft: m_state.turnLeft = true; break;
-                    case HotkeyAction::TurnRight: m_state.turnRight = true; break;
-                    default: break;
+    // Skip when chat input is focused to prevent typing from triggering movement
+    if (!m_eventReceiver->isChatInputFocused()) {
+        auto& hotkeyMgr = HotkeyManager::instance();
+        for (int keyCode = 0; keyCode < irr::KEY_KEY_CODES_COUNT; ++keyCode) {
+            if (m_eventReceiver->isKeyDown(static_cast<irr::EKEY_CODE>(keyCode))) {
+                HotkeyAction action;
+                if (hotkeyMgr.isMovementKey(static_cast<irr::EKEY_CODE>(keyCode), action)) {
+                    switch (action) {
+                        case HotkeyAction::MoveForward: m_state.moveForward = true; break;
+                        case HotkeyAction::MoveBackward: m_state.moveBackward = true; break;
+                        case HotkeyAction::StrafeLeft: m_state.strafeLeft = true; break;
+                        case HotkeyAction::StrafeRight: m_state.strafeRight = true; break;
+                        case HotkeyAction::TurnLeft: m_state.turnLeft = true; break;
+                        case HotkeyAction::TurnRight: m_state.turnRight = true; break;
+                        default: break;
+                    }
                 }
             }
         }
