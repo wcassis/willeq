@@ -36,7 +36,6 @@ struct DisplaySettings {
     EffectQuality environmentQuality = EffectQuality::Medium;
     bool atmosphericParticles = true;
     bool ambientCreatures = true;
-    bool shorelineWaves = true;
     bool reactiveFoliage = true;
     bool rollingObjects = true;
     bool skyEnabled = true;

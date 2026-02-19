@@ -104,27 +104,6 @@
     "colorB": 0.6,
     "colorA": 1.0
   },
-  "shorelineWaves": {
-    "enabled": false,
-    "maxParticles": 120,
-    "spawnRate": 15.0,
-    "spawnRadiusMin": 2.0,
-    "spawnRadiusMax": 40.0,
-    "spawnHeightMin": -0.2,
-    "spawnHeightMax": 0.5,
-    "sizeMin": 0.3,
-    "sizeMax": 0.8,
-    "lifetimeMin": 2.0,
-    "lifetimeMax": 5.0,
-    "driftSpeed": 0.5,
-    "windFactor": 2.0,
-    "alphaIndoor": 0.7,
-    "alphaOutdoor": 0.6,
-    "colorR": 0.95,
-    "colorG": 0.98,
-    "colorB": 1.0,
-    "colorA": 0.8
-  },
   "embers": {
     "enabled": true,
     "maxParticles": 40,
@@ -177,7 +156,7 @@
     "debrisEnabled": true
   },
   "boids": {
-    "enabled": true,
+    "enabled": false,
     "maxFlocks": 3,
     "flockSizeMin": 5,
     "flockSizeMax": 12,
@@ -190,7 +169,7 @@
     "avoidance": 2.0
   },
   "tumbleweeds": {
-    "enabled": true,
+    "enabled": false,
     "maxActive": 8,
     "spawnRate": 0.15,
     "spawnDistance": 60.0,

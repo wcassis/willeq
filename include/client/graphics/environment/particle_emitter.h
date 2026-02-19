@@ -7,7 +7,7 @@
 namespace EQT {
 namespace Graphics {
 namespace Detail {
-    class SurfaceMap;  // Forward declaration for shoreline detection
+    class SurfaceMap;  // Forward declaration for terrain detection
 }
 namespace Environment {
 
@@ -90,7 +90,7 @@ public:
 
     /**
      * Set the surface map for terrain/water detection.
-     * Override in subclasses that need terrain data (e.g., ShorelineWaveEmitter).
+     * Override in subclasses that need terrain data.
      */
     virtual void setSurfaceMap(const Detail::SurfaceMap* /*surfaceMap*/) {}
 

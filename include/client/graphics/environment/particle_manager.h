@@ -157,7 +157,7 @@ public:
     void setFireSources(const std::vector<glm::vec3>& positions);
 
     /**
-     * Set the surface map for shoreline detection.
+     * Set the surface map for terrain detection.
      * Called by renderer after loading zone surface data.
      * Propagates to all emitters that need terrain data.
      */
@@ -236,7 +236,7 @@ private:
     // Environment state
     EnvironmentState envState_;
 
-    // Surface map for shoreline detection (owned externally, e.g., by DetailObjectManager)
+    // Surface map for terrain detection (owned externally, e.g., by DetailObjectManager)
     const Detail::SurfaceMap* surfaceMap_ = nullptr;
 
     // External emitters (not owned, just rendered)

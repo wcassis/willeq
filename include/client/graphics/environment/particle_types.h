@@ -19,7 +19,6 @@ enum class ParticleType : uint8_t {
     Leaf,           // Falling/blowing leaves
     Snowflake,      // Snow particles
     Ember,          // Fire embers/sparks
-    ShorelineWave,  // Foam and spray at water edges
     Smoke,          // Fire smoke wisps
 
     Count
@@ -112,7 +111,6 @@ namespace ParticleAtlas {
     constexpr uint8_t LeafShape = 5;    // Leaves
     constexpr uint8_t Snowflake = 6;    // Snow
     constexpr uint8_t Ember = 7;        // Fire embers
-    constexpr uint8_t FoamSpray = 8;    // Wave foam/spray
     constexpr uint8_t WaterDroplet = 9; // Small water droplet
     constexpr uint8_t RippleRing = 10;  // Water ripple ring (Phase 7)
     constexpr uint8_t SnowPatch = 11;   // Snow ground patch (Phase 9)

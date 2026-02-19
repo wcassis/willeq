@@ -265,25 +265,23 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
                   col2X, y, hoveredCheckbox_ == 1);
     y += ROW_HEIGHT + ROW_SPACING;
 
-    // Row 2: Shoreline Waves | Reactive Foliage
-    renderCheckbox(driver, gui, L"Shoreline Waves", displaySettings_.shorelineWaves,
-                  indentX, y, hoveredCheckbox_ == 2);
+    // Row 2: Reactive Foliage | Rolling Objects
     renderCheckbox(driver, gui, L"Reactive Foliage", displaySettings_.reactiveFoliage,
+                  indentX, y, hoveredCheckbox_ == 2);
+    renderCheckbox(driver, gui, L"Rolling Objects", displaySettings_.rollingObjects,
                   col2X, y, hoveredCheckbox_ == 3);
     y += ROW_HEIGHT + ROW_SPACING;
 
-    // Row 3: Rolling Objects | Sky
-    renderCheckbox(driver, gui, L"Rolling Objects", displaySettings_.rollingObjects,
-                  indentX, y, hoveredCheckbox_ == 4);
+    // Row 3: Sky | Animated Trees
     renderCheckbox(driver, gui, L"Sky", displaySettings_.skyEnabled,
+                  indentX, y, hoveredCheckbox_ == 4);
+    renderCheckbox(driver, gui, L"Animated Trees", displaySettings_.animatedTrees,
                   col2X, y, hoveredCheckbox_ == 5);
     y += ROW_HEIGHT + ROW_SPACING;
 
-    // Row 4: Animated Trees | Fire Effects
-    renderCheckbox(driver, gui, L"Animated Trees", displaySettings_.animatedTrees,
-                  indentX, y, hoveredCheckbox_ == 11);
+    // Row 4: Fire Effects
     renderCheckbox(driver, gui, L"Fire Effects", displaySettings_.fireEffects,
-                  col2X, y, hoveredCheckbox_ == 12);
+                  indentX, y, hoveredCheckbox_ == 6);
     y += ROW_HEIGHT + ROW_SPACING * 2;
 
     // Detail Objects Section
@@ -612,39 +610,34 @@ bool OptionsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
         rowY += ROW_HEIGHT + ROW_SPACING;
 
-        // Row 2: Shoreline Waves | Reactive Foliage
+        // Row 2: Reactive Foliage | Rolling Objects
         if (isInCheckbox(indentX, rowY, localX, localY)) {
-            displaySettings_.shorelineWaves = !displaySettings_.shorelineWaves;
-            notifyDisplaySettingsChanged();
-            return true;
-        }
-        if (isInCheckbox(col2X, rowY, localX, localY)) {
             displaySettings_.reactiveFoliage = !displaySettings_.reactiveFoliage;
             notifyDisplaySettingsChanged();
             return true;
         }
-        rowY += ROW_HEIGHT + ROW_SPACING;
-
-        // Row 3: Rolling Objects | Sky
-        if (isInCheckbox(indentX, rowY, localX, localY)) {
+        if (isInCheckbox(col2X, rowY, localX, localY)) {
             displaySettings_.rollingObjects = !displaySettings_.rollingObjects;
             notifyDisplaySettingsChanged();
             return true;
         }
-        if (isInCheckbox(col2X, rowY, localX, localY)) {
+        rowY += ROW_HEIGHT + ROW_SPACING;
+
+        // Row 3: Sky | Animated Trees
+        if (isInCheckbox(indentX, rowY, localX, localY)) {
             displaySettings_.skyEnabled = !displaySettings_.skyEnabled;
+            notifyDisplaySettingsChanged();
+            return true;
+        }
+        if (isInCheckbox(col2X, rowY, localX, localY)) {
+            displaySettings_.animatedTrees = !displaySettings_.animatedTrees;
             notifyDisplaySettingsChanged();
             return true;
         }
         rowY += ROW_HEIGHT + ROW_SPACING;
 
-        // Row 4: Animated Trees | Fire Effects
+        // Row 4: Fire Effects
         if (isInCheckbox(indentX, rowY, localX, localY)) {
-            displaySettings_.animatedTrees = !displaySettings_.animatedTrees;
-            notifyDisplaySettingsChanged();
-            return true;
-        }
-        if (isInCheckbox(col2X, rowY, localX, localY)) {
             displaySettings_.fireEffects = !displaySettings_.fireEffects;
             notifyDisplaySettingsChanged();
             return true;
@@ -887,7 +880,6 @@ bool OptionsWindow::loadSettings(const std::string& path)
 
         displaySettings_.atmosphericParticles = env.get("atmosphericParticles", true).asBool();
         displaySettings_.ambientCreatures = env.get("ambientCreatures", true).asBool();
-        displaySettings_.shorelineWaves = env.get("shorelineWaves", true).asBool();
         displaySettings_.reactiveFoliage = env.get("reactiveFoliage", true).asBool();
         displaySettings_.rollingObjects = env.get("rollingObjects", true).asBool();
         displaySettings_.skyEnabled = env.get("skyEnabled", true).asBool();
@@ -940,7 +932,6 @@ bool OptionsWindow::saveSettings(const std::string& path)
     }
     env["atmosphericParticles"] = displaySettings_.atmosphericParticles;
     env["ambientCreatures"] = displaySettings_.ambientCreatures;
-    env["shorelineWaves"] = displaySettings_.shorelineWaves;
     env["reactiveFoliage"] = displaySettings_.reactiveFoliage;
     env["rollingObjects"] = displaySettings_.rollingObjects;
     env["skyEnabled"] = displaySettings_.skyEnabled;

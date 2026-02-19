@@ -392,7 +392,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/firefly_emitter.cpp
         src/client/graphics/environment/emitters/mist_emitter.cpp
         src/client/graphics/environment/emitters/sand_dust_emitter.cpp
-        src/client/graphics/environment/emitters/shoreline_wave_emitter.cpp
         src/client/graphics/environment/emitters/rain_emitter.cpp
         src/client/graphics/environment/emitters/rain_splash_emitter.cpp
         src/client/graphics/environment/emitters/snow_emitter.cpp

@@ -40,7 +40,6 @@ bool EnvironmentEffectsConfig::load(const std::string& path) {
     loadEmitterSettings(root, "fireflies", fireflies_);
     loadEmitterSettings(root, "mist", mist_);
     loadEmitterSettings(root, "sandDust", sandDust_);
-    loadEmitterSettings(root, "shorelineWaves", shorelineWaves_);
     loadEmitterSettings(root, "embers", embers_);
     loadEmitterSettings(root, "smoke", smoke_);
     loadDetailSettings(root);
@@ -258,27 +257,6 @@ void EnvironmentEffectsConfig::setDefaults() {
     sandDust_.colorR = 0.9f;
     sandDust_.colorG = 0.8f;
     sandDust_.colorB = 0.6f;
-
-    // Shoreline waves - foam and spray at water edges
-    shorelineWaves_ = EmitterSettings{};
-    shorelineWaves_.maxParticles = 120;
-    shorelineWaves_.spawnRate = 15.0f;
-    shorelineWaves_.spawnRadiusMin = 2.0f;
-    shorelineWaves_.spawnRadiusMax = 40.0f;
-    shorelineWaves_.spawnHeightMin = -0.2f;
-    shorelineWaves_.spawnHeightMax = 0.5f;
-    shorelineWaves_.sizeMin = 0.3f;
-    shorelineWaves_.sizeMax = 0.8f;
-    shorelineWaves_.lifetimeMin = 2.0f;
-    shorelineWaves_.lifetimeMax = 5.0f;
-    shorelineWaves_.driftSpeed = 0.5f;
-    shorelineWaves_.windFactor = 2.0f;
-    shorelineWaves_.alphaIndoor = 0.7f;
-    shorelineWaves_.alphaOutdoor = 0.6f;
-    shorelineWaves_.colorR = 0.95f;
-    shorelineWaves_.colorG = 0.98f;
-    shorelineWaves_.colorB = 1.0f;
-    shorelineWaves_.colorA = 0.8f;
 
     // Embers - fire sparks rising from fire sources
     embers_ = EmitterSettings{};

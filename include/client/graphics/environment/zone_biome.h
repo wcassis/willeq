@@ -40,7 +40,7 @@ public:
     bool isIndoorZone(const std::string& zoneName) const;
 
     /**
-     * Check if a zone has water (for mist/shoreline effects).
+     * Check if a zone has water (for mist effects).
      */
     bool hasWater(const std::string& zoneName) const;
 

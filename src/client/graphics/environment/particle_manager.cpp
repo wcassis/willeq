@@ -6,7 +6,6 @@
 #include "client/graphics/environment/emitters/firefly_emitter.h"
 #include "client/graphics/environment/emitters/mist_emitter.h"
 #include "client/graphics/environment/emitters/sand_dust_emitter.h"
-#include "client/graphics/environment/emitters/shoreline_wave_emitter.h"
 #include "client/graphics/environment/emitters/ember_emitter.h"
 #include "client/graphics/environment/emitters/smoke_emitter.h"
 #include "common/logging.h"
@@ -342,13 +341,6 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
     };
 
     // Set up emitters based on biome
-    // Helper to create and configure shoreline wave emitter
-    // Shoreline wave emitter disabled - crashes on ARM after surface map lookup
-    // even when disabled in config (the emitter is still created and updated)
-    auto addShorelineEmitter = [&]() {
-        // Hard-coded disable: do not create ShorelineWaveEmitter
-    };
-
     switch (biome) {
         case ZoneBiome::Forest:
             // Forests: pollen (day), fireflies (night), dust motes
@@ -357,25 +349,20 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
             addEmitter(std::make_unique<DustMoteEmitter>());
             if (zoneHasWater) {
                 addEmitter(std::make_unique<MistEmitter>());
-                addShorelineEmitter();
             }
             break;
 
         case ZoneBiome::Swamp:
-            // Swamps: heavy mist, fireflies, pollen, gentle shoreline waves
+            // Swamps: heavy mist, fireflies, pollen
             addEmitter(std::make_unique<MistEmitter>());
             addEmitter(std::make_unique<FireflyEmitter>());
             addEmitter(std::make_unique<PollenEmitter>());
-            addShorelineEmitter();
             break;
 
         case ZoneBiome::Desert:
-            // Deserts: blowing sand, dust motes, and shoreline waves for oases
+            // Deserts: blowing sand, dust motes
             addEmitter(std::make_unique<SandDustEmitter>());
             addEmitter(std::make_unique<DustMoteEmitter>());
-            if (zoneHasWater) {
-                addShorelineEmitter();
-            }
             break;
 
         case ZoneBiome::Plains:
@@ -385,15 +372,13 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
             if (zoneHasWater) {
                 addEmitter(std::make_unique<MistEmitter>());
                 addEmitter(std::make_unique<FireflyEmitter>());
-                addShorelineEmitter();
             }
             break;
 
         case ZoneBiome::Ocean:
-            // Ocean/coastal: mist, dust motes, shoreline waves
+            // Ocean/coastal: mist, dust motes
             addEmitter(std::make_unique<MistEmitter>());
             addEmitter(std::make_unique<DustMoteEmitter>());
-            addShorelineEmitter();
             break;
 
         case ZoneBiome::Dungeon:
