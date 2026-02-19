@@ -313,6 +313,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
         visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
     }
 
+    visual.meshBuilt = true;
     doors_[doorId] = visual;
 
     LOG_DEBUG(MOD_GRAPHICS, "Created door {} '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} opentype={}{} state={}",
@@ -321,6 +322,172 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
               initiallyOpen ? "open" : "closed");
 
     return true;
+}
+
+bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
+                                float x, float y, float z, float heading,
+                                uint32_t incline, uint16_t size, uint8_t opentype,
+                                bool initiallyOpen)
+{
+    if (!smgr_) {
+        return false;
+    }
+
+    // Skip invisible doors
+    if (INVISIBLE_OPENTYPES.count(opentype) > 0) {
+        invisibleDoors_.insert(doorId);
+        return true;
+    }
+
+    if (doors_.find(doorId) != doors_.end()) {
+        return true;
+    }
+
+    DoorVisual visual;
+    visual.doorId = doorId;
+    visual.modelName = name;
+    visual.x = x;
+    visual.y = y;
+    visual.z = z;
+    visual.closedHeading = heading;
+    visual.openHeading = calculateOpenHeading(heading, incline, opentype);
+    visual.size = size;
+    visual.opentype = opentype;
+    visual.isOpen = initiallyOpen;
+    visual.animProgress = initiallyOpen ? 1.0f : 0.0f;
+    visual.isAnimating = false;
+    visual.isSpinning = (opentype == 100 || opentype == 105);
+    visual.spinAngle = 0.0f;
+    visual.meshBuilt = false;
+
+    // Store raw parameters for deferred building
+    visual.name_raw = name;
+    visual.heading_raw = heading;
+    visual.incline_raw = incline;
+    visual.initiallyOpen_raw = initiallyOpen;
+
+    // Compute BSP region
+    if (bspTree_) {
+        visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
+    }
+
+    doors_[doorId] = visual;
+    return true;
+}
+
+bool DoorManager::buildDoorMesh(uint8_t doorId)
+{
+    auto it = doors_.find(doorId);
+    if (it == doors_.end() || !smgr_) {
+        return false;
+    }
+
+    DoorVisual& visual = it->second;
+    if (visual.meshBuilt) {
+        return true;
+    }
+
+    // Find or create mesh
+    irr::scene::IMesh* mesh = findDoorMesh(visual.name_raw);
+    bool usePlaceholder = false;
+
+    if (!mesh) {
+        mesh = createPlaceholderMesh();
+        usePlaceholder = true;
+    }
+
+    if (!mesh) {
+        return false;
+    }
+
+    visual.usePlaceholder = usePlaceholder;
+
+    float x = visual.x, y = visual.y, z = visual.z;
+    float scale = static_cast<float>(visual.size) / 100.0f;
+    irr::core::aabbox3df bbox = mesh->getBoundingBox();
+    float heightOffset = 0.0f;
+
+    float extentX = (bbox.MaxEdge.X - bbox.MinEdge.X) * scale;
+    float extentZ = (bbox.MaxEdge.Z - bbox.MinEdge.Z) * scale;
+    bool widthIsX = (extentX >= extentZ);
+    float hingeOffset = widthIsX ? bbox.MaxEdge.X * scale : bbox.MaxEdge.Z * scale;
+
+    // Create pivot node
+    visual.pivotNode = smgr_->addEmptySceneNode();
+    if (!visual.pivotNode) {
+        if (usePlaceholder) mesh->drop();
+        return false;
+    }
+    visual.pivotNode->setPosition(irr::core::vector3df(x, z + heightOffset, y));
+
+    // Create door mesh as child of pivot
+    visual.sceneNode = smgr_->addMeshSceneNode(mesh, visual.pivotNode);
+    if (!visual.sceneNode) {
+        visual.pivotNode->remove();
+        visual.pivotNode = nullptr;
+        if (usePlaceholder) mesh->drop();
+        return false;
+    }
+
+    visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
+
+    // Offset mesh so hinge edge is at pivot
+    irr::core::vector3df meshOffset;
+    if (widthIsX) {
+        meshOffset = irr::core::vector3df(-hingeOffset, 0, 0);
+    } else {
+        meshOffset = irr::core::vector3df(0, 0, -hingeOffset);
+    }
+    visual.sceneNode->setPosition(meshOffset);
+
+    // Apply rotation
+    float currentHeading = visual.isOpen ? visual.closedHeading : visual.openHeading;
+    float irrRotation = -currentHeading * 360.0f / 512.0f + 90.0f;
+    visual.pivotNode->setRotation(irr::core::vector3df(0, irrRotation, 0));
+
+    visual.pivotNode->updateAbsolutePosition();
+    visual.sceneNode->updateAbsolutePosition();
+
+    // Configure materials
+    for (irr::u32 i = 0; i < visual.sceneNode->getMaterialCount(); ++i) {
+        visual.sceneNode->getMaterial(i).Lighting = false;
+        visual.sceneNode->getMaterial(i).BackfaceCulling = false;
+        if (usePlaceholder) {
+            visual.sceneNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 100, 150, 200);
+            visual.sceneNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 100, 150, 200);
+        }
+    }
+
+    visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
+    visual.meshBuilt = true;
+
+    LOG_DEBUG(MOD_GRAPHICS, "Built door mesh {} '{}' at ({:.1f}, {:.1f}, {:.1f})",
+              doorId, visual.name_raw, x, y, z);
+
+    return true;
+}
+
+bool DoorManager::isDoorMeshBuilt(uint8_t doorId) const {
+    auto it = doors_.find(doorId);
+    return it != doors_.end() && it->second.meshBuilt;
+}
+
+void DoorManager::getDoorsInRegions(const std::unordered_set<size_t>& regions, std::vector<uint8_t>& out) const {
+    out.clear();
+    for (const auto& [id, visual] : doors_) {
+        if (!visual.meshBuilt && regions.count(visual.bspRegion) > 0) {
+            out.push_back(id);
+        }
+    }
+}
+
+void DoorManager::getUnbuiltDoors(std::vector<uint8_t>& out) const {
+    out.clear();
+    for (const auto& [id, visual] : doors_) {
+        if (!visual.meshBuilt) {
+            out.push_back(id);
+        }
+    }
 }
 
 void DoorManager::setDoorState(uint8_t doorId, bool open, bool userInitiated)
@@ -455,6 +622,7 @@ uint8_t DoorManager::getDoorAtScreenPos(int screenX, int screenY,
     float closestDist = std::numeric_limits<float>::max();
 
     for (const auto& [id, visual] : doors_) {
+        if (!visual.meshBuilt) continue;  // Skip unbuilt doors
         // Check ray intersection with door's bounding box
         irr::core::aabbox3df expandedBox = visual.boundingBox;
         // Expand box slightly for easier clicking
@@ -523,6 +691,14 @@ uint8_t DoorManager::getNearestDoor(float playerX, float playerY, float playerZ,
 
         nearestDistSq = distSq;
         nearestId = id;
+    }
+
+    // If nearest door is unbuilt, demand-load it now (player is interacting)
+    if (nearestId != 0) {
+        auto it = doors_.find(nearestId);
+        if (it != doors_.end() && !it->second.meshBuilt) {
+            const_cast<DoorManager*>(this)->buildDoorMesh(nearestId);
+        }
     }
 
     return nearestId;

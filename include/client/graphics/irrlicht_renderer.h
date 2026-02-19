@@ -15,6 +15,7 @@
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/graphics_archive_index.h"
 #include "client/graphics/frustum_culler.h"
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/detail/detail_manager.h"
@@ -425,6 +426,11 @@ public:
                      float x, float y, float z, float heading, bool isPlayer = false,
                      uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
                      bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
+    // Register entity metadata only (no mesh building, for deferred loading)
+    bool registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
+                        float x, float y, float z, float heading, bool isPlayer = false,
+                        uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
+                        bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
     void updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                       float dx = 0, float dy = 0, float dz = 0, uint32_t animation = 0);
     void removeEntity(uint16_t spawnId);
@@ -437,12 +443,37 @@ public:
                     float x, float y, float z, float heading,
                     uint32_t incline, uint16_t size, uint8_t opentype,
                     bool initiallyOpen);
+    // Register door metadata only (no mesh building, for deferred loading)
+    bool registerDoor(uint8_t doorId, const std::string& name,
+                      float x, float y, float z, float heading,
+                      uint32_t incline, uint16_t size, uint8_t opentype,
+                      bool initiallyOpen);
     void setDoorState(uint8_t doorId, bool open, bool userInitiated = false);
     void clearDoors();
 
     // Collision setup - call after zone, objects, and doors are all loaded
     // Creates a combined collision selector including zone geometry, placeables, and doors
     void setupZoneCollision();
+
+    // Deferred/progressive asset loading
+    // Index objects without building meshes (deferred mode)
+    void indexObjectMeshes();
+    // Build a single deferred object mesh by index
+    void buildDeferredObject(size_t idx);
+    // Minimal collision using only player's region mesh + HCMap fallback
+    void setupMinimalZoneCollision();
+    // Progressive per-frame asset building (priority-ordered)
+    void processFrameProgressiveLoad();
+    // Check if all deferred assets are built
+    void checkProgressiveLoadingComplete();
+    // Incremental collision helpers
+    void addRegionToCollision(size_t regionIdx);
+    void addDoorToCollision(uint8_t doorId);
+    void addObjectToCollision(size_t objIdx);
+    // Find BSP region for a point (EQ coordinates)
+    size_t findBspRegionForPoint(float x, float y, float z);
+    // Check if progressive loading is active
+    bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
 
     // Door interaction callback (called when player clicks door or presses U key)
     using DoorInteractCallback = std::function<void(uint8_t doorId)>;
@@ -795,6 +826,9 @@ public:
     // Check if constrained rendering mode is active
     bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
+    // Check if deferred asset loading is enabled
+    bool isDeferredAssetLoading() const { return config_.constrainedConfig.deferredAssetLoading; }
+
     // Zone shader access (returns nullptr if shaders not available/enabled)
     ZoneShaderManager* getZoneShader() { return zoneShader_.get(); }
 
@@ -932,6 +966,7 @@ private:
     std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
     std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
+    std::unique_ptr<GraphicsArchiveIndex> graphicsArchiveIndex_;  // Race-to-archive index for deferred loading
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;
@@ -954,6 +989,17 @@ private:
     std::vector<MeshLoadEntry> meshLoadQueue_;
     std::unordered_set<size_t> protectedRegions_;  // visible + buffer ring (skip during eviction)
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
+
+    // Deferred/progressive asset loading state
+    struct DeferredObject {
+        size_t objectIndex;              // Index into currentZone_->objects
+        size_t bspRegion = SIZE_MAX;     // BSP region for priority
+        irr::core::aabbox3df worldBounds;
+        bool meshBuilt = false;
+    };
+    std::vector<DeferredObject> deferredObjects_;
+    bool progressiveLoadingActive_ = false;
+    std::chrono::steady_clock::time_point progressiveLoadStartTime_;  // When progressive loading began
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling

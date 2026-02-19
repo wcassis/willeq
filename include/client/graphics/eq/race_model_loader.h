@@ -13,8 +13,8 @@
 #include <vector>
 #include <list>
 
-// Forward declaration for EntityAppearance
-namespace EQT { namespace Graphics { struct EntityAppearance; } }
+// Forward declarations
+namespace EQT { namespace Graphics { struct EntityAppearance; class GraphicsArchiveIndex; } }
 
 namespace EQT {
 namespace Graphics {
@@ -43,6 +43,9 @@ public:
 
     // Set the base path for EQ client files
     void setClientPath(const std::string& path);
+
+    // Set graphics archive index for on-demand model loading (deferred mode)
+    void setGraphicsArchiveIndex(GraphicsArchiveIndex* index) { graphicsArchiveIndex_ = index; }
 
     // Load all global character models from global_chr.s3d
     bool loadGlobalModels();
@@ -231,6 +234,9 @@ private:
     std::unique_ptr<ZoneMeshBuilder> meshBuilder_;
 
     std::string clientPath_;
+
+    // Graphics archive index for on-demand loading (deferred mode, non-owning)
+    GraphicsArchiveIndex* graphicsArchiveIndex_ = nullptr;
 
     // Cache of loaded race model data
     std::map<uint32_t, std::shared_ptr<RaceModelData>> loadedModels_;

@@ -72,6 +72,10 @@ struct EntityVisual {
     float corpseTime = 0.0f;       // Time since entity became a corpse (for death animation timing)
     bool usesPlaceholder = false;  // True if using placeholder cube instead of model
     bool isAnimated = false;       // True if using animated mesh
+
+    // Deferred mesh building (progressive loading)
+    bool meshBuilt = false;          // false = registered only, true = scene node built
+    bool meshBuildQueued = false;    // true = queued for build this frame
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
@@ -394,6 +398,19 @@ public:
 
     // Clear BSP tree (call when changing zones)
     void clearBspTree();
+
+    // Deferred/progressive mesh building
+    // Register entity metadata without building mesh (for deferred loading)
+    bool registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
+                        float x, float y, float z, float heading, bool isPlayer = false,
+                        uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
+                        bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
+    // Build the mesh for a previously registered entity
+    bool buildEntityMesh(uint16_t spawnId);
+    // Check if entity mesh is built
+    bool isEntityMeshBuilt(uint16_t spawnId) const;
+    // Get spawn IDs of all entities with meshBuilt == false
+    void getUnbuiltEntities(std::vector<uint16_t>& out) const;
 
     // Constrained rendering support
     // Set the constrained renderer config for entity visibility limits

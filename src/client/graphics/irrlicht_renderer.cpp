@@ -895,20 +895,40 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         }
     }
 
-    // Load main global character models (global_chr.s3d)
-    if (entityRenderer_->loadGlobalCharacters()) {
-        LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
+    if (config_.constrainedConfig.deferredAssetLoading) {
+        // Deferred mode: build lightweight archive index instead of loading all models
+        graphicsArchiveIndex_ = std::make_unique<GraphicsArchiveIndex>();
+        bool lazyMode = config_.constrainedConfig.lazyPfsLoading;
+        if (graphicsArchiveIndex_->buildIndex(config_.eqClientPath, lazyMode, networkTickCallback_)) {
+            LOG_INFO(MOD_GRAPHICS, "Graphics archive index built: {} race entries from {} archives",
+                     graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
+            // Pass archive index to RaceModelLoader for on-demand loading
+            if (entityRenderer_->getRaceModelLoader()) {
+                entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
+            }
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "Graphics archive index build failed, falling back to eager loading");
+            // Fall back to eager loading
+            entityRenderer_->loadGlobalCharacters();
+            if (networkTickCallback_) networkTickCallback_();
+            entityRenderer_->loadNumberedGlobals();
+        }
     } else {
-        LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
+        // Eager mode: load all global character models into memory
+        if (entityRenderer_->loadGlobalCharacters()) {
+            LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
+        }
+
+        // Pump network after global character model load
+        if (networkTickCallback_) networkTickCallback_();
+
+        // Preload numbered global character models for better coverage (global2-7_chr.s3d)
+        entityRenderer_->loadNumberedGlobals();
     }
 
-    // Pump network after global character model load
-    if (networkTickCallback_) networkTickCallback_();
-
-    // Preload numbered global character models for better coverage (global2-7_chr.s3d)
-    entityRenderer_->loadNumberedGlobals();
-
-    // Pump network after numbered globals load
+    // Pump network after character model loading
     if (networkTickCallback_) networkTickCallback_();
 
     // Load equipment models from gequip.s3d archives
@@ -2394,10 +2414,17 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // Pump network after zone mesh creation (can take several seconds on ARM)
     if (networkTickCallback_) networkTickCallback_();
 
-    drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
-    EQT::PerformanceMetrics::instance().startTimer("Object Mesh Creation", EQT::MetricCategory::Zoning);
-    createObjectMeshes();
-    EQT::PerformanceMetrics::instance().stopTimer("Object Mesh Creation");
+    if (config_.constrainedConfig.deferredAssetLoading) {
+        drawLoadingScreen(scaleProgress(0.60f), L"Indexing objects...");
+        EQT::PerformanceMetrics::instance().startTimer("Object Index", EQT::MetricCategory::Zoning);
+        indexObjectMeshes();
+        EQT::PerformanceMetrics::instance().stopTimer("Object Index");
+    } else {
+        drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
+        EQT::PerformanceMetrics::instance().startTimer("Object Mesh Creation", EQT::MetricCategory::Zoning);
+        createObjectMeshes();
+        EQT::PerformanceMetrics::instance().stopTimer("Object Mesh Creation");
+    }
 
     // Pump network after object mesh creation
     if (networkTickCallback_) networkTickCallback_();
@@ -4291,6 +4318,160 @@ void IrrlichtRenderer::createObjectMeshes() {
     }
 }
 
+void IrrlichtRenderer::indexObjectMeshes() {
+    if (!currentZone_) {
+        return;
+    }
+
+    deferredObjects_.clear();
+
+    for (size_t i = 0; i < currentZone_->objects.size(); ++i) {
+        const auto& objInstance = currentZone_->objects[i];
+        if (!objInstance.geometry || !objInstance.placeable) {
+            continue;
+        }
+
+        // Skip trees (handled by tree manager)
+        if (treeManager_) {
+            const std::string& objName = objInstance.placeable->getName();
+            std::string primaryTexture;
+            if (!objInstance.geometry->textureNames.empty()) {
+                primaryTexture = objInstance.geometry->textureNames[0];
+            }
+            if (treeManager_->isTreeObject(objName, primaryTexture)) {
+                continue;
+            }
+        }
+
+        DeferredObject deferred;
+        deferred.objectIndex = i;
+        deferred.meshBuilt = false;
+
+        float x = objInstance.placeable->getX();
+        float y = objInstance.placeable->getY();
+        float z = objInstance.placeable->getZ();
+
+        // Compute BSP region
+        if (zoneBspTree_) {
+            deferred.bspRegion = zoneBspTree_->findRegionIndexForPoint(x, y, z);
+        }
+
+        // Estimate world bounds from geometry extents
+        const auto& geom = objInstance.geometry;
+        float scaleX = objInstance.placeable->getScaleX();
+        float scaleY = objInstance.placeable->getScaleY();
+        float scaleZ = objInstance.placeable->getScaleZ();
+        // Approximate bounding box in Irrlicht coords (x, z, y)
+        float halfW = std::max(std::abs(geom->maxX - geom->minX), std::abs(geom->maxY - geom->minY)) * 0.5f * std::max(scaleX, scaleY);
+        float halfH = std::abs(geom->maxZ - geom->minZ) * 0.5f * scaleZ;
+        deferred.worldBounds = irr::core::aabbox3df(
+            x - halfW, z - halfH, y - halfW,
+            x + halfW, z + halfH, y + halfW);
+
+        deferredObjects_.push_back(deferred);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Indexed {} deferred objects", deferredObjects_.size());
+}
+
+void IrrlichtRenderer::buildDeferredObject(size_t idx) {
+    if (idx >= deferredObjects_.size() || !currentZone_ || !smgr_) {
+        return;
+    }
+
+    DeferredObject& deferred = deferredObjects_[idx];
+    if (deferred.meshBuilt) {
+        return;
+    }
+
+    if (deferred.objectIndex >= currentZone_->objects.size()) {
+        return;
+    }
+
+    const auto& objInstance = currentZone_->objects[deferred.objectIndex];
+    if (!objInstance.geometry || !objInstance.placeable) {
+        deferred.meshBuilt = true;
+        return;
+    }
+
+    const std::string& objName = objInstance.placeable->getName();
+
+    ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+    if (constrainedTextureCache_) {
+        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                       zoneShader_->getMaterialTypeAlphaTest());
+    }
+
+    irr::scene::IMesh* mesh = nullptr;
+    if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
+        mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+    } else {
+        mesh = builder.buildColoredMesh(*objInstance.geometry);
+    }
+
+    if (!mesh) {
+        deferred.meshBuilt = true;
+        return;
+    }
+
+    irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(mesh);
+    if (!node) {
+        mesh->drop();
+        deferred.meshBuilt = true;
+        return;
+    }
+
+    float scaleX = objInstance.placeable->getScaleX();
+    float scaleY = objInstance.placeable->getScaleY();
+    float scaleZ = objInstance.placeable->getScaleZ();
+    node->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
+
+    float x = objInstance.placeable->getX();
+    float y = objInstance.placeable->getY();
+    float z = objInstance.placeable->getZ();
+    node->setPosition(irr::core::vector3df(x, z, y));
+
+    float rotX = objInstance.placeable->getRotateX();
+    float rotY = objInstance.placeable->getRotateY();
+    float rotZ = objInstance.placeable->getRotateZ();
+    node->setRotation(irr::core::vector3df(rotX, rotY, rotZ));
+
+    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+        node->getMaterial(i).Lighting = lightingEnabled_;
+        node->getMaterial(i).BackfaceCulling = false;
+        node->getMaterial(i).GouraudShading = true;
+        node->getMaterial(i).FogEnable = fogEnabled_;
+        node->getMaterial(i).Wireframe = wireframeMode_;
+        node->getMaterial(i).NormalizeNormals = true;
+        node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+        node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+    }
+
+    if (animatedTextureManager_ && objInstance.geometry) {
+        animatedTextureManager_->addMesh(*objInstance.geometry, currentZone_->objectTextures, mesh);
+        animatedTextureManager_->addSceneNode(node);
+    }
+
+    node->setName(objName.c_str());
+    node->grab();
+    objectNodes_.push_back(node);
+    objectPositions_.push_back(irr::core::vector3df(x, z, y));
+    if (zoneBspTree_) {
+        objectRegions_.push_back(zoneBspTree_->findRegionIndexForPoint(x, y, z));
+    } else {
+        objectRegions_.push_back(SIZE_MAX);
+    }
+    node->updateAbsolutePosition();
+    objectBoundingBoxes_.push_back(node->getTransformedBoundingBox());
+    objectInSceneGraph_.push_back(true);
+
+    mesh->drop();
+    deferred.meshBuilt = true;
+}
+
 void IrrlichtRenderer::createZoneLights() {
     // Clear existing zone lights
     for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
@@ -4490,6 +4671,22 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
     return result;
 }
 
+bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
+                                       float x, float y, float z, float heading, bool isPlayer,
+                                       uint8_t gender, const EntityAppearance& appearance, bool isNPC,
+                                       bool isCorpse, float serverSize) {
+    if (!entityRenderer_) {
+        return false;
+    }
+    bool result = entityRenderer_->registerEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize);
+
+    if (result) {
+        loadedEntityCount_++;
+    }
+
+    return result;
+}
+
 void IrrlichtRenderer::updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                                      float dx, float dy, float dz, uint32_t animation) {
     if (entityRenderer_) {
@@ -4634,6 +4831,16 @@ bool IrrlichtRenderer::createDoor(uint8_t doorId, const std::string& name,
                                    bool initiallyOpen) {
     if (doorManager_) {
         return doorManager_->createDoor(doorId, name, x, y, z, heading, incline, size, opentype, initiallyOpen);
+    }
+    return false;
+}
+
+bool IrrlichtRenderer::registerDoor(uint8_t doorId, const std::string& name,
+                                     float x, float y, float z, float heading,
+                                     uint32_t incline, uint16_t size, uint8_t opentype,
+                                     bool initiallyOpen) {
+    if (doorManager_) {
+        return doorManager_->registerDoor(doorId, name, x, y, z, heading, incline, size, opentype, initiallyOpen);
     }
     return false;
 }
@@ -5276,8 +5483,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Phase 2: Visibility
     processFrameVisibility();
 
-    // Phase 2.5: Lazy mesh loading (constrained mode)
-    if (constrainedMeshCache_) {
+    // Phase 2.5: Lazy mesh loading (constrained mode) / Progressive asset loading
+    if (progressiveLoadingActive_) {
+        processFrameProgressiveLoad();
+        if (frameTimingEnabled_) frameTimings_.meshLoading = measureSection();
+    } else if (constrainedMeshCache_) {
         processFrameLazyLoad();
         if (frameTimingEnabled_) frameTimings_.meshLoading = measureSection();
     }
@@ -7987,6 +8197,133 @@ void IrrlichtRenderer::setupZoneCollision() {
     environmentInitPending_ = true;
 }
 
+void IrrlichtRenderer::setupMinimalZoneCollision() {
+    // Clean up old selectors
+    if (zoneTriangleSelector_) {
+        zoneTriangleSelector_->drop();
+        zoneTriangleSelector_ = nullptr;
+    }
+    if (terrainOnlySelector_) {
+        terrainOnlySelector_->drop();
+        terrainOnlySelector_ = nullptr;
+    }
+
+    if (!smgr_) {
+        return;
+    }
+
+    // Build player's BSP region mesh synchronously
+    size_t playerRegion = SIZE_MAX;
+    if (zoneBspTree_) {
+        playerRegion = zoneBspTree_->findRegionIndexForPoint(playerX_, playerY_, playerZ_);
+        if (playerRegion != SIZE_MAX) {
+            rebuildRegionMesh(playerRegion);
+            LOG_INFO(MOD_GRAPHICS, "Built player BSP region {} synchronously for deferred loading", playerRegion);
+        }
+    }
+
+    // Create meta selector with just the player's region (if available)
+    irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
+    if (!metaSelector) {
+        return;
+    }
+
+    // Add player's region mesh to collision
+    if (playerRegion != SIZE_MAX) {
+        auto regionIt = regionMeshNodes_.find(playerRegion);
+        if (regionIt != regionMeshNodes_.end() && regionIt->second && regionIt->second->getMesh()) {
+            irr::scene::ITriangleSelector* regionSelector =
+                smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
+            if (regionSelector) {
+                metaSelector->addTriangleSelector(regionSelector);
+                regionSelector->drop();
+            }
+        }
+    }
+
+    // Also add fallback mesh if it exists
+    if (fallbackMeshNode_ && fallbackMeshNode_->getMesh()) {
+        irr::scene::ITriangleSelector* fallbackSelector =
+            smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
+        if (fallbackSelector) {
+            metaSelector->addTriangleSelector(fallbackSelector);
+            fallbackSelector->drop();
+        }
+    }
+
+    zoneTriangleSelector_ = metaSelector;
+
+    // Also create a terrain-only selector (same as main for now)
+    terrainOnlySelector_ = smgr_->createMetaTriangleSelector();
+
+    collisionManager_ = smgr_->getSceneCollisionManager();
+
+    if (cameraController_ && collisionManager_ && zoneTriangleSelector_) {
+        cameraController_->setCollisionManager(collisionManager_, zoneTriangleSelector_);
+    }
+
+    // Activate progressive loading
+    progressiveLoadingActive_ = true;
+    progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+
+    environmentInitPending_ = true;
+
+    LOG_INFO(MOD_GRAPHICS, "Minimal collision setup complete, progressive loading activated");
+}
+
+size_t IrrlichtRenderer::findBspRegionForPoint(float x, float y, float z) {
+    if (zoneBspTree_) {
+        return zoneBspTree_->findRegionIndexForPoint(x, y, z);
+    }
+    return SIZE_MAX;
+}
+
+void IrrlichtRenderer::addRegionToCollision(size_t regionIdx) {
+    if (!smgr_ || !zoneTriangleSelector_) return;
+
+    auto regionIt = regionMeshNodes_.find(regionIdx);
+    if (regionIt == regionMeshNodes_.end() || !regionIt->second || !regionIt->second->getMesh()) return;
+
+    auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
+    irr::scene::ITriangleSelector* selector =
+        smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
+    if (selector) {
+        metaSelector->addTriangleSelector(selector);
+        selector->drop();
+    }
+}
+
+void IrrlichtRenderer::addDoorToCollision(uint8_t doorId) {
+    if (!smgr_ || !zoneTriangleSelector_ || !doorManager_) return;
+
+    const auto* door = doorManager_->getDoor(doorId);
+    if (door && door->sceneNode && door->sceneNode->getMesh()) {
+        auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
+        irr::scene::ITriangleSelector* selector =
+            smgr_->createTriangleSelector(door->sceneNode->getMesh(), door->sceneNode);
+        if (selector) {
+            metaSelector->addTriangleSelector(selector);
+            selector->drop();
+        }
+    }
+}
+
+void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
+    if (!smgr_ || !zoneTriangleSelector_) return;
+    if (objIdx >= objectNodes_.size()) return;
+
+    auto* node = objectNodes_[objIdx];
+    if (node && node->getMesh()) {
+        auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
+        irr::scene::ITriangleSelector* selector =
+            smgr_->createTriangleSelector(node->getMesh(), node);
+        if (selector) {
+            metaSelector->addTriangleSelector(selector);
+            selector->drop();
+        }
+    }
+}
+
 void IrrlichtRenderer::initDeferredEnvironmentSystems() {
     // Detail system (grass, plants, debris)
     if (detailManager_ && terrainOnlySelector_) {
@@ -8054,6 +8391,187 @@ void IrrlichtRenderer::initDeferredEnvironmentSystems() {
     applyEnvironmentalDisplaySettings();
 
     LOG_INFO(MOD_GRAPHICS, "Deferred environment systems initialized for zone '{}'", currentZoneName_);
+}
+
+void IrrlichtRenderer::processFrameProgressiveLoad() {
+    if (!progressiveLoadingActive_) return;
+
+    // Helper: measure remaining budget from actual frame start (avoids drift)
+    auto budgetLeft = [this]() -> float {
+        float elapsedMs = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - frameStart_).count() / 1000.0f;
+        return frameBudgetMs_ - elapsedMs - 2.0f;  // 2ms safety margin
+    };
+
+    int assetsBuilt = 0;
+
+    // P1: Player's BSP region (safety — should already be built by setupMinimalZoneCollision)
+    if (constrainedMeshCache_ && currentPvsRegion_ != SIZE_MAX &&
+        !constrainedMeshCache_->isLoaded(currentPvsRegion_)) {
+        rebuildRegionMesh(currentPvsRegion_);
+        addRegionToCollision(currentPvsRegion_);
+        assetsBuilt++;
+    }
+
+    // P2: PVS neighbor regions (from existing meshLoadQueue_)
+    if (budgetLeft() > 3.0f && constrainedMeshCache_) {
+        for (const auto& entry : meshLoadQueue_) {
+            if (budgetLeft() < 3.0f) break;
+            if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
+            if (rebuildRegionMesh(entry.regionIdx)) {
+                addRegionToCollision(entry.regionIdx);
+                assetsBuilt++;
+            }
+        }
+    }
+
+    // P3: Doors in current PVS set
+    if (budgetLeft() > 2.0f && doorManager_) {
+        std::vector<uint8_t> pvsDoors;
+        doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
+        for (auto doorId : pvsDoors) {
+            if (budgetLeft() < 2.0f) break;
+            if (doorManager_->isDoorMeshBuilt(doorId)) continue;
+            doorManager_->buildDoorMesh(doorId);
+            addDoorToCollision(doorId);
+            assetsBuilt++;
+        }
+    }
+
+    // P4: Player entity model (always build, even over budget — player must be visible)
+    if (entityRenderer_ && playerSpawnId_ != 0 &&
+        !entityRenderer_->isEntityMeshBuilt(playerSpawnId_)) {
+        entityRenderer_->buildEntityMesh(playerSpawnId_);
+        assetsBuilt++;
+    }
+
+    // P5: Nearby entity models (sorted by distance, max 1 per frame)
+    // Entity builds are unpredictably expensive (100-500ms for new race models)
+    // so we strictly limit to 1 per frame to keep frames responsive.
+    if (budgetLeft() > 2.0f && entityRenderer_) {
+        std::vector<uint16_t> unbuilt;
+        entityRenderer_->getUnbuiltEntities(unbuilt);
+
+        if (!unbuilt.empty()) {
+            // Sort by distance to player
+            const auto& entities = entityRenderer_->getEntities();
+            std::sort(unbuilt.begin(), unbuilt.end(),
+                [this, &entities](uint16_t a, uint16_t b) {
+                    auto itA = entities.find(a);
+                    auto itB = entities.find(b);
+                    if (itA == entities.end()) return false;
+                    if (itB == entities.end()) return true;
+                    float dxA = itA->second.lastX - playerX_;
+                    float dyA = itA->second.lastY - playerY_;
+                    float dxB = itB->second.lastX - playerX_;
+                    float dyB = itB->second.lastY - playerY_;
+                    return (dxA*dxA + dyA*dyA) < (dxB*dxB + dyB*dyB);
+                });
+
+            // Build entities one at a time, stopping when budget is exceeded
+            for (auto spawnId : unbuilt) {
+                if (budgetLeft() < 2.0f) break;
+                entityRenderer_->buildEntityMesh(spawnId);
+                assetsBuilt++;
+                // After each entity build, re-check budget strictly
+                // A single entity can blow the budget (loading new S3D archives)
+                if (budgetLeft() < 0.0f) break;
+            }
+        }
+    }
+
+    // P6: Visible placeable objects (in PVS regions first)
+    if (budgetLeft() > 2.0f) {
+        for (size_t i = 0; i < deferredObjects_.size(); ++i) {
+            if (budgetLeft() < 2.0f) break;
+            if (deferredObjects_[i].meshBuilt) continue;
+            if (protectedRegions_.count(deferredObjects_[i].bspRegion) == 0) continue;
+            buildDeferredObject(i);
+            addObjectToCollision(objectNodes_.size() - 1);
+            assetsBuilt++;
+        }
+    }
+
+    // P7: Remaining objects (not in PVS) if budget remains
+    if (budgetLeft() > 2.0f) {
+        for (size_t i = 0; i < deferredObjects_.size(); ++i) {
+            if (budgetLeft() < 2.0f) break;
+            if (deferredObjects_[i].meshBuilt) continue;
+            buildDeferredObject(i);
+            addObjectToCollision(objectNodes_.size() - 1);
+            assetsBuilt++;
+        }
+    }
+
+    // Evict if over memory budget (same as existing processFrameLazyLoad)
+    if (constrainedMeshCache_ &&
+        constrainedMeshCache_->getCurrentUsage() > constrainedMeshCache_->getMemoryLimit()) {
+        auto evicted = constrainedMeshCache_->evictUntilAvailable(0, protectedRegions_);
+        for (size_t idx : evicted) {
+            auto it = regionMeshNodes_.find(idx);
+            if (it != regionMeshNodes_.end() && it->second) {
+                if (animatedTextureManager_)
+                    animatedTextureManager_->removeSceneNode(it->second);
+                it->second->remove();
+                it->second = nullptr;
+            }
+        }
+    }
+
+    if (assetsBuilt > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "Progressive load: built {} assets this frame ({:.1f}ms remaining)",
+            assetsBuilt, budgetLeft());
+    }
+
+    checkProgressiveLoadingComplete();
+}
+
+void IrrlichtRenderer::checkProgressiveLoadingComplete() {
+    if (!progressiveLoadingActive_) return;
+
+    // Count unbuilt assets
+    size_t unbuiltEntities = 0;
+    size_t unbuiltDoors = 0;
+    size_t unbuiltObjects = 0;
+
+    if (entityRenderer_) {
+        std::vector<uint16_t> unbuilt;
+        entityRenderer_->getUnbuiltEntities(unbuilt);
+        unbuiltEntities = unbuilt.size();
+    }
+
+    if (doorManager_) {
+        std::vector<uint8_t> unbuilt;
+        doorManager_->getUnbuiltDoors(unbuilt);
+        unbuiltDoors = unbuilt.size();
+    }
+
+    for (const auto& obj : deferredObjects_) {
+        if (!obj.meshBuilt) unbuiltObjects++;
+    }
+
+    if (unbuiltEntities == 0 && unbuiltDoors == 0 && unbuiltObjects == 0) {
+        progressiveLoadingActive_ = false;
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - progressiveLoadStartTime_).count();
+        LOG_INFO(MOD_GRAPHICS, "Progressive loading complete: {}ms total streaming time", elapsed);
+
+        // Release raw texture data now that all models are built
+        if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_) {
+            size_t totalFreed = 0;
+            if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+                totalFreed += eml->releaseRawTextureData();
+            }
+            if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+                totalFreed += rml->releaseRawTextureData();
+            }
+            if (totalFreed > 0) {
+                LOG_INFO(MOD_GRAPHICS, "Released {:.1f} KB of raw texture data after progressive load",
+                    totalFreed / 1024.0f);
+            }
+        }
+    }
 }
 
 bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,

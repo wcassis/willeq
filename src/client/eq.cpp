@@ -18771,6 +18771,7 @@ void EverQuest::LoadZoneGraphics() {
 
 	// Create entities for all current spawns INCLUDING our own player
 	// Note: unloadZone() clears all entities, so we must recreate the player here
+	bool deferredMode = m_renderer->isDeferredAssetLoading();
 	size_t entityCount = 0;
 	for (const auto& [spawn_id, entity] : m_entities) {
 		bool isPlayer = (entity.name == m_character);
@@ -18798,12 +18799,20 @@ void EverQuest::LoadZoneGraphics() {
 			appearance.equipment_tint[i] = entity.equipment_tint[i];
 		}
 
-		m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
-		                         entity.x, entity.y, entity.z, entity.heading,
-		                         isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
+		if (deferredMode) {
+			// Register-only path: store metadata, defer mesh building
+			m_renderer->registerEntity(spawn_id, entity.race_id, entity.name,
+			                           entity.x, entity.y, entity.z, entity.heading,
+			                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
+		} else {
+			// Eager path: create entity with mesh immediately
+			m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
+			                         entity.x, entity.y, entity.z, entity.heading,
+			                         isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
+		}
 
 		if (isPlayer) {
-			// Set up player-specific rendering after creating the entity
+			// Set up player-specific rendering after creating/registering the entity
 			m_renderer->setPlayerSpawnId(m_my_spawn_id);
 			// Set entity light source if equipped (must be after setPlayerSpawnId for player)
 			if (entity.light > 0) {
@@ -18828,14 +18837,26 @@ void EverQuest::LoadZoneGraphics() {
 	// Recreate doors from stored data
 	for (const auto& [door_id, door] : m_doors) {
 		bool initiallyOpen = (door.state != 0) != door.invert_state;
-		m_renderer->createDoor(door.door_id, door.name, door.x, door.y, door.z,
-		                       door.heading, door.incline, door.size, door.opentype,
-		                       initiallyOpen);
+		if (deferredMode) {
+			m_renderer->registerDoor(door.door_id, door.name, door.x, door.y, door.z,
+			                         door.heading, door.incline, door.size, door.opentype,
+			                         initiallyOpen);
+		} else {
+			m_renderer->createDoor(door.door_id, door.name, door.x, door.y, door.z,
+			                       door.heading, door.incline, door.size, door.opentype,
+			                       initiallyOpen);
+		}
 	}
 	LOG_DEBUG(MOD_GRAPHICS, "Created {} doors", m_doors.size());
 
-	// Set up collision detection now that zone, objects, and doors are all loaded
-	m_renderer->setupZoneCollision();
+	if (deferredMode) {
+		// Build player's immediate surroundings and minimal collision
+		// setupMinimalZoneCollision handles player region building internally
+		m_renderer->setupMinimalZoneCollision();
+	} else {
+		// Set up collision detection now that zone, objects, and doors are all loaded
+		m_renderer->setupZoneCollision();
+	}
 
 	// Phase 14: Camera, lighting, final setup
 	SetLoadingPhase(LoadingPhase::GRAPHICS_FINALIZING, "Preparing world...");

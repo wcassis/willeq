@@ -192,6 +192,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             config.meshMemoryBytes = 24 * 1024 * 1024;  // 24MB mesh cache
+            // Deferred asset loading (progressive mesh building during gameplay)
+            config.deferredAssetLoading = true;
             break;
 
         case ConstrainedRenderingPreset::Custom:

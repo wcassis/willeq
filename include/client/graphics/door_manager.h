@@ -56,6 +56,14 @@ struct DoorVisual {
 
     // BSP region for occlusion culling
     size_t bspRegion = SIZE_MAX;
+
+    // Deferred mesh building (progressive loading)
+    bool meshBuilt = false;          // false = registered only, true = mesh built
+    // Stored creation parameters for deferred building
+    std::string name_raw;
+    float heading_raw = 0.0f;
+    uint32_t incline_raw = 0;
+    bool initiallyOpen_raw = false;
 };
 
 // Manages door rendering and interaction
@@ -113,6 +121,21 @@ public:
     // Returns door_id or 0 if none in range
     uint8_t getNearestDoor(float playerX, float playerY, float playerZ,
                            float playerHeading, float maxDistance = 15.0f) const;
+
+    // Deferred/progressive mesh building
+    // Register door metadata without building mesh (for deferred loading)
+    bool registerDoor(uint8_t doorId, const std::string& name,
+                      float x, float y, float z, float heading,
+                      uint32_t incline, uint16_t size, uint8_t opentype,
+                      bool initiallyOpen);
+    // Build the mesh for a previously registered door
+    bool buildDoorMesh(uint8_t doorId);
+    // Check if door mesh is built
+    bool isDoorMeshBuilt(uint8_t doorId) const;
+    // Get door IDs in given BSP regions where meshBuilt == false
+    void getDoorsInRegions(const std::unordered_set<size_t>& regions, std::vector<uint8_t>& out) const;
+    // Get all unbuilt door IDs
+    void getUnbuiltDoors(std::vector<uint8_t>& out) const;
 
     // Check if a specific door exists
     bool hasDoor(uint8_t doorId) const;

@@ -291,12 +291,10 @@ irr::scene::IMesh* EntityRenderer::getMeshForRace(uint16_t raceId, uint8_t gende
     return mesh;
 }
 
-bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
-                                   float x, float y, float z, float heading, bool isPlayer,
-                                   uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                   bool isCorpse, float serverSize) {
-    auto createStart = std::chrono::steady_clock::now();
-
+bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
+                                     float x, float y, float z, float heading, bool isPlayer,
+                                     uint8_t gender, const EntityAppearance& appearance, bool isNPC,
+                                     bool isCorpse, float serverSize) {
     if (!smgr_ || hasEntity(spawnId)) {
         return false;
     }
@@ -307,20 +305,6 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
         return true;  // Return true since this is expected behavior
     }
 
-    // Apply server size multiplier
-    // Server size is an absolute value where 6.0 is "standard humanoid" size
-    // Convert to multiplier by dividing by reference size (6.0)
-    // If serverSize is 0, use default multiplier of 1.0
-    constexpr float REFERENCE_SIZE = 6.0f;
-    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
-    float baseScale = scale;
-    scale *= sizeMultiplier;
-
-    // Debug: log size information for all entities
-    // Formula: finalScale = baseScale * (serverSize / 6.0)
-    LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} size: {:.2f} * ({:.2f}/6) = {:.2f}",
-              name, raceId, baseScale, serverSize, scale);
-
     EntityVisual visual;
     visual.spawnId = spawnId;
     visual.raceId = raceId;
@@ -329,9 +313,10 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     visual.isPlayer = isPlayer;
     visual.isNPC = isNPC;
     visual.isCorpse = isCorpse;
+    visual.meshBuilt = false;
 
     if (isPlayer) {
-        LOG_DEBUG(MOD_ENTITY, "Creating PLAYER entity: spawn={} name={} race={}", spawnId, name, raceId);
+        LOG_DEBUG(MOD_ENTITY, "Registering PLAYER entity: spawn={} name={} race={}", spawnId, name, raceId);
     }
     visual.lastX = x;
     visual.lastY = y;
@@ -345,8 +330,65 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
     visual.timeSinceUpdate = 0;
     visual.appearance = appearance;
 
+    // Store server size in appearance for later use by buildEntityMesh
+    // We stash it in collisionZOffset temporarily (it's 0 by default and overwritten in buildEntityMesh)
+    constexpr float REFERENCE_SIZE = 6.0f;
+    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
+    // Store sizeMultiplier as negative weaponDelayMs to avoid adding a new field
+    // (weaponDelayMs defaults to 3000, we use a sentinel of -serverSize)
+    // Actually, just store serverSize in a way buildEntityMesh can reconstruct it.
+    // We use the collisionHeight field (0 by default, only set for boats in buildEntityMesh)
+    visual.collisionHeight = serverSize;  // Temporarily store serverSize here
+
     // Add to spatial grid for efficient visibility queries
     updateEntityGridPosition(spawnId, x, y);
+
+    entities_[spawnId] = visual;
+
+    return true;
+}
+
+bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end() || !smgr_) {
+        return false;
+    }
+
+    EntityVisual& visual = it->second;
+    if (visual.meshBuilt) {
+        return true;  // Already built
+    }
+
+    auto createStart = std::chrono::steady_clock::now();
+
+    uint16_t raceId = visual.raceId;
+    uint8_t gender = visual.gender;
+    const std::string& name = visual.name;
+    float x = visual.lastX;
+    float y = visual.lastY;
+    float z = visual.lastZ;
+    float heading = visual.lastHeading;
+    bool isPlayer = visual.isPlayer;
+    bool isCorpse = visual.isCorpse;
+    const EntityAppearance& appearance = visual.appearance;
+
+    float scale = getScaleForRace(raceId);
+    if (scale <= 0.0f) {
+        visual.meshBuilt = true;
+        return true;
+    }
+
+    // Recover serverSize from temporary storage in collisionHeight
+    float serverSize = visual.collisionHeight;
+    visual.collisionHeight = 0;  // Reset to default
+
+    constexpr float REFERENCE_SIZE = 6.0f;
+    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
+    float baseScale = scale;
+    scale *= sizeMultiplier;
+
+    LOG_DEBUG(MOD_GRAPHICS, "buildEntityMesh[{}]: race={} size: {:.2f} * ({:.2f}/6) = {:.2f}",
+              name, raceId, baseScale, serverSize, scale);
 
     // Try to create an animated mesh node first
     EQAnimatedMeshSceneNode* animNode = nullptr;
@@ -461,15 +503,13 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 				);
 	}
 
-	entities_[spawnId] = visual;
-
 	// Track race model reference for cache eviction
 	if (raceModelLoader_) {
 		raceModelLoader_->addMeshRef(raceId, gender);
 	}
 
 	// Attach equipment models to bone attachment points
-	attachEquipment(entities_[spawnId]);
+	attachEquipment(visual);
 
 	// If this is a corpse, set the death animation and hold on last frame
 	if (isCorpse) {
@@ -499,18 +539,27 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
 			animNode->forceAnimationUpdate();
 
 			// Mark corpse position as adjusted (no Z offset needed)
-			entities_[spawnId].corpsePositionAdjusted = true;
-			entities_[spawnId].corpseYOffset = 0.0f;
+			visual.corpsePositionAdjusted = true;
+			visual.corpseYOffset = 0.0f;
 
-			entities_[spawnId].currentAnimation = deathAnim;
+			visual.currentAnimation = deathAnim;
 		}
 	}
+
+	// Queued state (serverAnimation, position) will be applied by the next
+	// updateInterpolation() call now that meshBuilt=true.  No explicit
+	// replay needed — updateInterpolation picks up serverAnimation/velocities.
+	if (visual.lightLevel != 0) {
+		setEntityLight(spawnId, visual.lightLevel);
+	}
+
+	visual.meshBuilt = true;
 
 	// Log total entity creation time if slow
 	auto createEnd = std::chrono::steady_clock::now();
 	auto createMs = std::chrono::duration_cast<std::chrono::milliseconds>(createEnd - createStart).count();
 	if (createMs > 50) {
-		LOG_WARN(MOD_GRAPHICS, "PERF: createEntity (animated) for {} race {} took {} ms", name, raceId, createMs);
+		LOG_WARN(MOD_GRAPHICS, "PERF: buildEntityMesh (animated) for {} race {} took {} ms", name, raceId, createMs);
 		EQT::PerformanceMetrics::instance().recordSample("Slow Entity Create", createMs);
 	}
 	return true;
@@ -625,29 +674,59 @@ bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::
             raceId, visual.collisionRadius, visual.collisionHeight, visual.deckZ);
     }
 
-    entities_[spawnId] = visual;
-
     // Track race model reference for cache eviction
     if (raceModelLoader_) {
         raceModelLoader_->addMeshRef(raceId, gender);
     }
 
+    // Apply any queued state that arrived while mesh was not yet built
+    if (visual.lightLevel != 0) {
+        setEntityLight(spawnId, visual.lightLevel);
+    }
+
+    visual.meshBuilt = true;
+
     // Log entity creation with model status
     if (!usesPlaceholder) {
-        LOG_DEBUG(MOD_ENTITY, "Created entity {} ({}) with race {} 3D model (static)", spawnId, name, raceId);
+        LOG_DEBUG(MOD_ENTITY, "Built entity {} ({}) with race {} 3D model (static)", spawnId, name, raceId);
     } else {
-        LOG_DEBUG(MOD_ENTITY, "Created entity {} ({}) with race {} placeholder (no model found)", spawnId, name, raceId);
+        LOG_DEBUG(MOD_ENTITY, "Built entity {} ({}) with race {} placeholder (no model found)", spawnId, name, raceId);
     }
 
     // Log total entity creation time if slow
     auto createEnd = std::chrono::steady_clock::now();
     auto createMs = std::chrono::duration_cast<std::chrono::milliseconds>(createEnd - createStart).count();
     if (createMs > 50) {
-        LOG_WARN(MOD_GRAPHICS, "PERF: createEntity (static) for {} race {} took {} ms", name, raceId, createMs);
+        LOG_WARN(MOD_GRAPHICS, "PERF: buildEntityMesh (static) for {} race {} took {} ms", name, raceId, createMs);
         EQT::PerformanceMetrics::instance().recordSample("Slow Entity Create", createMs);
     }
 
     return true;
+}
+
+bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
+                                   float x, float y, float z, float heading, bool isPlayer,
+                                   uint8_t gender, const EntityAppearance& appearance, bool isNPC,
+                                   bool isCorpse, float serverSize) {
+    if (!registerEntity(spawnId, raceId, name, x, y, z, heading, isPlayer,
+                        gender, appearance, isNPC, isCorpse, serverSize)) {
+        return false;
+    }
+    return buildEntityMesh(spawnId);
+}
+
+bool EntityRenderer::isEntityMeshBuilt(uint16_t spawnId) const {
+    auto it = entities_.find(spawnId);
+    return it != entities_.end() && it->second.meshBuilt;
+}
+
+void EntityRenderer::getUnbuiltEntities(std::vector<uint16_t>& out) const {
+    out.clear();
+    for (const auto& [id, visual] : entities_) {
+        if (!visual.meshBuilt) {
+            out.push_back(id);
+        }
+    }
 }
 
 void EntityRenderer::updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
@@ -1111,6 +1190,11 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         auto it = entities_.find(spawnId);
         if (it == entities_.end()) continue;
         EntityVisual& visual = it->second;
+
+        // Skip entities whose meshes haven't been built yet (deferred loading)
+        // Position fields are still updated via timeSinceUpdate above
+        if (!visual.meshBuilt) continue;
+
         bool isDebugTarget = (spawnId == debugTargetId_);
 
         // Skip player entity position interpolation - controlled by camera/input
@@ -2699,6 +2783,11 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     }
 
     visual.lightLevel = lightLevel;
+
+    // If mesh not built yet, just store level for later application in buildEntityMesh()
+    if (!visual.meshBuilt) {
+        return;
+    }
 
     if (lightLevel == 0) {
         // Remove existing light

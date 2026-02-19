@@ -70,6 +70,7 @@ struct ConstrainedRendererConfig {
     size_t chrCacheMaxEntries = 0;          // Max otherChrCaches_ entries in RaceModelLoader
     bool lazyPfsLoading = false;            // Don't keep PFS archives decompressed in memory
     bool releaseTextureDataAfterUpload = false;  // Free raw pixel data post-GPU upload
+    bool deferredAssetLoading = false;  // Defer mesh building to per-frame budget
 
     // Compute memory-related derived limits from totalMemoryBudgetBytes
     void calculateMemoryLimits();
