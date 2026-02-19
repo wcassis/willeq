@@ -16,10 +16,10 @@
     "atmosphericParticles" : false,
     "density" : 0.5,
     "fireEffects" : true,
-    "quality" : "off",
+    "quality" : "low",
     "reactiveFoliage" : false,
     "rollingObjects" : false,
     "skyEnabled" : true
   },
-  "renderDistance" : 600.0
+  "renderDistance" : 2000.0
 }

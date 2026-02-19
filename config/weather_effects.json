@@ -1,6 +1,6 @@
 {
   "storm": {
-    "skyDarkeningEnabled": false,
+    "skyDarkeningEnabled": true,
     "maxDarkening": 0.6,
     "fogDensityMultiplier": 1.5,
     "fogColorR": 100,
@@ -15,7 +15,7 @@
     "maxBranchLevel": 4
   },
   "stormClouds": {
-    "enabled": false,
+    "enabled": true,
     "domeRadius": 500.0,
     "domeHeight": 150.0,
     "domeSegments": 24,

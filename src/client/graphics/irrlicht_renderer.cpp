@@ -826,9 +826,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager skipped (rolling objects disabled in settings)");
     }
 
-    // Create weather effects controller (rain/snow particles, lightning)
-    // Only create if atmospheric particles are enabled, since it relies on particleManager_
-    if (!weatherEffects_ && displaySettings.atmosphericParticles) {
+    // Create weather effects controller (screen-space rain/snow overlays, storm clouds, lightning)
+    if (!weatherEffects_) {
         weatherEffects_ = std::make_unique<WeatherEffectsController>(
             smgr_, driver_, particleManager_.get(), skyRenderer_.get());
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
@@ -838,9 +837,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (weatherSystem_) {
             weatherSystem_->addListener(weatherEffects_.get());
         }
-        LOG_INFO(MOD_GRAPHICS, "Weather effects initialized (atmospheric particles enabled in settings)");
-    } else if (!weatherEffects_) {
-        LOG_INFO(MOD_GRAPHICS, "Weather effects skipped (atmospheric particles disabled in settings)");
+        LOG_INFO(MOD_GRAPHICS, "Weather effects initialized");
     }
 
     initialized_ = true;

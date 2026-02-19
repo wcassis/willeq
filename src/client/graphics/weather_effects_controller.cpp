@@ -335,68 +335,69 @@ void WeatherEffectsController::update(float deltaTime) {
         updateLightning(deltaTime);
     }
 
-    // Update storm cloud layer (Phase 8)
+    // Update storm cloud layer
     if (stormCloudLayer_ && isCloudOverlayEnabled()) {
-        // Get wind direction and time of day from particle manager
-        glm::vec3 windDirection(1.0f, 0.0f, 0.0f);  // Default wind direction
+        glm::vec3 windDirection(1.0f, 0.0f, 0.0f);
         float windStrength = 0.5f;
-        float timeOfDay = 12.0f;  // Default to noon
+        float timeOfDay = 12.0f;
+        glm::vec3 playerPos(0, 0, 0);
 
         if (particleManager_) {
             const auto& env = particleManager_->getEnvironmentState();
             windDirection = env.windDirection;
             windStrength = env.windStrength;
             timeOfDay = env.timeOfDay;
-            stormCloudLayer_->update(deltaTime, env.playerPosition, windDirection, windStrength, currentIntensity_, timeOfDay);
+            playerPos = env.playerPosition;
+        } else if (smgr_ && smgr_->getActiveCamera()) {
+            irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
+            // Convert from Irrlicht (Y-up) to EQ (Z-up)
+            playerPos = glm::vec3(pos.X, pos.Z, pos.Y);
         }
+        stormCloudLayer_->update(deltaTime, playerPos, windDirection, windStrength, currentIntensity_, timeOfDay);
     }
 }
 
 void WeatherEffectsController::updateRain(float deltaTime) {
     if (isIndoorZone_) return;
 
-    // Get environment state from particle manager (includes player position)
-    if (particleManager_) {
-        const auto& env = particleManager_->getEnvironmentState();
-
-        // Update screen-space rain overlay
-        if (rainOverlay_) {
-            glm::vec3 cameraDir(1, 0, 0);  // Default direction
-            // Get actual camera direction if available from scene manager
-            if (smgr_ && smgr_->getActiveCamera()) {
-                irr::core::vector3df target = smgr_->getActiveCamera()->getTarget();
-                irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
-                irr::core::vector3df dir = target - pos;
-                dir.normalize();
-                // Convert from Irrlicht (Y-up) to EQ (Z-up)
-                cameraDir = glm::vec3(dir.X, dir.Z, dir.Y);
-            }
-            rainOverlay_->update(deltaTime, env.playerPosition, cameraDir);
+    // Update screen-space rain overlay
+    if (rainOverlay_) {
+        glm::vec3 cameraPos(0, 0, 0);
+        glm::vec3 cameraDir(1, 0, 0);
+        if (smgr_ && smgr_->getActiveCamera()) {
+            irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
+            irr::core::vector3df target = smgr_->getActiveCamera()->getTarget();
+            irr::core::vector3df dir = target - pos;
+            dir.normalize();
+            // Convert from Irrlicht (Y-up) to EQ (Z-up)
+            cameraPos = glm::vec3(pos.X, pos.Z, pos.Y);
+            cameraDir = glm::vec3(dir.X, dir.Z, dir.Y);
+        } else if (particleManager_) {
+            cameraPos = particleManager_->getEnvironmentState().playerPosition;
         }
+        rainOverlay_->update(deltaTime, cameraPos, cameraDir);
     }
 }
 
 void WeatherEffectsController::updateSnow(float deltaTime) {
     if (isIndoorZone_) return;
 
-    // Get environment state from particle manager (includes player position)
-    if (particleManager_) {
-        const auto& env = particleManager_->getEnvironmentState();
-
-        // Update screen-space snow overlay
-        if (snowOverlay_) {
-            glm::vec3 cameraDir(1, 0, 0);  // Default direction
-            // Get actual camera direction if available from scene manager
-            if (smgr_ && smgr_->getActiveCamera()) {
-                irr::core::vector3df target = smgr_->getActiveCamera()->getTarget();
-                irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
-                irr::core::vector3df dir = target - pos;
-                dir.normalize();
-                // Convert from Irrlicht (Y-up) to EQ (Z-up)
-                cameraDir = glm::vec3(dir.X, dir.Z, dir.Y);
-            }
-            snowOverlay_->update(deltaTime, env.playerPosition, cameraDir);
+    // Update screen-space snow overlay
+    if (snowOverlay_) {
+        glm::vec3 cameraPos(0, 0, 0);
+        glm::vec3 cameraDir(1, 0, 0);
+        if (smgr_ && smgr_->getActiveCamera()) {
+            irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
+            irr::core::vector3df target = smgr_->getActiveCamera()->getTarget();
+            irr::core::vector3df dir = target - pos;
+            dir.normalize();
+            // Convert from Irrlicht (Y-up) to EQ (Z-up)
+            cameraPos = glm::vec3(pos.X, pos.Z, pos.Y);
+            cameraDir = glm::vec3(dir.X, dir.Z, dir.Y);
+        } else if (particleManager_) {
+            cameraPos = particleManager_->getEnvironmentState().playerPosition;
         }
+        snowOverlay_->update(deltaTime, cameraPos, cameraDir);
     }
 }
 
