@@ -1852,6 +1852,7 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 	if (to == EQ::Net::StatusDisconnected) {
 		LOG_INFO(MOD_ZONE, "Zone connection lost, reconnecting.");
 		m_zone_connected = false;
+		m_game_state.world().setZoneConnected(false);
 		m_zone_session_established = false;
 		m_zone_entry_sent = false;
 		// m_client_spawned = false; // Deprecated
@@ -6876,6 +6877,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		if (!m_update_running) {
 			SetLoadingPhase(LoadingPhase::ZONE_AWAITING_CONFIRM, "Player confirmed...");
 			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", m_my_spawn_id);
+			m_game_state.world().setZoneConnected(true);
 
 #ifdef EQT_HAS_GRAPHICS
 			// Signal renderer that network phase is complete and entities are ready
@@ -13176,6 +13178,7 @@ void EverQuest::CleanupZone()
 
 	// Reset zone connection state flags
 	m_zone_connected = false;
+	m_game_state.world().setZoneConnected(false);
 	m_zone_session_established = false;
 	m_zone_entry_sent = false;
 	m_weather_received = false;
@@ -14912,6 +14915,7 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 			e.what(), p.GetUInt16(0), p.Length(), reliable);
 		m_zone_connection.reset();  // Clear the corrupted connection
 		m_zone_connected = false;
+		m_game_state.world().setZoneConnected(false);
 		return false;
 	}
 	catch (...) {
@@ -14919,6 +14923,7 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 			p.GetUInt16(0), p.Length(), reliable);
 		m_zone_connection.reset();  // Clear the corrupted connection
 		m_zone_connected = false;
+		m_game_state.world().setZoneConnected(false);
 		return false;
 	}
 }
@@ -17071,7 +17076,7 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 	std::string target_name = "Unknown";
 	auto it = m_entities.find(static_cast<uint16_t>(con->targetid));
 	if (it != m_entities.end()) {
-		target_name = it->second.name;
+		target_name = EQT::toDisplayName(it->second.name);
 	}
 
 	// Determine faction standing message
@@ -17091,23 +17096,41 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 		default: faction_msg = fmt::format("regards you (faction {})", con->faction); break;
 	}
 
-	// Determine con color name based on server level value
+	// Determine con color name and display color based on server level value
 	std::string con_color;
+	irr::video::SColor con_display_color(255, 255, 255, 255); // Default white
 	switch (con->level) {
-		case 2:  con_color = "green"; break;
-		case 4:  con_color = "blue"; break;
-		case 6:  con_color = "gray"; break;
-		case 10: con_color = "light blue"; break;
-		case 13: con_color = "red"; break;
-		case 15: con_color = "yellow"; break;
-		case 18: con_color = "light blue"; break;
-		case 20: con_color = "white"; break;
-		default: con_color = "white"; break;
+		case 2:  con_color = "green";      con_display_color = irr::video::SColor(255, 0, 255, 0); break;
+		case 4:  con_color = "blue";       con_display_color = irr::video::SColor(255, 0, 0, 255); break;
+		case 6:  con_color = "gray";       con_display_color = irr::video::SColor(255, 160, 160, 160); break;
+		case 10: con_color = "light blue"; con_display_color = irr::video::SColor(255, 100, 180, 255); break;
+		case 13: con_color = "red";        con_display_color = irr::video::SColor(255, 255, 0, 0); break;
+		case 15: con_color = "yellow";     con_display_color = irr::video::SColor(255, 255, 255, 0); break;
+		case 18: con_color = "light blue"; con_display_color = irr::video::SColor(255, 100, 180, 255); break;
+		case 20: con_color = "white";      con_display_color = irr::video::SColor(255, 255, 255, 255); break;
+		default: con_color = "white";      con_display_color = irr::video::SColor(255, 255, 255, 255); break;
 	}
 
 	// Format: "a gnoll scout regards you indifferently -- cons green"
 	std::string message = fmt::format("{} {} -- cons {}", target_name, faction_msg, con_color);
-	AddChatSystemMessage(message);
+#ifdef EQT_HAS_GRAPHICS
+	if (m_renderer) {
+		auto* windowManager = m_renderer->getWindowManager();
+		if (windowManager) {
+			auto* chatWindow = windowManager->getChatWindow();
+			if (chatWindow) {
+				eqt::ui::ChatMessage chatMsg;
+				chatMsg.text = message;
+				chatMsg.channel = eqt::ui::ChatChannel::System;
+				chatMsg.color = con_display_color;
+				chatMsg.isSystemMessage = true;
+				chatMsg.timestamp = static_cast<uint32_t>(std::time(nullptr));
+				chatWindow->addMessage(std::move(chatMsg));
+			}
+		}
+	}
+#endif
+	LOG_INFO(MOD_MAIN, "{}", message);
 }
 
 void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)

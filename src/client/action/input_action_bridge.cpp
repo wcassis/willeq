@@ -1,6 +1,7 @@
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
 #include "client/state/game_state.h"
+#include "common/logging.h"
 
 namespace eqt {
 namespace action {
@@ -22,6 +23,8 @@ void InputActionBridge::setCommandProcessor(CommandProcessor* processor) {
 
 void InputActionBridge::update(float deltaTime) {
     if (!m_enabled || !m_input) {
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] InputActionBridge::update: SKIPPED (enabled={}, input={})",
+            m_enabled, (m_input != nullptr));
         return;
     }
 
@@ -61,6 +64,7 @@ void InputActionBridge::processDiscreteActions() {
 
     // Movement toggles
     if (m_input->consumeAction(input::InputAction::ToggleAutorun)) {
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] InputActionBridge: consumed ToggleAutorun");
         reportAction("ToggleAutorun", m_dispatcher.toggleAutorun());
     }
 
@@ -70,6 +74,7 @@ void InputActionBridge::processDiscreteActions() {
 
     // Combat actions
     if (m_input->consumeAction(input::InputAction::ToggleAutoAttack)) {
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] InputActionBridge: consumed ToggleAutoAttack");
         reportAction("ToggleAutoAttack", m_dispatcher.toggleAutoAttack());
     }
 
@@ -82,6 +87,7 @@ void InputActionBridge::processDiscreteActions() {
     }
 
     if (m_input->consumeAction(input::InputAction::Consider)) {
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] InputActionBridge: consumed Consider");
         reportAction("Consider", m_dispatcher.consider());
     }
 
@@ -144,11 +150,9 @@ void InputActionBridge::processDiscreteActions() {
 
     // Interaction
     if (m_input->consumeAction(input::InputAction::Hail)) {
-        if (m_state.combat().hasTarget()) {
-            reportAction("HailTarget", m_dispatcher.hailTarget());
-        } else {
-            reportAction("Hail", m_dispatcher.hail());
-        }
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] InputActionBridge: consumed Hail");
+        // hailTarget() checks for target internally via CombatManager and falls back to plain hail
+        reportAction("Hail", m_dispatcher.hailTarget());
     }
 
     if (m_input->consumeAction(input::InputAction::InteractDoor)) {
@@ -385,6 +389,8 @@ void InputActionBridge::processHotbarRequests() {
 }
 
 void InputActionBridge::reportAction(const std::string& name, const ActionResult& result) {
+    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] InputActionBridge::reportAction: {} -> success={}, msg='{}'",
+        name, result.success, result.message);
     if (m_actionCallback) {
         m_actionCallback(name, result);
     }

@@ -369,6 +369,7 @@ void Application::mainLoop() {
             if (isConnected && !m_fullyConnected) {
                 LOG_INFO(MOD_MAIN, "Fully connected to zone!");
                 m_fullyConnected = true;
+                m_gameState->world().setZoneConnected(true);
 
 #ifdef EQT_HAS_GRAPHICS
                 // NOTE: Zone graphics are now loaded automatically via the LoadingPhase system.
@@ -378,6 +379,11 @@ void Application::mainLoop() {
                     m_eqClient->LoadHotbarConfig();
                 }
 #endif
+            }
+
+            if (!isConnected && m_fullyConnected) {
+                m_fullyConnected = false;
+                m_gameState->world().setZoneConnected(false);
             }
 
             // Calculate delta time

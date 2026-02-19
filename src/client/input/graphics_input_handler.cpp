@@ -81,6 +81,10 @@ void GraphicsInputHandler::updateFromEventReceiver() {
     using RA = EQT::Graphics::RendererAction;
     bool chatFocused = m_eventReceiver->isChatInputFocused();
     auto bridgeActions = m_eventReceiver->drainBridgeActions();
+    if (!bridgeActions.empty()) {
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: draining bridgeQueue, got {} actions, chatFocused={}",
+            bridgeActions.size(), chatFocused);
+    }
     for (const auto& event : bridgeActions) {
         switch (event.action) {
             // Targeting works even when chat is focused
@@ -107,19 +111,29 @@ void GraphicsInputHandler::updateFromEventReceiver() {
 
             // Non-targeting actions are gated by chat focus
             case RA::ToggleAutorun:
-                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::ToggleAutorun)] = true;
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ToggleAutorun)] = true;
+                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutorun -> pendingAction set");
+                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutorun BLOCKED by chatFocused"); }
                 break;
             case RA::ToggleAutoAttack:
-                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::ToggleAutoAttack)] = true;
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ToggleAutoAttack)] = true;
+                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutoAttack -> pendingAction set");
+                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutoAttack BLOCKED by chatFocused"); }
                 break;
             case RA::Hail:
-                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::Hail)] = true;
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::Hail)] = true;
+                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Hail -> pendingAction set");
+                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Hail BLOCKED by chatFocused"); }
                 break;
             case RA::Consider:
-                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::Consider)] = true;
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::Consider)] = true;
+                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Consider -> pendingAction set");
+                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Consider BLOCKED by chatFocused"); }
                 break;
             case RA::ClearTarget:
-                if (!chatFocused) m_pendingActions[static_cast<size_t>(InputAction::ClearTarget)] = true;
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ClearTarget)] = true;
+                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ClearTarget -> pendingAction set");
+                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ClearTarget BLOCKED by chatFocused"); }
                 break;
             default:
                 break;

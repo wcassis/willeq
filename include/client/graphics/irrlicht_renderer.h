@@ -268,6 +268,8 @@ public:
     // Bridge queue for game actions routed through InputActionBridge
     // (targeting, combat, movement toggles)
     std::vector<RendererEvent> drainBridgeActions() { std::vector<RendererEvent> r; r.swap(bridgeQueue_); return r; }
+    size_t getBridgeQueueSize() const { return bridgeQueue_.size(); }
+    void pushBridgeAction(RendererEvent event) { bridgeQueue_.push_back(std::move(event)); }
 
     // Spell gem and hotbar requests (use intData in RendererEvent for new code)
     int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }

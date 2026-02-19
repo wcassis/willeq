@@ -314,6 +314,9 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     default:
                         break;
                 }
+                LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] OnEvent: action {} -> actionQ={}, bridgeQ={}, zoomDelta={}",
+                    hotkeyMgr.actionEnumToName(*action),
+                    actionQueue_.size(), bridgeQueue_.size(), cameraZoomDelta_);
             }
         }
         return true;
@@ -5369,6 +5372,10 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
 
     // Drain action queue and dispatch
     auto actions = eventReceiver_->drainActions();
+    if (!actions.empty()) {
+        LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] processFrameInput: chatFocused={}, drained {} actions from actionQueue, bridgeQueue size={}",
+            chatInputFocused_, actions.size(), eventReceiver_->getBridgeQueueSize());
+    }
     processCommonInput(actions);
     processPlayerInput(actions);
 
@@ -5662,6 +5669,11 @@ void IrrlichtRenderer::processInputDeltas(float deltaTime) {
     // Camera zoom with Follow camera
     if (!chatInputFocused_) {
         float zoomDelta = eventReceiver_->getCameraZoomDelta();
+        if (zoomDelta != 0.0f) {
+            LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] processInputDeltas: zoomDelta={}, cameraController={}, cameraMode={}(Follow={})",
+                zoomDelta, (cameraController_ != nullptr),
+                static_cast<int>(cameraMode_), static_cast<int>(CameraMode::Follow));
+        }
         if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
             cameraController_->adjustFollowDistance(zoomDelta);
             cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
@@ -5722,6 +5734,8 @@ void IrrlichtRenderer::processChatInput() {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
                     clearCurrentTarget();
                     SetTrackedTargetId(0);
+                    // Also notify CombatManager via bridge queue so player status window updates
+                    eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
                 }
             }
         }

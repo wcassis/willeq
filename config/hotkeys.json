@@ -80,8 +80,8 @@
             "HotbarSlot8": "8",
             "HotbarSlot9": "9",
             "HotbarSlot10": "0",
-            "CameraZoomIn": "P",
-            "CameraZoomOut": "L",
+            "CameraZoomIn": ["Shift+Plus", "Plus"],
+            "CameraZoomOut": ["Minus", "NumpadSubtract"],
             "ToggleCameraMode": "Ctrl+F5",
             "ToggleZoneLights": "Ctrl+F4"
         }

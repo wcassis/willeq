@@ -276,10 +276,7 @@ ActionResult ActionDispatcher::enableAutoAttack() {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    if (!m_state.combat().hasTarget()) {
-        return ActionResult::Failure("No target");
-    }
-
+    // Target check is done by the handler (CombatManager) which has the real target state
     m_handler->enableAutoAttack();
     return ActionResult::Success("Auto-attack enabled");
 }
@@ -352,10 +349,7 @@ ActionResult ActionDispatcher::consider() {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    if (!m_state.combat().hasTarget()) {
-        return ActionResult::Failure("No target");
-    }
-
+    // Target check is done by the handler (CombatManager) which has the real target state
     m_handler->consider();
     return ActionResult::Success();
 }
@@ -374,10 +368,8 @@ ActionResult ActionDispatcher::hailTarget() {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    if (!m_state.combat().hasTarget()) {
-        return ActionResult::Failure("No target");
-    }
-
+    // Target check is done by the handler (CombatManager) which has the real target state.
+    // Falls back to plain hail if no target.
     m_handler->hailTarget();
     return ActionResult::Success();
 }
@@ -567,10 +559,7 @@ ActionResult ActionDispatcher::inviteTarget() {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    if (!m_state.combat().hasTarget()) {
-        return ActionResult::Failure("No target");
-    }
-
+    // Target check is done by the handler which has the real target state
     m_handler->inviteTarget();
     return ActionResult::Success();
 }
@@ -804,13 +793,9 @@ ActionResult ActionDispatcher::petAttack() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    uint16_t targetId = m_state.combat().targetId();
-    if (targetId == 0) {
-        return ActionResult::Failure("No target selected");
-    }
-
     // PET_ATTACK = 2 (from pet_constants.h)
-    m_handler->sendPetCommand(2, targetId);
+    // Note: targetId=0 tells the server to use the pet owner's current target
+    m_handler->sendPetCommand(2, 0);
     return ActionResult::Success("Pet attacking");
 }
 

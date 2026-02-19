@@ -3,6 +3,7 @@
 #include "client/combat.h"
 #include "client/pet_constants.h"
 #include "common/logging.h"
+#include "common/name_utils.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -312,9 +313,12 @@ void EqActionHandler::hailTarget() {
         const auto& entities = m_eq.GetGameState().entities();
         auto* entity = entities.getEntity(targetId);
         if (entity && !entity->name.empty()) {
-            m_eq.SendChatMessage("Hail, " + entity->name, "say");
+            m_eq.SendChatMessage("Hail, " + EQT::toDisplayName(entity->name), "say");
+            return;
         }
     }
+    // No target or target name not found — fall back to plain hail
+    hail();
 }
 
 void EqActionHandler::clickDoor(uint8_t doorId) {
