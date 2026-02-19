@@ -392,18 +392,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/firefly_emitter.cpp
         src/client/graphics/environment/emitters/mist_emitter.cpp
         src/client/graphics/environment/emitters/sand_dust_emitter.cpp
-        src/client/graphics/environment/emitters/rain_emitter.cpp
-        src/client/graphics/environment/emitters/rain_splash_emitter.cpp
-        src/client/graphics/environment/emitters/snow_emitter.cpp
         src/client/graphics/environment/emitters/ember_emitter.cpp
         src/client/graphics/environment/emitters/smoke_emitter.cpp
-        # Water effects
-        src/client/graphics/environment/water_ripple_manager.cpp
         # Storm cloud layer
         src/client/graphics/environment/storm_cloud_layer.cpp
-        # Snow accumulation system
-        src/client/graphics/environment/accumulation_heightmap.cpp
-        src/client/graphics/environment/snow_accumulation_system.cpp
         # Screen-space rain overlay
         src/client/graphics/environment/rain_overlay.cpp
         # Screen-space snow overlay

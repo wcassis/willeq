@@ -6,12 +6,6 @@
 namespace EQT {
 namespace Graphics {
 
-// Forward declarations
-namespace Environment {
-struct RainSettings;
-struct RainSplashSettings;
-struct SnowSettings;
-}
 struct WeatherEffectsConfig;
 
 /**
@@ -29,26 +23,12 @@ enum class WeatherQualityPreset {
  * WeatherPresetValues - All tunable values for a quality preset.
  */
 struct WeatherPresetValues {
-    // Rain
-    int rainMaxParticles = 500;
-    float rainSpawnRate = 200.0f;
-
-    // Rain splash
-    int rainSplashMaxParticles = 200;
-    float rainSplashSpawnRate = 100.0f;
-
-    // Snow
-    int snowMaxParticles = 600;
-    float snowSpawnRate = 150.0f;
-
     // Lightning
     bool lightningEnabled = true;
     int maxBranchLevel = 4;
 
-    // Future features (flags for Phase 7-9)
-    bool ripplesEnabled = false;
+    // Cloud overlay
     bool cloudOverlayEnabled = false;
-    bool snowAccumulationEnabled = false;
 
     // Fog transition speed (seconds to reach target)
     float fogTransitionSpeed = 0.5f;  // Smooth = 0.5, Fast = 0.2, Instant = 0.0
@@ -104,22 +84,6 @@ public:
     const WeatherPresetValues& getCurrentPresetValues() const {
         return getPresetValues(currentPreset_);
     }
-
-    /**
-     * Apply current preset to rain settings.
-     * Only modifies particle count and spawn rate fields.
-     */
-    void applyToRainSettings(Environment::RainSettings& settings) const;
-
-    /**
-     * Apply current preset to rain splash settings.
-     */
-    void applyToRainSplashSettings(Environment::RainSplashSettings& settings) const;
-
-    /**
-     * Apply current preset to snow settings.
-     */
-    void applyToSnowSettings(Environment::SnowSettings& settings) const;
 
     /**
      * Apply current preset to weather effects config.

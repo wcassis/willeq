@@ -1,8 +1,5 @@
 #pragma once
 
-#include "client/graphics/environment/emitters/rain_emitter.h"
-#include "client/graphics/environment/emitters/rain_splash_emitter.h"
-#include "client/graphics/environment/emitters/snow_emitter.h"
 #include "client/graphics/environment/storm_cloud_layer.h"
 #include "client/graphics/environment/rain_overlay.h"
 #include "client/graphics/environment/snow_overlay.h"
@@ -73,9 +70,6 @@ public:
     const std::string& getConfigPath() const { return configPath_; }
 
     // Accessors for loaded settings
-    const Environment::RainSettings& getRainSettings() const { return rainSettings_; }
-    const Environment::RainSplashSettings& getRainSplashSettings() const { return rainSplashSettings_; }
-    const Environment::SnowSettings& getSnowSettings() const { return snowSettings_; }
     const Environment::StormCloudSettings& getStormCloudSettings() const { return stormCloudSettings_; }
     const Environment::RainOverlaySettings& getRainOverlaySettings() const { return rainOverlaySettings_; }
     const Environment::SnowOverlaySettings& getSnowOverlaySettings() const { return snowOverlaySettings_; }
@@ -113,21 +107,6 @@ private:
     void setDefaults();
 
     /**
-     * Load rain settings from JSON.
-     */
-    void loadRainSettings(const Json::Value& root);
-
-    /**
-     * Load rain splash settings from JSON.
-     */
-    void loadRainSplashSettings(const Json::Value& root);
-
-    /**
-     * Load snow settings from JSON.
-     */
-    void loadSnowSettings(const Json::Value& root);
-
-    /**
      * Load storm/lightning settings from JSON.
      */
     void loadStormSettings(const Json::Value& root);
@@ -163,9 +142,6 @@ private:
     void applyQualityPreset();
 
     // Settings storage
-    Environment::RainSettings rainSettings_;
-    Environment::RainSplashSettings rainSplashSettings_;
-    Environment::SnowSettings snowSettings_;
     Environment::StormCloudSettings stormCloudSettings_;
     Environment::RainOverlaySettings rainOverlaySettings_;
     Environment::SnowOverlaySettings snowOverlaySettings_;

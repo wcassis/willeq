@@ -38,9 +38,6 @@ bool WeatherConfigLoader::load(const std::string& path) {
     setDefaults();
 
     // Load each section
-    loadRainSettings(root);
-    loadRainSplashSettings(root);
-    loadSnowSettings(root);
     loadStormSettings(root);
     loadStormCloudSettings(root);
     loadRainOverlaySettings(root);
@@ -82,15 +79,6 @@ bool WeatherConfigLoader::reload() {
 }
 
 void WeatherConfigLoader::setDefaults() {
-    // Rain defaults
-    rainSettings_ = Environment::RainSettings{};
-
-    // Rain splash defaults
-    rainSplashSettings_ = Environment::RainSplashSettings{};
-
-    // Snow defaults
-    snowSettings_ = Environment::SnowSettings{};
-
     // Storm cloud defaults
     stormCloudSettings_ = Environment::StormCloudSettings{};
 
@@ -127,183 +115,6 @@ int WeatherConfigLoader::clampInt(int value, int minVal, int maxVal, const char*
         return clamped;
     }
     return value;
-}
-
-void WeatherConfigLoader::loadRainSettings(const Json::Value& root) {
-    if (!root.isMember("rain")) {
-        LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: No 'rain' section, using defaults");
-        return;
-    }
-
-    const Json::Value& json = root["rain"];
-
-    if (json.isMember("enabled")) {
-        rainSettings_.enabled = json["enabled"].asBool();
-    }
-    if (json.isMember("maxParticles")) {
-        rainSettings_.maxParticles = clampInt(json["maxParticles"].asInt(), 10, 2000, "rain.maxParticles");
-    }
-    if (json.isMember("spawnRate")) {
-        rainSettings_.spawnRate = clampFloat(json["spawnRate"].asFloat(), 1.0f, 1000.0f, "rain.spawnRate");
-    }
-    if (json.isMember("spawnRadius")) {
-        rainSettings_.spawnRadius = clampFloat(json["spawnRadius"].asFloat(), 10.0f, 200.0f, "rain.spawnRadius");
-    }
-    if (json.isMember("spawnHeight")) {
-        rainSettings_.spawnHeight = clampFloat(json["spawnHeight"].asFloat(), 20.0f, 200.0f, "rain.spawnHeight");
-    }
-    if (json.isMember("dropSpeed")) {
-        rainSettings_.dropSpeed = clampFloat(json["dropSpeed"].asFloat(), 5.0f, 100.0f, "rain.dropSpeed");
-    }
-    if (json.isMember("dropSpeedVariance")) {
-        rainSettings_.dropSpeedVariance = clampFloat(json["dropSpeedVariance"].asFloat(), 0.0f, 20.0f, "rain.dropSpeedVariance");
-    }
-    if (json.isMember("windInfluence")) {
-        rainSettings_.windInfluence = clampFloat(json["windInfluence"].asFloat(), 0.0f, 2.0f, "rain.windInfluence");
-    }
-    if (json.isMember("sizeMin")) {
-        rainSettings_.sizeMin = clampFloat(json["sizeMin"].asFloat(), 0.01f, 1.0f, "rain.sizeMin");
-    }
-    if (json.isMember("sizeMax")) {
-        rainSettings_.sizeMax = clampFloat(json["sizeMax"].asFloat(), 0.01f, 2.0f, "rain.sizeMax");
-    }
-    if (json.isMember("lengthScale")) {
-        rainSettings_.lengthScale = clampFloat(json["lengthScale"].asFloat(), 1.0f, 10.0f, "rain.lengthScale");
-    }
-    if (json.isMember("intensityScale")) {
-        rainSettings_.intensityScale = clampFloat(json["intensityScale"].asFloat(), 1.0f, 50.0f, "rain.intensityScale");
-    }
-    if (json.isMember("colorR")) {
-        rainSettings_.colorR = clampFloat(json["colorR"].asFloat(), 0.0f, 1.0f, "rain.colorR");
-    }
-    if (json.isMember("colorG")) {
-        rainSettings_.colorG = clampFloat(json["colorG"].asFloat(), 0.0f, 1.0f, "rain.colorG");
-    }
-    if (json.isMember("colorB")) {
-        rainSettings_.colorB = clampFloat(json["colorB"].asFloat(), 0.0f, 1.0f, "rain.colorB");
-    }
-    if (json.isMember("colorA")) {
-        rainSettings_.colorA = clampFloat(json["colorA"].asFloat(), 0.0f, 1.0f, "rain.colorA");
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded rain settings (maxParticles={}, spawnRate={})",
-              rainSettings_.maxParticles, rainSettings_.spawnRate);
-}
-
-void WeatherConfigLoader::loadRainSplashSettings(const Json::Value& root) {
-    if (!root.isMember("rainSplash")) {
-        LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: No 'rainSplash' section, using defaults");
-        return;
-    }
-
-    const Json::Value& json = root["rainSplash"];
-
-    if (json.isMember("enabled")) {
-        rainSplashSettings_.enabled = json["enabled"].asBool();
-    }
-    if (json.isMember("maxParticles")) {
-        rainSplashSettings_.maxParticles = clampInt(json["maxParticles"].asInt(), 10, 1000, "rainSplash.maxParticles");
-    }
-    if (json.isMember("spawnRate")) {
-        rainSplashSettings_.spawnRate = clampFloat(json["spawnRate"].asFloat(), 1.0f, 500.0f, "rainSplash.spawnRate");
-    }
-    if (json.isMember("spawnRadius")) {
-        rainSplashSettings_.spawnRadius = clampFloat(json["spawnRadius"].asFloat(), 5.0f, 100.0f, "rainSplash.spawnRadius");
-    }
-    if (json.isMember("splashSpeed")) {
-        rainSplashSettings_.splashSpeed = clampFloat(json["splashSpeed"].asFloat(), 0.5f, 10.0f, "rainSplash.splashSpeed");
-    }
-    if (json.isMember("splashSpeedVariance")) {
-        rainSplashSettings_.splashSpeedVariance = clampFloat(json["splashSpeedVariance"].asFloat(), 0.0f, 5.0f, "rainSplash.splashSpeedVariance");
-    }
-    if (json.isMember("gravity")) {
-        rainSplashSettings_.gravity = clampFloat(json["gravity"].asFloat(), 1.0f, 50.0f, "rainSplash.gravity");
-    }
-    if (json.isMember("sizeMin")) {
-        rainSplashSettings_.sizeMin = clampFloat(json["sizeMin"].asFloat(), 0.01f, 0.5f, "rainSplash.sizeMin");
-    }
-    if (json.isMember("sizeMax")) {
-        rainSplashSettings_.sizeMax = clampFloat(json["sizeMax"].asFloat(), 0.01f, 1.0f, "rainSplash.sizeMax");
-    }
-    if (json.isMember("lifetime")) {
-        rainSplashSettings_.lifetime = clampFloat(json["lifetime"].asFloat(), 0.1f, 2.0f, "rainSplash.lifetime");
-    }
-    if (json.isMember("colorR")) {
-        rainSplashSettings_.colorR = clampFloat(json["colorR"].asFloat(), 0.0f, 1.0f, "rainSplash.colorR");
-    }
-    if (json.isMember("colorG")) {
-        rainSplashSettings_.colorG = clampFloat(json["colorG"].asFloat(), 0.0f, 1.0f, "rainSplash.colorG");
-    }
-    if (json.isMember("colorB")) {
-        rainSplashSettings_.colorB = clampFloat(json["colorB"].asFloat(), 0.0f, 1.0f, "rainSplash.colorB");
-    }
-    if (json.isMember("colorA")) {
-        rainSplashSettings_.colorA = clampFloat(json["colorA"].asFloat(), 0.0f, 1.0f, "rainSplash.colorA");
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded rain splash settings (maxParticles={}, lifetime={})",
-              rainSplashSettings_.maxParticles, rainSplashSettings_.lifetime);
-}
-
-void WeatherConfigLoader::loadSnowSettings(const Json::Value& root) {
-    if (!root.isMember("snow")) {
-        LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: No 'snow' section, using defaults");
-        return;
-    }
-
-    const Json::Value& json = root["snow"];
-
-    if (json.isMember("enabled")) {
-        snowSettings_.enabled = json["enabled"].asBool();
-    }
-    if (json.isMember("maxParticles")) {
-        snowSettings_.maxParticles = clampInt(json["maxParticles"].asInt(), 10, 2000, "snow.maxParticles");
-    }
-    if (json.isMember("spawnRate")) {
-        snowSettings_.spawnRate = clampFloat(json["spawnRate"].asFloat(), 1.0f, 500.0f, "snow.spawnRate");
-    }
-    if (json.isMember("spawnRadius")) {
-        snowSettings_.spawnRadius = clampFloat(json["spawnRadius"].asFloat(), 10.0f, 200.0f, "snow.spawnRadius");
-    }
-    if (json.isMember("spawnHeight")) {
-        snowSettings_.spawnHeight = clampFloat(json["spawnHeight"].asFloat(), 20.0f, 200.0f, "snow.spawnHeight");
-    }
-    if (json.isMember("fallSpeed")) {
-        snowSettings_.fallSpeed = clampFloat(json["fallSpeed"].asFloat(), 0.5f, 20.0f, "snow.fallSpeed");
-    }
-    if (json.isMember("fallSpeedVariance")) {
-        snowSettings_.fallSpeedVariance = clampFloat(json["fallSpeedVariance"].asFloat(), 0.0f, 10.0f, "snow.fallSpeedVariance");
-    }
-    if (json.isMember("swayAmplitude")) {
-        snowSettings_.swayAmplitude = clampFloat(json["swayAmplitude"].asFloat(), 0.0f, 10.0f, "snow.swayAmplitude");
-    }
-    if (json.isMember("swayFrequency")) {
-        snowSettings_.swayFrequency = clampFloat(json["swayFrequency"].asFloat(), 0.1f, 5.0f, "snow.swayFrequency");
-    }
-    if (json.isMember("windInfluence")) {
-        snowSettings_.windInfluence = clampFloat(json["windInfluence"].asFloat(), 0.0f, 2.0f, "snow.windInfluence");
-    }
-    if (json.isMember("sizeMin")) {
-        snowSettings_.sizeMin = clampFloat(json["sizeMin"].asFloat(), 0.01f, 1.0f, "snow.sizeMin");
-    }
-    if (json.isMember("sizeMax")) {
-        snowSettings_.sizeMax = clampFloat(json["sizeMax"].asFloat(), 0.01f, 2.0f, "snow.sizeMax");
-    }
-    if (json.isMember("colorR")) {
-        snowSettings_.colorR = clampFloat(json["colorR"].asFloat(), 0.0f, 1.0f, "snow.colorR");
-    }
-    if (json.isMember("colorG")) {
-        snowSettings_.colorG = clampFloat(json["colorG"].asFloat(), 0.0f, 1.0f, "snow.colorG");
-    }
-    if (json.isMember("colorB")) {
-        snowSettings_.colorB = clampFloat(json["colorB"].asFloat(), 0.0f, 1.0f, "snow.colorB");
-    }
-    if (json.isMember("colorA")) {
-        snowSettings_.colorA = clampFloat(json["colorA"].asFloat(), 0.0f, 1.0f, "snow.colorA");
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded snow settings (maxParticles={}, fallSpeed={})",
-              snowSettings_.maxParticles, snowSettings_.fallSpeed);
 }
 
 void WeatherConfigLoader::loadStormSettings(const Json::Value& root) {
@@ -634,9 +445,6 @@ void WeatherConfigLoader::applyQualityPreset() {
     }
 
     // Apply preset overrides to settings
-    qm.applyToRainSettings(rainSettings_);
-    qm.applyToRainSplashSettings(rainSplashSettings_);
-    qm.applyToSnowSettings(snowSettings_);
     qm.applyToWeatherConfig(weatherConfig_);
 
     LOG_INFO(MOD_GRAPHICS, "WeatherConfigLoader: Applied '{}' preset overrides",

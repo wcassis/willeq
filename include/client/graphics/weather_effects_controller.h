@@ -26,12 +26,7 @@ class SkyRenderer;
 
 namespace Environment {
 class ParticleManager;
-class RainEmitter;
-class RainSplashEmitter;
-class SnowEmitter;
-class WaterRippleManager;
 class StormCloudLayer;
-class SnowAccumulationSystem;
 class RainOverlay;
 class SnowOverlay;
 }  // namespace Environment
@@ -215,24 +210,14 @@ public:
     float getLightningFlashIntensity() const;
 
     /**
-     * Set surface map for water detection (used by ripple system).
+     * Set surface map for water detection.
      */
     void setSurfaceMap(const Detail::SurfaceMap* surfaceMap);
-
-    /**
-     * Check if water ripples are enabled.
-     */
-    bool areRipplesEnabled() const;
 
     /**
      * Check if storm cloud overlay is enabled.
      */
     bool isCloudOverlayEnabled() const;
-
-    /**
-     * Check if snow accumulation is enabled.
-     */
-    bool isSnowAccumulationEnabled() const;
 
     /**
      * Check if screen-space rain overlay is enabled (vs particle rain).
@@ -273,12 +258,6 @@ public:
      * @return true if sky brightness should be reduced
      */
     bool getSnowBrightnessMultiplier(float& outMultiplier) const;
-
-    /**
-     * Set the raycast mesh for shelter detection in snow accumulation.
-     * Note: RaycastMesh::raycast is not const, so we need a non-const pointer.
-     */
-    void setRaycastMesh(RaycastMesh* raycastMesh);
 
     /**
      * Called when entering a new zone.
@@ -348,47 +327,23 @@ private:
     Environment::ParticleManager* particleManager_ = nullptr;
     SkyRenderer* skyRenderer_ = nullptr;
 
-    // Rain emitter (owned by us, but updates through ParticleManager)
-    std::unique_ptr<Environment::RainEmitter> rainEmitter_;
-
-    // Rain splash emitter (owned by us, but updates through ParticleManager)
-    std::unique_ptr<Environment::RainSplashEmitter> rainSplashEmitter_;
-
-    // Snow emitter (owned by us, but updates through ParticleManager)
-    std::unique_ptr<Environment::SnowEmitter> snowEmitter_;
-
-    // Water ripple manager (Phase 7)
-    std::unique_ptr<Environment::WaterRippleManager> waterRippleManager_;
-
-    // Storm cloud layer (Phase 8)
+    // Storm cloud layer
     std::unique_ptr<Environment::StormCloudLayer> stormCloudLayer_;
 
-    // Snow accumulation system (Phase 9)
-    std::unique_ptr<Environment::SnowAccumulationSystem> snowAccumulationSystem_;
-
-    // Screen-space rain overlay (Phase 10 - replaces particle rain)
+    // Screen-space rain overlay
     std::unique_ptr<Environment::RainOverlay> rainOverlay_;
 
-    // Screen-space snow overlay (Phase 11 - replaces particle snow)
+    // Screen-space snow overlay
     std::unique_ptr<Environment::SnowOverlay> snowOverlay_;
 
     // Surface map for water detection (not owned)
     const Detail::SurfaceMap* surfaceMap_ = nullptr;
-
-    // Raycast mesh for shelter detection (not owned)
-    RaycastMesh* raycastMesh_ = nullptr;
 
     // Configuration
     WeatherEffectsConfig config_;
     bool enabled_ = true;
     bool initialized_ = false;
     std::string eqClientPath_;
-
-    // Use screen-space rain overlay instead of particle rain (default: true for performance)
-    bool useRainOverlay_ = true;
-
-    // Use screen-space snow overlay instead of particle snow (default: true for performance)
-    bool useSnowOverlay_ = true;
 
     // Current weather state
     uint8_t currentType_ = 0;       // 0=none, 1=rain, 2=snow

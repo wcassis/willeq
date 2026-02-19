@@ -8894,24 +8894,18 @@ void EverQuest::RegisterCommands()
 		auto& loader = EQT::Graphics::WeatherConfigLoader::instance();
 
 		if (args.empty()) {
-			// Show current preset and particle counts
+			// Show current preset
 			auto preset = loader.getQualityPreset();
 			std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
-			const auto& rain = loader.getRainSettings();
-			const auto& splash = loader.getRainSplashSettings();
-			const auto& snow = loader.getSnowSettings();
 
-			AddChatSystemMessage(fmt::format("Weather quality: {} (rain: {}, splash: {}, snow: {} particles)",
-				presetName, rain.maxParticles, splash.maxParticles, snow.maxParticles));
+			AddChatSystemMessage(fmt::format("Weather quality: {}", presetName));
 			AddChatSystemMessage("Available: low, medium, high, ultra, custom");
 		} else {
 			// Set new preset
 			if (loader.setQualityPreset(args)) {
 				auto preset = loader.getQualityPreset();
 				std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
-				const auto& rain = loader.getRainSettings();
-				AddChatSystemMessage(fmt::format("Weather quality set to: {} (rain: {} particles)",
-					presetName, rain.maxParticles));
+				AddChatSystemMessage(fmt::format("Weather quality set to: {}", presetName));
 			} else {
 				AddChatSystemMessage("Invalid preset. Use: low, medium, high, ultra, custom");
 			}

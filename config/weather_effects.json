@@ -1,58 +1,6 @@
 {
-  "rain": {
-    "enabled": true,
-    "maxParticles": 500,
-    "spawnRate": 200.0,
-    "spawnRadius": 50.0,
-    "spawnHeight": 80.0,
-    "dropSpeed": 25.0,
-    "dropSpeedVariance": 5.0,
-    "windInfluence": 0.3,
-    "sizeMin": 0.1,
-    "sizeMax": 0.2,
-    "lengthScale": 3.0,
-    "intensityScale": 10.0,
-    "colorR": 0.7,
-    "colorG": 0.8,
-    "colorB": 1.0,
-    "colorA": 0.6
-  },
-  "rainSplash": {
-    "enabled": true,
-    "maxParticles": 200,
-    "spawnRate": 100.0,
-    "spawnRadius": 30.0,
-    "splashSpeed": 2.0,
-    "splashSpeedVariance": 1.0,
-    "gravity": 15.0,
-    "sizeMin": 0.05,
-    "sizeMax": 0.15,
-    "lifetime": 0.3,
-    "colorR": 0.8,
-    "colorG": 0.9,
-    "colorB": 1.0,
-    "colorA": 0.5
-  },
-  "snow": {
-    "enabled": true,
-    "maxParticles": 600,
-    "spawnRate": 150.0,
-    "spawnRadius": 60.0,
-    "spawnHeight": 80.0,
-    "fallSpeed": 3.0,
-    "fallSpeedVariance": 1.5,
-    "swayAmplitude": 2.0,
-    "swayFrequency": 0.5,
-    "windInfluence": 0.4,
-    "sizeMin": 0.1,
-    "sizeMax": 0.25,
-    "colorR": 1.0,
-    "colorG": 1.0,
-    "colorB": 1.0,
-    "colorA": 0.8
-  },
   "storm": {
-    "skyDarkeningEnabled": true,
+    "skyDarkeningEnabled": false,
     "maxDarkening": 0.6,
     "fogDensityMultiplier": 1.5,
     "fogColorR": 100,
@@ -67,7 +15,7 @@
     "maxBranchLevel": 4
   },
   "stormClouds": {
-    "enabled": true,
+    "enabled": false,
     "domeRadius": 500.0,
     "domeHeight": 150.0,
     "domeSegments": 24,
@@ -135,5 +83,5 @@
     "skyBrightnessMin": 0.3,
     "skyBrightnessMax": 0.7
   },
-  "qualityPreset": "high"
+  "qualityPreset": "low"
 }
