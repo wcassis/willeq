@@ -200,28 +200,32 @@ ActionResult ActionDispatcher::targetEntity(uint16_t spawnId) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    auto& entities = m_state.entities();
-    auto* entity = entities.getEntity(spawnId);
-    if (!entity) {
-        return ActionResult::Failure("Entity not found");
-    }
-
     m_handler->targetEntity(spawnId);
-    return ActionResult::Success("Targeting " + entity->name);
+    return ActionResult::Success();
 }
 
 ActionResult ActionDispatcher::targetEntityByName(const std::string& name) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    auto& entities = m_state.entities();
-    auto* entity = entities.findEntityByName(name);
-    if (!entity) {
-        return ActionResult::Failure("Entity not found: " + name);
-    }
-
     m_handler->targetEntityByName(name);
-    return ActionResult::Success("Targeting " + entity->name);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::targetSelf() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->targetSelf();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::targetGroupMember(int index) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->targetGroupMember(index);
+    return ActionResult::Success();
 }
 
 ActionResult ActionDispatcher::targetNearest() {

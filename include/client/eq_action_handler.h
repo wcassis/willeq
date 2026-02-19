@@ -52,6 +52,8 @@ public:
     void cycleTargets() override;
     void cycleTargetsReverse() override;
     void clearTarget() override;
+    void targetSelf() override;
+    void targetGroupMember(int index) override;
 
     void enableAutoAttack() override;
     void disableAutoAttack() override;

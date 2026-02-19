@@ -96,6 +96,8 @@ public:
     virtual void cycleTargets() = 0;
     virtual void cycleTargetsReverse() = 0;
     virtual void clearTarget() = 0;
+    virtual void targetSelf() = 0;
+    virtual void targetGroupMember(int index) = 0;
 
     virtual void enableAutoAttack() = 0;
     virtual void disableAutoAttack() = 0;
@@ -355,6 +357,16 @@ public:
      * Clear current target.
      */
     ActionResult clearTarget();
+
+    /**
+     * Target self (F1), with player/pet toggle.
+     */
+    ActionResult targetSelf();
+
+    /**
+     * Target group member by index (0-4 for F2-F6).
+     */
+    ActionResult targetGroupMember(int index);
 
     /**
      * Enable auto-attack.

@@ -241,6 +241,43 @@ void EqActionHandler::clearTarget() {
     }
 }
 
+void EqActionHandler::targetSelf() {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+
+    uint16_t playerId = m_eq.GetMySpawnID();
+    uint16_t petId = m_eq.GetPetSpawnId();
+    uint16_t currentTarget = combat->GetTargetId();
+
+    uint16_t newTarget;
+    if (currentTarget == playerId && petId != 0) {
+        // Already targeting self and have a pet — toggle to pet
+        newTarget = petId;
+    } else if (currentTarget == petId) {
+        // Currently targeting pet — toggle back to self
+        newTarget = playerId;
+    } else {
+        // Default: target self
+        newTarget = playerId;
+    }
+
+    if (newTarget != 0) {
+        combat->SetTarget(newTarget);
+        updateRendererTargetInfo(newTarget);
+    }
+}
+
+void EqActionHandler::targetGroupMember(int index) {
+    const GroupMember* member = m_eq.GetGroupMember(index);
+    if (member && member->spawn_id != 0) {
+        auto* combat = getCombatManager();
+        if (combat) {
+            combat->SetTarget(member->spawn_id);
+            updateRendererTargetInfo(member->spawn_id);
+        }
+    }
+}
+
 void EqActionHandler::enableAutoAttack() {
     auto* combat = getCombatManager();
     if (combat && combat->HasTarget()) {

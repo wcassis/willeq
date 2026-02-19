@@ -93,43 +93,27 @@ void InputActionBridge::processDiscreteActions() {
 
     // Targeting actions
     if (m_input->consumeAction(input::InputAction::TargetSelf)) {
-        uint16_t playerId = m_state.player().spawnId();
-        reportAction("TargetSelf", m_dispatcher.targetEntity(playerId));
+        reportAction("TargetSelf", m_dispatcher.targetSelf());
     }
 
     if (m_input->consumeAction(input::InputAction::TargetGroupMember1)) {
-        auto* member = m_state.group().getMember(0);
-        if (member && member->spawnId != 0) {
-            reportAction("TargetGroupMember1", m_dispatcher.targetEntity(member->spawnId));
-        }
+        reportAction("TargetGroupMember1", m_dispatcher.targetGroupMember(0));
     }
 
     if (m_input->consumeAction(input::InputAction::TargetGroupMember2)) {
-        auto* member = m_state.group().getMember(1);
-        if (member && member->spawnId != 0) {
-            reportAction("TargetGroupMember2", m_dispatcher.targetEntity(member->spawnId));
-        }
+        reportAction("TargetGroupMember2", m_dispatcher.targetGroupMember(1));
     }
 
     if (m_input->consumeAction(input::InputAction::TargetGroupMember3)) {
-        auto* member = m_state.group().getMember(2);
-        if (member && member->spawnId != 0) {
-            reportAction("TargetGroupMember3", m_dispatcher.targetEntity(member->spawnId));
-        }
+        reportAction("TargetGroupMember3", m_dispatcher.targetGroupMember(2));
     }
 
     if (m_input->consumeAction(input::InputAction::TargetGroupMember4)) {
-        auto* member = m_state.group().getMember(3);
-        if (member && member->spawnId != 0) {
-            reportAction("TargetGroupMember4", m_dispatcher.targetEntity(member->spawnId));
-        }
+        reportAction("TargetGroupMember4", m_dispatcher.targetGroupMember(3));
     }
 
     if (m_input->consumeAction(input::InputAction::TargetGroupMember5)) {
-        auto* member = m_state.group().getMember(4);
-        if (member && member->spawnId != 0) {
-            reportAction("TargetGroupMember5", m_dispatcher.targetEntity(member->spawnId));
-        }
+        reportAction("TargetGroupMember5", m_dispatcher.targetGroupMember(4));
     }
 
     if (m_input->consumeAction(input::InputAction::TargetNearestPC)) {
