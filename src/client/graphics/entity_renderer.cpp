@@ -428,6 +428,11 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         visual.isAnimated = true;
         visual.usesPlaceholder = false;
 
+        // Mark as player node for vertex-baked rotation (must happen before first render)
+        if (isPlayer) {
+            animNode->setIsPlayerNode(true);
+        }
+
         // Force animation update to get correct bounding box
         // The initial bounding box is from bind/T-pose, but we need the animated pose
         animNode->forceAnimationUpdate();
