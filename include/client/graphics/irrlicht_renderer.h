@@ -734,6 +734,11 @@ public:
     void setLoadingProgress(float progress, const std::wstring& text) {
         loadingProgress_ = progress;
         loadingText_ = text;
+        // Immediately redraw loading screen so progress updates are visible
+        // during blocking operations like LoadZoneGraphics()
+        if (loadingScreenVisible_) {
+            drawLoadingScreen(progress, text);
+        }
     }
 
     // Loading screen title (e.g., "Connecting...", "Loading Zone...")
