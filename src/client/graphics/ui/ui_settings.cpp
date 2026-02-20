@@ -261,17 +261,16 @@ bool UISettings::loadFromFile(const std::string& path) {
         if (windows.isMember("hotbar")) {
             loadHotbarSettings(windows["hotbar"]);
         }
-        if (windows.isMember("bagWindows")) {
-            loadBagWindowSettings(windows["bagWindows"]);
-        }
-        if (windows.isMember("bankBagWindows")) {
-            loadBankBagWindowSettings(windows["bankBagWindows"]);
-        }
     }
 
     // Load tooltip settings
     if (root.isMember("tooltips")) {
         loadTooltipSettings(root["tooltips"]);
+    }
+
+    // Load per-resolution layouts
+    if (root.isMember("layouts")) {
+        savedLayouts_ = root["layouts"];
     }
 
     // Store the config path for future saves
@@ -306,7 +305,7 @@ bool UISettings::saveToFile(const std::string& path) {
 
     Json::Value root;
 
-    root["version"] = 1;
+    root["version"] = 2;
     root["uiLocked"] = m_uiLocked;
 
     // Save global theme
@@ -328,8 +327,7 @@ bool UISettings::saveToFile(const std::string& path) {
     saveSkillTrainerSettings(windows["skillTrainer"]);
     saveCastingBarSettings(windows["castingBar"]);
     saveHotbarSettings(windows["hotbar"]);
-    saveBagWindowSettings(windows["bagWindows"]);
-    saveBankBagWindowSettings(windows["bankBagWindows"]);
+    // Bag/bank bag positions are saved per-resolution in the "layouts" section.
 
     // Save tooltip settings
     saveTooltipSettings(root["tooltips"]);
@@ -342,6 +340,11 @@ bool UISettings::saveToFile(const std::string& path) {
 
     // Save scrollbar settings
     saveScrollbarSettings(root["scrollbar"]);
+
+    // Save per-resolution layouts
+    if (!savedLayouts_.isNull() && savedLayouts_.size() > 0) {
+        root["layouts"] = savedLayouts_;
+    }
 
     // Write to file
     std::ofstream file(savePath);
@@ -419,12 +422,6 @@ void UISettings::applyOverrides(const Json::Value& overrides, const std::string&
         }
         if (windows.isMember("hotbar")) {
             loadHotbarSettings(windows["hotbar"]);
-        }
-        if (windows.isMember("bagWindows")) {
-            loadBagWindowSettings(windows["bagWindows"]);
-        }
-        if (windows.isMember("bankBagWindows")) {
-            loadBankBagWindowSettings(windows["bankBagWindows"]);
         }
     }
 
@@ -716,6 +713,218 @@ void UISettings::removeScaling() {
 }
 
 // ============================================================================
+// Per-Resolution Layout Management
+// ============================================================================
+
+void UISettings::setScreenResolution(int w, int h) {
+    screenWidth_ = w;
+    screenHeight_ = h;
+}
+
+std::string UISettings::getResolutionKey() const {
+    return std::to_string(screenWidth_) + "x" + std::to_string(screenHeight_);
+}
+
+void UISettings::captureLayoutForCurrentResolution() {
+    // Must be called while settings are in screen coordinates (scaled)
+    std::string resKey = getResolutionKey();
+    Json::Value layout;
+
+    // Chat window
+    layout["chat"]["x"] = m_chat.window.x;
+    layout["chat"]["y"] = m_chat.window.y;
+    layout["chat"]["w"] = m_chat.window.width;
+    layout["chat"]["h"] = m_chat.window.height;
+    layout["chat"]["visible"] = m_chat.window.visible;
+
+    // Inventory window
+    layout["inventory"]["x"] = m_inventory.window.x;
+    layout["inventory"]["y"] = m_inventory.window.y;
+    layout["inventory"]["w"] = m_inventory.window.width;
+    layout["inventory"]["h"] = m_inventory.window.height;
+    layout["inventory"]["visible"] = m_inventory.window.visible;
+
+    // Loot window
+    layout["loot"]["x"] = m_loot.window.x;
+    layout["loot"]["y"] = m_loot.window.y;
+    layout["loot"]["visible"] = m_loot.window.visible;
+
+    // Buff window
+    layout["buff"]["x"] = m_buff.window.x;
+    layout["buff"]["y"] = m_buff.window.y;
+    layout["buff"]["visible"] = m_buff.window.visible;
+
+    // Group window
+    layout["group"]["x"] = m_group.window.x;
+    layout["group"]["y"] = m_group.window.y;
+    layout["group"]["visible"] = m_group.window.visible;
+
+    // Player status window
+    layout["playerStatus"]["x"] = m_playerStatus.window.x;
+    layout["playerStatus"]["y"] = m_playerStatus.window.y;
+    layout["playerStatus"]["w"] = m_playerStatus.window.width;
+    layout["playerStatus"]["h"] = m_playerStatus.window.height;
+    layout["playerStatus"]["visible"] = m_playerStatus.window.visible;
+
+    // Spell gem panel
+    layout["spellGems"]["x"] = m_spellGems.x;
+    layout["spellGems"]["y"] = m_spellGems.y;
+    layout["spellGems"]["visible"] = m_spellGems.visible;
+
+    // Spellbook window
+    layout["spellbook"]["x"] = m_spellBook.window.x;
+    layout["spellbook"]["y"] = m_spellBook.window.y;
+    layout["spellbook"]["w"] = m_spellBook.window.width;
+    layout["spellbook"]["h"] = m_spellBook.window.height;
+    layout["spellbook"]["visible"] = m_spellBook.window.visible;
+
+    // Hotbar window
+    layout["hotbar"]["x"] = m_hotbar.window.x;
+    layout["hotbar"]["y"] = m_hotbar.window.y;
+    layout["hotbar"]["visible"] = m_hotbar.window.visible;
+
+    // Skills window
+    layout["skills"]["x"] = m_skills.window.x;
+    layout["skills"]["y"] = m_skills.window.y;
+    layout["skills"]["w"] = m_skills.window.width;
+    layout["skills"]["h"] = m_skills.window.height;
+    layout["skills"]["visible"] = m_skills.window.visible;
+
+    // Trade window
+    layout["trade"]["x"] = m_trade.window.x;
+    layout["trade"]["y"] = m_trade.window.y;
+    layout["trade"]["visible"] = m_trade.window.visible;
+
+    // Bank window
+    layout["bank"]["x"] = m_bank.window.x;
+    layout["bank"]["y"] = m_bank.window.y;
+    layout["bank"]["visible"] = m_bank.window.visible;
+
+    // Skill trainer window
+    layout["skillTrainer"]["x"] = m_skillTrainer.window.x;
+    layout["skillTrainer"]["y"] = m_skillTrainer.window.y;
+    layout["skillTrainer"]["visible"] = m_skillTrainer.window.visible;
+
+    // Casting bars
+    layout["castingBar"]["playerX"] = m_castingBar.playerBar.x;
+    layout["castingBar"]["playerY"] = m_castingBar.playerBar.y;
+    layout["castingBar"]["targetX"] = m_castingBar.targetBar.x;
+    layout["castingBar"]["targetY"] = m_castingBar.targetBar.y;
+
+    // Bag window positions
+    Json::Value bags(Json::arrayValue);
+    for (int i = 0; i < 8; i++) {
+        Json::Value pos;
+        pos["x"] = m_bagWindows.positions[i].x;
+        pos["y"] = m_bagWindows.positions[i].y;
+        bags.append(pos);
+    }
+    layout["bags"] = bags;
+
+    // Bank bag window positions
+    Json::Value bankBags(Json::arrayValue);
+    for (int i = 0; i < 16; i++) {
+        Json::Value pos;
+        pos["x"] = m_bankBagWindows.mainBankPositions[i].x;
+        pos["y"] = m_bankBagWindows.mainBankPositions[i].y;
+        bankBags.append(pos);
+    }
+    layout["bankBags"] = bankBags;
+
+    Json::Value sharedBankBags(Json::arrayValue);
+    for (int i = 0; i < 2; i++) {
+        Json::Value pos;
+        pos["x"] = m_bankBagWindows.sharedBankPositions[i].x;
+        pos["y"] = m_bankBagWindows.sharedBankPositions[i].y;
+        sharedBankBags.append(pos);
+    }
+    layout["sharedBankBags"] = sharedBankBags;
+
+    savedLayouts_[resKey] = layout;
+    LOG_DEBUG(MOD_UI, "[UISettings] Captured layout for resolution {}", resKey);
+}
+
+bool UISettings::applyLayoutForCurrentResolution() {
+    std::string resKey = getResolutionKey();
+    if (!savedLayouts_.isMember(resKey)) {
+        LOG_DEBUG(MOD_UI, "[UISettings] No saved layout for resolution {}", resKey);
+        return false;
+    }
+
+    const Json::Value& layout = savedLayouts_[resKey];
+
+    // Helper lambda to apply position/size/visibility from layout
+    auto applyWindow = [&](const char* name, WindowSettings& ws) {
+        if (!layout.isMember(name)) return;
+        const Json::Value& w = layout[name];
+        if (w.isMember("x")) ws.x = w["x"].asInt();
+        if (w.isMember("y")) ws.y = w["y"].asInt();
+        if (w.isMember("w")) ws.width = w["w"].asInt();
+        if (w.isMember("h")) ws.height = w["h"].asInt();
+        if (w.isMember("visible")) ws.visible = w["visible"].asBool();
+    };
+
+    applyWindow("chat", m_chat.window);
+    applyWindow("inventory", m_inventory.window);
+    applyWindow("loot", m_loot.window);
+    applyWindow("buff", m_buff.window);
+    applyWindow("group", m_group.window);
+    applyWindow("playerStatus", m_playerStatus.window);
+    applyWindow("spellbook", m_spellBook.window);
+    applyWindow("hotbar", m_hotbar.window);
+    applyWindow("skills", m_skills.window);
+    applyWindow("trade", m_trade.window);
+    applyWindow("bank", m_bank.window);
+    applyWindow("skillTrainer", m_skillTrainer.window);
+
+    // Spell gem panel (not a WindowSettings, custom struct)
+    if (layout.isMember("spellGems")) {
+        const Json::Value& sg = layout["spellGems"];
+        if (sg.isMember("x")) m_spellGems.x = sg["x"].asInt();
+        if (sg.isMember("y")) m_spellGems.y = sg["y"].asInt();
+        if (sg.isMember("visible")) m_spellGems.visible = sg["visible"].asBool();
+    }
+
+    // Casting bars
+    if (layout.isMember("castingBar")) {
+        const Json::Value& cb = layout["castingBar"];
+        if (cb.isMember("playerX")) m_castingBar.playerBar.x = cb["playerX"].asInt();
+        if (cb.isMember("playerY")) m_castingBar.playerBar.y = cb["playerY"].asInt();
+        if (cb.isMember("targetX")) m_castingBar.targetBar.x = cb["targetX"].asInt();
+        if (cb.isMember("targetY")) m_castingBar.targetBar.y = cb["targetY"].asInt();
+    }
+
+    // Bag window positions
+    if (layout.isMember("bags")) {
+        const Json::Value& bags = layout["bags"];
+        for (Json::ArrayIndex i = 0; i < bags.size() && i < 8; i++) {
+            if (bags[i].isMember("x")) m_bagWindows.positions[i].x = bags[i]["x"].asInt();
+            if (bags[i].isMember("y")) m_bagWindows.positions[i].y = bags[i]["y"].asInt();
+        }
+    }
+
+    // Bank bag window positions
+    if (layout.isMember("bankBags")) {
+        const Json::Value& bankBags = layout["bankBags"];
+        for (Json::ArrayIndex i = 0; i < bankBags.size() && i < 16; i++) {
+            if (bankBags[i].isMember("x")) m_bankBagWindows.mainBankPositions[i].x = bankBags[i]["x"].asInt();
+            if (bankBags[i].isMember("y")) m_bankBagWindows.mainBankPositions[i].y = bankBags[i]["y"].asInt();
+        }
+    }
+
+    if (layout.isMember("sharedBankBags")) {
+        const Json::Value& sharedBankBags = layout["sharedBankBags"];
+        for (Json::ArrayIndex i = 0; i < sharedBankBags.size() && i < 2; i++) {
+            if (sharedBankBags[i].isMember("x")) m_bankBagWindows.sharedBankPositions[i].x = sharedBankBags[i]["x"].asInt();
+            if (sharedBankBags[i].isMember("y")) m_bankBagWindows.sharedBankPositions[i].y = sharedBankBags[i]["y"].asInt();
+        }
+    }
+
+    LOG_INFO(MOD_UI, "[UISettings] Applied saved layout for resolution {}", resKey);
+    return true;
+}
+
+// ============================================================================
 // Position Resolution Helper
 // ============================================================================
 
@@ -761,17 +970,8 @@ Json::Value UISettings::colorToJson(const irr::video::SColor& color) {
 // ============================================================================
 
 void UISettings::loadWindowSettings(WindowSettings& settings, const Json::Value& json) {
-    if (json.isMember("position")) {
-        const Json::Value& pos = json["position"];
-        if (pos.isMember("x")) settings.x = pos["x"].asInt();
-        if (pos.isMember("y")) settings.y = pos["y"].asInt();
-    }
-
-    if (json.isMember("size")) {
-        const Json::Value& size = json["size"];
-        if (size.isMember("width")) settings.width = size["width"].asInt();
-        if (size.isMember("height")) settings.height = size["height"].asInt();
-    }
+    // Position, size, and visibility are now stored per-resolution in the "layouts" section.
+    // This function only loads non-position window metadata.
 
     if (json.isMember("minSize")) {
         const Json::Value& minSize = json["minSize"];
@@ -785,21 +985,13 @@ void UISettings::loadWindowSettings(WindowSettings& settings, const Json::Value&
         if (maxSize.isMember("height")) settings.maxHeight = maxSize["height"].asInt();
     }
 
-    if (json.isMember("visible")) settings.visible = json["visible"].asBool();
     if (json.isMember("showTitleBar")) settings.showTitleBar = json["showTitleBar"].asBool();
     if (json.isMember("alwaysLocked")) settings.alwaysLocked = json["alwaysLocked"].asBool();
 }
 
 void UISettings::saveWindowSettings(const WindowSettings& settings, Json::Value& json) const {
-    Json::Value pos;
-    pos["x"] = settings.x;
-    pos["y"] = settings.y;
-    json["position"] = pos;
-
-    Json::Value size;
-    size["width"] = settings.width;
-    size["height"] = settings.height;
-    json["size"] = size;
+    // Position, size, and visibility are saved per-resolution in the "layouts" section.
+    // This function only saves non-position window metadata.
 
     Json::Value minSize;
     minSize["width"] = settings.minWidth;
@@ -811,7 +1003,6 @@ void UISettings::saveWindowSettings(const WindowSettings& settings, Json::Value&
     maxSize["height"] = settings.maxHeight;
     json["maxSize"] = maxSize;
 
-    json["visible"] = settings.visible;
     json["showTitleBar"] = settings.showTitleBar;
     json["alwaysLocked"] = settings.alwaysLocked;
 }
@@ -1225,13 +1416,7 @@ void UISettings::savePlayerStatusSettings(Json::Value& json) const {
 // ============================================================================
 
 void UISettings::loadSpellGemSettings(const Json::Value& json) {
-    if (json.isMember("position")) {
-        const Json::Value& pos = json["position"];
-        if (pos.isMember("x")) m_spellGems.x = pos["x"].asInt();
-        if (pos.isMember("y")) m_spellGems.y = pos["y"].asInt();
-    }
-
-    if (json.isMember("visible")) m_spellGems.visible = json["visible"].asBool();
+    // Position and visibility are stored per-resolution in the "layouts" section.
 
     if (json.isMember("layout")) {
         const Json::Value& layout = json["layout"];
@@ -1245,12 +1430,7 @@ void UISettings::loadSpellGemSettings(const Json::Value& json) {
 }
 
 void UISettings::saveSpellGemSettings(Json::Value& json) const {
-    Json::Value pos;
-    pos["x"] = m_spellGems.x;
-    pos["y"] = m_spellGems.y;
-    json["position"] = pos;
-
-    json["visible"] = m_spellGems.visible;
+    // Position and visibility are saved per-resolution in the "layouts" section.
 
     Json::Value layout;
     layout["gemWidth"] = m_spellGems.gemWidth;
@@ -1405,79 +1585,7 @@ void UISettings::saveBankSettings(Json::Value& json) const {
     json["layout"] = layout;
 }
 
-// ============================================================================
-// Bag Window Settings Serialization
-// ============================================================================
-
-void UISettings::loadBagWindowSettings(const Json::Value& json) {
-    if (json.isMember("positions")) {
-        const Json::Value& positions = json["positions"];
-        for (Json::ArrayIndex i = 0; i < positions.size() && i < 8; i++) {
-            const Json::Value& pos = positions[i];
-            if (pos.isMember("x")) m_bagWindows.positions[i].x = pos["x"].asInt();
-            if (pos.isMember("y")) m_bagWindows.positions[i].y = pos["y"].asInt();
-        }
-    }
-}
-
-void UISettings::saveBagWindowSettings(Json::Value& json) const {
-    Json::Value positions(Json::arrayValue);
-    for (size_t i = 0; i < 8; i++) {
-        Json::Value pos;
-        pos["x"] = m_bagWindows.positions[i].x;
-        pos["y"] = m_bagWindows.positions[i].y;
-        positions.append(pos);
-    }
-    json["positions"] = positions;
-}
-
-// ============================================================================
-// Bank Bag Window Settings Serialization
-// ============================================================================
-
-void UISettings::loadBankBagWindowSettings(const Json::Value& json) {
-    // Load main bank bag positions (slots 2000-2015)
-    if (json.isMember("mainBankPositions")) {
-        const Json::Value& positions = json["mainBankPositions"];
-        for (Json::ArrayIndex i = 0; i < positions.size() && i < 16; i++) {
-            const Json::Value& pos = positions[i];
-            if (pos.isMember("x")) m_bankBagWindows.mainBankPositions[i].x = pos["x"].asInt();
-            if (pos.isMember("y")) m_bankBagWindows.mainBankPositions[i].y = pos["y"].asInt();
-        }
-    }
-
-    // Load shared bank bag positions (slots 2500-2501)
-    if (json.isMember("sharedBankPositions")) {
-        const Json::Value& positions = json["sharedBankPositions"];
-        for (Json::ArrayIndex i = 0; i < positions.size() && i < 2; i++) {
-            const Json::Value& pos = positions[i];
-            if (pos.isMember("x")) m_bankBagWindows.sharedBankPositions[i].x = pos["x"].asInt();
-            if (pos.isMember("y")) m_bankBagWindows.sharedBankPositions[i].y = pos["y"].asInt();
-        }
-    }
-}
-
-void UISettings::saveBankBagWindowSettings(Json::Value& json) const {
-    // Save main bank bag positions (slots 2000-2015)
-    Json::Value mainPositions(Json::arrayValue);
-    for (size_t i = 0; i < 16; i++) {
-        Json::Value pos;
-        pos["x"] = m_bankBagWindows.mainBankPositions[i].x;
-        pos["y"] = m_bankBagWindows.mainBankPositions[i].y;
-        mainPositions.append(pos);
-    }
-    json["mainBankPositions"] = mainPositions;
-
-    // Save shared bank bag positions (slots 2500-2501)
-    Json::Value sharedPositions(Json::arrayValue);
-    for (size_t i = 0; i < 2; i++) {
-        Json::Value pos;
-        pos["x"] = m_bankBagWindows.sharedBankPositions[i].x;
-        pos["y"] = m_bankBagWindows.sharedBankPositions[i].y;
-        sharedPositions.append(pos);
-    }
-    json["sharedBankPositions"] = sharedPositions;
-}
+// Bag and bank bag window positions are stored per-resolution in the "layouts" section.
 
 // ============================================================================
 // Skill Trainer Settings Serialization
@@ -1496,12 +1604,10 @@ void UISettings::saveSkillTrainerSettings(Json::Value& json) const {
 // ============================================================================
 
 void UISettings::loadCastingBarSettings(const Json::Value& json) {
+    // Position is stored per-resolution in the "layouts" section.
+
     if (json.isMember("playerBar")) {
         const Json::Value& bar = json["playerBar"];
-        if (bar.isMember("position")) {
-            if (bar["position"].isMember("x")) m_castingBar.playerBar.x = bar["position"]["x"].asInt();
-            if (bar["position"].isMember("y")) m_castingBar.playerBar.y = bar["position"]["y"].asInt();
-        }
         if (bar.isMember("size")) {
             if (bar["size"].isMember("width")) m_castingBar.playerBar.width = bar["size"]["width"].asInt();
             if (bar["size"].isMember("height")) m_castingBar.playerBar.height = bar["size"]["height"].asInt();
@@ -1510,10 +1616,6 @@ void UISettings::loadCastingBarSettings(const Json::Value& json) {
 
     if (json.isMember("targetBar")) {
         const Json::Value& bar = json["targetBar"];
-        if (bar.isMember("position")) {
-            if (bar["position"].isMember("x")) m_castingBar.targetBar.x = bar["position"]["x"].asInt();
-            if (bar["position"].isMember("y")) m_castingBar.targetBar.y = bar["position"]["y"].asInt();
-        }
         if (bar.isMember("size")) {
             if (bar["size"].isMember("width")) m_castingBar.targetBar.width = bar["size"]["width"].asInt();
             if (bar["size"].isMember("height")) m_castingBar.targetBar.height = bar["size"]["height"].asInt();
@@ -1531,11 +1633,9 @@ void UISettings::loadCastingBarSettings(const Json::Value& json) {
 }
 
 void UISettings::saveCastingBarSettings(Json::Value& json) const {
+    // Position is saved per-resolution in the "layouts" section.
+
     Json::Value playerBar;
-    Json::Value playerPos;
-    playerPos["x"] = m_castingBar.playerBar.x;
-    playerPos["y"] = m_castingBar.playerBar.y;
-    playerBar["position"] = playerPos;
     Json::Value playerSize;
     playerSize["width"] = m_castingBar.playerBar.width;
     playerSize["height"] = m_castingBar.playerBar.height;
@@ -1543,10 +1643,6 @@ void UISettings::saveCastingBarSettings(Json::Value& json) const {
     json["playerBar"] = playerBar;
 
     Json::Value targetBar;
-    Json::Value targetPos;
-    targetPos["x"] = m_castingBar.targetBar.x;
-    targetPos["y"] = m_castingBar.targetBar.y;
-    targetBar["position"] = targetPos;
     Json::Value targetSize;
     targetSize["width"] = m_castingBar.targetBar.width;
     targetSize["height"] = m_castingBar.targetBar.height;

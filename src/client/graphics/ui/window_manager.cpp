@@ -39,6 +39,10 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     // Scale UI settings from design resolution (800x600) to actual screen resolution
     UISettings::instance().applyScaling(screenWidth, screenHeight);
 
+    // Apply per-resolution layout if one exists for this resolution
+    UISettings::instance().setScreenResolution(screenWidth, screenHeight);
+    UISettings::instance().applyLayoutForCurrentResolution();
+
     // Initialize icon loader
     if (!eqClientPath.empty()) {
         if (iconLoader_.init(driver, eqClientPath)) {
@@ -134,17 +138,29 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
 }
 
 void WindowManager::onResize(int screenWidth, int screenHeight) {
-    // Re-scale UI settings from old resolution to new resolution
     auto& settings = UISettings::instance();
+
+    // Capture layout for the old resolution before changing
+    collectWindowPositions();
+    settings.captureLayoutForCurrentResolution();
+
+    // Re-scale UI settings from old resolution to new resolution
     settings.removeScaling();
     screenWidth_ = screenWidth;
     screenHeight_ = screenHeight;
     lockIndicatorDirty_ = true;  // Position depends on screenWidth_
     settings.applyScaling(screenWidth, screenHeight);
 
-    positionInventoryWindow();
-    positionLootWindow();
-    // Note: Bag windows maintain their saved positions on resize
+    // Try to apply saved layout for the new resolution
+    settings.setScreenResolution(screenWidth, screenHeight);
+    if (settings.applyLayoutForCurrentResolution()) {
+        applyWindowPositions();
+    } else {
+        // No saved layout - use scaled defaults
+        positionInventoryWindow();
+        positionLootWindow();
+    }
+
     if (chatWindow_) {
         chatWindow_->onResize(screenWidth, screenHeight);
     }
@@ -184,8 +200,11 @@ bool WindowManager::saveUILayout(const std::string& path) {
     // Collect current window positions into UISettings
     collectWindowPositions();
 
-    // Convert from screen coordinates to design coordinates for saving
+    // Capture per-resolution layout (in screen pixel coordinates)
     auto& settings = UISettings::instance();
+    settings.captureLayoutForCurrentResolution();
+
+    // Convert from screen coordinates to design coordinates for saving
     settings.removeScaling();
 
     // Save to file
@@ -219,6 +238,8 @@ bool WindowManager::loadUILayout(const std::string& path) {
     if (success) {
         // Scale from design coordinates to screen coordinates
         settings.applyScaling(screenWidth_, screenHeight_);
+        // Apply per-resolution layout if available (overrides scaled defaults)
+        settings.applyLayoutForCurrentResolution();
         // Apply loaded settings to all windows
         applyWindowPositions();
         LOG_INFO(MOD_UI, "UI layout loaded from {}", loadPath);
@@ -1899,6 +1920,13 @@ bool WindowManager::handleMouseUp(int x, int y, bool leftButton) {
     // Check group window
     if (groupWindow_ && groupWindow_->isVisible()) {
         if (groupWindow_->handleMouseUp(x, y, leftButton)) {
+            return true;
+        }
+    }
+
+    // Check pet window
+    if (petWindow_ && petWindow_->isVisible()) {
+        if (petWindow_->handleMouseUp(x, y, leftButton)) {
             return true;
         }
     }

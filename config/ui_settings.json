@@ -119,6 +119,318 @@
             "titleBarHeight" : 20
         }
     },
+    "layouts" : 
+    {
+        "1280x720" : 
+        {
+            "bags" : 
+            [
+                {
+                    "x" : 680,
+                    "y" : 60
+                },
+                {
+                    "x" : 850,
+                    "y" : 60
+                },
+                {
+                    "x" : 1019,
+                    "y" : 60
+                },
+                {
+                    "x" : 1189,
+                    "y" : 60
+                },
+                {
+                    "x" : 680,
+                    "y" : 355
+                },
+                {
+                    "x" : 850,
+                    "y" : 355
+                },
+                {
+                    "x" : 1019,
+                    "y" : 355
+                },
+                {
+                    "x" : 1189,
+                    "y" : 355
+                }
+            ],
+            "bank" : 
+            {
+                "visible" : false,
+                "x" : 160,
+                "y" : 180
+            },
+            "bankBags" : 
+            [
+                {
+                    "x" : 160,
+                    "y" : 672
+                },
+                {
+                    "x" : 330,
+                    "y" : 672
+                },
+                {
+                    "x" : 499,
+                    "y" : 672
+                },
+                {
+                    "x" : 669,
+                    "y" : 672
+                },
+                {
+                    "x" : 160,
+                    "y" : 967
+                },
+                {
+                    "x" : 330,
+                    "y" : 967
+                },
+                {
+                    "x" : 499,
+                    "y" : 967
+                },
+                {
+                    "x" : 669,
+                    "y" : 967
+                },
+                {
+                    "x" : 160,
+                    "y" : 1262
+                },
+                {
+                    "x" : 330,
+                    "y" : 1262
+                },
+                {
+                    "x" : 499,
+                    "y" : 1262
+                },
+                {
+                    "x" : 669,
+                    "y" : 1262
+                },
+                {
+                    "x" : 160,
+                    "y" : 1558
+                },
+                {
+                    "x" : 330,
+                    "y" : 1558
+                },
+                {
+                    "x" : 499,
+                    "y" : 1558
+                },
+                {
+                    "x" : 669,
+                    "y" : 1558
+                }
+            ],
+            "buff" : 
+            {
+                "visible" : true,
+                "x" : 1112,
+                "y" : 39
+            },
+            "castingBar" : 
+            {
+                "playerX" : -1,
+                "playerY" : -1,
+                "targetX" : -1,
+                "targetY" : 96
+            },
+            "chat" : 
+            {
+                "h" : 216,
+                "visible" : true,
+                "w" : 510,
+                "x" : 10,
+                "y" : 499
+            },
+            "group" : 
+            {
+                "visible" : true,
+                "x" : 1131,
+                "y" : 313
+            },
+            "hotbar" : 
+            {
+                "visible" : true,
+                "x" : 857,
+                "y" : 657
+            },
+            "inventory" : 
+            {
+                "h" : 408,
+                "visible" : false,
+                "w" : 438,
+                "x" : 200,
+                "y" : 73
+            },
+            "loot" : 
+            {
+                "visible" : false,
+                "x" : 498,
+                "y" : 50
+            },
+            "playerStatus" : 
+            {
+                "h" : 132,
+                "visible" : true,
+                "w" : 108,
+                "x" : 16,
+                "y" : 12
+            },
+            "sharedBankBags" : 
+            [
+                {
+                    "x" : 870,
+                    "y" : 672
+                },
+                {
+                    "x" : 870,
+                    "y" : 967
+                }
+            ],
+            "skillTrainer" : 
+            {
+                "visible" : false,
+                "x" : -1,
+                "y" : -1
+            },
+            "skills" : 
+            {
+                "h" : 480,
+                "visible" : false,
+                "w" : 408,
+                "x" : 170,
+                "y" : 12
+            },
+            "spellGems" : 
+            {
+                "visible" : true,
+                "x" : 6,
+                "y" : 240
+            },
+            "spellbook" : 
+            {
+                "h" : 336,
+                "visible" : false,
+                "w" : 422,
+                "x" : 0,
+                "y" : 0
+            },
+            "trade" : 
+            {
+                "visible" : false,
+                "x" : 0,
+                "y" : 0
+            }
+        },
+        "800x600" : 
+        {
+            "bank" : 
+            {
+                "visible" : false,
+                "x" : 100,
+                "y" : 150
+            },
+            "buff" : 
+            {
+                "visible" : true,
+                "x" : 650,
+                "y" : 53
+            },
+            "castingBar" : 
+            {
+                "playerX" : -1,
+                "playerY" : -1,
+                "targetX" : -1,
+                "targetY" : 80
+            },
+            "chat" : 
+            {
+                "h" : 180,
+                "visible" : true,
+                "w" : 425,
+                "x" : 6,
+                "y" : 416
+            },
+            "group" : 
+            {
+                "visible" : true,
+                "x" : 666,
+                "y" : 210
+            },
+            "hotbar" : 
+            {
+                "visible" : true,
+                "x" : 438,
+                "y" : 542
+            },
+            "inventory" : 
+            {
+                "h" : 340,
+                "visible" : false,
+                "w" : 365,
+                "x" : 125,
+                "y" : 61
+            },
+            "loot" : 
+            {
+                "visible" : false,
+                "x" : 425,
+                "y" : 50
+            },
+            "playerStatus" : 
+            {
+                "h" : 110,
+                "visible" : true,
+                "w" : 90,
+                "x" : 10,
+                "y" : 10
+            },
+            "skillTrainer" : 
+            {
+                "visible" : false,
+                "x" : -1,
+                "y" : -1
+            },
+            "skills" : 
+            {
+                "h" : 400,
+                "visible" : false,
+                "w" : 340,
+                "x" : 106,
+                "y" : 10
+            },
+            "spellGems" : 
+            {
+                "visible" : true,
+                "x" : 10,
+                "y" : 210
+            },
+            "spellbook" : 
+            {
+                "h" : 280,
+                "visible" : false,
+                "w" : 352,
+                "x" : 0,
+                "y" : 0
+            },
+            "trade" : 
+            {
+                "visible" : false,
+                "x" : 0,
+                "y" : 0
+            }
+        }
+    },
     "scrollbar" : 
     {
         "colors" : 
@@ -363,7 +675,7 @@
         }
     },
     "uiLocked" : true,
-    "version" : 1,
+    "version" : 2,
     "windows" : 
     {
         "bank" : 
@@ -385,18 +697,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 100,
-                "y" : 150
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : false
+            "showTitleBar" : true
         },
         "buff" : 
         {
@@ -464,18 +765,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 650,
-                "y" : 53
-            },
-            "showTitleBar" : false,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : true
+            "showTitleBar" : false
         },
         "castingBar" : 
         {
@@ -519,11 +809,6 @@
             },
             "playerBar" : 
             {
-                "position" : 
-                {
-                    "x" : -1,
-                    "y" : -1
-                },
                 "size" : 
                 {
                     "height" : 16,
@@ -532,11 +817,6 @@
             },
             "targetBar" : 
             {
-                "position" : 
-                {
-                    "x" : -1,
-                    "y" : 80
-                },
                 "size" : 
                 {
                     "height" : 16,
@@ -603,23 +883,13 @@
                 "height" : 80,
                 "width" : 200
             },
-            "position" : 
-            {
-                "x" : 6,
-                "y" : 416
-            },
             "showTimestamps" : false,
             "showTitleBar" : false,
-            "size" : 
+            "tabs" : 
             {
-                "height" : 180,
-                "width" : 425
-            },
-            "tabs" :
-            {
-                "combat" :
+                "combat" : 
                 {
-                    "channels" :
+                    "channels" : 
                     [
                         100,
                         101,
@@ -630,8 +900,7 @@
                     "echoToMain" : true,
                     "enabled" : true
                 }
-            },
-            "visible" : true
+            }
         },
         "group" : 
         {
@@ -730,18 +999,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 666,
-                "y" : 210
-            },
-            "showTitleBar" : false,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : true
+            "showTitleBar" : false
         },
         "hotbar" : 
         {
@@ -826,18 +1084,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 438,
-                "y" : 542
-            },
-            "showTitleBar" : false,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : true
+            "showTitleBar" : false
         },
         "inventory" : 
         {
@@ -862,18 +1109,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 125,
-                "y" : 61
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : 340,
-                "width" : 365
-            },
-            "visible" : false
+            "showTitleBar" : true
         },
         "loot" : 
         {
@@ -902,18 +1138,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 425,
-                "y" : 50
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : false
+            "showTitleBar" : true
         },
         "playerStatus" : 
         {
@@ -995,18 +1220,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 10,
-                "y" : 10
-            },
-            "showTitleBar" : false,
-            "size" : 
-            {
-                "height" : 110,
-                "width" : 90
-            },
-            "visible" : true
+            "showTitleBar" : false
         },
         "skillTrainer" : 
         {
@@ -1021,18 +1235,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : -1,
-                "y" : -1
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : false
+            "showTitleBar" : true
         },
         "skills" : 
         {
@@ -1047,18 +1250,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 106,
-                "y" : 10
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : 400,
-                "width" : 340
-            },
-            "visible" : false
+            "showTitleBar" : true
         },
         "spellGems" : 
         {
@@ -1070,13 +1262,7 @@
                 "panelPadding" : 2,
                 "spellbookButtonMargin" : 3,
                 "spellbookButtonSize" : 16
-            },
-            "position" : 
-            {
-                "x" : 10,
-                "y" : 210
-            },
-            "visible" : true
+            }
         },
         "spellbook" : 
         {
@@ -1106,18 +1292,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 0,
-                "y" : 0
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : 280,
-                "width" : 352
-            },
-            "visible" : false
+            "showTitleBar" : true
         },
         "trade" : 
         {
@@ -1132,18 +1307,7 @@
                 "height" : 50,
                 "width" : 50
             },
-            "position" : 
-            {
-                "x" : 0,
-                "y" : 0
-            },
-            "showTitleBar" : true,
-            "size" : 
-            {
-                "height" : -1,
-                "width" : -1
-            },
-            "visible" : false
+            "showTitleBar" : true
         }
     }
 }

@@ -50,6 +50,12 @@ public:
     void removeScaling();
     bool isScaled() const { return scaled_; }
 
+    // Per-resolution layout management
+    void setScreenResolution(int w, int h);
+    std::string getResolutionKey() const;
+    void captureLayoutForCurrentResolution();
+    bool applyLayoutForCurrentResolution();
+
     // Get/set the config file path (for saving)
     const std::string& getConfigPath() const { return m_configPath; }
     void setConfigPath(const std::string& path) { m_configPath = path; }
@@ -642,11 +648,7 @@ private:
     void loadBankSettings(const Json::Value& json);
     void saveBankSettings(Json::Value& json) const;
 
-    void loadBagWindowSettings(const Json::Value& json);
-    void saveBagWindowSettings(Json::Value& json) const;
-
-    void loadBankBagWindowSettings(const Json::Value& json);
-    void saveBankBagWindowSettings(Json::Value& json) const;
+    // Bag/bank bag positions are stored per-resolution in "layouts" (no separate load/save).
 
     void loadSkillTrainerSettings(const Json::Value& json);
     void saveSkillTrainerSettings(Json::Value& json) const;
@@ -675,6 +677,11 @@ private:
     float scaleX_ = 1.0f;
     float scaleY_ = 1.0f;
     float scaleUniform_ = 1.0f;
+
+    // Per-resolution layout state
+    int screenWidth_ = 800;
+    int screenHeight_ = 600;
+    Json::Value savedLayouts_;
 
     static constexpr int DESIGN_WIDTH = 800;
     static constexpr int DESIGN_HEIGHT = 600;
