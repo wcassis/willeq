@@ -255,8 +255,8 @@
             "group" : 
             {
                 "visible" : true,
-                "x" : 1131,
-                "y" : 313
+                "x" : 1123,
+                "y" : 147
             },
             "hotbar" : 
             {
@@ -278,13 +278,19 @@
                 "x" : 498,
                 "y" : 50
             },
+            "pet" : 
+            {
+                "visible" : true,
+                "x" : 1082,
+                "y" : 306
+            },
             "playerStatus" : 
             {
                 "h" : 132,
                 "visible" : true,
                 "w" : 108,
-                "x" : 16,
-                "y" : 12
+                "x" : 7,
+                "y" : 10
             },
             "sharedBankBags" : 
             [
@@ -314,8 +320,8 @@
             "spellGems" : 
             {
                 "visible" : true,
-                "x" : 6,
-                "y" : 240
+                "x" : 10,
+                "y" : 230
             },
             "spellbook" : 
             {
@@ -1142,7 +1148,7 @@
         },
         "playerStatus" : 
         {
-            "alwaysLocked" : true,
+            "alwaysLocked" : false,
             "colors" : 
             {
                 "barText" : 

@@ -408,6 +408,15 @@ public:
     };
 
     // =========================================================================
+    // Pet Window Settings
+    // =========================================================================
+    struct PetSettings {
+        WindowSettings window;
+
+        PetSettings();
+    };
+
+    // =========================================================================
     // Skill Trainer Window Settings
     // =========================================================================
     struct SkillTrainerSettings {
@@ -576,6 +585,9 @@ public:
     BankBagWindowSettings& bankBagWindows() { return m_bankBagWindows; }
     const BankBagWindowSettings& bankBagWindows() const { return m_bankBagWindows; }
 
+    PetSettings& pet() { return m_pet; }
+    const PetSettings& pet() const { return m_pet; }
+
     SkillTrainerSettings& skillTrainer() { return m_skillTrainer; }
     const SkillTrainerSettings& skillTrainer() const { return m_skillTrainer; }
 
@@ -713,6 +725,7 @@ private:
     BankSettings m_bank;
     BagWindowSettings m_bagWindows;
     BankBagWindowSettings m_bankBagWindows;
+    PetSettings m_pet;
     SkillTrainerSettings m_skillTrainer;
     CastingBarSettings m_castingBar;
     ItemTooltipSettings m_itemTooltip;

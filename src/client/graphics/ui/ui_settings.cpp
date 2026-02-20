@@ -62,7 +62,7 @@ UISettings::PlayerStatusSettings::PlayerStatusSettings() {
     window.height = 110;  // Taller to fit player + target info with full-height bars
     window.visible = true;
     window.showTitleBar = false;
-    window.alwaysLocked = true;  // Player status window should always be locked
+    window.alwaysLocked = false;
     barHeight = 10;  // Tall enough for text overlay
 }
 
@@ -149,6 +149,13 @@ UISettings::BankBagWindowSettings::BankBagWindowSettings() {
         sharedBankPositions[i].x = SHARED_START_X;
         sharedBankPositions[i].y = BAG_START_Y + i * (BAG_HEIGHT + BAG_SPACING);
     }
+}
+
+UISettings::PetSettings::PetSettings() {
+    window.x = -1;  // Calculated (right side of screen)
+    window.y = 350;
+    window.visible = false;
+    window.showTitleBar = true;
 }
 
 UISettings::SkillTrainerSettings::SkillTrainerSettings() {
@@ -510,6 +517,7 @@ void UISettings::resetToDefaults() {
     m_bank = BankSettings{};
     m_bagWindows = BagWindowSettings{};
     m_bankBagWindows = BankBagWindowSettings{};
+    m_pet = PetSettings{};
     m_castingBar = CastingBarSettings{};
     m_itemTooltip = ItemTooltipSettings{};
     m_buffTooltip = BuffTooltipSettings{};
@@ -800,6 +808,11 @@ void UISettings::captureLayoutForCurrentResolution() {
     layout["bank"]["y"] = m_bank.window.y;
     layout["bank"]["visible"] = m_bank.window.visible;
 
+    // Pet window
+    layout["pet"]["x"] = m_pet.window.x;
+    layout["pet"]["y"] = m_pet.window.y;
+    layout["pet"]["visible"] = m_pet.window.visible;
+
     // Skill trainer window
     layout["skillTrainer"]["x"] = m_skillTrainer.window.x;
     layout["skillTrainer"]["y"] = m_skillTrainer.window.y;
@@ -875,6 +888,7 @@ bool UISettings::applyLayoutForCurrentResolution() {
     applyWindow("skills", m_skills.window);
     applyWindow("trade", m_trade.window);
     applyWindow("bank", m_bank.window);
+    applyWindow("pet", m_pet.window);
     applyWindow("skillTrainer", m_skillTrainer.window);
 
     // Spell gem panel (not a WindowSettings, custom struct)

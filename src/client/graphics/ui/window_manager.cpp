@@ -352,6 +352,13 @@ void WindowManager::collectWindowPositions() {
         settings.trade().window.visible = tradeWindow_->isOpen();
     }
 
+    // Pet window
+    if (petWindow_) {
+        settings.pet().window.x = petWindow_->getX();
+        settings.pet().window.y = petWindow_->getY();
+        settings.pet().window.visible = petWindow_->isVisible();
+    }
+
     // Skill trainer window
     if (skillTrainerWindow_) {
         settings.skillTrainer().window.x = skillTrainerWindow_->getX();
@@ -436,6 +443,14 @@ void WindowManager::applyWindowPositions() {
         if (settings.playerStatus().window.visible) {
             playerStatusWindow_->show();
         }
+    }
+
+    // Pet window
+    if (petWindow_) {
+        int defaultX = screenWidth_ - 150;
+        int x = UISettings::resolvePosition(settings.pet().window.x, screenWidth_, defaultX);
+        int y = UISettings::resolvePosition(settings.pet().window.y, screenHeight_, 350);
+        petWindow_->setPosition(x, y);
     }
 
     // Spell gem panel
@@ -1628,6 +1643,9 @@ bool WindowManager::handleMouseDown(int x, int y, bool leftButton, bool shift, b
     }
     if (optionsWindow_ && optionsWindow_->isVisible()) {
         zOrderableWindows.push_back(optionsWindow_.get());
+    }
+    if (playerStatusWindow_ && playerStatusWindow_->isVisible()) {
+        zOrderableWindows.push_back(playerStatusWindow_.get());
     }
 
     // Sort by z-order (windows in windowZOrder_ at back are on top)
@@ -3907,12 +3925,16 @@ void WindowManager::initSpellGemPanel(EQ::SpellManager* spellMgr) {
     buffTooltip_.setSpellDatabase(&spellMgr->getDatabase());
     spellGemPanel_ = std::make_unique<SpellGemPanel>(spellMgr, &iconLoader_);
 
-    // Position on left side of screen, vertically centered
+    // Position on left side of screen, vertically centered (default)
     // New smaller gems: 20x20 with 2px spacing and 2px padding
-    int panelWidth = 24;  // GEM_WIDTH(20) + padding(2*2)
     int panelHeight = 8 * 22 + 4;  // 8 gems * (20 + 2 spacing) + padding(2*2)
-    int panelX = 10;  // Left side with small margin
-    int panelY = (screenHeight_ - panelHeight) / 2;
+    int defaultX = 10;  // Left side with small margin
+    int defaultY = (screenHeight_ - panelHeight) / 2;
+
+    // Apply saved layout position if available
+    const auto& sgSettings = UISettings::instance().spellGems();
+    int panelX = (sgSettings.x >= 0) ? sgSettings.x : defaultX;
+    int panelY = (sgSettings.y >= 0) ? sgSettings.y : defaultY;
     spellGemPanel_->setPosition(panelX, panelY);
 
     LOG_DEBUG(MOD_UI, "Spell gem panel initialized at ({}, {})", panelX, panelY);
@@ -4088,7 +4110,16 @@ void WindowManager::initBuffWindow(EQ::BuffManager* buffMgr) {
 
     buffWindow_ = std::make_unique<BuffWindow>(buffMgr, &iconLoader_);
     buffWindow_->positionDefault(screenWidth_, screenHeight_);
-    buffWindow_->show();  // Buff window visible by default
+
+    // Apply saved layout position if available
+    const auto& buffSettings = UISettings::instance().buff();
+    int buffX = UISettings::resolvePosition(buffSettings.window.x, screenWidth_, buffWindow_->getX());
+    int buffY = UISettings::resolvePosition(buffSettings.window.y, screenHeight_, buffWindow_->getY());
+    buffWindow_->setPosition(buffX, buffY);
+
+    if (buffSettings.window.visible) {
+        buffWindow_->show();
+    }
 
     // Set up cancel callback
     if (buffCancelCallback_) {
@@ -4143,7 +4174,17 @@ void WindowManager::initGroupWindow(EverQuest* eq) {
     groupWindow_ = std::make_unique<GroupWindow>();
     groupWindow_->setEQ(eq);
     groupWindow_->positionDefault(screenWidth_, screenHeight_);
-    groupWindow_->show();  // Group window visible by default
+
+    // Apply saved layout position if available
+    const auto& groupSettings = UISettings::instance().group();
+    int groupDefaultX = screenWidth_ - 150;
+    int groupX = UISettings::resolvePosition(groupSettings.window.x, screenWidth_, groupDefaultX);
+    int groupY = UISettings::resolvePosition(groupSettings.window.y, screenHeight_, 210);
+    groupWindow_->setPosition(groupX, groupY);
+
+    if (groupSettings.window.visible) {
+        groupWindow_->show();
+    }
 
     // Set up callbacks
     if (groupInviteCallback_) {
@@ -4230,8 +4271,18 @@ void WindowManager::initPetWindow(EverQuest* eq, EQ::BuffManager* buffMgr) {
     petWindow_->setBuffManager(buffMgr);
     petWindow_->setIconLoader(&iconLoader_);
     petWindow_->positionDefault(screenWidth_, screenHeight_);
+
+    // Apply saved layout position if available
+    const auto& petSettings = UISettings::instance().pet();
+    int petDefaultX = screenWidth_ - 150;
+    int petX = UISettings::resolvePosition(petSettings.window.x, screenWidth_, petDefaultX);
+    int petY = UISettings::resolvePosition(petSettings.window.y, screenHeight_, 350);
+    petWindow_->setPosition(petX, petY);
+
     // Pet window starts hidden - shown when pet is created
-    petWindow_->hide();
+    if (!petSettings.window.visible) {
+        petWindow_->hide();
+    }
 
     // Set up callback
     if (petCommandCallback_) {
