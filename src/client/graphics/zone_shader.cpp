@@ -1,5 +1,8 @@
 #include "client/graphics/zone_shader.h"
 #include "common/logging.h"
+#ifdef EQT_HAS_DRM
+#include <GL/gl.h>
+#endif
 #include <cstring>
 
 namespace EQT {
@@ -23,13 +26,16 @@ uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 
-varying vec2 vTexCoord;
 varying vec4 vColor;
 varying float vFogFactor;
 
 void main() {
     gl_Position = mWorldViewProj * gl_Vertex;
-    vTexCoord = gl_MultiTexCoord0.xy;
+    // Use gl_TexCoord (built-in varying) instead of a custom varying vec2.
+    // On Mali 400, built-in texture coordinate varyings may be routed through
+    // dedicated interpolation hardware with higher precision than the generic
+    // FP16 varying interpolators, avoiding blocky texture artifacts.
+    gl_TexCoord[0] = gl_MultiTexCoord0;
 
     vec3 worldPos = (mWorld * gl_Vertex).xyz;
     vec3 worldN = normalize((mWorld * vec4(gl_Normal, 0.0)).xyz);
@@ -65,12 +71,11 @@ static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
 
-varying vec2 vTexCoord;
 varying vec4 vColor;
 varying float vFogFactor;
 
 void main() {
-    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 texColor = texture2D(uTexture, gl_TexCoord[0].xy);
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
@@ -83,12 +88,11 @@ static const char* FRAGMENT_SHADER_ALPHA_SRC = R"(
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
 
-varying vec2 vTexCoord;
 varying vec4 vColor;
 varying float vFogFactor;
 
 void main() {
-    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 texColor = texture2D(uTexture, gl_TexCoord[0].xy);
     if (texColor.a < 0.5) discard;
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -105,6 +109,15 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices* services,
                         irr::s32 userData) override {
         irr::video::IVideoDriver* driver = services->getVideoDriver();
+
+#ifdef EQT_HAS_DRM
+        // Irrlicht's GLSL material renderer doesn't properly set texture
+        // filtering via glTexParameteri on some drivers (Lima/Mali400).
+        // Override after Irrlicht's material setup, before the draw call.
+        // At this point texture unit 0 should be active with the texture bound.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+#endif
 
         // Matrices — Irrlicht provides these automatically for built-in names
         // mWorldViewProj and mWorld, but we need to set them explicitly for GLSL

@@ -12,6 +12,7 @@
       "enableNPOT": true,
       "enableStencilBuffer": true,
       "enableAlphaToCoverage": true,
+      "enableShaders": true,
       "antiAliasLevel": 4,
       "anisotropicFilterLevel": 4
     }

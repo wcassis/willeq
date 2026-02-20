@@ -485,21 +485,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                     }
                 }
 
-                // Texture filtering: use trilinear + anisotropic if configured, else bilinear
-                int anisoLevel = 0;
-                if (constrainedCache_) {
-                    anisoLevel = constrainedCache_->getConfig().anisotropicFilterLevel;
-                }
-                if (anisoLevel > 0) {
-                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, false);
-                    buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, true);
-                    buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, true);
-                    buffer->Material.TextureLayer[0].AnisotropicFilter = static_cast<irr::u8>(anisoLevel);
-                } else {
-                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-                    buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, false);
-                    buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, false);
-                }
+                // Texture filtering: bilinear
+                buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, false);
+                buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, false);
                 // Enable texture wrapping/tiling for UV coords > 1
                 buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
                 buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;

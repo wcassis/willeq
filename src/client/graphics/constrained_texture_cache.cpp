@@ -108,6 +108,25 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return nullptr;
     }
 
+#ifdef EQT_HAS_DRM
+    // Irrlicht's GLSL custom material renderer doesn't apply texture filtering
+    // flags via glTexParameteri on some drivers (Lima/Mali400). Set bilinear
+    // filtering directly on the GL texture object at creation time.
+    {
+        irr::u32 glName = texture->getDriverTextureHandle();
+        if (glName != 0) {
+            glBindTexture(GL_TEXTURE_2D, glName);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            if (config_.enableMipmaps) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            } else {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            }
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
+#endif
+
     LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: loaded '{}' {}x{} ({} bytes)", name, width, height, textureSize);
 
     // Add to cache
@@ -643,6 +662,14 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
             // Mipmap generation failed — not fatal, texture still usable
             LOG_DEBUG(MOD_GRAPHICS, "Compressed upload: glGenerateMipmap failed for '{}' (GL error 0x{:X})", name, static_cast<unsigned>(err));
         }
+    }
+
+    // Set bilinear filtering directly on GL texture (see getOrLoad comment)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (config_.enableMipmaps) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     }
 
     glBindTexture(GL_TEXTURE_2D, 0);
