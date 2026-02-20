@@ -1,4 +1,5 @@
 #include "client/graphics/ui/chat_window.h"
+#include "client/graphics/ui/ui_settings.h"
 #include "client/input/hotkey_manager.h"
 #include "common/logging.h"
 #include <algorithm>
@@ -115,6 +116,10 @@ ChatWindow::ChatWindow()
 void ChatWindow::init(int screenWidth, int screenHeight) {
     screenWidth_ = screenWidth;
     screenHeight_ = screenHeight;
+
+    // Apply showTitleBar from settings
+    const auto& chatSettings = UISettings::instance().chat();
+    setShowTitleBar(chatSettings.window.showTitleBar);
 
     // Set default position and size
     // Width: 50% of screen
