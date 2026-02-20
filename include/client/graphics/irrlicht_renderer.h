@@ -638,6 +638,10 @@ public:
     // The camera far plane must be larger to include the sky dome
     void setRenderDistance(float distance) {
         userRenderDistance_ = distance;
+        // Cap effective render distance by constrained preset's clip distance
+        if (config_.constrainedConfig.enabled && config_.constrainedConfig.clipDistance > 0.0f) {
+            distance = std::min(distance, config_.constrainedConfig.clipDistance);
+        }
         // Cap effective render distance by server-provided zone max clip plane
         renderDistance_ = (zoneMaxClip_ > 0.0f) ? std::min(distance, zoneMaxClip_) : distance;
         // Sync camera far plane to render distance (must be at least render distance)
@@ -1056,6 +1060,9 @@ private:
     // Adaptive budget (constrained mode)
     float frameBudgetMs_ = 33.3f;       // Target budget (default 30fps)
     bool frameBudgetExceeded_ = false;   // True if last frame exceeded budget
+    float renderCostAvgUs_ = 15000.0f;  // EMA of render phase cost (us), init ~15ms
+    float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
+    float frameBudgetRemaining() const;  // Returns ms remaining in frame budget
 
     RendererConfig config_;
     std::function<void()> networkTickCallback_;  // Called between heavy loading stages to pump network
@@ -1320,6 +1327,15 @@ private:
         int64_t zoneLineOverlay = 0;
         int64_t endScene = 0;
         int64_t totalFrame = 0;
+        // Fine-grained fields (Phase 2 timing gaps)
+        int64_t playerMovement = 0;      // updatePlayerMovement() - collision during movement
+        int64_t nameTagLOS = 0;          // updateNameTagsWithLOS() - periodic LOS raycasts
+        int64_t occlusionCulling = 0;    // Software occlusion rasterize + test (inside PVS)
+        int64_t zoneLightVisibility = 0; // updateZoneLightVisibility() (split from objectVisibility)
+        int64_t windowManagerUpdate = 0; // windowManager_->update() at sim start
+        int64_t weatherSystemUpdate = 0; // weatherSystem_->update() (every frame, outside Tier 3)
+        int64_t footprintRender = 0;     // detailManager_->renderFootprints()
+        int64_t postRender = 0;          // RDP capture + cursor + screenshot
     };
     FrameTimings frameTimings_;
     FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames

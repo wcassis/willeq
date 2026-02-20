@@ -431,7 +431,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
              config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
     // Apply frame budget throttling for non-Max presets
     if (config_.constrainedPreset != ConstrainedRenderingPreset::Max) {
-        frameBudgetMs_ = 66.6f;
+        frameBudgetMs_ = 33.3f;  // 30 FPS target for constrained mode
     }
 
     // Choose driver type
@@ -641,7 +641,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
              config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
     // Apply frame budget throttling for non-Max presets
     if (config_.constrainedPreset != ConstrainedRenderingPreset::Max) {
-        frameBudgetMs_ = 66.6f;
+        frameBudgetMs_ = 33.3f;  // 30 FPS target for constrained mode
     }
 
     // Choose driver type
@@ -1602,12 +1602,13 @@ void IrrlichtRenderer::updateObjectLights() {
         return true;  // Light is visible
     };
 
-    // Unified light pool: stores {distance, light_node, is_zone_light, name}
+    // Unified light pool: stores {distance, light_node, is_zone_light, name, zone_light_index}
     struct LightCandidate {
         float distance;
         irr::scene::ILightSceneNode* node;
         bool isZoneLight;
         std::string name;
+        size_t zoneLightIdx = SIZE_MAX;  // Index into zoneLightNodes_ (zone lights only)
     };
     std::vector<LightCandidate> candidates;
     candidates.reserve(objectLights_.size() + zoneLightNodes_.size());
@@ -1676,7 +1677,7 @@ void IrrlichtRenderer::updateObjectLights() {
             irr::core::vector3df lightPos = node->getPosition();
             float dist = horizontalDistance(cameraPos, lightPos);
             if (dist <= maxDistance) {
-                candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i)});
+                candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i), i});
             } else {
                 distanceSkipped++;
             }
@@ -1744,9 +1745,18 @@ void IrrlichtRenderer::updateObjectLights() {
         });
 
     // Enable only the closest lights up to hardware limit
+    // Must ensure nodes are in the scene graph before enabling — updateZoneLightVisibility()
+    // may have removed them (frustum/PVS/distance culling), but lights still illuminate
+    // geometry even when the light source is off-screen.
     size_t enabledCount = std::min(candidates.size(), hardwareLightLimit);
     for (size_t i = 0; i < enabledCount; ++i) {
         if (candidates[i].node) {
+            // Re-add zone lights to scene graph if removed by updateZoneLightVisibility()
+            if (candidates[i].isZoneLight && candidates[i].zoneLightIdx < zoneLightInSceneGraph_.size()
+                && !zoneLightInSceneGraph_[candidates[i].zoneLightIdx]) {
+                smgr_->getRootSceneNode()->addChild(candidates[i].node);
+                zoneLightInSceneGraph_[candidates[i].zoneLightIdx] = true;
+            }
             candidates[i].node->setVisible(true);
         }
     }
@@ -3586,6 +3596,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
     // After PVS + distance + frustum, test remaining visible regions against a CPU depth buffer
     // populated by rasterizing nearby wall triangles.
     size_t hiddenByOcclusionCount = 0;
+    auto occStart = std::chrono::steady_clock::now();
 
     if (occlusionCuller_ && occlusionCuller_->isEnabled() && occlusionCuller_->hasOccluders() && frustumCuller_) {
         // Camera-movement gating: skip full recalc when camera hasn't moved/rotated significantly
@@ -3727,6 +3738,8 @@ void IrrlichtRenderer::updatePvsVisibility() {
             }
         }
     }
+    frameTimings_.occlusionCulling = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - occStart).count();
 
     // Log warning if many regions are outside PVS array
     if (outOfRangeCount > 0) {
@@ -3776,6 +3789,11 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     }
     mesh->drop();
 
+    // Start invisible — PVS will make it visible on the next Tier2 frame if appropriate.
+    // Without this, newly-built nodes are visible by default in Irrlicht, and if PVS
+    // doesn't run before the next render, they add to the polygon count unchecked.
+    node->setVisible(false);
+
     // Update renderer state
     regionMeshNodes_[regionIdx] = node;
 
@@ -3797,16 +3815,20 @@ void IrrlichtRenderer::processFrameLazyLoad() {
     auto loadStart = std::chrono::steady_clock::now();
 
     // Measure time already used this frame
+    // Use flat 2ms safety margin — lazy loading is essential for visible geometry.
+    // The EMA reserve is too aggressive here (can reserve ~29ms of a 33ms budget).
     float elapsedMs = std::chrono::duration_cast<std::chrono::microseconds>(
         loadStart - frameStart_).count() / 1000.0f;
-    float remainingMs = frameBudgetMs_ - elapsedMs - 2.0f;  // 2ms safety margin
+    float remainingMs = frameBudgetMs_ - elapsedMs - 2.0f;
 
     if (remainingMs < 3.0f && !meshLoadQueue_.empty()) {
-        // Special case: ALWAYS build current player region even if over budget
-        if (!meshLoadQueue_.empty() &&
-            meshLoadQueue_[0].regionIdx == currentPvsRegion_ &&
-            !constrainedMeshCache_->isLoaded(currentPvsRegion_)) {
-            rebuildRegionMesh(currentPvsRegion_);
+        // Always build at least 1 region per frame for visible geometry progress,
+        // even if over budget. Without this, newly-visible areas stay unloaded.
+        for (const auto& entry : meshLoadQueue_) {
+            if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
+                rebuildRegionMesh(entry.regionIdx);
+                break;
+            }
         }
         return;
     }
@@ -4467,6 +4489,104 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     node->updateAbsolutePosition();
     objectBoundingBoxes_.push_back(node->getTransformedBoundingBox());
     objectInSceneGraph_.push_back(true);
+
+    // Create object light if this is a light source (torch, lantern, etc.)
+    // Mirrors the light creation logic in createObjectMeshes()
+    std::string upperName = objName;
+    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+
+    bool hasFireTexture = false;
+    bool hasLanternTexture = false;
+    if (objInstance.geometry) {
+        for (const auto& texName : objInstance.geometry->textureNames) {
+            std::string upperTex = texName;
+            std::transform(upperTex.begin(), upperTex.end(), upperTex.begin(), ::toupper);
+            if (upperTex.find("FIRE") != std::string::npos ||
+                upperTex.find("COAL") != std::string::npos ||
+                upperTex.find("TORCH") != std::string::npos) {
+                hasFireTexture = true;
+            }
+            if (upperTex.find("LANTERN") != std::string::npos ||
+                upperTex.find("LANT") != std::string::npos) {
+                hasLanternTexture = true;
+            }
+        }
+    }
+
+    bool isLightSource = false;
+    irr::video::SColorf lightColor(1.0f, 0.6f, 0.2f, 1.0f);
+    float lightRadius = 100.0f;
+
+    if (upperName.find("TORCH") != std::string::npos ||
+        upperName.find("FIRE") != std::string::npos ||
+        upperName.find("BRAZIER") != std::string::npos ||
+        upperName.find("FLAME") != std::string::npos ||
+        hasFireTexture) {
+        isLightSource = true;
+        lightColor = irr::video::SColorf(1.0f, 0.5f, 0.15f, 1.0f);
+        lightRadius = 120.0f;
+    } else if (upperName.find("LANTERN") != std::string::npos ||
+               upperName.find("LANT") != std::string::npos ||
+               upperName.find("LAMP") != std::string::npos ||
+               upperName.find("LIGHT") != std::string::npos ||
+               hasLanternTexture) {
+        isLightSource = true;
+        lightColor = irr::video::SColorf(0.25f, 0.21f, 0.15f, 1.0f);
+        lightRadius = 100.0f;
+    } else if (upperName.find("CANDLE") != std::string::npos) {
+        isLightSource = true;
+        lightColor = irr::video::SColorf(1.0f, 0.9f, 0.7f, 1.0f);
+        lightRadius = 50.0f;
+    }
+
+    if (isLightSource) {
+        irr::core::vector3df lightPos(x, z, y);
+
+        // Try to find a nearby zone light with the correct elevated position
+        if (currentZone_ && !currentZone_->lights.empty()) {
+            float bestDist = 50.0f;
+            for (const auto& zoneLight : currentZone_->lights) {
+                float dx = zoneLight->x - x;
+                float dy = zoneLight->y - y;
+                float hDist = std::sqrt(dx * dx + dy * dy);
+                if (hDist < bestDist) {
+                    bestDist = hDist;
+                    lightPos = irr::core::vector3df(zoneLight->x, zoneLight->z, zoneLight->y);
+                }
+            }
+        }
+
+        irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
+            nullptr, lightPos, lightColor, lightRadius * 1.5f);
+
+        if (lightNode) {
+            irr::video::SLight& lightData = lightNode->getLightData();
+            lightData.Type = irr::video::ELT_POINT;
+            lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
+            lightNode->setVisible(false);
+
+            ObjectLight objLight;
+            objLight.node = lightNode;
+            objLight.position = lightPos;
+            objLight.objectName = objName;
+            objLight.originalColor = lightColor;
+
+            if (upperName.find("TORCH") != std::string::npos ||
+                upperName.find("FIRE") != std::string::npos ||
+                upperName.find("BRAZIER") != std::string::npos ||
+                upperName.find("FLAME") != std::string::npos ||
+                upperName.find("CANDLE") != std::string::npos ||
+                hasFireTexture) {
+                objLight.isFireSource = true;
+                objLight.flickerPhase = static_cast<float>(rand()) / RAND_MAX * 6.2832f;
+                objLight.flickerSpeed = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+            }
+
+            objectLights_.push_back(objLight);
+            LOG_DEBUG(MOD_GRAPHICS, "Deferred object light created: {} at ({:.1f},{:.1f},{:.1f})",
+                objName, lightPos.X, lightPos.Y, lightPos.Z);
+        }
+    }
 
     mesh->drop();
     deferred.meshBuilt = true;
@@ -5416,6 +5536,12 @@ void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
     upZ = up.Z;
 }
 
+float IrrlichtRenderer::frameBudgetRemaining() const {
+    float elapsedUs = static_cast<float>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - frameStart_).count());
+    return frameBudgetMs_ - (elapsedUs / 1000.0f);
+}
+
 int64_t IrrlichtRenderer::measureSection() {
     auto now = std::chrono::steady_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - sectionStart_).count();
@@ -5465,16 +5591,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     runTier2_ = (frameNumber_ % kTier2Interval == 0);
     runTier3_ = (frameNumber_ % kTier3Interval == 0);
 
-    // Adaptive budget: skip lower-priority tiers when behind frame budget
-    float lastFrameMs = deltaTime * 1000.0f;
-    frameBudgetExceeded_ = config_.constrainedConfig.enabled && (lastFrameMs > frameBudgetMs_);
-    if (frameBudgetExceeded_) {
-        runTier3_ = false;
-        if (lastFrameMs > frameBudgetMs_ * 1.5f) {
-            runTier2_ = false;
-        }
-    }
-    // Safety: force Tier 2 at least once per second (~60 frames at target)
+    // Safety: force Tier 2 at least once per second (~30 frames at 30fps)
     if (frameNumber_ % 30 == 0) runTier2_ = true;
 
     // Phase 1: Input
@@ -5486,10 +5603,10 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Phase 2.5: Lazy mesh loading (constrained mode) / Progressive asset loading
     if (progressiveLoadingActive_) {
         processFrameProgressiveLoad();
-        if (frameTimingEnabled_) frameTimings_.meshLoading = measureSection();
+        frameTimings_.meshLoading = measureSection();
     } else if (constrainedMeshCache_) {
         processFrameLazyLoad();
-        if (frameTimingEnabled_) frameTimings_.meshLoading = measureSection();
+        frameTimings_.meshLoading = measureSection();
     }
 
     // Phase 3: Simulation
@@ -5501,13 +5618,59 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         return true;
     }
 
-    // ===== FRAME TIMING: Total Frame =====
-    if (frameTimingEnabled_) {
+    // ===== FRAME TIMING: Total Frame (always-on) =====
+    {
         auto frameEnd = std::chrono::steady_clock::now();
         frameTimings_.totalFrame = std::chrono::duration_cast<std::chrono::microseconds>(
             frameEnd - frameStart).count();
 
-        // Accumulate and periodically log
+        // Update render cost EMA (alpha = 0.1 for smooth tracking)
+        int64_t renderUs = frameTimings_.sceneDrawAll + frameTimings_.targetBox +
+                           frameTimings_.particles + frameTimings_.boids +
+                           frameTimings_.weatherRender + frameTimings_.debugOverlays +
+                           frameTimings_.castingBars + frameTimings_.guiDrawAll +
+                           frameTimings_.windowManager + frameTimings_.zoneLineOverlay +
+                           frameTimings_.endScene + frameTimings_.footprintRender +
+                           frameTimings_.postRender;
+        renderCostAvgUs_ = renderCostAvgUs_ * 0.9f + static_cast<float>(renderUs) * 0.1f;
+
+        // Update essential simulation cost EMA
+        int64_t essSimUs = frameTimings_.entityUpdate + frameTimings_.doorUpdate +
+                           frameTimings_.spellVfxUpdate + frameTimings_.animatedTextures +
+                           frameTimings_.vertexAnimations + frameTimings_.hudUpdate +
+                           frameTimings_.windowManagerUpdate;
+        essentialSimCostAvgUs_ = essentialSimCostAvgUs_ * 0.9f + static_cast<float>(essSimUs) * 0.1f;
+
+        // Log frame budget violations with breakdown for diagnosis
+        float totalFrameMs = frameTimings_.totalFrame / 1000.0f;
+        if (config_.constrainedConfig.enabled && totalFrameMs > frameBudgetMs_ * 1.2f) {
+            struct SectionCost { const char* name; int64_t us; };
+            SectionCost sections[] = {
+                {"playerMovement", frameTimings_.playerMovement},
+                {"nameTagLOS", frameTimings_.nameTagLOS},
+                {"pvsVisibility", frameTimings_.pvsVisibility},
+                {"occlusionCulling", frameTimings_.occlusionCulling},
+                {"meshLoading", frameTimings_.meshLoading},
+                {"entityUpdate", frameTimings_.entityUpdate},
+                {"tier2Update", frameTimings_.tier2Update},
+                {"tier3Update", frameTimings_.tier3Update},
+                {"sceneDrawAll", frameTimings_.sceneDrawAll},
+                {"windowManager", frameTimings_.windowManager},
+                {"endScene", frameTimings_.endScene},
+            };
+            std::sort(std::begin(sections), std::end(sections),
+                      [](const auto& a, const auto& b) { return a.us > b.us; });
+
+            LOG_WARN(MOD_GRAPHICS, "BUDGET: {:.1f}ms (budget {:.1f}ms) top: {}={:.1f}ms {}={:.1f}ms {}={:.1f}ms",
+                     totalFrameMs, frameBudgetMs_,
+                     sections[0].name, sections[0].us / 1000.0f,
+                     sections[1].name, sections[1].us / 1000.0f,
+                     sections[2].name, sections[2].us / 1000.0f);
+        }
+    }
+
+    // Accumulate and periodically log (gated behind /frametiming command)
+    if (frameTimingEnabled_) {
         frameTimingsAccum_.inputHandling += frameTimings_.inputHandling;
         frameTimingsAccum_.cameraUpdate += frameTimings_.cameraUpdate;
         frameTimingsAccum_.entityUpdate += frameTimings_.entityUpdate;
@@ -5558,6 +5721,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
         frameTimingsAccum_.endScene += frameTimings_.endScene;
         frameTimingsAccum_.totalFrame += frameTimings_.totalFrame;
+        // New fine-grained fields
+        frameTimingsAccum_.playerMovement += frameTimings_.playerMovement;
+        frameTimingsAccum_.nameTagLOS += frameTimings_.nameTagLOS;
+        frameTimingsAccum_.occlusionCulling += frameTimings_.occlusionCulling;
+        frameTimingsAccum_.zoneLightVisibility += frameTimings_.zoneLightVisibility;
+        frameTimingsAccum_.windowManagerUpdate += frameTimings_.windowManagerUpdate;
+        frameTimingsAccum_.weatherSystemUpdate += frameTimings_.weatherSystemUpdate;
+        frameTimingsAccum_.footprintRender += frameTimings_.footprintRender;
+        frameTimingsAccum_.postRender += frameTimings_.postRender;
         frameTimingsSampleCount_++;
 
         // Log every 60 frames (~2 seconds at 30fps)
@@ -5587,12 +5759,12 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     processPlayerInput(actions);
 
     // ===== FRAME TIMING: Input Handling =====
-    if (frameTimingEnabled_) frameTimings_.inputHandling = measureSection();
+    frameTimings_.inputHandling = measureSection();
 
     processInputDeltas(deltaTime);
 
     // ===== FRAME TIMING: Input Handling (accumulated) =====
-    if (frameTimingEnabled_) frameTimings_.inputHandling += measureSection();
+    frameTimings_.inputHandling += measureSection();
 
     // Handle window manager mouse capture BEFORE camera/movement updates
     bool hadClick = eventReceiver_->wasLeftButtonClicked();
@@ -5616,7 +5788,9 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
 
     // Update camera and player movement
     updatePlayerMovement(deltaTime);
+    frameTimings_.playerMovement = measureSection();
     updateNameTagsWithLOS(deltaTime);
+    frameTimings_.nameTagLOS = measureSection();
 
     // Update sky position to follow camera
     if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
@@ -5624,7 +5798,7 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     }
 
     // ===== FRAME TIMING: Camera Update =====
-    if (frameTimingEnabled_) frameTimings_.cameraUpdate = measureSection();
+    frameTimings_.cameraUpdate = measureSection();
 
     processChatInput();
 
@@ -5990,16 +6164,23 @@ void IrrlichtRenderer::processFrameVisibility() {
         }
     }
 
+    // Visibility culling MUST always run on Tier2 frames — PVS, object, and light
+    // culling are the primary geometry reduction mechanism (~3ms total cost, saves
+    // 200ms+ of render time). Never skip these based on budget prediction — the
+    // render cost EMA already includes the cost of drawing ALL visible geometry,
+    // so subtracting it at frame start always yields a negative budget, permanently
+    // disabling the very culling that would reduce render cost.
     if (runTier2_) {
         updatePvsVisibility();
-        if (frameTimingEnabled_) frameTimings_.pvsVisibility = measureSection();
+        frameTimings_.pvsVisibility = measureSection();
 
         updateObjectVisibility();
+        frameTimings_.objectVisibility = measureSection();
         updateZoneLightVisibility();
-        if (frameTimingEnabled_) frameTimings_.objectVisibility = measureSection();
+        frameTimings_.zoneLightVisibility = measureSection();
 
         updateObjectLights();
-        if (frameTimingEnabled_) frameTimings_.objectLights = measureSection();
+        frameTimings_.objectLights = measureSection();
     } else if (orientationChanged && usePvsCulling_) {
         // Camera rotated on a non-Tier2 frame: re-run frustum test only
         updateFrustumCulling();
@@ -6009,6 +6190,7 @@ void IrrlichtRenderer::processFrameVisibility() {
 // ===== Phase 3: Simulation =====
 void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     // Update window manager (for tooltip timing, etc.)
+    sectionStart_ = std::chrono::steady_clock::now();
     if (windowManager_) {
         irr::u32 currentTimeMs = device_->getTimer()->getTime();
         windowManager_->update(currentTimeMs);
@@ -6016,9 +6198,9 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         int mouseY = eventReceiver_->getMouseY();
         windowManager_->handleMouseMove(mouseX, mouseY);
     }
+    frameTimings_.windowManagerUpdate = measureSection();
 
     // Entity update
-    sectionStart_ = std::chrono::steady_clock::now();
     if (entityRenderer_) {
         entityRenderer_->updateInterpolation(deltaTime);
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
@@ -6028,7 +6210,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
         if (camera_) entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
     }
-    if (frameTimingEnabled_) frameTimings_.entityUpdate = measureSection();
+    frameTimings_.entityUpdate = measureSection();
 
     // Door update
     if (doorManager_) {
@@ -6036,21 +6218,21 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
         doorManager_->update(deltaTime);
     }
-    if (frameTimingEnabled_) frameTimings_.doorUpdate = measureSection();
+    frameTimings_.doorUpdate = measureSection();
 
     // Spell VFX update
     if (spellVisualFX_) spellVisualFX_->update(deltaTime);
-    if (frameTimingEnabled_) frameTimings_.spellVfxUpdate = measureSection();
+    frameTimings_.spellVfxUpdate = measureSection();
 
     // Animated textures
     if (animatedTextureManager_) animatedTextureManager_->update(deltaTime * 1000.0f);
-    if (frameTimingEnabled_) frameTimings_.animatedTextures = measureSection();
+    frameTimings_.animatedTextures = measureSection();
 
     // Vertex animations
     updateVertexAnimations(deltaTime * 1000.0f);
     // Light animations (flickering torches, etc.)
     updateLightAnimations(deltaTime * 1000.0f);
-    if (frameTimingEnabled_) frameTimings_.vertexAnimations = measureSection();
+    frameTimings_.vertexAnimations = measureSection();
 
     // Deferred environment init — runs once after game becomes playable
     if (environmentInitPending_ && zoneReady_) {
@@ -6100,7 +6282,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             treeManager_->update(deltaTime, cameraPos);
         }
     }
-    if (frameTimingEnabled_) frameTimings_.tier2Update = measureSection();
+    frameTimings_.tier2Update = measureSection();
 
     // Fire light flickering (Tier 2 frequency)
     if (runTier2_ && fireEffectsEnabled_ && !objectLights_.empty()) {
@@ -6109,11 +6291,12 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         updateObjectLightColors(accDelta);
         refreshShaderLightColors();
     }
-    if (frameTimingEnabled_) frameTimings_.fireFlicker = measureSection();
+    frameTimings_.fireFlicker = measureSection();
 
     // Tier 3: Environmental simulation
     {
         if (weatherSystem_) weatherSystem_->update(deltaTime);
+        frameTimings_.weatherSystemUpdate = measureSection();
 
         if (runTier3_) {
             float accDelta = tier3DeltaAccum_;
@@ -6149,13 +6332,13 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             }
         }
     }
-    if (frameTimingEnabled_) frameTimings_.tier3Update = measureSection();
+    frameTimings_.tier3Update = measureSection();
 
     // HUD
     hudAnimTimer_ += deltaTime;
     if (hudAnimTimer_ > 10000.0f) hudAnimTimer_ = 0.0f;
     updateHUD();
-    if (frameTimingEnabled_) frameTimings_.hudUpdate = measureSection();
+    frameTimings_.hudUpdate = measureSection();
 }
 
 // ===== Phase 4: Render =====
@@ -6184,19 +6367,17 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     sectionStart_ = std::chrono::steady_clock::now();
     if (renderPassTimer_) renderPassTimer_->reset();
     smgr_->drawAll();
-    if (frameTimingEnabled_) {
-        frameTimings_.sceneDrawAll = measureSection();
-        if (renderPassTimer_) {
-            frameTimings_.sceneAnimate = renderPassTimer_->getAnimateTime();
-            frameTimings_.sceneSolid = renderPassTimer_->solidTime;
-            frameTimings_.sceneTransparent = renderPassTimer_->transparentTime;
-            frameTimings_.sceneSkybox = renderPassTimer_->skyboxTime;
-            frameTimings_.sceneOther = renderPassTimer_->otherTime;
-            frameTimings_.sceneNodeCount = renderPassTimer_->nodeCount;
-        }
-        if (frameTimings_.sceneDrawAll > 50000) {
-            LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
-        }
+    frameTimings_.sceneDrawAll = measureSection();
+    if (renderPassTimer_) {
+        frameTimings_.sceneAnimate = renderPassTimer_->getAnimateTime();
+        frameTimings_.sceneSolid = renderPassTimer_->solidTime;
+        frameTimings_.sceneTransparent = renderPassTimer_->transparentTime;
+        frameTimings_.sceneSkybox = renderPassTimer_->skyboxTime;
+        frameTimings_.sceneOther = renderPassTimer_->otherTime;
+        frameTimings_.sceneNodeCount = renderPassTimer_->nodeCount;
+    }
+    if (frameTimings_.sceneDrawAll > 50000) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
     }
 
     // Track polygon count for constrained mode budget
@@ -6206,6 +6387,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (detailManager_ && detailManager_->isFootprintEnabled()) {
         detailManager_->renderFootprints();
     }
+    frameTimings_.footprintRender = measureSection();
 
     if (lastPolygonCount_ > static_cast<uint32_t>(config_.constrainedConfig.maxPolygonsPerFrame)) {
         if (++polygonBudgetExceededFrames_ >= 60) {
@@ -6248,19 +6430,19 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     // Draw selection box around targeted entity
     drawTargetSelectionBox();
-    if (frameTimingEnabled_) frameTimings_.targetBox = measureSection();
+    frameTimings_.targetBox = measureSection();
 
     // Render environmental particles (render every frame, update at Tier 3)
     if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
-    if (frameTimingEnabled_) frameTimings_.particles = measureSection();
+    frameTimings_.particles = measureSection();
 
     // Render ambient creatures (render every frame, update at Tier 3)
     if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) boidsManager_->render();
-    if (frameTimingEnabled_) frameTimings_.boids = measureSection();
+    frameTimings_.boids = measureSection();
 
     // Render weather effects
     if (weatherEffects_ && weatherEffects_->isEnabled()) weatherEffects_->render();
-    if (frameTimingEnabled_) frameTimings_.weatherRender = measureSection();
+    frameTimings_.weatherRender = measureSection();
 
     // Draw collision debug lines
     if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);
@@ -6373,48 +6555,46 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         drawNavmeshOverlay();
     }
 
-    if (frameTimingEnabled_) frameTimings_.debugOverlays = measureSection();
+    frameTimings_.debugOverlays = measureSection();
 
     // Draw entity casting bars
     if (!allUIHidden_ && entityRenderer_) entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
-    if (frameTimingEnabled_) frameTimings_.castingBars = measureSection();
+    frameTimings_.castingBars = measureSection();
 
     if (!allUIHidden_) {
         guienv_->drawAll();
         drawFPSCounter();
     }
-    if (frameTimingEnabled_) frameTimings_.guiDrawAll = measureSection();
+    frameTimings_.guiDrawAll = measureSection();
 
     // Render inventory UI windows (on top of HUD)
     if (!allUIHidden_ && windowManager_) windowManager_->render();
-    if (frameTimingEnabled_) {
-        frameTimings_.windowManager = measureSection();
-        if (windowManager_) {
-            const auto& wt = windowManager_->renderTimings_;
-            frameTimings_.wmChat = wt.chat;
-            frameTimings_.wmInventory = wt.inventory;
-            frameTimings_.wmSpellGems = wt.spellGems;
-            frameTimings_.wmHotbar = wt.hotbar;
-            frameTimings_.wmPlayerStatus = wt.playerStatus;
-            frameTimings_.wmBuffs = wt.buffs;
-            frameTimings_.wmGroup = wt.group;
-            frameTimings_.wmSpellbook = wt.spellbook;
-            frameTimings_.wmCastingBars = wt.castingBars;
-            frameTimings_.wmPet = wt.pet;
-            frameTimings_.wmSkills = wt.skills;
-            frameTimings_.wmLoot = wt.loot;
-            frameTimings_.wmVendor = wt.vendor;
-            frameTimings_.wmBags = wt.bags;
-            frameTimings_.wmTooltips = wt.tooltips;
-            frameTimings_.wmOverlays = wt.overlays;
-            frameTimings_.wmOther = wt.other;
-        }
+    frameTimings_.windowManager = measureSection();
+    if (windowManager_) {
+        const auto& wt = windowManager_->renderTimings_;
+        frameTimings_.wmChat = wt.chat;
+        frameTimings_.wmInventory = wt.inventory;
+        frameTimings_.wmSpellGems = wt.spellGems;
+        frameTimings_.wmHotbar = wt.hotbar;
+        frameTimings_.wmPlayerStatus = wt.playerStatus;
+        frameTimings_.wmBuffs = wt.buffs;
+        frameTimings_.wmGroup = wt.group;
+        frameTimings_.wmSpellbook = wt.spellbook;
+        frameTimings_.wmCastingBars = wt.castingBars;
+        frameTimings_.wmPet = wt.pet;
+        frameTimings_.wmSkills = wt.skills;
+        frameTimings_.wmLoot = wt.loot;
+        frameTimings_.wmVendor = wt.vendor;
+        frameTimings_.wmBags = wt.bags;
+        frameTimings_.wmTooltips = wt.tooltips;
+        frameTimings_.wmOverlays = wt.overlays;
+        frameTimings_.wmOther = wt.other;
     }
 
     // Draw zone line overlay
     drawZoneLineOverlay();
     drawZoneLineBoxLabels();
-    if (frameTimingEnabled_) frameTimings_.zoneLineOverlay = measureSection();
+    frameTimings_.zoneLineOverlay = measureSection();
 
 #ifdef WITH_RDP
     captureFrameForRDP();
@@ -6437,9 +6617,10 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         pendingScreenshot_ = false;
         saveScreenshot("screenshot.png");
     }
+    frameTimings_.postRender = measureSection();
 
     driver_->endScene();
-    if (frameTimingEnabled_) frameTimings_.endScene = measureSection();
+    frameTimings_.endScene = measureSection();
 
     return true;
 }
@@ -6786,7 +6967,10 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Total Frame:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.totalFrame), 100.0f);
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
     LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.inputHandling), pct(frameTimingsAccum_.inputHandling));
+    LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.playerMovement), pct(frameTimingsAccum_.playerMovement));
+    LOG_INFO(MOD_GRAPHICS, "    Name Tag LOS:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.nameTagLOS), pct(frameTimingsAccum_.nameTagLOS));
     LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  WM Update (sim):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManagerUpdate), pct(frameTimingsAccum_.windowManagerUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
@@ -6794,11 +6978,14 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.vertexAnimations), pct(frameTimingsAccum_.vertexAnimations));
     LOG_INFO(MOD_GRAPHICS, "  Fire Flicker:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.fireFlicker), pct(frameTimingsAccum_.fireFlicker));
     LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectVisibility), pct(frameTimingsAccum_.objectVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  Zone Light Vis:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLightVisibility), pct(frameTimingsAccum_.zoneLightVisibility));
     LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
+    LOG_INFO(MOD_GRAPHICS, "    Occlusion Cull:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.occlusionCulling), pct(frameTimingsAccum_.occlusionCulling));
     if (constrainedMeshCache_)
     LOG_INFO(MOD_GRAPHICS, "  Mesh Loading:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.meshLoading), pct(frameTimingsAccum_.meshLoading));
     LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
     LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier2Update), pct(frameTimingsAccum_.tier2Update));
+    LOG_INFO(MOD_GRAPHICS, "  Weather System:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.weatherSystemUpdate), pct(frameTimingsAccum_.weatherSystemUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Tier3 (Env/Sky):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier3Update), pct(frameTimingsAccum_.tier3Update));
     LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.hudUpdate), pct(frameTimingsAccum_.hudUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)  [{} nodes, {} polys]",
@@ -6836,7 +7023,12 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "    Overlays:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmOverlays), pct(frameTimingsAccum_.wmOverlays));
     LOG_INFO(MOD_GRAPHICS, "    Other:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmOther), pct(frameTimingsAccum_.wmOther));
     LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLineOverlay), pct(frameTimingsAccum_.zoneLineOverlay));
+    LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.footprintRender), pct(frameTimingsAccum_.footprintRender));
+    LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.postRender), pct(frameTimingsAccum_.postRender));
     LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.endScene), pct(frameTimingsAccum_.endScene));
+    LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
+    LOG_INFO(MOD_GRAPHICS, "  Render EMA:         {:>8.0f} us | EssSim EMA: {:>6.0f} us",
+             renderCostAvgUs_, essentialSimCostAvgUs_);
 }
 
 void IrrlichtRenderer::runSceneProfile() {
@@ -8428,11 +8620,14 @@ void IrrlichtRenderer::initDeferredEnvironmentSystems() {
 void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!progressiveLoadingActive_) return;
 
-    // Helper: measure remaining budget from actual frame start (avoids drift)
+    // Helper: measure remaining budget from actual frame start
+    // During progressive loading, use a flat 2ms safety margin instead of EMA reserve.
+    // The EMA reserve is designed for steady-state optional work, but progressive loading
+    // is essential — without it, zone geometry never appears.
     auto budgetLeft = [this]() -> float {
         float elapsedMs = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - frameStart_).count() / 1000.0f;
-        return frameBudgetMs_ - elapsedMs - 2.0f;  // 2ms safety margin
+        return frameBudgetMs_ - elapsedMs - 2.0f;
     };
 
     int assetsBuilt = 0;
