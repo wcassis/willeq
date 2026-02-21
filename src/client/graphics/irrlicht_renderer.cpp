@@ -814,15 +814,18 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         displaySettings = loadDisplaySettingsFromFile();
     }
 
-    // Create environmental particle system (only if atmospheric particles enabled)
-    if (!particleManager_ && displaySettings.atmosphericParticles) {
+    // Always create particle manager — needed for unified fire system even when
+    // atmospheric particles (dust, pollen, fireflies) are disabled
+    if (!particleManager_) {
         particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
         }
-        LOG_INFO(MOD_GRAPHICS, "Particle manager initialized (atmospheric particles enabled in settings)");
-    } else if (!particleManager_) {
-        LOG_INFO(MOD_GRAPHICS, "Particle manager skipped (atmospheric particles disabled in settings)");
+        // Atmospheric particles setting controls billboard emitters (dust, pollen, etc.)
+        // Unified fire has its own toggle and works regardless of this setting
+        particleManager_->setEnabled(displaySettings.atmosphericParticles);
+        LOG_INFO(MOD_GRAPHICS, "Particle manager initialized (atmospheric particles: {})",
+                 displaySettings.atmosphericParticles ? "enabled" : "disabled");
     }
 
     // Create ambient creatures (boids) system (only if ambient creatures enabled)
@@ -2072,43 +2075,24 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
     bool zoneLoaded = !currentZoneName_.empty();
 
-    // --- Particle Manager: lazy create if toggled on ---
-    if (settings.atmosphericParticles && !particleManager_ && smgr_ && driver_) {
-        particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
-        if (!particleManager_->init(config_.eqClientPath)) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager (lazy)");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Particle manager created (toggled on via settings)");
+    // --- Particle Manager: toggle atmospheric billboard particles ---
+    // ParticleManager is always created (in loadGlobalAssets) for unified fire support.
+    // This toggle controls only the atmospheric billboard emitters (dust, pollen, etc.)
+    if (particleManager_) {
+        particleManager_->setEnabled(settings.atmosphericParticles);
+    }
+
+    // Lazily create weather effects if not yet created and particles are available
+    if (!weatherEffects_ && particleManager_) {
+        weatherEffects_ = std::make_unique<WeatherEffectsController>(
+            smgr_, driver_, particleManager_.get(), skyRenderer_.get());
+        if (!weatherEffects_->initialize(config_.eqClientPath)) {
+            LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
         }
-        if (zoneLoaded) {
-            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            particleManager_->onZoneEnter(currentZoneName_, biome);
-            if (detailManager_ && detailManager_->hasSurfaceMap()) {
-                particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
-            }
-            // Collect fire source positions for ember/smoke emitters
-            std::vector<glm::vec3> fireSources;
-            for (const auto& objLight : objectLights_) {
-                if (objLight.isFireSource) {
-                    fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
-                }
-            }
-            if (!fireSources.empty()) {
-                particleManager_->setFireSources(fireSources);
-            }
+        if (weatherSystem_) {
+            weatherSystem_->addListener(weatherEffects_.get());
         }
-        // Also lazily create weather effects (rain/snow/lightning) now that particles are available
-        if (!weatherEffects_) {
-            weatherEffects_ = std::make_unique<WeatherEffectsController>(
-                smgr_, driver_, particleManager_.get(), skyRenderer_.get());
-            if (!weatherEffects_->initialize(config_.eqClientPath)) {
-                LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
-            }
-            if (weatherSystem_) {
-                weatherSystem_->addListener(weatherEffects_.get());
-            }
-            LOG_INFO(MOD_GRAPHICS, "Weather effects created (toggled on via settings)");
-        }
+        LOG_INFO(MOD_GRAPHICS, "Weather effects created (toggled on via settings)");
     }
 
     if (particleManager_) {
@@ -4046,6 +4030,16 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
         firstPassSeen_ = true;
     }
     currentPass_ = renderPass;
+
+    // Capture 3D camera transforms during the SOLID pass — this is the only
+    // reliable point where ETS_VIEW/ETS_PROJECTION contain the 3D perspective
+    // camera matrices. By the time drawAll() returns, they may be overwritten
+    // by 2D rendering (billboards, GUI nodes, overlays).
+    if (renderPass == irr::scene::ESNRP_SOLID && renderer_) {
+        renderer_->captured3DView_ = renderer_->driver_->getTransform(irr::video::ETS_VIEW);
+        renderer_->captured3DProj_ = renderer_->driver_->getTransform(irr::video::ETS_PROJECTION);
+        renderer_->have3DTransforms_ = true;
+    }
 
     // Hook: draw zone geometry manually before Irrlicht's SOLID pass
     if (renderPass == irr::scene::ESNRP_SOLID && renderer_ && renderer_->manualZoneDrawEnabled_) {
@@ -6872,6 +6866,12 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
                 particleManager_->update(accDelta);
             }
 
+            // Unified fire particles: update every Tier 3 frame
+            // Not gated by isEnabled() — fire has its own toggle (unifiedFireEnabled_)
+            if (particleManager_ && zoneReady_) {
+                particleManager_->updateUnified(accDelta);
+            }
+
             if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
                 boidsManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
                 float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
@@ -6925,6 +6925,9 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (renderPassTimer_) renderPassTimer_->reset();
     smgr_->drawAll();
     frameTimings_.sceneDrawAll = measureSection();
+
+    // 3D camera transforms are captured during the SOLID render pass in
+    // OnRenderPassPreRender — see captured3DView_/captured3DProj_.
     if (renderPassTimer_) {
         frameTimings_.sceneAnimate = renderPassTimer_->getAnimateTime();
         frameTimings_.sceneSolid = renderPassTimer_->solidTime;
@@ -6991,6 +6994,23 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     // Render environmental particles (render every frame, update at Tier 3)
     if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
+
+    // Unified particle system (fire point sprites, GLES2 only)
+    // Not gated by isEnabled() — fire has its own toggle (unifiedFireEnabled_)
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && zoneReady_ && have3DTransforms_) {
+        // Pass View and Projection separately — captured during ESNRP_SOLID pass
+        // before any 2D drawing overwrites the driver's transform state.
+        // The shader multiplies them in GLSL (same as built-in COGLES2 shaders).
+        float fogStart = zoneShader_ ? zoneShader_->fogStart() : 999999.0f;
+        float fogEnd = zoneShader_ ? zoneShader_->fogEnd() : 999999.0f;
+        const float* fogCol = zoneShader_ ? zoneShader_->fogColor() : nullptr;
+        float screenH = static_cast<float>(driver_->getScreenSize().Height);
+        particleManager_->renderUnified(captured3DView_, captured3DProj_,
+                                        camera_ ? camera_->getAbsolutePosition() : irr::core::vector3df(0, 0, 0),
+                                        fogStart, fogEnd, fogCol, screenH);
+    }
+#endif
     frameTimings_.particles = measureSection();
 
     // Render ambient creatures (render every frame, update at Tier 3)
@@ -9237,15 +9257,49 @@ void IrrlichtRenderer::initDeferredEnvironmentSystems() {
         Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
         particleManager_->onZoneEnter(currentZoneName_, biome);
 
-        // Fire sources
+        // Fire sources — collect from both object lights and zone lights
         std::vector<glm::vec3> fireSources;
+        std::vector<float> fireRadii;
+        // Object lights (S3D mesh-based lights with name matching)
         for (const auto& objLight : objectLights_) {
             if (objLight.isFireSource) {
+                // Irrlicht position (x,y,z) → EQ coords (Z-up): (x, z, y)
                 fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+                fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
             }
         }
+        // Zone lights (WLD Fragment 0x1B/0x28 lights — torches, sconces, etc.)
+        if (currentZone_) {
+            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
+                const auto& zl = currentZone_->lights[i];
+                // Name-based detection
+                std::string upperName = zl->name;
+                std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                bool nameMatch = upperName.find("TORCH") != std::string::npos ||
+                                 upperName.find("FIRE") != std::string::npos ||
+                                 upperName.find("BRAZIER") != std::string::npos ||
+                                 upperName.find("FLAME") != std::string::npos ||
+                                 upperName.find("CANDLE") != std::string::npos;
+                // Color heuristic: warm lights (high R, medium G, low B) are fire
+                bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
+                if (nameMatch || colorMatch) {
+                    // EQ coords (Z-up) — zone lights store in EQ space
+                    fireSources.emplace_back(zl->x, zl->y, zl->z);
+                    fireRadii.push_back(zl->radius);
+                }
+            }
+        }
+        LOG_INFO(MOD_GRAPHICS, "Fire sources: {} from objectLights, {} total (zone has {} zone lights)",
+                 std::count_if(objectLights_.begin(), objectLights_.end(),
+                               [](const ObjectLight& ol) { return ol.isFireSource; }),
+                 fireSources.size(),
+                 currentZone_ ? currentZone_->lights.size() : 0);
         if (!fireSources.empty()) {
             particleManager_->setFireSources(fireSources);
+
+            // Create unified fire emitters (GLES2 point sprites)
+            particleManager_->initUnifiedRenderer();
+            particleManager_->createFireEmitters(fireSources, fireRadii);
         }
 
         // Surface map from detail system

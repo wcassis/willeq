@@ -1452,6 +1452,11 @@ private:
     };
     RenderPassTimer* renderPassTimer_ = nullptr;  // Owned by Irrlicht (ref counted)
 
+    // 3D camera transforms captured during SOLID pass (before any 2D drawing overwrites them)
+    irr::core::matrix4 captured3DView_;
+    irr::core::matrix4 captured3DProj_;
+    bool have3DTransforms_ = false;
+
     // Scene breakdown profiler - profiles drawAll() by node category
     struct SceneBreakdown {
         int64_t totalDrawAll = 0;      // Full scene render time

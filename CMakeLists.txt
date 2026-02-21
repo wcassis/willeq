@@ -398,6 +398,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/sand_dust_emitter.cpp
         src/client/graphics/environment/emitters/ember_emitter.cpp
         src/client/graphics/environment/emitters/smoke_emitter.cpp
+        # Unified particle system (point sprite fire effects)
+        src/client/graphics/environment/unified_particle_renderer.cpp
+        src/client/graphics/environment/fire_emitter_config.cpp
         # Storm cloud layer
         src/client/graphics/environment/storm_cloud_layer.cpp
         # Screen-space rain overlay
@@ -946,6 +949,18 @@ IF(EQT_DRM)
     TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2 drm gbm)
 ELSE()
     TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2)
+ENDIF()
+
+ADD_EXECUTABLE(test_gl_points tools/test_gl_points.cpp)
+TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${CMAKE_SOURCE_DIR}/include)
+IF(EQT_DRM)
+    TARGET_COMPILE_DEFINITIONS(test_gl_points PRIVATE EQT_HAS_DRM)
+    IF(LIBDRM_INCLUDE_DIR)
+        TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(test_gl_points EGL GLESv2 drm gbm)
+ELSE()
+    TARGET_LINK_LIBRARIES(test_gl_points EGL GLESv2)
 ENDIF()
 
 # Install

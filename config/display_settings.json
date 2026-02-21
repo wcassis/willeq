@@ -13,7 +13,7 @@
   {
     "ambientCreatures" : true,
     "animatedTrees" : true,
-    "atmosphericParticles" : false,
+    "atmosphericParticles" : true,
     "density" : 0.5,
     "fireEffects" : true,
     "quality" : "low",

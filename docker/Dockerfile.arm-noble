@@ -350,7 +350,8 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     && cmake --build . --target gpu_texture_formats -j$(nproc) \
     && cmake --build . --target gles2_etc1_benchmark -j$(nproc) \
     && cmake --build . --target egl_image_sharing_test -j$(nproc) \
-    && arm-linux-gnueabihf-strip bin/willeq bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test \
-    && mkdir -p /output && cp bin/willeq bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test /output/ \
+    && cmake --build . --target test_gl_points -j$(nproc) \
+    && arm-linux-gnueabihf-strip bin/willeq bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points \
+    && mkdir -p /output && cp bin/willeq bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points /output/ \
     && echo '=== Build complete ===' \
 "]

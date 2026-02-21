@@ -8992,6 +8992,22 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(stencilcmd);
 
+	Command firecmd;
+	firecmd.name = "fire";
+	firecmd.aliases = {};
+	firecmd.usage = "/fire";
+	firecmd.description = "Toggle unified fire particle effects (point sprite emitters)";
+	firecmd.category = "Utility";
+	firecmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto* pm = m_renderer->getParticleManager();
+		if (!pm) return;
+		pm->toggleUnifiedFire();
+		AddChatSystemMessage(fmt::format("Unified fire particles: {}",
+			pm->isUnifiedFireEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(firecmd);
+
 	Command renderdist;
 	renderdist.name = "renderdist";
 	renderdist.aliases = {"clipplane", "viewdist"};

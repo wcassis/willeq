@@ -8,10 +8,15 @@
 #include "client/graphics/environment/emitters/sand_dust_emitter.h"
 #include "client/graphics/environment/emitters/ember_emitter.h"
 #include "client/graphics/environment/emitters/smoke_emitter.h"
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/environment/unified_particle_renderer.h"
+#include <GLES2/gl2.h>
+#endif
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <random>
 
 namespace EQT {
 namespace Graphics {
@@ -163,6 +168,9 @@ void ParticleManager::onZoneLeave() {
             emitter->onZoneLeave();
         }
     }
+
+    // Clear unified fire emitters
+    clearUnifiedEmitters();
 
     currentZoneName_.clear();
     currentBiome_ = ZoneBiome::Unknown;
@@ -545,6 +553,345 @@ void ParticleManager::getAtlasUVs(uint8_t tileIndex, float& u0, float& v0, float
     v0 = row * tileHeight;
     u1 = u0 + tileWidth;
     v1 = v0 + tileHeight;
+}
+
+// =============================================================================
+// Unified Particle System (GLES2 point sprites)
+// =============================================================================
+
+// Thread-local RNG for particle randomization
+static std::mt19937& getParticleRNG() {
+    static thread_local std::mt19937 rng(std::random_device{}());
+    return rng;
+}
+
+static float randomFloat(float minVal, float maxVal) {
+    std::uniform_real_distribution<float> dist(minVal, maxVal);
+    return dist(getParticleRNG());
+}
+
+static int randomInt(int minVal, int maxVal) {
+    std::uniform_int_distribution<int> dist(minVal, maxVal);
+    return dist(getParticleRNG());
+}
+
+bool ParticleManager::initUnifiedRenderer() {
+#ifdef EQT_HAS_GLES2
+    if (unifiedRendererInitialized_) return true;
+
+    // Allocate the fixed particle pool
+    unifiedPool_.resize(1024);
+    freeList_.resize(1024);
+    for (uint16_t i = 0; i < 1024; ++i) {
+        freeList_[i] = i;
+        unifiedPool_[i].setAlive(false);
+    }
+    unifiedActiveCount_ = 0;
+    unifiedRenderBuf_.reserve(1024);
+
+    // Create and init the GLES2 renderer (self-contained, uses raw GL calls)
+    unifiedRenderer_ = std::make_unique<UnifiedParticleRenderer>();
+    if (!unifiedRenderer_->init()) {
+        LOG_WARN(MOD_GRAPHICS, "ParticleManager: Failed to init unified particle renderer");
+        unifiedRenderer_.reset();
+        return false;
+    }
+
+    unifiedRendererInitialized_ = true;
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Unified particle system initialized (pool: 1024)");
+    return true;
+#else
+    return false;
+#endif
+}
+
+int ParticleManager::allocateUnifiedParticle() {
+    if (freeList_.empty()) return -1;
+    int idx = freeList_.back();
+    freeList_.pop_back();
+    unifiedActiveCount_++;
+    return idx;
+}
+
+void ParticleManager::freeUnifiedParticle(int index) {
+    if (index < 0 || index >= static_cast<int>(unifiedPool_.size())) return;
+    unifiedPool_[index].setAlive(false);
+    freeList_.push_back(static_cast<uint16_t>(index));
+    unifiedActiveCount_--;
+}
+
+void ParticleManager::updateUnified(float deltaTime) {
+    if (!unifiedRendererInitialized_ || !unifiedFireEnabled_) return;
+    if (deltaTime <= 0.0f || deltaTime > 1.0f) return;  // Safety clamp
+
+    // Get camera frustum for emitter culling
+    irr::scene::ICameraSceneNode* camera = smgr_ ? smgr_->getActiveCamera() : nullptr;
+    const irr::scene::SViewFrustum* frustum = camera ? camera->getViewFrustum() : nullptr;
+
+    // Periodic debug: log update stats
+    static int updateLogCounter = 0;
+    int emittersActive = 0, emittersCulled = 0, totalSpawned = 0;
+
+    // Update emitters: spawn new particles
+    for (auto& [id, emitter] : unifiedEmitters_) {
+        if (!emitter.active) continue;
+        emittersActive++;
+
+        // Check emitter lifetime
+        if (emitter.config.emitterLifetime > 0.0f) {
+            emitter.emitterAge += deltaTime;
+            if (emitter.emitterAge >= emitter.config.emitterLifetime) {
+                emitter.active = false;
+                continue;
+            }
+        }
+
+        // Frustum cull emitters: skip spawning if outside view
+        if (frustum) {
+            irr::core::aabbox3df emitterBox(
+                emitter.position.x - 2.0f, emitter.position.y - 2.0f, emitter.position.z - 2.0f,
+                emitter.position.x + 2.0f, emitter.position.y + 8.0f, emitter.position.z + 2.0f);
+            if (!frustum->getBoundingBox().intersectsWithBox(emitterBox)) {
+                emittersCulled++;
+                continue;  // Outside frustum — skip spawning, existing particles still age
+            }
+        }
+
+        // Accumulate spawn timer
+        emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
+        int toSpawn = static_cast<int>(emitter.spawnAccumulator);
+        emitter.spawnAccumulator -= static_cast<float>(toSpawn);
+
+        for (int s = 0; s < toSpawn; ++s) {
+            int idx = allocateUnifiedParticle();
+            if (idx < 0) break;  // Pool full
+            totalSpawned++;
+
+            UnifiedParticle& p = unifiedPool_[idx];
+            const EmitterConfig& cfg = emitter.config;
+
+            // Position: emitter position + spawn shape offset
+            p.position = emitter.position;
+            if (cfg.spawnShape == SpawnShape::BOX) {
+                p.position.x += randomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
+                p.position.y += randomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
+                p.position.z += randomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
+            }
+
+            // Velocity: base + random spread
+            p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+            p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+            p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+
+            // Lifetime
+            p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
+            p.age = 0.0f;
+
+            // Color
+            p.colorStart = cfg.colorStart;
+            p.colorEnd = cfg.colorEnd;
+            p.color = cfg.colorStart;
+
+            // Size
+            p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+            p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+            p.size = p.sizeStart;
+
+            // Motion
+            p.drag = cfg.drag;
+            p.motionType = cfg.motionType;
+            p.phase = randomFloat(0.0f, 6.28318f);
+
+            // Texture: pick random region
+            if (cfg.textureRegionCount > 1) {
+                p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
+            } else {
+                p.textureIndex = cfg.textureRegions[0];
+            }
+
+            // Metadata
+            p.emitterID = emitter.emitterID;
+            p.setAlive(true);
+            p.setBlendMode(cfg.blendMode);
+        }
+    }
+
+    // Update all alive particles
+    for (auto& p : unifiedPool_) {
+        if (!p.isAlive()) continue;
+
+        p.age += deltaTime;
+        if (p.age >= p.maxLifetime) {
+            // Kill particle
+            int idx = static_cast<int>(&p - unifiedPool_.data());
+            freeUnifiedParticle(idx);
+            continue;
+        }
+
+        float t = p.getNormalizedAge();  // 0 → 1
+
+        // Interpolate color
+        p.color = glm::mix(p.colorStart, p.colorEnd, t);
+
+        // Interpolate size
+        p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
+
+        // LINEAR motion
+        if (p.motionType == MotionType::LINEAR) {
+            // Look up emitter for gravity
+            auto it = unifiedEmitters_.find(p.emitterID);
+            if (it != unifiedEmitters_.end()) {
+                p.velocity += it->second.config.gravity * deltaTime;
+            }
+
+            // Apply drag
+            if (p.drag > 0.0f) {
+                float dampFactor = 1.0f - p.drag * deltaTime;
+                if (dampFactor < 0.0f) dampFactor = 0.0f;
+                p.velocity *= dampFactor;
+            }
+
+            // Update position
+            p.position += p.velocity * deltaTime;
+        }
+    }
+
+    // Periodic debug log (~every 5 seconds at tier3 rate)
+    if (++updateLogCounter >= 50) {
+        updateLogCounter = 0;
+        LOG_DEBUG(MOD_GRAPHICS,
+                  "updateUnified: dt={:.3f} emitters={} active={} culled={} spawned={} "
+                  "poolActive={} freeList={}",
+                  deltaTime, unifiedEmitters_.size(), emittersActive, emittersCulled,
+                  totalSpawned, unifiedActiveCount_, freeList_.size());
+    }
+}
+
+void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
+                                     const irr::core::matrix4& projMatrix,
+                                     const irr::core::vector3df& cameraPos,
+                                     float fogStart, float fogEnd, const float* fogColor,
+                                     float screenHeight) {
+#ifdef EQT_HAS_GLES2
+    if (!unifiedRendererInitialized_ || !unifiedRenderer_ || !unifiedFireEnabled_) return;
+    if (unifiedActiveCount_ <= 0) return;
+    if (!atlasTexture_) return;
+
+    // Collect alive particles
+    unifiedRenderBuf_.clear();
+    for (const auto& p : unifiedPool_) {
+        if (p.isAlive()) {
+            unifiedRenderBuf_.push_back(p);
+        }
+    }
+
+    if (unifiedRenderBuf_.empty()) return;
+
+    // Get GL texture handle via the patched ITexture::getDriverTextureHandle()
+    GLuint atlasGL = static_cast<GLuint>(atlasTexture_->getDriverTextureHandle());
+    if (atlasGL == 0) return;
+
+    // Periodic debug logging (every ~5 seconds at 50fps = every 250 frames)
+    static int frameCounter = 0;
+    if (++frameCounter >= 250) {
+        frameCounter = 0;
+        const auto& firstParticle = unifiedRenderBuf_[0];
+        LOG_DEBUG(MOD_GRAPHICS,
+                  "UnifiedParticles: rendering {} alive, {} emitters, atlasGL={}, "
+                  "first pos=({:.1f},{:.1f},{:.1f}) size={:.2f} color=({:.2f},{:.2f},{:.2f},{:.2f})",
+                  unifiedRenderBuf_.size(), unifiedEmitters_.size(), atlasGL,
+                  firstParticle.position.x, firstParticle.position.y, firstParticle.position.z,
+                  firstParticle.size,
+                  firstParticle.color.r, firstParticle.color.g, firstParticle.color.b, firstParticle.color.a);
+    }
+
+    // Pass View and Projection separately — shader multiplies in GLSL
+    // (same convention as built-in COGLES2 shaders)
+    unifiedRenderer_->render(unifiedRenderBuf_.data(),
+                             static_cast<int>(unifiedRenderBuf_.size()),
+                             viewMatrix.pointer(), projMatrix.pointer(),
+                             fogStart, fogEnd, fogColor,
+                             screenHeight, atlasGL);
+#endif
+}
+
+void ParticleManager::createFireEmitters(const std::vector<glm::vec3>& positions,
+                                          const std::vector<float>& lightRadii) {
+    // Clear existing fire emitters first
+    clearUnifiedEmitters();
+
+    if (positions.empty()) return;
+
+    // Campfire radius threshold — lights with radius >= this get campfire treatment
+    const float campfireRadiusThreshold = 150.0f;
+
+    for (size_t i = 0; i < positions.size(); ++i) {
+        const glm::vec3& eqPos = positions[i];
+        float radius = (i < lightRadii.size()) ? lightRadii[i] : 120.0f;
+
+        // Convert EQ coordinates (Z-up) to Irrlicht (Y-up): (x, y, z) → (x, z, y)
+        glm::vec3 irrPos(eqPos.x, eqPos.z, eqPos.y);
+
+        if (radius >= campfireRadiusThreshold) {
+            // Large light → campfire: flame + ember emitters
+            {
+                ActiveEmitter ae;
+                ae.config = FirePresets::CampfireFlame();
+                ae.position = irrPos;
+                ae.emitterID = nextEmitterID_++;
+                ae.lightRadius = radius;
+                unifiedEmitters_[ae.emitterID] = ae;
+            }
+            {
+                ActiveEmitter ae;
+                ae.config = FirePresets::CampfireEmber();
+                ae.position = irrPos;
+                ae.emitterID = nextEmitterID_++;
+                ae.lightRadius = radius;
+                unifiedEmitters_[ae.emitterID] = ae;
+            }
+        } else {
+            // Small/medium light → torch
+            ActiveEmitter ae;
+            ae.config = FirePresets::Torch();
+            ae.position = irrPos;
+            ae.emitterID = nextEmitterID_++;
+            ae.lightRadius = radius;
+            unifiedEmitters_[ae.emitterID] = ae;
+        }
+    }
+
+    // Log first few emitter positions for debugging
+    int logCount = 0;
+    for (const auto& [id, em] : unifiedEmitters_) {
+        if (logCount++ < 3) {
+            LOG_INFO(MOD_GRAPHICS,
+                     "  Fire emitter #{}: irrPos=({:.1f},{:.1f},{:.1f}) radius={:.0f} rate={:.0f}/s",
+                     id, em.position.x, em.position.y, em.position.z,
+                     em.lightRadius, em.config.spawnRate);
+        }
+    }
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Created {} unified fire emitters for {} sources",
+              unifiedEmitters_.size(), positions.size());
+}
+
+void ParticleManager::clearUnifiedEmitters() {
+    // Kill all particles owned by unified emitters
+    for (auto& p : unifiedPool_) {
+        if (p.isAlive()) {
+            p.setAlive(false);
+        }
+    }
+
+    // Reset free list
+    freeList_.resize(unifiedPool_.size());
+    for (uint16_t i = 0; i < static_cast<uint16_t>(unifiedPool_.size()); ++i) {
+        freeList_[i] = i;
+    }
+    unifiedActiveCount_ = 0;
+
+    // Clear emitter map
+    unifiedEmitters_.clear();
 }
 
 } // namespace Environment

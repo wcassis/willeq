@@ -2,11 +2,13 @@
 
 #include "particle_types.h"
 #include "particle_emitter.h"
+#include "unified_particle.h"
 #include <irrlicht.h>
 #include <memory>
 #include <vector>
 #include <string>
 #include <functional>
+#include <unordered_map>
 
 namespace EQT {
 namespace Graphics {
@@ -14,6 +16,8 @@ namespace Detail {
     class SurfaceMap;  // Forward declaration
 }
 namespace Environment {
+
+class UnifiedParticleRenderer;  // Forward declaration
 
 /**
  * ParticleManager - Central manager for all environmental particle effects.
@@ -185,6 +189,54 @@ public:
      */
     irr::video::ITexture* getAtlasTexture() const { return atlasTexture_; }
 
+    // === Unified Particle System (GLES2 point sprites) ===
+
+    /**
+     * Initialize the unified particle renderer (GLES2 only).
+     * Call after GLES2 context is ready.
+     */
+    bool initUnifiedRenderer();
+
+    /**
+     * Update unified particles (spawn, motion, death).
+     * Call every frame for smooth fire motion.
+     */
+    void updateUnified(float deltaTime);
+
+    /**
+     * Render unified particles via point sprites.
+     * Call after the existing billboard render pass.
+     */
+    void renderUnified(const irr::core::matrix4& viewMatrix,
+                       const irr::core::matrix4& projMatrix,
+                       const irr::core::vector3df& cameraPos,
+                       float fogStart, float fogEnd, const float* fogColor,
+                       float screenHeight);
+
+    /**
+     * Create fire emitters at light source positions.
+     * Positions are in EQ coordinates (Z-up); converted internally to Irrlicht Y-up.
+     * lightRadii: per-source light radius for classifying torch vs campfire.
+     */
+    void createFireEmitters(const std::vector<glm::vec3>& positions,
+                            const std::vector<float>& lightRadii);
+
+    /**
+     * Clear all unified emitters and their particles.
+     */
+    void clearUnifiedEmitters();
+
+    /**
+     * Toggle unified fire particles on/off.
+     */
+    void toggleUnifiedFire() { unifiedFireEnabled_ = !unifiedFireEnabled_; }
+    bool isUnifiedFireEnabled() const { return unifiedFireEnabled_; }
+
+    /**
+     * Get count of alive unified particles.
+     */
+    int getUnifiedActiveCount() const { return unifiedActiveCount_; }
+
 private:
     /**
      * Create emitters appropriate for the given biome.
@@ -241,6 +293,30 @@ private:
 
     // External emitters (not owned, just rendered)
     std::vector<ParticleEmitter*> externalEmitters_;
+
+    // === Unified particle system (GLES2 point sprites) ===
+
+    std::vector<UnifiedParticle> unifiedPool_;       // Fixed pool of 1024
+    std::vector<uint16_t> freeList_;                  // Free indices for allocation
+    int unifiedActiveCount_ = 0;
+    uint16_t nextEmitterID_ = 1;
+
+#ifdef EQT_HAS_GLES2
+    std::unique_ptr<UnifiedParticleRenderer> unifiedRenderer_;
+#endif
+
+    std::unordered_map<uint16_t, ActiveEmitter> unifiedEmitters_;
+    bool unifiedFireEnabled_ = true;
+    bool unifiedRendererInitialized_ = false;
+
+    // Temp buffer for collecting alive particles for rendering
+    std::vector<UnifiedParticle> unifiedRenderBuf_;
+
+    // Allocate a particle from the free list, returns index or -1 if full
+    int allocateUnifiedParticle();
+
+    // Return a particle to the free list
+    void freeUnifiedParticle(int index);
 };
 
 } // namespace Environment
