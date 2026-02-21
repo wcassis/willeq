@@ -199,9 +199,11 @@ public:
 
     /**
      * Update unified particles (spawn, motion, death).
-     * Call every frame for smooth fire motion.
+     * Call every frame for smooth fire/weather motion.
+     * @param deltaTime Time since last update (seconds)
+     * @param cameraPos Camera position in Irrlicht Y-up coordinates (for weather spawning)
      */
-    void updateUnified(float deltaTime);
+    void updateUnified(float deltaTime, const glm::vec3& cameraPos = glm::vec3(0));
 
     /**
      * Render unified particles via point sprites.
@@ -236,6 +238,47 @@ public:
      * Get count of alive unified particles.
      */
     int getUnifiedActiveCount() const { return unifiedActiveCount_; }
+
+    // === Weather Particles ===
+
+    /**
+     * Activate weather particles (rain or snow).
+     * @param type 1=rain, 2=snow
+     * @param intensity 1-10
+     */
+    void activateWeatherParticles(uint8_t type, uint8_t intensity);
+
+    /**
+     * Deactivate weather particles (clear weather).
+     */
+    void deactivateWeatherParticles();
+
+    /**
+     * Check if weather particles are currently active.
+     */
+    bool isWeatherParticlesActive() const { return weatherEmitterID_ != 0; }
+
+    /**
+     * Set ambient color for tinting weather particles.
+     */
+    void setAmbientColor(const glm::vec3& color) { ambientColor_ = color; }
+
+    /**
+     * Light source for weather particle illumination.
+     * Positions in Irrlicht Y-up coordinates.
+     */
+    struct ParticleLight {
+        glm::vec3 position;
+        float radius;
+        glm::vec3 color;
+    };
+
+    /**
+     * Set nearby light sources for per-particle weather illumination.
+     * Call each frame from renderer with lights near camera.
+     * Weather particles are only visible where illuminated by these lights.
+     */
+    void setWeatherLights(const std::vector<ParticleLight>& lights) { weatherLights_ = lights; }
 
 private:
     /**
@@ -309,6 +352,11 @@ private:
     bool unifiedFireEnabled_ = true;
     bool unifiedRendererInitialized_ = false;
 
+    // Weather particle state
+    uint16_t weatherEmitterID_ = 0;    // Active weather emitter ID (0 = none)
+    glm::vec3 ambientColor_{1.0f};     // Ambient tint for weather particles
+    std::vector<ParticleLight> weatherLights_;  // Nearby lights for per-particle illumination
+
     // Temp buffer for collecting alive particles for rendering
     std::vector<UnifiedParticle> unifiedRenderBuf_;
 
@@ -317,6 +365,10 @@ private:
 
     // Return a particle to the free list
     void freeUnifiedParticle(int index);
+
+    // Spawn a single weather particle within the camera-relative volume
+    void spawnWeatherParticle(const EmitterConfig& cfg, uint16_t emitterID,
+                              const glm::vec3& cameraPos, float transitionAlpha);
 };
 
 } // namespace Environment

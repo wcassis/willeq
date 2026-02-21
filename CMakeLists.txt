@@ -398,9 +398,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/emitters/sand_dust_emitter.cpp
         src/client/graphics/environment/emitters/ember_emitter.cpp
         src/client/graphics/environment/emitters/smoke_emitter.cpp
-        # Unified particle system (point sprite fire effects)
+        # Unified particle system (point sprite fire/weather effects)
         src/client/graphics/environment/unified_particle_renderer.cpp
         src/client/graphics/environment/fire_emitter_config.cpp
+        src/client/graphics/environment/weather_emitter_config.cpp
         # Storm cloud layer
         src/client/graphics/environment/storm_cloud_layer.cpp
         # Screen-space rain overlay

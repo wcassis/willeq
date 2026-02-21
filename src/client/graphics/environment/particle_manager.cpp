@@ -620,8 +620,8 @@ void ParticleManager::freeUnifiedParticle(int index) {
     unifiedActiveCount_--;
 }
 
-void ParticleManager::updateUnified(float deltaTime) {
-    if (!unifiedRendererInitialized_ || !unifiedFireEnabled_) return;
+void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos) {
+    if (!unifiedRendererInitialized_) return;
     if (deltaTime <= 0.0f || deltaTime > 1.0f) return;  // Safety clamp
 
     // Get camera frustum for emitter culling
@@ -635,6 +635,11 @@ void ParticleManager::updateUnified(float deltaTime) {
     // Update emitters: spawn new particles
     for (auto& [id, emitter] : unifiedEmitters_) {
         if (!emitter.active) continue;
+
+        // Gate fire emitters by unifiedFireEnabled_; weather emitters always run
+        bool isWeather = (emitter.config.motionType == MotionType::CAMERA_RELATIVE);
+        if (!isWeather && !unifiedFireEnabled_) continue;
+
         emittersActive++;
 
         // Check emitter lifetime
@@ -646,73 +651,104 @@ void ParticleManager::updateUnified(float deltaTime) {
             }
         }
 
-        // Frustum cull emitters: skip spawning if outside view
-        if (frustum) {
-            irr::core::aabbox3df emitterBox(
-                emitter.position.x - 2.0f, emitter.position.y - 2.0f, emitter.position.z - 2.0f,
-                emitter.position.x + 2.0f, emitter.position.y + 8.0f, emitter.position.z + 2.0f);
-            if (!frustum->getBoundingBox().intersectsWithBox(emitterBox)) {
-                emittersCulled++;
-                continue;  // Outside frustum — skip spawning, existing particles still age
-            }
+        // Ramp transition alpha for weather emitters
+        if (isWeather && emitter.transitionAlpha < 1.0f) {
+            emitter.transitionAlpha += emitter.transitionRate * deltaTime;
+            if (emitter.transitionAlpha > 1.0f) emitter.transitionAlpha = 1.0f;
         }
 
-        // Accumulate spawn timer
-        emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
-        int toSpawn = static_cast<int>(emitter.spawnAccumulator);
-        emitter.spawnAccumulator -= static_cast<float>(toSpawn);
+        if (isWeather) {
+            // === CAMERA_RELATIVE: target-count spawning ===
+            // Move emitter to track camera
+            emitter.position = cameraPos;
 
-        for (int s = 0; s < toSpawn; ++s) {
-            int idx = allocateUnifiedParticle();
-            if (idx < 0) break;  // Pool full
-            totalSpawned++;
-
-            UnifiedParticle& p = unifiedPool_[idx];
-            const EmitterConfig& cfg = emitter.config;
-
-            // Position: emitter position + spawn shape offset
-            p.position = emitter.position;
-            if (cfg.spawnShape == SpawnShape::BOX) {
-                p.position.x += randomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
-                p.position.y += randomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
-                p.position.z += randomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
+            // Count alive particles for this emitter
+            int aliveCount = 0;
+            for (const auto& p : unifiedPool_) {
+                if (p.isAlive() && p.emitterID == emitter.emitterID) {
+                    aliveCount++;
+                }
             }
 
-            // Velocity: base + random spread
-            p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-            p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-            p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+            // Spawn deficit to reach target count (modulated by transition alpha)
+            int effectiveTarget = static_cast<int>(emitter.config.targetCount * emitter.transitionAlpha);
+            int deficit = effectiveTarget - aliveCount;
+            for (int s = 0; s < deficit; ++s) {
+                spawnWeatherParticle(emitter.config, emitter.emitterID, cameraPos, emitter.transitionAlpha);
+                totalSpawned++;
+            }
+        } else {
+            // === LINEAR: spawn-rate spawning (fire) ===
 
-            // Lifetime
-            p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
-            p.age = 0.0f;
-
-            // Color
-            p.colorStart = cfg.colorStart;
-            p.colorEnd = cfg.colorEnd;
-            p.color = cfg.colorStart;
-
-            // Size
-            p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
-            p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
-            p.size = p.sizeStart;
-
-            // Motion
-            p.drag = cfg.drag;
-            p.motionType = cfg.motionType;
-            p.phase = randomFloat(0.0f, 6.28318f);
-
-            // Texture: pick random region
-            if (cfg.textureRegionCount > 1) {
-                p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
-            } else {
-                p.textureIndex = cfg.textureRegions[0];
+            // Frustum cull emitters: skip spawning if outside view
+            if (frustum) {
+                irr::core::aabbox3df emitterBox(
+                    emitter.position.x - 2.0f, emitter.position.y - 2.0f, emitter.position.z - 2.0f,
+                    emitter.position.x + 2.0f, emitter.position.y + 8.0f, emitter.position.z + 2.0f);
+                if (!frustum->getBoundingBox().intersectsWithBox(emitterBox)) {
+                    emittersCulled++;
+                    continue;
+                }
             }
 
-            // Metadata
-            p.emitterID = emitter.emitterID;
-            p.setAlive(true);
-            p.setBlendMode(cfg.blendMode);
+            // Accumulate spawn timer
+            emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
+            int toSpawn = static_cast<int>(emitter.spawnAccumulator);
+            emitter.spawnAccumulator -= static_cast<float>(toSpawn);
+
+            for (int s = 0; s < toSpawn; ++s) {
+                int idx = allocateUnifiedParticle();
+                if (idx < 0) break;  // Pool full
+                totalSpawned++;
+
+                UnifiedParticle& p = unifiedPool_[idx];
+                const EmitterConfig& cfg = emitter.config;
+
+                // Position: emitter position + spawn shape offset
+                p.position = emitter.position;
+                if (cfg.spawnShape == SpawnShape::BOX) {
+                    p.position.x += randomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
+                    p.position.y += randomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
+                    p.position.z += randomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
+                }
+
+                // Velocity: base + random spread
+                p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+                p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+                p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+
+                // Lifetime
+                p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
+                p.age = 0.0f;
+
+                // Color
+                p.colorStart = cfg.colorStart;
+                p.colorEnd = cfg.colorEnd;
+                p.color = cfg.colorStart;
+
+                // Size
+                p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+                p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+                p.size = p.sizeStart;
+
+                // Motion
+                p.drag = cfg.drag;
+                p.motionType = cfg.motionType;
+                p.phase = randomFloat(0.0f, 6.28318f);
+                p.rotation = 0.0f;
+
+                // Texture: pick random region
+                if (cfg.textureRegionCount > 1) {
+                    p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
+                } else {
+                    p.textureIndex = cfg.textureRegions[0];
+                }
+
+                // Metadata
+                p.emitterID = emitter.emitterID;
+                p.setAlive(true);
+                p.setBlendMode(cfg.blendMode);
+            }
         }
     }
 
@@ -722,7 +758,7 @@ void ParticleManager::updateUnified(float deltaTime) {
 
         p.age += deltaTime;
         if (p.age >= p.maxLifetime) {
-            // Kill particle
+            // Kill particle — CAMERA_RELATIVE will respawn via deficit
             int idx = static_cast<int>(&p - unifiedPool_.data());
             freeUnifiedParticle(idx);
             continue;
@@ -736,9 +772,81 @@ void ParticleManager::updateUnified(float deltaTime) {
         // Interpolate size
         p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
 
-        // LINEAR motion
-        if (p.motionType == MotionType::LINEAR) {
-            // Look up emitter for gravity
+        if (p.motionType == MotionType::CAMERA_RELATIVE) {
+            // Look up emitter config
+            auto it = unifiedEmitters_.find(p.emitterID);
+            if (it == unifiedEmitters_.end()) continue;
+            const EmitterConfig& cfg = it->second.config;
+
+            // Apply gravity
+            p.velocity += cfg.gravity * deltaTime;
+
+            // Apply wind
+            if (cfg.windResponse > 0.0f && envState_.windStrength > 0.0f) {
+                // Wind direction is EQ Z-up; convert to Irrlicht Y-up: (x, z, y)
+                glm::vec3 windIrr(envState_.windDirection.x, envState_.windDirection.z, envState_.windDirection.y);
+                p.velocity += windIrr * (envState_.windStrength * cfg.windResponse * deltaTime * 10.0f);
+            }
+
+            // Apply drag
+            if (p.drag > 0.0f) {
+                float dampFactor = 1.0f - p.drag * deltaTime;
+                if (dampFactor < 0.0f) dampFactor = 0.0f;
+                p.velocity *= dampFactor;
+            }
+
+            // Snow-specific: lateral drift via sine wave
+            if (cfg.driftAmplitude > 0.0f && cfg.driftFrequency > 0.0f) {
+                float drift = std::sin(p.age * cfg.driftFrequency * 6.28318f + p.phase) * cfg.driftAmplitude * deltaTime;
+                p.position.x += drift;
+                p.position.z += drift * 0.5f;  // Slight Z drift too
+            }
+
+            // Snow-specific: alpha twinkle
+            if (cfg.twinkleSpeed > 0.0f) {
+                float baseAlpha = glm::mix(p.colorStart.a, p.colorEnd.a, t);
+                p.color.a = baseAlpha * (0.7f + 0.3f * std::sin(p.age * cfg.twinkleSpeed + p.phase));
+            }
+
+            // Update position
+            p.position += p.velocity * deltaTime;
+
+            // Per-particle light accumulation — rain/snow are only visible
+            // where illuminated by nearby light sources (torches, campfires,
+            // player lantern). Base brightness comes from ambient (time of day).
+            float lightR = ambientColor_.x;
+            float lightG = ambientColor_.y;
+            float lightB = ambientColor_.z;
+            for (const auto& light : weatherLights_) {
+                glm::vec3 diff = p.position - light.position;
+                float distSq = glm::dot(diff, diff);
+                float rSq = light.radius * light.radius;
+                if (distSq < rSq) {
+                    float dist = std::sqrt(distSq);
+                    float atten = 1.0f - dist / light.radius;
+                    atten *= atten;  // Quadratic falloff — bright at center, soft edge
+                    lightR += light.color.x * atten;
+                    lightG += light.color.y * atten;
+                    lightB += light.color.z * atten;
+                }
+            }
+            p.color.r *= std::min(lightR, 1.0f);
+            p.color.g *= std::min(lightG, 1.0f);
+            p.color.b *= std::min(lightB, 1.0f);
+
+            // Recycle check: if particle is too far from camera or below volume, respawn
+            glm::vec3 offset = p.position - cameraPos;
+            float hExtX = cfg.spawnVolumeHalfExtents.x * 1.5f;
+            float hExtZ = cfg.spawnVolumeHalfExtents.z * 1.5f;
+            float hExtY = cfg.spawnVolumeHalfExtents.y;
+            if (std::abs(offset.x) > hExtX || std::abs(offset.z) > hExtZ || offset.y < -hExtY) {
+                // Respawn at a new position in the spawn volume
+                int idx = static_cast<int>(&p - unifiedPool_.data());
+                freeUnifiedParticle(idx);
+                // Deficit spawning will replace it next frame
+            }
+        } else if (p.motionType == MotionType::LINEAR) {
+            // LINEAR motion (fire)
             auto it = unifiedEmitters_.find(p.emitterID);
             if (it != unifiedEmitters_.end()) {
                 p.velocity += it->second.config.gravity * deltaTime;
@@ -773,7 +881,7 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
                                      float fogStart, float fogEnd, const float* fogColor,
                                      float screenHeight) {
 #ifdef EQT_HAS_GLES2
-    if (!unifiedRendererInitialized_ || !unifiedRenderer_ || !unifiedFireEnabled_) return;
+    if (!unifiedRendererInitialized_ || !unifiedRenderer_) return;
     if (unifiedActiveCount_ <= 0) return;
     if (!atlasTexture_) return;
 
@@ -890,8 +998,139 @@ void ParticleManager::clearUnifiedEmitters() {
     }
     unifiedActiveCount_ = 0;
 
-    // Clear emitter map
+    // Clear emitter map and weather state
     unifiedEmitters_.clear();
+    weatherEmitterID_ = 0;
+}
+
+void ParticleManager::activateWeatherParticles(uint8_t type, uint8_t intensity) {
+    // Kill existing weather emitter if any
+    deactivateWeatherParticles();
+
+    // Create weather emitter config
+    EmitterConfig cfg;
+    if (type == 1) {
+        cfg = WeatherPresets::Rain(intensity);
+    } else if (type == 2) {
+        cfg = WeatherPresets::Snow(intensity);
+    } else {
+        return;
+    }
+
+    ActiveEmitter ae;
+    ae.config = cfg;
+    ae.position = glm::vec3(0.0f);  // Will be updated to camera pos each frame
+    ae.emitterID = nextEmitterID_++;
+    ae.transitionAlpha = 0.0f;  // Start at 0 for smooth ramp-up
+    ae.transitionRate = 0.5f;   // ~2 seconds to full intensity
+    unifiedEmitters_[ae.emitterID] = ae;
+    weatherEmitterID_ = ae.emitterID;
+
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Activated weather particles type={} intensity={} "
+             "target={} emitterID={}", type, intensity, cfg.targetCount, ae.emitterID);
+}
+
+void ParticleManager::deactivateWeatherParticles() {
+    if (weatherEmitterID_ == 0) return;
+
+    // Kill the weather emitter
+    auto it = unifiedEmitters_.find(weatherEmitterID_);
+    if (it != unifiedEmitters_.end()) {
+        it->second.active = false;
+        // Kill all particles belonging to this emitter
+        for (auto& p : unifiedPool_) {
+            if (p.isAlive() && p.emitterID == weatherEmitterID_) {
+                int idx = static_cast<int>(&p - unifiedPool_.data());
+                freeUnifiedParticle(idx);
+            }
+        }
+        unifiedEmitters_.erase(it);
+    }
+
+    weatherEmitterID_ = 0;
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Deactivated weather particles");
+}
+
+void ParticleManager::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t emitterID,
+                                            const glm::vec3& cameraPos, float transitionAlpha) {
+    int idx = allocateUnifiedParticle();
+    if (idx < 0) return;  // Pool full
+
+    UnifiedParticle& p = unifiedPool_[idx];
+
+    // Position: camera-relative spawn volume
+    const glm::vec3& he = cfg.spawnVolumeHalfExtents;
+    p.position.x = cameraPos.x + randomFloat(-he.x, he.x);
+    p.position.z = cameraPos.z + randomFloat(-he.z, he.z);
+
+    // Y position biased toward top of volume
+    float yRand = randomFloat(0.0f, 1.0f);
+    if (yRand < cfg.spawnVolumeTopBias) {
+        // Top portion (upper 20% of volume)
+        p.position.y = cameraPos.y + he.y * randomFloat(0.6f, 1.0f);
+    } else {
+        // Rest of volume
+        p.position.y = cameraPos.y + randomFloat(-he.y, he.y * 0.6f);
+    }
+
+    // Velocity: base + random spread
+    p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+    p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+    p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+
+    // Lifetime
+    p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
+    p.age = 0.0f;
+
+    // Color
+    p.colorStart = cfg.colorStart;
+    p.colorEnd = cfg.colorEnd;
+    p.color = cfg.colorStart;
+
+    // Rain alpha variation for visual variety
+    if (cfg.blendMode == UnifiedBlendMode::ADDITIVE) {
+        float alphaVar = randomFloat(0.3f, cfg.colorStart.a);
+        p.colorStart.a = alphaVar;
+        p.color.a = alphaVar;
+    }
+
+    // Size
+    p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+    p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+    p.size = p.sizeStart;
+
+    // Size-speed correlation for snow: larger flakes fall slower
+    if (cfg.sizeSpeedCorrelation > 0.0f) {
+        float sizeRange = cfg.sizeStartMax - cfg.sizeStartMin;
+        float sizeFactor = (sizeRange > 0.0f) ? (p.sizeStart - cfg.sizeStartMin) / sizeRange : 0.0f;
+        p.velocity.y *= (1.0f - sizeFactor * cfg.sizeSpeedCorrelation);
+    }
+
+    // Motion
+    p.drag = cfg.drag;
+    p.motionType = cfg.motionType;
+    p.phase = randomFloat(0.0f, 6.28318f);
+
+    // Rotation: rain gets wind-angle rotation, snow gets none
+    if (cfg.driftAmplitude == 0.0f && cfg.windResponse > 0.0f) {
+        // Rain: slight rotation based on wind direction for angled streaks
+        float windAngle = std::atan2(envState_.windDirection.x, envState_.windDirection.y);
+        p.rotation = windAngle * cfg.windResponse * envState_.windStrength * 0.3f;
+    } else {
+        p.rotation = 0.0f;
+    }
+
+    // Texture: pick random region
+    if (cfg.textureRegionCount > 1) {
+        p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
+    } else {
+        p.textureIndex = cfg.textureRegions[0];
+    }
+
+    // Metadata
+    p.emitterID = emitterID;
+    p.setAlive(true);
+    p.setBlendMode(cfg.blendMode);
 }
 
 } // namespace Environment

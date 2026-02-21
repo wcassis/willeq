@@ -14,8 +14,9 @@ namespace Environment {
 // === Enums ===
 
 enum class MotionType : uint8_t {
-    LINEAR = 0,     // pos += vel * dt; vel += gravity * dt; vel *= (1 - drag*dt)
-    // Future phases: RADIAL_EXPAND, ORBITAL, BURST, STREAM, CAMERA_RELATIVE
+    LINEAR = 0,           // pos += vel * dt; vel += gravity * dt; vel *= (1 - drag*dt)
+    CAMERA_RELATIVE = 1,  // Spawns/recycles within volume around camera (rain, snow)
+    // Future phases: RADIAL_EXPAND, ORBITAL, BURST, STREAM
 };
 
 enum class UnifiedBlendMode : uint8_t {
@@ -65,6 +66,9 @@ struct UnifiedParticle {
     uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha)
     MotionType motionType = MotionType::LINEAR;
     uint16_t padding = 0;
+
+    // UV rotation for rain streaks (radians, 0 = no rotation)
+    float rotation = 0.0f;
 
     bool isAlive() const { return (flags & 0x01) != 0; }
     void setAlive(bool alive) { if (alive) flags |= 0x01; else flags &= ~0x01; }
@@ -122,6 +126,15 @@ struct EmitterConfig {
     UnifiedBlendMode blendMode = UnifiedBlendMode::ADDITIVE;
     uint8_t textureRegions[4] = {0, 0, 0, 0};  // Possible atlas tile indices
     uint8_t textureRegionCount = 1;              // How many regions to pick from
+
+    // Weather-specific (CAMERA_RELATIVE motion)
+    int targetCount = 0;                  // 0 = use spawnRate; >0 = maintain count via recycling
+    glm::vec3 spawnVolumeHalfExtents{0};  // Camera-relative spawn box half-extents
+    float spawnVolumeTopBias = 0.8f;      // Fraction of spawns placed at top of volume
+    float driftFrequency = 0.0f;          // Snow lateral sine-wave frequency
+    float driftAmplitude = 0.0f;          // Snow lateral drift displacement
+    float twinkleSpeed = 0.0f;            // Snow alpha modulation speed (0=disabled)
+    float sizeSpeedCorrelation = 0.0f;    // Large particles fall slower (0-1)
 };
 
 // === Active Emitter ===
@@ -135,6 +148,8 @@ struct ActiveEmitter {
     bool active = true;
     uint16_t emitterID = 0;
     float lightRadius = 0.0f;        // Source light radius (for classification)
+    float transitionAlpha = 1.0f;    // 0→1 ramp for smooth weather onset
+    float transitionRate = 0.5f;     // Per-second ramp speed
 };
 
 // === Fire Emitter Presets ===
@@ -143,6 +158,13 @@ namespace FirePresets {
     EmitterConfig Torch();
     EmitterConfig CampfireFlame();
     EmitterConfig CampfireEmber();
+}
+
+// === Weather Emitter Presets ===
+
+namespace WeatherPresets {
+    EmitterConfig Rain(uint8_t intensity = 5);
+    EmitterConfig Snow(uint8_t intensity = 5);
 }
 
 } // namespace Environment

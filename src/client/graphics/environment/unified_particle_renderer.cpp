@@ -40,6 +40,7 @@ uniform float uScreenHeight;
 varying vec4 vColor;
 varying float vFogFactor;
 varying vec2 vAtlasOffset;
+varying float vRotation;
 
 void main() {
     vec4 eyePos = uView * vec4(aPosition, 1.0);
@@ -65,6 +66,7 @@ void main() {
 
     vColor = aColor;
     vAtlasOffset = aTexCoord1;
+    vRotation = aTexCoord0.y;
 }
 )";
 
@@ -79,10 +81,21 @@ uniform vec2 uAtlasRegionSize;
 varying vec4 vColor;
 varying float vFogFactor;
 varying vec2 vAtlasOffset;
+varying float vRotation;
 
 void main() {
-    // Map gl_PointCoord [0,1] to atlas sub-region UV
-    vec2 uv = vAtlasOffset + gl_PointCoord * uAtlasRegionSize;
+    // Optionally rotate gl_PointCoord for rain streaks
+    vec2 pc = gl_PointCoord;
+    if (vRotation != 0.0) {
+        pc -= 0.5;
+        float s = sin(vRotation);
+        float c = cos(vRotation);
+        pc = vec2(pc.x * c - pc.y * s, pc.x * s + pc.y * c);
+        pc += 0.5;
+    }
+
+    // Map rotated point coord [0,1] to atlas sub-region UV
+    vec2 uv = vAtlasOffset + pc * uAtlasRegionSize;
 
     // Sample atlas texture
     vec4 texColor = texture2D(uTexture, uv);
@@ -252,7 +265,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         v.b = p.color.b;
         v.a = p.color.a;
         v.pointSize = p.size;
-        v.pad0 = 0.0f;
+        v.rotation = p.rotation;
         v.atlasU = atlasU;
         v.atlasV = atlasV;
 

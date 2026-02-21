@@ -150,6 +150,15 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
             } else {
                 particleManager_->setWeather(Environment::WeatherType::Clear);
             }
+
+            // Activate unified weather particles (GLES2 point sprites)
+#ifdef EQT_HAS_GLES2
+            if (newType > 0 && newIntensity > 0) {
+                particleManager_->activateWeatherParticles(newType, newIntensity);
+            } else {
+                particleManager_->deactivateWeatherParticles();
+            }
+#endif
         }
     }
 }
@@ -253,6 +262,12 @@ bool WeatherEffectsController::isSnowOverlayEnabled() const {
 }
 
 bool WeatherEffectsController::getRainFogSettings(float& outFogStart, float& outFogEnd) const {
+    // Skip overlay fog override when unified weather particles handle precipitation —
+    // the extreme close fog (fogEnd=50 at intensity 10) is designed to complement the
+    // screen-space overlay, not 3D particles which have their own shader fog.
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && particleManager_->isWeatherParticlesActive()) return false;
+#endif
     if (!rainOverlay_) {
         return false;
     }
@@ -260,6 +275,12 @@ bool WeatherEffectsController::getRainFogSettings(float& outFogStart, float& out
 }
 
 bool WeatherEffectsController::getRainDaylightMultiplier(float& outMultiplier) const {
+    // Skip overlay's extreme darkening when unified particles handle precipitation —
+    // the 0.05 multiplier at intensity 10 was designed to complement the screen-space
+    // overlay fill. Without it, the scene goes pitch black and rain particles become invisible.
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && particleManager_->isWeatherParticlesActive()) return false;
+#endif
     if (!rainOverlay_) {
         return false;
     }
@@ -274,6 +295,9 @@ bool WeatherEffectsController::getRainDaylightMultiplier(float& outMultiplier) c
 }
 
 bool WeatherEffectsController::getSnowFogSettings(float& outFogStart, float& outFogEnd) const {
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && particleManager_->isWeatherParticlesActive()) return false;
+#endif
     if (!snowOverlay_) {
         return false;
     }
@@ -281,6 +305,9 @@ bool WeatherEffectsController::getSnowFogSettings(float& outFogStart, float& out
 }
 
 bool WeatherEffectsController::getSnowBrightnessMultiplier(float& outMultiplier) const {
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && particleManager_->isWeatherParticlesActive()) return false;
+#endif
     if (!snowOverlay_) {
         return false;
     }
@@ -572,10 +599,15 @@ void WeatherEffectsController::generateBoltSegments(
 void WeatherEffectsController::render() {
     if (!enabled_ || !initialized_) return;
 
-    // Render lightning bolt if active
+    // Render lightning bolt if active (always, regardless of particle mode)
     if (lightningActive_ && !lightningBolt_.empty()) {
         renderLightningBolt();
     }
+
+    // Skip screen-space overlays when unified weather particles are active (GLES2)
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && particleManager_->isWeatherParticlesActive()) return;
+#endif
 
     // Render screen-space snow overlay - render before rain for layering
     if (snowOverlay_ && currentType_ == 2 && currentIntensity_ > 0) {

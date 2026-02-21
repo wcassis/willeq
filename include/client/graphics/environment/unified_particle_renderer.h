@@ -53,7 +53,7 @@ private:
     struct PointSpriteVertex {
         float x, y, z;          // World position
         float r, g, b, a;       // Color RGBA
-        float pointSize, pad0;  // Point size in aTexCoord0.x, pad in .y
+        float pointSize, rotation;  // Point size in aTexCoord0.x, UV rotation angle in .y
         float atlasU, atlasV;   // Atlas UV offset in aTexCoord1
     };
     static_assert(sizeof(PointSpriteVertex) == 44, "Unexpected vertex size");

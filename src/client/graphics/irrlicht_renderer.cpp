@@ -6874,10 +6874,58 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
                 particleManager_->update(accDelta);
             }
 
-            // Unified fire particles: update every Tier 3 frame
-            // Not gated by isEnabled() — fire has its own toggle (unifiedFireEnabled_)
+            // Unified particles (fire + weather): update every Tier 3 frame
+            // Not gated by isEnabled() — fire/weather have their own toggles
             if (particleManager_ && zoneReady_) {
-                particleManager_->updateUnified(accDelta);
+                glm::vec3 camIrr(0.0f);
+                if (camera_) {
+                    auto cp = camera_->getAbsolutePosition();
+                    camIrr = glm::vec3(cp.X, cp.Y, cp.Z);
+                }
+                if (zoneShader_) {
+                    const float* amb = zoneShader_->ambientColor();
+                    particleManager_->setAmbientColor(glm::vec3(amb[0], amb[1], amb[2]));
+                }
+
+                // Collect nearby lights for weather particle illumination
+                if (particleManager_->isWeatherParticlesActive()) {
+                    std::vector<Environment::ParticleManager::ParticleLight> nearbyLights;
+                    float maxLightDist = 50.0f;  // Max distance to consider a light
+                    float maxLightDistSq = maxLightDist * maxLightDist;
+
+                    // Zone lights
+                    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+                        auto* node = zoneLightNodes_[i];
+                        if (!node) continue;
+                        auto pos = node->getAbsolutePosition();
+                        float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
+                        float distSq = dx*dx + dy*dy + dz*dz;
+                        if (distSq < maxLightDistSq) {
+                            auto& ld = node->getLightData();
+                            float radius = ld.Radius > 0 ? ld.Radius : 30.0f;
+                            nearbyLights.push_back({
+                                glm::vec3(pos.X, pos.Y, pos.Z),
+                                radius,
+                                glm::vec3(ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b)
+                            });
+                        }
+                    }
+
+                    // Player light (lantern, lightstone)
+                    if (playerLightNode_ && playerLightLevel_ > 0) {
+                        auto pos = playerLightNode_->getPosition();
+                        auto& ld = playerLightNode_->getLightData();
+                        nearbyLights.push_back({
+                            glm::vec3(pos.X, pos.Y, pos.Z),
+                            ld.Radius,
+                            glm::vec3(ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b)
+                        });
+                    }
+
+                    particleManager_->setWeatherLights(nearbyLights);
+                }
+
+                particleManager_->updateUnified(accDelta, camIrr);
             }
 
             if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
