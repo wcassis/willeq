@@ -4297,6 +4297,14 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     }
     mesh->drop();
 
+    // Force AbsoluteTransformation update after setPosition — Irrlicht only updates
+    // this in OnAnimate() for visible nodes. Since we immediately set the node invisible
+    // (below), OnAnimate() will skip it and the AbsoluteTransformation would remain at
+    // identity (from the constructor). Triangle selectors created by addRegionToCollision()
+    // use getAbsoluteTransformation() to transform collision triangles, so a stale identity
+    // transform would place them at center-relative positions instead of world-space.
+    node->updateAbsolutePosition();
+
     // Start invisible — PVS will make it visible on the next Tier2 frame if appropriate.
     // Without this, newly-built nodes are visible by default in Irrlicht, and if PVS
     // doesn't run before the next render, they add to the polygon count unchecked.
