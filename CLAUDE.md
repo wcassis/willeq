@@ -89,23 +89,25 @@ Without `CAP_NET_ADMIN`, the client falls back to the kernel maximum (`net.core.
 The client cross-compiles for Orange Pi One (Allwinner H3, ARMv7-A Cortex-A7, Mali 400 GPU).
 
 **Current target platform**: Ubuntu Noble (24.04) with mainline kernel and Lima open-source driver.
-- **GPU driver**: Lima (Mesa) provides OpenGL 2.1 natively - no translation layer needed
+- **GPU rendering**: Native OpenGL ES 2.0 via custom `COpenGLES2Driver` (extends Irrlicht's `CNullDriver`)
 - **Display**: DRM/KMS direct rendering without X11 (`--drm` flag)
-- **Build**: `docker/Dockerfile.arm-noble` + `scripts/build-arm-noble.sh`
-- **Output**: `build-arm-noble/bin/willeq` (ELF 32-bit ARM, ~9.7MB stripped)
+- **Build**: `docker/Dockerfile.arm-noble` + `scripts/build-arm-noble.sh` (sets `-DEQT_GLES2=ON`)
+- **Output**: `build-arm-noble/bin/willeq` (ELF 32-bit ARM, ~10MB stripped)
 
 ```bash
 # Cross-compile
 bash scripts/build-arm-noble.sh
 
-# Run on Orange Pi (DRM/KMS, no X11)
-./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600
+# Run on Orange Pi (DRM/KMS, GLES2 — default for ARM builds)
+./willeq -c config.json --drm --gles2 --constrained orangepi -r 800 600
 
 # Run on Orange Pi (with X11, if Xorg is running)
-DISPLAY=:0 ./willeq -c config.json --opengl --constrained orangepi -r 800 600
+DISPLAY=:0 ./willeq -c config.json --gles2 --constrained orangepi -r 800 600
 ```
 
-**Legacy platform** (Debian Jessie, kernel 3.4): Used the proprietary Mali blob driver with no desktop OpenGL support, requiring gl4es (OpenGL-to-GLES translation). Build files: `docker/Dockerfile.arm-cross` + `scripts/build-arm-jessie.sh`. This is superseded by the Noble build.
+**GLES2 rendering backend**: The Orange Pi uses a custom native GLES2 driver (`COpenGLES2Driver`) rather than Irrlicht's desktop OpenGL driver. This eliminates all desktop GL → GLES translation complexity, enables native ETC1 compressed textures (real 6:1 memory savings via `GL_ETC1_RGB8_OES`), and provides a shared rendering path for the planned Android 4.4 port. The driver uses 6 built-in GLSL ES 1.0 shader programs (no fixed-function pipeline). See "GLES2 Rendering Backend" section under Architecture for details.
+
+**Legacy platforms**: (1) Noble with desktop GL 2.1 (Lima/Mesa) — superseded by GLES2 backend. (2) Debian Jessie (kernel 3.4) with proprietary Mali blob and gl4es translation — fully superseded.
 
 **DRM input handling**: The DRM device (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev (`/dev/input/event*`). VT keyboard processing is disabled via `KDSKBMODE(K_OFF)` to prevent the console layer from intercepting Ctrl+key combinations.
 
@@ -170,11 +172,21 @@ The client connects through three stages, each with its own connection manager:
 - `skill_constants.h` - Skill IDs, names, categories, animation mappings
 
 **Graphics Rendering** (`include/client/graphics/`, `src/client/graphics/`)
-- `IrrlichtRenderer` - Main renderer using Irrlicht with software rendering (no GPU required)
+- `IrrlichtRenderer` - Main renderer (~7000 lines), manages scene, visibility, lighting, UI
 - `CameraController` - FPS-style camera with free/follow/first-person modes
-- `EntityRenderer` - Character/NPC 3D model rendering with texture support
+- `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
 - `DoorManager` - Door object rendering and state management
+- `ZoneShader` - GLSL shader source and callbacks (GL 2.1 and GLES2 variants)
+- `TextureAtlas` - Atlas tile layout (256px slots, 248px inner, 4px padding)
+- `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
+- `PortalSystem` - AABB-derived portal extraction and stencil-based portal occlusion
+
+**GLES2 Driver** (`docker/irrlicht-drm/`)
+- `COpenGLES2Driver.h/.cpp` - Native GLES2 `IVideoDriver` (extends `CNullDriver`)
+- `COGLES2Texture.h/.cpp` - Texture management, native ETC1, FBO render targets
+- `COGLES2Shaders.h/.cpp` - 6 built-in GLSL ES 1.0 shader programs, uniform cache
+- `COGLES2MaterialRenderer.h/.cpp` - Material type renderers (blend, depth, cull state)
 
 **UI Components** (`include/client/graphics/ui/`)
 - `WindowManager` - Manages all UI windows, handles input routing
@@ -367,6 +379,43 @@ Audio system uses client internal coordinates directly (no transformation).
   finalRotY = rawRotX * (360/512) * -1.0f;    // Primary yaw, negated
   finalRotZ = rawRotY * (360/512);            // Secondary rotation
   ```
+
+### Renderer Tiers
+
+WillEQ has three rendering tiers:
+
+| Tier | Driver | GPU | Use Case |
+|------|--------|-----|----------|
+| Software | Irrlicht `EDT_BURNINGSVIDEO` | None | Headless, VNC, RDP |
+| Desktop GL | Irrlicht `EDT_OPENGL` (GL 2.1) | Desktop GPU | PC/laptop with X11 |
+| GLES2 | Custom `EDT_OGLES2` (`COpenGLES2Driver`) | Mali 400, mobile | Orange Pi, Android |
+
+The GLES2 tier uses an all-shader pipeline with 6 built-in programs:
+- `Solid3D` / `AlphaTest3D` — Non-atlas zone geometry, entities, doors (per-vertex lighting + fog)
+- `AtlasSolid3D` / `AtlasAlpha3D` — Atlas zone geometry (precomputed UV in texcoord1)
+- `UI2D` — All 2D UI (textured quads with color modulation)
+- `Color2D` — 2D rectangles, lines, debug overlays
+
+All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS use `precision mediump float` (FP16 on Mali 400 fragment cores). The 8-point-light loop runs in VS only.
+
+Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQT_HAS_GLES2` is defined (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
+
+### Zone Rendering Optimizations
+
+**Front-to-back sorting** (`manualZoneDrawEnabled_`): Zone region meshes are removed from Irrlicht's scene graph rendering and drawn manually in front-to-back order for early-Z rejection on tile-based GPUs. The injection point is `RenderPassTimer::OnRenderPassPreRender(ESNRP_SOLID)` — fires after CAMERA pass sets up matrices. Toggle at runtime with `/sort`.
+
+- Sorted by nearest-AABB-edge squared distance from camera
+- Enabled automatically for PVS zones on GLES2 (also works on desktop GL)
+- Zone nodes are set invisible so `drawAll()` skips them; manual draw uses `driver_->setMaterial()` + `driver_->drawMeshBuffer()`
+- **Critical**: Must use `node->getPosition()` not `node->getAbsolutePosition()` — Irrlicht's `OnAnimate()` skips invisible nodes, so `AbsoluteTransformation` is never computed for hidden nodes
+
+**Stencil portal occlusion** (`portalOcclusionEnabled_`): In indoor/dungeon zones, uses the stencil buffer to mask rendering to only what's visible through doorway portals. Off by default — toggle with `/portal`.
+
+- `PortalSystem` (`portal_system.h/.cpp`) extracts portal quads from adjacent BSP region AABBs at zone load
+- Recursive stencil masking: INCR on portal quad → draw room → recurse → DECR (max depth 3)
+- Uses raw GL calls (`glStencilFunc`/`glStencilOp`/`glColorMask`) not driver wrapper, restores to defaults after (keeps `SOGLES2State` cache in sync)
+- D24S8 depth-stencil format configured in EGL (`CIrrDeviceFB.cpp`)
+- Debug: `/stencil` overlays colored rects per stencil level, `/portal` shows portal wireframes
 
 ### Packet Structures
 
@@ -643,6 +692,11 @@ Graphics is enabled by default (`EQT_GRAPHICS=ON` in CMake). Requires EQ Titaniu
 - `/q` - Exit client immediately
 - `/debug <level>` - Set debug level (0-6)
 - `/timestamp` - Toggle chat timestamps
+
+**Graphics Debug:**
+- `/sort` - Toggle front-to-back zone sorting (manual draw vs Irrlicht scene graph)
+- `/portal` - Toggle stencil-based portal occlusion (indoor zones)
+- `/stencil` - Toggle stencil buffer debug overlay (colored rects per level)
 
 ### Model Loading Order
 
