@@ -81,7 +81,8 @@ public:
     ~COGLES2ShaderManager();
 
     // Compile and link all built-in programs. Returns true if at least Color2D succeeded.
-    bool init();
+    // If hasStandardDerivatives is true, alpha-test shaders use fwidth() for smoother edges.
+    bool init(bool hasStandardDerivatives = false);
 
     // Activate a program. Returns false if program unavailable.
     bool useProgram(EOGLES2ShaderProgram prog);
@@ -105,6 +106,13 @@ public:
     // Returns 0 on failure, GL program handle on success.
     GLuint buildProgram(const char* vsSrc, const char* fsSrc);
 
+    // Enable shader binary caching (call before init)
+    typedef void (GL_APIENTRY *PFNglGetProgramBinaryOES)(GLuint, GLsizei, GLsizei*, GLenum*, void*);
+    typedef void (GL_APIENTRY *PFNglProgramBinaryOES)(GLuint, GLenum, const void*, GLsizei);
+    void enableBinaryCache(const char* cacheDir, const char* gpuId,
+                           PFNglGetProgramBinaryOES getProgramBinary,
+                           PFNglProgramBinaryOES programBinary);
+
 private:
     // Compile a shader from source. Returns 0 on failure.
     GLuint compileShader(GLenum type, const char* source);
@@ -116,9 +124,21 @@ private:
     // Cache uniform locations for a program
     void cacheUniforms(EOGLES2ShaderProgram prog);
 
+    // Shader binary cache helpers
+    GLuint loadCachedBinary(const char* vsSrc, const char* fsSrc);
+    void saveBinaryToCache(GLuint program, const char* vsSrc, const char* fsSrc);
+    uint32_t hashSources(const char* vsSrc, const char* fsSrc);
+
     GLuint programs_[EOGLES2SP_COUNT];
     SOGLES2ProgramUniforms uniforms_[EOGLES2SP_COUNT];
     EOGLES2ShaderProgram activeProgram_;
+
+    // Binary cache state
+    bool cacheEnabled_;
+    char cacheDir_[256];
+    char gpuId_[256];
+    PFNglGetProgramBinaryOES glGetProgramBinaryOES_;
+    PFNglProgramBinaryOES glProgramBinaryOES_;
 };
 
 } // end namespace video

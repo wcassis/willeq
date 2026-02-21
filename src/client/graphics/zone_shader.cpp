@@ -97,8 +97,8 @@ void main() {
 }
 )";
 
-// GLSL ES 1.00 fragment shader — alpha-test
-static const char* FRAGMENT_SHADER_ALPHA_SRC = R"(
+// GLSL ES 1.00 fragment shader — alpha-test (base)
+static const char* FRAGMENT_SHADER_ALPHA_SRC_BASE = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
@@ -111,6 +111,28 @@ varying float vFogFactor;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// GLSL ES 1.00 fragment shader — alpha-test (derivatives variant)
+// Clamp threshold to [0.1, 0.5] so binary alpha masks still discard transparent pixels.
+static const char* FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
+    if (texColor.a < threshold) discard;
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
@@ -196,8 +218,8 @@ void main() {
 }
 )";
 
-// GLSL ES 1.00 atlas fragment shader — alpha (dual ETC1)
-static const char* ATLAS_FRAGMENT_SHADER_ALPHA_SRC = R"(
+// GLSL ES 1.00 atlas fragment shader — alpha (dual ETC1, base)
+static const char* ATLAS_FRAGMENT_SHADER_ALPHA_SRC_BASE = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
@@ -211,6 +233,31 @@ varying float vFogFactor;
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
+
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// GLSL ES 1.00 atlas fragment shader — alpha (dual ETC1, derivatives variant)
+// Clamp threshold to [0.1, 0.5] so ETC1-compressed binary alpha still discards.
+static const char* ATLAS_FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
+uniform vec4 uFogColor;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
+    if (alpha < threshold) discard;
 
     vec4 texColor = texture2D(uTexture, vTexCoord);
     vec4 lit = texColor * vColor;
@@ -620,6 +667,15 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
         return;
     }
 
+#ifdef EQT_HAS_GLES2
+    // Lima driver's fwidth() returns degenerate values — use base alpha shaders.
+    const char* fragmentAlphaSrc = FRAGMENT_SHADER_ALPHA_SRC_BASE;
+    const char* atlasFragmentAlphaSrc = ATLAS_FRAGMENT_SHADER_ALPHA_SRC_BASE;
+#else
+    const char* fragmentAlphaSrc = FRAGMENT_SHADER_ALPHA_SRC;
+    const char* atlasFragmentAlphaSrc = ATLAS_FRAGMENT_SHADER_ALPHA_SRC;
+#endif
+
     // Create callback (shared between both material types)
     // Irrlicht takes ownership via reference counting
     ShaderCallback* callback = new ShaderCallback(this);
@@ -640,7 +696,7 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
     // Create alpha-test material type
     materialAlphaTest_ = gpu->addHighLevelShaderMaterial(
         VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
-        FRAGMENT_SHADER_ALPHA_SRC, "main", irr::video::EPST_PS_1_1,
+        fragmentAlphaSrc, "main", irr::video::EPST_PS_1_1,
         callback,
         irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
 
@@ -671,7 +727,7 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
         AtlasShaderCallback* atlasAlphaCallback = new AtlasShaderCallback(this, true);
         materialAtlasAlpha_ = gpu->addHighLevelShaderMaterial(
             ATLAS_VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
-            ATLAS_FRAGMENT_SHADER_ALPHA_SRC, "main", irr::video::EPST_PS_1_1,
+            atlasFragmentAlphaSrc, "main", irr::video::EPST_PS_1_1,
             atlasAlphaCallback,
             irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
         atlasAlphaCallback->drop();

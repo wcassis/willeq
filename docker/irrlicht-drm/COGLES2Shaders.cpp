@@ -2,8 +2,10 @@
 
 #include "COGLES2Shaders.h"
 #include "os.h"
+#include <GLES2/gl2ext.h>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 
 namespace irr
 {
@@ -143,7 +145,7 @@ void main() {
 // Shader source: AlphaTest3D (Phase 3) — same as Solid3D + discard
 // ============================================================================
 
-static const char* ALPHA3D_FS = R"(
+static const char* ALPHA3D_FS_BASE = R"(
 precision mediump float;
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
@@ -153,6 +155,26 @@ varying float vFogFactor;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// Derivatives variant — adaptive alpha threshold for smoother vegetation edges.
+// Clamp threshold to [0.1, 0.5] so binary alpha masks (0/1 with no gradient) still
+// discard transparent pixels even when fwidth() returns ~1.0 at hard edges.
+static const char* ALPHA3D_FS_DERIVATIVES = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
+    if (texColor.a < threshold) discard;
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
@@ -225,7 +247,7 @@ void main() {
 // Shader source: AtlasAlpha3D (Phase 4) — dual sample RGB + alpha pages
 // ============================================================================
 
-static const char* ATLAS_ALPHA3D_FS = R"(
+static const char* ATLAS_ALPHA3D_FS_BASE = R"(
 precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
@@ -242,16 +264,43 @@ void main() {
 }
 )";
 
+// Derivatives variant — adaptive alpha threshold for smoother vegetation edges.
+// Clamp threshold to [0.1, 0.5] so ETC1-compressed binary alpha still discards
+// transparent pixels even when fwidth() returns ~1.0 at hard edges.
+static const char* ATLAS_ALPHA3D_FS_DERIVATIVES = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
+    if (alpha < threshold) discard;
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
 // ============================================================================
 // COGLES2ShaderManager implementation
 // ============================================================================
 
 COGLES2ShaderManager::COGLES2ShaderManager()
-    : activeProgram_(EOGLES2SP_COLOR2D)
+    : activeProgram_(EOGLES2SP_COLOR2D),
+      cacheEnabled_(false),
+      glGetProgramBinaryOES_(nullptr),
+      glProgramBinaryOES_(nullptr)
 {
     memset(programs_, 0, sizeof(programs_));
     for (int i = 0; i < EOGLES2SP_COUNT; i++)
         uniforms_[i].invalidate();
+    cacheDir_[0] = '\0';
+    gpuId_[0] = '\0';
 }
 
 COGLES2ShaderManager::~COGLES2ShaderManager()
@@ -332,6 +381,13 @@ GLuint COGLES2ShaderManager::linkProgram(GLuint vs, GLuint fs)
 
 GLuint COGLES2ShaderManager::buildProgram(const char* vsSrc, const char* fsSrc)
 {
+    // Try loading from binary cache first
+    if (cacheEnabled_) {
+        GLuint cached = loadCachedBinary(vsSrc, fsSrc);
+        if (cached)
+            return cached;
+    }
+
     GLuint vs = compileShader(GL_VERTEX_SHADER, vsSrc);
     if (!vs)
         return 0;
@@ -348,7 +404,143 @@ GLuint COGLES2ShaderManager::buildProgram(const char* vsSrc, const char* fsSrc)
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    // Save to binary cache for next startup
+    if (prog && cacheEnabled_)
+        saveBinaryToCache(prog, vsSrc, fsSrc);
+
     return prog;
+}
+
+// ============================================================================
+// Shader binary cache
+// ============================================================================
+
+void COGLES2ShaderManager::enableBinaryCache(const char* cacheDir, const char* gpuId,
+                                              PFNglGetProgramBinaryOES getProgramBinary,
+                                              PFNglProgramBinaryOES programBinary)
+{
+    if (!cacheDir || !gpuId || !getProgramBinary || !programBinary)
+        return;
+
+    snprintf(cacheDir_, sizeof(cacheDir_), "%s", cacheDir);
+    snprintf(gpuId_, sizeof(gpuId_), "%s", gpuId);
+    glGetProgramBinaryOES_ = getProgramBinary;
+    glProgramBinaryOES_ = programBinary;
+    cacheEnabled_ = true;
+
+    // Create cache directory if needed
+    mkdir(cacheDir_, 0755);
+
+    char msg[320];
+    snprintf(msg, sizeof(msg), "GLES2: Shader binary cache enabled (%s)", cacheDir);
+    os::Printer::log(msg, ELL_INFORMATION);
+}
+
+uint32_t COGLES2ShaderManager::hashSources(const char* vsSrc, const char* fsSrc)
+{
+    // FNV-1a 32-bit hash of gpuId + vsSrc + fsSrc
+    uint32_t hash = 2166136261u;
+    auto feedString = [&](const char* s) {
+        while (*s) {
+            hash ^= (uint8_t)*s++;
+            hash *= 16777619u;
+        }
+    };
+    feedString(gpuId_);
+    feedString(vsSrc);
+    feedString(fsSrc);
+    return hash;
+}
+
+GLuint COGLES2ShaderManager::loadCachedBinary(const char* vsSrc, const char* fsSrc)
+{
+    uint32_t hash = hashSources(vsSrc, fsSrc);
+    char path[320];
+    snprintf(path, sizeof(path), "%s/%08x.bin", cacheDir_, hash);
+
+    FILE* f = fopen(path, "rb");
+    if (!f)
+        return 0;
+
+    // Read format (4 bytes) + binary data
+    GLenum format = 0;
+    if (fread(&format, sizeof(format), 1, f) != 1) {
+        fclose(f);
+        return 0;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long fileSize = ftell(f);
+    fseek(f, sizeof(format), SEEK_SET);
+
+    GLsizei binaryLen = (GLsizei)(fileSize - sizeof(format));
+    if (binaryLen <= 0) {
+        fclose(f);
+        return 0;
+    }
+
+    uint8_t* binary = new uint8_t[binaryLen];
+    if (fread(binary, 1, binaryLen, f) != (size_t)binaryLen) {
+        delete[] binary;
+        fclose(f);
+        return 0;
+    }
+    fclose(f);
+
+    // Create program and load binary
+    GLuint prog = glCreateProgram();
+    if (!prog) {
+        delete[] binary;
+        return 0;
+    }
+
+    glProgramBinaryOES_(prog, format, binary, binaryLen);
+    delete[] binary;
+
+    GLint linked = 0;
+    glGetProgramiv(prog, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        glDeleteProgram(prog);
+        // Cache hit but binary invalid — stale cache, will recompile
+        return 0;
+    }
+
+    char msg[384];
+    snprintf(msg, sizeof(msg), "GLES2: Shader loaded from cache (%s)", path);
+    os::Printer::log(msg, ELL_INFORMATION);
+
+    return prog;
+}
+
+void COGLES2ShaderManager::saveBinaryToCache(GLuint program, const char* vsSrc, const char* fsSrc)
+{
+    GLint binaryLen = 0;
+    glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH_OES, &binaryLen);
+    if (binaryLen <= 0)
+        return;
+
+    uint8_t* binary = new uint8_t[binaryLen];
+    GLenum format = 0;
+    GLsizei actualLen = 0;
+    glGetProgramBinaryOES_(program, binaryLen, &actualLen, &format, binary);
+
+    if (actualLen <= 0) {
+        delete[] binary;
+        return;
+    }
+
+    uint32_t hash = hashSources(vsSrc, fsSrc);
+    char path[320];
+    snprintf(path, sizeof(path), "%s/%08x.bin", cacheDir_, hash);
+
+    FILE* f = fopen(path, "wb");
+    if (f) {
+        fwrite(&format, sizeof(format), 1, f);
+        fwrite(binary, 1, actualLen, f);
+        fclose(f);
+    }
+
+    delete[] binary;
 }
 
 void COGLES2ShaderManager::cacheUniforms(EOGLES2ShaderProgram prog)
@@ -374,8 +566,15 @@ void COGLES2ShaderManager::cacheUniforms(EOGLES2ShaderProgram prog)
     u.uColor = glGetUniformLocation(p, "uColor");
 }
 
-bool COGLES2ShaderManager::init()
+bool COGLES2ShaderManager::init(bool hasStandardDerivatives)
 {
+    // Select alpha-test FS variants based on extension availability
+    const char* alpha3dFS = hasStandardDerivatives ? ALPHA3D_FS_DERIVATIVES : ALPHA3D_FS_BASE;
+    const char* atlasAlpha3dFS = hasStandardDerivatives ? ATLAS_ALPHA3D_FS_DERIVATIVES : ATLAS_ALPHA3D_FS_BASE;
+
+    if (hasStandardDerivatives)
+        os::Printer::log("GLES2: Using fwidth() alpha threshold (standard_derivatives)", ELL_INFORMATION);
+
     // Phase 1: Color2D (required for loading screen)
     programs_[EOGLES2SP_COLOR2D] = buildProgram(COLOR2D_VS, COLOR2D_FS);
     if (programs_[EOGLES2SP_COLOR2D]) {
@@ -404,7 +603,7 @@ bool COGLES2ShaderManager::init()
         os::Printer::log("GLES2: Solid3D shader FAILED (3D rendering disabled)", ELL_WARNING);
     }
 
-    programs_[EOGLES2SP_ALPHA3D] = buildProgram(SOLID3D_VS, ALPHA3D_FS);
+    programs_[EOGLES2SP_ALPHA3D] = buildProgram(SOLID3D_VS, alpha3dFS);
     if (programs_[EOGLES2SP_ALPHA3D]) {
         cacheUniforms(EOGLES2SP_ALPHA3D);
         os::Printer::log("GLES2: AlphaTest3D shader compiled", ELL_INFORMATION);
@@ -421,7 +620,7 @@ bool COGLES2ShaderManager::init()
         os::Printer::log("GLES2: AtlasSolid3D shader FAILED", ELL_WARNING);
     }
 
-    programs_[EOGLES2SP_ATLAS_ALPHA3D] = buildProgram(ATLAS_SOLID3D_VS, ATLAS_ALPHA3D_FS);
+    programs_[EOGLES2SP_ATLAS_ALPHA3D] = buildProgram(ATLAS_SOLID3D_VS, atlasAlpha3dFS);
     if (programs_[EOGLES2SP_ATLAS_ALPHA3D]) {
         cacheUniforms(EOGLES2SP_ATLAS_ALPHA3D);
         os::Printer::log("GLES2: AtlasAlpha3D shader compiled", ELL_INFORMATION);

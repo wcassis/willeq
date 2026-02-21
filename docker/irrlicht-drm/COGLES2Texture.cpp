@@ -253,22 +253,69 @@ void COGLES2Texture::createRenderTarget(const core::dimension2d<u32>& size)
     // Create depth renderbuffer
     glGenRenderbuffers(1, &DepthBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, DepthBuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16,
-                          size.Width, size.Height);
+
+    // Try MSAA via GL_EXT_multisampled_render_to_texture (free on tile-based GPUs)
+    const SOGLES2Extensions& ext = Driver->getExtensions();
+    bool useMSAA = false;
+    GLsizei samples = 0;
+
+    if (ext.hasMultisampledRenderToTexture) {
+        samples = ext.maxSamples < 4 ? ext.maxSamples : 4;
+        if (samples > 0) {
+            ext.glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, samples,
+                GL_DEPTH_COMPONENT16, size.Width, size.Height);
+            useMSAA = true;
+        }
+    }
+
+    if (!useMSAA) {
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16,
+                              size.Width, size.Height);
+    }
 
     // Create FBO
     glGenFramebuffers(1, &FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, FBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           GL_TEXTURE_2D, TextureName, 0);
+
+    if (useMSAA) {
+        ext.glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+            GL_TEXTURE_2D, TextureName, 0, samples);
+    } else {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, TextureName, 0);
+    }
+
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                               GL_RENDERBUFFER, DepthBuffer);
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "GLES2: FBO incomplete (status=0x%04x)", status);
-        os::Printer::log(msg, ELL_ERROR);
+        if (useMSAA) {
+            // MSAA FBO failed — fall back to non-MSAA
+            char msg[128];
+            snprintf(msg, sizeof(msg), "GLES2: MSAA FBO incomplete (0x%04x), falling back", status);
+            os::Printer::log(msg, ELL_WARNING);
+
+            // Recreate depth buffer without MSAA
+            glBindRenderbuffer(GL_RENDERBUFFER, DepthBuffer);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16,
+                                  size.Width, size.Height);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_2D, TextureName, 0);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                      GL_RENDERBUFFER, DepthBuffer);
+
+            status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                char msg2[128];
+                snprintf(msg2, sizeof(msg2), "GLES2: FBO incomplete (status=0x%04x)", status);
+                os::Printer::log(msg2, ELL_ERROR);
+            }
+        } else {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "GLES2: FBO incomplete (status=0x%04x)", status);
+            os::Printer::log(msg, ELL_ERROR);
+        }
     }
 
     // Restore default FBO

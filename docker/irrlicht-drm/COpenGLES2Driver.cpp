@@ -11,6 +11,8 @@
 #include "CImage.h"
 
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+#include <EGL/egl.h>
 #include <cstdio>
 #include <cstring>
 
@@ -38,6 +40,7 @@ COpenGLES2Driver::COpenGLES2Driver(const SIrrlichtCreationParameters& params,
     CurrentRenderTargetSize = ScreenSize;
 
     state_.reset();
+    extensions_.reset();
 
     for (u32 i = 0; i < ETS_COUNT; i++)
         Matrices[i].makeIdentity();
@@ -63,18 +66,108 @@ bool COpenGLES2Driver::initDriver()
     const char* version = (const char*)glGetString(GL_VERSION);
     const char* vendor = (const char*)glGetString(GL_VENDOR);
 
-    char msg[256];
+    char msg[512];
     snprintf(msg, sizeof(msg), "GLES2 Driver: %s (%s) [%s]",
              renderer ? renderer : "?", vendor ? vendor : "?", version ? version : "?");
     os::Printer::log(msg, ELL_INFORMATION);
+
+    // ---- Extension detection ----
+    const char* extStr = (const char*)glGetString(GL_EXTENSIONS);
+    if (extStr) {
+        // Word-boundary-safe extension check: match " EXT " or start/end of string
+        auto hasExtension = [&](const char* name) -> bool {
+            size_t nameLen = strlen(name);
+            const char* pos = extStr;
+            while ((pos = strstr(pos, name)) != nullptr) {
+                // Check word boundary before
+                if (pos != extStr && pos[-1] != ' ') {
+                    pos += nameLen;
+                    continue;
+                }
+                // Check word boundary after
+                char after = pos[nameLen];
+                if (after == '\0' || after == ' ')
+                    return true;
+                pos += nameLen;
+            }
+            return false;
+        };
+
+        // GL_EXT_multisampled_render_to_texture
+        if (hasExtension("GL_EXT_multisampled_render_to_texture")) {
+            extensions_.glRenderbufferStorageMultisampleEXT =
+                (SOGLES2Extensions::PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXT)
+                eglGetProcAddress("glRenderbufferStorageMultisampleEXT");
+            extensions_.glFramebufferTexture2DMultisampleEXT =
+                (SOGLES2Extensions::PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXT)
+                eglGetProcAddress("glFramebufferTexture2DMultisampleEXT");
+            if (extensions_.glRenderbufferStorageMultisampleEXT &&
+                extensions_.glFramebufferTexture2DMultisampleEXT) {
+                glGetIntegerv(GL_MAX_SAMPLES_EXT, &extensions_.maxSamples);
+                extensions_.hasMultisampledRenderToTexture = true;
+                snprintf(msg, sizeof(msg), "GLES2: GL_EXT_multisampled_render_to_texture (max %d samples)",
+                         extensions_.maxSamples);
+                os::Printer::log(msg, ELL_INFORMATION);
+            }
+        }
+
+        // GL_EXT_discard_framebuffer
+        if (hasExtension("GL_EXT_discard_framebuffer")) {
+            extensions_.glDiscardFramebufferEXT =
+                (SOGLES2Extensions::PFNGLDISCARDFRAMEBUFFEREXT)
+                eglGetProcAddress("glDiscardFramebufferEXT");
+            if (extensions_.glDiscardFramebufferEXT) {
+                extensions_.hasDiscardFramebuffer = true;
+                os::Printer::log("GLES2: GL_EXT_discard_framebuffer", ELL_INFORMATION);
+            }
+        }
+
+        // GL_OES_standard_derivatives
+        if (hasExtension("GL_OES_standard_derivatives")) {
+            extensions_.hasStandardDerivatives = true;
+            os::Printer::log("GLES2: GL_OES_standard_derivatives", ELL_INFORMATION);
+        }
+
+        // GL_OES_get_program_binary
+        if (hasExtension("GL_OES_get_program_binary")) {
+            extensions_.glGetProgramBinaryOES =
+                (SOGLES2Extensions::PFNGLGETPROGRAMBINARYOES)
+                eglGetProcAddress("glGetProgramBinaryOES");
+            extensions_.glProgramBinaryOES =
+                (SOGLES2Extensions::PFNGLPROGRAMBINARYOES)
+                eglGetProcAddress("glProgramBinaryOES");
+            if (extensions_.glGetProgramBinaryOES && extensions_.glProgramBinaryOES) {
+                glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS_OES, &extensions_.numBinaryFormats);
+                if (extensions_.numBinaryFormats > 0) {
+                    extensions_.hasProgramBinary = true;
+                    snprintf(msg, sizeof(msg), "GLES2: GL_OES_get_program_binary (%d formats)",
+                             extensions_.numBinaryFormats);
+                    os::Printer::log(msg, ELL_INFORMATION);
+                }
+            }
+        }
+    }
 
     // Get default FBO
     GLint fbo = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
     DefaultFBO = (GLuint)fbo;
 
+    // Enable shader binary cache if extension available
+    if (extensions_.hasProgramBinary) {
+        char gpuId[512];
+        snprintf(gpuId, sizeof(gpuId), "%s|%s",
+                 version ? version : "?", renderer ? renderer : "?");
+        shaderManager_.enableBinaryCache("config/shader_cache", gpuId,
+                                          extensions_.glGetProgramBinaryOES,
+                                          extensions_.glProgramBinaryOES);
+    }
+
     // Initialize shaders
-    if (!shaderManager_.init()) {
+    // Note: GL_OES_standard_derivatives detected but NOT used for alpha threshold.
+    // Lima driver's fwidth() returns degenerate values (likely NaN) that propagate
+    // through clamp() and break alpha-test discard entirely.
+    if (!shaderManager_.init(false)) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
         return false;
     }
@@ -154,6 +247,12 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
 bool COpenGLES2Driver::endScene()
 {
     CNullDriver::endScene();
+
+    // Discard depth/stencil tiles before present (bandwidth saving on tile-based GPUs)
+    if (extensions_.hasDiscardFramebuffer) {
+        const GLenum attachments[] = { GL_DEPTH_EXT, GL_STENCIL_EXT };
+        extensions_.glDiscardFramebufferEXT(GL_FRAMEBUFFER, 2, attachments);
+    }
 
     // Present via device (eglSwapBuffers + DRM page flip)
     Device->present(0, 0, 0);
@@ -1024,6 +1123,11 @@ bool COpenGLES2Driver::setRenderTarget(video::ITexture* texture,
         CurrentRenderTargetSize = texture->getOriginalSize();
         setViewPort(core::rect<s32>(0, 0, CurrentRenderTargetSize.Width, CurrentRenderTargetSize.Height));
     } else {
+        // Discard FBO depth before unbinding (skip tile writeback for depth we no longer need)
+        if (CurrentRenderTarget && extensions_.hasDiscardFramebuffer) {
+            const GLenum attachments[] = { GL_DEPTH_ATTACHMENT };
+            extensions_.glDiscardFramebufferEXT(GL_FRAMEBUFFER, 1, attachments);
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, DefaultFBO);
         CurrentRenderTarget = nullptr;
         CurrentRenderTargetSize = ScreenSize;

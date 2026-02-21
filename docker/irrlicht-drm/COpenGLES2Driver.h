@@ -80,6 +80,52 @@ struct SOGLES2State
     }
 };
 
+// GLES2 extension support (Mali 400 tile-based architecture optimizations)
+struct SOGLES2Extensions
+{
+    // GL_EXT_multisampled_render_to_texture — free MSAA at tile level
+    bool hasMultisampledRenderToTexture;
+    typedef void (GL_APIENTRY *PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXT)(GLenum, GLsizei, GLenum, GLsizei, GLsizei);
+    typedef void (GL_APIENTRY *PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXT)(GLenum, GLenum, GLenum, GLuint, GLint, GLsizei);
+    PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXT glRenderbufferStorageMultisampleEXT;
+    PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXT glFramebufferTexture2DMultisampleEXT;
+    GLint maxSamples;
+
+    // GL_EXT_discard_framebuffer — skip depth/stencil tile writeback
+    bool hasDiscardFramebuffer;
+    typedef void (GL_APIENTRY *PFNGLDISCARDFRAMEBUFFEREXT)(GLenum, GLsizei, const GLenum*);
+    PFNGLDISCARDFRAMEBUFFEREXT glDiscardFramebufferEXT;
+
+    // GL_OES_standard_derivatives — fwidth() in fragment shaders
+    bool hasStandardDerivatives;
+
+    // GL_OES_get_program_binary — shader binary caching
+    bool hasProgramBinary;
+    typedef void (GL_APIENTRY *PFNGLGETPROGRAMBINARYOES)(GLuint, GLsizei, GLsizei*, GLenum*, void*);
+    typedef void (GL_APIENTRY *PFNGLPROGRAMBINARYOES)(GLuint, GLenum, const void*, GLsizei);
+    PFNGLGETPROGRAMBINARYOES glGetProgramBinaryOES;
+    PFNGLPROGRAMBINARYOES glProgramBinaryOES;
+    GLint numBinaryFormats;
+
+    void reset()
+    {
+        hasMultisampledRenderToTexture = false;
+        glRenderbufferStorageMultisampleEXT = nullptr;
+        glFramebufferTexture2DMultisampleEXT = nullptr;
+        maxSamples = 0;
+
+        hasDiscardFramebuffer = false;
+        glDiscardFramebufferEXT = nullptr;
+
+        hasStandardDerivatives = false;
+
+        hasProgramBinary = false;
+        glGetProgramBinaryOES = nullptr;
+        glProgramBinaryOES = nullptr;
+        numBinaryFormats = 0;
+    }
+};
+
 // Custom shader material renderer info (for IGPUProgrammingServices)
 struct SOGLES2CustomShader
 {
@@ -245,6 +291,9 @@ public:
     // Access to the shader manager (for COGLES2Texture FBO operations, etc.)
     COGLES2ShaderManager& getShaderManager() { return shaderManager_; }
 
+    // Access to detected GLES2 extensions
+    const SOGLES2Extensions& getExtensions() const { return extensions_; }
+
     // Viewport
     virtual void setViewPort(const core::rect<s32>& area);
 
@@ -283,6 +332,7 @@ private:
     CIrrDeviceFB* Device;
     COGLES2ShaderManager shaderManager_;
     SOGLES2State state_;
+    SOGLES2Extensions extensions_;
 
     // Transform matrices
     core::matrix4 Matrices[ETS_COUNT];
