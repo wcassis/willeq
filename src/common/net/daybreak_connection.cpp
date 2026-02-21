@@ -1,5 +1,4 @@
 #include "common/net/daybreak_connection.h"
-#include "common/event/event_loop.h"
 #include "common/util/data_verification.h"
 #include "common/net/crc32.h"
 #include "common/logging.h"
@@ -11,201 +10,69 @@
 constexpr size_t MAX_CLIENT_RECV_PACKETS_PER_WINDOW = 300;
 constexpr size_t MAX_CLIENT_RECV_BYTES_PER_WINDOW   = 140 * 1024;
 
-// buffer pools
-SendBufferPool send_buffer_pool;
+// Send buffer for InternalSend (replaces libuv pool)
+static constexpr size_t SEND_BUFFER_SIZE = 4096;
 
 // Static debug level definition
 int EQ::Net::DaybreakConnection::s_debug_level = 0;
 
-EQ::Net::DaybreakConnectionManager::DaybreakConnectionManager()
+EQ::Net::DaybreakConnectionManager::DaybreakConnectionManager(std::unique_ptr<UdpTransport> transport)
+	: m_transport(std::move(transport))
 {
-	m_attached = nullptr;
-	memset(&m_timer, 0, sizeof(uv_timer_t));
-	memset(&m_socket, 0, sizeof(uv_udp_t));
-
-	Attach(EQ::EventLoop::Get().Handle());
 }
 
-EQ::Net::DaybreakConnectionManager::DaybreakConnectionManager(const DaybreakConnectionManagerOptions &opts)
+EQ::Net::DaybreakConnectionManager::DaybreakConnectionManager(const DaybreakConnectionManagerOptions &opts, std::unique_ptr<UdpTransport> transport)
+	: m_transport(std::move(transport))
 {
-	m_attached = nullptr;
 	m_options = opts;
-	memset(&m_timer, 0, sizeof(uv_timer_t));
-	memset(&m_socket, 0, sizeof(uv_udp_t));
-
-	Attach(EQ::EventLoop::Get().Handle());
 }
 
 EQ::Net::DaybreakConnectionManager::~DaybreakConnectionManager()
 {
-	Detach();
-}
-
-void EQ::Net::DaybreakConnectionManager::Attach(uv_loop_t *loop)
-{
-	if (!m_attached) {
-		static int manager_counter = 0;
-		int manager_id = manager_counter++;
-		LOG_TRACE(MOD_NET, "Attach() called, manager_id={} manager_ptr={} loop={} loop_alive={}", manager_id, (void*)this, (void*)loop, uv_loop_alive(loop));
-
-		int timer_init_result = uv_timer_init(loop, &m_timer);
-		LOG_TRACE(MOD_NET, "Attach() timer_init={}", timer_init_result);
-
-		m_timer.data = this;
-
-		auto update_rate = (uint64_t)(1000.0 / m_options.tic_rate_hertz);
-
-		uv_timer_start(&m_timer, [](uv_timer_t *handle) {
-			static int timer_tick_counter = 0;
-			timer_tick_counter++;
-
-			DaybreakConnectionManager *c = (DaybreakConnectionManager*)handle->data;
-			if (!c) {
-				LOG_ERROR(MOD_NET, "Timer callback: manager is null!");
-				return;
-			}
-
-			// Log periodically
-			if (timer_tick_counter % 60 == 0) {
-				LOG_TRACE(MOD_NET, "Timer tick {} connections={}", timer_tick_counter, c->m_connections.size());
-			}
-
-			c->UpdateDataBudget();
-			c->Process();
-			c->ProcessResend();
-		}, update_rate, update_rate);
-
-		int udp_init_result = uv_udp_init(loop, &m_socket);
-		LOG_TRACE(MOD_NET, "Attach() udp_init={}", udp_init_result);
-
-		m_socket.data = this;
-		struct sockaddr_in recv_addr;
-		uv_ip4_addr("0.0.0.0", m_options.port, &recv_addr);
-		int rc = uv_udp_bind(&m_socket, (const struct sockaddr *)&recv_addr, UV_UDP_REUSEADDR);
-		LOG_TRACE(MOD_NET, "Attach() udp_bind={} port={}", rc, m_options.port);
-
-		// Increase socket receive buffer to handle packet bursts (1MB)
-		// Use SO_RCVBUFFORCE to bypass kernel limit (requires CAP_NET_ADMIN)
-		uv_os_fd_t fd;
-		uv_fileno((uv_handle_t*)&m_socket, &fd);
-		int rcvbuf_size = 512 * 1024;
-		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &rcvbuf_size, sizeof(rcvbuf_size)) < 0) {
-			// Fall back to regular SO_RCVBUF with kernel max
-			rcvbuf_size = 212992;
-			if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_size, sizeof(rcvbuf_size)) < 0) {
-				LOG_WARN(MOD_NET, "Attach() failed to set SO_RCVBUF: {}", strerror(errno));
-			}
-		}
-		socklen_t optlen = sizeof(rcvbuf_size);
-		getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_size, &optlen);
-		LOG_TRACE(MOD_NET, "Attach() socket_fd={} rcvbuf_size={}", fd, rcvbuf_size);
-
-		rc = uv_udp_recv_start(
-			&m_socket,
-			[](uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-				static uint64_t alloc_counter = 0;
-				alloc_counter++;
-				if (alloc_counter % 100 == 1) {
-					LOG_TRACE(MOD_NET, "ALLOC_CB[{}] handle={} suggested_size={}", alloc_counter, (void*)handle, suggested_size);
-				}
-
-				if (suggested_size > 65536) {
-					buf->base = new char[suggested_size];
-					buf->len  = suggested_size;
-					return;
-				}
-
-				static thread_local char temp_buf[65536];
-				buf->base = temp_buf;
-				buf->len  = 65536;
-			},
-			[](uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags) {
-			DaybreakConnectionManager *c = (DaybreakConnectionManager*)handle->data;
-			if (nread < 0 || addr == nullptr) {
-				return;
-			}
-
-			char endpoint[16];
-			uv_ip4_name((const sockaddr_in*)addr, endpoint, 16);
-			auto port = ntohs(((const sockaddr_in*)addr)->sin_port);
-
-			c->ProcessPacket(endpoint, port, buf->base, nread);
-
-			if (buf->len > 65536) {
-				delete[] buf->base;
-			}
-		});
-
-		LOG_TRACE(MOD_NET, "Attach() udp_recv_start={}", rc);
-
-		// Initialize async handle for thread-safe packet queueing
-		uv_async_init(loop, &m_async, [](uv_async_t* handle) {
-			auto* mgr = static_cast<DaybreakConnectionManager*>(handle->data);
-			mgr->ProcessAsyncQueue();
-		});
-		m_async.data = this;
-		m_async_initialized = true;
-
-		LOG_INFO(MOD_NET, "Attach() complete, loop_alive={}", uv_loop_alive(loop));
-
-		m_attached = loop;
+	if (m_transport) {
+		m_transport->close();
 	}
 }
 
-void EQ::Net::DaybreakConnectionManager::Detach()
+void EQ::Net::DaybreakConnectionManager::Tick()
 {
-	if (m_attached) {
-		LOG_TRACE(MOD_NET, "Detach() called, closing handles properly...");
+	// 1. Drain all pending datagrams from the transport
+	if (m_transport && m_transport->is_open()) {
+		for (;;) {
+			int n = m_transport->recv(m_recv_buf, sizeof(m_recv_buf));
+			if (n <= 0) break;
 
-		uv_loop_t* loop = m_attached;
-		int pending_closes = 0;
-
-		// Close callback that decrements the pending count
-		auto close_cb = [](uv_handle_t* handle) {
-			int* pending = static_cast<int*>(handle->data);
-			if (pending) {
-				(*pending)--;
+			// With a connected UDP socket we know the peer; use the first connection's endpoint.
+			if (!m_connections.empty()) {
+				auto& conn = m_connections.begin()->second;
+				ProcessPacket(conn->RemoteEndpoint(), conn->RemotePort(),
+					reinterpret_cast<const char*>(m_recv_buf), static_cast<size_t>(n));
 			}
-		};
-
-		// Stop timer first, then close it
-		uv_timer_stop(&m_timer);
-		if (!uv_is_closing(reinterpret_cast<uv_handle_t*>(&m_timer))) {
-			m_timer.data = &pending_closes;
-			pending_closes++;
-			uv_close(reinterpret_cast<uv_handle_t*>(&m_timer), close_cb);
 		}
-
-		// Close async handle
-		if (m_async_initialized && !uv_is_closing(reinterpret_cast<uv_handle_t*>(&m_async))) {
-			m_async.data = &pending_closes;
-			pending_closes++;
-			uv_close(reinterpret_cast<uv_handle_t*>(&m_async), close_cb);
-			m_async_initialized = false;
-		}
-
-		// Stop UDP recv first, then close it
-		uv_udp_recv_stop(&m_socket);
-		if (!uv_is_closing(reinterpret_cast<uv_handle_t*>(&m_socket))) {
-			m_socket.data = &pending_closes;
-			pending_closes++;
-			uv_close(reinterpret_cast<uv_handle_t*>(&m_socket), close_cb);
-		}
-
-		// Run the event loop until all closes complete
-		// This ensures handles are fully closed before we return
-		while (pending_closes > 0 && uv_loop_alive(loop)) {
-			uv_run(loop, UV_RUN_ONCE);
-		}
-
-		LOG_TRACE(MOD_NET, "Detach() handles closed properly");
-
-		m_attached = nullptr;
 	}
+
+	// 2. Process thread-safe async queue
+	ProcessAsyncQueue();
+
+	// 3. Budget, process, resend
+	UpdateDataBudget();
+	Process();
+	ProcessResend();
 }
 
 void EQ::Net::DaybreakConnectionManager::Connect(const std::string &addr, int port)
 {
+	// Open transport if not already connected to this destination
+	if (m_transport && !m_transport->is_open()) {
+		if (!m_transport->open(addr, port)) {
+			LOG_ERROR(MOD_NET, "Failed to open transport to {}:{}", addr, port);
+			if (m_on_error_message) {
+				m_on_error_message(fmt::format("Failed to open UDP transport to {}:{}", addr, port));
+			}
+			return;
+		}
+	}
+
 	auto connection = std::shared_ptr<DaybreakConnection>(new DaybreakConnection(this, addr, port));
 	connection->m_self = connection;
 
@@ -374,8 +241,7 @@ void EQ::Net::DaybreakConnectionManager::ProcessPacket(const std::string &endpoi
 				connection->ProcessPacket(p);
 			}
 			else if (data[1] != OP_OutOfSession) {
-				LOG_WARN(MOD_NET, "MGR_PROC[{}] no connection, not SessionRequest, sending disconnect", mgr_packet_counter);
-				SendDisconnect(endpoint, port);
+				LOG_WARN(MOD_NET, "MGR_PROC[{}] no connection, not SessionRequest, ignoring (connected socket)", mgr_packet_counter);
 			}
 			else {
 				LOG_TRACE(MOD_NET, "MGR_PROC[{}] OP_OutOfSession, ignoring", mgr_packet_counter);
@@ -401,47 +267,16 @@ std::shared_ptr<EQ::Net::DaybreakConnection> EQ::Net::DaybreakConnectionManager:
 	return nullptr;
 }
 
-void EQ::Net::DaybreakConnectionManager::SendDisconnect(const std::string &addr, int port)
-{
-	DaybreakDisconnect header;
-	header.zero = 0;
-	header.opcode = OP_OutOfSession;
-	header.connect_code = 0;
-
-	DynamicPacket out;
-	out.PutSerialize(0, header);
-
-	uv_udp_send_t *send_req = new uv_udp_send_t;
-	sockaddr_in send_addr;
-	uv_ip4_addr(addr.c_str(), port, &send_addr);
-	uv_buf_t send_buffers[1];
-
-	char *data = new char[out.Length()];
-	memcpy(data, out.Data(), out.Length());
-	send_buffers[0] = uv_buf_init(data, out.Length());
-	send_req->data = send_buffers[0].base;
-	int ret = uv_udp_send(send_req, &m_socket, send_buffers, 1, (sockaddr*)&send_addr,
-		[](uv_udp_send_t* req, int status) {
-		delete[](char*)req->data;
-		delete req;
-	});
-}
-
 void EQ::Net::DaybreakConnectionManager::QueuePacketAsync(
 	std::shared_ptr<DaybreakConnection> conn, Packet& p, int stream, bool reliable)
 {
-	{
-		std::lock_guard<std::mutex> lock(m_async_mutex);
-		PendingAsyncPacket pkt;
-		pkt.connection = conn;
-		pkt.packet.PutPacket(0, p);
-		pkt.stream = stream;
-		pkt.reliable = reliable;
-		m_async_queue.push_back(std::move(pkt));
-	}
-	if (m_async_initialized) {
-		uv_async_send(&m_async);
-	}
+	std::lock_guard<std::mutex> lock(m_async_mutex);
+	PendingAsyncPacket pkt;
+	pkt.connection = conn;
+	pkt.packet.PutPacket(0, p);
+	pkt.stream = stream;
+	pkt.reliable = reliable;
+	m_async_queue.push_back(std::move(pkt));
 }
 
 void EQ::Net::DaybreakConnectionManager::ProcessAsyncQueue()
@@ -1831,21 +1666,8 @@ void EQ::Net::DaybreakConnection::InternalSend(Packet &p) {
 
 	m_last_send = Clock::now();
 
-	auto pooled_opt = send_buffer_pool.acquire();
-	if (!pooled_opt) {
-		m_stats.dropped_datarate_packets++;
-		if (m_owner->m_on_error_message) {
-			m_owner->m_on_error_message("Failed to acquire send buffer from pool - pool exhausted");
-		}
-		return;
-	}
-
-	auto [send_req, data, ctx] = *pooled_opt;
-	ctx->pool = &send_buffer_pool;
-
-	sockaddr_in send_addr{};
-	uv_ip4_addr(m_endpoint.c_str(), m_port, &send_addr);
-	uv_buf_t send_buffers[1];
+	uint8_t send_buf[SEND_BUFFER_SIZE];
+	size_t send_len = 0;
 
 	if (PacketCanBeEncoded(p)) {
 		m_stats.bytes_before_encode += p.Length();
@@ -1876,27 +1698,25 @@ void EQ::Net::DaybreakConnection::InternalSend(Packet &p) {
 
 		AppendCRC(out);
 
-		if (out.Length() > UDP_BUFFER_SIZE) {
+		if (out.Length() > SEND_BUFFER_SIZE) {
 			if (m_owner->m_on_error_message) {
-				m_owner->m_on_error_message(fmt::format("Packet too large for send buffer: {} > {}", out.Length(), UDP_BUFFER_SIZE));
+				m_owner->m_on_error_message(fmt::format("Packet too large for send buffer: {} > {}", out.Length(), SEND_BUFFER_SIZE));
 			}
-			send_buffer_pool.release(ctx);
 			return;
 		}
 
-		memcpy(data, out.Data(), out.Length());
-		send_buffers[0] = uv_buf_init(data, out.Length());
+		memcpy(send_buf, out.Data(), out.Length());
+		send_len = out.Length();
 	} else {
-		if (p.Length() > UDP_BUFFER_SIZE) {
+		if (p.Length() > SEND_BUFFER_SIZE) {
 			if (m_owner->m_on_error_message) {
-				m_owner->m_on_error_message(fmt::format("Packet too large for send buffer: {} > {}", p.Length(), UDP_BUFFER_SIZE));
+				m_owner->m_on_error_message(fmt::format("Packet too large for send buffer: {} > {}", p.Length(), SEND_BUFFER_SIZE));
 			}
-			send_buffer_pool.release(ctx);
 			return;
 		}
 
-		memcpy(data, p.Data(), p.Length());
-		send_buffers[0] = uv_buf_init(data, p.Length());
+		memcpy(send_buf, p.Data(), p.Length());
+		send_len = p.Length();
 	}
 
 	m_stats.sent_bytes += p.Length();
@@ -1904,30 +1724,14 @@ void EQ::Net::DaybreakConnection::InternalSend(Packet &p) {
 
 	if (m_owner->m_options.simulated_out_packet_loss &&
 		m_owner->m_options.simulated_out_packet_loss >= m_owner->m_rand.Int(0, 100)) {
-		send_buffer_pool.release(ctx);
 		return;
 	}
 
-	int send_result = uv_udp_send(
-		send_req, &m_owner->m_socket, send_buffers, 1, (sockaddr *)&send_addr,
-		[](uv_udp_send_t *req, int status) {
-			auto *ctx = reinterpret_cast<EmbeddedContext *>(req->data);
-			if (!ctx) {
-				LOG_ERROR(MOD_NET, "send_req->data is null in callback!");
-				return;
-			}
-
-			if (status < 0) {
-				LOG_ERROR(MOD_NET, "uv_udp_send failed: {}", uv_strerror(status));
-			}
-
-			ctx->pool->release(ctx);
+	if (m_owner->m_transport && m_owner->m_transport->is_open()) {
+		int result = m_owner->m_transport->send(send_buf, send_len);
+		if (result < 0) {
+			LOG_ERROR(MOD_NET, "Transport send failed for {}:{}", m_endpoint, m_port);
 		}
-	);
-
-	if (send_result < 0) {
-		LOG_ERROR(MOD_NET, "uv_udp_send() failed: {}", uv_strerror(send_result));
-		send_buffer_pool.release(ctx);
 	}
 }
 

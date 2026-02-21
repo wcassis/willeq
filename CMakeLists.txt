@@ -28,13 +28,6 @@ FIND_PACKAGE(Threads REQUIRED)
 FIND_PACKAGE(OpenSSL REQUIRED)
 FIND_PACKAGE(ZLIB REQUIRED)
 
-# Find libuv
-FIND_PATH(LIBUV_INCLUDE_DIR uv.h)
-FIND_LIBRARY(LIBUV_LIBRARY NAMES uv libuv)
-IF(NOT LIBUV_INCLUDE_DIR OR NOT LIBUV_LIBRARY)
-    MESSAGE(FATAL_ERROR "libuv not found")
-ENDIF()
-
 # Find fmt
 FIND_PACKAGE(fmt QUIET)
 IF(NOT fmt_FOUND)
@@ -154,7 +147,6 @@ INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/third_party/minimp3
-    ${LIBUV_INCLUDE_DIR}
     ${GLM_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
@@ -212,7 +204,7 @@ SET(COMMON_SOURCES
     src/common/net/packet.cpp
     src/common/net/daybreak_connection.cpp
     src/common/net/crc32.cpp
-    src/common/event/timer.cpp
+    src/common/net/posix_udp_transport.cpp
     src/common/performance_metrics.cpp
 )
 
@@ -469,7 +461,6 @@ ADD_EXECUTABLE(willeq src/client/main.cpp)
 
 # Link libraries
 SET(LINK_LIBS
-    ${LIBUV_LIBRARY}
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
     Threads::Threads
@@ -993,7 +984,6 @@ MESSAGE(STATUS "=== WillEQ Configuration ===")
 MESSAGE(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 MESSAGE(STATUS "Debug logging: ${EQT_DEBUG}")
 MESSAGE(STATUS "Build tests: ${EQT_BUILD_TESTS}")
-MESSAGE(STATUS "libuv: ${LIBUV_LIBRARY}")
 MESSAGE(STATUS "OpenSSL: ${OPENSSL_LIBRARIES}")
 MESSAGE(STATUS "zlib: ${ZLIB_LIBRARIES}")
 IF(fmt_FOUND)

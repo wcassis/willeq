@@ -33,7 +33,6 @@
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_constants.h"
 #include "common/logging.h"
-#include "common/event/event_loop.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -189,7 +188,7 @@ protected:
     bool waitForWithGraphics(Predicate condition, int timeoutMs = 30000) {
         auto start = std::chrono::steady_clock::now();
         while (!condition()) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             if (eq_) {
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
@@ -215,7 +214,7 @@ protected:
     // Process a few frames to allow server updates
     void processFrames(int count) {
         for (int i = 0; i < count; i++) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             if (eq_) {
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS

@@ -64,13 +64,13 @@ ADD_EXECUTABLE(test_data_verification
 TARGET_LINK_LIBRARIES(test_data_verification GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_data_verification)
 
-# Test timer
-ADD_EXECUTABLE(test_timer
-    test_timer.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/event/timer.cpp
+# Test UDP transport
+ADD_EXECUTABLE(test_udp_transport
+    test_udp_transport.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/posix_udp_transport.cpp
 )
-TARGET_LINK_LIBRARIES(test_timer GTest::gtest_main ${LIBUV_LIBRARY})
-GTEST_DISCOVER_TESTS(test_timer)
+TARGET_LINK_LIBRARIES(test_udp_transport GTest::gtest_main ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_udp_transport)
 
 # Test random
 ADD_EXECUTABLE(test_random

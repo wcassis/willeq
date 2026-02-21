@@ -57,7 +57,6 @@ ENV MACOSX_DEPLOYMENT_TARGET=10.15
 
 # Install macports for dependencies
 RUN ./tools/osxcross-macports install \
-    libuv \
     openssl3 \
     zlib \
     libfmt \

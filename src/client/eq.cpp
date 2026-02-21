@@ -50,7 +50,7 @@
 #include "client/audio/water_sounds.h"
 #endif
 
-#include "common/event/event_loop.h"
+#include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
@@ -958,7 +958,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 void EverQuest::ConnectToLogin()
 {
-	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
 
 	m_login_connection_manager->OnNewConnection(std::bind(&EverQuest::LoginOnNewConnection, this, std::placeholders::_1));
 	m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
@@ -966,6 +967,19 @@ void EverQuest::ConnectToLogin()
 
 	SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 	m_login_connection_manager->Connect(m_host, m_port);
+}
+
+void EverQuest::TickNetwork()
+{
+	if (m_login_connection_manager) {
+		m_login_connection_manager->Tick();
+	}
+	if (m_world_connection_manager) {
+		m_world_connection_manager->Tick();
+	}
+	if (m_zone_connection_manager) {
+		m_zone_connection_manager->Tick();
+	}
 }
 
 EverQuest::~EverQuest()
@@ -1352,7 +1366,8 @@ void EverQuest::ConnectToWorld(const std::string& world_address)
 	// Store the world server address for reconnection
 	m_world_server_host = world_address;
 
-	m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
 	m_world_connection_manager->OnNewConnection(std::bind(&EverQuest::WorldOnNewConnection, this, std::placeholders::_1));
 	m_world_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::WorldOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_world_connection_manager->OnPacketRecv(std::bind(&EverQuest::WorldOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
@@ -1822,7 +1837,8 @@ void EverQuest::ConnectToZone()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
 	zone_opts.skip_crc_validation = true;  // TODO: Remove after CRC bug is fixed
-	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts));
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
 	m_zone_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::ZoneOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_zone_connection_manager->OnPacketRecv(std::bind(&EverQuest::ZoneOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
@@ -13323,7 +13339,7 @@ void EverQuest::ProcessDeferredZoneChange()
 		m_world_connection.reset();
 		LOG_TRACE(MOD_ZONE, "Step 2a: Old world connection reset");
 
-		m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+		m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
 		LOG_TRACE(MOD_ZONE, "Step 2b: New world connection manager created");
 
 		m_world_connection_manager->OnNewConnection(std::bind(&EverQuest::WorldOnNewConnection, this, std::placeholders::_1));
@@ -17862,11 +17878,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// This allows the progress bar to show during the entire loading process.
 
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Set network tick callback so renderer can pump event loop during heavy loading stages
-	m_renderer->setNetworkTickCallback([]() {
-		EQ::EventLoop::Get().Process();
+	m_renderer->setNetworkTickCallback([this]() {
+		TickNetwork();
 	});
 
 	// Set up HUD callback to display player stats (HP/Mana bars)
@@ -18198,7 +18214,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			LOG_WARN(MOD_SPELL, "Could not load spell database - spell system will be limited");
 		}
 		// Pump network after spell DB loading (can take ~1s on ARM)
-		EQ::EventLoop::Get().Process();
+		TickNetwork();
 	}
 
 	// Initialize buff manager with spell database
@@ -18793,7 +18809,7 @@ void EverQuest::LoadZoneGraphics() {
 	}
 
 	// Pump network after zone S3D loading (can take 8+ seconds on ARM)
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Phase 12: Load character models (global assets)
 	// NOTE: This also initializes the sky renderer, so must be done before setZoneEnvironment
@@ -18809,7 +18825,7 @@ void EverQuest::LoadZoneGraphics() {
 	}
 
 	// Pump network after global assets loading (can take 10+ seconds on ARM)
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Phase 13: Create entity scene nodes for all entities in m_entities
 	SetLoadingPhase(LoadingPhase::GRAPHICS_CREATING_ENTITIES, "Creating entities...");
@@ -18895,7 +18911,7 @@ void EverQuest::LoadZoneGraphics() {
 
 		// Pump network every 10 entities (entity creation with model loading is slow on ARM)
 		if (++entityCount % 10 == 0) {
-			EQ::EventLoop::Get().Process();
+			TickNetwork();
 		}
 	}
 
@@ -19597,8 +19613,8 @@ void EverQuest::InitializeAudio() {
 	m_audio_manager = std::make_unique<EQT::Audio::AudioManager>();
 
 	// Pass event loop pump as tick callback so network stays alive during slow audio init
-	auto networkTick = []() {
-		EQ::EventLoop::Get().Process();
+	auto networkTick = [this]() {
+		TickNetwork();
 	};
 
 	if (!m_audio_manager->initialize(eqPath, false, m_audio_config_soundfont, networkTick)) {
@@ -19635,7 +19651,7 @@ void EverQuest::InitializeAudio() {
 		m_audio_config_effects_volume * 100.0f);
 
 	// Pump network before sound preloading
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Preload common sounds for faster playback
 	m_audio_manager->preloadCommonSounds();

@@ -9,7 +9,6 @@
 #include "client/spell/spell_manager.h"
 #include "client/spell/spell_constants.h"
 #include "client/output/graphical_renderer.h"
-#include "common/event/event_loop.h"
 #include "common/util/json_config.h"
 #include "common/logging.h"
 #include "common/performance_metrics.h"
@@ -431,7 +430,9 @@ void Application::mainLoop() {
 }
 
 void Application::processNetworkEvents() {
-    EQ::EventLoop::Get().Process();
+    if (m_eqClient) {
+        m_eqClient->TickNetwork();
+    }
 }
 
 void Application::processInput(float deltaTime) {

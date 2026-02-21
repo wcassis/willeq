@@ -27,7 +27,6 @@
 
 #include "client/eq.h"
 #include "common/logging.h"
-#include "common/event/event_loop.h"
 
 using namespace std::chrono_literals;
 
@@ -209,7 +208,7 @@ protected:
     bool waitFor(Predicate condition, int timeoutMs = 30000, bool trackPhases = true) {
         auto start = std::chrono::steady_clock::now();
         while (!condition()) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             if (eq_) {
                 eq_->UpdateMovement();
                 // Track phase transitions
@@ -385,7 +384,7 @@ TEST_F(ZoningIntegrationTest, ZoneTransition) {
     // Give the position update time to send and zone change to trigger
     // UpdateMovement() contains the CheckZoneLine() call
     for (int i = 0; i < 50; i++) {
-        EQ::EventLoop::Get().Process();
+        eq_->TickNetwork();
         eq_->UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
         if (i % 10 == 0) {
@@ -530,7 +529,7 @@ TEST_F(ZoningIntegrationTest, GameStateAfterZoning) {
 
     // Process for a while with UpdateMovement to trigger zone line check
     for (int i = 0; i < 50; i++) {
-        EQ::EventLoop::Get().Process();
+        eq_->TickNetwork();
         eq_->UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
         std::this_thread::sleep_for(20ms);
