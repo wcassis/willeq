@@ -2,7 +2,6 @@
 
 #ifdef WITH_AUDIO
 
-#include <AL/al.h>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -15,7 +14,7 @@ public:
     SoundBuffer();
     ~SoundBuffer();
 
-    // Prevent copying (OpenAL buffer ownership)
+    // Prevent copying (owns sample data)
     SoundBuffer(const SoundBuffer&) = delete;
     SoundBuffer& operator=(const SoundBuffer&) = delete;
 
@@ -29,13 +28,14 @@ public:
     // Load from memory (WAV data)
     bool loadFromMemory(const void* data, size_t size);
 
-    // Load from raw PCM data
+    // Load from raw PCM data (int16_t input, converted to float internally)
     bool loadFromPCM(const int16_t* samples, size_t sampleCount,
                      uint32_t sampleRate, uint8_t channels);
 
     // Accessors
-    ALuint getBuffer() const { return buffer_; }
-    bool isValid() const { return buffer_ != 0; }
+    const float* getSamples() const { return samples_.data(); }
+    size_t getFrameCount() const { return frameCount_; }
+    bool isValid() const { return !samples_.empty(); }
     uint32_t getSampleRate() const { return sampleRate_; }
     uint8_t getChannels() const { return channels_; }
     float getDuration() const { return duration_; }
@@ -45,7 +45,8 @@ private:
     void cleanup();
 
 private:
-    ALuint buffer_ = 0;
+    std::vector<float> samples_;    // Interleaved float PCM
+    size_t frameCount_ = 0;
     uint32_t sampleRate_ = 0;
     uint8_t channels_ = 0;
     float duration_ = 0.0f;

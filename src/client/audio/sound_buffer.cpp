@@ -3,9 +3,10 @@
 #include "client/audio/sound_buffer.h"
 #include "common/logging.h"
 
-#include <sndfile.h>
-#include <vector>
 #include <cstring>
+
+// dr_wav is implemented in sfx_manager.cpp, only declare here
+#include "dr_wav.h"
 
 namespace EQT {
 namespace Audio {
@@ -17,13 +18,14 @@ SoundBuffer::~SoundBuffer() {
 }
 
 SoundBuffer::SoundBuffer(SoundBuffer&& other) noexcept
-    : buffer_(other.buffer_)
+    : samples_(std::move(other.samples_))
+    , frameCount_(other.frameCount_)
     , sampleRate_(other.sampleRate_)
     , channels_(other.channels_)
     , duration_(other.duration_)
     , memorySize_(other.memorySize_)
 {
-    other.buffer_ = 0;
+    other.frameCount_ = 0;
     other.sampleRate_ = 0;
     other.channels_ = 0;
     other.duration_ = 0.0f;
@@ -34,13 +36,14 @@ SoundBuffer& SoundBuffer::operator=(SoundBuffer&& other) noexcept {
     if (this != &other) {
         cleanup();
 
-        buffer_ = other.buffer_;
+        samples_ = std::move(other.samples_);
+        frameCount_ = other.frameCount_;
         sampleRate_ = other.sampleRate_;
         channels_ = other.channels_;
         duration_ = other.duration_;
         memorySize_ = other.memorySize_;
 
-        other.buffer_ = 0;
+        other.frameCount_ = 0;
         other.sampleRate_ = 0;
         other.channels_ = 0;
         other.duration_ = 0.0f;
@@ -52,58 +55,32 @@ SoundBuffer& SoundBuffer::operator=(SoundBuffer&& other) noexcept {
 bool SoundBuffer::loadFromFile(const std::string& filepath) {
     cleanup();
 
-    SF_INFO sfInfo;
-    std::memset(&sfInfo, 0, sizeof(sfInfo));
+    unsigned int wavChannels = 0;
+    unsigned int wavSampleRate = 0;
+    drwav_uint64 wavFrameCount = 0;
 
-    SNDFILE* file = sf_open(filepath.c_str(), SFM_READ, &sfInfo);
-    if (!file) {
-        LOG_DEBUG(MOD_AUDIO, "Failed to open audio file: {} - {}", filepath, sf_strerror(nullptr));
+    float* samples = drwav_open_file_and_read_pcm_frames_f32(
+        filepath.c_str(), &wavChannels, &wavSampleRate, &wavFrameCount, nullptr);
+    if (!samples) {
+        LOG_DEBUG(MOD_AUDIO, "Failed to open audio file: {}", filepath);
         return false;
     }
 
-    // Validate format
-    if (sfInfo.channels < 1 || sfInfo.channels > 2) {
-        LOG_WARN(MOD_AUDIO, "Unsupported channel count {} in: {}", sfInfo.channels, filepath);
-        sf_close(file);
+    if (wavChannels < 1 || wavChannels > 2) {
+        LOG_WARN(MOD_AUDIO, "Unsupported channel count {} in: {}", wavChannels, filepath);
+        drwav_free(samples, nullptr);
         return false;
     }
 
-    // Read all samples
-    std::vector<int16_t> samples(sfInfo.frames * sfInfo.channels);
-    sf_count_t framesRead = sf_readf_short(file, samples.data(), sfInfo.frames);
-    sf_close(file);
+    size_t totalSamples = static_cast<size_t>(wavFrameCount * wavChannels);
+    samples_.assign(samples, samples + totalSamples);
+    drwav_free(samples, nullptr);
 
-    if (framesRead != sfInfo.frames) {
-        LOG_WARN(MOD_AUDIO, "Incomplete read from: {} ({}/{})", filepath, framesRead, sfInfo.frames);
-    }
-
-    // Store format info
-    sampleRate_ = sfInfo.samplerate;
-    channels_ = sfInfo.channels;
-    duration_ = static_cast<float>(sfInfo.frames) / static_cast<float>(sfInfo.samplerate);
-    memorySize_ = samples.size() * sizeof(int16_t);
-
-    // Determine OpenAL format
-    ALenum format = (channels_ == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
-
-    // Create OpenAL buffer
-    alGenBuffers(1, &buffer_);
-    ALenum error = alGetError();
-    if (error != AL_NO_ERROR) {
-        LOG_ERROR(MOD_AUDIO, "Failed to create OpenAL buffer: {}", alGetString(error));
-        return false;
-    }
-
-    // Upload data
-    alBufferData(buffer_, format, samples.data(),
-                 samples.size() * sizeof(int16_t), sampleRate_);
-    error = alGetError();
-    if (error != AL_NO_ERROR) {
-        LOG_ERROR(MOD_AUDIO, "Failed to fill OpenAL buffer: {}", alGetString(error));
-        alDeleteBuffers(1, &buffer_);
-        buffer_ = 0;
-        return false;
-    }
+    frameCount_ = static_cast<size_t>(wavFrameCount);
+    sampleRate_ = wavSampleRate;
+    channels_ = static_cast<uint8_t>(wavChannels);
+    duration_ = static_cast<float>(wavFrameCount) / static_cast<float>(wavSampleRate);
+    memorySize_ = totalSamples * sizeof(float);
 
     LOG_DEBUG(MOD_AUDIO, "Loaded sound: {} ({}Hz, {}ch, {:.2f}s)",
               filepath, sampleRate_, channels_, duration_);
@@ -113,61 +90,34 @@ bool SoundBuffer::loadFromFile(const std::string& filepath) {
 bool SoundBuffer::loadFromMemory(const void* data, size_t size) {
     cleanup();
 
-    // Use libsndfile's virtual I/O for memory reading
-    SF_VIRTUAL_IO vio;
-    struct MemoryData {
-        const uint8_t* data;
-        size_t size;
-        size_t offset;
-    } memData = { static_cast<const uint8_t*>(data), size, 0 };
+    unsigned int wavChannels = 0;
+    unsigned int wavSampleRate = 0;
+    drwav_uint64 wavFrameCount = 0;
 
-    vio.get_filelen = [](void* user_data) -> sf_count_t {
-        return static_cast<MemoryData*>(user_data)->size;
-    };
-
-    vio.seek = [](sf_count_t offset, int whence, void* user_data) -> sf_count_t {
-        auto* md = static_cast<MemoryData*>(user_data);
-        switch (whence) {
-            case SEEK_SET: md->offset = offset; break;
-            case SEEK_CUR: md->offset += offset; break;
-            case SEEK_END: md->offset = md->size + offset; break;
-        }
-        return md->offset;
-    };
-
-    vio.read = [](void* ptr, sf_count_t count, void* user_data) -> sf_count_t {
-        auto* md = static_cast<MemoryData*>(user_data);
-        sf_count_t available = md->size - md->offset;
-        sf_count_t toRead = std::min(count, available);
-        std::memcpy(ptr, md->data + md->offset, toRead);
-        md->offset += toRead;
-        return toRead;
-    };
-
-    vio.write = [](const void*, sf_count_t, void*) -> sf_count_t {
-        return 0;  // Read-only
-    };
-
-    vio.tell = [](void* user_data) -> sf_count_t {
-        return static_cast<MemoryData*>(user_data)->offset;
-    };
-
-    SF_INFO sfInfo;
-    std::memset(&sfInfo, 0, sizeof(sfInfo));
-
-    SNDFILE* file = sf_open_virtual(&vio, SFM_READ, &sfInfo, &memData);
-    if (!file) {
-        LOG_DEBUG(MOD_AUDIO, "Failed to open audio from memory: {}", sf_strerror(nullptr));
+    float* samples = drwav_open_memory_and_read_pcm_frames_f32(
+        data, size, &wavChannels, &wavSampleRate, &wavFrameCount, nullptr);
+    if (!samples) {
+        LOG_DEBUG(MOD_AUDIO, "Failed to open audio from memory");
         return false;
     }
 
-    // Read samples
-    std::vector<int16_t> samples(sfInfo.frames * sfInfo.channels);
-    sf_readf_short(file, samples.data(), sfInfo.frames);
-    sf_close(file);
+    if (wavChannels < 1 || wavChannels > 2) {
+        LOG_WARN(MOD_AUDIO, "Unsupported channel count {} in memory WAV", wavChannels);
+        drwav_free(samples, nullptr);
+        return false;
+    }
 
-    return loadFromPCM(samples.data(), sfInfo.frames * sfInfo.channels,
-                       sfInfo.samplerate, sfInfo.channels);
+    size_t totalSamples = static_cast<size_t>(wavFrameCount * wavChannels);
+    samples_.assign(samples, samples + totalSamples);
+    drwav_free(samples, nullptr);
+
+    frameCount_ = static_cast<size_t>(wavFrameCount);
+    sampleRate_ = wavSampleRate;
+    channels_ = static_cast<uint8_t>(wavChannels);
+    duration_ = static_cast<float>(wavFrameCount) / static_cast<float>(wavSampleRate);
+    memorySize_ = totalSamples * sizeof(float);
+
+    return true;
 }
 
 bool SoundBuffer::loadFromPCM(const int16_t* samples, size_t sampleCount,
@@ -181,32 +131,22 @@ bool SoundBuffer::loadFromPCM(const int16_t* samples, size_t sampleCount,
     sampleRate_ = sampleRate;
     channels_ = channels;
 
-    size_t frameCount = sampleCount / channels;
-    duration_ = static_cast<float>(frameCount) / static_cast<float>(sampleRate);
-    memorySize_ = sampleCount * sizeof(int16_t);
+    frameCount_ = sampleCount / channels;
+    duration_ = static_cast<float>(frameCount_) / static_cast<float>(sampleRate);
 
-    ALenum format = (channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
-
-    alGenBuffers(1, &buffer_);
-    if (alGetError() != AL_NO_ERROR) {
-        return false;
+    // Convert int16_t -> float
+    samples_.resize(sampleCount);
+    for (size_t i = 0; i < sampleCount; ++i) {
+        samples_[i] = static_cast<float>(samples[i]) / 32768.0f;
     }
 
-    alBufferData(buffer_, format, samples, sampleCount * sizeof(int16_t), sampleRate);
-    if (alGetError() != AL_NO_ERROR) {
-        alDeleteBuffers(1, &buffer_);
-        buffer_ = 0;
-        return false;
-    }
-
+    memorySize_ = sampleCount * sizeof(float);
     return true;
 }
 
 void SoundBuffer::cleanup() {
-    if (buffer_ != 0) {
-        alDeleteBuffers(1, &buffer_);
-        buffer_ = 0;
-    }
+    samples_.clear();
+    frameCount_ = 0;
     sampleRate_ = 0;
     channels_ = 0;
     duration_ = 0.0f;

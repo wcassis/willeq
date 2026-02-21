@@ -5,8 +5,6 @@
 #include "client/audio/sound_buffer.h"
 #include "client/audio/audio_manager.h"
 
-#include <AL/al.h>
-#include <AL/alc.h>
 #include <filesystem>
 
 using namespace EQT::Audio;
@@ -94,36 +92,11 @@ TEST_F(SoundAssetsTest, GetAllSoundIds) {
 class SoundBufferTest : public ::testing::Test {
 protected:
     std::string soundsDir_;
-    ALCdevice* device_ = nullptr;
-    ALCcontext* context_ = nullptr;
 
     void SetUp() override {
         soundsDir_ = std::string(EQ_PATH) + "/sounds/";
         if (!std::filesystem::exists(soundsDir_)) {
             GTEST_SKIP() << "Sounds directory not found at: " << soundsDir_;
-        }
-
-        // Initialize OpenAL context (required for buffer creation)
-        device_ = alcOpenDevice(nullptr);
-        if (!device_) {
-            GTEST_SKIP() << "No audio device available";
-        }
-        context_ = alcCreateContext(device_, nullptr);
-        if (!context_) {
-            alcCloseDevice(device_);
-            device_ = nullptr;
-            GTEST_SKIP() << "Failed to create audio context";
-        }
-        alcMakeContextCurrent(context_);
-    }
-
-    void TearDown() override {
-        alcMakeContextCurrent(nullptr);
-        if (context_) {
-            alcDestroyContext(context_);
-        }
-        if (device_) {
-            alcCloseDevice(device_);
         }
     }
 };
@@ -176,19 +149,20 @@ TEST_F(SoundBufferTest, MoveSemantics) {
     }
 
     ASSERT_TRUE(buffer1.loadFromFile(filepath));
-    ALuint originalHandle = buffer1.getBuffer();
-    EXPECT_NE(originalHandle, 0u);
+    EXPECT_NE(buffer1.getSamples(), nullptr);
+    size_t originalFrames = buffer1.getFrameCount();
+    EXPECT_GT(originalFrames, 0u);
 
     // Move to buffer2
     SoundBuffer buffer2 = std::move(buffer1);
-    EXPECT_EQ(buffer2.getBuffer(), originalHandle);
-    EXPECT_EQ(buffer1.getBuffer(), 0u);  // buffer1 should be empty
+    EXPECT_NE(buffer2.getSamples(), nullptr);
+    EXPECT_EQ(buffer2.getFrameCount(), originalFrames);
     EXPECT_TRUE(buffer2.isValid());
     EXPECT_FALSE(buffer1.isValid());
 }
 
 // =============================================================================
-// AudioManager Integration Tests (requires OpenAL device)
+// AudioManager Integration Tests
 // =============================================================================
 
 class AudioManagerTest : public ::testing::Test {

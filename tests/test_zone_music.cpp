@@ -3,8 +3,6 @@
 #include <gtest/gtest.h>
 #include "client/audio/audio_manager.h"
 
-#include <AL/al.h>
-#include <AL/alc.h>
 #include <filesystem>
 
 using namespace EQT::Audio;
@@ -97,36 +95,15 @@ TEST_F(ZoneMusicMappingTest, CaseInsensitiveZoneLookup) {
 class ZoneMusicAudioTest : public ::testing::Test {
 protected:
     std::unique_ptr<AudioManager> manager_;
-    ALCdevice* device_ = nullptr;
-    ALCcontext* context_ = nullptr;
 
     void SetUp() override {
         if (!std::filesystem::exists(EQ_PATH)) {
             GTEST_SKIP() << "EQ client path not found at: " << EQ_PATH;
         }
 
-        // Initialize OpenAL context for audio tests
-        device_ = alcOpenDevice(nullptr);
-        if (!device_) {
-            GTEST_SKIP() << "No audio device available";
-        }
-        context_ = alcCreateContext(device_, nullptr);
-        if (!context_) {
-            alcCloseDevice(device_);
-            device_ = nullptr;
-            GTEST_SKIP() << "Failed to create audio context";
-        }
-        alcMakeContextCurrent(context_);
-
-        // Create and initialize AudioManager
         manager_ = std::make_unique<AudioManager>();
         if (!manager_->initialize(EQ_PATH)) {
             manager_.reset();
-            alcMakeContextCurrent(nullptr);
-            alcDestroyContext(context_);
-            alcCloseDevice(device_);
-            context_ = nullptr;
-            device_ = nullptr;
             GTEST_SKIP() << "Failed to initialize AudioManager";
         }
     }
@@ -135,13 +112,6 @@ protected:
         if (manager_) {
             manager_->shutdown();
             manager_.reset();
-        }
-        alcMakeContextCurrent(nullptr);
-        if (context_) {
-            alcDestroyContext(context_);
-        }
-        if (device_) {
-            alcCloseDevice(device_);
         }
     }
 };
@@ -240,8 +210,6 @@ TEST_F(ZoneMusicMappingTest, CountMusicFiles) {
 class MusicPlayerTest : public ::testing::Test {
 protected:
     std::unique_ptr<MusicPlayer> player_;
-    ALCdevice* device_ = nullptr;
-    ALCcontext* context_ = nullptr;
     std::string eqPath_;
 
     void SetUp() override {
@@ -250,19 +218,6 @@ protected:
             GTEST_SKIP() << "EQ client path not found at: " << eqPath_;
         }
 
-        // Initialize OpenAL context for audio tests
-        device_ = alcOpenDevice(nullptr);
-        if (!device_) {
-            GTEST_SKIP() << "No audio device available";
-        }
-        context_ = alcCreateContext(device_, nullptr);
-        if (!context_) {
-            alcCloseDevice(device_);
-            device_ = nullptr;
-            GTEST_SKIP() << "Failed to create audio context";
-        }
-        alcMakeContextCurrent(context_);
-
         player_ = std::make_unique<MusicPlayer>();
     }
 
@@ -270,13 +225,6 @@ protected:
         if (player_) {
             player_->shutdown();
             player_.reset();
-        }
-        alcMakeContextCurrent(nullptr);
-        if (context_) {
-            alcDestroyContext(context_);
-        }
-        if (device_) {
-            alcCloseDevice(device_);
         }
     }
 

@@ -5,8 +5,6 @@
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/eff_loader.h"
 
-#include <AL/al.h>
-#include <AL/alc.h>
 #include <filesystem>
 #include <glm/glm.hpp>
 
@@ -278,47 +276,19 @@ TEST_F(ZoneAudioManagerTest, MusicEmitterCounting) {
 }
 
 // =============================================================================
-// OpenAL Integration Tests (requires audio device)
+// Audio Integration Tests
 // =============================================================================
 
 class ZoneSoundEmitterAudioTest : public ::testing::Test {
 protected:
-    ALCdevice* device_ = nullptr;
-    ALCcontext* context_ = nullptr;
     ZoneSoundEmitter emitter_;
-
-    void SetUp() override {
-        // Initialize OpenAL
-        device_ = alcOpenDevice(nullptr);
-        if (!device_) {
-            GTEST_SKIP() << "No audio device available";
-        }
-        context_ = alcCreateContext(device_, nullptr);
-        if (!context_) {
-            alcCloseDevice(device_);
-            device_ = nullptr;
-            GTEST_SKIP() << "Failed to create audio context";
-        }
-        alcMakeContextCurrent(context_);
-    }
-
-    void TearDown() override {
-        alcMakeContextCurrent(nullptr);
-        if (context_) {
-            alcDestroyContext(context_);
-        }
-        if (device_) {
-            alcCloseDevice(device_);
-        }
-    }
 };
 
-TEST_F(ZoneSoundEmitterAudioTest, InitializeCreatesSource) {
+TEST_F(ZoneSoundEmitterAudioTest, InitializeAndStop) {
     emitter_.initialize(1, glm::vec3(0, 0, 0), 100.0f,
         EmitterSoundType::StaticEffect, "test", "", 0, 0, 0, 0, 1000, 50);
 
-    // After initialization with OpenAL context, source should be created
-    // We can't directly access the source, but stop() should not crash
+    // stop() should not crash
     emitter_.stop();
 }
 

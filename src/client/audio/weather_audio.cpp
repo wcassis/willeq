@@ -2,6 +2,8 @@
 
 #include "client/audio/weather_audio.h"
 #include "client/audio/audio_manager.h"
+#include "client/audio/audio_mixer.h"
+#include "client/audio/sfx_manager.h"
 #include "client/audio/sound_buffer.h"
 #include "common/logging.h"
 
@@ -23,16 +25,6 @@ WeatherAudio::WeatherAudio()
 
 WeatherAudio::~WeatherAudio() {
     stop();
-
-    // Delete OpenAL sources
-    if (rainSource_ != 0) {
-        alDeleteSources(1, &rainSource_);
-        rainSource_ = 0;
-    }
-    if (windSource_ != 0) {
-        alDeleteSources(1, &windSource_);
-        windSource_ = 0;
-    }
 }
 
 void WeatherAudio::setAudioManager(AudioManager* audioManager) {
@@ -142,14 +134,18 @@ void WeatherAudio::update(float deltaTime) {
             currentVolume_ = currentVolume_ + (targetVolume_ - currentVolume_) * t * deltaTime * 2.0f;
         }
 
-        // Update source volumes
+        // Update channel volumes via mixer
         float effectiveVolume = currentVolume_ * volume_;
-
-        if (rainSource_ != 0) {
-            alSourcef(rainSource_, AL_GAIN, effectiveVolume);
-        }
-        if (windSource_ != 0) {
-            alSourcef(windSource_, AL_GAIN, effectiveVolume);
+        AudioMixer* mixer = audioManager_ ? audioManager_->getMixer() : nullptr;
+        if (mixer) {
+            if (rainHandle_ >= 0) {
+                MixChannel* ch = mixer->getChannel(rainHandle_);
+                if (ch) ch->volume = effectiveVolume;
+            }
+            if (windHandle_ >= 0) {
+                MixChannel* ch = mixer->getChannel(windHandle_);
+                if (ch) ch->volume = effectiveVolume;
+            }
         }
     }
 
@@ -161,23 +157,6 @@ void WeatherAudio::update(float deltaTime) {
         if (thunderTimer_ <= 0.0f) {
             playThunder();
             scheduleThunder();
-        }
-    }
-
-    // Verify looping sources are still playing
-    if (currentWeather_ == WeatherType::Raining && rainSource_ != 0) {
-        ALint state;
-        alGetSourcei(rainSource_, AL_SOURCE_STATE, &state);
-        if (state != AL_PLAYING && !isPaused_) {
-            alSourcePlay(rainSource_);
-        }
-    }
-
-    if (currentWeather_ == WeatherType::Snowing && windSource_ != 0) {
-        ALint state;
-        alGetSourcei(windSource_, AL_SOURCE_STATE, &state);
-        if (state != AL_PLAYING && !isPaused_) {
-            alSourcePlay(windSource_);
         }
     }
 }
@@ -197,110 +176,119 @@ void WeatherAudio::stop() {
 
 void WeatherAudio::pause() {
     isPaused_ = true;
-
-    if (rainSource_ != 0) {
-        alSourcePause(rainSource_);
-    }
-    if (windSource_ != 0) {
-        alSourcePause(windSource_);
-    }
+    // Stop looping channels (will be restarted on resume)
+    stopRain();
+    stopWind();
 }
 
 void WeatherAudio::resume() {
     isPaused_ = false;
 
-    if (currentWeather_ == WeatherType::Raining && rainSource_ != 0) {
-        alSourcePlay(rainSource_);
+    // Restart loops if weather is active
+    if (currentWeather_ == WeatherType::Raining) {
+        startRain();
     }
-    if (currentWeather_ == WeatherType::Snowing && windSource_ != 0) {
-        alSourcePlay(windSource_);
+    if (currentWeather_ == WeatherType::Snowing) {
+        startWind();
     }
 }
 
 void WeatherAudio::setVolume(float volume) {
     volume_ = std::clamp(volume, 0.0f, 1.0f);
 
-    // Update source volumes immediately
+    // Update channel volumes immediately
     float effectiveVolume = currentVolume_ * volume_;
-
-    if (rainSource_ != 0) {
-        alSourcef(rainSource_, AL_GAIN, effectiveVolume);
-    }
-    if (windSource_ != 0) {
-        alSourcef(windSource_, AL_GAIN, effectiveVolume);
+    AudioMixer* mixer = audioManager_ ? audioManager_->getMixer() : nullptr;
+    if (mixer) {
+        if (rainHandle_ >= 0) {
+            MixChannel* ch = mixer->getChannel(rainHandle_);
+            if (ch) ch->volume = effectiveVolume;
+        }
+        if (windHandle_ >= 0) {
+            MixChannel* ch = mixer->getChannel(windHandle_);
+            if (ch) ch->volume = effectiveVolume;
+        }
     }
 }
 
 void WeatherAudio::startRain() {
-    if (!audioManager_ || !rainLoopBuffer_ || !rainLoopBuffer_->isValid()) {
-        LOG_WARN(MOD_AUDIO, "Cannot start rain: audio not initialized or sound not loaded");
+    if (!audioManager_) {
+        LOG_WARN(MOD_AUDIO, "Cannot start rain: no audio manager");
         return;
     }
 
-    // Create source if needed
-    if (rainSource_ == 0) {
-        alGenSources(1, &rainSource_);
-        ALenum error = alGetError();
-        if (error != AL_NO_ERROR) {
-            LOG_ERROR(MOD_AUDIO, "Failed to create rain source: {}", alGetString(error));
-            return;
-        }
+    if (!rainLoopBuffer_ || !rainLoopBuffer_->isValid()) {
+        LOG_WARN(MOD_AUDIO, "Cannot start rain: sound not loaded");
+        return;
     }
 
-    // Configure source
-    alSourcei(rainSource_, AL_BUFFER, rainLoopBuffer_->getBuffer());
-    alSourcei(rainSource_, AL_LOOPING, AL_TRUE);
-    alSourcei(rainSource_, AL_SOURCE_RELATIVE, AL_TRUE);  // 2D sound, relative to listener
-    alSource3f(rainSource_, AL_POSITION, 0.0f, 0.0f, 0.0f);
-    alSourcef(rainSource_, AL_GAIN, currentVolume_ * volume_);
+    // Stop existing rain if playing
+    stopRain();
 
-    // Start playback
-    alSourcePlay(rainSource_);
+    SfxManager* sfx = audioManager_->getSfxManager();
+    if (!sfx) return;
 
-    LOG_DEBUG(MOD_AUDIO, "Rain ambient started");
+    // Preload into SfxManager cache
+    sfx->preload(RAIN_LOOP_FILE, rainLoopBuffer_->getSamples(),
+                 rainLoopBuffer_->getFrameCount(),
+                 rainLoopBuffer_->getSampleRate(),
+                 rainLoopBuffer_->getChannels());
+
+    // Play looping
+    float effectiveVolume = currentVolume_ * volume_;
+    rainHandle_ = sfx->play(RAIN_LOOP_FILE, effectiveVolume, 0.0f, true);
+
+    LOG_DEBUG(MOD_AUDIO, "Rain ambient started (handle={})", rainHandle_);
 }
 
 void WeatherAudio::stopRain() {
-    if (rainSource_ != 0) {
-        alSourceStop(rainSource_);
-        alSourcei(rainSource_, AL_BUFFER, 0);
+    if (rainHandle_ >= 0 && audioManager_) {
+        SfxManager* sfx = audioManager_->getSfxManager();
+        if (sfx) {
+            sfx->stopChannel(rainHandle_);
+        }
+        rainHandle_ = -1;
         LOG_DEBUG(MOD_AUDIO, "Rain ambient stopped");
     }
 }
 
 void WeatherAudio::startWind() {
-    if (!audioManager_ || !windLoopBuffer_ || !windLoopBuffer_->isValid()) {
-        LOG_WARN(MOD_AUDIO, "Cannot start wind: audio not initialized or sound not loaded");
+    if (!audioManager_) {
+        LOG_WARN(MOD_AUDIO, "Cannot start wind: no audio manager");
         return;
     }
 
-    // Create source if needed
-    if (windSource_ == 0) {
-        alGenSources(1, &windSource_);
-        ALenum error = alGetError();
-        if (error != AL_NO_ERROR) {
-            LOG_ERROR(MOD_AUDIO, "Failed to create wind source: {}", alGetString(error));
-            return;
-        }
+    if (!windLoopBuffer_ || !windLoopBuffer_->isValid()) {
+        LOG_WARN(MOD_AUDIO, "Cannot start wind: sound not loaded");
+        return;
     }
 
-    // Configure source
-    alSourcei(windSource_, AL_BUFFER, windLoopBuffer_->getBuffer());
-    alSourcei(windSource_, AL_LOOPING, AL_TRUE);
-    alSourcei(windSource_, AL_SOURCE_RELATIVE, AL_TRUE);  // 2D sound, relative to listener
-    alSource3f(windSource_, AL_POSITION, 0.0f, 0.0f, 0.0f);
-    alSourcef(windSource_, AL_GAIN, currentVolume_ * volume_);
+    // Stop existing wind if playing
+    stopWind();
 
-    // Start playback
-    alSourcePlay(windSource_);
+    SfxManager* sfx = audioManager_->getSfxManager();
+    if (!sfx) return;
 
-    LOG_DEBUG(MOD_AUDIO, "Wind ambient started");
+    // Preload into SfxManager cache
+    sfx->preload(WIND_LOOP_FILE, windLoopBuffer_->getSamples(),
+                 windLoopBuffer_->getFrameCount(),
+                 windLoopBuffer_->getSampleRate(),
+                 windLoopBuffer_->getChannels());
+
+    // Play looping
+    float effectiveVolume = currentVolume_ * volume_;
+    windHandle_ = sfx->play(WIND_LOOP_FILE, effectiveVolume, 0.0f, true);
+
+    LOG_DEBUG(MOD_AUDIO, "Wind ambient started (handle={})", windHandle_);
 }
 
 void WeatherAudio::stopWind() {
-    if (windSource_ != 0) {
-        alSourceStop(windSource_);
-        alSourcei(windSource_, AL_BUFFER, 0);
+    if (windHandle_ >= 0 && audioManager_) {
+        SfxManager* sfx = audioManager_->getSfxManager();
+        if (sfx) {
+            sfx->stopChannel(windHandle_);
+        }
+        windHandle_ = -1;
         LOG_DEBUG(MOD_AUDIO, "Wind ambient stopped");
     }
 }

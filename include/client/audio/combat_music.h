@@ -11,6 +11,7 @@ namespace Audio {
 
 // Forward declarations
 class AudioManager;
+class AudioMixer;
 class MusicPlayer;
 
 /**
@@ -40,9 +41,11 @@ public:
      * Initialize the combat music system
      * @param eqPath Path to EverQuest client directory containing XMI files
      * @param soundFontPath Path to SoundFont file for MIDI/XMI playback
+     * @param mixer AudioMixer for audio output (required for sound)
      * @return true if initialization succeeded
      */
-    bool initialize(const std::string& eqPath, const std::string& soundFontPath = "");
+    bool initialize(const std::string& eqPath, const std::string& soundFontPath = "",
+                    AudioMixer* mixer = nullptr);
 
     /**
      * Shutdown and release resources

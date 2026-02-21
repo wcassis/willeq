@@ -2,7 +2,6 @@
 
 #ifdef WITH_AUDIO
 
-#include <AL/al.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <cstdint>
@@ -29,7 +28,7 @@ public:
     ZoneSoundEmitter();
     ~ZoneSoundEmitter();
 
-    // Prevent copying (owns OpenAL source)
+    // Prevent copying
     ZoneSoundEmitter(const ZoneSoundEmitter&) = delete;
     ZoneSoundEmitter& operator=(const ZoneSoundEmitter&) = delete;
 
@@ -122,7 +121,7 @@ private:
     int32_t xmiIndex2_ = 0;     // XMI subsong for night
 
     // Runtime state
-    ALuint source_ = 0;
+    int sfxHandle_ = -1;       // SfxManager channel handle (-1 = not playing)
     std::shared_ptr<SoundBuffer> currentBuffer_;
     float cooldownTimer_ = 0.0f;  // Remaining cooldown in ms
     bool isPlaying_ = false;

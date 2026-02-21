@@ -119,8 +119,7 @@ Optional:
 - librecast-dev (navmesh pathfinding via Recast/Detour)
 - libirrlicht-dev, libxxf86vm-dev (3D graphics rendering)
 - freerdp3-dev, libwinpr3-dev (native RDP streaming)
-- libopenal-dev, libsndfile1-dev (audio playback)
-- libfluidsynth-dev (MIDI/XMI music via SoundFont)
+- Audio uses header-only libraries: miniaudio.h (output), tsf.h + tml.h (MIDI synthesis), dr_wav.h (WAV loading)
 
 ## Architecture
 
@@ -221,11 +220,15 @@ The client connects through three stages, each with its own connection manager:
 **Audio System** (`include/client/audio/`, `src/client/audio/`)
 
 Core Components:
-- `AudioManager` - Main audio manager, handles initialization, volume controls, sound playback
-- `SoundBuffer` - OpenAL buffer wrapper for WAV files (supports loading from PFS archives)
+- `AudioManager` - Main audio manager, owns mixer/backend/sfx/midi subsystems
+- `AudioMixer` - Software stereo PCM mixer (16 SFX + 2 music channels)
+- `AudioBackend` - Output abstraction: MiniaudioBackend (direct) or RDPAudioBackend (streaming)
+- `MidiPlayer` - TSF + TML MIDI/XMI synthesis (SoundFont-based)
+- `SfxManager` - WAV loading (dr_wav) and spatial playback with LRU cache
+- `SoundBuffer` - Decoded float PCM data (loaded via dr_wav from files or PFS archives)
 - `SoundAssets` - Parses SoundAssets.txt for sound ID to filename mapping
 - `MusicPlayer` - Streaming music playback for XMI/MIDI and MP3 files
-- `XmiDecoder` - Converts EQ's XMI format to standard MIDI for FluidSynth
+- `XmiDecoder` - Converts EQ's XMI format to standard MIDI at runtime
 
 Zone Audio:
 - `EffLoader` - Parses zone_sounds.eff and zone_sndbnk.eff files for emitter data

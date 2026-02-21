@@ -2,6 +2,7 @@
 
 #include "client/audio/combat_music.h"
 #include "client/audio/music_player.h"
+#include "client/audio/audio_mixer.h"
 #include <iostream>
 #include <chrono>
 #include <filesystem>
@@ -23,7 +24,8 @@ CombatMusicManager::~CombatMusicManager() {
 }
 
 bool CombatMusicManager::initialize(const std::string& eqPath,
-                                     const std::string& soundFontPath) {
+                                     const std::string& soundFontPath,
+                                     AudioMixer* mixer) {
     if (initialized_) {
         return true;
     }
@@ -52,6 +54,11 @@ bool CombatMusicManager::initialize(const std::string& eqPath,
         std::cout << "[COMBAT_MUSIC] Failed to initialize stinger player" << std::endl;
         stingerPlayer_.reset();
         return false;
+    }
+
+    // Give the stinger player access to the mixer for audio output
+    if (mixer) {
+        stingerPlayer_->setMixer(mixer);
     }
 
     stingerPlayer_->setVolume(volume_);

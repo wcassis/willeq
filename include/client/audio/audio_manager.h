@@ -2,9 +2,6 @@
 
 #ifdef WITH_AUDIO
 
-#include <AL/al.h>
-#include <AL/alc.h>
-#include <AL/alext.h>
 #include <glm/glm.hpp>
 
 #include <memory>
@@ -27,6 +24,10 @@ namespace Audio {
 // Forward declarations
 class SoundBuffer;
 class MusicPlayer;
+class AudioMixer;
+class AudioBackend;
+class MidiPlayer;
+class SfxManager;
 
 // Music event configuration (loaded from config/music_events.json)
 struct MusicEventConfig {
@@ -50,8 +51,8 @@ public:
     AudioManager& operator=(const AudioManager&) = delete;
 
     // Initialization
-    // forceLoopback: true = use loopback device (no hardware needed)
-    //                false = try hardware first, fall back to loopback
+    // forceLoopback: true = use RDP backend (no hardware needed)
+    //                false = use miniaudio hardware backend
     // soundFontPath: path to SoundFont file for MIDI/XMI music playback
     // tickCallback: optional function called between heavy init stages,
     // allowing the caller to pump the network event loop on slow hardware
@@ -129,48 +130,50 @@ public:
     // Memory constraints for constrained rendering mode
     void setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs);
 
-    // Internal: called by sound sources when finished
-    void onSoundFinished(ALuint source);
-
     // Loopback mode control
-    void update();  // Must be called periodically to render loopback audio
+    void update();  // Must be called periodically
 
     // Find zone music file with zone name mapping (e.g., oasis -> nro)
     std::string findZoneMusic(const std::string& zoneName);
 
+    // Get mixer and sfx manager for other audio components
+    AudioMixer* getMixer() { return mixer_.get(); }
+    SfxManager* getSfxManager() { return sfxManager_.get(); }
+
 private:
-    // Loopback device initialization
-    bool initializeLoopbackDevice();
-    bool initializeHardwareDevice();
-    void renderLoopbackAudio();
     // Sound loading
     std::shared_ptr<SoundBuffer> loadSound(const std::string& filename);
     std::shared_ptr<SoundBuffer> loadSoundFromPfs(const std::string& filename);
     std::shared_ptr<SoundBuffer> getSoundById(uint32_t soundId);
 
+    // Play sound effect using SfxManager
+    void playSoundInternal(const std::string& filename, const glm::vec3& position);
+
     // PFS archive management
     void scanPfsArchives();
-    bool loadPfsIndexCache();   // Load cached filename→archive index from disk
-    void savePfsIndexCache();   // Save filename→archive index to disk
+    bool loadPfsIndexCache();
+    void savePfsIndexCache();
     bool loadSoundDataFromPfs(const std::string& filename, std::vector<char>& outData);
-
-    // Source management
-    ALuint acquireSource();
-    void releaseSource(ALuint source);
 
     // Sound asset mapping
     void loadSoundAssets();
+
+    // Music event config
+    void loadMusicEventConfig();
 
 private:
     bool initialized_ = false;
     bool audioEnabled_ = true;
     std::string eqPath_;
-    std::function<void()> tickCallback_;  // Called during init to pump event loop
+    std::function<void()> tickCallback_;
     std::string soundFontPath_;
 
-    // OpenAL context
-    ALCdevice* device_ = nullptr;
-    ALCcontext* context_ = nullptr;
+    // New audio pipeline
+    std::unique_ptr<AudioMixer> mixer_;
+    std::unique_ptr<AudioBackend> backend_;
+    std::unique_ptr<MidiPlayer> midiPlayer_;
+    std::unique_ptr<SfxManager> sfxManager_;
+    std::unique_ptr<MusicPlayer> musicPlayer_;
 
     // Volume levels
     float masterVolume_ = 1.0f;
@@ -183,8 +186,8 @@ private:
 
     // Sound buffer LRU cache eviction
     size_t soundBufferCacheMaxBytes_ = 0;    // 0 = unlimited
-    size_t soundBufferCacheSizeBytes_ = 0;   // Current tracked size
-    std::list<std::string> bufferLruOrder_;  // Front = most recently used
+    size_t soundBufferCacheSizeBytes_ = 0;
+    std::list<std::string> bufferLruOrder_;
 
     // Sound ID to filename mapping (from SoundAssets.txt)
     std::unordered_map<uint32_t, std::string> soundIdMap_;
@@ -193,17 +196,7 @@ private:
     std::unordered_map<std::string, std::string> pfsFileIndex_;
     // Cached open PFS archives
     std::unordered_map<std::string, std::unique_ptr<Graphics::PfsArchive>> pfsArchives_;
-    // Lazy PFS loading mode — don't keep archives decompressed in memory
     bool lazyPfsLoading_ = false;
-
-    // Source pool for sound effects
-    static constexpr size_t MAX_SOURCES = 32;
-    std::mutex sourceMutex_;
-    std::vector<ALuint> availableSources_;
-    std::vector<ALuint> activeSources_;
-
-    // Music player
-    std::unique_ptr<MusicPlayer> musicPlayer_;
 
     // Current zone (for music)
     std::string currentZone_;
@@ -211,31 +204,19 @@ private:
     // Context-based music state
     bool autoAttackMusicActive_ = false;
     bool vendorBankMusicActive_ = false;
-    int savedZoneMusicTrackIndex_ = 0;  // Track index that was playing before context music
+    int savedZoneMusicTrackIndex_ = 0;
 
     // Music event configurations (loaded from config/music_events.json)
     MusicEventConfig autoAttackMusicConfig_;
     MusicEventConfig vendorBankMusicConfig_;
-    void loadMusicEventConfig();
 
     // RDP audio streaming
     AudioOutputCallback audioOutputCallback_;
-
-    // Loopback mode for headless/RDP operation
     bool loopbackMode_ = false;
-    std::atomic<bool> loopbackRunning_{false};
-    std::thread loopbackThread_;
-    std::mutex loopbackMutex_;
 
     // Loopback audio format
-    static constexpr uint32_t LOOPBACK_SAMPLE_RATE = 44100;
+    static constexpr uint32_t LOOPBACK_SAMPLE_RATE = 22050;
     static constexpr uint8_t LOOPBACK_CHANNELS = 2;
-    static constexpr size_t LOOPBACK_BUFFER_FRAMES = 1024;  // Frames per render call
-
-    // OpenAL Soft loopback function pointers
-    LPALCLOOPBACKOPENDEVICESOFT alcLoopbackOpenDeviceSOFT_ = nullptr;
-    LPALCISRENDERFORMATSUPPORTEDSOFT alcIsRenderFormatSupportedSOFT_ = nullptr;
-    LPALCRENDERSAMPLESSOFT alcRenderSamplesSOFT_ = nullptr;
 };
 
 } // namespace Audio
