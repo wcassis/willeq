@@ -2553,6 +2553,40 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     createZoneMeshWithPvs();
     EQT::PerformanceMetrics::instance().stopTimer("Zone Mesh Creation");
 
+    // Enable front-to-back sorted zone drawing for PVS zones on GLES2
+    // (Also works on desktop GL but primarily benefits tile-based GPUs like Mali 400)
+    if (usePvsCulling_ && !regionMeshNodes_.empty()) {
+#ifdef EQT_HAS_GLES2
+        manualZoneDrawEnabled_ = true;
+#else
+        manualZoneDrawEnabled_ = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
+#endif
+        if (manualZoneDrawEnabled_) {
+            // Ensure render pass timer is installed (needed for OnRenderPassPreRender hook)
+            if (smgr_ && !renderPassTimer_) {
+                renderPassTimer_ = new RenderPassTimer();
+                renderPassTimer_->setRenderer(this);
+                smgr_->setLightManager(renderPassTimer_);
+            } else if (renderPassTimer_) {
+                renderPassTimer_->setRenderer(this);
+            }
+            LOG_INFO(MOD_GRAPHICS, "Front-to-back zone sorting ENABLED ({} regions)",
+                     regionMeshNodes_.size());
+
+            // Build portal system for indoor zones
+            if (zoneBspTree_ && !regionBoundingBoxes_.empty()) {
+                portalSystem_ = std::make_unique<PortalSystem>();
+                portalSystem_->buildFromBsp(*zoneBspTree_, regionBoundingBoxes_);
+                portalOcclusionEligible_ = portalSystem_->hasPortals() &&
+                                           (portalSystem_->getData().portals.size() > 10);
+                if (portalOcclusionEligible_) {
+                    LOG_INFO(MOD_GRAPHICS, "Portal occlusion eligible: {} portals",
+                             portalSystem_->getData().portals.size());
+                }
+            }
+        }
+    }
+
     // Pump network after zone mesh creation (can take several seconds on ARM)
     if (networkTickCallback_) networkTickCallback_();
 
@@ -2797,6 +2831,13 @@ void IrrlichtRenderer::unloadZone() {
     usePvsCulling_ = false;
     zoneBspTree_.reset();
     currentPvsRegion_ = SIZE_MAX;
+
+    // Reset manual zone draw state
+    manualZoneDrawEnabled_ = false;
+    sortedZoneDrawList_.clear();
+    portalSystem_.reset();
+    portalOcclusionEnabled_ = false;
+    portalOcclusionEligible_ = false;
 
     // Clear constrained mesh cache
     if (constrainedMeshCache_) {
@@ -3653,6 +3694,33 @@ void IrrlichtRenderer::updatePvsVisibility() {
                     return a.distance < b.distance;
                 });
         }
+
+        // Build sorted draw list for manual zone rendering (no-PVS fallback path)
+        if (manualZoneDrawEnabled_) {
+            sortedZoneDrawList_.clear();
+            sortedZoneDrawList_.reserve(visibleCount);
+            for (auto& [rIdx, rNode] : regionMeshNodes_) {
+                if (!rNode || !rNode->isVisible()) continue;
+                float dSq = 0.0f;
+                auto bbIt = regionBoundingBoxes_.find(rIdx);
+                if (bbIt != regionBoundingBoxes_.end()) {
+                    const auto& bb = bbIt->second;
+                    float cx = std::max(bb.MinEdge.X, std::min(camX, bb.MaxEdge.X));
+                    float cy = std::max(bb.MinEdge.Y, std::min(camY, bb.MaxEdge.Y));
+                    float cz = std::max(bb.MinEdge.Z, std::min(camZ, bb.MaxEdge.Z));
+                    float ex = camX - cx, ey = camY - cy, ez = camZ - cz;
+                    dSq = ex*ex + ey*ey + ez*ez;
+                }
+                sortedZoneDrawList_.push_back({rIdx, dSq, rNode});
+                rNode->setVisible(false);
+            }
+            std::sort(sortedZoneDrawList_.begin(), sortedZoneDrawList_.end(),
+                [](const SortedRegionEntry& a, const SortedRegionEntry& b) {
+                    return a.distanceSq < b.distanceSq;
+                });
+            if (fallbackMeshNode_) fallbackMeshNode_->setVisible(false);
+        }
+
         return;
     }
 
@@ -3926,6 +3994,266 @@ void IrrlichtRenderer::updatePvsVisibility() {
 
     LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden, {} frustum-hidden, {} occlusion-hidden",
         newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, hiddenByFrustumCount, hiddenByOcclusionCount);
+
+    // Build sorted draw list for manual zone rendering (front-to-back)
+    if (manualZoneDrawEnabled_) {
+        sortedZoneDrawList_.clear();
+        sortedZoneDrawList_.reserve(visibleCount);
+
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (!node || !node->isVisible()) continue;
+
+            // Compute squared distance from camera to nearest AABB edge
+            float distSq = 0.0f;
+            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
+            if (bboxIt != regionBoundingBoxes_.end()) {
+                const auto& bbox = bboxIt->second;
+                float closestX = std::max(bbox.MinEdge.X, std::min(occCamX, bbox.MaxEdge.X));
+                float closestY = std::max(bbox.MinEdge.Y, std::min(occCamY, bbox.MaxEdge.Y));
+                float closestZ = std::max(bbox.MinEdge.Z, std::min(occCamZ, bbox.MaxEdge.Z));
+                float ddx = occCamX - closestX;
+                float ddy = occCamY - closestY;
+                float ddz = occCamZ - closestZ;
+                distSq = ddx*ddx + ddy*ddy + ddz*ddz;
+            }
+
+            sortedZoneDrawList_.push_back({regionIdx, distSq, node});
+
+            // Hide from Irrlicht's drawAll() — we draw manually
+            node->setVisible(false);
+        }
+
+        // Sort front-to-back (ascending distance)
+        std::sort(sortedZoneDrawList_.begin(), sortedZoneDrawList_.end(),
+            [](const SortedRegionEntry& a, const SortedRegionEntry& b) {
+                return a.distanceSq < b.distanceSq;
+            });
+
+        // Also hide fallback mesh — drawn at end of manual pass
+        if (fallbackMeshNode_) {
+            fallbackMeshNode_->setVisible(false);
+        }
+    }
+}
+
+// ======== OnRenderPassPreRender (ILightManager hook) ========
+// Fires after CAMERA pass sets up view/projection, before SOLID pass renders nodes.
+// We intercept ESNRP_SOLID to draw zone geometry manually in sorted order.
+void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) {
+    passStart_ = std::chrono::steady_clock::now();
+    if (!firstPassSeen_) {
+        firstPassStart_ = passStart_;
+        firstPassSeen_ = true;
+    }
+    currentPass_ = renderPass;
+
+    // Hook: draw zone geometry manually before Irrlicht's SOLID pass
+    if (renderPass == irr::scene::ESNRP_SOLID && renderer_ && renderer_->manualZoneDrawEnabled_) {
+        auto drawStart = std::chrono::steady_clock::now();
+        if (renderer_->portalOcclusionEnabled_ && renderer_->portalOcclusionEligible_) {
+            renderer_->drawZoneGeometryWithPortals();
+        } else {
+            renderer_->drawZoneGeometrySorted();
+        }
+        renderer_->frameTimings_.manualZoneDraw = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - drawStart).count();
+    }
+}
+
+// ======== drawZoneGeometrySorted ========
+// Draws zone region meshes in front-to-back order for early-Z rejection.
+void IrrlichtRenderer::drawZoneGeometrySorted() {
+    if (sortedZoneDrawList_.empty() && !fallbackMeshNode_) return;
+
+    for (const auto& entry : sortedZoneDrawList_) {
+        if (!entry.node) continue;
+        drawRegionMesh(entry.regionIdx);
+    }
+
+    // Draw fallback mesh (geometry not in any BSP region) last
+    if (fallbackMeshNode_) {
+        drawRegionMesh(SIZE_MAX);  // SIZE_MAX signals fallback
+    }
+}
+
+// ======== drawRegionMesh ========
+// Draws a single region's mesh buffers with proper world transform.
+void IrrlichtRenderer::drawRegionMesh(size_t regionIdx) {
+    irr::scene::IMeshSceneNode* node = nullptr;
+
+    if (regionIdx == SIZE_MAX) {
+        node = fallbackMeshNode_;
+    } else {
+        auto it = regionMeshNodes_.find(regionIdx);
+        if (it == regionMeshNodes_.end() || !it->second) return;
+        node = it->second;
+    }
+
+    if (!node) return;
+
+    irr::scene::IMesh* mesh = node->getMesh();
+    if (!mesh) return;
+
+    // Set world transform — region nodes only have translation (position), no rotation/scale.
+    // Use getPosition() (relative) not getAbsolutePosition() because Irrlicht's OnAnimate()
+    // skips invisible nodes, so AbsoluteTransformation is never computed for hidden nodes.
+    // Zone mesh nodes are direct children of the root scene node, so relative == absolute.
+    irr::core::matrix4 worldMat;
+    worldMat.setTranslation(node->getPosition());
+    driver_->setTransform(irr::video::ETS_WORLD, worldMat);
+
+    // Draw each mesh buffer
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (!buf || buf->getVertexCount() == 0) continue;
+        driver_->setMaterial(buf->getMaterial());
+        driver_->drawMeshBuffer(buf);
+    }
+}
+
+// ======== drawPortalQuad ========
+// Draws a portal quad as 2 triangles (for stencil write/clear).
+// Portal vertices are in EQ Z-up coords, converted to Irrlicht Y-up: (x,y,z) -> (x,z,y)
+void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
+    irr::video::S3DVertex verts[4];
+    for (int i = 0; i < 4; ++i) {
+        verts[i].Pos.X = portal.vertices[i][0];
+        verts[i].Pos.Y = portal.vertices[i][2];  // EQ Z -> Irrlicht Y
+        verts[i].Pos.Z = portal.vertices[i][1];  // EQ Y -> Irrlicht Z
+        verts[i].Color = irr::video::SColor(255, 255, 255, 255);
+        verts[i].TCoords.X = 0.0f;
+        verts[i].TCoords.Y = 0.0f;
+        verts[i].Normal.X = portal.normalX;
+        verts[i].Normal.Y = portal.normalZ;
+        verts[i].Normal.Z = portal.normalY;
+    }
+
+    irr::u16 indices[6] = { 0, 1, 2, 0, 2, 3 };
+
+    // Identity world transform
+    irr::core::matrix4 identity;
+    driver_->setTransform(irr::video::ETS_WORLD, identity);
+
+    // Material: no texture, no lighting, depth test but no depth write
+    irr::video::SMaterial mat;
+    mat.Lighting = false;
+    mat.ZBuffer = irr::video::ECFN_LESSEQUAL;
+    mat.ZWriteEnable = false;
+    mat.BackfaceCulling = false;
+    mat.MaterialType = irr::video::EMT_SOLID;
+    driver_->setMaterial(mat);
+
+    driver_->drawVertexPrimitiveList(verts, 4, indices, 2,
+        irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
+}
+
+// ======== drawZoneGeometryWithPortals ========
+// Uses stencil-based portal occlusion to render only visible rooms.
+void IrrlichtRenderer::drawZoneGeometryWithPortals() {
+#ifdef EQT_HAS_GLES2
+    if (!portalSystem_ || currentPvsRegion_ == SIZE_MAX) {
+        // Fallback: just do front-to-back sorted draw
+        drawZoneGeometrySorted();
+        return;
+    }
+
+    // Draw current room with no stencil masking
+    std::unordered_set<size_t> drawnRegions;
+    drawRegionMesh(currentPvsRegion_);
+    drawnRegions.insert(currentPvsRegion_);
+
+    // Recursively draw visible rooms through portals using stencil
+    drawPortalRecursive(currentPvsRegion_, 0, 3, drawnRegions);
+
+    // Disable stencil, restore color mask and depth write to defaults
+    // (matches SOGLES2State::reset() defaults so driver cache stays in sync)
+    glDisable(GL_STENCIL_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+
+    // Draw fallback mesh (geometry not in any BSP region)
+    if (fallbackMeshNode_) {
+        drawRegionMesh(SIZE_MAX);
+    }
+#else
+    drawZoneGeometrySorted();
+#endif
+}
+
+// ======== drawPortalRecursive ========
+// Recursively draws rooms visible through portals using nested stencil masking.
+void IrrlichtRenderer::drawPortalRecursive(size_t fromRegion, int stencilLevel,
+                                            int maxDepth,
+                                            std::unordered_set<size_t>& drawn) {
+#ifdef EQT_HAS_GLES2
+    if (!portalSystem_ || maxDepth <= 0) return;
+
+    const auto& portalIndices = portalSystem_->getPortalsForRegion(fromRegion);
+
+    for (size_t portalIdx : portalIndices) {
+        size_t otherRegion = portalSystem_->getOtherRegion(portalIdx, fromRegion);
+        if (otherRegion == SIZE_MAX) continue;
+        if (drawn.count(otherRegion)) continue;
+
+        // Check PVS: is otherRegion visible from current region?
+        if (currentPvsRegion_ != SIZE_MAX && currentPvsRegion_ < zoneBspTree_->regions.size()) {
+            const auto& currentRegionData = zoneBspTree_->regions[currentPvsRegion_];
+            if (currentRegionData && otherRegion < currentRegionData->visibleRegions.size()) {
+                if (!currentRegionData->visibleRegions[otherRegion]) continue;
+            }
+        }
+
+        // Check if the other region has a mesh
+        auto nodeIt = regionMeshNodes_.find(otherRegion);
+        if (nodeIt == regionMeshNodes_.end() || !nodeIt->second) continue;
+
+        // Frustum cull the portal center (quick reject)
+        if (frustumCuller_ && frustumCuller_->isEnabled()) {
+            const Portal& portal = portalSystem_->getData().portals[portalIdx];
+            auto bboxIt = regionBoundingBoxes_.find(otherRegion);
+            if (bboxIt != regionBoundingBoxes_.end()) {
+                const auto& bbox = bboxIt->second;
+                if (!frustumCuller_->testAABB(
+                        bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
+                        bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
+                    continue;
+                }
+            }
+        }
+
+        const Portal& portal = portalSystem_->getData().portals[portalIdx];
+
+        // Step 1: Stencil write — draw portal quad, increment stencil where depth passes
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_EQUAL, stencilLevel, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_FALSE);
+        drawPortalQuad(portal);
+
+        // Step 2: Draw room mesh where stencil == stencilLevel+1
+        glStencilFunc(GL_EQUAL, stencilLevel + 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
+        drawRegionMesh(otherRegion);
+        drawn.insert(otherRegion);
+
+        // Step 3: Recurse into deeper rooms
+        drawPortalRecursive(otherRegion, stencilLevel + 1, maxDepth - 1, drawn);
+
+        // Step 4: Stencil pop — decrement stencil back to previous level
+        glStencilFunc(GL_EQUAL, stencilLevel + 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_DECR);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_FALSE);
+        drawPortalQuad(portal);
+    }
+
+    // Restore color/depth after portal loop
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+#endif
 }
 
 bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
@@ -5916,6 +6244,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.sceneSkybox += frameTimings_.sceneSkybox;
         frameTimingsAccum_.sceneOther += frameTimings_.sceneOther;
         frameTimingsAccum_.sceneNodeCount += frameTimings_.sceneNodeCount;
+        frameTimingsAccum_.manualZoneDraw += frameTimings_.manualZoneDraw;
         frameTimingsAccum_.targetBox += frameTimings_.targetBox;
         frameTimingsAccum_.particles += frameTimings_.particles;
         frameTimingsAccum_.boids += frameTimings_.boids;
@@ -6783,6 +7112,71 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         drawNavmeshOverlay();
     }
 
+    // Portal wireframe debug overlay
+    if (portalDebugDraw_ && portalSystem_ && portalSystem_->hasPortals()) {
+        irr::video::SMaterial portalMat;
+        portalMat.Lighting = false;
+        portalMat.ZBuffer = irr::video::ECFN_ALWAYS;
+        portalMat.ZWriteEnable = false;
+        portalMat.BackfaceCulling = false;
+        portalMat.Thickness = 2.0f;
+        driver_->setMaterial(portalMat);
+        driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+
+        const auto& portalData = portalSystem_->getData();
+        for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
+            const auto& portal = portalData.portals[pi];
+
+            // Cyan for portals adjacent to camera's room, orange for others
+            bool isAdjacentToCamera = (portal.regionA == currentPvsRegion_ ||
+                                       portal.regionB == currentPvsRegion_);
+            irr::video::SColor color = isAdjacentToCamera ?
+                irr::video::SColor(255, 0, 255, 255) :    // Cyan
+                irr::video::SColor(255, 255, 165, 0);     // Orange
+
+            // Convert portal vertices: EQ (x,y,z) -> Irrlicht (x,z,y)
+            irr::core::vector3df v[4];
+            for (int i = 0; i < 4; ++i) {
+                v[i] = irr::core::vector3df(portal.vertices[i][0],
+                                             portal.vertices[i][2],
+                                             portal.vertices[i][1]);
+            }
+
+            // Draw quad wireframe
+            driver_->draw3DLine(v[0], v[1], color);
+            driver_->draw3DLine(v[1], v[2], color);
+            driver_->draw3DLine(v[2], v[3], color);
+            driver_->draw3DLine(v[3], v[0], color);
+            // Diagonal for visibility
+            driver_->draw3DLine(v[0], v[2], color);
+        }
+    }
+
+    // Stencil buffer debug overlay (show stencil levels as colored fullscreen rects)
+    // Only available on GLES2 with portal occlusion active
+#ifdef EQT_HAS_GLES2
+    if (stencilDebugDraw_ && portalOcclusionEnabled_) {
+        irr::video::SColor levelColors[4] = {
+            irr::video::SColor(80, 0, 255, 0),     // Level 1: green
+            irr::video::SColor(80, 0, 0, 255),     // Level 2: blue
+            irr::video::SColor(80, 255, 255, 0),   // Level 3: yellow
+            irr::video::SColor(80, 255, 0, 255)    // Level 4: magenta
+        };
+
+        for (int level = 1; level <= 4; ++level) {
+            glEnable(GL_STENCIL_TEST);
+            glStencilFunc(GL_EQUAL, level, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+            irr::core::rect<irr::s32> fullScreen(0, 0,
+                static_cast<irr::s32>(driver_->getScreenSize().Width),
+                static_cast<irr::s32>(driver_->getScreenSize().Height));
+            driver_->draw2DRectangle(levelColors[level - 1], fullScreen);
+        }
+        glDisable(GL_STENCIL_TEST);
+    }
+#endif
+
     frameTimings_.debugOverlays = measureSection();
 
     // Draw entity casting bars
@@ -7149,6 +7543,46 @@ bool IrrlichtRenderer::isUsingOldModels() const {
     return loader->isUsingOldModels();
 }
 
+void IrrlichtRenderer::toggleManualZoneDraw() {
+    if (!usePvsCulling_ || regionMeshNodes_.empty()) {
+        LOG_INFO(MOD_GRAPHICS, "Manual zone draw not available (no PVS culling)");
+        return;
+    }
+    manualZoneDrawEnabled_ = !manualZoneDrawEnabled_;
+    if (manualZoneDrawEnabled_) {
+        // Ensure render pass timer is installed
+        if (smgr_ && !renderPassTimer_) {
+            renderPassTimer_ = new RenderPassTimer();
+            renderPassTimer_->setRenderer(this);
+            smgr_->setLightManager(renderPassTimer_);
+        }
+    }
+    LOG_INFO(MOD_GRAPHICS, "Manual zone draw (front-to-back sorting): {}",
+             manualZoneDrawEnabled_ ? "ENABLED" : "DISABLED");
+}
+
+void IrrlichtRenderer::togglePortalOcclusion() {
+    if (!portalOcclusionEligible_) {
+        LOG_INFO(MOD_GRAPHICS, "Portal occlusion not available (no portals or too few)");
+        return;
+    }
+    portalOcclusionEnabled_ = !portalOcclusionEnabled_;
+    LOG_INFO(MOD_GRAPHICS, "Portal occlusion: {}",
+             portalOcclusionEnabled_ ? "ENABLED" : "DISABLED");
+}
+
+void IrrlichtRenderer::togglePortalDebugDraw() {
+    portalDebugDraw_ = !portalDebugDraw_;
+    LOG_INFO(MOD_GRAPHICS, "Portal debug draw: {}",
+             portalDebugDraw_ ? "ENABLED" : "DISABLED");
+}
+
+void IrrlichtRenderer::toggleStencilDebugDraw() {
+    stencilDebugDraw_ = !stencilDebugDraw_;
+    LOG_INFO(MOD_GRAPHICS, "Stencil debug draw: {}",
+             stencilDebugDraw_ ? "ENABLED" : "DISABLED");
+}
+
 void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
     frameTimingEnabled_ = enabled;
     if (enabled) {
@@ -7159,14 +7593,15 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
         // Install render pass timer for per-pass breakdown of drawAll()
         if (smgr_ && !renderPassTimer_) {
             renderPassTimer_ = new RenderPassTimer();
+            renderPassTimer_->setRenderer(this);
             smgr_->setLightManager(renderPassTimer_);
         }
         // Enable per-window timing in WindowManager
         if (windowManager_) windowManager_->setRenderTimingEnabled(true);
         LOG_INFO(MOD_GRAPHICS, "Frame timing profiler ENABLED - timing data will be logged every 60 frames");
     } else {
-        // Remove render pass timer
-        if (smgr_ && renderPassTimer_) {
+        // Remove render pass timer (but keep it if manual zone draw needs it)
+        if (smgr_ && renderPassTimer_ && !manualZoneDrawEnabled_) {
             smgr_->setLightManager(nullptr);
             renderPassTimer_ = nullptr;  // Irrlicht drops the ref
         }
@@ -7224,6 +7659,9 @@ void IrrlichtRenderer::logFrameTimings() {
              lastPolygonCount_);
     LOG_INFO(MOD_GRAPHICS, "    Animate+Register: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneAnimate), pct(frameTimingsAccum_.sceneAnimate));
     LOG_INFO(MOD_GRAPHICS, "    Solid Pass:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneSolid), pct(frameTimingsAccum_.sceneSolid));
+    if (manualZoneDrawEnabled_) {
+        LOG_INFO(MOD_GRAPHICS, "    Manual Zone Draw: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.manualZoneDraw), pct(frameTimingsAccum_.manualZoneDraw));
+    }
     LOG_INFO(MOD_GRAPHICS, "    Transparent Pass: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneTransparent), pct(frameTimingsAccum_.sceneTransparent));
     LOG_INFO(MOD_GRAPHICS, "    Skybox Pass:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneSkybox), pct(frameTimingsAccum_.sceneSkybox));
     LOG_INFO(MOD_GRAPHICS, "    Other Passes:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneOther), pct(frameTimingsAccum_.sceneOther));

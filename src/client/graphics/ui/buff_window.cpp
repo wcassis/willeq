@@ -44,8 +44,11 @@ void BuffWindow::ensureContentRT(irr::video::IVideoDriver* driver)
     if (w <= 0 || h <= 0) return;
 
     // RTT caching only works correctly on hardware-accelerated drivers
-    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
-        driver->getDriverType() != irr::video::EDT_OGLES2) return;
+    if (driver->getDriverType() != irr::video::EDT_OPENGL
+#ifdef _IRR_COMPILE_WITH_OGLES2_
+        && driver->getDriverType() != irr::video::EDT_OGLES2
+#endif
+        ) return;
 
     if (!contentRT_ || contentRTWidth_ != w || contentRTHeight_ != h || cachedDriver_ != driver) {
         if (contentRT_ && cachedDriver_) {

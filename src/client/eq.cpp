@@ -8944,6 +8944,54 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(sceneprofile);
 
+	Command sortcmd;
+	sortcmd.name = "sort";
+	sortcmd.aliases = {};
+	sortcmd.usage = "/sort";
+	sortcmd.description = "Toggle front-to-back zone geometry sorting (manual draw vs scene graph)";
+	sortcmd.category = "Utility";
+	sortcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->toggleManualZoneDraw();
+		AddChatSystemMessage(fmt::format("Front-to-back zone sorting: {}",
+			m_renderer->isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(sortcmd);
+
+	Command portalcmd;
+	portalcmd.name = "portal";
+	portalcmd.aliases = {};
+	portalcmd.usage = "/portal [on|off|debug]";
+	portalcmd.description = "Toggle portal occlusion or portal debug overlay";
+	portalcmd.category = "Utility";
+	portalcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		if (args == "debug") {
+			m_renderer->togglePortalDebugDraw();
+			AddChatSystemMessage(fmt::format("Portal debug overlay: {}",
+				m_renderer->isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
+		} else {
+			m_renderer->togglePortalOcclusion();
+			AddChatSystemMessage(fmt::format("Portal occlusion: {}",
+				m_renderer->isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
+		}
+	};
+	m_command_registry->registerCommand(portalcmd);
+
+	Command stencilcmd;
+	stencilcmd.name = "stencil";
+	stencilcmd.aliases = {};
+	stencilcmd.usage = "/stencil";
+	stencilcmd.description = "Toggle stencil buffer debug overlay";
+	stencilcmd.category = "Utility";
+	stencilcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->toggleStencilDebugDraw();
+		AddChatSystemMessage(fmt::format("Stencil debug overlay: {}",
+			m_renderer->isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(stencilcmd);
+
 	Command renderdist;
 	renderdist.name = "renderdist";
 	renderdist.aliases = {"clipplane", "viewdist"};

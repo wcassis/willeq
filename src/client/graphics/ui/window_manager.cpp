@@ -5252,8 +5252,11 @@ void WindowManager::renderLockIndicator() {
     }
 
     // RTT caching on hardware-accelerated drivers (OpenGL and GLES2)
-    bool useRTT = (driver_->getDriverType() == irr::video::EDT_OPENGL ||
-                   driver_->getDriverType() == irr::video::EDT_OGLES2);
+    bool useRTT = (driver_->getDriverType() == irr::video::EDT_OPENGL
+#ifdef _IRR_COMPILE_WITH_OGLES2_
+                   || driver_->getDriverType() == irr::video::EDT_OGLES2
+#endif
+                   );
 
     if (lockIndicatorDirty_ || !useRTT) {
         irr::gui::IGUIFont* font = gui_->getBuiltInFont();

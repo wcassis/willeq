@@ -23,6 +23,7 @@
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
 #include "client/graphics/texture_atlas.h"
+#include "client/graphics/portal_system.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
@@ -353,6 +354,13 @@ private:
     eqt::input::HotkeyMode currentMode_ = eqt::input::HotkeyMode::Player;
 };
 
+// Entry for front-to-back sorted zone drawing
+struct SortedRegionEntry {
+    size_t regionIdx;
+    float distanceSq;
+    irr::scene::IMeshSceneNode* node;
+};
+
 // Main Irrlicht renderer class
 class IrrlichtRenderer {
 public:
@@ -623,6 +631,16 @@ public:
     void cycleObjectLights();
     void toggleOldModels();
     bool isUsingOldModels() const;
+
+    // Front-to-back sorting and portal occlusion controls
+    void toggleManualZoneDraw();
+    bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
+    void togglePortalOcclusion();
+    bool isPortalOcclusionEnabled() const { return portalOcclusionEnabled_; }
+    void togglePortalDebugDraw();
+    bool isPortalDebugDrawEnabled() const { return portalDebugDraw_; }
+    void toggleStencilDebugDraw();
+    bool isStencilDebugDrawEnabled() const { return stencilDebugDraw_; }
     void setFrameTimingEnabled(bool enabled);  // Enable/disable frame timing profiler
     bool isFrameTimingEnabled() const { return frameTimingEnabled_; }
     void runSceneProfile();  // Run scene breakdown profiler (profiles next frame)
@@ -997,6 +1015,25 @@ private:
     size_t currentPvsRegion_ = SIZE_MAX;  // Current camera region (SIZE_MAX = unknown)
     irr::scene::IMeshSceneNode* fallbackMeshNode_ = nullptr;  // Mesh for geometry not in any region
 
+    // Manual zone draw (front-to-back sorting and portal occlusion)
+    bool manualZoneDrawEnabled_ = false;
+    std::vector<SortedRegionEntry> sortedZoneDrawList_;
+    void drawZoneGeometrySorted();
+
+    // Portal occlusion system
+    std::unique_ptr<PortalSystem> portalSystem_;
+    bool portalOcclusionEnabled_ = false;
+    bool portalOcclusionEligible_ = false;
+    void drawZoneGeometryWithPortals();
+    void drawRegionMesh(size_t regionIdx);
+    void drawPortalQuad(const Portal& portal);
+    void drawPortalRecursive(size_t fromRegion, int stencilLevel, int maxDepth,
+                             std::unordered_set<size_t>& drawn);
+
+    // Debug visualization for portals/stencil
+    bool portalDebugDraw_ = false;
+    bool stencilDebugDraw_ = false;
+
     // Lazy mesh loading state (constrained mode)
     struct MeshLoadEntry {
         size_t regionIdx;
@@ -1310,6 +1347,7 @@ private:
         int64_t sceneSkybox = 0;        // ESNRP_SKY_BOX pass
         int64_t sceneOther = 0;         // Camera + light + shadow passes
         int sceneNodeCount = 0;         // Nodes rendered in drawAll
+        int64_t manualZoneDraw = 0;
         int64_t targetBox = 0;
         int64_t particles = 0;
         int64_t boids = 0;
@@ -1374,14 +1412,8 @@ private:
             preRenderTime_ = std::chrono::steady_clock::now();
         }
         void OnPostRender() override {}
-        void OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
-            passStart_ = std::chrono::steady_clock::now();
-            if (!firstPassSeen_) {
-                firstPassStart_ = passStart_;
-                firstPassSeen_ = true;
-            }
-            currentPass_ = renderPass;
-        }
+        void OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override;
+        // Implementation in irrlicht_renderer.cpp (needs access to IrrlichtRenderer)
         void OnRenderPassPostRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - passStart_).count();
@@ -1406,7 +1438,12 @@ private:
             return std::chrono::duration_cast<std::chrono::microseconds>(
                 firstPassStart_ - preRenderTime_).count();
         }
+
+        // Set renderer for manual zone draw hook
+        void setRenderer(IrrlichtRenderer* r) { renderer_ = r; }
+
     private:
+        IrrlichtRenderer* renderer_ = nullptr;
         std::chrono::steady_clock::time_point passStart_;
         std::chrono::steady_clock::time_point firstPassStart_;
         std::chrono::steady_clock::time_point preRenderTime_;

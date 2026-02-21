@@ -196,8 +196,11 @@ void ChatWindow::onResize(int screenWidth, int screenHeight) {
 void ChatWindow::ensureMessageAreaRT(irr::video::IVideoDriver* driver)
 {
     // RTT caching only works correctly on hardware-accelerated drivers
-    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
-        driver->getDriverType() != irr::video::EDT_OGLES2) return;
+    if (driver->getDriverType() != irr::video::EDT_OPENGL
+#ifdef _IRR_COMPILE_WITH_OGLES2_
+        && driver->getDriverType() != irr::video::EDT_OGLES2
+#endif
+        ) return;
 
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();

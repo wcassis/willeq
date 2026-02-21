@@ -233,6 +233,9 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
     if (zBuffer) {
         setDepthWrite(true);
         clearMask |= GL_DEPTH_BUFFER_BIT;
+        // Always clear stencil when clearing depth (D24S8 is a single buffer)
+        glStencilMask(0xFF);
+        clearMask |= GL_STENCIL_BUFFER_BIT;
     }
 
     if (clearMask)
@@ -345,6 +348,50 @@ void COpenGLES2Driver::bindTexture(GLuint unit, GLuint tex)
     // bound textures via raw GL calls, making our tracked state stale.
     glBindTexture(GL_TEXTURE_2D, tex);
     state_.boundTexture[idx] = tex;
+}
+
+void COpenGLES2Driver::setStencilTest(bool enable)
+{
+    if (enable != state_.stencilTestEnabled) {
+        if (enable)
+            glEnable(GL_STENCIL_TEST);
+        else
+            glDisable(GL_STENCIL_TEST);
+        state_.stencilTestEnabled = enable;
+    }
+}
+
+void COpenGLES2Driver::setStencilFunc(GLenum func, GLint ref, GLuint mask)
+{
+    if (func != state_.stencilFunc || ref != state_.stencilRef || mask != state_.stencilMask) {
+        glStencilFunc(func, ref, mask);
+        state_.stencilFunc = func;
+        state_.stencilRef = ref;
+        state_.stencilMask = mask;
+    }
+}
+
+void COpenGLES2Driver::setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass)
+{
+    if (sfail != state_.stencilSFail || dpfail != state_.stencilDPFail || dppass != state_.stencilDPPass) {
+        glStencilOp(sfail, dpfail, dppass);
+        state_.stencilSFail = sfail;
+        state_.stencilDPFail = dpfail;
+        state_.stencilDPPass = dppass;
+    }
+}
+
+void COpenGLES2Driver::setColorMask(bool r, bool g, bool b, bool a)
+{
+    if (r != state_.colorMaskR || g != state_.colorMaskG ||
+        b != state_.colorMaskB || a != state_.colorMaskA) {
+        glColorMask(r ? GL_TRUE : GL_FALSE, g ? GL_TRUE : GL_FALSE,
+                    b ? GL_TRUE : GL_FALSE, a ? GL_TRUE : GL_FALSE);
+        state_.colorMaskR = r;
+        state_.colorMaskG = g;
+        state_.colorMaskB = b;
+        state_.colorMaskA = a;
+    }
 }
 
 void COpenGLES2Driver::invalidateTextureState()

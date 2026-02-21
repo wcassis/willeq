@@ -50,6 +50,16 @@ struct SOGLES2State
     // Scissor
     bool scissorEnabled;
 
+    // Stencil
+    bool stencilTestEnabled;
+    GLenum stencilFunc;
+    GLint stencilRef;
+    GLuint stencilMask;
+    GLenum stencilSFail, stencilDPFail, stencilDPPass;
+
+    // Color mask
+    bool colorMaskR, colorMaskG, colorMaskB, colorMaskA;
+
     // Bound textures
     GLuint boundTexture[2];  // Unit 0 and 1
     GLenum activeTextureUnit;
@@ -72,6 +82,14 @@ struct SOGLES2State
         cullEnabled = false;
         cullFace = GL_BACK;
         scissorEnabled = false;
+        stencilTestEnabled = false;
+        stencilFunc = GL_ALWAYS;
+        stencilRef = 0;
+        stencilMask = 0xFF;
+        stencilSFail = GL_KEEP;
+        stencilDPFail = GL_KEEP;
+        stencilDPPass = GL_KEEP;
+        colorMaskR = colorMaskG = colorMaskB = colorMaskA = true;
         boundTexture[0] = boundTexture[1] = 0;
         activeTextureUnit = GL_TEXTURE0;
         viewportX = viewportY = 0;
@@ -328,6 +346,15 @@ private:
     void setDepthWrite(bool enable);
     void setCull(bool enable, GLenum face=GL_BACK);
     void bindTexture(GLuint unit, GLuint tex);
+
+public:
+    // Stencil and color mask state (public for portal renderer access)
+    void setStencilTest(bool enable);
+    void setStencilFunc(GLenum func, GLint ref, GLuint mask);
+    void setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass);
+    void setColorMask(bool r, bool g, bool b, bool a);
+
+private:
 
     CIrrDeviceFB* Device;
     COGLES2ShaderManager shaderManager_;

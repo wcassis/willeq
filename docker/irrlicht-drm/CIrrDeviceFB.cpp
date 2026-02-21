@@ -462,7 +462,8 @@ bool CIrrDeviceFB::initEGL()
         EGL_GREEN_SIZE, 8,
         EGL_BLUE_SIZE, 8,
         EGL_ALPHA_SIZE, 0,
-        EGL_DEPTH_SIZE, 16,
+        EGL_DEPTH_SIZE, 24,       // D24S8 is native on Mali 400 (shared 32-bit word)
+        EGL_STENCIL_SIZE, 8,      // Stencil for portal occlusion
         EGL_RENDERABLE_TYPE, useDesktopGL ? EGL_OPENGL_BIT : EGL_OPENGL_ES2_BIT,
         EGL_NONE
     };
@@ -483,6 +484,16 @@ bool CIrrDeviceFB::initEGL()
             os::Printer::log("EGL: eglChooseConfig failed", ELL_ERROR);
             return false;
         }
+    }
+
+    // Log actual EGL config depth/stencil bits
+    {
+        EGLint depthBits = 0, stencilBits = 0;
+        eglGetConfigAttrib(eglDisplay_, eglConfig_, EGL_DEPTH_SIZE, &depthBits);
+        eglGetConfigAttrib(eglDisplay_, eglConfig_, EGL_STENCIL_SIZE, &stencilBits);
+        char buf[128];
+        snprintf(buf, sizeof(buf), "EGL: Config depth=%d stencil=%d", depthBits, stencilBits);
+        os::Printer::log(buf, ELL_INFORMATION);
     }
 
     // Create context

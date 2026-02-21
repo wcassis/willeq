@@ -33,8 +33,11 @@ InventoryWindow::InventoryWindow(inventory::InventoryManager* manager)
 
 void InventoryWindow::ensureContentRT(irr::video::IVideoDriver* driver) {
     // RTT caching only works correctly on hardware-accelerated drivers
-    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
-        driver->getDriverType() != irr::video::EDT_OGLES2) return;
+    if (driver->getDriverType() != irr::video::EDT_OPENGL
+#ifdef _IRR_COMPILE_WITH_OGLES2_
+        && driver->getDriverType() != irr::video::EDT_OGLES2
+#endif
+        ) return;
 
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();
@@ -961,9 +964,11 @@ void InventoryWindow::renderModelView(irr::video::IVideoDriver* driver,
     // content inverted in the FBO, which cancels out the UV mapping.
     int srcTop = 0;
     int srcBottom = tex->getSize().Height;
+#ifdef _IRR_COMPILE_WITH_OGLES2_
     if (driver->getDriverType() == irr::video::EDT_OGLES2) {
         std::swap(srcTop, srcBottom);
     }
+#endif
     irr::core::recti srcRect(0, srcTop, tex->getSize().Width, srcBottom);
 
     // Draw the texture with alpha blending
