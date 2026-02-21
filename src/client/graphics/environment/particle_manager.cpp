@@ -834,6 +834,22 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
             p.color.g *= std::min(lightG, 1.0f);
             p.color.b *= std::min(lightB, 1.0f);
 
+            // Periodic debug: log first weather particle's lighting result
+            static int weatherParticleLogCounter = 0;
+            if (weatherParticleLogCounter == 0) {
+                LOG_DEBUG(MOD_GRAPHICS,
+                    "WeatherParticle[{}]: lightAccum=({:.3f},{:.3f},{:.3f}), "
+                    "finalColor=({:.3f},{:.3f},{:.3f},{:.3f}), "
+                    "numLights={}, ambient=({:.3f},{:.3f},{:.3f})",
+                    static_cast<int>(&p - unifiedPool_.data()),
+                    lightR, lightG, lightB,
+                    p.color.r, p.color.g, p.color.b, p.color.a,
+                    weatherLights_.size(),
+                    ambientColor_.x, ambientColor_.y, ambientColor_.z);
+            }
+            weatherParticleLogCounter++;
+            if (weatherParticleLogCounter >= 15000) weatherParticleLogCounter = 0;  // ~5s at 300 particles * 50fps
+
             // Recycle check: if particle is too far from camera or below volume, respawn
             glm::vec3 offset = p.position - cameraPos;
             float hExtX = cfg.spawnVolumeHalfExtents.x * 1.5f;

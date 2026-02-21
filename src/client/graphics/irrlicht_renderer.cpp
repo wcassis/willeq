@@ -1590,6 +1590,11 @@ void IrrlichtRenderer::updateObjectLights() {
     // when camera hasn't moved 5+ units since last full update
     float cameraMoved = cameraPos.getDistanceFrom(lastLightCameraPos_);
     if (cameraMoved < 5.0f && lastLightCameraPos_.getLengthSQ() > 0.01f) {
+        // Still refresh shader light positions every frame (cheap — just re-reads
+        // getPosition() from the existing activeLightNodes_ list). Without this,
+        // the player's point light appears frozen in the shader when standing still
+        // because setPointLight() only runs during full updates.
+        refreshShaderLightColors();
         return;
     }
     lastLightCameraPos_ = cameraPos;
@@ -1813,10 +1818,20 @@ void IrrlichtRenderer::updateObjectLights() {
             // Only feed point lights to shader (skip directional sun)
             irr::video::SLight& ld = candidates[i].node->getLightData();
             if (ld.Type != irr::video::ELT_POINT) continue;
-            irr::core::vector3df pos = candidates[i].node->getAbsolutePosition();
+            // Use getPosition() not getAbsolutePosition() — all light nodes are root-level
+            // (no parent), and AbsoluteTransformation is stale because OnAnimate() hasn't
+            // run yet (it runs during drawAll() which is after updateObjectLights()).
+            irr::core::vector3df pos = candidates[i].node->getPosition();
+            // Boost light color for GLSL shader — Irrlicht's DiffuseColor values
+            // (0.1-0.4 range) are designed for Irrlicht's built-in attenuation pipeline
+            // but are too dim when used directly as additive light color in our custom
+            // shader. 3x boost gives visible torch/campfire illumination at night.
+            constexpr float lightBoost = 3.0f;
             zoneShader_->setPointLight(shaderLightIdx,
                 pos.X, pos.Y, pos.Z,
-                ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b,
+                ld.DiffuseColor.r * lightBoost,
+                ld.DiffuseColor.g * lightBoost,
+                ld.DiffuseColor.b * lightBoost,
                 ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
             shaderLightIdx++;
         }
@@ -5915,12 +5930,18 @@ void IrrlichtRenderer::refreshShaderLightColors() {
         if (!node) continue;
         const irr::video::SLight& ld = node->getLightData();
         if (ld.Type != irr::video::ELT_POINT) continue;
-        irr::core::vector3df pos = node->getAbsolutePosition();
+        // Use getPosition() — root-level nodes, AbsoluteTransformation may be stale
+        irr::core::vector3df pos = node->getPosition();
+        // Boost light color for GLSL shader (same as full update path)
+        constexpr float lightBoost = 3.0f;
         zoneShader_->setPointLight(i,
             pos.X, pos.Y, pos.Z,
-            ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b,
+            ld.DiffuseColor.r * lightBoost,
+            ld.DiffuseColor.g * lightBoost,
+            ld.DiffuseColor.b * lightBoost,
             ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
     }
+
 }
 
 void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float heading) {
@@ -6852,6 +6873,15 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     }
     frameTimings_.fireFlicker = measureSection();
 
+    // Every-frame player light tracking — not gated by Tier2.
+    // updateObjectLights() only runs every 3 frames, so the player's point light
+    // appears frozen in the shader on non-Tier2 frames. This ensures smooth tracking.
+    if (!runTier2_ && playerLightNode_ && playerLightLevel_ > 0
+        && zoneShader_ && zoneShader_->isAvailable() && !activeLightNodes_.empty()) {
+        playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
+        refreshShaderLightColors();
+    }
+
     // Tier 3: Environmental simulation
     {
         if (weatherSystem_) weatherSystem_->update(deltaTime);
@@ -6882,22 +6912,35 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
                     auto cp = camera_->getAbsolutePosition();
                     camIrr = glm::vec3(cp.X, cp.Y, cp.Z);
                 }
+                glm::vec3 ambientForParticles(0.1f);
                 if (zoneShader_) {
                     const float* amb = zoneShader_->ambientColor();
-                    particleManager_->setAmbientColor(glm::vec3(amb[0], amb[1], amb[2]));
+                    ambientForParticles = glm::vec3(amb[0], amb[1], amb[2]);
+                    particleManager_->setAmbientColor(ambientForParticles);
                 }
 
                 // Collect nearby lights for weather particle illumination
                 if (particleManager_->isWeatherParticlesActive()) {
                     std::vector<Environment::ParticleManager::ParticleLight> nearbyLights;
-                    float maxLightDist = 50.0f;  // Max distance to consider a light
+                    // Max distance from camera to consider a zone light.
+                    // Must cover weather spawn volume (half-extents up to 40) plus
+                    // typical light radii (30-100) so particles at volume edges
+                    // can still receive illumination from lights just outside.
+                    float maxLightDist = 150.0f;
                     float maxLightDistSq = maxLightDist * maxLightDist;
 
-                    // Zone lights
-                    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+                    // Boost factor: Irrlicht's lighting pipeline applies per-vertex
+                    // attenuation via uniforms, so DiffuseColor values are in 0.1-0.4
+                    // range. For weather particles we use color as a direct multiplier,
+                    // so boost to produce visible illumination.
+                    float colorBoost = 2.5f;
+
+                    // Zone lights — use cached positions, not getAbsolutePosition(),
+                    // because invisible nodes have stale AbsoluteTransformation
+                    for (size_t i = 0; i < zoneLightNodes_.size() && i < zoneLightPositions_.size(); ++i) {
                         auto* node = zoneLightNodes_[i];
                         if (!node) continue;
-                        auto pos = node->getAbsolutePosition();
+                        const auto& pos = zoneLightPositions_[i];
                         float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
                         float distSq = dx*dx + dy*dy + dz*dz;
                         if (distSq < maxLightDistSq) {
@@ -6906,20 +6949,53 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
                             nearbyLights.push_back({
                                 glm::vec3(pos.X, pos.Y, pos.Z),
                                 radius,
-                                glm::vec3(ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b)
+                                glm::vec3(
+                                    std::min(1.0f, ld.DiffuseColor.r * colorBoost),
+                                    std::min(1.0f, ld.DiffuseColor.g * colorBoost),
+                                    std::min(1.0f, ld.DiffuseColor.b * colorBoost)
+                                )
                             });
                         }
                     }
 
-                    // Player light (lantern, lightstone)
+                    // Player light (lantern, lightstone, etc.)
+                    // Use getPosition() not getAbsolutePosition() — no parent node.
                     if (playerLightNode_ && playerLightLevel_ > 0) {
                         auto pos = playerLightNode_->getPosition();
                         auto& ld = playerLightNode_->getLightData();
                         nearbyLights.push_back({
                             glm::vec3(pos.X, pos.Y, pos.Z),
                             ld.Radius,
-                            glm::vec3(ld.DiffuseColor.r, ld.DiffuseColor.g, ld.DiffuseColor.b)
+                            glm::vec3(
+                                std::min(1.0f, ld.DiffuseColor.r * colorBoost),
+                                std::min(1.0f, ld.DiffuseColor.g * colorBoost),
+                                std::min(1.0f, ld.DiffuseColor.b * colorBoost)
+                            )
                         });
+                    }
+
+                    // Periodic debug logging for weather light collection
+                    static int weatherLightLogCounter = 0;
+                    if (++weatherLightLogCounter >= 300) {  // ~every 6s at 50fps
+                        weatherLightLogCounter = 0;
+                        LOG_DEBUG(MOD_GRAPHICS,
+                            "WeatherLights: {} total ({} zone, {} player), ambient=({:.3f},{:.3f},{:.3f})",
+                            nearbyLights.size(),
+                            nearbyLights.size() - (playerLightNode_ && playerLightLevel_ > 0 ? 1 : 0),
+                            (playerLightNode_ && playerLightLevel_ > 0 ? 1 : 0),
+                            ambientForParticles.x, ambientForParticles.y, ambientForParticles.z);
+                        if (playerLightNode_ && playerLightLevel_ > 0) {
+                            auto ppos = playerLightNode_->getPosition();
+                            auto& pld = playerLightNode_->getLightData();
+                            LOG_DEBUG(MOD_GRAPHICS,
+                                "  PlayerLight: pos=({:.1f},{:.1f},{:.1f}), radius={:.1f}, "
+                                "diffuse=({:.3f},{:.3f},{:.3f}), boosted=({:.3f},{:.3f},{:.3f})",
+                                ppos.X, ppos.Y, ppos.Z, pld.Radius,
+                                pld.DiffuseColor.r, pld.DiffuseColor.g, pld.DiffuseColor.b,
+                                std::min(1.0f, pld.DiffuseColor.r * colorBoost),
+                                std::min(1.0f, pld.DiffuseColor.g * colorBoost),
+                                std::min(1.0f, pld.DiffuseColor.b * colorBoost));
+                        }
                     }
 
                     particleManager_->setWeatherLights(nearbyLights);

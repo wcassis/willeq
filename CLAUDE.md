@@ -396,9 +396,11 @@ The GLES2 tier uses an all-shader pipeline with 6 built-in programs:
 - `UI2D` — All 2D UI (textured quads with color modulation)
 - `Color2D` — 2D rectangles, lines, debug overlays
 
-All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS use `precision mediump float` (FP16 on Mali 400 fragment cores). The 8-point-light loop runs in VS only.
+All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS use `precision mediump float` (FP16 on Mali 400 fragment cores).
 
 Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQT_HAS_GLES2` is defined (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
+
+**Hybrid per-vertex/per-pixel lighting**: Point light[0] (always the player's carried light, highest priority) is computed **per-pixel in the fragment shader** to avoid illumination artifacts on large zone triangles. Lights[1..7] (zone torches, campfires) remain **per-vertex** in the VS. The FS receives `vWorldPos` and `vWorldNormal` varyings and 3 dedicated uniforms (`uPlayerLightPos`, `uPlayerLightColor`, `uPlayerLightAtten`). Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
 
 ### Zone Rendering Optimizations
 

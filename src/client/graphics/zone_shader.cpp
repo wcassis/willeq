@@ -21,6 +21,8 @@ namespace Graphics {
 #ifdef EQT_HAS_GLES2
 
 // GLSL ES 1.00 vertex shader — per-vertex lighting + fog
+// Light[0] (player light) is computed per-pixel in FS to avoid artifacts on large triangles.
+// Lights[1..7] (zone torches etc.) remain per-vertex.
 static const char* VERTEX_SHADER_SRC = R"(
 precision highp float;
 
@@ -46,6 +48,8 @@ uniform vec3 uLightAtten[8];
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     vec4 pos = vec4(aPosition, 1.0);
@@ -55,23 +59,28 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
+    vWorldPos = worldPos;
+    vWorldNormal = worldN;
+
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 lighting = uAmbientColor + sunNdotL * uSunColor;
+    // Base (ambient + sun) gets tint and baked vertex color
+    vec3 baseLighting = uAmbientColor + sunNdotL * uSunColor;
 
-    // Point lights (world space, always iterate all 8)
-    for (int i = 0; i < 8; i++) {
+    // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
+    vec3 pointLighting = vec3(0.0);
+    for (int i = 1; i < 8; i++) {
         vec3 lVec = uLightPos[i] - worldPos;
         float d = length(lVec) + 0.001;
         float atten = 1.0 / (uLightAtten[i].x
                             + uLightAtten[i].y * d
                             + uLightAtten[i].z * d * d + 0.0001);
         float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        lighting += uLightColor[i] * nl * atten;
+        pointLighting += uLightColor[i] * nl * atten;
     }
 
-    vColor = vec4(lighting * uTintColor, 1.0) * aColor;
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -80,19 +89,34 @@ void main() {
 )";
 
 // GLSL ES 1.00 fragment shader — solid (opaque)
+// Per-pixel player light (light[0]) for smooth illumination on large triangles.
 static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    vec4 lit = texColor * vColor;
+
+    // Per-pixel player light — computed here to avoid per-vertex artifacts on large triangles
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float pLd = length(pLv) + 0.001;
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -103,15 +127,28 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
-    vec4 lit = texColor * vColor;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float pLd = length(pLv) + 0.001;
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -124,21 +161,35 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
     if (texColor.a < threshold) discard;
-    vec4 lit = texColor * vColor;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float pLd = length(pLv) + 0.001;
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
 
 // GLSL ES 1.00 atlas vertex shader — per-vertex lighting, precomputed atlas UV
+// Light[0] (player light) computed per-pixel in FS; lights[1..7] per-vertex.
 static const char* ATLAS_VERTEX_SHADER_SRC = R"(
 precision highp float;
 
@@ -165,6 +216,8 @@ uniform vec3 uLightAtten[8];
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     vec4 pos = vec4(aPosition, 1.0);
@@ -176,23 +229,28 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
+    vWorldPos = worldPos;
+    vWorldNormal = worldN;
+
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 lighting = uAmbientColor + sunNdotL * uSunColor;
+    // Base (ambient + sun) gets tint and baked vertex color
+    vec3 baseLighting = uAmbientColor + sunNdotL * uSunColor;
 
-    // Point lights (world space, always iterate all 8)
-    for (int i = 0; i < 8; i++) {
+    // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
+    vec3 pointLighting = vec3(0.0);
+    for (int i = 1; i < 8; i++) {
         vec3 lVec = uLightPos[i] - worldPos;
         float d = length(lVec) + 0.001;
         float atten = 1.0 / (uLightAtten[i].x
                             + uLightAtten[i].y * d
                             + uLightAtten[i].z * d * d + 0.0001);
         float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        lighting += uLightColor[i] * nl * atten;
+        pointLighting += uLightColor[i] * nl * atten;
     }
 
-    vColor = vec4(lighting * uTintColor, 1.0);
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -206,14 +264,27 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    vec4 lit = texColor * vColor;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float pLd = length(pLv) + 0.001;
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -225,17 +296,30 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
 
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    vec4 lit = texColor * vColor;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float pLd = length(pLv) + 0.001;
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -249,10 +333,15 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
 
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
@@ -260,7 +349,15 @@ void main() {
     if (alpha < threshold) discard;
 
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    vec4 lit = texColor * vColor;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float pLd = length(pLv) + 0.001;
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -527,9 +624,11 @@ public:
 
         // Point lights — data fed directly from updateObjectLights()
         // Lima/Mesa returns "uLightPos[0]" from glGetActiveUniform (confirmed via logging).
-        services->setVertexShaderConstant("uLightPos[0]", owner_->lightPos(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
-        services->setVertexShaderConstant("uLightColor[0]", owner_->lightColor(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
-        services->setVertexShaderConstant("uLightAtten[0]", owner_->lightAtten(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        bool posOk = services->setVertexShaderConstant("uLightPos[0]", owner_->lightPos(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        bool colOk = services->setVertexShaderConstant("uLightColor[0]", owner_->lightColor(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        bool attOk = services->setVertexShaderConstant("uLightAtten[0]", owner_->lightAtten(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+
+        (void)posOk; (void)colOk; (void)attOk;
 
         // Fragment shader uniforms
         float fogColor[4];
@@ -538,6 +637,11 @@ public:
 
         irr::s32 texUnit = 0;
         services->setPixelShaderConstant("uTexture", &texUnit, 1);
+
+        // Per-pixel player light (light[0]) — FS uniforms
+        services->setPixelShaderConstant("uPlayerLightPos", owner_->lightPos(), 3);
+        services->setPixelShaderConstant("uPlayerLightColor", owner_->lightColor(), 3);
+        services->setPixelShaderConstant("uPlayerLightAtten", owner_->lightAtten(), 3);
     }
 
 private:
@@ -624,9 +728,11 @@ public:
         services->setVertexShaderConstant("uFogEnd", &fogEnd, 1);
 
         // Point lights
-        services->setVertexShaderConstant("uLightPos[0]", owner_->lightPos(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
-        services->setVertexShaderConstant("uLightColor[0]", owner_->lightColor(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
-        services->setVertexShaderConstant("uLightAtten[0]", owner_->lightAtten(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        bool aPosOk = services->setVertexShaderConstant("uLightPos[0]", owner_->lightPos(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        bool aColOk = services->setVertexShaderConstant("uLightColor[0]", owner_->lightColor(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+        bool aAttOk = services->setVertexShaderConstant("uLightAtten[0]", owner_->lightAtten(), ZoneShaderManager::MAX_POINT_LIGHTS * 3);
+
+        (void)aPosOk; (void)aColOk; (void)aAttOk;
 
         // Fragment shader uniforms — fog color and texture samplers
         float fogColor[4];
@@ -639,6 +745,11 @@ public:
             irr::s32 texUnit1 = 1;
             services->setPixelShaderConstant("uAlphaTexture", &texUnit1, 1);
         }
+
+        // Per-pixel player light (light[0]) — FS uniforms
+        services->setPixelShaderConstant("uPlayerLightPos", owner_->lightPos(), 3);
+        services->setPixelShaderConstant("uPlayerLightColor", owner_->lightColor(), 3);
+        services->setPixelShaderConstant("uPlayerLightAtten", owner_->lightAtten(), 3);
     }
 
 private:
