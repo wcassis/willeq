@@ -419,5 +419,39 @@ new13 = '''\t//! Get the driver-specific texture handle (OpenGL texture name)
 
 patch(ogltex_h, old13, new13)
 
-print(f"\nAll 13 patches applied successfully to {base}")
-print("DRM/KMS/GBM/EGL support enabled, X11 disabled, GL texture handle exposed")
+# ============================================================
+# Patch 14: IrrCompileConfig.h - Enable OGLES2 compilation
+# ============================================================
+print("Patch 14: IrrCompileConfig.h (OGLES2 compile flag)")
+
+s = open(config_h).read()
+
+# Add OGLES2 compile flag after the FB device define we added in patch 1
+old14 = '#define _IRR_COMPILE_WITH_FB_DEVICE_\n#endif'
+new14 = '#define _IRR_COMPILE_WITH_FB_DEVICE_\n#define _IRR_COMPILE_WITH_OGLES2_\n#endif'
+assert old14 in s, f"Patch 14 target not found in {config_h}"
+s = s.replace(old14, new14, 1)
+
+open(config_h, 'w').write(s)
+print(f"  Patched: IrrCompileConfig.h (OGLES2 enabled)")
+
+# ============================================================
+# Patch 15: SIrrCreationParameters.h - Add EDT_OGLES2 driver type
+# ============================================================
+print("Patch 15: SIrrCreationParameters.h (EDT_OGLES2)")
+
+drv_types_h = os.path.join(inc, 'EDriverTypes.h')
+s = open(drv_types_h).read()
+
+old15 = '\t\tEDT_COUNT'
+new15 = '\t\t//! OpenGL ES 2.0 (DRM/EGL)\n\t\tEDT_OGLES2,\n\n\t\tEDT_COUNT'
+
+if old15 in s:
+    s = s.replace(old15, new15, 1)
+    open(drv_types_h, 'w').write(s)
+    print(f"  Patched: EDriverTypes.h (EDT_OGLES2 added)")
+else:
+    print(f"  SKIP: EDT_OGLES2 already present or target not found in EDriverTypes.h")
+
+print(f"\nAll 15 patches applied successfully to {base}")
+print("DRM/KMS/GBM/EGL support enabled, X11 disabled, GL texture handle exposed, OGLES2 driver type added")

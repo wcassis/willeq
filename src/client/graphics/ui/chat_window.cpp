@@ -195,8 +195,9 @@ void ChatWindow::onResize(int screenWidth, int screenHeight) {
 
 void ChatWindow::ensureMessageAreaRT(irr::video::IVideoDriver* driver)
 {
-    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
-    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+    // RTT caching only works correctly on hardware-accelerated drivers
+    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
+        driver->getDriverType() != irr::video::EDT_OGLES2) return;
 
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();
@@ -312,6 +313,15 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
 
         bounds_ = realBounds;
         titleBar_ = realTitleBar;
+
+        // Tab bounds were computed at origin during RTT rendering — offset to screen coords
+        for (auto& tab : tabs_) {
+            tab.bounds.UpperLeftCorner.X += realBounds.UpperLeftCorner.X;
+            tab.bounds.UpperLeftCorner.Y += realBounds.UpperLeftCorner.Y;
+            tab.bounds.LowerRightCorner.X += realBounds.UpperLeftCorner.X;
+            tab.bounds.LowerRightCorner.Y += realBounds.UpperLeftCorner.Y;
+        }
+
         messageAreaDirty_ = false;
     }
 

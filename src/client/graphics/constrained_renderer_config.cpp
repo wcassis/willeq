@@ -187,6 +187,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableAlphaToCoverage = true;
             config.enableShaders = true;
             config.enableCompressedTextures = false;  // Mali 400 via Lima software-decodes S3TC; no GPU savings, extra CPU cost
+            config.enableTextureAtlas = true;  // Use ETC1-compressed atlas files (Mali 400 hardware ETC1 decode)
+#ifdef EQT_HAS_GLES2
+            config.useGLES2 = true;  // Native GLES2 backend for Mali 400
+#endif
             config.antiAliasLevel = 4;
             config.anisotropicFilterLevel = 4;
             // System RAM budget
@@ -387,6 +391,12 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableAlphaToCoverage = preset["enableAlphaToCoverage"].asBool();
     if (preset.isMember("enableShaders"))
         enableShaders = preset["enableShaders"].asBool();
+    if (preset.isMember("enableTextureAtlas"))
+        enableTextureAtlas = preset["enableTextureAtlas"].asBool();
+    if (preset.isMember("useGLES2"))
+        useGLES2 = preset["useGLES2"].asBool();
+    if (preset.isMember("atlasPath"))
+        atlasPath = preset["atlasPath"].asString();
     if (preset.isMember("antiAliasLevel"))
         antiAliasLevel = preset["antiAliasLevel"].asInt();
     if (preset.isMember("anisotropicFilterLevel"))

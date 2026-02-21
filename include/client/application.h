@@ -73,9 +73,11 @@ struct ApplicationConfig {
 
     // DRM/KMS settings (guarded by EQT_HAS_DRM at usage sites)
     bool useDRM = false;
+    bool useGLES2 = false;  // Use GLES2 backend (auto-detected from preset or --gles2)
 
     // Constrained rendering
     std::string constrainedPreset;
+    std::string atlasPath;  // Directory containing .atlas files for texture atlasing
 
     // Profiling
     bool frameTimingEnabled = false;

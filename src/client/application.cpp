@@ -193,17 +193,22 @@ bool Application::initialize(const ApplicationConfig& config) {
             if (config.useDRM) {
                 m_eqClient->SetUseDRM(true);
             }
+            if (config.useGLES2) {
+                m_eqClient->SetUseGLES2(true);
+            }
             if (!config.constrainedPreset.empty()) {
                 EQT::Graphics::ConstrainedRendererConfig customConfig;
                 if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, customConfig)) {
                     // Try loading JSON overrides on top of memory-spec config
                     customConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    if (!config.atlasPath.empty()) customConfig.atlasPath = config.atlasPath;
                     m_eqClient->SetConstrainedConfig(customConfig);
                 } else {
                     auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
                     auto presetConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
                     // Apply JSON overrides on top of preset defaults
                     presetConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    if (!config.atlasPath.empty()) presetConfig.atlasPath = config.atlasPath;
                     m_eqClient->SetConstrainedConfig(presetConfig);
                 }
             } else {
@@ -811,8 +816,14 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.audioSoundfont = argv[++i];
             }
+        } else if (arg == "--atlas-path") {
+            if (i + 1 < argc) {
+                config.atlasPath = argv[++i];
+            }
         } else if (arg == "--drm") {
             config.useDRM = true;
+        } else if (arg == "--gles2") {
+            config.useGLES2 = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {
             config.rdpEnabled = true;
         } else if (arg == "--rdp-port") {
@@ -831,7 +842,9 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
             std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
             std::cout << "  --constrained <preset|NxNxN>  Constrained rendering (voodoo1, voodoo2, tnt, orangepi, or 128x32x4)\n";
+            std::cout << "  --atlas-path <dir>       Directory containing .atlas texture atlas files\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
+            std::cout << "  --gles2                  Use OpenGL ES 2.0 backend (auto on DRM+OrangePi)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
             std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
 #ifdef WITH_RDP

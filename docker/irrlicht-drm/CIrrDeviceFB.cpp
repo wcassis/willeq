@@ -126,6 +126,14 @@ namespace video
 }
 #endif
 
+#ifdef _IRR_COMPILE_WITH_OGLES2_
+namespace video
+{
+    IVideoDriver* createOpenGLES2Driver(const SIrrlichtCreationParameters& params,
+        io::IFileSystem* io, CIrrDeviceFB* device);
+}
+#endif
+
 // ============================================================
 // Constructor / Destructor
 // ============================================================
@@ -140,7 +148,7 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
       ttyFd_(-1), savedKbMode_(-1),
       keyboardFd_(-1), mouseFd_(-1),
       shiftDown_(false), ctrlDown_(false), altDown_(false),
-      Close(false), firstFrame_(true)
+      Close(false), firstFrame_(true), useGLES2_(false)
 {
     Width = param.WindowSize.Width;
     Height = param.WindowSize.Height;
@@ -425,9 +433,17 @@ bool CIrrDeviceFB::initEGL()
     snprintf(verMsg, sizeof(verMsg), "EGL: Version %d.%d", major, minor);
     os::Printer::log(verMsg, ELL_INFORMATION);
 
-    // Try desktop OpenGL first (Lima provides GL 2.1)
+    // If GLES2 mode is requested (EDT_OGLES2), go straight to ES API.
+    // Otherwise try desktop OpenGL first (Lima provides GL 2.1).
     bool useDesktopGL = true;
-    if (!eglBindAPI(EGL_OPENGL_API)) {
+    if (useGLES2_ || CreationParams.DriverType == video::EDT_OGLES2) {
+        useGLES2_ = true;
+        if (!eglBindAPI(EGL_OPENGL_ES_API)) {
+            os::Printer::log("EGL: EGL_OPENGL_ES_API not available", ELL_ERROR);
+            return false;
+        }
+        useDesktopGL = false;
+    } else if (!eglBindAPI(EGL_OPENGL_API)) {
         os::Printer::log("EGL: EGL_OPENGL_API not available, trying GLES2", ELL_WARNING);
         if (!eglBindAPI(EGL_OPENGL_ES_API)) {
             os::Printer::log("EGL: No GL API available", ELL_ERROR);
@@ -562,6 +578,11 @@ void CIrrDeviceFB::createDriver()
 #ifdef _IRR_COMPILE_WITH_OPENGL_
         case video::EDT_OPENGL:
             VideoDriver = video::createOpenGLDriver(CreationParams, FileSystem, this);
+            break;
+#endif
+#ifdef _IRR_COMPILE_WITH_OGLES2_
+        case video::EDT_OGLES2:
+            VideoDriver = video::createOpenGLES2Driver(CreationParams, FileSystem, this);
             break;
 #endif
         case video::EDT_BURNINGSVIDEO:
@@ -1005,8 +1026,9 @@ void CIrrDeviceFB::setWindowCaption(const wchar_t* text)
 bool CIrrDeviceFB::present(video::IImage* surface, void* windowId, core::rect<s32>* srcClip)
 {
     // For software rendering: would need to blit to DRM framebuffer
-    // For OpenGL: handled by drmPageFlip() in COpenGLDriver::endScene()
-    if (CreationParams.DriverType == video::EDT_OPENGL) {
+    // For OpenGL/GLES2: handled by drmPageFlip()
+    if (CreationParams.DriverType == video::EDT_OPENGL ||
+        CreationParams.DriverType == video::EDT_OGLES2) {
         drmPageFlip();
     }
     return true;

@@ -11,6 +11,7 @@ OPTION(EQT_DEBUG "Enable debug logging" ON)
 OPTION(EQT_BUILD_TESTS "Build tests" ON)
 OPTION(EQT_GRAPHICS "Enable Irrlicht graphics rendering" ON)
 OPTION(EQT_DRM "Use DRM/KMS/GBM/EGL instead of X11 (for ARM boards without X11)" OFF)
+OPTION(EQT_GLES2 "Use OpenGL ES 2.0 backend instead of desktop GL (for DRM+Mali/Lima)" OFF)
 
 # Output directories
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -322,6 +323,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/sky_config.cpp
         src/client/graphics/sky_renderer.cpp
         src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/texture_atlas.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
@@ -407,6 +409,11 @@ IF(EQT_GRAPHICS)
         # Tumbleweed (rolling objects) system
         src/client/graphics/environment/tumbleweed_manager.cpp
     )
+    # GLES2 EGL image sharing helper (DRM + desktop GL only, for ETC1 via DMA-BUF blit)
+    # Not needed in GLES2 mode (native ETC1 support via glCompressedTexImage2D)
+    IF(EQT_DRM AND NOT EQT_GLES2)
+        LIST(APPEND GRAPHICS_SOURCES src/client/graphics/gles2_egl_helper.cpp)
+    ENDIF()
 ENDIF()
 
 # RDP server sources (optional, requires FreeRDP)
@@ -449,6 +456,8 @@ SET(ALL_CORE_SOURCES
 
 # Create a static library for the core client code (used by both executable and tests)
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
+# TextureAtlas requires GL - only available in main library, not standalone tools
+TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE EQT_HAS_TEXTURE_ATLAS)
 
 # Create the main executable
 ADD_EXECUTABLE(willeq src/client/main.cpp)
@@ -491,7 +500,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ELSEIF(EQT_DRM)
         # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost
         ADD_DEFINITIONS(-DEQT_HAS_DRM)
-        LIST(APPEND LINK_LIBS EGL GL drm gbm)
+        IF(EQT_GLES2)
+            # GLES2 mode: link GLESv2 only (no desktop GL)
+            ADD_DEFINITIONS(-DEQT_HAS_GLES2)
+            LIST(APPEND LINK_LIBS EGL GLESv2 drm gbm)
+        ELSE()
+            # Desktop GL mode via Lima
+            LIST(APPEND LINK_LIBS EGL GL GLESv2 drm gbm)
+        ENDIF()
+        # drm_fourcc.h is in a libdrm subdirectory — add include path
+        FIND_PATH(LIBDRM_INCLUDE_DIR drm.h PATH_SUFFIXES libdrm drm)
+        IF(LIBDRM_INCLUDE_DIR)
+            INCLUDE_DIRECTORIES(${LIBDRM_INCLUDE_DIR})
+        ENDIF()
     ELSE()
         # Linux/X11
         LIST(APPEND LINK_LIBS X11 Xxf86vm GL)
@@ -849,6 +870,83 @@ IF(EQT_GRAPHICS)
     )
 ENDIF()
 
+# Zone Atlas Builder tool (offline ETC1 texture atlas generation)
+IF(EQT_GRAPHICS)
+    INCLUDE(FetchContent)
+    FetchContent_Declare(
+        etc2comp
+        GIT_REPOSITORY https://github.com/google/etc2comp.git
+        GIT_TAG master
+    )
+    FetchContent_MakeAvailable(etc2comp)
+
+    ADD_EXECUTABLE(zone_atlas_builder
+        tools/zone_atlas_builder.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(zone_atlas_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+        ${etc2comp_SOURCE_DIR}/EtcLib/Etc
+        ${etc2comp_SOURCE_DIR}/EtcLib/EtcCodec
+    )
+    IF(fmt_FOUND)
+        TARGET_LINK_LIBRARIES(zone_atlas_builder
+            ${ZLIB_LIBRARIES}
+            fmt::fmt
+            EtcLib
+        )
+    ELSE()
+        TARGET_LINK_LIBRARIES(zone_atlas_builder
+            ${ZLIB_LIBRARIES}
+            ${FMT_LIBRARY}
+            EtcLib
+        )
+    ENDIF()
+ENDIF()
+
+# Hardware capability test tools
+# These are lightweight GPU probes (no Irrlicht dependency) for testing
+# hardware features on constrained devices like Orange Pi.
+ADD_EXECUTABLE(gpu_texture_formats tools/hwcaps/gpu_texture_formats.cpp)
+TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${CMAKE_SOURCE_DIR}/include)
+IF(EQT_DRM)
+    TARGET_COMPILE_DEFINITIONS(gpu_texture_formats PRIVATE EQT_HAS_DRM)
+    FIND_PATH(LIBDRM_INCLUDE_DIR drm.h PATH_SUFFIXES libdrm)
+    IF(LIBDRM_INCLUDE_DIR)
+        TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL drm gbm)
+ELSE()
+    TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL)
+ENDIF()
+
+ADD_EXECUTABLE(gles2_etc1_benchmark tools/hwcaps/gles2_etc1_benchmark.cpp)
+TARGET_INCLUDE_DIRECTORIES(gles2_etc1_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+IF(EQT_DRM)
+    TARGET_COMPILE_DEFINITIONS(gles2_etc1_benchmark PRIVATE EQT_HAS_DRM)
+    IF(LIBDRM_INCLUDE_DIR)
+        TARGET_INCLUDE_DIRECTORIES(gles2_etc1_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2 drm gbm)
+ELSE()
+    TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2)
+ENDIF()
+
+ADD_EXECUTABLE(egl_image_sharing_test tools/hwcaps/egl_image_sharing_test.cpp)
+TARGET_INCLUDE_DIRECTORIES(egl_image_sharing_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+IF(EQT_DRM)
+    TARGET_COMPILE_DEFINITIONS(egl_image_sharing_test PRIVATE EQT_HAS_DRM)
+    IF(LIBDRM_INCLUDE_DIR)
+        TARGET_INCLUDE_DIRECTORIES(egl_image_sharing_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2 drm gbm)
+ELSE()
+    TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2)
+ENDIF()
+
 # Install
 INSTALL(TARGETS willeq RUNTIME DESTINATION bin)
 
@@ -904,8 +1002,10 @@ ELSE()
 ENDIF()
 IF(EQT_GRAPHICS)
     MESSAGE(STATUS "Irrlicht: ${IRRLICHT_LIBRARY}")
-    IF(EQT_DRM)
-        MESSAGE(STATUS "Display backend: DRM/KMS/GBM/EGL (no X11)")
+    IF(EQT_DRM AND EQT_GLES2)
+        MESSAGE(STATUS "Display backend: DRM/KMS/GBM/EGL + OpenGL ES 2.0 (no X11, no desktop GL)")
+    ELSEIF(EQT_DRM)
+        MESSAGE(STATUS "Display backend: DRM/KMS/GBM/EGL + desktop GL 2.1 (no X11)")
     ELSE()
         MESSAGE(STATUS "Display backend: X11/GLX")
     ENDIF()

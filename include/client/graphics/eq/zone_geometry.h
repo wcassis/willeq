@@ -14,6 +14,9 @@ namespace Graphics {
 struct S3DZone;
 struct TextureInfo;
 class ConstrainedTextureCache;
+#ifdef EQT_HAS_TEXTURE_ATLAS
+class TextureAtlas;
+#endif
 
 // Converts EQ zone geometry to Irrlicht mesh
 class ZoneMeshBuilder {
@@ -55,11 +58,31 @@ public:
     // Get the constrained texture cache (may be nullptr)
     ConstrainedTextureCache* getConstrainedTextureCache() const { return constrainedCache_; }
 
+#ifdef EQT_HAS_TEXTURE_ATLAS
+    // Build mesh batched by atlas page — groups all triangles sharing the same
+    // atlas page into a single mesh buffer using S3DVertex2TCoords.
+    // TCoords = original UVs (for fract() tiling), TCoords2 = atlas tile offset.
+    // Textures not in the atlas (animated, missing) fall through to per-texture buffers.
+    irr::scene::IMesh* buildAtlasedMesh(
+        const ZoneGeometry& geometry,
+        const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
+        const TextureAtlas& atlas,
+        int pageIndexOffset = 0);
+#endif
+
     // Set GLSL shader material type IDs (negative = not available, use fixed-function)
     void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
         shaderMaterialSolid_ = solidType;
         shaderMaterialAlphaTest_ = alphaTestType;
     }
+
+#ifdef EQT_HAS_TEXTURE_ATLAS
+    // Set atlas-specific GLSL shader material type IDs
+    void setAtlasShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+        shaderMaterialAtlasSolid_ = solidType;
+        shaderMaterialAtlasAlpha_ = alphaTestType;
+    }
+#endif
 
 private:
     irr::scene::ISceneManager* smgr_;
@@ -81,6 +104,12 @@ private:
     // GLSL shader material type IDs (-1 = not available)
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
+
+#ifdef EQT_HAS_TEXTURE_ATLAS
+    // Atlas-specific shader material type IDs (-1 = not available)
+    irr::s32 shaderMaterialAtlasSolid_ = -1;
+    irr::s32 shaderMaterialAtlasAlpha_ = -1;
+#endif
 };
 
 // Helper to generate colors for visualization

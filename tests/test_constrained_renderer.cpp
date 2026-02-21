@@ -401,7 +401,8 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     EXPECT_TRUE(config.enableStencilBuffer);
     EXPECT_TRUE(config.enableAlphaToCoverage);
     EXPECT_EQ(config.antiAliasLevel, 4);
-    EXPECT_TRUE(config.enableCompressedTextures);
+    EXPECT_FALSE(config.enableCompressedTextures);  // Mali 400 via Lima software-decodes S3TC; use ETC1 atlas instead
+    EXPECT_TRUE(config.enableTextureAtlas);
 }
 
 TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1_NoGpuFeatures) {

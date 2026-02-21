@@ -17,6 +17,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ENABLE_GRAPHICS=ON
 ENABLE_AUDIO=ON
+ENABLE_GLES2=ON
 IMAGE_NAME="willeq-arm-noble"
 
 for arg in "$@"; do
@@ -26,6 +27,9 @@ for arg in "$@"; do
             ;;
         --no-audio)
             ENABLE_AUDIO=OFF
+            ;;
+        --no-gles2)
+            ENABLE_GLES2=OFF
             ;;
         --help|-h)
             echo "Usage: $0 [--headless] [--no-audio]"
@@ -51,6 +55,7 @@ done
 echo "=== WillEQ ARM Cross-Compilation (Armbian Noble) ==="
 echo "Graphics: ${ENABLE_GRAPHICS}"
 echo "Audio:    ${ENABLE_AUDIO}"
+echo "GLES2:    ${ENABLE_GLES2}"
 echo ""
 
 # Build the Docker image (caches layers between runs)
@@ -59,6 +64,7 @@ docker build \
     -f "$PROJECT_DIR/docker/Dockerfile.arm-noble" \
     --build-arg "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     --build-arg "ENABLE_AUDIO=${ENABLE_AUDIO}" \
+    --build-arg "ENABLE_GLES2=${ENABLE_GLES2}" \
     -t "$IMAGE_NAME" \
     "$PROJECT_DIR"
 
@@ -77,6 +83,7 @@ docker run --rm \
     -v "$BUILD_CACHE:/build" \
     -e "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     -e "ENABLE_AUDIO=${ENABLE_AUDIO}" \
+    -e "ENABLE_GLES2=${ENABLE_GLES2}" \
     "$IMAGE_NAME"
 
 echo ""
@@ -84,11 +91,26 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     echo "=== Success ==="
     file "$OUTPUT_DIR/bin/willeq"
     ls -lh "$OUTPUT_DIR/bin/willeq"
+    if [ -f "$OUTPUT_DIR/bin/gpu_texture_formats" ]; then
+        file "$OUTPUT_DIR/bin/gpu_texture_formats"
+        ls -lh "$OUTPUT_DIR/bin/gpu_texture_formats"
+    fi
+    if [ -f "$OUTPUT_DIR/bin/gles2_etc1_benchmark" ]; then
+        file "$OUTPUT_DIR/bin/gles2_etc1_benchmark"
+        ls -lh "$OUTPUT_DIR/bin/gles2_etc1_benchmark"
+    fi
+    if [ -f "$OUTPUT_DIR/bin/egl_image_sharing_test" ]; then
+        file "$OUTPUT_DIR/bin/egl_image_sharing_test"
+        ls -lh "$OUTPUT_DIR/bin/egl_image_sharing_test"
+    fi
     echo ""
-    echo "Binary: $OUTPUT_DIR/bin/willeq"
+    echo "Binaries: $OUTPUT_DIR/bin/willeq"
+    echo "          $OUTPUT_DIR/bin/gpu_texture_formats"
+    echo "          $OUTPUT_DIR/bin/gles2_etc1_benchmark"
+    echo "          $OUTPUT_DIR/bin/egl_image_sharing_test"
     echo ""
     echo "Deploy to Orange Pi (Armbian Noble):"
-    echo "  scp $OUTPUT_DIR/bin/willeq orangepi:~/willeq/"
+    echo "  scp $OUTPUT_DIR/bin/willeq $OUTPUT_DIR/bin/gpu_texture_formats $OUTPUT_DIR/bin/gles2_etc1_benchmark $OUTPUT_DIR/bin/egl_image_sharing_test orangepi:~/willeq/"
     echo ""
     echo "Run on Orange Pi (DRM/KMS, Lima GPU, Mesa GL 2.1 - no X11 needed):"
     echo "  ./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600"

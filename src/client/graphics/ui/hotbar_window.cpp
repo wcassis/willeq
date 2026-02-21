@@ -327,8 +327,9 @@ bool HotbarWindow::handleMouseMove(int x, int y)
 
 void HotbarWindow::ensureContentRT(irr::video::IVideoDriver* driver)
 {
-    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
-    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+    // RTT caching only works correctly on hardware-accelerated drivers
+    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
+        driver->getDriverType() != irr::video::EDT_OGLES2) return;
 
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();

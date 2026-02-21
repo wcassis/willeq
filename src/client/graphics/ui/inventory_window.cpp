@@ -32,8 +32,9 @@ InventoryWindow::InventoryWindow(inventory::InventoryManager* manager)
 }
 
 void InventoryWindow::ensureContentRT(irr::video::IVideoDriver* driver) {
-    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
-    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+    // RTT caching only works correctly on hardware-accelerated drivers
+    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
+        driver->getDriverType() != irr::video::EDT_OGLES2) return;
 
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();
@@ -953,7 +954,17 @@ void InventoryWindow::renderModelView(irr::video::IVideoDriver* driver,
     );
 
     // Source rectangle (entire texture)
-    irr::core::recti srcRect(0, 0, tex->getSize().Width, tex->getSize().Height);
+    // GLES2 FBO stores 3D content in OpenGL convention (y=0 at bottom), but
+    // draw2DImage maps srcTop→UV.y=0→texture bottom. For 3D RTTs this puts
+    // the scene feet at the dest top (upside-down). Flip source V to correct.
+    // 2D RTTs don't need this because setOrthoProjection already stores 2D
+    // content inverted in the FBO, which cancels out the UV mapping.
+    int srcTop = 0;
+    int srcBottom = tex->getSize().Height;
+    if (driver->getDriverType() == irr::video::EDT_OGLES2) {
+        std::swap(srcTop, srcBottom);
+    }
+    irr::core::recti srcRect(0, srcTop, tex->getSize().Width, srcBottom);
 
     // Draw the texture with alpha blending
     driver->draw2DImage(tex, destRect, srcRect, nullptr, nullptr, true);

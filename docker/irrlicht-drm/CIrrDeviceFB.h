@@ -57,10 +57,16 @@ public:
     virtual void restoreWindow() {}
     virtual core::position2di getWindowPosition() { return core::position2di(0,0); }
 
-    // EGL accessors for COpenGLDriver
+    // EGL accessors for COpenGLDriver / COpenGLES2Driver
     EGLDisplay getEGLDisplay() const { return eglDisplay_; }
     EGLSurface getEGLSurface() const { return eglSurface_; }
     EGLContext getEGLContext() const { return eglContext_; }
+    EGLConfig getEGLConfig() const { return eglConfig_; }
+    struct gbm_device* getGBMDevice() const { return gbmDevice_; }
+
+    // GLES2 mode flag
+    bool isGLES2() const { return useGLES2_; }
+    void setGLES2(bool v) { useGLES2_ = v; }
 
     // DRM page flip for endScene
     void drmPageFlip();
@@ -156,6 +162,9 @@ private:
 
     // First frame flag for DRM
     bool firstFrame_;
+
+    // GLES2 mode (set before construction, affects EGL init and driver creation)
+    bool useGLES2_;
 };
 
 } // end namespace irr

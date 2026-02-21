@@ -58,6 +58,9 @@ struct ConstrainedRendererConfig {
     bool enableStencilBuffer = false;        // Request stencil buffer from driver
     bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
     bool enableShaders = false;              // Use GLSL shaders for fog/lighting/tint
+    bool enableTextureAtlas = false;         // Use pre-built ETC1 atlas files for zone textures
+    bool useGLES2 = false;                   // Use GLES2 backend (COpenGLES2Driver) instead of desktop GL
+    std::string atlasPath;                   // Directory containing .atlas files
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
     int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)
 

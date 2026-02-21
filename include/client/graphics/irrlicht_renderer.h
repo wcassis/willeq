@@ -22,6 +22,7 @@
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
+#include "client/graphics/texture_atlas.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
@@ -29,6 +30,10 @@
 
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
+#endif
+
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+#include "client/graphics/gles2_egl_helper.h"
 #endif
 
 // Forward declaration for collision map
@@ -221,6 +226,7 @@ struct RendererConfig {
     bool fullscreen = false;
     bool softwareRenderer = true;  // Use Burnings software renderer by default (no GPU)
     bool useDRM = false;           // Use DRM/KMS framebuffer device (no X11)
+    bool useGLES2 = false;         // Use GLES2 backend (COpenGLES2Driver)
     std::string windowTitle = "WillEQ";
     std::string eqClientPath;      // Path to EQ client files
 
@@ -968,6 +974,12 @@ private:
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)
     std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
+    std::unique_ptr<TextureAtlas> zoneAtlas_;  // ETC1 texture atlas for zone geometry
+    std::unique_ptr<TextureAtlas> objAtlas_;   // ETC1 texture atlas for zone objects
+    int objAtlasPageOffset_ = 0;              // Offset for object atlas pages in shader's page texture array
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+    std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
+#endif
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
     std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
     std::unique_ptr<GraphicsArchiveIndex> graphicsArchiveIndex_;  // Race-to-archive index for deferred loading

@@ -237,12 +237,17 @@ irr::scene::IMesh* EntityRenderer::createPlaceholderMesh(float size, irr::video:
     }
     buffer->recalculateBoundingBox();
 
-    buffer->Material.Lighting = lightingEnabled_;
     buffer->Material.BackfaceCulling = false;
-    if (lightingEnabled_) {
-        buffer->Material.NormalizeNormals = true;
-        buffer->Material.AmbientColor = irr::video::SColor(255, 255, 255, 255);
-        buffer->Material.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+    if (shaderMaterialSolid_ >= 0) {
+        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+        buffer->Material.Lighting = false;
+    } else {
+        buffer->Material.Lighting = lightingEnabled_;
+        if (lightingEnabled_) {
+            buffer->Material.NormalizeNormals = true;
+            buffer->Material.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+            buffer->Material.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+        }
     }
 
     mesh->addMeshBuffer(buffer);
@@ -473,12 +478,23 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 
 	// Set material properties
 	for (irr::u32 i = 0; i < animNode->getMaterialCount(); ++i) {
-		animNode->getMaterial(i).Lighting = lightingEnabled_;
-		animNode->getMaterial(i).BackfaceCulling = false;
-		if (lightingEnabled_) {
-			animNode->getMaterial(i).NormalizeNormals = true;
-			animNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-			animNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+		auto& mat = animNode->getMaterial(i);
+		mat.BackfaceCulling = false;
+		// Apply GLSL shader material if available, otherwise use fixed-function lighting
+		if (shaderMaterialSolid_ >= 0) {
+			if (mat.MaterialType == irr::video::EMT_SOLID) {
+				mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+			} else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+				mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+			}
+			mat.Lighting = false;  // Shader handles lighting
+		} else {
+			mat.Lighting = lightingEnabled_;
+			if (lightingEnabled_) {
+				mat.NormalizeNormals = true;
+				mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+				mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+			}
 		}
 	}
 
@@ -1920,36 +1936,48 @@ void EntityRenderer::setNameTagsVisible(bool visible) {
 void EntityRenderer::setLightingEnabled(bool enabled) {
     lightingEnabled_ = enabled;
 
+    // When GLSL shaders are active, Lighting must stay false (shader handles it).
+    // Only change Lighting flag for fixed-function materials.
+    bool useFixedFunction = (shaderMaterialSolid_ < 0);
+
     // Update all entity materials
     for (auto& [spawnId, visual] : entities_) {
         if (visual.animatedNode) {
             for (irr::u32 i = 0; i < visual.animatedNode->getMaterialCount(); ++i) {
-                visual.animatedNode->getMaterial(i).Lighting = enabled;
-                if (enabled) {
-                    visual.animatedNode->getMaterial(i).NormalizeNormals = true;
-                    visual.animatedNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                    visual.animatedNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                if (useFixedFunction) {
+                    visual.animatedNode->getMaterial(i).Lighting = enabled;
+                    if (enabled) {
+                        visual.animatedNode->getMaterial(i).NormalizeNormals = true;
+                        visual.animatedNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                        visual.animatedNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                    }
                 }
             }
         }
         if (visual.meshNode) {
             for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
-                visual.meshNode->getMaterial(i).Lighting = enabled;
-                if (enabled) {
-                    visual.meshNode->getMaterial(i).NormalizeNormals = true;
-                    visual.meshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                    visual.meshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                if (useFixedFunction) {
+                    visual.meshNode->getMaterial(i).Lighting = enabled;
+                    if (enabled) {
+                        visual.meshNode->getMaterial(i).NormalizeNormals = true;
+                        visual.meshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                        visual.meshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                    }
                 }
             }
         }
         if (visual.primaryEquipNode) {
             for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
-                visual.primaryEquipNode->getMaterial(i).Lighting = enabled;
+                if (useFixedFunction) {
+                    visual.primaryEquipNode->getMaterial(i).Lighting = enabled;
+                }
             }
         }
         if (visual.secondaryEquipNode) {
             for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
-                visual.secondaryEquipNode->getMaterial(i).Lighting = enabled;
+                if (useFixedFunction) {
+                    visual.secondaryEquipNode->getMaterial(i).Lighting = enabled;
+                }
             }
         }
     }
@@ -2376,8 +2404,18 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                 // Initial position will be updated by updateEquipmentTransforms
                 visual.primaryEquipNode->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
                 for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
-                    visual.primaryEquipNode->getMaterial(i).Lighting = lightingEnabled_;
-                    visual.primaryEquipNode->getMaterial(i).BackfaceCulling = false;
+                    auto& mat = visual.primaryEquipNode->getMaterial(i);
+                    mat.BackfaceCulling = false;
+                    if (shaderMaterialSolid_ >= 0) {
+                        if (mat.MaterialType == irr::video::EMT_SOLID) {
+                            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                        } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+                            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        }
+                        mat.Lighting = false;
+                    } else {
+                        mat.Lighting = lightingEnabled_;
+                    }
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached primary equipment {} to entity {}", primaryId, visual.spawnId);
                 // Track reference for cache eviction
@@ -2398,8 +2436,18 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                 // Initial position will be updated by updateEquipmentTransforms
                 visual.secondaryEquipNode->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
                 for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
-                    visual.secondaryEquipNode->getMaterial(i).Lighting = lightingEnabled_;
-                    visual.secondaryEquipNode->getMaterial(i).BackfaceCulling = false;
+                    auto& mat = visual.secondaryEquipNode->getMaterial(i);
+                    mat.BackfaceCulling = false;
+                    if (shaderMaterialSolid_ >= 0) {
+                        if (mat.MaterialType == irr::video::EMT_SOLID) {
+                            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                        } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+                            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        }
+                        mat.Lighting = false;
+                    } else {
+                        mat.Lighting = lightingEnabled_;
+                    }
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached secondary equipment {} to entity {}", secondaryId, visual.spawnId);
                 // Track reference for cache eviction

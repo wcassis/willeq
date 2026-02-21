@@ -96,8 +96,9 @@ int SpellGemPanel::getGemAtPosition(int x, int y) const
 
 void SpellGemPanel::ensureContentRT(irr::video::IVideoDriver* driver)
 {
-    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
-    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+    // RTT caching only works correctly on hardware-accelerated drivers
+    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
+        driver->getDriverType() != irr::video::EDT_OGLES2) return;
 
     irr::core::recti panelBounds = getBounds();
     int w = panelBounds.getWidth();

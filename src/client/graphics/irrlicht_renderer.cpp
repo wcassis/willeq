@@ -25,7 +25,12 @@
 #include "client/graphics/rdp/rdp_input_handler.h"
 #endif
 #ifdef EQT_HAS_DRM
+#ifdef EQT_HAS_GLES2
+#include <GLES2/gl2.h>
+#else
 #include <GL/gl.h>
+#endif
+#include <EGL/egl.h>
 #endif
 #include <algorithm>
 #include <chrono>
@@ -436,10 +441,18 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
     // Choose driver type
     irr::video::E_DRIVER_TYPE driverType;
+    bool useGLES2 = config.useGLES2 || config_.constrainedConfig.useGLES2;
     if (config.softwareRenderer) {
         driverType = irr::video::EDT_BURNINGSVIDEO;
         LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: Burnings Software (--opengl not set)");
-    } else {
+    }
+#ifdef EQT_HAS_GLES2
+    else if (useGLES2) {
+        driverType = irr::video::EDT_OGLES2;
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL ES 2.0 (GLES2 mode)");
+    }
+#endif
+    else {
         driverType = irr::video::EDT_OPENGL;
         LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL (--opengl flag set)");
     }
@@ -646,10 +659,18 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Choose driver type
     irr::video::E_DRIVER_TYPE driverType;
+    bool loadingUseGLES2 = config.useGLES2 || config_.constrainedConfig.useGLES2;
     if (config.softwareRenderer) {
         driverType = irr::video::EDT_BURNINGSVIDEO;
         LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: Burnings Software");
-    } else {
+    }
+#ifdef EQT_HAS_GLES2
+    else if (loadingUseGLES2) {
+        driverType = irr::video::EDT_OGLES2;
+        LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL ES 2.0");
+    }
+#endif
+    else {
         driverType = irr::video::EDT_OPENGL;
         LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL");
     }
@@ -1008,6 +1029,17 @@ void IrrlichtRenderer::showLoadingScreen() {
 void IrrlichtRenderer::hideLoadingScreen() {
     loadingScreenVisible_ = false;
     LOG_DEBUG(MOD_GRAPHICS, "Loading screen hidden");
+
+    // Force full visibility and lighting recalculation on the first gameplay frame.
+    // During loading, Tier2 updates (PVS, object culling, lights) run and cache
+    // camera positions. By the time loading completes, these caches are populated
+    // at the camera's loading-phase position. Without resetting here, the movement
+    // gates in updateObjectLights() and updateZoneLightVisibility() block
+    // recalculation until the player moves 5+ units — leaving lights disabled
+    // and PVS stale on initial zone-in.
+    lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+    lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
+    forcePvsUpdate_ = true;
 }
 
 void IrrlichtRenderer::shutdown() {
@@ -2415,6 +2447,106 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // Sky initialization is deferred to setZoneEnvironment() which is called
     // after loadZone() with actual sky type from server NewZone packet
 
+    // Attempt to load texture atlas if enabled
+    if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
+        drawLoadingScreen(scaleProgress(0.35f), L"Loading texture atlas...");
+        std::string atlasDir = config_.constrainedConfig.atlasPath;
+        if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
+
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+        // Create GLES2 helper for ETC1 hardware upload via EGL image sharing (DRM only).
+        // Uses eglGetCurrentDisplay() to get the EGL display from the active context,
+        // avoiding the need to include CIrrDeviceFB.h (which depends on Irrlicht internals).
+        // Not needed when using native GLES2 backend (direct glCompressedTexImage2D works).
+        if (device_->getType() == irr::EIDT_FRAMEBUFFER && !gles2Helper_) {
+            EGLDisplay eglDisplay = eglGetCurrentDisplay();
+            if (eglDisplay != EGL_NO_DISPLAY) {
+                gles2Helper_ = std::make_unique<GLES2EGLHelper>();
+                if (!gles2Helper_->init(eglDisplay)) {
+                    LOG_WARN(MOD_GRAPHICS, "GLES2 EGL helper init failed, atlas will use direct GL upload");
+                    gles2Helper_.reset();
+                }
+            }
+        }
+#endif
+
+        zoneAtlas_ = std::make_unique<TextureAtlas>();
+        std::string zoneAtlasFile = atlasDir + zoneName + ".atlas";
+        bool zoneAtlasLoaded = false;
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+        if (gles2Helper_ && device_->getType() == irr::EIDT_FRAMEBUFFER) {
+            zoneAtlasLoaded = zoneAtlas_->load(zoneAtlasFile,
+                                                gles2Helper_.get(),
+                                                eglGetCurrentContext(),
+                                                eglGetCurrentSurface(EGL_DRAW));
+        } else
+#endif
+        {
+            zoneAtlasLoaded = zoneAtlas_->load(zoneAtlasFile);
+        }
+
+        if (!zoneAtlasLoaded) {
+            LOG_INFO(MOD_GRAPHICS, "No texture atlas found at {}, using per-texture rendering", zoneAtlasFile);
+            zoneAtlas_.reset();
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Texture atlas loaded: {} pages, {} tiles",
+                     zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
+            // Pass atlas page textures to shader manager for binding during draw calls
+            if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+                std::vector<uint32_t> pageTextures;
+                for (uint16_t p = 0; p < zoneAtlas_->getPageCount(); ++p) {
+                    uint32_t tex = zoneAtlas_->getPageTexture(p);
+                    pageTextures.push_back(tex);
+                    LOG_INFO(MOD_GRAPHICS, "Zone atlas page {} -> GL tex {}", p, tex);
+                }
+                zoneShader_->setAtlasPageTextures(pageTextures);
+            }
+        }
+
+        // Load object atlas too
+        objAtlas_ = std::make_unique<TextureAtlas>();
+        std::string objAtlasFile = atlasDir + zoneName + "_obj.atlas";
+        bool objAtlasLoaded = false;
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+        if (gles2Helper_ && device_->getType() == irr::EIDT_FRAMEBUFFER) {
+            objAtlasLoaded = objAtlas_->load(objAtlasFile,
+                                              gles2Helper_.get(),
+                                              eglGetCurrentContext(),
+                                              eglGetCurrentSurface(EGL_DRAW));
+        } else
+#endif
+        {
+            objAtlasLoaded = objAtlas_->load(objAtlasFile);
+        }
+
+        if (!objAtlasLoaded) {
+            objAtlas_.reset();
+        } else if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+            // Append object atlas page textures after zone atlas pages in the shader's array.
+            // Object mesh buffers use pageIndexOffset to reference the correct pages.
+            std::vector<uint32_t> objPageTextures;
+            for (uint16_t p = 0; p < objAtlas_->getPageCount(); ++p) {
+                objPageTextures.push_back(objAtlas_->getPageTexture(p));
+            }
+            objAtlasPageOffset_ = zoneShader_->appendAtlasPageTextures(objPageTextures);
+            LOG_INFO(MOD_GRAPHICS, "Object atlas loaded: {} pages, {} tiles (page offset {})",
+                     objAtlas_->getPageCount(), objAtlas_->getTileCount(), objAtlasPageOffset_);
+        }
+    } else {
+        zoneAtlas_.reset();
+        objAtlas_.reset();
+    }
+
+    // Atlas loading uses raw GL calls that bypass the GLES2 driver's state tracking.
+    // Unbind textures so the driver re-binds correctly for subsequent 2D drawing.
+#ifdef EQT_HAS_GLES2
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+#endif
+
     drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
     EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
     // Use PVS-based culling if available (falls back to combined mesh if not)
@@ -2486,18 +2618,29 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
         LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
     }
 
-    // Pre-load all object textures into constrained cache so door-only textures
-    // (used by door models but not pre-placed objects) survive pixel data release
+    // Pre-load object textures into constrained cache for door-only textures
+    // (used by door models but not pre-placed objects) that survive pixel data release.
+    // Skip textures that are in the object atlas — they're already on the GPU.
     if (constrainedTextureCache_ && currentZone_) {
         int preloaded = 0;
+        int skippedAtlas = 0;
         for (const auto& [name, texInfo] : currentZone_->objectTextures) {
             if (!texInfo || texInfo->data.empty()) continue;
+            // Skip textures covered by the object atlas
+            if (objAtlas_ && objAtlas_->isLoaded()) {
+                std::string lowerName = name;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (objAtlas_->lookup(lowerName)) {
+                    ++skippedAtlas;
+                    continue;
+                }
+            }
             auto* existing = constrainedTextureCache_->getOrLoad(name, texInfo->data);
             if (existing) ++preloaded;
         }
-        if (preloaded > 0) {
-            LOG_DEBUG(MOD_GRAPHICS, "Pre-loaded {} object textures into constrained cache for doors", preloaded);
-        }
+        LOG_DEBUG(MOD_GRAPHICS, "Object texture preload: {} to constrained cache, {} skipped (in atlas)",
+                  preloaded, skippedAtlas);
     }
 
     // Rebuild any doors that were created with placeholder meshes before zone data loaded.
@@ -2558,6 +2701,25 @@ void IrrlichtRenderer::unloadZone() {
                  constrainedTextureCache_->getTextureCount(),
                  constrainedTextureCache_->getCurrentUsage());
     }
+
+    // Unload texture atlases
+    if (zoneAtlas_) {
+        zoneAtlas_->unload();
+        zoneAtlas_.reset();
+    }
+    if (objAtlas_) {
+        objAtlas_->unload();
+        objAtlas_.reset();
+    }
+    objAtlasPageOffset_ = 0;
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+    // Release retained GLES2 textures and EGL images after atlas GL textures are deleted.
+    // Lima driver requires source textures/images to stay alive while desktop GL textures
+    // are in use, so we release them only after unload().
+    if (gles2Helper_) {
+        gles2Helper_->releaseSharedResources();
+    }
+#endif
 
     // Reset animated texture manager (removes its textures from driver)
     animatedTextureManager_.reset();
@@ -2980,6 +3142,11 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
         builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
                                        zoneShader_->getMaterialTypeAlphaTest());
     }
+    // Pass atlas shader material types if available
+    if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
+                                             zoneShader_->getMaterialTypeAtlasAlpha());
+    }
 
     // Count regions with geometry for progress tracking
     size_t regionsWithGeometry = 0;
@@ -3042,6 +3209,11 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
         LOG_INFO(MOD_GRAPHICS, "Lazy mode: registered {} regions (no meshes built yet)", registeredRegions);
     } else {
     // EAGER MODE: Build all region meshes immediately (original path)
+    bool useZoneAtlas = zoneAtlas_ && zoneAtlas_->isLoaded() &&
+                        zoneShader_ && zoneShader_->isAtlasAvailable();
+    LOG_INFO(MOD_GRAPHICS, "Zone mesh rendering path: {}",
+             useZoneAtlas ? "ATLAS (ETC1 batched)" : "PER-TEXTURE (constrained cache)");
+
     size_t createdMeshes = 0;
     for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
         auto geom = wldLoader->getGeometryForRegion(regionIdx);
@@ -3052,7 +3224,12 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
         irr::scene::IMesh* mesh = nullptr;
 
         if (!currentZone_->textures.empty() && !geom->textureNames.empty()) {
-            mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+            // Use atlas batching if atlas is loaded and atlas shaders are available
+            if (useZoneAtlas) {
+                mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
+            } else {
+                mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+            }
         } else {
             mesh = builder.buildColoredMesh(*geom);
         }
@@ -3763,12 +3940,21 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     if (zoneShader_ && zoneShader_->isAvailable())
         builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
                                        zoneShader_->getMaterialTypeAlphaTest());
+    if (zoneShader_ && zoneShader_->isAtlasAvailable())
+        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
+                                             zoneShader_->getMaterialTypeAtlasAlpha());
 
     irr::scene::IMesh* mesh = nullptr;
-    if (!currentZone_->textures.empty() && !geom->textureNames.empty())
-        mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
-    else
+    if (!currentZone_->textures.empty() && !geom->textureNames.empty()) {
+        if (zoneAtlas_ && zoneAtlas_->isLoaded() &&
+            zoneShader_ && zoneShader_->isAtlasAvailable()) {
+            mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
+        } else {
+            mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+        }
+    } else {
         mesh = builder.buildColoredMesh(*geom);
+    }
 
     if (!mesh) return false;
 
@@ -3974,6 +4160,19 @@ void IrrlichtRenderer::createObjectMeshes() {
         builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
                                        zoneShader_->getMaterialTypeAlphaTest());
     }
+    // Pass atlas shader material types if object atlas is available
+    if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
+                                             zoneShader_->getMaterialTypeAtlasAlpha());
+    }
+
+    // Use object atlas for batched rendering if available
+    bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
+                       zoneShader_ && zoneShader_->isAtlasAvailable();
+    LOG_INFO(MOD_GRAPHICS, "createObjectMeshes: object atlas {} ({}), rendering path: {}",
+             objAtlas_ ? "loaded" : "not loaded",
+             objAtlas_ ? std::to_string(objAtlas_->getTileCount()) + " tiles" : "n/a",
+             useObjAtlas ? "ATLAS (ETC1 batched)" : "PER-TEXTURE (constrained cache)");
 
     std::map<std::string, irr::scene::IMesh*> meshCache;
 
@@ -4005,7 +4204,12 @@ void IrrlichtRenderer::createObjectMeshes() {
             mesh = cacheIt->second;
         } else {
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
-                mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+                if (useObjAtlas) {
+                    mesh = builder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
+                                                     *objAtlas_, objAtlasPageOffset_);
+                } else {
+                    mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+                }
             } else {
                 mesh = builder.buildColoredMesh(*objInstance.geometry);
             }
@@ -4426,10 +4630,22 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
         builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
                                        zoneShader_->getMaterialTypeAlphaTest());
     }
+    if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
+                                             zoneShader_->getMaterialTypeAtlasAlpha());
+    }
+
+    bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
+                       zoneShader_ && zoneShader_->isAtlasAvailable();
 
     irr::scene::IMesh* mesh = nullptr;
     if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
-        mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+        if (useObjAtlas) {
+            mesh = builder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
+                                             *objAtlas_, objAtlasPageOffset_);
+        } else {
+            mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+        }
     } else {
         mesh = builder.buildColoredMesh(*objInstance.geometry);
     }
@@ -5443,6 +5659,13 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: mode={} playerInBounds={} camera={} (no camera update)",
                  static_cast<int>(cameraMode_), playerInBounds, camera_ != nullptr);
     }
+
+    // Force visibility and lighting recalculation on the next frame.
+    // Camera position caches may have been populated before zone lights existed,
+    // blocking the movement gates in updateObjectLights/updateZoneLightVisibility.
+    lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+    lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
+    forcePvsUpdate_ = true;
 }
 
 void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {
@@ -6180,6 +6403,11 @@ void IrrlichtRenderer::processFrameVisibility() {
         frameTimings_.zoneLightVisibility = measureSection();
 
         updateObjectLights();
+        // Update camera position for atlas per-pixel lighting
+        if (zoneShader_ && zoneShader_->isAtlasAvailable() && camera_) {
+            irr::core::vector3df camPos = camera_->getPosition();
+            zoneShader_->setCameraPos(camPos.X, camPos.Y, camPos.Z);
+        }
         frameTimings_.objectLights = measureSection();
     } else if (orientationChanged && usePvsCulling_) {
         // Camera rotated on a non-Tier2 frame: re-run frustum test only
@@ -6663,7 +6891,9 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
         uint32_t h = screenSize.Height;
 
         std::vector<uint8_t> pixels(w * h * 4);
+#ifndef EQT_HAS_GLES2
         glReadBuffer(GL_BACK);
+#endif
         glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
         // glReadPixels returns bottom-to-top; flip to top-to-bottom

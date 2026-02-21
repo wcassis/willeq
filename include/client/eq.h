@@ -977,6 +977,8 @@ public:
 	bool GetUseOpenGL() const { return m_use_opengl; }
 	void SetUseDRM(bool useDRM) { m_use_drm = useDRM; }
 	bool GetUseDRM() const { return m_use_drm; }
+	void SetUseGLES2(bool useGLES2) { m_use_gles2 = useGLES2; }
+	bool GetUseGLES2() const { return m_use_gles2; }
 	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
 	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
 	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
@@ -1566,6 +1568,7 @@ private:
 	bool m_graphics_initialized = false;
 	bool m_use_opengl = false;  // Use OpenGL renderer instead of software
 	bool m_use_drm = false;     // Use DRM/KMS framebuffer device (no X11)
+	bool m_use_gles2 = false;   // Use GLES2 backend (COpenGLES2Driver)
 	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Max;  // Constrained rendering preset (startup-only)
 	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates

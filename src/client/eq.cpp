@@ -17773,6 +17773,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	config.height = height;
 	config.softwareRenderer = !m_use_opengl;  // Use software renderer unless OpenGL requested
 	config.useDRM = m_use_drm;  // DRM/KMS framebuffer device (no X11)
+	config.useGLES2 = m_use_gles2;  // GLES2 backend (auto-detected from preset or --gles2)
 	config.eqClientPath = m_eq_client_path;
 	config.windowTitle = "WillEQ - " + m_character;
 	config.fog = true;

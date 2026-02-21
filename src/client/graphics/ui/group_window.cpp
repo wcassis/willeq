@@ -99,8 +99,9 @@ void GroupWindow::ensureContentRT(irr::video::IVideoDriver* driver)
     int h = bounds_.getHeight();
     if (w <= 0 || h <= 0) return;
 
-    // RTT caching only works correctly on OpenGL; software renderer has alpha issues
-    if (driver->getDriverType() != irr::video::EDT_OPENGL) return;
+    // RTT caching only works correctly on hardware-accelerated drivers
+    if (driver->getDriverType() != irr::video::EDT_OPENGL &&
+        driver->getDriverType() != irr::video::EDT_OGLES2) return;
 
     if (!contentRT_ || contentRTWidth_ != w || contentRTHeight_ != h || cachedDriver_ != driver) {
         if (contentRT_ && cachedDriver_) {

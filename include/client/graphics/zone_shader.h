@@ -2,7 +2,9 @@
 #define EQT_GRAPHICS_ZONE_SHADER_H
 
 #include <irrlicht.h>
+#include <cstdint>
 #include <cstring>
+#include <vector>
 
 namespace EQT {
 namespace Graphics {
@@ -23,12 +25,20 @@ public:
     irr::s32 getMaterialTypeSolid() const { return materialSolid_; }
     irr::s32 getMaterialTypeAlphaTest() const { return materialAlphaTest_; }
 
+    // Atlas-specific material types (per-pixel lighting, atlas UV transform)
+    irr::s32 getMaterialTypeAtlasSolid() const { return materialAtlasSolid_; }
+    irr::s32 getMaterialTypeAtlasAlpha() const { return materialAtlasAlpha_; }
+    bool isAtlasAvailable() const { return materialAtlasSolid_ >= 0; }
+
     // Update uniform values (call once per frame before rendering)
     void setFog(float fogStart, float fogEnd, float r, float g, float b, float a);
     void setSunDirection(float x, float y, float z);
     void setSunColor(float r, float g, float b);
     void setAmbientColor(float r, float g, float b);
     void setTintColor(float r, float g, float b);
+
+    // Camera position for atlas per-pixel lighting (Irrlicht world space, Y-up)
+    void setCameraPos(float x, float y, float z);
 
     // Set point light data directly (called from updateObjectLights)
     // Positions are in Irrlicht world space (Y-up)
@@ -69,12 +79,34 @@ public:
     const float* lightPos() const { return lightPos_; }
     const float* lightColor() const { return lightColor_; }
     const float* lightAtten() const { return lightAtten_; }
+    const float* cameraPos() const { return cameraPos_; }
+
+    // Atlas tile scale (TILE_INNER / ATLAS_WIDTH, e.g. 248.0/2048.0)
+    void setAtlasTileScale(float scale) { atlasTileScale_ = scale; }
+    float atlasTileScale() const { return atlasTileScale_; }
+
+    // Set atlas page texture handles for the shader callback to bind
+    void setAtlasPageTextures(const std::vector<uint32_t>& pageTextures) {
+        atlasPageTextures_ = pageTextures;
+    }
+    // Append additional atlas page textures (e.g. object atlas after zone atlas).
+    // Returns the starting offset for the appended pages.
+    int appendAtlasPageTextures(const std::vector<uint32_t>& pageTextures) {
+        int offset = static_cast<int>(atlasPageTextures_.size());
+        atlasPageTextures_.insert(atlasPageTextures_.end(), pageTextures.begin(), pageTextures.end());
+        return offset;
+    }
+    uint32_t getAtlasPageTexture(uint16_t pageIndex) const {
+        if (pageIndex < atlasPageTextures_.size()) return atlasPageTextures_[pageIndex];
+        return 0;
+    }
 
 private:
     bool available_ = false;
     irr::s32 materialSolid_ = -1;
     irr::s32 materialAlphaTest_ = -1;
-    // Note: driver_ removed - point light data is fed directly via setPointLight()
+    irr::s32 materialAtlasSolid_ = -1;
+    irr::s32 materialAtlasAlpha_ = -1;
 
     // Uniform values (updated per frame)
     float fogStart_ = 200.0f;
@@ -90,6 +122,15 @@ private:
     float lightPos_[MAX_POINT_LIGHTS * 3] = {};
     float lightColor_[MAX_POINT_LIGHTS * 3] = {};
     float lightAtten_[MAX_POINT_LIGHTS * 3] = {};
+
+    // Camera position (for atlas per-pixel lighting)
+    float cameraPos_[3] = {0.0f, 0.0f, 0.0f};
+
+    // Atlas tile scale uniform
+    float atlasTileScale_ = 248.0f / 2048.0f;
+
+    // Atlas page GL texture handles (set by renderer, used by shader callback)
+    std::vector<uint32_t> atlasPageTextures_;
 };
 
 } // namespace Graphics

@@ -2,6 +2,9 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/constrained_texture_cache.h"
+#ifdef EQT_HAS_TEXTURE_ATLAS
+#include "client/graphics/texture_atlas.h"
+#endif
 #include "common/logging.h"
 #include <cmath>
 #include <algorithm>
@@ -248,6 +251,7 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
             if (constrainedCache_->hasAlpha(name)) {
                 texturesWithAlpha_.insert(name);
             }
+            LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' loaded via constrained cache ({} bytes)", name, data.size());
             return texture;
         }
         LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), falling back to direct load", name, data.size());
@@ -495,14 +499,32 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
             }
 
             // Track which vertices we've added to this buffer
-            std::unordered_map<size_t, irr::u16> globalToLocal;
+            // Key includes UV cell base so vertices at cell boundaries get separate entries
+            std::unordered_map<uint64_t, irr::u16> globalToLocal;
 
             for (size_t triIdx : subTriIndices) {
                 const auto& tri = geometry.triangles[triIdx];
 
-                // Add vertices if not already present
-                for (size_t vidx : {tri.v1, tri.v2, tri.v3}) {
-                    if (globalToLocal.find(vidx) == globalToLocal.end()) {
+                // Per-triangle UV cell basing for FP16 varying precision (Mali 400 GLES2).
+                // Subtract integer part so the UV varying stays in 0-1 range.
+                // GL_REPEAT wrapping makes this visually identical.
+                const auto& tv0 = geometry.vertices[tri.v1];
+                const auto& tv1 = geometry.vertices[tri.v2];
+                const auto& tv2 = geometry.vertices[tri.v3];
+                float fv0 = flipV ? (1.0f - tv0.v) : tv0.v;
+                float fv1 = flipV ? (1.0f - tv1.v) : tv1.v;
+                float fv2 = flipV ? (1.0f - tv2.v) : tv2.v;
+                int cellU = static_cast<int>(std::floor(std::min({tv0.u, tv1.u, tv2.u})));
+                int cellV = static_cast<int>(std::floor(std::min({fv0, fv1, fv2})));
+
+                for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
+                    uint64_t key = (static_cast<uint64_t>(vidx) << 16)
+                                 | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
+                                 | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
+                    auto it = globalToLocal.find(key);
+                    if (it != globalToLocal.end()) {
+                        buffer->Indices.push_back(it->second);
+                    } else {
                         const auto& v = geometry.vertices[vidx];
                         irr::video::S3DVertex vertex;
                         vertex.Pos.X = v.x;
@@ -511,8 +533,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                         vertex.Normal.X = v.nx;
                         vertex.Normal.Y = v.nz;
                         vertex.Normal.Z = v.ny;
-                        vertex.TCoords.X = v.u;
-                        vertex.TCoords.Y = flipV ? (1.0f - v.v) : v.v;
+                        vertex.TCoords.X = v.u - static_cast<float>(cellU);
+                        vertex.TCoords.Y = (flipV ? (1.0f - v.v) : v.v) - static_cast<float>(cellV);
 
                         // White color if textured, height-based if not
                         if (texture) {
@@ -521,15 +543,12 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                             vertex.Color = heightToColor(v.z, minZ, maxZ);
                         }
 
-                        globalToLocal[vidx] = static_cast<irr::u16>(buffer->Vertices.size());
+                        irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
+                        globalToLocal[key] = localIdx;
                         buffer->Vertices.push_back(vertex);
+                        buffer->Indices.push_back(localIdx);
                     }
                 }
-
-                // Add indices
-                buffer->Indices.push_back(globalToLocal[tri.v1]);
-                buffer->Indices.push_back(globalToLocal[tri.v2]);
-                buffer->Indices.push_back(globalToLocal[tri.v3]);
             }
 
             buffer->recalculateBoundingBox();
@@ -541,6 +560,400 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
     mesh->recalculateBoundingBox();
     return mesh;
 }
+
+// ============================================================================
+// Atlas Batched Mesh Building
+// ============================================================================
+
+#ifdef EQT_HAS_TEXTURE_ATLAS
+irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
+    const ZoneGeometry& geometry,
+    const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
+    const TextureAtlas& atlas,
+    int pageIndexOffset) {
+
+    if (geometry.vertices.empty() || geometry.triangles.empty()) {
+        return nullptr;
+    }
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    const size_t MAX_VERTICES_PER_BUFFER = 65535;
+
+    // Classify each texture index: atlas page or fallback
+    // Key: atlas page index (or -1 for non-atlased), Value: triangle indices
+    struct PageBucket {
+        int pageIndex;
+        bool hasAlpha;
+        uint16_t alphaPageIndex;
+        std::vector<size_t> triangleIndices;
+    };
+
+    // Map: atlas page index -> PageBucket
+    std::map<int, PageBucket> pageBuckets;
+    // Non-atlased triangles (animated, missing): keyed by texture index
+    std::map<uint32_t, std::vector<size_t>> fallbackTriangles;
+
+    for (size_t i = 0; i < geometry.triangles.size(); ++i) {
+        const auto& tri = geometry.triangles[i];
+        uint32_t texIdx = tri.textureIndex;
+
+        // Skip invisible/collision-only textures
+        if (texIdx < geometry.textureInvisible.size() && geometry.textureInvisible[texIdx]) {
+            std::string texName = (texIdx < geometry.textureNames.size()) ? geometry.textureNames[texIdx] : "";
+            if (texName.empty()) continue;
+        }
+
+        if (texIdx >= geometry.textureNames.size()) {
+            fallbackTriangles[texIdx].push_back(i);
+            continue;
+        }
+
+        const std::string& texName = geometry.textureNames[texIdx];
+
+        // Skip animated textures — they must use per-texture fallback rendering
+        if (texIdx < geometry.textureAnimations.size() &&
+            geometry.textureAnimations[texIdx].isAnimated) {
+            fallbackTriangles[texIdx].push_back(i);
+            continue;
+        }
+
+        // Look up in atlas
+        std::string lowerName = texName;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        const auto* tile = atlas.lookup(lowerName);
+        if (!tile) {
+            // Not in atlas — fallback
+            fallbackTriangles[texIdx].push_back(i);
+            continue;
+        }
+
+        // Check if triangle UVs span more than 1 cell in either dimension.
+        // If so, the atlas UV (tile->uvOffset + relUV * tileScale) would overflow
+        // into adjacent tiles. Send these to per-texture fallback rendering.
+        {
+            const auto& v0 = geometry.vertices[tri.v1];
+            const auto& v1 = geometry.vertices[tri.v2];
+            const auto& v2 = geometry.vertices[tri.v3];
+            float uMin = std::min({v0.u, v1.u, v2.u});
+            float uMax = std::max({v0.u, v1.u, v2.u});
+            float vMin = std::min({v0.v, v1.v, v2.v});
+            float vMax = std::max({v0.v, v1.v, v2.v});
+            // relU = u - floor(uMin), so max relU = uMax - floor(uMin).
+            // If that exceeds 1.0, the atlas UV will sample outside the tile.
+            float maxRelU = uMax - std::floor(uMin);
+            float maxRelV = vMax - std::floor(vMin);
+            if (maxRelU > 1.0f || maxRelV > 1.0f) {
+                fallbackTriangles[texIdx].push_back(i);
+                continue;
+            }
+        }
+
+        int pageIdx = tile->pageIndex;
+        auto& bucket = pageBuckets[pageIdx];
+        bucket.pageIndex = pageIdx;
+        bucket.hasAlpha = tile->hasAlpha;
+        bucket.alphaPageIndex = tile->alphaPageIndex;
+        bucket.triangleIndices.push_back(i);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "buildAtlasedMesh: {} atlas page buckets, {} fallback texture groups",
+             pageBuckets.size(), fallbackTriangles.size());
+
+    // Log which textures are atlas-batched vs fallback
+    {
+        std::set<std::string> atlasedNames, fallbackNames;
+        for (const auto& [pageIdx, bucket] : pageBuckets) {
+            for (size_t triIdx : bucket.triangleIndices) {
+                uint32_t texIdx = geometry.triangles[triIdx].textureIndex;
+                if (texIdx < geometry.textureNames.size())
+                    atlasedNames.insert(geometry.textureNames[texIdx]);
+            }
+        }
+        for (const auto& [texIdx, triIndices] : fallbackTriangles) {
+            if (texIdx < geometry.textureNames.size())
+                fallbackNames.insert(geometry.textureNames[texIdx]);
+        }
+        for (const auto& n : atlasedNames)
+            LOG_DEBUG(MOD_GRAPHICS, "  [ATLAS] texture '{}' -> atlas page (pageOffset={})", n, pageIndexOffset);
+        for (const auto& n : fallbackNames)
+            LOG_DEBUG(MOD_GRAPHICS, "  [FALLBACK] texture '{}' -> per-texture (constrained cache or direct)", n);
+    }
+
+    // Build mesh buffers for atlas page buckets using S3DVertex2TCoords
+    for (const auto& [pageIdx, bucket] : pageBuckets) {
+        if (bucket.triangleIndices.empty()) continue;
+
+        // Get the atlas page GL texture handle
+        uint32_t glTexHandle = atlas.getPageTexture(static_cast<uint16_t>(pageIdx));
+        if (glTexHandle == 0) {
+            LOG_WARN(MOD_GRAPHICS, "buildAtlasedMesh: No GL texture for atlas page {}", pageIdx);
+            continue;
+        }
+
+        // Split into sub-buffers for 16-bit index limit
+        // Use a simple approach: accumulate vertices, split when exceeding limit
+        struct SubBuffer {
+            std::vector<irr::video::S3DVertex2TCoords> vertices;
+            std::vector<irr::u16> indices;
+            std::unordered_map<uint64_t, irr::u16> vertexMap;  // (globalVertIdx << 32 | texIdx) -> local index
+        };
+
+        std::vector<SubBuffer> subBuffers;
+        subBuffers.emplace_back();
+
+        for (size_t triIdx : bucket.triangleIndices) {
+            const auto& tri = geometry.triangles[triIdx];
+            uint32_t texIdx = tri.textureIndex;
+
+            // Look up tile info for this triangle's texture
+            std::string texName = geometry.textureNames[texIdx];
+            std::string lowerName = texName;
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            const auto* tile = atlas.lookup(lowerName);
+            if (!tile) continue;  // shouldn't happen, but be safe
+
+            // Check if current sub-buffer has space for 3 more vertices
+            auto& sb = subBuffers.back();
+            if (sb.vertices.size() + 3 > MAX_VERTICES_PER_BUFFER) {
+                subBuffers.emplace_back();
+            }
+            auto& currentSB = subBuffers.back();
+
+            // Precompute per-triangle UV cell base for atlas UV computation.
+            // Using a consistent floor(min) base across all 3 vertices keeps
+            // the atlas UVs continuous within the triangle, avoiding the fract()
+            // discontinuity that causes warping at polygon edges where UVs cross
+            // an integer boundary. Vertices at cell boundaries get duplicated
+            // (different atlas UVs for different cells) via the key below.
+            const auto& v0 = geometry.vertices[tri.v1];
+            const auto& v1 = geometry.vertices[tri.v2];
+            const auto& v2 = geometry.vertices[tri.v3];
+            int cellU = static_cast<int>(std::floor(std::min({v0.u, v1.u, v2.u})));
+            int cellV = static_cast<int>(std::floor(std::min({v0.v, v1.v, v2.v})));
+            float tileScale = tile->uvScale;
+
+            // Add vertices
+            for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
+                // Key: vertex index + texture index + UV cell, so the same vertex
+                // at a UV cell boundary gets separate entries per cell
+                uint64_t key = (static_cast<uint64_t>(vidx) << 32)
+                             | (static_cast<uint64_t>(texIdx) << 16)
+                             | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
+                             | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
+
+                auto it = currentSB.vertexMap.find(key);
+                if (it != currentSB.vertexMap.end()) {
+                    currentSB.indices.push_back(it->second);
+                } else {
+                    const auto& v = geometry.vertices[vidx];
+                    irr::video::S3DVertex2TCoords vertex;
+                    // Position: EQ Z-up -> Irrlicht Y-up
+                    vertex.Pos.X = v.x;
+                    vertex.Pos.Y = v.z;
+                    vertex.Pos.Z = v.y;
+                    vertex.Normal.X = v.nx;
+                    vertex.Normal.Y = v.nz;
+                    vertex.Normal.Z = v.ny;
+                    // TCoords = original UVs (kept for reference, not used by shader)
+                    vertex.TCoords.X = v.u;
+                    vertex.TCoords.Y = v.v;
+                    // TCoords2 = precomputed atlas UV (full precision on CPU).
+                    // Uses per-triangle cell base for continuity within the triangle.
+                    float relU = v.u - static_cast<float>(cellU);
+                    float relV = v.v - static_cast<float>(cellV);
+                    vertex.TCoords2.X = tile->uvOffsetU + relU * tileScale;
+                    vertex.TCoords2.Y = tile->uvOffsetV + relV * tileScale;
+                    vertex.Color = irr::video::SColor(255, 255, 255, 255);
+
+                    irr::u16 localIdx = static_cast<irr::u16>(currentSB.vertices.size());
+                    currentSB.vertexMap[key] = localIdx;
+                    currentSB.vertices.push_back(vertex);
+                    currentSB.indices.push_back(localIdx);
+                }
+            }
+        }
+
+        // Create Irrlicht mesh buffers from sub-buffers
+        for (auto& sb : subBuffers) {
+            if (sb.indices.empty()) continue;
+
+            auto* buffer = new irr::scene::SMeshBufferLightMap();
+
+            // Set material — atlas shader
+            if (bucket.hasAlpha && shaderMaterialAtlasAlpha_ >= 0) {
+                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAtlasAlpha_);
+            } else if (shaderMaterialAtlasSolid_ >= 0) {
+                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAtlasSolid_);
+            } else {
+                buffer->Material.MaterialType = irr::video::EMT_SOLID;
+            }
+
+            buffer->Material.BackfaceCulling = false;
+            buffer->Material.Lighting = false;
+            buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+            // Atlas textures use CLAMP_TO_EDGE (tiling is done in shader via fract())
+            buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
+            buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
+
+            // We can't set a raw GL texture handle as an Irrlicht ITexture*.
+            // The atlas page textures are set via the shader callback using glBindTexture directly.
+            // Store the page index in the material's user data for the shader callback.
+            // Use MaterialTypeParam to pass atlas page index to shader callback.
+            // pageIndexOffset shifts indices when multiple atlases share the same page texture array.
+            buffer->Material.MaterialTypeParam = static_cast<float>(pageIdx + pageIndexOffset);
+
+            // If we also have an alpha page, store it in MaterialTypeParam2
+            if (bucket.hasAlpha) {
+                buffer->Material.MaterialTypeParam2 = static_cast<float>(bucket.alphaPageIndex + pageIndexOffset);
+            }
+
+            // Copy vertices and indices
+            buffer->Vertices.set_used(static_cast<irr::u32>(sb.vertices.size()));
+            std::memcpy(buffer->Vertices.pointer(), sb.vertices.data(),
+                        sb.vertices.size() * sizeof(irr::video::S3DVertex2TCoords));
+
+            buffer->Indices.set_used(static_cast<irr::u32>(sb.indices.size()));
+            std::memcpy(buffer->Indices.pointer(), sb.indices.data(),
+                        sb.indices.size() * sizeof(irr::u16));
+
+            buffer->recalculateBoundingBox();
+            mesh->addMeshBuffer(buffer);
+            buffer->drop();
+        }
+    }
+
+    // Build fallback buffers for non-atlased triangles (same as buildTexturedMesh)
+    for (const auto& [texIdx, triIndices] : fallbackTriangles) {
+        if (triIndices.empty()) continue;
+
+        std::string texName;
+        irr::video::ITexture* texture = nullptr;
+
+        if (texIdx < geometry.textureNames.size()) {
+            texName = geometry.textureNames[texIdx];
+            if (!texName.empty()) {
+                std::string lowerTexName = texName;
+                std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                auto texIt = textures.find(lowerTexName);
+                if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                    texture = loadTextureFromBMP(texName, texIt->second->data);
+                }
+                if (!texture && constrainedCache_) {
+                    texture = constrainedCache_->getTexture(lowerTexName);
+                    if (!texture) texture = constrainedCache_->getTexture(texName);
+                }
+            }
+        }
+
+        // Build sub-buffers (same splitting logic as buildTexturedMesh)
+        // Key includes UV cell base for FP16 precision (Mali 400 GLES2)
+        std::unordered_map<uint64_t, irr::u16> globalToLocal;
+        irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+        buffer->Material.BackfaceCulling = false;
+        buffer->Material.Lighting = false;
+        if (texture) {
+            buffer->Material.setTexture(0, texture);
+            bool hasAlpha = (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
+            if (hasAlpha) {
+                if (shaderMaterialAlphaTest_ >= 0) {
+                    buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                } else {
+                    buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                }
+            } else {
+                if (shaderMaterialSolid_ >= 0) {
+                    buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                } else {
+                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                }
+            }
+            buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+            buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+            buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+        }
+
+        for (size_t triIdx : triIndices) {
+            const auto& tri = geometry.triangles[triIdx];
+
+            // Check if we need a new buffer
+            if (buffer->Vertices.size() + 3 > MAX_VERTICES_PER_BUFFER) {
+                buffer->recalculateBoundingBox();
+                mesh->addMeshBuffer(buffer);
+                buffer->drop();
+                buffer = new irr::scene::SMeshBuffer();
+                buffer->Material.BackfaceCulling = false;
+                buffer->Material.Lighting = false;
+                if (texture) {
+                    buffer->Material.setTexture(0, texture);
+                    if (shaderMaterialSolid_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                    }
+                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+                    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+                }
+                globalToLocal.clear();
+            }
+
+            // Per-triangle UV cell basing for FP16 varying precision (Mali 400 GLES2).
+            // Subtract integer part so the UV varying stays in 0-1 range.
+            // GL_REPEAT wrapping makes this visually identical.
+            const auto& tv0 = geometry.vertices[tri.v1];
+            const auto& tv1 = geometry.vertices[tri.v2];
+            const auto& tv2 = geometry.vertices[tri.v3];
+            int cellU = static_cast<int>(std::floor(std::min({tv0.u, tv1.u, tv2.u})));
+            int cellV = static_cast<int>(std::floor(std::min({tv0.v, tv1.v, tv2.v})));
+
+            for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
+                uint64_t key = (static_cast<uint64_t>(vidx) << 16)
+                             | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
+                             | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
+                auto it = globalToLocal.find(key);
+                if (it != globalToLocal.end()) {
+                    buffer->Indices.push_back(it->second);
+                } else {
+                    const auto& v = geometry.vertices[vidx];
+                    irr::video::S3DVertex vertex;
+                    vertex.Pos.X = v.x;
+                    vertex.Pos.Y = v.z;
+                    vertex.Pos.Z = v.y;
+                    vertex.Normal.X = v.nx;
+                    vertex.Normal.Y = v.nz;
+                    vertex.Normal.Z = v.ny;
+                    vertex.TCoords.X = v.u - static_cast<float>(cellU);
+                    vertex.TCoords.Y = v.v - static_cast<float>(cellV);
+                    vertex.Color = texture ? irr::video::SColor(255, 255, 255, 255)
+                                           : heightToColor(v.z, geometry.minZ, geometry.maxZ);
+
+                    irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
+                    globalToLocal[key] = localIdx;
+                    buffer->Vertices.push_back(vertex);
+                    buffer->Indices.push_back(localIdx);
+                }
+            }
+        }
+
+        if (!buffer->Indices.empty()) {
+            buffer->recalculateBoundingBox();
+            mesh->addMeshBuffer(buffer);
+        }
+        buffer->drop();
+    }
+
+    mesh->recalculateBoundingBox();
+
+    int totalBuffers = mesh->getMeshBufferCount();
+    LOG_INFO(MOD_GRAPHICS, "buildAtlasedMesh: {} total mesh buffers (atlas pages: {}, fallback: {})",
+             totalBuffers, pageBuckets.size(), fallbackTriangles.size());
+
+    return mesh;
+}
+#endif // EQT_HAS_TEXTURE_ATLAS
 
 // ============================================================================
 // Performance: Lazy Texture Loading (Phase 3)
