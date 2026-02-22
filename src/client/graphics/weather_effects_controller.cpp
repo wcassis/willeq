@@ -57,17 +57,18 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
         stormCloudLayer_->initialize(smgr_, driver_, eqClientPath_);
     }
 
-    // Create screen-space rain overlay
+    // Screen-space overlays — skipped on GLES2 where unified particles replace them
+#ifndef EQT_HAS_GLES2
     rainOverlay_ = std::make_unique<Environment::RainOverlay>();
     if (rainOverlay_ && driver_ && smgr_) {
         rainOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
 
-    // Create screen-space snow overlay (Phase 11)
     snowOverlay_ = std::make_unique<Environment::SnowOverlay>();
     if (snowOverlay_ && driver_ && smgr_) {
         snowOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
+#endif
 
     // Apply loaded config to emitters
     applyConfigFromLoader();
