@@ -994,21 +994,76 @@ bool EQAnimatedMeshSceneNode::getBoneWorldPosition(int boneIndex, irr::core::vec
     }
 
     const BoneMat4& worldXform = boneStates[boneIndex].worldTransform;
-    float px = worldXform.m[12];
-    float py = worldXform.m[13];
-    float pz = worldXform.m[14];
+    float eqX = worldXform.m[12];
+    float eqY = worldXform.m[13];
+    float eqZ = worldXform.m[14];
 
-    // Convert EQ(x,y,z) to Irrlicht(x,z,y) and account for node transform
-    irr::core::vector3df localPos(px, pz, py);
-
-    // Apply node's world transform (scale and position)
+    // Apply node scale and convert EQ(x,y,z) to Irrlicht(x,z,y)
     irr::core::vector3df nodePos = getAbsolutePosition();
     irr::core::vector3df nodeScale = getScale();
+    irr::core::vector3df nodeRot = getRotation();
 
-    outPosition.X = nodePos.X + localPos.X * nodeScale.X;
-    outPosition.Y = nodePos.Y + localPos.Y * nodeScale.Y;
-    outPosition.Z = nodePos.Z + localPos.Z * nodeScale.Z;
+    float localX = eqX * nodeScale.X;
+    float localY = eqZ * nodeScale.Z;  // Height: EQ Z -> Irrlicht Y
+    float localZ = eqY * nodeScale.Y;  // Depth:  EQ Y -> Irrlicht Z
 
+    // Apply Y-axis rotation (model facing direction)
+    float rotY = nodeRot.Y * 3.14159265f / 180.0f;
+    float cosY = std::cos(rotY);
+    float sinY = std::sin(rotY);
+    float rotatedX = localX * cosY + localZ * sinY;
+    float rotatedZ = -localX * sinY + localZ * cosY;
+
+    outPosition.X = rotatedX + nodePos.X;
+    outPosition.Y = localY + nodePos.Y;
+    outPosition.Z = rotatedZ + nodePos.Z;
+
+    return true;
+}
+
+bool EQAnimatedMeshSceneNode::getBoneWorldDirection(int boneIndex, irr::core::vector3df& outDirection) const {
+    if (!eqMesh_) return false;
+    auto skeleton = eqMesh_->getSkeleton();
+    if (!skeleton) return false;
+
+    const auto& boneStates = animator_.getBoneStates();
+    if (boneIndex < 0 || boneIndex >= static_cast<int>(boneStates.size())) {
+        return false;
+    }
+
+    // Get this bone's world position
+    irr::core::vector3df bonePos;
+    if (!getBoneWorldPosition(boneIndex, bonePos)) return false;
+
+    // Walk up the bone hierarchy to find an ancestor with meaningful spatial separation.
+    // Attachment points (R_POINT, L_POINT) are very close to their parent (hand bone),
+    // so parent→child gives a tiny noisy vector. Walk up to forearm/upper arm level
+    // where we get actual arm direction.
+    static const float MIN_SEPARATION_SQ = 0.5f * 0.5f;  // Need at least 0.5 units of separation
+    int ancestorIdx = skeleton->bones[boneIndex].parentIndex;
+    int maxWalk = 4;  // Don't walk more than 4 levels
+    while (ancestorIdx >= 0 && ancestorIdx < static_cast<int>(boneStates.size()) && maxWalk > 0) {
+        irr::core::vector3df ancestorPos;
+        if (getBoneWorldPosition(ancestorIdx, ancestorPos)) {
+            irr::core::vector3df diff = bonePos - ancestorPos;
+            float lenSq = diff.X * diff.X + diff.Y * diff.Y + diff.Z * diff.Z;
+            if (lenSq >= MIN_SEPARATION_SQ) {
+                float len = std::sqrt(lenSq);
+                outDirection = diff / len;
+                return true;
+            }
+        }
+        ancestorIdx = skeleton->bones[ancestorIdx].parentIndex;
+        --maxWalk;
+    }
+
+    // Fallback: direction from character center to bone (outward from body)
+    irr::core::vector3df nodePos = getAbsolutePosition();
+    outDirection = bonePos - nodePos;
+    float len = outDirection.getLength();
+    if (len > 0.0001f) {
+        outDirection /= len;
+    }
     return true;
 }
 

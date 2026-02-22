@@ -273,12 +273,20 @@ public:
     void setEntityPositionCallback(EntityPosCallback cb) { entityPosCallback_ = std::move(cb); }
 
     /**
+     * Entity direction callback for spray effects (returns normalized direction in Irrlicht Y-up).
+     */
+    using EntityDirCallback = std::function<bool(uint16_t entity_id, glm::vec3& out_dir)>;
+    void setEntityDirectionCallback(EntityDirCallback cb) { entityDirCallback_ = std::move(cb); }
+
+    /**
      * Create a spell particle effect.
+     * @param useDynamicDir If true, emitters use direction callback for spray velocity
      * @return Effect ID for later removal
      */
     uint32_t createSpellEffect(const SpellEffectDef& def,
                                uint16_t casterID, uint16_t targetID,
-                               float duration = 0.0f);
+                               float duration = 0.0f,
+                               bool useDynamicDir = false);
 
     /**
      * Remove a specific spell effect by ID.
@@ -391,6 +399,7 @@ private:
 
     // Spell effect state
     EntityPosCallback entityPosCallback_;
+    EntityDirCallback entityDirCallback_;
     std::vector<SpellEffectInstance> activeSpellEffects_;
     uint32_t nextSpellEffectID_ = 1;
 
@@ -408,8 +417,10 @@ private:
                               const glm::vec3& cameraPos, float transitionAlpha);
 
     // Spawn a single particle for spell effects (BURST/RADIAL_EXPAND/ORBITAL)
+    // dynamicDir: if non-null, used as spray direction (overrides velocityBase)
     void spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                            const glm::vec3& emitterPos);
+                            const glm::vec3& emitterPos,
+                            const glm::vec3* dynamicDir = nullptr);
 
     // Update spell effect lifecycle (triggers, entity tracking, cleanup)
     void updateSpellEffects(float deltaTime);

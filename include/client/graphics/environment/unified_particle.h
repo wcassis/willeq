@@ -163,6 +163,10 @@ struct ActiveEmitter {
     uint16_t attachEntityID = 0;     // Entity to follow (0 = static)
     glm::vec3 attachOffset{0.0f};    // Offset from entity position (Irrlicht Y-up)
     bool isBurstSpawned = false;     // BURST: prevent re-spawning after initial burst
+
+    // Dynamic velocity direction (spray effects — updated each frame via callback)
+    bool useDynamicDirection = false;
+    glm::vec3 dynamicDirection{0.0f, 0.0f, 1.0f};  // Normalized direction for spray
 };
 
 // === Fire Emitter Presets ===

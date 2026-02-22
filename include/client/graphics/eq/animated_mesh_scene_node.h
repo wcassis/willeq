@@ -161,6 +161,10 @@ public:
     // Position is in Irrlicht coordinate system (Y-up)
     bool getBoneWorldPosition(int boneIndex, irr::core::vector3df& outPosition) const;
 
+    // Get bone forward direction (along bone's local X-axis) in world space
+    // Direction is normalized, in Irrlicht coordinate system (Y-up)
+    bool getBoneWorldDirection(int boneIndex, irr::core::vector3df& outDirection) const;
+
     // Get bone index by name using skeleton (returns -1 if not found)
     int getBoneIndexByName(const std::string& boneName) const;
 

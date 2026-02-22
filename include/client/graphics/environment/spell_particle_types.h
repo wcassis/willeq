@@ -55,12 +55,16 @@ struct SpellEffectInstance {
 
     // The definition (stored here since we don't have a global registry yet)
     SpellEffectDef def;
+
+    // If true, emitters use direction callback for spray velocity
+    bool useDynamicDirection = false;
 };
 
 // === Spell Emitter Presets ===
 
 namespace SpellPresets {
-    SpellEffectDef CastGlow(glm::vec4 color);
+    SpellEffectDef CastGlow(glm::vec4 color);    // "Smolder" — orbital particles around position
+    SpellEffectDef CastSpray(glm::vec4 color);   // "Spray" — directional cone from hands
     SpellEffectDef SpellComplete(glm::vec4 color);
     SpellEffectDef Impact(glm::vec4 color);
     SpellEffectDef BuffAura(glm::vec4 color);

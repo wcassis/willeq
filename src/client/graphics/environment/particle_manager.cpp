@@ -691,11 +691,21 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
                 }
             }
 
+            // Resolve dynamic direction for spray emitters
+            const glm::vec3* dirPtr = nullptr;
+            if (emitter.useDynamicDirection) {
+                // Update direction from callback each frame
+                if (entityDirCallback_ && emitter.attachEntityID != 0) {
+                    entityDirCallback_(emitter.attachEntityID, emitter.dynamicDirection);
+                }
+                dirPtr = &emitter.dynamicDirection;
+            }
+
             // BURST / RADIAL_EXPAND: one-shot spawn, all at once
             if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
                 for (int s = 0; s < emitter.config.burstCount; ++s) {
                     spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset);
+                                       emitter.position + emitter.attachOffset, dirPtr);
                     totalSpawned++;
                 }
                 emitter.isBurstSpawned = true;
@@ -709,7 +719,7 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
 
                 for (int s = 0; s < toSpawn; ++s) {
                     spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset);
+                                       emitter.position + emitter.attachOffset, dirPtr);
                     totalSpawned++;
                 }
             }
@@ -1139,7 +1149,8 @@ void ParticleManager::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t em
 // =============================================================================
 
 void ParticleManager::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                                          const glm::vec3& emitterPos) {
+                                          const glm::vec3& emitterPos,
+                                          const glm::vec3* dynamicDir) {
     int idx = allocateUnifiedParticle();
     if (idx < 0) return;  // Pool full
 
@@ -1165,7 +1176,17 @@ void ParticleManager::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emit
     }
 
     // Velocity: depends on motion type
-    if (cfg.motionType == MotionType::RADIAL_EXPAND) {
+    if (dynamicDir) {
+        // Spray: cone along dynamic direction
+        // velocityBase.x = speed, velocitySpread = cone half-angle spread
+        float speed = glm::length(cfg.velocityBase);
+        if (speed < 0.01f) speed = 4.0f;
+        p.velocity = (*dynamicDir) * speed;
+        // Add cone spread perpendicular to direction
+        p.velocity.x += randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.y += randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+        p.velocity.z += randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+    } else if (cfg.motionType == MotionType::RADIAL_EXPAND) {
         // Radial direction in XZ plane
         float angle = randomFloat(0.0f, 6.28318f);
         p.velocity.x = std::cos(angle) * cfg.expandSpeed + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
@@ -1228,7 +1249,8 @@ void ParticleManager::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emit
 
 uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
                                              uint16_t casterID, uint16_t targetID,
-                                             float duration) {
+                                             float duration,
+                                             bool useDynamicDir) {
     if (!unifiedRendererInitialized_) return 0;
 
     SpellEffectInstance inst;
@@ -1239,6 +1261,7 @@ uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
     inst.age = 0.0f;
     inst.maxDuration = duration;
     inst.def = def;
+    inst.useDynamicDirection = useDynamicDir;
 
     // Create emitter states for each emitter definition
     for (int i = 0; i < static_cast<int>(def.emitters.size()); ++i) {
@@ -1393,6 +1416,7 @@ void ParticleManager::updateSpellEffects(float deltaTime) {
                     ae.emitterID = nextEmitterID_++;
                     ae.attachEntityID = attachEntity;
                     ae.attachOffset = emDef.positionOffset;
+                    ae.useDynamicDirection = effect.useDynamicDirection;
                     unifiedEmitters_[ae.emitterID] = ae;
                     es.activeEmitterID = ae.emitterID;
 

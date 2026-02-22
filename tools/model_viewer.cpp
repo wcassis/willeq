@@ -51,6 +51,7 @@
 #include "client/graphics/spell_visual_fx.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/environment/particle_manager.h"
+#include "client/graphics/environment/spell_particle_types.h"
 #endif
 
 using namespace irr;
@@ -162,6 +163,17 @@ bool spellTestCasting = false;
 float spellTestCastElapsed = 0;
 float spellTestCastDuration = 0;
 const EQ::SpellData* spellTestCurrentSpell = nullptr;
+bool spellTestCastAnimPlaying = false;
+
+// Virtual entity IDs for hand bone particle tracking
+uint16_t casterRightHandEntityId = 101;
+uint16_t casterLeftHandEntityId = 102;
+int casterRightHandBoneIdx = -1;
+int casterLeftHandBoneIdx = -1;
+
+// Cast effect type: smolder (orbital glow) vs spray (directional cone)
+enum class CastEffectType : uint8_t { Smolder, Spray };
+CastEffectType castEffectType = CastEffectType::Smolder;
 
 // Spell categories for filtering
 enum class SpellTestCategory : uint8_t {
@@ -504,21 +516,47 @@ void triggerSpellTestCast() {
     spellTestCastElapsed = 0;
     spellTestCasting = true;
 
+    // Play idle animation looping during cast channeling
+    if (animatedNode && useAnimatedMesh) {
+        animatedNode->playAnimation("o01", true, false);
+    }
+
     std::cout << "Casting: " << spell->name << " (ID " << spell->id
               << ", " << spellTestCastDuration << "s, "
               << getResistTypeName(spell->resist_type) << ")" << std::endl;
 
-    // Create cast glow on caster
-    spellVisualFX->createCastGlow(casterEntityId, spell->id,
-        static_cast<uint32_t>(spellTestCastDuration * 1000));
+    uint32_t castMs = static_cast<uint32_t>(spellTestCastDuration * 1000);
+    bool hasHandBones = (casterRightHandBoneIdx >= 0 || casterLeftHandBoneIdx >= 0);
 
-    // Play casting animation on caster model
-    if (animatedNode && useAnimatedMesh) {
-        // Determine animation based on spell type
-        std::string castAnim = "t06";  // Default: offensive
-        if (spell->is_beneficial) castAnim = "t04";  // Beneficial
-        if (spell->isHealSpell()) castAnim = "t05";  // Heal
-        animatedNode->playAnimation(castAnim, true, false);
+#ifdef EQT_HAS_GLES2
+    // GLES2: create particle effects at each hand bone position
+    if (hasHandBones && particleManager) {
+        using namespace EQT::Graphics::Environment;
+        auto scolor = spellVisualFX->getSpellColorForSpell(spell->id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+
+        bool isSpray = (castEffectType == CastEffectType::Spray);
+        auto def = isSpray ? SpellPresets::CastSpray(c) : SpellPresets::CastGlow(c);
+        float durSec = spellTestCastDuration;
+        for (auto& e : def.emitters) {
+            e.config.emitterLifetime = durSec;
+            if (!isSpray) {
+                e.config.orbitalRadius = 0.4f;     // Tight orbit around hand
+            }
+            e.positionOffset = glm::vec3(0.0f); // Bone position is already accurate
+        }
+        if (casterRightHandBoneIdx >= 0) {
+            particleManager->createSpellEffect(def, casterRightHandEntityId, 0, durSec, isSpray);
+        }
+        if (casterLeftHandBoneIdx >= 0) {
+            particleManager->createSpellEffect(def, casterLeftHandEntityId, 0, durSec, isSpray);
+        }
+    } else
+#endif
+    {
+        // Non-GLES2 or no hand bones: glow at entity center
+        spellVisualFX->createCastGlow(casterEntityId, spell->id, castMs);
     }
 }
 
@@ -528,15 +566,24 @@ void completeSpellTestCast() {
     const auto* spell = spellTestCurrentSpell;
     std::cout << "Cast complete: " << spell->name << std::endl;
 
-    // Remove cast glow
+    // Remove cast glows from hands and fallback entity center
+#ifdef EQT_HAS_GLES2
+    if (particleManager) {
+        particleManager->removeSpellEffectsForEntity(casterRightHandEntityId);
+        particleManager->removeSpellEffectsForEntity(casterLeftHandEntityId);
+    }
+#endif
     spellVisualFX->removeCastGlow(casterEntityId);
 
-    // Create spell completion effect on caster
+    // Create spell completion effect on caster (at midpoint)
     spellVisualFX->createSpellComplete(casterEntityId, spell->id);
 
-    // Return caster to idle animation
+    // Play cast animation once, then return to idle
     if (animatedNode && useAnimatedMesh) {
-        animatedNode->playAnimation("p01", true, false);
+        std::string castAnim = "t06";  // Default: offensive
+        if (spell->is_beneficial) castAnim = "t04";  // Beneficial
+        if (spell->isHealSpell()) castAnim = "t05";  // Heal
+        animatedNode->playAnimation(castAnim, false, false);  // loop=false: play once
     }
 
     // Create appropriate effects based on spell type
@@ -590,6 +637,13 @@ void completeSpellTestCast() {
 
 void cancelSpellTestCast() {
     if (spellTestCasting && spellVisualFX) {
+#ifdef EQT_HAS_GLES2
+        // Remove hand bone particle effects created directly on PM
+        if (particleManager) {
+            particleManager->removeSpellEffectsForEntity(casterRightHandEntityId);
+            particleManager->removeSpellEffectsForEntity(casterLeftHandEntityId);
+        }
+#endif
         spellVisualFX->removeCastGlow(casterEntityId);
         spellTestCasting = false;
         spellTestCurrentSpell = nullptr;
@@ -605,6 +659,12 @@ void cancelSpellTestCast() {
         spellVisualFX->clearAllEffects();
         std::cout << "Effects cleared" << std::endl;
     }
+#ifdef EQT_HAS_GLES2
+    if (particleManager) {
+        particleManager->removeSpellEffectsForEntity(casterRightHandEntityId);
+        particleManager->removeSpellEffectsForEntity(casterLeftHandEntityId);
+    }
+#endif
 }
 
 class MyEventReceiver : public IEventReceiver {
@@ -936,6 +996,17 @@ public:
                         cycleEffect(1);
                     }
                     return true;
+                case KEY_F8:
+                    // F8: Toggle cast effect type (Smolder / Spray)
+                    if (spellTestMode) {
+                        castEffectType = (castEffectType == CastEffectType::Smolder)
+                            ? CastEffectType::Spray : CastEffectType::Smolder;
+                        std::cout << "Cast effect: "
+                                  << (castEffectType == CastEffectType::Smolder ? "Smolder" : "Spray")
+                                  << std::endl;
+                        return true;
+                    }
+                    break;
                 default:
                     // Check if it's a number key for spell casting (1-9, 0)
                     if (event.KeyInput.Key >= KEY_KEY_0 && event.KeyInput.Key <= KEY_KEY_9) {
@@ -1850,6 +1921,14 @@ void reloadEntityWithTextures() {
 
         std::cout << "Reloaded with " << animatedNode->getMaterialCount() << " materials" << std::endl;
 
+        // Update hand bone indices for spell particle emission
+        if (spellTestMode) {
+            casterRightHandBoneIdx = animatedNode->findRightHandBoneIndex();
+            casterLeftHandBoneIdx = animatedNode->findLeftHandBoneIndex();
+            std::cout << "  Hand bones: R=" << casterRightHandBoneIdx
+                      << " L=" << casterLeftHandBoneIdx << std::endl;
+        }
+
         // Attach equipment models if we have entity data
         if (currentEntityIndex >= 0 && currentEntityIndex < static_cast<int>(loadedEntities.size())) {
             const EntityData& entity = loadedEntities[currentEntityIndex];
@@ -2677,17 +2756,24 @@ int main(int argc, char* argv[]) {
         spellVisualFX = std::make_unique<EQ::SpellVisualFX>(smgr, driver, clientPath);
         spellVisualFX->setSpellDatabase(spellDatabase.get());
 
-        // Set up entity position callback
+        // Set up entity position callback (handles real + virtual hand entity IDs)
         spellVisualFX->setEntityPositionCallback(
             [](uint16_t entity_id, irr::core::vector3df& out_pos) -> bool {
+                // Hand bone virtual entities — track hand positions on caster
+                if (entity_id == casterRightHandEntityId && animatedNode && casterRightHandBoneIdx >= 0) {
+                    return animatedNode->getBoneWorldPosition(casterRightHandBoneIdx, out_pos);
+                }
+                if (entity_id == casterLeftHandEntityId && animatedNode && casterLeftHandBoneIdx >= 0) {
+                    return animatedNode->getBoneWorldPosition(casterLeftHandBoneIdx, out_pos);
+                }
                 if (entity_id == casterEntityId && animatedNode) {
                     out_pos = animatedNode->getAbsolutePosition();
-                    out_pos.Y += 3.0f;  // Chest height
+                    out_pos.Y += 1.0f;
                     return true;
                 }
                 if (entity_id == targetEntityId && targetAnimatedNode) {
                     out_pos = targetAnimatedNode->getAbsolutePosition();
-                    out_pos.Y += 3.0f;
+                    out_pos.Y += 1.0f;
                     return true;
                 }
                 return false;
@@ -2699,15 +2785,60 @@ int main(int argc, char* argv[]) {
             particleManager->init(clientPath);
             particleManager->initUnifiedRenderer();
             spellVisualFX->setParticleManager(particleManager.get());
+            // Set entity position callback on ParticleManager (uses glm::vec3)
+            particleManager->setEntityPositionCallback(
+                [](uint16_t entity_id, glm::vec3& out_pos) -> bool {
+                    // Hand bone virtual entities
+                    if (entity_id == casterRightHandEntityId && animatedNode && casterRightHandBoneIdx >= 0) {
+                        irr::core::vector3df bonePos;
+                        if (animatedNode->getBoneWorldPosition(casterRightHandBoneIdx, bonePos)) {
+                            out_pos = glm::vec3(bonePos.X, bonePos.Y, bonePos.Z);
+                            return true;
+                        }
+                    }
+                    if (entity_id == casterLeftHandEntityId && animatedNode && casterLeftHandBoneIdx >= 0) {
+                        irr::core::vector3df bonePos;
+                        if (animatedNode->getBoneWorldPosition(casterLeftHandBoneIdx, bonePos)) {
+                            out_pos = glm::vec3(bonePos.X, bonePos.Y, bonePos.Z);
+                            return true;
+                        }
+                    }
+                    if (entity_id == casterEntityId && animatedNode) {
+                        auto p = animatedNode->getAbsolutePosition();
+                        out_pos = glm::vec3(p.X, p.Y + 1.0f, p.Z);
+                        return true;
+                    }
+                    if (entity_id == targetEntityId && targetAnimatedNode) {
+                        auto p = targetAnimatedNode->getAbsolutePosition();
+                        out_pos = glm::vec3(p.X, p.Y + 1.0f, p.Z);
+                        return true;
+                    }
+                    return false;
+                });
+            // Set direction callback for spray effects (bone forward vector)
+            particleManager->setEntityDirectionCallback(
+                [](uint16_t entity_id, glm::vec3& out_dir) -> bool {
+                    if (!animatedNode) return false;
+                    int boneIdx = -1;
+                    if (entity_id == casterRightHandEntityId) boneIdx = casterRightHandBoneIdx;
+                    else if (entity_id == casterLeftHandEntityId) boneIdx = casterLeftHandBoneIdx;
+                    if (boneIdx < 0) return false;
+                    irr::core::vector3df dir;
+                    if (animatedNode->getBoneWorldDirection(boneIdx, dir)) {
+                        out_dir = glm::vec3(dir.X, dir.Y, dir.Z);
+                        return true;
+                    }
+                    return false;
+                });
+
             std::cout << "GLES2 ParticleManager + UnifiedRenderer initialized" << std::endl;
         }
 #endif
 
-        // Create caster entity (Human male at origin)
+        // Create caster entity (Human male at origin) — 1x scale for correct particle sizing
         animatedNode = raceModelLoader->createAnimatedNodeWithAppearance(
             currentRaceId, currentGender, 0, 0, nullptr, -1);
         if (animatedNode) {
-            animatedNode->setScale(core::vector3df(10, 10, 10));
             animatedNode->setPosition(core::vector3df(0, 0, 0));
             animatedNode->setRotation(core::vector3df(0, 90, 0));
             animatedNode->playAnimation("p01", true, false);  // Idle
@@ -2716,22 +2847,27 @@ int main(int argc, char* argv[]) {
                 animatedNode->getMaterial(i).BackfaceCulling = false;
             }
             useAnimatedMesh = true;
-            std::cout << "Created caster entity (race " << currentRaceId << ")" << std::endl;
+
+            // Cache hand bone indices for spell particle emission
+            casterRightHandBoneIdx = animatedNode->findRightHandBoneIndex();
+            casterLeftHandBoneIdx = animatedNode->findLeftHandBoneIndex();
+            std::cout << "Created caster entity (race " << currentRaceId
+                      << ") R_HAND=" << casterRightHandBoneIdx
+                      << " L_HAND=" << casterLeftHandBoneIdx << std::endl;
         }
 
-        // Create target entity (Human male offset to right)
+        // Create target entity (Human male offset to right) — ~5 units apart at 1x scale
         targetAnimatedNode = raceModelLoader->createAnimatedNodeWithAppearance(
             1, 0, 0, 0, nullptr, -1);  // Human male
         if (targetAnimatedNode) {
-            targetAnimatedNode->setScale(core::vector3df(10, 10, 10));
-            targetAnimatedNode->setPosition(core::vector3df(30, 0, 0));
+            targetAnimatedNode->setPosition(core::vector3df(5, 0, 0));
             targetAnimatedNode->setRotation(core::vector3df(0, -90, 0));  // Face caster
             targetAnimatedNode->playAnimation("p01", true, false);
             for (u32 i = 0; i < targetAnimatedNode->getMaterialCount(); ++i) {
                 targetAnimatedNode->getMaterial(i).Lighting = false;
                 targetAnimatedNode->getMaterial(i).BackfaceCulling = false;
             }
-            std::cout << "Created target entity at (30, 0, 0)" << std::endl;
+            std::cout << "Created target entity at (5, 0, 0)" << std::endl;
         }
 
         // Build initial spell list
@@ -2796,9 +2932,9 @@ int main(int argc, char* argv[]) {
 
     // Add camera
     if (spellTestMode) {
-        // Wider view for caster + target (target is at x=30)
+        // Camera looking at midpoint between caster (0,0,0) and target (5,0,0)
         camera = smgr->addCameraSceneNode(
-            nullptr, core::vector3df(15, 15, -60), core::vector3df(15, 0, 0));
+            nullptr, core::vector3df(2.5f, 3.0f, -10.0f), core::vector3df(2.5f, 1.5f, 0));
     } else {
         camera = smgr->addCameraSceneNode(
             nullptr, core::vector3df(0, 5, -cameraDistance), core::vector3df(0, 0, 0));
@@ -2827,6 +2963,18 @@ int main(int argc, char* argv[]) {
             spellTestCastElapsed += deltaSeconds;
             if (spellTestCastElapsed >= spellTestCastDuration) {
                 completeSpellTestCast();
+            }
+        }
+
+        // Return to idle after one-shot cast animation completes
+        if (spellTestMode && !spellTestCasting && animatedNode) {
+            // isPlayingThrough() is true while a non-looping anim is playing;
+            // once it finishes (returns false), switch back to idle loop
+            if (animatedNode->isPlayingThrough()) {
+                spellTestCastAnimPlaying = true;
+            } else if (spellTestCastAnimPlaying) {
+                animatedNode->playAnimation("p01", true, false);
+                spellTestCastAnimPlaying = false;
             }
         }
 
@@ -3026,6 +3174,13 @@ int main(int argc, char* argv[]) {
                 std::string modeStr = "[F6] Mode: " + std::string(spellTestSelfMode ? "SELF" : "TARGETED");
                 std::wstring wModeStr(modeStr.begin(), modeStr.end());
                 font->draw(wModeStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
+                hudY += lineHeight;
+
+                // Effect type
+                std::string effectStr = "[F8] Effect: " +
+                    std::string(castEffectType == CastEffectType::Smolder ? "SMOLDER" : "SPRAY");
+                std::wstring wEffectStr(effectStr.begin(), effectStr.end());
+                font->draw(wEffectStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
                 hudY += lineHeight;
 
                 // Cast state

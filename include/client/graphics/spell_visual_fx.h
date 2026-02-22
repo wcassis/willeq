@@ -146,6 +146,9 @@ public:
     // Adjust particle multiplier by delta (for hotkey control)
     void adjustParticleMultiplier(float delta);
 
+    // Get spell color by spell ID (for external particle creation)
+    irr::video::SColor getSpellColorForSpell(uint32_t spell_id) const { return getSpellColor(spell_id); }
+
 #ifdef EQT_HAS_GLES2
     // Set particle manager for GLES2 delegation
     void setParticleManager(EQT::Graphics::Environment::ParticleManager* pm) { m_particle_manager = pm; }

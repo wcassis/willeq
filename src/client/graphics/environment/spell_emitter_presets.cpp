@@ -6,7 +6,53 @@ namespace Graphics {
 namespace Environment {
 namespace SpellPresets {
 
-// CastGlow — ORBITAL particles around caster during casting
+// CastSpray — LINEAR particles sprayed from hands like a garden hose
+// Direction is set dynamically from bone orientation via dynamicDirection
+SpellEffectDef CastSpray(glm::vec4 color) {
+    SpellEffectDef def;
+    def.name = "CastSpray";
+
+    SpellEmitterDef ed;
+    ed.trigger = SpellTrigger::IMMEDIATE;
+    ed.attach = SpellAttach::CASTER;
+    ed.positionOffset = glm::vec3(0.0f);  // Bone position is already accurate
+
+    EmitterConfig& c = ed.config;
+    c.motionType = MotionType::LINEAR;  // Straight-line with gravity
+    c.spawnRate = 15.0f;                // Medium-intensity stream
+    c.burstCount = 0;
+    c.emitterLifetime = 0.0f;           // Controlled by cast duration
+
+    c.spawnShape = SpawnShape::POINT;
+
+    // Speed along bone direction (set dynamically, used as magnitude)
+    c.velocityBase = glm::vec3(4.0f, 0.0f, 0.0f);
+    // Cone spread — creates the garden hose spray cone
+    c.velocitySpread = glm::vec3(0.8f, 0.8f, 0.8f);
+
+    c.gravity = glm::vec3(0.0f, -3.0f, 0.0f);  // Droplets arc downward
+    c.drag = 0.3f;                                // Slight air resistance
+
+    c.colorStart = glm::vec4(color.r, color.g, color.b, 0.8f);
+    c.colorEnd = glm::vec4(color.r, color.g, color.b, 0.0f);
+
+    c.sizeStartMin = 0.04f;
+    c.sizeStartMax = 0.08f;
+    c.sizeEndMin = 0.02f;
+    c.sizeEndMax = 0.04f;
+    c.lifetimeMin = 0.4f;
+    c.lifetimeMax = 0.7f;
+
+    c.blendMode = UnifiedBlendMode::ADDITIVE;
+    c.textureRegions[0] = ParticleAtlas::SoftCircle;
+    c.textureRegions[1] = ParticleAtlas::Ember;
+    c.textureRegionCount = 2;
+
+    def.emitters.push_back(ed);
+    return def;
+}
+
+// CastGlow — ORBITAL particles around caster during casting (renamed: "smolder")
 SpellEffectDef CastGlow(glm::vec4 color) {
     SpellEffectDef def;
     def.name = "CastGlow";
@@ -59,7 +105,7 @@ SpellEffectDef SpellComplete(glm::vec4 color) {
     SpellEmitterDef ed;
     ed.trigger = SpellTrigger::IMMEDIATE;
     ed.attach = SpellAttach::CASTER;
-    ed.positionOffset = glm::vec3(0.0f, 1.0f, 0.0f);
+    ed.positionOffset = glm::vec3(0.0f);  // Entity callback already provides chest-height position
 
     EmitterConfig& c = ed.config;
     c.motionType = MotionType::BURST;
