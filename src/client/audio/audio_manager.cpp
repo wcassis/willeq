@@ -18,6 +18,7 @@
 #include <fstream>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <json/json.h>
 
 namespace EQT {
@@ -56,33 +57,51 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     // Create MidiPlayer (for XMI/MIDI music)
     midiPlayer_ = std::make_unique<MidiPlayer>();
 
-    // Find a SoundFont to load
-    std::string sfPath = soundFontPath_;
-    if (sfPath.empty()) {
-        // Try EQ client SoundFonts
-        std::string eqSf2 = eqPath_ + "/synthus2.sf2";
-        if (std::filesystem::exists(eqSf2)) {
-            sfPath = eqSf2;
-        } else {
-            std::string eqSf2User = eqPath_ + "/synthusr.sf2";
-            if (std::filesystem::exists(eqSf2User)) {
-                sfPath = eqSf2User;
-            }
+    // Find GM SoundFont: CLI --soundfont > synthusr.sf2 > 1mgm.sf2
+    std::string gmPath;
+    if (!soundFontPath_.empty() && std::filesystem::exists(soundFontPath_)) {
+        gmPath = soundFontPath_;
+    } else {
+        std::string synthusr = eqPath_ + "/synthusr.sf2";
+        std::string onegm = eqPath_ + "/1mgm.sf2";
+        if (std::filesystem::exists(synthusr)) {
+            gmPath = synthusr;
+        } else if (std::filesystem::exists(onegm)) {
+            gmPath = onegm;
         }
     }
 
-    if (!sfPath.empty()) {
-        if (midiPlayer_->init(sfPath, AudioMixer::SAMPLE_RATE)) {
-            LOG_INFO(MOD_AUDIO, "MIDI player initialized with SoundFont: {}", sfPath);
+    // Find custom SoundFont: synthus2.sf2 in EQ dir (optional)
+    std::string customPath;
+    {
+        std::string synthus2 = eqPath_ + "/synthus2.sf2";
+        if (std::filesystem::exists(synthus2)) {
+            customPath = synthus2;
+        }
+    }
 
-            // If user specified a different soundfont AND we loaded an EQ one first,
-            // load the user one as replacement (TSF only supports one at a time)
-            if (!soundFontPath_.empty() && sfPath != soundFontPath_ &&
-                std::filesystem::exists(soundFontPath_)) {
-                midiPlayer_->loadSoundFont(soundFontPath_);
+    if (!gmPath.empty()) {
+        if (!customPath.empty()) {
+            // Dual SoundFont init
+            if (midiPlayer_->init(gmPath, customPath, AudioMixer::SAMPLE_RATE)) {
+                LOG_INFO(MOD_AUDIO, "MIDI player initialized with dual SoundFonts: GM={}, Custom={}", gmPath, customPath);
+            } else {
+                LOG_WARN(MOD_AUDIO, "MIDI player dual initialization failed");
             }
         } else {
-            LOG_WARN(MOD_AUDIO, "MIDI player initialization failed");
+            // Single SoundFont init
+            if (midiPlayer_->init(gmPath, AudioMixer::SAMPLE_RATE)) {
+                LOG_INFO(MOD_AUDIO, "MIDI player initialized with SoundFont: {}", gmPath);
+            } else {
+                LOG_WARN(MOD_AUDIO, "MIDI player initialization failed");
+            }
+        }
+
+        // If user specified --soundfont AND we found an EQ GM SF2 (synthusr/1mgm),
+        // override the GM slot with the user's choice
+        if (!soundFontPath_.empty() && gmPath != soundFontPath_ &&
+            std::filesystem::exists(soundFontPath_)) {
+            midiPlayer_->loadSoundFont(soundFontPath_);
         }
     } else {
         LOG_WARN(MOD_AUDIO, "No SoundFont found - XMI playback disabled");
@@ -299,6 +318,15 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
 
     std::cout << "[AUDIO] MUSIC PLAY: file=" << fullPath << " track=" << trackIndex
               << " loop=" << (loop ? "yes" : "no") << std::endl;
+
+    // Select soundfont based on XMI filename
+    if (midiPlayer_ && midiPlayer_->isInitialized()) {
+        std::string ext = std::filesystem::path(fullPath).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".xmi") {
+            midiPlayer_->selectSoundFont(getSoundFontTypeForFile(fullPath));
+        }
+    }
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
     if (!musicPlayer_->play(fullPath, loop, trackIndex)) {
@@ -982,6 +1010,26 @@ void AudioManager::loadMusicEventConfig() {
               << " track " << vendorBankMusicConfig_.track
               << " loop=" << vendorBankMusicConfig_.loop
               << " enabled=" << vendorBankMusicConfig_.enabled << std::endl;
+}
+
+SoundFontType AudioManager::getSoundFontTypeForFile(const std::string& path) {
+    // XMI files that require the synthus2 custom orchestral SoundFont
+    // (Velious and Luclin/Shadows of Luclin zones)
+    static const std::unordered_set<std::string> synthus2Files = {
+        // Velious (8)
+        "cobaltscar", "crystal", "frozenshadow", "kael", "skyshrine",
+        "templeveeshan", "thurgadina", "velketor",
+        // Luclin/SoL (23)
+        "acrylia", "dawnshroud", "echo", "fungusgrove", "griegsend",
+        "grimling", "hollowshade", "katta", "letalis", "maiden", "mseru",
+        "netherbian", "nexus", "paludal", "shadeweaver", "shadowhaven",
+        "sharvahl", "sseru", "tenebrous", "thedeep", "thegrey", "twilight",
+        "vexthal",
+    };
+
+    std::string stem = std::filesystem::path(path).stem().string();
+    std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
+    return synthus2Files.count(stem) ? SoundFontType::Custom : SoundFontType::GM;
 }
 
 } // namespace Audio

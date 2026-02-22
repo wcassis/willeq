@@ -16,7 +16,9 @@ namespace EQT {
 namespace Audio {
 
 struct MidiPlayer::Impl {
-    tsf* soundFont = nullptr;
+    tsf* soundFont = nullptr;              // Active pointer (points to gmSoundFont or customSoundFont)
+    tsf* gmSoundFont = nullptr;            // GM SoundFont (synthusr/1mgm)
+    tsf* customSoundFont = nullptr;        // Custom SoundFont (synthus2)
     tml_message* midiMessages = nullptr;   // Loaded MIDI
     tml_message* currentMessage = nullptr;  // Playback cursor
     double midiTimeMs = 0.0;               // Current playback position in ms
@@ -32,9 +34,15 @@ MidiPlayer::~MidiPlayer() {
         tml_free(impl_->midiMessages);
         impl_->midiMessages = nullptr;
     }
-    if (impl_->soundFont) {
-        tsf_close(impl_->soundFont);
-        impl_->soundFont = nullptr;
+    // Clear active pointer first to avoid double-free
+    impl_->soundFont = nullptr;
+    if (impl_->gmSoundFont) {
+        tsf_close(impl_->gmSoundFont);
+        impl_->gmSoundFont = nullptr;
+    }
+    if (impl_->customSoundFont) {
+        tsf_close(impl_->customSoundFont);
+        impl_->customSoundFont = nullptr;
     }
 }
 
@@ -55,23 +63,87 @@ bool MidiPlayer::init(const std::string& soundFontPath, uint32_t sampleRate) {
     return true;
 }
 
+bool MidiPlayer::init(const std::string& gmPath, const std::string& customPath, uint32_t sampleRate) {
+    if (initialized_) return true;
+
+    sampleRate_ = sampleRate;
+
+    // Load GM SoundFont
+    impl_->gmSoundFont = tsf_load_filename(gmPath.c_str());
+    if (!impl_->gmSoundFont) {
+        LOG_ERROR(MOD_AUDIO, "MidiPlayer: failed to load GM SoundFont: {}", gmPath);
+        return false;
+    }
+    tsf_set_output(impl_->gmSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+    impl_->soundFont = impl_->gmSoundFont;
+    activeSoundFont_ = SoundFontType::GM;
+
+    LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded GM SoundFont: {} ({}Hz)", gmPath, sampleRate_);
+
+    // Load custom SoundFont (optional)
+    if (!customPath.empty()) {
+        impl_->customSoundFont = tsf_load_filename(customPath.c_str());
+        if (impl_->customSoundFont) {
+            tsf_set_output(impl_->customSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+            LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded custom SoundFont: {}", customPath);
+        } else {
+            LOG_WARN(MOD_AUDIO, "MidiPlayer: failed to load custom SoundFont: {} (continuing with GM only)", customPath);
+        }
+    }
+
+    initialized_ = true;
+    LOG_INFO(MOD_AUDIO, "MidiPlayer initialized with dual SoundFonts ({}Hz)", sampleRate_);
+    return true;
+}
+
+void MidiPlayer::selectSoundFont(SoundFontType type) {
+    if (type == activeSoundFont_) return;
+
+    if (type == SoundFontType::Custom && !impl_->customSoundFont) {
+        LOG_WARN(MOD_AUDIO, "MidiPlayer: custom SoundFont not loaded, staying on GM");
+        return;
+    }
+
+    stop();
+
+    if (type == SoundFontType::Custom) {
+        impl_->soundFont = impl_->customSoundFont;
+    } else {
+        impl_->soundFont = impl_->gmSoundFont;
+    }
+    activeSoundFont_ = type;
+
+    LOG_INFO(MOD_AUDIO, "MidiPlayer: switched to {} SoundFont",
+             type == SoundFontType::Custom ? "custom" : "GM");
+}
+
 bool MidiPlayer::loadSoundFont(const std::string& path) {
     if (!initialized_) return false;
 
-    // TSF doesn't support multiple SoundFonts natively; replace the current one
     tsf* newSf = tsf_load_filename(path.c_str());
     if (!newSf) {
-        LOG_WARN(MOD_AUDIO, "MidiPlayer: failed to load additional SoundFont: {}", path);
+        LOG_WARN(MOD_AUDIO, "MidiPlayer: failed to load SoundFont: {}", path);
         return false;
     }
 
-    // Stop playback, swap
     stop();
-    tsf_close(impl_->soundFont);
-    impl_->soundFont = newSf;
-    tsf_set_output(impl_->soundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
 
-    LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded SoundFont: {}", path);
+    // Replace the GM slot
+    tsf* oldGm = impl_->gmSoundFont;
+    impl_->gmSoundFont = newSf;
+    tsf_set_output(impl_->gmSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+
+    // If active pointer was pointing at the old GM instance, update it
+    if (impl_->soundFont == oldGm || activeSoundFont_ == SoundFontType::GM) {
+        impl_->soundFont = impl_->gmSoundFont;
+        activeSoundFont_ = SoundFontType::GM;
+    }
+
+    if (oldGm) {
+        tsf_close(oldGm);
+    }
+
+    LOG_INFO(MOD_AUDIO, "MidiPlayer: replaced GM SoundFont: {}", path);
     return true;
 }
 

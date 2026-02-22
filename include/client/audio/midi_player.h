@@ -11,6 +11,8 @@
 namespace EQT {
 namespace Audio {
 
+enum class SoundFontType { GM, Custom };
+
 // TSF + TML MIDI synthesis.
 // This is a NEW class — not the existing MusicPlayer.
 class MidiPlayer {
@@ -22,11 +24,18 @@ public:
     MidiPlayer(const MidiPlayer&) = delete;
     MidiPlayer& operator=(const MidiPlayer&) = delete;
 
-    // Initialize with a SoundFont file
+    // Initialize with a single SoundFont file
     bool init(const std::string& soundFontPath, uint32_t sampleRate = 22050);
 
-    // Replace current SoundFont (TSF only supports one at a time)
+    // Initialize with dual SoundFonts (GM + custom orchestral)
+    bool init(const std::string& gmPath, const std::string& customPath, uint32_t sampleRate);
+
+    // Replace the GM SoundFont slot
     bool loadSoundFont(const std::string& path);
+
+    // Switch between loaded SoundFonts
+    void selectSoundFont(SoundFontType type);
+    SoundFontType getActiveSoundFont() const { return activeSoundFont_; }
 
     // Play MIDI data from memory
     // trackIndex: ignored by TML (tml plays all tracks). Caller should provide
@@ -55,6 +64,7 @@ private:
     std::atomic<float> volume_{1.0f};
     bool looping_ = false;
     uint32_t sampleRate_ = 22050;
+    SoundFontType activeSoundFont_ = SoundFontType::GM;
 };
 
 } // namespace Audio

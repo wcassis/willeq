@@ -28,6 +28,7 @@ class AudioMixer;
 class AudioBackend;
 class MidiPlayer;
 class SfxManager;
+enum class SoundFontType;
 
 // Music event configuration (loaded from config/music_events.json)
 struct MusicEventConfig {
@@ -160,6 +161,9 @@ private:
 
     // Music event config
     void loadMusicEventConfig();
+
+    // Determine which SoundFont to use for a given music file
+    SoundFontType getSoundFontTypeForFile(const std::string& path);
 
 private:
     bool initialized_ = false;
