@@ -1825,13 +1825,14 @@ void IrrlichtRenderer::updateObjectLights() {
             // Boost light color for GLSL shader — Irrlicht's DiffuseColor values
             // (0.1-0.4 range) are designed for Irrlicht's built-in attenuation pipeline
             // but are too dim when used directly as additive light color in our custom
-            // shader. 3x boost gives visible torch/campfire illumination at night.
-            constexpr float lightBoost = 3.0f;
+            // shader. Player light (index 0) gets 3x for visible torch illumination;
+            // zone torches get 1.5x to avoid overdriving bright textures (snow zones).
+            float boost = (shaderLightIdx == 0) ? 3.0f : 1.5f;
             zoneShader_->setPointLight(shaderLightIdx,
                 pos.X, pos.Y, pos.Z,
-                ld.DiffuseColor.r * lightBoost,
-                ld.DiffuseColor.g * lightBoost,
-                ld.DiffuseColor.b * lightBoost,
+                ld.DiffuseColor.r * boost,
+                ld.DiffuseColor.g * boost,
+                ld.DiffuseColor.b * boost,
                 ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
             shaderLightIdx++;
         }
@@ -5932,13 +5933,13 @@ void IrrlichtRenderer::refreshShaderLightColors() {
         if (ld.Type != irr::video::ELT_POINT) continue;
         // Use getPosition() — root-level nodes, AbsoluteTransformation may be stale
         irr::core::vector3df pos = node->getPosition();
-        // Boost light color for GLSL shader (same as full update path)
-        constexpr float lightBoost = 3.0f;
+        // Boost: player light (index 0) = 3x, zone torches = 1.5x
+        float boost = (i == 0) ? 3.0f : 1.5f;
         zoneShader_->setPointLight(i,
             pos.X, pos.Y, pos.Z,
-            ld.DiffuseColor.r * lightBoost,
-            ld.DiffuseColor.g * lightBoost,
-            ld.DiffuseColor.b * lightBoost,
+            ld.DiffuseColor.r * boost,
+            ld.DiffuseColor.g * boost,
+            ld.DiffuseColor.b * boost,
             ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
     }
 

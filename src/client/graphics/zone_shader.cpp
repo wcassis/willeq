@@ -66,7 +66,7 @@ void main() {
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
     // Base (ambient + sun) gets tint and baked vertex color
-    vec3 baseLighting = uAmbientColor + sunNdotL * uSunColor;
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
@@ -116,7 +116,12 @@ void main() {
     float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * pLa;
 
-    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
+    vec3 base = texColor.rgb * vColor.rgb;
+    // Scale player light by surface darkness — bright surfaces get almost no
+    // contribution (prevents contrast-flattening disc on snow), dark surfaces
+    // get full effect (visible torch at night).
+    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
+    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -148,7 +153,12 @@ void main() {
     float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * pLa;
 
-    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
+    vec3 base = texColor.rgb * vColor.rgb;
+    // Scale player light by surface darkness — bright surfaces get almost no
+    // contribution (prevents contrast-flattening disc on snow), dark surfaces
+    // get full effect (visible torch at night).
+    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
+    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -183,7 +193,12 @@ void main() {
     float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * pLa;
 
-    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
+    vec3 base = texColor.rgb * vColor.rgb;
+    // Scale player light by surface darkness — bright surfaces get almost no
+    // contribution (prevents contrast-flattening disc on snow), dark surfaces
+    // get full effect (visible torch at night).
+    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
+    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -236,7 +251,7 @@ void main() {
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
     // Base (ambient + sun) gets tint and baked vertex color
-    vec3 baseLighting = uAmbientColor + sunNdotL * uSunColor;
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
@@ -284,7 +299,12 @@ void main() {
     float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * pLa;
 
-    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
+    vec3 base = texColor.rgb * vColor.rgb;
+    // Scale player light by surface darkness — bright surfaces get almost no
+    // contribution (prevents contrast-flattening disc on snow), dark surfaces
+    // get full effect (visible torch at night).
+    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
+    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -319,7 +339,12 @@ void main() {
     float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * pLa;
 
-    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
+    vec3 base = texColor.rgb * vColor.rgb;
+    // Scale player light by surface darkness — bright surfaces get almost no
+    // contribution (prevents contrast-flattening disc on snow), dark surfaces
+    // get full effect (visible torch at night).
+    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
+    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -357,7 +382,12 @@ void main() {
     float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * pLa;
 
-    vec4 lit = texColor * vColor + vec4(pLight * texColor.rgb, 0.0);
+    vec3 base = texColor.rgb * vColor.rgb;
+    // Scale player light by surface darkness — bright surfaces get almost no
+    // contribution (prevents contrast-flattening disc on snow), dark surfaces
+    // get full effect (visible torch at night).
+    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
+    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
