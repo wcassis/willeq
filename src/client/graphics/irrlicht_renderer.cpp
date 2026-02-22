@@ -1365,16 +1365,23 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
 
     // Update shader uniforms with current lighting state
     if (zoneShader_ && zoneShader_->isAvailable()) {
-        zoneShader_->setAmbientColor(r, g, b);
-        zoneShader_->setSunColor(sunIntensity, sunIntensity, sunIntensity * 0.9f);
+        if (!debugDirectionalLightEnabled_) {
+            // Fullbright: override ambient/sun/tint for debug isolation
+            zoneShader_->setAmbientColor(1.0f, 1.0f, 1.0f);
+            zoneShader_->setSunColor(0.0f, 0.0f, 0.0f);
+            zoneShader_->setTintColor(1.0f, 1.0f, 1.0f);
+        } else {
+            zoneShader_->setAmbientColor(r, g, b);
+            zoneShader_->setSunColor(sunIntensity, sunIntensity, sunIntensity * 0.9f);
 
-        // Sun direction matches setupLighting() directional light
-        zoneShader_->setSunDirection(0.5f, -1.0f, 0.5f);
+            // Sun direction matches setupLighting() directional light
+            zoneShader_->setSunDirection(0.5f, -1.0f, 0.5f);
 
-        // Compute day/night tint color from ambient values
-        // Dawn/dusk: warm orange; night: cool blue; day: neutral white
-        float maxAmb = std::max({r, g, b, 0.01f});
-        zoneShader_->setTintColor(r / maxAmb, g / maxAmb, b / maxAmb);
+            // Compute day/night tint color from ambient values
+            // Dawn/dusk: warm orange; night: cool blue; day: neutral white
+            float maxAmb = std::max({r, g, b, 0.01f});
+            zoneShader_->setTintColor(r / maxAmb, g / maxAmb, b / maxAmb);
+        }
 
         // Also sync fog with any weather-modified values
         irr::video::SColor currentFogColor;
@@ -1670,7 +1677,7 @@ void IrrlichtRenderer::updateObjectLights() {
     }
 
     // Add player light first with distance 0 (always highest priority)
-    if (playerLightNode_ && playerLightLevel_ > 0) {
+    if (debugPlayerLightEnabled_ && playerLightNode_ && playerLightLevel_ > 0) {
         candidates.push_back({0.0f, playerLightNode_, false, "player_light"});
     }
 
@@ -1740,7 +1747,7 @@ void IrrlichtRenderer::updateObjectLights() {
     // First collect ALL lights in range by distance (no occlusion check yet)
     std::vector<std::pair<float, size_t>> objectDistances;
     objectDistances.reserve(objectLights_.size());
-    for (size_t i = 0; i < objectLights_.size(); ++i) {
+    for (size_t i = 0; i < (debugObjectLightsEnabled_ ? objectLights_.size() : 0u); ++i) {
         float dist = horizontalDistance(cameraPos, objectLights_[i].position);
         if (dist <= maxDistance) {
             objectDistances.push_back({dist, i});
@@ -5422,6 +5429,8 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
             irr::video::SLight& lightData = playerLightNode_->getLightData();
             lightData.DiffuseColor = irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f);
             lightData.Radius = radius;
+            float quad = 19.0f / (radius * radius);
+            lightData.Attenuation = irr::core::vector3df(1.0f, 0.0f, quad);
             playerLightNode_->setPosition(lightPos);
         } else if (smgr_) {
             // Create new light
@@ -5435,9 +5444,12 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
             if (playerLightNode_) {
                 irr::video::SLight& lightData = playerLightNode_->getLightData();
                 lightData.Type = irr::video::ELT_POINT;
-                // Attenuation: 1/(constant + linear*d + quadratic*d²)
-                // constant=1 for full brightness at source
-                lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
+                // Attenuation: 1/(constant + quadratic*d²)
+                // Tuned so attenuation ≈ 5% at the light's radius, enabling an
+                // efficient distance-based early-out in the per-pixel FS.
+                // quad = 19/(R²) gives 1/(1+19)=5% at d=R, 1/(1+76)=1.3% at d=2R.
+                float quad = 19.0f / (radius * radius);
+                lightData.Attenuation = irr::core::vector3df(1.0f, 0.0f, quad);
                 // Start hidden - updateObjectLights will enable it
                 playerLightNode_->setVisible(false);
                 LOG_INFO(MOD_GRAPHICS, "Created player light: level={}, radius={:.1f}", lightLevel, radius);
@@ -7648,6 +7660,35 @@ void IrrlichtRenderer::toggleZoneLights() {
     // Note: light visibility is managed by updateObjectLights() unified light management
     // Invalidate light cache to force recalculation
     lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+}
+
+void IrrlichtRenderer::togglePlayerLight() {
+    debugPlayerLightEnabled_ = !debugPlayerLightEnabled_;
+    // Force light recalculation
+    lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+    LOG_INFO(MOD_GRAPHICS, "Debug: Player light {}", debugPlayerLightEnabled_ ? "ENABLED" : "DISABLED");
+}
+
+void IrrlichtRenderer::toggleObjectLights() {
+    debugObjectLightsEnabled_ = !debugObjectLightsEnabled_;
+    lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+    LOG_INFO(MOD_GRAPHICS, "Debug: Object lights {}", debugObjectLightsEnabled_ ? "ENABLED" : "DISABLED");
+}
+
+void IrrlichtRenderer::toggleDirectionalLight() {
+    debugDirectionalLightEnabled_ = !debugDirectionalLightEnabled_;
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        if (!debugDirectionalLightEnabled_) {
+            // Fullbright: ambient=1, sun=0, tint=1
+            zoneShader_->setAmbientColor(1.0f, 1.0f, 1.0f);
+            zoneShader_->setSunColor(0.0f, 0.0f, 0.0f);
+            zoneShader_->setTintColor(1.0f, 1.0f, 1.0f);
+        } else {
+            // Restore time-of-day lighting
+            updateTimeOfDay(currentHour_, currentMinute_);
+        }
+    }
+    LOG_INFO(MOD_GRAPHICS, "Debug: Directional/ambient light {}", debugDirectionalLightEnabled_ ? "ENABLED" : "DISABLED");
 }
 
 void IrrlichtRenderer::cycleObjectLights() {
@@ -10564,6 +10605,26 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
         );
 
         LOG_DEBUG(MOD_GRAPHICS, "Spell visual effects initialized");
+
+#ifdef EQT_HAS_GLES2
+        if (particleManager_) {
+            spellVisualFX_->setParticleManager(particleManager_.get());
+            particleManager_->setEntityPositionCallback(
+                [this](uint16_t entity_id, glm::vec3& out_pos) -> bool {
+                    if (!entityRenderer_) return false;
+                    const auto& entities = entityRenderer_->getEntities();
+                    auto it = entities.find(entity_id);
+                    if (it == entities.end()) return false;
+                    const auto& visual = it->second;
+                    out_pos.x = visual.lastX;
+                    out_pos.y = visual.lastZ + visual.modelYOffset;
+                    out_pos.z = visual.lastY;
+                    return true;
+                }
+            );
+            LOG_DEBUG(MOD_GRAPHICS, "SpellVisualFX: GLES2 particle delegation enabled");
+        }
+#endif
     }
 }
 

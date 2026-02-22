@@ -20,9 +20,10 @@ namespace Graphics {
 
 #ifdef EQT_HAS_GLES2
 
-// GLSL ES 1.00 vertex shader — per-vertex lighting + fog
-// Light[0] (player light) is computed per-pixel in FS to avoid artifacts on large triangles.
-// Lights[1..7] (zone torches etc.) remain per-vertex.
+// GLSL ES 1.00 vertex shader — all-per-vertex lighting + fog
+// All 8 point lights (including player light[0]) computed per-vertex.
+// Player light uses wrap lighting ((NdotL+0.5)/1.5) to soften dark-face
+// artifacts on large EQ zone triangles without per-pixel FS cost.
 static const char* VERTEX_SHADER_SRC = R"(
 precision highp float;
 
@@ -48,8 +49,6 @@ uniform vec3 uLightAtten[8];
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     vec4 pos = vec4(aPosition, 1.0);
@@ -59,17 +58,24 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
-    vWorldPos = worldPos;
-    vWorldNormal = worldN;
-
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    // Base (ambient + sun) gets tint and baked vertex color
     vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
 
-    // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
+    // Player light (index 0) — wrap lighting to soften large-triangle artifacts
     vec3 pointLighting = vec3(0.0);
+    {
+        vec3 lVec = uLightPos[0] - worldPos;
+        float d = length(lVec) + 0.001;
+        float atten = 1.0 / (uLightAtten[0].x
+                            + uLightAtten[0].y * d
+                            + uLightAtten[0].z * d * d + 0.0001);
+        float nl = (dot(worldN, normalize(lVec)) + 0.5) / 1.5;
+        pointLighting += uLightColor[0] * max(nl, 0.0) * atten;
+    }
+
+    // Zone/object lights (indices 1-7) — standard Lambertian
     for (int i = 1; i < 8; i++) {
         vec3 lVec = uLightPos[i] - worldPos;
         float d = length(lVec) + 0.001;
@@ -89,40 +95,20 @@ void main() {
 )";
 
 // GLSL ES 1.00 fragment shader — solid (opaque)
-// Per-pixel player light (light[0]) for smooth illumination on large triangles.
+// Minimal: texture * vertex color + fog. All lighting computed in VS.
 static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-
-    // Per-pixel player light — computed here to avoid per-vertex artifacts on large triangles
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
-
-    vec3 base = texColor.rgb * vColor.rgb;
-    // Scale player light by surface darkness — bright surfaces get almost no
-    // contribution (prevents contrast-flattening disc on snow), dark surfaces
-    // get full effect (visible torch at night).
-    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
-    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+    gl_FragColor = mix(uFogColor, texColor * vColor, vFogFactor);
 }
 )";
 
@@ -132,34 +118,15 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
-
-    vec3 base = texColor.rgb * vColor.rgb;
-    // Scale player light by surface darkness — bright surfaces get almost no
-    // contribution (prevents contrast-flattening disc on snow), dark surfaces
-    // get full effect (visible torch at night).
-    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
-    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+    gl_FragColor = mix(uFogColor, texColor * vColor, vFogFactor);
 }
 )";
 
@@ -171,40 +138,21 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
     if (texColor.a < threshold) discard;
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
-
-    vec3 base = texColor.rgb * vColor.rgb;
-    // Scale player light by surface darkness — bright surfaces get almost no
-    // contribution (prevents contrast-flattening disc on snow), dark surfaces
-    // get full effect (visible torch at night).
-    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
-    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+    gl_FragColor = mix(uFogColor, texColor * vColor, vFogFactor);
 }
 )";
 
-// GLSL ES 1.00 atlas vertex shader — per-vertex lighting, precomputed atlas UV
-// Light[0] (player light) computed per-pixel in FS; lights[1..7] per-vertex.
+// GLSL ES 1.00 atlas vertex shader — all-per-vertex lighting, precomputed atlas UV
+// All 8 point lights computed per-vertex; player light[0] uses wrap lighting.
 static const char* ATLAS_VERTEX_SHADER_SRC = R"(
 precision highp float;
 
@@ -231,8 +179,6 @@ uniform vec3 uLightAtten[8];
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     vec4 pos = vec4(aPosition, 1.0);
@@ -244,17 +190,24 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
-    vWorldPos = worldPos;
-    vWorldNormal = worldN;
-
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    // Base (ambient + sun) gets tint and baked vertex color
     vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
 
-    // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
+    // Player light (index 0) — wrap lighting to soften large-triangle artifacts
     vec3 pointLighting = vec3(0.0);
+    {
+        vec3 lVec = uLightPos[0] - worldPos;
+        float d = length(lVec) + 0.001;
+        float atten = 1.0 / (uLightAtten[0].x
+                            + uLightAtten[0].y * d
+                            + uLightAtten[0].z * d * d + 0.0001);
+        float nl = (dot(worldN, normalize(lVec)) + 0.5) / 1.5;
+        pointLighting += uLightColor[0] * max(nl, 0.0) * atten;
+    }
+
+    // Zone/object lights (indices 1-7) — standard Lambertian
     for (int i = 1; i < 8; i++) {
         vec3 lVec = uLightPos[i] - worldPos;
         float d = length(lVec) + 0.001;
@@ -274,38 +227,20 @@ void main() {
 )";
 
 // GLSL ES 1.00 atlas fragment shader — solid (opaque)
+// Minimal: texture * vertex color + fog. All lighting computed in VS.
 static const char* ATLAS_FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
-
-    vec3 base = texColor.rgb * vColor.rgb;
-    // Scale player light by surface darkness — bright surfaces get almost no
-    // contribution (prevents contrast-flattening disc on snow), dark surfaces
-    // get full effect (visible torch at night).
-    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
-    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+    gl_FragColor = mix(uFogColor, texColor * vColor, vFogFactor);
 }
 )";
 
@@ -316,36 +251,16 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
-
     vec4 texColor = texture2D(uTexture, vTexCoord);
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
-
-    vec3 base = texColor.rgb * vColor.rgb;
-    // Scale player light by surface darkness — bright surfaces get almost no
-    // contribution (prevents contrast-flattening disc on snow), dark surfaces
-    // get full effect (visible torch at night).
-    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
-    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+    gl_FragColor = mix(uFogColor, texColor * vColor, vFogFactor);
 }
 )";
 
@@ -358,37 +273,17 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
 
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
     if (alpha < threshold) discard;
-
     vec4 texColor = texture2D(uTexture, vTexCoord);
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
-
-    vec3 base = texColor.rgb * vColor.rgb;
-    // Scale player light by surface darkness — bright surfaces get almost no
-    // contribution (prevents contrast-flattening disc on snow), dark surfaces
-    // get full effect (visible torch at night).
-    float baseBrightness = dot(base, vec3(0.3, 0.6, 0.1));
-    vec4 lit = vec4(base + pLight * texColor.rgb * (1.0 - baseBrightness), texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+    gl_FragColor = mix(uFogColor, texColor * vColor, vFogFactor);
 }
 )";
 
@@ -667,11 +562,6 @@ public:
 
         irr::s32 texUnit = 0;
         services->setPixelShaderConstant("uTexture", &texUnit, 1);
-
-        // Per-pixel player light (light[0]) — FS uniforms
-        services->setPixelShaderConstant("uPlayerLightPos", owner_->lightPos(), 3);
-        services->setPixelShaderConstant("uPlayerLightColor", owner_->lightColor(), 3);
-        services->setPixelShaderConstant("uPlayerLightAtten", owner_->lightAtten(), 3);
     }
 
 private:
@@ -775,11 +665,6 @@ public:
             irr::s32 texUnit1 = 1;
             services->setPixelShaderConstant("uAlphaTexture", &texUnit1, 1);
         }
-
-        // Per-pixel player light (light[0]) — FS uniforms
-        services->setPixelShaderConstant("uPlayerLightPos", owner_->lightPos(), 3);
-        services->setPixelShaderConstant("uPlayerLightColor", owner_->lightColor(), 3);
-        services->setPixelShaderConstant("uPlayerLightAtten", owner_->lightAtten(), 3);
     }
 
 private:

@@ -8992,6 +8992,48 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(stencilcmd);
 
+	Command plightcmd;
+	plightcmd.name = "plight";
+	plightcmd.aliases = {};
+	plightcmd.usage = "/plight";
+	plightcmd.description = "Toggle per-pixel player light (debug: isolate FPS impact)";
+	plightcmd.category = "Utility";
+	plightcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->togglePlayerLight();
+		AddChatSystemMessage(fmt::format("Player light: {}",
+			m_renderer->isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(plightcmd);
+
+	Command olightcmd;
+	olightcmd.name = "olight";
+	olightcmd.aliases = {};
+	olightcmd.usage = "/olight";
+	olightcmd.description = "Toggle object/torch point lights (debug: isolate FPS impact)";
+	olightcmd.category = "Utility";
+	olightcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->toggleObjectLights();
+		AddChatSystemMessage(fmt::format("Object lights: {}",
+			m_renderer->isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(olightcmd);
+
+	Command zlightcmd;
+	zlightcmd.name = "zlight";
+	zlightcmd.aliases = {};
+	zlightcmd.usage = "/zlight";
+	zlightcmd.description = "Toggle directional sun/ambient lighting (debug: isolate FPS impact)";
+	zlightcmd.category = "Utility";
+	zlightcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->toggleDirectionalLight();
+		AddChatSystemMessage(fmt::format("Directional/ambient light: {}",
+			m_renderer->isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(zlightcmd);
+
 	Command firecmd;
 	firecmd.name = "fire";
 	firecmd.aliases = {};

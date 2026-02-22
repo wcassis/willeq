@@ -635,6 +635,14 @@ public:
     // Front-to-back sorting and portal occlusion controls
     void toggleManualZoneDraw();
     bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
+
+    // Debug lighting toggles (for isolating performance regressions)
+    void togglePlayerLight();
+    bool isPlayerLightEnabled() const { return debugPlayerLightEnabled_; }
+    void toggleObjectLights();
+    bool isObjectLightsEnabled() const { return debugObjectLightsEnabled_; }
+    void toggleDirectionalLight();
+    bool isDirectionalLightEnabled() const { return debugDirectionalLightEnabled_; }
     void togglePortalOcclusion();
     bool isPortalOcclusionEnabled() const { return portalOcclusionEnabled_; }
     void togglePortalDebugDraw();
@@ -1137,6 +1145,9 @@ private:
     VisionType baseVision_ = VisionType::Normal;    // Base vision from race
     VisionType currentVision_ = VisionType::Normal; // Current vision (may be upgraded by items/buffs)
     int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
+    bool debugPlayerLightEnabled_ = true;    // /plight toggle
+    bool debugObjectLightsEnabled_ = true;   // /olight toggle
+    bool debugDirectionalLightEnabled_ = true; // /zlight toggle
     bool fireEffectsEnabled_ = true;  // Fire light flickering and ember/smoke particles
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
