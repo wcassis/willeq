@@ -40,8 +40,10 @@ public:
     // Play MIDI data from memory
     // trackIndex: ignored by TML (tml plays all tracks). Caller should provide
     // single-track MIDI data from XmiDecoder if a specific track is wanted.
-    bool play(const uint8_t* midiData, size_t size, bool loop = true);
-    bool play(const std::vector<uint8_t>& midiData, bool loop = true);
+    // startTimeMs: if > 0, seeks to this position before starting playback
+    //              (avoids audible glitch vs calling seekTo() after play)
+    bool play(const uint8_t* midiData, size_t size, bool loop = true, double startTimeMs = 0.0);
+    bool play(const std::vector<uint8_t>& midiData, bool loop = true, double startTimeMs = 0.0);
 
     // Render audio into buffer (called from mixer, audio thread)
     // buffer: interleaved stereo float, frame_count * 2 floats
@@ -52,6 +54,10 @@ public:
     void setVolume(float vol);
     float getVolume() const { return volume_.load(); }
     bool isPlaying() const { return playing_.load(); }
+
+    // Playback position
+    double getPlaybackTimeMs() const;
+    void seekTo(double timeMs);
 
     bool isInitialized() const { return initialized_; }
 

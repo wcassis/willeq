@@ -84,7 +84,7 @@ public:
     // Music
     // trackIndex: for XMI files, selects which sequence to play (0 = first, 1 = second, etc.)
     //             Use -1 to play all sequences combined. Ignored for non-XMI files.
-    void playMusic(const std::string& filename, bool loop = true, int trackIndex = 0);
+    void playMusic(const std::string& filename, bool loop = true, int trackIndex = 0, double startTimeMs = 0.0);
     void stopMusic(float fadeOutSeconds = 1.0f);
     void pauseMusic();
     void resumeMusic();
@@ -208,7 +208,9 @@ private:
     // Context-based music state
     bool autoAttackMusicActive_ = false;
     bool vendorBankMusicActive_ = false;
+    std::string savedZoneMusicFile_;
     int savedZoneMusicTrackIndex_ = 0;
+    double savedZoneMusicTimeMs_ = 0.0;
 
     // Music event configurations (loaded from config/music_events.json)
     MusicEventConfig autoAttackMusicConfig_;

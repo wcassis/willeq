@@ -100,7 +100,7 @@ void MusicPlayer::setMixer(AudioMixer* mixer) {
     mixer_ = mixer;
 }
 
-bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex) {
+bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex, double startTimeMs) {
     if (!initialized_) {
         return false;
     }
@@ -121,7 +121,7 @@ bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex) {
     if (ext == ".mp3") {
         loaded = loadMP3(filepath);
     } else if (ext == ".xmi") {
-        loaded = loadXMI(filepath, trackIndex);
+        loaded = loadXMI(filepath, trackIndex, startTimeMs);
     } else if (ext == ".wav") {
         loaded = loadWAV(filepath);
     } else {
@@ -162,12 +162,12 @@ void MusicPlayer::stop(float fadeSeconds) {
     playing_ = false;
     paused_ = false;
 
-    // Stop MIDI if playing
-    if (playingMidi_ && midiPlayer_) {
-        midiPlayer_->stop();
-    }
-
-    // Free mixer channel
+    // Free mixer channel FIRST to prevent further render callbacks.
+    // Do NOT call midiPlayer_->stop() here — the audio thread may still be
+    // inside midiPlayer_->render() accessing TSF state. Resetting TSF from
+    // the main thread while the audio thread reads it causes garbled audio.
+    // The midi player will be safely reset when midiPlayer_->play() is called
+    // next (from loadXMI), or from the fade-out completion in the render callback.
     if (mixer_ && musicChannelHandle_ >= 0) {
         mixer_->freeChannel(musicChannelHandle_);
         musicChannelHandle_ = -1;
@@ -329,7 +329,7 @@ bool MusicPlayer::loadMP3(const std::string& filepath) {
     return true;
 }
 
-bool MusicPlayer::loadXMI(const std::string& filepath, int trackIndex) {
+bool MusicPlayer::loadXMI(const std::string& filepath, int trackIndex, double startTimeMs) {
     if (!midiPlayer_ || !midiPlayer_->isInitialized()) {
         LOG_ERROR(MOD_AUDIO, "loadXMI: no MIDI player available");
         return false;
@@ -346,8 +346,8 @@ bool MusicPlayer::loadXMI(const std::string& filepath, int trackIndex) {
     LOG_DEBUG(MOD_AUDIO, "loadXMI: decoded track {} of {} from {}",
               trackIndex, decoder.getNumSequences(), filepath);
 
-    // Play via MidiPlayer
-    if (!midiPlayer_->play(midiData, looping_.load())) {
+    // Play via MidiPlayer (with optional seek before playback starts)
+    if (!midiPlayer_->play(midiData, looping_.load(), startTimeMs)) {
         LOG_ERROR(MOD_AUDIO, "loadXMI: MidiPlayer failed to play");
         return false;
     }

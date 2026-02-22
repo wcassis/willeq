@@ -292,7 +292,7 @@ void AudioManager::stopAllSounds() {
     }
 }
 
-void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex) {
+void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex, double startTimeMs) {
     if (!initialized_ || !audioEnabled_ || !musicPlayer_) {
         std::cout << "[AUDIO] MUSIC FAILED: file=" << filename << " (not initialized or disabled)" << std::endl;
         return;
@@ -329,7 +329,7 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
     }
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
-    if (!musicPlayer_->play(fullPath, loop, trackIndex)) {
+    if (!musicPlayer_->play(fullPath, loop, trackIndex, startTimeMs)) {
         std::cout << "[AUDIO] MUSIC FAILED: file=" << fullPath << " (playback error)" << std::endl;
         LOG_WARN(MOD_AUDIO, "Failed to play music: {}", fullPath);
     }
@@ -373,6 +373,11 @@ void AudioManager::onZoneChange(const std::string& zoneName) {
     LOG_INFO(MOD_AUDIO, "Zone change: {} -> {}", currentZone_, zoneName);
     currentZone_ = zoneName;
 
+    // Clear saved zone music state from previous zone
+    savedZoneMusicFile_.clear();
+    savedZoneMusicTrackIndex_ = 0;
+    savedZoneMusicTimeMs_ = 0.0;
+
     if (musicPlayer_ && musicPlayer_->isPlaying()) {
         stopMusic(2.0f);
     }
@@ -380,6 +385,16 @@ void AudioManager::onZoneChange(const std::string& zoneName) {
 
 void AudioManager::restartZoneMusic() {
     if (!initialized_ || !audioEnabled_ || currentZone_.empty()) {
+        return;
+    }
+
+    // Restore saved zone music with position if available
+    if (!savedZoneMusicFile_.empty()) {
+        double savedTimeMs = savedZoneMusicTimeMs_;
+        int savedTrack = savedZoneMusicTrackIndex_;
+        std::cout << "[AUDIO] RESTORING ZONE MUSIC: file=" << savedZoneMusicFile_
+                  << " track=" << savedTrack << " pos=" << savedTimeMs << "ms" << std::endl;
+        playMusic(savedZoneMusicFile_, true, savedTrack, savedTimeMs);
         return;
     }
 
@@ -403,6 +418,14 @@ void AudioManager::startAutoAttackMusic() {
 
     std::cout << "[AUDIO] AUTO-ATTACK MUSIC: starting " << autoAttackMusicConfig_.file
               << " track " << autoAttackMusicConfig_.track << std::endl;
+
+    // Save zone music state before interrupting
+    if (musicPlayer_ && musicPlayer_->isPlaying()) {
+        savedZoneMusicFile_ = musicPlayer_->getCurrentFile();
+        savedZoneMusicTrackIndex_ = musicPlayer_->getCurrentTrackIndex();
+        savedZoneMusicTimeMs_ = midiPlayer_ ? midiPlayer_->getPlaybackTimeMs() : 0.0;
+    }
+
     autoAttackMusicActive_ = true;
 
     std::string musicFile = eqPath_ + "/" + autoAttackMusicConfig_.file;
@@ -431,6 +454,14 @@ void AudioManager::startVendorBankMusic() {
 
     std::cout << "[AUDIO] VENDOR/BANK MUSIC: starting " << vendorBankMusicConfig_.file
               << " track " << vendorBankMusicConfig_.track << std::endl;
+
+    // Save zone music state before interrupting (only if not already saved by auto-attack)
+    if (!autoAttackMusicActive_ && musicPlayer_ && musicPlayer_->isPlaying()) {
+        savedZoneMusicFile_ = musicPlayer_->getCurrentFile();
+        savedZoneMusicTrackIndex_ = musicPlayer_->getCurrentTrackIndex();
+        savedZoneMusicTimeMs_ = midiPlayer_ ? midiPlayer_->getPlaybackTimeMs() : 0.0;
+    }
+
     vendorBankMusicActive_ = true;
 
     std::string musicFile = eqPath_ + "/" + vendorBankMusicConfig_.file;

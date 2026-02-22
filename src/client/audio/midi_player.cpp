@@ -4,6 +4,7 @@
 #include "common/logging.h"
 
 #include <cstring>
+#include <cmath>
 #include <algorithm>
 
 // TinySoundFont + TinyMidiLoader implementations — only in this .cpp
@@ -147,7 +148,7 @@ bool MidiPlayer::loadSoundFont(const std::string& path) {
     return true;
 }
 
-bool MidiPlayer::play(const uint8_t* midiData, size_t size, bool loop) {
+bool MidiPlayer::play(const uint8_t* midiData, size_t size, bool loop, double startTimeMs) {
     if (!initialized_ || !impl_->soundFont) return false;
 
     stop();
@@ -167,17 +168,23 @@ bool MidiPlayer::play(const uint8_t* midiData, size_t size, bool loop) {
     impl_->currentMessage = impl_->midiMessages;
     impl_->midiTimeMs = 0.0;
     looping_ = loop;
-    playing_ = true;
 
     // Reset synth state
     tsf_reset(impl_->soundFont);
 
-    LOG_DEBUG(MOD_AUDIO, "MidiPlayer: playing MIDI ({} bytes, loop={})", size, loop);
+    // Seek before setting playing_ to avoid rendering from position 0
+    if (startTimeMs > 0.0) {
+        seekTo(startTimeMs);
+    }
+
+    playing_ = true;
+
+    LOG_DEBUG(MOD_AUDIO, "MidiPlayer: playing MIDI ({} bytes, loop={}, startMs={:.0f})", size, loop, startTimeMs);
     return true;
 }
 
-bool MidiPlayer::play(const std::vector<uint8_t>& midiData, bool loop) {
-    return play(midiData.data(), midiData.size(), loop);
+bool MidiPlayer::play(const std::vector<uint8_t>& midiData, bool loop, double startTimeMs) {
+    return play(midiData.data(), midiData.size(), loop, startTimeMs);
 }
 
 void MidiPlayer::render(float* buffer, int frame_count) {
@@ -276,6 +283,57 @@ void MidiPlayer::stop() {
     }
     impl_->currentMessage = nullptr;
     impl_->midiTimeMs = 0.0;
+}
+
+double MidiPlayer::getPlaybackTimeMs() const {
+    return impl_->midiTimeMs;
+}
+
+void MidiPlayer::seekTo(double timeMs) {
+    if (!initialized_ || !impl_->soundFont || !impl_->midiMessages) return;
+
+    // Handle looping: wrap seek position to MIDI duration
+    if (looping_) {
+        tml_message* last = impl_->midiMessages;
+        double totalDuration = 0.0;
+        while (last) {
+            totalDuration = last->time;
+            if (!last->next) break;
+            last = last->next;
+        }
+        if (totalDuration > 0.0 && timeMs > totalDuration) {
+            timeMs = std::fmod(timeMs, totalDuration);
+        }
+    }
+
+    // Reset synth and replay channel state events up to target time.
+    // Only process program changes, control changes, and pitch bends to
+    // restore correct instrument/controller state. Skip note-on/note-off
+    // to avoid a burst of accumulated voices on the first rendered frame.
+    tsf_reset(impl_->soundFont);
+    impl_->currentMessage = impl_->midiMessages;
+    impl_->midiTimeMs = 0.0;
+
+    while (impl_->currentMessage && impl_->currentMessage->time <= timeMs) {
+        tml_message* msg = impl_->currentMessage;
+        switch (msg->type) {
+            case TML_PROGRAM_CHANGE:
+                tsf_channel_set_presetnumber(impl_->soundFont, msg->channel, msg->program, (msg->channel == 9));
+                break;
+            case TML_PITCH_BEND:
+                tsf_channel_set_pitchwheel(impl_->soundFont, msg->channel, msg->pitch_bend);
+                break;
+            case TML_CONTROL_CHANGE:
+                tsf_channel_midi_control(impl_->soundFont, msg->channel, msg->control, msg->control_value);
+                break;
+            default:
+                break;
+        }
+        impl_->currentMessage = impl_->currentMessage->next;
+    }
+
+    impl_->midiTimeMs = timeMs;
+    LOG_DEBUG(MOD_AUDIO, "MidiPlayer: seeked to {:.0f}ms", timeMs);
 }
 
 void MidiPlayer::setVolume(float vol) {
