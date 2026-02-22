@@ -164,6 +164,17 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
 }
 
 void WeatherEffectsController::onWeatherChanged(WeatherType newWeather) {
+    // This is called by the client-side WeatherSystem simulation.
+    // When unified weather particles are active (driven by server packets
+    // via setWeather()), ignore the simulation — server is authoritative.
+#ifdef EQT_HAS_GLES2
+    if (particleManager_ && particleManager_->isWeatherParticlesActive()) {
+        LOG_DEBUG(MOD_GRAPHICS, "WeatherEffectsController::onWeatherChanged: "
+                  "ignoring simulation (unified particles active from server)");
+        return;
+    }
+#endif
+
     // Convert WeatherType to our format
     uint8_t type = 0;
     uint8_t intensity = currentIntensity_ > 0 ? currentIntensity_ : 5;

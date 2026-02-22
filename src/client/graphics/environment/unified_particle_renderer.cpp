@@ -103,8 +103,12 @@ void main() {
     // Multiply texture by vertex color (particle color with alpha fade)
     vec4 color = texColor * vColor;
 
-    // Apply fog
-    color.rgb = mix(uFogColor.rgb, color.rgb, vFogFactor);
+    // Fog: fade particle brightness toward zero rather than mixing toward
+    // fog color. With additive blend (GL_ONE, GL_ONE), mix() injects fog
+    // color into every particle — even zero-RGB ones — producing visible
+    // dots on dark backgrounds. Multiplicative fade is physically correct
+    // for light-emitting particles (light dims in fog, doesn't become fog).
+    color.rgb *= vFogFactor;
 
     // Discard fully transparent fragments for performance
     if (color.a < 0.004) discard;

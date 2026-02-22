@@ -813,18 +813,36 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
 
             // Per-particle light accumulation — rain/snow are only visible
             // where illuminated by nearby light sources (torches, campfires,
-            // player lantern). Base brightness comes from ambient (time of day).
-            float lightR = ambientColor_.x;
-            float lightG = ambientColor_.y;
-            float lightB = ambientColor_.z;
+            // player lantern).
+            //
+            // Ambient factor: precipitation catches far less ambient light than
+            // opaque surfaces (small translucent droplets/flakes vs textured walls).
+            // This ensures rain far from any light source is nearly invisible at
+            // night, matching the visual "light sphere" on zone geometry.
+            //
+            // Quartic falloff: (1-d/r)^4 produces a sharp edge that matches the
+            // perceived light boundary on zone surfaces. Quadratic (1-d/r)^2 was
+            // too gentle — all particles within the spawn volume received similar
+            // illumination, making them appear uniformly bright.
+            // Particle light radius kept tighter than zone geometry (~15 units
+            // vs 52) so the 3D sphere doesn't visibly extend above the
+            // ground-level light circle.  Quartic falloff (1-d/r)^4 gives a
+            // sharp perceived edge matching the zone surface boundary.
+            constexpr float kParticleLightRadius = 15.0f;
+            constexpr float kAmbientFactor = 0.1f;
+            float lightR = ambientColor_.x * kAmbientFactor;
+            float lightG = ambientColor_.y * kAmbientFactor;
+            float lightB = ambientColor_.z * kAmbientFactor;
             for (const auto& light : weatherLights_) {
                 glm::vec3 diff = p.position - light.position;
                 float distSq = glm::dot(diff, diff);
-                float rSq = light.radius * light.radius;
-                if (distSq < rSq) {
-                    float dist = std::sqrt(distSq);
-                    float atten = 1.0f - dist / light.radius;
-                    atten *= atten;  // Quadratic falloff — bright at center, soft edge
+                float dist = std::sqrt(distSq);
+                if (dist < light.radius) {
+                    float t = 1.0f - dist / light.radius;
+                    float atten = t * t;   // quadratic
+                    atten *= atten;         // quartic
+                    // Clamp effective radius to kParticleLightRadius
+                    if (dist > kParticleLightRadius) atten = 0.0f;
                     lightR += light.color.x * atten;
                     lightG += light.color.y * atten;
                     lightB += light.color.z * atten;
@@ -833,22 +851,6 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
             p.color.r *= std::min(lightR, 1.0f);
             p.color.g *= std::min(lightG, 1.0f);
             p.color.b *= std::min(lightB, 1.0f);
-
-            // Periodic debug: log first weather particle's lighting result
-            static int weatherParticleLogCounter = 0;
-            if (weatherParticleLogCounter == 0) {
-                LOG_DEBUG(MOD_GRAPHICS,
-                    "WeatherParticle[{}]: lightAccum=({:.3f},{:.3f},{:.3f}), "
-                    "finalColor=({:.3f},{:.3f},{:.3f},{:.3f}), "
-                    "numLights={}, ambient=({:.3f},{:.3f},{:.3f})",
-                    static_cast<int>(&p - unifiedPool_.data()),
-                    lightR, lightG, lightB,
-                    p.color.r, p.color.g, p.color.b, p.color.a,
-                    weatherLights_.size(),
-                    ambientColor_.x, ambientColor_.y, ambientColor_.z);
-            }
-            weatherParticleLogCounter++;
-            if (weatherParticleLogCounter >= 15000) weatherParticleLogCounter = 0;  // ~5s at 300 particles * 50fps
 
             // Recycle check: if particle is too far from camera or below volume, respawn
             glm::vec3 offset = p.position - cameraPos;
@@ -901,7 +903,6 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
     if (unifiedActiveCount_ <= 0) return;
     if (!atlasTexture_) return;
 
-    // Collect alive particles
     unifiedRenderBuf_.clear();
     for (const auto& p : unifiedPool_) {
         if (p.isAlive()) {
