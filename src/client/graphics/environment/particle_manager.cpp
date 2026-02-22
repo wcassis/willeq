@@ -678,7 +678,7 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
                 totalSpawned++;
             }
         } else {
-            // === LINEAR: spawn-rate spawning (fire) ===
+            // === Non-weather spawning (fire, spell effects) ===
 
             // Frustum cull emitters: skip spawning if outside view
             if (frustum) {
@@ -691,63 +691,27 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
                 }
             }
 
-            // Accumulate spawn timer
-            emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
-            int toSpawn = static_cast<int>(emitter.spawnAccumulator);
-            emitter.spawnAccumulator -= static_cast<float>(toSpawn);
-
-            for (int s = 0; s < toSpawn; ++s) {
-                int idx = allocateUnifiedParticle();
-                if (idx < 0) break;  // Pool full
-                totalSpawned++;
-
-                UnifiedParticle& p = unifiedPool_[idx];
-                const EmitterConfig& cfg = emitter.config;
-
-                // Position: emitter position + spawn shape offset
-                p.position = emitter.position;
-                if (cfg.spawnShape == SpawnShape::BOX) {
-                    p.position.x += randomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
-                    p.position.y += randomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
-                    p.position.z += randomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
+            // BURST / RADIAL_EXPAND: one-shot spawn, all at once
+            if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
+                for (int s = 0; s < emitter.config.burstCount; ++s) {
+                    spawnSpellParticle(emitter.config, emitter.emitterID,
+                                       emitter.position + emitter.attachOffset);
+                    totalSpawned++;
                 }
+                emitter.isBurstSpawned = true;
+            }
 
-                // Velocity: base + random spread
-                p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-                p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-                p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+            // Spawn-rate spawning (LINEAR fire, ORBITAL spell effects)
+            if (emitter.config.spawnRate > 0.0f) {
+                emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
+                int toSpawn = static_cast<int>(emitter.spawnAccumulator);
+                emitter.spawnAccumulator -= static_cast<float>(toSpawn);
 
-                // Lifetime
-                p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
-                p.age = 0.0f;
-
-                // Color
-                p.colorStart = cfg.colorStart;
-                p.colorEnd = cfg.colorEnd;
-                p.color = cfg.colorStart;
-
-                // Size
-                p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
-                p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
-                p.size = p.sizeStart;
-
-                // Motion
-                p.drag = cfg.drag;
-                p.motionType = cfg.motionType;
-                p.phase = randomFloat(0.0f, 6.28318f);
-                p.rotation = 0.0f;
-
-                // Texture: pick random region
-                if (cfg.textureRegionCount > 1) {
-                    p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
-                } else {
-                    p.textureIndex = cfg.textureRegions[0];
+                for (int s = 0; s < toSpawn; ++s) {
+                    spawnSpellParticle(emitter.config, emitter.emitterID,
+                                       emitter.position + emitter.attachOffset);
+                    totalSpawned++;
                 }
-
-                // Metadata
-                p.emitterID = emitter.emitterID;
-                p.setAlive(true);
-                p.setBlendMode(cfg.blendMode);
             }
         }
     }
@@ -863,8 +827,11 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
                 freeUnifiedParticle(idx);
                 // Deficit spawning will replace it next frame
             }
-        } else if (p.motionType == MotionType::LINEAR) {
-            // LINEAR motion (fire)
+        } else if (p.motionType == MotionType::LINEAR ||
+                   p.motionType == MotionType::BURST ||
+                   p.motionType == MotionType::RADIAL_EXPAND) {
+            // LINEAR / BURST / RADIAL_EXPAND — all use the same physics:
+            // velocity + gravity + drag. Direction set at spawn time.
             auto it = unifiedEmitters_.find(p.emitterID);
             if (it != unifiedEmitters_.end()) {
                 p.velocity += it->second.config.gravity * deltaTime;
@@ -879,17 +846,32 @@ void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos)
 
             // Update position
             p.position += p.velocity * deltaTime;
+
+        } else if (p.motionType == MotionType::ORBITAL) {
+            // ORBITAL — orbit center point with vertical drift
+            auto it = unifiedEmitters_.find(p.emitterID);
+            if (it != unifiedEmitters_.end()) {
+                glm::vec3 center = it->second.position + it->second.attachOffset;
+                p.phase += p.angularVelocity * deltaTime;
+                p.position.x = center.x + p.radius * std::cos(p.phase);
+                p.position.z = center.z + p.radius * std::sin(p.phase);
+                p.position.y += p.velocity.y * deltaTime;  // Vertical drift
+            }
         }
     }
+
+    // Update spell effects (entity tracking, trigger processing, cleanup)
+    updateSpellEffects(deltaTime);
 
     // Periodic debug log (~every 5 seconds at tier3 rate)
     if (++updateLogCounter >= 50) {
         updateLogCounter = 0;
         LOG_DEBUG(MOD_GRAPHICS,
                   "updateUnified: dt={:.3f} emitters={} active={} culled={} spawned={} "
-                  "poolActive={} freeList={}",
+                  "poolActive={} freeList={} spells={}",
                   deltaTime, unifiedEmitters_.size(), emittersActive, emittersCulled,
-                  totalSpawned, unifiedActiveCount_, freeList_.size());
+                  totalSpawned, unifiedActiveCount_, freeList_.size(),
+                  activeSpellEffects_.size());
     }
 }
 
@@ -1015,9 +997,11 @@ void ParticleManager::clearUnifiedEmitters() {
     }
     unifiedActiveCount_ = 0;
 
-    // Clear emitter map and weather state
+    // Clear emitter map, weather state, and spell effects
     unifiedEmitters_.clear();
     weatherEmitterID_ = 0;
+    activeSpellEffects_.clear();
+    nextSpellEffectID_ = 1;
 }
 
 void ParticleManager::activateWeatherParticles(uint8_t type, uint8_t intensity) {
@@ -1148,6 +1132,320 @@ void ParticleManager::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t em
     p.emitterID = emitterID;
     p.setAlive(true);
     p.setBlendMode(cfg.blendMode);
+}
+
+// =============================================================================
+// Spell Effect API
+// =============================================================================
+
+void ParticleManager::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
+                                          const glm::vec3& emitterPos) {
+    int idx = allocateUnifiedParticle();
+    if (idx < 0) return;  // Pool full
+
+    UnifiedParticle& p = unifiedPool_[idx];
+
+    // Position: emitter position + spawn shape offset
+    p.position = emitterPos;
+    if (cfg.spawnShape == SpawnShape::BOX) {
+        p.position.x += randomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
+        p.position.y += randomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
+        p.position.z += randomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
+    } else if (cfg.spawnShape == SpawnShape::SPHERE) {
+        float r = randomFloat(0.0f, cfg.spawnExtents.x);
+        float theta = randomFloat(0.0f, 6.28318f);
+        float phi = randomFloat(-1.5708f, 1.5708f);
+        p.position.x += r * std::cos(phi) * std::cos(theta);
+        p.position.y += r * std::sin(phi);
+        p.position.z += r * std::cos(phi) * std::sin(theta);
+    } else if (cfg.spawnShape == SpawnShape::RING) {
+        float angle = randomFloat(0.0f, 6.28318f);
+        p.position.x += cfg.spawnExtents.x * std::cos(angle);
+        p.position.z += cfg.spawnExtents.x * std::sin(angle);
+    }
+
+    // Velocity: depends on motion type
+    if (cfg.motionType == MotionType::RADIAL_EXPAND) {
+        // Radial direction in XZ plane
+        float angle = randomFloat(0.0f, 6.28318f);
+        p.velocity.x = std::cos(angle) * cfg.expandSpeed + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.z = std::sin(angle) * cfg.expandSpeed + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+        p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+    } else if (cfg.motionType == MotionType::BURST) {
+        // Random scatter direction using velocityBase as magnitude hints
+        float angle = randomFloat(0.0f, 6.28318f);
+        p.velocity.x = std::cos(angle) * cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.z = std::sin(angle) * cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+        p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+    } else {
+        // LINEAR / ORBITAL: base + spread
+        p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+        p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+    }
+
+    // Lifetime
+    p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
+    p.age = 0.0f;
+
+    // Color
+    p.colorStart = cfg.colorStart;
+    p.colorEnd = cfg.colorEnd;
+    p.color = cfg.colorStart;
+
+    // Size
+    p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+    p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+    p.size = p.sizeStart;
+
+    // Motion
+    p.drag = cfg.drag;
+    p.motionType = cfg.motionType;
+    p.phase = randomFloat(0.0f, 6.28318f);
+    p.rotation = 0.0f;
+
+    // ORBITAL-specific: set orbit parameters
+    if (cfg.motionType == MotionType::ORBITAL) {
+        p.radius = cfg.orbitalRadius;
+        p.angularVelocity = cfg.orbitalAngularVelocity;
+        // Set initial orbital position
+        p.position.x = emitterPos.x + p.radius * std::cos(p.phase);
+        p.position.z = emitterPos.z + p.radius * std::sin(p.phase);
+    }
+
+    // Texture: pick random region
+    if (cfg.textureRegionCount > 1) {
+        p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
+    } else {
+        p.textureIndex = cfg.textureRegions[0];
+    }
+
+    // Metadata
+    p.emitterID = emitterID;
+    p.setAlive(true);
+    p.setBlendMode(cfg.blendMode);
+}
+
+uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
+                                             uint16_t casterID, uint16_t targetID,
+                                             float duration) {
+    if (!unifiedRendererInitialized_) return 0;
+
+    SpellEffectInstance inst;
+    inst.effectID = nextSpellEffectID_++;
+    inst.spellID = 0;
+    inst.casterEntityID = casterID;
+    inst.targetEntityID = targetID;
+    inst.age = 0.0f;
+    inst.maxDuration = duration;
+    inst.def = def;
+
+    // Create emitter states for each emitter definition
+    for (int i = 0; i < static_cast<int>(def.emitters.size()); ++i) {
+        SpellEffectInstance::EmitterState es;
+        es.defIndex = i;
+        es.activeEmitterID = 0;
+        es.triggered = false;
+        inst.emitterStates.push_back(es);
+    }
+
+    activeSpellEffects_.push_back(std::move(inst));
+
+    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created spell effect '{}' id={} caster={} target={}",
+              def.name, inst.effectID, casterID, targetID);
+
+    return activeSpellEffects_.back().effectID;
+}
+
+void ParticleManager::removeSpellEffect(uint32_t effectID) {
+    for (auto it = activeSpellEffects_.begin(); it != activeSpellEffects_.end(); ++it) {
+        if (it->effectID == effectID) {
+            // Kill emitters and their particles
+            for (auto& es : it->emitterStates) {
+                if (es.activeEmitterID != 0) {
+                    // Kill particles owned by this emitter
+                    for (auto& p : unifiedPool_) {
+                        if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                            int idx = static_cast<int>(&p - unifiedPool_.data());
+                            freeUnifiedParticle(idx);
+                        }
+                    }
+                    unifiedEmitters_.erase(es.activeEmitterID);
+                }
+            }
+            activeSpellEffects_.erase(it);
+            return;
+        }
+    }
+}
+
+void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID) {
+    for (auto it = activeSpellEffects_.begin(); it != activeSpellEffects_.end(); ) {
+        if (it->casterEntityID == entityID || it->targetEntityID == entityID) {
+            // Kill emitters and their particles
+            for (auto& es : it->emitterStates) {
+                if (es.activeEmitterID != 0) {
+                    for (auto& p : unifiedPool_) {
+                        if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                            int idx = static_cast<int>(&p - unifiedPool_.data());
+                            freeUnifiedParticle(idx);
+                        }
+                    }
+                    unifiedEmitters_.erase(es.activeEmitterID);
+                }
+            }
+            it = activeSpellEffects_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void ParticleManager::clearAllSpellEffects() {
+    for (auto& effect : activeSpellEffects_) {
+        for (auto& es : effect.emitterStates) {
+            if (es.activeEmitterID != 0) {
+                for (auto& p : unifiedPool_) {
+                    if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                        int idx = static_cast<int>(&p - unifiedPool_.data());
+                        freeUnifiedParticle(idx);
+                    }
+                }
+                unifiedEmitters_.erase(es.activeEmitterID);
+            }
+        }
+    }
+    activeSpellEffects_.clear();
+}
+
+void ParticleManager::updateSpellEffects(float deltaTime) {
+    if (activeSpellEffects_.empty()) return;
+
+    for (auto it = activeSpellEffects_.begin(); it != activeSpellEffects_.end(); ) {
+        auto& effect = *it;
+        effect.age += deltaTime;
+
+        // Check max duration
+        if (effect.maxDuration > 0.0f && effect.age >= effect.maxDuration) {
+            // Kill all emitters for this effect
+            for (auto& es : effect.emitterStates) {
+                if (es.activeEmitterID != 0) {
+                    auto emIt = unifiedEmitters_.find(es.activeEmitterID);
+                    if (emIt != unifiedEmitters_.end()) {
+                        emIt->second.active = false;
+                    }
+                }
+            }
+        }
+
+        // Process triggers and update entity positions
+        bool allDone = true;
+        for (auto& es : effect.emitterStates) {
+            const auto& emDef = effect.def.emitters[es.defIndex];
+
+            // Check trigger conditions
+            if (!es.triggered) {
+                bool shouldTrigger = false;
+                switch (emDef.trigger) {
+                    case SpellTrigger::IMMEDIATE:
+                        shouldTrigger = true;
+                        break;
+                    case SpellTrigger::DELAYED:
+                        shouldTrigger = (effect.age >= emDef.triggerDelay);
+                        break;
+                    case SpellTrigger::ON_CAST_COMPLETE:
+                        shouldTrigger = effect.castCompleteSignaled;
+                        break;
+                    case SpellTrigger::ON_HIT:
+                        shouldTrigger = effect.hitSignaled;
+                        break;
+                }
+
+                if (shouldTrigger) {
+                    es.triggered = true;
+
+                    // Resolve attach position
+                    glm::vec3 attachPos(0.0f);
+                    uint16_t attachEntity = 0;
+
+                    switch (emDef.attach) {
+                        case SpellAttach::CASTER:
+                            attachEntity = effect.casterEntityID;
+                            if (entityPosCallback_ && attachEntity != 0) {
+                                entityPosCallback_(attachEntity, attachPos);
+                            }
+                            break;
+                        case SpellAttach::TARGET:
+                            attachEntity = effect.targetEntityID;
+                            if (entityPosCallback_ && attachEntity != 0) {
+                                entityPosCallback_(attachEntity, attachPos);
+                            }
+                            break;
+                        case SpellAttach::GROUND_TARGET:
+                            attachPos = effect.groundTarget;
+                            break;
+                    }
+
+                    // Create the unified emitter
+                    ActiveEmitter ae;
+                    ae.config = emDef.config;
+                    ae.position = attachPos;
+                    ae.emitterID = nextEmitterID_++;
+                    ae.attachEntityID = attachEntity;
+                    ae.attachOffset = emDef.positionOffset;
+                    unifiedEmitters_[ae.emitterID] = ae;
+                    es.activeEmitterID = ae.emitterID;
+
+                    LOG_TRACE(MOD_GRAPHICS, "Spell effect '{}': triggered emitter {} at ({:.1f},{:.1f},{:.1f})",
+                              effect.def.name, ae.emitterID, attachPos.x, attachPos.y, attachPos.z);
+                }
+            }
+
+            // Update entity position for attached emitters
+            if (es.activeEmitterID != 0) {
+                auto emIt = unifiedEmitters_.find(es.activeEmitterID);
+                if (emIt != unifiedEmitters_.end()) {
+                    auto& emitter = emIt->second;
+                    if (emitter.attachEntityID != 0 && entityPosCallback_) {
+                        glm::vec3 entityPos;
+                        if (entityPosCallback_(emitter.attachEntityID, entityPos)) {
+                            emitter.position = entityPos;
+                        }
+                    }
+
+                    // Check if this emitter is still alive
+                    if (emitter.active) {
+                        allDone = false;
+                    } else {
+                        // Check if any particles still alive for this emitter
+                        for (const auto& p : unifiedPool_) {
+                            if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                                allDone = false;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Emitter was cleaned up by clearUnifiedEmitters
+                }
+            } else if (!es.triggered) {
+                allDone = false;  // Waiting for trigger
+            }
+        }
+
+        // Remove effect if all emitters are done (and duration expired or no duration)
+        if (allDone && (effect.maxDuration <= 0.0f || effect.age >= effect.maxDuration)) {
+            // Clean up any remaining emitters
+            for (auto& es : effect.emitterStates) {
+                if (es.activeEmitterID != 0) {
+                    unifiedEmitters_.erase(es.activeEmitterID);
+                }
+            }
+            it = activeSpellEffects_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // namespace Environment

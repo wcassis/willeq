@@ -7,6 +7,10 @@
 #include "client/spell/spell_database.h"
 #include "client/spell/spell_constants.h"
 #include "common/logging.h"
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/environment/particle_manager.h"
+#include "client/graphics/environment/spell_particle_types.h"
+#endif
 #include <algorithm>
 #include <fstream>
 
@@ -307,6 +311,21 @@ void SpellVisualFX::update(float delta_time)
 
 uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        // Remove any existing cast glow for this caster
+        m_particle_manager->removeSpellEffectsForEntity(caster_id);
+
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::CastGlow(c);
+        // Override emitter lifetime to match cast duration
+        float durSec = duration_ms / 1000.0f;
+        for (auto& e : def.emitters) e.config.emitterLifetime = durSec;
+        return m_particle_manager->createSpellEffect(def, caster_id, 0, durSec);
+    }
+#endif
     // Check if already has a cast glow
     if (hasCastGlow(caster_id)) {
         removeCastGlow(caster_id);
@@ -358,6 +377,16 @@ void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uin
 
 void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c);
+        m_particle_manager->createSpellEffect(def, 0, target_id);
+        return;
+    }
+#endif
     SpellFXInstance effect;
     effect.type = SpellFXType::ImpactBurst;
     effect.spell_id = spell_id;
@@ -392,6 +421,16 @@ void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint
 
 void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::SpellComplete(c);
+        m_particle_manager->createSpellEffect(def, caster_id, 0);
+        return;
+    }
+#endif
     if (!m_smgr) return;
     if (m_particle_multiplier <= 0.0f) return;  // Particles disabled
 
@@ -532,6 +571,12 @@ void SpellVisualFX::createGroundCircle(const irr::core::vector3df& center, float
 
 void SpellVisualFX::removeCastGlow(uint16_t caster_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        m_particle_manager->removeSpellEffectsForEntity(caster_id);
+        return;
+    }
+#endif
     for (size_t i = 0; i < m_effects.size(); ) {
         if (m_effects[i].type == SpellFXType::CastGlow &&
             m_effects[i].source_entity == caster_id) {
@@ -557,6 +602,12 @@ void SpellVisualFX::removeBuffAura(uint16_t entity_id, uint32_t spell_id)
 
 void SpellVisualFX::removeAllForEntity(uint16_t entity_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        m_particle_manager->removeSpellEffectsForEntity(entity_id);
+        // Fall through to also clean up any Irrlicht scene nodes
+    }
+#endif
     for (size_t i = 0; i < m_effects.size(); ) {
         if (m_effects[i].source_entity == entity_id ||
             m_effects[i].target_entity == entity_id) {

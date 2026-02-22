@@ -16,7 +16,9 @@ namespace Environment {
 enum class MotionType : uint8_t {
     LINEAR = 0,           // pos += vel * dt; vel += gravity * dt; vel *= (1 - drag*dt)
     CAMERA_RELATIVE = 1,  // Spawns/recycles within volume around camera (rain, snow)
-    // Future phases: RADIAL_EXPAND, ORBITAL, BURST, STREAM
+    RADIAL_EXPAND = 2,    // Outward from center in XZ plane (spell impacts)
+    ORBITAL = 3,          // Orbit center with vertical drift (cast glows, auras)
+    BURST = 4,            // One-shot scatter (same physics as LINEAR)
 };
 
 enum class UnifiedBlendMode : uint8_t {
@@ -32,7 +34,8 @@ enum class UnifiedRendererType : uint8_t {
 enum class SpawnShape : uint8_t {
     POINT = 0,  // Spawn at emitter position
     BOX = 1,    // Random within box half-extents
-    // Future: SPHERE, RING, LINE
+    SPHERE = 2, // Random within sphere of radius spawnExtents.x
+    RING = 3,   // Random angle at fixed radius spawnExtents.x
 };
 
 // === Particle Structure ===
@@ -127,6 +130,11 @@ struct EmitterConfig {
     uint8_t textureRegions[4] = {0, 0, 0, 0};  // Possible atlas tile indices
     uint8_t textureRegionCount = 1;              // How many regions to pick from
 
+    // Spell motion parameters (ORBITAL / RADIAL_EXPAND)
+    float orbitalRadius = 1.0f;           // ORBITAL: orbit radius
+    float orbitalAngularVelocity = 4.0f;  // ORBITAL: rad/s
+    float expandSpeed = 3.0f;             // RADIAL_EXPAND: outward speed multiplier
+
     // Weather-specific (CAMERA_RELATIVE motion)
     int targetCount = 0;                  // 0 = use spawnRate; >0 = maintain count via recycling
     glm::vec3 spawnVolumeHalfExtents{0};  // Camera-relative spawn box half-extents
@@ -150,6 +158,11 @@ struct ActiveEmitter {
     float lightRadius = 0.0f;        // Source light radius (for classification)
     float transitionAlpha = 1.0f;    // 0→1 ramp for smooth weather onset
     float transitionRate = 0.5f;     // Per-second ramp speed
+
+    // Entity attachment (spell effects)
+    uint16_t attachEntityID = 0;     // Entity to follow (0 = static)
+    glm::vec3 attachOffset{0.0f};    // Offset from entity position (Irrlicht Y-up)
+    bool isBurstSpawned = false;     // BURST: prevent re-spawning after initial burst
 };
 
 // === Fire Emitter Presets ===

@@ -44,6 +44,15 @@
 #include "common/logging.h"
 #include "model_viewer_spell_bar.h"  // Spell bar UI for casting visualization
 
+// Spell test mode includes
+#include "client/spell/spell_database.h"
+#include "client/spell/spell_data.h"
+#include "client/spell/spell_constants.h"
+#include "client/graphics/spell_visual_fx.h"
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/environment/particle_manager.h"
+#endif
+
 using namespace irr;
 using namespace EQT::Graphics;
 
@@ -121,6 +130,158 @@ EQT::ModelViewerFX spellFX;
 
 // Effect cycling for testing EDD emitter definitions
 int currentEffectIndex = -1;  // -1 = use default (spell category based), 0+ = specific emitter
+
+// ============================================================================
+// Spell Test Mode state
+// ============================================================================
+bool spellTestMode = false;
+bool useGLRenderer = false;
+bool useGLES2Renderer = false;
+
+// Spell database and visual FX (spell test mode)
+std::unique_ptr<EQ::SpellDatabase> spellDatabase;
+std::unique_ptr<EQ::SpellVisualFX> spellVisualFX;
+#ifdef EQT_HAS_GLES2
+std::unique_ptr<EQT::Graphics::Environment::ParticleManager> particleManager;
+#endif
+
+// Spell test navigation state
+int spellTestClassIndex = 1;      // 1-16, maps to PlayerClass enum (start at Warrior)
+int spellTestCategoryIndex = 0;   // Index into spell categories
+int spellTestSpellIndex = 0;      // Current spell within filtered list
+bool spellTestSelfMode = false;   // true = self-cast, false = targeted
+std::vector<const EQ::SpellData*> spellTestSpellList;  // Filtered spells for current class+category
+
+// Target entity for spell test mode
+EQAnimatedMeshSceneNode* targetAnimatedNode = nullptr;
+uint16_t casterEntityId = 1;
+uint16_t targetEntityId = 2;
+
+// Spell test cast state
+bool spellTestCasting = false;
+float spellTestCastElapsed = 0;
+float spellTestCastDuration = 0;
+const EQ::SpellData* spellTestCurrentSpell = nullptr;
+
+// Spell categories for filtering
+enum class SpellTestCategory : uint8_t {
+    DirectDamage,
+    DoT,
+    AEDamage,
+    PBAE,
+    Heal,
+    Buff,
+    Debuff,
+    Utility,
+    Count
+};
+
+const char* spellTestCategoryNames[] = {
+    "Direct Damage", "DoT", "AE Damage", "PBAE",
+    "Heal", "Buff", "Debuff", "Utility"
+};
+
+const char* getClassName(int classIndex) {
+    switch (static_cast<EQ::PlayerClass>(classIndex)) {
+        case EQ::PlayerClass::Warrior:     return "Warrior";
+        case EQ::PlayerClass::Cleric:      return "Cleric";
+        case EQ::PlayerClass::Paladin:     return "Paladin";
+        case EQ::PlayerClass::Ranger:      return "Ranger";
+        case EQ::PlayerClass::ShadowKnight:return "Shadow Knight";
+        case EQ::PlayerClass::Druid:       return "Druid";
+        case EQ::PlayerClass::Monk:        return "Monk";
+        case EQ::PlayerClass::Bard:        return "Bard";
+        case EQ::PlayerClass::Rogue:       return "Rogue";
+        case EQ::PlayerClass::Shaman:      return "Shaman";
+        case EQ::PlayerClass::Necromancer: return "Necromancer";
+        case EQ::PlayerClass::Wizard:      return "Wizard";
+        case EQ::PlayerClass::Magician:    return "Magician";
+        case EQ::PlayerClass::Enchanter:   return "Enchanter";
+        case EQ::PlayerClass::Beastlord:   return "Beastlord";
+        case EQ::PlayerClass::Berserker:   return "Berserker";
+        default: return "Unknown";
+    }
+}
+
+const char* getResistTypeName(EQ::ResistType rt) {
+    switch (rt) {
+        case EQ::ResistType::None:       return "None";
+        case EQ::ResistType::Magic:      return "Magic";
+        case EQ::ResistType::Fire:       return "Fire";
+        case EQ::ResistType::Cold:       return "Cold";
+        case EQ::ResistType::Poison:     return "Poison";
+        case EQ::ResistType::Disease:    return "Disease";
+        case EQ::ResistType::Chromatic:  return "Chromatic";
+        case EQ::ResistType::Prismatic:  return "Prismatic";
+        case EQ::ResistType::Physical:   return "Physical";
+        case EQ::ResistType::Corruption: return "Corruption";
+        default: return "Unknown";
+    }
+}
+
+// Filter spells by category
+bool matchesCategory(const EQ::SpellData* spell, SpellTestCategory cat) {
+    switch (cat) {
+        case SpellTestCategory::DirectDamage:
+            return spell->isDamageSpell() && !spell->hasDuration() && !spell->isAESpell();
+        case SpellTestCategory::DoT:
+            return spell->isDoTSpell();
+        case SpellTestCategory::AEDamage:
+            return spell->isDamageSpell() && spell->isAESpell() && !spell->isPBAE();
+        case SpellTestCategory::PBAE:
+            return spell->isPBAE();
+        case SpellTestCategory::Heal:
+            return spell->isHealSpell();
+        case SpellTestCategory::Buff:
+            return spell->isBuffSpell();
+        case SpellTestCategory::Debuff:
+            return !spell->is_beneficial && spell->hasDuration() && !spell->isDamageSpell();
+        case SpellTestCategory::Utility:
+            // Everything else
+            return !spell->isDamageSpell() && !spell->isHealSpell() &&
+                   !spell->isBuffSpell() && !(spell->hasDuration() && !spell->is_beneficial);
+        default:
+            return false;
+    }
+}
+
+// Rebuild the filtered spell list for current class + category
+void rebuildSpellTestList() {
+    spellTestSpellList.clear();
+    if (!spellDatabase || !spellDatabase->isLoaded()) return;
+
+    auto pc = static_cast<EQ::PlayerClass>(spellTestClassIndex);
+    auto cat = static_cast<SpellTestCategory>(spellTestCategoryIndex);
+
+    // Get all spells for this class at level 60
+    auto classSpells = spellDatabase->getSpellsForClass(pc, 60);
+
+    // Filter by category
+    for (const auto* spell : classSpells) {
+        if (matchesCategory(spell, cat)) {
+            spellTestSpellList.push_back(spell);
+        }
+    }
+
+    // Sort by level then name
+    std::sort(spellTestSpellList.begin(), spellTestSpellList.end(),
+        [pc](const EQ::SpellData* a, const EQ::SpellData* b) {
+            uint8_t la = a->getClassLevel(pc);
+            uint8_t lb = b->getClassLevel(pc);
+            if (la != lb) return la < lb;
+            return a->name < b->name;
+        });
+
+    spellTestSpellIndex = 0;
+
+    std::cout << "Spell list: " << getClassName(spellTestClassIndex) << " / "
+              << spellTestCategoryNames[spellTestCategoryIndex] << " -> "
+              << spellTestSpellList.size() << " spells" << std::endl;
+}
+
+// Forward declarations for spell test mode
+void cancelSpellTestCast();
+void triggerSpellTestCast();
 
 // Valid texture values: 0=naked, 1=leather, 2=chain, 3=plate, 4=monk, 10-16=robes, 17-23=velious
 const std::vector<uint8_t> validTextureValues = {0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23};
@@ -327,6 +488,122 @@ void cycleEffect(int direction) {
             std::cout << "Effect [" << currentEffectIndex << "/" << effectCount << "]: "
                       << emitter->name << " (tex: " << emitter->texture << ")" << std::endl;
         }
+    }
+}
+
+// ============================================================================
+// Spell Test Mode: Cast trigger and cancel
+// ============================================================================
+void triggerSpellTestCast() {
+    if (spellTestSpellList.empty() || !spellVisualFX) return;
+
+    const auto* spell = spellTestSpellList[spellTestSpellIndex];
+    spellTestCurrentSpell = spell;
+    spellTestCastDuration = spell->cast_time_ms / 1000.0f;
+    if (spellTestCastDuration < 0.5f) spellTestCastDuration = 0.5f;  // Min 0.5s for visual
+    spellTestCastElapsed = 0;
+    spellTestCasting = true;
+
+    std::cout << "Casting: " << spell->name << " (ID " << spell->id
+              << ", " << spellTestCastDuration << "s, "
+              << getResistTypeName(spell->resist_type) << ")" << std::endl;
+
+    // Create cast glow on caster
+    spellVisualFX->createCastGlow(casterEntityId, spell->id,
+        static_cast<uint32_t>(spellTestCastDuration * 1000));
+
+    // Play casting animation on caster model
+    if (animatedNode && useAnimatedMesh) {
+        // Determine animation based on spell type
+        std::string castAnim = "t06";  // Default: offensive
+        if (spell->is_beneficial) castAnim = "t04";  // Beneficial
+        if (spell->isHealSpell()) castAnim = "t05";  // Heal
+        animatedNode->playAnimation(castAnim, true, false);
+    }
+}
+
+void completeSpellTestCast() {
+    if (!spellTestCurrentSpell || !spellVisualFX) return;
+
+    const auto* spell = spellTestCurrentSpell;
+    std::cout << "Cast complete: " << spell->name << std::endl;
+
+    // Remove cast glow
+    spellVisualFX->removeCastGlow(casterEntityId);
+
+    // Create spell completion effect on caster
+    spellVisualFX->createSpellComplete(casterEntityId, spell->id);
+
+    // Return caster to idle animation
+    if (animatedNode && useAnimatedMesh) {
+        animatedNode->playAnimation("p01", true, false);
+    }
+
+    // Create appropriate effects based on spell type
+    uint16_t effectTarget = spellTestSelfMode ? casterEntityId : targetEntityId;
+
+    if (spell->isDamageSpell() && !spell->isAESpell()) {
+        // Single target damage: projectile then impact
+        if (!spellTestSelfMode) {
+            spellVisualFX->createProjectile(casterEntityId, targetEntityId, spell->id);
+        }
+        spellVisualFX->createImpact(effectTarget, spell->id);
+    } else if (spell->isPBAE()) {
+        // PBAE: impact at caster position
+        irr::core::vector3df casterPos;
+        if (animatedNode) casterPos = animatedNode->getAbsolutePosition();
+        spellVisualFX->createImpactAtPosition(casterPos, spell->id);
+    } else if (spell->isAESpell()) {
+        // Targeted AE: rain/ground circle at target
+        irr::core::vector3df targetPos;
+        if (targetAnimatedNode && !spellTestSelfMode) {
+            targetPos = targetAnimatedNode->getAbsolutePosition();
+        } else if (animatedNode) {
+            targetPos = animatedNode->getAbsolutePosition();
+        }
+        float radius = spell->aoe_range > 0 ? spell->aoe_range * 0.1f : 5.0f;
+        if (spell->isDamageSpell()) {
+            spellVisualFX->createRainEffect(targetPos, radius, spell->id, 3.0f);
+        } else {
+            spellVisualFX->createGroundCircle(targetPos, radius, spell->id, 3.0f);
+        }
+    } else if (spell->isHealSpell()) {
+        // Heal: impact on target (or self)
+        spellVisualFX->createImpact(effectTarget, spell->id);
+    } else if (spell->isBuffSpell()) {
+        // Buff: aura on target
+        spellVisualFX->createBuffAura(effectTarget, spell->id);
+    } else if (spell->hasDuration() && !spell->is_beneficial) {
+        // Debuff: projectile + impact on target
+        if (!spellTestSelfMode) {
+            spellVisualFX->createProjectile(casterEntityId, targetEntityId, spell->id);
+        }
+        spellVisualFX->createImpact(effectTarget, spell->id);
+    } else {
+        // Utility: just impact on target
+        spellVisualFX->createImpact(effectTarget, spell->id);
+    }
+
+    spellTestCasting = false;
+    spellTestCurrentSpell = nullptr;
+}
+
+void cancelSpellTestCast() {
+    if (spellTestCasting && spellVisualFX) {
+        spellVisualFX->removeCastGlow(casterEntityId);
+        spellTestCasting = false;
+        spellTestCurrentSpell = nullptr;
+        std::cout << "Cast cancelled" << std::endl;
+
+        // Return to idle
+        if (animatedNode && useAnimatedMesh) {
+            animatedNode->playAnimation("p01", true, false);
+        }
+    }
+    // Also clear all lingering effects
+    if (spellVisualFX) {
+        spellVisualFX->clearAllEffects();
+        std::cout << "Effects cleared" << std::endl;
     }
 }
 
@@ -592,6 +869,65 @@ public:
                         }
                     }
                     return true;
+                case KEY_F3:
+                    // Spell test: cycle class
+                    if (spellTestMode) {
+                        spellTestClassIndex += event.KeyInput.Shift ? -1 : 1;
+                        if (spellTestClassIndex < 1) spellTestClassIndex = 16;
+                        if (spellTestClassIndex > 16) spellTestClassIndex = 1;
+                        rebuildSpellTestList();
+                        return true;
+                    }
+                    break;
+                case KEY_F4:
+                    // Spell test: cycle category
+                    if (spellTestMode) {
+                        spellTestCategoryIndex += event.KeyInput.Shift ? -1 : 1;
+                        int catCount = static_cast<int>(SpellTestCategory::Count);
+                        if (spellTestCategoryIndex < 0) spellTestCategoryIndex = catCount - 1;
+                        if (spellTestCategoryIndex >= catCount) spellTestCategoryIndex = 0;
+                        rebuildSpellTestList();
+                        return true;
+                    }
+                    break;
+                case KEY_F5:
+                    // Spell test: cycle spell within category
+                    if (spellTestMode && !spellTestSpellList.empty()) {
+                        spellTestSpellIndex += event.KeyInput.Shift ? -1 : 1;
+                        if (spellTestSpellIndex < 0)
+                            spellTestSpellIndex = static_cast<int>(spellTestSpellList.size()) - 1;
+                        if (spellTestSpellIndex >= static_cast<int>(spellTestSpellList.size()))
+                            spellTestSpellIndex = 0;
+                        const auto* sp = spellTestSpellList[spellTestSpellIndex];
+                        std::cout << "Spell [" << (spellTestSpellIndex + 1) << "/"
+                                  << spellTestSpellList.size() << "]: " << sp->name
+                                  << " (ID " << sp->id << ", " << getResistTypeName(sp->resist_type)
+                                  << ", cast " << sp->cast_time_ms << "ms)" << std::endl;
+                        return true;
+                    }
+                    break;
+                case KEY_F6:
+                    // Spell test: toggle self/targeted
+                    if (spellTestMode) {
+                        spellTestSelfMode = !spellTestSelfMode;
+                        std::cout << "Mode: " << (spellTestSelfMode ? "SELF" : "TARGETED") << std::endl;
+                        return true;
+                    }
+                    break;
+                case KEY_RETURN:
+                    // Spell test: cast current spell
+                    if (spellTestMode && !spellTestSpellList.empty() && !spellTestCasting) {
+                        triggerSpellTestCast();
+                        return true;
+                    }
+                    break;
+                case KEY_BACK:
+                    // Spell test: cancel cast / clear effects
+                    if (spellTestMode) {
+                        cancelSpellTestCast();
+                        return true;
+                    }
+                    break;
                 case KEY_F7:
                     // F7=next effect, Shift+F7=prev effect (for testing EDD emitter definitions)
                     if (event.KeyInput.Shift) {
@@ -1926,6 +2262,12 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--client" && i + 1 < argc) {
             clientPath = argv[++i];
             if (clientPath.back() != '/') clientPath += '/';
+        } else if (arg == "--spell-test") {
+            spellTestMode = true;
+        } else if (arg == "--gl") {
+            useGLRenderer = true;
+        } else if (arg == "--gles2") {
+            useGLES2Renderer = true;
         } else if (arg == "--debug" || arg == "-d") {
             debugLevel = 1;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
@@ -1958,6 +2300,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Debug level: " << debugLevel << std::endl;
     std::cout << "Usage: model_viewer [client_path] [race_code]" << std::endl;
     std::cout << "       model_viewer --entities <file.json> [--entity <name>]" << std::endl;
+    std::cout << "       model_viewer --spell-test [--gl|--gles2] --client <path>" << std::endl;
     std::cout << "       --debug, -d [level]  Enable debug output (default level 1)" << std::endl;
     std::cout << std::endl;
     std::cout << "Controls:" << std::endl;
@@ -2000,7 +2343,7 @@ int main(int argc, char* argv[]) {
     std::shared_ptr<S3DZone> zone = nullptr;
     std::shared_ptr<CharacterModel> character = nullptr;
 
-    if (!usingEntityMode) {
+    if (!usingEntityMode && !spellTestMode) {
         // Direct race code mode - load global_chr.s3d
         std::string s3dPath = clientPath + "global_chr.s3d";
         std::cout << "Loading: " << s3dPath << std::endl;
@@ -2203,8 +2546,26 @@ int main(int argc, char* argv[]) {
         }
     } // end if (!usingEntityMode)
 
+    // Select renderer driver type
+    video::E_DRIVER_TYPE driverType = video::EDT_SOFTWARE;
+    if (useGLRenderer) {
+        driverType = video::EDT_OPENGL;
+        std::cout << "Using OpenGL renderer" << std::endl;
+    }
+#ifdef EQT_HAS_GLES2
+    else if (useGLES2Renderer) {
+        driverType = video::EDT_OGLES2;
+        std::cout << "Using GLES2 renderer" << std::endl;
+    }
+#endif
+    else if (spellTestMode) {
+        // Spell test mode defaults to GL for particle effects
+        driverType = video::EDT_OPENGL;
+        std::cout << "Spell test mode: using OpenGL renderer (use --gles2 for GLES2)" << std::endl;
+    }
+
     // Create Irrlicht device
-    device = createDevice(video::EDT_SOFTWARE,
+    device = createDevice(driverType,
                           core::dimension2d<u32>(800, 600),
                           32, false, false, false, &receiver);
 
@@ -2299,9 +2660,90 @@ int main(int argc, char* argv[]) {
         raceModelLoader->setCurrentZone(currentZoneName);
     }
 
+    // ========================================================================
+    // Spell Test Mode initialization
+    // ========================================================================
+    if (spellTestMode) {
+        // Load spell database
+        std::string spellsPath = clientPath + "spells_us.txt";
+        spellDatabase = std::make_unique<EQ::SpellDatabase>();
+        if (spellDatabase->loadFromFile(spellsPath)) {
+            std::cout << "Loaded " << spellDatabase->getSpellCount() << " spells from " << spellsPath << std::endl;
+        } else {
+            std::cout << "WARNING: Failed to load spells: " << spellDatabase->getLoadError() << std::endl;
+        }
+
+        // Create SpellVisualFX
+        spellVisualFX = std::make_unique<EQ::SpellVisualFX>(smgr, driver, clientPath);
+        spellVisualFX->setSpellDatabase(spellDatabase.get());
+
+        // Set up entity position callback
+        spellVisualFX->setEntityPositionCallback(
+            [](uint16_t entity_id, irr::core::vector3df& out_pos) -> bool {
+                if (entity_id == casterEntityId && animatedNode) {
+                    out_pos = animatedNode->getAbsolutePosition();
+                    out_pos.Y += 3.0f;  // Chest height
+                    return true;
+                }
+                if (entity_id == targetEntityId && targetAnimatedNode) {
+                    out_pos = targetAnimatedNode->getAbsolutePosition();
+                    out_pos.Y += 3.0f;
+                    return true;
+                }
+                return false;
+            });
+
+#ifdef EQT_HAS_GLES2
+        if (useGLES2Renderer) {
+            particleManager = std::make_unique<EQT::Graphics::Environment::ParticleManager>(smgr, driver);
+            particleManager->init(clientPath);
+            particleManager->initUnifiedRenderer();
+            spellVisualFX->setParticleManager(particleManager.get());
+            std::cout << "GLES2 ParticleManager + UnifiedRenderer initialized" << std::endl;
+        }
+#endif
+
+        // Create caster entity (Human male at origin)
+        animatedNode = raceModelLoader->createAnimatedNodeWithAppearance(
+            currentRaceId, currentGender, 0, 0, nullptr, -1);
+        if (animatedNode) {
+            animatedNode->setScale(core::vector3df(10, 10, 10));
+            animatedNode->setPosition(core::vector3df(0, 0, 0));
+            animatedNode->setRotation(core::vector3df(0, 90, 0));
+            animatedNode->playAnimation("p01", true, false);  // Idle
+            for (u32 i = 0; i < animatedNode->getMaterialCount(); ++i) {
+                animatedNode->getMaterial(i).Lighting = false;
+                animatedNode->getMaterial(i).BackfaceCulling = false;
+            }
+            useAnimatedMesh = true;
+            std::cout << "Created caster entity (race " << currentRaceId << ")" << std::endl;
+        }
+
+        // Create target entity (Human male offset to right)
+        targetAnimatedNode = raceModelLoader->createAnimatedNodeWithAppearance(
+            1, 0, 0, 0, nullptr, -1);  // Human male
+        if (targetAnimatedNode) {
+            targetAnimatedNode->setScale(core::vector3df(10, 10, 10));
+            targetAnimatedNode->setPosition(core::vector3df(30, 0, 0));
+            targetAnimatedNode->setRotation(core::vector3df(0, -90, 0));  // Face caster
+            targetAnimatedNode->playAnimation("p01", true, false);
+            for (u32 i = 0; i < targetAnimatedNode->getMaterialCount(); ++i) {
+                targetAnimatedNode->getMaterial(i).Lighting = false;
+                targetAnimatedNode->getMaterial(i).BackfaceCulling = false;
+            }
+            std::cout << "Created target entity at (30, 0, 0)" << std::endl;
+        }
+
+        // Build initial spell list
+        rebuildSpellTestList();
+
+        // Hide the old spell bar in spell test mode
+        spellBar.hide();
+    }
+
     // If we have loaded entities and a specific entity was requested, load it
-    bool loadedEntityFromFile = false;
-    if (!loadedEntities.empty()) {
+    bool loadedEntityFromFile = spellTestMode;  // Spell test mode already created entities
+    if (!spellTestMode && !loadedEntities.empty()) {
         int entityIdx = -1;
         if (!entityName.empty()) {
             entityIdx = findEntityByName(entityName);
@@ -2353,8 +2795,14 @@ int main(int argc, char* argv[]) {
     }
 
     // Add camera
-    camera = smgr->addCameraSceneNode(
-        nullptr, core::vector3df(0, 5, -cameraDistance), core::vector3df(0, 0, 0));
+    if (spellTestMode) {
+        // Wider view for caster + target (target is at x=30)
+        camera = smgr->addCameraSceneNode(
+            nullptr, core::vector3df(15, 15, -60), core::vector3df(15, 0, 0));
+    } else {
+        camera = smgr->addCameraSceneNode(
+            nullptr, core::vector3df(0, 5, -cameraDistance), core::vector3df(0, 0, 0));
+    }
 
     // Track time for animation updates
     u32 lastTime = device->getTimer()->getTime();
@@ -2372,8 +2820,38 @@ int main(int argc, char* argv[]) {
             updateEquipmentPositions();
         }
 
-        // Update casting bar and check for cast completion
+        // Update spell test mode casting
         float deltaSeconds = deltaMs / 1000.0f;
+
+        if (spellTestMode && spellTestCasting) {
+            spellTestCastElapsed += deltaSeconds;
+            if (spellTestCastElapsed >= spellTestCastDuration) {
+                completeSpellTestCast();
+            }
+        }
+
+        // Update SpellVisualFX
+        if (spellVisualFX) {
+            spellVisualFX->update(deltaSeconds);
+        }
+
+        // Animate target node in spell test mode
+        if (spellTestMode && targetAnimatedNode) {
+            targetAnimatedNode->OnAnimate(currentTime);
+        }
+
+#ifdef EQT_HAS_GLES2
+        if (particleManager) {
+            glm::vec3 camPosGlm(0);
+            if (camera) {
+                auto cp = camera->getAbsolutePosition();
+                camPosGlm = glm::vec3(cp.X, cp.Y, cp.Z);
+            }
+            particleManager->updateUnified(deltaSeconds, camPosGlm);
+        }
+#endif
+
+        // Update casting bar and check for cast completion
         if (castingBar.update(deltaSeconds)) {
             // Cast completed!
             const EQT::SpellBarEntry* spell = castingBar.getCurrentSpell();
@@ -2399,6 +2877,19 @@ int main(int argc, char* argv[]) {
 
         driver->beginScene(true, true, video::SColor(255, 50, 50, 80));
         smgr->drawAll();
+
+#ifdef EQT_HAS_GLES2
+        // Render unified particles (point sprites) after 3D scene, before 2D overlay
+        if (particleManager) {
+            irr::core::matrix4 viewMat = driver->getTransform(video::ETS_VIEW);
+            irr::core::matrix4 projMat = driver->getTransform(video::ETS_PROJECTION);
+            irr::core::vector3df camPos = camera ? camera->getAbsolutePosition()
+                                                 : irr::core::vector3df(0, 0, 0);
+            float screenH = static_cast<float>(driver->getScreenSize().Height);
+            particleManager->renderUnified(viewMat, projMat, camPos,
+                                           999999.0f, 999999.0f, nullptr, screenH);
+        }
+#endif
 
         // Draw info text
         gui::IGUIFont* font = device->getGUIEnvironment()->getBuiltInFont();
@@ -2465,9 +2956,102 @@ int main(int argc, char* argv[]) {
             font->draw(modelInfo.c_str(), core::rect<s32>(10, 90, 400, 110),
                        video::SColor(255, 200, 200, 200));
 
-            // Spell bar controls info
-            font->draw(L"[1-0] Cast spell  [Click gems on left]", core::rect<s32>(10, 110, 400, 130),
-                       video::SColor(255, 180, 180, 255));
+            // Spell bar controls info (only when not in spell test mode)
+            if (!spellTestMode) {
+                font->draw(L"[1-0] Cast spell  [Click gems on left]", core::rect<s32>(10, 110, 400, 130),
+                           video::SColor(255, 180, 180, 255));
+            }
+
+            // Spell test mode HUD
+            if (spellTestMode) {
+                int hudY = 130;
+                const int lineHeight = 14;
+                video::SColor headerColor(255, 255, 200, 100);
+                video::SColor valueColor(255, 255, 255, 255);
+                video::SColor dimColor(255, 150, 150, 150);
+                video::SColor castingColor(255, 100, 255, 100);
+
+                // Header
+                font->draw(L"=== SPELL TEST MODE ===", core::rect<s32>(10, hudY, 400, hudY + lineHeight), headerColor);
+                hudY += lineHeight;
+
+                // Class
+                std::string classStr = "[F3] Class: " + std::string(getClassName(spellTestClassIndex));
+                std::wstring wClassStr(classStr.begin(), classStr.end());
+                font->draw(wClassStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
+                hudY += lineHeight;
+
+                // Category
+                std::string catStr = "[F4] Category: " + std::string(spellTestCategoryNames[spellTestCategoryIndex]);
+                std::wstring wCatStr(catStr.begin(), catStr.end());
+                font->draw(wCatStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
+                hudY += lineHeight;
+
+                // Current spell
+                if (!spellTestSpellList.empty() && spellTestSpellIndex < static_cast<int>(spellTestSpellList.size())) {
+                    const auto* sp = spellTestSpellList[spellTestSpellIndex];
+                    std::string spellStr = "[F5] Spell: " + sp->name + " (" +
+                        std::to_string(spellTestSpellIndex + 1) + "/" +
+                        std::to_string(spellTestSpellList.size()) + ")";
+                    std::wstring wSpellStr(spellStr.begin(), spellStr.end());
+                    font->draw(wSpellStr.c_str(), core::rect<s32>(10, hudY, 600, hudY + lineHeight), valueColor);
+                    hudY += lineHeight;
+
+                    // Spell details
+                    std::string detailStr = "  ID:" + std::to_string(sp->id) +
+                        " Resist:" + getResistTypeName(sp->resist_type) +
+                        " Cast:" + std::to_string(sp->cast_time_ms / 1000) + "." +
+                        std::to_string((sp->cast_time_ms / 100) % 10) + "s" +
+                        " Mana:" + std::to_string(sp->mana_cost);
+                    std::wstring wDetailStr(detailStr.begin(), detailStr.end());
+                    font->draw(wDetailStr.c_str(), core::rect<s32>(10, hudY, 600, hudY + lineHeight), dimColor);
+                    hudY += lineHeight;
+
+                    // Target type
+                    std::string targetStr = "  Target:" + std::string(
+                        sp->isSelfOnly() ? "Self" :
+                        sp->isPBAE() ? "PBAE" :
+                        sp->isAESpell() ? "AE" :
+                        sp->isGroupSpell() ? "Group" : "Single");
+                    if (sp->is_beneficial) targetStr += " (Beneficial)";
+                    std::wstring wTargetStr(targetStr.begin(), targetStr.end());
+                    font->draw(wTargetStr.c_str(), core::rect<s32>(10, hudY, 600, hudY + lineHeight), dimColor);
+                    hudY += lineHeight;
+                } else {
+                    font->draw(L"[F5] Spell: (none available)", core::rect<s32>(10, hudY, 400, hudY + lineHeight), dimColor);
+                    hudY += lineHeight;
+                }
+
+                // Mode
+                std::string modeStr = "[F6] Mode: " + std::string(spellTestSelfMode ? "SELF" : "TARGETED");
+                std::wstring wModeStr(modeStr.begin(), modeStr.end());
+                font->draw(wModeStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
+                hudY += lineHeight;
+
+                // Cast state
+                if (spellTestCasting && spellTestCurrentSpell) {
+                    float progress = spellTestCastElapsed / spellTestCastDuration;
+                    int pct = static_cast<int>(progress * 100);
+                    std::string castStr = "CASTING: " + spellTestCurrentSpell->name + " " +
+                        std::to_string(pct) + "%";
+                    std::wstring wCastStr(castStr.begin(), castStr.end());
+                    font->draw(wCastStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), castingColor);
+                    hudY += lineHeight;
+                }
+
+                // Active effects count
+                if (spellVisualFX) {
+                    std::string fxStr = "Active effects: " +
+                        std::to_string(spellVisualFX->getActiveEffectCount());
+                    std::wstring wFxStr(fxStr.begin(), fxStr.end());
+                    font->draw(wFxStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), dimColor);
+                    hudY += lineHeight;
+                }
+
+                // Controls reminder
+                hudY += lineHeight;
+                font->draw(L"[Enter] Cast  [Backspace] Cancel/Clear", core::rect<s32>(10, hudY, 400, hudY + lineHeight), dimColor);
+            }
         }
 
         // Render spell bar UI
@@ -2481,6 +3065,14 @@ int main(int argc, char* argv[]) {
 
     // Clean up spell effects before device destruction to avoid segfault
     spellFX.clearAllEffects();
+    if (spellVisualFX) {
+        spellVisualFX->clearAllEffects();
+        spellVisualFX.reset();
+    }
+#ifdef EQT_HAS_GLES2
+    particleManager.reset();
+#endif
+    spellDatabase.reset();
 
     device->drop();
     return 0;

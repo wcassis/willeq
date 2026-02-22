@@ -16,6 +16,10 @@
 #include <utility>
 #include <string>
 
+#ifdef EQT_HAS_GLES2
+namespace EQT { namespace Graphics { namespace Environment { class ParticleManager; }}}
+#endif
+
 namespace EQ {
 
 // Forward declarations
@@ -142,6 +146,11 @@ public:
     // Adjust particle multiplier by delta (for hotkey control)
     void adjustParticleMultiplier(float delta);
 
+#ifdef EQT_HAS_GLES2
+    // Set particle manager for GLES2 delegation
+    void setParticleManager(EQT::Graphics::Environment::ParticleManager* pm) { m_particle_manager = pm; }
+#endif
+
 private:
     // Get spell color based on resist type/school
     irr::video::SColor getSpellColor(uint32_t spell_id) const;
@@ -191,6 +200,10 @@ private:
     void createFallbackTexture();
     irr::video::ITexture* loadDDSTexture(const std::string& path, const std::string& name);
     irr::video::ITexture* getTextureForSpell(uint32_t spell_id) const;
+
+#ifdef EQT_HAS_GLES2
+    EQT::Graphics::Environment::ParticleManager* m_particle_manager = nullptr;
+#endif
 
     // Projectile speed in units per second
     static constexpr float PROJECTILE_SPEED = 500.0f;

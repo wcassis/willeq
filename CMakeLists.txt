@@ -402,6 +402,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/unified_particle_renderer.cpp
         src/client/graphics/environment/fire_emitter_config.cpp
         src/client/graphics/environment/weather_emitter_config.cpp
+        src/client/graphics/environment/spell_emitter_presets.cpp
         # Storm cloud layer
         src/client/graphics/environment/storm_cloud_layer.cpp
         # Screen-space rain overlay
@@ -567,12 +568,32 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/common/performance_metrics.cpp
+        # Spell test mode dependencies
+        src/client/spell/spell_database.cpp
+        src/client/graphics/spell_visual_fx.cpp
+        # Particle system (required for GLES2 spell effects via ParticleManager)
+        src/client/graphics/environment/particle_manager.cpp
+        src/client/graphics/environment/particle_emitter.cpp
+        src/client/graphics/environment/unified_particle_renderer.cpp
+        src/client/graphics/environment/fire_emitter_config.cpp
+        src/client/graphics/environment/weather_emitter_config.cpp
+        src/client/graphics/environment/spell_emitter_presets.cpp
+        src/client/graphics/environment/environment_config.cpp
+        src/client/graphics/environment/zone_biome.cpp
+        src/client/graphics/environment/emitters/dust_mote_emitter.cpp
+        src/client/graphics/environment/emitters/pollen_emitter.cpp
+        src/client/graphics/environment/emitters/firefly_emitter.cpp
+        src/client/graphics/environment/emitters/mist_emitter.cpp
+        src/client/graphics/environment/emitters/sand_dust_emitter.cpp
+        src/client/graphics/environment/emitters/ember_emitter.cpp
+        src/client/graphics/environment/emitters/smoke_emitter.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
         ${IRRLICHT_INCLUDE_DIR}
         ${ZLIB_INCLUDE_DIRS}
+        ${GLM_INCLUDE_DIR}
     )
     IF(APPLE)
         TARGET_LINK_LIBRARIES(model_viewer
@@ -586,13 +607,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${CARBON_FRAMEWORK}
         )
     ELSEIF(EQT_DRM)
-        TARGET_LINK_LIBRARIES(model_viewer
-            ${IRRLICHT_LIBRARY}
-            ${ZLIB_LIBRARIES}
-            ${JSONCPP_LIBRARIES}
-            fmt::fmt
-            EGL GL drm gbm
-        )
+        IF(EQT_GLES2)
+            TARGET_LINK_LIBRARIES(model_viewer
+                ${IRRLICHT_LIBRARY}
+                ${ZLIB_LIBRARIES}
+                ${JSONCPP_LIBRARIES}
+                fmt::fmt
+                EGL GLESv2 drm gbm
+            )
+        ELSE()
+            TARGET_LINK_LIBRARIES(model_viewer
+                ${IRRLICHT_LIBRARY}
+                ${ZLIB_LIBRARIES}
+                ${JSONCPP_LIBRARIES}
+                fmt::fmt
+                EGL GL drm gbm
+            )
+        ENDIF()
     ELSE()
         TARGET_LINK_LIBRARIES(model_viewer
             ${IRRLICHT_LIBRARY}

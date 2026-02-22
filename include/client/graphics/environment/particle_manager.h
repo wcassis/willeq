@@ -3,6 +3,7 @@
 #include "particle_types.h"
 #include "particle_emitter.h"
 #include "unified_particle.h"
+#include "spell_particle_types.h"
 #include <irrlicht.h>
 #include <memory>
 #include <vector>
@@ -263,6 +264,37 @@ public:
      */
     void setAmbientColor(const glm::vec3& color) { ambientColor_ = color; }
 
+    // === Spell Effects ===
+
+    /**
+     * Entity position callback (returns Irrlicht Y-up coords).
+     */
+    using EntityPosCallback = std::function<bool(uint16_t entity_id, glm::vec3& out_pos)>;
+    void setEntityPositionCallback(EntityPosCallback cb) { entityPosCallback_ = std::move(cb); }
+
+    /**
+     * Create a spell particle effect.
+     * @return Effect ID for later removal
+     */
+    uint32_t createSpellEffect(const SpellEffectDef& def,
+                               uint16_t casterID, uint16_t targetID,
+                               float duration = 0.0f);
+
+    /**
+     * Remove a specific spell effect by ID.
+     */
+    void removeSpellEffect(uint32_t effectID);
+
+    /**
+     * Remove all spell effects attached to an entity (caster or target).
+     */
+    void removeSpellEffectsForEntity(uint16_t entityID);
+
+    /**
+     * Clear all active spell effects.
+     */
+    void clearAllSpellEffects();
+
     /**
      * Light source for weather particle illumination.
      * Positions in Irrlicht Y-up coordinates.
@@ -357,6 +389,11 @@ private:
     glm::vec3 ambientColor_{1.0f};     // Ambient tint for weather particles
     std::vector<ParticleLight> weatherLights_;  // Nearby lights for per-particle illumination
 
+    // Spell effect state
+    EntityPosCallback entityPosCallback_;
+    std::vector<SpellEffectInstance> activeSpellEffects_;
+    uint32_t nextSpellEffectID_ = 1;
+
     // Temp buffer for collecting alive particles for rendering
     std::vector<UnifiedParticle> unifiedRenderBuf_;
 
@@ -369,6 +406,13 @@ private:
     // Spawn a single weather particle within the camera-relative volume
     void spawnWeatherParticle(const EmitterConfig& cfg, uint16_t emitterID,
                               const glm::vec3& cameraPos, float transitionAlpha);
+
+    // Spawn a single particle for spell effects (BURST/RADIAL_EXPAND/ORBITAL)
+    void spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
+                            const glm::vec3& emitterPos);
+
+    // Update spell effect lifecycle (triggers, entity tracking, cleanup)
+    void updateSpellEffects(float deltaTime);
 };
 
 } // namespace Environment

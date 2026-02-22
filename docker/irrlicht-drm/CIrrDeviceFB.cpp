@@ -102,6 +102,7 @@ enum LinuxKey {
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <linux/kd.h>
@@ -110,6 +111,29 @@ enum LinuxKey {
 #include "IEventReceiver.h"
 #include "os.h"
 #include "CTimer.h"
+
+// Signal handler to restore VT keyboard mode on abnormal exit.
+// Without this, SIGINT/SIGTERM/SIGSEGV leaves the keyboard stuck in K_OFF mode
+// and the console becomes unresponsive to local keyboard input.
+static int s_savedTtyFd = -1;
+static int s_savedKbMode = -1;
+
+static void restoreKeyboardMode()
+{
+    if (s_savedTtyFd >= 0 && s_savedKbMode >= 0) {
+        ioctl(s_savedTtyFd, KDSKBMODE, s_savedKbMode);
+        s_savedTtyFd = -1;
+        s_savedKbMode = -1;
+    }
+}
+
+static void restoreKeyboardSignalHandler(int sig)
+{
+    restoreKeyboardMode();
+    // Re-raise with default handler so the process actually exits
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
 
 // Software driver factory functions are declared in CIrrDeviceStub.h (base class)
 // OpenGL driver factory function is declared locally below
@@ -221,6 +245,9 @@ CIrrDeviceFB::~CIrrDeviceFB()
     if (ttyFd_ >= 0) {
         if (savedKbMode_ >= 0)
             ioctl(ttyFd_, KDSKBMODE, savedKbMode_);
+        // Clear signal handler state so it becomes a no-op
+        s_savedTtyFd = -1;
+        s_savedKbMode = -1;
         close(ttyFd_);
     }
 
@@ -689,6 +716,16 @@ void CIrrDeviceFB::initEvdev()
             if (ioctl(ttyFd_, KDGKBMODE, &savedKbMode_) == 0) {
                 if (ioctl(ttyFd_, KDSKBMODE, K_OFF) == 0) {
                     os::Printer::log("evdev: VT keyboard processing disabled (K_OFF)", ELL_INFORMATION);
+                    // Install handlers so keyboard is restored on any exit path:
+                    // - atexit: covers exit(0), return from main, normal termination
+                    // - signals: covers Ctrl+C, kill, crash
+                    s_savedTtyFd = ttyFd_;
+                    s_savedKbMode = savedKbMode_;
+                    atexit(restoreKeyboardMode);
+                    signal(SIGINT, restoreKeyboardSignalHandler);
+                    signal(SIGTERM, restoreKeyboardSignalHandler);
+                    signal(SIGSEGV, restoreKeyboardSignalHandler);
+                    signal(SIGABRT, restoreKeyboardSignalHandler);
                 } else {
                     os::Printer::log("evdev: Failed to set K_OFF on tty", ELL_WARNING);
                     savedKbMode_ = -1;

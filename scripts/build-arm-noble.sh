@@ -91,6 +91,10 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     echo "=== Success ==="
     file "$OUTPUT_DIR/bin/willeq"
     ls -lh "$OUTPUT_DIR/bin/willeq"
+    if [ -f "$OUTPUT_DIR/bin/model_viewer" ]; then
+        file "$OUTPUT_DIR/bin/model_viewer"
+        ls -lh "$OUTPUT_DIR/bin/model_viewer"
+    fi
     if [ -f "$OUTPUT_DIR/bin/gpu_texture_formats" ]; then
         file "$OUTPUT_DIR/bin/gpu_texture_formats"
         ls -lh "$OUTPUT_DIR/bin/gpu_texture_formats"
@@ -109,16 +113,20 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     fi
     echo ""
     echo "Binaries: $OUTPUT_DIR/bin/willeq"
+    echo "          $OUTPUT_DIR/bin/model_viewer"
     echo "          $OUTPUT_DIR/bin/gpu_texture_formats"
     echo "          $OUTPUT_DIR/bin/gles2_etc1_benchmark"
     echo "          $OUTPUT_DIR/bin/egl_image_sharing_test"
     echo "          $OUTPUT_DIR/bin/test_gl_points"
     echo ""
     echo "Deploy to Orange Pi (Armbian Noble):"
-    echo "  scp $OUTPUT_DIR/bin/willeq $OUTPUT_DIR/bin/gpu_texture_formats $OUTPUT_DIR/bin/gles2_etc1_benchmark $OUTPUT_DIR/bin/egl_image_sharing_test $OUTPUT_DIR/bin/test_gl_points orangepi:~/willeq/"
+    echo "  scp $OUTPUT_DIR/bin/willeq $OUTPUT_DIR/bin/model_viewer $OUTPUT_DIR/bin/gpu_texture_formats $OUTPUT_DIR/bin/gles2_etc1_benchmark $OUTPUT_DIR/bin/egl_image_sharing_test $OUTPUT_DIR/bin/test_gl_points orangepi:~/willeq/"
     echo ""
     echo "Run on Orange Pi (DRM/KMS, Lima GPU, Mesa GL 2.1 - no X11 needed):"
     echo "  ./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600"
+    echo ""
+    echo "Run model viewer spell test (GLES2, DRM):"
+    echo "  ./model_viewer --spell-test --gles2 --client /path/to/EQ/"
     echo ""
     echo "Run on Orange Pi (with X11, if Xorg is running):"
     echo "  DISPLAY=:0 ./willeq -c config.json --opengl --constrained orangepi -r 800 600"
