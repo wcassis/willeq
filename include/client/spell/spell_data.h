@@ -257,7 +257,7 @@ struct SpellData {
         for (const auto& effect : effects) {
             if ((effect.effect_id == SpellEffect::CurrentHP ||
                  effect.effect_id == SpellEffect::CurrentHPOnce) &&
-                effect.base_value > 0) {  // Positive = damage
+                effect.base_value < 0) {  // Negative = damage
                 return true;
             }
         }
@@ -271,7 +271,7 @@ struct SpellData {
                  effect.effect_id == SpellEffect::CurrentHPOnce ||
                  effect.effect_id == SpellEffect::HealOverTime ||
                  effect.effect_id == SpellEffect::CompleteHeal) &&
-                effect.base_value < 0) {  // Negative = heal
+                effect.base_value > 0) {  // Positive = heal
                 return true;
             }
         }
