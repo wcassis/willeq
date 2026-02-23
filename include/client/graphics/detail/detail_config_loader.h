@@ -35,11 +35,11 @@ public:
     static ZoneDetailConfig getHardcodedDefault(const std::string& zoneName);
 
     // Load foliage disturbance config from JSON file or embedded section
-    // Looks for "foliage_disturbance" section in configs/detail_objects.json
+    // Looks for "foliage_disturbance" section in config/detail_objects.json
     FoliageDisturbanceConfig loadFoliageDisturbanceConfig(const std::string& dataPath) const;
 
     // Load footprint config from JSON file or embedded section
-    // Looks for "footprints" section in configs/detail_objects.json
+    // Looks for "footprints" section in config/detail_objects.json
     FootprintConfig loadFootprintConfig(const std::string& dataPath) const;
 
 private:

@@ -5,7 +5,7 @@
 set -e
 
 EQ_PATH="${1:-/home/user/projects/claude/EverQuestP1999}"
-OUTPUT_DIR="${2:-docs/zone_textures}"
+OUTPUT_DIR="${2:-docs/reference/zone_textures}"
 S3D_DUMP="./build/bin/s3d_dump"
 
 # Ensure output directory exists

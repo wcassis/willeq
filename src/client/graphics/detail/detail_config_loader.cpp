@@ -43,19 +43,10 @@ std::unique_ptr<ZoneDetailConfig> DetailConfigLoader::loadConfigForZone(
 }
 
 std::unique_ptr<ZoneDetailConfig> DetailConfigLoader::loadDefaultConfig(const std::string& dataPath) const {
-    // Try configs/detail_objects.json first (new location)
-    std::string newPath = "configs/detail_objects.json";
-    auto config = loadConfigFile(newPath);
+    std::string configPath = "config/detail_objects.json";
+    auto config = loadConfigFile(configPath);
     if (config) {
-        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded default config from {}", newPath);
-        return config;
-    }
-
-    // Fall back to old location
-    std::string defaultPath = dataPath + "/detail/default_config.json";
-    config = loadConfigFile(defaultPath);
-    if (config) {
-        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded default config from {}", defaultPath);
+        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded default config from {}", configPath);
     }
     return config;
 }
@@ -368,15 +359,8 @@ SurfaceType DetailConfigLoader::parseSurfaceTypeString(const std::string& str) {
 FoliageDisturbanceConfig DetailConfigLoader::loadFoliageDisturbanceConfig(const std::string& dataPath) const {
     FoliageDisturbanceConfig config;  // Defaults
 
-    // Try configs/detail_objects.json first
-    std::string configPath = "configs/detail_objects.json";
+    std::string configPath = "config/detail_objects.json";
     std::ifstream file(configPath);
-    if (!file.is_open()) {
-        // Fall back to data path
-        configPath = dataPath + "/detail/default_config.json";
-        file.open(configPath);
-    }
-
     if (!file.is_open()) {
         LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No foliage_disturbance config found, using defaults");
         return config;
@@ -411,15 +395,8 @@ FoliageDisturbanceConfig DetailConfigLoader::loadFoliageDisturbanceConfig(const 
 FootprintConfig DetailConfigLoader::loadFootprintConfig(const std::string& dataPath) const {
     FootprintConfig config;  // Defaults
 
-    // Try configs/detail_objects.json first
-    std::string configPath = "configs/detail_objects.json";
+    std::string configPath = "config/detail_objects.json";
     std::ifstream file(configPath);
-    if (!file.is_open()) {
-        // Fall back to data path
-        configPath = dataPath + "/detail/default_config.json";
-        file.open(configPath);
-    }
-
     if (!file.is_open()) {
         LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No footprints config found, using defaults");
         return config;

@@ -2,14 +2,14 @@
 # Generate a comprehensive reference of all pre-Luclin S3D file contents
 # Usage: ./scripts/generate_s3d_reference.sh [eq_client_path]
 #
-# This script reads data/pre_luclin_zones.json and runs s3d_dump on each
-# S3D file, consolidating the output into data/s3d_contents_reference.md
+# This script reads docs/reference/pre_luclin_zones.json and runs s3d_dump on each
+# S3D file, consolidating the output into docs/reference/s3d_contents_reference.md
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 S3D_DUMP="$PROJECT_DIR/build/bin/s3d_dump"
-ZONES_JSON="$PROJECT_DIR/data/pre_luclin_zones.json"
-OUTPUT_FILE="$PROJECT_DIR/data/s3d_contents_reference.md"
+ZONES_JSON="$PROJECT_DIR/docs/reference/pre_luclin_zones.json"
+OUTPUT_FILE="$PROJECT_DIR/docs/reference/s3d_contents_reference.md"
 
 # Default EQ client path
 EQ_CLIENT_PATH="${1:-/home/user/projects/claude/EverQuestP1999}"

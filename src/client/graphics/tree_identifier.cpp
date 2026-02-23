@@ -214,7 +214,7 @@ bool TreeIdentifier::loadZoneOverrides(const std::string& zoneName) {
     }
 
     // Try zone-specific config file
-    std::string configPath = "data/config/zones/" + zoneName + "/tree_overrides.json";
+    std::string configPath = "config/zones/" + zoneName + "/tree_overrides.json";
     std::ifstream file(configPath);
 
     if (!file.is_open()) {

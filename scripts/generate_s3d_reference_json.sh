@@ -4,7 +4,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-OUTPUT_FILE="$PROJECT_DIR/data/s3d_contents_reference.json"
+OUTPUT_FILE="$PROJECT_DIR/docs/reference/s3d_contents_reference.json"
 
 # Default EQ client path
 EQ_CLIENT_PATH="${1:-/home/user/projects/claude/EverQuestP1999}"
@@ -32,7 +32,7 @@ from collections import defaultdict
 
 EQ_PATH = os.environ.get('EQ_CLIENT_PATH', '/home/user/projects/claude/EverQuestP1999')
 PROJECT_DIR = os.environ.get('PROJECT_DIR', '/home/user/projects/claude/willeq-fix-commonlands')
-OUTPUT_FILE = os.path.join(PROJECT_DIR, 'data', 's3d_contents_reference.json')
+OUTPUT_FILE = os.path.join(PROJECT_DIR, 'docs', 'reference', 's3d_contents_reference.json')
 
 # PFS/S3D magic
 PFS_MAGIC = 0x20534650  # "PFS "

@@ -17,7 +17,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
 S3D_DUMP = PROJECT_DIR / "build" / "bin" / "s3d_dump"
-OUTPUT_FILE = PROJECT_DIR / "data" / "s3d_contents_reference.json"
+OUTPUT_FILE = PROJECT_DIR / "docs" / "reference" / "s3d_contents_reference.json"
 RACE_MODELS_FILE = PROJECT_DIR / "config" / "race_models.json"
 
 # Default EQ client path

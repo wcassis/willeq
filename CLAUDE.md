@@ -433,7 +433,7 @@ Titanium-specific packet structures are defined in `include/common/packet_struct
 
 ### Logging
 
-**IMPORTANT**: All new logging code MUST follow the standards in `docs/debug_logging_standards.md`.
+**IMPORTANT**: All new logging code MUST follow the standards in `docs/standards/debug_logging_standards.md`.
 
 Key points:
 - Default (level 0/NONE): Quiet mode - errors still reported, no verbose output

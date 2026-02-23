@@ -107,7 +107,7 @@ std::string TreeWindConfigLoader::findConfigFile(const std::string& cmdLinePath,
 
     // 2. Zone-specific config
     if (!zoneName.empty()) {
-        std::string zonePath = "data/config/zones/" + zoneName + "/tree_wind.json";
+        std::string zonePath = "config/zones/" + zoneName + "/tree_wind.json";
         std::ifstream test(zonePath);
         if (test.good()) {
             return zonePath;
@@ -115,7 +115,7 @@ std::string TreeWindConfigLoader::findConfigFile(const std::string& cmdLinePath,
     }
 
     // 3. Default config
-    std::string defaultPath = "data/config/tree_wind.json";
+    std::string defaultPath = "config/tree_wind.json";
     std::ifstream test(defaultPath);
     if (test.good()) {
         return defaultPath;

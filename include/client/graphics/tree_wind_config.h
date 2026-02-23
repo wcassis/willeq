@@ -60,8 +60,8 @@ public:
 
     // Load config with fallback chain:
     // 1. Command line specified path
-    // 2. Zone-specific: data/config/zones/<zoneName>/tree_wind.json
-    // 3. Default: data/config/tree_wind.json
+    // 2. Zone-specific: config/zones/<zoneName>/tree_wind.json
+    // 3. Default: config/tree_wind.json
     // 4. Built-in defaults
     static bool loadConfig(TreeWindConfig& config,
                           const std::string& cmdLinePath = "",
