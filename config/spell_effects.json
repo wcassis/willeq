@@ -39,7 +39,7 @@
             "positionOffset": [0.0, 0.0, 0.0]
         },
         "castGlow": {
-            "spawnRate": 8.0,
+            "spawnRate": 24.0,
             "burstCount": 0,
             "emitterLifetime": 0.0,
             "spawnShape": "POINT",
@@ -65,7 +65,7 @@
         },
         "spellComplete": {
             "spawnRate": 0.0,
-            "burstCount": 15,
+            "burstCount": 45,
             "emitterLifetime": 0.1,
             "spawnShape": "RING",
             "spawnExtents": [0.5, 0.0, 0.0],
@@ -88,7 +88,7 @@
         },
         "impact": {
             "spawnRate": 0.0,
-            "burstCount": 12,
+            "burstCount": 36,
             "emitterLifetime": 0.1,
             "spawnShape": "POINT",
             "spawnExtents": [0.0, 0.0, 0.0],
@@ -111,7 +111,7 @@
             "positionOffset": [0.0, 1.0, 0.0]
         },
         "buffAura": {
-            "spawnRate": 3.0,
+            "spawnRate": 9.0,
             "burstCount": 0,
             "emitterLifetime": 0.0,
             "spawnShape": "POINT",
@@ -160,7 +160,7 @@
         },
         "projectileImpact": {
             "spawnRate": 0.0,
-            "burstCount": 12,
+            "burstCount": 36,
             "emitterLifetime": 0.1,
             "spawnShape": "POINT",
             "spawnExtents": [0.0, 0.0, 0.0],
@@ -183,7 +183,7 @@
             "positionOffset": [0.0, 1.0, 0.0]
         },
         "spellRain": {
-            "spawnRate": 15.0,
+            "spawnRate": 45.0,
             "burstCount": 0,
             "emitterLifetime": 0.0,
             "spawnShape": "BOX",
@@ -205,7 +205,7 @@
             "positionOffset": [0.0, 10.0, 0.0]
         },
         "groundCircle": {
-            "spawnRate": 6.0,
+            "spawnRate": 18.0,
             "burstCount": 0,
             "emitterLifetime": 0.0,
             "spawnShape": "RING",

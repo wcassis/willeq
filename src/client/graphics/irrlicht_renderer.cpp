@@ -10589,8 +10589,22 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
         // Set up entity position callback for spell effects
         spellVisualFX_->setEntityPositionCallback(
             [this](uint16_t entity_id, irr::core::vector3df& out_pos) -> bool {
+                // Hand bone pseudo-entity IDs (bit 15 set)
+                if (EQ::SpellVisualFX::isHandBoneId(entity_id)) {
+                    uint16_t realId = EQ::SpellVisualFX::realEntityId(entity_id);
+                    bool rightHand = EQ::SpellVisualFX::isRightHand(entity_id);
+                    if (!entityRenderer_) return false;
+                    const auto& entities = entityRenderer_->getEntities();
+                    auto it = entities.find(realId);
+                    if (it == entities.end() || !it->second.isAnimated || !it->second.animatedNode) return false;
+                    int boneIdx = rightHand
+                        ? it->second.animatedNode->findRightHandBoneIndex()
+                        : it->second.animatedNode->findLeftHandBoneIndex();
+                    if (boneIdx < 0) return false;
+                    return it->second.animatedNode->getBoneWorldPosition(boneIdx, out_pos);
+                }
+                // Normal entity lookup
                 if (!entityRenderer_) return false;
-
                 const auto& entities = entityRenderer_->getEntities();
                 auto it = entities.find(entity_id);
                 if (it == entities.end()) return false;
@@ -10611,6 +10625,26 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
             spellVisualFX_->setParticleManager(particleManager_.get());
             particleManager_->setEntityPositionCallback(
                 [this](uint16_t entity_id, glm::vec3& out_pos) -> bool {
+                    // Hand bone pseudo-entity IDs (bit 15 set)
+                    if (EQ::SpellVisualFX::isHandBoneId(entity_id)) {
+                        uint16_t realId = EQ::SpellVisualFX::realEntityId(entity_id);
+                        bool rightHand = EQ::SpellVisualFX::isRightHand(entity_id);
+                        if (!entityRenderer_) return false;
+                        const auto& entities = entityRenderer_->getEntities();
+                        auto it = entities.find(realId);
+                        if (it == entities.end() || !it->second.isAnimated || !it->second.animatedNode) return false;
+                        int boneIdx = rightHand
+                            ? it->second.animatedNode->findRightHandBoneIndex()
+                            : it->second.animatedNode->findLeftHandBoneIndex();
+                        if (boneIdx < 0) return false;
+                        irr::core::vector3df bonePos;
+                        if (it->second.animatedNode->getBoneWorldPosition(boneIdx, bonePos)) {
+                            out_pos = glm::vec3(bonePos.X, bonePos.Y, bonePos.Z);
+                            return true;
+                        }
+                        return false;
+                    }
+                    // Normal entity lookup
                     if (!entityRenderer_) return false;
                     const auto& entities = entityRenderer_->getEntities();
                     auto it = entities.find(entity_id);
@@ -10620,6 +10654,27 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
                     out_pos.y = visual.lastZ + visual.modelYOffset;
                     out_pos.z = visual.lastY;
                     return true;
+                }
+            );
+            particleManager_->setEntityDirectionCallback(
+                [this](uint16_t entity_id, glm::vec3& out_dir) -> bool {
+                    if (!EQ::SpellVisualFX::isHandBoneId(entity_id)) return false;
+                    uint16_t realId = EQ::SpellVisualFX::realEntityId(entity_id);
+                    bool rightHand = EQ::SpellVisualFX::isRightHand(entity_id);
+                    if (!entityRenderer_) return false;
+                    const auto& entities = entityRenderer_->getEntities();
+                    auto it = entities.find(realId);
+                    if (it == entities.end() || !it->second.isAnimated || !it->second.animatedNode) return false;
+                    int boneIdx = rightHand
+                        ? it->second.animatedNode->findRightHandBoneIndex()
+                        : it->second.animatedNode->findLeftHandBoneIndex();
+                    if (boneIdx < 0) return false;
+                    irr::core::vector3df dir;
+                    if (it->second.animatedNode->getBoneWorldDirection(boneIdx, dir)) {
+                        out_dir = glm::vec3(dir.X, dir.Y, dir.Z);
+                        return true;
+                    }
+                    return false;
                 }
             );
             LOG_DEBUG(MOD_GRAPHICS, "SpellVisualFX: GLES2 particle delegation enabled");

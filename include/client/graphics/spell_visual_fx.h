@@ -64,6 +64,15 @@ using EntityPositionCallback = std::function<bool(uint16_t entity_id,
 
 class SpellVisualFX {
 public:
+    // Hand bone pseudo-entity ID encoding.
+    // EQ spawn IDs are uint16_t but never exceed ~4000, so high bits are safe.
+    // Bit 15 = hand bone flag, Bit 14 = left hand (0 = right, 1 = left).
+    static uint16_t rightHandEntityId(uint16_t caster_id) { return caster_id | 0x8000; }
+    static uint16_t leftHandEntityId(uint16_t caster_id)  { return caster_id | 0xC000; }
+    static bool isHandBoneId(uint16_t id) { return (id & 0x8000) != 0; }
+    static uint16_t realEntityId(uint16_t id) { return id & 0x3FFF; }
+    static bool isRightHand(uint16_t id) { return (id & 0xC000) == 0x8000; }
+
     SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                    const std::string& eqClientPath = "");
     ~SpellVisualFX();
@@ -84,7 +93,10 @@ public:
     // Effect Creation
     // ========================================================================
 
-    // Create casting glow around caster
+    // Determine cast effect style from spell school (spray vs smolder/orbital)
+    bool isSprayCastStyle(uint32_t spell_id) const;
+
+    // Create casting glow around caster (auto-selects spray vs smolder by school)
     // Returns effect ID for later removal
     uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms);
 

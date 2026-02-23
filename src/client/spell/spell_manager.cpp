@@ -919,6 +919,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
 
             // Create cast glow effect for the player too
             if (renderer->getSpellVisualFX()) {
+                renderer->getSpellVisualFX()->setSpellDatabase(&m_spell_db);
                 renderer->getSpellVisualFX()->createCastGlow(caster_id, spell_id, cast_time_ms);
             }
         }
@@ -961,6 +962,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
 
             // Create cast glow effect with spiraling particles
             if (renderer->getSpellVisualFX()) {
+                renderer->getSpellVisualFX()->setSpellDatabase(&m_spell_db);
                 renderer->getSpellVisualFX()->createCastGlow(caster_id, spell_id, cast_time_ms);
             }
         }
@@ -1004,6 +1006,7 @@ void SpellManager::handleAction(const EQT::Action_Struct& action)
 
         // Create spell completion effect (spiraling particles that burst outward)
         if (is_success_packet && renderer->getSpellVisualFX()) {
+            renderer->getSpellVisualFX()->setSpellDatabase(&m_spell_db);
             renderer->getSpellVisualFX()->createSpellComplete(caster_id, spell_id);
             // Create impact effect at target
             renderer->getSpellVisualFX()->createImpact(target_id, spell_id);

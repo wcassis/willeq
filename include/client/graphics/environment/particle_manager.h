@@ -274,6 +274,12 @@ public:
     void setEntityPositionCallback(EntityPosCallback cb) { entityPosCallback_ = std::move(cb); }
 
     /**
+     * Test if an entity position can be resolved via the callback.
+     * Used by SpellVisualFX to probe for hand bone availability before creating effects.
+     */
+    bool resolveEntityPosition(uint16_t entityID, glm::vec3& outPos) const;
+
+    /**
      * Entity direction callback for spray effects (returns normalized direction in Irrlicht Y-up).
      */
     using EntityDirCallback = std::function<bool(uint16_t entity_id, glm::vec3& out_dir)>;

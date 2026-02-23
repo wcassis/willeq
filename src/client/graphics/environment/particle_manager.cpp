@@ -1157,6 +1157,11 @@ void ParticleManager::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t em
     p.setBlendMode(cfg.blendMode);
 }
 
+bool ParticleManager::resolveEntityPosition(uint16_t entityID, glm::vec3& outPos) const {
+    if (entityPosCallback_) return entityPosCallback_(entityID, outPos);
+    return false;
+}
+
 // =============================================================================
 // Spell Effect API
 // =============================================================================

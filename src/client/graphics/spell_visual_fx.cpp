@@ -309,21 +309,70 @@ void SpellVisualFX::update(float delta_time)
 // Effect Creation
 // ============================================================================
 
+// Determine cast effect style from spell school:
+//   Spray  = Alteration, Abjuration (protective/healing — outward hand sparks)
+//   Smolder = Evocation, Conjuration, Divination (offensive/summoning — orbital glow)
+bool SpellVisualFX::isSprayCastStyle(uint32_t spell_id) const
+{
+    if (m_spell_db) {
+        const SpellData* spell = m_spell_db->getSpell(spell_id);
+        if (spell) {
+            SpellSchool school = spell->getSchool();
+            return school == SpellSchool::Alteration || school == SpellSchool::Abjuration;
+        }
+    }
+    return false;
+}
+
 uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
-        // Remove any existing cast glow for this caster
+        // Remove any existing cast glow for this caster (center + both hands)
         m_particle_manager->removeSpellEffectsForEntity(caster_id);
+        m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id));
+        m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id));
 
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::CastGlow(c, spell_id);
+        bool spray = isSprayCastStyle(spell_id);
+        auto def = spray
+            ? EQT::Graphics::Environment::SpellPresets::CastSpray(c, spell_id)
+            : EQT::Graphics::Environment::SpellPresets::CastGlow(c, spell_id);
         // Override emitter lifetime to match cast duration
         float durSec = duration_ms / 1000.0f;
-        for (auto& e : def.emitters) e.config.emitterLifetime = durSec;
-        return m_particle_manager->createSpellEffect(def, caster_id, 0, durSec);
+        for (auto& e : def.emitters) {
+            e.config.emitterLifetime = durSec;
+            if (!spray) e.config.orbitalRadius = 0.4f;  // Tight orbit for hand bones
+            e.positionOffset = glm::vec3(0.0f);
+        }
+
+        // Try hand bones first — create effect at each hand
+        uint16_t rhId = rightHandEntityId(caster_id);
+        uint16_t lhId = leftHandEntityId(caster_id);
+        glm::vec3 rhPos, lhPos, centerPos;
+        bool hasRightHand = m_particle_manager->resolveEntityPosition(rhId, rhPos);
+        bool hasLeftHand  = m_particle_manager->resolveEntityPosition(lhId, lhPos);
+        bool hasCenter    = m_particle_manager->resolveEntityPosition(caster_id, centerPos);
+
+        LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spray={} RH={} ({:.1f},{:.1f},{:.1f}) "
+                 "LH={} ({:.1f},{:.1f},{:.1f}) center={} ({:.1f},{:.1f},{:.1f})",
+                 caster_id, spray,
+                 hasRightHand, rhPos.x, rhPos.y, rhPos.z,
+                 hasLeftHand, lhPos.x, lhPos.y, lhPos.z,
+                 hasCenter, centerPos.x, centerPos.y, centerPos.z);
+
+        if (hasRightHand || hasLeftHand) {
+            if (hasRightHand)
+                m_particle_manager->createSpellEffect(def, rhId, 0, durSec, spray);
+            if (hasLeftHand)
+                m_particle_manager->createSpellEffect(def, lhId, 0, durSec, spray);
+        } else {
+            // Fallback: entity center (no hand bones — placeholder model or non-humanoid)
+            m_particle_manager->createSpellEffect(def, caster_id, 0, durSec, spray);
+        }
+        return 1;
     }
 #endif
     // Check if already has a cast glow
@@ -646,6 +695,8 @@ void SpellVisualFX::removeCastGlow(uint16_t caster_id)
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
         m_particle_manager->removeSpellEffectsForEntity(caster_id);
+        m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id));
+        m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id));
         return;
     }
 #endif
@@ -683,6 +734,8 @@ void SpellVisualFX::removeAllForEntity(uint16_t entity_id)
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
         m_particle_manager->removeSpellEffectsForEntity(entity_id);
+        m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(entity_id));
+        m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(entity_id));
         // Fall through to also clean up any Irrlicht scene nodes
     }
 #endif

@@ -542,8 +542,8 @@ void triggerSpellTestCast() {
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
 
-        bool isSpray = (castEffectType == CastEffectType::Spray);
-        auto def = isSpray ? SpellPresets::CastSpray(c) : SpellPresets::CastGlow(c);
+        bool isSpray = spellVisualFX->isSprayCastStyle(spell->id);
+        auto def = isSpray ? SpellPresets::CastSpray(c, spell->id) : SpellPresets::CastGlow(c, spell->id);
         float durSec = spellTestCastDuration;
         for (auto& e : def.emitters) {
             e.config.emitterLifetime = durSec;
@@ -1013,15 +1013,7 @@ public:
                     }
                     return true;
                 case KEY_F8:
-                    // F8: Toggle cast effect type (Smolder / Spray)
-                    if (spellTestMode) {
-                        castEffectType = (castEffectType == CastEffectType::Smolder)
-                            ? CastEffectType::Spray : CastEffectType::Smolder;
-                        std::cout << "Cast effect: "
-                                  << (castEffectType == CastEffectType::Smolder ? "Smolder" : "Spray")
-                                  << std::endl;
-                        return true;
-                    }
+                    // F8: (reserved — cast effect style now auto-detected from spell school)
                     break;
                 default:
                     // Check if it's a number key for spell casting (1-9, 0)
@@ -3192,12 +3184,27 @@ int main(int argc, char* argv[]) {
                 font->draw(wModeStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
                 hudY += lineHeight;
 
-                // Effect type
-                std::string effectStr = "[F8] Effect: " +
-                    std::string(castEffectType == CastEffectType::Smolder ? "SMOLDER" : "SPRAY");
-                std::wstring wEffectStr(effectStr.begin(), effectStr.end());
-                font->draw(wEffectStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), valueColor);
-                hudY += lineHeight;
+                // Cast effect style (auto-detected from spell school)
+                {
+                    std::string styleLabel = "SMOLDER";
+                    std::string schoolLabel = "?";
+                    if (!spellTestSpellList.empty() && spellTestSpellIndex < static_cast<int>(spellTestSpellList.size()) && spellVisualFX) {
+                        const auto* curSpell = spellTestSpellList[spellTestSpellIndex];
+                        bool spray = spellVisualFX->isSprayCastStyle(curSpell->id);
+                        styleLabel = spray ? "SPRAY" : "SMOLDER";
+                        switch (curSpell->getSchool()) {
+                            case EQ::SpellSchool::Abjuration:  schoolLabel = "Abjuration"; break;
+                            case EQ::SpellSchool::Alteration:  schoolLabel = "Alteration"; break;
+                            case EQ::SpellSchool::Conjuration: schoolLabel = "Conjuration"; break;
+                            case EQ::SpellSchool::Divination:  schoolLabel = "Divination"; break;
+                            case EQ::SpellSchool::Evocation:   schoolLabel = "Evocation"; break;
+                        }
+                    }
+                    std::string effectStr = "Cast: " + styleLabel + " (" + schoolLabel + ")";
+                    std::wstring wEffectStr(effectStr.begin(), effectStr.end());
+                    font->draw(wEffectStr.c_str(), core::rect<s32>(10, hudY, 400, hudY + lineHeight), dimColor);
+                    hudY += lineHeight;
+                }
 
                 // Cast state
                 if (spellTestCasting && spellTestCurrentSpell) {
