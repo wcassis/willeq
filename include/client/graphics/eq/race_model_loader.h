@@ -164,6 +164,9 @@ public:
     // Clear cached meshes (call after toggling old/new models)
     void clearCache();
 
+    // Clear mesh caches for zone transition (keeps model data, forces fresh mesh/texture rebuild)
+    void clearMeshCaches();
+
 private:
     // Load model from a specific S3D file
     bool loadModelFromS3D(const std::string& s3dPath, uint16_t raceId, uint8_t gender);

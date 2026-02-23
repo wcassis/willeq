@@ -2884,6 +2884,13 @@ void IrrlichtRenderer::unloadZone() {
 
     // Clear entity renderer
     if (entityRenderer_) {
+        // Clear mesh caches first to force fresh mesh/texture rebuild on next zone-in.
+        // Keeps model data (geometry, skeletons, S3D archives) cached for performance.
+        // Fixes garbled player textures on re-zone caused by stale texture pointers
+        // in cached animated meshes.
+        if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+            rml->clearMeshCaches();
+        }
         entityRenderer_->clearEntities();
     }
 

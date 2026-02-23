@@ -1009,5 +1009,11 @@ void ZoneMeshBuilder::setConstrainedTextureCache(ConstrainedTextureCache* cache)
     constrainedCache_ = cache;
 }
 
+void ZoneMeshBuilder::clearTextureCache() {
+    textureCache_.clear();
+    pendingTextures_.clear();
+    texturesWithAlpha_.clear();
+}
+
 } // namespace Graphics
 } // namespace EQT
