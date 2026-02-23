@@ -1059,6 +1059,12 @@ void IrrlichtRenderer::hideLoadingScreen() {
     lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
     lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
     forcePvsUpdate_ = true;
+
+    // Release duplicate character data from zone source. RaceModelLoader independently
+    // loads _chr.s3d into its own cache, so currentZone_->characters is an unused copy.
+    if (currentZone_) {
+        currentZone_->clearCharacterData();
+    }
 }
 
 void IrrlichtRenderer::shutdown() {
@@ -2635,8 +2641,14 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 
     drawLoadingScreen(scaleProgress(0.95f), L"Configuring camera...");
 
-    // Position camera at zone center
+    // Position camera at zone center and cache bounds for runtime use
     if (currentZone_ && currentZone_->geometry) {
+        zoneBoundsMinX_ = currentZone_->geometry->minX;
+        zoneBoundsMaxX_ = currentZone_->geometry->maxX;
+        zoneBoundsMinY_ = currentZone_->geometry->minY;
+        zoneBoundsMaxY_ = currentZone_->geometry->maxY;
+        zoneBoundsValid_ = true;
+
         float centerX = (currentZone_->geometry->minX + currentZone_->geometry->maxX) / 2.0f;
         float centerY = (currentZone_->geometry->minY + currentZone_->geometry->maxY) / 2.0f;
         float maxZ = currentZone_->geometry->maxZ;
@@ -2976,6 +2988,7 @@ void IrrlichtRenderer::unloadZone() {
     currentZone_.reset();
     currentZoneName_.clear();
     isIndoorZone_ = false;
+    zoneBoundsValid_ = false;
 }
 
 void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
@@ -6099,13 +6112,12 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
     // the server Z (e.g., snapping from 3.75 to 0) causing player/NPC Z mismatch.
 
     // Check if player is within zone geometry bounds before following
+    // Uses cached bounds — geometry vectors may have been released after zone load
     bool playerInBounds = true;
-    if (currentZone_ && currentZone_->geometry) {
-        const auto& geom = *currentZone_->geometry;
-        // Use a margin around the zone bounds (player can be slightly outside)
+    if (zoneBoundsValid_) {
         float margin = 500.0f;
-        if (x < geom.minX - margin || x > geom.maxX + margin ||
-            y < geom.minY - margin || y > geom.maxY + margin) {
+        if (x < zoneBoundsMinX_ - margin || x > zoneBoundsMaxX_ + margin ||
+            y < zoneBoundsMinY_ - margin || y > zoneBoundsMaxY_ + margin) {
             playerInBounds = false;
         }
     }
@@ -9656,6 +9668,22 @@ void IrrlichtRenderer::initDeferredEnvironmentSystems() {
     // Apply saved display settings
     applyEnvironmentalDisplaySettings();
 
+    // Release combined zone geometry vectors now that all deferred systems are initialized.
+    // The combined geometry (all regions merged) is only needed during zone loading for
+    // mesh building, PVS setup, and detail init. Runtime bounds checks use cached
+    // zoneBounds*_ members; per-region rebuilds use wldLoader->getGeometryForRegion().
+    // Only release when detail system won't need it (disabled on constrained devices).
+    if (currentZone_ && currentZone_->geometry && !detailManager_) {
+        size_t before = currentZone_->geometry->getMemoryUsage();
+        currentZone_->geometry->vertices.clear();
+        currentZone_->geometry->vertices.shrink_to_fit();
+        currentZone_->geometry->triangles.clear();
+        currentZone_->geometry->triangles.shrink_to_fit();
+        size_t after = currentZone_->geometry->getMemoryUsage();
+        LOG_INFO(MOD_GRAPHICS, "Released combined zone geometry vectors: {:.1f} MB freed",
+                 (before - after) / (1024.0f * 1024.0f));
+    }
+
     LOG_INFO(MOD_GRAPHICS, "Deferred environment systems initialized for zone '{}'", currentZoneName_);
 }
 
@@ -11449,12 +11477,13 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     lines.push_back("--- Graphics ---");
 
     // --- Texture Cache ---
+    // Note: texture cache textures are created via driver->addTexture() and already
+    // counted in GPU Textures below — do NOT add to totalEstimate here.
     if (constrainedTextureCache_) {
         size_t used = constrainedTextureCache_->getCurrentUsage();
         size_t limit = constrainedTextureCache_->getMemoryLimit();
         size_t count = constrainedTextureCache_->getTextureCount();
-        totalEstimate += used;
-        lines.push_back(fmt::format("[Texture Cache] {} / {} ({} textures)",
+        lines.push_back(fmt::format("[Texture Cache] {} / {} ({} textures, GPU cost in GPU Textures)",
             formatBytes(used), formatBytes(limit), count));
         lines.push_back(fmt::format("  Hits: {}  Misses: {}  Hit rate: {:.1f}%  Evictions: {}",
             constrainedTextureCache_->getCacheHits(),

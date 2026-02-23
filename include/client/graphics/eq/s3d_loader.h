@@ -182,6 +182,15 @@ struct S3DZone {
         return total;
     }
 
+    // Release character model data (geometry, skeletons, textures).
+    // The renderer's RaceModelLoader independently loads _chr.s3d into its own cache,
+    // so zone->characters/characterTextures are unused duplicates after zone loading.
+    void clearCharacterData() {
+        characters.clear();
+        characters.shrink_to_fit();
+        characterTextures.clear();
+    }
+
     // Release raw pixel data from all texture infos (zone, object, character).
     // Call after all Irrlicht textures and animated texture frames have been uploaded.
     // Returns the number of bytes freed.

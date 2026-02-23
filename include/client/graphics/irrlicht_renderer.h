@@ -1206,6 +1206,11 @@ private:
     bool fireEffectsEnabled_ = true;  // Fire light flickering and ember/smoke particles
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
+    // Zone geometry bounds cache (survives geometry vector release)
+    float zoneBoundsMinX_ = 0, zoneBoundsMaxX_ = 0;
+    float zoneBoundsMinY_ = 0, zoneBoundsMaxY_ = 0;
+    bool zoneBoundsValid_ = false;
+
     // Player position (for Follow and FirstPerson modes)
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;
     float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
