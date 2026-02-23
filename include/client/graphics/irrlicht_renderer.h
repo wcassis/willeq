@@ -361,6 +361,14 @@ struct SortedRegionEntry {
     irr::scene::IMeshSceneNode* node;
 };
 
+// Entry for material-sorted zone draw list (mesh buffer level)
+struct ZoneDrawEntry {
+    uint32_t materialKey;   // (materialType << 16) | textureIdHash
+    float distanceSq;
+    irr::scene::IMeshBuffer* buffer;
+    irr::core::matrix4 worldMat;
+};
+
 // Main Irrlicht renderer class
 class IrrlichtRenderer {
 public:
@@ -1026,7 +1034,12 @@ private:
     // Manual zone draw (front-to-back sorting and portal occlusion)
     bool manualZoneDrawEnabled_ = false;
     std::vector<SortedRegionEntry> sortedZoneDrawList_;
+    std::vector<ZoneDrawEntry> sortedDrawEntries_;  // Material-sorted mesh buffer draw list
     void drawZoneGeometrySorted();
+
+    // Hardware buffer (VBO/EBO) helpers for static zone geometry
+    void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
+    void deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
 
     // Portal occlusion system
     std::unique_ptr<PortalSystem> portalSystem_;

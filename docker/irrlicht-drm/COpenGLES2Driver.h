@@ -19,6 +19,7 @@
 #define EMT_CUSTOM_BASE 256
 
 #include <GLES2/gl2.h>
+#include <unordered_map>
 
 namespace irr
 {
@@ -60,6 +61,10 @@ struct SOGLES2State
     // Color mask
     bool colorMaskR, colorMaskG, colorMaskB, colorMaskA;
 
+    // Bound buffers
+    GLuint boundVBO;
+    GLuint boundEBO;
+
     // Bound textures
     GLuint boundTexture[2];  // Unit 0 and 1
     GLenum activeTextureUnit;
@@ -90,6 +95,8 @@ struct SOGLES2State
         stencilDPFail = GL_KEEP;
         stencilDPPass = GL_KEEP;
         colorMaskR = colorMaskG = colorMaskB = colorMaskA = true;
+        boundVBO = 0;
+        boundEBO = 0;
         boundTexture[0] = boundTexture[1] = 0;
         activeTextureUnit = GL_TEXTURE0;
         viewportX = viewportY = 0;
@@ -150,6 +157,17 @@ struct SOGLES2CustomShader
     GLuint program;
     IShaderConstantSetCallBack* callback;
     E_MATERIAL_TYPE baseMaterial;
+};
+
+// Hardware buffer (VBO/EBO) for static mesh data uploaded to GPU once
+struct SHWBuffer
+{
+    GLuint vbo = 0;       // Vertex buffer object
+    GLuint ebo = 0;       // Element (index) buffer object
+    u32 vertexCount = 0;
+    u32 indexCount = 0;
+    E_VERTEX_TYPE vType = EVT_STANDARD;
+    u32 mappedVertexCount = 0;  // Tracks data validity
 };
 
 class COpenGLES2Driver : public CNullDriver, public IMaterialRendererServices
@@ -303,6 +321,11 @@ public:
         s32 userData=0,
         E_GPU_SHADING_LANGUAGE shadingLanguage=EGSL_DEFAULT);
 
+    // Hardware buffer (VBO/EBO) management for static geometry
+    bool createStaticHardwareBuffer(const scene::IMeshBuffer* mb);
+    void deleteStaticHardwareBuffer(const scene::IMeshBuffer* mb);
+    void deleteAllHardwareBuffers();
+
     // Invalidate texture state tracking (call after raw GL texture ops)
     void invalidateTextureState();
 
@@ -383,6 +406,9 @@ private:
 
     // 2D rendering state
     bool Is2DMode;
+
+    // Hardware buffer cache (VBO/EBO for static mesh data)
+    std::unordered_map<const scene::IMeshBuffer*, SHWBuffer> HWBufferMap;
 
     // Custom shader materials (from addHighLevelShaderMaterial)
     core::array<SOGLES2CustomShader> CustomShaders;

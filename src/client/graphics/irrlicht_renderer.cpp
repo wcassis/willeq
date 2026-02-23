@@ -32,6 +32,15 @@
 #endif
 #include <EGL/egl.h>
 #endif
+
+// Bridge functions for GLES2 static VBO management.
+// Defined in COpenGLES2Driver.cpp (compiled into Irrlicht library), declared here
+// to avoid including the full COpenGLES2Driver.h (which depends on Irrlicht-internal headers).
+#ifdef EQT_HAS_GLES2
+extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
+extern void gles2DeleteStaticHWBuffer(void* driver, const void* meshBuffer);
+extern void gles2DeleteAllStaticHWBuffers(void* driver);
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -2810,13 +2819,15 @@ void IrrlichtRenderer::unloadZone() {
 
     // Remove zone mesh
     if (zoneMeshNode_) {
+        deleteMeshHardwareBuffers(zoneMeshNode_);
         zoneMeshNode_->remove();
         zoneMeshNode_ = nullptr;
     }
 
-    // Remove PVS region mesh nodes
+    // Remove PVS region mesh nodes (delete VBOs before removing nodes)
     for (auto& [regionIdx, node] : regionMeshNodes_) {
         if (node) {
+            deleteMeshHardwareBuffers(node);
             node->remove();
         }
     }
@@ -2824,6 +2835,7 @@ void IrrlichtRenderer::unloadZone() {
     regionBoundingBoxes_.clear();
 
     if (fallbackMeshNode_) {
+        deleteMeshHardwareBuffers(fallbackMeshNode_);
         fallbackMeshNode_->remove();
         fallbackMeshNode_ = nullptr;
     }
@@ -2842,6 +2854,7 @@ void IrrlichtRenderer::unloadZone() {
     // Reset manual zone draw state
     manualZoneDrawEnabled_ = false;
     sortedZoneDrawList_.clear();
+    sortedDrawEntries_.clear();
     portalSystem_.reset();
     portalOcclusionEnabled_ = false;
     portalOcclusionEligible_ = false;
@@ -3318,6 +3331,9 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
 
                 regionMeshNodes_[regionIdx] = node;
 
+                // Upload static VBOs for zone geometry (GLES2 only)
+                uploadMeshHardwareBuffers(node);
+
                 // Compute world-space bounding box from actual vertex data (EQ coords).
                 // WLD fragment headers often store zero bounds for region meshes,
                 // so we compute from vertices instead. Vertices are relative to center.
@@ -3518,6 +3534,9 @@ void IrrlichtRenderer::createZoneMeshWithPvs() {
                         fallbackMeshNode_->getMaterial(i).Lighting = lightingEnabled_;
                         fallbackMeshNode_->getMaterial(i).BackfaceCulling = false;
                     }
+
+                    // Upload static VBOs for fallback geometry (GLES2 only)
+                    uploadMeshHardwareBuffers(fallbackMeshNode_);
 
                     LOG_INFO(MOD_GRAPHICS, "Created fallback mesh with {} vertices, {} triangles",
                         fallbackGeom->vertices.size(), fallbackGeom->triangles.size());
@@ -4084,19 +4103,110 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
     }
 }
 
+// ======== uploadMeshHardwareBuffers ========
+// Uploads VBOs/EBOs for all mesh buffers in a mesh node (GLES2 only).
+void IrrlichtRenderer::uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node) {
+#ifdef EQT_HAS_GLES2
+    if (!node || !driver_ || driver_->getDriverType() != irr::video::EDT_OGLES2)
+        return;
+
+    irr::scene::IMesh* mesh = node->getMesh();
+    if (!mesh) return;
+
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (buf && buf->getVertexCount() > 0)
+            gles2CreateStaticHWBuffer(driver_, buf);
+    }
+#endif
+}
+
+// ======== deleteMeshHardwareBuffers ========
+// Deletes VBOs/EBOs for all mesh buffers in a mesh node (GLES2 only).
+void IrrlichtRenderer::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* node) {
+#ifdef EQT_HAS_GLES2
+    if (!node || !driver_ || driver_->getDriverType() != irr::video::EDT_OGLES2)
+        return;
+
+    irr::scene::IMesh* mesh = node->getMesh();
+    if (!mesh) return;
+
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (buf)
+            gles2DeleteStaticHWBuffer(driver_, buf);
+    }
+#endif
+}
+
 // ======== drawZoneGeometrySorted ========
-// Draws zone region meshes in front-to-back order for early-Z rejection.
+// Draws zone geometry sorted by material (primary) and distance (secondary).
+// Material sorting minimizes expensive setMaterial() state changes (glUseProgram,
+// glBindTexture, glUniform*). Distance sorting within each material group
+// preserves front-to-back order for early-Z rejection on tile-based GPUs.
 void IrrlichtRenderer::drawZoneGeometrySorted() {
     if (sortedZoneDrawList_.empty() && !fallbackMeshNode_) return;
 
+    // Collect all visible mesh buffers into a flat draw list
+    sortedDrawEntries_.clear();
+
+    auto collectMeshBuffers = [this](irr::scene::IMeshSceneNode* node, float distSq) {
+        irr::scene::IMesh* mesh = node->getMesh();
+        if (!mesh) return;
+
+        irr::core::matrix4 worldMat;
+        worldMat.setTranslation(node->getPosition());
+
+        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            const irr::video::SMaterial& mat = buf->getMaterial();
+
+            // Material key: (materialType << 16) | textureID
+            // Groups all same-shader, same-texture draws together
+            uint32_t texId = 0;
+            if (mat.getTexture(0)) {
+                // Use low 16 bits of texture pointer as a hash
+                texId = static_cast<uint32_t>(
+                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
+            }
+            uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+
+            sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat});
+        }
+    };
+
     for (const auto& entry : sortedZoneDrawList_) {
         if (!entry.node) continue;
-        drawRegionMesh(entry.regionIdx);
+
+        auto it = regionMeshNodes_.find(entry.regionIdx);
+        if (it == regionMeshNodes_.end() || !it->second) continue;
+
+        collectMeshBuffers(it->second, entry.distanceSq);
     }
 
-    // Draw fallback mesh (geometry not in any BSP region) last
+    // Add fallback mesh buffers (always drawn last — use max distance)
     if (fallbackMeshNode_) {
-        drawRegionMesh(SIZE_MAX);  // SIZE_MAX signals fallback
+        collectMeshBuffers(fallbackMeshNode_, 1e18f);
+    }
+
+    // Sort by material key (primary), distance (secondary)
+    std::sort(sortedDrawEntries_.begin(), sortedDrawEntries_.end(),
+        [](const ZoneDrawEntry& a, const ZoneDrawEntry& b) {
+            if (a.materialKey != b.materialKey)
+                return a.materialKey < b.materialKey;
+            return a.distanceSq < b.distanceSq;
+        });
+
+    // Draw — setMaterial() is called every time because custom shader callbacks
+    // need the current world matrix. However, sorting by material ensures the
+    // driver's state tracking (SOGLES2State) skips redundant GL calls for
+    // blend/depth/cull/texture/program when consecutive draws share the same material.
+    for (const auto& de : sortedDrawEntries_) {
+        driver_->setTransform(irr::video::ETS_WORLD, de.worldMat);
+        driver_->setMaterial(de.buffer->getMaterial());
+        driver_->drawMeshBuffer(de.buffer);
     }
 }
 
@@ -4343,6 +4453,9 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     // Update renderer state
     regionMeshNodes_[regionIdx] = node;
 
+    // Upload static VBOs for zone geometry (GLES2 only)
+    uploadMeshHardwareBuffers(node);
+
     // Register with animated texture manager
     if (animatedTextureManager_)
         animatedTextureManager_->addSceneNode(node);
@@ -4403,6 +4516,7 @@ void IrrlichtRenderer::processFrameLazyLoad() {
         for (size_t idx : evicted) {
             auto it = regionMeshNodes_.find(idx);
             if (it != regionMeshNodes_.end() && it->second) {
+                deleteMeshHardwareBuffers(it->second);
                 if (animatedTextureManager_)
                     animatedTextureManager_->removeSceneNode(it->second);
                 it->second->remove();
@@ -9644,6 +9758,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         for (size_t idx : evicted) {
             auto it = regionMeshNodes_.find(idx);
             if (it != regionMeshNodes_.end() && it->second) {
+                deleteMeshHardwareBuffers(it->second);
                 if (animatedTextureManager_)
                     animatedTextureManager_->removeSceneNode(it->second);
                 it->second->remove();

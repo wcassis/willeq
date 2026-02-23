@@ -48,6 +48,9 @@ COpenGLES2Driver::COpenGLES2Driver(const SIrrlichtCreationParameters& params,
 
 COpenGLES2Driver::~COpenGLES2Driver()
 {
+    // Clean up hardware buffers (VBOs/EBOs)
+    deleteAllHardwareBuffers();
+
     // Clean up custom shader callbacks
     for (u32 i = 0; i < CustomShaders.size(); i++) {
         if (CustomShaders[i].callback)
@@ -411,6 +414,16 @@ void COpenGLES2Driver::setOrthoProjection()
 {
     if (Is2DMode)
         return;
+
+    // Unbind VBO/EBO — 2D paths use client-side CPU pointers
+    if (state_.boundVBO != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    if (state_.boundEBO != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
 
     // Set up ortho projection for 2D rendering
     const core::dimension2d<u32>& renderSize = getCurrentRenderTargetSize();
@@ -793,6 +806,16 @@ void COpenGLES2Driver::drawVertexPrimitiveList(const void* vertices, u32 vertexC
 
     restore3DProjection();
 
+    // Unbind VBO/EBO — this path uses client-side CPU pointers
+    if (state_.boundVBO != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    if (state_.boundEBO != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
+
     // Determine stride and attribute offsets based on vertex type
     GLsizei stride;
     bool hasTCoords2 = false;
@@ -888,6 +911,71 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
 {
     if (!mb)
         return;
+
+    // Check for hardware buffer (VBO/EBO) — fast path for static geometry
+    auto it = HWBufferMap.find(mb);
+    if (it != HWBufferMap.end()) {
+        const SHWBuffer& hwb = it->second;
+
+        restore3DProjection();
+
+        // Determine stride and whether we have 2 texture coords
+        GLsizei stride;
+        bool hasTCoords2 = false;
+        switch (hwb.vType) {
+            case EVT_STANDARD:  stride = sizeof(S3DVertex); break;
+            case EVT_2TCOORDS:  stride = sizeof(S3DVertex2TCoords); hasTCoords2 = true; break;
+            case EVT_TANGENTS:  stride = sizeof(S3DVertexTangents); break;
+            default: return;
+        }
+
+        // Bind VBO
+        if (state_.boundVBO != hwb.vbo) {
+            glBindBuffer(GL_ARRAY_BUFFER, hwb.vbo);
+            state_.boundVBO = hwb.vbo;
+        }
+
+        // Set vertex attribute pointers with byte offsets into VBO (not CPU pointers)
+        // S3DVertex layout: Pos(12) + Normal(12) + Color(4) + TCoords(8) = 36
+        glVertexAttribPointer(EOGLES2VA_POSITION, 3, GL_FLOAT, GL_FALSE, stride, (const void*)0);
+        glEnableVertexAttribArray(EOGLES2VA_POSITION);
+
+        glVertexAttribPointer(EOGLES2VA_NORMAL, 3, GL_FLOAT, GL_FALSE, stride, (const void*)12);
+        glEnableVertexAttribArray(EOGLES2VA_NORMAL);
+
+        glVertexAttribPointer(EOGLES2VA_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (const void*)24);
+        glEnableVertexAttribArray(EOGLES2VA_COLOR);
+
+        glVertexAttribPointer(EOGLES2VA_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, stride, (const void*)28);
+        glEnableVertexAttribArray(EOGLES2VA_TEXCOORD0);
+
+        if (hasTCoords2) {
+            glVertexAttribPointer(EOGLES2VA_TEXCOORD1, 2, GL_FLOAT, GL_FALSE, stride, (const void*)36);
+            glEnableVertexAttribArray(EOGLES2VA_TEXCOORD1);
+        } else {
+            glDisableVertexAttribArray(EOGLES2VA_TEXCOORD1);
+        }
+
+        // Bind EBO and draw
+        if (state_.boundEBO != hwb.ebo) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, hwb.ebo);
+            state_.boundEBO = hwb.ebo;
+        }
+
+        glDrawElements(GL_TRIANGLES, hwb.indexCount, GL_UNSIGNED_SHORT, (const void*)0);
+        return;
+    }
+
+    // Fallback: client-side vertex arrays (for entities, doors, UI, etc.)
+    // Unbind VBO/EBO so glVertexAttribPointer uses CPU pointers
+    if (state_.boundVBO != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    if (state_.boundEBO != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
 
     drawVertexPrimitiveList(mb->getVertices(), mb->getVertexCount(),
                             mb->getIndices(), mb->getIndexCount() / 3,
@@ -1489,6 +1577,92 @@ void COpenGLES2Driver::enableMaterial2D(bool enable)
 }
 
 // ============================================================================
+// Hardware Buffer (VBO/EBO) Management
+// ============================================================================
+
+bool COpenGLES2Driver::createStaticHardwareBuffer(const scene::IMeshBuffer* mb)
+{
+    if (!mb || mb->getVertexCount() == 0 || mb->getIndexCount() == 0)
+        return false;
+
+    // Already exists?
+    auto it = HWBufferMap.find(mb);
+    if (it != HWBufferMap.end())
+        return true;
+
+    // Determine vertex stride
+    GLsizei stride;
+    switch (mb->getVertexType()) {
+        case EVT_STANDARD:    stride = sizeof(S3DVertex); break;         // 36 bytes
+        case EVT_2TCOORDS:    stride = sizeof(S3DVertex2TCoords); break; // 44 bytes
+        case EVT_TANGENTS:    stride = sizeof(S3DVertexTangents); break; // 60 bytes
+        default: return false;
+    }
+
+    SHWBuffer hwb;
+    hwb.vertexCount = mb->getVertexCount();
+    hwb.indexCount = mb->getIndexCount();
+    hwb.vType = mb->getVertexType();
+    hwb.mappedVertexCount = hwb.vertexCount;
+
+    // Create and upload VBO
+    glGenBuffers(1, &hwb.vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, hwb.vbo);
+    glBufferData(GL_ARRAY_BUFFER, hwb.vertexCount * stride,
+                 mb->getVertices(), GL_STATIC_DRAW);
+    state_.boundVBO = hwb.vbo;
+
+    // Create and upload EBO (16-bit indices only — Mali-400 constraint)
+    glGenBuffers(1, &hwb.ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, hwb.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, hwb.indexCount * sizeof(u16),
+                 mb->getIndices(), GL_STATIC_DRAW);
+    state_.boundEBO = hwb.ebo;
+
+    HWBufferMap[mb] = hwb;
+    return true;
+}
+
+void COpenGLES2Driver::deleteStaticHardwareBuffer(const scene::IMeshBuffer* mb)
+{
+    auto it = HWBufferMap.find(mb);
+    if (it == HWBufferMap.end())
+        return;
+
+    SHWBuffer& hwb = it->second;
+
+    // Unbind if currently bound
+    if (state_.boundVBO == hwb.vbo) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    if (state_.boundEBO == hwb.ebo) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
+
+    if (hwb.vbo) glDeleteBuffers(1, &hwb.vbo);
+    if (hwb.ebo) glDeleteBuffers(1, &hwb.ebo);
+
+    HWBufferMap.erase(it);
+}
+
+void COpenGLES2Driver::deleteAllHardwareBuffers()
+{
+    for (auto& [mb, hwb] : HWBufferMap) {
+        if (hwb.vbo) glDeleteBuffers(1, &hwb.vbo);
+        if (hwb.ebo) glDeleteBuffers(1, &hwb.ebo);
+    }
+    HWBufferMap.clear();
+
+    // Reset bound buffer state
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    state_.boundVBO = 0;
+    state_.boundEBO = 0;
+}
+
+// ============================================================================
 // Factory function
 // ============================================================================
 
@@ -1505,5 +1679,31 @@ IVideoDriver* createOpenGLES2Driver(const SIrrlichtCreationParameters& params,
 
 } // end namespace video
 } // end namespace irr
+
+// ============================================================================
+// Bridge functions for external VBO management (called from WillEQ renderer)
+// These avoid the need for external code to include COpenGLES2Driver.h
+// (which depends on Irrlicht-internal headers like CNullDriver.h).
+// ============================================================================
+
+bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    auto* mb = static_cast<const irr::scene::IMeshBuffer*>(meshBuffer);
+    return d->createStaticHardwareBuffer(mb);
+}
+
+void gles2DeleteStaticHWBuffer(void* driver, const void* meshBuffer)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    auto* mb = static_cast<const irr::scene::IMeshBuffer*>(meshBuffer);
+    d->deleteStaticHardwareBuffer(mb);
+}
+
+void gles2DeleteAllStaticHWBuffers(void* driver)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    d->deleteAllHardwareBuffers();
+}
 
 #endif // _IRR_COMPILE_WITH_OGLES2_
