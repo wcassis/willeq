@@ -107,7 +107,6 @@ void SpellTypeProcessor::processSpell(uint32_t spell_id, uint16_t caster_id,
             processGroupSpell(*spell, caster_id, caster_level);
             break;
 
-        case SpellTargetType::AEClientV1:
         case SpellTargetType::AEBard:
         case SpellTargetType::DirectionalAE:
         case SpellTargetType::UndeadAE:
@@ -121,6 +120,7 @@ void SpellTypeProcessor::processSpell(uint32_t spell_id, uint16_t caster_id,
             break;
 
         case SpellTargetType::Single:
+        case SpellTargetType::Bolt:
         case SpellTargetType::TargetOptional:
         case SpellTargetType::Animal:
         case SpellTargetType::Undead:

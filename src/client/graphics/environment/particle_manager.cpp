@@ -1250,7 +1250,8 @@ void ParticleManager::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emit
 uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
                                              uint16_t casterID, uint16_t targetID,
                                              float duration,
-                                             bool useDynamicDir) {
+                                             bool useDynamicDir,
+                                             float projectileTravelDuration) {
     if (!unifiedRendererInitialized_) return 0;
 
     SpellEffectInstance inst;
@@ -1262,6 +1263,9 @@ uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
     inst.maxDuration = duration;
     inst.def = def;
     inst.useDynamicDirection = useDynamicDir;
+    if (projectileTravelDuration > 0.0f) {
+        inst.projectileTravelDuration = projectileTravelDuration;
+    }
 
     // Create emitter states for each emitter definition
     for (int i = 0; i < static_cast<int>(def.emitters.size()); ++i) {
@@ -1276,6 +1280,44 @@ uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
 
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created spell effect '{}' id={} caster={} target={}",
               def.name, inst.effectID, casterID, targetID);
+
+    return activeSpellEffects_.back().effectID;
+}
+
+uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
+                                                       const glm::vec3& worldPos,
+                                                       float duration) {
+    if (!unifiedRendererInitialized_) return 0;
+
+    SpellEffectInstance inst;
+    inst.effectID = nextSpellEffectID_++;
+    inst.spellID = 0;
+    inst.casterEntityID = 0;
+    inst.targetEntityID = 0;
+    inst.groundTarget = worldPos;
+    inst.age = 0.0f;
+    inst.maxDuration = duration;
+    inst.def = def;
+
+    // Override all emitters to GROUND_TARGET if they aren't already projectile/target
+    for (auto& e : inst.def.emitters) {
+        if (e.attach == SpellAttach::CASTER) {
+            e.attach = SpellAttach::GROUND_TARGET;
+        }
+    }
+
+    for (int i = 0; i < static_cast<int>(def.emitters.size()); ++i) {
+        SpellEffectInstance::EmitterState es;
+        es.defIndex = i;
+        es.activeEmitterID = 0;
+        es.triggered = false;
+        inst.emitterStates.push_back(es);
+    }
+
+    activeSpellEffects_.push_back(std::move(inst));
+
+    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created spell effect '{}' id={} at ({:.1f},{:.1f},{:.1f})",
+              def.name, activeSpellEffects_.back().effectID, worldPos.x, worldPos.y, worldPos.z);
 
     return activeSpellEffects_.back().effectID;
 }
@@ -1407,6 +1449,12 @@ void ParticleManager::updateSpellEffects(float deltaTime) {
                         case SpellAttach::GROUND_TARGET:
                             attachPos = effect.groundTarget;
                             break;
+                        case SpellAttach::PROJECTILE_PATH:
+                            // Start at caster position, will lerp to target
+                            if (entityPosCallback_ && effect.casterEntityID != 0) {
+                                entityPosCallback_(effect.casterEntityID, attachPos);
+                            }
+                            break;
                     }
 
                     // Create the unified emitter
@@ -1417,6 +1465,20 @@ void ParticleManager::updateSpellEffects(float deltaTime) {
                     ae.attachEntityID = attachEntity;
                     ae.attachOffset = emDef.positionOffset;
                     ae.useDynamicDirection = effect.useDynamicDirection;
+
+                    // Set up projectile lerp state
+                    if (emDef.attach == SpellAttach::PROJECTILE_PATH) {
+                        ae.isProjectile = true;
+                        ae.projectileStartPos = attachPos;
+                        ae.targetEntityID = effect.targetEntityID;
+                        ae.travelDuration = effect.projectileTravelDuration;
+                        ae.travelElapsed = 0.0f;
+                        // Resolve initial target position
+                        if (entityPosCallback_ && effect.targetEntityID != 0) {
+                            entityPosCallback_(effect.targetEntityID, ae.projectileTargetPos);
+                        }
+                    }
+
                     unifiedEmitters_[ae.emitterID] = ae;
                     es.activeEmitterID = ae.emitterID;
 
@@ -1430,7 +1492,27 @@ void ParticleManager::updateSpellEffects(float deltaTime) {
                 auto emIt = unifiedEmitters_.find(es.activeEmitterID);
                 if (emIt != unifiedEmitters_.end()) {
                     auto& emitter = emIt->second;
-                    if (emitter.attachEntityID != 0 && entityPosCallback_) {
+
+                    // Projectile lerp: move emitter from start to target
+                    if (emitter.isProjectile) {
+                        emitter.travelElapsed += deltaTime;
+                        // Track moving target
+                        if (entityPosCallback_ && emitter.targetEntityID != 0) {
+                            glm::vec3 targetPos;
+                            if (entityPosCallback_(emitter.targetEntityID, targetPos)) {
+                                emitter.projectileTargetPos = targetPos;
+                            }
+                        }
+                        float t = (emitter.travelDuration > 0.0f)
+                            ? std::min(emitter.travelElapsed / emitter.travelDuration, 1.0f)
+                            : 1.0f;
+                        emitter.position = glm::mix(emitter.projectileStartPos,
+                                                     emitter.projectileTargetPos, t);
+                        if (t >= 1.0f) {
+                            emitter.active = false;
+                            effect.hitSignaled = true;  // triggers ON_HIT emitters
+                        }
+                    } else if (emitter.attachEntityID != 0 && entityPosCallback_) {
                         glm::vec3 entityPos;
                         if (entityPosCallback_(emitter.attachEntityID, entityPos)) {
                             emitter.position = entityPos;

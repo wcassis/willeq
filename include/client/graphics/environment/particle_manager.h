@@ -286,7 +286,17 @@ public:
     uint32_t createSpellEffect(const SpellEffectDef& def,
                                uint16_t casterID, uint16_t targetID,
                                float duration = 0.0f,
-                               bool useDynamicDir = false);
+                               bool useDynamicDir = false,
+                               float projectileTravelDuration = 0.0f);
+
+    /**
+     * Create a spell particle effect at a fixed world position (no entity attachment).
+     * Used for PBAE impacts, rain, ground circles at world coordinates.
+     * @return Effect ID for later removal
+     */
+    uint32_t createSpellEffectAtPosition(const SpellEffectDef& def,
+                                          const glm::vec3& worldPos,
+                                          float duration = 0.0f);
 
     /**
      * Remove a specific spell effect by ID.

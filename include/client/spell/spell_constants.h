@@ -49,7 +49,7 @@ constexpr uint8_t NUM_CLASSES = 16;
 
 enum class SpellTargetType : uint8_t {
     TargetOptional          = 0,   // Target optional
-    AEClientV1              = 1,   // AE (client v1)
+    Bolt                    = 1,   // Bolt (projectile to target, can hit geometry)
     GroupV1                 = 2,   // Group (v1)
     AECaster                = 3,   // AE caster (PB AE)
     GroupTeleport           = 4,   // Group teleport

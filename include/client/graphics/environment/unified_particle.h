@@ -167,6 +167,14 @@ struct ActiveEmitter {
     // Dynamic velocity direction (spray effects — updated each frame via callback)
     bool useDynamicDirection = false;
     glm::vec3 dynamicDirection{0.0f, 0.0f, 1.0f};  // Normalized direction for spray
+
+    // Projectile path (lerps from caster to target over travelDuration)
+    bool isProjectile = false;
+    glm::vec3 projectileStartPos{0.0f};
+    glm::vec3 projectileTargetPos{0.0f};
+    float travelDuration = 0.0f;
+    float travelElapsed = 0.0f;
+    uint16_t targetEntityID = 0;
 };
 
 // === Fire Emitter Presets ===

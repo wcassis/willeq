@@ -353,6 +353,33 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
 
 void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uint32_t spell_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::Projectile(c);
+
+        // Compute travel duration from distance
+        irr::core::vector3df srcPos, tgtPos;
+        if (m_entity_pos_callback) {
+            m_entity_pos_callback(caster_id, srcPos);
+            m_entity_pos_callback(target_id, tgtPos);
+        }
+        float dist = (tgtPos - srcPos).getLength();
+        float travelDuration = std::max(0.1f, dist / PROJECTILE_SPEED);
+
+        // Set trail emitter lifetime to match travel duration
+        if (!def.emitters.empty()) {
+            def.emitters[0].config.emitterLifetime = travelDuration;
+        }
+
+        m_particle_manager->createSpellEffect(
+            def, caster_id, target_id, travelDuration + 1.0f,
+            false, travelDuration);
+        return;
+    }
+#endif
     SpellFXInstance effect;
     effect.type = SpellFXType::ProjectileTravel;
     effect.spell_id = spell_id;
@@ -407,6 +434,17 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
 
 void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint32_t spell_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c);
+        glm::vec3 worldPos(pos.X, pos.Y, pos.Z);
+        m_particle_manager->createSpellEffectAtPosition(def, worldPos);
+        return;
+    }
+#endif
     SpellFXInstance effect;
     effect.type = SpellFXType::ImpactBurst;
     effect.spell_id = spell_id;
@@ -509,6 +547,16 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
 
 uint32_t SpellVisualFX::createBuffAura(uint16_t entity_id, uint32_t spell_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::BuffAura(c);
+        // Permanent — no duration, entity-attached
+        return m_particle_manager->createSpellEffect(def, entity_id, 0);
+    }
+#endif
     // Don't create duplicate auras
     if (hasBuffAura(entity_id, spell_id)) {
         return 0;
@@ -536,6 +584,18 @@ uint32_t SpellVisualFX::createBuffAura(uint16_t entity_id, uint32_t spell_id)
 void SpellVisualFX::createRainEffect(const irr::core::vector3df& center, float radius,
                                      uint32_t spell_id, float duration)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::SpellRain(c, radius);
+        for (auto& e : def.emitters) e.config.emitterLifetime = duration;
+        glm::vec3 worldPos(center.X, center.Y, center.Z);
+        m_particle_manager->createSpellEffectAtPosition(def, worldPos, duration);
+        return;
+    }
+#endif
     SpellFXInstance effect;
     effect.type = SpellFXType::RainEffect;
     effect.spell_id = spell_id;
@@ -552,6 +612,18 @@ void SpellVisualFX::createRainEffect(const irr::core::vector3df& center, float r
 void SpellVisualFX::createGroundCircle(const irr::core::vector3df& center, float radius,
                                        uint32_t spell_id, float duration)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        auto def = EQT::Graphics::Environment::SpellPresets::GroundCircle(c, radius);
+        for (auto& e : def.emitters) e.config.emitterLifetime = duration;
+        glm::vec3 worldPos(center.X, center.Y, center.Z);
+        m_particle_manager->createSpellEffectAtPosition(def, worldPos, duration);
+        return;
+    }
+#endif
     SpellFXInstance effect;
     effect.type = SpellFXType::GroundCircle;
     effect.spell_id = spell_id;
@@ -589,6 +661,12 @@ void SpellVisualFX::removeCastGlow(uint16_t caster_id)
 
 void SpellVisualFX::removeBuffAura(uint16_t entity_id, uint32_t spell_id)
 {
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        m_particle_manager->removeSpellEffectsForEntity(entity_id);
+        return;
+    }
+#endif
     for (size_t i = 0; i < m_effects.size(); ) {
         if (m_effects[i].type == SpellFXType::AuraPersistent &&
             m_effects[i].source_entity == entity_id &&

@@ -178,9 +178,11 @@ CastEffectType castEffectType = CastEffectType::Smolder;
 // Spell categories for filtering
 enum class SpellTestCategory : uint8_t {
     DirectDamage,
+    Bolt,
     DoT,
     AEDamage,
     PBAE,
+    AEBuff,
     Heal,
     Buff,
     Debuff,
@@ -189,7 +191,7 @@ enum class SpellTestCategory : uint8_t {
 };
 
 const char* spellTestCategoryNames[] = {
-    "Direct Damage", "DoT", "AE Damage", "PBAE",
+    "Direct Damage", "Bolt", "DoT", "AE Damage", "PBAE", "AE Buff",
     "Heal", "Buff", "Debuff", "Utility"
 };
 
@@ -235,17 +237,21 @@ const char* getResistTypeName(EQ::ResistType rt) {
 bool matchesCategory(const EQ::SpellData* spell, SpellTestCategory cat) {
     switch (cat) {
         case SpellTestCategory::DirectDamage:
-            return spell->isDamageSpell() && !spell->hasDuration() && !spell->isAESpell();
+            return spell->isDamageSpell() && !spell->hasDuration() && !spell->isAESpell() && !spell->isBoltSpell();
+        case SpellTestCategory::Bolt:
+            return spell->isBoltSpell();
         case SpellTestCategory::DoT:
             return spell->isDoTSpell();
         case SpellTestCategory::AEDamage:
             return spell->isDamageSpell() && spell->isAESpell() && !spell->isPBAE();
         case SpellTestCategory::PBAE:
             return spell->isPBAE();
+        case SpellTestCategory::AEBuff:
+            return spell->isAESpell() && !spell->isDamageSpell() && !spell->isPBAE();
         case SpellTestCategory::Heal:
             return spell->isHealSpell();
         case SpellTestCategory::Buff:
-            return spell->isBuffSpell();
+            return spell->isBuffSpell() && !spell->isAESpell();
         case SpellTestCategory::Debuff:
             return !spell->is_beneficial && spell->hasDuration() && !spell->isDamageSpell();
         case SpellTestCategory::Utility:
@@ -589,11 +595,14 @@ void completeSpellTestCast() {
     // Create appropriate effects based on spell type
     uint16_t effectTarget = spellTestSelfMode ? casterEntityId : targetEntityId;
 
-    if (spell->isDamageSpell() && !spell->isAESpell()) {
-        // Single target damage: projectile then impact
+    if (spell->isBoltSpell()) {
+        // Bolt: projectile from caster to target, impact on arrival
         if (!spellTestSelfMode) {
             spellVisualFX->createProjectile(casterEntityId, targetEntityId, spell->id);
         }
+        spellVisualFX->createImpact(effectTarget, spell->id);
+    } else if (spell->isDamageSpell() && !spell->isAESpell()) {
+        // Single target direct damage: instant impact on target
         spellVisualFX->createImpact(effectTarget, spell->id);
     } else if (spell->isPBAE()) {
         // PBAE: impact at caster position
@@ -601,12 +610,20 @@ void completeSpellTestCast() {
         if (animatedNode) casterPos = animatedNode->getAbsolutePosition();
         spellVisualFX->createImpactAtPosition(casterPos, spell->id);
     } else if (spell->isAESpell()) {
-        // Targeted AE: rain/ground circle at target
+        // Targeted AE: rain/ground circle at target's feet
         irr::core::vector3df targetPos;
+        irr::scene::IAnimatedMeshSceneNode* aeNode = nullptr;
         if (targetAnimatedNode && !spellTestSelfMode) {
-            targetPos = targetAnimatedNode->getAbsolutePosition();
+            aeNode = targetAnimatedNode;
         } else if (animatedNode) {
-            targetPos = animatedNode->getAbsolutePosition();
+            aeNode = animatedNode;
+        }
+        if (aeNode) {
+            targetPos = aeNode->getAbsolutePosition();
+            // Model origin is at center — lower to feet using bounding box
+            auto bbox = aeNode->getTransformedBoundingBox();
+            float halfHeight = (bbox.MaxEdge.Y - bbox.MinEdge.Y) * 0.5f;
+            targetPos.Y -= halfHeight;
         }
         float radius = spell->aoe_range > 0 ? spell->aoe_range * 0.1f : 5.0f;
         if (spell->isDamageSpell()) {
@@ -654,15 +671,14 @@ void cancelSpellTestCast() {
             animatedNode->playAnimation("p01", true, false);
         }
     }
-    // Also clear all lingering effects
+    // Also clear all lingering effects (Irrlicht scene nodes + GLES2 particles)
     if (spellVisualFX) {
         spellVisualFX->clearAllEffects();
         std::cout << "Effects cleared" << std::endl;
     }
 #ifdef EQT_HAS_GLES2
     if (particleManager) {
-        particleManager->removeSpellEffectsForEntity(casterRightHandEntityId);
-        particleManager->removeSpellEffectsForEntity(casterLeftHandEntityId);
+        particleManager->clearAllSpellEffects();
     }
 #endif
 }

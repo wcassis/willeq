@@ -20,6 +20,7 @@ enum class SpellAttach : uint8_t {
     CASTER = 0,
     TARGET = 1,
     GROUND_TARGET = 2,    // Fixed world position
+    PROJECTILE_PATH = 3,  // Lerps from caster to target
 };
 
 struct SpellEmitterDef {
@@ -58,6 +59,9 @@ struct SpellEffectInstance {
 
     // If true, emitters use direction callback for spray velocity
     bool useDynamicDirection = false;
+
+    // Projectile travel duration (seconds) — set by caller for PROJECTILE_PATH emitters
+    float projectileTravelDuration = 0.5f;
 };
 
 // === Spell Emitter Presets ===
@@ -68,6 +72,9 @@ namespace SpellPresets {
     SpellEffectDef SpellComplete(glm::vec4 color);
     SpellEffectDef Impact(glm::vec4 color);
     SpellEffectDef BuffAura(glm::vec4 color);
+    SpellEffectDef Projectile(glm::vec4 color);           // Trail + impact on arrival
+    SpellEffectDef SpellRain(glm::vec4 color, float radius);  // Falling particles in area
+    SpellEffectDef GroundCircle(glm::vec4 color, float radius); // Orbital ring at ground
     glm::vec4 resistToParticleColor(uint8_t resistType);
 }
 

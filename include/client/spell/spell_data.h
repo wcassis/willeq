@@ -165,12 +165,16 @@ struct SpellData {
                target_type == SpellTargetType::GroupClientsPets;
     }
 
+    // Check if spell is a bolt (projectile that can hit geometry)
+    bool isBoltSpell() const {
+        return target_type == SpellTargetType::Bolt;
+    }
+
     // Check if spell is an area effect
     bool isAESpell() const {
         return target_type == SpellTargetType::AECaster ||
                target_type == SpellTargetType::AETarget ||
                target_type == SpellTargetType::TargetAETap ||
-               target_type == SpellTargetType::AEClientV1 ||
                target_type == SpellTargetType::AEBard ||
                target_type == SpellTargetType::DirectionalAE ||
                target_type == SpellTargetType::TargetRing ||
