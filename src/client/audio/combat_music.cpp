@@ -3,7 +3,7 @@
 #include "client/audio/combat_music.h"
 #include "client/audio/music_player.h"
 #include "client/audio/audio_mixer.h"
-#include <iostream>
+#include "common/logging.h"
 #include <chrono>
 #include <filesystem>
 
@@ -43,15 +43,14 @@ bool CombatMusicManager::initialize(const std::string& eqPath,
     }
 
     if (!hasStingers) {
-        std::cout << "[COMBAT_MUSIC] Warning: No combat stinger files found in "
-                  << eqPath_ << std::endl;
+        LOG_WARN(MOD_AUDIO, "No combat stinger files found in {}", eqPath_);
         // Still allow initialization - combat music just won't play
     }
 
     // Create dedicated music player for stingers
     stingerPlayer_ = std::make_unique<MusicPlayer>();
     if (!stingerPlayer_->initialize(eqPath_, soundFontPath_)) {
-        std::cout << "[COMBAT_MUSIC] Failed to initialize stinger player" << std::endl;
+        LOG_ERROR(MOD_AUDIO, "Failed to initialize stinger player");
         stingerPlayer_.reset();
         return false;
     }
@@ -64,7 +63,7 @@ bool CombatMusicManager::initialize(const std::string& eqPath,
     stingerPlayer_->setVolume(volume_);
 
     initialized_ = true;
-    std::cout << "[COMBAT_MUSIC] Initialized combat music system" << std::endl;
+    LOG_INFO(MOD_AUDIO, "Initialized combat music system");
     return true;
 }
 
@@ -94,7 +93,7 @@ void CombatMusicManager::onCombatStart() {
     combatTimer_ = 0.0f;
     stingerTriggered_ = false;
 
-    std::cout << "[COMBAT_MUSIC] Combat started" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Combat music: combat started");
 }
 
 void CombatMusicManager::onCombatEnd() {
@@ -102,7 +101,7 @@ void CombatMusicManager::onCombatEnd() {
         return;
     }
 
-    std::cout << "[COMBAT_MUSIC] Combat ended (duration: " << combatTimer_ << "s)" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Combat music: combat ended (duration: {}s)", combatTimer_);
 
     inCombat_ = false;
     combatTimer_ = 0.0f;
@@ -179,16 +178,16 @@ void CombatMusicManager::playStinger() {
 
     // Check if file exists
     if (!std::filesystem::exists(stingerPath)) {
-        std::cout << "[COMBAT_MUSIC] Stinger file not found: " << stingerPath << std::endl;
+        LOG_WARN(MOD_AUDIO, "Stinger file not found: {}", stingerPath);
         return;
     }
 
     // Play stinger (not looped - plays once)
     if (stingerPlayer_->play(stingerPath, false)) {
-        std::cout << "[COMBAT_MUSIC] Playing combat stinger: "
-                  << std::filesystem::path(stingerPath).filename().string() << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Playing combat stinger: {}",
+                  std::filesystem::path(stingerPath).filename().string());
     } else {
-        std::cout << "[COMBAT_MUSIC] Failed to play stinger: " << stingerPath << std::endl;
+        LOG_WARN(MOD_AUDIO, "Failed to play stinger: {}", stingerPath);
     }
 }
 
@@ -198,7 +197,7 @@ void CombatMusicManager::stopStinger(float fadeSeconds) {
     }
 
     stingerPlayer_->stop(fadeSeconds);
-    std::cout << "[COMBAT_MUSIC] Stopping stinger with " << fadeSeconds << "s fade" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Stopping stinger with {}s fade", fadeSeconds);
 }
 
 } // namespace Audio

@@ -1032,7 +1032,7 @@ void SpellVisualFX::adjustParticleMultiplier(float delta)
     if (old_mult != m_particle_multiplier) {
         // Round to 1 decimal for display
         float display_mult = std::round(m_particle_multiplier * 10.0f) / 10.0f;
-        printf("[SpellFX] Particle multiplier: %.1fx\n", display_mult);
+        LOG_DEBUG(MOD_GRAPHICS, "Particle multiplier: {:.1f}x", display_mult);
     }
 }
 

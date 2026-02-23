@@ -14,7 +14,6 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
-#include <iostream>
 #include <fstream>
 #include <set>
 #include <unordered_map>
@@ -112,8 +111,8 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
 
     // Create MusicPlayer (wrapper around MidiPlayer + mixer for MP3/WAV/XMI)
     musicPlayer_ = std::make_unique<MusicPlayer>();
-    std::cout << "[AUDIO] Initializing music player with eqPath: " << eqPath_
-              << ", soundfont: " << (soundFontPath_.empty() ? "(none)" : soundFontPath_) << std::endl;
+    LOG_INFO(MOD_AUDIO, "Initializing music player with eqPath: {}, soundfont: {}",
+             eqPath_, soundFontPath_.empty() ? "(none)" : soundFontPath_);
     if (!musicPlayer_->initialize(eqPath_, soundFontPath_)) {
         LOG_WARN(MOD_AUDIO, "Music player initialization failed, music will be disabled");
     }
@@ -231,13 +230,12 @@ void AudioManager::playSound(uint32_t soundId, const glm::vec3& position) {
     // Ensure sound is loaded into SfxManager cache
     auto buffer = getSoundById(soundId);
     if (!buffer || !buffer->isValid()) {
-        std::cout << "[AUDIO] SOUND FAILED: id=" << soundId << " file=" << filename << " (not found)" << std::endl;
-        LOG_DEBUG(MOD_AUDIO, "Sound ID {} not found", soundId);
+        LOG_DEBUG(MOD_AUDIO, "Sound failed: id={} file={} (not found)", soundId, filename);
         return;
     }
 
-    std::cout << "[AUDIO] SOUND PLAY: id=" << soundId << " file=" << filename
-              << " pos=(" << position.x << "," << position.y << "," << position.z << ")" << std::endl;
+    LOG_TRACE(MOD_AUDIO, "Sound play: id={} file={} pos=({},{},{})",
+              soundId, filename, position.x, position.y, position.z);
 
     playSoundInternal(filename, position);
 }
@@ -253,12 +251,12 @@ void AudioManager::playSoundByName(const std::string& filename, const glm::vec3&
 
     auto buffer = loadSound(filename);
     if (!buffer || !buffer->isValid()) {
-        std::cout << "[AUDIO] SOUND FAILED: file=" << filename << " (not found)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Sound failed: file={} (not found)", filename);
         return;
     }
 
-    std::cout << "[AUDIO] SOUND PLAY: file=" << filename
-              << " pos=(" << position.x << "," << position.y << "," << position.z << ")" << std::endl;
+    LOG_TRACE(MOD_AUDIO, "Sound play: file={} pos=({},{},{})",
+              filename, position.x, position.y, position.z);
 
     playSoundInternal(filename, position);
 }
@@ -294,7 +292,7 @@ void AudioManager::stopAllSounds() {
 
 void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex, double startTimeMs) {
     if (!initialized_ || !audioEnabled_ || !musicPlayer_) {
-        std::cout << "[AUDIO] MUSIC FAILED: file=" << filename << " (not initialized or disabled)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Music failed: file={} (not initialized or disabled)", filename);
         return;
     }
 
@@ -304,7 +302,6 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
     }
 
     if (!std::filesystem::exists(fullPath)) {
-        std::cout << "[AUDIO] MUSIC FAILED: file=" << fullPath << " (not found)" << std::endl;
         LOG_WARN(MOD_AUDIO, "Music file not found: {}", fullPath);
         return;
     }
@@ -312,12 +309,11 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
     // Skip if the same file and track is already playing
     if (musicPlayer_->isPlaying() && musicPlayer_->getCurrentFile() == fullPath &&
         musicPlayer_->getCurrentTrackIndex() == trackIndex) {
-        std::cout << "[AUDIO] MUSIC SKIP: file=" << fullPath << " track=" << trackIndex << " (already playing)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Music skip: file={} track={} (already playing)", fullPath, trackIndex);
         return;
     }
 
-    std::cout << "[AUDIO] MUSIC PLAY: file=" << fullPath << " track=" << trackIndex
-              << " loop=" << (loop ? "yes" : "no") << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Music play: file={} track={} loop={}", fullPath, trackIndex, loop ? "yes" : "no");
 
     // Select soundfont based on XMI filename
     if (midiPlayer_ && midiPlayer_->isInitialized()) {
@@ -330,7 +326,6 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
     if (!musicPlayer_->play(fullPath, loop, trackIndex, startTimeMs)) {
-        std::cout << "[AUDIO] MUSIC FAILED: file=" << fullPath << " (playback error)" << std::endl;
         LOG_WARN(MOD_AUDIO, "Failed to play music: {}", fullPath);
     }
 }
@@ -358,15 +353,15 @@ bool AudioManager::isMusicPlaying() const {
 }
 
 void AudioManager::onZoneChange(const std::string& zoneName) {
-    std::cout << "[AUDIO] ZONE CHANGE: " << currentZone_ << " -> " << zoneName << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Zone change: {} -> {}", currentZone_, zoneName);
 
     if (!initialized_ || !audioEnabled_) {
-        std::cout << "[AUDIO] ZONE CHANGE IGNORED: not initialized or disabled" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Zone change ignored: not initialized or disabled");
         return;
     }
 
     if (zoneName == currentZone_) {
-        std::cout << "[AUDIO] ZONE CHANGE IGNORED: same zone" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Zone change ignored: same zone");
         return;
     }
 
@@ -392,8 +387,8 @@ void AudioManager::restartZoneMusic() {
     if (!savedZoneMusicFile_.empty()) {
         double savedTimeMs = savedZoneMusicTimeMs_;
         int savedTrack = savedZoneMusicTrackIndex_;
-        std::cout << "[AUDIO] RESTORING ZONE MUSIC: file=" << savedZoneMusicFile_
-                  << " track=" << savedTrack << " pos=" << savedTimeMs << "ms" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Restoring zone music: file={} track={} pos={}ms",
+                  savedZoneMusicFile_, savedTrack, savedTimeMs);
         playMusic(savedZoneMusicFile_, true, savedTrack, savedTimeMs);
         return;
     }
@@ -409,15 +404,15 @@ void AudioManager::startAutoAttackMusic() {
     if (!autoAttackMusicConfig_.enabled) return;
 
     if (vendorBankMusicActive_) {
-        std::cout << "[AUDIO] AUTO-ATTACK MUSIC: skipped (vendor/bank music active)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Auto-attack music: skipped (vendor/bank music active)");
         autoAttackMusicActive_ = true;
         return;
     }
 
     if (autoAttackMusicActive_) return;
 
-    std::cout << "[AUDIO] AUTO-ATTACK MUSIC: starting " << autoAttackMusicConfig_.file
-              << " track " << autoAttackMusicConfig_.track << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Auto-attack music: starting {} track {}",
+              autoAttackMusicConfig_.file, autoAttackMusicConfig_.track);
 
     // Save zone music state before interrupting
     if (musicPlayer_ && musicPlayer_->isPlaying()) {
@@ -432,14 +427,14 @@ void AudioManager::startAutoAttackMusic() {
     if (std::filesystem::exists(musicFile)) {
         playMusic(musicFile, autoAttackMusicConfig_.loop, autoAttackMusicConfig_.track - 1);
     } else {
-        std::cout << "[AUDIO] AUTO-ATTACK MUSIC: " << autoAttackMusicConfig_.file << " not found" << std::endl;
+        LOG_WARN(MOD_AUDIO, "Auto-attack music: {} not found", autoAttackMusicConfig_.file);
     }
 }
 
 void AudioManager::stopAutoAttackMusic() {
     if (!autoAttackMusicActive_) return;
 
-    std::cout << "[AUDIO] AUTO-ATTACK MUSIC: stopping" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Auto-attack music: stopping");
     autoAttackMusicActive_ = false;
 
     if (vendorBankMusicActive_) return;
@@ -452,8 +447,8 @@ void AudioManager::startVendorBankMusic() {
     if (!vendorBankMusicConfig_.enabled) return;
     if (vendorBankMusicActive_) return;
 
-    std::cout << "[AUDIO] VENDOR/BANK MUSIC: starting " << vendorBankMusicConfig_.file
-              << " track " << vendorBankMusicConfig_.track << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Vendor/bank music: starting {} track {}",
+              vendorBankMusicConfig_.file, vendorBankMusicConfig_.track);
 
     // Save zone music state before interrupting (only if not already saved by auto-attack)
     if (!autoAttackMusicActive_ && musicPlayer_ && musicPlayer_->isPlaying()) {
@@ -468,14 +463,14 @@ void AudioManager::startVendorBankMusic() {
     if (std::filesystem::exists(musicFile)) {
         playMusic(musicFile, vendorBankMusicConfig_.loop, vendorBankMusicConfig_.track - 1);
     } else {
-        std::cout << "[AUDIO] VENDOR/BANK MUSIC: " << vendorBankMusicConfig_.file << " not found" << std::endl;
+        LOG_WARN(MOD_AUDIO, "Vendor/bank music: {} not found", vendorBankMusicConfig_.file);
     }
 }
 
 void AudioManager::stopVendorBankMusic() {
     if (!vendorBankMusicActive_) return;
 
-    std::cout << "[AUDIO] VENDOR/BANK MUSIC: stopping" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Vendor/bank music: stopping");
     vendorBankMusicActive_ = false;
 
     if (autoAttackMusicActive_ && autoAttackMusicConfig_.enabled) {
@@ -1003,8 +998,7 @@ void AudioManager::loadMusicEventConfig() {
     std::string configPath = "config/music_events.json";
     std::ifstream file(configPath);
     if (!file.is_open()) {
-        std::cout << "[AUDIO] Music events config not found at " << configPath
-                  << ", using defaults" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Music events config not found at {}, using defaults", configPath);
         return;
     }
 
@@ -1012,7 +1006,7 @@ void AudioManager::loadMusicEventConfig() {
     Json::CharReaderBuilder builder;
     std::string errors;
     if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        std::cout << "[AUDIO] Failed to parse music_events.json: " << errors << std::endl;
+        LOG_WARN(MOD_AUDIO, "Failed to parse music_events.json: {}", errors);
         return;
     }
 
@@ -1032,15 +1026,11 @@ void AudioManager::loadMusicEventConfig() {
         if (cfg.isMember("enabled")) vendorBankMusicConfig_.enabled = cfg["enabled"].asBool();
     }
 
-    std::cout << "[AUDIO] Loaded music events config:" << std::endl;
-    std::cout << "  auto_attack: " << autoAttackMusicConfig_.file
-              << " track " << autoAttackMusicConfig_.track
-              << " loop=" << autoAttackMusicConfig_.loop
-              << " enabled=" << autoAttackMusicConfig_.enabled << std::endl;
-    std::cout << "  vendor_bank: " << vendorBankMusicConfig_.file
-              << " track " << vendorBankMusicConfig_.track
-              << " loop=" << vendorBankMusicConfig_.loop
-              << " enabled=" << vendorBankMusicConfig_.enabled << std::endl;
+    LOG_INFO(MOD_AUDIO, "Loaded music events config: auto_attack={} track {} loop={} enabled={}, vendor_bank={} track {} loop={} enabled={}",
+             autoAttackMusicConfig_.file, autoAttackMusicConfig_.track,
+             autoAttackMusicConfig_.loop, autoAttackMusicConfig_.enabled,
+             vendorBankMusicConfig_.file, vendorBankMusicConfig_.track,
+             vendorBankMusicConfig_.loop, vendorBankMusicConfig_.enabled);
 }
 
 SoundFontType AudioManager::getSoundFontTypeForFile(const std::string& path) {

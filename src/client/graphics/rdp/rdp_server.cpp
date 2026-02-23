@@ -31,7 +31,7 @@
 #include <openssl/evp.h>
 #include <openssl/bn.h>
 
-#include <iostream>
+#include "common/logging.h"
 #include <cstring>
 #include <algorithm>
 #include <chrono>
@@ -90,14 +90,14 @@ bool RDPServer::initialize(uint16_t port) {
     // Initialize Winsock (cross-platform via WinPR)
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "[RDP] WSAStartup failed" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "WSAStartup failed");
         return false;
     }
 
     // Register FreeRDP's WTS API functions with WinPR
     // This is required for WTSOpenServerA to work on non-Windows platforms
     if (!WTSRegisterWtsApiFunctionTable(FreeRDP_InitWtsApi())) {
-        std::cerr << "[RDP] Failed to register WTS API function table" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to register WTS API function table");
         WSACleanup();
         return false;
     }
@@ -105,7 +105,7 @@ bool RDPServer::initialize(uint16_t port) {
     // Create the listener
     listener_ = freerdp_listener_new();
     if (!listener_) {
-        std::cerr << "[RDP] Failed to create FreeRDP listener" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create FreeRDP listener");
         WSACleanup();
         return false;
     }
@@ -115,7 +115,7 @@ bool RDPServer::initialize(uint16_t port) {
     listener_->info = this;
 
     initialized_.store(true);
-    std::cout << "[RDP] Server initialized on port " << port_ << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP server initialized on port {}", port_);
     return true;
 }
 
@@ -135,24 +135,24 @@ bool RDPServer::generateSelfSignedCertificate() {
     EVP_PKEY* pkey = nullptr;
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
     if (!ctx) {
-        std::cerr << "[RDP] Failed to create EVP_PKEY_CTX" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create EVP_PKEY_CTX");
         return false;
     }
 
     if (EVP_PKEY_keygen_init(ctx) <= 0) {
-        std::cerr << "[RDP] Failed to init keygen" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to init keygen");
         EVP_PKEY_CTX_free(ctx);
         return false;
     }
 
     if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048) <= 0) {
-        std::cerr << "[RDP] Failed to set RSA bits" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to set RSA bits");
         EVP_PKEY_CTX_free(ctx);
         return false;
     }
 
     if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
-        std::cerr << "[RDP] Failed to generate RSA key" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to generate RSA key");
         EVP_PKEY_CTX_free(ctx);
         return false;
     }
@@ -161,7 +161,7 @@ bool RDPServer::generateSelfSignedCertificate() {
     // Create self-signed X509 certificate
     X509* x509 = X509_new();
     if (!x509) {
-        std::cerr << "[RDP] Failed to create X509 certificate" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create X509 certificate");
         EVP_PKEY_free(pkey);
         return false;
     }
@@ -181,7 +181,7 @@ bool RDPServer::generateSelfSignedCertificate() {
 
     // Sign the certificate
     if (!X509_sign(x509, pkey, EVP_sha256())) {
-        std::cerr << "[RDP] Failed to sign certificate" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to sign certificate");
         X509_free(x509);
         EVP_PKEY_free(pkey);
         return false;
@@ -192,7 +192,7 @@ bool RDPServer::generateSelfSignedCertificate() {
     BIO* keyBio = BIO_new(BIO_s_mem());
 
     if (!certBio || !keyBio) {
-        std::cerr << "[RDP] Failed to create BIO" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create BIO");
         if (certBio) BIO_free(certBio);
         if (keyBio) BIO_free(keyBio);
         X509_free(x509);
@@ -223,7 +223,7 @@ bool RDPServer::generateSelfSignedCertificate() {
     rdpPrivateKey* testKey = freerdp_key_new_from_pem(keyPem_.c_str());
 
     if (!testCert || !testKey) {
-        std::cerr << "[RDP] Failed to create FreeRDP certificate/key from PEM" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create FreeRDP certificate/key from PEM");
         if (testCert) freerdp_certificate_free(testCert);
         if (testKey) freerdp_key_free(testKey);
         certPem_.clear();
@@ -236,7 +236,7 @@ bool RDPServer::generateSelfSignedCertificate() {
     freerdp_key_free(testKey);
 
     certGenerated_ = true;
-    std::cout << "[RDP] Generated self-signed certificate" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "Generated self-signed certificate");
     return true;
 }
 
@@ -252,7 +252,7 @@ rdpCertificate* RDPServer::createPeerCertificate() {
             certPem_.resize(size);
             fread(&certPem_[0], 1, size, f);
             fclose(f);
-            std::cout << "[RDP] Loaded certificate from " << certPath_ << std::endl;
+            LOG_INFO(MOD_GRAPHICS, "Loaded certificate from {}", certPath_);
         }
     }
 
@@ -279,7 +279,7 @@ rdpPrivateKey* RDPServer::createPeerKey() {
             keyPem_.resize(size);
             fread(&keyPem_[0], 1, size, f);
             fclose(f);
-            std::cout << "[RDP] Loaded private key from " << keyPath_ << std::endl;
+            LOG_INFO(MOD_GRAPHICS, "Loaded private key from {}", keyPath_);
         }
     }
 
@@ -305,20 +305,20 @@ bool RDPServer::start() {
     }
 
     if (!initialized_.load()) {
-        std::cerr << "[RDP] Server not initialized" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "RDP server not initialized");
         return false;
     }
 
     // Open the listener on all interfaces
     if (!listener_->Open(listener_, nullptr, port_)) {
-        std::cerr << "[RDP] Failed to open listener on port " << port_ << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to open listener on port {}", port_);
         return false;
     }
 
     running_.store(true);
     listenerThread_ = std::thread(&RDPServer::listenerThread, this);
 
-    std::cout << "[RDP] Server started, listening on port " << port_ << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP server started, listening on port {}", port_);
     return true;
 }
 
@@ -362,7 +362,7 @@ void RDPServer::stop() {
     WSACleanup();
     initialized_.store(false);
 
-    std::cout << "[RDP] Server stopped" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP server stopped");
 }
 
 size_t RDPServer::getClientCount() const {
@@ -396,7 +396,7 @@ void RDPServer::updateFrame(const uint8_t* frameData, uint32_t width, uint32_t h
 void RDPServer::onPeerConnected(RDPPeerContext* context) {
     std::lock_guard<std::mutex> lock(peersMutex_);
     activePeers_.push_back(context);
-    std::cout << "[RDP] Client connected (total: " << activePeers_.size() << ")" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP client connected (total: {})", activePeers_.size());
     // Audio initialization is done in onPeerActivate when channels are ready
 }
 
@@ -406,7 +406,7 @@ void RDPServer::onPeerDisconnected(RDPPeerContext* context) {
         std::remove(activePeers_.begin(), activePeers_.end(), context),
         activePeers_.end()
     );
-    std::cout << "[RDP] Client disconnected (remaining: " << activePeers_.size() << ")" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP client disconnected (remaining: {})", activePeers_.size());
 }
 
 void RDPServer::onKeyboardEventInternal(uint16_t flags, uint8_t scancode) {
@@ -432,7 +432,7 @@ void RDPServer::listenerThread() {
     while (running_.load()) {
         count = listener_->GetEventHandles(listener_, handles, 32);
         if (count == 0) {
-            std::cerr << "[RDP] Failed to get listener event handles" << std::endl;
+            LOG_ERROR(MOD_GRAPHICS, "Failed to get listener event handles");
             break;
         }
 
@@ -447,12 +447,12 @@ void RDPServer::listenerThread() {
         }
 
         if (status == WAIT_FAILED) {
-            std::cerr << "[RDP] WaitForMultipleObjects failed" << std::endl;
+            LOG_ERROR(MOD_GRAPHICS, "WaitForMultipleObjects failed");
             break;
         }
 
         if (!listener_->CheckFileDescriptor(listener_)) {
-            std::cerr << "[RDP] Listener CheckFileDescriptor failed" << std::endl;
+            LOG_ERROR(MOD_GRAPHICS, "Listener CheckFileDescriptor failed");
             break;
         }
     }
@@ -468,7 +468,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
     rdpPrivateKey* key = createPeerKey();
 
     if (!cert || !key) {
-        std::cerr << "[RDP] Failed to get/generate server certificate and key" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to get/generate server certificate and key");
         goto cleanup;
     }
 
@@ -476,12 +476,12 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
     // Note: We pass the pointers but FreeRDP doesn't take ownership,
     // so we must keep them alive for the duration of the server
     if (!freerdp_settings_set_pointer_len(settings, FreeRDP_RdpServerCertificate, cert, 1)) {
-        std::cerr << "[RDP] Failed to set server certificate" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to set server certificate");
         goto cleanup;
     }
 
     if (!freerdp_settings_set_pointer_len(settings, FreeRDP_RdpServerRsaKey, key, 1)) {
-        std::cerr << "[RDP] Failed to set server RSA key" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to set server RSA key");
         goto cleanup;
     }
 
@@ -517,17 +517,17 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
 
     // Initialize the peer
     if (!client->Initialize(client)) {
-        std::cerr << "[RDP] Failed to initialize peer" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to initialize peer");
         goto cleanup;
     }
 
-    std::cout << "[RDP] Peer initialized: " << (client->hostname ? client->hostname : "unknown") << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP peer initialized: {}", client->hostname ? client->hostname : "unknown");
 
     // Create virtual channel manager for this peer after Initialize
     // WTSOpenServerA requires the peer to be initialized first
     context->vcm = WTSOpenServerA((LPSTR)client->context);
     if (!context->vcm || context->vcm == INVALID_HANDLE_VALUE) {
-        std::cout << "[RDP] Virtual channel manager not available, audio disabled" << std::endl;
+        LOG_INFO(MOD_GRAPHICS, "Virtual channel manager not available, audio disabled");
         context->vcm = nullptr;
     }
 
@@ -545,7 +545,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
         while (running_.load()) {
             count = client->GetEventHandles(client, handles, 32);
             if (count == 0) {
-                std::cerr << "[RDP] Failed to get peer event handles" << std::endl;
+                LOG_ERROR(MOD_GRAPHICS, "Failed to get peer event handles");
                 break;
             }
 
@@ -566,7 +566,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
                 } else if (!rdpsndHandle) {
                     static bool warned = false;
                     if (!warned) {
-                        std::cerr << "[RDP Audio] RDPSND event handle is NULL" << std::endl;
+                        LOG_ERROR(MOD_GRAPHICS, "RDP audio: RDPSND event handle is NULL");
                         warned = true;
                     }
                 }
@@ -579,7 +579,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
             }
 
             if (status == WAIT_FAILED) {
-                std::cerr << "[RDP] Peer WaitForMultipleObjects failed" << std::endl;
+                LOG_ERROR(MOD_GRAPHICS, "Peer WaitForMultipleObjects failed");
                 break;
             }
 
@@ -594,7 +594,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
                     // Non-fatal, just log once
                     static bool warned = false;
                     if (!warned) {
-                        std::cerr << "[RDP] VCM CheckFileDescriptor returned false" << std::endl;
+                        LOG_ERROR(MOD_GRAPHICS, "VCM CheckFileDescriptor returned false");
                         warned = true;
                     }
                 }
@@ -606,10 +606,10 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
                 if (rdpsndStatus == CHANNEL_RC_OK) {
                     static int msgCount = 0;
                     if (++msgCount <= 5) {
-                        std::cout << "[RDP Audio] Processed RDPSND message (count=" << msgCount << ")" << std::endl;
+                        LOG_DEBUG(MOD_GRAPHICS, "RDP audio: processed RDPSND message (count={})", msgCount);
                     }
                 } else if (rdpsndStatus != ERROR_NO_DATA) {
-                    std::cerr << "[RDP Audio] Error handling RDPSND messages: " << rdpsndStatus << std::endl;
+                    LOG_ERROR(MOD_GRAPHICS, "RDP audio: error handling RDPSND messages: {}", rdpsndStatus);
                 }
             }
 
@@ -631,7 +631,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client) {
     onPeerDisconnected(context);
 
 cleanup:
-    std::cout << "[RDP] Peer disconnecting: " << (client->hostname ? client->hostname : "unknown") << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP peer disconnecting: {}", client->hostname ? client->hostname : "unknown");
     client->Disconnect(client);
     freerdp_peer_context_free(client);
     freerdp_peer_free(client);
@@ -744,7 +744,7 @@ static BOOL onPeerAccepted(freerdp_listener* instance, freerdp_peer* client) {
     client->ContextExtra = server;
 
     if (!freerdp_peer_context_new(client)) {
-        std::cerr << "[RDP] Failed to create peer context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create peer context");
         return FALSE;
     }
 
@@ -757,10 +757,10 @@ static BOOL onPeerAccepted(freerdp_listener* instance, freerdp_peer* client) {
 static BOOL onPeerPostConnect(freerdp_peer* client) {
     rdpSettings* settings = client->context->settings;
 
-    std::cout << "[RDP] Client post-connect: "
-              << freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth) << "x"
-              << freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight) << "x"
-              << freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP client post-connect: {}x{}x{}",
+             freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth),
+             freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight),
+             freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth));
 
     return TRUE;
 }
@@ -768,7 +768,7 @@ static BOOL onPeerPostConnect(freerdp_peer* client) {
 static BOOL onPeerActivate(freerdp_peer* client) {
     RDPPeerContext* context = reinterpret_cast<RDPPeerContext*>(client->context);
     context->activated = true;
-    std::cout << "[RDP] Client activated" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP client activated");
 
     // Initialize audio now that channels are ready
     if (context->server) {
@@ -806,9 +806,9 @@ static BOOL onExtendedMouseEvent(rdpInput* input, UINT16 flags, UINT16 x, UINT16
 
 // RDPSND activated callback - called when audio channel is ready
 static void onRdpsndActivated(RdpsndServerContext* context) {
-    std::cout << "[RDP Audio] onRdpsndActivated callback called!" << std::endl;
+    LOG_DEBUG(MOD_GRAPHICS, "RDP audio: onRdpsndActivated callback called");
     if (!context || !context->data) {
-        std::cerr << "[RDP Audio] onRdpsndActivated: invalid context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "RDP audio: onRdpsndActivated: invalid context");
         return;
     }
 
@@ -816,7 +816,7 @@ static void onRdpsndActivated(RdpsndServerContext* context) {
     if (peerContext && peerContext->server) {
         peerContext->server->onAudioActivated(peerContext);
     } else {
-        std::cerr << "[RDP Audio] onRdpsndActivated: invalid peer context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "RDP audio: onRdpsndActivated: invalid peer context");
     }
 }
 
@@ -827,24 +827,24 @@ void RDPServer::initAudioForPeer(RDPPeerContext* context) {
 
     // Check if VCM was successfully created during context initialization
     if (!context->vcm) {
-        std::cout << "[RDP Audio] Virtual channel manager not available, audio disabled" << std::endl;
+        LOG_INFO(MOD_GRAPHICS, "RDP audio: virtual channel manager not available, audio disabled");
         return;
     }
 
     // Check if static audio channel is available
     bool hasStaticChannel = WTSVirtualChannelManagerIsChannelJoined(context->vcm, RDPSND_CHANNEL_NAME);
 
-    std::cout << "[RDP Audio] Channel status: static(rdpsnd)=" << (hasStaticChannel ? "yes" : "no") << std::endl;
+    LOG_DEBUG(MOD_GRAPHICS, "RDP audio: channel status: static(rdpsnd)={}", hasStaticChannel ? "yes" : "no");
 
     if (!hasStaticChannel) {
-        std::cout << "[RDP Audio] Client did not join rdpsnd channel, audio disabled" << std::endl;
+        LOG_INFO(MOD_GRAPHICS, "RDP audio: client did not join rdpsnd channel, audio disabled");
         return;
     }
 
     // Create RDPSND server context using the VCM from context initialization
     context->rdpsndContext = rdpsnd_server_context_new(context->vcm);
     if (!context->rdpsndContext) {
-        std::cerr << "[RDP Audio] Failed to create RDPSND context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "RDP audio: failed to create RDPSND context");
         return;
     }
 
@@ -874,16 +874,16 @@ void RDPServer::initAudioForPeer(RDPPeerContext* context) {
     context->rdpsndContext->Activated = onRdpsndActivated;
 
     // Initialize the RDPSND channel (non-threaded mode, we'll drive it)
-    std::cout << "[RDP Audio] Initializing RDPSND with " << numServerAudioFormats_ << " server formats" << std::endl;
+    LOG_DEBUG(MOD_GRAPHICS, "RDP audio: initializing RDPSND with {} server formats", numServerAudioFormats_);
     UINT status = context->rdpsndContext->Initialize(context->rdpsndContext, FALSE);
     if (status != CHANNEL_RC_OK) {
-        std::cerr << "[RDP Audio] Failed to initialize RDPSND: " << status << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "RDP audio: failed to initialize RDPSND: {}", status);
         rdpsnd_server_context_free(context->rdpsndContext);
         context->rdpsndContext = nullptr;
         return;
     }
 
-    std::cout << "[RDP Audio] RDPSND channel initialized for peer, waiting for client format response" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP audio: RDPSND channel initialized for peer, waiting for client format response");
 }
 
 void RDPServer::onAudioActivated(RDPPeerContext* context) {
@@ -891,8 +891,8 @@ void RDPServer::onAudioActivated(RDPPeerContext* context) {
         return;
     }
 
-    std::cout << "[RDP Audio] Audio channel activated, client has "
-              << context->rdpsndContext->num_client_formats << " formats" << std::endl;
+    LOG_INFO(MOD_GRAPHICS, "RDP audio: audio channel activated, client has {} formats",
+             context->rdpsndContext->num_client_formats);
 
     // Find a compatible format (prefer stereo 44.1kHz PCM)
     int16_t selectedFormat = -1;
@@ -924,10 +924,8 @@ void RDPServer::onAudioActivated(RDPPeerContext* context) {
 
     if (selectedFormat >= 0) {
         const AUDIO_FORMAT* fmt = &context->rdpsndContext->client_formats[selectedFormat];
-        std::cout << "[RDP Audio] Selected format " << selectedFormat
-                  << ": " << fmt->nSamplesPerSec << "Hz, "
-                  << fmt->nChannels << "ch, "
-                  << fmt->wBitsPerSample << "bit" << std::endl;
+        LOG_INFO(MOD_GRAPHICS, "RDP audio: selected format {}: {}Hz, {}ch, {}bit",
+                 selectedFormat, fmt->nSamplesPerSec, fmt->nChannels, fmt->wBitsPerSample);
 
         // Select the format
         UINT status = context->rdpsndContext->SelectFormat(context->rdpsndContext, selectedFormat);
@@ -936,10 +934,10 @@ void RDPServer::onAudioActivated(RDPPeerContext* context) {
             context->audioActivated = true;
             audioReady_.store(true);
         } else {
-            std::cerr << "[RDP Audio] Failed to select format: " << status << std::endl;
+            LOG_ERROR(MOD_GRAPHICS, "RDP audio: failed to select format: {}", status);
         }
     } else {
-        std::cerr << "[RDP Audio] No compatible audio format found" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "RDP audio: no compatible audio format found");
     }
 }
 

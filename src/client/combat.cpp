@@ -856,7 +856,7 @@ void CombatManager::CloseLootWindow() {
 void CombatManager::SetAutoHunting(bool enable) {
 	// Check pathfinding requirement
 	if (enable && !m_eq->IsPathfindingEnabled()) {
-		std::cout << "[ERROR] Auto-hunting requires pathfinding to be enabled. Use 'pathfinding on' first.\n";
+		LOG_ERROR(MOD_COMBAT, "Auto-hunting requires pathfinding to be enabled. Use 'pathfinding on' first.");
 		return;
 	}
 
@@ -1445,7 +1445,7 @@ void CombatManager::FindNextHuntTarget() {
 			best_target.name, best_target.entity_id);
 
 		if (SetTarget(best_target.entity_id)) {
-			std::cout << fmt::format("Hunting: Engaging {} (con={}, faction={}, dist={:.1f})\n",
+			LOG_INFO(MOD_COMBAT, "Hunting: Engaging {} (con={}, faction={}, dist={:.1f})",
 				best_target.name, static_cast<int>(best_target.con_color),
 				best_target.faction, best_target.distance);
 
@@ -1476,7 +1476,7 @@ void CombatManager::StartResting() {
 	// Sit down to rest
 	m_eq->SetPositionState(POS_SITTING);
 
-	std::cout << fmt::format("Resting: HP={}%, Mana={}%\n",
+	LOG_INFO(MOD_COMBAT, "Resting: HP={}%, Mana={}%",
 		m_stats.hp_percent, m_stats.mana_percent);
 }
 
@@ -1486,7 +1486,7 @@ void CombatManager::StopResting() {
 	// Stand up
 	m_eq->SetPositionState(POS_STANDING);
 
-	std::cout << "Resuming hunt\n";
+	LOG_INFO(MOD_COMBAT, "Resuming hunt");
 }
 
 bool CombatManager::IsTargetSuitableForHunt(const Entity& entity) const {
@@ -1810,15 +1810,15 @@ void CombatManager::ListHuntTargets() {
 
 	// Display results
 	if (hunt_targets.empty()) {
-		std::cout << "No suitable hunt targets found within " << m_hunt_radius << " units\n";
+		LOG_INFO(MOD_COMBAT, "No suitable hunt targets found within {} units", m_hunt_radius);
 	} else {
-		std::cout << fmt::format("Found {} potential hunt targets:\n", hunt_targets.size());
+		LOG_INFO(MOD_COMBAT, "Found {} potential hunt targets:", hunt_targets.size());
 		for (size_t i = 0; i < hunt_targets.size() && i < 10; ++i) {
 			const auto& target = hunt_targets[i];
 			std::string status = target.has_consider_data ?
 				fmt::format("con={}, faction={}", static_cast<int>(target.con_color), target.faction) :
 				"needs consider";
-			std::cout << fmt::format("  {}: {} (ID:{}) - dist={:.1f}, hp={}%, {}\n",
+			LOG_INFO(MOD_COMBAT, "  {}: {} (ID:{}) - dist={:.1f}, hp={}%, {}",
 				i + 1, target.name, target.entity_id, target.distance,
 				static_cast<int>(target.hp_percent), status);
 		}

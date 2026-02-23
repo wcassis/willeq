@@ -2,8 +2,6 @@
 #include "client/eq.h"
 #include "common/logging.h"
 
-#include <iostream>
-
 int main(int argc, char* argv[]) {
     auto config = eqt::Application::parseArguments(argc, argv);
 
@@ -27,14 +25,14 @@ int main(int argc, char* argv[]) {
 
     // Load config file
     if (!eqt::Application::loadConfigFile(config.configFile, config)) {
-        std::cerr << "Failed to load config file: " << config.configFile << "\n";
+        LOG_FATAL(MOD_MAIN, "Failed to load config file: {}", config.configFile);
         return 1;
     }
 
     // Create and run application
     eqt::Application app;
     if (!app.initialize(config)) {
-        std::cerr << "Failed to initialize application\n";
+        LOG_FATAL(MOD_MAIN, "Failed to initialize application");
         return 1;
     }
 

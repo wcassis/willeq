@@ -4,7 +4,7 @@
 #include "client/audio/zone_sound_emitter.h"
 #include "client/audio/eff_loader.h"
 #include "client/audio/audio_manager.h"
-#include <iostream>
+#include "common/logging.h"
 #include <algorithm>
 
 namespace EQT {
@@ -32,7 +32,7 @@ bool ZoneAudioManager::loadZone(const std::string& zoneName, const std::string& 
 
     // Load EFF files
     if (!effLoader_->loadZone(zoneName, eqPath)) {
-        std::cout << "[ZONE_AUDIO] No sound emitters found for zone: " << zoneName << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "No sound emitters found for zone: {}", zoneName);
         currentZone_.clear();
         return false;
     }
@@ -40,9 +40,8 @@ bool ZoneAudioManager::loadZone(const std::string& zoneName, const std::string& 
     // Create emitters from EFF data
     createEmittersFromEffData();
 
-    std::cout << "[ZONE_AUDIO] Loaded zone '" << zoneName << "' with "
-              << emitters_.size() << " sound emitters ("
-              << getMusicEmitterCount() << " music regions)" << std::endl;
+    LOG_INFO(MOD_AUDIO, "Loaded zone '{}' with {} sound emitters ({} music regions)",
+             zoneName, emitters_.size(), getMusicEmitterCount());
 
     return !emitters_.empty();
 }
@@ -100,10 +99,10 @@ void ZoneAudioManager::update(float deltaTime, const glm::vec3& listenerPos, boo
                 audioManager_->playMusic(musicFile, true, xmiIndex);
             }
 
-            std::cout << "[ZONE_AUDIO] Music region entered at ("
-                      << activeMusicEmitter_->getPosition().x << ", "
-                      << activeMusicEmitter_->getPosition().y << ", "
-                      << activeMusicEmitter_->getPosition().z << ") xmiIndex=" << xmiIndex << std::endl;
+            LOG_DEBUG(MOD_AUDIO, "Music region entered at ({}, {}, {}) xmiIndex={}",
+                      activeMusicEmitter_->getPosition().x,
+                      activeMusicEmitter_->getPosition().y,
+                      activeMusicEmitter_->getPosition().z, xmiIndex);
         }
     }
 }
@@ -129,8 +128,7 @@ void ZoneAudioManager::setDayNight(bool isDay) {
                 // Stop current music with fade, then start new track
                 audioManager_->stopMusic(1.0f);  // 1 second fade out
                 audioManager_->playMusic(musicFile, true, newXmiIndex);
-                std::cout << "[ZONE_AUDIO] Day/night music transition: track " << oldXmiIndex
-                          << " -> " << newXmiIndex << std::endl;
+                LOG_DEBUG(MOD_AUDIO, "Day/night music transition: track {} -> {}", oldXmiIndex, newXmiIndex);
             }
         }
     }
@@ -145,7 +143,7 @@ void ZoneAudioManager::setDayNight(bool isDay) {
         }
     }
 
-    std::cout << "[ZONE_AUDIO] Day/night changed to: " << (isDay ? "day" : "night") << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Day/night changed to: {}", isDay ? "day" : "night");
 }
 
 size_t ZoneAudioManager::getEmitterCount() const {
