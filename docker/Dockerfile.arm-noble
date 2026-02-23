@@ -112,26 +112,6 @@ ENV PKG_CONFIG_SYSROOT_DIR="${ARM_SYSROOT}"
 
 WORKDIR /tmp/deps
 
-# --- libuv 1.44.2 ---
-RUN wget -q https://dist.libuv.org/dist/v1.44.2/libuv-v1.44.2.tar.gz && \
-    tar xzf libuv-v1.44.2.tar.gz && \
-    cd libuv-v1.44.2 && \
-    mkdir build && cd build && \
-    cmake .. \
-        -DCMAKE_SYSTEM_NAME=Linux \
-        -DCMAKE_SYSTEM_PROCESSOR=arm \
-        -DCMAKE_C_COMPILER=${CROSS}-gcc \
-        -DCMAKE_SYSROOT=${ARM_SYSROOT} \
-        -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
-        -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
-        -DBUILD_TESTING=OFF \
-        -DLIBUV_BUILD_SHARED=OFF && \
-    cmake --build . && \
-    cmake --install . && \
-    rm -f ${ARM_SYSROOT}/usr/lib/libuv.so* && \
-    ln -sf libuv_a.a ${ARM_SYSROOT}/usr/lib/libuv.a && \
-    cd /tmp/deps && rm -rf libuv-*
-
 # --- fmt 9.1.0 ---
 RUN wget -q https://github.com/fmtlib/fmt/releases/download/9.1.0/fmt-9.1.0.zip && \
     python3 -c "import zipfile; zipfile.ZipFile('fmt-9.1.0.zip').extractall()" && \

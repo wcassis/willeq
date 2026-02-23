@@ -24,7 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     pkg-config \
     # Required libraries
-    libuv1-dev \
     libssl-dev \
     zlib1g-dev \
     libfmt-dev \
@@ -66,7 +65,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Runtime libraries
-    libuv1t64 \
     libssl3t64 \
     zlib1g \
     libfmt9 \

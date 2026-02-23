@@ -113,7 +113,7 @@ DISPLAY=:0 ./willeq -c config.json --gles2 --constrained orangepi -r 800 600
 
 ## Dependencies
 
-Required: libuv, OpenSSL, zlib, fmt, GLM (header-only), jsoncpp
+Required: OpenSSL, zlib, fmt, GLM (header-only), jsoncpp
 Optional:
 - Boost (waypoint pathfinding)
 - librecast-dev (navmesh pathfinding via Recast/Detour)
@@ -141,7 +141,7 @@ The client connects through three stages, each with its own connection manager:
 **Network Stack** (`include/common/net/`, `src/common/net/`)
 - `DaybreakConnection` - UDP reliable protocol with sequencing, fragmentation, CRC, and compression
 - `Packet` - Base class with `StaticPacket` (fixed buffer) and `DynamicPacket` (resizable)
-- `DaybreakConnectionManager` - Handles connection lifecycle via libuv
+- `DaybreakConnectionManager` - Handles connection lifecycle via UdpTransport
 - Socket receive buffer set to 1MB to handle server packet bursts during zone loading
 
 **Pathfinding** (`include/client/pathfinder_*.h`)

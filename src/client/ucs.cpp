@@ -1,5 +1,6 @@
 #include "client/ucs.h"
 #include "common/net/packet.h"
+#include "common/net/posix_udp_transport.h"
 #include <iostream>
 #include <chrono>
 #include <iomanip>
@@ -51,7 +52,7 @@ void UCSConnection::ConnectToUCS(const std::string& host, int port, const std::s
 	LogToFile("Connecting to UCS server at " + host + ":" + std::to_string(port) + " from client IP: " + client_ip);
 
 	// Create connection manager
-	m_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+	m_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
 
 	m_connection_manager->OnNewConnection(std::bind(&UCSConnection::OnNewConnection, this, std::placeholders::_1));
 	m_connection_manager->OnConnectionStateChange(std::bind(&UCSConnection::OnStatusChangeActive, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));

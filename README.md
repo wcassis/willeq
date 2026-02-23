@@ -247,7 +247,6 @@ Legend: Done | Partial | Not Implemented
 
 ### Required Dependencies
 - C++17 compiler
-- libuv
 - OpenSSL (libssl-dev)
 - zlib (zlib1g-dev)
 - fmt (libfmt-dev)

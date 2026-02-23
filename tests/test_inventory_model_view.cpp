@@ -26,7 +26,6 @@
 
 #include "client/eq.h"
 #include "common/logging.h"
-#include "common/event/event_loop.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -185,7 +184,7 @@ protected:
     bool waitForWithGraphics(Predicate condition, int timeoutMs = 30000) {
         auto start = std::chrono::steady_clock::now();
         while (!condition()) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             if (eq_) {
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
@@ -231,7 +230,7 @@ protected:
         if (!renderer) return;
 
         for (int i = 0; i < count; i++) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             eq_->UpdateMovement();
             renderer->processFrame(frameTimeMs / 1000.0f);
             std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(frameTimeMs)));
