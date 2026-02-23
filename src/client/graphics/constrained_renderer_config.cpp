@@ -167,10 +167,11 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
 
         case ConstrainedRenderingPreset::OrangePi:
             // Orange Pi One: Allwinner H3, Mali 400 (Lima/Mesa GL 2.1), 512MB shared RAM
-            // 24MB framebuffer supports 1280x720 @ 16-bit + 4x MSAA
+            // 10MB framebuffer: 1280x720 @ 16-bit + D24S8 = 7.03MB + headroom for FBO RTTs
+            // (MSAA is free on tile-based Mali 400 — resolved in on-chip tile SRAM)
             // 64MB texture budget: 512x512 textures with mipmaps = ~349KB each, ~187 textures
             config.enabled = true;
-            config.framebufferMemoryBytes = 24 * 1024 * 1024;  // 24MB
+            config.framebufferMemoryBytes = 10 * 1024 * 1024;  // 10MB
             config.textureMemoryBytes = 64 * 1024 * 1024;      // 64MB
             config.colorDepthBits = 16;
             config.maxTextureDimension = 512;

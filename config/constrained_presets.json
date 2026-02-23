@@ -6,7 +6,7 @@
       "clipDistance": 300.0,
       "entityRenderDistance": 300.0,
       "textureMemoryBytes": 67108864,
-      "framebufferMemoryBytes": 25165824,
+      "framebufferMemoryBytes": 10485760,
       "enableMipmaps": true,
       "enableCompressedTextures": false,
       "enableNPOT": true,

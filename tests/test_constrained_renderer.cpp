@@ -387,7 +387,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
     EXPECT_TRUE(config.enabled);
-    EXPECT_EQ(config.framebufferMemoryBytes, 24 * 1024 * 1024);  // 24MB
+    EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
     EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
     EXPECT_EQ(config.maxTextureDimension, 512);
     EXPECT_EQ(config.colorDepthBits, 16);
@@ -451,16 +451,16 @@ TEST_F(ConstrainedRendererConfigTest, DefaultConfig_NoGpuFeatures) {
 // OrangePi Resolution Tests
 // =============================================================================
 
-TEST_F(ConstrainedRendererConfigTest, MaxResolution_24MB_OrangePi) {
+TEST_F(ConstrainedRendererConfigTest, MaxResolution_10MB_OrangePi) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
-    // Max resolution should fit in 24MB
+    // Max resolution should fit in 10MB
     size_t usage = config.calculateFramebufferUsage(config.maxResolutionWidth, config.maxResolutionHeight);
-    EXPECT_LE(usage, 24 * 1024 * 1024);
+    EXPECT_LE(usage, 10 * 1024 * 1024);
 
-    // Should support at least 1280x720
-    EXPECT_GE(config.maxResolutionWidth, 1280);
-    EXPECT_GE(config.maxResolutionHeight, 720);
+    // Should support at least 1024x768 (10MB / 8 bytes = 1.25M pixels)
+    EXPECT_GE(config.maxResolutionWidth, 1024);
+    EXPECT_GE(config.maxResolutionHeight, 768);
 
     // Resolution should be multiples of 8
     EXPECT_EQ(config.maxResolutionWidth % 8, 0);
