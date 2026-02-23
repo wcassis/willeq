@@ -67,14 +67,14 @@ struct SpellEffectInstance {
 // === Spell Emitter Presets ===
 
 namespace SpellPresets {
-    SpellEffectDef CastGlow(glm::vec4 color);    // "Smolder" — orbital particles around position
-    SpellEffectDef CastSpray(glm::vec4 color);   // "Spray" — directional cone from hands
-    SpellEffectDef SpellComplete(glm::vec4 color);
-    SpellEffectDef Impact(glm::vec4 color);
-    SpellEffectDef BuffAura(glm::vec4 color);
-    SpellEffectDef Projectile(glm::vec4 color);           // Trail + impact on arrival
-    SpellEffectDef SpellRain(glm::vec4 color, float radius);  // Falling particles in area
-    SpellEffectDef GroundCircle(glm::vec4 color, float radius); // Orbital ring at ground
+    SpellEffectDef CastGlow(glm::vec4 color, uint32_t spellId = 0);
+    SpellEffectDef CastSpray(glm::vec4 color, uint32_t spellId = 0);
+    SpellEffectDef SpellComplete(glm::vec4 color, uint32_t spellId = 0);
+    SpellEffectDef Impact(glm::vec4 color, uint32_t spellId = 0);
+    SpellEffectDef BuffAura(glm::vec4 color, uint32_t spellId = 0);
+    SpellEffectDef Projectile(glm::vec4 color, uint32_t spellId = 0);
+    SpellEffectDef SpellRain(glm::vec4 color, float radius, uint32_t spellId = 0);
+    SpellEffectDef GroundCircle(glm::vec4 color, float radius, uint32_t spellId = 0);
     glm::vec4 resistToParticleColor(uint8_t resistType);
 }
 

@@ -195,8 +195,9 @@ public:
     /**
      * Initialize the unified particle renderer (GLES2 only).
      * Call after GLES2 context is ready.
+     * @param poolSize Particle pool size (0 = read from SpellEffectsConfig)
      */
-    bool initUnifiedRenderer();
+    bool initUnifiedRenderer(int poolSize = 0);
 
     /**
      * Update unified particles (spawn, motion, death).

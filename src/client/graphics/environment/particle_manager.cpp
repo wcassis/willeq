@@ -1,5 +1,6 @@
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/environment_config.h"
+#include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/zone_biome.h"
 #include "client/graphics/environment/emitters/dust_mote_emitter.h"
 #include "client/graphics/environment/emitters/pollen_emitter.h"
@@ -46,6 +47,9 @@ bool ParticleManager::init(const std::string& eqClientPath) {
 
     // Load environment effects config
     EnvironmentEffectsConfig::instance().load("config/environment_effects.json");
+
+    // Load spell effects config
+    SpellEffectsConfig::instance().load("config/spell_effects.json");
 
     // Load particle atlas texture from project's data directory
     std::string atlasPath = "data/textures/particle_atlas.png";
@@ -575,19 +579,28 @@ static int randomInt(int minVal, int maxVal) {
     return dist(getParticleRNG());
 }
 
-bool ParticleManager::initUnifiedRenderer() {
+bool ParticleManager::initUnifiedRenderer(int poolSize) {
 #ifdef EQT_HAS_GLES2
     if (unifiedRendererInitialized_) return true;
 
+    // Determine pool size: explicit param > config > default 1024
+    int actualPoolSize = poolSize;
+    if (actualPoolSize <= 0) {
+        actualPoolSize = SpellEffectsConfig::instance().getGlobal().maxParticles;
+    }
+    if (actualPoolSize <= 0) {
+        actualPoolSize = 1024;
+    }
+
     // Allocate the fixed particle pool
-    unifiedPool_.resize(1024);
-    freeList_.resize(1024);
-    for (uint16_t i = 0; i < 1024; ++i) {
-        freeList_[i] = i;
+    unifiedPool_.resize(actualPoolSize);
+    freeList_.resize(actualPoolSize);
+    for (int i = 0; i < actualPoolSize; ++i) {
+        freeList_[i] = static_cast<uint16_t>(i);
         unifiedPool_[i].setAlive(false);
     }
     unifiedActiveCount_ = 0;
-    unifiedRenderBuf_.reserve(1024);
+    unifiedRenderBuf_.reserve(actualPoolSize);
 
     // Create and init the GLES2 renderer (self-contained, uses raw GL calls)
     unifiedRenderer_ = std::make_unique<UnifiedParticleRenderer>();
@@ -598,7 +611,7 @@ bool ParticleManager::initUnifiedRenderer() {
     }
 
     unifiedRendererInitialized_ = true;
-    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Unified particle system initialized (pool: 1024)");
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Unified particle system initialized (pool: {})", actualPoolSize);
     return true;
 #else
     return false;

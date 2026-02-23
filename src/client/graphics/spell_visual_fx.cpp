@@ -319,7 +319,7 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::CastGlow(c);
+        auto def = EQT::Graphics::Environment::SpellPresets::CastGlow(c, spell_id);
         // Override emitter lifetime to match cast duration
         float durSec = duration_ms / 1000.0f;
         for (auto& e : def.emitters) e.config.emitterLifetime = durSec;
@@ -358,7 +358,7 @@ void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uin
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Projectile(c);
+        auto def = EQT::Graphics::Environment::SpellPresets::Projectile(c, spell_id);
 
         // Compute travel duration from distance
         irr::core::vector3df srcPos, tgtPos;
@@ -409,7 +409,7 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c);
+        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id);
         m_particle_manager->createSpellEffect(def, 0, target_id);
         return;
     }
@@ -439,7 +439,7 @@ void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c);
+        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id);
         glm::vec3 worldPos(pos.X, pos.Y, pos.Z);
         m_particle_manager->createSpellEffectAtPosition(def, worldPos);
         return;
@@ -464,7 +464,7 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::SpellComplete(c);
+        auto def = EQT::Graphics::Environment::SpellPresets::SpellComplete(c, spell_id);
         m_particle_manager->createSpellEffect(def, caster_id, 0);
         return;
     }
@@ -552,7 +552,7 @@ uint32_t SpellVisualFX::createBuffAura(uint16_t entity_id, uint32_t spell_id)
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::BuffAura(c);
+        auto def = EQT::Graphics::Environment::SpellPresets::BuffAura(c, spell_id);
         // Permanent — no duration, entity-attached
         return m_particle_manager->createSpellEffect(def, entity_id, 0);
     }
@@ -589,7 +589,7 @@ void SpellVisualFX::createRainEffect(const irr::core::vector3df& center, float r
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::SpellRain(c, radius);
+        auto def = EQT::Graphics::Environment::SpellPresets::SpellRain(c, radius, spell_id);
         for (auto& e : def.emitters) e.config.emitterLifetime = duration;
         glm::vec3 worldPos(center.X, center.Y, center.Z);
         m_particle_manager->createSpellEffectAtPosition(def, worldPos, duration);
@@ -617,7 +617,7 @@ void SpellVisualFX::createGroundCircle(const irr::core::vector3df& center, float
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::GroundCircle(c, radius);
+        auto def = EQT::Graphics::Environment::SpellPresets::GroundCircle(c, radius, spell_id);
         for (auto& e : def.emitters) e.config.emitterLifetime = duration;
         glm::vec3 worldPos(center.X, center.Y, center.Z);
         m_particle_manager->createSpellEffectAtPosition(def, worldPos, duration);

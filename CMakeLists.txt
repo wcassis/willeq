@@ -403,6 +403,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/environment/fire_emitter_config.cpp
         src/client/graphics/environment/weather_emitter_config.cpp
         src/client/graphics/environment/spell_emitter_presets.cpp
+        src/client/graphics/environment/spell_effects_config.cpp
         # Storm cloud layer
         src/client/graphics/environment/storm_cloud_layer.cpp
         # Screen-space rain overlay
@@ -578,6 +579,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/environment/fire_emitter_config.cpp
         src/client/graphics/environment/weather_emitter_config.cpp
         src/client/graphics/environment/spell_emitter_presets.cpp
+        src/client/graphics/environment/spell_effects_config.cpp
         src/client/graphics/environment/environment_config.cpp
         src/client/graphics/environment/zone_biome.cpp
         src/client/graphics/environment/emitters/dust_mote_emitter.cpp

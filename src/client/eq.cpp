@@ -40,6 +40,7 @@
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/detail/detail_types.h"
 #include "client/graphics/detail/seasonal_controller.h"
+#include "client/graphics/environment/spell_effects_config.h"
 #endif
 
 #ifdef WITH_AUDIO
@@ -8864,6 +8865,18 @@ void EverQuest::RegisterCommands()
 		}
 	};
 	m_command_registry->registerCommand(reloadeffects);
+
+	Command reloadspells;
+	reloadspells.name = "spellreload";
+	reloadspells.aliases = {"reloadspells", "reloadspellfx"};
+	reloadspells.usage = "/spellreload";
+	reloadspells.description = "Reload spell effect settings from config/spell_effects.json";
+	reloadspells.category = "Utility";
+	reloadspells.handler = [this](const std::string& args) {
+		EQT::Graphics::Environment::SpellEffectsConfig::instance().reload();
+		AddChatSystemMessage("Spell effect settings reloaded");
+	};
+	m_command_registry->registerCommand(reloadspells);
 
 	Command reloadweather;
 	reloadweather.name = "reloadweather";

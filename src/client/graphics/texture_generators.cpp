@@ -98,8 +98,56 @@ irr::video::IImage* generateParticleAtlas(irr::video::IVideoDriver* driver) {
     // Tile 7: Ember
     drawCircle(3, 1, 0.6f, irr::video::SColor(255, 255, 150, 50));
 
-    // Tile 8: Foam spray
-    drawCircle(0, 2, 0.7f, irr::video::SColor(230, 255, 255, 255));
+    // Tile 8: Spell sparkle — 4-pointed star with bright core and soft glow
+    auto drawSpellSparkle = [&](int tileX, int tileY, irr::video::SColor color) {
+        int baseX = tileX * tileSize;
+        int baseY = tileY * tileSize;
+        float centerX = tileSize / 2.0f;
+        float centerY = tileSize / 2.0f;
+
+        for (int y = 0; y < tileSize; ++y) {
+            for (int x = 0; x < tileSize; ++x) {
+                float dx = x - centerX + 0.5f;
+                float dy = y - centerY + 0.5f;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                float angle = std::atan2(dy, dx);
+
+                // 4-pointed star with sharper spikes than the firefly star
+                float cosVal = std::cos(angle * 4.0f);
+                float starRadius = 2.0f + 5.0f * std::pow(std::abs(cosVal), 3.0f);
+
+                // Soft circular glow underneath (larger than star)
+                float glowRadius = 6.0f;
+                float glowAlpha = 0.0f;
+                if (dist < glowRadius) {
+                    glowAlpha = 1.0f - dist / glowRadius;
+                    glowAlpha = glowAlpha * glowAlpha * 0.4f;  // Subtle glow
+                }
+
+                // Sharp star spikes on top
+                float starAlpha = 0.0f;
+                if (dist < starRadius) {
+                    starAlpha = 1.0f - dist / starRadius;
+                    starAlpha = std::pow(starAlpha, 0.4f);  // Sharp bright spikes
+                }
+
+                // Bright core
+                float coreRadius = 2.0f;
+                float coreAlpha = 0.0f;
+                if (dist < coreRadius) {
+                    coreAlpha = 1.0f - dist / coreRadius;
+                    coreAlpha = coreAlpha * coreAlpha;
+                }
+
+                float alpha = std::min(1.0f, glowAlpha + starAlpha + coreAlpha);
+
+                irr::video::SColor pixelColor = color;
+                pixelColor.setAlpha(static_cast<irr::u32>(alpha * color.getAlpha()));
+                img->setPixel(baseX + x, baseY + y, pixelColor);
+            }
+        }
+    };
+    drawSpellSparkle(0, 2, irr::video::SColor(255, 255, 255, 255));
     // Tile 9: Water droplet
     drawCircle(1, 2, 0.4f, irr::video::SColor(200, 200, 230, 255));
 
@@ -200,6 +248,86 @@ irr::video::IImage* generateParticleAtlas(irr::video::IVideoDriver* driver) {
         }
     };
     drawRainStreak(0, 3, irr::video::SColor(200, 200, 220, 255));
+
+    // Tile 13: Smoke wisp — soft elongated cloud shape
+    auto drawSmokeWisp = [&](int tileX, int tileY, irr::video::SColor color) {
+        int baseX = tileX * tileSize;
+        int baseY = tileY * tileSize;
+        float centerX = tileSize / 2.0f;
+        float centerY = tileSize / 2.0f;
+
+        // Two overlapping soft ellipses offset to create a wispy shape
+        auto ellipseAlpha = [](float dx, float dy, float rx, float ry) -> float {
+            float d = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+            if (d >= 1.0f) return 0.0f;
+            float a = 1.0f - d;
+            return a * a;  // Soft quadratic falloff
+        };
+
+        for (int y = 0; y < tileSize; ++y) {
+            for (int x = 0; x < tileSize; ++x) {
+                float dx = x - centerX + 0.5f;
+                float dy = y - centerY + 0.5f;
+
+                // Main lobe — wide horizontal ellipse
+                float a1 = ellipseAlpha(dx, dy, 6.5f, 4.0f);
+                // Secondary lobe — offset up-right for wispy tail
+                float a2 = ellipseAlpha(dx - 2.0f, dy + 1.5f, 4.0f, 3.0f) * 0.6f;
+                // Third lobe — offset down-left
+                float a3 = ellipseAlpha(dx + 1.5f, dy - 1.0f, 3.5f, 2.5f) * 0.4f;
+
+                float alpha = std::min(1.0f, a1 + a2 + a3);
+
+                irr::video::SColor pixelColor = color;
+                pixelColor.setAlpha(static_cast<irr::u32>(alpha * color.getAlpha()));
+                img->setPixel(baseX + x, baseY + y, pixelColor);
+            }
+        }
+    };
+    drawSmokeWisp(1, 3, irr::video::SColor(180, 200, 200, 210));
+
+    // Tile 14: Ice crystal — angular hexagonal shard shape
+    auto drawIceCrystal = [&](int tileX, int tileY, irr::video::SColor color) {
+        int baseX = tileX * tileSize;
+        int baseY = tileY * tileSize;
+        float centerX = tileSize / 2.0f;
+        float centerY = tileSize / 2.0f;
+
+        for (int y = 0; y < tileSize; ++y) {
+            for (int x = 0; x < tileSize; ++x) {
+                float dx = x - centerX + 0.5f;
+                float dy = y - centerY + 0.5f;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                float angle = std::atan2(dy, dx);
+
+                // 6-pointed angular shape with sharp edges (hexagonal crystal)
+                float cos6 = std::cos(angle * 6.0f);
+                // Mix of hexagonal outer boundary and spike tips
+                float crystalRadius = 4.0f + 2.5f * std::pow(std::abs(cos6), 0.6f);
+
+                float alpha = 0.0f;
+                if (dist < crystalRadius) {
+                    float edgeDist = crystalRadius - dist;
+                    // Sharper edges than a circle — linear falloff with thin soft zone
+                    alpha = std::min(1.0f, edgeDist / 1.5f);
+
+                    // Interior facet shading — brighter along crystal axes
+                    float facetBrightness = 0.6f + 0.4f * std::pow(std::abs(cos6), 2.0f);
+                    alpha *= facetBrightness;
+
+                    // Bright center core
+                    if (dist < 1.5f) {
+                        alpha = std::min(1.0f, alpha + (1.5f - dist) / 1.5f * 0.5f);
+                    }
+                }
+
+                irr::video::SColor pixelColor = color;
+                pixelColor.setAlpha(static_cast<irr::u32>(alpha * color.getAlpha()));
+                img->setPixel(baseX + x, baseY + y, pixelColor);
+            }
+        }
+    };
+    drawIceCrystal(2, 3, irr::video::SColor(240, 200, 230, 255));
 
     return img;
 }
