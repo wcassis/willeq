@@ -1238,8 +1238,12 @@ private:
     void drawCollisionDebugLines(float deltaTime);
     void clearCollisionDebugLines();
 
-    // Target selection box visualization
-    void drawTargetSelectionBox();
+    // Target selection visualization
+#ifdef EQT_HAS_GLES2
+    void drawTargetOutline();       // Stencil-based silhouette outline (GLES2)
+#else
+    void drawTargetSelectionBox();  // Wireframe bounding box (desktop GL)
+#endif
 
     // Zone line debugging
     bool inZoneLine_ = false;

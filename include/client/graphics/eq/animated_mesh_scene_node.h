@@ -153,6 +153,9 @@ public:
     SkeletalAnimator& getAnimator() { return animator_; }
     const SkeletalAnimator& getAnimator() const { return animator_; }
 
+    // Get the per-instance animated mesh (for external re-draw, e.g. stencil outline)
+    irr::scene::SMesh* getInstanceMesh() const { return instanceMesh_; }
+
     // Force immediate application of current animation frame to mesh
     // Call this after setToLastFrame() to immediately update mesh vertices
     void forceAnimationUpdate() { applyAnimation(); }
