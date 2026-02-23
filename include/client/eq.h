@@ -1398,7 +1398,7 @@ private:
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
 
 	// Zone line detection state
-	bool m_zoning_enabled = true;                                    // Whether zone line detection triggers zoning (matches visualization default)
+	bool m_zoning_enabled = false;                                   // Whether zone line detection triggers zoning (Ctrl+Z toggles)
 	bool m_zone_line_triggered = false;                              // Currently in a zone line
 	std::chrono::steady_clock::time_point m_zone_line_trigger_time;  // When zone line was triggered
 	float m_last_zone_check_x = 0.0f;                                // Last position checked for zone line
