@@ -326,6 +326,13 @@ public:
     void deleteStaticHardwareBuffer(const scene::IMeshBuffer* mb);
     void deleteAllHardwareBuffers();
 
+    // Hardware buffer memory queries
+    size_t getHWBufferMemoryUsage() const;
+    size_t getHWBufferCount() const;
+
+    // GPU texture memory query (sum of all texture GpuBytes)
+    size_t getGpuTextureMemoryUsage() const;
+
     // Invalidate texture state tracking (call after raw GL texture ops)
     void invalidateTextureState();
 

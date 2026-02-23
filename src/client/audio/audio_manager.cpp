@@ -758,6 +758,41 @@ void AudioManager::update() {
     // The mixer and backends handle their own timing
 }
 
+size_t AudioManager::getSoundFontMemoryEstimate() const {
+    // TSF loads the entire SF2 file into RAM, so file size ≈ memory usage
+    if (soundFontPath_.empty()) return 0;
+    try {
+        if (std::filesystem::exists(soundFontPath_)) {
+            return static_cast<size_t>(std::filesystem::file_size(soundFontPath_));
+        }
+    } catch (...) {}
+    // Fallback: check EQ dir SoundFonts
+    for (const char* name : {"synthusr.sf2", "1mgm.sf2"}) {
+        std::string path = eqPath_ + "/" + name;
+        try {
+            if (std::filesystem::exists(path)) {
+                return static_cast<size_t>(std::filesystem::file_size(path));
+            }
+        } catch (...) {}
+    }
+    return 0;
+}
+
+size_t AudioManager::getMusicDecodedBytes() const {
+    if (musicPlayer_) {
+        return musicPlayer_->getDecodedDataBytes();
+    }
+    return 0;
+}
+
+size_t AudioManager::getPfsArchiveCacheBytes() const {
+    size_t total = 0;
+    for (const auto& [path, archive] : pfsArchives_) {
+        if (archive) total += archive->getMemoryUsage();
+    }
+    return total;
+}
+
 bool AudioManager::loadPfsIndexCache() {
     std::string cachePath = "config/snd_index_cache.json";
     std::ifstream cacheFile(cachePath);

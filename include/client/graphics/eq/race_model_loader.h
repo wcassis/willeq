@@ -144,6 +144,13 @@ public:
         size_t variantMeshCacheCount = 0;  // variantMeshCache_ entries
         size_t animatedMeshCacheCount = 0; // animatedMeshCache_ + variantAnimatedMeshCache_
         size_t armorTextureCount = 0;      // Number of armor textures
+
+        // Geometry and skeleton tracking (previously untracked)
+        size_t modelGeometryBytes = 0;     // ZoneGeometry data in loadedModels_ + variantModels_
+        size_t modelSkeletonBytes = 0;     // CharacterSkeleton + animation tracks in loadedModels_
+        size_t characterModelBytes = 0;    // CharacterModel data (global + numbered + zone + other)
+        size_t animatedMeshBytes = 0;      // EQAnimatedMesh working data (originalVertices_ etc.)
+        size_t irrlichtMeshBytes = 0;      // Irrlicht IMesh vertex/index buffers in mesh caches
     };
     MemoryStats getMemoryStats() const;
 

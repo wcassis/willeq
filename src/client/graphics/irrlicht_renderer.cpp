@@ -19,6 +19,10 @@
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
+#include <cstdio>
+#ifdef __linux__
+#include <unistd.h>
+#endif
 
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
@@ -40,6 +44,9 @@
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
 extern void gles2DeleteStaticHWBuffer(void* driver, const void* meshBuffer);
 extern void gles2DeleteAllStaticHWBuffers(void* driver);
+extern size_t gles2GetHWBufferMemoryUsage(void* driver);
+extern size_t gles2GetHWBufferCount(void* driver);
+extern size_t gles2GetGpuTextureMemoryUsage(void* driver);
 #endif
 #include <algorithm>
 #include <chrono>
@@ -7252,6 +7259,20 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
                  visibleEntities, totalEntities, config_.constrainedConfig.maxVisibleEntities,
                  config_.constrainedConfig.clipDistance);
         LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
+#ifdef __linux__
+        {
+            FILE* f = fopen("/proc/self/statm", "r");
+            if (f) {
+                unsigned long vm = 0, rss = 0;
+                if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
+                    long ps = sysconf(_SC_PAGESIZE);
+                    LOG_INFO(MOD_GRAPHICS, "  Memory: RSS {:.1f}MB",
+                             (rss * ps) / (1024.0f * 1024.0f));
+                }
+                fclose(f);
+            }
+        }
+#endif
     }
 
     // Draw selection indicator around targeted entity
@@ -11419,11 +11440,13 @@ static std::string formatBytes(size_t bytes) {
     return fmt::format("{} B", bytes);
 }
 
-std::vector<std::string> IrrlichtRenderer::getMemoryReport() const {
+std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInput& ext) const {
     std::vector<std::string> lines;
     size_t totalEstimate = 0;
 
     lines.push_back("=== Memory Usage Report ===");
+    lines.push_back("");
+    lines.push_back("--- Graphics ---");
 
     // --- Texture Cache ---
     if (constrainedTextureCache_) {
@@ -11531,15 +11554,22 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport() const {
         lines.push_back(fmt::format("[Placeable Objects] {} ({} objects)",
             formatBytes(objBytes), objectCount));
 
+        // Texture Atlases
+        size_t atlasBytes = 0;
+        if (zoneAtlas_) atlasBytes += zoneAtlas_->getGPUMemoryUsage();
+        if (objAtlas_) atlasBytes += objAtlas_->getGPUMemoryUsage();
+        if (atlasBytes > 0) {
+            size_t tileCount = 0;
+            size_t pageCount = 0;
+            if (zoneAtlas_) { tileCount += zoneAtlas_->getTileCount(); pageCount += zoneAtlas_->getPageCount(); }
+            if (objAtlas_) { tileCount += objAtlas_->getTileCount(); pageCount += objAtlas_->getPageCount(); }
+            totalEstimate += atlasBytes;
+            lines.push_back(fmt::format("[Texture Atlases] {} ({} pages, {} tiles)",
+                formatBytes(atlasBytes), pageCount, tileCount));
+        }
+
         lines.push_back(fmt::format("[Zone Lights] {} zone + {} object",
             lightCount, objectLightCount));
-    }
-
-    // --- Animated Textures ---
-    if (animatedTextureManager_) {
-        size_t animTexCount = animatedTextureManager_->getAnimatedTextureCount();
-        if (animTexCount > 0)
-            lines.push_back(fmt::format("[Animated Textures] {} sequences", animTexCount));
     }
 
     // --- Entity Renderer ---
@@ -11549,65 +11579,83 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport() const {
         size_t visibleCount = entityRenderer_->getVisibleEntityCount();
         auto* rml = entityRenderer_->getRaceModelLoader();
         size_t loadedModels = rml ? rml->getLoadedModelCount() : 0;
-        lines.push_back(fmt::format("[Entities] {} total, {} modeled, {} visible, {} race models loaded",
-            entityCount, modeledCount, visibleCount, loadedModels));
-    }
-
-    // --- Equipment Models ---
-    if (entityRenderer_) {
-        if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
-            auto stats = eml->getMemoryStats();
-            totalEstimate += stats.rawTextureBytes;
-            lines.push_back(fmt::format("[Equipment Models] {} raw textures, {} cached meshes ({}/{} loaded/indexed, {} mappings)",
-                formatBytes(stats.rawTextureBytes), stats.meshCacheCount,
-                stats.loadedGeometryCount, stats.indexedModelCount, stats.mappingCount));
-        }
+        size_t perInstanceBytes = entityRenderer_->getPerInstanceMemoryBytes();
+        totalEstimate += perInstanceBytes;
+        lines.push_back(fmt::format("[Entities] {} total, {} modeled, {} visible, {} race models, {} instance data",
+            entityCount, modeledCount, visibleCount, loadedModels, formatBytes(perInstanceBytes)));
     }
 
     // --- Character Models ---
     if (entityRenderer_) {
         if (auto* rml = entityRenderer_->getRaceModelLoader()) {
             auto stats = rml->getMemoryStats();
-            size_t rmlTotal = stats.globalTextureBytes + stats.numberedTextureBytes
+            size_t rmlTexTotal = stats.globalTextureBytes + stats.numberedTextureBytes
                             + stats.armorTextureBytes + stats.zoneTextureBytes
                             + stats.otherChrTextureBytes;
+            size_t rmlTotal = rmlTexTotal + stats.modelGeometryBytes + stats.modelSkeletonBytes
+                            + stats.characterModelBytes + stats.animatedMeshBytes
+                            + stats.irrlichtMeshBytes;
             totalEstimate += rmlTotal;
-            lines.push_back(fmt::format("[Character Models] {} raw textures ({} global, {} numbered, {} armor [{} tex], {} zone, {} other chr)",
+            lines.push_back(fmt::format("[Character Models] {} (tex {}, geom {}, skel {}, char {}, anim mesh {}, irr mesh {})",
                 formatBytes(rmlTotal),
-                formatBytes(stats.globalTextureBytes),
-                formatBytes(stats.numberedTextureBytes),
-                formatBytes(stats.armorTextureBytes), stats.armorTextureCount,
-                formatBytes(stats.zoneTextureBytes),
-                formatBytes(stats.otherChrTextureBytes)));
-            lines.push_back(fmt::format("  {} race models, {} mesh cache, {} variant cache, {} animated cache",
-                stats.loadedModelCount, stats.meshCacheCount,
-                stats.variantMeshCacheCount, stats.animatedMeshCacheCount));
+                formatBytes(rmlTexTotal),
+                formatBytes(stats.modelGeometryBytes),
+                formatBytes(stats.modelSkeletonBytes),
+                formatBytes(stats.characterModelBytes),
+                formatBytes(stats.animatedMeshBytes),
+                formatBytes(stats.irrlichtMeshBytes)));
         }
     }
 
-    // --- Irrlicht Driver Textures ---
+    // --- Equipment Models ---
+    if (entityRenderer_) {
+        if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+            auto stats = eml->getMemoryStats();
+            size_t emlTotal = stats.rawTextureBytes + stats.geometryBytes
+                            + stats.irrlichtMeshBytes + stats.indexBytes;
+            totalEstimate += emlTotal;
+            lines.push_back(fmt::format("[Equipment Models] {} (tex {}, geom {}, mesh {}, idx {}; {}/{} loaded, {} mappings)",
+                formatBytes(emlTotal),
+                formatBytes(stats.rawTextureBytes),
+                formatBytes(stats.geometryBytes),
+                formatBytes(stats.irrlichtMeshBytes),
+                formatBytes(stats.indexBytes),
+                stats.loadedGeometryCount, stats.indexedModelCount, stats.mappingCount));
+        }
+    }
+
+    // --- S3D Zone Source Data (CPU-side geometry, BSP, animations kept for mesh rebuilds) ---
+    if (currentZone_) {
+        size_t zoneSourceBytes = currentZone_->getMemoryUsage();
+        totalEstimate += zoneSourceBytes;
+
+        // Break down major components
+        size_t combinedGeomBytes = currentZone_->geometry ? currentZone_->geometry->getMemoryUsage() : 0;
+        size_t wldBytes = currentZone_->wldLoader ? currentZone_->wldLoader->getMemoryUsage() : 0;
+        size_t objGeomBytes = 0;
+        for (const auto& [name, geom] : currentZone_->objectGeometries)
+            if (geom) objGeomBytes += geom->getMemoryUsage();
+
+        lines.push_back(fmt::format("[S3D Zone Source Data] {} (combined geom {}, WLD {}, obj geom {})",
+            formatBytes(zoneSourceBytes), formatBytes(combinedGeomBytes),
+            formatBytes(wldBytes), formatBytes(objGeomBytes)));
+    }
+
+    // --- GPU Texture Memory (actual GPU-side allocations in shared RAM) ---
+#ifdef EQT_HAS_GLES2
+    if (driver_) {
+        size_t gpuTexBytes = gles2GetGpuTextureMemoryUsage(driver_);
+        int texCount = driver_->getTextureCount();
+        totalEstimate += gpuTexBytes;
+        lines.push_back(fmt::format("[GPU Textures] {} ({} textures in shared RAM)",
+            formatBytes(gpuTexBytes), texCount));
+    }
+#else
     if (driver_) {
         int texCount = driver_->getTextureCount();
-        size_t driverTexBytes = 0;
-        for (int i = 0; i < texCount; ++i) {
-            auto* tex = driver_->getTextureByIndex(static_cast<irr::u32>(i));
-            if (tex) {
-                auto sz = tex->getOriginalSize();
-                // Estimate 4 bytes per pixel (ARGB8888)
-                driverTexBytes += static_cast<size_t>(sz.Width) * sz.Height * 4;
-            }
-        }
-        totalEstimate += driverTexBytes;
-        lines.push_back(fmt::format("[Irrlicht Driver] {} textures, est. {}",
-            texCount, formatBytes(driverTexBytes)));
+        lines.push_back(fmt::format("[Irrlicht Driver] {} textures (GPU-side, not tracked)", texCount));
     }
-
-    // --- Irrlicht Mesh Cache ---
-    if (smgr_) {
-        int meshCount = smgr_->getMeshCache()->getMeshCount();
-        if (meshCount > 0)
-            lines.push_back(fmt::format("[Irrlicht Mesh Cache] {} meshes", meshCount));
-    }
+#endif
 
     // --- HCMap / Collision ---
     if (collisionMap_ && collisionMap_->IsLoaded()) {
@@ -11617,86 +11665,130 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport() const {
             formatBytes(mapStats.totalBytes), mapStats.vertexCount, mapStats.faceCount));
     }
 
-    // --- Sky ---
-    if (skyRenderer_ && skyRenderer_->isInitialized()) {
-        size_t skyTexCount = skyRenderer_->getTextureCount();
-        lines.push_back(fmt::format("[Sky] {} textures", skyTexCount));
-    }
-
-    // --- Doors ---
-    if (doorManager_) {
-        size_t doorCount = doorManager_->getDoorCount();
-        if (doorCount > 0)
-            lines.push_back(fmt::format("[Doors] {} loaded", doorCount));
-    }
-
-    // --- Detail System (grass/plants/debris) ---
-    if (detailManager_) {
-        size_t chunkCount = detailManager_->getActiveChunkCount();
-        size_t placements = detailManager_->getVisiblePlacementCount();
-        // Estimate: each placement generates ~4 vertices (quad) + 6 indices
-        size_t detailMeshBytes = placements * (4 * sizeof(irr::video::S3DVertex) + 6 * sizeof(uint16_t));
-        totalEstimate += detailMeshBytes;
-        lines.push_back(fmt::format("[Detail Objects] {} ({} chunks, {} placements)",
-            formatBytes(detailMeshBytes), chunkCount, placements));
-
-        // Surface map
-        if (detailManager_->getSurfaceMap() && detailManager_->getSurfaceMap()->isLoaded()) {
-            auto* sm = detailManager_->getSurfaceMap();
-            size_t cells = static_cast<size_t>(sm->getGridWidth()) * sm->getGridHeight();
-            size_t smBytes = cells * (sizeof(uint8_t) + sizeof(float));  // surface type + height
-            totalEstimate += smBytes;
-            lines.push_back(fmt::format("  Surface map: {} ({}x{} cells)",
-                formatBytes(smBytes), sm->getGridWidth(), sm->getGridHeight()));
-        }
-    }
-
-    // --- Particles ---
-    if (particleManager_) {
-        int particles = particleManager_->getTotalActiveParticles();
-        size_t particleBytes = particles * sizeof(float) * 16;  // estimate per particle
-        totalEstimate += particleBytes;
-        lines.push_back(fmt::format("[Particles] {} active (est. {})",
-            particles, formatBytes(particleBytes)));
-    }
-
-    // --- Boids ---
-    if (boidsManager_) {
-        int flocks = boidsManager_->getActiveFlockCount();
-        int creatures = boidsManager_->getTotalActiveCreatures();
-        if (flocks > 0 || creatures > 0)
-            lines.push_back(fmt::format("[Boids] {} flocks, {} creatures",
-                flocks, creatures));
-    }
-
-    // --- Tumbleweeds ---
-    if (tumbleweedManager_) {
-        int active = tumbleweedManager_->getActiveCount();
-        if (active > 0)
-            lines.push_back(fmt::format("[Tumbleweeds] {} active", active));
-    }
-
     // --- Framebuffer ---
     if (driver_) {
         auto screenSize = driver_->getScreenSize();
-        int bpp = 4;  // assume 32-bit
-        if (isConstrainedMode() && config_.constrainedConfig.colorDepthBits == 16)
-            bpp = 2;
-        size_t fbBytes = static_cast<size_t>(screenSize.Width) * screenSize.Height * bpp;
-        size_t zbBytes = static_cast<size_t>(screenSize.Width) * screenSize.Height * 2;  // 16-bit Z
-        size_t totalFb = fbBytes * 2 + zbBytes;  // front + back + Z
+        size_t totalFb = config_.constrainedConfig.calculateFramebufferUsage(
+            static_cast<int>(screenSize.Width), static_cast<int>(screenSize.Height));
         totalEstimate += totalFb;
-        lines.push_back(fmt::format("[Framebuffer] {} ({}x{}, {}bpp, front+back+Z)",
-            formatBytes(totalFb), screenSize.Width, screenSize.Height, bpp * 8));
+        int colorBpp = (isConstrainedMode() && config_.constrainedConfig.colorDepthBits == 16) ? 16 : 32;
+        lines.push_back(fmt::format("[Framebuffer] {} ({}x{}, {}bpp color, D24S8)",
+            formatBytes(totalFb), screenSize.Width, screenSize.Height, colorBpp));
     }
 
-    // --- Vertex Animated Meshes ---
-    if (!vertexAnimatedMeshes_.empty()) {
-        lines.push_back(fmt::format("[Vertex Animated] {} meshes", vertexAnimatedMeshes_.size()));
+    // --- VBO/EBO GPU Buffers ---
+#ifdef EQT_HAS_GLES2
+    if (driver_) {
+        size_t hwbBytes = gles2GetHWBufferMemoryUsage(driver_);
+        size_t hwbCount = gles2GetHWBufferCount(driver_);
+        if (hwbCount > 0) {
+            totalEstimate += hwbBytes;
+            lines.push_back(fmt::format("[VBO/EBO GPU Buffers] {} ({} buffers)",
+                formatBytes(hwbBytes), hwbCount));
+        }
+    }
+#endif
+
+    // ============================================================
+    // Audio section (from external input)
+    // ============================================================
+    if (ext.audioAvailable) {
+        lines.push_back("");
+        lines.push_back("--- Audio ---");
+
+        totalEstimate += ext.sfxCacheBytes;
+        lines.push_back(fmt::format("[SFX Cache] {}", formatBytes(ext.sfxCacheBytes)));
+
+        totalEstimate += ext.soundBufferCacheBytes;
+        if (ext.soundBufferCacheMaxBytes > 0) {
+            lines.push_back(fmt::format("[Sound Buffer Cache] {} / {}",
+                formatBytes(ext.soundBufferCacheBytes), formatBytes(ext.soundBufferCacheMaxBytes)));
+        } else {
+            lines.push_back(fmt::format("[Sound Buffer Cache] {} (no limit)",
+                formatBytes(ext.soundBufferCacheBytes)));
+        }
+
+        if (ext.soundFontEstimateBytes > 0) {
+            totalEstimate += ext.soundFontEstimateBytes;
+            lines.push_back(fmt::format("[SoundFont] ~{}", formatBytes(ext.soundFontEstimateBytes)));
+        }
+
+        if (ext.musicDecodedBytes > 0) {
+            totalEstimate += ext.musicDecodedBytes;
+            lines.push_back(fmt::format("[Music Decoded Data] {}", formatBytes(ext.musicDecodedBytes)));
+        }
+
+        if (ext.audioPfsArchiveBytes > 0) {
+            totalEstimate += ext.audioPfsArchiveBytes;
+            lines.push_back(fmt::format("[Audio PFS Archives] {}", formatBytes(ext.audioPfsArchiveBytes)));
+        }
+
+        lines.push_back(fmt::format("[Zone Emitters] {} total, {} active",
+            ext.zoneEmitterCount, ext.activeEmitterCount));
+    }
+
+    // ============================================================
+    // Network section (from external input)
+    // ============================================================
+    if (!ext.connections.empty()) {
+        lines.push_back("");
+        lines.push_back("--- Network ---");
+        for (const auto& conn : ext.connections) {
+            lines.push_back(fmt::format("[{}] RX {} TX {} | Ping {}ms",
+                conn.name, formatBytes(conn.recvBytes), formatBytes(conn.sentBytes), conn.avgPing));
+        }
+    }
+
+    // ============================================================
+    // Game Data section (from external input)
+    // ============================================================
+    if (ext.entityCount > 0 || ext.doorCount > 0 || ext.spellDbCount > 0) {
+        lines.push_back("");
+        lines.push_back("--- Game Data ---");
+
+        if (ext.entityCount > 0) {
+            totalEstimate += ext.entityEstimateBytes;
+            lines.push_back(fmt::format("[Entities] {} (~{})",
+                ext.entityCount, formatBytes(ext.entityEstimateBytes)));
+        }
+        if (ext.doorCount > 0) {
+            totalEstimate += ext.doorEstimateBytes;
+            lines.push_back(fmt::format("[Doors] {} (~{})",
+                ext.doorCount, formatBytes(ext.doorEstimateBytes)));
+        }
+        if (ext.spellDbCount > 0) {
+            totalEstimate += ext.spellDbEstimateBytes;
+            lines.push_back(fmt::format("[Spell Database] {} spells (~{})",
+                ext.spellDbCount, formatBytes(ext.spellDbEstimateBytes)));
+        }
+    }
+
+    // ============================================================
+    // Process section (from external input)
+    // ============================================================
+    if (ext.processRssBytes > 0) {
+        lines.push_back("");
+        lines.push_back("--- Process ---");
+        lines.push_back(fmt::format("[RSS] {}", formatBytes(ext.processRssBytes)));
+        lines.push_back(fmt::format("[Virtual] {}", formatBytes(ext.processVmBytes)));
+        if (ext.sharedLibBytes > 0 || ext.anonBytes > 0 || ext.stackBytes > 0) {
+            lines.push_back(fmt::format("[Shared Libs] {}", formatBytes(ext.sharedLibBytes)));
+            lines.push_back(fmt::format("[Anonymous (heap+mmap)] {}", formatBytes(ext.anonBytes)));
+            if (ext.stackBytes > 0)
+                lines.push_back(fmt::format("[Thread Stacks] {}", formatBytes(ext.stackBytes)));
+        }
     }
 
     // --- Total ---
-    lines.push_back(fmt::format("--- Estimated total: {} ---", formatBytes(totalEstimate)));
+    lines.push_back("");
+    if (ext.processRssBytes > 0) {
+        size_t gap = ext.processRssBytes > totalEstimate ? ext.processRssBytes - totalEstimate : 0;
+        float pct = ext.processRssBytes > 0 ? (totalEstimate * 100.0f / ext.processRssBytes) : 0.0f;
+        lines.push_back(fmt::format("--- Tracked: {} / RSS: {} ({:.0f}%, gap: {}) ---",
+            formatBytes(totalEstimate), formatBytes(ext.processRssBytes), pct, formatBytes(gap)));
+    } else {
+        lines.push_back(fmt::format("--- Tracked total: {} ---", formatBytes(totalEstimate)));
+    }
 
     return lines;
 }

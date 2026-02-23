@@ -118,6 +118,70 @@ struct S3DZone {
     // Light sources loaded from lights.wld
     std::vector<std::shared_ptr<ZoneLight>> lights;
 
+    // CPU-side memory usage of all zone source data
+    size_t getMemoryUsage() const {
+        size_t total = sizeof(S3DZone);
+
+        // Combined zone geometry
+        if (geometry) total += geometry->getMemoryUsage();
+
+        // Zone texture raw pixel data (may be released after GPU upload)
+        for (const auto& [name, tex] : textures)
+            if (tex) total += tex->rawDataBytes() + sizeof(TextureInfo);
+
+        // WLD loader data (BSP tree, per-region geometries, placeables, tracks, etc.)
+        if (wldLoader) total += wldLoader->getMemoryUsage();
+
+        // Placeable objects (ObjectInstance = shared_ptr pair, geometry may be shared)
+        total += objects.capacity() * sizeof(ObjectInstance);
+
+        // Object geometries from _obj.s3d
+        for (const auto& [name, geom] : objectGeometries)
+            if (geom) total += geom->getMemoryUsage();
+
+        // Object textures
+        for (const auto& [name, tex] : objectTextures)
+            if (tex) total += tex->rawDataBytes() + sizeof(TextureInfo);
+
+        // Character models
+        for (const auto& model : characters) {
+            if (!model) continue;
+            total += sizeof(CharacterModel);
+            for (const auto& part : model->parts)
+                if (part) total += part->getMemoryUsage();
+            total += model->partsWithTransforms.capacity() * sizeof(CharacterPart);
+            total += model->rawParts.capacity() * sizeof(CharacterPart);
+            // Skeleton and animation data accounted via CharacterSkeleton below
+            if (model->animatedSkeleton) {
+                total += sizeof(CharacterSkeleton);
+                for (const auto& bone : model->animatedSkeleton->bones) {
+                    total += sizeof(AnimatedBone) + bone.name.capacity();
+                    total += bone.childIndices.capacity() * sizeof(int);
+                    if (bone.poseTrack)
+                        total += bone.poseTrack->frames.capacity() * sizeof(BoneTransform);
+                    for (const auto& [code, track] : bone.animationTracks)
+                        if (track) total += track->frames.capacity() * sizeof(BoneTransform);
+                }
+                for (const auto& [code, anim] : model->animatedSkeleton->animations)
+                    if (anim) total += sizeof(Animation) + anim->tracks.size() * 64;
+            }
+        }
+
+        // Character textures
+        for (const auto& [name, tex] : characterTextures)
+            if (tex) total += tex->rawDataBytes() + sizeof(TextureInfo);
+
+        // Lights
+        for (const auto& light : lights) {
+            if (!light) continue;
+            total += sizeof(ZoneLight);
+            total += light->lightLevels.capacity() * sizeof(float);
+            total += light->colors.capacity() * sizeof(std::tuple<float,float,float>);
+        }
+
+        return total;
+    }
+
     // Release raw pixel data from all texture infos (zone, object, character).
     // Call after all Irrlicht textures and animated texture frames have been uploaded.
     // Returns the number of bytes freed.

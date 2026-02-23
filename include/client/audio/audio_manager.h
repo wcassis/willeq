@@ -137,6 +137,13 @@ public:
     // Find zone music file with zone name mapping (e.g., oasis -> nro)
     std::string findZoneMusic(const std::string& zoneName);
 
+    // Memory usage queries
+    size_t getSoundBufferCacheBytes() const { return soundBufferCacheSizeBytes_; }
+    size_t getSoundBufferCacheMaxBytes() const { return soundBufferCacheMaxBytes_; }
+    size_t getSoundFontMemoryEstimate() const;
+    size_t getMusicDecodedBytes() const;
+    size_t getPfsArchiveCacheBytes() const;
+
     // Get mixer and sfx manager for other audio components
     AudioMixer* getMixer() { return mixer_.get(); }
     SfxManager* getSfxManager() { return sfxManager_.get(); }

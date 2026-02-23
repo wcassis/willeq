@@ -70,6 +70,13 @@ private:
 
     // Lock buffer (for lock/unlock support)
     u8* LockBuffer;
+
+    // GPU memory usage tracking (set during upload)
+    u32 GpuBytes;
+
+public:
+    // Get GPU memory usage for this texture
+    u32 getGpuMemoryBytes() const { return GpuBytes; }
 };
 
 } // end namespace video

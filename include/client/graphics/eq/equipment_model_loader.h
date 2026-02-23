@@ -81,6 +81,9 @@ public:
         size_t indexedModelCount = 0;    // Total models indexed from archives
         size_t loadedGeometryCount = 0;  // Models with geometry loaded on demand
         size_t mappingCount = 0;         // Number of item-to-model mappings
+        size_t geometryBytes = 0;        // ZoneGeometry data in loaded models
+        size_t irrlichtMeshBytes = 0;    // Irrlicht IMesh vertex/index buffers
+        size_t indexBytes = 0;           // Index data (model refs, texture refs, mappings)
     };
     MemoryStats getMemoryStats() const;
 

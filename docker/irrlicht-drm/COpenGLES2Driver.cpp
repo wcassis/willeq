@@ -1665,6 +1665,44 @@ void COpenGLES2Driver::deleteAllHardwareBuffers()
 }
 
 // ============================================================================
+// Hardware buffer memory queries
+// ============================================================================
+
+size_t COpenGLES2Driver::getHWBufferMemoryUsage() const
+{
+    size_t total = 0;
+    for (const auto& [mb, hwb] : HWBufferMap) {
+        // Vertex data size
+        GLsizei stride;
+        switch (hwb.vType) {
+            case EVT_STANDARD:  stride = sizeof(S3DVertex); break;
+            case EVT_2TCOORDS:  stride = sizeof(S3DVertex2TCoords); break;
+            case EVT_TANGENTS:  stride = sizeof(S3DVertexTangents); break;
+            default: stride = sizeof(S3DVertex); break;
+        }
+        total += static_cast<size_t>(hwb.vertexCount) * stride;
+        // Index data size (16-bit indices)
+        total += static_cast<size_t>(hwb.indexCount) * sizeof(u16);
+    }
+    return total;
+}
+
+size_t COpenGLES2Driver::getHWBufferCount() const
+{
+    return HWBufferMap.size();
+}
+
+size_t COpenGLES2Driver::getGpuTextureMemoryUsage() const
+{
+    size_t total = 0;
+    for (u32 i = 0; i < Textures.size(); ++i) {
+        if (Textures[i].Surface)
+            total += static_cast<const COGLES2Texture*>(Textures[i].Surface)->getGpuMemoryBytes();
+    }
+    return total;
+}
+
+// ============================================================================
 // Factory function
 // ============================================================================
 
@@ -1706,6 +1744,24 @@ void gles2DeleteAllStaticHWBuffers(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     d->deleteAllHardwareBuffers();
+}
+
+size_t gles2GetHWBufferMemoryUsage(void* driver)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    return d->getHWBufferMemoryUsage();
+}
+
+size_t gles2GetHWBufferCount(void* driver)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    return d->getHWBufferCount();
+}
+
+size_t gles2GetGpuTextureMemoryUsage(void* driver)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    return d->getGpuTextureMemoryUsage();
 }
 
 #endif // _IRR_COMPILE_WITH_OGLES2_

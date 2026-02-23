@@ -46,6 +46,7 @@
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
 #include "client/audio/zone_audio_manager.h"
+#include "client/audio/sfx_manager.h"
 #include "client/audio/sound_assets.h"
 #include "client/audio/door_sounds.h"
 #include "client/audio/water_sounds.h"
@@ -61,11 +62,15 @@
 #include <vector>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <thread>
 #include <chrono>
 #include <map>
 #include <tuple>
 #include <fstream>
+#ifdef __linux__
+#include <unistd.h>
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -9926,18 +9931,121 @@ void EverQuest::RegisterCommands()
 	pmem.name = "pmem";
 	pmem.aliases = {"memory", "mem_report"};
 	pmem.usage = "/pmem";
-	pmem.description = "Show graphics memory usage breakdown";
+	pmem.description = "Show memory usage breakdown across all subsystems";
 	pmem.category = "Utility";
 	pmem.handler = [this](const std::string& args) {
 		if (!m_renderer) {
 			AddChatSystemMessage("Graphics renderer not available");
 			return;
 		}
-		auto report = m_renderer->getMemoryReport();
+
+		EQT::Graphics::MemoryReportInput ext;
+
+		// --- Process RSS/VM from /proc/self/statm ---
+#ifdef __linux__
+		{
+			FILE* f = fopen("/proc/self/statm", "r");
+			if (f) {
+				unsigned long vm = 0, rss = 0;
+				if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
+					long ps = sysconf(_SC_PAGESIZE);
+					ext.processRssBytes = static_cast<size_t>(rss) * ps;
+					ext.processVmBytes = static_cast<size_t>(vm) * ps;
+				}
+				fclose(f);
+			}
+		}
+#endif
+
+		// --- Process memory breakdown from /proc/self/smaps_rollup ---
+#ifdef __linux__
+		{
+			FILE* f = fopen("/proc/self/smaps_rollup", "r");
+			if (f) {
+				char line[256];
+				while (fgets(line, sizeof(line), f)) {
+					unsigned long kb = 0;
+					if (sscanf(line, "Shared_Clean: %lu kB", &kb) == 1 ||
+					    sscanf(line, "Shared_Dirty: %lu kB", &kb) == 1) {
+						ext.sharedLibBytes += static_cast<size_t>(kb) * 1024;
+					} else if (sscanf(line, "Anonymous: %lu kB", &kb) == 1) {
+						ext.anonBytes = static_cast<size_t>(kb) * 1024;
+					}
+				}
+				fclose(f);
+			}
+			// Thread stacks from /proc/self/status
+			f = fopen("/proc/self/status", "r");
+			if (f) {
+				char line[256];
+				while (fgets(line, sizeof(line), f)) {
+					unsigned long kb = 0;
+					if (sscanf(line, "VmStk: %lu kB", &kb) == 1) {
+						ext.stackBytes = static_cast<size_t>(kb) * 1024;
+						break;
+					}
+				}
+				fclose(f);
+			}
+		}
+#endif
+
+		// --- Audio ---
+#ifdef WITH_AUDIO
+		if (m_audio_manager && m_audio_manager->isInitialized()) {
+			ext.audioAvailable = true;
+			ext.soundBufferCacheBytes = m_audio_manager->getSoundBufferCacheBytes();
+			ext.soundBufferCacheMaxBytes = m_audio_manager->getSoundBufferCacheMaxBytes();
+			ext.soundFontEstimateBytes = m_audio_manager->getSoundFontMemoryEstimate();
+			ext.musicDecodedBytes = m_audio_manager->getMusicDecodedBytes();
+			ext.audioPfsArchiveBytes = m_audio_manager->getPfsArchiveCacheBytes();
+			if (auto* sfx = m_audio_manager->getSfxManager()) {
+				ext.sfxCacheBytes = sfx->getCacheSize();
+			}
+		}
+		if (m_zone_audio_manager) {
+			ext.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
+			ext.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
+		}
+#endif
+
+		// --- Network ---
+		auto addConn = [&](const std::string& name, std::shared_ptr<EQ::Net::DaybreakConnection> conn) {
+			if (!conn) return;
+			auto stats = conn->GetStats();
+			EQT::Graphics::MemoryReportInput::ConnectionInfo ci;
+			ci.name = name;
+			ci.recvBytes = stats.recv_bytes;
+			ci.sentBytes = stats.sent_bytes;
+			ci.avgPing = conn->GetRollingPing();
+			ext.connections.push_back(std::move(ci));
+		};
+		addConn("Zone", m_zone_connection);
+		addConn("World", m_world_connection);
+		addConn("Login", m_login_connection);
+
+		// --- Game Data ---
+		ext.entityCount = m_entities.size();
+		ext.entityEstimateBytes = m_entities.size() * sizeof(Entity);
+		ext.doorCount = m_doors.size();
+		ext.doorEstimateBytes = m_doors.size() * sizeof(Door);
+		if (m_spell_manager) {
+			ext.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
+			ext.spellDbEstimateBytes = ext.spellDbCount * 512;  // ~500 bytes avg per SpellData
+		}
+
+		auto report = m_renderer->getMemoryReport(ext);
 		for (const auto& line : report) {
 			LOG_INFO(MOD_MAIN, "{}", line);
 		}
-		AddChatSystemMessage("Memory report written to console.");
+
+		// Show RSS summary in chat
+		if (ext.processRssBytes > 0) {
+			AddChatSystemMessage(fmt::format("Memory: RSS {:.1f}MB. Full report in console.",
+				ext.processRssBytes / (1024.0 * 1024.0)));
+		} else {
+			AddChatSystemMessage("Memory report written to console.");
+		}
 	};
 	m_command_registry->registerCommand(pmem);
 

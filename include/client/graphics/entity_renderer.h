@@ -425,6 +425,9 @@ public:
     // Get number of entities currently visible (for debug HUD)
     int getVisibleEntityCount() const { return visibleEntityCount_; }
 
+    // Get per-instance animated mesh memory (instanceMesh_ + animator state per entity)
+    size_t getPerInstanceMemoryBytes() const;
+
 private:
     irr::scene::IMesh* getMeshForRace(uint16_t raceId, uint8_t gender = 0,
                                        const EntityAppearance& appearance = EntityAppearance());

@@ -671,6 +671,29 @@ EquipmentModelLoader::MemoryStats EquipmentModelLoader::getMemoryStats() const {
         if (tex) stats.rawTextureBytes += tex->rawDataBytes();
     }
 
+    // Geometry data in loaded equipment models
+    for (const auto& [id, model] : equipmentModels_) {
+        if (model && model->geometry)
+            stats.geometryBytes += model->geometry->getMemoryUsage();
+    }
+
+    // Irrlicht mesh vertex/index buffers
+    for (const auto& [id, mesh] : meshCache_) {
+        if (!mesh) continue;
+        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+            auto* buf = mesh->getMeshBuffer(i);
+            if (buf) {
+                stats.irrlichtMeshBytes += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
+                stats.irrlichtMeshBytes += buf->getIndexCount() * sizeof(irr::u16);
+            }
+        }
+    }
+
+    // Index data overhead
+    stats.indexBytes = equipmentModelIndex_.size() * 128  // ~128 bytes per index entry (strings)
+                     + textureIndex_.size() * 96           // ~96 bytes per texture ref
+                     + itemToModelMap_.size() * 16;        // 16 bytes per mapping entry
+
     return stats;
 }
 

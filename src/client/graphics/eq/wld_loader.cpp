@@ -29,6 +29,106 @@ void decodeStringHash(char* str, size_t len) {
     }
 }
 
+size_t WldLoader::getMemoryUsage() const {
+    size_t total = sizeof(WldLoader);
+
+    // Per-region geometries (the biggest chunk usually)
+    for (const auto& geom : geometries_)
+        if (geom) total += geom->getMemoryUsage();
+
+    // Geometry-by-fragment index (just map overhead)
+    total += geometryByFragIndex_.size() * (sizeof(uint32_t) + sizeof(std::shared_ptr<ZoneGeometry>) + 48);
+
+    // Textures (WldTexture = vector of strings)
+    for (const auto& [id, tex] : textures_) {
+        for (const auto& f : tex.frames) total += f.capacity();
+        total += tex.frames.capacity() * sizeof(std::string);
+    }
+
+    // Texture names
+    for (const auto& n : textureNames_) total += n.capacity();
+    total += textureNames_.capacity() * sizeof(std::string);
+
+    // Placeables
+    total += placeables_.capacity() * sizeof(std::shared_ptr<Placeable>);
+    for (const auto& p : placeables_)
+        if (p) total += sizeof(Placeable);
+
+    // Object defs
+    for (const auto& [name, def] : objectDefs_) {
+        total += name.capacity() + sizeof(WldObjectDef) + def.name.capacity();
+        total += def.meshRefs.capacity() * sizeof(uint32_t);
+    }
+
+    // Skeleton tracks
+    for (const auto& [id, st] : skeletonTracks_) {
+        if (!st) continue;
+        total += sizeof(SkeletonTrack) + st->name.capacity();
+        total += st->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        total += st->parentIndices.capacity() * sizeof(int);
+        for (const auto& bone : st->allBones) {
+            if (!bone) continue;
+            total += sizeof(SkeletonBone) + bone->name.capacity();
+            total += bone->children.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        }
+    }
+
+    // Bone orientations
+    total += boneOrientations_.size() * (sizeof(uint32_t) + sizeof(BoneOrientation) + 48);
+
+    // Track defs (animation keyframes - can be large)
+    for (const auto& [id, td] : trackDefs_) {
+        if (!td) continue;
+        total += sizeof(TrackDef) + td->name.capacity();
+        total += td->frames.capacity() * sizeof(BoneTransform);
+    }
+
+    // Track refs
+    for (const auto& [id, tr] : trackRefs_) {
+        if (!tr) continue;
+        total += sizeof(TrackRef) + tr->name.capacity() + tr->animCode.capacity()
+               + tr->modelCode.capacity() + tr->boneName.capacity();
+    }
+
+    // BSP tree
+    if (bspTree_) {
+        total += sizeof(BspTree);
+        total += bspTree_->nodes.capacity() * sizeof(BspNode);
+        for (const auto& region : bspTree_->regions) {
+            if (!region) continue;
+            total += sizeof(BspRegion);
+            total += region->regionTypes.capacity() * sizeof(RegionType);
+            total += region->visibleRegions.capacity() / 8;  // vector<bool>
+        }
+    }
+
+    // Lights
+    for (const auto& light : lights_) {
+        if (!light) continue;
+        total += sizeof(ZoneLight) + light->name.capacity();
+        total += light->lightLevels.capacity() * sizeof(float);
+        total += light->colors.capacity() * sizeof(std::tuple<float,float,float>);
+    }
+
+    // Mesh animated vertices
+    for (const auto& [id, mav] : meshAnimatedVertices_) {
+        if (!mav) continue;
+        total += sizeof(MeshAnimatedVertices) + mav->name.capacity();
+        for (const auto& f : mav->frames)
+            total += f.positions.capacity() * sizeof(float);
+        total += mav->frames.capacity() * sizeof(VertexAnimFrame);
+    }
+
+    // Map overhead for all the std::map containers
+    total += (textures_.size() + brushes_.size() + textureRefs_.size() + materials_.size()
+            + brushSets_.size() + objectDefs_.size() + modelRefs_.size() + skeletonTracks_.size()
+            + skeletonRefs_.size() + boneOrientations_.size() + boneOrientationRefs_.size()
+            + lightDefs_.size() + lightDefRefs_.size() + trackDefs_.size() + trackRefs_.size()
+            + meshAnimatedVertices_.size() + meshAnimatedVerticesRefs_.size()) * 48;
+
+    return total;
+}
+
 bool WldLoader::parseFromArchive(const std::string& archivePath, const std::string& wldName) {
     geometries_.clear();
     textures_.clear();

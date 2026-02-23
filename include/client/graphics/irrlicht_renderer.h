@@ -369,6 +369,48 @@ struct ZoneDrawEntry {
     irr::core::matrix4 worldMat;
 };
 
+// External subsystem memory data passed into getMemoryReport()
+struct MemoryReportInput {
+    // Audio
+    bool audioAvailable = false;
+    size_t sfxCacheBytes = 0;
+    size_t soundBufferCacheBytes = 0;
+    size_t soundBufferCacheMaxBytes = 0;
+    size_t soundFontEstimateBytes = 0;
+    size_t musicDecodedBytes = 0;
+    size_t zoneEmitterCount = 0;
+    size_t activeEmitterCount = 0;
+
+    // Network
+    struct ConnectionInfo {
+        std::string name;
+        uint64_t recvBytes = 0;
+        uint64_t sentBytes = 0;
+        uint64_t avgPing = 0;
+    };
+    std::vector<ConnectionInfo> connections;
+
+    // Game Data
+    size_t entityCount = 0;
+    size_t entityEstimateBytes = 0;
+    size_t doorCount = 0;
+    size_t doorEstimateBytes = 0;
+    size_t spellDbCount = 0;
+    size_t spellDbEstimateBytes = 0;
+
+    // Audio PFS archive cache
+    size_t audioPfsArchiveBytes = 0;
+
+    // Process (from /proc/self/statm)
+    size_t processRssBytes = 0;
+    size_t processVmBytes = 0;
+
+    // Process memory breakdown (from /proc/self/smaps_rollup)
+    size_t sharedLibBytes = 0;     // Shared clean + shared dirty mapped files
+    size_t anonBytes = 0;          // Anonymous (heap + mmap anon)
+    size_t stackBytes = 0;         // Thread stacks
+};
+
 // Main Irrlicht renderer class
 class IrrlichtRenderer {
 public:
@@ -892,7 +934,7 @@ public:
     WeatherEffectsController* getWeatherEffects() { return weatherEffects_.get(); }
 
     // Memory usage report for /pmem command
-    std::vector<std::string> getMemoryReport() const;
+    std::vector<std::string> getMemoryReport(const MemoryReportInput& ext) const;
 
     // Set weather from server packet (type: 0=none, 1=rain, 2=snow; intensity: 1-10)
     void setWeather(uint8_t type, uint8_t intensity);

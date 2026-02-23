@@ -65,6 +65,25 @@ public:
     const std::vector<irr::video::S3DVertex>& getOriginalVertices() const { return originalVertices_; }
     const std::vector<VertexMapping>& getVertexMapping() const { return vertexMapping_; }
 
+    // Memory usage estimate (CPU-side working data, not counting shared skeleton/base mesh)
+    size_t estimateMemoryUsage() const {
+        size_t total = sizeof(EQAnimatedMesh);
+        total += originalVertices_.capacity() * sizeof(irr::video::S3DVertex);
+        total += vertexMapping_.capacity() * sizeof(VertexMapping);
+        total += vertexPieces_.capacity() * sizeof(VertexPiece);
+        // animatedMesh_ is an SMesh with copies of base mesh buffers
+        if (animatedMesh_) {
+            for (irr::u32 i = 0; i < animatedMesh_->getMeshBufferCount(); ++i) {
+                auto* buf = animatedMesh_->getMeshBuffer(i);
+                if (buf) {
+                    total += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
+                    total += buf->getIndexCount() * sizeof(irr::u16);
+                }
+            }
+        }
+        return total;
+    }
+
 private:
     void copyBaseMesh();
     void updateBoundingBox();

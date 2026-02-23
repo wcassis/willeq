@@ -53,6 +53,9 @@ public:
     const std::string& getCurrentFile() const { return currentFile_; }
     int getCurrentTrackIndex() const { return currentTrackIndex_; }
 
+    // Memory usage query
+    size_t getDecodedDataBytes() const { return decodedData_.capacity() * sizeof(float); }
+
     // Volume (0.0 - 1.0)
     void setVolume(float volume);
     float getVolume() const { return volume_; }

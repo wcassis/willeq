@@ -1604,6 +1604,80 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     stats.variantMeshCacheCount = variantMeshCache_.size();
     stats.animatedMeshCacheCount = animatedMeshCache_.size() + variantAnimatedMeshCache_.size();
 
+    // --- Geometry and skeleton data in loadedModels_ ---
+    auto calcSkeletonBytes = [](const std::shared_ptr<CharacterSkeleton>& skel) -> size_t {
+        if (!skel) return 0;
+        size_t total = sizeof(CharacterSkeleton) + skel->modelCode.capacity();
+        for (const auto& bone : skel->bones) {
+            total += sizeof(AnimatedBone) + bone.name.capacity();
+            total += bone.childIndices.capacity() * sizeof(int);
+            if (bone.poseTrack)
+                total += bone.poseTrack->frames.capacity() * sizeof(BoneTransform);
+            for (const auto& [code, track] : bone.animationTracks)
+                if (track) total += track->frames.capacity() * sizeof(BoneTransform);
+        }
+        for (const auto& [code, anim] : skel->animations)
+            if (anim) total += sizeof(Animation) + anim->tracks.size() * 64;
+        return total;
+    };
+
+    for (const auto& [key, model] : loadedModels_) {
+        if (!model) continue;
+        if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
+        if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
+        stats.modelGeometryBytes += model->vertexPieces.capacity() * sizeof(VertexPiece);
+        stats.modelSkeletonBytes += calcSkeletonBytes(model->skeleton);
+    }
+    for (const auto& [key, model] : variantModels_) {
+        if (!model) continue;
+        if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
+        if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
+    }
+
+    // --- CharacterModel data (global + numbered + zone + other) ---
+    auto calcCharModels = [](const std::vector<std::shared_ptr<CharacterModel>>& chars) -> size_t {
+        size_t total = 0;
+        for (const auto& cm : chars) {
+            if (!cm) continue;
+            total += sizeof(CharacterModel) + cm->name.capacity();
+            for (const auto& part : cm->parts)
+                if (part) total += part->getMemoryUsage();
+            total += cm->partsWithTransforms.capacity() * sizeof(CharacterPart);
+            total += cm->rawParts.capacity() * sizeof(CharacterPart);
+        }
+        return total;
+    };
+    stats.characterModelBytes += calcCharModels(globalCharacters_);
+    for (const auto& [num, chars] : numberedGlobalCharacters_)
+        stats.characterModelBytes += calcCharModels(chars);
+    stats.characterModelBytes += calcCharModels(zoneCharacters_);
+    for (const auto& [name, cache] : otherChrCaches_)
+        stats.characterModelBytes += calcCharModels(cache.characters);
+
+    // --- EQAnimatedMesh working data ---
+    for (const auto& [key, mesh] : animatedMeshCache_)
+        if (mesh) stats.animatedMeshBytes += mesh->estimateMemoryUsage();
+    for (const auto& [key, mesh] : variantAnimatedMeshCache_)
+        if (mesh) stats.animatedMeshBytes += mesh->estimateMemoryUsage();
+
+    // --- Irrlicht IMesh vertex/index buffers ---
+    auto calcMeshBytes = [](irr::scene::IMesh* mesh) -> size_t {
+        if (!mesh) return 0;
+        size_t total = 0;
+        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+            auto* buf = mesh->getMeshBuffer(i);
+            if (buf) {
+                total += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
+                total += buf->getIndexCount() * sizeof(irr::u16);
+            }
+        }
+        return total;
+    };
+    for (const auto& [key, mesh] : meshCache_)
+        stats.irrlichtMeshBytes += calcMeshBytes(mesh);
+    for (const auto& [key, mesh] : variantMeshCache_)
+        stats.irrlichtMeshBytes += calcMeshBytes(mesh);
+
     return stats;
 }
 

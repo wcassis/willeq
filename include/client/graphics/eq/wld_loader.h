@@ -579,6 +579,30 @@ struct ZoneGeometry {
     std::vector<VertexPiece> vertexPieces;
     // Vertex animation data (for flags, banners, etc.)
     std::shared_ptr<MeshAnimatedVertices> animatedVertices;
+
+    // Memory usage estimate (CPU-side source data)
+    size_t getMemoryUsage() const {
+        size_t total = sizeof(ZoneGeometry);
+        total += vertices.capacity() * sizeof(Vertex3D);
+        total += triangles.capacity() * sizeof(Triangle);
+        for (const auto& n : textureNames) total += n.capacity();
+        total += textureNames.capacity() * sizeof(std::string);
+        total += textureInvisible.capacity() / 8;  // vector<bool>
+        for (const auto& a : textureAnimations) {
+            total += sizeof(TextureAnimationInfo);
+            for (const auto& f : a.frames) total += f.capacity();
+            total += a.frames.capacity() * sizeof(std::string);
+        }
+        total += textureAnimations.capacity() * sizeof(TextureAnimationInfo);
+        total += vertexPieces.capacity() * sizeof(VertexPiece);
+        if (animatedVertices) {
+            total += sizeof(MeshAnimatedVertices);
+            for (const auto& f : animatedVertices->frames)
+                total += f.positions.capacity() * sizeof(float);
+            total += animatedVertices->frames.capacity() * sizeof(VertexAnimFrame);
+        }
+        return total;
+    }
 };
 
 // WLD Loader class
@@ -606,6 +630,9 @@ public:
     // BSP tree accessor (for zone line detection)
     const std::shared_ptr<BspTree>& getBspTree() const { return bspTree_; }
     bool hasZoneLines() const { return bspTree_ && !bspTree_->regions.empty(); }
+
+    // Memory usage estimate (all CPU-side data in this loader)
+    size_t getMemoryUsage() const;
 
     // PVS (Potentially Visible Set) accessors
     // Get the geometry associated with a BSP region (via meshReference)

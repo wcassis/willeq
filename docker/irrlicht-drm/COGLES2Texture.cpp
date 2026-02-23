@@ -31,7 +31,7 @@ COGLES2Texture::COGLES2Texture(IImage* image, const io::path& name,
       TextureName(0), FBO(0), DepthBuffer(0),
       ColorFormat(ECF_A8R8G8B8), Pitch(0),
       HasMipMaps(false), IsRenderTarget(false),
-      LockBuffer(nullptr)
+      LockBuffer(nullptr), GpuBytes(0)
 {
     if (!image)
         return;
@@ -53,7 +53,7 @@ COGLES2Texture::COGLES2Texture(const core::dimension2d<u32>& size, const io::pat
       TextureName(0), FBO(0), DepthBuffer(0),
       ColorFormat(ECF_A8R8G8B8), Pitch(0),
       HasMipMaps(false), IsRenderTarget(true),
-      LockBuffer(nullptr)
+      LockBuffer(nullptr), GpuBytes(0)
 {
     OriginalSize = size;
     TextureSize = size;
@@ -187,6 +187,7 @@ void COGLES2Texture::uploadImage(IImage* image)
 
     TextureSize.Width = w;
     TextureSize.Height = h;
+    GpuBytes = w * h * 4;  // All uploads are GL_RGBA
 }
 
 // ============================================================================
@@ -227,6 +228,7 @@ void COGLES2Texture::uploadETC1(const void* data, u32 dataSize, u32 width, u32 h
     OriginalSize = TextureSize;
     ColorFormat = ECF_R8G8B8;  // ETC1 is RGB (no alpha)
     Pitch = 0;  // Compressed — no meaningful pitch
+    GpuBytes = dataSize;  // ETC1: actual compressed size
 }
 
 // ============================================================================
@@ -249,6 +251,7 @@ void COGLES2Texture::createRenderTarget(const core::dimension2d<u32>& size)
 
     ColorFormat = ECF_A8R8G8B8;
     Pitch = size.Width * 4;
+    GpuBytes = size.Width * size.Height * 4;  // RGBA render target
 
     // Create depth renderbuffer
     glGenRenderbuffers(1, &DepthBuffer);

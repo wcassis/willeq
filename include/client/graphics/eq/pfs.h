@@ -38,6 +38,14 @@ public:
 
     const std::map<std::string, std::vector<char>>& getFiles() const { return files_; }
 
+    // Memory usage of all cached file buffers
+    size_t getMemoryUsage() const {
+        size_t total = 0;
+        for (const auto& [name, data] : files_)
+            total += name.capacity() + data.capacity();
+        return total;
+    }
+
 private:
     bool storeBlocksByOffset(uint32_t offset, uint32_t size,
                              const std::vector<char>& buffer,

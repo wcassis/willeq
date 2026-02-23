@@ -1736,6 +1736,26 @@ size_t EntityRenderer::getModeledEntityCount() const {
     return count;
 }
 
+size_t EntityRenderer::getPerInstanceMemoryBytes() const {
+    size_t total = 0;
+    for (const auto& [spawnId, visual] : entities_) {
+        total += sizeof(EntityVisual);
+        if (visual.animatedNode) {
+            auto* instanceMesh = visual.animatedNode->getInstanceMesh();
+            if (instanceMesh) {
+                for (irr::u32 i = 0; i < instanceMesh->getMeshBufferCount(); ++i) {
+                    auto* buf = instanceMesh->getMeshBuffer(i);
+                    if (buf) {
+                        total += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
+                        total += buf->getIndexCount() * sizeof(irr::u16);
+                    }
+                }
+            }
+        }
+    }
+    return total;
+}
+
 void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
     if (!camera) {
         return;
