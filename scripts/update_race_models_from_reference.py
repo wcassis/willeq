@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent
-REFERENCE_FILE = PROJECT_DIR / "data" / "s3d_contents_reference.json"
+REFERENCE_FILE = PROJECT_DIR / "docs" / "reference" / "s3d_contents_reference.json"
 RACE_MODELS_FILE = PROJECT_DIR / "config" / "race_models.json"
 OUTPUT_FILE = PROJECT_DIR / "config" / "updated_race_models.json"
 

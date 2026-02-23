@@ -274,7 +274,7 @@ std::string WeatherSystem::getDebugInfo() const {
 
 bool loadZoneWeatherConfig(const std::string& zoneName, ZoneWeatherConfig& config) {
     // Try zone-specific config
-    std::string configPath = "data/config/zones/" + zoneName + "/weather.json";
+    std::string configPath = "config/zones/" + zoneName + "/weather.json";
     std::ifstream file(configPath);
 
     if (!file.is_open()) {

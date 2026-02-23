@@ -281,7 +281,7 @@ static_assert(sizeof(EffSoundEntry) == 84, "EffSoundEntry must be 84 bytes");
 
 ## Related Files
 
-- `docs/eq_audio_assets_catalog.md` - Complete audio asset inventory
+- `docs/reference/eq_audio_assets_catalog.md` - Complete audio asset inventory
 - `include/client/audio/` - WillEQ audio system headers
 - `src/client/audio/` - WillEQ audio implementation
 
