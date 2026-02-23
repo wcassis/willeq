@@ -1,7 +1,7 @@
 #pragma once
 
 // WillEQ Logging System
-// Standards-compliant logging per .agent/debug_logging_standards.md
+// Standards-compliant logging per docs/debug_logging_standards.md
 //
 // Features:
 // - Multiple severity levels (NONE through TRACE)
