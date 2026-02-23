@@ -179,6 +179,8 @@ The client connects through three stages, each with its own connection manager:
 - `ZoneShader` - GLSL shader source and callbacks (GL 2.1 and GLES2 variants)
 - `TextureAtlas` - Atlas tile layout (256px slots, 248px inner, 4px padding)
 - `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
+- `ConstrainedTextureCache` - LRU-evicting texture cache with memory budget
+- `ConstrainedMeshCache` - Lazy/progressive zone region mesh loading with memory budget
 - `PortalSystem` - AABB-derived portal extraction and stencil-based portal occlusion
 - `SpellVisualFX` - Spell casting effects: glow, projectile, impact, aura, rain, ground circle
 - `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
@@ -426,6 +428,21 @@ Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQ
 - Uses raw GL calls (`glStencilFunc`/`glStencilOp`/`glColorMask`) not driver wrapper, restores to defaults after (keeps `SOGLES2State` cache in sync)
 - D24S8 depth-stencil format configured in EGL (`CIrrDeviceFB.cpp`)
 - Debug: `/stencil` overlays colored rects per stencil level, `/portal` shows portal wireframes
+
+### Constrained Memory Management
+
+On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses budgeted caches and aggressive data lifecycle management to stay within ~128 MB RAM.
+
+**Constrained texture cache** (`ConstrainedTextureCache`): LRU-evicting texture cache with a configurable memory budget (default 64 MB). Textures are created via `driver_->addTexture()` and tracked by byte size. On cache miss, textures are loaded from zone source data or re-decoded from S3D archives.
+
+**Constrained mesh cache** (`ConstrainedMeshCache`): Lazy/progressive mesh loading for zone region meshes. Instead of building all ~1900 region meshes at zone load, meshes are built on-demand as the player moves. Regions are evicted when the cache exceeds its budget (default 24 MB). Rebuilds use `wldLoader->getGeometryForRegion()` and require zone texture pixel data to remain available for atlas assembly.
+
+**Zone source data lifecycle**: After zone loading completes:
+1. Texture pixel data (`releaseTexturePixelData()`) is released only when the mesh cache is NOT active (all meshes pre-built). When the mesh cache IS active, texture pixel data must be retained for progressive region mesh rebuilds.
+2. Character model data (`clearCharacterData()`) is released in `hideLoadingScreen()` — `RaceModelLoader` independently loads `_chr.s3d` into its own cache, making the zone source copy redundant.
+3. Combined zone geometry vectors (vertices/triangles) are released in `initDeferredEnvironmentSystems()` when the detail system is disabled. Runtime bounds checks use cached `zoneBounds*_` member variables instead.
+
+**`/pmem` diagnostics**: Shows tracked memory across all subsystems (texture cache, mesh cache, GPU textures, atlas pages, S3D zone source data, entity renderer, audio, etc.) compared against RSS. Texture cache is NOT added to the tracked total because its textures are already counted in GPU Textures (created via `driver_->addTexture()`).
 
 ### Packet Structures
 
@@ -732,6 +749,7 @@ Graphics is enabled by default (`EQT_GRAPHICS=ON` in CMake). Requires EQ Titaniu
 - `/q` - Exit client immediately
 - `/debug <level>` - Set debug level (0-6)
 - `/timestamp` - Toggle chat timestamps
+- `/pmem` - Show memory usage breakdown across all subsystems (aliases: `/memory`, `/mem_report`)
 
 **Graphics Debug:**
 - `/sort` - Toggle front-to-back zone sorting (manual draw vs Irrlicht scene graph)

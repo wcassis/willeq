@@ -30,7 +30,7 @@ I'm developing this on a remote Ubuntu 24 server without a GPU. Video output goe
 
 **What doesn't work or is incomplete:**
 - No character creation (requires existing account/character)
-- Visual spell effects (particles) not implemented
+- Visual spell effects incomplete (cast glow, projectile, impact, aura exist; many spell types missing)
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
 - Fall damage not implemented
@@ -575,6 +575,7 @@ Bindings are configurable in `config/hotkeys.json`.
 /door (/u)                      Interact with nearest door
 /dump <name>                    Dump entity info
 /afk                            Toggle AFK
+/pmem (/memory)                 Show memory usage breakdown
 /quit                           Show exit options
 /q                              Exit immediately
 ```
@@ -606,7 +607,7 @@ Three rendering backends:
 - **OpenGL 2.1** - Desktop GPU with GLSL 1.20 shaders
 - **OpenGL ES 2.0** - Embedded GPU (Mali 400, etc.) with GLSL ES 1.0
 
-Zone visibility uses PVS (Potentially Visible Set) culling, frustum culling, and optional stencil-based portal occlusion. Constrained hardware presets (Voodoo1, Voodoo2, TNT, OrangePi) enforce memory budgets and texture limits.
+Zone visibility uses PVS (Potentially Visible Set) culling, frustum culling, and optional stencil-based portal occlusion. Constrained hardware presets (Voodoo1, Voodoo2, TNT, OrangePi) enforce memory budgets and texture limits. On memory-limited devices, LRU-evicting texture and mesh caches provide budgeted resource management with lazy/progressive zone mesh loading.
 
 ### Audio Pipeline
 
@@ -643,6 +644,8 @@ Software-mixed spatial audio using header-only libraries (no external deps):
 - **PathfinderNavMesh** / **PathfinderWaypoint** - Optional pathfinding
 - **ZoneShader** - GLSL shader programs for GL 2.1 and GLES2
 - **COpenGLES2Driver** - Native GLES2 driver for embedded GPUs
+- **ConstrainedTextureCache** - LRU-evicting texture cache with memory budget
+- **ConstrainedMeshCache** - Lazy/progressive zone mesh loading with memory budget
 
 ## File Structure
 
