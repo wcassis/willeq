@@ -81,7 +81,7 @@ Legend: Done | Partial | Not Implemented
 | Animated textures | Done | Water, lava, fire, flags |
 | Environmental particles | Done | Rain, snow, dust, pollen, mist, fireflies |
 | Ambient creatures | Done | Flocking birds, fish, insects (boids system) |
-| Spell visual effects | -- | |
+| Spell visual effects | Partial | Cast glow, projectile, impact, aura, rain, ground circle; JSON-configurable |
 | Detail objects | Partial | Grass, plants, rocks with wind animation |
 
 ### Movement
@@ -127,7 +127,7 @@ Legend: Done | Partial | Not Implemented
 | Spell book | Done | 400-slot book, searchable |
 | Memorize spells | Done | /mem, /forget, drag-to-gem |
 | Cast spells | Done | Gem slots, casting bar, interrupts |
-| Spell effects | -- | Visual effects not implemented |
+| Spell effects | Partial | Cast glow, projectile, impact, aura particles |
 | Buff window | Done | Duration timers, right-click remove |
 
 ### Chat
@@ -215,7 +215,7 @@ Legend: Done | Partial | Not Implemented
 ### Audio
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Zone music | Done | XMI/MIDI via FluidSynth, MP3 |
+| Zone music | Done | XMI/MIDI via TinySoundFont, MP3 |
 | Sound effects | Done | WAV from PFS archives |
 | Spatial audio | Done | 3D positioned zone emitters |
 | Day/night audio | Done | Crossfade transitions |
@@ -257,8 +257,6 @@ Legend: Done | Partial | Not Implemented
 | Dependency | Feature |
 |------------|---------|
 | libirrlicht-dev, libxxf86vm-dev | 3D graphics rendering |
-| libopenal-dev, libsndfile1-dev | Audio playback |
-| libfluidsynth-dev | MIDI/XMI music via SoundFont |
 | freerdp3-dev, libwinpr3-dev | Native RDP streaming |
 | libboost-graph-dev | Waypoint pathfinding |
 | librecast-dev | Navmesh pathfinding (Recast/Detour) |
@@ -289,10 +287,10 @@ The executable is output to `./build/bin/willeq`.
 | `EQT_GRAPHICS` | ON | Enable Irrlicht graphics rendering |
 | `EQT_DRM` | OFF | DRM/KMS/GBM/EGL output (ARM, no X11) |
 | `EQT_GLES2` | OFF | OpenGL ES 2.0 instead of desktop GL |
-| `WITH_AUDIO` | auto | Audio (requires OpenAL + libsndfile) |
+| `WITH_AUDIO` | ON | Audio (header-only: miniaudio, TinySoundFont, dr_wav) |
 | `WITH_RDP` | auto | Native RDP streaming (requires FreeRDP) |
 
-Pathfinding libraries (`EQT_HAS_NAVMESH`, `EQT_HAS_WAYPOINT`) and FluidSynth (`WITH_FLUIDSYNTH`) are auto-detected.
+Pathfinding libraries (`EQT_HAS_NAVMESH`, `EQT_HAS_WAYPOINT`) are auto-detected. Audio uses bundled header-only libraries (no external dependencies).
 
 ### ARM Cross-Compilation (Orange Pi One)
 
@@ -399,10 +397,10 @@ This allows the client to request a 1MB UDP receive buffer (via `SO_RCVBUFFORCE`
 
 | Method | Use Case | Audio | Client |
 |--------|----------|-------|--------|
-| Direct X11 | Local display | Local OpenAL | Native |
+| Direct X11 | Local display | Local miniaudio | Native |
 | Xvfb + VNC | Remote access | None or HTTP stream | VNC client |
 | Native RDP | Windows remote | RDP audio channel | mstsc.exe, xfreerdp |
-| DRM/KMS | ARM boards, no X11 | Local OpenAL | Direct framebuffer |
+| DRM/KMS | ARM boards, no X11 | Local miniaudio | Direct framebuffer |
 
 ## Controls
 
@@ -612,12 +610,13 @@ Zone visibility uses PVS (Potentially Visible Set) culling, frustum culling, and
 
 ### Audio Pipeline
 
-OpenAL-based 3D spatial audio with:
-- WAV effects from PFS/S3D archives
-- XMI/MIDI music rendered via FluidSynth with SoundFont
+Software-mixed spatial audio using header-only libraries (no external deps):
+- **miniaudio.h** for cross-platform audio output (WASAPI/CoreAudio/ALSA)
+- **TinySoundFont** (tsf.h + tml.h) for MIDI/XMI synthesis with dual SoundFont support
+- **dr_wav.h** for WAV decoding from PFS/S3D archives
+- Software stereo mixer at 22050 Hz (16 SFX + 2 music channels, lock-free render)
 - Zone sound emitters with day/night variants and distance falloff
-- Race/gender-specific player sounds
-- Per-race creature sounds
+- Race/gender-specific player and creature sounds
 - Weather audio (rain, wind, thunder)
 - Combat music stingers
 - Loopback mode for RDP audio streaming
@@ -633,7 +632,10 @@ OpenAL-based 3D spatial audio with:
 - **SpellManager** - Casting, gems, cooldowns, memorization
 - **SkillManager** - Skill tracking, activation, cooldowns
 - **TradeManager** - Player-to-player trading state machine
-- **AudioManager** - Sound effects, spatial audio, volume control
+- **AudioManager** - Top-level coordinator, owns mixer/backend/sfx/midi subsystems
+- **AudioMixer** - Software stereo PCM mixer (16 SFX + 2 music channels)
+- **MidiPlayer** - TSF + TML MIDI/XMI synthesis with dual SoundFont support
+- **SfxManager** - WAV loading (dr_wav) and spatial playback with LRU cache
 - **MusicPlayer** - Streaming XMI/MIDI/MP3 playback
 - **ZoneAudioManager** - Zone emitters, day/night transitions
 - **DaybreakConnection** - UDP reliable protocol implementation
@@ -695,7 +697,8 @@ scripts/
   start-with-vnc.sh          # VNC display
   start-with-vnc-audio.sh    # VNC + audio streaming
   build-arm-noble.sh         # ARM build script
-tools/                       # Utilities (model viewer, S3D tools)
+tools/                       # Utilities (model viewer, S3D tools, zone atlas builder)
+third_party/                   # Header-only audio libs (miniaudio, TinySoundFont, dr_wav)
 ```
 
 ## Credits

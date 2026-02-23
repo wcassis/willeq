@@ -180,6 +180,9 @@ The client connects through three stages, each with its own connection manager:
 - `TextureAtlas` - Atlas tile layout (256px slots, 248px inner, 4px padding)
 - `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
 - `PortalSystem` - AABB-derived portal extraction and stencil-based portal occlusion
+- `SpellVisualFX` - Spell casting effects: glow, projectile, impact, aura, rain, ground circle
+- `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
+- `SpellEffectsConfig` - JSON-configurable spell particle presets (`config/spell_effects.json`)
 
 **GLES2 Driver** (`docker/irrlicht-drm/`)
 - `COpenGLES2Driver.h/.cpp` - Native GLES2 `IVideoDriver` (extends `CNullDriver`)
@@ -403,9 +406,11 @@ All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS u
 
 Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQT_HAS_GLES2` is defined (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
 
-**Hybrid per-vertex/per-pixel lighting**: Point light[0] (always the player's carried light, highest priority) is computed **per-pixel in the fragment shader** to avoid illumination artifacts on large zone triangles. Lights[1..7] (zone torches, campfires) remain **per-vertex** in the VS. The FS receives `vWorldPos` and `vWorldNormal` varyings and 3 dedicated uniforms (`uPlayerLightPos`, `uPlayerLightColor`, `uPlayerLightAtten`). Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
+**Per-vertex lighting with wrap lighting**: All 8 point lights computed per-vertex. Player light (index 0, highest priority) uses wrap lighting formula `(NdotL+0.5)/1.5` for softer transitions on large zone triangles. Zone lights (indices 1-7: torches, campfires) use standard Lambertian `max(NdotL, 0.0)`. All lights use quadratic attenuation `1/(x + y*d + z*d² + ε)`. Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
 
 ### Zone Rendering Optimizations
+
+**Static VBOs and material-sorted draw** (GLES2): Zone geometry is uploaded once at zone load via `GL_STATIC_DRAW` VBOs, eliminating per-frame CPU→GPU DMA. Draw calls are sorted by material key `(MaterialType << 16) | TextureID` to minimize `glUseProgram` + `glBindTexture` state changes, with front-to-back order preserved within each material group.
 
 **Front-to-back sorting** (`manualZoneDrawEnabled_`): Zone region meshes are removed from Irrlicht's scene graph rendering and drawn manually in front-to-back order for early-Z rejection on tile-based GPUs. The injection point is `RenderPassTimer::OnRenderPassPreRender(ESNRP_SOLID)` — fires after CAMERA pass sets up matrices. Toggle at runtime with `/sort`.
 
@@ -577,6 +582,11 @@ Use the GDB helper script to capture crash backtraces:
 ./build/bin/willeq -c willeq.json --soundfont /usr/share/sounds/sf2/FluidR3_GM.sf2
 ```
 
+**Spell effects configuration** (optional):
+- `config/spell_effects.json` - JSON-configurable spell particle presets with hot-reload
+- 3-tier hierarchy: global settings → per-style defaults → per-spell overrides
+- Configures resist colors, spawn rates, lifetimes, motion types, blend modes
+
 **User settings** stored in `config/` directory:
 - `config/chat_settings.json` - Chat window position, size, channel filters
 
@@ -702,6 +712,25 @@ Graphics is enabled by default (`EQT_GRAPHICS=ON` in CMake). Requires EQ Titaniu
 - `/sort` - Toggle front-to-back zone sorting (manual draw vs Irrlicht scene graph)
 - `/portal` - Toggle stencil-based portal occlusion (indoor zones)
 - `/stencil` - Toggle stencil buffer debug overlay (colored rects per level)
+- `/plight` - Toggle per-pixel player light
+- `/olight` - Toggle object/torch point lights
+- `/zlight` - Toggle directional sun/ambient lighting
+- `/fire` - Toggle fire particle effects
+- `/frametiming` - Toggle frame timing profiler
+- `/sky` - Toggle sky rendering
+- `/togglegrass`, `/toggleplants`, `/togglerocks`, `/toggledebris` - Toggle detail objects
+- `/season [spring|summer|fall|winter]` - Change seasonal details
+- `/detail [low|medium|high|custom]` - Set rendering quality tier
+
+### Tools
+
+- `model_viewer` - Character model viewer with spell effect test mode (category/class/level filtering, cast animations, particle previews)
+- `zone_atlas_builder` - Offline ETC1-compressed texture atlas generator for GLES2 (`--zone <name>` or `--all`)
+- `s3d_dump` / `s3d_extract` - S3D archive analysis and extraction
+- `wld_dump` - WLD file content analyzer
+- `merge_sf2.py` - SoundFont merger utility for combining multiple SF2 files
+- `generate_textures` - Offline procedural texture generator
+- GPU capability tools: `gpu_texture_formats`, `gles2_etc1_benchmark`, `egl_image_sharing_test`
 
 ### Model Loading Order
 
