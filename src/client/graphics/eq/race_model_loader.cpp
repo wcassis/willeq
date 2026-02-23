@@ -31,6 +31,28 @@ RaceModelLoader::~RaceModelLoader() {
         }
     }
     meshCache_.clear();
+
+    for (auto& [key, mesh] : variantMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    variantMeshCache_.clear();
+
+    // Drop animated mesh caches
+    for (auto& [key, mesh] : animatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    animatedMeshCache_.clear();
+
+    for (auto& [key, mesh] : variantAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    variantAnimatedMeshCache_.clear();
 }
 
 void RaceModelLoader::setClientPath(const std::string& path) {
@@ -86,8 +108,18 @@ void RaceModelLoader::clearCache() {
     variantMeshCache_.clear();
     variantModels_.clear();
 
-    // Clear animated mesh caches
+    // Clear animated mesh caches (properly drop references)
+    for (auto& [key, mesh] : animatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
     animatedMeshCache_.clear();
+    for (auto& [key, mesh] : variantAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
     variantAnimatedMeshCache_.clear();
 
     // Clear cached _chr.s3d files from other zones
@@ -95,6 +127,48 @@ void RaceModelLoader::clearCache() {
     chrCacheLruOrder_.clear();
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cache cleared");
+}
+
+void RaceModelLoader::clearMeshCaches() {
+    // Drop static mesh caches
+    for (auto& [key, mesh] : meshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    meshCache_.clear();
+
+    for (auto& [key, mesh] : variantMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    variantMeshCache_.clear();
+
+    // Drop animated mesh caches (EQAnimatedMesh inherits IReferenceCounted)
+    for (auto& [key, mesh] : animatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    animatedMeshCache_.clear();
+
+    for (auto& [key, mesh] : variantAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    variantAnimatedMeshCache_.clear();
+
+    // Keep meshBuilder_->textureCache_ intact - the ITexture* pointers are still valid
+    // in the Irrlicht driver (character textures are never removed during zone transitions).
+    // Clearing it would force re-reading raw TextureInfo data which may have been released
+    // by releaseRawTextureData() after the first zone's entity loading.
+
+    // Keep loadedModels_, variantModels_, global data, S3D archives, skeletons, etc.
+    // These are expensive to load and their data is still valid
+
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Mesh caches cleared for zone transition");
 }
 
 irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gender) {

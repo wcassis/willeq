@@ -30,7 +30,6 @@
 
 #include "client/eq.h"
 #include "common/logging.h"
-#include "common/event/event_loop.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -283,7 +282,7 @@ protected:
     bool waitForWithGraphics(Predicate condition, int timeoutMs = 30000, bool trackPhases = true) {
         auto start = std::chrono::steady_clock::now();
         while (!condition()) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             if (eq_) {
                 eq_->UpdateMovement();
                 // Track phase transitions
@@ -493,7 +492,7 @@ TEST_F(ZoningGraphicsIntegrationTest, ZoneTransitionWithGraphics) {
 
     // Process with graphics until zone change triggers
     for (int i = 0; i < 100; i++) {
-        EQ::EventLoop::Get().Process();
+        eq_->TickNetwork();
         eq_->UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
 #ifdef EQT_HAS_GRAPHICS
@@ -625,7 +624,7 @@ TEST_F(ZoningGraphicsIntegrationTest, MultipleZoneTransitionsWithGraphics) {
 
         // Process until zone change triggers
         for (int i = 0; i < 100; i++) {
-            EQ::EventLoop::Get().Process();
+            eq_->TickNetwork();
             eq_->UpdateMovement();
             trackPhase(eq_->GetLoadingPhase());
 #ifdef EQT_HAS_GRAPHICS
@@ -743,7 +742,7 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
     bool zoneChangeStarted = false;
 
     for (int i = 0; i < 200; i++) {
-        EQ::EventLoop::Get().Process();
+        eq_->TickNetwork();
         eq_->UpdateMovement();
 
         // Process graphics frame - this is where the crash would occur

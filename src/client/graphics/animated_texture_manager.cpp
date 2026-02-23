@@ -2,7 +2,6 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "common/logging.h"
 #include <algorithm>
-#include <iostream>
 #include <sstream>
 #include <iomanip>
 
@@ -134,13 +133,11 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
                     state.frameTextures.push_back(frameTex);
                 } else {
                     allFramesLoaded = false;
-                    std::cerr << "AnimatedTextureManager: Failed to load frame texture: "
-                              << frameName << std::endl;
+                    LOG_WARN(MOD_GRAPHICS_LOAD, "AnimatedTextureManager: Failed to load frame texture: {}", frameName);
                 }
             } else {
                 allFramesLoaded = false;
-                std::cerr << "AnimatedTextureManager: Frame texture not found in archive: "
-                          << frameName << std::endl;
+                LOG_WARN(MOD_GRAPHICS_LOAD, "AnimatedTextureManager: Frame texture not found in archive: {}", frameName);
             }
         }
 

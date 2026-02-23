@@ -2907,6 +2907,13 @@ void IrrlichtRenderer::unloadZone() {
 
     // Clear entity renderer
     if (entityRenderer_) {
+        // Clear mesh caches first to force fresh mesh/texture rebuild on next zone-in.
+        // Keeps model data (geometry, skeletons, S3D archives) cached for performance.
+        // Fixes garbled player textures on re-zone caused by stale texture pointers
+        // in cached animated meshes.
+        if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+            rml->clearMeshCaches();
+        }
         entityRenderer_->clearEntities();
     }
 
@@ -7133,8 +7140,12 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
     }
 
-    // Draw selection box around targeted entity
+    // Draw selection indicator around targeted entity
+#ifdef EQT_HAS_GLES2
+    drawTargetOutline();
+#else
     drawTargetSelectionBox();
+#endif
     frameTimings_.targetBox = measureSection();
 
     // Render environmental particles (render every frame, update at Tier 3)
@@ -10262,6 +10273,141 @@ void IrrlichtRenderer::drawNavmeshOverlay() {
     }
 }
 
+#ifdef EQT_HAS_GLES2
+void IrrlichtRenderer::drawTargetOutline() {
+    if (currentTargetId_ == 0 || !entityRenderer_ || !driver_) return;
+    if (!have3DTransforms_) return;  // Need captured 3D matrices
+
+    const auto& entities = entityRenderer_->getEntities();
+    auto it = entities.find(currentTargetId_);
+    if (it == entities.end()) return;
+
+    const EntityVisual& visual = it->second;
+    if (!visual.animatedNode || !visual.meshBuilt) return;
+
+    irr::scene::ISceneNode* node = visual.sceneNode;
+    if (!node || !node->isVisible()) return;
+
+    irr::scene::SMesh* mesh = visual.animatedNode->getInstanceMesh();
+    if (!mesh || mesh->getMeshBufferCount() == 0) return;
+
+    // Restore 3D camera matrices — after drawAll(), ETS_VIEW and ETS_PROJECTION
+    // may have been overwritten by 2D rendering (billboards, GUI nodes, overlays).
+    // The correct 3D matrices were captured during the ESNRP_SOLID render pass.
+    driver_->setTransform(irr::video::ETS_VIEW, captured3DView_);
+    driver_->setTransform(irr::video::ETS_PROJECTION, captured3DProj_);
+
+    // Stencil reference value above portal range (portals use 1-4)
+    const GLint STENCIL_REF = 128;
+
+    // Compute normal transform (mirrors EQAnimatedMeshSceneNode::render() logic)
+    irr::core::matrix4 normalTransform;
+    if (visual.animatedNode->isPlayerNode()) {
+        normalTransform.setTranslation(node->getAbsoluteTransformation().getTranslation());
+    } else {
+        normalTransform = node->getAbsoluteTransformation();
+    }
+
+    // Scaled transform for outline pass (scale from entity center)
+    irr::core::vector3df pos = normalTransform.getTranslation();
+    const float scaleFactor = 1.10f;
+    irr::core::matrix4 toOrigin, fromOrigin, scaleMat;
+    toOrigin.setTranslation(-pos);
+    fromOrigin.setTranslation(pos);
+    scaleMat.setScale(irr::core::vector3df(scaleFactor, scaleFactor, scaleFactor));
+    irr::core::matrix4 outlineTransform = fromOrigin * scaleMat * toOrigin * normalTransform;
+
+    // Material: no texture → driver selects Color2D shader (renders vertex colors).
+    // EMT_SOLID forces depth write ON in the driver, so we override with raw GL
+    // after setMaterial() calls.
+    irr::video::SMaterial outlineMat;
+    outlineMat.Lighting = false;
+    outlineMat.ZBuffer = irr::video::ECFN_LESSEQUAL;
+    outlineMat.BackfaceCulling = false;
+    outlineMat.MaterialType = irr::video::EMT_SOLID;
+
+    // --- Pass 1: Write stencil at normal scale (no color output) ---
+    // Depth test ON (only mark visible pixels), depth write OFF, color OFF.
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, STENCIL_REF, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+    driver_->setTransform(irr::video::ETS_WORLD, normalTransform);
+    driver_->setMaterial(outlineMat);
+    // Override depth write after setMaterial (EMT_SOLID forces it ON)
+    glDepthMask(GL_FALSE);
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
+        if (mb) driver_->drawMeshBuffer(mb);
+    }
+
+    // --- Pass 2: Draw outline at scaled-up size (only where stencil != ref) ---
+    // Depth test ON with LESSEQUAL so outline is occluded by closer geometry (pet, etc.)
+    // but draws over geometry behind/at the target.
+    glStencilFunc(GL_NOTEQUAL, STENCIL_REF, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    // Rotating outline color: cycle hue over time (full rotation every 3 seconds)
+    static float outlineHue = 0.0f;
+    outlineHue += 360.0f / 180.0f;  // ~2 deg/frame at 60fps → full cycle in 3s
+    if (outlineHue >= 360.0f) outlineHue -= 360.0f;
+    // HSV to RGB (S=0.8, V=1.0 for vivid bright colors)
+    float h = outlineHue / 60.0f;
+    int hi = static_cast<int>(h) % 6;
+    float f = h - static_cast<int>(h);
+    float v = 1.0f, s = 0.8f;
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - s * f);
+    float t = v * (1.0f - s * (1.0f - f));
+    float r, g, b;
+    switch (hi) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        default: r = v; g = p; b = q; break;
+    }
+    const irr::video::SColor outlineColor(255,
+        static_cast<irr::u32>(r * 255.0f),
+        static_cast<irr::u32>(g * 255.0f),
+        static_cast<irr::u32>(b * 255.0f));
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
+        if (!mb || mb->getVertexType() != irr::video::EVT_STANDARD) continue;
+        auto* verts = static_cast<irr::video::S3DVertex*>(mb->getVertices());
+        for (irr::u32 v = 0; v < mb->getVertexCount(); ++v)
+            verts[v].Color = outlineColor;
+    }
+
+    driver_->setTransform(irr::video::ETS_WORLD, outlineTransform);
+    driver_->setMaterial(outlineMat);
+    // Override depth write after setMaterial (don't contaminate depth buffer)
+    glDepthMask(GL_FALSE);
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
+        if (mb) driver_->drawMeshBuffer(mb);
+    }
+
+    // Restore white vertex colors (entity's normal rendering expects white)
+    const irr::video::SColor white(255, 255, 255, 255);
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
+        if (!mb || mb->getVertexType() != irr::video::EVT_STANDARD) continue;
+        auto* verts = static_cast<irr::video::S3DVertex*>(mb->getVertices());
+        for (irr::u32 v = 0; v < mb->getVertexCount(); ++v)
+            verts[v].Color = white;
+    }
+
+    // --- Cleanup: restore to defaults matching SOGLES2State::reset() ---
+    glDisable(GL_STENCIL_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+}
+#else
 void IrrlichtRenderer::drawTargetSelectionBox() {
     // Check if we have a target
     if (currentTargetId_ == 0 || !entityRenderer_ || !driver_) {
@@ -10328,6 +10474,7 @@ void IrrlichtRenderer::drawTargetSelectionBox() {
     driver_->draw3DLine(corners[2], corners[6], white);
     driver_->draw3DLine(corners[3], corners[7], white);
 }
+#endif
 
 // --- Mouse Targeting Implementation ---
 

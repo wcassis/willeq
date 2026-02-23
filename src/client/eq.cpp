@@ -51,7 +51,7 @@
 #include "client/audio/water_sounds.h"
 #endif
 
-#include "common/event/event_loop.h"
+#include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
@@ -959,7 +959,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 void EverQuest::ConnectToLogin()
 {
-	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
 
 	m_login_connection_manager->OnNewConnection(std::bind(&EverQuest::LoginOnNewConnection, this, std::placeholders::_1));
 	m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
@@ -967,6 +968,19 @@ void EverQuest::ConnectToLogin()
 
 	SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 	m_login_connection_manager->Connect(m_host, m_port);
+}
+
+void EverQuest::TickNetwork()
+{
+	if (m_login_connection_manager) {
+		m_login_connection_manager->Tick();
+	}
+	if (m_world_connection_manager) {
+		m_world_connection_manager->Tick();
+	}
+	if (m_zone_connection_manager) {
+		m_zone_connection_manager->Tick();
+	}
 }
 
 EverQuest::~EverQuest()
@@ -1161,9 +1175,7 @@ void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 		LoginProcessServerPlayResponse(p);
 		break;
 	default:
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Unhandled login opcode: {:#06x}",  opcode) << std::endl;
-		}
+		LOG_WARN(MOD_LOGIN, "Unhandled login opcode: {:#06x}", opcode);
 		break;
 	}
 }
@@ -1353,7 +1365,8 @@ void EverQuest::ConnectToWorld(const std::string& world_address)
 	// Store the world server address for reconnection
 	m_world_server_host = world_address;
 
-	m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
 	m_world_connection_manager->OnNewConnection(std::bind(&EverQuest::WorldOnNewConnection, this, std::placeholders::_1));
 	m_world_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::WorldOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_world_connection_manager->OnPacketRecv(std::bind(&EverQuest::WorldOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
@@ -1452,9 +1465,7 @@ void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 		WorldProcessZoneServerInfo(p);
 		break;
 	default:
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Unhandled world opcode: {}",  GetOpcodeName(opcode)) << std::endl;
-		}
+		LOG_WARN(MOD_WORLD, "Unhandled world opcode: {}", GetOpcodeName(opcode));
 		break;
 	}
 }
@@ -1538,7 +1549,7 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 	// For Titanium client, the packet is just the raw CharacterSelect_Struct
 	// Let's verify packet size
 	if (p.Length() < 1706) {
-		std::cout << fmt::format("[ERROR] Character select packet too small: {} bytes", p.Length()) << std::endl;
+		LOG_WARN(MOD_WORLD, "Character select packet too small: {} bytes", p.Length());
 		return;
 	}
 	
@@ -1578,7 +1589,7 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 		}
 	}
 
-	std::cout << fmt::format("Could not find {}, cannot continue to login.",  m_character) << std::endl;
+	LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", m_character);
 }
 
 void EverQuest::WorldSendApproveWorld()
@@ -1823,7 +1834,8 @@ void EverQuest::ConnectToZone()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
 	zone_opts.skip_crc_validation = true;  // TODO: Remove after CRC bug is fixed
-	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts));
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
 	m_zone_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::ZoneOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_zone_connection_manager->OnPacketRecv(std::bind(&EverQuest::ZoneOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
@@ -2721,9 +2733,7 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 		break;
 
 	default:
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Unhandled zone opcode: {}", GetOpcodeName(opcode)) << std::endl;
-		}
+		LOG_WARN(MOD_ZONE, "Unhandled zone opcode: {}", GetOpcodeName(opcode));
 		break;
 	}
 }
@@ -3490,9 +3500,7 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 {
 	// Server response to our MoveItem request
 	// Format: MoveItem_Struct { from_slot, to_slot, number_in_stack }
-	if (s_debug_level >= 1) {
-		std::cout << "Received MoveItem response" << std::endl;
-	}
+	LOG_DEBUG(MOD_INVENTORY, "Received MoveItem response");
 
 	if (m_inventory_manager) {
 		m_inventory_manager->processMoveItemResponse(p);
@@ -3511,9 +3519,7 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 {
 	// Server response to our DeleteItem request
-	if (s_debug_level >= 1) {
-		std::cout << "Received DeleteItem response" << std::endl;
-	}
+	LOG_DEBUG(MOD_INVENTORY, "Received DeleteItem response");
 
 	if (m_inventory_manager) {
 		m_inventory_manager->processDeleteItemResponse(p);
@@ -3600,9 +3606,7 @@ void EverQuest::SendDeleteItem(int16_t slot)
 	packet.PutUInt32(6, 0xFFFFFFFF);                       // to_slot = -1 (delete)
 	packet.PutUInt32(10, 0);                               // number_in_stack
 
-	if (s_debug_level >= 1) {
-		std::cout << fmt::format("[Inventory] Sending DeleteItem: slot {}", slot) << std::endl;
-	}
+	LOG_DEBUG(MOD_INVENTORY, "Sending DeleteItem: slot {}", slot);
 
 	DumpPacket("C->S", HC_OP_DeleteItem, packet);
 	m_zone_connection->QueuePacket(packet);
@@ -5291,9 +5295,7 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		
 		// If name is empty, we've likely reached the end of spawn data
 		if (entity.name.empty()) {
-			if (s_debug_level >= 2) {
-				std::cout << fmt::format("Found empty name at offset {}, ending spawn parsing", offset) << std::endl;
-			}
+			LOG_DEBUG(MOD_ENTITY, "Found empty name at offset {}, ending spawn parsing", offset);
 			break;
 		}
 		
@@ -5682,15 +5684,13 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 	if (m_zone_entry_sent && !m_client_ready_sent) {
 		// This path shouldn't normally be taken anymore
 		if (!m_server_filter_sent && m_send_exp_zonein_received) {
-			if (s_debug_level >= 1) {
-				std::cout << "ZoneProcessSendZonepoints calling ZoneSendSetServerFilter (fallback)" << std::endl;
-			}
+			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendSetServerFilter (fallback)");
 			ZoneSendSetServerFilter();
 		}
 
 		// Send client ready - This shouldn't happen here anymore
 		if (!m_client_ready_sent && m_server_filter_sent) {
-			std::cout << "ZoneProcessSendZonepoints calling ZoneSendClientReady" << std::endl;
+			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendClientReady");
 			ZoneSendClientReady();
 		}
 	}
@@ -6307,9 +6307,7 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 	// The spawn_id is embedded within the Spawn_Struct, not separate
 	
 	if (p.Length() < 387) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("NewSpawn packet too small: {} bytes (expected 387)", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "NewSpawn packet too small: {} bytes (expected 387)", p.Length());
 		return;
 	}
 	
@@ -6947,14 +6945,12 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 	// Format: spawn_id (2 bytes)
 	
 	if (p.Length() < 4) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("DeleteSpawn packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "DeleteSpawn packet too small: {} bytes", p.Length());
 		return;
 	}
-	
+
 	uint16_t spawn_id = p.GetUInt16(2);
-	
+
 	// Special case: spawn_id 0 might mean "delete current target"
 	if (spawn_id == 0 && m_combat_manager && m_combat_manager->HasTarget()) {
 		spawn_id = m_combat_manager->GetTargetId();
@@ -7034,9 +7030,7 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 		m_entities.erase(it);
 		RemoveEntityFromGameState(spawn_id);
 	} else {
-		if (s_debug_level >= 2) {
-			std::cout << fmt::format("DeleteSpawn for unknown spawn_id: {}", spawn_id) << std::endl;
-		}
+		LOG_DEBUG(MOD_ENTITY, "DeleteSpawn for unknown spawn_id: {}", spawn_id);
 	}
 }
 
@@ -7046,9 +7040,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 	// Format: spawn_id (2 bytes), hp_percent (1 byte)
 	
 	if (p.Length() < 5) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("MobHealth packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "MobHealth packet too small: {} bytes", p.Length());
 		return;
 	}
 	
@@ -7079,9 +7071,7 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	// Note: Mana is sent separately via HC_OP_ManaChange
 
 	if (p.Length() < 12) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("HPUpdate packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "HPUpdate packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -7225,9 +7215,7 @@ void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 {
 	// Process incoming channel messages
 	if (p.Length() < 150) { // Minimum size for ChannelMessage_Struct
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("ChannelMessage packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ZONE, "ChannelMessage packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -10477,11 +10465,11 @@ void EverQuest::Follow(const std::string &name)
 					// Start following the path
 					m_current_path_index = 0;
 					m_is_moving = true;
-					if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Follow: Path calculated successfully with {} waypoints", 
-						m_current_path.size()) << std::endl;
+					LOG_DEBUG(MOD_MOVEMENT, "Follow: Path calculated successfully with {} waypoints",
+						m_current_path.size());
 					for (size_t i = 0; i < std::min(m_current_path.size(), size_t(5)); i++) {
-						std::cout << fmt::format("  Waypoint {}: ({:.2f},{:.2f},{:.2f})", 
-							i, m_current_path[i].x, m_current_path[i].y, m_current_path[i].z) << std::endl;
+						LOG_DEBUG(MOD_MOVEMENT, "  Waypoint {}: ({:.2f},{:.2f},{:.2f})",
+							i, m_current_path[i].x, m_current_path[i].y, m_current_path[i].z);
 					}
 				} else {
 					// Pathfinding failed, use direct movement
@@ -10596,10 +10584,8 @@ void EverQuest::UpdateCombatMovement()
 				float path_dy = std::abs(entity->y - endpoint.y);
 				if (path_dx > movement_threshold || path_dy > movement_threshold) {
 					should_update = true;
-					if (s_debug_level >= 1) {
-						if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Target moved {:.1f} units from path endpoint, updating",
-							std::sqrt(path_dx*path_dx + path_dy*path_dy)) << std::endl;
-					}
+					LOG_DEBUG(MOD_MOVEMENT, "Target moved {:.1f} units from path endpoint, updating",
+						std::sqrt(path_dx*path_dx + path_dy*path_dy));
 				}
 			} else {
 				// Direct movement - check against target position
@@ -10644,33 +10630,25 @@ void EverQuest::UpdateCombatMovement()
 			// Update heading and start moving
 			m_heading = CalculateHeading(m_x, m_y, m_target_x, m_target_y);
 			
-			if (s_debug_level >= 1) {
-				LOG_DEBUG(MOD_MAIN, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", m_target_x, m_target_y, m_target_z);
-			}
+			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", m_target_x, m_target_y, m_target_z);
 		} else {
-			if (s_debug_level >= 1) {
-				if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Combat movement (path): Keeping target=({:.1f},{:.1f},{:.1f}), path_index={}/{}",
-					m_target_x, m_target_y, m_target_z, m_current_path_index, m_current_path.size()) << std::endl;
-			}
+			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (path): Keeping target=({:.1f},{:.1f},{:.1f}), path_index={}/{}",
+				m_target_x, m_target_y, m_target_z, m_current_path_index, m_current_path.size());
 		}
 		
 		m_is_moving = true;
 		m_last_combat_movement_update = now;
 		
-		if (s_debug_level >= 1) {
-			LOG_DEBUG(MOD_MAIN, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", m_x, m_y, m_z, entity->name, entity->x, entity->y, entity->z, dist, m_combat_stop_distance);
-			LOG_DEBUG(MOD_MAIN, "Combat movement: moving to ({:.1f},{:.1f},{:.1f}), m_is_moving set to {}", 
-				m_target_x, m_target_y, m_target_z, m_is_moving);
-		}
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", m_x, m_y, m_z, entity->name, entity->x, entity->y, entity->z, dist, m_combat_stop_distance);
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: moving to ({:.1f},{:.1f},{:.1f}), m_is_moving set to {}",
+			m_target_x, m_target_y, m_target_z, m_is_moving);
 		
 		// For now, use direct movement for combat (like the working attack command)
 		// We can add pathfinding later once basic movement works
 		m_current_path.clear();
 		m_current_path_index = 0;
 		
-		if (s_debug_level >= 1) {
-			LOG_DEBUG(MOD_MAIN, "Combat movement using direct approach (no pathfinding)");
-		}
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement using direct approach (no pathfinding)");
 	}
 }
 
@@ -11137,10 +11115,10 @@ void EverQuest::UpdateMovement()
 	// Debug: Log target at start of UpdateMovement
 	static auto last_update_debug = std::chrono::steady_clock::now();
 	auto now = std::chrono::steady_clock::now();
-	if (s_debug_level >= 1 && m_in_combat_movement &&
+	if (m_in_combat_movement &&
 	    std::chrono::duration_cast<std::chrono::seconds>(now - last_update_debug).count() >= 1) {
-		if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] UpdateMovement START: target=({:.1f},{:.1f},{:.1f}) is_moving={} path_size={}",
-			m_target_x, m_target_y, m_target_z, m_is_moving, m_current_path.size()) << std::endl;
+		LOG_DEBUG(MOD_MOVEMENT, "UpdateMovement START: target=({:.1f},{:.1f},{:.1f}) is_moving={} path_size={}",
+			m_target_x, m_target_y, m_target_z, m_is_moving, m_current_path.size());
 		last_update_debug = now;
 	}
 	
@@ -11212,11 +11190,11 @@ void EverQuest::UpdateMovement()
 								// Start following the path
 								m_current_path_index = 0;
 								m_is_moving = true;
-								if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] UpdateMovement: Path recalculated with {} waypoints", 
-									m_current_path.size()) << std::endl;
+								LOG_DEBUG(MOD_MOVEMENT, "UpdateMovement: Path recalculated with {} waypoints",
+									m_current_path.size());
 								for (size_t i = 0; i < std::min(m_current_path.size(), size_t(3)); i++) {
-									std::cout << fmt::format("  Waypoint {}: ({:.2f},{:.2f},{:.2f})", 
-										i, m_current_path[i].x, m_current_path[i].y, m_current_path[i].z) << std::endl;
+									LOG_DEBUG(MOD_MOVEMENT, "  Waypoint {}: ({:.2f},{:.2f},{:.2f})",
+										i, m_current_path[i].x, m_current_path[i].y, m_current_path[i].z);
 								}
 							} else {
 								// Pathfinding failed, use direct movement
@@ -11287,10 +11265,8 @@ void EverQuest::UpdateMovement()
 			last_path_debug = now_path_debug;
 		}
 
-		if (s_debug_level >= 2) {
-			if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Following path: waypoint {}/{}, dist to waypoint: {:.2f}",
-				m_current_path_index, m_current_path.size()-1, dist_to_waypoint) << std::endl;
-		}
+		LOG_DEBUG(MOD_MOVEMENT, "Following path: waypoint {}/{}, dist to waypoint: {:.2f}",
+			m_current_path_index, m_current_path.size()-1, dist_to_waypoint);
 		
 		// Stuck detection - track if we're not making progress
 		static std::map<EverQuest*, std::pair<float, std::chrono::steady_clock::time_point>> stuck_detection;
@@ -11304,17 +11280,17 @@ void EverQuest::UpdateMovement()
 			
 			// If we haven't moved closer to the waypoint in 3 seconds, we're stuck
 			if (elapsed >= 3 && std::abs(dist_to_waypoint - last_dist) < 1.0f) {
-				std::cout << fmt::format("[WARNING] Stuck at waypoint {} - distance hasn't changed in {} seconds", 
-					m_current_path_index, elapsed) << std::endl;
-				
+				LOG_WARN(MOD_MOVEMENT, "Stuck at waypoint {} - distance hasn't changed in {} seconds",
+					m_current_path_index, elapsed);
+
 				// Skip to next waypoint or stop
 				if (m_current_path_index < m_current_path.size() - 1) {
 					m_current_path_index++;
-					std::cout << "Skipping to next waypoint due to being stuck" << std::endl;
+					LOG_DEBUG(MOD_MOVEMENT, "Skipping to next waypoint due to being stuck");
 					// Reset stuck detection for the new waypoint
 					stuck_detection.erase(this);
 				} else {
-					std::cout << "Stuck on final waypoint, stopping movement" << std::endl;
+					LOG_DEBUG(MOD_MOVEMENT, "Stuck on final waypoint, stopping movement");
 					StopMovement();
 					stuck_detection.erase(this);
 					return;
@@ -11349,17 +11325,13 @@ void EverQuest::UpdateMovement()
 				float dist_to_next = CalculateDistance2D(m_x, m_y, next_waypoint.x, next_waypoint.y);
 				if (dist_to_next > 2.0f) {  // Only move if it's far enough away
 					MoveTo(next_waypoint.x, next_waypoint.y, next_waypoint.z);
-					
-					if (s_debug_level >= 2) {
-						std::cout << fmt::format("Reached waypoint {}, moving to waypoint {} of {}",
-							m_current_path_index - 1, m_current_path_index, m_current_path.size() - 1) << std::endl;
-					}
+
+					LOG_TRACE(MOD_MOVEMENT, "Reached waypoint {}, moving to waypoint {} of {}",
+						m_current_path_index - 1, m_current_path_index, m_current_path.size() - 1);
 				} else {
 					// Skip this waypoint, it's too close
-					if (s_debug_level >= 2) {
-						std::cout << fmt::format("Skipping waypoint {} (too close: {:.2f} units)",
-							m_current_path_index, dist_to_next) << std::endl;
-					}
+					LOG_TRACE(MOD_MOVEMENT, "Skipping waypoint {} (too close: {:.2f} units)",
+						m_current_path_index, dist_to_next);
 					// Continue to check the next waypoint in the next update
 				}
 			}
@@ -11380,9 +11352,9 @@ void EverQuest::UpdateMovement()
 	// Debug: Check what target we're moving to
 	static auto last_target_debug = std::chrono::steady_clock::now();
 	auto now_debug = std::chrono::steady_clock::now();
-	if (s_debug_level >= 1 && std::chrono::duration_cast<std::chrono::seconds>(now_debug - last_target_debug).count() >= 1) {
-		std::cerr << fmt::format("[DEBUG] Movement target check: current=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) path_size={} path_index={}",
-			m_x, m_y, m_z, m_target_x, m_target_y, m_target_z, m_current_path.size(), m_current_path_index) << std::endl;
+	if (ShouldLog(MOD_MOVEMENT, LOG_DEBUG) && std::chrono::duration_cast<std::chrono::seconds>(now_debug - last_target_debug).count() >= 1) {
+		LOG_DEBUG(MOD_MOVEMENT, "Movement target check: current=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) path_size={} path_index={}",
+			m_x, m_y, m_z, m_target_x, m_target_y, m_target_z, m_current_path.size(), m_current_path_index);
 		last_target_debug = now_debug;
 	}
 
@@ -11394,10 +11366,8 @@ void EverQuest::UpdateMovement()
 
 	// Check if we've reached the target
 	if (distance < 2.0f) {  // Stop within 2 units of target
-		if (s_debug_level >= 1) {
-			std::cerr << fmt::format("[DEBUG] Reached target at distance {:.2f}, target=({:.1f},{:.1f},{:.1f})",
-				distance, m_target_x, m_target_y, m_target_z) << std::endl;
-		}
+		LOG_DEBUG(MOD_MOVEMENT, "Reached target at distance {:.2f}, target=({:.1f},{:.1f},{:.1f})",
+			distance, m_target_x, m_target_y, m_target_z);
 
 		m_x = m_target_x;
 		m_y = m_target_y;
@@ -11426,9 +11396,9 @@ void EverQuest::UpdateMovement()
 	if (delta_time > 0.1f) delta_time = 0.1f;  // Cap at 100ms to prevent large jumps
 	
 	// Debug delta time issues
-	if (s_debug_level >= 1 && m_in_combat_movement && delta_time < 0.01f) {
-		if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] WARNING: Very small delta_time: {:.6f}s ({}ms)", 
-			delta_time, elapsed.count()) << std::endl;
+	if (m_in_combat_movement && delta_time < 0.01f) {
+		LOG_WARN(MOD_MOVEMENT, "Very small delta_time: {:.6f}s ({}ms)",
+			delta_time, elapsed.count());
 	}
 	
 	// Calculate movement step using current movement speed
@@ -11730,10 +11700,10 @@ void EverQuest::SendPositionUpdate()
 			SendMovementHistory();
 		}
 		catch (const std::exception& e) {
-			std::cerr << "[ERROR] Exception in SendMovementHistory: " << e.what() << std::endl;
+			LOG_ERROR(MOD_MOVEMENT, "Exception in SendMovementHistory: {}", e.what());
 		}
 		catch (...) {
-			std::cerr << "[ERROR] Unknown exception in SendMovementHistory" << std::endl;
+			LOG_ERROR(MOD_MOVEMENT, "Unknown exception in SendMovementHistory");
 		}
 	}
 }
@@ -11901,9 +11871,7 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 	// Total: 9 bytes + 2 byte opcode = 11 bytes
 
 	if (p.Length() != 11) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("WearChange packet wrong size: {} bytes (expected 11)", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "WearChange packet wrong size: {} bytes (expected 11)", p.Length());
 		return;
 	}
 
@@ -12256,9 +12224,7 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 	// Format: spawn_id (2 bytes), spell_id (2 bytes), cast_time (4 bytes)
 
 	if (p.Length() < 10) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("BeginCast packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_SPELL, "BeginCast packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -12266,11 +12232,11 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 	uint16_t spell_id = p.GetUInt16(4);
 	uint32_t cast_time = p.GetUInt32(6);
 
-	if (s_debug_level >= 2) {
+	if (ShouldLog(MOD_SPELL, LOG_DEBUG)) {
 		auto it = m_entities.find(spawn_id);
 		std::string name = (it != m_entities.end()) ? EQT::toDisplayName(it->second.name) : "Unknown";
-		std::cout << fmt::format("{} (ID: {}) begins casting spell {} ({}ms)",
-			name, spawn_id, spell_id, cast_time) << std::endl;
+		LOG_DEBUG(MOD_SPELL, "{} (ID: {}) begins casting spell {} ({}ms)",
+			name, spawn_id, spell_id, cast_time);
 	}
 
 #ifdef WITH_AUDIO
@@ -12299,9 +12265,7 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	// Total: 16 bytes + 2 byte opcode = 18 bytes
 
 	if (p.Length() < 18) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("ManaChange packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_SPELL, "ManaChange packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -12365,9 +12329,7 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	// Total: 32 bytes + 2 byte opcode = 34 bytes minimum
 
 	if (p.Length() < 34) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Buff packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_SPELL, "Buff packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -12391,10 +12353,8 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	// Check if this is our buff
 	bool is_self = (entity_id == m_my_spawn_id);
 
-	if (s_debug_level >= 1) {
-		std::cout << fmt::format("Buff: entity={}, spell={}, slot={}, duration={}, fade={}, effect_type={}",
-			entity_id, buff.spellid, slot_id, buff.duration, buff_fade, buff.effect_type) << std::endl;
-	}
+	LOG_DEBUG(MOD_SPELL, "Buff: entity={}, spell={}, slot={}, duration={}, fade={}, effect_type={}",
+		entity_id, buff.spellid, slot_id, buff.duration, buff_fade, buff.effect_type);
 
 	// Update buff manager
 	if (m_buff_manager) {
@@ -12725,9 +12685,7 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 	// This could be buffs, debuffs, or other state changes
 
 	if (p.Length() < 4) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("PlayerStateAdd packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "PlayerStateAdd packet too small: {} bytes", p.Length());
 		return;
 	}
 	
@@ -12748,9 +12706,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	//   spawn_id, killer_id, corpseid, bindzoneid, spell_id, attack_skill, damage, unknown
 
 	if (p.Length() < 30) {  // Need at least through damage field
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Death packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "Death packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -12890,9 +12846,7 @@ void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 	// This is the counterpart to PlayerStateAdd
 	
 	if (p.Length() < 4) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("PlayerStateRemove packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "PlayerStateRemove packet too small: {} bytes", p.Length());
 		return;
 	}
 	
@@ -12912,9 +12866,7 @@ void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
 	// Format: spawn_id (2 bytes), current_stamina (4 bytes), max_stamina (4 bytes)
 	
 	if (p.Length() < 10) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("Stamina packet too small: {} bytes", p.Length()) << std::endl;
-		}
+		LOG_WARN(MOD_ENTITY, "Stamina packet too small: {} bytes", p.Length());
 		return;
 	}
 	
@@ -12922,10 +12874,8 @@ void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
 	uint32_t current_stamina = p.GetUInt32(4);
 	uint32_t max_stamina = p.GetUInt32(8);
 	
-	if (s_debug_level >= 2) {
-		std::cout << fmt::format("Stamina update: spawn_id={}, current={}, max={}", 
-			spawn_id, current_stamina, max_stamina) << std::endl;
-	}
+	LOG_DEBUG(MOD_ENTITY, "Stamina update: spawn_id={}, current={}, max={}",
+		spawn_id, current_stamina, max_stamina);
 	
 	// Store stamina values if this is for our character
 	if (spawn_id == m_my_spawn_id) {
@@ -13073,7 +13023,7 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// Uses ZoneChange_Struct (88 bytes)
 
 	if (p.Length() < 90) {  // 2 bytes opcode + 88 bytes struct
-		std::cout << fmt::format("[WARNING] ZoneChange packet too small: {} bytes", p.Length()) << std::endl;
+		LOG_WARN(MOD_ZONE, "ZoneChange packet too small: {} bytes", p.Length());
 		return;
 	}
 
@@ -13378,7 +13328,7 @@ void EverQuest::ProcessDeferredZoneChange()
 		m_world_connection.reset();
 		LOG_TRACE(MOD_ZONE, "Step 2a: Old world connection reset");
 
-		m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager());
+		m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
 		LOG_TRACE(MOD_ZONE, "Step 2b: New world connection manager created");
 
 		m_world_connection_manager->OnNewConnection(std::bind(&EverQuest::WorldOnNewConnection, this, std::placeholders::_1));
@@ -13482,23 +13432,21 @@ bool EverQuest::FindPath(float start_x, float start_y, float start_z, float end_
 		stuck,
 		opts
 	);
-	if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] FindPath: Result - path size: {}, partial: {}, stuck: {}", 
-		path.size(), partial, stuck) << std::endl;
-	
+	LOG_DEBUG(MOD_PATHFIND, "FindPath: Result - path size: {}, partial: {}, stuck: {}",
+		path.size(), partial, stuck);
+
 	if (path.empty()) {
-		if (s_debug_level >= 1) {
-			std::cout << fmt::format("No path found from ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
-				start_x, start_y, start_z, end_x, end_y, end_z) << std::endl;
-			if (partial) {
-				std::cout << "  (Partial path available)" << std::endl;
-			}
-			if (stuck) {
-				std::cout << "  (Path leads back to start - stuck)" << std::endl;
-			}
+		LOG_DEBUG(MOD_PATHFIND, "No path found from ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
+			start_x, start_y, start_z, end_x, end_y, end_z);
+		if (partial) {
+			LOG_DEBUG(MOD_PATHFIND, "  (Partial path available)");
+		}
+		if (stuck) {
+			LOG_DEBUG(MOD_PATHFIND, "  (Path leads back to start - stuck)");
 		}
 		return false;
 	}
-	
+
 	// Convert path nodes to vec3 waypoints
 	for (const auto& node : path) {
 		// Skip teleport nodes for now
@@ -13506,18 +13454,16 @@ bool EverQuest::FindPath(float start_x, float start_y, float start_z, float end_
 			m_current_path.push_back(node.pos);
 		}
 	}
-	
-	if (s_debug_level >= 1) {
-		std::cout << fmt::format("Found path with {} waypoints", m_current_path.size()) << std::endl;
-		if (s_debug_level >= 2) {
-			for (size_t i = 0; i < m_current_path.size() && i < 5; i++) {
-				const auto& pos = m_current_path[i];
-				std::cout << fmt::format("  Waypoint {}: ({:.1f}, {:.1f}, {:.1f})", 
-					i, pos.x, pos.y, pos.z) << std::endl;
-			}
-			if (m_current_path.size() > 5) {
-				std::cout << "  ..." << std::endl;
-			}
+
+	LOG_DEBUG(MOD_PATHFIND, "Found path with {} waypoints", m_current_path.size());
+	if (ShouldLog(MOD_PATHFIND, LOG_TRACE)) {
+		for (size_t i = 0; i < m_current_path.size() && i < 5; i++) {
+			const auto& pos = m_current_path[i];
+			LOG_TRACE(MOD_PATHFIND, "  Waypoint {}: ({:.1f}, {:.1f}, {:.1f})",
+				i, pos.x, pos.y, pos.z);
+		}
+		if (m_current_path.size() > 5) {
+			LOG_TRACE(MOD_PATHFIND, "  ...");
 		}
 	}
 	
@@ -13527,7 +13473,7 @@ bool EverQuest::FindPath(float start_x, float start_y, float start_z, float end_
 void EverQuest::MoveToWithPath(float x, float y, float z)
 {
 	if (!IsFullyZonedIn()) {
-		std::cout << "Error: Not in zone yet" << std::endl;
+		LOG_ERROR(MOD_PATHFIND, "Not in zone yet");
 		return;
 	}
 	
@@ -13551,9 +13497,7 @@ void EverQuest::MoveToWithPath(float x, float y, float z)
 		FollowPath();
 	} else {
 		// Fallback to direct movement if pathfinding fails
-		if (s_debug_level >= 1) {
-			std::cout << "Pathfinding failed, using direct movement" << std::endl;
-		}
+		LOG_WARN(MOD_PATHFIND, "Pathfinding failed, using direct movement");
 		MoveTo(x, y, z);
 	}
 }
@@ -13632,7 +13576,7 @@ void EverQuest::LoadZoneMap(const std::string& zone_name)
 	m_zone_map.reset(HCMap::LoadMapFile(zone_name, maps_path));
 	
 	if (!m_zone_map) {
-		std::cout << fmt::format("[WARNING] Failed to load map for zone: {}", zone_name) << std::endl;
+		LOG_WARN(MOD_MAP, "Failed to load map for zone: {}", zone_name);
 	}
 }
 
@@ -17604,14 +17548,9 @@ void EverQuest::ZoneProcessLootItem(const EQ::Net::Packet &p)
 	
 	std::string item_data(data, data_len);
 	
-	if (s_debug_level >= 1) {
-		if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] ProcessLootItem: Received item data, length={}\n", item_data.length());
-		if (s_debug_level >= 2) {
-			// Show first part of the data
-			if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Item data preview: {}\n", 
-				item_data.substr(0, std::min(size_t(100), item_data.length())));
-		}
-	}
+	LOG_DEBUG(MOD_INVENTORY, "ProcessLootItem: Received item data, length={}", item_data.length());
+	LOG_TRACE(MOD_INVENTORY, "Item data preview: {}",
+		item_data.substr(0, std::min(size_t(100), item_data.length())));
 	
 	// Parse the pipe-delimited fields to extract item slot and name
 	std::vector<std::string> fields;
@@ -17627,9 +17566,7 @@ void EverQuest::ZoneProcessLootItem(const EQ::Net::Packet &p)
 			uint32_t slot_num = std::stoi(fields[2]);  // Slot number in loot window
 			std::string item_name = fields[11];         // Item name
 			
-			if (s_debug_level >= 1) {
-				if (IsDebugEnabled()) std::cout << fmt::format("[DEBUG] Loot window item: slot {} = '{}'\n", slot_num, item_name);
-			}
+			LOG_DEBUG(MOD_INVENTORY, "Loot window item: slot {} = '{}'", slot_num, item_name);
 			
 			// Add to combat manager's loot list
 			if (m_combat_manager) {
@@ -17917,11 +17854,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// This allows the progress bar to show during the entire loading process.
 
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Set network tick callback so renderer can pump event loop during heavy loading stages
-	m_renderer->setNetworkTickCallback([]() {
-		EQ::EventLoop::Get().Process();
+	m_renderer->setNetworkTickCallback([this]() {
+		TickNetwork();
 	});
 
 	// Set up HUD callback to display player stats (HP/Mana bars)
@@ -18253,7 +18190,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			LOG_WARN(MOD_SPELL, "Could not load spell database - spell system will be limited");
 		}
 		// Pump network after spell DB loading (can take ~1s on ARM)
-		EQ::EventLoop::Get().Process();
+		TickNetwork();
 	}
 
 	// Initialize buff manager with spell database
@@ -18848,7 +18785,7 @@ void EverQuest::LoadZoneGraphics() {
 	}
 
 	// Pump network after zone S3D loading (can take 8+ seconds on ARM)
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Phase 12: Load character models (global assets)
 	// NOTE: This also initializes the sky renderer, so must be done before setZoneEnvironment
@@ -18864,7 +18801,7 @@ void EverQuest::LoadZoneGraphics() {
 	}
 
 	// Pump network after global assets loading (can take 10+ seconds on ARM)
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Phase 13: Create entity scene nodes for all entities in m_entities
 	SetLoadingPhase(LoadingPhase::GRAPHICS_CREATING_ENTITIES, "Creating entities...");
@@ -18950,7 +18887,7 @@ void EverQuest::LoadZoneGraphics() {
 
 		// Pump network every 10 entities (entity creation with model loading is slow on ARM)
 		if (++entityCount % 10 == 0) {
-			EQ::EventLoop::Get().Process();
+			TickNetwork();
 		}
 	}
 
@@ -19152,7 +19089,7 @@ void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
 void EverQuest::SaveEntityDataToFile(const std::string& filename) {
 	std::ofstream file(filename);
 	if (!file.is_open()) {
-		std::cerr << "Failed to open " << filename << " for writing" << std::endl;
+		LOG_ERROR(MOD_MAIN, "Failed to open {} for writing", filename);
 		return;
 	}
 
@@ -19652,8 +19589,8 @@ void EverQuest::InitializeAudio() {
 	m_audio_manager = std::make_unique<EQT::Audio::AudioManager>();
 
 	// Pass event loop pump as tick callback so network stays alive during slow audio init
-	auto networkTick = []() {
-		EQ::EventLoop::Get().Process();
+	auto networkTick = [this]() {
+		TickNetwork();
 	};
 
 	if (!m_audio_manager->initialize(eqPath, false, m_audio_config_soundfont, networkTick)) {
@@ -19690,7 +19627,7 @@ void EverQuest::InitializeAudio() {
 		m_audio_config_effects_volume * 100.0f);
 
 	// Pump network before sound preloading
-	EQ::EventLoop::Get().Process();
+	TickNetwork();
 
 	// Preload common sounds for faster playback
 	m_audio_manager->preloadCommonSounds();

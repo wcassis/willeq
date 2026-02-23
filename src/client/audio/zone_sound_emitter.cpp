@@ -14,10 +14,6 @@ ZoneSoundEmitter::ZoneSoundEmitter() = default;
 
 ZoneSoundEmitter::~ZoneSoundEmitter() {
     stop();
-    if (source_ != 0) {
-        alDeleteSources(1, &source_);
-        source_ = 0;
-    }
 }
 
 ZoneSoundEmitter::ZoneSoundEmitter(ZoneSoundEmitter&& other) noexcept
@@ -35,7 +31,7 @@ ZoneSoundEmitter::ZoneSoundEmitter(ZoneSoundEmitter&& other) noexcept
     , fullVolRange_(other.fullVolRange_)
     , xmiIndex1_(other.xmiIndex1_)
     , xmiIndex2_(other.xmiIndex2_)
-    , source_(other.source_)
+    , sfxHandle_(other.sfxHandle_)
     , currentBuffer_(std::move(other.currentBuffer_))
     , cooldownTimer_(other.cooldownTimer_)
     , isPlaying_(other.isPlaying_)
@@ -46,16 +42,13 @@ ZoneSoundEmitter::ZoneSoundEmitter(ZoneSoundEmitter&& other) noexcept
     , fadeTimer_(other.fadeTimer_)
     , isFadingOut_(other.isFadingOut_)
 {
-    other.source_ = 0;
+    other.sfxHandle_ = -1;
     other.isPlaying_ = false;
 }
 
 ZoneSoundEmitter& ZoneSoundEmitter::operator=(ZoneSoundEmitter&& other) noexcept {
     if (this != &other) {
         stop();
-        if (source_ != 0) {
-            alDeleteSources(1, &source_);
-        }
 
         sequence_ = other.sequence_;
         position_ = other.position_;
@@ -71,7 +64,7 @@ ZoneSoundEmitter& ZoneSoundEmitter::operator=(ZoneSoundEmitter&& other) noexcept
         fullVolRange_ = other.fullVolRange_;
         xmiIndex1_ = other.xmiIndex1_;
         xmiIndex2_ = other.xmiIndex2_;
-        source_ = other.source_;
+        sfxHandle_ = other.sfxHandle_;
         currentBuffer_ = std::move(other.currentBuffer_);
         cooldownTimer_ = other.cooldownTimer_;
         isPlaying_ = other.isPlaying_;
@@ -82,7 +75,7 @@ ZoneSoundEmitter& ZoneSoundEmitter::operator=(ZoneSoundEmitter&& other) noexcept
         fadeTimer_ = other.fadeTimer_;
         isFadingOut_ = other.isFadingOut_;
 
-        other.source_ = 0;
+        other.sfxHandle_ = -1;
         other.isPlaying_ = false;
     }
     return *this;
@@ -119,14 +112,6 @@ void ZoneSoundEmitter::initialize(
     xmiIndex1_ = xmiIndex1;
     xmiIndex2_ = xmiIndex2;
 
-    // Create OpenAL source
-    if (source_ == 0) {
-        alGenSources(1, &source_);
-        if (alGetError() != AL_NO_ERROR) {
-            source_ = 0;
-        }
-    }
-
     // Initialize cooldown with random offset
     if (randomDelay_ > 0) {
         cooldownTimer_ = static_cast<float>(std::rand() % (randomDelay_ + 1));
@@ -135,7 +120,7 @@ void ZoneSoundEmitter::initialize(
 
 void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, bool isDay,
                                AudioManager* audioManager) {
-    if (!audioManager || source_ == 0) {
+    if (!audioManager) {
         return;
     }
 
@@ -170,10 +155,6 @@ void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, boo
     // Handle fade in/out
     float deltaMs = deltaTime * 1000.0f;
     if (isPlaying_) {
-        // Note: We can't check the actual source state because AudioManager uses
-        // its own source pool. Instead, we use the cooldown timer to track when
-        // we consider the sound "done playing" for re-trigger purposes.
-
         // Update volume with fade
         if (currentVolume_ < targetVolume_) {
             float fadeInMs = static_cast<float>(fadeOutMs_) / 2.0f;
@@ -289,13 +270,12 @@ bool ZoneSoundEmitter::hasDayNightVariants() const {
 }
 
 void ZoneSoundEmitter::stop() {
-    if (source_ != 0 && isPlaying_) {
-        alSourceStop(source_);
-        alSourcei(source_, AL_BUFFER, 0);
-    }
+    // Sounds are played through AudioManager's source pool (SfxManager),
+    // which handles its own channel lifecycle. We just clear our state.
     isPlaying_ = false;
     currentVolume_ = 0.0f;
     isFadingOut_ = false;
+    sfxHandle_ = -1;
 }
 
 void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
@@ -314,14 +294,12 @@ void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
         filename += ".wav";
     }
 
-    // Play through AudioManager's source pool
+    // Play through AudioManager (uses SfxManager internally)
     audioManager->playSoundByName(filename, position_);
     isPlaying_ = true;
     currentVolume_ = targetVolume_;
 
     // Set cooldown for next play
-    // Note: We use cooldown timer to track play duration since we can't check
-    // the actual source state (AudioManager uses its own source pool)
     int32_t baseCooldown = isDay ? cooldown1_ : cooldown2_;
     int32_t randomAdd = randomDelay_ > 0 ? (std::rand() % (randomDelay_ + 1)) : 0;
 
@@ -342,28 +320,9 @@ void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
 }
 
 void ZoneSoundEmitter::updateVolume(float distance) {
-    if (source_ == 0) {
-        return;
-    }
-
-    // Apply distance attenuation for types 2 and 3
-    float baseVolume = currentVolume_;
-
-    // Additional distance-based attenuation within the radius
-    if (type_ == EmitterSoundType::StaticEffect ||
-        type_ == EmitterSoundType::DayNightDistance) {
-        // Linear falloff within radius
-        if (radius_ > 0 && fullVolRange_ > 0) {
-            float fullVolDist = static_cast<float>(fullVolRange_);
-            if (distance > fullVolDist) {
-                float falloff = 1.0f - ((distance - fullVolDist) / (radius_ - fullVolDist));
-                falloff = std::max(0.0f, std::min(1.0f, falloff));
-                baseVolume *= falloff;
-            }
-        }
-    }
-
-    alSourcef(source_, AL_GAIN, baseVolume);
+    // Volume updates are handled by the SfxManager spatial attenuation.
+    // This method is kept for API compatibility but no longer directly
+    // manipulates OpenAL sources.
 }
 
 const std::string& ZoneSoundEmitter::getCurrentSoundFile(bool isDay) const {

@@ -156,6 +156,25 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                 std::string finalTexName = lowerTexName;
                 bool overrideApplied = false;
 
+                // Helper: check if a texture is available (has raw data OR is already loaded in cache)
+                auto isTextureAvailable = [&](const std::string& name) -> bool {
+                    // Check meshBuilder cache first (texture already uploaded to GPU)
+                    if (meshBuilder_->hasTexture(name)) {
+                        return true;
+                    }
+                    // Check raw data in textures map
+                    auto it = textures.find(name);
+                    if (it != textures.end() && it->second && !it->second->data.empty()) {
+                        return true;
+                    }
+                    // Check armor texture archives (lazy-loaded)
+                    auto armorTex = getArmorTexture(name);
+                    if (armorTex && !armorTex->data.empty()) {
+                        return true;
+                    }
+                    return false;
+                };
+
                 if (bodyTextureVariant > 0) {
                     // Check for CLK (robe) textures first
                     // Pattern: clkXXYY.bmp where XX is robe clk number (04-10), YY is variant (01-06)
@@ -174,9 +193,8 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                         snprintf(clkTexName, sizeof(clkTexName), "clk%02d%s.bmp", targetClk, pageNum.c_str());
                         std::string clkTexNameStr = clkTexName;
 
-                        // Check if target CLK texture exists
-                        auto clkIt = textures.find(clkTexNameStr);
-                        if (clkIt != textures.end() && clkIt->second && !clkIt->second->data.empty()) {
+                        // Check if target CLK texture exists (raw data or already cached in GPU)
+                        if (isTextureAvailable(clkTexNameStr)) {
                             finalTexName = clkTexNameStr;
                             overrideApplied = true;
                         }
@@ -197,9 +215,8 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                             std::string equipTexName = lowerTexName.substr(0, partEnd) + variantStr +
                                                        lowerTexName.substr(partEnd + 2);
 
-                            // Check if equipment variant texture exists
-                            auto equipIt = textures.find(equipTexName);
-                            if (equipIt != textures.end() && equipIt->second && !equipIt->second->data.empty()) {
+                            // Check if equipment variant texture exists (raw data or already cached in GPU)
+                            if (isTextureAvailable(equipTexName)) {
                                 finalTexName = equipTexName;
                                 overrideApplied = true;
                             }

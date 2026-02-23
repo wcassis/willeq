@@ -2,7 +2,6 @@
 
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
-#include "common/event/timer.h"
 #include "common/packet_structs.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
@@ -654,6 +653,10 @@ public:
 
 	// Initiate login server connection (call after graphics init to avoid timeout during slow startup)
 	void ConnectToLogin();
+
+	// Poll-based network tick: drains recv, processes protocol, resends.
+	// Call from main loop instead of EQ::EventLoop::Get().Process().
+	void TickNetwork();
 
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }

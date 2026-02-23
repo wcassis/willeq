@@ -2,21 +2,19 @@
 
 #ifdef WITH_AUDIO
 
-#include <AL/al.h>
 #include <string>
 #include <vector>
-#include <thread>
 #include <atomic>
 #include <mutex>
-#include <condition_variable>
 #include <functional>
-
-#ifdef WITH_FLUIDSYNTH
-#include <fluidsynth.h>
-#endif
+#include <memory>
 
 namespace EQT {
 namespace Audio {
+
+// Forward declarations
+class MidiPlayer;
+class AudioMixer;
 
 // Callback for streaming audio output (for RDP)
 using MusicOutputCallback = std::function<void(const int16_t* samples, size_t count)>;
@@ -32,14 +30,18 @@ public:
 
     // Initialization
     // eqPath: path to EQ client directory (for auto-loading EQ soundfonts)
-    // soundFontPath: optional user-specified soundfont (loaded last, highest priority)
+    // soundFontPath: optional user-specified soundfont
     bool initialize(const std::string& eqPath = "", const std::string& soundFontPath = "");
     void shutdown();
+
+    // Connect to external MidiPlayer and AudioMixer (owned by AudioManager)
+    void setMidiPlayer(MidiPlayer* player);
+    void setMixer(AudioMixer* mixer);
 
     // Playback control
     // trackIndex: for XMI files, selects which sequence to play (0 = first, 1 = second, etc.)
     //             Use -1 to play all sequences combined. Ignored for non-XMI files.
-    bool play(const std::string& filepath, bool loop = true, int trackIndex = 0);
+    bool play(const std::string& filepath, bool loop = true, int trackIndex = 0, double startTimeMs = 0.0);
     void stop(float fadeSeconds = 0.0f);
     void pause();
     void resume();
@@ -55,101 +57,66 @@ public:
     void setVolume(float volume);
     float getVolume() const { return volume_; }
 
-    // Output callback for RDP streaming
+    // Output callback for RDP streaming (legacy — handled by AudioBackend now)
     void setOutputCallback(MusicOutputCallback callback);
 
-    // Enable software rendering mode (for loopback/RDP)
-    // When enabled, FluidSynth renders through OpenAL instead of its own audio driver
+    // Legacy methods (no-ops — always software rendering now)
     void enableSoftwareRendering();
-    bool isSoftwareRendering() const { return softwareRendering_; }
-
-    // Reinitialize OpenAL resources (call after context change)
+    bool isSoftwareRendering() const { return true; }
     void reinitializeOpenAL();
 
-private:
-    // Streaming thread
-    void streamingThread();
-    void stopThread();
+    // Render callback for mixer (called from audio thread)
+    static void mixerRenderCallback(void* userData, float* buffer, int frameCount);
 
+private:
     // File format handling
     bool loadMP3(const std::string& filepath);
-    bool loadXMI(const std::string& filepath, int trackIndex = 0);
+    bool loadXMI(const std::string& filepath, int trackIndex = 0, double startTimeMs = 0.0);
     bool loadWAV(const std::string& filepath);
 
-    // Buffer management
-    void fillBuffer(ALuint buffer);
-    bool streamMoreData();
+    // Start playback on mixer channel
+    void startMixerPlayback();
 
 private:
     bool initialized_ = false;
     std::atomic<bool> playing_{false};
     std::atomic<bool> paused_{false};
     std::atomic<bool> looping_{false};
-    std::atomic<bool> stopRequested_{false};
     std::atomic<float> volume_{1.0f};
     std::atomic<float> fadeVolume_{1.0f};
     std::atomic<float> fadeTarget_{1.0f};
     std::atomic<float> fadeRate_{0.0f};
 
-    // OpenAL streaming
-    static constexpr size_t NUM_BUFFERS = 4;
-    static constexpr size_t BUFFER_SIZE = 16384;  // samples per buffer
-    ALuint source_ = 0;
-    ALuint buffers_[NUM_BUFFERS] = {0};
+    // External components (not owned)
+    MidiPlayer* midiPlayer_ = nullptr;
+    AudioMixer* mixer_ = nullptr;
+
+    // Internal MidiPlayer (owned, created if no external one provided)
+    std::unique_ptr<MidiPlayer> ownedMidiPlayer_;
+
+    // Mixer channel handle
+    int musicChannelHandle_ = -1;
 
     // Audio format info
-    uint32_t sampleRate_ = 44100;
+    uint32_t sampleRate_ = 22050;
     uint8_t channels_ = 2;
-    ALenum format_ = AL_FORMAT_STEREO16;
 
-    // Decoded audio data (for simple formats)
-    std::vector<int16_t> decodedData_;
-    size_t playbackPosition_ = 0;
-
-    // Streaming thread
-    std::thread streamThread_;
-    std::mutex streamMutex_;
-    std::condition_variable streamCond_;
+    // Decoded audio data (for MP3/WAV — PCM float interleaved)
+    std::vector<float> decodedData_;
+    std::atomic<size_t> playbackPosition_{0};
 
     // Current file info
     std::string currentFile_;
     int currentTrackIndex_ = 0;
 
-#ifdef WITH_FLUIDSYNTH
-    // FluidSynth for MIDI/XMI playback
-    fluid_settings_t* fluidSettings_ = nullptr;
-    fluid_synth_t* fluidSynth_ = nullptr;
-    fluid_audio_driver_t* fluidAudioDriver_ = nullptr;
-    fluid_player_t* fluidPlayer_ = nullptr;
-    int soundFontId_ = -1;
+    // Is this playing MIDI (via MidiPlayer)?
+    bool playingMidi_ = false;
 
-    // Manual MIDI sequencer for software rendering mode
-    // (fluid_player doesn't work without audio driver callbacks)
-    struct MidiEvent {
-        uint64_t tick;      // Time in MIDI ticks
-        uint8_t type;       // Event type (0x80-0xF0)
-        uint8_t channel;    // MIDI channel (0-15)
-        uint8_t data1;      // First data byte
-        uint8_t data2;      // Second data byte (if applicable)
-    };
-    std::vector<MidiEvent> midiEvents_;
-    size_t midiEventIndex_ = 0;
-    uint64_t midiTickPosition_ = 0;
-    uint32_t midiTicksPerBeat_ = 480;  // Default PPQN
-    uint32_t midiTempo_ = 500000;      // Default tempo (microseconds per beat) = 120 BPM
-    uint64_t samplePosition_ = 0;      // Current sample position for timing
+    // EQ path for file loading
+    std::string eqPath_;
 
-    // Parse MIDI data for software sequencing
-    bool parseMidiEvents(const std::vector<uint8_t>& midiData);
-    void processMidiEvents(size_t samplesToRender);
-#endif
-
-    // RDP output callback
+    // RDP output callback (legacy)
     MusicOutputCallback outputCallback_;
-
-    // Software rendering mode (for loopback/RDP)
-    bool softwareRendering_ = false;
-    std::atomic<bool> fluidSynthStreaming_{false};  // true when streaming FluidSynth output
 };
 
 } // namespace Audio

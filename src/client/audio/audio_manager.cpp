@@ -3,6 +3,10 @@
 #include "client/audio/audio_manager.h"
 #include "client/audio/sound_buffer.h"
 #include "client/audio/music_player.h"
+#include "client/audio/audio_mixer.h"
+#include "client/audio/audio_backend.h"
+#include "client/audio/midi_player.h"
+#include "client/audio/sfx_manager.h"
 #include "client/audio/sound_assets.h"
 #include "client/graphics/eq/pfs.h"
 #include "common/logging.h"
@@ -10,10 +14,10 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
-#include <iostream>
 #include <fstream>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <json/json.h>
 
 namespace EQT {
@@ -36,80 +40,126 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     soundFontPath_ = soundFontPath;
     tickCallback_ = std::move(tickCallback);
 
-    // Try to initialize device
-    bool deviceReady = false;
+    // Create AudioMixer
+    mixer_ = std::make_unique<AudioMixer>();
+    mixer_->setMasterVolume(masterVolume_);
+    mixer_->setMusicVolume(musicVolume_);
+    mixer_->setSfxVolume(effectsVolume_);
 
-    if (forceLoopback) {
-        // User explicitly requested loopback mode (e.g., RDP-only server)
-        LOG_INFO(MOD_AUDIO, "Loopback mode requested, skipping hardware device");
-        deviceReady = initializeLoopbackDevice();
+    // Create SfxManager
+    sfxManager_ = std::make_unique<SfxManager>();
+    sfxManager_->setMixer(mixer_.get());
+
+    // Pump event loop before heavy SoundFont loading
+    if (tickCallback_) tickCallback_();
+
+    // Create MidiPlayer (for XMI/MIDI music)
+    midiPlayer_ = std::make_unique<MidiPlayer>();
+
+    // Find GM SoundFont: CLI --soundfont > synthusr.sf2 > 1mgm.sf2
+    std::string gmPath;
+    if (!soundFontPath_.empty() && std::filesystem::exists(soundFontPath_)) {
+        gmPath = soundFontPath_;
     } else {
-        // Try hardware device first
-        deviceReady = initializeHardwareDevice();
-
-        if (!deviceReady) {
-            // Fall back to loopback device
-            LOG_INFO(MOD_AUDIO, "No hardware audio device, trying loopback mode");
-            deviceReady = initializeLoopbackDevice();
+        std::string synthusr = eqPath_ + "/synthusr.sf2";
+        std::string onegm = eqPath_ + "/1mgm.sf2";
+        if (std::filesystem::exists(synthusr)) {
+            gmPath = synthusr;
+        } else if (std::filesystem::exists(onegm)) {
+            gmPath = onegm;
         }
     }
 
-    if (!deviceReady) {
-        LOG_ERROR(MOD_AUDIO, "Failed to initialize any audio device");
-        return false;
+    // Find custom SoundFont: synthus2.sf2 in EQ dir (optional)
+    std::string customPath;
+    {
+        std::string synthus2 = eqPath_ + "/synthus2.sf2";
+        if (std::filesystem::exists(synthus2)) {
+            customPath = synthus2;
+        }
     }
 
-    // Configure 3D audio distance model
-    // AL_INVERSE_DISTANCE_CLAMPED: gain = ref_dist / (ref_dist + rolloff * (distance - ref_dist))
-    // clamped to [0, max_dist]
-    alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
-    alSpeedOfSound(343.3f);  // Speed of sound in m/s (for Doppler, if enabled)
-    alDopplerFactor(0.0f);   // Disable Doppler effect for now (can cause issues)
+    if (!gmPath.empty()) {
+        if (!customPath.empty()) {
+            // Dual SoundFont init
+            if (midiPlayer_->init(gmPath, customPath, AudioMixer::SAMPLE_RATE)) {
+                LOG_INFO(MOD_AUDIO, "MIDI player initialized with dual SoundFonts: GM={}, Custom={}", gmPath, customPath);
+            } else {
+                LOG_WARN(MOD_AUDIO, "MIDI player dual initialization failed");
+            }
+        } else {
+            // Single SoundFont init
+            if (midiPlayer_->init(gmPath, AudioMixer::SAMPLE_RATE)) {
+                LOG_INFO(MOD_AUDIO, "MIDI player initialized with SoundFont: {}", gmPath);
+            } else {
+                LOG_WARN(MOD_AUDIO, "MIDI player initialization failed");
+            }
+        }
 
-    LOG_DEBUG(MOD_AUDIO, "3D audio distance model configured (inverse distance clamped)");
-
-    // Create source pool
-    availableSources_.resize(MAX_SOURCES);
-    alGenSources(MAX_SOURCES, availableSources_.data());
-    ALenum error = alGetError();
-    if (error != AL_NO_ERROR) {
-        LOG_WARN(MOD_AUDIO, "Could only create partial source pool: {}", alGetString(error));
-        // Remove invalid sources
-        availableSources_.erase(
-            std::remove(availableSources_.begin(), availableSources_.end(), 0),
-            availableSources_.end()
-        );
+        // If user specified --soundfont AND we found an EQ GM SF2 (synthusr/1mgm),
+        // override the GM slot with the user's choice
+        if (!soundFontPath_.empty() && gmPath != soundFontPath_ &&
+            std::filesystem::exists(soundFontPath_)) {
+            midiPlayer_->loadSoundFont(soundFontPath_);
+        }
+    } else {
+        LOG_WARN(MOD_AUDIO, "No SoundFont found - XMI playback disabled");
     }
 
-    LOG_INFO(MOD_AUDIO, "Audio source pool: {} sources", availableSources_.size());
-
-    // Pump event loop before heavy music player init (SoundFont loading)
+    // Pump event loop after MIDI player init
     if (tickCallback_) tickCallback_();
 
-    // Initialize music player
+    // Create MusicPlayer (wrapper around MidiPlayer + mixer for MP3/WAV/XMI)
     musicPlayer_ = std::make_unique<MusicPlayer>();
-    std::cout << "[AUDIO] Initializing music player with eqPath: " << eqPath_
-              << ", soundfont: " << (soundFontPath_.empty() ? "(none)" : soundFontPath_) << std::endl;
+    LOG_INFO(MOD_AUDIO, "Initializing music player with eqPath: {}, soundfont: {}",
+             eqPath_, soundFontPath_.empty() ? "(none)" : soundFontPath_);
     if (!musicPlayer_->initialize(eqPath_, soundFontPath_)) {
         LOG_WARN(MOD_AUDIO, "Music player initialization failed, music will be disabled");
     }
+    // Give MusicPlayer access to MidiPlayer and mixer
+    musicPlayer_->setMidiPlayer(midiPlayer_.get());
+    musicPlayer_->setMixer(mixer_.get());
 
     // Pump event loop after music player init
     if (tickCallback_) tickCallback_();
+
+    // Create and initialize audio backend
+    if (forceLoopback) {
+        LOG_INFO(MOD_AUDIO, "Loopback mode requested");
+        auto rdpBackend = std::make_unique<RDPAudioBackend>();
+        if (audioOutputCallback_) {
+            rdpBackend->setOutputCallback(audioOutputCallback_);
+        }
+        rdpBackend->init(mixer_.get(), AudioMixer::SAMPLE_RATE);
+        rdpBackend->start();
+        backend_ = std::move(rdpBackend);
+        loopbackMode_ = true;
+    } else {
+        auto maBackend = std::make_unique<MiniaudioBackend>();
+        if (maBackend->init(mixer_.get(), AudioMixer::SAMPLE_RATE)) {
+            maBackend->start();
+            backend_ = std::move(maBackend);
+            loopbackMode_ = false;
+        } else {
+            LOG_WARN(MOD_AUDIO, "Miniaudio hardware init failed, trying RDP loopback");
+            auto rdpBackend = std::make_unique<RDPAudioBackend>();
+            if (audioOutputCallback_) {
+                rdpBackend->setOutputCallback(audioOutputCallback_);
+            }
+            rdpBackend->init(mixer_.get(), AudioMixer::SAMPLE_RATE);
+            rdpBackend->start();
+            backend_ = std::move(rdpBackend);
+            loopbackMode_ = true;
+        }
+    }
+
+    LOG_DEBUG(MOD_AUDIO, "Audio backend initialized (loopback={})", loopbackMode_);
 
     // Load sound asset mapping
     loadSoundAssets();
 
     // Scan PFS archives for sound files (pumps event loop per-archive internally)
     scanPfsArchives();
-
-    // Set initial listener position
-    ALfloat listenerPos[] = { 0.0f, 0.0f, 0.0f };
-    ALfloat listenerVel[] = { 0.0f, 0.0f, 0.0f };
-    ALfloat listenerOri[] = { 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f };
-    alListenerfv(AL_POSITION, listenerPos);
-    alListenerfv(AL_VELOCITY, listenerVel);
-    alListenerfv(AL_ORIENTATION, listenerOri);
 
     // Load music event configuration
     loadMusicEventConfig();
@@ -126,16 +176,11 @@ void AudioManager::shutdown() {
 
     LOG_INFO(MOD_AUDIO, "Shutting down audio system");
 
-    // Stop loopback thread first
-    if (loopbackMode_ && loopbackRunning_.load()) {
-        loopbackRunning_ = false;
-        if (loopbackThread_.joinable()) {
-            loopbackThread_.join();
-        }
+    // Stop backend first
+    if (backend_) {
+        backend_->stop();
+        backend_.reset();
     }
-
-    // Stop all sounds
-    stopAllSounds();
 
     // Stop music
     if (musicPlayer_) {
@@ -143,6 +188,15 @@ void AudioManager::shutdown() {
         musicPlayer_->shutdown();
         musicPlayer_.reset();
     }
+
+    // Stop MIDI
+    if (midiPlayer_) {
+        midiPlayer_->stop();
+        midiPlayer_.reset();
+    }
+
+    // Clear SFX
+    sfxManager_.reset();
 
     // Clear buffer cache
     {
@@ -152,34 +206,8 @@ void AudioManager::shutdown() {
         soundBufferCacheSizeBytes_ = 0;
     }
 
-    // Delete sources
-    {
-        std::lock_guard<std::mutex> lock(sourceMutex_);
-        for (ALuint source : availableSources_) {
-            if (source != 0) {
-                alDeleteSources(1, &source);
-            }
-        }
-        for (ALuint source : activeSources_) {
-            if (source != 0) {
-                alSourceStop(source);
-                alDeleteSources(1, &source);
-            }
-        }
-        availableSources_.clear();
-        activeSources_.clear();
-    }
-
-    // Destroy context
-    alcMakeContextCurrent(nullptr);
-    if (context_) {
-        alcDestroyContext(context_);
-        context_ = nullptr;
-    }
-    if (device_) {
-        alcCloseDevice(device_);
-        device_ = nullptr;
-    }
+    // Clear mixer last
+    mixer_.reset();
 
     initialized_ = false;
 }
@@ -193,45 +221,23 @@ void AudioManager::playSound(uint32_t soundId, const glm::vec3& position) {
         return;
     }
 
-    // Get filename for debug output
     std::string filename = "unknown";
     auto it = soundIdMap_.find(soundId);
     if (it != soundIdMap_.end()) {
         filename = it->second;
     }
 
+    // Ensure sound is loaded into SfxManager cache
     auto buffer = getSoundById(soundId);
     if (!buffer || !buffer->isValid()) {
-        std::cout << "[AUDIO] SOUND FAILED: id=" << soundId << " file=" << filename << " (not found)" << std::endl;
-        LOG_DEBUG(MOD_AUDIO, "Sound ID {} not found", soundId);
+        LOG_DEBUG(MOD_AUDIO, "Sound failed: id={} file={} (not found)", soundId, filename);
         return;
     }
 
-    ALuint source = acquireSource();
-    if (source == 0) {
-        std::cout << "[AUDIO] SOUND FAILED: id=" << soundId << " file=" << filename << " (no source)" << std::endl;
-        LOG_DEBUG(MOD_AUDIO, "No available audio sources");
-        return;
-    }
+    LOG_TRACE(MOD_AUDIO, "Sound play: id={} file={} pos=({},{},{})",
+              soundId, filename, position.x, position.y, position.z);
 
-    std::cout << "[AUDIO] SOUND PLAY: id=" << soundId << " file=" << filename
-              << " pos=(" << position.x << "," << position.y << "," << position.z << ")" << std::endl;
-
-    alSourcei(source, AL_BUFFER, buffer->getBuffer());
-    alSource3f(source, AL_POSITION, position.x, position.y, position.z);
-    alSourcef(source, AL_GAIN, masterVolume_ * effectsVolume_);
-    alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
-
-    // Configure 3D audio distance attenuation
-    // EQ units are roughly feet, so:
-    // - Reference distance: Sound is at full volume within 50 units
-    // - Max distance: Sound becomes inaudible beyond 500 units
-    // - Rolloff factor: 1.0 for standard inverse distance attenuation
-    alSourcef(source, AL_REFERENCE_DISTANCE, 50.0f);
-    alSourcef(source, AL_MAX_DISTANCE, 500.0f);
-    alSourcef(source, AL_ROLLOFF_FACTOR, 1.0f);
-
-    alSourcePlay(source);
+    playSoundInternal(filename, position);
 }
 
 void AudioManager::playSoundByName(const std::string& filename) {
@@ -245,46 +251,48 @@ void AudioManager::playSoundByName(const std::string& filename, const glm::vec3&
 
     auto buffer = loadSound(filename);
     if (!buffer || !buffer->isValid()) {
-        std::cout << "[AUDIO] SOUND FAILED: file=" << filename << " (not found)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Sound failed: file={} (not found)", filename);
         return;
     }
 
-    ALuint source = acquireSource();
-    if (source == 0) {
-        std::cout << "[AUDIO] SOUND FAILED: file=" << filename << " (no source)" << std::endl;
-        return;
+    LOG_TRACE(MOD_AUDIO, "Sound play: file={} pos=({},{},{})",
+              filename, position.x, position.y, position.z);
+
+    playSoundInternal(filename, position);
+}
+
+void AudioManager::playSoundInternal(const std::string& filename, const glm::vec3& position) {
+    if (!sfxManager_) return;
+
+    // Ensure sound data is in SfxManager cache
+    auto buffer = loadSound(filename);
+    if (!buffer || !buffer->isValid()) return;
+
+    // Preload into SfxManager if not already
+    sfxManager_->preload(filename, buffer->getSamples(),
+                         buffer->getFrameCount(), buffer->getSampleRate(),
+                         buffer->getChannels());
+
+    // Check if this is a positioned sound
+    if (position.x != 0.0f || position.y != 0.0f || position.z != 0.0f) {
+        sfxManager_->playSpatial(filename, position);
+    } else {
+        sfxManager_->play(filename, masterVolume_ * effectsVolume_);
     }
-
-    std::cout << "[AUDIO] SOUND PLAY: file=" << filename
-              << " pos=(" << position.x << "," << position.y << "," << position.z << ")" << std::endl;
-
-    alSourcei(source, AL_BUFFER, buffer->getBuffer());
-    alSource3f(source, AL_POSITION, position.x, position.y, position.z);
-    alSourcef(source, AL_GAIN, masterVolume_ * effectsVolume_);
-    alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
-
-    // Configure 3D audio distance attenuation
-    alSourcef(source, AL_REFERENCE_DISTANCE, 50.0f);
-    alSourcef(source, AL_MAX_DISTANCE, 500.0f);
-    alSourcef(source, AL_ROLLOFF_FACTOR, 1.0f);
-
-    alSourcePlay(source);
 }
 
 void AudioManager::stopAllSounds() {
-    std::lock_guard<std::mutex> lock(sourceMutex_);
-
-    for (ALuint source : activeSources_) {
-        alSourceStop(source);
-        alSourcei(source, AL_BUFFER, 0);
-        availableSources_.push_back(source);
+    // SfxManager channels will naturally complete or can be stopped by mixer
+    if (mixer_) {
+        for (int i = 0; i < AudioMixer::MAX_SFX_CHANNELS; ++i) {
+            mixer_->freeChannel(i);
+        }
     }
-    activeSources_.clear();
 }
 
-void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex) {
+void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex, double startTimeMs) {
     if (!initialized_ || !audioEnabled_ || !musicPlayer_) {
-        std::cout << "[AUDIO] MUSIC FAILED: file=" << filename << " (not initialized or disabled)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Music failed: file={} (not initialized or disabled)", filename);
         return;
     }
 
@@ -294,7 +302,6 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
     }
 
     if (!std::filesystem::exists(fullPath)) {
-        std::cout << "[AUDIO] MUSIC FAILED: file=" << fullPath << " (not found)" << std::endl;
         LOG_WARN(MOD_AUDIO, "Music file not found: {}", fullPath);
         return;
     }
@@ -302,16 +309,23 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
     // Skip if the same file and track is already playing
     if (musicPlayer_->isPlaying() && musicPlayer_->getCurrentFile() == fullPath &&
         musicPlayer_->getCurrentTrackIndex() == trackIndex) {
-        std::cout << "[AUDIO] MUSIC SKIP: file=" << fullPath << " track=" << trackIndex << " (already playing)" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Music skip: file={} track={} (already playing)", fullPath, trackIndex);
         return;
     }
 
-    std::cout << "[AUDIO] MUSIC PLAY: file=" << fullPath << " track=" << trackIndex
-              << " loop=" << (loop ? "yes" : "no") << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Music play: file={} track={} loop={}", fullPath, trackIndex, loop ? "yes" : "no");
+
+    // Select soundfont based on XMI filename
+    if (midiPlayer_ && midiPlayer_->isInitialized()) {
+        std::string ext = std::filesystem::path(fullPath).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".xmi") {
+            midiPlayer_->selectSoundFont(getSoundFontTypeForFile(fullPath));
+        }
+    }
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
-    if (!musicPlayer_->play(fullPath, loop, trackIndex)) {
-        std::cout << "[AUDIO] MUSIC FAILED: file=" << fullPath << " (playback error)" << std::endl;
+    if (!musicPlayer_->play(fullPath, loop, trackIndex, startTimeMs)) {
         LOG_WARN(MOD_AUDIO, "Failed to play music: {}", fullPath);
     }
 }
@@ -339,23 +353,26 @@ bool AudioManager::isMusicPlaying() const {
 }
 
 void AudioManager::onZoneChange(const std::string& zoneName) {
-    std::cout << "[AUDIO] ZONE CHANGE: " << currentZone_ << " -> " << zoneName << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Zone change: {} -> {}", currentZone_, zoneName);
 
     if (!initialized_ || !audioEnabled_) {
-        std::cout << "[AUDIO] ZONE CHANGE IGNORED: not initialized or disabled" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Zone change ignored: not initialized or disabled");
         return;
     }
 
     if (zoneName == currentZone_) {
-        std::cout << "[AUDIO] ZONE CHANGE IGNORED: same zone" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Zone change ignored: same zone");
         return;
     }
 
     LOG_INFO(MOD_AUDIO, "Zone change: {} -> {}", currentZone_, zoneName);
     currentZone_ = zoneName;
 
-    // Stop current music — ZoneAudioManager will start the correct track
-    // via its music emitters once its first update() runs
+    // Clear saved zone music state from previous zone
+    savedZoneMusicFile_.clear();
+    savedZoneMusicTrackIndex_ = 0;
+    savedZoneMusicTimeMs_ = 0.0;
+
     if (musicPlayer_ && musicPlayer_->isPlaying()) {
         stopMusic(2.0f);
     }
@@ -366,6 +383,16 @@ void AudioManager::restartZoneMusic() {
         return;
     }
 
+    // Restore saved zone music with position if available
+    if (!savedZoneMusicFile_.empty()) {
+        double savedTimeMs = savedZoneMusicTimeMs_;
+        int savedTrack = savedZoneMusicTrackIndex_;
+        LOG_DEBUG(MOD_AUDIO, "Restoring zone music: file={} track={} pos={}ms",
+                  savedZoneMusicFile_, savedTrack, savedTimeMs);
+        playMusic(savedZoneMusicFile_, true, savedTrack, savedTimeMs);
+        return;
+    }
+
     std::string musicFile = findZoneMusic(currentZone_);
     if (!musicFile.empty()) {
         playMusic(musicFile, true);
@@ -373,90 +400,79 @@ void AudioManager::restartZoneMusic() {
 }
 
 void AudioManager::startAutoAttackMusic() {
-    if (!initialized_ || !audioEnabled_) {
-        return;
-    }
+    if (!initialized_ || !audioEnabled_) return;
+    if (!autoAttackMusicConfig_.enabled) return;
 
-    if (!autoAttackMusicConfig_.enabled) {
-        return;
-    }
-
-    // Vendor/bank music has higher priority
     if (vendorBankMusicActive_) {
-        std::cout << "[AUDIO] AUTO-ATTACK MUSIC: skipped (vendor/bank music active)" << std::endl;
-        autoAttackMusicActive_ = true;  // Mark as active so we start it when vendor closes
+        LOG_DEBUG(MOD_AUDIO, "Auto-attack music: skipped (vendor/bank music active)");
+        autoAttackMusicActive_ = true;
         return;
     }
 
-    if (autoAttackMusicActive_) {
-        return;  // Already playing
+    if (autoAttackMusicActive_) return;
+
+    LOG_DEBUG(MOD_AUDIO, "Auto-attack music: starting {} track {}",
+              autoAttackMusicConfig_.file, autoAttackMusicConfig_.track);
+
+    // Save zone music state before interrupting
+    if (musicPlayer_ && musicPlayer_->isPlaying()) {
+        savedZoneMusicFile_ = musicPlayer_->getCurrentFile();
+        savedZoneMusicTrackIndex_ = musicPlayer_->getCurrentTrackIndex();
+        savedZoneMusicTimeMs_ = midiPlayer_ ? midiPlayer_->getPlaybackTimeMs() : 0.0;
     }
 
-    std::cout << "[AUDIO] AUTO-ATTACK MUSIC: starting " << autoAttackMusicConfig_.file
-              << " track " << autoAttackMusicConfig_.track << std::endl;
     autoAttackMusicActive_ = true;
 
-    // Track numbers in config are 1-based, convert to 0-based for internal use
     std::string musicFile = eqPath_ + "/" + autoAttackMusicConfig_.file;
     if (std::filesystem::exists(musicFile)) {
         playMusic(musicFile, autoAttackMusicConfig_.loop, autoAttackMusicConfig_.track - 1);
     } else {
-        std::cout << "[AUDIO] AUTO-ATTACK MUSIC: " << autoAttackMusicConfig_.file << " not found" << std::endl;
+        LOG_WARN(MOD_AUDIO, "Auto-attack music: {} not found", autoAttackMusicConfig_.file);
     }
 }
 
 void AudioManager::stopAutoAttackMusic() {
-    if (!autoAttackMusicActive_) {
-        return;
-    }
+    if (!autoAttackMusicActive_) return;
 
-    std::cout << "[AUDIO] AUTO-ATTACK MUSIC: stopping" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Auto-attack music: stopping");
     autoAttackMusicActive_ = false;
 
-    // If vendor/bank music is active, let it continue
-    if (vendorBankMusicActive_) {
-        return;
-    }
+    if (vendorBankMusicActive_) return;
 
-    // Restore zone music
     restartZoneMusic();
 }
 
 void AudioManager::startVendorBankMusic() {
-    if (!initialized_ || !audioEnabled_) {
-        return;
+    if (!initialized_ || !audioEnabled_) return;
+    if (!vendorBankMusicConfig_.enabled) return;
+    if (vendorBankMusicActive_) return;
+
+    LOG_DEBUG(MOD_AUDIO, "Vendor/bank music: starting {} track {}",
+              vendorBankMusicConfig_.file, vendorBankMusicConfig_.track);
+
+    // Save zone music state before interrupting (only if not already saved by auto-attack)
+    if (!autoAttackMusicActive_ && musicPlayer_ && musicPlayer_->isPlaying()) {
+        savedZoneMusicFile_ = musicPlayer_->getCurrentFile();
+        savedZoneMusicTrackIndex_ = musicPlayer_->getCurrentTrackIndex();
+        savedZoneMusicTimeMs_ = midiPlayer_ ? midiPlayer_->getPlaybackTimeMs() : 0.0;
     }
 
-    if (!vendorBankMusicConfig_.enabled) {
-        return;
-    }
-
-    if (vendorBankMusicActive_) {
-        return;  // Already playing
-    }
-
-    std::cout << "[AUDIO] VENDOR/BANK MUSIC: starting " << vendorBankMusicConfig_.file
-              << " track " << vendorBankMusicConfig_.track << std::endl;
     vendorBankMusicActive_ = true;
 
-    // Track numbers in config are 1-based, convert to 0-based for internal use
     std::string musicFile = eqPath_ + "/" + vendorBankMusicConfig_.file;
     if (std::filesystem::exists(musicFile)) {
         playMusic(musicFile, vendorBankMusicConfig_.loop, vendorBankMusicConfig_.track - 1);
     } else {
-        std::cout << "[AUDIO] VENDOR/BANK MUSIC: " << vendorBankMusicConfig_.file << " not found" << std::endl;
+        LOG_WARN(MOD_AUDIO, "Vendor/bank music: {} not found", vendorBankMusicConfig_.file);
     }
 }
 
 void AudioManager::stopVendorBankMusic() {
-    if (!vendorBankMusicActive_) {
-        return;
-    }
+    if (!vendorBankMusicActive_) return;
 
-    std::cout << "[AUDIO] VENDOR/BANK MUSIC: stopping" << std::endl;
+    LOG_DEBUG(MOD_AUDIO, "Vendor/bank music: stopping");
     vendorBankMusicActive_ = false;
 
-    // If auto-attack is still active, play its music
     if (autoAttackMusicActive_ && autoAttackMusicConfig_.enabled) {
         std::string musicFile = eqPath_ + "/" + autoAttackMusicConfig_.file;
         if (std::filesystem::exists(musicFile)) {
@@ -465,14 +481,14 @@ void AudioManager::stopVendorBankMusic() {
         return;
     }
 
-    // Restore zone music
     restartZoneMusic();
 }
 
 void AudioManager::setMasterVolume(float volume) {
     masterVolume_ = std::clamp(volume, 0.0f, 1.0f);
-    alListenerf(AL_GAIN, masterVolume_);
-
+    if (mixer_) {
+        mixer_->setMasterVolume(masterVolume_);
+    }
     if (musicPlayer_) {
         musicPlayer_->setVolume(masterVolume_ * musicVolume_);
     }
@@ -480,7 +496,9 @@ void AudioManager::setMasterVolume(float volume) {
 
 void AudioManager::setMusicVolume(float volume) {
     musicVolume_ = std::clamp(volume, 0.0f, 1.0f);
-
+    if (mixer_) {
+        mixer_->setMusicVolume(musicVolume_);
+    }
     if (musicPlayer_) {
         musicPlayer_->setVolume(masterVolume_ * musicVolume_);
     }
@@ -488,20 +506,19 @@ void AudioManager::setMusicVolume(float volume) {
 
 void AudioManager::setEffectsVolume(float volume) {
     effectsVolume_ = std::clamp(volume, 0.0f, 1.0f);
+    if (mixer_) {
+        mixer_->setSfxVolume(effectsVolume_);
+    }
 }
 
 void AudioManager::setListenerPosition(const glm::vec3& position,
                                         const glm::vec3& forward,
-                                        const glm::vec3& up) {
-    if (!initialized_) {
-        return;
+                                        const glm::vec3& /*up*/) {
+    if (!initialized_) return;
+
+    if (sfxManager_) {
+        sfxManager_->updateListener(position, forward);
     }
-
-    ALfloat listenerPos[] = { position.x, position.y, position.z };
-    ALfloat listenerOri[] = { forward.x, forward.y, forward.z, up.x, up.y, up.z };
-
-    alListenerfv(AL_POSITION, listenerPos);
-    alListenerfv(AL_ORIENTATION, listenerOri);
 }
 
 void AudioManager::setAudioEnabled(bool enabled) {
@@ -516,12 +533,12 @@ void AudioManager::setAudioEnabled(bool enabled) {
 void AudioManager::setAudioOutputCallback(AudioOutputCallback callback) {
     audioOutputCallback_ = std::move(callback);
 
-    if (musicPlayer_) {
-        musicPlayer_->setOutputCallback([this](const int16_t* samples, size_t count) {
-            if (audioOutputCallback_) {
-                audioOutputCallback_(samples, count, 44100, 2);
-            }
-        });
+    // If we have an RDP backend, set the callback on it
+    if (loopbackMode_ && backend_) {
+        auto* rdp = dynamic_cast<RDPAudioBackend*>(backend_.get());
+        if (rdp) {
+            rdp->setOutputCallback(audioOutputCallback_);
+        }
     }
 }
 
@@ -529,15 +546,14 @@ void AudioManager::setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs) {
     soundBufferCacheMaxBytes_ = soundCacheBytes;
     lazyPfsLoading_ = lazyPfs;
 
+    if (sfxManager_) {
+        sfxManager_->setCacheMaxBytes(soundCacheBytes);
+    }
+
     if (lazyPfs && !pfsArchives_.empty()) {
-        // If we already scanned with archives held open, release them now
         LOG_INFO(MOD_AUDIO, "Lazy PFS mode: releasing {} cached archives", pfsArchives_.size());
         pfsArchives_.clear();
     }
-}
-
-void AudioManager::onSoundFinished(ALuint source) {
-    releaseSource(source);
 }
 
 std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename) {
@@ -546,7 +562,6 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
     // Check cache
     auto it = bufferCache_.find(filename);
     if (it != bufferCache_.end()) {
-        // LRU: move to front on cache hit
         if (soundBufferCacheMaxBytes_ > 0) {
             bufferLruOrder_.remove(filename);
             bufferLruOrder_.push_front(filename);
@@ -581,7 +596,6 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
             bufferLruOrder_.push_front(filename);
             soundBufferCacheSizeBytes_ += buffer->getMemorySize();
 
-            // Evict oldest entries while over budget
             while (soundBufferCacheSizeBytes_ > soundBufferCacheMaxBytes_ &&
                    bufferLruOrder_.size() > 1) {
                 const std::string& oldest = bufferLruOrder_.back();
@@ -614,84 +628,30 @@ std::string AudioManager::findZoneMusic(const std::string& zoneName) {
     std::string lowerZone = zoneName;
     std::transform(lowerZone.begin(), lowerZone.end(), lowerZone.begin(), ::tolower);
 
-    // Zone music mappings for zones that share music with other zones
     static const std::unordered_map<std::string, std::string> zoneMusicMap = {
-        // Desert zones use North Ro music
-        {"oasis", "nro"},
-        {"sro", "nro"},
-        {"scarlet", "nro"},
-        // Common outdoor zones
-        {"ecommons", "nektulos"},
-        {"commons", "nektulos"},
-        {"wcommons", "nektulos"},
-        // Faydwer outdoor
-        {"lfaydark", "gfaydark"},
-        {"steamfont", "gfaydark"},
-        // Antonica outdoor
-        {"qeytoqrg", "qeynos"},
-        {"qey2hh1", "qeynos"},
+        {"oasis", "nro"}, {"sro", "nro"}, {"scarlet", "nro"},
+        {"ecommons", "nektulos"}, {"commons", "nektulos"}, {"wcommons", "nektulos"},
+        {"lfaydark", "gfaydark"}, {"steamfont", "gfaydark"},
+        {"qeytoqrg", "qeynos"}, {"qey2hh1", "qeynos"},
         {"westkarana", "southkarana"},
     };
 
-    // Check for zone mapping first
     auto mapIt = zoneMusicMap.find(lowerZone);
     if (mapIt != zoneMusicMap.end()) {
         lowerZone = mapIt->second;
     }
 
-    // Try XMI first (original MIDI format)
     std::string xmiPath = eqPath_ + "/" + lowerZone + ".xmi";
     if (std::filesystem::exists(xmiPath)) {
         return xmiPath;
     }
 
-    // Try MP3 (later expansions)
     std::string mp3Path = eqPath_ + "/" + lowerZone + ".mp3";
     if (std::filesystem::exists(mp3Path)) {
         return mp3Path;
     }
 
     return "";
-}
-
-ALuint AudioManager::acquireSource() {
-    std::lock_guard<std::mutex> lock(sourceMutex_);
-
-    // First, check for finished sources and reclaim them
-    auto it = activeSources_.begin();
-    while (it != activeSources_.end()) {
-        ALint state;
-        alGetSourcei(*it, AL_SOURCE_STATE, &state);
-        if (state != AL_PLAYING) {
-            alSourcei(*it, AL_BUFFER, 0);
-            availableSources_.push_back(*it);
-            it = activeSources_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    // Get an available source
-    if (availableSources_.empty()) {
-        return 0;
-    }
-
-    ALuint source = availableSources_.back();
-    availableSources_.pop_back();
-    activeSources_.push_back(source);
-    return source;
-}
-
-void AudioManager::releaseSource(ALuint source) {
-    std::lock_guard<std::mutex> lock(sourceMutex_);
-
-    auto it = std::find(activeSources_.begin(), activeSources_.end(), source);
-    if (it != activeSources_.end()) {
-        alSourceStop(source);
-        alSourcei(source, AL_BUFFER, 0);
-        activeSources_.erase(it);
-        availableSources_.push_back(source);
-    }
 }
 
 void AudioManager::loadSoundAssets() {
@@ -707,9 +667,8 @@ void AudioManager::loadSoundAssets() {
         return;
     }
 
-    // Build our lookup map from sound ID to filename
     soundIdMap_.clear();
-    assets.forEach([this](uint32_t id, const std::string& filename, float volume) {
+    assets.forEach([this](uint32_t id, const std::string& filename, float /*volume*/) {
         soundIdMap_[id] = filename;
     });
 
@@ -717,11 +676,8 @@ void AudioManager::loadSoundAssets() {
 }
 
 void AudioManager::preloadSound(uint32_t soundId) {
-    if (!initialized_) {
-        return;
-    }
+    if (!initialized_) return;
 
-    // This will load the sound into the buffer cache
     auto buffer = getSoundById(soundId);
     if (buffer && buffer->isValid()) {
         LOG_DEBUG(MOD_AUDIO, "Preloaded sound ID {}", soundId);
@@ -729,38 +685,15 @@ void AudioManager::preloadSound(uint32_t soundId) {
 }
 
 void AudioManager::preloadCommonSounds() {
-    if (!initialized_) {
-        return;
-    }
+    if (!initialized_) return;
 
     LOG_INFO(MOD_AUDIO, "Preloading common sound effects...");
 
-    // Common sound IDs from SoundAssets.txt
-    // Combat sounds
     static const uint32_t commonSounds[] = {
-        118,  // Swing.WAV
-        119,  // SwingBig.WAV
-        126,  // Kick1.WAV
-        127,  // KickHit.WAV
-        128,  // RndKick.WAV
-        130,  // Punch1.WAV
-        131,  // PunchHit.WAV
-
-        // Spell sounds
-        103,  // Spell_1.wav
-        104,  // Spell_2.wav
-        105,  // Spell_3.wav
-        106,  // Spell_4.wav
-        107,  // Spell_5.wav
-        108,  // SpelCast.WAV
-
-        // Player sounds
-        139,  // LevelUp.WAV
-
-        // Environment
-        100,  // WaterIn.WAV
-        101,  // WatTrd_1.WAV
-        102,  // WatTrd_2.WAV
+        118, 119, 126, 127, 128, 130, 131,    // Combat
+        103, 104, 105, 106, 107, 108,          // Spells
+        139,                                     // Level up
+        100, 101, 102,                           // Environment
     };
 
     size_t loaded = 0;
@@ -787,146 +720,9 @@ std::shared_ptr<SoundBuffer> AudioManager::getSoundBufferByName(const std::strin
     return loadSound(filename);
 }
 
-bool AudioManager::initializeHardwareDevice() {
-    // Open default audio device
-    device_ = alcOpenDevice(nullptr);
-    if (!device_) {
-        LOG_DEBUG(MOD_AUDIO, "No hardware audio device available");
-        return false;
-    }
-
-    // Create context
-    context_ = alcCreateContext(device_, nullptr);
-    if (!context_) {
-        LOG_ERROR(MOD_AUDIO, "Failed to create audio context");
-        alcCloseDevice(device_);
-        device_ = nullptr;
-        return false;
-    }
-
-    if (!alcMakeContextCurrent(context_)) {
-        LOG_ERROR(MOD_AUDIO, "Failed to make audio context current");
-        alcDestroyContext(context_);
-        alcCloseDevice(device_);
-        context_ = nullptr;
-        device_ = nullptr;
-        return false;
-    }
-
-    loopbackMode_ = false;
-    LOG_INFO(MOD_AUDIO, "Hardware audio device initialized");
-    return true;
-}
-
-bool AudioManager::initializeLoopbackDevice() {
-    // Check if OpenAL Soft loopback extension is available
-    if (!alcIsExtensionPresent(nullptr, "ALC_SOFT_loopback")) {
-        LOG_ERROR(MOD_AUDIO, "OpenAL Soft loopback extension not available");
-        return false;
-    }
-
-    // Get loopback function pointers
-    alcLoopbackOpenDeviceSOFT_ = reinterpret_cast<LPALCLOOPBACKOPENDEVICESOFT>(
-        alcGetProcAddress(nullptr, "alcLoopbackOpenDeviceSOFT"));
-    alcIsRenderFormatSupportedSOFT_ = reinterpret_cast<LPALCISRENDERFORMATSUPPORTEDSOFT>(
-        alcGetProcAddress(nullptr, "alcIsRenderFormatSupportedSOFT"));
-    alcRenderSamplesSOFT_ = reinterpret_cast<LPALCRENDERSAMPLESSOFT>(
-        alcGetProcAddress(nullptr, "alcRenderSamplesSOFT"));
-
-    if (!alcLoopbackOpenDeviceSOFT_ || !alcIsRenderFormatSupportedSOFT_ || !alcRenderSamplesSOFT_) {
-        LOG_ERROR(MOD_AUDIO, "Failed to get loopback function pointers");
-        return false;
-    }
-
-    // Open loopback device
-    device_ = alcLoopbackOpenDeviceSOFT_(nullptr);
-    if (!device_) {
-        LOG_ERROR(MOD_AUDIO, "Failed to open loopback device");
-        return false;
-    }
-
-    // Check if our desired format is supported
-    ALCint formatType = ALC_SHORT_SOFT;
-    ALCint formatChannels = ALC_STEREO_SOFT;
-    if (!alcIsRenderFormatSupportedSOFT_(device_, LOOPBACK_SAMPLE_RATE, formatChannels, formatType)) {
-        LOG_ERROR(MOD_AUDIO, "Loopback format not supported");
-        alcCloseDevice(device_);
-        device_ = nullptr;
-        return false;
-    }
-
-    // Create context with specific format
-    ALCint attrs[] = {
-        ALC_FORMAT_TYPE_SOFT, formatType,
-        ALC_FORMAT_CHANNELS_SOFT, formatChannels,
-        ALC_FREQUENCY, static_cast<ALCint>(LOOPBACK_SAMPLE_RATE),
-        0
-    };
-
-    context_ = alcCreateContext(device_, attrs);
-    if (!context_) {
-        LOG_ERROR(MOD_AUDIO, "Failed to create loopback context");
-        alcCloseDevice(device_);
-        device_ = nullptr;
-        return false;
-    }
-
-    if (!alcMakeContextCurrent(context_)) {
-        LOG_ERROR(MOD_AUDIO, "Failed to make loopback context current");
-        alcDestroyContext(context_);
-        alcCloseDevice(device_);
-        context_ = nullptr;
-        device_ = nullptr;
-        return false;
-    }
-
-    loopbackMode_ = true;
-
-    // Start loopback render thread
-    loopbackRunning_ = true;
-    loopbackThread_ = std::thread([this]() {
-        // Buffer for rendered audio (stereo 16-bit)
-        std::vector<int16_t> buffer(LOOPBACK_BUFFER_FRAMES * LOOPBACK_CHANNELS);
-
-        LOG_DEBUG(MOD_AUDIO, "Loopback render thread started");
-
-        while (loopbackRunning_.load()) {
-            // Render audio to buffer
-            {
-                std::lock_guard<std::mutex> lock(loopbackMutex_);
-                if (device_ && alcRenderSamplesSOFT_) {
-                    alcRenderSamplesSOFT_(device_, buffer.data(), LOOPBACK_BUFFER_FRAMES);
-                }
-            }
-
-            // Send to callback if set
-            if (audioOutputCallback_) {
-                audioOutputCallback_(buffer.data(), LOOPBACK_BUFFER_FRAMES,
-                                     LOOPBACK_SAMPLE_RATE, LOOPBACK_CHANNELS);
-            }
-
-            // Sleep to maintain ~44100 Hz sample rate
-            // 1024 frames at 44100 Hz = ~23.2ms
-            std::this_thread::sleep_for(std::chrono::microseconds(
-                (LOOPBACK_BUFFER_FRAMES * 1000000) / LOOPBACK_SAMPLE_RATE));
-        }
-
-        LOG_DEBUG(MOD_AUDIO, "Loopback render thread stopped");
-    });
-
-    LOG_INFO(MOD_AUDIO, "Loopback audio device initialized ({}Hz, {} channels)",
-             LOOPBACK_SAMPLE_RATE, LOOPBACK_CHANNELS);
-    return true;
-}
-
 bool AudioManager::enableLoopbackMode() {
     if (loopbackMode_) {
         LOG_DEBUG(MOD_AUDIO, "Already in loopback mode");
-        // Still ensure music player has software rendering enabled
-        // (may not have been set if loopback was enabled at startup before RDP connected)
-        if (musicPlayer_) {
-            musicPlayer_->enableSoftwareRendering();
-        }
         return true;
     }
 
@@ -937,76 +733,29 @@ bool AudioManager::enableLoopbackMode() {
 
     LOG_INFO(MOD_AUDIO, "Switching to loopback mode for RDP audio streaming");
 
-    // Stop any playing sounds
-    stopAllSounds();
-
-    // Clean up current hardware device
-    if (context_) {
-        alcMakeContextCurrent(nullptr);
-        alcDestroyContext(context_);
-        context_ = nullptr;
-    }
-    if (device_) {
-        alcCloseDevice(device_);
-        device_ = nullptr;
+    // Stop current backend
+    if (backend_) {
+        backend_->stop();
+        backend_.reset();
     }
 
-    // Initialize loopback device
-    if (!initializeLoopbackDevice()) {
-        LOG_ERROR(MOD_AUDIO, "Failed to switch to loopback mode");
-        return false;
+    // Create RDP backend
+    auto rdpBackend = std::make_unique<RDPAudioBackend>();
+    if (audioOutputCallback_) {
+        rdpBackend->setOutputCallback(audioOutputCallback_);
     }
-
-    // Reinitialize OpenAL state (listener, distance model)
-    alListenerf(AL_GAIN, masterVolume_ * effectsVolume_);
-    alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
-    LOG_DEBUG(MOD_AUDIO, "3D audio distance model reconfigured (inverse distance clamped)");
-
-    // Recreate source pool
-    {
-        std::lock_guard<std::mutex> lock(sourceMutex_);
-        availableSources_.clear();
-        activeSources_.clear();
-        availableSources_.resize(MAX_SOURCES);
-        alGenSources(MAX_SOURCES, availableSources_.data());
-        LOG_INFO(MOD_AUDIO, "Audio source pool recreated: {} sources", MAX_SOURCES);
-    }
-
-    // Reinitialize music player's OpenAL resources (old ones are invalid after context change)
-    // Then enable software rendering so FluidSynth routes through OpenAL
-    if (musicPlayer_) {
-        musicPlayer_->reinitializeOpenAL();
-        musicPlayer_->enableSoftwareRendering();
-    }
+    rdpBackend->init(mixer_.get(), AudioMixer::SAMPLE_RATE);
+    rdpBackend->start();
+    backend_ = std::move(rdpBackend);
+    loopbackMode_ = true;
 
     LOG_INFO(MOD_AUDIO, "Switched to loopback mode for RDP audio streaming");
     return true;
 }
 
-void AudioManager::renderLoopbackAudio() {
-    // This is called from update() for manual rendering control if needed
-    // The loopback thread handles automatic rendering
-}
-
 void AudioManager::update() {
-    // Called periodically from the main game loop
-    // For now, loopback rendering is handled by the dedicated thread
-    // This method can be used for any per-frame audio updates
-
-    // Clean up finished sound sources
-    std::lock_guard<std::mutex> lock(sourceMutex_);
-    auto it = activeSources_.begin();
-    while (it != activeSources_.end()) {
-        ALint state;
-        alGetSourcei(*it, AL_SOURCE_STATE, &state);
-        if (state != AL_PLAYING) {
-            alSourcei(*it, AL_BUFFER, 0);
-            availableSources_.push_back(*it);
-            it = activeSources_.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    // Per-frame audio updates
+    // The mixer and backends handle their own timing
 }
 
 bool AudioManager::loadPfsIndexCache() {
@@ -1028,13 +777,11 @@ bool AudioManager::loadPfsIndexCache() {
         return false;
     }
 
-    // Validate EQ path matches
     if (root["eqPath"].asString() != eqPath_) {
         LOG_DEBUG(MOD_AUDIO, "PFS index cache stale: eqPath changed");
         return false;
     }
 
-    // Validate that all cached archives still exist with same size
     const Json::Value& archives = root["archives"];
     for (const auto& name : archives.getMemberNames()) {
         std::string archivePath = eqPath_ + "/" + name;
@@ -1049,7 +796,6 @@ bool AudioManager::loadPfsIndexCache() {
         }
     }
 
-    // Check that no new snd*.pfs files have appeared
     size_t pfsCount = 0;
     for (const auto& entry : std::filesystem::directory_iterator(eqPath_)) {
         if (!entry.is_regular_file()) continue;
@@ -1067,7 +813,6 @@ bool AudioManager::loadPfsIndexCache() {
         return false;
     }
 
-    // Load the index
     const Json::Value& index = root["index"];
     for (const auto& filename : index.getMemberNames()) {
         pfsFileIndex_[filename] = eqPath_ + "/" + index[filename].asString();
@@ -1082,7 +827,6 @@ void AudioManager::savePfsIndexCache() {
     Json::Value root;
     root["eqPath"] = eqPath_;
 
-    // Store archive filenames and sizes for cache validation
     Json::Value archives(Json::objectValue);
     std::set<std::string> archiveNames;
     for (const auto& [filename, archivePath] : pfsFileIndex_) {
@@ -1094,7 +838,6 @@ void AudioManager::savePfsIndexCache() {
     }
     root["archives"] = archives;
 
-    // Store index with relative archive paths (just the filename)
     Json::Value index(Json::objectValue);
     for (const auto& [filename, archivePath] : pfsFileIndex_) {
         index[filename] = std::filesystem::path(archivePath).filename().string();
@@ -1109,7 +852,7 @@ void AudioManager::savePfsIndexCache() {
     }
 
     Json::StreamWriterBuilder writerBuilder;
-    writerBuilder["indentation"] = "";  // Compact output
+    writerBuilder["indentation"] = "";
     out << Json::writeString(writerBuilder, root);
     LOG_INFO(MOD_AUDIO, "Saved PFS index cache: {} entries to {}", pfsFileIndex_.size(), cachePath);
 }
@@ -1117,18 +860,15 @@ void AudioManager::savePfsIndexCache() {
 void AudioManager::scanPfsArchives() {
     pfsFileIndex_.clear();
 
-    // Check if EQ path exists
     if (!std::filesystem::exists(eqPath_) || !std::filesystem::is_directory(eqPath_)) {
         LOG_DEBUG(MOD_AUDIO, "EQ path does not exist or is not a directory: {}", eqPath_);
         return;
     }
 
-    // Try loading from cache first (avoids decompressing all archives)
     if (loadPfsIndexCache()) {
         return;
     }
 
-    // Find all snd*.pfs files in EQ path
     std::vector<std::string> archivePaths;
     for (const auto& entry : std::filesystem::directory_iterator(eqPath_)) {
         if (!entry.is_regular_file()) continue;
@@ -1138,7 +878,6 @@ void AudioManager::scanPfsArchives() {
         std::transform(lowerFilename.begin(), lowerFilename.end(),
                        lowerFilename.begin(), ::tolower);
 
-        // Match snd*.pfs pattern
         if (lowerFilename.length() > 7 &&
             lowerFilename.substr(0, 3) == "snd" &&
             lowerFilename.substr(lowerFilename.length() - 4) == ".pfs") {
@@ -1153,7 +892,6 @@ void AudioManager::scanPfsArchives() {
 
     LOG_INFO(MOD_AUDIO, "Scanning {} sound archives (building index)...", archivePaths.size());
 
-    // Scan each archive and build index
     size_t totalFiles = 0;
     for (const auto& archivePath : archivePaths) {
         auto archive = std::make_unique<Graphics::PfsArchive>();
@@ -1162,12 +900,10 @@ void AudioManager::scanPfsArchives() {
             continue;
         }
 
-        // Get list of WAV files in this archive
         std::vector<std::string> wavFiles;
         archive->getFilenames(".wav", wavFiles);
 
         for (const auto& wavFile : wavFiles) {
-            // Store lowercase filename -> archive path mapping
             std::string lowerFile = wavFile;
             std::transform(lowerFile.begin(), lowerFile.end(),
                            lowerFile.begin(), ::tolower);
@@ -1176,30 +912,24 @@ void AudioManager::scanPfsArchives() {
         }
 
         if (!lazyPfsLoading_) {
-            // Keep archive open for later use (traditional mode)
             pfsArchives_[archivePath] = std::move(archive);
         }
-        // In lazy mode, archive unique_ptr goes out of scope here — all decompressed data freed
 
-        // Pump event loop between archives to prevent network timeouts
         if (tickCallback_) tickCallback_();
     }
 
     LOG_INFO(MOD_AUDIO, "Indexed {} sound files from {} archives (cached: {})",
              totalFiles, archivePaths.size(), pfsArchives_.size());
 
-    // Save cache for next startup
     savePfsIndexCache();
 }
 
 bool AudioManager::loadSoundDataFromPfs(const std::string& filename,
                                          std::vector<char>& outData) {
-    // Normalize filename to lowercase
     std::string lowerFilename = filename;
     std::transform(lowerFilename.begin(), lowerFilename.end(),
                    lowerFilename.begin(), ::tolower);
 
-    // Look up in index
     auto indexIt = pfsFileIndex_.find(lowerFilename);
     if (indexIt == pfsFileIndex_.end()) {
         return false;
@@ -1208,7 +938,6 @@ bool AudioManager::loadSoundDataFromPfs(const std::string& filename,
     const std::string& archivePath = indexIt->second;
 
     if (lazyPfsLoading_) {
-        // Lazy mode: open archive, extract file, don't cache the archive
         Graphics::PfsArchive archive;
         if (!archive.open(archivePath)) {
             LOG_WARN(MOD_AUDIO, "Failed to open archive (lazy): {}", archivePath);
@@ -1219,13 +948,10 @@ bool AudioManager::loadSoundDataFromPfs(const std::string& filename,
             return false;
         }
         return true;
-        // archive destroyed here — no persistent memory
     }
 
-    // Traditional mode: get or open cached archive
     auto archiveIt = pfsArchives_.find(archivePath);
     if (archiveIt == pfsArchives_.end()) {
-        // Archive not cached, try to open it
         auto archive = std::make_unique<Graphics::PfsArchive>();
         if (!archive->open(archivePath)) {
             LOG_WARN(MOD_AUDIO, "Failed to reopen archive: {}", archivePath);
@@ -1234,7 +960,6 @@ bool AudioManager::loadSoundDataFromPfs(const std::string& filename,
         archiveIt = pfsArchives_.emplace(archivePath, std::move(archive)).first;
     }
 
-    // Extract file data
     if (!archiveIt->second->get(lowerFilename, outData)) {
         LOG_DEBUG(MOD_AUDIO, "Failed to extract {} from {}", lowerFilename, archivePath);
         return false;
@@ -1260,7 +985,6 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSoundFromPfs(const std::string& f
 }
 
 void AudioManager::loadMusicEventConfig() {
-    // Set defaults
     autoAttackMusicConfig_.file = "gl.xmi";
     autoAttackMusicConfig_.track = 3;
     autoAttackMusicConfig_.loop = true;
@@ -1271,12 +995,10 @@ void AudioManager::loadMusicEventConfig() {
     vendorBankMusicConfig_.loop = true;
     vendorBankMusicConfig_.enabled = true;
 
-    // Try to load from config file
     std::string configPath = "config/music_events.json";
     std::ifstream file(configPath);
     if (!file.is_open()) {
-        std::cout << "[AUDIO] Music events config not found at " << configPath
-                  << ", using defaults" << std::endl;
+        LOG_DEBUG(MOD_AUDIO, "Music events config not found at {}, using defaults", configPath);
         return;
     }
 
@@ -1284,11 +1006,10 @@ void AudioManager::loadMusicEventConfig() {
     Json::CharReaderBuilder builder;
     std::string errors;
     if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        std::cout << "[AUDIO] Failed to parse music_events.json: " << errors << std::endl;
+        LOG_WARN(MOD_AUDIO, "Failed to parse music_events.json: {}", errors);
         return;
     }
 
-    // Load auto_attack config
     if (root.isMember("auto_attack")) {
         const auto& cfg = root["auto_attack"];
         if (cfg.isMember("file")) autoAttackMusicConfig_.file = cfg["file"].asString();
@@ -1297,7 +1018,6 @@ void AudioManager::loadMusicEventConfig() {
         if (cfg.isMember("enabled")) autoAttackMusicConfig_.enabled = cfg["enabled"].asBool();
     }
 
-    // Load vendor_bank config
     if (root.isMember("vendor_bank")) {
         const auto& cfg = root["vendor_bank"];
         if (cfg.isMember("file")) vendorBankMusicConfig_.file = cfg["file"].asString();
@@ -1306,15 +1026,31 @@ void AudioManager::loadMusicEventConfig() {
         if (cfg.isMember("enabled")) vendorBankMusicConfig_.enabled = cfg["enabled"].asBool();
     }
 
-    std::cout << "[AUDIO] Loaded music events config:" << std::endl;
-    std::cout << "  auto_attack: " << autoAttackMusicConfig_.file
-              << " track " << autoAttackMusicConfig_.track
-              << " loop=" << autoAttackMusicConfig_.loop
-              << " enabled=" << autoAttackMusicConfig_.enabled << std::endl;
-    std::cout << "  vendor_bank: " << vendorBankMusicConfig_.file
-              << " track " << vendorBankMusicConfig_.track
-              << " loop=" << vendorBankMusicConfig_.loop
-              << " enabled=" << vendorBankMusicConfig_.enabled << std::endl;
+    LOG_INFO(MOD_AUDIO, "Loaded music events config: auto_attack={} track {} loop={} enabled={}, vendor_bank={} track {} loop={} enabled={}",
+             autoAttackMusicConfig_.file, autoAttackMusicConfig_.track,
+             autoAttackMusicConfig_.loop, autoAttackMusicConfig_.enabled,
+             vendorBankMusicConfig_.file, vendorBankMusicConfig_.track,
+             vendorBankMusicConfig_.loop, vendorBankMusicConfig_.enabled);
+}
+
+SoundFontType AudioManager::getSoundFontTypeForFile(const std::string& path) {
+    // XMI files that require the synthus2 custom orchestral SoundFont
+    // (Velious and Luclin/Shadows of Luclin zones)
+    static const std::unordered_set<std::string> synthus2Files = {
+        // Velious (8)
+        "cobaltscar", "crystal", "frozenshadow", "kael", "skyshrine",
+        "templeveeshan", "thurgadina", "velketor",
+        // Luclin/SoL (23)
+        "acrylia", "dawnshroud", "echo", "fungusgrove", "griegsend",
+        "grimling", "hollowshade", "katta", "letalis", "maiden", "mseru",
+        "netherbian", "nexus", "paludal", "shadeweaver", "shadowhaven",
+        "sharvahl", "sseru", "tenebrous", "thedeep", "thegrey", "twilight",
+        "vexthal",
+    };
+
+    std::string stem = std::filesystem::path(path).stem().string();
+    std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
+    return synthus2Files.count(stem) ? SoundFontType::Custom : SoundFontType::GM;
 }
 
 } // namespace Audio

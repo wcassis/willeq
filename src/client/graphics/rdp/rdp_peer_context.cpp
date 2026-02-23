@@ -9,7 +9,7 @@
 #include <freerdp/channels/wtsvc.h>
 #include <winpr/stream.h>
 
-#include <iostream>
+#include "common/logging.h"
 
 namespace EQT {
 namespace Graphics {
@@ -37,13 +37,13 @@ BOOL rdpPeerContextNew(freerdp_peer* peer, rdpContext* ctx) {
     // Initialize RFX (RemoteFX) encoder
     context->rfxContext = rfx_context_new(TRUE);  // TRUE = encoder mode
     if (!context->rfxContext) {
-        std::cerr << "[RDP] Failed to create RFX context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create RFX context");
         return FALSE;
     }
 
     // Reset RFX context with server resolution
     if (!rfx_context_reset(context->rfxContext, server->getWidth(), server->getHeight())) {
-        std::cerr << "[RDP] Failed to reset RFX context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to reset RFX context");
         rfx_context_free(context->rfxContext);
         context->rfxContext = nullptr;
         return FALSE;
@@ -52,7 +52,7 @@ BOOL rdpPeerContextNew(freerdp_peer* peer, rdpContext* ctx) {
     // Initialize NSC encoder
     context->nscContext = nsc_context_new();
     if (!context->nscContext) {
-        std::cerr << "[RDP] Failed to create NSC context" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create NSC context");
         rfx_context_free(context->rfxContext);
         context->rfxContext = nullptr;
         return FALSE;
@@ -61,7 +61,7 @@ BOOL rdpPeerContextNew(freerdp_peer* peer, rdpContext* ctx) {
     // Create encoding stream (start with 64KB, will grow as needed)
     context->encodeStream = Stream_New(nullptr, 65536);
     if (!context->encodeStream) {
-        std::cerr << "[RDP] Failed to create encode stream" << std::endl;
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create encode stream");
         nsc_context_free(context->nscContext);
         rfx_context_free(context->rfxContext);
         context->nscContext = nullptr;

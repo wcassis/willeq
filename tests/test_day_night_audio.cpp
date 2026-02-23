@@ -5,8 +5,6 @@
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/eff_loader.h"
 
-#include <AL/al.h>
-#include <AL/alc.h>
 #include <filesystem>
 #include <glm/glm.hpp>
 
@@ -241,36 +239,11 @@ TEST_F(ZoneAudioManagerDayNightTest, DayNightTransitionNotifiesEmitters) {
 
 class DayNightIntegrationTest : public ::testing::Test {
 protected:
-    ALCdevice* device_ = nullptr;
-    ALCcontext* context_ = nullptr;
     ZoneAudioManager manager_;
 
     void SetUp() override {
         if (!std::filesystem::exists(EQ_PATH)) {
             GTEST_SKIP() << "EQ client path not found: " << EQ_PATH;
-        }
-
-        // Initialize OpenAL
-        device_ = alcOpenDevice(nullptr);
-        if (!device_) {
-            GTEST_SKIP() << "No audio device available";
-        }
-        context_ = alcCreateContext(device_, nullptr);
-        if (!context_) {
-            alcCloseDevice(device_);
-            device_ = nullptr;
-            GTEST_SKIP() << "Failed to create audio context";
-        }
-        alcMakeContextCurrent(context_);
-    }
-
-    void TearDown() override {
-        alcMakeContextCurrent(nullptr);
-        if (context_) {
-            alcDestroyContext(context_);
-        }
-        if (device_) {
-            alcCloseDevice(device_);
         }
     }
 };

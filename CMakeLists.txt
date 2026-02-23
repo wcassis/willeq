@@ -28,13 +28,6 @@ FIND_PACKAGE(Threads REQUIRED)
 FIND_PACKAGE(OpenSSL REQUIRED)
 FIND_PACKAGE(ZLIB REQUIRED)
 
-# Find libuv
-FIND_PATH(LIBUV_INCLUDE_DIR uv.h)
-FIND_LIBRARY(LIBUV_LIBRARY NAMES uv libuv)
-IF(NOT LIBUV_INCLUDE_DIR OR NOT LIBUV_LIBRARY)
-    MESSAGE(FATAL_ERROR "libuv not found")
-ENDIF()
-
 # Find fmt
 FIND_PACKAGE(fmt QUIET)
 IF(NOT fmt_FOUND)
@@ -83,38 +76,12 @@ IF(EQT_GRAPHICS)
     ENDIF()
 ENDIF()
 
-# Find audio libraries (optional, for sound effects and music)
-IF(PkgConfig_FOUND)
-    PKG_CHECK_MODULES(OPENAL openal)
-    PKG_CHECK_MODULES(SNDFILE sndfile)
-    PKG_CHECK_MODULES(FLUIDSYNTH fluidsynth)
-ENDIF()
-IF(NOT OPENAL_FOUND)
-    FIND_PATH(OPENAL_INCLUDE_DIRS AL/al.h PATH_SUFFIXES OpenAL)
-    FIND_LIBRARY(OPENAL_LIBRARIES NAMES openal OpenAL32)
-    IF(OPENAL_INCLUDE_DIRS AND OPENAL_LIBRARIES)
-        SET(OPENAL_FOUND TRUE)
-    ENDIF()
-ENDIF()
-IF(OPENAL_FOUND AND SNDFILE_FOUND)
-    OPTION(WITH_AUDIO "Enable audio support" ON)
-ELSE()
-    OPTION(WITH_AUDIO "Enable audio support" OFF)
-ENDIF()
+# Audio support (uses header-only libraries: miniaudio, TinySoundFont, dr_wav)
+# No external audio dependencies required
+OPTION(WITH_AUDIO "Enable audio support" ON)
 IF(WITH_AUDIO)
-    IF(OPENAL_FOUND AND SNDFILE_FOUND)
-        ADD_DEFINITIONS(-DWITH_AUDIO)
-        MESSAGE(STATUS "Audio support: ENABLED")
-        IF(FLUIDSYNTH_FOUND)
-            ADD_DEFINITIONS(-DWITH_FLUIDSYNTH)
-            MESSAGE(STATUS "  MIDI/XMI support: ENABLED (FluidSynth)")
-        ELSE()
-            MESSAGE(STATUS "  MIDI/XMI support: DISABLED (FluidSynth not found)")
-        ENDIF()
-    ELSE()
-        MESSAGE(STATUS "Audio support: DISABLED (OpenAL or libsndfile not found)")
-        SET(WITH_AUDIO OFF)
-    ENDIF()
+    ADD_DEFINITIONS(-DWITH_AUDIO)
+    MESSAGE(STATUS "Audio support: ENABLED (miniaudio + TinySoundFont + dr_wav)")
 ELSE()
     MESSAGE(STATUS "Audio support: DISABLED (not requested)")
 ENDIF()
@@ -154,7 +121,9 @@ INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/third_party/minimp3
-    ${LIBUV_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/third_party/TinySoundFont
+    ${CMAKE_SOURCE_DIR}/third_party/dr_libs
+    ${CMAKE_SOURCE_DIR}/third_party/miniaudio
     ${GLM_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
@@ -188,17 +157,8 @@ IF(WITH_RDP AND FREERDP_FOUND)
     LINK_DIRECTORIES(${FREERDP_LIBRARY_DIRS})
 ENDIF()
 
-IF(WITH_AUDIO)
-    IF(OPENAL_INCLUDE_DIRS)
-        INCLUDE_DIRECTORIES(${OPENAL_INCLUDE_DIRS})
-    ENDIF()
-    IF(SNDFILE_INCLUDE_DIRS)
-        INCLUDE_DIRECTORIES(${SNDFILE_INCLUDE_DIRS})
-    ENDIF()
-    IF(FLUIDSYNTH_FOUND AND FLUIDSYNTH_INCLUDE_DIRS)
-        INCLUDE_DIRECTORIES(${FLUIDSYNTH_INCLUDE_DIRS})
-    ENDIF()
-ENDIF()
+# Audio include directories are already in the main INCLUDE_DIRECTORIES
+# (third_party/miniaudio, third_party/TinySoundFont, third_party/dr_libs)
 
 # Common library sources
 SET(COMMON_SOURCES
@@ -212,7 +172,7 @@ SET(COMMON_SOURCES
     src/common/net/packet.cpp
     src/common/net/daybreak_connection.cpp
     src/common/net/crc32.cpp
-    src/common/event/timer.cpp
+    src/common/net/posix_udp_transport.cpp
     src/common/performance_metrics.cpp
 )
 
@@ -433,7 +393,7 @@ IF(WITH_RDP)
     )
 ENDIF()
 
-# Audio sources (optional, requires OpenAL and libsndfile)
+# Audio sources (optional, uses header-only libraries)
 SET(AUDIO_SOURCES)
 IF(WITH_AUDIO)
     SET(AUDIO_SOURCES
@@ -447,6 +407,10 @@ IF(WITH_AUDIO)
         src/client/audio/zone_audio_manager.cpp
         src/client/audio/door_sounds.cpp
         src/client/audio/combat_music.cpp
+        src/client/audio/audio_mixer.cpp
+        src/client/audio/audio_backend.cpp
+        src/client/audio/midi_player.cpp
+        src/client/audio/sfx_manager.cpp
     )
 ENDIF()
 
@@ -471,7 +435,6 @@ ADD_EXECUTABLE(willeq src/client/main.cpp)
 
 # Link libraries
 SET(LINK_LIBS
-    ${LIBUV_LIBRARY}
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
     Threads::Threads
@@ -533,10 +496,18 @@ IF(WITH_RDP AND FREERDP_FOUND)
 ENDIF()
 
 IF(WITH_AUDIO)
-    LIST(APPEND LINK_LIBS ${OPENAL_LIBRARIES} ${SNDFILE_LIBRARIES})
-    IF(FLUIDSYNTH_FOUND)
-        LIST(APPEND LINK_LIBS ${FLUIDSYNTH_LIBRARIES})
+    # miniaudio requires platform audio libraries
+    IF(APPLE)
+        FIND_LIBRARY(COREAUDIO_FRAMEWORK CoreAudio)
+        FIND_LIBRARY(AUDIOUNIT_FRAMEWORK AudioUnit)
+        FIND_LIBRARY(COREFOUNDATION_FRAMEWORK CoreFoundation)
+        LIST(APPEND LINK_LIBS ${COREAUDIO_FRAMEWORK} ${AUDIOUNIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    ELSEIF(ANDROID)
+        LIST(APPEND LINK_LIBS OpenSLES)
+    ELSEIF(UNIX)
+        LIST(APPEND LINK_LIBS dl m)
     ENDIF()
+    # Windows: WASAPI linked automatically by miniaudio, no extra libs needed
 ENDIF()
 
 # Link libraries to the core library
@@ -1026,7 +997,6 @@ MESSAGE(STATUS "=== WillEQ Configuration ===")
 MESSAGE(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 MESSAGE(STATUS "Debug logging: ${EQT_DEBUG}")
 MESSAGE(STATUS "Build tests: ${EQT_BUILD_TESTS}")
-MESSAGE(STATUS "libuv: ${LIBUV_LIBRARY}")
 MESSAGE(STATUS "OpenSSL: ${OPENSSL_LIBRARIES}")
 MESSAGE(STATUS "zlib: ${ZLIB_LIBRARIES}")
 IF(fmt_FOUND)
@@ -1072,16 +1042,8 @@ ELSE()
     MESSAGE(STATUS "FreeRDP: NOT AVAILABLE (requires graphics)")
 ENDIF()
 IF(WITH_AUDIO)
-    MESSAGE(STATUS "OpenAL: ${OPENAL_LIBRARIES}")
-    MESSAGE(STATUS "libsndfile: ${SNDFILE_LIBRARIES}")
-    IF(FLUIDSYNTH_FOUND)
-        MESSAGE(STATUS "FluidSynth: ${FLUIDSYNTH_LIBRARIES} (MIDI/XMI enabled)")
-    ELSE()
-        MESSAGE(STATUS "FluidSynth: NOT FOUND (MIDI/XMI disabled)")
-    ENDIF()
-ELSEIF(OPENAL_FOUND AND SNDFILE_FOUND)
-    MESSAGE(STATUS "Audio: available but disabled (use -DWITH_AUDIO=ON to enable)")
+    MESSAGE(STATUS "Audio: enabled (miniaudio + TinySoundFont + dr_wav)")
 ELSE()
-    MESSAGE(STATUS "Audio: NOT FOUND (OpenAL or libsndfile missing)")
+    MESSAGE(STATUS "Audio: disabled (use -DWITH_AUDIO=ON to enable)")
 ENDIF()
 MESSAGE(STATUS "")

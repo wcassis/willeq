@@ -2,7 +2,6 @@
 
 #ifdef WITH_AUDIO
 
-#include <AL/al.h>
 #include <string>
 #include <memory>
 #include <random>
@@ -38,7 +37,7 @@ public:
     WeatherAudio();
     ~WeatherAudio();
 
-    // Prevent copying (owns OpenAL sources)
+    // Prevent copying
     WeatherAudio(const WeatherAudio&) = delete;
     WeatherAudio& operator=(const WeatherAudio&) = delete;
 
@@ -131,9 +130,9 @@ private:
     // Pause state
     bool isPaused_ = false;
 
-    // OpenAL sources for looping sounds
-    ALuint rainSource_ = 0;
-    ALuint windSource_ = 0;
+    // SfxManager channel handles for looping sounds (-1 = not playing)
+    int rainHandle_ = -1;
+    int windHandle_ = -1;
 
     // Sound buffers
     std::shared_ptr<SoundBuffer> rainLoopBuffer_;

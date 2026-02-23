@@ -184,8 +184,8 @@ void BuffManager::setPlayerBuff(uint8_t slot, const EQT::SpellBuff_Struct& buff)
     active.effect_type = static_cast<BuffEffectType>(buff.effect_type);
     active.slot = static_cast<int8_t>(slot);
 
-    std::cout << fmt::format("[BuffManager] Server buff update: spell {} slot {} duration_ticks={} -> remaining_seconds={}",
-        active.spell_id, slot, buff.duration, active.remaining_seconds) << std::endl;
+    LOG_DEBUG(MOD_SPELL, "Server buff update: spell {} slot {} duration_ticks={} -> remaining_seconds={}",
+        active.spell_id, slot, buff.duration, active.remaining_seconds);
 
     m_player_buffs.push_back(active);
 

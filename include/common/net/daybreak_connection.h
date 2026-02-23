@@ -3,8 +3,7 @@
 #include "../util/random.h"
 #include "packet.h"
 #include "daybreak_structs.h"
-#include "daybreak_pooling.h"
-#include <uv.h>
+#include "udp_transport.h"
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -328,11 +327,16 @@ namespace EQ
 		class DaybreakConnectionManager
 		{
 		public:
-			DaybreakConnectionManager();
-			DaybreakConnectionManager(const DaybreakConnectionManagerOptions &opts);
+			DaybreakConnectionManager(std::unique_ptr<UdpTransport> transport);
+			DaybreakConnectionManager(const DaybreakConnectionManagerOptions &opts, std::unique_ptr<UdpTransport> transport);
 			~DaybreakConnectionManager();
 
 			void Connect(const std::string &addr, int port);
+
+			// Poll-based tick: drain recv, process async queue, update budget, process, resend.
+			// Called from the main loop instead of libuv timer callbacks.
+			void Tick();
+
 			void Process();
 			void UpdateDataBudget();
 			void ProcessResend();
@@ -343,16 +347,12 @@ namespace EQ
 
 			DaybreakConnectionManagerOptions& GetOptions() { return m_options; }
 
-			// Thread-safe packet queueing via uv_async
+			// Thread-safe packet queueing
 			void QueuePacketAsync(std::shared_ptr<DaybreakConnection> conn, Packet& p, int stream = 0, bool reliable = true);
 		private:
-			void Attach(uv_loop_t *loop);
-			void Detach();
-
 			EQ::Random m_rand;
-			uv_timer_t m_timer;
-			uv_udp_t m_socket;
-			uv_loop_t *m_attached;
+			std::unique_ptr<UdpTransport> m_transport;
+			uint8_t m_recv_buf[65536];
 			DaybreakConnectionManagerOptions m_options;
 			std::function<void(std::shared_ptr<DaybreakConnection>)> m_on_new_connection;
 			std::function<void(std::shared_ptr<DaybreakConnection>, DbProtocolStatus, DbProtocolStatus)> m_on_connection_state_change;
@@ -361,15 +361,12 @@ namespace EQ
 			std::map<std::pair<std::string, int>, std::shared_ptr<DaybreakConnection>> m_connections;
 
 			// Async packet queue for thread-safe sends from non-main threads
-			uv_async_t m_async;
-			bool m_async_initialized = false;
 			std::mutex m_async_mutex;
 			std::vector<PendingAsyncPacket> m_async_queue;
 			void ProcessAsyncQueue();
 
 			void ProcessPacket(const std::string &endpoint, int port, const char *data, size_t size);
 			std::shared_ptr<DaybreakConnection> FindConnectionByEndpoint(std::string addr, int port);
-			void SendDisconnect(const std::string &addr, int port);
 
 			friend class DaybreakConnection;
 		};

@@ -50,6 +50,9 @@ public:
     // Check if a texture is registered (either loaded or pending)
     bool hasTexture(const std::string& name) const;
 
+    // Clear texture cache (forces fresh texture lookups on next build)
+    void clearTextureCache();
+
     // Constrained rendering support
     // Set optional constrained texture cache for memory-limited rendering
     // When set, textures are loaded through the cache with downsampling and 16-bit conversion
