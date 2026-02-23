@@ -905,6 +905,7 @@ void COpenGLES2Driver::drawVertexPrimitiveList(const void* vertices, u32 vertexC
     }
 
     glDrawElements(glPrimitiveType, indexCount, glIndexType, indexList);
+    PrimitivesDrawn += primitiveCount;
 }
 
 void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
@@ -963,6 +964,7 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
         }
 
         glDrawElements(GL_TRIANGLES, hwb.indexCount, GL_UNSIGNED_SHORT, (const void*)0);
+        PrimitivesDrawn += hwb.indexCount / 3;
         return;
     }
 

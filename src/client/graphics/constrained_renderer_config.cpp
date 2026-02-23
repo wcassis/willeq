@@ -31,9 +31,10 @@ void ConstrainedRendererConfig::calculateMemoryLimits() {
 
 void ConstrainedRendererConfig::calculateMaxResolution() {
     // Calculate bytes per pixel for framebuffer
-    // Front buffer + back buffer + Z-buffer (always 16-bit = 2 bytes)
+    // Front buffer + back buffer + depth-stencil
     int colorBytes = colorDepthBits / 8;
-    int bytesPerPixel = (2 * colorBytes) + 2;  // front + back + z
+    int depthStencilBytes = enableStencilBuffer ? 4 : 2;  // D24S8 or D16
+    int bytesPerPixel = (2 * colorBytes) + depthStencilBytes;  // front + back + depth-stencil
 
     // Calculate max pixels that fit in framebuffer memory
     size_t maxPixels = framebufferMemoryBytes / bytesPerPixel;
@@ -87,7 +88,9 @@ bool ConstrainedRendererConfig::clampResolution(int& width, int& height) const {
 
 size_t ConstrainedRendererConfig::calculateFramebufferUsage(int width, int height) const {
     int colorBytes = colorDepthBits / 8;
-    int bytesPerPixel = (2 * colorBytes) + 2;  // front + back + z
+    // Depth-stencil: D24S8 (4 bytes) when stencil enabled, D16 (2 bytes) otherwise
+    int depthStencilBytes = enableStencilBuffer ? 4 : 2;
+    int bytesPerPixel = (2 * colorBytes) + depthStencilBytes;  // front + back + depth-stencil
     return static_cast<size_t>(width) * static_cast<size_t>(height) * bytesPerPixel;
 }
 

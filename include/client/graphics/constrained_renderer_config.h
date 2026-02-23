@@ -24,7 +24,7 @@ struct ConstrainedRendererConfig {
     bool enabled = true;
 
     // Framebuffer memory (determines max resolution)
-    // Includes: front buffer + back buffer + Z-buffer
+    // Includes: front buffer + back buffer + depth-stencil buffer
     size_t framebufferMemoryBytes = 2 * 1024 * 1024;  // 2MB default (Voodoo1)
     int colorDepthBits = 16;  // 16 or 32
 
@@ -91,8 +91,8 @@ struct ConstrainedRendererConfig {
     bool clampResolution(int& width, int& height) const;
 
     // Calculate framebuffer memory usage for a given resolution
-    // Formula: width * height * (2 * colorBytes + 2)
-    // Where: front buffer + back buffer = 2 * colorBytes, Z-buffer = 2 bytes (16-bit)
+    // Formula: width * height * (2 * colorBytes + depthStencilBytes)
+    // Where: front + back = 2 * colorBytes, depth-stencil = 4 bytes (D24S8) or 2 bytes (D16)
     size_t calculateFramebufferUsage(int width, int height) const;
 
     // Get preset name as string (for logging/debug)
