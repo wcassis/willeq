@@ -9,6 +9,7 @@
 #include <irrlicht.h>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <list>
@@ -18,6 +19,15 @@ namespace EQT { namespace Graphics { struct EntityAppearance; class GraphicsArch
 
 namespace EQT {
 namespace Graphics {
+
+// Pre-decoded texture data (CPU-side ARGB pixels, ready for GPU upload)
+struct DecodedTexture {
+    std::string name;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<uint32_t> argbPixels;  // Pre-decoded ARGB for GPU upload
+    bool hasAlpha = false;
+};
 
 // Race model data - combined geometry for a race/gender combo
 struct RaceModelData {
@@ -32,6 +42,9 @@ struct RaceModelData {
     // Animation data
     std::shared_ptr<CharacterSkeleton> skeleton;     // Skeleton with animation tracks
     std::vector<VertexPiece> vertexPieces;           // Vertex-to-bone mapping for skinning
+
+    // Pre-decoded textures (background thread decodes DDS → ARGB, main thread uploads to GPU)
+    std::vector<DecodedTexture> decodedTextures;
 };
 
 // Loads and caches character models by race ID
@@ -107,6 +120,26 @@ public:
 
     // Get race model data
     std::shared_ptr<RaceModelData> getRaceModelData(uint16_t raceId, uint8_t gender = 0);
+
+    // Get mesh builder (for registering pre-uploaded textures in multi-frame pipeline)
+    ZoneMeshBuilder* getMeshBuilder() { return meshBuilder_.get(); }
+
+    // Background-safe: loads S3D model data + merges animations into staging cache.
+    // Does NOT create textures, Irrlicht meshes, or scene nodes (no GL calls).
+    // Reads from immutable archives (globalCharacters_, etc.) and writes to
+    // preparedModelData_ (thread-safe staging map). Call promotePreparedModels()
+    // on the main thread to move data into loadedModels_ before getMeshForRace().
+    bool preloadModelData(uint16_t raceId, uint8_t gender);
+
+    // Check if model data is available in either the main cache (loadedModels_)
+    // or the staging cache (preparedModelData_). Thread-safe.
+    // cacheKey = (raceId << 8) | gender
+    bool isModelDataCached(uint32_t cacheKey) const;
+
+    // Move prepared model data from staging cache to main cache.
+    // Call this on the main thread before getMeshForRace() to make
+    // background-preloaded data available for mesh building.
+    void promotePreparedModels();
 
     // Get race scale factor (some races are larger/smaller)
     // Delegates to the free function in race_codes.h
@@ -248,7 +281,20 @@ private:
     // Graphics archive index for on-demand loading (deferred mode, non-owning)
     GraphicsArchiveIndex* graphicsArchiveIndex_ = nullptr;
 
-    // Cache of loaded race model data
+    // Staging cache for background-preloaded model data.
+    // Written by EntityPrepWorker thread (preloadModelData).
+    // Promoted to loadedModels_ on main thread via promotePreparedModels().
+    mutable std::mutex preparedDataMutex_;
+    std::map<uint32_t, std::shared_ptr<RaceModelData>> preparedModelData_;
+
+    // Search character archive for race model, build RaceModelData without modifying caches.
+    // Pure computation helper for preloadModelData() (thread-safe reads only).
+    std::shared_ptr<RaceModelData> buildModelDataFromCharacters(
+        const std::vector<std::shared_ptr<CharacterModel>>& characters,
+        const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
+        uint16_t raceId, uint8_t gender) const;
+
+    // Cache of loaded race model data (main thread only — no mutex needed)
     std::map<uint32_t, std::shared_ptr<RaceModelData>> loadedModels_;
 
     // Cache of Irrlicht meshes (separate from model data for memory management)

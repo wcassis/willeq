@@ -1,4 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/entity_prep_worker.h"
+#include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/light_source.h"
@@ -22,6 +24,8 @@
 #include <cstdio>
 #ifdef __linux__
 #include <unistd.h>
+#include <sched.h>
+#include <pthread.h>
 #endif
 
 #ifdef WITH_RDP
@@ -450,9 +454,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
              config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
              config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
              config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
-    // Apply frame budget throttling for non-Max presets
-    if (config_.constrainedPreset != ConstrainedRenderingPreset::Max) {
-        frameBudgetMs_ = 33.3f;  // 30 FPS target for constrained mode
+    // Create frame budget governor
+    {
+        float targetFps = config_.constrainedConfig.targetFps;
+        governor_ = std::make_unique<FrameBudgetGovernor>(targetFps);
+        LOG_INFO(MOD_GRAPHICS, "Frame budget governor: target {:.0f} FPS ({:.1f}ms budget)",
+                 targetFps, governor_->getTargetFrameTimeMs());
     }
 
     // Choose driver type
@@ -668,9 +675,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
              config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
              config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
              config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
-    // Apply frame budget throttling for non-Max presets
-    if (config_.constrainedPreset != ConstrainedRenderingPreset::Max) {
-        frameBudgetMs_ = 33.3f;  // 30 FPS target for constrained mode
+    // Create frame budget governor (if not already created by init())
+    if (!governor_) {
+        float targetFps = config_.constrainedConfig.targetFps;
+        governor_ = std::make_unique<FrameBudgetGovernor>(targetFps);
+        LOG_INFO(MOD_GRAPHICS, "Frame budget governor: target {:.0f} FPS ({:.1f}ms budget)",
+                 targetFps, governor_->getTargetFrameTimeMs());
     }
 
     // Choose driver type
@@ -1060,6 +1070,14 @@ void IrrlichtRenderer::hideLoadingScreen() {
     lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
     forcePvsUpdate_ = true;
 
+    // Request deferred governor reset so the 11+ second loading screen frame
+    // doesn't poison the rolling average. requestReset() defers the actual reset
+    // to the next beginFrame(), discarding this poisoned frame entirely.
+    if (governor_) {
+        governor_->requestReset();
+        LOG_DEBUG(MOD_GRAPHICS, "Governor reset requested — will start GREEN next frame");
+    }
+
     // Release duplicate character data from zone source. RaceModelLoader independently
     // loads _chr.s3d into its own cache, so currentZone_->characters is an unused copy.
     if (currentZone_) {
@@ -1068,6 +1086,12 @@ void IrrlichtRenderer::hideLoadingScreen() {
 }
 
 void IrrlichtRenderer::shutdown() {
+    // Stop background entity prep worker before any other cleanup
+    if (entityPrepWorker_) {
+        entityPrepWorker_->stop();
+        entityPrepWorker_.reset();
+    }
+
     unloadZone();
 
     // Reset all managers that hold Irrlicht resources BEFORE dropping the device
@@ -2576,6 +2600,11 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     glActiveTexture(GL_TEXTURE0);
 #endif
 
+    // Build zone placeholder mesh from HCMap before zone geometry (provides immediate visual context)
+    if (config_.constrainedConfig.deferredAssetLoading && collisionMap_ && collisionMap_->IsLoaded()) {
+        buildZonePlaceholder();
+    }
+
     drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
     EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
     // Use PVS-based culling if available (falls back to combined mesh if not)
@@ -2602,16 +2631,10 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
             LOG_INFO(MOD_GRAPHICS, "Front-to-back zone sorting ENABLED ({} regions)",
                      regionMeshNodes_.size());
 
-            // Build portal system for indoor zones
+            // Defer portal extraction to first gameplay frame (saves ~650ms during loading)
             if (zoneBspTree_ && !regionBoundingBoxes_.empty()) {
-                portalSystem_ = std::make_unique<PortalSystem>();
-                portalSystem_->buildFromBsp(*zoneBspTree_, regionBoundingBoxes_);
-                portalOcclusionEligible_ = portalSystem_->hasPortals() &&
-                                           (portalSystem_->getData().portals.size() > 10);
-                if (portalOcclusionEligible_) {
-                    LOG_INFO(MOD_GRAPHICS, "Portal occlusion eligible: {} portals",
-                             portalSystem_->getData().portals.size());
-                }
+                portalBuildPending_ = true;
+                LOG_DEBUG(MOD_GRAPHICS, "Portal build deferred to progressive loading");
             }
         }
     }
@@ -2676,41 +2699,10 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     // eq.cpp::LoadZoneGraphics() after doors are created, ensuring collision
     // includes door geometry and selectors are not created/destroyed twice.
 
-    // Initialize tree wind animation system using placeable objects
-    LOG_DEBUG(MOD_GRAPHICS, "Tree wind init check: treeManager_={}, currentZone_={}, objects={}",
-              (treeManager_ ? "yes" : "no"),
-              (currentZone_ ? "yes" : "no"),
-              (currentZone_ ? std::to_string(currentZone_->objects.size()) : "n/a"));
-    if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
-        treeManager_->loadConfig("", zoneName);  // Load zone-specific config
-        treeManager_->initialize(currentZone_->objects, currentZone_->objectTextures);
-        LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
-    }
+    // Tree wind init deferred to advanceDeferredInit() to reduce loading time
 
-    // Pre-load object textures into constrained cache for door-only textures
-    // (used by door models but not pre-placed objects) that survive pixel data release.
-    // Skip textures that are in the object atlas — they're already on the GPU.
-    if (constrainedTextureCache_ && currentZone_) {
-        int preloaded = 0;
-        int skippedAtlas = 0;
-        for (const auto& [name, texInfo] : currentZone_->objectTextures) {
-            if (!texInfo || texInfo->data.empty()) continue;
-            // Skip textures covered by the object atlas
-            if (objAtlas_ && objAtlas_->isLoaded()) {
-                std::string lowerName = name;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-                if (objAtlas_->lookup(lowerName)) {
-                    ++skippedAtlas;
-                    continue;
-                }
-            }
-            auto* existing = constrainedTextureCache_->getOrLoad(name, texInfo->data);
-            if (existing) ++preloaded;
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "Object texture preload: {} to constrained cache, {} skipped (in atlas)",
-                  preloaded, skippedAtlas);
-    }
+    // Object texture preload removed — constrained cache loads textures on demand
+    // during door/object mesh building, avoiding upfront loading screen time.
 
     // Rebuild any doors that were created with placeholder meshes before zone data loaded.
     // Set shader material types first so rebuilt doors get proper GLSL materials.
@@ -2736,8 +2728,8 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
     }
 
     // NOTE: Particles, boids, tumbleweeds, detail objects, and display settings
-    // are deferred to initDeferredEnvironmentSystems() which runs on the first
-    // frame after zoneReady_. This avoids blocking zone loading with optional
+    // are deferred to advanceDeferredInit() which steps one init per GREEN frame
+    // after zoneReady_. This avoids blocking zone loading with optional
     // visual systems and ensures collision selectors exist before use.
 
     drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
@@ -2756,6 +2748,35 @@ bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart
 }
 
 void IrrlichtRenderer::unloadZone() {
+    // Wait for background zone load thread if still running
+    if (zoneLoadThread_ && zoneLoadThread_->joinable()) {
+        zoneLoadThread_->join();
+    }
+    zoneLoadThread_.reset();
+    pendingZoneData_.reset();
+    zoneLoadComplete_ = false;
+    backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
+    regionBuildIndex_ = 0;
+    regionBuildInitDone_ = false;
+    storedZoneEnvironment_.pending = false;
+
+    // Wait for background BSP preload thread if still running
+    if (bspPreloadThread_) {
+        if (bspPreloadThread_->joinable()) bspPreloadThread_->join();
+        bspPreloadThread_.reset();
+        pendingBspResult_.reset();
+        bspPreloadComplete_ = false;
+    }
+
+    // Stop background entity prep worker before zone cleanup
+    if (entityPrepWorker_) {
+        entityPrepWorker_->stop();
+        entityPrepWorker_.reset();
+        if (entityRenderer_) {
+            entityRenderer_->setEntityPrepWorker(nullptr);
+        }
+    }
+
     // Reset entity loading state - we're starting a new zone
     networkReady_ = false;
     entitiesLoaded_ = false;
@@ -2763,6 +2784,7 @@ void IrrlichtRenderer::unloadZone() {
     loadedEntityCount_ = 0;
     zoneReady_ = false;
     environmentInitPending_ = false;
+    deferredInitActive_ = false;
 
     // Log texture counts before cleanup
     if (constrainedTextureCache_) {
@@ -2770,6 +2792,9 @@ void IrrlichtRenderer::unloadZone() {
                  constrainedTextureCache_->getTextureCount(),
                  constrainedTextureCache_->getCurrentUsage());
     }
+
+    // Remove zone placeholder mesh if still present
+    destroyZonePlaceholder();
 
     // Unload texture atlases
     if (zoneAtlas_) {
@@ -2877,6 +2902,9 @@ void IrrlichtRenderer::unloadZone() {
     portalSystem_.reset();
     portalOcclusionEnabled_ = false;
     portalOcclusionEligible_ = false;
+    portalBuildPending_ = false;
+    portalCacheDirty_ = true;
+    lastPortalRegion_ = SIZE_MAX;
 
     // Clear constrained mesh cache
     if (constrainedMeshCache_) {
@@ -3087,6 +3115,785 @@ std::string IrrlichtRenderer::getSkyDebugInfo() const {
     }
 
     return info;
+}
+
+void IrrlichtRenderer::buildZonePlaceholder(float playerIrrX, float playerIrrY, float playerIrrZ) {
+    if (!collisionMap_ || !collisionMap_->IsLoaded() || !smgr_ || !driver_) return;
+
+    // Destroy existing node for rebuild
+    if (zonePlaceholderNode_) {
+        zonePlaceholderNode_->remove();
+        zonePlaceholderNode_ = nullptr;
+    }
+
+    // Cache terrain triangles on first call (GetAllTerrainTriangles is expensive)
+    if (cachedPlaceholderTriangles_.empty()) {
+        cachedPlaceholderTriangles_ = collisionMap_->GetAllTerrainTriangles();
+        if (cachedPlaceholderTriangles_.empty()) return;
+    }
+
+    const auto& allTriangles = cachedPlaceholderTriangles_;
+
+    // Filter triangles to render distance from player position (Irrlicht Y-up coords)
+    float clipDist = renderDistance_ > 0.0f ? renderDistance_ : 300.0f;
+    float clipDistSq = clipDist * clipDist;
+
+    // PVS filtering: if BSP tree is available (from BSP preload), skip triangles
+    // in BSP regions not visible from the camera's current region.
+    // Centroid coords: Irrlicht Y-up (cx, cy, cz) → EQ Z-up (cx, cz, cy)
+    bool usePvsFilter = false;
+    std::shared_ptr<BspRegion> camRegion;
+    if (zoneBspTree_) {
+        // Use currentPvsRegion_ if already computed, otherwise derive from player position
+        // (handles the case where BSP preload just completed but PVS update hasn't run yet)
+        size_t cameraRegion = currentPvsRegion_;
+        if (cameraRegion == SIZE_MAX) {
+            // Irrlicht Y-up (x, y, z) → EQ Z-up (x, z, y)
+            cameraRegion = zoneBspTree_->findRegionIndexForPoint(playerIrrX, playerIrrZ, playerIrrY);
+        }
+        if (cameraRegion != SIZE_MAX && cameraRegion < zoneBspTree_->regions.size()) {
+            camRegion = zoneBspTree_->regions[cameraRegion];
+            if (camRegion && !camRegion->visibleRegions.empty()) {
+                usePvsFilter = true;
+            }
+        }
+    }
+
+    std::vector<HCMap::Triangle> triangles;
+    triangles.reserve(allTriangles.size() / 2);
+    size_t pvsCulledCount = 0;
+    for (const auto& tri : allTriangles) {
+        // Use triangle centroid for distance check
+        float cx = (tri.v1.x + tri.v2.x + tri.v3.x) / 3.0f;
+        float cy = (tri.v1.y + tri.v2.y + tri.v3.y) / 3.0f;
+        float cz = (tri.v1.z + tri.v2.z + tri.v3.z) / 3.0f;
+        float dx = cx - playerIrrX;
+        float dy = cy - playerIrrY;
+        float dz = cz - playerIrrZ;
+        if (dx * dx + dy * dy + dz * dz > clipDistSq) {
+            continue;
+        }
+
+        // PVS check: convert Irrlicht Y-up centroid to EQ Z-up for BSP lookup
+        if (usePvsFilter) {
+            size_t triRegion = zoneBspTree_->findRegionIndexForPoint(cx, cz, cy);
+            if (triRegion != SIZE_MAX && triRegion < camRegion->visibleRegions.size()
+                && !camRegion->visibleRegions[triRegion]) {
+                pvsCulledCount++;
+                continue;
+            }
+        }
+
+        triangles.push_back(tri);
+    }
+
+    if (triangles.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "Zone placeholder: 0 triangles within render distance {:.0f} of player ({:.0f},{:.0f},{:.0f})",
+                 clipDist, playerIrrX, playerIrrY, playerIrrZ);
+        return;
+    }
+
+    // Build a single mesh buffer from filtered terrain triangles
+    irr::scene::SMeshBuffer* buf = new irr::scene::SMeshBuffer();
+    buf->Vertices.set_used(triangles.size() * 3);
+    buf->Indices.set_used(triangles.size() * 3);
+
+    for (size_t i = 0; i < triangles.size(); ++i) {
+        const auto& tri = triangles[i];
+        const glm::vec3* verts[3] = { &tri.v1, &tri.v2, &tri.v3 };
+
+        // Face normal orientation determines base color:
+        // - Floors (normal.y > 0.7): green/brown terrain tones
+        // - Walls (|normal.y| < 0.3): gray/blue stone tones
+        // - Ceilings (normal.y < -0.7): dark purple
+        // - Slopes: blended between categories
+        float ny = tri.normal.y;  // Y-up: vertical component
+        uint8_t r, g, b;
+
+        if (ny > 0.7f) {
+            // Floor: earthy green-brown, brighter = more horizontal
+            uint8_t base = static_cast<uint8_t>(100 + ny * 60);
+            r = static_cast<uint8_t>(base * 0.7f);
+            g = base;
+            b = static_cast<uint8_t>(base * 0.5f);
+        } else if (ny < -0.7f) {
+            // Ceiling: dark muted purple
+            uint8_t base = static_cast<uint8_t>(60 + (-ny - 0.7f) * 40);
+            r = static_cast<uint8_t>(base * 0.8f);
+            g = static_cast<uint8_t>(base * 0.5f);
+            b = base;
+        } else {
+            // Wall: gray-blue, vary by which horizontal direction the wall faces
+            float nx = std::abs(tri.normal.x);
+            float nz = std::abs(tri.normal.z);
+            uint8_t base = static_cast<uint8_t>(90 + (nx + nz) * 50);
+            // X-facing walls slightly warmer, Z-facing walls slightly cooler
+            r = static_cast<uint8_t>(base * (0.7f + nx * 0.2f));
+            g = static_cast<uint8_t>(base * 0.75f);
+            b = static_cast<uint8_t>(base * (0.8f + nz * 0.2f));
+        }
+
+        // Per-vertex height variation within each triangle for edge visibility
+        float minVY = std::min({verts[0]->y, verts[1]->y, verts[2]->y});
+        float maxVY = std::max({verts[0]->y, verts[1]->y, verts[2]->y});
+        float triYRange = maxVY - minVY;
+
+        for (int j = 0; j < 3; ++j) {
+            uint32_t idx = static_cast<uint32_t>(i * 3 + j);
+            auto& vert = buf->Vertices[idx];
+            vert.Pos.X = verts[j]->x;
+            vert.Pos.Y = verts[j]->y;
+            vert.Pos.Z = verts[j]->z;
+            vert.Normal.X = tri.normal.x;
+            vert.Normal.Y = tri.normal.y;
+            vert.Normal.Z = tri.normal.z;
+            vert.TCoords.X = 0;
+            vert.TCoords.Y = 0;
+
+            // Darken lower vertices within each triangle for edge definition
+            float heightMod = 1.0f;
+            if (triYRange > 0.1f) {
+                heightMod = 0.85f + 0.15f * ((verts[j]->y - minVY) / triYRange);
+            }
+
+            vert.Color = irr::video::SColor(255,
+                static_cast<uint8_t>(std::min(255.0f, r * heightMod)),
+                static_cast<uint8_t>(std::min(255.0f, g * heightMod)),
+                static_cast<uint8_t>(std::min(255.0f, b * heightMod)));
+
+            buf->Indices[idx] = static_cast<irr::u16>(idx);
+        }
+    }
+
+    buf->recalculateBoundingBox();
+    buf->setHardwareMappingHint(irr::scene::EHM_STATIC);
+
+    // Material: unlit, solid, no backface culling
+    buf->Material.Lighting = false;
+    buf->Material.MaterialType = irr::video::EMT_SOLID;
+    buf->Material.BackfaceCulling = false;
+#ifndef EQT_HAS_GLES2
+    // Desktop GL: wireframe for classic look
+    buf->Material.Wireframe = true;
+#endif
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    mesh->addMeshBuffer(buf);
+    buf->drop();
+    mesh->recalculateBoundingBox();
+
+    zonePlaceholderNode_ = smgr_->addMeshSceneNode(mesh);
+    mesh->drop();
+
+    if (zonePlaceholderNode_) {
+        zonePlaceholderNode_->setPosition(irr::core::vector3df(0, 0, 0));
+        lastPlaceholderBuildPos_ = irr::core::vector3df(playerIrrX, playerIrrY, playerIrrZ);
+        if (usePvsFilter) {
+            LOG_INFO(MOD_GRAPHICS, "Zone placeholder: {} terrain triangles (PVS culled {}, clip {:.0f}, {} total, {:.1f} KB)",
+                     triangles.size(), pvsCulledCount, clipDist, cachedPlaceholderTriangles_.size(),
+                     (triangles.size() * 3 * sizeof(irr::video::S3DVertex)) / 1024.0f);
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Zone placeholder: {} terrain triangles within clip {:.0f} ({} total, {:.1f} KB)",
+                     triangles.size(), clipDist, cachedPlaceholderTriangles_.size(),
+                     (triangles.size() * 3 * sizeof(irr::video::S3DVertex)) / 1024.0f);
+        }
+    }
+}
+
+void IrrlichtRenderer::destroyZonePlaceholder() {
+    if (zonePlaceholderNode_) {
+        zonePlaceholderNode_->remove();
+        zonePlaceholderNode_ = nullptr;
+        LOG_INFO(MOD_GRAPHICS, "Zone placeholder removed");
+    }
+    // Free cached triangles — no longer needed once real geometry takes over
+    if (!cachedPlaceholderTriangles_.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Releasing {} cached placeholder triangles ({:.1f} KB)",
+                  cachedPlaceholderTriangles_.size(),
+                  (cachedPlaceholderTriangles_.size() * sizeof(HCMap::Triangle)) / 1024.0f);
+        cachedPlaceholderTriangles_.clear();
+        cachedPlaceholderTriangles_.shrink_to_fit();
+    }
+}
+
+void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float playerX, float playerY, float playerZ) {
+    currentZoneName_ = zoneName;
+
+    // Create entity renderer for placeholder cubes (no model loading yet)
+    if (!entityRenderer_ && smgr_ && driver_ && device_) {
+        entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
+        entityRenderer_->setClientPath(config_.eqClientPath);
+        entityRenderer_->setNameTagsVisible(config_.showNameTags);
+        entityRenderer_->setRenderDistance(renderDistance_);
+        entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+        if (zoneShader_ && zoneShader_->isAvailable()) {
+            entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                                    zoneShader_->getMaterialTypeAlphaTest());
+        }
+        if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
+            entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
+        }
+        entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
+            return this->findGroundZ(x, y, currentZ);
+        });
+        // Pass frustum culler for entity visibility culling during placeholder mode
+        if (frustumCuller_) {
+            entityRenderer_->setFrustumCuller(frustumCuller_.get());
+        }
+        LOG_INFO(MOD_GRAPHICS, "Entity renderer created for instant scene (placeholder cubes only)");
+    }
+
+    // Create door manager for placeholder cubes (no model loading yet)
+    if (!doorManager_ && smgr_ && driver_) {
+        doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
+        LOG_INFO(MOD_GRAPHICS, "Door manager created for instant scene (placeholder cubes only)");
+    }
+
+    // Notify entity renderer of zone (for zone-specific model search paths)
+    if (entityRenderer_) {
+        entityRenderer_->setCurrentZone(zoneName);
+    }
+
+    // Build HCMap placeholder around player position, clipped to render distance
+    if (collisionMap_ && collisionMap_->IsLoaded()) {
+        // Convert EQ coords (Z-up) to Irrlicht (Y-up) for the builder
+        buildZonePlaceholder(playerX, playerZ, playerY);
+    }
+
+    // Minimal collision from HCMap for player movement
+    setupHCMapCollision();
+
+    // Start background BSP preload for entity PVS culling during placeholder mode
+    if (!config_.eqClientPath.empty()) {
+        startBspPreload(zoneName, config_.eqClientPath);
+    }
+
+    // Set zone ready flags — but do NOT activate progressive loading
+    // Loading is deferred until /loadzone command
+    zoneReady_ = true;
+
+    LOG_INFO(MOD_GRAPHICS, "Instant scene ready for zone '{}' — HCMap placeholder + collision, awaiting /loadzone",
+             zoneName);
+}
+
+void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
+    if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) {
+        LOG_WARN(MOD_GRAPHICS, "Zone asset load already in progress (phase {})",
+                 static_cast<int>(backgroundZoneLoadPhase_));
+        return;
+    }
+
+    // Join BSP preload thread if still running (full S3D load will rebuild BSP data)
+    if (bspPreloadThread_) {
+        if (bspPreloadThread_->joinable()) bspPreloadThread_->join();
+        bspPreloadThread_.reset();
+        pendingBspResult_.reset();
+        bspPreloadComplete_ = false;
+    }
+
+    progressiveLoadingActive_ = true;
+    progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+
+    // Start the background S3D load thread
+    startBackgroundZoneLoad(currentZoneName_, eqClientPath);
+
+    LOG_INFO(MOD_GRAPHICS, "Zone asset load initiated for '{}'", currentZoneName_);
+}
+
+void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::string& eqClientPath) {
+    // Don't start if already running or if full zone load is in progress
+    if (bspPreloadThread_ || backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) return;
+
+    bspPreloadComplete_ = false;
+    pendingBspResult_ = std::make_unique<BspPreloadResult>();
+
+    std::string zonePath = eqClientPath;
+    if (!zonePath.empty() && zonePath.back() != '/' && zonePath.back() != '\\')
+        zonePath += '/';
+    zonePath += zoneName + ".s3d";
+
+    // Capture indoor flag for portal eligibility check (set by setZoneEnvironment before this call)
+    bool indoor = isIndoorZone_;
+
+    auto* result = pendingBspResult_.get();
+    bspPreloadThread_ = std::make_unique<std::thread>([this, zonePath, indoor, result]() {
+        // Set thread to lowest priority so we never steal CPU from render thread
+#ifdef __linux__
+        struct sched_param param = {};
+        if (pthread_setschedparam(pthread_self(), SCHED_IDLE, &param) != 0) {
+            nice(19);
+        }
+#endif
+
+        // 1. Open the S3D archive
+        PfsArchive archive;
+        if (!archive.open(zonePath)) {
+            LOG_ERROR(MOD_GRAPHICS, "BSP preload: failed to open archive: {}", zonePath);
+            bspPreloadComplete_ = true;
+            return;
+        }
+
+        // 2. Find main WLD (same filter as S3DLoader::loadZone)
+        std::vector<std::string> wldFiles;
+        archive.getFilenames(".wld", wldFiles);
+        if (wldFiles.empty()) {
+            LOG_ERROR(MOD_GRAPHICS, "BSP preload: no WLD file in archive");
+            bspPreloadComplete_ = true;
+            return;
+        }
+
+        std::string mainWld;
+        for (const auto& wld : wldFiles) {
+            if (wld.find("_obj") == std::string::npos &&
+                wld.find("_chr") == std::string::npos &&
+                wld != "objects.wld" &&
+                wld != "lights.wld") {
+                mainWld = wld;
+                break;
+            }
+        }
+        if (mainWld.empty()) mainWld = wldFiles[0];
+
+        // 3. Parse WLD
+        auto wldLoader = std::make_shared<WldLoader>();
+        if (!wldLoader->parseFromArchive(zonePath, mainWld)) {
+            LOG_ERROR(MOD_GRAPHICS, "BSP preload: failed to parse WLD: {}", mainWld);
+            bspPreloadComplete_ = true;
+            return;
+        }
+
+        // 4. Get BSP tree and verify PVS data
+        auto bspTree = wldLoader->getBspTree();
+        if (!bspTree || !wldLoader->hasPvsData()) {
+            LOG_INFO(MOD_GRAPHICS, "BSP preload: zone has no PVS data, skipping");
+            bspPreloadComplete_ = true;
+            return;
+        }
+
+        // 5. Compute region bounding boxes from vertex data
+        std::map<size_t, irr::core::aabbox3df> regionBoundingBoxes;
+        for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
+            auto geom = wldLoader->getGeometryForRegion(regionIdx);
+            if (!geom || geom->vertices.empty()) continue;
+
+            float vMinX = std::numeric_limits<float>::max();
+            float vMinY = vMinX, vMinZ = vMinX;
+            float vMaxX = std::numeric_limits<float>::lowest();
+            float vMaxY = vMaxX, vMaxZ = vMaxX;
+            for (const auto& v : geom->vertices) {
+                float wx = geom->centerX + v.x;
+                float wy = geom->centerY + v.y;
+                float wz = geom->centerZ + v.z;
+                if (wx < vMinX) vMinX = wx;
+                if (wy < vMinY) vMinY = wy;
+                if (wz < vMinZ) vMinZ = wz;
+                if (wx > vMaxX) vMaxX = wx;
+                if (wy > vMaxY) vMaxY = wy;
+                if (wz > vMaxZ) vMaxZ = wz;
+            }
+            irr::core::aabbox3df worldBounds;
+            worldBounds.MinEdge.X = vMinX;
+            worldBounds.MinEdge.Y = vMinY;
+            worldBounds.MinEdge.Z = vMinZ;
+            worldBounds.MaxEdge.X = vMaxX;
+            worldBounds.MaxEdge.Y = vMaxY;
+            worldBounds.MaxEdge.Z = vMaxZ;
+            regionBoundingBoxes[regionIdx] = worldBounds;
+        }
+
+        // 6. Build portal system
+        auto portalSystem = std::make_unique<PortalSystem>();
+        portalSystem->buildFromBsp(*bspTree, regionBoundingBoxes);
+        bool portalEligible = portalSystem->hasPortals() &&
+                              (portalSystem->getData().portals.size() > 10);
+
+        // 7. Store results
+        result->bspTree = bspTree;
+        result->regionBoundingBoxes = std::move(regionBoundingBoxes);
+        result->portalSystem = std::move(portalSystem);
+        result->portalOcclusionEligible = portalEligible;
+
+        LOG_INFO(MOD_GRAPHICS, "BSP preload complete: {} regions, {} portals, PVS eligible={}",
+                 bspTree->regions.size(), result->portalSystem->getData().portals.size(),
+                 portalEligible ? "yes" : "no");
+
+        // Release heavy WLD/archive data BEFORE signaling completion.
+        // BSP tree survives via shared_ptr in result->bspTree.
+        // Without this, the destructors run after bspPreloadComplete_ is set,
+        // and join() blocks ~150ms on ARM freeing 2000+ regions of parsed geometry.
+        wldLoader.reset();
+        archive.close();
+
+        bspPreloadComplete_ = true;
+    });
+
+    LOG_INFO(MOD_GRAPHICS, "BSP preload started for zone '{}'", zoneName);
+}
+
+void IrrlichtRenderer::advanceBspPreload() {
+    if (!bspPreloadThread_) return;
+
+    // Join the thread
+    if (bspPreloadThread_->joinable())
+        bspPreloadThread_->join();
+    bspPreloadThread_.reset();
+
+    if (!pendingBspResult_ || !pendingBspResult_->bspTree) {
+        // Preload produced no usable data
+        pendingBspResult_.reset();
+        bspPreloadComplete_ = false;
+        return;
+    }
+
+    auto& result = *pendingBspResult_;
+
+    // Install BSP tree
+    zoneBspTree_ = result.bspTree;
+    usePvsCulling_ = true;
+    currentPvsRegion_ = SIZE_MAX;
+
+    // Install region bounding boxes
+    regionBoundingBoxes_ = std::move(result.regionBoundingBoxes);
+
+    // Wire BSP tree to entity renderer and door manager
+    if (entityRenderer_) {
+        entityRenderer_->setBspTree(zoneBspTree_);
+    }
+    if (doorManager_) {
+        doorManager_->setBspTree(zoneBspTree_.get());
+    }
+
+    // Install portal system
+    portalSystem_ = std::move(result.portalSystem);
+    portalOcclusionEligible_ = result.portalOcclusionEligible;
+
+    // Signal PVS recalculation on next tier2 frame.
+    // Do NOT zero lastCullingCameraPos_/lastLightCameraPos_ — that would bypass
+    // movement gates in updateObjectVisibility/updateZoneLightVisibility/updateObjectLights,
+    // forcing them all to do full recalculation on the same frame (cold-cache storm).
+    // forcePvsUpdate_ already resets the BSP lookup statics in updatePvsVisibility.
+    forcePvsUpdate_ = true;
+
+    LOG_INFO(MOD_GRAPHICS, "BSP preload installed: {} regions, PVS culling active",
+             zoneBspTree_->regions.size());
+
+    // Rebuild placeholder mesh with PVS filtering now that BSP data is available
+    if (zonePlaceholderNode_ && collisionMap_ && collisionMap_->IsLoaded()) {
+        buildZonePlaceholder(playerX_, playerZ_, playerY_);
+        setupHCMapCollision();
+    }
+
+    pendingBspResult_.reset();
+    bspPreloadComplete_ = false;
+}
+
+void IrrlichtRenderer::setupHCMapCollision() {
+    if (!smgr_) return;
+
+    // Clean up old selectors
+    if (zoneTriangleSelector_) { zoneTriangleSelector_->drop(); zoneTriangleSelector_ = nullptr; }
+    if (terrainOnlySelector_) { terrainOnlySelector_->drop(); terrainOnlySelector_ = nullptr; }
+
+    irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
+    if (!metaSelector) return;
+
+    // Use HCMap placeholder mesh for collision (already built by buildZonePlaceholder)
+    if (zonePlaceholderNode_ && zonePlaceholderNode_->getMesh()) {
+        auto* sel = smgr_->createTriangleSelector(zonePlaceholderNode_->getMesh(), zonePlaceholderNode_);
+        if (sel) { metaSelector->addTriangleSelector(sel); sel->drop(); }
+    }
+
+    zoneTriangleSelector_ = metaSelector;
+
+    // Create terrain-only selector with same data
+    terrainOnlySelector_ = smgr_->createMetaTriangleSelector();
+    if (terrainOnlySelector_ && zonePlaceholderNode_ && zonePlaceholderNode_->getMesh()) {
+        auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_);
+        auto* sel = smgr_->createTriangleSelector(zonePlaceholderNode_->getMesh(), zonePlaceholderNode_);
+        if (sel) { terrainMeta->addTriangleSelector(sel); sel->drop(); }
+    }
+
+    collisionManager_ = smgr_->getSceneCollisionManager();
+    if (cameraController_ && collisionManager_ && zoneTriangleSelector_) {
+        cameraController_->setCollisionManager(collisionManager_, zoneTriangleSelector_);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "HCMap collision setup complete");
+}
+
+void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath) {
+    backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Loading;
+    zoneLoadComplete_ = false;
+
+    std::string zonePath = eqClientPath;
+    if (!zonePath.empty() && zonePath.back() != '/' && zonePath.back() != '\\')
+        zonePath += '/';
+    zonePath += zoneName + ".s3d";
+
+    zoneLoadThread_ = std::make_unique<std::thread>([this, zonePath]() {
+        S3DLoader loader;
+        if (loader.loadZone(zonePath)) {
+            pendingZoneData_ = loader.getZone();
+        } else {
+            LOG_ERROR(MOD_GRAPHICS, "Background S3D load failed: {}", loader.getError());
+        }
+        zoneLoadComplete_ = true;
+    });
+
+    LOG_INFO(MOD_GRAPHICS, "Background S3D load started: {}", zonePath);
+}
+
+void IrrlichtRenderer::storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
+                                              const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
+                                              const float fogMinClip[4], const float fogMaxClip[4]) {
+    storedZoneEnvironment_.skyType = skyType;
+    storedZoneEnvironment_.zoneType = zoneType;
+    for (int i = 0; i < 4; ++i) {
+        storedZoneEnvironment_.fogR[i] = fogRed[i];
+        storedZoneEnvironment_.fogG[i] = fogGreen[i];
+        storedZoneEnvironment_.fogB[i] = fogBlue[i];
+        storedZoneEnvironment_.fogMinClip[i] = fogMinClip[i];
+        storedZoneEnvironment_.fogMaxClip[i] = fogMaxClip[i];
+    }
+    storedZoneEnvironment_.pending = true;
+}
+
+void IrrlichtRenderer::applyStoredZoneEnvironment() {
+    if (storedZoneEnvironment_.pending) {
+        setZoneEnvironment(storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
+                           storedZoneEnvironment_.fogR, storedZoneEnvironment_.fogG, storedZoneEnvironment_.fogB,
+                           storedZoneEnvironment_.fogMinClip, storedZoneEnvironment_.fogMaxClip);
+        storedZoneEnvironment_.pending = false;
+        LOG_INFO(MOD_GRAPHICS, "Applied stored zone environment (sky={}, ztype={})",
+                 storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
+    }
+}
+
+void IrrlichtRenderer::advanceBackgroundZoneLoad() {
+    auto stepStart = std::chrono::steady_clock::now();
+
+    switch (backgroundZoneLoadPhase_) {
+    case BackgroundZoneLoadPhase::Loading:
+        // Poll background thread
+        if (zoneLoadComplete_) {
+            if (zoneLoadThread_ && zoneLoadThread_->joinable())
+                zoneLoadThread_->join();
+            zoneLoadThread_.reset();
+
+            if (pendingZoneData_) {
+                currentZone_ = pendingZoneData_;
+                pendingZoneData_.reset();
+
+                // Notify subsystems
+                if (entityRenderer_) entityRenderer_->setCurrentZone(currentZoneName_);
+                if (doorManager_) {
+                    doorManager_->setZone(currentZone_);
+                    if (constrainedTextureCache_)
+                        doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+                }
+
+                backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady;
+                LOG_INFO(MOD_GRAPHICS, "S3D data received on main thread for zone '{}'", currentZoneName_);
+            } else {
+                backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
+                LOG_ERROR(MOD_GRAPHICS, "S3D background load produced no data");
+            }
+        }
+        // Not ready yet — keep polling (costs nothing, no GREEN consumed)
+        break;
+
+    case BackgroundZoneLoadPhase::DataReady: {
+        // Load global assets (sky renderer init, global character S3D archive index)
+        loadGlobalAssets();
+
+        // Apply zone environment settings (sky, fog) now that sky renderer is ready
+        applyStoredZoneEnvironment();
+
+        // Initialize weather system for this zone (lightweight, no collision needed)
+        if (weatherSystem_) {
+            weatherSystem_->setWeatherFromZone(currentZoneName_);
+        }
+
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::AtlasLoad;
+        logAssetBuildTime("global_assets", 0, stepStart);
+        break;
+    }
+
+    case BackgroundZoneLoadPhase::AtlasLoad: {
+        // Load texture atlas (zone + object) — extracted from loadZone()
+        if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
+            std::string atlasDir = config_.constrainedConfig.atlasPath;
+            if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
+
+            zoneAtlas_ = std::make_unique<TextureAtlas>();
+            std::string zoneAtlasFile = atlasDir + currentZoneName_ + ".atlas";
+            bool zoneAtlasLoaded = zoneAtlas_->load(zoneAtlasFile);
+
+            if (!zoneAtlasLoaded) {
+                LOG_INFO(MOD_GRAPHICS, "No texture atlas found at {}, using per-texture rendering", zoneAtlasFile);
+                zoneAtlas_.reset();
+            } else {
+                LOG_INFO(MOD_GRAPHICS, "Texture atlas loaded: {} pages, {} tiles",
+                         zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
+                if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+                    std::vector<uint32_t> pageTextures;
+                    for (uint16_t p = 0; p < zoneAtlas_->getPageCount(); ++p) {
+                        pageTextures.push_back(zoneAtlas_->getPageTexture(p));
+                    }
+                    zoneShader_->setAtlasPageTextures(pageTextures);
+                }
+            }
+
+            // Load object atlas too
+            objAtlas_ = std::make_unique<TextureAtlas>();
+            std::string objAtlasFile = atlasDir + currentZoneName_ + "_obj.atlas";
+            bool objAtlasLoaded = objAtlas_->load(objAtlasFile);
+
+            if (!objAtlasLoaded) {
+                objAtlas_.reset();
+            } else if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
+                std::vector<uint32_t> objPageTextures;
+                for (uint16_t p = 0; p < objAtlas_->getPageCount(); ++p) {
+                    objPageTextures.push_back(objAtlas_->getPageTexture(p));
+                }
+                objAtlasPageOffset_ = zoneShader_->appendAtlasPageTextures(objPageTextures);
+                LOG_INFO(MOD_GRAPHICS, "Object atlas loaded: {} pages, {} tiles (page offset {})",
+                         objAtlas_->getPageCount(), objAtlas_->getTileCount(), objAtlasPageOffset_);
+            }
+        } else {
+            zoneAtlas_.reset();
+            objAtlas_.reset();
+        }
+
+        // Atlas loading uses raw GL calls — reset texture bind state
+#ifdef EQT_HAS_GLES2
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
+#endif
+
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMeshSetup;
+        logAssetBuildTime("atlas_load", 0, stepStart);
+        break;
+    }
+
+    case BackgroundZoneLoadPhase::RegionMeshSetup: {
+        // First call: run createZoneMeshWithPvs() setup (BSP tree, region registration)
+        if (!regionBuildInitDone_) {
+            createZoneMeshWithPvs();
+            regionBuildInitDone_ = true;
+
+            // Enable front-to-back sorted zone drawing for PVS zones
+            if (usePvsCulling_ && !regionMeshNodes_.empty()) {
+#ifdef EQT_HAS_GLES2
+                manualZoneDrawEnabled_ = true;
+#else
+                manualZoneDrawEnabled_ = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
+#endif
+                if (manualZoneDrawEnabled_) {
+                    if (smgr_ && !renderPassTimer_) {
+                        renderPassTimer_ = new RenderPassTimer();
+                        renderPassTimer_->setRenderer(this);
+                        smgr_->setLightManager(renderPassTimer_);
+                    } else if (renderPassTimer_) {
+                        renderPassTimer_->setRenderer(this);
+                    }
+                    LOG_INFO(MOD_GRAPHICS, "Front-to-back zone sorting ENABLED ({} regions)",
+                             regionMeshNodes_.size());
+
+                    if (zoneBspTree_ && !regionBoundingBoxes_.empty()) {
+                        portalBuildPending_ = true;
+                    }
+                }
+            }
+
+            logAssetBuildTime("region_mesh_pvs_init", 0, stepStart);
+        }
+
+        // Region mesh creation is done by createZoneMeshWithPvs() — move to next phase
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::LightsAndObjects;
+        break;
+    }
+
+    case BackgroundZoneLoadPhase::LightsAndObjects: {
+        // Zone lights + object indexing (relatively fast)
+        createZoneLights();
+        indexObjectMeshes();
+
+        // Cache zone bounds
+        if (currentZone_ && currentZone_->geometry) {
+            zoneBoundsMinX_ = currentZone_->geometry->minX;
+            zoneBoundsMaxX_ = currentZone_->geometry->maxX;
+            zoneBoundsMinY_ = currentZone_->geometry->minY;
+            zoneBoundsMaxY_ = currentZone_->geometry->maxY;
+            zoneBoundsValid_ = true;
+        }
+
+        setupFog();
+
+        // Set shader material types for doors so rebuilt doors get proper GLSL materials
+        if (doorManager_) {
+            if (zoneShader_ && zoneShader_->isAvailable()) {
+                doorManager_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
+                                                      zoneShader_->getMaterialTypeAlphaTest());
+            }
+            doorManager_->rebuildPlaceholderDoors();
+        }
+
+        // Release raw texture pixel data if not using constrained mesh cache
+        if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_ && !constrainedMeshCache_) {
+            size_t freed = currentZone_->releaseTexturePixelData();
+            LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
+                     freed / (1024.0f * 1024.0f));
+        }
+
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::CollisionRebuild;
+        logAssetBuildTime("lights_objects", 0, stepStart);
+        break;
+    }
+
+    case BackgroundZoneLoadPhase::CollisionRebuild: {
+        // Rebuild collision with real S3D region meshes (replaces HCMap collision)
+        // Use setupMinimalZoneCollision which builds player's region + collision
+        setupMinimalZoneCollision();
+
+        // Remove HCMap placeholder now that real geometry is loaded
+        destroyZonePlaceholder();
+
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EnvironmentInit;
+        logAssetBuildTime("collision_rebuild", 0, stepStart);
+        break;
+    }
+
+    case BackgroundZoneLoadPhase::EnvironmentInit:
+        // Reuse existing advanceDeferredInit() steps
+        // Activate the deferred init state machine if not already running
+        if (!deferredInitActive_) {
+            deferredInitActive_ = true;
+            deferredInitStep_ = DeferredInitStep::TreeConfig;
+            LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (via background zone load)");
+        }
+
+        advanceDeferredInit();
+
+        if (deferredInitStep_ == DeferredInitStep::Complete) {
+            deferredInitActive_ = false;
+            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EntityLoading;
+        }
+        break;
+
+    case BackgroundZoneLoadPhase::EntityLoading:
+        // This phase is handled by existing processFrameProgressiveLoad()
+        // Just mark background zone load as complete
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
+        LOG_INFO(MOD_GRAPHICS, "Background zone load pipeline complete for zone '{}'", currentZoneName_);
+        break;
+
+    default:
+        break;
+    }
 }
 
 void IrrlichtRenderer::createZoneMesh() {
@@ -3611,7 +4418,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
         return;
     }
 
-    if (!usePvsCulling_ || !zoneBspTree_ || regionMeshNodes_.empty()) {
+    if (!usePvsCulling_ || !zoneBspTree_) {
         return;
     }
 
@@ -3639,6 +4446,7 @@ void IrrlichtRenderer::updatePvsVisibility() {
         lastBspZ = -99999.0f;
         cachedRegion = nullptr;
         cachedRegionIdx = SIZE_MAX;
+        portalCacheDirty_ = true;  // Also invalidate portal computation cache
         forcePvsUpdate_ = false;
         LOG_DEBUG(MOD_GRAPHICS, "Forcing PVS visibility update due to render distance change");
     }
@@ -3667,11 +4475,16 @@ void IrrlichtRenderer::updatePvsVisibility() {
         newRegionIdx = cachedRegionIdx;
     }
 
-    // Always run visibility loop when position changes.
-    // BSP lookup is cached above (the expensive part). The visibility loop itself is cheap:
-    // ~1900 iterations with simple array lookup + distance calc.
+    // Always update currentPvsRegion_ — needed by portal entity culling even during
+    // placeholder mode when regionMeshNodes_ is empty (no S3D zone geometry yet).
     bool regionChanged = (newRegionIdx != currentPvsRegion_);
     currentPvsRegion_ = newRegionIdx;
+
+    // No zone mesh nodes to cull — BSP region lookup above is all we need.
+    // Portal entity culling uses currentPvsRegion_ set above.
+    if (regionMeshNodes_.empty()) {
+        return;
+    }
 
     // Clear lazy load state for this frame
     if (constrainedMeshCache_) {
@@ -4301,6 +5114,182 @@ void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
         irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
 }
 
+// ======== computePortalVisibleRegions ========
+// Walk the portal graph from the camera's BSP region via BFS.
+// Only regions reachable through portal openings that face the camera
+// and intersect the view frustum are added.  Depth limit 3.
+// If the visible set exceeds MAX_VISIBLE_REGIONS, we're in an open area
+// where portal culling provides no useful occlusion — clear the set so
+// the caller falls back to distance/frustum culling only.
+void IrrlichtRenderer::computePortalVisibleRegions() {
+    portalVisibleRegions_.clear();
+    if (!portalSystem_ || !portalSystem_->hasPortals() || currentPvsRegion_ == SIZE_MAX) {
+        return;
+    }
+
+    // One-shot diagnostic: dump portal graph traversal on first call
+    static bool diagDone = false;
+    bool doDiag = !diagDone;
+
+    // Camera position in EQ coords (Z-up)
+    float camX = playerX_, camY = playerY_, camZ = playerZ_;
+    if (cameraController_) {
+        cameraController_->getPositionEQ(camX, camY, camZ);
+    }
+
+    if (doDiag) {
+        diagDone = true;
+        LOG_INFO(MOD_GRAPHICS, "=== PORTAL ENTITY CULL DIAGNOSTIC ===");
+        LOG_INFO(MOD_GRAPHICS, "Camera EQ pos: ({:.1f}, {:.1f}, {:.1f}), BSP region {}",
+                 camX, camY, camZ, currentPvsRegion_);
+        const auto& camPortals = portalSystem_->getPortalsForRegion(currentPvsRegion_);
+        LOG_INFO(MOD_GRAPHICS, "Camera region {} has {} portals", currentPvsRegion_, camPortals.size());
+        for (size_t pi : camPortals) {
+            const Portal& p = portalSystem_->getData().portals[pi];
+            size_t other = portalSystem_->getOtherRegion(pi, currentPvsRegion_);
+            LOG_INFO(MOD_GRAPHICS, "  Portal {} -> region {}: center=({:.1f},{:.1f},{:.1f}) normal=({:.2f},{:.2f},{:.2f}) area={:.0f}",
+                     pi, other, p.centerX, p.centerY, p.centerZ, p.normalX, p.normalY, p.normalZ, p.area);
+        }
+
+        // Also dump BSP regions for nearby entities
+        if (zoneBspTree_) {
+            struct NpcPos { int sid; float x,y,z; };
+            // Hardcoded from npc1.log analysis — the 8 nearest entities
+            NpcPos npcs[] = {
+                {225, 313.0f, 310.5f, 17.0f},   // player
+                {226, 315.0f, 312.5f, 17.12f},  // pet
+                {97,  300.0f, 329.88f, 17.75f},
+                {99,  342.0f, 301.0f, 3.75f},
+                {108, 309.0f, 349.0f, 17.75f},
+                {7,   315.0f, 267.0f, 17.75f},
+                {98,  257.0f, 302.0f, 17.75f},
+                {62,  243.0f, 314.0f, 17.75f},
+            };
+            for (auto& n : npcs) {
+                size_t r = zoneBspTree_->findRegionIndexForPoint(n.x, n.y, n.z);
+                LOG_INFO(MOD_GRAPHICS, "  Entity {} at ({:.1f},{:.1f},{:.1f}) -> BSP region {}",
+                         n.sid, n.x, n.y, n.z, r == SIZE_MAX ? -1 : (int)r);
+            }
+        }
+    }
+
+    // Camera's room is always visible
+    portalVisibleRegions_.insert(currentPvsRegion_);
+
+    // BFS stack: (regionIdx, depth)
+    struct Entry { size_t region; int depth; };
+    std::vector<Entry> stack;
+    stack.push_back({currentPvsRegion_, 0});
+
+    constexpr int MAX_DEPTH = 1;
+    // If BFS finds more than this many regions, we're in an open area —
+    // portal culling won't help, so bail out and let distance/frustum handle it.
+    constexpr size_t MAX_VISIBLE_REGIONS = 16;
+
+    while (!stack.empty()) {
+        auto [fromRegion, depth] = stack.back();
+        stack.pop_back();
+        if (depth >= MAX_DEPTH) continue;
+
+        const auto& portals = portalSystem_->getPortalsForRegion(fromRegion);
+        for (size_t portalIdx : portals) {
+            size_t toRegion = portalSystem_->getOtherRegion(portalIdx, fromRegion);
+            if (toRegion == SIZE_MAX) continue;
+            if (portalVisibleRegions_.count(toRegion)) continue;
+
+            const Portal& portal = portalSystem_->getData().portals[portalIdx];
+
+            // Skip vertical portals — floor/ceiling AABB overlaps (|normalZ| > 0.7).
+            // These are artifacts of vertically-stacked BSP regions, not real doorways.
+            // Entities never walk through ceilings; real EQ doorways are vertical planes.
+            float absNZ = portal.normalZ < 0 ? -portal.normalZ : portal.normalZ;
+            if (absNZ > 0.7f) {
+                if (doDiag && depth == 0) {
+                    LOG_INFO(MOD_GRAPHICS, "  D0: region {} portal {} -> {}: REJECTED(vertical nZ={:.2f})",
+                             fromRegion, portalIdx, toRegion, portal.normalZ);
+                }
+                continue;
+            }
+
+            // Facing check: is the portal opening facing toward the camera?
+            // Portal normal points from regionA to regionB.
+            // If we're in regionA, the opening faces us when dot(cam-to-portal, normal) > 0.
+            // If we're in regionB, flip the normal direction.
+            float toPX = portal.centerX - camX;
+            float toPY = portal.centerY - camY;
+            float toPZ = portal.centerZ - camZ;
+            float normalSign = (fromRegion == portal.regionA) ? 1.0f : -1.0f;
+            float facingDot = normalSign * (toPX * portal.normalX + toPY * portal.normalY + toPZ * portal.normalZ);
+
+            if (doDiag && depth == 0) {
+                LOG_INFO(MOD_GRAPHICS, "  D0: region {} portal {} -> {}: facingDot={:.2f} area={:.0f} {}",
+                         fromRegion, portalIdx, toRegion, facingDot, portal.area,
+                         facingDot < 0 ? "REJECTED(facing)" : "PASS");
+            }
+
+            if (facingDot < 0.0f) continue;  // Portal faces away from camera
+
+            // Frustum check: is the portal opening visible?
+            if (frustumCuller_ && frustumCuller_->isEnabled()) {
+                // Compute tight AABB from portal's 4 vertices (EQ Z-up coords)
+                float minX = portal.vertices[0][0], maxX = portal.vertices[0][0];
+                float minY = portal.vertices[0][1], maxY = portal.vertices[0][1];
+                float minZ = portal.vertices[0][2], maxZ = portal.vertices[0][2];
+                for (int v = 1; v < 4; ++v) {
+                    if (portal.vertices[v][0] < minX) minX = portal.vertices[v][0];
+                    if (portal.vertices[v][0] > maxX) maxX = portal.vertices[v][0];
+                    if (portal.vertices[v][1] < minY) minY = portal.vertices[v][1];
+                    if (portal.vertices[v][1] > maxY) maxY = portal.vertices[v][1];
+                    if (portal.vertices[v][2] < minZ) minZ = portal.vertices[v][2];
+                    if (portal.vertices[v][2] > maxZ) maxZ = portal.vertices[v][2];
+                }
+                bool frustumPass = frustumCuller_->testAABB(minX, minY, minZ, maxX, maxY, maxZ);
+
+                if (doDiag && depth == 0) {
+                    LOG_INFO(MOD_GRAPHICS, "    frustum AABB ({:.0f},{:.0f},{:.0f})-({:.0f},{:.0f},{:.0f}): {}",
+                             minX, minY, minZ, maxX, maxY, maxZ,
+                             frustumPass ? "PASS" : "REJECTED");
+                }
+
+                if (!frustumPass) {
+                    continue;  // Portal opening is outside view frustum
+                }
+            }
+
+            portalVisibleRegions_.insert(toRegion);
+
+            if (doDiag) {
+                LOG_INFO(MOD_GRAPHICS, "  D{}: ADDED region {} (total visible: {})",
+                         depth, toRegion, portalVisibleRegions_.size());
+            }
+
+            // If we've reached too many visible regions, we're in an open area
+            // where portal culling provides no useful entity occlusion.
+            // Clear the set to disable portal entity culling for this frame.
+            if (portalVisibleRegions_.size() > MAX_VISIBLE_REGIONS) {
+                if (doDiag) {
+                    LOG_INFO(MOD_GRAPHICS, "  BAIL: exceeded {} visible regions, disabling portal entity cull",
+                             MAX_VISIBLE_REGIONS);
+                }
+                portalVisibleRegions_.clear();
+                return;
+            }
+
+            stack.push_back({toRegion, depth + 1});
+        }
+    }
+
+    if (doDiag) {
+        LOG_INFO(MOD_GRAPHICS, "  FINAL: {} portal-visible regions", portalVisibleRegions_.size());
+        std::string regionList;
+        for (size_t r : portalVisibleRegions_) {
+            if (!regionList.empty()) regionList += ", ";
+            regionList += std::to_string(r);
+        }
+        LOG_INFO(MOD_GRAPHICS, "  Regions: {}", regionList);
+    }
+}
+
 // ======== drawZoneGeometryWithPortals ========
 // Uses stencil-based portal occlusion to render only visible rooms.
 void IrrlichtRenderer::drawZoneGeometryWithPortals() {
@@ -4491,49 +5480,27 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
 void IrrlichtRenderer::processFrameLazyLoad() {
     if (!constrainedMeshCache_ || !currentZone_ || !currentZone_->wldLoader) return;
 
-    auto loadStart = std::chrono::steady_clock::now();
+    // GREEN-only: max 1 region build per frame to stay within budget.
+    if (governor_ && governor_->getState() != BudgetState::Green) return;
 
-    // Measure time already used this frame
-    // Use flat 2ms safety margin — lazy loading is essential for visible geometry.
-    // The EMA reserve is too aggressive here (can reserve ~29ms of a 33ms budget).
-    float elapsedMs = std::chrono::duration_cast<std::chrono::microseconds>(
-        loadStart - frameStart_).count() / 1000.0f;
-    float remainingMs = frameBudgetMs_ - elapsedMs - 2.0f;
-
-    if (remainingMs < 3.0f && !meshLoadQueue_.empty()) {
-        // Always build at least 1 region per frame for visible geometry progress,
-        // even if over budget. Without this, newly-visible areas stay unloaded.
-        for (const auto& entry : meshLoadQueue_) {
-            if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
-                rebuildRegionMesh(entry.regionIdx);
-                break;
-            }
-        }
-        return;
-    }
-
-    // Process load queue (populated by updatePvsVisibility)
-    // Queue is sorted by priority: current region > distance-sorted visible regions
-    int rebuildsThisFrame = 0;
     for (const auto& entry : meshLoadQueue_) {
         if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
-
-        auto beforeBuild = std::chrono::steady_clock::now();
         if (rebuildRegionMesh(entry.regionIdx)) {
-            rebuildsThisFrame++;
-            float buildMs = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - beforeBuild).count() / 1000.0f;
-            remainingMs -= buildMs;
-
-            // Stop if budget exhausted (but allow at least 1 build per frame for progress)
-            if (remainingMs < 3.0f && rebuildsThisFrame > 0) break;
+            LOG_DEBUG(MOD_GRAPHICS, "MeshCache: built region {} (usage {}/{} bytes)",
+                entry.regionIdx,
+                constrainedMeshCache_->getCurrentUsage(),
+                constrainedMeshCache_->getMemoryLimit());
         }
+        break;  // One region max per frame
     }
 
-    // Evict if over memory budget
+    // Evict with per-frame cap
     if (constrainedMeshCache_->getCurrentUsage() > constrainedMeshCache_->getMemoryLimit()) {
+        constexpr int MAX_EVICTIONS_PER_FRAME = 10;
+        int evictionsThisFrame = 0;
         auto evicted = constrainedMeshCache_->evictUntilAvailable(0, protectedRegions_);
         for (size_t idx : evicted) {
+            if (evictionsThisFrame >= MAX_EVICTIONS_PER_FRAME) break;
             auto it = regionMeshNodes_.find(idx);
             if (it != regionMeshNodes_.end() && it->second) {
                 deleteMeshHardwareBuffers(it->second);
@@ -4542,13 +5509,8 @@ void IrrlichtRenderer::processFrameLazyLoad() {
                 it->second->remove();
                 it->second = nullptr;
             }
+            evictionsThisFrame++;
         }
-    }
-
-    if (rebuildsThisFrame > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "MeshCache: built {} regions this frame, usage {}/{} bytes",
-            rebuildsThisFrame, constrainedMeshCache_->getCurrentUsage(),
-            constrainedMeshCache_->getMemoryLimit());
     }
 }
 
@@ -5504,11 +6466,11 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
 bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                        float x, float y, float z, float heading, bool isPlayer,
                                        uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                       bool isCorpse, float serverSize) {
+                                       bool isCorpse, float serverSize, uint8_t entityLevel) {
     if (!entityRenderer_) {
         return false;
     }
-    bool result = entityRenderer_->registerEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize);
+    bool result = entityRenderer_->registerEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize, entityLevel);
 
     if (result) {
         loadedEntityCount_++;
@@ -6263,12 +7225,6 @@ void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
     upZ = up.Z;
 }
 
-float IrrlichtRenderer::frameBudgetRemaining() const {
-    float elapsedUs = static_cast<float>(std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - frameStart_).count());
-    return frameBudgetMs_ - (elapsedUs / 1000.0f);
-}
-
 int64_t IrrlichtRenderer::measureSection() {
     auto now = std::chrono::steady_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - sectionStart_).count();
@@ -6280,6 +7236,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     auto frameStart = std::chrono::steady_clock::now();
     frameStart_ = frameStart;
     sectionStart_ = frameStart;
+
+    if (governor_) governor_->beginFrame();
 
     LOG_TRACE(MOD_GRAPHICS, "processFrame: entered");
 
@@ -6336,6 +7294,16 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimings_.meshLoading = measureSection();
     }
 
+    // Load pending icon sheets even when progressive loading is inactive
+    // (spell gem icons are queued on first render and need loading regardless)
+    // GREEN-gated: TGA disk I/O can take 40-80ms, must not run on RED/YELLOW frames
+    if (!progressiveLoadingActive_ && windowManager_ &&
+        (!governor_ || governor_->getState() == BudgetState::Green)) {
+        if (windowManager_->loadOnePendingIconSheet()) {
+            frameTimings_.meshLoading = measureSection();
+        }
+    }
+
     // Phase 3: Simulation
     processFrameSimulation(deltaTime);
 
@@ -6368,9 +7336,69 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                            frameTimings_.windowManagerUpdate;
         essentialSimCostAvgUs_ = essentialSimCostAvgUs_ * 0.9f + static_cast<float>(essSimUs) * 0.1f;
 
-        // Log frame budget violations with breakdown for diagnosis
+        // Record frame in governor and log budget violations
+        if (governor_) governor_->endFrame();
+
         float totalFrameMs = frameTimings_.totalFrame / 1000.0f;
-        if (config_.constrainedConfig.enabled && totalFrameMs > frameBudgetMs_ * 1.2f) {
+        float budgetMs = governor_ ? governor_->getTargetFrameTimeMs() : 33.3f;
+
+        // RED STATE: Full diagnostic dump — every section, every frame, so we can
+        // trace exactly which subsystem is the budget hog and eliminate it.
+        if (config_.constrainedConfig.enabled && governor_ &&
+            governor_->getState() == BudgetState::Red) {
+            struct SectionCost { const char* name; int64_t us; };
+            SectionCost sections[] = {
+                {"inputHandling",    frameTimings_.inputHandling},
+                {"playerMovement",   frameTimings_.playerMovement},
+                {"nameTagLOS",       frameTimings_.nameTagLOS},
+                {"cameraUpdate",     frameTimings_.cameraUpdate},
+                {"pvsVisibility",    frameTimings_.pvsVisibility},
+                {"occlusionCulling", frameTimings_.occlusionCulling},
+                {"zoneLightVis",     frameTimings_.zoneLightVisibility},
+                {"objectVisibility", frameTimings_.objectVisibility},
+                {"meshLoading",      frameTimings_.meshLoading},
+                {"objectLights",     frameTimings_.objectLights},
+                {"entityUpdate",     frameTimings_.entityUpdate},
+                {"doorUpdate",       frameTimings_.doorUpdate},
+                {"spellVfxUpdate",   frameTimings_.spellVfxUpdate},
+                {"animatedTextures", frameTimings_.animatedTextures},
+                {"vertexAnimations", frameTimings_.vertexAnimations},
+                {"fireFlicker",      frameTimings_.fireFlicker},
+                {"tier2Update",      frameTimings_.tier2Update},
+                {"tier3Update",      frameTimings_.tier3Update},
+                {"hudUpdate",        frameTimings_.hudUpdate},
+                {"wmUpdate",         frameTimings_.windowManagerUpdate},
+                {"sceneDrawAll",     frameTimings_.sceneDrawAll},
+                {"sceneAnimate",     frameTimings_.sceneAnimate},
+                {"sceneSolid",       frameTimings_.sceneSolid},
+                {"sceneTransparent", frameTimings_.sceneTransparent},
+                {"manualZoneDraw",   frameTimings_.manualZoneDraw},
+                {"targetBox",        frameTimings_.targetBox},
+                {"particles",        frameTimings_.particles},
+                {"weatherRender",    frameTimings_.weatherRender},
+                {"guiDrawAll",       frameTimings_.guiDrawAll},
+                {"windowManager",    frameTimings_.windowManager},
+                {"endScene",         frameTimings_.endScene},
+                {"postRender",       frameTimings_.postRender},
+            };
+            std::sort(std::begin(sections), std::end(sections),
+                      [](const auto& a, const auto& b) { return a.us > b.us; });
+
+            // Log header with totals
+            LOG_WARN(MOD_GRAPHICS, "RED STATE: {:.1f}ms / {:.1f}ms budget ({:.0f}% over) — avg {:.1f}ms — ALL LOADING HALTED",
+                     totalFrameMs, budgetMs,
+                     (totalFrameMs / budgetMs - 1.0f) * 100.0f,
+                     governor_->getAverageFrameTimeMs());
+            // Log every section that consumed >0.1ms, sorted by cost
+            for (const auto& s : sections) {
+                if (s.us < 100) continue;  // Skip <0.1ms noise
+                LOG_WARN(MOD_GRAPHICS, "  RED: {:>20s} = {:>7.1f}ms ({:>5.1f}%)",
+                         s.name, s.us / 1000.0f,
+                         totalFrameMs > 0 ? (s.us / 1000.0f / totalFrameMs * 100.0f) : 0.0f);
+            }
+        }
+        // Yellow/Green budget violation: condensed top-3 warning
+        else if (config_.constrainedConfig.enabled && totalFrameMs > budgetMs * 1.2f) {
             struct SectionCost { const char* name; int64_t us; };
             SectionCost sections[] = {
                 {"playerMovement", frameTimings_.playerMovement},
@@ -6388,8 +7416,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             std::sort(std::begin(sections), std::end(sections),
                       [](const auto& a, const auto& b) { return a.us > b.us; });
 
-            LOG_WARN(MOD_GRAPHICS, "BUDGET: {:.1f}ms (budget {:.1f}ms) top: {}={:.1f}ms {}={:.1f}ms {}={:.1f}ms",
-                     totalFrameMs, frameBudgetMs_,
+            LOG_WARN(MOD_GRAPHICS, "BUDGET: {:.1f}ms (budget {:.1f}ms, gov={}) top: {}={:.1f}ms {}={:.1f}ms {}={:.1f}ms",
+                     totalFrameMs, budgetMs,
+                     governor_ ? governor_->getStateName() : "N/A",
                      sections[0].name, sections[0].us / 1000.0f,
                      sections[1].name, sections[1].us / 1000.0f,
                      sections[2].name, sections[2].us / 1000.0f);
@@ -6933,15 +7962,74 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     }
     frameTimings_.windowManagerUpdate = measureSection();
 
-    // Entity update
+    // Entity update — visibility FIRST, then interpolation (so inSceneGraph is current)
     if (entityRenderer_) {
-        entityRenderer_->updateInterpolation(deltaTime);
-        entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
-        entityRenderer_->processExpiredCombatBuffers();
         // Pass occlusion-culled regions to entity renderer for entity visibility
         entityRenderer_->setOcclusionCulledRegions(
             occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
+
+        // Pass camera BSP region to entity renderer (eliminates duplicate BSP lookup)
+        if (zoneBspTree_ && currentPvsRegion_ != SIZE_MAX
+            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
+            entityRenderer_->setCameraRegion(currentPvsRegion_, zoneBspTree_->regions[currentPvsRegion_]);
+        } else {
+            entityRenderer_->setCameraRegion(SIZE_MAX, nullptr);
+        }
+
+        // Portal-based entity culling: walk portal graph from camera room.
+        // Cached — only recompute when region changes, position moves >5 units, or camera rotates.
+        if (portalSystem_ && portalSystem_->hasPortals() && currentPvsRegion_ != SIZE_MAX) {
+            bool needsPortalUpdate = portalCacheDirty_;
+
+            // Region changed
+            if (currentPvsRegion_ != lastPortalRegion_) needsPortalUpdate = true;
+
+            // Position moved >5 units
+            float pdx = playerX_ - lastPortalCamX_;
+            float pdy = playerY_ - lastPortalCamY_;
+            float pdz = playerZ_ - lastPortalCamZ_;
+            if (pdx*pdx + pdy*pdy + pdz*pdz > 25.0f) needsPortalUpdate = true;
+
+            // Camera orientation changed (~3.6 degrees)
+            if (camera_) {
+                auto fwd = camera_->getTarget() - camera_->getPosition();
+                float len = fwd.getLength();
+                if (len > 0.001f) {
+                    fwd /= len;
+                    float dot = fwd.X * lastPortalFwdX_ + fwd.Y * lastPortalFwdY_ + fwd.Z * lastPortalFwdZ_;
+                    if (dot < 0.998f) needsPortalUpdate = true;
+                }
+            }
+
+            if (needsPortalUpdate) {
+                computePortalVisibleRegions();
+                lastPortalRegion_ = currentPvsRegion_;
+                lastPortalCamX_ = playerX_;
+                lastPortalCamY_ = playerY_;
+                lastPortalCamZ_ = playerZ_;
+                if (camera_) {
+                    auto fwd = camera_->getTarget() - camera_->getPosition();
+                    float len = fwd.getLength();
+                    if (len > 0.001f) {
+                        fwd /= len;
+                        lastPortalFwdX_ = fwd.X;
+                        lastPortalFwdY_ = fwd.Y;
+                        lastPortalFwdZ_ = fwd.Z;
+                    }
+                }
+                portalCacheDirty_ = false;
+            }
+
+            entityRenderer_->setPortalVisibleRegions(
+                portalVisibleRegions_.empty() ? nullptr : &portalVisibleRegions_);
+        } else {
+            entityRenderer_->setPortalVisibleRegions(nullptr);
+        }
         if (camera_) entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
+        // Now interpolate only visible entities
+        entityRenderer_->updateInterpolation(deltaTime);
+        entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
+        entityRenderer_->processExpiredCombatBuffers();
     }
     frameTimings_.entityUpdate = measureSection();
 
@@ -6967,34 +8055,60 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     updateLightAnimations(deltaTime * 1000.0f);
     frameTimings_.vertexAnimations = measureSection();
 
-    // Deferred environment init — runs once after game becomes playable
-    if (environmentInitPending_ && zoneReady_) {
-        environmentInitPending_ = false;
-        initDeferredEnvironmentSystems();
+    // Background BSP preload — install results when ready
+    if (bspPreloadThread_ && bspPreloadComplete_) {
+        advanceBspPreload();
+    }
+    // Reset timing section so BSP preload/zone load time isn't attributed to tier2Update
+    sectionStart_ = std::chrono::steady_clock::now();
 
-        // Release raw texture data from equipment and race model loaders.
-        // New entities spawning later will still find their textures in the
-        // Irrlicht driver cache (looked up by name), so raw data is no longer needed.
-        // Skip if progressive loading is active — entity meshes still being built
-        // need the raw texture data from cached model entries.
-        if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_
-            && !progressiveLoadingActive_) {
-            size_t totalFreed = 0;
-            if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
-                totalFreed += eml->releaseRawTextureData();
-            }
-            if (auto* rml = entityRenderer_->getRaceModelLoader()) {
-                totalFreed += rml->releaseRawTextureData();
-            }
-            if (totalFreed > 0) {
-                LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of equipment/character texture data (post-upload)",
-                         totalFreed / (1024.0f * 1024.0f));
+    // Background zone load state machine — one step per GREEN frame
+    // This supersedes the old environmentInitPending_ path when active
+    if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle &&
+        backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Complete) {
+        // Loading phase polls without GREEN gate (just checking atomic bool)
+        // All other phases require GREEN budget
+        if (backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Loading ||
+            !governor_ || governor_->getState() == BudgetState::Green) {
+            advanceBackgroundZoneLoad();
+        }
+    }
+
+    // Deferred environment init — activate state machine once after game becomes playable
+    // (Only used when NOT going through the background zone load pipeline)
+    if (environmentInitPending_ && zoneReady_ &&
+        backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Idle) {
+        environmentInitPending_ = false;
+        deferredInitActive_ = true;
+        deferredInitStep_ = DeferredInitStep::TreeConfig;
+        LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (multi-frame)");
+    }
+
+    // Step through deferred init one step per GREEN frame
+    // (Only runs standalone when not driven by advanceBackgroundZoneLoad)
+    if (deferredInitActive_ && backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::EnvironmentInit) {
+        if (!governor_ || governor_->getState() == BudgetState::Green) {
+            advanceDeferredInit();
+        }
+    }
+
+    // Rebuild HCMap placeholder as player moves (GREEN-gated)
+    // Only active during placeholder phase — before real geometry replaces it
+    if (zonePlaceholderNode_ && collisionMap_ && collisionMap_->IsLoaded()) {
+        if (!governor_ || governor_->getState() == BudgetState::Green) {
+            irr::core::vector3df currentPos(playerX_, playerZ_, playerY_);  // EQ→Irrlicht
+            float movedSq = currentPos.getDistanceFromSQ(lastPlaceholderBuildPos_);
+            const float rebuildThresholdSq = 100.0f * 100.0f;  // 100 units
+            if (movedSq > rebuildThresholdSq) {
+                buildZonePlaceholder(playerX_, playerZ_, playerY_);
+                setupHCMapCollision();
             }
         }
     }
 
     // Tier 2: Detail + Tree
-    if (runTier2_) {
+    // Skip while deferred init is still running — subsystems aren't ready yet
+    if (runTier2_ && !deferredInitActive_) {
         if (detailManager_ && detailManager_->isEnabled()) {
             irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
             static float lastPlayerX = playerX_, lastPlayerY = playerY_;
@@ -7989,6 +9103,11 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
     LOG_INFO(MOD_GRAPHICS, "  WM Update (sim):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManagerUpdate), pct(frameTimingsAccum_.windowManagerUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
+    if (portalSystem_ && portalSystem_->hasPortals()) {
+        LOG_INFO(MOD_GRAPHICS, "    Portal Entity Cull: {} visible regions, {} entities culled",
+                 portalVisibleRegions_.size(),
+                 entityRenderer_ ? entityRenderer_->getPortalCulledCount() : 0);
+    }
     LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.animatedTextures), pct(frameTimingsAccum_.animatedTextures));
@@ -8049,6 +9168,14 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
     LOG_INFO(MOD_GRAPHICS, "  Render EMA:         {:>8.0f} us | EssSim EMA: {:>6.0f} us",
              renderCostAvgUs_, essentialSimCostAvgUs_);
+    if (governor_) {
+        LOG_INFO(MOD_GRAPHICS, "  Governor: {} | avg {:.1f}ms | target {:.1f}ms | ratio {:.2f}{}",
+                 governor_->getStateName(),
+                 governor_->getAverageFrameTimeMs(),
+                 governor_->getTargetFrameTimeMs(),
+                 governor_->getBudgetRatio(),
+                 governor_->isForced() ? " (FORCED)" : "");
+    }
 }
 
 void IrrlichtRenderer::runSceneProfile() {
@@ -9503,6 +10630,16 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     progressiveLoadingActive_ = true;
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
 
+    // Create and start background entity prep worker for deferred model loading.
+    // The worker pre-loads S3D/WLD/animation data off the main thread so that
+    // buildEntityMesh() only needs to do the fast GL upload (~20-40ms).
+    if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
+        entityPrepWorker_ = std::make_unique<EntityPrepWorker>(entityRenderer_->getRaceModelLoader());
+        entityPrepWorker_->start();
+        entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
+        LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started for progressive entity loading");
+    }
+
     environmentInitPending_ = true;
 
     LOG_INFO(MOD_GRAPHICS, "Minimal collision setup complete, progressive loading activated");
@@ -9568,243 +10705,347 @@ void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
     }
 }
 
-void IrrlichtRenderer::initDeferredEnvironmentSystems() {
-    // Detail system (grass, plants, debris)
-    if (detailManager_ && terrainOnlySelector_) {
-        std::shared_ptr<WldLoader> wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
-        std::shared_ptr<ZoneGeometry> zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
-        detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_, zoneMeshNode_, wldLoader, zoneGeom);
+void IrrlichtRenderer::advanceDeferredInit() {
+    auto stepStart = std::chrono::steady_clock::now();
+    const char* stepName = "";
 
-        if (!regionMeshNodes_.empty()) {
-            for (auto& [regionIdx, node] : regionMeshNodes_) {
-                if (node && node->getMesh()) {
-                    detailManager_->addMeshNodeForTextureLookup(node);
+    switch (deferredInitStep_) {
+        case DeferredInitStep::TreeConfig:
+            stepName = "tree_config";
+            if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
+                treeManager_->loadConfig("", currentZoneName_);
+            }
+            deferredInitStep_ = DeferredInitStep::TreeInit;
+            break;
+
+        case DeferredInitStep::TreeInit:
+            stepName = "tree_init";
+            if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
+                treeManager_->initialize(currentZone_->objects, currentZone_->objectTextures);
+                LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
+            }
+            deferredInitStep_ = DeferredInitStep::DetailZoneEnter;
+            break;
+
+        case DeferredInitStep::DetailZoneEnter:
+            stepName = "detail_zone_enter";
+            if (detailManager_ && terrainOnlySelector_) {
+                auto wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
+                auto zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
+                detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_,
+                                            zoneMeshNode_, wldLoader, zoneGeom);
+            }
+            deferredInitStep_ = DeferredInitStep::DetailAddMeshNodes;
+            break;
+
+        case DeferredInitStep::DetailAddMeshNodes:
+            stepName = "detail_mesh_nodes";
+            if (detailManager_ && !regionMeshNodes_.empty()) {
+                for (auto& [regionIdx, node] : regionMeshNodes_) {
+                    if (node && node->getMesh()) {
+                        detailManager_->addMeshNodeForTextureLookup(node);
+                    }
                 }
             }
-        }
-    }
+            deferredInitStep_ = DeferredInitStep::ParticleZoneEnter;
+            break;
 
-    // Particles (fire embers, atmospheric effects)
-    if (particleManager_) {
-        Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-        particleManager_->onZoneEnter(currentZoneName_, biome);
-
-        // Fire sources — collect from both object lights and zone lights
-        std::vector<glm::vec3> fireSources;
-        std::vector<float> fireRadii;
-        // Object lights (S3D mesh-based lights with name matching)
-        for (const auto& objLight : objectLights_) {
-            if (objLight.isFireSource) {
-                // Irrlicht position (x,y,z) → EQ coords (Z-up): (x, z, y)
-                fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
-                fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
+        case DeferredInitStep::ParticleZoneEnter:
+            stepName = "particle_zone_enter";
+            if (particleManager_) {
+                auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+                particleManager_->onZoneEnter(currentZoneName_, biome);
             }
-        }
-        // Zone lights (WLD Fragment 0x1B/0x28 lights — torches, sconces, etc.)
-        if (currentZone_) {
-            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-                const auto& zl = currentZone_->lights[i];
-                // Name-based detection
-                std::string upperName = zl->name;
-                std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-                bool nameMatch = upperName.find("TORCH") != std::string::npos ||
-                                 upperName.find("FIRE") != std::string::npos ||
-                                 upperName.find("BRAZIER") != std::string::npos ||
-                                 upperName.find("FLAME") != std::string::npos ||
-                                 upperName.find("CANDLE") != std::string::npos;
-                // Color heuristic: warm lights (high R, medium G, low B) are fire
-                bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
-                if (nameMatch || colorMatch) {
-                    // EQ coords (Z-up) — zone lights store in EQ space
-                    fireSources.emplace_back(zl->x, zl->y, zl->z);
-                    fireRadii.push_back(zl->radius);
+            deferredInitStep_ = DeferredInitStep::ParticleFireSetup;
+            break;
+
+        case DeferredInitStep::ParticleFireSetup: {
+            stepName = "particle_fire_setup";
+            if (particleManager_) {
+                // Collect fire sources from object lights and zone lights
+                std::vector<glm::vec3> fireSources;
+                std::vector<float> fireRadii;
+                for (const auto& objLight : objectLights_) {
+                    if (objLight.isFireSource) {
+                        fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+                        fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
+                    }
+                }
+                if (currentZone_) {
+                    for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
+                        const auto& zl = currentZone_->lights[i];
+                        std::string upperName = zl->name;
+                        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                        bool nameMatch = upperName.find("TORCH") != std::string::npos ||
+                                         upperName.find("FIRE") != std::string::npos ||
+                                         upperName.find("BRAZIER") != std::string::npos ||
+                                         upperName.find("FLAME") != std::string::npos ||
+                                         upperName.find("CANDLE") != std::string::npos;
+                        bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
+                        if (nameMatch || colorMatch) {
+                            fireSources.emplace_back(zl->x, zl->y, zl->z);
+                            fireRadii.push_back(zl->radius);
+                        }
+                    }
+                }
+                LOG_INFO(MOD_GRAPHICS, "Fire sources: {} from objectLights, {} total (zone has {} zone lights)",
+                         std::count_if(objectLights_.begin(), objectLights_.end(),
+                                       [](const ObjectLight& ol) { return ol.isFireSource; }),
+                         fireSources.size(),
+                         currentZone_ ? currentZone_->lights.size() : 0);
+                if (!fireSources.empty()) {
+                    particleManager_->setFireSources(fireSources);
+                }
+                if (detailManager_ && detailManager_->hasSurfaceMap()) {
+                    particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
                 }
             }
-        }
-        LOG_INFO(MOD_GRAPHICS, "Fire sources: {} from objectLights, {} total (zone has {} zone lights)",
-                 std::count_if(objectLights_.begin(), objectLights_.end(),
-                               [](const ObjectLight& ol) { return ol.isFireSource; }),
-                 fireSources.size(),
-                 currentZone_ ? currentZone_->lights.size() : 0);
-        if (!fireSources.empty()) {
-            particleManager_->setFireSources(fireSources);
-
-            // Create unified fire emitters (GLES2 point sprites)
-            particleManager_->initUnifiedRenderer();
-            particleManager_->createFireEmitters(fireSources, fireRadii);
+            deferredInitStep_ = DeferredInitStep::ParticleUnifiedInit;
+            break;
         }
 
-        // Surface map from detail system
-        if (detailManager_ && detailManager_->hasSurfaceMap()) {
-            particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+        case DeferredInitStep::ParticleUnifiedInit: {
+            stepName = "particle_unified_init";
+            if (particleManager_) {
+                // initUnifiedRenderer must be called before createFireEmitters
+                particleManager_->initUnifiedRenderer();
+                // Re-collect fire sources for createFireEmitters (cheap — just iterating vectors)
+                std::vector<glm::vec3> fireSources;
+                std::vector<float> fireRadii;
+                for (const auto& objLight : objectLights_) {
+                    if (objLight.isFireSource) {
+                        fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+                        fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
+                    }
+                }
+                if (currentZone_) {
+                    for (const auto& zl : currentZone_->lights) {
+                        std::string upperName = zl->name;
+                        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                        bool nameMatch = upperName.find("TORCH") != std::string::npos ||
+                                         upperName.find("FIRE") != std::string::npos ||
+                                         upperName.find("BRAZIER") != std::string::npos ||
+                                         upperName.find("FLAME") != std::string::npos ||
+                                         upperName.find("CANDLE") != std::string::npos;
+                        bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
+                        if (nameMatch || colorMatch) {
+                            fireSources.emplace_back(zl->x, zl->y, zl->z);
+                            fireRadii.push_back(zl->radius);
+                        }
+                    }
+                }
+                if (!fireSources.empty()) {
+                    particleManager_->createFireEmitters(fireSources, fireRadii);
+                }
+            }
+            deferredInitStep_ = DeferredInitStep::BoidsInit;
+            break;
         }
+
+        case DeferredInitStep::BoidsInit:
+            stepName = "boids_init";
+            if (boidsManager_) {
+                auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+                boidsManager_->setCollisionSelector(zoneTriangleSelector_);
+                if (detailManager_ && detailManager_->hasSurfaceMap())
+                    boidsManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+                boidsManager_->onZoneEnter(currentZoneName_, biome);
+            }
+            deferredInitStep_ = DeferredInitStep::TumbleweedInit;
+            break;
+
+        case DeferredInitStep::TumbleweedInit:
+            stepName = "tumbleweed_init";
+            if (tumbleweedManager_) {
+                auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+                tumbleweedManager_->setCollisionSelector(zoneTriangleSelector_);
+                if (detailManager_ && detailManager_->hasSurfaceMap())
+                    tumbleweedManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+                tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
+            }
+            deferredInitStep_ = DeferredInitStep::WeatherSurface;
+            break;
+
+        case DeferredInitStep::WeatherSurface:
+            stepName = "weather_settings";
+            if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap())
+                weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
+            applyEnvironmentalDisplaySettings();
+            deferredInitStep_ = DeferredInitStep::ReleaseGeometry;
+            break;
+
+        case DeferredInitStep::ReleaseGeometry:
+            stepName = "release_geometry";
+            // Release combined zone geometry vectors (only when detail system is disabled)
+            if (currentZone_ && currentZone_->geometry && !detailManager_) {
+                size_t before = currentZone_->geometry->getMemoryUsage();
+                currentZone_->geometry->vertices.clear();
+                currentZone_->geometry->vertices.shrink_to_fit();
+                currentZone_->geometry->triangles.clear();
+                currentZone_->geometry->triangles.shrink_to_fit();
+                size_t after = currentZone_->geometry->getMemoryUsage();
+                LOG_INFO(MOD_GRAPHICS, "Released combined zone geometry vectors: {:.1f} MB freed",
+                         (before - after) / (1024.0f * 1024.0f));
+            }
+            // Release raw texture data from model loaders (only if progressive loading is done)
+            if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_
+                && !progressiveLoadingActive_) {
+                size_t totalFreed = 0;
+                if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+                    totalFreed += eml->releaseRawTextureData();
+                }
+                if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+                    totalFreed += rml->releaseRawTextureData();
+                }
+                if (totalFreed > 0) {
+                    LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of equipment/character texture data (post-upload)",
+                             totalFreed / (1024.0f * 1024.0f));
+                }
+            }
+            // Final governor reset — clean state for progressive loading
+            if (governor_) {
+                governor_->requestReset();
+                LOG_DEBUG(MOD_GRAPHICS, "Governor reset requested (deferred init complete)");
+            }
+            deferredInitStep_ = DeferredInitStep::Complete;
+            deferredInitActive_ = false;
+            LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
+            break;
+
+        case DeferredInitStep::Complete:
+            deferredInitActive_ = false;
+            break;
     }
 
-    // Boids (ambient creatures)
-    if (boidsManager_) {
-        Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-        boidsManager_->setCollisionSelector(zoneTriangleSelector_);
-        if (detailManager_ && detailManager_->hasSurfaceMap()) {
-            boidsManager_->setSurfaceMap(detailManager_->getSurfaceMap());
-        }
-        boidsManager_->onZoneEnter(currentZoneName_, biome);
-    }
-
-    // Tumbleweeds
-    if (tumbleweedManager_) {
-        Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-        tumbleweedManager_->setCollisionSelector(zoneTriangleSelector_);
-        if (detailManager_ && detailManager_->hasSurfaceMap()) {
-            tumbleweedManager_->setSurfaceMap(detailManager_->getSurfaceMap());
-        }
-        tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
-    }
-
-    // Weather surface map
-    if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap()) {
-        weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
-    }
-
-    // Apply saved display settings
-    applyEnvironmentalDisplaySettings();
-
-    // Release combined zone geometry vectors now that all deferred systems are initialized.
-    // The combined geometry (all regions merged) is only needed during zone loading for
-    // mesh building, PVS setup, and detail init. Runtime bounds checks use cached
-    // zoneBounds*_ members; per-region rebuilds use wldLoader->getGeometryForRegion().
-    // Only release when detail system won't need it (disabled on constrained devices).
-    if (currentZone_ && currentZone_->geometry && !detailManager_) {
-        size_t before = currentZone_->geometry->getMemoryUsage();
-        currentZone_->geometry->vertices.clear();
-        currentZone_->geometry->vertices.shrink_to_fit();
-        currentZone_->geometry->triangles.clear();
-        currentZone_->geometry->triangles.shrink_to_fit();
-        size_t after = currentZone_->geometry->getMemoryUsage();
-        LOG_INFO(MOD_GRAPHICS, "Released combined zone geometry vectors: {:.1f} MB freed",
-                 (before - after) / (1024.0f * 1024.0f));
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "Deferred environment systems initialized for zone '{}'", currentZoneName_);
+    logAssetBuildTime(stepName, 0, stepStart);
 }
 
 void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!progressiveLoadingActive_) return;
 
-    // Helper: measure remaining budget from actual frame start
-    // During progressive loading, use a flat 2ms safety margin instead of EMA reserve.
-    // The EMA reserve is designed for steady-state optional work, but progressive loading
-    // is essential — without it, zone geometry never appears.
-    auto budgetLeft = [this]() -> float {
-        float elapsedMs = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - frameStart_).count() / 1000.0f;
-        return frameBudgetMs_ - elapsedMs - 2.0f;
-    };
+    // Promote background-preloaded model data to main cache.
+    // This moves RaceModelData from the staging map to loadedModels_ so that
+    // getMeshForRace() can find it. Must happen before any buildEntityMesh() calls.
+    if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
+        entityRenderer_->getRaceModelLoader()->promotePreparedModels();
+    }
 
-    int assetsBuilt = 0;
+    // --- Critical tasks: always proceed regardless of governor state ---
 
-    // P1: Player's BSP region (safety — should already be built by setupMinimalZoneCollision)
+    // P1: Player's BSP region (must have ground to stand on)
     if (constrainedMeshCache_ && currentPvsRegion_ != SIZE_MAX &&
         !constrainedMeshCache_->isLoaded(currentPvsRegion_)) {
         rebuildRegionMesh(currentPvsRegion_);
         addRegionToCollision(currentPvsRegion_);
-        assetsBuilt++;
+        LOG_DEBUG(MOD_GRAPHICS, "Progressive: built player region {} (Critical)",
+            currentPvsRegion_);
     }
 
-    // P2: PVS neighbor regions (from existing meshLoadQueue_)
-    if (budgetLeft() > 3.0f && constrainedMeshCache_) {
-        for (const auto& entry : meshLoadQueue_) {
-            if (budgetLeft() < 3.0f) break;
-            if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
-            if (rebuildRegionMesh(entry.regionIdx)) {
-                addRegionToCollision(entry.regionIdx);
-                assetsBuilt++;
-            }
-        }
-    }
-
-    // P3: Doors in current PVS set
-    if (budgetLeft() > 2.0f && doorManager_) {
-        std::vector<uint8_t> pvsDoors;
-        doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
-        for (auto doorId : pvsDoors) {
-            if (budgetLeft() < 2.0f) break;
-            if (doorManager_->isDoorMeshBuilt(doorId)) continue;
-            doorManager_->buildDoorMesh(doorId);
-            addDoorToCollision(doorId);
-            assetsBuilt++;
-        }
-    }
-
-    // P4: Player entity model (always build, even over budget — player must be visible)
+    // P4: Player entity model (must be visible)
     if (entityRenderer_ && playerSpawnId_ != 0 &&
         !entityRenderer_->isEntityMeshBuilt(playerSpawnId_)) {
         entityRenderer_->buildEntityMesh(playerSpawnId_);
-        assetsBuilt++;
+        LOG_DEBUG(MOD_GRAPHICS, "Progressive: built player entity (Critical)");
     }
 
-    // P5: Nearby entity models (sorted by distance, max 1 per frame)
-    // Entity builds are unpredictably expensive (100-500ms for new race models)
-    // so we strictly limit to 1 per frame to keep frames responsive.
-    if (budgetLeft() > 2.0f && entityRenderer_) {
-        std::vector<uint16_t> unbuilt;
-        entityRenderer_->getUnbuiltEntities(unbuilt);
+    // --- GREEN gate: exactly ONE non-critical step per frame when GREEN ---
+    if (governor_ && governor_->getState() != BudgetState::Green) {
+        // Queue background prep even when not GREEN (free work)
+        queueEntityPrepRequests();
+        checkProgressiveLoadingComplete();
+        return;
+    }
 
-        if (!unbuilt.empty()) {
-            // Sort by distance to player
-            const auto& entities = entityRenderer_->getEntities();
-            std::sort(unbuilt.begin(), unbuilt.end(),
-                [this, &entities](uint16_t a, uint16_t b) {
-                    auto itA = entities.find(a);
-                    auto itB = entities.find(b);
-                    if (itA == entities.end()) return false;
-                    if (itB == entities.end()) return true;
-                    float dxA = itA->second.lastX - playerX_;
-                    float dyA = itA->second.lastY - playerY_;
-                    float dxB = itB->second.lastX - playerX_;
-                    float dyB = itB->second.lastY - playerY_;
-                    return (dxA*dxA + dyA*dyA) < (dxB*dxB + dyB*dyB);
-                });
+    bool didWork = false;
+    auto stepStart = std::chrono::steady_clock::now();
 
-            // Build entities one at a time, stopping when budget is exceeded
-            for (auto spawnId : unbuilt) {
-                if (budgetLeft() < 2.0f) break;
-                entityRenderer_->buildEntityMesh(spawnId);
-                assetsBuilt++;
-                // After each entity build, re-check budget strictly
-                // A single entity can blow the budget (loading new S3D archives)
-                if (budgetLeft() < 0.0f) break;
-            }
+    // Priority 0.5: Load one pending icon sheet (spell/item TGA from disk, ~40-80ms)
+    if (!didWork && windowManager_) {
+        if (windowManager_->loadOnePendingIconSheet()) {
+            didWork = true;
+            logAssetBuildTime("icon_sheet", 0, stepStart);
         }
     }
 
-    // P6: Visible placeable objects (in PVS regions first)
-    if (budgetLeft() > 2.0f) {
+    // Priority 1: Process one entity build step (most visible missing asset)
+    if (!didWork && entityRenderer_) {
+        // Poll completed prep results
+        if (entityPrepWorker_) {
+            EntityPrepWorker::PrepResult result;
+            while (entityPrepWorker_->pollResult(result)) {
+                // Drain — actual builds happen below
+            }
+        }
+
+        if (entityRenderer_->processOneEntityBuildStep()) {
+            didWork = true;
+            logAssetBuildTime("entity_step", 0, stepStart);
+        }
+    }
+
+    // Priority 2: Build one PVS neighbor region
+    if (!didWork && constrainedMeshCache_) {
+        for (const auto& entry : meshLoadQueue_) {
+            if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
+            if (rebuildRegionMesh(entry.regionIdx)) {
+                addRegionToCollision(entry.regionIdx);
+                didWork = true;
+                logAssetBuildTime("region", entry.regionIdx, stepStart);
+            }
+            break;  // One attempt max
+        }
+    }
+
+    // Priority 3: Build one door in current PVS set
+    if (!didWork && doorManager_) {
+        std::vector<uint8_t> pvsDoors;
+        doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
+        for (auto doorId : pvsDoors) {
+            if (doorManager_->isDoorMeshBuilt(doorId)) continue;
+            doorManager_->buildDoorMesh(doorId);
+            addDoorToCollision(doorId);
+            didWork = true;
+            logAssetBuildTime("door", doorId, stepStart);
+            break;  // One door max
+        }
+    }
+
+    // Priority 4: Build one PVS object
+    if (!didWork) {
         for (size_t i = 0; i < deferredObjects_.size(); ++i) {
-            if (budgetLeft() < 2.0f) break;
             if (deferredObjects_[i].meshBuilt) continue;
             if (protectedRegions_.count(deferredObjects_[i].bspRegion) == 0) continue;
             buildDeferredObject(i);
             addObjectToCollision(objectNodes_.size() - 1);
-            assetsBuilt++;
+            didWork = true;
+            logAssetBuildTime("pvs_object", i, stepStart);
+            break;  // One object max
         }
     }
 
-    // P7: Remaining objects (not in PVS) if budget remains
-    if (budgetLeft() > 2.0f) {
+    // Priority 5: Build one non-PVS object
+    if (!didWork) {
         for (size_t i = 0; i < deferredObjects_.size(); ++i) {
-            if (budgetLeft() < 2.0f) break;
             if (deferredObjects_[i].meshBuilt) continue;
             buildDeferredObject(i);
             addObjectToCollision(objectNodes_.size() - 1);
-            assetsBuilt++;
+            didWork = true;
+            logAssetBuildTime("object", i, stepStart);
+            break;  // One object max
         }
     }
 
-    // Evict if over memory budget (same as existing processFrameLazyLoad)
+    // Always queue background prep requests (free work on background thread)
+    queueEntityPrepRequests();
+
+    // Mesh cache eviction (lightweight, cap per frame)
     if (constrainedMeshCache_ &&
         constrainedMeshCache_->getCurrentUsage() > constrainedMeshCache_->getMemoryLimit()) {
+        constexpr int MAX_EVICTIONS_PER_FRAME = 10;
+        int evictionsThisFrame = 0;
         auto evicted = constrainedMeshCache_->evictUntilAvailable(0, protectedRegions_);
         for (size_t idx : evicted) {
+            if (evictionsThisFrame >= MAX_EVICTIONS_PER_FRAME) break;
             auto it = regionMeshNodes_.find(idx);
             if (it != regionMeshNodes_.end() && it->second) {
                 deleteMeshHardwareBuffers(it->second);
@@ -9813,15 +11054,46 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
                 it->second->remove();
                 it->second = nullptr;
             }
+            evictionsThisFrame++;
         }
     }
 
-    if (assetsBuilt > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "Progressive load: built {} assets this frame ({:.1f}ms remaining)",
-            assetsBuilt, budgetLeft());
+    if (didWork) {
+        LOG_DEBUG(MOD_GRAPHICS, "Progressive: 1 step this frame ({:.1f}ms remaining, gov=GREEN)",
+            governor_ ? governor_->getRemainingBudgetMs() : 0.0f);
     }
 
     checkProgressiveLoadingComplete();
+}
+
+void IrrlichtRenderer::queueEntityPrepRequests() {
+    if (!entityPrepWorker_ || !entityRenderer_) return;
+
+    std::vector<uint16_t> unbuilt;
+    entityRenderer_->getUnbuiltEntities(unbuilt);
+    if (unbuilt.empty()) return;
+
+    const auto& entities = entityRenderer_->getEntities();
+    for (auto spawnId : unbuilt) {
+        if (entityRenderer_->isEntityMeshBuilt(spawnId)) continue;
+        auto it = entities.find(spawnId);
+        if (it == entities.end()) continue;
+        const auto& vis = it->second;
+        if (!entityPrepWorker_->isPending(vis.raceId, vis.gender)) {
+            entityPrepWorker_->requestPrep({spawnId, vis.raceId, vis.gender, vis.appearance});
+        }
+    }
+}
+
+void IrrlichtRenderer::logAssetBuildTime(const char* type, size_t id,
+    std::chrono::steady_clock::time_point start) {
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count() / 1000.0f;
+    if (elapsed > 10.0f) {
+        LOG_WARN(MOD_GRAPHICS, "Progressive: {} #{} took {:.1f}ms (budget warning)", type, id, elapsed);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "Progressive: {} #{} took {:.1f}ms", type, id, elapsed);
+    }
 }
 
 void IrrlichtRenderer::checkProgressiveLoadingComplete() {
@@ -9850,6 +11122,34 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
 
     if (unbuiltEntities == 0 && unbuiltDoors == 0 && unbuiltObjects == 0) {
         progressiveLoadingActive_ = false;
+
+        // Stop background entity prep worker — all entities are built
+        if (entityPrepWorker_) {
+            entityPrepWorker_->stop();
+            entityPrepWorker_.reset();
+            if (entityRenderer_) {
+                entityRenderer_->setEntityPrepWorker(nullptr);
+            }
+            LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker stopped — all entities loaded");
+        }
+
+        // Remove zone placeholder mesh — real geometry is fully loaded
+        destroyZonePlaceholder();
+
+        // Build portal system now that all geometry is loaded. Portal occlusion
+        // is an optimization (~472ms build cost) — deferred from loadZone to avoid
+        // poisoning the governor during progressive loading.
+        if (portalBuildPending_ && zoneBspTree_ && !regionBoundingBoxes_.empty()) {
+            portalSystem_ = std::make_unique<PortalSystem>();
+            portalSystem_->buildFromBsp(*zoneBspTree_, regionBoundingBoxes_);
+            portalOcclusionEligible_ = portalSystem_->hasPortals() &&
+                                       (portalSystem_->getData().portals.size() > 10);
+            if (portalOcclusionEligible_) {
+                LOG_INFO(MOD_GRAPHICS, "Portal occlusion eligible: {} portals (post-load build)",
+                         portalSystem_->getData().portals.size());
+            }
+            portalBuildPending_ = false;
+        }
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - progressiveLoadStartTime_).count();

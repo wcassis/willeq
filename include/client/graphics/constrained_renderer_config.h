@@ -75,6 +75,9 @@ struct ConstrainedRendererConfig {
     bool releaseTextureDataAfterUpload = false;  // Free raw pixel data post-GPU upload
     bool deferredAssetLoading = false;  // Defer mesh building to per-frame budget
 
+    // Frame budget governor target FPS (controls loading throttle)
+    float targetFps = 60.0f;  // Default 60 for Max/TNT, overridden per preset
+
     // Compute memory-related derived limits from totalMemoryBudgetBytes
     void calculateMemoryLimits();
 

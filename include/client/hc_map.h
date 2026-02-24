@@ -50,6 +50,13 @@ public:
 	// Returns triangles in EQ coordinates (Z-up)
 	std::vector<Triangle> GetTrianglesInRadius(const glm::vec3& center, float radius) const;
 
+	// Get all terrain triangles (excludes placeables)
+	// Coordinates are in Irrlicht format (Y-up) - ready for direct rendering
+	std::vector<Triangle> GetAllTerrainTriangles() const;
+
+	// Get the min/max Y values (Irrlicht Y-up) across all vertices
+	void GetVertexBounds(float& minY, float& maxY) const;
+
 	// Get the min/max Z values in the map (for color gradient scaling)
 	void GetZRange(float& minZ, float& maxZ) const;
 

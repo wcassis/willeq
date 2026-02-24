@@ -429,6 +429,21 @@ Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQ
 - D24S8 depth-stencil format configured in EGL (`CIrrDeviceFB.cpp`)
 - Debug: `/stencil` overlays colored rects per stencil level, `/portal` shows portal wireframes
 
+### GLES2 Performance Baseline (Orange Pi One, Mali 400)
+
+Measured in qeynos2 (outdoor zone, Feb 2026) with full rendering pipeline active:
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **FPS** | 40–54 (avg ~46) | Well above 30 FPS target budget |
+| **Polys/frame** | 8,700–9,800 | Against 80K budget cap |
+| **Visible entities** | 36–40 | Capped at max 40, out of 148 total |
+| **sceneDrawAll** | 5.6–8.6ms (settles ~6ms) | First frame 16ms (cold caches) |
+| **Frame budget used** | ~6ms of 33.3ms | ~27ms headroom for CPU work |
+| **Clip distance** | 300 units | |
+
+The all-per-vertex lighting pipeline (8 lights in VS) and static VBO approach keep the GPU well under saturation. Performance drops are caused by CPU bottlenecks (stalls, init, visibility spikes), never the GPU. When diagnosing FPS issues, always look for code bugs first.
+
 ### Constrained Memory Management
 
 On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses budgeted caches and aggressive data lifecycle management to stay within ~128 MB RAM.

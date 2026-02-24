@@ -164,7 +164,8 @@ private:
     float calculateOpenHeading(float closedHeading, uint32_t incline, uint8_t opentype) const;
 
     // Create a placeholder mesh for doors without models
-    irr::scene::IMesh* createPlaceholderMesh() const;
+    // Shape and color are derived from the door name (DOOR→slab, CRATE→cube, BARREL→cylinder)
+    irr::scene::IMesh* createPlaceholderMesh(const std::string& doorName = "") const;
 
     std::map<uint8_t, DoorVisual> doors_;
     std::set<uint8_t> invisibleDoors_;  // Track invisible doors to suppress state update warnings

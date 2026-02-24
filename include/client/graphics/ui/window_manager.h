@@ -408,6 +408,10 @@ public:
     bool renderTimingEnabled_ = false;
     void setRenderTimingEnabled(bool enabled) { renderTimingEnabled_ = enabled; }
 
+    // Progressive icon sheet loading — call from renderer's GREEN-gated section.
+    // Loads at most one pending TGA sheet per call. Returns true if work was done.
+    bool loadOnePendingIconSheet();
+
     // State queries
     bool isInventoryOpen() const;
     bool hasOpenWindows() const;

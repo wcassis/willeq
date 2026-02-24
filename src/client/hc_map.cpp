@@ -870,6 +870,61 @@ std::vector<HCMap::Triangle> HCMap::GetTrianglesInRadius(const glm::vec3& center
 	return result;
 }
 
+std::vector<HCMap::Triangle> HCMap::GetAllTerrainTriangles() const {
+	std::vector<Triangle> result;
+
+	if (!m_impl || m_impl->mesh_verts.empty() || m_impl->indices.empty()) {
+		return result;
+	}
+
+	size_t numTriangles = m_impl->indices.size() / 3;
+	result.reserve(numTriangles);
+
+	for (size_t i = 0; i < numTriangles; ++i) {
+		// Skip placeables — only terrain
+		bool isPlaceable = (i < m_impl->triangleIsPlaceable.size()) ? m_impl->triangleIsPlaceable[i] : false;
+		if (isPlaceable) continue;
+
+		uint32_t i1 = m_impl->indices[i * 3];
+		uint32_t i2 = m_impl->indices[i * 3 + 1];
+		uint32_t i3 = m_impl->indices[i * 3 + 2];
+
+		if (i1 >= m_impl->mesh_verts.size() || i2 >= m_impl->mesh_verts.size() || i3 >= m_impl->mesh_verts.size()) {
+			continue;
+		}
+
+		Triangle tri;
+		tri.v1 = m_impl->mesh_verts[i1];
+		tri.v2 = m_impl->mesh_verts[i2];
+		tri.v3 = m_impl->mesh_verts[i3];
+
+		glm::vec3 edge1 = tri.v2 - tri.v1;
+		glm::vec3 edge2 = tri.v3 - tri.v1;
+		tri.normal = glm::normalize(glm::cross(edge1, edge2));
+		tri.isPlaceable = false;
+
+		result.push_back(tri);
+	}
+
+	return result;
+}
+
+void HCMap::GetVertexBounds(float& minY, float& maxY) const {
+	if (!m_impl || m_impl->mesh_verts.empty()) {
+		minY = 0.0f;
+		maxY = 0.0f;
+		return;
+	}
+
+	minY = std::numeric_limits<float>::max();
+	maxY = std::numeric_limits<float>::lowest();
+
+	for (const auto& v : m_impl->mesh_verts) {
+		if (v.y < minY) minY = v.y;
+		if (v.y > maxY) maxY = v.y;
+	}
+}
+
 void HCMap::GetZRange(float& minZ, float& maxZ) const {
 	if (!m_impl) {
 		minZ = 0.0f;

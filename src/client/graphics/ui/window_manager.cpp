@@ -2709,6 +2709,18 @@ void WindowManager::update(uint32_t currentTimeMs) {
             memorizingBar_->update(deltaTime);
         }
     }
+
+}
+
+bool WindowManager::loadOnePendingIconSheet() {
+    if (!iconLoader_.hasPendingSheets()) return false;
+    size_t sheetsBefore = iconLoader_.getSheetCount();
+    bool didWork = iconLoader_.loadOnePendingSheet();
+    // Only mark dirty after phase 2 (decode) when a new sheet becomes available
+    if (didWork && iconLoader_.getSheetCount() > sheetsBefore && spellGemPanel_) {
+        spellGemPanel_->markDirty();
+    }
+    return didWork;
 }
 
 bool WindowManager::isInventoryOpen() const {

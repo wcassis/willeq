@@ -8998,6 +8998,92 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(stencilcmd);
 
+	Command governorcmd;
+	governorcmd.name = "governor";
+	governorcmd.aliases = {"gov", "budget"};
+	governorcmd.usage = "/governor [status|fps <N>|force green|yellow|red|auto]";
+	governorcmd.description = "Frame budget governor: controls loading throttle based on FPS";
+	governorcmd.category = "Utility";
+	governorcmd.handler = [this](const std::string& args) {
+		if (!m_renderer || !m_renderer->getGovernor()) {
+			AddChatSystemMessage("Governor not available");
+			return;
+		}
+		auto* gov = m_renderer->getGovernor();
+
+		if (args.empty() || args == "status") {
+			AddChatSystemMessage(fmt::format("Governor: {} | avg {:.1f}ms | target {:.1f}ms ({:.0f} fps) | ratio {:.2f}{}",
+				gov->getStateName(),
+				gov->getAverageFrameTimeMs(),
+				gov->getTargetFrameTimeMs(),
+				gov->getTargetFps(),
+				gov->getBudgetRatio(),
+				gov->isForced() ? " (FORCED)" : ""));
+			return;
+		}
+
+		// Parse "fps <N>"
+		if (args.substr(0, 4) == "fps ") {
+			try {
+				float fps = std::stof(args.substr(4));
+				if (fps < 10.0f || fps > 120.0f) {
+					AddChatSystemMessage("FPS must be between 10 and 120");
+					return;
+				}
+				gov->setTargetFps(fps);
+				AddChatSystemMessage(fmt::format("Governor target FPS set to {:.0f} ({:.1f}ms budget)",
+					fps, gov->getTargetFrameTimeMs()));
+			} catch (...) {
+				AddChatSystemMessage("Usage: /governor fps <10-120>");
+			}
+			return;
+		}
+
+		// Parse "force green|yellow|red"
+		if (args.substr(0, 6) == "force ") {
+			std::string state = args.substr(6);
+			if (state == "green") {
+				gov->forceState(EQT::Graphics::BudgetState::Green);
+				AddChatSystemMessage("Governor forced to GREEN (all loading allowed)");
+			} else if (state == "yellow") {
+				gov->forceState(EQT::Graphics::BudgetState::Yellow);
+				AddChatSystemMessage("Governor forced to YELLOW (light loading only)");
+			} else if (state == "red") {
+				gov->forceState(EQT::Graphics::BudgetState::Red);
+				AddChatSystemMessage("Governor forced to RED (critical loading only)");
+			} else {
+				AddChatSystemMessage("Usage: /governor force green|yellow|red");
+			}
+			return;
+		}
+
+		if (args == "auto") {
+			gov->clearForcedState();
+			AddChatSystemMessage("Governor set to AUTO (state determined by frame times)");
+			return;
+		}
+
+		AddChatSystemMessage("Usage: /governor [status|fps <N>|force green|yellow|red|auto]");
+	};
+	m_command_registry->registerCommand(governorcmd);
+
+	Command placeholdercmd;
+	placeholdercmd.name = "placeholder";
+	placeholdercmd.aliases = {};
+	placeholdercmd.usage = "/placeholder";
+	placeholdercmd.description = "Toggle zone placeholder mesh visibility (debug)";
+	placeholdercmd.category = "Utility";
+	placeholdercmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		// Build or destroy the placeholder based on current state
+		// If placeholder exists, destroy it. If not, try to build it.
+		if (m_renderer->getGovernor()) {
+			// Use as toggle: just inform user about the state
+			AddChatSystemMessage("Zone placeholder is managed automatically during progressive loading");
+		}
+	};
+	m_command_registry->registerCommand(placeholdercmd);
+
 	Command plightcmd;
 	plightcmd.name = "plight";
 	plightcmd.aliases = {};
@@ -9055,6 +9141,27 @@ void EverQuest::RegisterCommands()
 			pm->isUnifiedFireEnabled() ? "ENABLED" : "DISABLED"));
 	};
 	m_command_registry->registerCommand(firecmd);
+
+	Command loadzonecmd;
+	loadzonecmd.name = "loadzone";
+	loadzonecmd.aliases = {};
+	loadzonecmd.usage = "/loadzone";
+	loadzonecmd.description = "Start loading zone S3D assets (textures, geometry, models)";
+	loadzonecmd.category = "Utility";
+	loadzonecmd.handler = [this](const std::string& args) {
+		if (!m_renderer) {
+			AddChatSystemMessage("No renderer available");
+			return;
+		}
+		if (m_renderer->isProgressiveLoadingActive() ||
+			m_renderer->getBackgroundZoneLoadPhase() != EQT::Graphics::BackgroundZoneLoadPhase::Idle) {
+			AddChatSystemMessage("Zone loading already in progress");
+			return;
+		}
+		AddChatSystemMessage("Starting zone asset load...");
+		m_renderer->beginZoneAssetLoad(m_eq_client_path);
+	};
+	m_command_registry->registerCommand(loadzonecmd);
 
 	Command renderdist;
 	renderdist.name = "renderdist";
@@ -18875,82 +18982,50 @@ void EverQuest::LoadZoneGraphics() {
 		return;
 	}
 
-	// Phase 11: Load zone geometry (S3D file)
-	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Loading zone geometry...");
+	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
 
-	// Build path to zone S3D and load
-	if (!m_current_zone_name.empty()) {
-		// Prevent double loading - check if this zone is already loaded
-		if (m_renderer->getCurrentZoneName() == m_current_zone_name) {
-			LOG_DEBUG(MOD_GRAPHICS, "Zone {} already loaded, skipping S3D load", m_current_zone_name);
-		} else {
-			// Load the zone S3D with progress range 0.50 to 0.60
-			if (!m_renderer->loadZone(m_current_zone_name, 0.50f, 0.60f)) {
-				LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", m_current_zone_name);
-			}
-		}
-
-	}
-
-	// Pump network after zone S3D loading (can take 8+ seconds on ARM)
-	TickNetwork();
-
-	// Phase 12: Load character models (global assets)
-	// NOTE: This also initializes the sky renderer, so must be done before setZoneEnvironment
-	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_MODELS, "Loading character models...");
-	m_renderer->loadGlobalAssets();
-
-	// Apply zone environment settings (sky type, fog) from NewZone packet
-	// Must be done AFTER loadGlobalAssets() which initializes the sky renderer
-	if (!m_current_zone_name.empty()) {
-		m_renderer->setZoneEnvironment(m_zone_sky_type, m_zone_type,
-			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
-			m_zone_fog_minclip, m_zone_fog_maxclip);
-	}
-
-	// Pump network after global assets loading (can take 10+ seconds on ARM)
-	TickNetwork();
-
-	// Phase 13: Create entity scene nodes for all entities in m_entities
-	SetLoadingPhase(LoadingPhase::GRAPHICS_CREATING_ENTITIES, "Creating entities...");
-
-	// Update collision map for Player Mode movement
+	// 1. Collision map (already loaded from .map file, just set reference)
 	if (m_zone_map) {
 		m_renderer->setCollisionMap(m_zone_map.get());
-		LOG_TRACE(MOD_GRAPHICS, "Collision map set for Player Mode");
 	}
 
-	// Expand zone line trigger boxes to fill passages using collision detection
+	// 2. Zone lines (fast, uses collision map)
 	if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map) {
 		m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
 	}
-
-	// Send zone line bounding boxes to renderer for visualization
 	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
 		auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
 		if (!boxes.empty()) {
 			m_renderer->setZoneLineBoundingBoxes(boxes);
-			LOG_DEBUG(MOD_GRAPHICS, "Sent {} zone line boxes to renderer", boxes.size());
 		}
 	}
 
-	// Create entities for all current spawns INCLUDING our own player
-	// Note: unloadZone() clears all entities, so we must recreate the player here
-	bool deferredMode = m_renderer->isDeferredAssetLoading();
-	size_t entityCount = 0;
+	// 3. Build HCMap placeholder + minimal collision for immediate gameplay
+	m_renderer->setupInstantScene(m_current_zone_name, m_x, m_y, m_z);
+
+	// 4. Store zone environment data for deferred application (after sky renderer init)
+	if (!m_current_zone_name.empty()) {
+		m_renderer->storeZoneEnvironment(m_zone_sky_type, m_zone_type,
+			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
+			m_zone_fog_minclip, m_zone_fog_maxclip);
+	}
+
+	// 5. Register all entities as placeholders (metadata only, no mesh building)
+	if (m_renderer->getEntityRenderer()) {
+		m_renderer->getEntityRenderer()->setPlayerLevel(m_level);
+	}
+
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: registering {} entities (entityRenderer={})",
+	         m_entities.size(), m_renderer->getEntityRenderer() != nullptr);
+
+	size_t registered = 0, failed = 0;
 	for (const auto& [spawn_id, entity] : m_entities) {
 		bool isPlayer = (entity.name == m_character);
-
-		// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-
-		// Fallback: Also detect corpse by name
-		if (!isCorpse && entity.name.find("corpse") != std::string::npos) {
+		if (!isCorpse && entity.name.find("corpse") != std::string::npos)
 			isCorpse = true;
-		}
 
-		// Build appearance from entity data
 		EQT::Graphics::EntityAppearance appearance;
 		appearance.face = entity.face;
 		appearance.haircolor = entity.haircolor;
@@ -18964,72 +19039,36 @@ void EverQuest::LoadZoneGraphics() {
 			appearance.equipment_tint[i] = entity.equipment_tint[i];
 		}
 
-		if (deferredMode) {
-			// Register-only path: store metadata, defer mesh building
-			m_renderer->registerEntity(spawn_id, entity.race_id, entity.name,
-			                           entity.x, entity.y, entity.z, entity.heading,
-			                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
-		} else {
-			// Eager path: create entity with mesh immediately
-			m_renderer->createEntity(spawn_id, entity.race_id, entity.name,
-			                         entity.x, entity.y, entity.z, entity.heading,
-			                         isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size);
-		}
+		bool ok = m_renderer->registerEntity(spawn_id, entity.race_id, entity.name,
+		                           entity.x, entity.y, entity.z, entity.heading,
+		                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
+		                           entity.level);
+		if (ok) registered++; else failed++;
 
 		if (isPlayer) {
-			// Set up player-specific rendering after creating/registering the entity
 			m_renderer->setPlayerSpawnId(m_my_spawn_id);
-			// Set entity light source if equipped (must be after setPlayerSpawnId for player)
-			if (entity.light > 0) {
+			if (entity.light > 0)
 				m_renderer->setEntityLight(spawn_id, entity.light);
-			}
 			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-			LOG_INFO(MOD_ENTITY, "Created player entity {} ({}) during graphics loading",
-			         spawn_id, entity.name);
-		} else {
-			// Set entity light source if equipped (for NPCs)
-			if (entity.light > 0) {
-				m_renderer->setEntityLight(spawn_id, entity.light);
-			}
-		}
-
-		// Pump network every 10 entities (entity creation with model loading is slow on ARM)
-		if (++entityCount % 10 == 0) {
-			TickNetwork();
+		} else if (entity.light > 0) {
+			m_renderer->setEntityLight(spawn_id, entity.light);
 		}
 	}
 
-	// Recreate doors from stored data
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: entity registration complete — {} registered, {} failed, entityCount={}",
+	         registered, failed,
+	         m_renderer->getEntityRenderer() ? m_renderer->getEntityRenderer()->getEntityCount() : 0);
+
+	// 6. Register doors (metadata only)
 	for (const auto& [door_id, door] : m_doors) {
 		bool initiallyOpen = (door.state != 0) != door.invert_state;
-		if (deferredMode) {
-			m_renderer->registerDoor(door.door_id, door.name, door.x, door.y, door.z,
-			                         door.heading, door.incline, door.size, door.opentype,
-			                         initiallyOpen);
-		} else {
-			m_renderer->createDoor(door.door_id, door.name, door.x, door.y, door.z,
-			                       door.heading, door.incline, door.size, door.opentype,
-			                       initiallyOpen);
-		}
-	}
-	LOG_DEBUG(MOD_GRAPHICS, "Created {} doors", m_doors.size());
-
-	if (deferredMode) {
-		// Build player's immediate surroundings and minimal collision
-		// setupMinimalZoneCollision handles player region building internally
-		m_renderer->setupMinimalZoneCollision();
-	} else {
-		// Set up collision detection now that zone, objects, and doors are all loaded
-		m_renderer->setupZoneCollision();
+		m_renderer->registerDoor(door.door_id, door.name, door.x, door.y, door.z,
+		                         door.heading, door.incline, door.size, door.opentype,
+		                         initiallyOpen);
 	}
 
-	// Phase 14: Camera, lighting, final setup
-	SetLoadingPhase(LoadingPhase::GRAPHICS_FINALIZING, "Preparing world...");
-
-	// Set camera to follow mode
+	// 7. Camera to player position
 	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
-
-	// Convert m_heading from degrees (0-360) to EQ format (0-512)
 	float heading512 = m_heading * 512.0f / 360.0f;
 	m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
 
@@ -19039,14 +19078,14 @@ void EverQuest::LoadZoneGraphics() {
 		windowMgr->setHotbarChangedCallback([this]() {
 			SaveHotbarConfig();
 		});
-		LOG_DEBUG(MOD_UI, "Hotbar changed callback registered");
 	}
 
-	// Mark that we're waiting for player entity creation
 	m_player_graphics_entity_pending = true;
 
-	// Phase 15: Graphics complete
+	// 8. Mark graphics ready — hides loading screen, governor starts clean
 	OnGraphicsComplete();
+
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: instant scene ready, awaiting /loadzone command");
 }
 #endif
 

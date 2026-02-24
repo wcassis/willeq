@@ -279,11 +279,13 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
+        src/client/graphics/entity_prep_worker.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp
         src/client/graphics/sky_renderer.cpp
         src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/frame_budget_governor.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/constrained_mesh_cache.cpp
@@ -733,6 +735,21 @@ IF(EQT_GRAPHICS)
         ${ZLIB_INCLUDE_DIRS}
     )
     TARGET_LINK_LIBRARIES(bsp_region_finder
+        ${ZLIB_LIBRARIES}
+        fmt::fmt
+    )
+
+    ADD_EXECUTABLE(region_poly_audit
+        tools/region_poly_audit.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(region_poly_audit PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(region_poly_audit
         ${ZLIB_LIBRARIES}
         fmt::fmt
     )

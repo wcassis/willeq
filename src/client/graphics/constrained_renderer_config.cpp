@@ -126,6 +126,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 32 * 1024 * 1024;  // 32MB
             config.meshMemoryBytes = 4 * 1024 * 1024;  // 4MB mesh cache
+            config.targetFps = 30.0f;
             break;
 
         case ConstrainedRenderingPreset::Voodoo2:
@@ -144,6 +145,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 64 * 1024 * 1024;  // 64MB
             config.meshMemoryBytes = 8 * 1024 * 1024;  // 8MB mesh cache
+            config.targetFps = 30.0f;
             break;
 
         case ConstrainedRenderingPreset::TNT:
@@ -163,6 +165,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             config.meshMemoryBytes = 16 * 1024 * 1024;  // 16MB mesh cache
+            config.targetFps = 60.0f;
             break;
 
         case ConstrainedRenderingPreset::OrangePi:
@@ -180,10 +183,12 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 300.0f;
             config.maxVisibleEntities = 40;
             config.maxPolygonsPerFrame = 80000;
-            // Software occlusion culling (128x64 depth buffer = 32KB)
-            config.occlusionBufferWidth = 128;
-            config.occlusionBufferHeight = 64;
-            config.occlusionMaxOccluderRegions = 48;
+            // Software occlusion culling disabled — portal BFS walk handles
+            // entity visibility, and PVS + frustum handles region visibility.
+            // The CPU rasterizer costs 130ms+ per Tier2 frame on ARM.
+            config.occlusionBufferWidth = 0;
+            config.occlusionBufferHeight = 0;
+            config.occlusionMaxOccluderRegions = 0;
             // GPU feature flags (Mali 400 via Lima supports these)
             config.enableMipmaps = true;
             config.enableNPOT = true;
@@ -202,6 +207,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.meshMemoryBytes = 24 * 1024 * 1024;  // 24MB mesh cache
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
+            config.targetFps = 30.0f;
             break;
 
         case ConstrainedRenderingPreset::Custom:
@@ -409,6 +415,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         meshMemoryBytes = static_cast<size_t>(preset["mesh_memory_mb"].asUInt64()) * 1024 * 1024;
     if (preset.isMember("meshMemoryBytes"))
         meshMemoryBytes = static_cast<size_t>(preset["meshMemoryBytes"].asUInt64());
+    if (preset.isMember("targetFps"))
+        targetFps = preset["targetFps"].asFloat();
 
     return true;
 }

@@ -79,6 +79,9 @@ public:
     void setVisible(bool visible) { visible_ = visible; }
     bool isVisible() const { return visible_; }
 
+    // Force re-render of cached RTT content (e.g. when icon sheets finish loading)
+    void markDirty() { contentDirty_ = true; }
+
     // Hit testing for drag-drop
     bool containsPoint(int x, int y) const;
     int getGemAtPosition(int x, int y) const;

@@ -37,6 +37,15 @@ public:
                                           const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
                                           bool flipV = false);
 
+    // Build textured mesh using pre-uploaded ITexture pointers (for multi-frame entity building).
+    // textures: one ITexture* per texture index in geometry.textureNames
+    // textureAlpha: whether each texture has alpha channel
+    irr::scene::IMesh* buildTexturedMeshFromUploaded(
+        const ZoneGeometry& geometry,
+        const std::vector<irr::video::ITexture*>& textures,
+        const std::vector<bool>& textureAlpha,
+        bool flipV = false);
+
     // Load a texture from raw BMP/DDS data
     irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data);
 
@@ -49,6 +58,9 @@ public:
 
     // Check if a texture is registered (either loaded or pending)
     bool hasTexture(const std::string& name) const;
+
+    // Register a pre-uploaded texture in the cache (for multi-frame entity pipeline)
+    void registerUploadedTexture(const std::string& name, irr::video::ITexture* texture, bool hasAlpha);
 
     // Clear texture cache (forces fresh texture lookups on next build)
     void clearTextureCache();

@@ -23,6 +23,7 @@ namespace Graphics {
 
 // Forward declarations
 class RaceModelLoader;
+class EntityPrepWorker;
 struct ConstrainedRendererConfig;
 
 // Appearance data for entity rendering
@@ -38,6 +39,14 @@ struct EntityAppearance {
     // Equipment textures (9 slots: head, chest, arms, wrist, hands, legs, feet, primary, secondary)
     uint32_t equipment[9] = {0};
     uint32_t equipment_tint[9] = {0};
+};
+
+// Multi-frame entity build pipeline phases
+enum class EntityBuildPhase : uint8_t {
+    Placeholder,       // Colored cube visible, waiting for background prep
+    TextureUploading,  // Uploading pre-decoded textures to GPU, one per frame
+    MeshBuilding,      // All textures uploaded, build mesh + scene node this frame
+    Built              // Complete
 };
 
 // Entity visual representation
@@ -76,6 +85,10 @@ struct EntityVisual {
     // Deferred mesh building (progressive loading)
     bool meshBuilt = false;          // false = registered only, true = scene node built
     bool meshBuildQueued = false;    // true = queued for build this frame
+    EntityBuildPhase buildPhase = EntityBuildPhase::Placeholder;
+    size_t nextTextureUpload = 0;              // Index into decodedTextures
+    std::vector<irr::video::ITexture*> uploadedTextures;  // GPU textures ready for mesh
+    std::vector<bool> uploadedTextureAlpha;    // Alpha flag per uploaded texture
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
@@ -104,6 +117,11 @@ struct EntityVisual {
     float weaponDelayMs = 3000.0f;       // Primary weapon delay in ms (for attack animation speed)
 
     // Casting state (for other entities - shows casting bar above head)
+    // BSP region cache - avoids tree traversal every frame
+    // Invalidated when server sends a position update (processUpdate sets bspRegionDirty)
+    size_t cachedBspRegion = SIZE_MAX;         // Cached BSP region index
+    bool bspRegionDirty = true;                // True = needs re-lookup on next visibility check
+
     // Occlusion culling cache - avoids retesting every frame
     bool occlusionHidden = false;              // Cached: entity is behind wall geometry
     uint32_t occlusionFrame = 0;               // Frame counter when occlusion was last tested
@@ -384,11 +402,25 @@ public:
     // When set, entities in regions not visible from the camera's region will be hidden
     void setBspTree(std::shared_ptr<BspTree> bspTree);
 
+    // Set camera's BSP region (computed by IrrlichtRenderer::updatePvsVisibility)
+    // Eliminates duplicate BSP lookup — entity renderer uses this for PVS entity culling
+    void setCameraRegion(size_t regionIdx, std::shared_ptr<BspRegion> region) {
+        currentCameraRegionIdx_ = regionIdx;
+        currentCameraRegion_ = region;
+    }
+
     // Set frustum culler for directional entity visibility culling
     void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
 
     // Set occlusion-culled regions (non-owning pointer, cleared each frame)
     void setOcclusionCulledRegions(const std::unordered_set<size_t>* regions) { occlusionCulledRegions_ = regions; }
+
+    // Set portal-visible regions for entity culling (non-owning pointer, cleared each frame)
+    // When set, entities in BSP regions NOT in this set are culled (more reliable than SW occlusion)
+    void setPortalVisibleRegions(const std::unordered_set<size_t>* regions) { portalVisibleRegions_ = regions; }
+
+    // Get number of entities culled by portal visibility this frame
+    int getPortalCulledCount() const { return portalCulledCount_; }
 
     // Set software occlusion culler for per-entity depth buffer testing
     void setOcclusionCuller(SoftwareOcclusionCuller* culler) { occlusionCuller_ = culler; }
@@ -399,18 +431,33 @@ public:
     // Clear BSP tree (call when changing zones)
     void clearBspTree();
 
+    // Con color computation (EQ Titanium rules)
+    // Returns consideration color based on level difference
+    static irr::video::SColor getConColor(int playerLevel, int entityLevel);
+
+    // Set player level (for con-colored placeholders during deferred loading)
+    void setPlayerLevel(int level) { playerLevel_ = level; }
+
     // Deferred/progressive mesh building
     // Register entity metadata without building mesh (for deferred loading)
+    // When playerLevel_ is set and entityLevel > 0, creates a con-colored placeholder cube
     bool registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                         float x, float y, float z, float heading, bool isPlayer = false,
                         uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
-                        bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
-    // Build the mesh for a previously registered entity
+                        bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f,
+                        uint8_t entityLevel = 0);
+    // Build the mesh for a previously registered entity (synchronous, full build)
     bool buildEntityMesh(uint16_t spawnId);
+    // Advance one entity through the multi-frame build pipeline.
+    // Returns true if work was done this frame.
+    bool processOneEntityBuildStep();
     // Check if entity mesh is built
     bool isEntityMeshBuilt(uint16_t spawnId) const;
     // Get spawn IDs of all entities with meshBuilt == false
     void getUnbuiltEntities(std::vector<uint16_t>& out) const;
+
+    // Set background prep worker for deferred entity model loading
+    void setEntityPrepWorker(EntityPrepWorker* worker) { entityPrepWorker_ = worker; }
 
     // Constrained rendering support
     // Set the constrained renderer config for entity visibility limits
@@ -457,6 +504,7 @@ private:
     // Placeholder mesh cache (for races without models)
     std::map<uint16_t, irr::scene::IMesh*> placeholderMeshCache_;
 
+    int playerLevel_ = 0;  // Player's level for con-color computation
     bool nameTagsVisible_ = true;
     bool lightingEnabled_ = false;
     irr::s32 shaderMaterialSolid_ = -1;
@@ -477,6 +525,10 @@ private:
 
     // Occlusion-culled regions (non-owning pointer, owned by IrrlichtRenderer)
     const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
+
+    // Portal-visible regions (non-owning pointer, owned by IrrlichtRenderer)
+    const std::unordered_set<size_t>* portalVisibleRegions_ = nullptr;
+    int portalCulledCount_ = 0;  // Debug: entities culled by portal visibility this frame
 
     // Per-entity occlusion culler (non-owning pointer, owned by IrrlichtRenderer)
     SoftwareOcclusionCuller* occlusionCuller_ = nullptr;
@@ -591,6 +643,9 @@ private:
 
     // Ground finder callback for NPC terrain snapping
     GroundFinderCallback groundFinderCallback_;
+
+    // Background entity prep worker (non-owning, owned by IrrlichtRenderer)
+    EntityPrepWorker* entityPrepWorker_ = nullptr;
 };
 
 } // namespace Graphics

@@ -2,12 +2,15 @@
 #define EQT_GRAPHICS_IRRLICHT_RENDERER_H
 
 #include <irrlicht.h>
+#include <chrono>
 #include <string>
 #include <memory>
 #include <functional>
 #include <vector>
 #include <map>
 #include <unordered_set>
+#include <thread>
+#include <atomic>
 #include <glm/glm.hpp>
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/camera_controller.h"
@@ -27,6 +30,7 @@
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
+#include "client/graphics/frame_budget_governor.h"
 #include "client/input/hotkey_manager.h"
 
 #ifdef WITH_RDP
@@ -37,8 +41,8 @@
 #include "client/graphics/gles2_egl_helper.h"
 #endif
 
-// Forward declaration for collision map
-class HCMap;
+// Collision map (included for HCMap::Triangle in member variable)
+#include "client/hc_map.h"
 
 // Forward declaration for navmesh pathfinder
 class PathfinderNavmesh;
@@ -98,6 +102,45 @@ struct RendererEvent {
     RendererAction action;
     int8_t intData;
     RendererEvent(RendererAction a, int8_t d = -1) : action(a), intData(d) {}
+};
+
+// Deferred environment init steps — one step per GREEN frame
+enum class DeferredInitStep : uint8_t {
+    TreeConfig,         // treeManager_->loadConfig()
+    TreeInit,           // treeManager_->initialize()
+    DetailZoneEnter,    // detailManager_->onZoneEnter()
+    DetailAddMeshNodes, // detailManager_->addMeshNodeForTextureLookup() loop
+    ParticleZoneEnter,  // particleManager_->onZoneEnter()
+    ParticleFireSetup,  // Collect fire sources + createFireEmitters()
+    ParticleUnifiedInit,// particleManager_->initUnifiedRenderer()
+    BoidsInit,          // boidsManager_->onZoneEnter()
+    TumbleweedInit,     // tumbleweedManager_->onZoneEnter()
+    WeatherSurface,     // weatherEffects_->setSurfaceMap() + applyEnvironmentalDisplaySettings()
+    ReleaseGeometry,    // Release combined zone geometry vectors + governor reset
+    Complete            // Done
+};
+
+// Result from background BSP preload (WLD parse + bounding boxes + portals)
+struct BspPreloadResult {
+    std::shared_ptr<BspTree> bspTree;
+    std::map<size_t, irr::core::aabbox3df> regionBoundingBoxes;
+    std::unique_ptr<PortalSystem> portalSystem;
+    bool portalOcclusionEligible = false;
+};
+
+// Background zone load state machine — S3D loads off-thread, then progressive setup on main thread
+enum class BackgroundZoneLoadPhase : uint8_t {
+    Idle,             // No load in progress
+    Pending,          // Waiting to start (setupInstantScene called)
+    Loading,          // Background thread running S3DLoader::loadZone()
+    DataReady,        // S3D parsed, data available on main thread
+    AtlasLoad,        // Loading texture atlas pages
+    RegionMeshSetup,  // Creating zone mesh with PVS (batch of regions per GREEN frame)
+    LightsAndObjects, // Zone lights + object indexing
+    CollisionRebuild, // Rebuild collision with real S3D meshes
+    EnvironmentInit,  // Trees, detail, particles, boids, etc. (existing advanceDeferredInit steps)
+    EntityLoading,    // Progressive entity/door/object builds (existing processProgressiveLoad)
+    Complete          // Done
 };
 
 // Vision types affecting zone light visibility
@@ -494,7 +537,8 @@ public:
     bool registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                         float x, float y, float z, float heading, bool isPlayer = false,
                         uint8_t gender = 0, const EntityAppearance& appearance = EntityAppearance(),
-                        bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f);
+                        bool isNPC = true, bool isCorpse = false, float serverSize = 0.0f,
+                        uint8_t entityLevel = 0);
     void updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                       float dx = 0, float dy = 0, float dz = 0, uint32_t animation = 0);
     void removeEntity(uint16_t spawnId);
@@ -526,10 +570,32 @@ public:
     void buildDeferredObject(size_t idx);
     // Minimal collision using only player's region mesh + HCMap fallback
     void setupMinimalZoneCollision();
-    // Progressive per-frame asset building (priority-ordered)
+    // Progressive per-frame asset building (priority-ordered, GREEN-only single-step)
     void processFrameProgressiveLoad();
+
+    // Background zone loading — instant scene + deferred S3D
+    // Build HCMap placeholder + collision for immediate gameplay (<5ms)
+    void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0);
+    // Create collision from HCMap data only (no S3D mesh needed)
+    void setupHCMapCollision();
+    // Start background S3D load thread
+    void startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath);
+    // Advance background zone load state machine (one step per GREEN frame)
+    void advanceBackgroundZoneLoad();
+    // Store zone environment data for deferred application (after sky renderer init)
+    void storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
+                              const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
+                              const float fogMinClip[4], const float fogMaxClip[4]);
+    // Apply stored zone environment (called when sky renderer is ready)
+    void applyStoredZoneEnvironment();
+    // Get current background zone load phase
+    BackgroundZoneLoadPhase getBackgroundZoneLoadPhase() const { return backgroundZoneLoadPhase_; }
     // Check if all deferred assets are built
     void checkProgressiveLoadingComplete();
+    // Queue background prep requests for unbuilt entities
+    void queueEntityPrepRequests();
+    // Log build time and warn if over budget
+    void logAssetBuildTime(const char* type, size_t id, std::chrono::steady_clock::time_point start);
     // Incremental collision helpers
     void addRegionToCollision(size_t regionIdx);
     void addDoorToCollision(uint8_t doorId);
@@ -538,6 +604,12 @@ public:
     size_t findBspRegionForPoint(float x, float y, float z);
     // Check if progressive loading is active
     bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
+    // Begin full zone asset loading (called by /loadzone command)
+    void beginZoneAssetLoad(const std::string& eqClientPath);
+
+    // Background BSP preload — loads WLD/BSP data for entity PVS culling during placeholder mode
+    void startBspPreload(const std::string& zoneName, const std::string& eqClientPath);
+    void advanceBspPreload();
 
     // Door interaction callback (called when player clicks door or presses U key)
     using DoorInteractCallback = std::function<void(uint8_t doorId)>;
@@ -909,6 +981,9 @@ public:
     // Constrained mesh cache access (may return nullptr if not in constrained mode)
     ConstrainedMeshCache* getConstrainedMeshCache() { return constrainedMeshCache_.get(); }
 
+    // Frame budget governor access (always available after init)
+    FrameBudgetGovernor* getGovernor() { return governor_.get(); }
+
     // Check if constrained rendering mode is active
     bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
@@ -993,7 +1068,7 @@ private:
     void setupHUD();
     void updateHUD();
     void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
-    void initDeferredEnvironmentSystems();   // Called on first frame after zoneReady_
+    void advanceDeferredInit();              // One-step-per-GREEN-frame deferred environment init
     void createZoneMesh();
     void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
     void updatePvsVisibility();    // Update region visibility based on camera position
@@ -1038,6 +1113,7 @@ private:
     float lastFrustumFwdX_ = 0.0f, lastFrustumFwdY_ = 1.0f, lastFrustumFwdZ_ = 0.0f;
     bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
+    std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
@@ -1087,6 +1163,16 @@ private:
     std::unique_ptr<PortalSystem> portalSystem_;
     bool portalOcclusionEnabled_ = false;
     bool portalOcclusionEligible_ = false;
+
+    // Portal-based entity culling (walks portal graph from camera room)
+    std::unordered_set<size_t> portalVisibleRegions_;
+    void computePortalVisibleRegions();
+
+    // Portal computation cache — only recompute when camera region/position/orientation changes
+    size_t lastPortalRegion_ = SIZE_MAX;
+    float lastPortalCamX_ = -99999.f, lastPortalCamY_ = -99999.f, lastPortalCamZ_ = -99999.f;
+    float lastPortalFwdX_ = 0.f, lastPortalFwdY_ = 0.f, lastPortalFwdZ_ = 0.f;
+    bool portalCacheDirty_ = true;  // Force first computation
     void drawZoneGeometryWithPortals();
     void drawRegionMesh(size_t regionIdx);
     void drawPortalQuad(const Portal& portal);
@@ -1096,6 +1182,13 @@ private:
     // Debug visualization for portals/stencil
     bool portalDebugDraw_ = false;
     bool stencilDebugDraw_ = false;
+
+    // Zone placeholder mesh (HCMap collision mesh as visual context during loading)
+    irr::scene::IMeshSceneNode* zonePlaceholderNode_ = nullptr;
+    std::vector<HCMap::Triangle> cachedPlaceholderTriangles_;  // Cached terrain triangles for rebuild
+    irr::core::vector3df lastPlaceholderBuildPos_;  // Irrlicht coords of last placeholder build
+    void buildZonePlaceholder(float playerIrrX = 0, float playerIrrY = 0, float playerIrrZ = 0);
+    void destroyZonePlaceholder();
 
     // Lazy mesh loading state (constrained mode)
     struct MeshLoadEntry {
@@ -1115,7 +1208,32 @@ private:
     };
     std::vector<DeferredObject> deferredObjects_;
     bool progressiveLoadingActive_ = false;
+    bool portalBuildPending_ = false;  // Deferred portal extraction from loadZone
     std::chrono::steady_clock::time_point progressiveLoadStartTime_;  // When progressive loading began
+
+    // Background zone load state machine
+    BackgroundZoneLoadPhase backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
+    std::unique_ptr<std::thread> zoneLoadThread_;
+    std::atomic<bool> zoneLoadComplete_{false};
+    std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after join
+
+    // Background BSP preload (WLD parse + bounding boxes + portals during placeholder mode)
+    std::unique_ptr<std::thread> bspPreloadThread_;
+    std::atomic<bool> bspPreloadComplete_{false};
+    std::unique_ptr<BspPreloadResult> pendingBspResult_;
+
+    // Region mesh progressive building state (for RegionMeshSetup phase)
+    size_t regionBuildIndex_ = 0;
+    bool regionBuildInitDone_ = false;  // True after createZoneMeshWithPvs() setup pass
+
+    // Stored zone environment from NewZone packet (applied after global assets load)
+    struct StoredZoneEnvironment {
+        uint8_t skyType = 0;
+        uint8_t zoneType = 0;
+        uint8_t fogR[4] = {0}, fogG[4] = {0}, fogB[4] = {0};
+        float fogMinClip[4] = {0}, fogMaxClip[4] = {0};
+        bool pending = false;
+    } storedZoneEnvironment_;
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
@@ -1169,12 +1287,10 @@ private:
     float tier3DeltaAccum_ = 0.0f;  // Accumulated delta for Tier 3 simulation
     float tier2DeltaAccum_ = 0.0f;  // Accumulated delta for fire flicker phase
 
-    // Adaptive budget (constrained mode)
-    float frameBudgetMs_ = 33.3f;       // Target budget (default 30fps)
-    bool frameBudgetExceeded_ = false;   // True if last frame exceeded budget
+    // Frame budget governor (Green/Yellow/Red state machine for load throttling)
+    std::unique_ptr<FrameBudgetGovernor> governor_;
     float renderCostAvgUs_ = 15000.0f;  // EMA of render phase cost (us), init ~15ms
     float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
-    float frameBudgetRemaining() const;  // Returns ms remaining in frame budget
 
     RendererConfig config_;
     std::function<void()> networkTickCallback_;  // Called between heavy loading stages to pump network
@@ -1183,6 +1299,8 @@ private:
     bool globalAssetsLoaded_ = false;  // True when loadGlobalAssets() has completed
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
     bool environmentInitPending_ = false;  // Deferred init after game becomes playable
+    DeferredInitStep deferredInitStep_ = DeferredInitStep::TreeConfig;
+    bool deferredInitActive_ = false;  // True while stepping through deferred init
     bool networkReady_ = false;  // True when network packet exchange is complete
     bool entitiesLoaded_ = false;  // True when all entities have been loaded with models/textures
     size_t expectedEntityCount_ = 0;  // Expected number of entities from ZoneSpawns

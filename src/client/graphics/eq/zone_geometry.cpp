@@ -562,6 +562,140 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
 }
 
 // ============================================================================
+// Pre-uploaded Texture Mesh Building (for multi-frame entity pipeline)
+// ============================================================================
+
+irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
+    const ZoneGeometry& geometry,
+    const std::vector<irr::video::ITexture*>& textures,
+    const std::vector<bool>& textureAlpha,
+    bool flipV) {
+
+    if (geometry.vertices.empty() || geometry.triangles.empty()) {
+        return nullptr;
+    }
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    const size_t MAX_VERTICES_PER_BUFFER = 65535;
+
+    float minZ = geometry.minZ;
+    float maxZ = geometry.maxZ;
+
+    // Group triangles by texture index
+    std::map<uint32_t, std::vector<size_t>> trianglesByTexture;
+    for (size_t i = 0; i < geometry.triangles.size(); i++) {
+        trianglesByTexture[geometry.triangles[i].textureIndex].push_back(i);
+    }
+
+    for (const auto& [texIdx, triIndices] : trianglesByTexture) {
+        if (triIndices.empty()) continue;
+
+        bool isInvisible = (texIdx < geometry.textureInvisible.size()) && geometry.textureInvisible[texIdx];
+        if (isInvisible) {
+            std::string texName = (texIdx < geometry.textureNames.size()) ? geometry.textureNames[texIdx] : "";
+            if (texName.empty()) continue;
+        }
+
+        // Look up pre-uploaded texture
+        irr::video::ITexture* texture = (texIdx < textures.size()) ? textures[texIdx] : nullptr;
+        bool hasAlpha = (texIdx < textureAlpha.size()) ? textureAlpha[texIdx] : false;
+
+        // Split into sub-buffers for 16-bit index limit
+        std::vector<std::vector<size_t>> subBuffers;
+        for (size_t triIdx : triIndices) {
+            const auto& tri = geometry.triangles[triIdx];
+            size_t maxVertIdx = std::max({tri.v1, tri.v2, tri.v3});
+            size_t bufferIdx = maxVertIdx / MAX_VERTICES_PER_BUFFER;
+            while (subBuffers.size() <= bufferIdx) {
+                subBuffers.push_back(std::vector<size_t>());
+            }
+            subBuffers[bufferIdx].push_back(triIdx);
+        }
+
+        for (const auto& subTriIndices : subBuffers) {
+            if (subTriIndices.empty()) continue;
+
+            irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+            buffer->Material.MaterialType = irr::video::EMT_SOLID;
+            buffer->Material.BackfaceCulling = false;
+            buffer->Material.Lighting = false;
+
+            if (texture) {
+                buffer->Material.setTexture(0, texture);
+                if (hasAlpha) {
+                    if (shaderMaterialAlphaTest_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    } else {
+                        buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    }
+                } else {
+                    if (shaderMaterialSolid_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                    }
+                }
+                buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, false);
+                buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, false);
+                buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+                buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+            }
+
+            std::unordered_map<uint64_t, irr::u16> globalToLocal;
+
+            for (size_t triIdx : subTriIndices) {
+                const auto& tri = geometry.triangles[triIdx];
+
+                const auto& tv0 = geometry.vertices[tri.v1];
+                const auto& tv1 = geometry.vertices[tri.v2];
+                const auto& tv2 = geometry.vertices[tri.v3];
+                float fv0 = flipV ? (1.0f - tv0.v) : tv0.v;
+                float fv1 = flipV ? (1.0f - tv1.v) : tv1.v;
+                float fv2 = flipV ? (1.0f - tv2.v) : tv2.v;
+                int cellU = static_cast<int>(std::floor(std::min({tv0.u, tv1.u, tv2.u})));
+                int cellV = static_cast<int>(std::floor(std::min({fv0, fv1, fv2})));
+
+                for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
+                    uint64_t key = (static_cast<uint64_t>(vidx) << 16)
+                                 | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
+                                 | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
+                    auto it = globalToLocal.find(key);
+                    if (it != globalToLocal.end()) {
+                        buffer->Indices.push_back(it->second);
+                    } else {
+                        const auto& v = geometry.vertices[vidx];
+                        irr::video::S3DVertex vertex;
+                        vertex.Pos.X = v.x;
+                        vertex.Pos.Y = v.z;
+                        vertex.Pos.Z = v.y;
+                        vertex.Normal.X = v.nx;
+                        vertex.Normal.Y = v.nz;
+                        vertex.Normal.Z = v.ny;
+                        vertex.TCoords.X = v.u - static_cast<float>(cellU);
+                        vertex.TCoords.Y = (flipV ? (1.0f - v.v) : v.v) - static_cast<float>(cellV);
+                        vertex.Color = texture
+                            ? irr::video::SColor(255, 255, 255, 255)
+                            : heightToColor(v.z, minZ, maxZ);
+
+                        irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
+                        globalToLocal[key] = localIdx;
+                        buffer->Vertices.push_back(vertex);
+                        buffer->Indices.push_back(localIdx);
+                    }
+                }
+            }
+
+            buffer->recalculateBoundingBox();
+            mesh->addMeshBuffer(buffer);
+            buffer->drop();
+        }
+    }
+
+    mesh->recalculateBoundingBox();
+    return mesh;
+}
+
+// ============================================================================
 // Atlas Batched Mesh Building
 // ============================================================================
 
@@ -1003,6 +1137,20 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name)
 bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
     return textureCache_.find(name) != textureCache_.end() ||
            pendingTextures_.find(name) != pendingTextures_.end();
+}
+
+void ZoneMeshBuilder::registerUploadedTexture(const std::string& name,
+                                               irr::video::ITexture* texture, bool hasAlpha) {
+    if (!name.empty() && texture) {
+        std::string lowerName = name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        textureCache_[lowerName] = texture;
+        if (hasAlpha) {
+            texturesWithAlpha_.insert(name);
+            texturesWithAlpha_.insert(lowerName);
+        }
+    }
 }
 
 void ZoneMeshBuilder::setConstrainedTextureCache(ConstrainedTextureCache* cache) {

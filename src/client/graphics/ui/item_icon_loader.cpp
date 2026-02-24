@@ -61,13 +61,18 @@ irr::video::ITexture* ItemIconLoader::getIcon(uint32_t iconId) {
     LOG_DEBUG(MOD_UI, "ItemIconLoader Icon {} -> adjusted={} sheet={} index={} (row={} col={}) pos=({},{})",
               iconId, adjustedId, sheetNumber, localIndex, row, col, row * ICON_SIZE, col * ICON_SIZE);
 
-    // Load sheet if needed
+    // If sheet not loaded, queue it for progressive loading and return nullptr.
     if (sheets_.find(sheetNumber) == sheets_.end()) {
-        if (!loadSheet(sheetNumber)) {
-            // Cache nullptr to avoid repeated load attempts
-            iconCache_[iconId] = nullptr;
-            return nullptr;
+        bool alreadyPending = false;
+        for (int s : pendingItemSheets_) {
+            if (s == sheetNumber) { alreadyPending = true; break; }
         }
+        if (!alreadyPending) {
+            pendingItemSheets_.push_back(sheetNumber);
+            LOG_DEBUG(MOD_UI, "ItemIcon {} queued item sheet {} for progressive load",
+                      iconId, sheetNumber);
+        }
+        return nullptr;  // Not ready yet — don't cache nullptr (will retry)
     }
 
     // Extract and cache the icon
@@ -91,12 +96,20 @@ irr::video::ITexture* ItemIconLoader::getSpellIcon(uint32_t iconId) {
     // Use negative sheet numbers to differentiate spell sheets from item sheets
     int spellSheetKey = -sheetNumber;
 
-    // Load sheet if needed
+    // If sheet not loaded, queue it for progressive loading and return nullptr.
+    // The caller (SpellGemPanel) will re-render when the sheet becomes available.
     if (sheets_.find(spellSheetKey) == sheets_.end()) {
-        if (!loadSpellSheet(sheetNumber)) {
-            iconCache_[iconId] = nullptr;
-            return nullptr;
+        // Queue if not already pending
+        bool alreadyPending = false;
+        for (int s : pendingSpellSheets_) {
+            if (s == sheetNumber) { alreadyPending = true; break; }
         }
+        if (!alreadyPending) {
+            pendingSpellSheets_.push_back(sheetNumber);
+            LOG_DEBUG(MOD_UI, "SpellIcon {} queued spell sheet {} for progressive load",
+                      iconId, sheetNumber);
+        }
+        return nullptr;  // Not ready yet — don't cache nullptr (will retry)
     }
 
     int row = localIndex / ICONS_PER_ROW;
@@ -152,6 +165,191 @@ bool ItemIconLoader::loadSheet(int sheetNumber) {
 
     LOG_DEBUG(MOD_UI, "ItemIconLoader Loaded sheet {} ({}x{})", sheetNumber, sheet->width, sheet->height);
     sheets_[sheetNumber] = std::move(sheet);
+    return true;
+}
+
+bool ItemIconLoader::loadOnePendingSheet() {
+    // Phase 2: decode a previously-read file buffer
+    if (pendingSheetWork_) {
+        auto& work = *pendingSheetWork_;
+        auto sheet = std::make_unique<SheetData>();
+        bool ok = decodeTGA(work.rawFileData, sheet->pixels, sheet->width, sheet->height);
+
+        if (ok) {
+            int key = work.isSpellSheet ? -work.sheetNumber : work.sheetNumber;
+            sheets_[key] = std::move(sheet);
+        }
+
+        LOG_DEBUG(MOD_UI, "Progressive: decoded {} sheet {} (ok={}, {} spell + {} item sheets remaining)",
+                  work.isSpellSheet ? "spell" : "item", work.sheetNumber, ok,
+                  pendingSpellSheets_.size(), pendingItemSheets_.size());
+        pendingSheetWork_.reset();
+        return true;
+    }
+
+    // Phase 1: read the next pending sheet file from disk into a buffer
+    if (!pendingSpellSheets_.empty()) {
+        int sheetNumber = pendingSpellSheets_.front();
+        pendingSpellSheets_.erase(pendingSpellSheets_.begin());
+
+        std::vector<std::string> paths = {
+            eqClientPath_ + "/uifiles/default/spells0" + std::to_string(sheetNumber) + ".tga",
+            eqClientPath_ + "/uifiles/default/spells" + std::to_string(sheetNumber) + ".tga",
+            eqClientPath_ + "/uifiles/default_old/spells0" + std::to_string(sheetNumber) + ".tga",
+            eqClientPath_ + "/uifiles/default_old/spells" + std::to_string(sheetNumber) + ".tga"
+        };
+
+        auto work = std::make_unique<PendingSheetWork>();
+        work->sheetNumber = sheetNumber;
+        work->isSpellSheet = true;
+
+        bool found = false;
+        for (const auto& path : paths) {
+            if (readFileToBuffer(path, work->rawFileData)) {
+                LOG_DEBUG(MOD_UI, "Progressive: read spell sheet {} from {} ({} bytes, decode next frame)",
+                          sheetNumber, path, work->rawFileData.size());
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            pendingSheetWork_ = std::move(work);
+        } else {
+            LOG_ERROR(MOD_UI, "Failed to read spell sheet {} from any path", sheetNumber);
+        }
+        return true;
+    }
+
+    if (!pendingItemSheets_.empty()) {
+        int sheetNumber = pendingItemSheets_.front();
+        pendingItemSheets_.erase(pendingItemSheets_.begin());
+
+        std::string path = eqClientPath_ + "/uifiles/default/dragitem" + std::to_string(sheetNumber) + ".tga";
+
+        auto work = std::make_unique<PendingSheetWork>();
+        work->sheetNumber = sheetNumber;
+        work->isSpellSheet = false;
+
+        if (readFileToBuffer(path, work->rawFileData)) {
+            LOG_DEBUG(MOD_UI, "Progressive: read item sheet {} from {} ({} bytes, decode next frame)",
+                      sheetNumber, path, work->rawFileData.size());
+            pendingSheetWork_ = std::move(work);
+        } else {
+            LOG_ERROR(MOD_UI, "Failed to read item sheet {}: {}", sheetNumber, path);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+bool ItemIconLoader::readFileToBuffer(const std::string& path, std::vector<uint8_t>& buffer) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) return false;
+
+    auto fileSize = file.tellg();
+    if (fileSize <= 0) return false;
+
+    buffer.resize(static_cast<size_t>(fileSize));
+    file.seekg(0, std::ios::beg);
+    file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+    return file.good();
+}
+
+bool ItemIconLoader::decodeTGA(const std::vector<uint8_t>& buffer, std::vector<uint8_t>& pixels,
+                                int& width, int& height) {
+    if (buffer.size() < 18) return false;
+
+    const uint8_t* data = buffer.data();
+    size_t pos = 0;
+
+    // TGA header
+    uint8_t idLength = data[0];
+    uint8_t imageType = data[2];
+    width = data[12] | (data[13] << 8);
+    height = data[14] | (data[15] << 8);
+    uint8_t bitsPerPixel = data[16];
+    uint8_t descriptor = data[17];
+    pos = 18;
+
+    // Skip ID field
+    pos += idLength;
+
+    if (width <= 0 || height <= 0) {
+        LOG_ERROR(MOD_UI, "Invalid TGA dimensions: {}x{}", width, height);
+        return false;
+    }
+
+    if (bitsPerPixel != 24 && bitsPerPixel != 32) {
+        LOG_ERROR(MOD_UI, "Unsupported TGA bit depth: {}", static_cast<int>(bitsPerPixel));
+        return false;
+    }
+
+    int bytesPerPixel = bitsPerPixel / 8;
+    bool isRLE = (imageType == 10);
+    bool topOrigin = (descriptor & 0x20) != 0;
+
+    pixels.resize(width * height * 4);
+
+    if (isRLE) {
+        int pixelCount = width * height;
+        int currentPixel = 0;
+
+        while (currentPixel < pixelCount && pos < buffer.size()) {
+            uint8_t packetHeader = data[pos++];
+            int count = (packetHeader & 0x7F) + 1;
+            bool isRunLength = (packetHeader & 0x80) != 0;
+
+            if (isRunLength) {
+                if (pos + bytesPerPixel > buffer.size()) break;
+                uint8_t pixel[4] = {0, 0, 0, 255};
+                std::memcpy(pixel, data + pos, bytesPerPixel);
+                pos += bytesPerPixel;
+
+                for (int i = 0; i < count && currentPixel < pixelCount; i++, currentPixel++) {
+                    int idx = currentPixel * 4;
+                    pixels[idx + 0] = pixel[2];  // R (TGA is BGR)
+                    pixels[idx + 1] = pixel[1];  // G
+                    pixels[idx + 2] = pixel[0];  // B
+                    pixels[idx + 3] = (bytesPerPixel == 4) ? pixel[3] : 255;
+                }
+            } else {
+                for (int i = 0; i < count && currentPixel < pixelCount; i++, currentPixel++) {
+                    if (pos + bytesPerPixel > buffer.size()) break;
+                    int idx = currentPixel * 4;
+                    pixels[idx + 0] = data[pos + 2];  // R
+                    pixels[idx + 1] = data[pos + 1];  // G
+                    pixels[idx + 2] = data[pos + 0];  // B
+                    pixels[idx + 3] = (bytesPerPixel == 4) ? data[pos + 3] : 255;
+                    pos += bytesPerPixel;
+                }
+            }
+        }
+    } else {
+        int pixelCount = width * height;
+        for (int i = 0; i < pixelCount && pos + bytesPerPixel <= buffer.size(); i++) {
+            int idx = i * 4;
+            pixels[idx + 0] = data[pos + 2];  // R (TGA is BGR)
+            pixels[idx + 1] = data[pos + 1];  // G
+            pixels[idx + 2] = data[pos + 0];  // B
+            pixels[idx + 3] = (bytesPerPixel == 4) ? data[pos + 3] : 255;
+            pos += bytesPerPixel;
+        }
+    }
+
+    // Flip if bottom-origin
+    if (!topOrigin) {
+        std::vector<uint8_t> flipped(pixels.size());
+        for (int y = 0; y < height; y++) {
+            int srcRow = height - 1 - y;
+            std::memcpy(flipped.data() + y * width * 4,
+                       pixels.data() + srcRow * width * 4,
+                       width * 4);
+        }
+        pixels = std::move(flipped);
+    }
+
     return true;
 }
 
@@ -352,6 +550,9 @@ void ItemIconLoader::clear() {
     // Don't need to manually drop them
     iconCache_.clear();
     sheets_.clear();
+    pendingSpellSheets_.clear();
+    pendingItemSheets_.clear();
+    pendingSheetWork_.reset();
 }
 
 } // namespace ui

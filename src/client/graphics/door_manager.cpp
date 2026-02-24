@@ -8,6 +8,7 @@
 #include "common/logging.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <set>
 
@@ -144,15 +145,202 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
     return nullptr;
 }
 
-irr::scene::IMesh* DoorManager::createPlaceholderMesh() const
+// Generate a unique color from a door name using a simple hash
+static irr::video::SColor colorFromName(const std::string& name)
+{
+    // FNV-1a hash of the full name
+    uint32_t hash = 2166136261u;
+    for (char c : name) {
+        hash ^= static_cast<uint32_t>(c);
+        hash *= 16777619u;
+    }
+
+    // Convert hash to HSV with high saturation and medium-high value for visibility
+    float hue = (hash % 360) / 360.0f;
+    float sat = 0.6f + (((hash >> 12) % 30) / 100.0f);  // 0.6-0.9
+    float val = 0.65f + (((hash >> 20) % 25) / 100.0f);  // 0.65-0.9
+
+    // HSV to RGB
+    int hi = static_cast<int>(hue * 6.0f) % 6;
+    float f = hue * 6.0f - hi;
+    float p = val * (1.0f - sat);
+    float q = val * (1.0f - f * sat);
+    float t = val * (1.0f - (1.0f - f) * sat);
+
+    float r, g, b;
+    switch (hi) {
+        case 0: r = val; g = t;   b = p;   break;
+        case 1: r = q;   g = val; b = p;   break;
+        case 2: r = p;   g = val; b = t;   break;
+        case 3: r = p;   g = q;   b = val; break;
+        case 4: r = t;   g = p;   b = val; break;
+        default:r = val; g = p;   b = q;   break;
+    }
+
+    return irr::video::SColor(255,
+        static_cast<uint8_t>(r * 255),
+        static_cast<uint8_t>(g * 255),
+        static_cast<uint8_t>(b * 255));
+}
+
+// Build an octagonal prism mesh (barrel shape) manually
+static irr::scene::IMesh* createOctagonalPrism(irr::scene::ISceneManager* smgr,
+                                                 float radius, float height,
+                                                 const irr::video::SColor& color)
+{
+    const int SIDES = 8;
+    // Vertices: 2 center + 2*SIDES rim = 18 verts
+    // Triangles: 2*SIDES (caps) + 2*SIDES (sides) = 32 tris
+    irr::scene::SMeshBuffer* buf = new irr::scene::SMeshBuffer();
+    buf->Vertices.set_used(2 + 2 * SIDES + 2 * SIDES);  // centers + rim tops + rim bottoms
+    buf->Indices.set_used(SIDES * 3 * 2 + SIDES * 6);   // cap tris + side quads
+
+    float halfH = height * 0.5f;
+
+    // Center vertices for top and bottom caps
+    auto& topCenter = buf->Vertices[0];
+    topCenter.Pos = irr::core::vector3df(0, halfH, 0);
+    topCenter.Normal = irr::core::vector3df(0, 1, 0);
+    topCenter.Color = color;
+    topCenter.TCoords = irr::core::vector2df(0.5f, 0.5f);
+
+    auto& botCenter = buf->Vertices[1];
+    botCenter.Pos = irr::core::vector3df(0, -halfH, 0);
+    botCenter.Normal = irr::core::vector3df(0, -1, 0);
+    botCenter.Color = color;
+    botCenter.TCoords = irr::core::vector2df(0.5f, 0.5f);
+
+    // Rim vertices
+    for (int i = 0; i < SIDES; ++i) {
+        float angle = static_cast<float>(i) * 2.0f * static_cast<float>(M_PI) / SIDES;
+        float cx = radius * std::cos(angle);
+        float cz = radius * std::sin(angle);
+        irr::core::vector3df outNormal(std::cos(angle), 0, std::sin(angle));
+
+        // Top rim
+        auto& vt = buf->Vertices[2 + i];
+        vt.Pos = irr::core::vector3df(cx, halfH, cz);
+        vt.Normal = irr::core::vector3df(0, 1, 0);
+        vt.Color = color;
+        vt.TCoords = irr::core::vector2df(0, 0);
+
+        // Bottom rim
+        auto& vb = buf->Vertices[2 + SIDES + i];
+        vb.Pos = irr::core::vector3df(cx, -halfH, cz);
+        vb.Normal = irr::core::vector3df(0, -1, 0);
+        // Darken bottom vertices slightly for depth
+        vb.Color = irr::video::SColor(255,
+            static_cast<uint8_t>(color.getRed() * 0.7f),
+            static_cast<uint8_t>(color.getGreen() * 0.7f),
+            static_cast<uint8_t>(color.getBlue() * 0.7f));
+        vb.TCoords = irr::core::vector2df(0, 0);
+    }
+
+    irr::u32 idx = 0;
+    // Top cap triangles (fan from center)
+    for (int i = 0; i < SIDES; ++i) {
+        buf->Indices[idx++] = 0;  // top center
+        buf->Indices[idx++] = static_cast<irr::u16>(2 + i);
+        buf->Indices[idx++] = static_cast<irr::u16>(2 + (i + 1) % SIDES);
+    }
+    // Bottom cap triangles (reverse winding)
+    for (int i = 0; i < SIDES; ++i) {
+        buf->Indices[idx++] = 1;  // bottom center
+        buf->Indices[idx++] = static_cast<irr::u16>(2 + SIDES + (i + 1) % SIDES);
+        buf->Indices[idx++] = static_cast<irr::u16>(2 + SIDES + i);
+    }
+    // Side quads (two triangles each)
+    for (int i = 0; i < SIDES; ++i) {
+        int next = (i + 1) % SIDES;
+        irr::u16 tl = static_cast<irr::u16>(2 + i);
+        irr::u16 tr = static_cast<irr::u16>(2 + next);
+        irr::u16 bl = static_cast<irr::u16>(2 + SIDES + i);
+        irr::u16 br = static_cast<irr::u16>(2 + SIDES + next);
+        buf->Indices[idx++] = tl; buf->Indices[idx++] = bl; buf->Indices[idx++] = tr;
+        buf->Indices[idx++] = tr; buf->Indices[idx++] = bl; buf->Indices[idx++] = br;
+    }
+
+    buf->recalculateBoundingBox();
+    buf->setHardwareMappingHint(irr::scene::EHM_STATIC);
+    buf->Material.Lighting = false;
+    buf->Material.BackfaceCulling = false;
+    buf->Material.MaterialType = irr::video::EMT_SOLID;
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    mesh->addMeshBuffer(buf);
+    buf->drop();
+    mesh->recalculateBoundingBox();
+    return mesh;
+}
+
+irr::scene::IMesh* DoorManager::createPlaceholderMesh(const std::string& doorName) const
 {
     if (!smgr_) {
         return nullptr;
     }
 
-    // Create a simple box mesh as placeholder for doors without models
-    irr::scene::IMesh* mesh = smgr_->getGeometryCreator()->createCubeMesh(
-        irr::core::vector3df(2.0f, 6.0f, 0.5f));  // Door-shaped: 2 wide, 6 tall, 0.5 thick
+    // Uppercase the name for category matching
+    std::string upper = doorName;
+    for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+    // Determine shape category from name prefix
+    irr::core::vector3df dims;
+    bool useOctagon = false;
+
+    if (upper.find("BARREL") != std::string::npos || upper.find("KEG") != std::string::npos) {
+        // Barrel/keg: octagonal prism
+        useOctagon = true;
+        dims = irr::core::vector3df(1.0f, 2.5f, 0);  // radius, height (unused z)
+    } else if (upper.find("CRATE") != std::string::npos || upper.find("BOX") != std::string::npos) {
+        // Crates: cube-ish, small height variation per variant
+        float h = 2.0f + (doorName.empty() ? 0.0f : (doorName.back() % 5) * 0.3f);
+        dims = irr::core::vector3df(2.0f, h, 2.0f);
+    } else if (upper.find("DOOR") != std::string::npos || upper.find("GATE") != std::string::npos) {
+        // Doors/gates: tall thin slab
+        dims = irr::core::vector3df(2.0f, 6.0f, 0.5f);
+    } else if (upper.find("CHEST") != std::string::npos) {
+        // Chest: low wide box
+        dims = irr::core::vector3df(2.0f, 1.2f, 1.5f);
+    } else if (upper.find("SACK") != std::string::npos || upper.find("BAG") != std::string::npos) {
+        // Sack/bag: small octagonal
+        useOctagon = true;
+        dims = irr::core::vector3df(0.8f, 1.5f, 0);
+    } else if (upper.find("BENCH") != std::string::npos || upper.find("TABLE") != std::string::npos) {
+        // Furniture: wide low slab
+        dims = irr::core::vector3df(3.0f, 1.5f, 1.5f);
+    } else {
+        // Unknown: default cube, slightly varied by name
+        dims = irr::core::vector3df(2.0f, 3.0f, 2.0f);
+    }
+
+    // Get unique color for this specific name
+    irr::video::SColor color = doorName.empty()
+        ? irr::video::SColor(255, 100, 150, 200)  // fallback blue-ish
+        : colorFromName(doorName);
+
+    irr::scene::IMesh* mesh = nullptr;
+
+    if (useOctagon) {
+        mesh = createOctagonalPrism(smgr_, dims.X, dims.Y, color);
+    } else {
+        mesh = smgr_->getGeometryCreator()->createCubeMesh(dims);
+        if (mesh) {
+            // Bake color into vertex colors — GLES2 shaders read aColor
+            // from vertices, not DiffuseColor/AmbientColor from the material
+            for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
+                irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(b);
+                irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(mb->getVertices());
+                for (irr::u32 v = 0; v < mb->getVertexCount(); ++v) {
+                    // Darken bottom vertices for depth
+                    float yFactor = (verts[v].Pos.Y < 0) ? 0.7f : 1.0f;
+                    verts[v].Color = irr::video::SColor(255,
+                        static_cast<uint8_t>(color.getRed() * yFactor),
+                        static_cast<uint8_t>(color.getGreen() * yFactor),
+                        static_cast<uint8_t>(color.getBlue() * yFactor));
+                }
+            }
+        }
+    }
 
     return mesh;
 }
@@ -186,7 +374,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
 
     if (!mesh) {
         LOG_DEBUG(MOD_GRAPHICS, "No mesh found for door '{}', using placeholder", name);
-        mesh = createPlaceholderMesh();
+        mesh = createPlaceholderMesh(name);
         usePlaceholder = true;
     }
 
@@ -366,6 +554,58 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
     visual.incline_raw = incline;
     visual.initiallyOpen_raw = initiallyOpen;
 
+    // Create placeholder scene node for immediate visibility
+    irr::scene::IMesh* mesh = createPlaceholderMesh(name);
+    if (mesh) {
+        float scale = static_cast<float>(size) / 100.0f;
+        irr::core::aabbox3df bbox = mesh->getBoundingBox();
+
+        // Hinge at max X edge (works for all placeholder shapes)
+        float hingeOffset = bbox.MaxEdge.X * scale;
+
+        // Create pivot node at door's world position (EQ Z-up -> Irrlicht Y-up)
+        visual.pivotNode = smgr_->addEmptySceneNode();
+        if (visual.pivotNode) {
+            visual.pivotNode->setPosition(irr::core::vector3df(x, z, y));
+
+            // Create mesh scene node as child of pivot
+            visual.sceneNode = smgr_->addMeshSceneNode(mesh, visual.pivotNode);
+            if (visual.sceneNode) {
+                visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
+
+                // Offset mesh so hinge edge is at pivot origin (X axis for placeholder)
+                visual.sceneNode->setPosition(irr::core::vector3df(-hingeOffset, 0, 0));
+
+                // Apply rotation
+                float currentHeading = initiallyOpen ? visual.closedHeading : visual.openHeading;
+                float irrRotation = -currentHeading * 360.0f / 512.0f + 90.0f;
+                visual.pivotNode->setRotation(irr::core::vector3df(0, irrRotation, 0));
+
+                visual.pivotNode->updateAbsolutePosition();
+                visual.sceneNode->updateAbsolutePosition();
+
+                // Configure materials: unlit, no backface cull
+                // (vertex colors already baked by createPlaceholderMesh)
+                for (irr::u32 i = 0; i < visual.sceneNode->getMaterialCount(); ++i) {
+                    visual.sceneNode->getMaterial(i).Lighting = false;
+                    visual.sceneNode->getMaterial(i).BackfaceCulling = false;
+                }
+
+                visual.usePlaceholder = true;
+                visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
+
+                LOG_DEBUG(MOD_GRAPHICS, "Created placeholder door {} '{}' at ({:.1f}, {:.1f}, {:.1f})",
+                          doorId, name, x, y, z);
+            } else {
+                visual.pivotNode->remove();
+                visual.pivotNode = nullptr;
+                mesh->drop();
+            }
+        } else {
+            mesh->drop();
+        }
+    }
+
     // Compute BSP region
     if (bspTree_) {
         visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
@@ -392,7 +632,7 @@ bool DoorManager::buildDoorMesh(uint8_t doorId)
     bool usePlaceholder = false;
 
     if (!mesh) {
-        mesh = createPlaceholderMesh();
+        mesh = createPlaceholderMesh(visual.name_raw);
         usePlaceholder = true;
     }
 
@@ -528,14 +768,10 @@ void DoorManager::update(float deltaTime)
             continue;
         }
 
-        // Visibility culling: frustum → region-level PVS
+        // Visibility culling: region-level PVS only
+        // (frustum culling removed — causes flickering as doors come into view)
         bool doorOccluded = false;
-        if (frustumCuller_ && frustumCuller_->isEnabled()) {
-            if (!frustumCuller_->testSphere(visual.x, visual.y, visual.z, 5.0f)) {
-                doorOccluded = true;
-            }
-        }
-        if (!doorOccluded && visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
+        if (visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
             && occlusionCulledRegions_->count(visual.bspRegion)) {
             doorOccluded = true;
         }
@@ -744,6 +980,32 @@ void DoorManager::rebuildPlaceholderDoors()
     int failed = 0;
 
     for (auto& [id, visual] : doors_) {
+        // Handle registered-only doors with placeholder scene nodes
+        // These need full mesh building (zone data now available)
+        if (!visual.meshBuilt && visual.usePlaceholder && visual.sceneNode) {
+            // Remove placeholder nodes
+            if (visual.pivotNode) {
+                visual.pivotNode->remove();
+                visual.pivotNode = nullptr;
+            } else if (visual.sceneNode) {
+                visual.sceneNode->remove();
+            }
+            visual.sceneNode = nullptr;
+            visual.usePlaceholder = false;
+
+            // Build real mesh with zone data
+            if (buildDoorMesh(id)) {
+                ++rebuilt;
+                LOG_DEBUG(MOD_GRAPHICS, "Rebuilt registered placeholder door {} '{}' with real mesh",
+                          id, visual.modelName);
+            } else {
+                ++failed;
+            }
+            continue;
+        }
+
+        // Handle doors built via createDoor() with placeholder (mesh wasn't found at build time)
+        // These just need a mesh swap
         if (!visual.usePlaceholder || !visual.sceneNode) {
             continue;
         }

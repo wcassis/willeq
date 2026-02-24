@@ -1,9 +1,11 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
+#include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/skeletal_animator.h"
 #include "client/animation_constants.h"
@@ -13,6 +15,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cmath>
+#include <limits>
 #include <set>
 #include <unordered_set>
 #include <chrono>
@@ -21,6 +24,45 @@
 
 namespace EQT {
 namespace Graphics {
+
+// EQ Titanium con color rules
+// Green cutoff thresholds vary by player level
+static int getGreenCutoff(int playerLevel) {
+    if (playerLevel <= 7) return -4;
+    if (playerLevel <= 12) return -6;
+    if (playerLevel <= 20) return -8;
+    if (playerLevel <= 25) return -10;
+    if (playerLevel <= 30) return -12;
+    if (playerLevel <= 35) return -14;
+    if (playerLevel <= 40) return -16;
+    if (playerLevel <= 45) return -18;
+    if (playerLevel <= 50) return -20;
+    if (playerLevel <= 55) return -21;
+    return -22;  // 56-65
+}
+
+irr::video::SColor EntityRenderer::getConColor(int playerLevel, int entityLevel) {
+    if (playerLevel <= 0 || entityLevel <= 0) {
+        return irr::video::SColor(255, 255, 255, 255);  // White for unknown
+    }
+
+    int diff = entityLevel - playerLevel;
+    int greenCutoff = getGreenCutoff(playerLevel);
+
+    if (diff <= greenCutoff) {
+        return irr::video::SColor(255, 128, 128, 128);  // Gray
+    } else if (diff < -5) {
+        return irr::video::SColor(255, 0, 200, 0);      // Green
+    } else if (diff < -1) {
+        return irr::video::SColor(255, 0, 160, 255);    // Light blue
+    } else if (diff < 3) {
+        return irr::video::SColor(255, 255, 255, 255);  // White
+    } else if (diff < 6) {
+        return irr::video::SColor(255, 255, 255, 0);    // Yellow
+    } else {
+        return irr::video::SColor(255, 255, 0, 0);      // Red
+    }
+}
 
 EntityRenderer::EntityRenderer(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                                irr::io::IFileSystem* fileSystem)
@@ -216,17 +258,17 @@ irr::scene::IMesh* EntityRenderer::createPlaceholderMesh(float size, irr::video:
     // Define indices for cube faces (12 triangles)
     irr::u16 indices[36] = {
         // Bottom
-        0, 2, 1, 0, 3, 2,
+        0, 1, 2, 0, 2, 3,
         // Top
-        4, 5, 6, 4, 6, 7,
+        4, 6, 5, 4, 7, 6,
         // Front
-        0, 1, 5, 0, 5, 4,
+        0, 5, 1, 0, 4, 5,
         // Back
-        2, 3, 7, 2, 7, 6,
+        2, 7, 3, 2, 6, 7,
         // Left
-        3, 0, 4, 3, 4, 7,
+        3, 4, 0, 3, 7, 4,
         // Right
-        1, 2, 6, 1, 6, 5,
+        1, 6, 2, 1, 5, 6,
     };
 
     for (int i = 0; i < 8; ++i) {
@@ -299,7 +341,7 @@ irr::scene::IMesh* EntityRenderer::getMeshForRace(uint16_t raceId, uint8_t gende
 bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                      float x, float y, float z, float heading, bool isPlayer,
                                      uint8_t gender, const EntityAppearance& appearance, bool isNPC,
-                                     bool isCorpse, float serverSize) {
+                                     bool isCorpse, float serverSize, uint8_t entityLevel) {
     if (!smgr_ || hasEntity(spawnId)) {
         return false;
     }
@@ -336,17 +378,45 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
     visual.appearance = appearance;
 
     // Store server size in appearance for later use by buildEntityMesh
-    // We stash it in collisionZOffset temporarily (it's 0 by default and overwritten in buildEntityMesh)
-    constexpr float REFERENCE_SIZE = 6.0f;
-    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
-    // Store sizeMultiplier as negative weaponDelayMs to avoid adding a new field
-    // (weaponDelayMs defaults to 3000, we use a sentinel of -serverSize)
-    // Actually, just store serverSize in a way buildEntityMesh can reconstruct it.
     // We use the collisionHeight field (0 by default, only set for boats in buildEntityMesh)
     visual.collisionHeight = serverSize;  // Temporarily store serverSize here
 
     // Add to spatial grid for efficient visibility queries
     updateEntityGridPosition(spawnId, x, y);
+
+    // Create con-colored placeholder cube for immediate spatial awareness
+    // Skip for: corpses (npc_type 2,3), invisible entities (already filtered by scale<=0),
+    //           zone controllers (race 127, 240)
+    bool skipPlaceholder = isCorpse || raceId == 127 || raceId == 240;
+    if (!skipPlaceholder && smgr_) {
+        // Use con color if both levels are known, otherwise light gray
+        irr::video::SColor conColor = (playerLevel_ > 0 && entityLevel > 0)
+            ? getConColor(playerLevel_, entityLevel)
+            : irr::video::SColor(255, 200, 200, 200);
+        float cubeSize = 6.0f * scale;  // ~6 units tall for humanoids
+        irr::scene::IMesh* cubeMesh = createPlaceholderMesh(cubeSize, conColor);
+        if (cubeMesh) {
+            visual.meshNode = smgr_->addMeshSceneNode(cubeMesh);
+            cubeMesh->drop();
+            if (visual.meshNode) {
+                visual.sceneNode = visual.meshNode;
+                visual.sceneNode->grab();
+                // Position: EQ Z-up to Irrlicht Y-up
+                visual.meshNode->setPosition(irr::core::vector3df(x, z, y));
+                visual.meshNode->setRotation(irr::core::vector3df(0, -heading, 0));
+                visual.usesPlaceholder = true;
+                visual.modelYOffset = 0;
+                visual.collisionZOffset = (cubeSize / 2.0f);
+
+                // Set material: unlit, no backface cull
+                for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
+                    auto& mat = visual.meshNode->getMaterial(i);
+                    mat.Lighting = false;
+                    mat.BackfaceCulling = false;
+                }
+            }
+        }
+    }
 
     entities_[spawnId] = visual;
 
@@ -362,6 +432,23 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     EntityVisual& visual = it->second;
     if (visual.meshBuilt) {
         return true;  // Already built
+    }
+
+    // Promote any background-preloaded model data before building.
+    // The prep worker loads S3D/WLD/animation data on a background thread and stores
+    // it in a staging cache. Promotion moves it to loadedModels_ so getMeshForRace()
+    // can find it, avoiding a redundant disk load on the main thread.
+    if (entityPrepWorker_ && raceModelLoader_) {
+        raceModelLoader_->promotePreparedModels();
+    }
+
+    // Remove con-colored placeholder cube before building real model
+    if (visual.usesPlaceholder && visual.sceneNode) {
+        visual.sceneNode->remove();
+        visual.sceneNode->drop();
+        visual.sceneNode = nullptr;
+        visual.meshNode = nullptr;
+        visual.usesPlaceholder = false;
     }
 
     auto createStart = std::chrono::steady_clock::now();
@@ -725,6 +812,249 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     return true;
 }
 
+bool EntityRenderer::processOneEntityBuildStep() {
+    if (!smgr_ || !raceModelLoader_) return false;
+
+    // Find nearest unbuilt entity that's ready for work
+    // Sort by distance to player (playerSpawnId_ entity position as proxy)
+    float playerX = 0, playerY = 0;
+    if (playerSpawnId_ != 0) {
+        auto playerIt = entities_.find(playerSpawnId_);
+        if (playerIt != entities_.end()) {
+            playerX = playerIt->second.lastX;
+            playerY = playerIt->second.lastY;
+        }
+    }
+
+    // Collect entities in TextureUploading or MeshBuilding phases first (in-progress),
+    // then Placeholder entities that have data ready
+    uint16_t bestId = 0;
+    float bestDistSq = std::numeric_limits<float>::max();
+    EntityBuildPhase bestPhase = EntityBuildPhase::Built;
+
+    for (auto& [spawnId, vis] : entities_) {
+        if (vis.meshBuilt) continue;
+        if (vis.buildPhase == EntityBuildPhase::Built) continue;
+
+        // Prioritize in-progress entities (TextureUploading, MeshBuilding) over Placeholder
+        bool inProgress = (vis.buildPhase == EntityBuildPhase::TextureUploading ||
+                          vis.buildPhase == EntityBuildPhase::MeshBuilding);
+
+        float dx = vis.lastX - playerX;
+        float dy = vis.lastY - playerY;
+        float distSq = dx * dx + dy * dy;
+
+        // Prefer in-progress over placeholder, then closer over farther
+        if (inProgress && bestPhase == EntityBuildPhase::Placeholder) {
+            bestId = spawnId;
+            bestDistSq = distSq;
+            bestPhase = vis.buildPhase;
+        } else if (inProgress == (bestPhase != EntityBuildPhase::Placeholder)) {
+            // Both in same priority tier — pick closer
+            if (distSq < bestDistSq) {
+                bestId = spawnId;
+                bestDistSq = distSq;
+                bestPhase = vis.buildPhase;
+            }
+        } else if (!inProgress && bestPhase == EntityBuildPhase::Built) {
+            // No in-progress found yet, consider placeholders
+            bestId = spawnId;
+            bestDistSq = distSq;
+            bestPhase = vis.buildPhase;
+        }
+    }
+
+    if (bestId == 0) return false;
+
+    auto& vis = entities_[bestId];
+
+    switch (vis.buildPhase) {
+        case EntityBuildPhase::Placeholder: {
+            // Check if background prep has data ready
+            uint32_t cacheKey = (static_cast<uint32_t>(vis.raceId) << 8) | vis.gender;
+            if (!raceModelLoader_->isModelDataCached(cacheKey)) {
+                return false;  // Background thread still working
+            }
+            // Promote prepared data to main cache
+            raceModelLoader_->promotePreparedModels();
+
+            auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
+            if (!modelData) {
+                buildEntityMesh(bestId);
+                return true;
+            }
+
+            // If background thread didn't decode textures (model was already in
+            // loadedModels_ before prep ran), decode ONE texture per frame on
+            // the main thread. Stay in Placeholder phase until all are decoded,
+            // then transition to TextureUploading.
+            if (modelData->decodedTextures.empty() && modelData->combinedGeometry &&
+                !modelData->textures.empty()) {
+                // Count total decodable textures to know when we're done
+                size_t totalDecodable = 0;
+                for (const auto& texName : modelData->combinedGeometry->textureNames) {
+                    std::string lowerName = texName;
+                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    auto texIt = modelData->textures.find(lowerName);
+                    if (texIt != modelData->textures.end() && texIt->second &&
+                        !texIt->second->data.empty() && DDSDecoder::isDDS(texIt->second->data)) {
+                        totalDecodable++;
+                    }
+                }
+
+                if (totalDecodable == 0) {
+                    // No DDS textures to decode — synchronous build
+                    buildEntityMesh(bestId);
+                    return true;
+                }
+
+                // Decode ONE texture this frame (nextTextureUpload tracks decode progress)
+                size_t decodeIdx = 0;
+                for (const auto& texName : modelData->combinedGeometry->textureNames) {
+                    std::string lowerName = texName;
+                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    auto texIt = modelData->textures.find(lowerName);
+                    if (texIt == modelData->textures.end() || !texIt->second ||
+                        texIt->second->data.empty() || !DDSDecoder::isDDS(texIt->second->data)) {
+                        continue;
+                    }
+
+                    // Skip already-decoded textures
+                    if (decodeIdx < vis.nextTextureUpload) {
+                        decodeIdx++;
+                        continue;
+                    }
+
+                    // Decode this one
+                    const auto& rawData = texIt->second->data;
+                    DecodedTexture decoded;
+                    decoded.name = texName;
+                    DecodedImage img = DDSDecoder::decode(rawData);
+                    if (img.isValid()) {
+                        decoded.width = img.width;
+                        decoded.height = img.height;
+                        decoded.argbPixels.resize(img.width * img.height);
+                        for (uint32_t i = 0; i < img.width * img.height; ++i) {
+                            uint8_t r = img.pixels[i * 4 + 0];
+                            uint8_t g = img.pixels[i * 4 + 1];
+                            uint8_t b = img.pixels[i * 4 + 2];
+                            uint8_t a = img.pixels[i * 4 + 3];
+                            decoded.argbPixels[i] = (static_cast<uint32_t>(a) << 24) |
+                                                    (static_cast<uint32_t>(r) << 16) |
+                                                    (static_cast<uint32_t>(g) << 8) |
+                                                    static_cast<uint32_t>(b);
+                            if (a < 255) decoded.hasAlpha = true;
+                        }
+                        modelData->decodedTextures.push_back(std::move(decoded));
+                    }
+
+                    vis.nextTextureUpload++;
+                    LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) decoded texture {}/{}: '{}' on main thread",
+                              bestId, vis.name, vis.nextTextureUpload, totalDecodable, texName);
+
+                    // Done for this frame — one decode per frame
+                    if (vis.nextTextureUpload >= totalDecodable) {
+                        // All decoded — transition to upload phase
+                        vis.buildPhase = EntityBuildPhase::TextureUploading;
+                        vis.nextTextureUpload = 0;
+                        vis.uploadedTextures.clear();
+                        vis.uploadedTextureAlpha.clear();
+                        LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame upload: {} textures",
+                                  bestId, vis.name, modelData->decodedTextures.size());
+                    }
+                    return true;
+                }
+
+                // Shouldn't reach here but handle gracefully
+                buildEntityMesh(bestId);
+                return true;
+            }
+
+            // Background thread already decoded textures — go straight to upload
+            if (!modelData->decodedTextures.empty()) {
+                vis.buildPhase = EntityBuildPhase::TextureUploading;
+                vis.nextTextureUpload = 0;
+                vis.uploadedTextures.clear();
+                vis.uploadedTextureAlpha.clear();
+                LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame build: {} textures to upload",
+                          bestId, vis.name, modelData->decodedTextures.size());
+                return true;
+            }
+
+            // No textures at all
+            buildEntityMesh(bestId);
+            return true;
+        }
+
+        case EntityBuildPhase::TextureUploading: {
+            auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
+            if (!modelData || vis.nextTextureUpload >= modelData->decodedTextures.size()) {
+                vis.buildPhase = EntityBuildPhase::MeshBuilding;
+                return true;
+            }
+
+            const auto& decoded = modelData->decodedTextures[vis.nextTextureUpload];
+
+            // Create IImage from pre-decoded ARGB pixels and upload to GPU
+            irr::video::IImage* img = driver_->createImageFromData(
+                irr::video::ECF_A8R8G8B8,
+                irr::core::dimension2du(decoded.width, decoded.height),
+                const_cast<uint32_t*>(decoded.argbPixels.data()),
+                false  // don't own data
+            );
+
+            irr::video::ITexture* tex = nullptr;
+            if (img) {
+                // Use the original texture name (lowercase) so buildMeshFromGeometry
+                // finds it in the mesh builder's cache via getOrLoadTexture()
+                std::string lowerName = decoded.name;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                tex = driver_->addTexture(lowerName.c_str(), img);
+                img->drop();
+            }
+
+            // Register in mesh builder cache so buildEntityMesh() → buildMeshFromGeometry()
+            // finds this texture via getOrLoadTexture() and skips loadTextureFromBMP()
+            if (tex && raceModelLoader_->getMeshBuilder()) {
+                raceModelLoader_->getMeshBuilder()->registerUploadedTexture(
+                    decoded.name, tex, decoded.hasAlpha);
+            }
+
+            vis.uploadedTextures.push_back(tex);
+            vis.uploadedTextureAlpha.push_back(decoded.hasAlpha);
+            vis.nextTextureUpload++;
+
+            if (vis.nextTextureUpload >= modelData->decodedTextures.size()) {
+                vis.buildPhase = EntityBuildPhase::MeshBuilding;
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded texture {}/{}: '{}'",
+                      bestId, vis.name, vis.nextTextureUpload,
+                      modelData->decodedTextures.size(), decoded.name);
+            return true;
+        }
+
+        case EntityBuildPhase::MeshBuilding: {
+            // All textures uploaded — build mesh and create scene node.
+            // For simplicity and correctness (equipment variants, animation merge, etc.),
+            // delegate to the existing buildEntityMesh() which handles all edge cases.
+            // The expensive texture decode + GPU upload is already done; the remaining
+            // mesh buffer creation + scene node setup is ~10-20ms.
+            buildEntityMesh(bestId);
+            vis.buildPhase = EntityBuildPhase::Built;
+            return true;
+        }
+
+        case EntityBuildPhase::Built:
+            return false;
+    }
+
+    return false;
+}
+
 bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
                                    float x, float y, float z, float heading, bool isPlayer,
                                    uint8_t gender, const EntityAppearance& appearance, bool isNPC,
@@ -804,6 +1134,11 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
     bool positionChanged = (std::abs(serverDeltaX) > 0.01f ||
                             std::abs(serverDeltaY) > 0.01f ||
                             std::abs(serverDeltaZ) > 0.01f);
+
+    // Invalidate cached BSP region when server position changes
+    if (positionChanged) {
+        visual.bspRegionDirty = true;
+    }
 
     // For NPCs, use heading-based velocity when animation (speed) is non-zero
     // The animation field for NPCs is actually "SpeedRun" - a movement speed value
@@ -1212,9 +1547,10 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         if (it == entities_.end()) continue;
         EntityVisual& visual = it->second;
 
-        // Skip entities whose meshes haven't been built yet (deferred loading)
-        // Position fields are still updated via timeSinceUpdate above
-        if (!visual.meshBuilt) continue;
+        // Skip entities with no scene node at all (not yet created)
+        if (!visual.sceneNode) continue;
+        // Skip entities that were culled (not in scene graph)
+        if (!visual.inSceneGraph) continue;
 
         bool isDebugTarget = (spawnId == debugTargetId_);
 
@@ -1775,49 +2111,8 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
     float eqCameraY = cameraPos.Z;  // EQ Y = Irrlicht Z
     float eqCameraZ = cameraPos.Y;  // EQ Z = Irrlicht Y
 
-    // Update camera's BSP region for PVS culling (with caching)
-    if (bspTree_ && !bspTree_->regions.empty()) {
-        // Cache BSP lookup - only recompute if position changed significantly (>5 units)
-        static float lastBspCamX = -99999.0f, lastBspCamY = -99999.0f, lastBspCamZ = -99999.0f;
-        static std::shared_ptr<BspRegion> cachedCamRegion;
-        static size_t cachedCamRegionIdx = SIZE_MAX;
-
-        float dx = eqCameraX - lastBspCamX;
-        float dy = eqCameraY - lastBspCamY;
-        float dz = eqCameraZ - lastBspCamZ;
-        float distSq = dx*dx + dy*dy + dz*dz;
-
-        size_t regionIdx = SIZE_MAX;
-        if (distSq > 25.0f) {  // 5 units squared
-            regionIdx = bspTree_->findRegionIndexForPoint(eqCameraX, eqCameraY, eqCameraZ);
-            if (regionIdx != SIZE_MAX && regionIdx < bspTree_->regions.size()) {
-                cachedCamRegion = bspTree_->regions[regionIdx];
-            } else {
-                cachedCamRegion = nullptr;
-            }
-            cachedCamRegionIdx = regionIdx;
-            lastBspCamX = eqCameraX;
-            lastBspCamY = eqCameraY;
-            lastBspCamZ = eqCameraZ;
-        } else {
-            regionIdx = cachedCamRegionIdx;
-        }
-
-        if (regionIdx != SIZE_MAX) {
-            if (regionIdx != currentCameraRegionIdx_) {
-                currentCameraRegionIdx_ = regionIdx;
-                currentCameraRegion_ = cachedCamRegion;
-                LOG_TRACE(MOD_GRAPHICS, "EntityRenderer: Camera entered region {}", regionIdx);
-            }
-        } else {
-            // Camera outside BSP tree - show all entities
-            if (currentCameraRegionIdx_ != SIZE_MAX) {
-                currentCameraRegionIdx_ = SIZE_MAX;
-                currentCameraRegion_ = nullptr;
-                LOG_TRACE(MOD_GRAPHICS, "EntityRenderer: Camera outside BSP tree");
-            }
-        }
-    }
+    // Camera BSP region for PVS culling is set externally by IrrlichtRenderer::setCameraRegion()
+    // (computed in updatePvsVisibility on tier2 frames, avoiding duplicate BSP lookups)
 
     // Get entities potentially within render distance
     std::vector<uint16_t> nearbyEntities;
@@ -1845,8 +2140,12 @@ void EntityRenderer::updateNameTags(irr::scene::ICameraSceneNode* camera) {
         // Check PVS visibility (if BSP tree is set)
         bool pvsVisible = true;  // Default to visible if no PVS data
         if (bspTree_ && currentCameraRegion_ && !currentCameraRegion_->visibleRegions.empty()) {
-            // Find which region the entity is in (direct index lookup, no linear scan)
-            size_t entityRegionIdx = bspTree_->findRegionIndexForPoint(visual.lastX, visual.lastY, visual.lastZ);
+            // Use cached BSP region — only re-lookup when server sends a position update
+            if (visual.bspRegionDirty) {
+                visual.cachedBspRegion = bspTree_->findRegionIndexForPoint(visual.lastX, visual.lastY, visual.lastZ);
+                visual.bspRegionDirty = false;
+            }
+            size_t entityRegionIdx = visual.cachedBspRegion;
             if (entityRegionIdx != SIZE_MAX) {
                 // Check if entity's region is visible from camera's region
                 if (entityRegionIdx < currentCameraRegion_->visibleRegions.size()) {
@@ -3671,6 +3970,7 @@ void EntityRenderer::invalidateOcclusionCache() {
         }
     }
     frustumCulledCount_ = 0;
+    portalCulledCount_ = 0;
     occlusionTestedCount_ = 0;
     occlusionHiddenCount_ = 0;
     occlusionFrameCounter_++;
@@ -3733,6 +4033,8 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
 
     // Apply visibility limits
     visibleEntityCount_ = 0;
+    portalCulledCount_ = 0;
+    frustumCulledCount_ = 0;
     for (size_t i = 0; i < entityDistances.size(); ++i) {
         const auto& ed = entityDistances[i];
         auto it = entities_.find(ed.spawnId);
@@ -3757,9 +4059,28 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
             }
         }
 
+        // Portal-based entity culling - reject entities in BSP regions not reachable
+        // through portal openings from the camera's room. More reliable than SW occlusion
+        // for EQ's indoor architecture with zero-thickness walls.
+        if (shouldBeVisible && !visual.isPlayer && portalVisibleRegions_ && bspTree_) {
+            // Use cached BSP region — only re-lookup when server sends a position update
+            if (visual.bspRegionDirty) {
+                visual.cachedBspRegion = bspTree_->findRegionIndexForPoint(
+                    visual.lastX, visual.lastY, visual.lastZ);
+                visual.bspRegionDirty = false;
+            }
+            size_t entityRegion = visual.cachedBspRegion;
+            if (entityRegion != SIZE_MAX && portalVisibleRegions_->find(entityRegion) == portalVisibleRegions_->end()) {
+                shouldBeVisible = false;
+                portalCulledCount_++;
+            }
+        }
+
         // Per-entity software occlusion test against depth buffer
+        // Skip when portal culling is active (portal culling is more reliable and cheaper)
         // Skip for player (always visible) and entities already culled by distance/count/frustum
-        if (shouldBeVisible && !visual.isPlayer && occlusionCuller_ && occlusionCuller_->isEnabled()) {
+        if (shouldBeVisible && !visual.isPlayer && !portalVisibleRegions_
+            && occlusionCuller_ && occlusionCuller_->isEnabled()) {
             // Use cached result if depth buffer hasn't changed and entity hasn't moved
             float dx = visual.lastX - visual.occlusionTestX;
             float dy = visual.lastY - visual.occlusionTestY;
