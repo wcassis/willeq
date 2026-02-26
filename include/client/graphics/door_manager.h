@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <memory>
@@ -57,6 +58,9 @@ struct DoorVisual {
     // BSP region for occlusion culling
     size_t bspRegion = SIZE_MAX;
 
+    // Scene graph membership (grab/remove pattern like entities)
+    bool inSceneGraph = false;
+
     // Deferred mesh building (progressive loading)
     bool meshBuilt = false;          // false = registered only, true = mesh built
     // Stored creation parameters for deferred building
@@ -84,18 +88,27 @@ public:
     // Set occlusion-culled regions (pass nullptr when no occlusion data)
     void setOcclusionCulledRegions(const std::unordered_set<size_t>* regions) { occlusionCulledRegions_ = regions; }
 
-    // Set GLSL shader material types for textured door meshes
-    void setShaderMaterialTypes(irr::s32 solid, irr::s32 alphaTest) {
-        shaderMaterialSolid_ = solid;
-        shaderMaterialAlphaTest_ = alphaTest;
-    }
-
     // Rebuild doors that were created with placeholder meshes (zone data wasn't loaded yet)
     void rebuildPlaceholderDoors();
+
+    // Rebuild a single placeholder door (for progressive one-door-per-frame loading)
+    // Returns true if the door was rebuilt, false if skipped or failed
+    bool rebuildSingleDoor(uint8_t doorId);
 
     // Set frustum culler for directional door visibility culling
     void setFrustumCuller(FrustumCuller* culler) { frustumCuller_ = culler; }
 
+    // Set current PVS region for BSP-based door culling
+    void setPvsRegion(size_t cameraRegion) { currentPvsRegion_ = cameraRegion; }
+
+    // Retroactively compute BSP regions for doors registered before BSP was available.
+    // Called after setBspTree() when BSP arrives via advanceBspPreload().
+    void recomputeAllBspRegions();
+
+    // Set region neighbor map for 1-depth PVS expansion (prevents pop-in at boundaries)
+    void setRegionNeighbors(const std::unordered_map<size_t, std::vector<size_t>>* neighbors) {
+        regionNeighbors_ = neighbors;
+    }
 
     // Create a door visual from server data
     // Returns true if door was created successfully (or skipped for invisible types)
@@ -167,17 +180,23 @@ private:
     // Shape and color are derived from the door name (DOOR→slab, CRATE→cube, BARREL→cylinder)
     irr::scene::IMesh* createPlaceholderMesh(const std::string& doorName = "") const;
 
+    // Check if a BSP region is PVS-visible from the current camera region
+    // (includes 1-depth portal neighbor expansion)
+    bool isRegionPvsVisible(size_t regionIdx) const;
+    bool isRegionPvsVisibleDebug(size_t regionIdx, uint8_t doorId) const;
+
     std::map<uint8_t, DoorVisual> doors_;
     std::set<uint8_t> invisibleDoors_;  // Track invisible doors to suppress state update warnings
+    std::unordered_map<std::string, irr::scene::IMesh*> doorMeshCache_;  // Cached meshes by uppercase door name
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     std::shared_ptr<S3DZone> currentZone_;
     ConstrainedTextureCache* constrainedCache_ = nullptr;
-    irr::s32 shaderMaterialSolid_ = -1;
-    irr::s32 shaderMaterialAlphaTest_ = -1;
     const BspTree* bspTree_ = nullptr;
     FrustumCuller* frustumCuller_ = nullptr;
     const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
+    size_t currentPvsRegion_ = SIZE_MAX;
+    const std::unordered_map<size_t, std::vector<size_t>>* regionNeighbors_ = nullptr;
     // Animation speed (complete animation in ~0.5 seconds)
     static constexpr float ANIM_SPEED = 2.0f;
 

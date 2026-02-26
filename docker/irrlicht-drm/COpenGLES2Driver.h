@@ -330,6 +330,10 @@ public:
     size_t getHWBufferMemoryUsage() const;
     size_t getHWBufferCount() const;
 
+    // Wrap an already-uploaded GL texture as an ITexture (for strip uploads)
+    ITexture* wrapExternalTexture(const io::path& name, GLuint glTexName,
+                                   const core::dimension2d<u32>& size);
+
     // GPU texture memory query (sum of all texture GpuBytes)
     size_t getGpuTextureMemoryUsage() const;
 
@@ -363,6 +367,10 @@ private:
 
     // Apply material state to GL (blend, depth, cull, texture)
     void applyMaterialState(const SMaterial& material);
+
+    // Apply only blend/depth/cull/texture state — no program selection or uniform upload.
+    // Used by custom shader path to avoid wasted uploads to the built-in program.
+    void applyMaterialRenderState(const SMaterial& material);
 
     // Apply a custom shader's state
     void applyCustomShaderState(s32 materialType, const SMaterial& material);

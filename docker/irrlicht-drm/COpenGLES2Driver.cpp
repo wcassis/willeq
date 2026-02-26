@@ -225,6 +225,11 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
 {
     CNullDriver::beginScene(backBuffer, zBuffer, color, videoData, sourceRect);
 
+    // Unconditional scissor reset — particle renderer may desync state_.scissorEnabled
+    // via raw GL calls, so we can't trust the cache at frame boundaries
+    glDisable(GL_SCISSOR_TEST);
+    state_.scissorEnabled = false;
+
     GLbitfield clearMask = 0;
     if (backBuffer) {
         glClearColor(color.getRed() / 255.0f,
@@ -246,6 +251,11 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
 
     ResetRenderStates = true;
     Is2DMode = false;
+
+    // Invalidate custom shader program cache at frame boundary — built-in shaders
+    // (2D draws, UI, entity rendering) change the GL program via shaderManager_ but
+    // don't update currentCustomProgram_, so it becomes stale across frames.
+    currentCustomProgram_ = 0;
 
     return true;
 }
@@ -548,6 +558,7 @@ void COpenGLES2Driver::draw2DLine(const core::position2d<s32>& start,
                                    const core::position2d<s32>& end,
                                    SColor color)
 {
+    setScissorFromClip(nullptr);
     setOrthoProjection();
     setBlend(color.getAlpha() < 255, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -996,17 +1007,9 @@ void COpenGLES2Driver::setMaterial(const SMaterial& material)
     applyMaterialState(material);
 }
 
-void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
+void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
 {
-    // Check if this is a custom shader material
-    s32 matType = material.MaterialType;
-
-    if (matType >= (s32)EMT_CUSTOM_BASE && (matType - EMT_CUSTOM_BASE) < (s32)CustomShaders.size()) {
-        applyCustomShaderState(matType, material);
-        return;
-    }
-
-    // Built-in material types
+    // Blend / depth-write based on material type
     switch (material.MaterialType) {
         case EMT_TRANSPARENT_ALPHA_CHANNEL:
             setBlend(true, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1015,7 +1018,6 @@ void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
         case EMT_TRANSPARENT_ALPHA_CHANNEL_REF:
             setBlend(false);
             setDepthWrite(true);
-            // Alpha test handled in shader via discard
             break;
         case EMT_TRANSPARENT_ADD_COLOR:
             setBlend(true, GL_ONE, GL_ONE);
@@ -1026,7 +1028,6 @@ void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
             setDepthWrite(false);
             break;
         default:
-            // EMT_SOLID and others
             setBlend(false);
             setDepthWrite(true);
             break;
@@ -1043,13 +1044,11 @@ void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
         const COGLES2Texture* tex = static_cast<const COGLES2Texture*>(material.getTexture(0));
         bindTexture(GL_TEXTURE0, tex->getOpenGLTextureName());
 
-        // Set texture filtering
         GLint magFilter = material.TextureLayer[0].BilinearFilter ? GL_LINEAR : GL_NEAREST;
         GLint minFilter = material.TextureLayer[0].BilinearFilter ? GL_LINEAR : GL_NEAREST;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
 
-        // Clamp
         bool clamp = material.TextureLayer[0].TextureWrapU == ETC_CLAMP ||
                      material.TextureLayer[0].TextureWrapU == ETC_CLAMP_TO_EDGE;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
@@ -1061,12 +1060,31 @@ void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
         const COGLES2Texture* tex = static_cast<const COGLES2Texture*>(material.getTexture(1));
         bindTexture(GL_TEXTURE1, tex->getOpenGLTextureName());
     }
+}
+
+void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
+{
+    // Check if this is a custom shader material
+    s32 matType = material.MaterialType;
+
+    if (matType >= (s32)EMT_CUSTOM_BASE && (matType - EMT_CUSTOM_BASE) < (s32)CustomShaders.size()) {
+        applyCustomShaderState(matType, material);
+        return;
+    }
+
+    // Built-in material path — invalidate custom program cache so the next
+    // applyCustomShaderState() call always issues glUseProgram().
+    // Without this, the cache thinks the custom program is still active after
+    // a built-in shader (entity/UI rendering) has called shaderManager_.useProgram(),
+    // which changes the GL program without updating currentCustomProgram_.
+    currentCustomProgram_ = 0;
+
+    // Apply blend, depth, cull, texture state
+    applyMaterialRenderState(material);
 
     // Select appropriate built-in shader
-    // (Custom shaders set their own program in applyCustomShaderState)
     bool hasTexture = material.getTexture(0) != nullptr;
     if (hasTexture) {
-        // Use AlphaTest3D for alpha-ref materials (discard in fragment shader)
         if (material.MaterialType == EMT_TRANSPARENT_ALPHA_CHANNEL_REF)
             shaderManager_.useProgram(EOGLES2SP_ALPHA3D);
         else
@@ -1141,14 +1159,19 @@ void COpenGLES2Driver::applyCustomShaderState(s32 materialType, const SMaterial&
 
     const SOGLES2CustomShader& cs = CustomShaders[idx];
 
-    // Apply base material state (blend, depth, cull)
+    // Apply only blend/depth/cull/texture state from base material — skip
+    // built-in program selection and uniform upload (the custom shader callback
+    // handles its own uniforms, so uploading to the built-in program is wasted work)
     SMaterial baseMat = material;
     baseMat.MaterialType = cs.baseMaterial;
-    applyMaterialState(baseMat);
+    applyMaterialRenderState(baseMat);
 
-    // Use custom shader program
-    glUseProgram(cs.program);
-    currentCustomProgram_ = cs.program;
+    // Use custom shader program — skip glUseProgram if same program already active
+    if (currentCustomProgram_ != cs.program) {
+        glUseProgram(cs.program);
+        currentCustomProgram_ = cs.program;
+        shaderManager_.invalidateActiveProgram();
+    }
 
     // Call the callback to set uniforms
     if (cs.callback) {
@@ -1259,6 +1282,7 @@ bool COpenGLES2Driver::setRenderTarget(video::ITexture* texture,
         CurrentRenderTarget = gles2Tex;
         CurrentRenderTargetSize = texture->getOriginalSize();
         setViewPort(core::rect<s32>(0, 0, CurrentRenderTargetSize.Width, CurrentRenderTargetSize.Height));
+        setScissorFromClip(nullptr);
     } else {
         // Discard FBO depth before unbinding (skip tile writeback for depth we no longer need)
         if (CurrentRenderTarget && extensions_.hasDiscardFramebuffer) {
@@ -1269,6 +1293,7 @@ bool COpenGLES2Driver::setRenderTarget(video::ITexture* texture,
         CurrentRenderTarget = nullptr;
         CurrentRenderTargetSize = ScreenSize;
         setViewPort(core::rect<s32>(0, 0, ScreenSize.Width, ScreenSize.Height));
+        setScissorFromClip(nullptr);
     }
 
     // Invalidate 2D mode so ortho projection recalculates for new render target size
@@ -1692,6 +1717,19 @@ size_t COpenGLES2Driver::getHWBufferCount() const
     return HWBufferMap.size();
 }
 
+ITexture* COpenGLES2Driver::wrapExternalTexture(const io::path& name, GLuint glTexName,
+                                                 const core::dimension2d<u32>& size)
+{
+    ITexture* existing = findTexture(name);
+    if (existing)
+        return existing;
+
+    COGLES2Texture* tex = new COGLES2Texture(name, glTexName, size, this);
+    CNullDriver::addTexture(tex);
+    tex->drop();
+    return tex;
+}
+
 size_t COpenGLES2Driver::getGpuTextureMemoryUsage() const
 {
     size_t total = 0;
@@ -1762,6 +1800,14 @@ size_t gles2GetGpuTextureMemoryUsage(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     return d->getGpuTextureMemoryUsage();
+}
+
+void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+                        unsigned int width, unsigned int height)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    irr::core::dimension2d<irr::u32> size(width, height);
+    return d->wrapExternalTexture(irr::io::path(name), (GLuint)glTexName, size);
 }
 
 #endif // _IRR_COMPILE_WITH_OGLES2_

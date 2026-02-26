@@ -15,6 +15,8 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/eq/equipment_model_loader.h"
+#include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -31,6 +33,7 @@
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
 #include "client/graphics/frame_budget_governor.h"
+#include "client/graphics/simulation_worker.h"
 #include "client/input/hotkey_manager.h"
 
 #ifdef WITH_RDP
@@ -68,6 +71,8 @@ namespace Graphics {
 
 // Forward declarations
 class SkyRenderer;
+class SkyLoader;
+class SkyConfig;
 class WeatherEffectsController;
 
 // Renderer input action types for event queue
@@ -128,19 +133,141 @@ struct BspPreloadResult {
     bool portalOcclusionEligible = false;
 };
 
+// Deferred/progressive object for lazy mesh building
+struct DeferredObject {
+    size_t objectIndex;              // Index into currentZone_->objects
+    size_t bspRegion = SIZE_MAX;     // BSP region for priority
+    irr::core::aabbox3df worldBounds;
+    bool meshBuilt = false;
+};
+
+// CPU-only computations performed on background thread after S3D parse
+struct PendingZoneComputations {
+    std::map<size_t, irr::core::aabbox3df> regionBoundingBoxes;
+    std::vector<std::pair<size_t, size_t>> deferredObjectEntries; // (objectIndex, bspRegion) pairs
+    std::unique_ptr<PortalSystem> portalSystem;
+    bool portalOcclusionEligible = false;
+    std::vector<size_t> zoneLightRegions;  // BSP region per light (SIZE_MAX = no region)
+
+    // Archive index built on background thread (deferred asset loading only)
+    std::unique_ptr<GraphicsArchiveIndex> archiveIndex;
+
+    // Equipment index built on background thread
+    struct EquipmentIndexData {
+        std::map<int, EquipmentModelLoader::EquipmentModelRef> modelIndex;
+        std::map<std::string, EquipmentModelLoader::EquipmentTextureRef> textureIndex;
+        std::map<uint32_t, int> itemToModelMap;
+    };
+    std::unique_ptr<EquipmentIndexData> equipmentIndex;
+
+    // Sky data loaded on background thread (sky.s3d + sky.ini — no GL)
+    struct SkyLoadData {
+        std::unique_ptr<SkyLoader> skyLoader;
+        std::unique_ptr<SkyConfig> skyConfig;
+        // Pre-decoded + upscaled sky textures from background thread (BMP only)
+        struct PreDecodedTexture {
+            std::string name;
+            std::vector<uint8_t> pixels; // A8R8G8B8 (BGRA byte order for Irrlicht)
+            uint32_t width, height;
+        };
+        std::vector<PreDecodedTexture> preDecodedTextures;
+        // Pre-computed dome mesh from background thread (CPU trig, no GL)
+        struct PrecomputedSkyDome {
+            std::vector<irr::video::S3DVertex> vertices;  // 693 verts
+            std::vector<irr::u16> indices;                 // 3840 indices
+        };
+        std::unique_ptr<PrecomputedSkyDome> precomputedDome;
+    };
+    std::unique_ptr<SkyLoadData> skyLoadData;
+
+    // Global character assets built on background thread
+    struct GlobalAssetsData {
+        std::vector<std::shared_ptr<CharacterModel>> globalCharacters;
+        std::map<std::string, std::shared_ptr<TextureInfo>> globalTextures;
+        std::map<int, std::vector<std::shared_ptr<CharacterModel>>> numberedGlobalCharacters;
+        std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>> numberedGlobalTextures;
+        std::map<std::string, RaceModelLoader::ArmorTextureRef> armorTextureIndex;
+    };
+    std::unique_ptr<GlobalAssetsData> globalAssets;
+
+    // Atlas preload data (file I/O + tile lookup on background thread, GL upload on main thread)
+    TextureAtlas::PreloadData zoneAtlasPreload;
+    TextureAtlas::PreloadData objAtlasPreload;
+
+    // Weather config pre-loaded on background thread (file I/O + JSON parse)
+    struct WeatherConfigData {
+        ZoneWeatherConfig config;
+        bool loaded = false;
+    };
+    std::unique_ptr<WeatherConfigData> weatherConfig;
+
+    // Display settings pre-loaded on background thread (file I/O + JSON parse)
+    struct DisplaySettingsData {
+        bool skyEnabled = true;
+        bool loaded = false;
+    };
+    std::unique_ptr<DisplaySettingsData> displaySettings;
+
+    // Pre-built mesh cache (created + all regions registered on background thread)
+    struct PrebuiltMeshCacheData {
+        std::unique_ptr<ConstrainedMeshCache> cache;
+        size_t regionsWithGeometry = 0;
+    };
+    std::unique_ptr<PrebuiltMeshCacheData> prebuiltMeshCache;
+
+    // Pre-built deferred objects (tree-filtered + world bounds on background thread)
+    std::vector<DeferredObject> prebuiltDeferredObjects;
+};
+
 // Background zone load state machine — S3D loads off-thread, then progressive setup on main thread
+// Each sub-phase does ONE small unit of work per GREEN frame to avoid frame spikes.
 enum class BackgroundZoneLoadPhase : uint8_t {
-    Idle,             // No load in progress
-    Pending,          // Waiting to start (setupInstantScene called)
-    Loading,          // Background thread running S3DLoader::loadZone()
-    DataReady,        // S3D parsed, data available on main thread
-    AtlasLoad,        // Loading texture atlas pages
-    RegionMeshSetup,  // Creating zone mesh with PVS (batch of regions per GREEN frame)
-    LightsAndObjects, // Zone lights + object indexing
-    CollisionRebuild, // Rebuild collision with real S3D meshes
-    EnvironmentInit,  // Trees, detail, particles, boids, etc. (existing advanceDeferredInit steps)
-    EntityLoading,    // Progressive entity/door/object builds (existing processProgressiveLoad)
-    Complete          // Done
+    Idle,                    // No load in progress
+    Pending,                 // Waiting to start (setupInstantScene called)
+    Loading,                 // Background thread running (S3D parse + CPU post-processing)
+    // DataReady sub-steps — break loadGlobalAssets() into individual steps
+    DataReady_Notify,        // Install currentZone_, notify subsystems
+    DataReady_EntityRenderer,// Create/configure entity renderer
+    DataReady_ArchiveIndex,  // Build graphics archive index (or eager model load)
+    DataReady_GlobalAssets,  // Adopt pre-built global character assets from background thread
+    DataReady_Equipment,     // Load equipment models
+    DataReady_DoorManager,   // Create/configure door manager
+    DataReady_SkyCreate,     // Create SkyRenderer + adopt pre-loaded loader/config
+    DataReady_DetailManager, // Create detail manager (lightweight)
+    DataReady_ModelView,     // Mark global assets loaded (model view deferred to first inventory open)
+    DataReady_Env_SkyPrepare,    // Sky type config lookups (no GL)
+    DataReady_Env_FogSetup,      // Fog + render distance (GL call)
+    DataReady_Env_WeatherApply,  // Weather config apply (no GL, pre-loaded)
+    DataReady_Env_SkyTextures, // Upload pre-decoded sky textures to GPU (batched, repeats)
+    DataReady_Env_SkyRelease,// Free pre-decoded sky pixel data
+    DataReady_Env_SkyDome,   // Create dome mesh node from pre-computed data + set material
+    DataReady_Env_SkyCelestials, // Create sun/moon billboards
+    DataReady_Env_SkyColors, // Calculate colors + update vertex alpha + apply zone env
+    // Atlas sub-steps — preloaded on background thread, GL upload batched 1 page/GREEN frame
+    Atlas_Zone_Upload,       // Upload 1 zone atlas page per GREEN frame
+    Atlas_Zone_Finalize,     // Adopt zone atlas tile lookup, mark loaded
+    Atlas_Object_Upload,     // Upload 1 object atlas page per GREEN frame
+    Atlas_Object_Finalize,   // Adopt object atlas tile lookup, set page offset
+    Atlas_Shader,            // Set shader page textures, reset GL state
+    // Region mesh sub-steps
+    RegionMesh_InstallBsp,   // Install BSP from background computations, configure subsystems
+    RegionMesh_InitCache,    // Init mesh cache + register regions (lazy) OR start eager batch
+    RegionMesh_EagerBatch,   // Build batch of eager region meshes (repeats until done)
+    RegionMesh_SortSetup,    // Enable front-to-back sorting
+    RegionMesh_InstallPortal,// Install pre-built portal system from background thread
+    // Lights & Objects sub-steps
+    Lights_CreateNodes,      // Create zone light scene nodes
+    Lights_InstallRegions,   // Install pre-computed light BSP regions from background thread
+    Objects_Install,         // Install pre-computed deferred objects (with tree filtering)
+    Misc_ZoneBounds,         // Cache zone bounds
+    Misc_Fog,                // Setup fog
+    Misc_DoorSetup,          // Door shader materials + rebuildPlaceholderDoors()
+    Misc_ReleaseData,        // Release texture pixel data if applicable
+    // Collision + Environment + Entity (unchanged)
+    CollisionRebuild,        // setupMinimalZoneCollision()
+    EnvironmentInit,         // advanceDeferredInit() sub-steps (already broken down)
+    EntityLoading,           // Mark complete
+    Complete                 // Done
 };
 
 // Vision types affecting zone light visibility
@@ -773,6 +900,8 @@ public:
     bool isStencilDebugDrawEnabled() const { return stencilDebugDraw_; }
     void setFrameTimingEnabled(bool enabled);  // Enable/disable frame timing profiler
     bool isFrameTimingEnabled() const { return frameTimingEnabled_; }
+    std::vector<std::string> getSimWorkerDebugInfo() const;  // /simworker debug command
+    void dumpScene() const;  // /dumpscene debug command — logs all scene graph nodes with positions and PVS regions
     void runSceneProfile();  // Run scene breakdown profiler (profiles next frame)
     void resetCoordOffsets();
     void adjustOffsetX(float delta);
@@ -811,9 +940,10 @@ public:
         if (treeManager_) {
             treeManager_->setRenderDistance(renderDistance_);
         }
-        // Force visibility update on next frame by invalidating cached camera position
-        lastCullingCameraPos_ = irr::core::vector3df(0, 0, 0);
-        lastLightCameraPos_ = irr::core::vector3df(0, 0, 0);
+        // Force visibility update on next frame by invalidating PVS region gates
+        lastObjectPvsRegion_ = SIZE_MAX;
+        lastLightPvsRegion_ = SIZE_MAX;
+        lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
         // Force PVS recalculation (resets static variables in updatePvsVisibility)
         forcePvsUpdate_ = true;
     }
@@ -1059,6 +1189,14 @@ private:
     void createSoftwareCursor();
     void setupCamera();
     void setupLighting();
+    // SimulationWorker helpers
+    void startSimulationWorkerEarly();     // Build core zone data (BSP/regions/objects/lights) and start worker
+    void registerSimulationWorkerTreeData();    // Add tree wind data after progressive tree init
+    void registerSimulationWorkerVertexAnimData();  // Add vertex anim data after objects are installed
+    void stopSimulationWorker();     // Stop worker (zone transition)
+    void postSimulationInput(float deltaTime);  // Snapshot main thread state → worker input
+    void applySimulationResults();   // Apply worker output → scene graph
+
     void updateObjectLights();  // Distance-based culling of object lights
     void updateObjectVisibility();  // Distance-based scene graph management for placeable objects
     void updateZoneLightVisibility();  // Distance-based scene graph management for zone lights
@@ -1091,6 +1229,10 @@ private:
     float findGroundZ(float x, float y, float currentZ);
     void updateNameTagsWithLOS(float deltaTime);
 
+    // PVS visibility check for a BSP region (used at insertion time for objects/lights)
+    bool isRegionPvsVisible(size_t regionIdx) const;
+    bool isRegionPvsVisibleDebug(size_t regionIdx, const char* context, int id) const;
+
     // Mouse targeting
     void handleMouseTargeting(int clickX, int clickY);
     uint16_t getEntityAtScreenPos(int screenX, int screenY);
@@ -1114,6 +1256,8 @@ private:
     bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
     std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
+    bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
+    std::unique_ptr<SimulationWorker> simulationWorker_;  // Background simulation (visibility, lighting, animation)
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
@@ -1164,6 +1308,10 @@ private:
     bool portalOcclusionEnabled_ = false;
     bool portalOcclusionEligible_ = false;
 
+    // Region neighbor map (built from portal system for 1-depth PVS expansion)
+    std::unordered_map<size_t, std::vector<size_t>> regionNeighbors_;
+    void buildRegionNeighborMap();
+
     // Portal-based entity culling (walks portal graph from camera room)
     std::unordered_set<size_t> portalVisibleRegions_;
     void computePortalVisibleRegions();
@@ -1199,13 +1347,7 @@ private:
     std::unordered_set<size_t> protectedRegions_;  // visible + buffer ring (skip during eviction)
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
-    // Deferred/progressive asset loading state
-    struct DeferredObject {
-        size_t objectIndex;              // Index into currentZone_->objects
-        size_t bspRegion = SIZE_MAX;     // BSP region for priority
-        irr::core::aabbox3df worldBounds;
-        bool meshBuilt = false;
-    };
+    // Deferred/progressive asset loading state (DeferredObject defined above PendingZoneComputations)
     std::vector<DeferredObject> deferredObjects_;
     bool progressiveLoadingActive_ = false;
     bool portalBuildPending_ = false;  // Deferred portal extraction from loadZone
@@ -1216,15 +1358,31 @@ private:
     std::unique_ptr<std::thread> zoneLoadThread_;
     std::atomic<bool> zoneLoadComplete_{false};
     std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after join
+    std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;  // CPU-only results from bg thread
 
     // Background BSP preload (WLD parse + bounding boxes + portals during placeholder mode)
     std::unique_ptr<std::thread> bspPreloadThread_;
     std::atomic<bool> bspPreloadComplete_{false};
     std::unique_ptr<BspPreloadResult> pendingBspResult_;
 
+    // Atlas page upload batching state (for Atlas_Zone_Upload / Atlas_Object_Upload phases)
+    int atlasZonePageIndex_ = 0;
+    int atlasObjPageIndex_ = 0;
+
+    // Sky texture upload batching state (for DataReady_Env_SkyTextures phase)
+    size_t skyTexUploadIndex_ = 0;
+
+    // Door rebuild progressive state (for Misc_DoorSetup phase)
+    size_t doorRebuildIndex_ = 0;
+    std::vector<uint8_t> doorRebuildList_;
+
     // Region mesh progressive building state (for RegionMeshSetup phase)
     size_t regionBuildIndex_ = 0;
     bool regionBuildInitDone_ = false;  // True after createZoneMeshWithPvs() setup pass
+
+    // Progressive mesh cache install state (batch regionMeshNodes_ insertions across frames)
+    bool regionMeshCacheInstallStarted_ = false;
+    std::map<size_t, irr::core::aabbox3df>::iterator regionMeshCacheInstallCursor_;
 
     // Stored zone environment from NewZone packet (applied after global assets load)
     struct StoredZoneEnvironment {
@@ -1240,6 +1398,7 @@ private:
     std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
     std::vector<size_t> objectRegions_;  // BSP region per object (SIZE_MAX = unknown)
+    size_t lastObjectPvsRegion_ = SIZE_MAX;  // Last PVS region processed by updateObjectVisibility()
 
     // Unified render distance system
     // renderDistance_ is the effective limit - nothing renders beyond this
@@ -1249,13 +1408,13 @@ private:
     float userRenderDistance_ = 300.0f; // User's desired render distance (slider value)
     float zoneMaxClip_ = 99999.0f;     // Server-provided max clip plane for current zone (0 = no limit)
     float fogThickness_ = 50.0f;       // Thickness of fog fade zone at edge
-    irr::core::vector3df lastCullingCameraPos_;  // Last camera pos when culling was updated
-    irr::core::vector3df lastLightCameraPos_;    // Last camera pos when object lights were updated
+    irr::core::vector3df lastLightPlayerPos_;    // Last player pos (EQ coords) when object lights were updated
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
     std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
     std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
+    size_t lastLightPvsRegion_ = SIZE_MAX;  // Last PVS region processed by updateZoneLightVisibility()
     std::vector<std::string> zoneLightNames_;  // Light names from WLD data
     std::vector<float> zoneLightAnimElapsed_;   // Per-light animation elapsed time (ms)
     std::vector<uint32_t> zoneLightAnimFrame_;  // Per-light current animation frame
@@ -1286,6 +1445,7 @@ private:
     static constexpr uint32_t kTier3Interval = 6;   // ~10Hz at 60fps
     float tier3DeltaAccum_ = 0.0f;  // Accumulated delta for Tier 3 simulation
     float tier2DeltaAccum_ = 0.0f;  // Accumulated delta for fire flicker phase
+    float windTime_ = 0.0f;  // Monotonic wind time for GPU wind shader (seconds)
 
     // Frame budget governor (Green/Yellow/Red state machine for load throttling)
     std::unique_ptr<FrameBudgetGovernor> governor_;
@@ -1579,6 +1739,7 @@ private:
         int64_t weatherSystemUpdate = 0; // weatherSystem_->update() (every frame, outside Tier 3)
         int64_t footprintRender = 0;     // detailManager_->renderFootprints()
         int64_t postRender = 0;          // RDP capture + cursor + screenshot
+        int64_t simWorkerApply = 0;      // SimulationWorker result application
     };
     FrameTimings frameTimings_;
     FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames

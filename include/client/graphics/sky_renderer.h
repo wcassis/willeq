@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <set>
 #include <map>
 #include <irrlicht.h>
 #include "client/graphics/sky_config.h"
@@ -54,10 +55,62 @@ public:
     // Loads sky.s3d and sky.ini
     bool initialize(const std::string& eqClientPath);
 
-    // Set sky type for current zone
+    // Initialize from pre-loaded data (background thread loaded sky.s3d + sky.ini)
+    bool initializeFromPreloaded(std::unique_ptr<SkyLoader> loader,
+                                 std::unique_ptr<SkyConfig> config);
+
+    // Set sky type for current zone (convenience: calls prepareSkyType + applySkyType)
     // skyTypeId: sky type from NewZone_Struct::sky
     // zoneName: current zone name for sky.ini lookup
     void setSkyType(uint8_t skyTypeId, const std::string& zoneName);
+
+    // Prepare sky config/state for a zone (no scene nodes created, no GL calls).
+    // Call applySkyType() separately to create the actual scene nodes.
+    void prepareSkyType(uint8_t skyTypeId, const std::string& zoneName);
+
+    // Create sky scene nodes using state from prepareSkyType().
+    // Must be called after prepareSkyType(). Requires GL context.
+    void applySkyType();
+
+    // --- Progressive sub-step methods (called from progressive pipeline) ---
+
+    // Create dome mesh node from pre-computed vertex/index data (no trig, just memcpy + GL upload).
+    // Requires prepareSkyType() to have been called first.
+    void createSkyDomeFromPrecomputed(const std::vector<irr::video::S3DVertex>& vertices,
+                                       const std::vector<irr::u16>& indices);
+
+    // Create sun/moon billboard scene nodes (cache-hit texture lookups).
+    void createCelestialBodiesOnly();
+
+    // Calculate and apply initial sky colors + vertex alpha + celestial positions.
+    void applyInitialColors();
+
+    // Pre-compute dome mesh geometry on background thread (pure CPU math, no GL).
+    // Returns vertex/index arrays for later GPU upload via createSkyDomeFromPrecomputed().
+    static void precomputeDomeMesh(std::vector<irr::video::S3DVertex>& outVertices,
+                                    std::vector<irr::u16>& outIndices);
+
+    // Upload a pre-decoded A8R8G8B8 pixel buffer as a GPU texture.
+    // Stores in textureCache_ for subsequent loadSkyTexture() cache hits.
+    irr::video::ITexture* uploadPreDecodedTexture(const std::string& name,
+                                                   const uint8_t* argbPixels,
+                                                   uint32_t width, uint32_t height);
+
+#ifdef EQT_HAS_GLES2
+    // Strip upload for sky textures (GLES2 only — splits large texture uploads across frames)
+    // Returns true if texture already cached (nothing to do).
+    // Returns false if strip upload was started (call continueStripUpload on subsequent frames).
+    bool beginStripUpload(const std::string& name, const uint8_t* argbPixels, uint32_t w, uint32_t h);
+
+    // Upload next strip. Returns true when all strips are done.
+    bool continueStripUpload();
+
+    // Wrap completed GL texture as ITexture and cache it.
+    void finalizeStripUpload();
+
+    // Check if a strip upload is in progress.
+    bool isStripActive() const;
+#endif
 
     // Update time of day for celestial body positioning
     void updateTimeOfDay(uint8_t hour, uint8_t minute);
@@ -84,8 +137,37 @@ public:
     // Check if sky was successfully initialized
     bool isInitialized() const { return initialized_; }
 
+    // Check if prepareSkyType() has been called (pending applySkyType)
+    bool isSkyPrepared() const { return skyPrepared_; }
+
+    // Clear the skyPrepared_ flag after progressive pipeline has consumed it
+    void consumeSkyPrepared() { skyPrepared_ = false; }
+
+    // Clear sky scene nodes for rebuild (used by progressive pipeline before creating new dome)
+    void clearSkyForRebuild() { clearSkyNodes(); }
+
     // Get number of cached sky textures (for memory reporting)
     size_t getTextureCount() const { return textureCache_.size(); }
+
+    // Get count of active scene nodes managed by sky renderer (for dumpScene accounting)
+    int getSceneNodeCount() const {
+        int count = 0;
+        if (skyDomeMeshNode_) count++;
+        if (sunNode_) count++;
+        if (moonNode_) count++;
+        if (sunGlowNode_) count++;
+        count += static_cast<int>(cloudLayerNodes_.size());
+        return count;
+    }
+
+    // Collect all scene node pointers into a set (for dumpScene node identification)
+    void collectSceneNodes(std::set<irr::scene::ISceneNode*>& nodes) const {
+        if (skyDomeMeshNode_) nodes.insert(skyDomeMeshNode_);
+        if (sunNode_) nodes.insert(sunNode_);
+        if (moonNode_) nodes.insert(moonNode_);
+        if (sunGlowNode_) nodes.insert(sunGlowNode_);
+        for (auto* n : cloudLayerNodes_) { if (n) nodes.insert(n); }
+    }
 
     // Get current sky colors for time of day (for external fog/lighting use)
     SkyColorSet getCurrentSkyColors() const;
@@ -203,6 +285,7 @@ private:
     float cloudScrollOffset_ = 0.0f;
     bool enabled_ = true;
     bool initialized_ = false;
+    bool skyPrepared_ = false;  // True after prepareSkyType(), cleared after applySkyType()
 
     // Camera position for sky following
     irr::core::vector3df lastCameraPos_{0, 0, 0};
@@ -224,6 +307,24 @@ private:
 
     // Last camera Z in EQ coords (for height-based interpolation)
     float lastCameraZ_ = 0.0f;
+
+#ifdef EQT_HAS_GLES2
+    // Strip upload state for progressive sky texture uploads
+    static constexpr int SKY_STRIP_HEIGHT = 64;  // Rows per strip
+
+    struct SkyStripUploadState {
+        unsigned int glTexName = 0;
+        std::string textureName;
+        int currentStrip = 0;
+        int totalStrips = 0;
+        uint32_t texWidth = 0;
+        uint32_t texHeight = 0;
+        const uint8_t* argbPixels = nullptr;  // Borrowed from PreDecodedTexture::pixels
+        std::vector<uint8_t> swizzleBuf;      // Reusable BGRA→RGBA conversion buffer
+        bool active = false;
+    };
+    SkyStripUploadState stripState_;
+#endif
 
     // Dome geometry parameters
     static constexpr int SKY_DOME_HORI_SEGMENTS = 32;

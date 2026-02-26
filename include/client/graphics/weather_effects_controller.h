@@ -6,11 +6,13 @@
 #include <memory>
 #include <functional>
 #include <random>
+#include <set>
 #include <vector>
 #include <cstdint>
 
 namespace irr {
 namespace scene {
+class ISceneNode;
 class ISceneManager;
 }
 namespace video {
@@ -273,6 +275,14 @@ public:
      * Get debug info string.
      */
     std::string getDebugInfo() const;
+
+    /**
+     * Get count of active scene nodes managed by weather effects (for dumpScene accounting).
+     */
+    int getSceneNodeCount() const;
+
+    // Collect scene node pointers into a set (for dumpScene node identification)
+    void collectSceneNodes(std::set<irr::scene::ISceneNode*>& nodes) const;
 
 private:
     /**

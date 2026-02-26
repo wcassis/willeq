@@ -501,6 +501,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
 
     // 4. Search otherChrCaches_ (previously loaded chr files)
     if (!modelData) {
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
         for (const auto& [filename, cache] : otherChrCaches_) {
             modelData = buildModelDataFromCharacters(cache.characters, mergedTextures, raceId, gender);
             if (modelData) break;

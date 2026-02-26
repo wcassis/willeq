@@ -1681,5 +1681,127 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     return stats;
 }
 
+void RaceModelLoader::adoptGlobalAssets(
+    std::vector<std::shared_ptr<CharacterModel>>&& globalChars,
+    std::map<std::string, std::shared_ptr<TextureInfo>>&& globalTex,
+    std::map<int, std::vector<std::shared_ptr<CharacterModel>>>&& numberedChars,
+    std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>>&& numberedTex,
+    std::map<std::string, ArmorTextureRef>&& armorIndex)
+{
+    globalCharacters_ = std::move(globalChars);
+    globalTextures_ = std::move(globalTex);
+    globalModelsLoaded_ = true;
+
+    numberedGlobalCharacters_ = std::move(numberedChars);
+    numberedGlobalTextures_ = std::move(numberedTex);
+    numberedGlobalsLoaded_ = true;
+
+    armorTextureIndex_ = std::move(armorIndex);
+    armorTexturesLoaded_ = true;
+
+    // Invalidate merged textures cache so it gets rebuilt with the new data.
+    // Cache warms lazily on first getMergedTextures() call (EntityPrepWorker thread).
+    mergedTexturesCacheValid_ = false;
+
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: adopted pre-built global assets "
+             "({} global chars, {} numbered globals, {} armor textures indexed)",
+             globalCharacters_.size(),
+             numberedGlobalCharacters_.size(),
+             armorTextureIndex_.size());
+}
+
+bool RaceModelLoader::loadGlobalModelsStatic(const std::string& clientPath,
+    std::vector<std::shared_ptr<CharacterModel>>& outCharacters,
+    std::map<std::string, std::shared_ptr<TextureInfo>>& outTextures)
+{
+    std::string globalChrPath = clientPath + "global_chr.s3d";
+
+    S3DLoader loader;
+    if (!loader.loadZone(globalChrPath)) {
+        LOG_ERROR(MOD_GRAPHICS, "loadGlobalModelsStatic: Failed to load {}: {}", globalChrPath, loader.getError());
+        return false;
+    }
+
+    auto zone = loader.getZone();
+    if (!zone || zone->characters.empty()) {
+        return false;
+    }
+
+    outCharacters = zone->characters;
+    outTextures = zone->characterTextures;
+
+    LOG_DEBUG(MOD_GRAPHICS, "loadGlobalModelsStatic: Loaded {} characters from global_chr.s3d",
+              outCharacters.size());
+    return true;
+}
+
+bool RaceModelLoader::loadNumberedGlobalModelsStatic(const std::string& clientPath,
+    std::map<int, std::vector<std::shared_ptr<CharacterModel>>>& outCharacters,
+    std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>>& outTextures)
+{
+    int loadedCount = 0;
+    for (int num = 2; num <= 7; ++num) {
+        std::string filename = clientPath + "global" + std::to_string(num) + "_chr.s3d";
+
+        S3DLoader loader;
+        if (!loader.loadZone(filename)) {
+            continue;
+        }
+
+        auto zone = loader.getZone();
+        if (!zone || zone->characters.empty()) {
+            continue;
+        }
+
+        outCharacters[num] = zone->characters;
+        outTextures[num] = zone->characterTextures;
+
+        LOG_DEBUG(MOD_GRAPHICS, "loadNumberedGlobalModelsStatic: Loaded {} characters from global{}_chr.s3d",
+                  zone->characters.size(), num);
+        loadedCount++;
+    }
+
+    return loadedCount > 0;
+}
+
+bool RaceModelLoader::loadArmorTextureIndexStatic(const std::string& clientPath,
+    std::map<std::string, ArmorTextureRef>& outIndex)
+{
+    int loadedCount = 0;
+    for (int num = 17; num <= 23; ++num) {
+        std::string archivePath = clientPath + "global" + std::to_string(num) + "_amr.s3d";
+
+        PfsArchive archive;
+        if (!archive.open(archivePath)) {
+            continue;
+        }
+
+        int texCount = 0;
+        auto indexExtension = [&](const std::string& ext) {
+            std::vector<std::string> files;
+            archive.getFilenames(ext, files);
+            for (const auto& texName : files) {
+                std::string lowerName = texName;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                              [](unsigned char c) { return std::tolower(c); });
+                // Don't overwrite if already indexed (earlier archives have priority)
+                if (outIndex.find(lowerName) == outIndex.end()) {
+                    outIndex[lowerName] = {archivePath, texName};
+                    texCount++;
+                }
+            }
+        };
+
+        indexExtension(".bmp");
+        indexExtension(".dds");
+
+        LOG_DEBUG(MOD_GRAPHICS, "loadArmorTextureIndexStatic: Indexed {} armor textures from global{}_amr.s3d",
+                  texCount, num);
+        loadedCount++;
+    }
+
+    return loadedCount > 0;
+}
+
 } // namespace Graphics
 } // namespace EQT

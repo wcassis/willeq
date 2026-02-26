@@ -93,6 +93,52 @@ public:
     void addMeshRef(int modelId);
     void removeMeshRef(int modelId);
 
+    // Index entry: where to find an equipment model (no geometry loaded)
+    struct EquipmentModelRef {
+        std::string archivePath;
+        std::string wldName;
+        std::string actorName;
+        std::vector<std::string> textureNames;  // Textures used by this model
+    };
+
+    // Index entry: where to find an equipment texture
+    struct EquipmentTextureRef {
+        std::string archivePath;
+        std::string entryName;
+    };
+
+    // Thread-safe: extract equipment model data without any Irrlicht calls.
+    // Opens S3D archive, parses WLD, extracts geometry + raw textures.
+    // Does NOT create Irrlicht meshes or upload textures.
+    static std::shared_ptr<EquipmentModelData> extractEquipmentModelOffThread(
+        const EquipmentModelRef& modelRef, int modelId);
+
+    // Const getters for index access from background thread
+    const EquipmentModelRef* getModelRef(int modelId) const;
+    const EquipmentTextureRef* getTextureRef(const std::string& name) const;
+
+    // Cache pre-extracted equipment model data (from background thread prep)
+    // This makes it available for getEquipmentMeshByModelId to build Irrlicht mesh
+    void cacheEquipmentModelData(int modelId, std::shared_ptr<EquipmentModelData> data);
+
+    // Accept pre-built index data from background thread (avoids re-parsing archives)
+    void adoptIndex(std::map<int, EquipmentModelRef>&& modelIndex,
+                    std::map<std::string, EquipmentTextureRef>&& textureIndex,
+                    std::map<uint32_t, int>&& itemToModelMap);
+
+    // Build equipment index from archives (no GL, no Irrlicht — thread-safe)
+    // clientPath must end with '/'
+    // Returns true if any models were indexed
+    static bool buildEquipmentIndex(
+        const std::string& clientPath,
+        std::map<int, EquipmentModelRef>& outModelIndex,
+        std::map<std::string, EquipmentTextureRef>& outTextureIndex);
+
+    // Load item-to-model mapping from JSON (thread-safe, no Irrlicht)
+    // Returns number of mappings loaded, or -1 on error
+    static int loadItemModelMappingStatic(const std::string& jsonPath,
+                                          std::map<uint32_t, int>& outMap);
+
 private:
     // Index-only scan of a single S3D archive (no geometry or texture data loaded)
     bool loadEquipmentArchive(const std::string& archivePath);
@@ -111,6 +157,12 @@ private:
     // Parse IT model ID from actor name (e.g., "IT156_ACTORDEF" -> 156)
     static int parseModelIdFromActorName(const std::string& actorName);
 
+    // Static helper: index a single archive (thread-safe, no Irrlicht)
+    static bool indexEquipmentArchive(
+        const std::string& archivePath,
+        std::map<int, EquipmentModelRef>& outModelIndex,
+        std::map<std::string, EquipmentTextureRef>& outTextureIndex);
+
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
     irr::io::IFileSystem* fileSystem_;
@@ -120,20 +172,6 @@ private:
 
     // Database item ID -> IT model number mapping
     std::map<uint32_t, int> itemToModelMap_;
-
-    // Index entry: where to find an equipment model (no geometry loaded)
-    struct EquipmentModelRef {
-        std::string archivePath;
-        std::string wldName;
-        std::string actorName;
-        std::vector<std::string> textureNames;  // Textures used by this model
-    };
-
-    // Index entry: where to find an equipment texture
-    struct EquipmentTextureRef {
-        std::string archivePath;
-        std::string entryName;
-    };
 
     // Model index: modelId -> location (populated at startup, no geometry)
     std::map<int, EquipmentModelRef> equipmentModelIndex_;

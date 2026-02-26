@@ -5,6 +5,14 @@
 #include "client/graphics/sky_config.h"
 #include "common/logging.h"
 #include <cmath>
+#include <algorithm>
+
+#ifdef EQT_HAS_GLES2
+#include <GLES2/gl2.h>
+// Bridge function defined in COpenGLES2Driver.cpp
+extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+                                unsigned int width, unsigned int height);
+#endif
 
 namespace EQT {
 namespace Graphics {
@@ -54,7 +62,34 @@ bool SkyRenderer::initialize(const std::string& eqClientPath) {
     return true;
 }
 
+bool SkyRenderer::initializeFromPreloaded(std::unique_ptr<SkyLoader> loader,
+                                           std::unique_ptr<SkyConfig> config) {
+    if (initialized_) return true;
+
+    skyLoader_ = std::move(loader);
+    skyConfig_ = std::move(config);
+
+    if (!skyLoader_ || !skyLoader_->getSkyData()) {
+        LOG_ERROR(MOD_GRAPHICS, "SkyRenderer: pre-loaded sky data is null");
+        return false;
+    }
+
+    const auto& skyData = skyLoader_->getSkyData();
+    LOG_INFO(MOD_GRAPHICS, "SkyRenderer initialized from preloaded data: {} layers, {} celestial bodies",
+             skyData->layers.size(), skyData->celestialBodies.size());
+
+    initialized_ = true;
+    return true;
+}
+
 void SkyRenderer::setSkyType(uint8_t skyTypeId, const std::string& zoneName) {
+    prepareSkyType(skyTypeId, zoneName);
+    applySkyType();
+}
+
+void SkyRenderer::prepareSkyType(uint8_t skyTypeId, const std::string& zoneName) {
+    skyPrepared_ = false;
+
     if (!initialized_) {
         return;
     }
@@ -81,18 +116,13 @@ void SkyRenderer::setSkyType(uint8_t skyTypeId, const std::string& zoneName) {
     // Use mapped sky type if available, otherwise use provided skyTypeId
     uint8_t effectiveSkyType = (mappedSkyType > 0) ? static_cast<uint8_t>(mappedSkyType) : skyTypeId;
 
-    if (effectiveSkyType == currentSkyType_ && !skyDomeNodes_.empty()) {
-        // Already set to this sky type
-        return;
-    }
-
     currentSkyType_ = effectiveSkyType;
     currentSkyCategory_ = determineSkyCategory(effectiveSkyType);
 
     // Store zone config for horizon fade parameters
     currentZoneConfig_ = skyConfig_->getConfigForZone(zoneName);
 
-    LOG_INFO(MOD_GRAPHICS, "Setting sky type {} (weather: {}, category: {}) for zone: {} "
+    LOG_INFO(MOD_GRAPHICS, "Prepared sky type {} (weather: {}, category: {}) for zone: {} "
              "(opaqueAngle={:.2f} transparentAngle={:.2f} minAngle={:.2f} maxAngle={:.2f} "
              "minWidth={:.2f} maxWidth={:.2f} minCameraZ={:.1f} maxCameraZ={:.1f})",
              effectiveSkyType, weatherType, static_cast<int>(currentSkyCategory_), zoneName,
@@ -101,10 +131,24 @@ void SkyRenderer::setSkyType(uint8_t skyTypeId, const std::string& zoneName) {
              currentZoneConfig_.minWidth, currentZoneConfig_.maxWidth,
              currentZoneConfig_.minCameraZ, currentZoneConfig_.maxCameraZ);
 
+    skyPrepared_ = true;
+}
+
+void SkyRenderer::applySkyType() {
+    if (!initialized_ || !skyPrepared_) {
+        return;
+    }
+
+    skyPrepared_ = false;
+
     // Rebuild sky scene nodes
     clearSkyNodes();
     createSkyDome();
     createCelestialBodies();
+    applyInitialColors();
+}
+
+void SkyRenderer::applyInitialColors() {
     updateCelestialPositions();
 
     // Initialize colors for the current time
@@ -115,6 +159,195 @@ void SkyRenderer::setSkyType(uint8_t skyTypeId, const std::string& zoneName) {
         currentSkyColors_ = getSpecialSkyColors(currentSkyCategory_);
     }
     updateSkyLayerColors();
+}
+
+void SkyRenderer::precomputeDomeMesh(std::vector<irr::video::S3DVertex>& outVertices,
+                                      std::vector<irr::u16>& outIndices) {
+    const int hSegs = SKY_DOME_HORI_SEGMENTS;
+    const int vRings = SKY_DOME_VERT_RINGS;
+    const float bottomPitch = SKY_DOME_BOTTOM_PITCH;
+    const float topPitch = static_cast<float>(M_PI) / 2.0f;
+    const float pitchRange = topPitch - bottomPitch;
+
+    const int vertCount = (vRings + 1) * (hSegs + 1);
+    const int indexCount = vRings * hSegs * 6;
+
+    outVertices.resize(vertCount);
+    outIndices.resize(indexCount);
+
+    // Generate vertices (same math as createCustomSkyDome)
+    int vi = 0;
+    for (int ring = 0; ring <= vRings; ++ring) {
+        float pitchFrac = static_cast<float>(ring) / static_cast<float>(vRings);
+        float pitch = bottomPitch + pitchFrac * pitchRange;
+        float cosPitch = std::cos(pitch);
+        float sinPitch = std::sin(pitch);
+        float v = 1.0f - pitchFrac;
+
+        for (int seg = 0; seg <= hSegs; ++seg) {
+            float thetaFrac = static_cast<float>(seg) / static_cast<float>(hSegs);
+            float theta = thetaFrac * 2.0f * static_cast<float>(M_PI);
+            float cosTheta = std::cos(theta);
+            float sinTheta = std::sin(theta);
+
+            irr::video::S3DVertex& vert = outVertices[vi];
+            vert.Pos.X = SKY_DOME_RADIUS * cosPitch * sinTheta;
+            vert.Pos.Y = SKY_DOME_RADIUS * sinPitch;
+            vert.Pos.Z = SKY_DOME_RADIUS * cosPitch * cosTheta;
+
+            vert.Normal.X = -cosPitch * sinTheta;
+            vert.Normal.Y = -sinPitch;
+            vert.Normal.Z = -cosPitch * cosTheta;
+
+            vert.TCoords.X = thetaFrac * 3.0f;
+            vert.TCoords.Y = v * 2.0f;
+
+            vert.Color = irr::video::SColor(255, 255, 255, 255);
+            ++vi;
+        }
+    }
+
+    // Generate indices (viewed from inside: clockwise winding = front face)
+    int ii = 0;
+    for (int ring = 0; ring < vRings; ++ring) {
+        for (int seg = 0; seg < hSegs; ++seg) {
+            int topLeft = ring * (hSegs + 1) + seg;
+            int topRight = topLeft + 1;
+            int botLeft = topLeft + (hSegs + 1);
+            int botRight = botLeft + 1;
+
+            outIndices[ii++] = topLeft;
+            outIndices[ii++] = botLeft;
+            outIndices[ii++] = topRight;
+
+            outIndices[ii++] = topRight;
+            outIndices[ii++] = botLeft;
+            outIndices[ii++] = botRight;
+        }
+    }
+}
+
+void SkyRenderer::createSkyDomeFromPrecomputed(const std::vector<irr::video::S3DVertex>& vertices,
+                                                 const std::vector<irr::u16>& indices) {
+    if (!initialized_ || !smgr_ || !driver_ || vertices.empty()) {
+        return;
+    }
+
+    // Find dome texture from sky type config (same logic as createSkyDome)
+    irr::video::ITexture* texture = nullptr;
+    const auto& skyData = skyLoader_->getSkyData();
+    if (skyData) {
+        auto skyTypeIt = skyData->skyTypes.find(currentSkyType_);
+        if (skyTypeIt == skyData->skyTypes.end()) {
+            skyTypeIt = skyData->skyTypes.find(0);
+        }
+        if (skyTypeIt != skyData->skyTypes.end()) {
+            const SkyType& skyType = skyTypeIt->second;
+            if (!skyType.backgroundLayers.empty()) {
+                int layerNum = skyType.backgroundLayers[0];
+                auto layerIt = skyData->layers.find(layerNum);
+                if (layerIt != skyData->layers.end() && layerIt->second) {
+                    texture = loadSkyTexture(layerIt->second->textureName);
+                }
+            }
+        }
+    }
+
+    // Build mesh from pre-computed data (memcpy, no trig)
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+    buffer->Vertices.set_used(vertices.size());
+    buffer->Indices.set_used(indices.size());
+
+    memcpy(buffer->Vertices.pointer(), vertices.data(),
+           vertices.size() * sizeof(irr::video::S3DVertex));
+    memcpy(buffer->Indices.pointer(), indices.data(),
+           indices.size() * sizeof(irr::u16));
+
+    buffer->recalculateBoundingBox();
+    mesh->addMeshBuffer(buffer);
+    mesh->recalculateBoundingBox();
+    buffer->drop();
+
+    skyDomeMeshNode_ = smgr_->addMeshSceneNode(mesh);
+    mesh->drop();
+
+    if (!skyDomeMeshNode_) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create sky dome mesh node from pre-computed data");
+        return;
+    }
+
+    skyDomeMeshBuffer_ = static_cast<irr::scene::SMeshBuffer*>(
+        skyDomeMeshNode_->getMesh()->getMeshBuffer(0));
+
+    // Set material properties
+    if (texture) {
+        skyDomeMeshNode_->setMaterialTexture(0, texture);
+    }
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, true);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
+    skyDomeMeshNode_->setMaterialType(irr::video::EMT_TRANSPARENT_VERTEX_ALPHA);
+
+    irr::video::SMaterial& mat = skyDomeMeshNode_->getMaterial(0);
+    mat.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+    mat.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+    mat.TextureLayer[0].BilinearFilter = true;
+
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_FOG_ENABLE, false);
+    skyDomeMeshNode_->setPosition(lastCameraPos_);
+
+    updateDomeVertexAlpha();
+
+    LOG_INFO(MOD_GRAPHICS, "Created sky dome from pre-computed data: {} vertices, {} triangles",
+             vertices.size(), indices.size() / 3);
+}
+
+void SkyRenderer::createCelestialBodiesOnly() {
+    // Delegates to the existing createCelestialBodies() implementation
+    createCelestialBodies();
+}
+
+irr::video::ITexture* SkyRenderer::uploadPreDecodedTexture(const std::string& name,
+                                                            const uint8_t* argbPixels,
+                                                            uint32_t width, uint32_t height) {
+    if (!driver_ || !argbPixels || width == 0 || height == 0) {
+        return nullptr;
+    }
+
+    // Check cache first — may already be uploaded
+    auto it = textureCache_.find(name);
+    if (it != textureCache_.end()) {
+        return it->second;
+    }
+
+    // Create an Irrlicht image from raw A8R8G8B8 pixel data
+    irr::video::IImage* image = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2d<irr::u32>(width, height),
+        const_cast<uint8_t*>(argbPixels),  // Irrlicht doesn't modify, but API takes void*
+        false  // Don't own the data
+    );
+
+    if (!image) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to create image from pre-decoded sky texture: {}", name);
+        return nullptr;
+    }
+
+    irr::video::ITexture* texture = driver_->addTexture(name.c_str(), image);
+    image->drop();
+
+    if (texture) {
+        textureCache_[name] = texture;
+        LOG_DEBUG(MOD_GRAPHICS, "Uploaded pre-decoded sky texture: {} ({}x{})", name, width, height);
+    } else {
+        LOG_WARN(MOD_GRAPHICS, "Failed to upload pre-decoded sky texture: {}", name);
+    }
+
+    return texture;
 }
 
 void SkyRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
@@ -571,121 +804,19 @@ void SkyRenderer::createCelestialBodies() {
 }
 
 irr::video::ITexture* SkyRenderer::loadSkyTexture(const std::string& name) {
-    if (name.empty() || !fileSystem_ || !driver_) {
+    if (name.empty()) {
         return nullptr;
     }
 
-    // Check cache first
+    // Cache-only lookup — all textures must be pre-decoded on background thread
+    // and uploaded via uploadPreDecodedTexture() during env_sky_textures phase.
     auto it = textureCache_.find(name);
     if (it != textureCache_.end()) {
         return it->second;
     }
 
-    // Get texture data from sky loader
-    std::shared_ptr<TextureInfo> texInfo = skyLoader_->getTexture(name);
-    if (!texInfo || texInfo->data.empty()) {
-        LOG_WARN(MOD_GRAPHICS, "Sky texture not found: {}", name);
-        return nullptr;
-    }
-
-    // Load texture using memory file (works for BMP, TGA, and other formats)
-    irr::video::ITexture* texture = nullptr;
-
-    irr::io::IReadFile* memFile = fileSystem_->createMemoryReadFile(
-        texInfo->data.data(),
-        static_cast<irr::s32>(texInfo->data.size()),
-        name.c_str(),
-        false  // Don't delete data on close
-    );
-
-    if (memFile) {
-        texture = driver_->getTexture(memFile);
-        memFile->drop();
-    }
-
-    // Upscale small textures with bilinear interpolation to reduce pixelation
-    if (texture) {
-        irr::core::dimension2d<irr::u32> origSize = texture->getOriginalSize();
-
-        if (origSize.Width <= 128 && origSize.Height <= 128 && origSize.Width > 0 && origSize.Height > 0) {
-            // Create upscaled image (4x scale: 128->512)
-            const irr::u32 targetSize = 512;
-            irr::video::IImage* origImage = driver_->createImage(texture,
-                irr::core::position2d<irr::s32>(0, 0), origSize);
-
-            if (origImage) {
-                irr::video::IImage* scaledImage = driver_->createImage(
-                    irr::video::ECF_A8R8G8B8,
-                    irr::core::dimension2d<irr::u32>(targetSize, targetSize));
-
-                if (scaledImage) {
-                    // Manual bilinear interpolation
-                    float scaleX = static_cast<float>(origSize.Width) / targetSize;
-                    float scaleY = static_cast<float>(origSize.Height) / targetSize;
-
-                    for (irr::u32 y = 0; y < targetSize; ++y) {
-                        for (irr::u32 x = 0; x < targetSize; ++x) {
-                            float srcX = x * scaleX;
-                            float srcY = y * scaleY;
-
-                            irr::u32 x0 = static_cast<irr::u32>(srcX);
-                            irr::u32 y0 = static_cast<irr::u32>(srcY);
-                            irr::u32 x1 = std::min(x0 + 1, origSize.Width - 1);
-                            irr::u32 y1 = std::min(y0 + 1, origSize.Height - 1);
-
-                            float fx = srcX - x0;
-                            float fy = srcY - y0;
-
-                            // Get 4 neighboring pixels
-                            irr::video::SColor c00 = origImage->getPixel(x0, y0);
-                            irr::video::SColor c10 = origImage->getPixel(x1, y0);
-                            irr::video::SColor c01 = origImage->getPixel(x0, y1);
-                            irr::video::SColor c11 = origImage->getPixel(x1, y1);
-
-                            // Bilinear interpolation
-                            auto lerp = [](float a, float b, float t) { return a + t * (b - a); };
-
-                            float r = lerp(lerp(c00.getRed(), c10.getRed(), fx),
-                                          lerp(c01.getRed(), c11.getRed(), fx), fy);
-                            float g = lerp(lerp(c00.getGreen(), c10.getGreen(), fx),
-                                          lerp(c01.getGreen(), c11.getGreen(), fx), fy);
-                            float b_col = lerp(lerp(c00.getBlue(), c10.getBlue(), fx),
-                                          lerp(c01.getBlue(), c11.getBlue(), fx), fy);
-                            float a = lerp(lerp(c00.getAlpha(), c10.getAlpha(), fx),
-                                          lerp(c01.getAlpha(), c11.getAlpha(), fx), fy);
-
-                            scaledImage->setPixel(x, y, irr::video::SColor(
-                                static_cast<irr::u32>(a),
-                                static_cast<irr::u32>(r),
-                                static_cast<irr::u32>(g),
-                                static_cast<irr::u32>(b_col)));
-                        }
-                    }
-
-                    // Create new texture from scaled image
-                    std::string scaledName = name + "_scaled";
-                    irr::video::ITexture* scaledTexture = driver_->addTexture(scaledName.c_str(), scaledImage);
-
-                    if (scaledTexture) {
-                        LOG_DEBUG(MOD_GRAPHICS, "Upscaled sky texture: {} from {}x{} to {}x{} (bilinear)",
-                                  name, origSize.Width, origSize.Height, targetSize, targetSize);
-                        texture = scaledTexture;
-                    }
-
-                    scaledImage->drop();
-                }
-                origImage->drop();
-            }
-        }
-
-        textureCache_[name] = texture;
-        LOG_DEBUG(MOD_GRAPHICS, "Loaded sky texture: {} ({}x{})",
-                  name, texture->getOriginalSize().Width, texture->getOriginalSize().Height);
-    } else {
-        LOG_WARN(MOD_GRAPHICS, "Failed to load sky texture: {}", name);
-    }
-
-    return texture;
+    LOG_WARN(MOD_GRAPHICS, "loadSkyTexture: '{}' not in cache — pre-decode path failed, skipping", name);
+    return nullptr;
 }
 
 void SkyRenderer::updateCelestialPositions() {
@@ -1435,6 +1566,131 @@ void SkyRenderer::updateCloudScrolling() {
         skyDomeMeshNode_->getMaterial(0).setTextureMatrix(0, texMat);
     }
 }
+
+// ============================================================================
+// Strip upload for sky textures (GLES2 only)
+// ============================================================================
+
+#ifdef EQT_HAS_GLES2
+
+bool SkyRenderer::beginStripUpload(const std::string& name, const uint8_t* argbPixels,
+                                     uint32_t w, uint32_t h) {
+    // Already cached?
+    auto it = textureCache_.find(name);
+    if (it != textureCache_.end()) {
+        return true;
+    }
+
+    if (!argbPixels || w == 0 || h == 0) {
+        return true;
+    }
+
+    // Initialize strip state
+    stripState_ = SkyStripUploadState{};
+    stripState_.textureName = name;
+    stripState_.texWidth = w;
+    stripState_.texHeight = h;
+    stripState_.argbPixels = argbPixels;
+    stripState_.totalStrips = (h + SKY_STRIP_HEIGHT - 1) / SKY_STRIP_HEIGHT;
+
+    // Allocate GL texture with NULL data (reserves GPU memory without uploading)
+    glGenTextures(1, &stripState_.glTexName);
+    glBindTexture(GL_TEXTURE_2D, stripState_.glTexName);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    // Allocate reusable swizzle buffer (one strip worth of RGBA pixels)
+    stripState_.swizzleBuf.resize(w * SKY_STRIP_HEIGHT * 4);
+
+    // Upload strip 0
+    uint32_t rows = std::min(static_cast<uint32_t>(SKY_STRIP_HEIGHT), h);
+    uint32_t pixelCount = w * rows;
+    const uint8_t* src = argbPixels;
+    uint8_t* dst = stripState_.swizzleBuf.data();
+    for (uint32_t i = 0; i < pixelCount; ++i) {
+        dst[i * 4 + 0] = src[i * 4 + 2];  // R (from BGRA offset 2)
+        dst[i * 4 + 1] = src[i * 4 + 1];  // G
+        dst[i * 4 + 2] = src[i * 4 + 0];  // B (from BGRA offset 0)
+        dst[i * 4 + 3] = src[i * 4 + 3];  // A
+    }
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, rows,
+                    GL_RGBA, GL_UNSIGNED_BYTE, stripState_.swizzleBuf.data());
+
+    stripState_.currentStrip = 1;
+    stripState_.active = true;
+
+    LOG_DEBUG(MOD_GRAPHICS, "beginStripUpload: {} ({}x{}, {} strips)",
+              name, w, h, stripState_.totalStrips);
+
+    return false;  // More strips to upload
+}
+
+bool SkyRenderer::continueStripUpload() {
+    if (!stripState_.active) {
+        return true;
+    }
+
+    if (stripState_.currentStrip >= stripState_.totalStrips) {
+        return true;  // All strips uploaded
+    }
+
+    uint32_t w = stripState_.texWidth;
+    uint32_t h = stripState_.texHeight;
+    uint32_t yOffset = stripState_.currentStrip * SKY_STRIP_HEIGHT;
+    uint32_t rows = std::min(static_cast<uint32_t>(SKY_STRIP_HEIGHT), h - yOffset);
+    uint32_t pixelCount = w * rows;
+
+    // Swizzle BGRA → RGBA for this strip
+    const uint8_t* src = stripState_.argbPixels + yOffset * w * 4;
+    uint8_t* dst = stripState_.swizzleBuf.data();
+    for (uint32_t i = 0; i < pixelCount; ++i) {
+        dst[i * 4 + 0] = src[i * 4 + 2];
+        dst[i * 4 + 1] = src[i * 4 + 1];
+        dst[i * 4 + 2] = src[i * 4 + 0];
+        dst[i * 4 + 3] = src[i * 4 + 3];
+    }
+
+    glBindTexture(GL_TEXTURE_2D, stripState_.glTexName);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, yOffset, w, rows,
+                    GL_RGBA, GL_UNSIGNED_BYTE, stripState_.swizzleBuf.data());
+
+    stripState_.currentStrip++;
+
+    return (stripState_.currentStrip >= stripState_.totalStrips);
+}
+
+void SkyRenderer::finalizeStripUpload() {
+    if (!stripState_.active || stripState_.glTexName == 0) {
+        return;
+    }
+
+    // Wrap the GL texture into Irrlicht's ITexture via bridge function
+    irr::video::ITexture* tex = static_cast<irr::video::ITexture*>(
+        gles2WrapTexture(driver_, stripState_.textureName.c_str(),
+                         stripState_.glTexName, stripState_.texWidth, stripState_.texHeight));
+
+    if (tex) {
+        textureCache_[stripState_.textureName] = tex;
+        LOG_DEBUG(MOD_GRAPHICS, "finalizeStripUpload: {} ({}x{})",
+                  stripState_.textureName, stripState_.texWidth, stripState_.texHeight);
+    } else {
+        LOG_WARN(MOD_GRAPHICS, "finalizeStripUpload: failed to wrap {} — deleting orphaned GL texture",
+                 stripState_.textureName);
+        glDeleteTextures(1, &stripState_.glTexName);
+    }
+
+    // Clear strip state
+    stripState_ = SkyStripUploadState{};
+}
+
+bool SkyRenderer::isStripActive() const {
+    return stripState_.active;
+}
+
+#endif // EQT_HAS_GLES2
 
 } // namespace Graphics
 } // namespace EQT

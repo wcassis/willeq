@@ -46,6 +46,84 @@ void AnimatedTreeManager::initialize(const std::vector<ObjectInstance>& objects,
              animatedTrees_.size());
 }
 
+void AnimatedTreeManager::beginInitialize(const std::vector<ObjectInstance>& objects,
+                                           const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) {
+    if (!smgr_ || !driver_) {
+        LOG_ERROR(MOD_GRAPHICS, "AnimatedTreeManager: Cannot beginInitialize - missing dependencies");
+        return;
+    }
+
+    cleanup();
+    loadConfig();
+
+    // Update distances from config
+    const auto& config = windController_.getConfig();
+    updateDistance_ = config.updateDistance;
+    lodDistance_ = config.lodDistance;
+
+    // Store references for progressive processing
+    pendingObjects_ = &objects;
+    pendingTextures_ = &textures;
+    pendingTreeIndices_.clear();
+    pendingTreeCursor_ = 0;
+
+    // Identify all tree object indices (fast scan, no mesh building)
+    for (size_t i = 0; i < objects.size(); ++i) {
+        const auto& obj = objects[i];
+        if (!obj.placeable || !obj.geometry || obj.geometry->vertices.empty()) {
+            continue;
+        }
+        const std::string& objName = obj.placeable->getName();
+        std::string primaryTexture;
+        if (!obj.geometry->textureNames.empty()) {
+            primaryTexture = obj.geometry->textureNames[0];
+        }
+        if (treeIdentifier_.isTreeMesh(objName, primaryTexture)) {
+            pendingTreeIndices_.push_back(i);
+        }
+    }
+
+    progressiveInitActive_ = true;
+    LOG_INFO(MOD_GRAPHICS, "AnimatedTreeManager: beginInitialize identified {} trees from {} objects",
+             pendingTreeIndices_.size(), objects.size());
+}
+
+bool AnimatedTreeManager::initializeNextBatch(int batchSize) {
+    if (!progressiveInitActive_ || !pendingObjects_ || !pendingTextures_) {
+        progressiveInitActive_ = false;
+        initialized_ = true;
+        return true;
+    }
+
+    size_t end = std::min(pendingTreeCursor_ + static_cast<size_t>(batchSize),
+                          pendingTreeIndices_.size());
+
+    for (size_t i = pendingTreeCursor_; i < end; ++i) {
+        size_t objIdx = pendingTreeIndices_[i];
+        createAnimatedTree((*pendingObjects_)[objIdx], *pendingTextures_);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "AnimatedTreeManager: batch [{}-{}] of {}, {} trees created so far",
+              pendingTreeCursor_, end, pendingTreeIndices_.size(), animatedTrees_.size());
+
+    pendingTreeCursor_ = end;
+
+    if (pendingTreeCursor_ >= pendingTreeIndices_.size()) {
+        // All done
+        progressiveInitActive_ = false;
+        initialized_ = true;
+        pendingObjects_ = nullptr;
+        pendingTextures_ = nullptr;
+        pendingTreeIndices_.clear();
+        pendingTreeCursor_ = 0;
+        LOG_INFO(MOD_GRAPHICS, "AnimatedTreeManager: progressive init complete, {} animated trees",
+                 animatedTrees_.size());
+        return true;
+    }
+
+    return false;
+}
+
 void AnimatedTreeManager::loadConfig(const std::string& configPath, const std::string& zoneName) {
     windController_.loadConfig(configPath, zoneName);
     treeIdentifier_.loadZoneOverrides(zoneName);
@@ -74,6 +152,11 @@ void AnimatedTreeManager::update(float deltaTime, const irr::core::vector3df& ca
             continue;
         }
 
+        // Skip trees removed from scene graph by PVS culling
+        if (!tree.inSceneGraph) {
+            continue;
+        }
+
         // Calculate distance from camera to tree's world position
         float dist = tree.worldPosition.getDistanceFrom(cameraPos);
 
@@ -96,7 +179,10 @@ void AnimatedTreeManager::update(float deltaTime, const irr::core::vector3df& ca
 void AnimatedTreeManager::cleanup() {
     for (auto& tree : animatedTrees_) {
         if (tree.node) {
-            tree.node->remove();
+            if (tree.inSceneGraph) {
+                tree.node->remove();  // Remove from scene graph
+            }
+            tree.node->drop();  // Release our grab() reference
             tree.node = nullptr;
         }
         if (tree.mesh) {
@@ -286,12 +372,17 @@ void AnimatedTreeManager::createAnimatedTree(const ObjectInstance& object,
             }
         }
 
+        // Grab the node so it survives scene graph removal during PVS culling
+        tree.node->grab();
+
+        auto bufCount = tree.buffers.size();
+        auto worldPos = tree.worldPosition;
         animatedTrees_.push_back(std::move(tree));
 
         LOG_DEBUG(MOD_GRAPHICS, "AnimatedTreeManager: Created animated tree '{}' at ({:.1f}, {:.1f}, {:.1f}) "
                   "scale=({:.2f},{:.2f},{:.2f}) with {} vertices in {} buffers",
-                  placeable->getName(), tree.worldPosition.X, tree.worldPosition.Y, tree.worldPosition.Z,
-                  scaleX, scaleY, scaleZ, totalVerts, tree.buffers.size());
+                  placeable->getName(), worldPos.X, worldPos.Y, worldPos.Z,
+                  scaleX, scaleY, scaleZ, totalVerts, bufCount);
     } else {
         mesh->drop();
     }
@@ -545,6 +636,54 @@ irr::scene::SMesh* AnimatedTreeManager::buildAnimatedMesh(
 
     mesh->recalculateBoundingBox();
     return mesh;
+}
+
+void AnimatedTreeManager::assignBspRegions(std::shared_ptr<BspTree> bspTree) {
+    if (!bspTree) return;
+
+    size_t assigned = 0;
+    for (auto& tree : animatedTrees_) {
+        // worldPosition is in Irrlicht coords (x, z, y) — convert back to EQ (x, y, z)
+        float eqX = tree.worldPosition.X;
+        float eqY = tree.worldPosition.Z;  // Irrlicht Z -> EQ Y
+        float eqZ = tree.worldPosition.Y;  // Irrlicht Y -> EQ Z
+        tree.bspRegion = bspTree->findRegionIndexForPoint(eqX, eqY, eqZ);
+        if (tree.bspRegion != SIZE_MAX) assigned++;
+    }
+    LOG_INFO(MOD_GRAPHICS, "AnimatedTreeManager: assigned BSP regions to {}/{} trees", assigned, animatedTrees_.size());
+}
+
+void AnimatedTreeManager::updatePvsVisibility(size_t cameraRegion, const std::shared_ptr<BspTree>& bspTree) {
+    if (!bspTree || cameraRegion == SIZE_MAX) return;
+    if (cameraRegion >= bspTree->regions.size()) return;
+
+    auto& camRegion = bspTree->regions[cameraRegion];
+    if (!camRegion || camRegion->visibleRegions.empty()) return;
+
+    for (auto& tree : animatedTrees_) {
+        if (!tree.node) continue;
+
+        bool shouldBeVisible = true;
+        if (tree.bspRegion != SIZE_MAX && tree.bspRegion < camRegion->visibleRegions.size()) {
+            shouldBeVisible = camRegion->visibleRegions[tree.bspRegion];
+        }
+
+        if (shouldBeVisible && !tree.inSceneGraph) {
+            smgr_->getRootSceneNode()->addChild(tree.node);
+            tree.inSceneGraph = true;
+        } else if (!shouldBeVisible && tree.inSceneGraph) {
+            tree.node->remove();
+            tree.inSceneGraph = false;
+        }
+    }
+}
+
+size_t AnimatedTreeManager::getVisibleTreeCount() const {
+    size_t count = 0;
+    for (const auto& tree : animatedTrees_) {
+        if (tree.inSceneGraph) count++;
+    }
+    return count;
 }
 
 std::string AnimatedTreeManager::getDebugInfo() const {

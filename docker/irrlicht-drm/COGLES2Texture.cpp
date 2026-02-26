@@ -62,6 +62,24 @@ COGLES2Texture::COGLES2Texture(const core::dimension2d<u32>& size, const io::pat
 }
 
 // ============================================================================
+// Constructor: wrap existing GL texture (no upload)
+// ============================================================================
+
+COGLES2Texture::COGLES2Texture(const io::path& name, GLuint glTexName,
+                               const core::dimension2d<u32>& size,
+                               COpenGLES2Driver* driver)
+    : ITexture(name),
+      Driver(driver),
+      TextureName(glTexName), FBO(0), DepthBuffer(0),
+      ColorFormat(ECF_A8R8G8B8), Pitch(size.Width * 4),
+      HasMipMaps(false), IsRenderTarget(false),
+      LockBuffer(nullptr), GpuBytes(size.Width * size.Height * 4)
+{
+    OriginalSize = size;
+    TextureSize = size;
+}
+
+// ============================================================================
 // Destructor
 // ============================================================================
 

@@ -30,12 +30,29 @@ public:
     irr::s32 getMaterialTypeAtlasAlpha() const { return materialAtlasAlpha_; }
     bool isAtlasAvailable() const { return materialAtlasSolid_ >= 0; }
 
+    // Wind material types (vertex shader wind displacement for trees)
+    irr::s32 getMaterialTypeWindAlphaTest() const { return materialWindAlphaTest_; }
+    bool isWindAvailable() const { return materialWindAlphaTest_ >= 0; }
+
+    // Wind uniform state (updated per frame by renderer)
+    void setWindTime(float t) { windTime_ = t; }
+    float windTime() const { return windTime_; }
+    void setWindParams(float baseStrength, float baseFreq, float gustStrength, float gustFreq) {
+        windParams_[0] = baseStrength; windParams_[1] = baseFreq;
+        windParams_[2] = gustStrength; windParams_[3] = gustFreq;
+    }
+    const float* windParams() const { return windParams_; }
+
     // Update uniform values (call once per frame before rendering)
     void setFog(float fogStart, float fogEnd, float r, float g, float b, float a);
     void setSunDirection(float x, float y, float z);
     void setSunColor(float r, float g, float b);
     void setAmbientColor(float r, float g, float b);
     void setTintColor(float r, float g, float b);
+
+    // Call once per frame before drawAll() to advance frame counter
+    void beginFrame() { ++frameId_; }
+    uint64_t frameId() const { return frameId_; }
 
     // Camera position for atlas per-pixel lighting (Irrlicht world space, Y-up)
     void setCameraPos(float x, float y, float z);
@@ -107,6 +124,7 @@ private:
     irr::s32 materialAlphaTest_ = -1;
     irr::s32 materialAtlasSolid_ = -1;
     irr::s32 materialAtlasAlpha_ = -1;
+    irr::s32 materialWindAlphaTest_ = -1;
 
     // Uniform values (updated per frame)
     float fogStart_ = 200.0f;
@@ -128,6 +146,13 @@ private:
 
     // Atlas tile scale uniform
     float atlasTileScale_ = 248.0f / 2048.0f;
+
+    // Wind uniforms (for tree vertex shader animation)
+    float windTime_ = 0.0f;
+    float windParams_[4] = {0.3f, 0.4f, 0.5f, 0.1f}; // baseStr, baseFreq, gustStr, gustFreq
+
+    // Frame counter for per-frame uniform skip optimization
+    uint64_t frameId_ = 0;
 
     // Atlas page GL texture handles (set by renderer, used by shader callback)
     std::vector<uint32_t> atlasPageTextures_;

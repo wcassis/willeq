@@ -3,7 +3,7 @@
   {
     "debris" : true,
     "density" : 0.17142857611179352,
-    "enabled" : true,
+    "enabled" : false,
     "grass" : true,
     "plants" : true,
     "rocks" : true,
@@ -13,10 +13,10 @@
   {
     "ambientCreatures" : true,
     "animatedTrees" : true,
-    "atmosphericParticles" : true,
+    "atmosphericParticles" : false,
     "density" : 0.5,
-    "fireEffects" : true,
-    "quality" : "low",
+    "fireEffects" : false,
+    "quality" : "off",
     "reactiveFoliage" : false,
     "rollingObjects" : false,
     "skyEnabled" : true

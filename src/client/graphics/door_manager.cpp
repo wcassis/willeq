@@ -24,6 +24,90 @@ DoorManager::DoorManager(irr::scene::ISceneManager* smgr, irr::video::IVideoDriv
 {
 }
 
+bool DoorManager::isRegionPvsVisible(size_t regionIdx) const {
+    if (!bspTree_ || currentPvsRegion_ == SIZE_MAX || regionIdx == SIZE_MAX
+        || currentPvsRegion_ >= bspTree_->regions.size())
+        return true;  // No PVS data — assume visible
+    auto& camRegion = bspTree_->regions[currentPvsRegion_];
+    if (!camRegion || camRegion->visibleRegions.empty()
+        || regionIdx >= camRegion->visibleRegions.size())
+        return true;
+    if (camRegion->visibleRegions[regionIdx])
+        return true;  // Directly PVS-visible
+    // Check 1-depth portal neighbors
+    if (regionNeighbors_) {
+        auto it = regionNeighbors_->find(regionIdx);
+        if (it != regionNeighbors_->end()) {
+            for (size_t neighbor : it->second) {
+                if (neighbor < camRegion->visibleRegions.size()
+                    && camRegion->visibleRegions[neighbor])
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Debug version that logs the decision
+bool DoorManager::isRegionPvsVisibleDebug(size_t regionIdx, uint8_t doorId) const {
+    if (!bspTree_) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (no bspTree_)", doorId, regionIdx);
+        return true;
+    }
+    if (currentPvsRegion_ == SIZE_MAX) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (currentPvsRegion_=SIZE_MAX)", doorId, regionIdx);
+        return true;
+    }
+    if (regionIdx == SIZE_MAX) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region=SIZE_MAX: VISIBLE (no region)", doorId);
+        return true;
+    }
+    if (currentPvsRegion_ >= bspTree_->regions.size()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (camRegion {} >= tree size {})",
+                  doorId, regionIdx, currentPvsRegion_, bspTree_->regions.size());
+        return true;
+    }
+    auto& camRegion = bspTree_->regions[currentPvsRegion_];
+    if (!camRegion) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (camRegion {} null)",
+                  doorId, regionIdx, currentPvsRegion_);
+        return true;
+    }
+    if (camRegion->visibleRegions.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (camRegion {} bitvec empty)",
+                  doorId, regionIdx, currentPvsRegion_);
+        return true;
+    }
+    if (regionIdx >= camRegion->visibleRegions.size()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (region >= bitvec size {})",
+                  doorId, regionIdx, camRegion->visibleRegions.size());
+        return true;
+    }
+    bool directlyVisible = camRegion->visibleRegions[regionIdx];
+    if (directlyVisible) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (bitvector[{}]=1, camRegion={})",
+                  doorId, regionIdx, regionIdx, currentPvsRegion_);
+        return true;
+    }
+    // Check 1-depth portal neighbors
+    if (regionNeighbors_) {
+        auto it = regionNeighbors_->find(regionIdx);
+        if (it != regionNeighbors_->end()) {
+            for (size_t neighbor : it->second) {
+                if (neighbor < camRegion->visibleRegions.size()
+                    && camRegion->visibleRegions[neighbor]) {
+                    LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (neighbor {} is PVS-visible)",
+                              doorId, regionIdx, neighbor);
+                    return true;
+                }
+            }
+        }
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: HIDDEN (bitvec=0, no visible neighbors, camRegion={})",
+              doorId, regionIdx, currentPvsRegion_);
+    return false;
+}
+
 DoorManager::~DoorManager()
 {
     clearDoors();
@@ -61,9 +145,18 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         return nullptr;
     }
 
-    // Convert door name to uppercase for comparison
+    // Convert door name to uppercase for comparison and cache key
     std::string upperDoorName = doorName;
     std::transform(upperDoorName.begin(), upperDoorName.end(), upperDoorName.begin(), ::toupper);
+
+    // Check mesh cache first — avoids rebuilding identical meshes (e.g. 25 DOOR1 instances)
+    auto cacheIt = doorMeshCache_.find(upperDoorName);
+    if (cacheIt != doorMeshCache_.end()) {
+        LOG_DEBUG(MOD_GRAPHICS, "Door mesh cache hit for '{}'", upperDoorName);
+        return cacheIt->second;  // Cache holds the reference, scene node will grab() on use
+    }
+
+    irr::scene::IMesh* mesh = nullptr;
 
     // First, search objectGeometries map (contains all object models from _obj.wld)
     // This is the primary lookup for doors since they're dynamically placed
@@ -73,8 +166,8 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             upperDoorName, geomIt->second->vertices.size(), geomIt->second->triangles.size());
         ZoneMeshBuilder builder(smgr_, driver_, nullptr);
         if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-        if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
-        irr::scene::IMesh* mesh = nullptr;
+        // No custom shader — doors use built-in EMT_SOLID/EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+        // which route through the cheap Solid3D/AlphaTest3D programs (no per-node callback)
         if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames.empty()) {
             mesh = builder.buildTexturedMesh(*geomIt->second, currentZone_->objectTextures);
         } else {
@@ -83,6 +176,9 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (!mesh) {
             LOG_WARN(MOD_GRAPHICS, "Failed to build mesh for door '{}' (verts={}, tris={})",
                 upperDoorName, geomIt->second->vertices.size(), geomIt->second->triangles.size());
+        }
+        if (mesh) {
+            const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
         }
         return mesh;
     }
@@ -98,12 +194,15 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
                 upperDoorName, name, geom->vertices.size());
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-            if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !geom->textureNames.empty()) {
-                return builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
+                mesh = builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
             } else {
-                return builder.buildColoredMesh(*geom);
+                mesh = builder.buildColoredMesh(*geom);
             }
+            if (mesh) {
+                const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
+            }
+            return mesh;
         }
     }
 
@@ -116,29 +215,23 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         std::string objName = objInstance.placeable->getName();
         std::transform(objName.begin(), objName.end(), objName.begin(), ::toupper);
 
-        // Try exact match first
-        if (objName == upperDoorName) {
-            ZoneMeshBuilder builder(smgr_, driver_, nullptr);
-            if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-            if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
-            if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
-                return builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
-            } else {
-                return builder.buildColoredMesh(*objInstance.geometry);
-            }
-        }
+        // Try exact match first, then partial match
+        bool matched = (objName == upperDoorName) ||
+                       (objName.find(upperDoorName) != std::string::npos) ||
+                       (upperDoorName.find(objName) != std::string::npos);
 
-        // Try partial match (door name contains object name or vice versa)
-        if (objName.find(upperDoorName) != std::string::npos ||
-            upperDoorName.find(objName) != std::string::npos) {
+        if (matched) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-            if (shaderMaterialSolid_ >= 0) builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
-                return builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+                mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
-                return builder.buildColoredMesh(*objInstance.geometry);
+                mesh = builder.buildColoredMesh(*objInstance.geometry);
             }
+            if (mesh) {
+                const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
+            }
+            return mesh;
         }
     }
 
@@ -496,9 +589,29 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     // Store bounding box for interaction (in world coordinates)
     visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
 
+    // Keep pivot alive outside scene graph (grab/remove pattern like entities)
+    visual.pivotNode->grab();
+    visual.inSceneGraph = true;
+
     // Compute BSP region for occlusion culling
     if (bspTree_) {
         visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "createDoor #{}: pos=({:.1f},{:.1f},{:.1f}) bspRegion={} "
+              "PVS state: bspTree_={}, currentPvsRegion_={}, regionNeighbors_={}",
+              doorId, x, y, z, visual.bspRegion,
+              bspTree_ != nullptr, currentPvsRegion_,
+              regionNeighbors_ ? std::to_string(regionNeighbors_->size()) : "null");
+
+    // PVS check at insertion — remove from scene graph if not visible
+    bool pvsVis = isRegionPvsVisibleDebug(visual.bspRegion, doorId);
+    if (!pvsVis) {
+        if (visual.pivotNode) {
+            visual.pivotNode->remove();
+            visual.inSceneGraph = false;
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "createDoor #{}: PVS-HIDDEN at insertion (region={})", doorId, visual.bspRegion);
     }
 
     visual.meshBuilt = true;
@@ -594,6 +707,10 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
                 visual.usePlaceholder = true;
                 visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
 
+                // Keep pivot alive outside scene graph (grab/remove pattern like entities)
+                visual.pivotNode->grab();
+                visual.inSceneGraph = true;
+
                 LOG_DEBUG(MOD_GRAPHICS, "Created placeholder door {} '{}' at ({:.1f}, {:.1f}, {:.1f})",
                           doorId, name, x, y, z);
             } else {
@@ -609,6 +726,34 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
     // Compute BSP region
     if (bspTree_) {
         visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "registerDoor #{}: pos=({:.1f},{:.1f},{:.1f}) bspRegion={} "
+              "PVS state: bspTree_={}, currentPvsRegion_={}, regionNeighbors_={}",
+              doorId, x, y, z, visual.bspRegion,
+              bspTree_ != nullptr, currentPvsRegion_,
+              regionNeighbors_ ? std::to_string(regionNeighbors_->size()) : "null");
+
+    // PVS check at insertion — remove from scene graph if not visible.
+    // When no BSP tree, bspRegion stays SIZE_MAX and isRegionPvsVisible()
+    // falls through to "assume visible" — so ALL doors end up in the graph.
+    // Instead, start doors OUT of graph when no BSP; recomputeAllBspRegions()
+    // will retroactively add visible ones once BSP arrives.
+    if (!bspTree_) {
+        if (visual.pivotNode) {
+            visual.pivotNode->remove();
+            visual.inSceneGraph = false;
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "registerDoor #{}: OUT-OF-GRAPH (no BSP yet)", doorId);
+    } else {
+        bool pvsVis = isRegionPvsVisibleDebug(visual.bspRegion, doorId);
+        if (!pvsVis) {
+            if (visual.pivotNode) {
+                visual.pivotNode->remove();
+                visual.inSceneGraph = false;
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "registerDoor #{}: PVS-HIDDEN at insertion (region={})", doorId, visual.bspRegion);
+        }
     }
 
     doors_[doorId] = visual;
@@ -643,6 +788,13 @@ bool DoorManager::buildDoorMesh(uint8_t doorId)
     visual.usePlaceholder = usePlaceholder;
 
     float x = visual.x, y = visual.y, z = visual.z;
+
+    // Recompute BSP region if it was unknown at registration time
+    // (doors registered during instant scene don't have BSP data yet)
+    if (visual.bspRegion == SIZE_MAX && bspTree_) {
+        visual.bspRegion = bspTree_->findRegionIndexForPoint(x, y, z);
+    }
+
     float scale = static_cast<float>(visual.size) / 100.0f;
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
     float heightOffset = 0.0f;
@@ -700,6 +852,25 @@ bool DoorManager::buildDoorMesh(uint8_t doorId)
 
     visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
     visual.meshBuilt = true;
+
+    // Keep pivot alive outside scene graph (grab/remove pattern like entities)
+    visual.pivotNode->grab();
+    visual.inSceneGraph = true;
+
+    // PVS check at insertion — remove from scene graph if not visible
+    LOG_DEBUG(MOD_GRAPHICS, "buildDoorMesh #{}: bspRegion={} PVS state: bspTree_={}, currentPvsRegion_={}, regionNeighbors_={}",
+              doorId, visual.bspRegion, bspTree_ != nullptr, currentPvsRegion_,
+              regionNeighbors_ ? std::to_string(regionNeighbors_->size()) : "null");
+    bool pvsVis = isRegionPvsVisibleDebug(visual.bspRegion, doorId);
+    if (!pvsVis) {
+        if (visual.pivotNode) {
+            visual.pivotNode->remove();
+            visual.inSceneGraph = false;
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "buildDoorMesh #{}: PVS-HIDDEN at insertion (region={})", doorId, visual.bspRegion);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "buildDoorMesh #{}: PVS-VISIBLE at insertion (region={})", doorId, visual.bspRegion);
+    }
 
     LOG_DEBUG(MOD_GRAPHICS, "Built door mesh {} '{}' at ({:.1f}, {:.1f}, {:.1f})",
               doorId, visual.name_raw, x, y, z);
@@ -768,20 +939,27 @@ void DoorManager::update(float deltaTime)
             continue;
         }
 
-        // Visibility culling: region-level PVS only
-        // (frustum culling removed — causes flickering as doors come into view)
-        bool doorOccluded = false;
-        if (visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
+        bool doorVisible = isRegionPvsVisible(visual.bspRegion);
+
+        // Occlusion culling: region-level stencil portal occlusion
+        if (doorVisible && visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
             && occlusionCulledRegions_->count(visual.bspRegion)) {
-            doorOccluded = true;
+            doorVisible = false;
         }
-        if (doorOccluded) {
-            if (visual.pivotNode) visual.pivotNode->setVisible(false);
-            else if (visual.sceneNode) visual.sceneNode->setVisible(false);
+
+        if (!doorVisible) {
+            if (visual.inSceneGraph && visual.pivotNode) {
+                visual.pivotNode->remove();
+                visual.inSceneGraph = false;
+            }
             continue;
         } else {
-            if (visual.pivotNode) visual.pivotNode->setVisible(true);
-            else if (visual.sceneNode) visual.sceneNode->setVisible(true);
+            if (!visual.inSceneGraph && visual.pivotNode) {
+                smgr_->getRootSceneNode()->addChild(visual.pivotNode);
+                visual.inSceneGraph = true;
+                visual.pivotNode->updateAbsolutePosition();
+                if (visual.sceneNode) visual.sceneNode->updateAbsolutePosition();
+            }
         }
 
         // Handle spinning objects (opentype 100 = Y-spin, 105 = Z-spin)
@@ -957,17 +1135,132 @@ const DoorVisual* DoorManager::getDoor(uint8_t doorId) const
 void DoorManager::clearDoors()
 {
     for (auto& [id, visual] : doors_) {
-        // Remove pivot node (which also removes child scene node)
         if (visual.pivotNode) {
-            visual.pivotNode->remove();
+            // Re-add to scene graph if removed, so remove() detaches from parent
+            if (!visual.inSceneGraph) {
+                smgr_->getRootSceneNode()->addChild(visual.pivotNode);
+            }
+            visual.pivotNode->remove();  // Detach from scene graph
+            visual.pivotNode->drop();    // Release our grab() reference
+            visual.inSceneGraph = false;
         } else if (visual.sceneNode) {
-            // Fallback for doors without pivot node
             visual.sceneNode->remove();
         }
     }
     doors_.clear();
     invisibleDoors_.clear();
-    LOG_DEBUG(MOD_GRAPHICS, "Cleared all doors");
+
+    // Drop cached meshes — scene nodes hold their own grab() references
+    for (auto& [name, mesh] : doorMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    doorMeshCache_.clear();
+
+    LOG_DEBUG(MOD_GRAPHICS, "Cleared all doors and mesh cache");
+}
+
+void DoorManager::recomputeAllBspRegions() {
+    if (!bspTree_) return;
+
+    size_t updated = 0, nowInGraph = 0, pvsHidden = 0;
+
+    for (auto& [id, visual] : doors_) {
+        if (visual.bspRegion != SIZE_MAX) continue;  // Already has a region
+        if (!visual.pivotNode) continue;
+
+        visual.bspRegion = bspTree_->findRegionIndexForPoint(visual.x, visual.y, visual.z);
+        updated++;
+
+        bool pvsVis = isRegionPvsVisible(visual.bspRegion);
+        if (pvsVis && !visual.inSceneGraph) {
+            smgr_->getRootSceneNode()->addChild(visual.pivotNode);
+            visual.inSceneGraph = true;
+            visual.pivotNode->updateAbsolutePosition();
+            if (visual.sceneNode) visual.sceneNode->updateAbsolutePosition();
+            nowInGraph++;
+        } else if (!pvsVis && visual.inSceneGraph) {
+            visual.pivotNode->remove();
+            visual.inSceneGraph = false;
+            pvsHidden++;
+        } else if (!pvsVis) {
+            pvsHidden++;
+        } else {
+            nowInGraph++;
+        }
+    }
+
+    if (updated > 0) {
+        LOG_INFO(MOD_GRAPHICS, "recomputeAllBspRegions: {} doors updated, {} now in-graph, {} PVS-hidden",
+                 updated, nowInGraph, pvsHidden);
+    }
+}
+
+bool DoorManager::rebuildSingleDoor(uint8_t doorId)
+{
+    if (!currentZone_ || !smgr_) {
+        return false;
+    }
+
+    auto it = doors_.find(doorId);
+    if (it == doors_.end()) {
+        return false;
+    }
+
+    DoorVisual& visual = it->second;
+
+    // Path 1: Registered-only doors with placeholder scene nodes
+    // These need full mesh building (zone data now available)
+    if (!visual.meshBuilt && visual.usePlaceholder && visual.sceneNode) {
+        // Remove placeholder nodes — drop our grab() reference
+        if (visual.pivotNode) {
+            if (!visual.inSceneGraph) {
+                smgr_->getRootSceneNode()->addChild(visual.pivotNode);
+            }
+            visual.pivotNode->remove();
+            visual.pivotNode->drop();
+            visual.pivotNode = nullptr;
+            visual.inSceneGraph = false;
+        } else if (visual.sceneNode) {
+            visual.sceneNode->remove();
+        }
+        visual.sceneNode = nullptr;
+        visual.usePlaceholder = false;
+
+        // Build real mesh with zone data (buildDoorMesh will grab() the new pivot)
+        if (buildDoorMesh(doorId)) {
+            LOG_DEBUG(MOD_GRAPHICS, "Rebuilt registered placeholder door {} '{}' with real mesh",
+                      doorId, visual.modelName);
+            return true;
+        }
+        return false;
+    }
+
+    // Path 2: Doors built via createDoor() with placeholder (mesh wasn't found at build time)
+    // These just need a mesh swap
+    if (!visual.usePlaceholder || !visual.sceneNode) {
+        return false;
+    }
+
+    irr::scene::IMesh* mesh = findDoorMesh(visual.modelName);
+    if (!mesh) {
+        return false;
+    }
+
+    // Swap the mesh on the existing scene node
+    visual.sceneNode->setMesh(mesh);
+
+    // Update materials for the new textured mesh
+    for (irr::u32 i = 0; i < visual.sceneNode->getMaterialCount(); ++i) {
+        visual.sceneNode->getMaterial(i).Lighting = false;
+        visual.sceneNode->getMaterial(i).BackfaceCulling = false;
+    }
+
+    visual.usePlaceholder = false;
+    LOG_DEBUG(MOD_GRAPHICS, "Rebuilt placeholder door {} '{}' with textured mesh",
+              doorId, visual.modelName);
+    return true;
 }
 
 void DoorManager::rebuildPlaceholderDoors()
@@ -983,17 +1276,22 @@ void DoorManager::rebuildPlaceholderDoors()
         // Handle registered-only doors with placeholder scene nodes
         // These need full mesh building (zone data now available)
         if (!visual.meshBuilt && visual.usePlaceholder && visual.sceneNode) {
-            // Remove placeholder nodes
+            // Remove placeholder nodes — drop our grab() reference
             if (visual.pivotNode) {
+                if (!visual.inSceneGraph) {
+                    smgr_->getRootSceneNode()->addChild(visual.pivotNode);
+                }
                 visual.pivotNode->remove();
+                visual.pivotNode->drop();
                 visual.pivotNode = nullptr;
+                visual.inSceneGraph = false;
             } else if (visual.sceneNode) {
                 visual.sceneNode->remove();
             }
             visual.sceneNode = nullptr;
             visual.usePlaceholder = false;
 
-            // Build real mesh with zone data
+            // Build real mesh with zone data (buildDoorMesh will grab() the new pivot)
             if (buildDoorMesh(id)) {
                 ++rebuilt;
                 LOG_DEBUG(MOD_GRAPHICS, "Rebuilt registered placeholder door {} '{}' with real mesh",
@@ -1041,8 +1339,15 @@ void DoorManager::rebuildPlaceholderDoors()
 void DoorManager::setAllDoorsVisible(bool visible)
 {
     for (auto& [id, visual] : doors_) {
-        if (visual.sceneNode) {
-            visual.sceneNode->setVisible(visible);
+        if (!visual.pivotNode) continue;
+        if (visible && !visual.inSceneGraph) {
+            smgr_->getRootSceneNode()->addChild(visual.pivotNode);
+            visual.inSceneGraph = true;
+            visual.pivotNode->updateAbsolutePosition();
+            if (visual.sceneNode) visual.sceneNode->updateAbsolutePosition();
+        } else if (!visible && visual.inSceneGraph) {
+            visual.pivotNode->remove();
+            visual.inSceneGraph = false;
         }
     }
 }
@@ -1052,7 +1357,7 @@ std::vector<irr::scene::IMeshSceneNode*> DoorManager::getDoorSceneNodes() const
     std::vector<irr::scene::IMeshSceneNode*> nodes;
     nodes.reserve(doors_.size());
     for (const auto& [id, visual] : doors_) {
-        if (visual.sceneNode) {
+        if (visual.sceneNode && visual.inSceneGraph) {
             nodes.push_back(visual.sceneNode);
         }
     }

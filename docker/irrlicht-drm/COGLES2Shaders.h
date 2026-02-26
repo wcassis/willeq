@@ -90,6 +90,9 @@ public:
     // Get the currently active program
     EOGLES2ShaderProgram getActiveProgram() const { return activeProgram_; }
 
+    // Invalidate active program cache (call after external glUseProgram bypasses this manager)
+    void invalidateActiveProgram() { activeProgram_ = EOGLES2SP_COUNT; }
+
     // Get uniform locations for the currently active program
     const SOGLES2ProgramUniforms& getUniforms() const { return uniforms_[activeProgram_]; }
 

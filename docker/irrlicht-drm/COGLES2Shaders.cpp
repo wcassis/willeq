@@ -637,7 +637,7 @@ bool COGLES2ShaderManager::useProgram(EOGLES2ShaderProgram prog)
     if (prog >= EOGLES2SP_COUNT || !programs_[prog])
         return false;
 
-    if (activeProgram_ != prog || true) {  // Always bind — cheap on GLES2
+    if (activeProgram_ != prog) {
         glUseProgram(programs_[prog]);
         activeProgram_ = prog;
     }

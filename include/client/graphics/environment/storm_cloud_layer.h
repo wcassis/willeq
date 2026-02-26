@@ -2,10 +2,12 @@
 
 #include <glm/glm.hpp>
 #include <string>
+#include <set>
 #include <vector>
 
 namespace irr {
 namespace scene {
+class ISceneNode;
 class ISceneManager;
 class IMeshSceneNode;
 class IMesh;
@@ -161,6 +163,14 @@ public:
      * Get debug info string.
      */
     std::string getDebugInfo() const;
+
+    /**
+     * Get count of active scene nodes (for dumpScene accounting).
+     */
+    int getSceneNodeCount() const { return domeNode_ ? 1 : 0; }
+
+    // Collect scene node pointers into a set (for dumpScene node identification)
+    void collectSceneNodes(std::set<irr::scene::ISceneNode*>& nodes) const;
 
 private:
     /**

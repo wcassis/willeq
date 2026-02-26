@@ -5,6 +5,7 @@
 #include "client/graphics/tree_identifier.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/s3d_loader.h"
+#include <cstddef>
 #include <irrlicht.h>
 #include <memory>
 #include <vector>
@@ -35,6 +36,25 @@ public:
      */
     void initialize(const std::vector<ObjectInstance>& objects,
                     const std::map<std::string, std::shared_ptr<TextureInfo>>& textures);
+
+    /**
+     * Progressive initialization: begin phase (identify trees, store pending list).
+     * Call initializeNextBatch() repeatedly until isInitializing() returns false.
+     */
+    void beginInitialize(const std::vector<ObjectInstance>& objects,
+                         const std::map<std::string, std::shared_ptr<TextureInfo>>& textures);
+
+    /**
+     * Progressive initialization: process next batch of trees.
+     * @param batchSize Number of trees to create this call
+     * @return true if initialization is complete
+     */
+    bool initializeNextBatch(int batchSize = 8);
+
+    /**
+     * Check if progressive initialization is in progress.
+     */
+    bool isInitializing() const { return progressiveInitActive_; }
 
     /**
      * Load wind configuration.
@@ -101,7 +121,6 @@ public:
     TreeIdentifier& getTreeIdentifier() { return treeIdentifier_; }
     const TreeIdentifier& getTreeIdentifier() const { return treeIdentifier_; }
 
-private:
     /**
      * Data for a single mesh buffer within an animated tree.
      */
@@ -135,7 +154,40 @@ private:
 
         // Source geometry name (for debugging)
         std::string name;
+
+        // BSP region index for PVS culling (SIZE_MAX = unknown)
+        size_t bspRegion = SIZE_MAX;
+
+        // Whether the node is currently in the scene graph
+        bool inSceneGraph = true;
     };
+
+    /**
+     * Get read-only access to animated trees (for SimulationWorker registration).
+     */
+    const std::vector<AnimatedTree>& getAnimatedTrees() const { return animatedTrees_; }
+
+    /**
+     * Assign BSP regions to all trees for PVS culling.
+     * Call once after tree initialization when BSP data is available.
+     * @param bspTree Shared pointer to the zone BSP tree
+     */
+    void assignBspRegions(std::shared_ptr<BspTree> bspTree);
+
+    /**
+     * Update PVS visibility for all trees based on camera's BSP region.
+     * Trees in non-visible regions are removed from scene graph.
+     * @param cameraRegion Current camera BSP region (SIZE_MAX = no PVS)
+     * @param bspTree The zone BSP tree (needed for visibility lookup)
+     */
+    void updatePvsVisibility(size_t cameraRegion, const std::shared_ptr<BspTree>& bspTree);
+
+    /**
+     * Get count of trees currently in the scene graph.
+     */
+    size_t getVisibleTreeCount() const;
+
+private:
 
     /**
      * Identify and process tree objects from placeables.
@@ -192,6 +244,13 @@ private:
 
     // All animated trees
     std::vector<AnimatedTree> animatedTrees_;
+
+    // Progressive initialization state
+    bool progressiveInitActive_ = false;
+    std::vector<size_t> pendingTreeIndices_;        // Indices into pendingObjects_ for trees to create
+    size_t pendingTreeCursor_ = 0;                  // Next index in pendingTreeIndices_ to process
+    const std::vector<ObjectInstance>* pendingObjects_ = nullptr;
+    const std::map<std::string, std::shared_ptr<TextureInfo>>* pendingTextures_ = nullptr;
 
     // Configuration
     float renderDistance_ = 300.0f;  // Max distance to render trees (synced from main renderer)

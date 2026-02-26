@@ -8937,6 +8937,21 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(frametiming);
 
+	Command simworkercmd;
+	simworkercmd.name = "simworker";
+	simworkercmd.aliases = {"sw"};
+	simworkercmd.usage = "/simworker";
+	simworkercmd.description = "Show simulation worker thread status";
+	simworkercmd.category = "Utility";
+	simworkercmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		auto lines = m_renderer->getSimWorkerDebugInfo();
+		for (const auto& line : lines) {
+			AddChatSystemMessage(line);
+		}
+	};
+	m_command_registry->registerCommand(simworkercmd);
+
 	Command sceneprofile;
 	sceneprofile.name = "sceneprofile";
 	sceneprofile.aliases = {"sp", "scenebreak"};
@@ -8949,6 +8964,19 @@ void EverQuest::RegisterCommands()
 		AddChatSystemMessage("Scene profile running - check console for breakdown");
 	};
 	m_command_registry->registerCommand(sceneprofile);
+
+	Command dumpscenecmd;
+	dumpscenecmd.name = "dumpscene";
+	dumpscenecmd.aliases = {"ds"};
+	dumpscenecmd.usage = "/dumpscene";
+	dumpscenecmd.description = "Dump all scene graph nodes with positions and PVS regions to console";
+	dumpscenecmd.category = "Utility";
+	dumpscenecmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->dumpScene();
+		AddChatSystemMessage("Scene dump written to console log");
+	};
+	m_command_registry->registerCommand(dumpscenecmd);
 
 	Command sortcmd;
 	sortcmd.name = "sort";

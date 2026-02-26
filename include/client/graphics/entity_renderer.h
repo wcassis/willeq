@@ -14,6 +14,7 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
+#include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/frustum_culler.h"
 #include "client/graphics/software_occlusion_culler.h"
@@ -43,10 +44,13 @@ struct EntityAppearance {
 
 // Multi-frame entity build pipeline phases
 enum class EntityBuildPhase : uint8_t {
-    Placeholder,       // Colored cube visible, waiting for background prep
-    TextureUploading,  // Uploading pre-decoded textures to GPU, one per frame
-    MeshBuilding,      // All textures uploaded, build mesh + scene node this frame
-    Built              // Complete
+    Placeholder,              // Colored cube visible, waiting for background prep
+    TextureUploading,         // Uploading pre-decoded base race textures to GPU, one per frame
+    VariantTextureUploading,  // Uploading pre-decoded variant/body-part textures, one per frame
+    SceneNodeCreation,        // Create animated mesh + scene node (textures already cached)
+    EquipTextureUploading,    // Uploading pre-decoded equipment textures, one per frame
+    EquipmentAttach,          // Build equipment Irrlicht meshes + attach to skeleton
+    Built                     // Complete
 };
 
 // Entity visual representation
@@ -89,6 +93,25 @@ struct EntityVisual {
     size_t nextTextureUpload = 0;              // Index into decodedTextures
     std::vector<irr::video::ITexture*> uploadedTextures;  // GPU textures ready for mesh
     std::vector<bool> uploadedTextureAlpha;    // Alpha flag per uploaded texture
+
+    // Variant texture staging (from background prep)
+    std::vector<DecodedTexture> variantTextures;
+    size_t nextVariantUpload = 0;
+
+    // Equipment staging (from background prep)
+    struct EquipmentStaging {
+        int modelId = 0;
+        uint32_t equipmentId = 0;
+        bool isPrimary = true;
+        std::shared_ptr<ZoneGeometry> geometry;
+        std::map<std::string, std::shared_ptr<TextureInfo>> rawTextures;
+    };
+    std::vector<EquipmentStaging> equipmentStaging;
+    std::vector<DecodedTexture> equipmentTextures;  // Flattened for upload
+    size_t nextEquipTextureUpload = 0;
+
+    bool entityPrepComplete = false;  // Background prep finished for this entity
+
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
@@ -458,6 +481,11 @@ public:
 
     // Set background prep worker for deferred entity model loading
     void setEntityPrepWorker(EntityPrepWorker* worker) { entityPrepWorker_ = worker; }
+
+    // Poll completed prep results from background thread and distribute
+    // variant/equipment data to the corresponding EntityVisual structs.
+    // Call this once per frame before processOneEntityBuildStep().
+    void pollAndDistributePrepResults();
 
     // Constrained rendering support
     // Set the constrained renderer config for entity visibility limits

@@ -50,6 +50,12 @@ struct RaceModelData {
 // Loads and caches character models by race ID
 class RaceModelLoader {
 public:
+    // Armor texture lazy-loading: index maps texture name -> archive location
+    struct ArmorTextureRef {
+        std::string archivePath;   // Full path to the S3D archive
+        std::string entryName;     // Original filename inside the archive
+    };
+
     RaceModelLoader(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                     irr::io::IFileSystem* fileSystem);
     ~RaceModelLoader();
@@ -131,6 +137,18 @@ public:
     // on the main thread to move data into loadedModels_ before getMeshForRace().
     bool preloadModelData(uint16_t raceId, uint8_t gender);
 
+    // Background-safe: loads variant model data (S3D load + character search +
+    // part combining + animation merge) for zone-specific variants (e.g., QCM).
+    // Stores result in variantModels_ (protected by variantModelsMutex_).
+    // Does NOT create textures, Irrlicht meshes, or scene nodes (no GL calls).
+    bool preloadVariantModel(uint16_t raceId, uint8_t gender,
+                             uint8_t headVariant, uint8_t bodyVariant);
+
+    // Get variant model data from variantModels_ cache (thread-safe).
+    // Returns nullptr if not cached.
+    std::shared_ptr<RaceModelData> getVariantModelData(uint16_t raceId, uint8_t gender,
+                                                        uint8_t headVariant, uint8_t bodyVariant);
+
     // Check if model data is available in either the main cache (loadedModels_)
     // or the staging cache (preparedModelData_). Thread-safe.
     // cacheKey = (raceId << 8) | gender
@@ -192,6 +210,26 @@ public:
     // Call removeMeshRef when removing that entity
     void addMeshRef(uint16_t raceId, uint8_t gender);
     void removeMeshRef(uint16_t raceId, uint8_t gender);
+
+    // Accept pre-built global assets from background thread (avoids re-parsing archives)
+    void adoptGlobalAssets(
+        std::vector<std::shared_ptr<CharacterModel>>&& globalCharacters,
+        std::map<std::string, std::shared_ptr<TextureInfo>>&& globalTextures,
+        std::map<int, std::vector<std::shared_ptr<CharacterModel>>>&& numberedGlobalCharacters,
+        std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>>&& numberedGlobalTextures,
+        std::map<std::string, ArmorTextureRef>&& armorTextureIndex);
+
+    // Thread-safe static loaders (no GL, no Irrlicht — for background thread)
+    static bool loadGlobalModelsStatic(const std::string& clientPath,
+        std::vector<std::shared_ptr<CharacterModel>>& outCharacters,
+        std::map<std::string, std::shared_ptr<TextureInfo>>& outTextures);
+
+    static bool loadNumberedGlobalModelsStatic(const std::string& clientPath,
+        std::map<int, std::vector<std::shared_ptr<CharacterModel>>>& outCharacters,
+        std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>>& outTextures);
+
+    static bool loadArmorTextureIndexStatic(const std::string& clientPath,
+        std::map<std::string, ArmorTextureRef>& outIndex);
 
     // Set maximum cached _chr.s3d entries (0 = unlimited)
     void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
@@ -307,6 +345,9 @@ private:
     std::map<uint64_t, EQAnimatedMesh*> variantAnimatedMeshCache_;
 
     // Cache for variant-specific meshes (key includes head/body variant)
+    // variantModels_ is written by worker thread (preloadVariantModel) and read by
+    // render thread (getAnimatedMeshWithAppearance) — protected by variantModelsMutex_
+    mutable std::mutex variantModelsMutex_;
     std::map<uint64_t, std::shared_ptr<RaceModelData>> variantModels_;
     std::map<uint64_t, irr::scene::IMesh*> variantMeshCache_;
 
@@ -320,12 +361,8 @@ private:
     std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>> numberedGlobalTextures_;
     bool numberedGlobalsLoaded_ = false;
 
-    // Armor texture lazy-loading: index maps texture name -> archive location
-    struct ArmorTextureRef {
-        std::string archivePath;   // Full path to the S3D archive
-        std::string entryName;     // Original filename inside the archive
-    };
-    std::map<std::string, ArmorTextureRef> armorTextureIndex_;   // Lowercase name -> ref
+    // Armor texture lazy-loading index (lowercase name -> ref)
+    std::map<std::string, ArmorTextureRef> armorTextureIndex_;
     std::map<std::string, std::shared_ptr<TextureInfo>> armorTextureCache_; // On-demand loaded
     bool armorTexturesLoaded_ = false;
 
@@ -347,10 +384,13 @@ private:
 
     // Cache for other _chr.s3d files loaded during searchZoneChrFilesForModel
     // Key is lowercase filename (e.g., "crushbone_chr.s3d")
+    // Written by worker thread (preloadVariantModel) and render thread
+    // (loadModelFromGlobalChrWithVariantsForAnimation) — protected by otherChrCacheMutex_
     struct OtherChrCache {
         std::vector<std::shared_ptr<CharacterModel>> characters;
         std::map<std::string, std::shared_ptr<TextureInfo>> textures;
     };
+    mutable std::mutex otherChrCacheMutex_;
     std::map<std::string, OtherChrCache> otherChrCaches_;
     size_t maxChrCacheEntries_ = 0;          // 0 = unlimited
     std::list<std::string> chrCacheLruOrder_; // Front = most recently used

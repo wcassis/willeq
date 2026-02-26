@@ -788,6 +788,16 @@ void WeatherEffectsController::onZoneLeave() {
     }
 }
 
+int WeatherEffectsController::getSceneNodeCount() const {
+    int count = 0;
+    if (stormCloudLayer_) count += stormCloudLayer_->getSceneNodeCount();
+    return count;
+}
+
+void WeatherEffectsController::collectSceneNodes(std::set<irr::scene::ISceneNode*>& nodes) const {
+    if (stormCloudLayer_) stormCloudLayer_->collectSceneNodes(nodes);
+}
+
 std::string WeatherEffectsController::getDebugInfo() const {
     std::string info = "Weather: ";
 

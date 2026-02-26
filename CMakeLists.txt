@@ -280,6 +280,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
         src/client/graphics/entity_prep_worker.cpp
+        src/client/graphics/simulation_worker.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp

@@ -180,6 +180,10 @@ void StormCloudLayer::onZoneLeave() {
     }
 }
 
+void StormCloudLayer::collectSceneNodes(std::set<irr::scene::ISceneNode*>& nodes) const {
+    if (domeNode_) nodes.insert(domeNode_);
+}
+
 std::string StormCloudLayer::getDebugInfo() const {
     std::ostringstream ss;
     ss << "Clouds: " << std::fixed << std::setprecision(2)

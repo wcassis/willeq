@@ -28,6 +28,10 @@ public:
     COGLES2Texture(const core::dimension2d<u32>& size, const io::path& name,
                    COpenGLES2Driver* driver);
 
+    // Wrap an already-uploaded GL texture (no glGenTextures/glTexImage2D — caller owns the upload)
+    COGLES2Texture(const io::path& name, GLuint glTexName,
+                   const core::dimension2d<u32>& size, COpenGLES2Driver* driver);
+
     virtual ~COGLES2Texture();
 
     // ITexture interface

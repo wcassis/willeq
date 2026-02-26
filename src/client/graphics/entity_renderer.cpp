@@ -467,6 +467,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     float scale = getScaleForRace(raceId);
     if (scale <= 0.0f) {
         visual.meshBuilt = true;
+        visual.buildPhase = EntityBuildPhase::Built;
         return true;
     }
 
@@ -517,6 +518,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         visual.animatedNode = animNode;
         visual.sceneNode = animNode;
         visual.sceneNode->grab();  // Keep alive when removed from scene graph
+        visual.inSceneGraph = true;  // Node was created with ROOT parent — mark as in-graph so PVS can manage it
         visual.isAnimated = true;
         visual.usesPlaceholder = false;
 
@@ -662,6 +664,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 	}
 
 	visual.meshBuilt = true;
+	visual.buildPhase = EntityBuildPhase::Built;
 
 	// Log total entity creation time if slow
 	auto createEnd = std::chrono::steady_clock::now();
@@ -693,6 +696,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     }
     visual.sceneNode = visual.meshNode;
     visual.sceneNode->grab();  // Keep alive when removed from scene graph
+    visual.inSceneGraph = true;  // Node was created with ROOT parent — mark as in-graph so PVS can manage it
 
     // Calculate model offset for collision calculations
     // Server Z is the geometric MODEL CENTER, not the feet/ground position
@@ -793,6 +797,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     }
 
     visual.meshBuilt = true;
+    visual.buildPhase = EntityBuildPhase::Built;
 
     // Log entity creation with model status
     if (!usesPlaceholder) {
@@ -812,11 +817,70 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     return true;
 }
 
+void EntityRenderer::pollAndDistributePrepResults() {
+    if (!entityPrepWorker_) return;
+    EntityPrepWorker::PrepResult result;
+    while (entityPrepWorker_->pollResult(result)) {
+        auto it = entities_.find(result.spawnId);
+        if (it == entities_.end()) continue;
+        auto& vis = it->second;
+
+        // Distribute variant textures
+        vis.variantTextures = std::move(result.variantTextures);
+
+        // Flatten equipment textures for per-frame upload and store staging data
+        for (auto& eq : result.equipmentData) {
+            for (auto& tex : eq.decodedTextures) {
+                vis.equipmentTextures.push_back(std::move(tex));
+            }
+            EntityVisual::EquipmentStaging staging;
+            staging.modelId = eq.modelId;
+            staging.equipmentId = eq.equipmentId;
+            staging.isPrimary = eq.isPrimary;
+            staging.geometry = eq.geometry;
+            staging.rawTextures = eq.rawTextures;
+            vis.equipmentStaging.push_back(std::move(staging));
+        }
+
+        vis.entityPrepComplete = true;
+        LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) prep complete: {} variant tex, {} equip pieces, {} equip tex",
+                  result.spawnId, vis.name, vis.variantTextures.size(),
+                  vis.equipmentStaging.size(), vis.equipmentTextures.size());
+    }
+}
+
+// Helper: upload one pre-decoded texture to GPU and register in mesh builder cache
+static irr::video::ITexture* uploadDecodedTexture(
+    irr::video::IVideoDriver* driver, ZoneMeshBuilder* meshBuilder,
+    const DecodedTexture& decoded) {
+
+    irr::video::IImage* img = driver->createImageFromData(
+        irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2du(decoded.width, decoded.height),
+        const_cast<uint32_t*>(decoded.argbPixels.data()),
+        false  // don't own data
+    );
+
+    irr::video::ITexture* tex = nullptr;
+    if (img) {
+        std::string lowerName = decoded.name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        tex = driver->addTexture(lowerName.c_str(), img);
+        img->drop();
+    }
+
+    if (tex && meshBuilder) {
+        meshBuilder->registerUploadedTexture(decoded.name, tex, decoded.hasAlpha);
+    }
+
+    return tex;
+}
+
 bool EntityRenderer::processOneEntityBuildStep() {
     if (!smgr_ || !raceModelLoader_) return false;
 
     // Find nearest unbuilt entity that's ready for work
-    // Sort by distance to player (playerSpawnId_ entity position as proxy)
     float playerX = 0, playerY = 0;
     if (playerSpawnId_ != 0) {
         auto playerIt = entities_.find(playerSpawnId_);
@@ -826,19 +890,18 @@ bool EntityRenderer::processOneEntityBuildStep() {
         }
     }
 
-    // Collect entities in TextureUploading or MeshBuilding phases first (in-progress),
-    // then Placeholder entities that have data ready
+    // Collect entities in active phases first (in-progress), then Placeholder
     uint16_t bestId = 0;
     float bestDistSq = std::numeric_limits<float>::max();
     EntityBuildPhase bestPhase = EntityBuildPhase::Built;
 
     for (auto& [spawnId, vis] : entities_) {
-        if (vis.meshBuilt) continue;
+        // Use buildPhase instead of meshBuilt — entity may have mesh built but still
+        // need equipment texture upload + attach in later phases
         if (vis.buildPhase == EntityBuildPhase::Built) continue;
 
-        // Prioritize in-progress entities (TextureUploading, MeshBuilding) over Placeholder
-        bool inProgress = (vis.buildPhase == EntityBuildPhase::TextureUploading ||
-                          vis.buildPhase == EntityBuildPhase::MeshBuilding);
+        // In-progress = any phase past Placeholder
+        bool inProgress = (vis.buildPhase != EntityBuildPhase::Placeholder);
 
         float dx = vis.lastX - playerX;
         float dy = vis.lastY - playerY;
@@ -850,17 +913,24 @@ bool EntityRenderer::processOneEntityBuildStep() {
             bestDistSq = distSq;
             bestPhase = vis.buildPhase;
         } else if (inProgress == (bestPhase != EntityBuildPhase::Placeholder)) {
-            // Both in same priority tier — pick closer
             if (distSq < bestDistSq) {
                 bestId = spawnId;
                 bestDistSq = distSq;
                 bestPhase = vis.buildPhase;
             }
         } else if (!inProgress && bestPhase == EntityBuildPhase::Built) {
-            // No in-progress found yet, consider placeholders
             bestId = spawnId;
             bestDistSq = distSq;
             bestPhase = vis.buildPhase;
+        }
+    }
+
+    // Always prioritize the player entity over distance-based selection
+    if (playerSpawnId_ != 0) {
+        auto playerIt = entities_.find(playerSpawnId_);
+        if (playerIt != entities_.end() &&
+            playerIt->second.buildPhase != EntityBuildPhase::Built) {
+            bestId = playerSpawnId_;
         }
     }
 
@@ -870,16 +940,25 @@ bool EntityRenderer::processOneEntityBuildStep() {
 
     switch (vis.buildPhase) {
         case EntityBuildPhase::Placeholder: {
-            // Check if background prep has data ready
-            uint32_t cacheKey = (static_cast<uint32_t>(vis.raceId) << 8) | vis.gender;
-            if (!raceModelLoader_->isModelDataCached(cacheKey)) {
-                return false;  // Background thread still working
+            // Wait for background prep to complete (both race model AND per-entity data)
+            if (!vis.entityPrepComplete) {
+                // Check if at least the race model data is cached (for entities that
+                // were registered before the extended prep system was active)
+                uint32_t cacheKey = (static_cast<uint32_t>(vis.raceId) << 8) | vis.gender;
+                if (!raceModelLoader_->isModelDataCached(cacheKey)) {
+                    return false;  // Background thread still working
+                }
+                // Race model is cached but entityPrepComplete not set — this entity
+                // was queued with old-style prep. Mark it complete so we can proceed.
+                vis.entityPrepComplete = true;
             }
+
             // Promote prepared data to main cache
             raceModelLoader_->promotePreparedModels();
 
             auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
             if (!modelData) {
+                // No model data — fallback to synchronous placeholder build
                 buildEntityMesh(bestId);
                 return true;
             }
@@ -890,7 +969,6 @@ bool EntityRenderer::processOneEntityBuildStep() {
             // then transition to TextureUploading.
             if (modelData->decodedTextures.empty() && modelData->combinedGeometry &&
                 !modelData->textures.empty()) {
-                // Count total decodable textures to know when we're done
                 size_t totalDecodable = 0;
                 for (const auto& texName : modelData->combinedGeometry->textureNames) {
                     std::string lowerName = texName;
@@ -904,12 +982,15 @@ bool EntityRenderer::processOneEntityBuildStep() {
                 }
 
                 if (totalDecodable == 0) {
-                    // No DDS textures to decode — synchronous build
-                    buildEntityMesh(bestId);
+                    // No DDS textures to decode — skip to texture uploading
+                    vis.buildPhase = EntityBuildPhase::TextureUploading;
+                    vis.nextTextureUpload = 0;
+                    vis.uploadedTextures.clear();
+                    vis.uploadedTextureAlpha.clear();
                     return true;
                 }
 
-                // Decode ONE texture this frame (nextTextureUpload tracks decode progress)
+                // Decode ONE texture this frame
                 size_t decodeIdx = 0;
                 for (const auto& texName : modelData->combinedGeometry->textureNames) {
                     std::string lowerName = texName;
@@ -921,13 +1002,11 @@ bool EntityRenderer::processOneEntityBuildStep() {
                         continue;
                     }
 
-                    // Skip already-decoded textures
                     if (decodeIdx < vis.nextTextureUpload) {
                         decodeIdx++;
                         continue;
                     }
 
-                    // Decode this one
                     const auto& rawData = texIt->second->data;
                     DecodedTexture decoded;
                     decoded.name = texName;
@@ -954,9 +1033,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
                     LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) decoded texture {}/{}: '{}' on main thread",
                               bestId, vis.name, vis.nextTextureUpload, totalDecodable, texName);
 
-                    // Done for this frame — one decode per frame
                     if (vis.nextTextureUpload >= totalDecodable) {
-                        // All decoded — transition to upload phase
                         vis.buildPhase = EntityBuildPhase::TextureUploading;
                         vis.nextTextureUpload = 0;
                         vis.uploadedTextures.clear();
@@ -967,84 +1044,181 @@ bool EntityRenderer::processOneEntityBuildStep() {
                     return true;
                 }
 
-                // Shouldn't reach here but handle gracefully
-                buildEntityMesh(bestId);
-                return true;
-            }
-
-            // Background thread already decoded textures — go straight to upload
-            if (!modelData->decodedTextures.empty()) {
+                // Fallback — transition anyway
                 vis.buildPhase = EntityBuildPhase::TextureUploading;
                 vis.nextTextureUpload = 0;
                 vis.uploadedTextures.clear();
                 vis.uploadedTextureAlpha.clear();
-                LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame build: {} textures to upload",
-                          bestId, vis.name, modelData->decodedTextures.size());
                 return true;
             }
 
-            // No textures at all
-            buildEntityMesh(bestId);
+            // Background thread already decoded textures — go to upload
+            vis.buildPhase = EntityBuildPhase::TextureUploading;
+            vis.nextTextureUpload = 0;
+            vis.uploadedTextures.clear();
+            vis.uploadedTextureAlpha.clear();
+            if (!modelData->decodedTextures.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame build: {} textures to upload",
+                          bestId, vis.name, modelData->decodedTextures.size());
+            }
             return true;
         }
 
         case EntityBuildPhase::TextureUploading: {
+            // Upload one pre-decoded base race texture per frame
             auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
             if (!modelData || vis.nextTextureUpload >= modelData->decodedTextures.size()) {
-                vis.buildPhase = EntityBuildPhase::MeshBuilding;
+                // All base textures uploaded — move to variant textures
+                vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
+                vis.nextVariantUpload = 0;
                 return true;
             }
 
             const auto& decoded = modelData->decodedTextures[vis.nextTextureUpload];
-
-            // Create IImage from pre-decoded ARGB pixels and upload to GPU
-            irr::video::IImage* img = driver_->createImageFromData(
-                irr::video::ECF_A8R8G8B8,
-                irr::core::dimension2du(decoded.width, decoded.height),
-                const_cast<uint32_t*>(decoded.argbPixels.data()),
-                false  // don't own data
-            );
-
-            irr::video::ITexture* tex = nullptr;
-            if (img) {
-                // Use the original texture name (lowercase) so buildMeshFromGeometry
-                // finds it in the mesh builder's cache via getOrLoadTexture()
-                std::string lowerName = decoded.name;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-                tex = driver_->addTexture(lowerName.c_str(), img);
-                img->drop();
-            }
-
-            // Register in mesh builder cache so buildEntityMesh() → buildMeshFromGeometry()
-            // finds this texture via getOrLoadTexture() and skips loadTextureFromBMP()
-            if (tex && raceModelLoader_->getMeshBuilder()) {
-                raceModelLoader_->getMeshBuilder()->registerUploadedTexture(
-                    decoded.name, tex, decoded.hasAlpha);
-            }
+            irr::video::ITexture* tex = uploadDecodedTexture(
+                driver_, raceModelLoader_->getMeshBuilder(), decoded);
 
             vis.uploadedTextures.push_back(tex);
             vis.uploadedTextureAlpha.push_back(decoded.hasAlpha);
             vis.nextTextureUpload++;
 
             if (vis.nextTextureUpload >= modelData->decodedTextures.size()) {
-                vis.buildPhase = EntityBuildPhase::MeshBuilding;
+                vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
+                vis.nextVariantUpload = 0;
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded texture {}/{}: '{}'",
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded base texture {}/{}: '{}'",
                       bestId, vis.name, vis.nextTextureUpload,
                       modelData->decodedTextures.size(), decoded.name);
             return true;
         }
 
-        case EntityBuildPhase::MeshBuilding: {
-            // All textures uploaded — build mesh and create scene node.
-            // For simplicity and correctness (equipment variants, animation merge, etc.),
-            // delegate to the existing buildEntityMesh() which handles all edge cases.
-            // The expensive texture decode + GPU upload is already done; the remaining
-            // mesh buffer creation + scene node setup is ~10-20ms.
+        case EntityBuildPhase::VariantTextureUploading: {
+            // Upload one pre-decoded variant texture per frame
+            if (vis.nextVariantUpload >= vis.variantTextures.size()) {
+                // No variant textures or all uploaded — move to scene node creation
+                vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
+                return true;
+            }
+
+            const auto& decoded = vis.variantTextures[vis.nextVariantUpload];
+            uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+
+            vis.nextVariantUpload++;
+
+            if (vis.nextVariantUpload >= vis.variantTextures.size()) {
+                vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded variant texture {}/{}: '{}'",
+                      bestId, vis.name, vis.nextVariantUpload,
+                      vis.variantTextures.size(), decoded.name);
+            return true;
+        }
+
+        case EntityBuildPhase::SceneNodeCreation: {
+            // Create animated mesh + scene node. All textures (base + variant) are
+            // already in the mesh builder cache, so this is fast (~10-15ms).
+            // We call buildEntityMesh which handles everything EXCEPT equipment attach.
+            // We override the equipment attach by skipping it here and doing it in
+            // the EquipmentAttach phase instead.
+
+            // Temporarily clear equipment IDs so buildEntityMesh doesn't call attachEquipment
+            uint32_t savedPrimary = vis.appearance.equipment[7];
+            uint32_t savedSecondary = vis.appearance.equipment[8];
+            vis.appearance.equipment[7] = 0;
+            vis.appearance.equipment[8] = 0;
+
             buildEntityMesh(bestId);
+
+            // Restore equipment IDs for the EquipmentAttach phase
+            vis.appearance.equipment[7] = savedPrimary;
+            vis.appearance.equipment[8] = savedSecondary;
+
+            // If we have equipment staging data, go to equip texture upload
+            // Otherwise skip straight to Built
+            if (!vis.equipmentTextures.empty()) {
+                vis.buildPhase = EntityBuildPhase::EquipTextureUploading;
+                vis.nextEquipTextureUpload = 0;
+            } else if (!vis.equipmentStaging.empty()) {
+                // Equipment data but no textures to upload (non-DDS textures)
+                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
+            } else if (savedPrimary != 0 || savedSecondary != 0) {
+                // Has equipment IDs but no pre-loaded data — fallback to sync attach
+                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
+            } else {
+                vis.buildPhase = EntityBuildPhase::Built;
+            }
+            return true;
+        }
+
+        case EntityBuildPhase::EquipTextureUploading: {
+            // Upload one pre-decoded equipment texture per frame
+            if (vis.nextEquipTextureUpload >= vis.equipmentTextures.size()) {
+                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
+                return true;
+            }
+
+            const auto& decoded = vis.equipmentTextures[vis.nextEquipTextureUpload];
+
+            // Upload to GPU via addTexture and register in race model mesh builder cache.
+            // Equipment mesh builder (buildMeshFromGeometry) finds textures via
+            // driver_->getTexture(name) so the addTexture call is sufficient.
+            uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+
+            vis.nextEquipTextureUpload++;
+
+            if (vis.nextEquipTextureUpload >= vis.equipmentTextures.size()) {
+                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded equip texture {}/{}: '{}'",
+                      bestId, vis.name, vis.nextEquipTextureUpload,
+                      vis.equipmentTextures.size(), decoded.name);
+            return true;
+        }
+
+        case EntityBuildPhase::EquipmentAttach: {
+            // Cache pre-extracted equipment model data so getEquipmentMeshByModelId finds it
+            if (equipmentModelLoader_) {
+                for (const auto& staging : vis.equipmentStaging) {
+                    if (staging.geometry) {
+                        auto equipData = std::make_shared<EquipmentModelData>();
+                        equipData->modelId = staging.modelId;
+                        equipData->modelName = "IT" + std::to_string(staging.modelId);
+                        equipData->geometry = staging.geometry;
+                        equipData->textures = staging.rawTextures;
+                        for (const auto& texName : staging.geometry->textureNames) {
+                            equipData->textureNames.push_back(texName);
+                        }
+                        equipmentModelLoader_->cacheEquipmentModelData(staging.modelId, equipData);
+                    }
+                }
+            }
+
+            // Now attach equipment using the normal path (which will find cached data)
+            attachEquipment(vis);
+
+            // Apply corpse death animation to equipment nodes if needed
+            if (vis.isCorpse && vis.animatedNode) {
+                // Equipment nodes are children and inherit parent transform
+            }
+
+            // Apply light level if set
+            if (vis.lightLevel != 0) {
+                setEntityLight(bestId, vis.lightLevel);
+            }
+
+            // Clean up staging data (free memory)
+            vis.variantTextures.clear();
+            vis.variantTextures.shrink_to_fit();
+            vis.equipmentTextures.clear();
+            vis.equipmentTextures.shrink_to_fit();
+            vis.equipmentStaging.clear();
+            vis.equipmentStaging.shrink_to_fit();
+
             vis.buildPhase = EntityBuildPhase::Built;
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) equipment attached, build complete", bestId, vis.name);
             return true;
         }
 
@@ -4112,10 +4286,18 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
                 smgr_->getRootSceneNode()->addChild(visual.sceneNode);
                 visual.sceneNode->setVisible(true);
                 visual.inSceneGraph = true;
+                // Re-add entity light to scene graph
+                if (visual.lightNode) {
+                    smgr_->getRootSceneNode()->addChild(visual.lightNode);
+                }
             } else if (!shouldBeVisible && visual.inSceneGraph) {
                 // Remove from scene graph (but keep the node alive)
                 visual.sceneNode->remove();
                 visual.inSceneGraph = false;
+                // Also remove entity light from scene graph
+                if (visual.lightNode) {
+                    visual.lightNode->remove();
+                }
             }
         }
         // Only hide name tags for culled entities; visible entity name tags

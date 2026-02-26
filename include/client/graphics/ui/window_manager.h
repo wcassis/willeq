@@ -44,9 +44,9 @@ namespace EQT {
 namespace Graphics {
 class RaceModelLoader;
 class EquipmentModelLoader;
-struct EntityAppearance;
 }
 }
+#include "client/graphics/entity_renderer.h"  // EntityAppearance (stored by value for deferred init)
 #include <vector>
 #include <map>
 
@@ -408,9 +408,12 @@ public:
     bool renderTimingEnabled_ = false;
     void setRenderTimingEnabled(bool enabled) { renderTimingEnabled_ = enabled; }
 
-    // Progressive icon sheet loading — call from renderer's GREEN-gated section.
-    // Loads at most one pending TGA sheet per call. Returns true if work was done.
+    // Progressive icon sheet loading — polls one completed result from background worker.
+    // Returns true if a sheet was consumed (caller may need to re-render).
     bool loadOnePendingIconSheet();
+
+    // Access icon loader for worker lifecycle management
+    ItemIconLoader& getIconLoader() { return iconLoader_; }
 
     // State queries
     bool isInventoryOpen() const;
@@ -444,6 +447,10 @@ public:
     void updateBankCurrency(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
 
     // Character model view (3D preview in inventory)
+    // Store deps for lazy init on first inventory open (avoids ~21ms during zone-in)
+    void storeModelViewDeps(irr::scene::ISceneManager* smgr,
+                            EQT::Graphics::RaceModelLoader* raceLoader,
+                            EQT::Graphics::EquipmentModelLoader* equipLoader);
     void initModelView(irr::scene::ISceneManager* smgr,
                        EQT::Graphics::RaceModelLoader* raceLoader,
                        EQT::Graphics::EquipmentModelLoader* equipLoader);
@@ -714,6 +721,21 @@ private:
         irr::video::ITexture* icon = nullptr;
     };
     SpellCursorState spellCursor_;
+
+    // Deferred model view init (lazy — created on first inventory open)
+    irr::scene::ISceneManager* deferredSmgr_ = nullptr;
+    EQT::Graphics::RaceModelLoader* deferredRaceLoader_ = nullptr;
+    EQT::Graphics::EquipmentModelLoader* deferredEquipLoader_ = nullptr;
+    bool modelViewInitialized_ = false;
+
+    // Stashed player appearance (set before model view init, applied during lazy init)
+    struct DeferredAppearance {
+        uint16_t raceId = 0;
+        uint8_t gender = 0;
+        EQT::Graphics::EntityAppearance appearance;
+        bool pending = false;
+    };
+    DeferredAppearance deferredAppearance_;
 
     // Lock indicator cache
     irr::video::ITexture* lockIndicatorRT_ = nullptr;

@@ -317,10 +317,14 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
     // Note: Model data is keyed without texture variant since geometry is the same
     std::shared_ptr<RaceModelData> modelData;
     uint64_t modelKey = makeVariantCacheKey(raceId, gender, headVariant, bodyVariant, 0);
-    auto variantIt = variantModels_.find(modelKey);
-    if (variantIt != variantModels_.end()) {
-        modelData = variantIt->second;
-    } else {
+    {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        auto variantIt = variantModels_.find(modelKey);
+        if (variantIt != variantModels_.end()) {
+            modelData = variantIt->second;
+        }
+    }
+    if (!modelData) {
         // Fall back to base model data
         modelData = getRaceModelData(raceId, gender);
     }

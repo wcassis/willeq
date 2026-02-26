@@ -11,6 +11,7 @@ namespace ui {
 ItemIconLoader::ItemIconLoader() = default;
 
 ItemIconLoader::~ItemIconLoader() {
+    stopWorker();
     clear();
 }
 
@@ -30,6 +31,127 @@ bool ItemIconLoader::init(irr::video::IVideoDriver* driver, const std::string& e
 
     LOG_DEBUG(MOD_UI, "Initialized with path: {}", eqClientPath_);
     return true;
+}
+
+void ItemIconLoader::startWorker() {
+    if (workerRunning_.load()) return;
+    workerRunning_.store(true);
+    worker_ = std::thread(&ItemIconLoader::workerLoop, this);
+    LOG_INFO(MOD_UI, "Icon sheet background worker started");
+}
+
+void ItemIconLoader::stopWorker() {
+    if (!workerRunning_.load()) return;
+    workerRunning_.store(false);
+    requestCV_.notify_all();
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+    LOG_INFO(MOD_UI, "Icon sheet background worker stopped");
+}
+
+void ItemIconLoader::workerLoop() {
+    while (workerRunning_.load()) {
+        SheetRequest req;
+        {
+            std::unique_lock<std::mutex> lock(requestMutex_);
+            requestCV_.wait(lock, [this] {
+                return !requestQueue_.empty() || !workerRunning_.load();
+            });
+            if (!workerRunning_.load()) break;
+            if (requestQueue_.empty()) continue;
+            req = std::move(requestQueue_.front());
+            requestQueue_.pop_front();
+        }
+
+        // Try each path: readFileToBuffer + decodeTGA (all thread-safe, no Irrlicht calls)
+        auto sheet = std::make_unique<SheetData>();
+        bool found = false;
+
+        for (const auto& path : req.paths) {
+            std::vector<uint8_t> rawFileData;
+            if (readFileToBuffer(path, rawFileData)) {
+                if (decodeTGA(rawFileData, sheet->pixels, sheet->width, sheet->height)) {
+                    LOG_DEBUG(MOD_UI, "Worker: decoded {} sheet {} from {} ({}x{})",
+                              req.isSpellSheet ? "spell" : "item", req.sheetNumber,
+                              path, sheet->width, sheet->height);
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found) {
+            LOG_ERROR(MOD_UI, "Worker: failed to load {} sheet {} from any path",
+                      req.isSpellSheet ? "spell" : "item", req.sheetNumber);
+        }
+
+        // Push result (even on failure, so hasPendingSheets() stays accurate)
+        int sheetKey = req.isSpellSheet ? -req.sheetNumber : req.sheetNumber;
+        {
+            std::lock_guard<std::mutex> lock(resultMutex_);
+            SheetResult result;
+            result.sheetKey = sheetKey;
+            result.data = found ? std::move(sheet) : nullptr;
+            resultQueue_.push_back(std::move(result));
+        }
+    }
+}
+
+void ItemIconLoader::queueSheetRequest(int sheetNumber, bool isSpellSheet) {
+    int sheetKey = isSpellSheet ? -sheetNumber : sheetNumber;
+
+    // Dedup check (main-thread only set, no mutex needed)
+    if (requestedSheetKeys_.count(sheetKey)) return;
+    requestedSheetKeys_.insert(sheetKey);
+
+    SheetRequest req;
+    req.sheetNumber = sheetNumber;
+    req.isSpellSheet = isSpellSheet;
+
+    if (isSpellSheet) {
+        req.paths = {
+            eqClientPath_ + "/uifiles/default/spells0" + std::to_string(sheetNumber) + ".tga",
+            eqClientPath_ + "/uifiles/default/spells" + std::to_string(sheetNumber) + ".tga",
+            eqClientPath_ + "/uifiles/default_old/spells0" + std::to_string(sheetNumber) + ".tga",
+            eqClientPath_ + "/uifiles/default_old/spells" + std::to_string(sheetNumber) + ".tga"
+        };
+    } else {
+        req.paths = {
+            eqClientPath_ + "/uifiles/default/dragitem" + std::to_string(sheetNumber) + ".tga"
+        };
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(requestMutex_);
+        requestQueue_.push_back(std::move(req));
+    }
+    requestCV_.notify_one();
+
+    LOG_DEBUG(MOD_UI, "Queued {} sheet {} for background load",
+              isSpellSheet ? "spell" : "item", sheetNumber);
+}
+
+bool ItemIconLoader::pollCompletedSheet() {
+    std::lock_guard<std::mutex> lock(resultMutex_);
+    if (resultQueue_.empty()) return false;
+    auto result = std::move(resultQueue_.front());
+    resultQueue_.pop_front();
+    if (result.data) {
+        sheets_[result.sheetKey] = std::move(result.data);
+    }
+    return true;
+}
+
+bool ItemIconLoader::hasPendingSheets() const {
+    {
+        std::lock_guard<std::mutex> lock(resultMutex_);
+        if (!resultQueue_.empty()) return true;
+    }
+    {
+        std::lock_guard<std::mutex> lock(requestMutex_);
+        return !requestQueue_.empty();
+    }
 }
 
 irr::video::ITexture* ItemIconLoader::getIcon(uint32_t iconId) {
@@ -61,17 +183,9 @@ irr::video::ITexture* ItemIconLoader::getIcon(uint32_t iconId) {
     LOG_DEBUG(MOD_UI, "ItemIconLoader Icon {} -> adjusted={} sheet={} index={} (row={} col={}) pos=({},{})",
               iconId, adjustedId, sheetNumber, localIndex, row, col, row * ICON_SIZE, col * ICON_SIZE);
 
-    // If sheet not loaded, queue it for progressive loading and return nullptr.
+    // If sheet not loaded, queue it for background loading and return nullptr.
     if (sheets_.find(sheetNumber) == sheets_.end()) {
-        bool alreadyPending = false;
-        for (int s : pendingItemSheets_) {
-            if (s == sheetNumber) { alreadyPending = true; break; }
-        }
-        if (!alreadyPending) {
-            pendingItemSheets_.push_back(sheetNumber);
-            LOG_DEBUG(MOD_UI, "ItemIcon {} queued item sheet {} for progressive load",
-                      iconId, sheetNumber);
-        }
+        queueSheetRequest(sheetNumber, false);
         return nullptr;  // Not ready yet — don't cache nullptr (will retry)
     }
 
@@ -96,19 +210,10 @@ irr::video::ITexture* ItemIconLoader::getSpellIcon(uint32_t iconId) {
     // Use negative sheet numbers to differentiate spell sheets from item sheets
     int spellSheetKey = -sheetNumber;
 
-    // If sheet not loaded, queue it for progressive loading and return nullptr.
+    // If sheet not loaded, queue it for background loading and return nullptr.
     // The caller (SpellGemPanel) will re-render when the sheet becomes available.
     if (sheets_.find(spellSheetKey) == sheets_.end()) {
-        // Queue if not already pending
-        bool alreadyPending = false;
-        for (int s : pendingSpellSheets_) {
-            if (s == sheetNumber) { alreadyPending = true; break; }
-        }
-        if (!alreadyPending) {
-            pendingSpellSheets_.push_back(sheetNumber);
-            LOG_DEBUG(MOD_UI, "SpellIcon {} queued spell sheet {} for progressive load",
-                      iconId, sheetNumber);
-        }
+        queueSheetRequest(sheetNumber, true);
         return nullptr;  // Not ready yet — don't cache nullptr (will retry)
     }
 
@@ -166,82 +271,6 @@ bool ItemIconLoader::loadSheet(int sheetNumber) {
     LOG_DEBUG(MOD_UI, "ItemIconLoader Loaded sheet {} ({}x{})", sheetNumber, sheet->width, sheet->height);
     sheets_[sheetNumber] = std::move(sheet);
     return true;
-}
-
-bool ItemIconLoader::loadOnePendingSheet() {
-    // Phase 2: decode a previously-read file buffer
-    if (pendingSheetWork_) {
-        auto& work = *pendingSheetWork_;
-        auto sheet = std::make_unique<SheetData>();
-        bool ok = decodeTGA(work.rawFileData, sheet->pixels, sheet->width, sheet->height);
-
-        if (ok) {
-            int key = work.isSpellSheet ? -work.sheetNumber : work.sheetNumber;
-            sheets_[key] = std::move(sheet);
-        }
-
-        LOG_DEBUG(MOD_UI, "Progressive: decoded {} sheet {} (ok={}, {} spell + {} item sheets remaining)",
-                  work.isSpellSheet ? "spell" : "item", work.sheetNumber, ok,
-                  pendingSpellSheets_.size(), pendingItemSheets_.size());
-        pendingSheetWork_.reset();
-        return true;
-    }
-
-    // Phase 1: read the next pending sheet file from disk into a buffer
-    if (!pendingSpellSheets_.empty()) {
-        int sheetNumber = pendingSpellSheets_.front();
-        pendingSpellSheets_.erase(pendingSpellSheets_.begin());
-
-        std::vector<std::string> paths = {
-            eqClientPath_ + "/uifiles/default/spells0" + std::to_string(sheetNumber) + ".tga",
-            eqClientPath_ + "/uifiles/default/spells" + std::to_string(sheetNumber) + ".tga",
-            eqClientPath_ + "/uifiles/default_old/spells0" + std::to_string(sheetNumber) + ".tga",
-            eqClientPath_ + "/uifiles/default_old/spells" + std::to_string(sheetNumber) + ".tga"
-        };
-
-        auto work = std::make_unique<PendingSheetWork>();
-        work->sheetNumber = sheetNumber;
-        work->isSpellSheet = true;
-
-        bool found = false;
-        for (const auto& path : paths) {
-            if (readFileToBuffer(path, work->rawFileData)) {
-                LOG_DEBUG(MOD_UI, "Progressive: read spell sheet {} from {} ({} bytes, decode next frame)",
-                          sheetNumber, path, work->rawFileData.size());
-                found = true;
-                break;
-            }
-        }
-
-        if (found) {
-            pendingSheetWork_ = std::move(work);
-        } else {
-            LOG_ERROR(MOD_UI, "Failed to read spell sheet {} from any path", sheetNumber);
-        }
-        return true;
-    }
-
-    if (!pendingItemSheets_.empty()) {
-        int sheetNumber = pendingItemSheets_.front();
-        pendingItemSheets_.erase(pendingItemSheets_.begin());
-
-        std::string path = eqClientPath_ + "/uifiles/default/dragitem" + std::to_string(sheetNumber) + ".tga";
-
-        auto work = std::make_unique<PendingSheetWork>();
-        work->sheetNumber = sheetNumber;
-        work->isSpellSheet = false;
-
-        if (readFileToBuffer(path, work->rawFileData)) {
-            LOG_DEBUG(MOD_UI, "Progressive: read item sheet {} from {} ({} bytes, decode next frame)",
-                      sheetNumber, path, work->rawFileData.size());
-            pendingSheetWork_ = std::move(work);
-        } else {
-            LOG_ERROR(MOD_UI, "Failed to read item sheet {}: {}", sheetNumber, path);
-        }
-        return true;
-    }
-
-    return false;
 }
 
 bool ItemIconLoader::readFileToBuffer(const std::string& path, std::vector<uint8_t>& buffer) {
@@ -546,13 +575,12 @@ bool ItemIconLoader::loadTGA(const std::string& path, std::vector<uint8_t>& pixe
 }
 
 void ItemIconLoader::clear() {
+    stopWorker();
     // Textures are managed by Irrlicht's texture cache
     // Don't need to manually drop them
     iconCache_.clear();
     sheets_.clear();
-    pendingSpellSheets_.clear();
-    pendingItemSheets_.clear();
-    pendingSheetWork_.reset();
+    requestedSheetKeys_.clear();
 }
 
 } // namespace ui

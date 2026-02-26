@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
@@ -41,6 +42,34 @@ class TextureAtlas {
 public:
     TextureAtlas() = default;
     ~TextureAtlas();
+
+    // CPU-only preload result — file I/O + tile lookup, no GL calls.
+    // Built on background thread, consumed on main thread via uploadPreloadedPage/finalizePreload.
+    struct PreloadData {
+        uint16_t atlasWidth = 0;
+        uint16_t atlasHeight = 0;
+        uint16_t numPages = 0;
+        uint16_t tileSize = 0;
+        struct PageData {
+            std::vector<uint8_t> etc1Data;  // Raw compressed bytes
+            uint32_t dataSize = 0;
+        };
+        std::vector<PageData> pages;
+        std::map<std::string, AtlasTileInfo> tileLookup;
+        bool valid = false;
+    };
+
+    // Background thread: reads file, builds tile lookup, stores ETC1 data in RAM.
+    // No GL calls — safe to call from any thread.
+    static PreloadData preloadFromFile(const std::string& atlasPath);
+
+    // Main thread: uploads one page to GL. Call once per GREEN frame.
+    // Returns true when this was the last page (all pages uploaded).
+    bool uploadPreloadedPage(PreloadData& data, int pageIndex);
+
+    // Main thread: adopts tile lookup from preload data, marks atlas as loaded.
+    // Call after all pages have been uploaded.
+    void finalizePreload(PreloadData& data);
 
     // Load an atlas file and upload ETC1 pages to GPU.
     // Returns true on success.

@@ -552,6 +552,10 @@ void WindowManager::toggleInventory() {
 }
 
 void WindowManager::openInventory() {
+    // Lazy model view init on first inventory open (deferred from zone-in to save ~21ms)
+    if (!modelViewInitialized_ && deferredSmgr_ && deferredRaceLoader_ && deferredEquipLoader_) {
+        initModelView(deferredSmgr_, deferredRaceLoader_, deferredEquipLoader_);
+    }
     inventoryWindow_->show();
 }
 
@@ -2715,8 +2719,7 @@ void WindowManager::update(uint32_t currentTimeMs) {
 bool WindowManager::loadOnePendingIconSheet() {
     if (!iconLoader_.hasPendingSheets()) return false;
     size_t sheetsBefore = iconLoader_.getSheetCount();
-    bool didWork = iconLoader_.loadOnePendingSheet();
-    // Only mark dirty after phase 2 (decode) when a new sheet becomes available
+    bool didWork = iconLoader_.pollCompletedSheet();
     if (didWork && iconLoader_.getSheetCount() > sheetsBefore && spellGemPanel_) {
         spellGemPanel_->markDirty();
     }
@@ -2865,6 +2868,15 @@ void WindowManager::updateBankCurrency(uint32_t platinum, uint32_t gold, uint32_
     }
 }
 
+void WindowManager::storeModelViewDeps(irr::scene::ISceneManager* smgr,
+                                        EQT::Graphics::RaceModelLoader* raceLoader,
+                                        EQT::Graphics::EquipmentModelLoader* equipLoader) {
+    deferredSmgr_ = smgr;
+    deferredRaceLoader_ = raceLoader;
+    deferredEquipLoader_ = equipLoader;
+    LOG_DEBUG(MOD_UI, "WindowManager: Model view deps stored for lazy init");
+}
+
 void WindowManager::initModelView(irr::scene::ISceneManager* smgr,
                                    EQT::Graphics::RaceModelLoader* raceLoader,
                                    EQT::Graphics::EquipmentModelLoader* equipLoader) {
@@ -2879,14 +2891,32 @@ void WindowManager::initModelView(irr::scene::ISceneManager* smgr,
     }
 
     inventoryWindow_->initModelView(smgr, driver_, raceLoader, equipLoader);
+    modelViewInitialized_ = true;
     LOG_INFO(MOD_UI, "WindowManager: Model view initialized");
+
+    // Apply stashed appearance if one was received before init
+    if (deferredAppearance_.pending) {
+        inventoryWindow_->setPlayerAppearance(deferredAppearance_.raceId,
+                                               deferredAppearance_.gender,
+                                               deferredAppearance_.appearance);
+        deferredAppearance_.pending = false;
+        LOG_DEBUG(MOD_UI, "WindowManager: Applied deferred player appearance (race={}, gender={})",
+                  deferredAppearance_.raceId, deferredAppearance_.gender);
+    }
 }
 
 void WindowManager::setPlayerAppearance(uint16_t raceId, uint8_t gender,
                                          const EQT::Graphics::EntityAppearance& appearance) {
     LOG_DEBUG(MOD_UI, "WindowManager::setPlayerAppearance race={} gender={}", raceId, gender);
-    if (inventoryWindow_) {
+    if (modelViewInitialized_ && inventoryWindow_) {
         inventoryWindow_->setPlayerAppearance(raceId, gender, appearance);
+    } else {
+        // Stash for application during lazy model view init
+        deferredAppearance_.raceId = raceId;
+        deferredAppearance_.gender = gender;
+        deferredAppearance_.appearance = appearance;
+        deferredAppearance_.pending = true;
+        LOG_DEBUG(MOD_UI, "WindowManager::setPlayerAppearance: stashed for deferred init");
     }
 }
 
