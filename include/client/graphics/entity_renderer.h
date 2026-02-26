@@ -47,7 +47,9 @@ enum class EntityBuildPhase : uint8_t {
     Placeholder,              // Colored cube visible, waiting for background prep
     TextureUploading,         // Uploading pre-decoded base race textures to GPU, one per frame
     VariantTextureUploading,  // Uploading pre-decoded variant/body-part textures, one per frame
-    SceneNodeCreation,        // Create animated mesh + scene node (textures already cached)
+    SceneNodeCreation,        // Frame 1/3: Create node + set position/rotation/scale
+    NodeSetup,                // Frame 2/3: Set materials, animation speed, player highlight
+    MeshFinalize,             // Frame 3/3: Name tag, corpse anim, light, race ref, decide equip phases
     EquipTextureUploading,    // Uploading pre-decoded equipment textures, one per frame
     EquipmentAttach,          // Build equipment Irrlicht meshes + attach to skeleton
     Built                     // Complete

@@ -1,8 +1,12 @@
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/portal_system.h"
 #include "client/graphics/eq/wld_loader.h"
+#include "client/graphics/environment/unified_particle.h"
+#include "client/graphics/environment/spell_particle_types.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 namespace EQT {
 namespace Graphics {
@@ -138,6 +142,18 @@ void SimulationWorker::clearZoneData() {
     for (int i = 0; i < 2; ++i) {
         output_[i] = SimulationOutput();
     }
+
+    // Reset particle state
+    particlePool_.clear();
+    particleFreeList_.clear();
+    particleActiveCount_ = 0;
+    particlePoolInitialized_ = false;
+    particleEmitters_.clear();
+    particleFireEnabled_ = true;
+    particleWeatherEmitterID_ = 0;
+    particleSpellEffects_.clear();
+    particleNextSpellEffectID_ = 1;
+    particleNextEmitterID_ = 1;
 }
 
 // ============================================================================
@@ -245,13 +261,27 @@ void SimulationWorker::workerLoop() {
 // ============================================================================
 
 void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput& output) {
+    workerFrameCount_++;
+
+    // Critical tier — every frame: visibility + light selection
     computeVisibility(input, output);
     computeObjectVisibility(input, output);
     computeLightVisibility(input, output);
     computeLightSelection(input, output);
+
+    // Normal tier — every frame: portals, fire flicker, trees, vertex anims, particles
+    computePortalVisibility(input, output);
     computeFireFlicker(input, output);
     computeTreeAnimation(input, output);
     computeVertexAnimations(input, output);
+    computeParticles(input, output);
+
+    // Background tier — every kBackgroundInterval frames
+    if (workerFrameCount_ % kBackgroundInterval == 0) {
+        computeLightAnimations(input, output);
+        computeSkyState(input, output);
+        computeWeatherEffectsState(input, output);
+    }
 }
 
 // ============================================================================
@@ -329,6 +359,9 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
         // Add to sorted draw list
         output.sortedRegions.push_back({regionIdx, distSq});
 
+        // Queue for lazy mesh loading (main thread filters already-loaded via isLoaded())
+        output.meshLoadQueue.push_back(regionIdx);
+
         // Track for mesh cache protection
         output.protectedRegions.push_back(regionIdx);
     }
@@ -336,6 +369,88 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
     // Sort front-to-back by distance
     std::sort(output.sortedRegions.begin(), output.sortedRegions.end(),
               [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
+}
+
+// ============================================================================
+// Portal Visibility Computation (BFS walk from camera room through portals)
+// ============================================================================
+
+void SimulationWorker::computePortalVisibility(const SimulationInput& input, SimulationOutput& output) {
+    output.portalVisibleRegions.clear();
+
+    const auto* portalSystem = zoneData_.portalSystem;
+    if (!portalSystem || !portalSystem->hasPortals() || output.currentPvsRegion == SIZE_MAX) {
+        return;
+    }
+
+    // Camera's room is always visible
+    size_t cameraRegion = output.currentPvsRegion;
+    output.portalVisibleRegions.insert(cameraRegion);
+
+    // BFS stack: (regionIdx, depth)
+    struct Entry { size_t region; int depth; };
+    std::vector<Entry> stack;
+    stack.push_back({cameraRegion, 0});
+
+    constexpr int MAX_DEPTH = 1;
+    constexpr size_t MAX_VISIBLE_REGIONS = 16;
+
+    float camX = input.camEqX, camY = input.camEqY, camZ = input.camEqZ;
+
+    while (!stack.empty()) {
+        auto [fromRegion, depth] = stack.back();
+        stack.pop_back();
+        if (depth >= MAX_DEPTH) continue;
+
+        const auto& portals = portalSystem->getPortalsForRegion(fromRegion);
+        for (size_t portalIdx : portals) {
+            size_t toRegion = portalSystem->getOtherRegion(portalIdx, fromRegion);
+            if (toRegion == SIZE_MAX) continue;
+            if (output.portalVisibleRegions.count(toRegion)) continue;
+
+            const Portal& portal = portalSystem->getData().portals[portalIdx];
+
+            // Skip vertical portals — floor/ceiling AABB overlaps (|normalZ| > 0.7)
+            float absNZ = portal.normalZ < 0 ? -portal.normalZ : portal.normalZ;
+            if (absNZ > 0.7f) continue;
+
+            // Facing check: is the portal opening facing toward the camera?
+            float toPX = portal.centerX - camX;
+            float toPY = portal.centerY - camY;
+            float toPZ = portal.centerZ - camZ;
+            float normalSign = (fromRegion == portal.regionA) ? 1.0f : -1.0f;
+            float facingDot = normalSign * (toPX * portal.normalX + toPY * portal.normalY + toPZ * portal.normalZ);
+            if (facingDot < 0.0f) continue;
+
+            // Frustum check: is the portal opening visible?
+            if (input.frustumValid) {
+                float minX = portal.vertices[0][0], maxX = portal.vertices[0][0];
+                float minY = portal.vertices[0][1], maxY = portal.vertices[0][1];
+                float minZ = portal.vertices[0][2], maxZ = portal.vertices[0][2];
+                for (int v = 1; v < 4; ++v) {
+                    if (portal.vertices[v][0] < minX) minX = portal.vertices[v][0];
+                    if (portal.vertices[v][0] > maxX) maxX = portal.vertices[v][0];
+                    if (portal.vertices[v][1] < minY) minY = portal.vertices[v][1];
+                    if (portal.vertices[v][1] > maxY) maxY = portal.vertices[v][1];
+                    if (portal.vertices[v][2] < minZ) minZ = portal.vertices[v][2];
+                    if (portal.vertices[v][2] > maxZ) maxZ = portal.vertices[v][2];
+                }
+                if (!testFrustumAABB(input.frustumPlanes, minX, minY, minZ, maxX, maxY, maxZ)) {
+                    continue;
+                }
+            }
+
+            output.portalVisibleRegions.insert(toRegion);
+
+            // Bail if too many regions — open area, portal culling won't help
+            if (output.portalVisibleRegions.size() > MAX_VISIBLE_REGIONS) {
+                output.portalVisibleRegions.clear();
+                return;
+            }
+
+            stack.push_back({toRegion, depth + 1});
+        }
+    }
 }
 
 // ============================================================================
@@ -779,6 +894,1016 @@ bool SimulationWorker::testFrustumAABB(const float planes[6][4],
         }
     }
     return true;  // At least partially inside all planes
+}
+
+// ============================================================================
+// Zone Light Animation Computation
+// ============================================================================
+
+void SimulationWorker::computeLightAnimations(const SimulationInput& input, SimulationOutput& output) {
+    if (zoneData_.zoneLightAnims.empty()) return;
+
+    const size_t animCount = zoneData_.zoneLightAnims.size();
+
+    // Initialize state vectors on first run
+    if (lightAnimStates_.size() != animCount) {
+        lightAnimStates_.resize(animCount);
+    }
+    output.zoneLightAnimColors.resize(animCount);
+
+    // Compute vision/weather modifiers
+    float intensity = 0.25f;
+    float redShift = 0.0f;
+    switch (input.visionType) {
+        case 1: // Ultravision
+            intensity = 1.0f; break;
+        case 2: // Infravision
+            intensity = 0.75f; redShift = 0.3f; break;
+        default: break;
+    }
+    intensity *= input.weatherAmbientModifier;
+
+    float deltaMs = input.deltaTime * 1000.0f;
+
+    for (size_t i = 0; i < animCount; ++i) {
+        const auto& anim = zoneData_.zoneLightAnims[i];
+        auto& state = lightAnimStates_[i];
+        auto& out = output.zoneLightAnimColors[i];
+
+        out.lightIndex = anim.lightIndex;
+        out.updated = false;
+
+        // Advance elapsed time
+        state.elapsedMs += deltaMs;
+        float sleepMs = static_cast<float>(anim.sleepMs);
+        if (sleepMs <= 0.0f) sleepMs = 100.0f;
+
+        if (state.elapsedMs < sleepMs) {
+            // No frame change — still output current color
+            continue;
+        }
+
+        // Advance frame(s), consuming elapsed time
+        while (state.elapsedMs >= sleepMs) {
+            state.elapsedMs -= sleepMs;
+            state.currentFrame = (state.currentFrame + 1) % anim.frameCount;
+        }
+        out.updated = true;
+
+        uint32_t frame = state.currentFrame;
+
+        // Compute frame color
+        float baseR, baseG, baseB;
+        if (!anim.frameColors.empty() && frame < anim.frameColors.size()) {
+            std::tie(baseR, baseG, baseB) = anim.frameColors[frame];
+        } else if (!anim.lightLevels.empty() && frame < anim.lightLevels.size()) {
+            float level = anim.lightLevels[frame];
+            baseR = anim.baseR * level;
+            baseG = anim.baseG * level;
+            baseB = anim.baseB * level;
+        } else {
+            continue;
+        }
+
+        // Apply vision/weather modifiers
+        float r = baseR * intensity;
+        float g = baseG * intensity * (1.0f - redShift * 0.5f);
+        float b = baseB * intensity * (1.0f - redShift);
+        if (redShift > 0.0f) {
+            r = std::min(1.0f, r * (1.0f + redShift));
+        }
+
+        out.r = r;
+        out.g = g;
+        out.b = b;
+    }
+}
+
+// ============================================================================
+// Sky State Computation
+// ============================================================================
+
+void SimulationWorker::computeSkyState(const SimulationInput& input, SimulationOutput& output) {
+    if (!input.skyEnabled || !input.skyInitialized) return;
+
+    output.skyState.cloudScrollOffset = input.skyCloudScrollOffset + input.deltaTime * 0.01f;
+    if (output.skyState.cloudScrollOffset > 1.0f) {
+        output.skyState.cloudScrollOffset -= 1.0f;
+    }
+    output.skyState.valid = true;
+}
+
+// ============================================================================
+// Weather Effects State Computation
+// ============================================================================
+
+void SimulationWorker::computeWeatherEffectsState(const SimulationInput& input, SimulationOutput& output) {
+    if (!input.weatherEnabled) return;
+
+    auto& ws = output.weatherEffectsState;
+
+    // Advance transition progress
+    ws.transitionProgress = input.weatherTransitionProgress;
+    if (ws.transitionProgress < 1.0f) {
+        ws.transitionProgress += input.deltaTime / input.weatherTransitionDuration;
+        ws.transitionProgress = std::min(1.0f, ws.transitionProgress);
+    }
+
+    // Advance storm darkening
+    float darkeningSpeed = 0.5f;
+    ws.currentDarkening = input.weatherCurrentDarkening;
+    if (ws.currentDarkening < input.weatherTargetDarkening) {
+        ws.currentDarkening += darkeningSpeed * input.deltaTime;
+        ws.currentDarkening = std::min(ws.currentDarkening, input.weatherTargetDarkening);
+    } else if (ws.currentDarkening > input.weatherTargetDarkening) {
+        ws.currentDarkening -= darkeningSpeed * input.deltaTime;
+        ws.currentDarkening = std::max(ws.currentDarkening, input.weatherTargetDarkening);
+    }
+
+    // Advance lightning timers
+    ws.lightningFlashTimer = input.weatherLightningFlashTimer;
+    ws.lightningBoltTimer = input.weatherLightningBoltTimer;
+    ws.lightningActive = input.weatherLightningActive;
+    ws.triggerLightningFlash = false;
+
+    if (ws.lightningFlashTimer > 0.0f) {
+        ws.lightningFlashTimer -= input.deltaTime;
+    }
+    if (ws.lightningBoltTimer > 0.0f) {
+        ws.lightningBoltTimer -= input.deltaTime;
+        if (ws.lightningBoltTimer <= 0.0f) {
+            ws.lightningActive = false;
+        }
+    }
+
+    // Check for next lightning strike
+    if (input.weatherType == 1 && input.weatherIntensity >= 3 && input.weatherLightningEnabled) {
+        float timer = input.weatherLightningTimer - input.deltaTime;
+        if (timer <= 0.0f) {
+            ws.triggerLightningFlash = true;
+        }
+    }
+
+    ws.valid = true;
+}
+
+// ============================================================================
+// Particle System
+// ============================================================================
+
+using namespace Environment;
+
+void SimulationWorker::computeParticles(const SimulationInput& input, SimulationOutput& output) {
+    output.particleOutput.valid = false;
+
+    // Skip if unified renderer not initialized on main thread
+    if (!input.particleInput.unifiedRendererInitialized) return;
+
+    // Lazy-init pool on worker thread
+    if (!particlePoolInitialized_) {
+        int poolSize = input.particleInput.poolSize;
+        if (poolSize <= 0) poolSize = 1024;
+        particlePool_.resize(poolSize);
+        particleFreeList_.resize(poolSize);
+        for (int i = 0; i < poolSize; ++i) {
+            particleFreeList_[i] = static_cast<uint16_t>(i);
+            particlePool_[i].setAlive(false);
+        }
+        particleActiveCount_ = 0;
+        particleRng_.seed(std::random_device{}());
+        particlePoolInitialized_ = true;
+        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: Particle pool initialized (size={})", poolSize);
+    }
+
+    const auto& pi = input.particleInput;
+    float deltaTime = pi.deltaTime;
+    if (deltaTime <= 0.0f || deltaTime > 1.0f) {
+        output.particleOutput.valid = true;
+        output.particleOutput.activeCount = particleActiveCount_;
+        return;
+    }
+
+    // ---- Command processing ----
+    for (const auto& cmd : pi.commands) {
+        switch (cmd.type) {
+            case ParticleCommand::CreateFireEmitters: {
+                // Clear existing emitters first
+                for (auto& p : particlePool_) {
+                    if (p.isAlive()) {
+                        p.setAlive(false);
+                    }
+                }
+                particleFreeList_.resize(particlePool_.size());
+                for (uint16_t i = 0; i < static_cast<uint16_t>(particlePool_.size()); ++i) {
+                    particleFreeList_[i] = i;
+                }
+                particleActiveCount_ = 0;
+                particleEmitters_.clear();
+                particleWeatherEmitterID_ = 0;
+                particleSpellEffects_.clear();
+
+                const float campfireRadiusThreshold = 150.0f;
+                for (size_t i = 0; i < cmd.firePositions.size(); ++i) {
+                    const glm::vec3& eqPos = cmd.firePositions[i];
+                    float radius = (i < cmd.fireRadii.size()) ? cmd.fireRadii[i] : 120.0f;
+                    glm::vec3 irrPos(eqPos.x, eqPos.z, eqPos.y);
+
+                    if (radius >= campfireRadiusThreshold) {
+                        {
+                            ActiveEmitter ae;
+                            ae.config = FirePresets::CampfireFlame();
+                            ae.position = irrPos;
+                            ae.emitterID = particleNextEmitterID_++;
+                            ae.lightRadius = radius;
+                            particleEmitters_[ae.emitterID] = ae;
+                        }
+                        {
+                            ActiveEmitter ae;
+                            ae.config = FirePresets::CampfireEmber();
+                            ae.position = irrPos;
+                            ae.emitterID = particleNextEmitterID_++;
+                            ae.lightRadius = radius;
+                            particleEmitters_[ae.emitterID] = ae;
+                        }
+                    } else {
+                        ActiveEmitter ae;
+                        ae.config = FirePresets::Torch();
+                        ae.position = irrPos;
+                        ae.emitterID = particleNextEmitterID_++;
+                        ae.lightRadius = radius;
+                        particleEmitters_[ae.emitterID] = ae;
+                    }
+                }
+                LOG_INFO(MOD_GRAPHICS, "SimWorker: Created {} fire emitters for {} sources",
+                         particleEmitters_.size(), cmd.firePositions.size());
+                break;
+            }
+            case ParticleCommand::ClearUnifiedEmitters: {
+                for (auto& p : particlePool_) {
+                    if (p.isAlive()) p.setAlive(false);
+                }
+                particleFreeList_.resize(particlePool_.size());
+                for (uint16_t i = 0; i < static_cast<uint16_t>(particlePool_.size()); ++i) {
+                    particleFreeList_[i] = i;
+                }
+                particleActiveCount_ = 0;
+                particleEmitters_.clear();
+                particleWeatherEmitterID_ = 0;
+                particleSpellEffects_.clear();
+                particleNextSpellEffectID_ = 1;
+                break;
+            }
+            case ParticleCommand::ActivateWeather: {
+                // Kill existing weather
+                if (particleWeatherEmitterID_ != 0) {
+                    auto it = particleEmitters_.find(particleWeatherEmitterID_);
+                    if (it != particleEmitters_.end()) {
+                        it->second.active = false;
+                        for (auto& p : particlePool_) {
+                            if (p.isAlive() && p.emitterID == particleWeatherEmitterID_) {
+                                int idx = static_cast<int>(&p - particlePool_.data());
+                                freeParticle(idx);
+                            }
+                        }
+                        particleEmitters_.erase(it);
+                    }
+                    particleWeatherEmitterID_ = 0;
+                }
+                EmitterConfig cfg;
+                if (cmd.weatherType == 1) {
+                    cfg = WeatherPresets::Rain(cmd.weatherIntensity);
+                } else if (cmd.weatherType == 2) {
+                    cfg = WeatherPresets::Snow(cmd.weatherIntensity);
+                } else break;
+
+                ActiveEmitter ae;
+                ae.config = cfg;
+                ae.position = glm::vec3(0.0f);
+                ae.emitterID = particleNextEmitterID_++;
+                ae.transitionAlpha = 0.0f;
+                ae.transitionRate = 0.5f;
+                particleEmitters_[ae.emitterID] = ae;
+                particleWeatherEmitterID_ = ae.emitterID;
+                LOG_INFO(MOD_GRAPHICS, "SimWorker: Activated weather type={} intensity={}", cmd.weatherType, cmd.weatherIntensity);
+                break;
+            }
+            case ParticleCommand::DeactivateWeather: {
+                if (particleWeatherEmitterID_ != 0) {
+                    auto it = particleEmitters_.find(particleWeatherEmitterID_);
+                    if (it != particleEmitters_.end()) {
+                        it->second.active = false;
+                        for (auto& p : particlePool_) {
+                            if (p.isAlive() && p.emitterID == particleWeatherEmitterID_) {
+                                int idx = static_cast<int>(&p - particlePool_.data());
+                                freeParticle(idx);
+                            }
+                        }
+                        particleEmitters_.erase(it);
+                    }
+                    particleWeatherEmitterID_ = 0;
+                }
+                break;
+            }
+            case ParticleCommand::CreateSpellEffect: {
+                SpellEffectInstance inst;
+                inst.effectID = cmd.preAssignedEffectID;
+                inst.spellID = 0;
+                inst.casterEntityID = cmd.casterID;
+                inst.targetEntityID = cmd.targetID;
+                inst.age = 0.0f;
+                inst.maxDuration = cmd.duration;
+                inst.def = cmd.spellDef;
+                inst.useDynamicDirection = cmd.useDynamicDir;
+                if (cmd.projectileTravelDuration > 0.0f) {
+                    inst.projectileTravelDuration = cmd.projectileTravelDuration;
+                }
+                for (int i = 0; i < static_cast<int>(cmd.spellDef.emitters.size()); ++i) {
+                    SpellEffectInstance::EmitterState es;
+                    es.defIndex = i;
+                    es.activeEmitterID = 0;
+                    es.triggered = false;
+                    inst.emitterStates.push_back(es);
+                }
+                // Seed initial entity positions into the tracking map
+                for (const auto& [eid, epos] : cmd.initialEntityPositions) {
+                    // No need to store separately — pi.entityPositions should have them
+                }
+                particleSpellEffects_.push_back(std::move(inst));
+                if (particleNextSpellEffectID_ <= cmd.preAssignedEffectID) {
+                    particleNextSpellEffectID_ = cmd.preAssignedEffectID + 1;
+                }
+                LOG_DEBUG(MOD_GRAPHICS, "SimWorker: Created spell effect '{}' id={} caster={} target={}",
+                          cmd.spellDef.name, cmd.preAssignedEffectID, cmd.casterID, cmd.targetID);
+                break;
+            }
+            case ParticleCommand::CreateSpellEffectAtPos: {
+                SpellEffectInstance inst;
+                inst.effectID = cmd.preAssignedEffectID;
+                inst.spellID = 0;
+                inst.casterEntityID = 0;
+                inst.targetEntityID = 0;
+                inst.groundTarget = cmd.worldPos;
+                inst.age = 0.0f;
+                inst.maxDuration = cmd.duration;
+                inst.def = cmd.spellDef;
+                for (auto& e : inst.def.emitters) {
+                    if (e.attach == SpellAttach::CASTER) {
+                        e.attach = SpellAttach::GROUND_TARGET;
+                    }
+                }
+                for (int i = 0; i < static_cast<int>(cmd.spellDef.emitters.size()); ++i) {
+                    SpellEffectInstance::EmitterState es;
+                    es.defIndex = i;
+                    es.activeEmitterID = 0;
+                    es.triggered = false;
+                    inst.emitterStates.push_back(es);
+                }
+                particleSpellEffects_.push_back(std::move(inst));
+                if (particleNextSpellEffectID_ <= cmd.preAssignedEffectID) {
+                    particleNextSpellEffectID_ = cmd.preAssignedEffectID + 1;
+                }
+                break;
+            }
+            case ParticleCommand::RemoveSpellEffect: {
+                for (auto it = particleSpellEffects_.begin(); it != particleSpellEffects_.end(); ++it) {
+                    if (it->effectID == cmd.effectID) {
+                        for (auto& es : it->emitterStates) {
+                            if (es.activeEmitterID != 0) {
+                                for (auto& p : particlePool_) {
+                                    if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                                        int idx = static_cast<int>(&p - particlePool_.data());
+                                        freeParticle(idx);
+                                    }
+                                }
+                                particleEmitters_.erase(es.activeEmitterID);
+                            }
+                        }
+                        particleSpellEffects_.erase(it);
+                        break;
+                    }
+                }
+                break;
+            }
+            case ParticleCommand::RemoveSpellEffectsEntity: {
+                for (auto it = particleSpellEffects_.begin(); it != particleSpellEffects_.end(); ) {
+                    if (it->casterEntityID == cmd.entityID || it->targetEntityID == cmd.entityID) {
+                        for (auto& es : it->emitterStates) {
+                            if (es.activeEmitterID != 0) {
+                                for (auto& p : particlePool_) {
+                                    if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                                        int idx = static_cast<int>(&p - particlePool_.data());
+                                        freeParticle(idx);
+                                    }
+                                }
+                                particleEmitters_.erase(es.activeEmitterID);
+                            }
+                        }
+                        it = particleSpellEffects_.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                break;
+            }
+            case ParticleCommand::ClearAllSpellEffects: {
+                for (auto& effect : particleSpellEffects_) {
+                    for (auto& es : effect.emitterStates) {
+                        if (es.activeEmitterID != 0) {
+                            for (auto& p : particlePool_) {
+                                if (p.isAlive() && p.emitterID == es.activeEmitterID) {
+                                    int idx = static_cast<int>(&p - particlePool_.data());
+                                    freeParticle(idx);
+                                }
+                            }
+                            particleEmitters_.erase(es.activeEmitterID);
+                        }
+                    }
+                }
+                particleSpellEffects_.clear();
+                break;
+            }
+            case ParticleCommand::ToggleFire: {
+                particleFireEnabled_ = !particleFireEnabled_;
+                break;
+            }
+            case ParticleCommand::SetZoneEnter: {
+                // Reset state for new zone
+                break;
+            }
+            case ParticleCommand::ZoneLeave: {
+                // Clear everything
+                for (auto& p : particlePool_) {
+                    if (p.isAlive()) p.setAlive(false);
+                }
+                particleFreeList_.resize(particlePool_.size());
+                for (uint16_t i = 0; i < static_cast<uint16_t>(particlePool_.size()); ++i) {
+                    particleFreeList_[i] = i;
+                }
+                particleActiveCount_ = 0;
+                particleEmitters_.clear();
+                particleWeatherEmitterID_ = 0;
+                particleSpellEffects_.clear();
+                particleNextSpellEffectID_ = 1;
+                break;
+            }
+        }
+    }
+
+    // ---- Spawn phase ----
+    for (auto& [id, emitter] : particleEmitters_) {
+        if (!emitter.active) continue;
+
+        bool isWeather = (emitter.config.motionType == MotionType::CAMERA_RELATIVE);
+        if (!isWeather && !particleFireEnabled_) continue;
+
+        // Check emitter lifetime
+        if (emitter.config.emitterLifetime > 0.0f) {
+            emitter.emitterAge += deltaTime;
+            if (emitter.emitterAge >= emitter.config.emitterLifetime) {
+                emitter.active = false;
+                continue;
+            }
+        }
+
+        // Ramp transition alpha for weather
+        if (isWeather && emitter.transitionAlpha < 1.0f) {
+            emitter.transitionAlpha += emitter.transitionRate * deltaTime;
+            if (emitter.transitionAlpha > 1.0f) emitter.transitionAlpha = 1.0f;
+        }
+
+        if (isWeather) {
+            // CAMERA_RELATIVE: target-count spawning
+            emitter.position = pi.cameraPos;
+
+            int aliveCount = 0;
+            for (const auto& p : particlePool_) {
+                if (p.isAlive() && p.emitterID == emitter.emitterID) {
+                    aliveCount++;
+                }
+            }
+
+            int effectiveTarget = static_cast<int>(emitter.config.targetCount * emitter.transitionAlpha);
+            int deficit = effectiveTarget - aliveCount;
+            for (int s = 0; s < deficit; ++s) {
+                spawnWeatherParticle(emitter.config, emitter.emitterID, pi.cameraPos,
+                                     emitter.transitionAlpha, pi.windDirection, pi.windStrength);
+            }
+        } else {
+            // Non-weather: frustum cull using input frustum planes
+            if (input.frustumValid) {
+                // Convert emitter position (Irrlicht Y-up) to EQ Z-up for frustum test
+                float eqX = emitter.position.x;
+                float eqY = emitter.position.z;  // Irrlicht Z → EQ Y
+                float eqZ = emitter.position.y;  // Irrlicht Y → EQ Z
+                if (!testFrustumAABB(input.frustumPlanes,
+                                      eqX - 2.0f, eqY - 2.0f, eqZ - 2.0f,
+                                      eqX + 2.0f, eqY + 8.0f, eqZ + 2.0f)) {
+                    continue;
+                }
+            }
+
+            // Resolve dynamic direction from entity directions map
+            const glm::vec3* dirPtr = nullptr;
+            if (emitter.useDynamicDirection && emitter.attachEntityID != 0) {
+                auto dirIt = pi.entityDirections.find(emitter.attachEntityID);
+                if (dirIt != pi.entityDirections.end()) {
+                    emitter.dynamicDirection = dirIt->second;
+                }
+                dirPtr = &emitter.dynamicDirection;
+            }
+
+            // BURST: one-shot spawn
+            if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
+                for (int s = 0; s < emitter.config.burstCount; ++s) {
+                    spawnSpellParticle(emitter.config, emitter.emitterID,
+                                       emitter.position + emitter.attachOffset, dirPtr);
+                }
+                emitter.isBurstSpawned = true;
+            }
+
+            // Spawn-rate spawning
+            if (emitter.config.spawnRate > 0.0f) {
+                emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
+                int toSpawn = static_cast<int>(emitter.spawnAccumulator);
+                emitter.spawnAccumulator -= static_cast<float>(toSpawn);
+                for (int s = 0; s < toSpawn; ++s) {
+                    spawnSpellParticle(emitter.config, emitter.emitterID,
+                                       emitter.position + emitter.attachOffset, dirPtr);
+                }
+            }
+        }
+    }
+
+    // ---- Physics phase ----
+    for (auto& p : particlePool_) {
+        if (!p.isAlive()) continue;
+
+        p.age += deltaTime;
+        if (p.age >= p.maxLifetime) {
+            int idx = static_cast<int>(&p - particlePool_.data());
+            freeParticle(idx);
+            continue;
+        }
+
+        float t = p.getNormalizedAge();
+
+        // Interpolate color and size
+        p.color = glm::mix(p.colorStart, p.colorEnd, t);
+        p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
+
+        if (p.motionType == MotionType::CAMERA_RELATIVE) {
+            auto it = particleEmitters_.find(p.emitterID);
+            if (it == particleEmitters_.end()) continue;
+            const EmitterConfig& cfg = it->second.config;
+
+            // Gravity
+            p.velocity += cfg.gravity * deltaTime;
+
+            // Wind
+            if (cfg.windResponse > 0.0f && pi.windStrength > 0.0f) {
+                glm::vec3 windIrr(pi.windDirection.x, pi.windDirection.z, pi.windDirection.y);
+                p.velocity += windIrr * (pi.windStrength * cfg.windResponse * deltaTime * 10.0f);
+            }
+
+            // Drag
+            if (p.drag > 0.0f) {
+                float dampFactor = 1.0f - p.drag * deltaTime;
+                if (dampFactor < 0.0f) dampFactor = 0.0f;
+                p.velocity *= dampFactor;
+            }
+
+            // Snow drift
+            if (cfg.driftAmplitude > 0.0f && cfg.driftFrequency > 0.0f) {
+                float drift = std::sin(p.age * cfg.driftFrequency * 6.28318f + p.phase) * cfg.driftAmplitude * deltaTime;
+                p.position.x += drift;
+                p.position.z += drift * 0.5f;
+            }
+
+            // Snow twinkle
+            if (cfg.twinkleSpeed > 0.0f) {
+                float baseAlpha = glm::mix(p.colorStart.a, p.colorEnd.a, t);
+                p.color.a = baseAlpha * (0.7f + 0.3f * std::sin(p.age * cfg.twinkleSpeed + p.phase));
+            }
+
+            // Update position
+            p.position += p.velocity * deltaTime;
+
+            // Per-particle weather lighting
+            constexpr float kParticleLightRadius = 15.0f;
+            constexpr float kAmbientFactor = 0.1f;
+            float lightR = pi.ambientColor.x * kAmbientFactor;
+            float lightG = pi.ambientColor.y * kAmbientFactor;
+            float lightB = pi.ambientColor.z * kAmbientFactor;
+            for (const auto& light : pi.weatherLights) {
+                glm::vec3 diff = p.position - light.position;
+                float distSq = glm::dot(diff, diff);
+                float dist = std::sqrt(distSq);
+                if (dist < light.radius) {
+                    float tt = 1.0f - dist / light.radius;
+                    float atten = tt * tt;
+                    atten *= atten;  // quartic
+                    if (dist > kParticleLightRadius) atten = 0.0f;
+                    lightR += light.color.x * atten;
+                    lightG += light.color.y * atten;
+                    lightB += light.color.z * atten;
+                }
+            }
+            p.color.r *= std::min(lightR, 1.0f);
+            p.color.g *= std::min(lightG, 1.0f);
+            p.color.b *= std::min(lightB, 1.0f);
+
+            // Recycle check
+            glm::vec3 offset = p.position - pi.cameraPos;
+            float hExtX = cfg.spawnVolumeHalfExtents.x * 1.5f;
+            float hExtZ = cfg.spawnVolumeHalfExtents.z * 1.5f;
+            float hExtY = cfg.spawnVolumeHalfExtents.y;
+            if (std::abs(offset.x) > hExtX || std::abs(offset.z) > hExtZ || offset.y < -hExtY) {
+                int idx = static_cast<int>(&p - particlePool_.data());
+                freeParticle(idx);
+            }
+        } else if (p.motionType == MotionType::LINEAR ||
+                   p.motionType == MotionType::BURST ||
+                   p.motionType == MotionType::RADIAL_EXPAND) {
+            auto it = particleEmitters_.find(p.emitterID);
+            if (it != particleEmitters_.end()) {
+                p.velocity += it->second.config.gravity * deltaTime;
+            }
+
+            if (p.drag > 0.0f) {
+                float dampFactor = 1.0f - p.drag * deltaTime;
+                if (dampFactor < 0.0f) dampFactor = 0.0f;
+                p.velocity *= dampFactor;
+            }
+
+            p.position += p.velocity * deltaTime;
+
+        } else if (p.motionType == MotionType::ORBITAL) {
+            auto it = particleEmitters_.find(p.emitterID);
+            if (it != particleEmitters_.end()) {
+                glm::vec3 center = it->second.position + it->second.attachOffset;
+                p.phase += p.angularVelocity * deltaTime;
+                p.position.x = center.x + p.radius * std::cos(p.phase);
+                p.position.z = center.z + p.radius * std::sin(p.phase);
+                p.position.y += p.velocity.y * deltaTime;
+            }
+        }
+    }
+
+    // ---- Spell effect lifecycle ----
+    if (!particleSpellEffects_.empty()) {
+        for (auto it = particleSpellEffects_.begin(); it != particleSpellEffects_.end(); ) {
+            auto& effect = *it;
+            effect.age += deltaTime;
+
+            // Check max duration
+            if (effect.maxDuration > 0.0f && effect.age >= effect.maxDuration) {
+                for (auto& es : effect.emitterStates) {
+                    if (es.activeEmitterID != 0) {
+                        auto emIt = particleEmitters_.find(es.activeEmitterID);
+                        if (emIt != particleEmitters_.end()) {
+                            emIt->second.active = false;
+                        }
+                    }
+                }
+            }
+
+            bool allDone = true;
+            for (auto& es : effect.emitterStates) {
+                const auto& emDef = effect.def.emitters[es.defIndex];
+
+                // Check triggers
+                if (!es.triggered) {
+                    bool shouldTrigger = false;
+                    switch (emDef.trigger) {
+                        case SpellTrigger::IMMEDIATE: shouldTrigger = true; break;
+                        case SpellTrigger::DELAYED: shouldTrigger = (effect.age >= emDef.triggerDelay); break;
+                        case SpellTrigger::ON_CAST_COMPLETE: shouldTrigger = effect.castCompleteSignaled; break;
+                        case SpellTrigger::ON_HIT: shouldTrigger = effect.hitSignaled; break;
+                    }
+
+                    if (shouldTrigger) {
+                        es.triggered = true;
+
+                        glm::vec3 attachPos(0.0f);
+                        uint16_t attachEntity = 0;
+
+                        switch (emDef.attach) {
+                            case SpellAttach::CASTER:
+                                attachEntity = effect.casterEntityID;
+                                if (attachEntity != 0) {
+                                    auto posIt = pi.entityPositions.find(attachEntity);
+                                    if (posIt != pi.entityPositions.end()) attachPos = posIt->second;
+                                }
+                                break;
+                            case SpellAttach::TARGET:
+                                attachEntity = effect.targetEntityID;
+                                if (attachEntity != 0) {
+                                    auto posIt = pi.entityPositions.find(attachEntity);
+                                    if (posIt != pi.entityPositions.end()) attachPos = posIt->second;
+                                }
+                                break;
+                            case SpellAttach::GROUND_TARGET:
+                                attachPos = effect.groundTarget;
+                                break;
+                            case SpellAttach::PROJECTILE_PATH:
+                                if (effect.casterEntityID != 0) {
+                                    auto posIt = pi.entityPositions.find(effect.casterEntityID);
+                                    if (posIt != pi.entityPositions.end()) attachPos = posIt->second;
+                                }
+                                break;
+                        }
+
+                        ActiveEmitter ae;
+                        ae.config = emDef.config;
+                        ae.position = attachPos;
+                        ae.emitterID = particleNextEmitterID_++;
+                        ae.attachEntityID = attachEntity;
+                        ae.attachOffset = emDef.positionOffset;
+                        ae.useDynamicDirection = effect.useDynamicDirection;
+
+                        if (emDef.attach == SpellAttach::PROJECTILE_PATH) {
+                            ae.isProjectile = true;
+                            ae.projectileStartPos = attachPos;
+                            ae.targetEntityID = effect.targetEntityID;
+                            ae.travelDuration = effect.projectileTravelDuration;
+                            ae.travelElapsed = 0.0f;
+                            if (effect.targetEntityID != 0) {
+                                auto posIt = pi.entityPositions.find(effect.targetEntityID);
+                                if (posIt != pi.entityPositions.end()) ae.projectileTargetPos = posIt->second;
+                            }
+                        }
+
+                        particleEmitters_[ae.emitterID] = ae;
+                        es.activeEmitterID = ae.emitterID;
+                    }
+                }
+
+                // Update entity positions for attached emitters
+                if (es.activeEmitterID != 0) {
+                    auto emIt = particleEmitters_.find(es.activeEmitterID);
+                    if (emIt != particleEmitters_.end()) {
+                        auto& emitter = emIt->second;
+
+                        if (emitter.isProjectile) {
+                            emitter.travelElapsed += deltaTime;
+                            if (emitter.targetEntityID != 0) {
+                                auto posIt = pi.entityPositions.find(emitter.targetEntityID);
+                                if (posIt != pi.entityPositions.end()) {
+                                    emitter.projectileTargetPos = posIt->second;
+                                }
+                            }
+                            float tt = (emitter.travelDuration > 0.0f)
+                                ? std::min(emitter.travelElapsed / emitter.travelDuration, 1.0f) : 1.0f;
+                            emitter.position = glm::mix(emitter.projectileStartPos, emitter.projectileTargetPos, tt);
+                            if (tt >= 1.0f) {
+                                emitter.active = false;
+                                effect.hitSignaled = true;
+                            }
+                        } else if (emitter.attachEntityID != 0) {
+                            auto posIt = pi.entityPositions.find(emitter.attachEntityID);
+                            if (posIt != pi.entityPositions.end()) {
+                                emitter.position = posIt->second;
+                            }
+                        }
+
+                        if (emitter.active) {
+                            allDone = false;
+                        } else {
+                            for (const auto& pp : particlePool_) {
+                                if (pp.isAlive() && pp.emitterID == es.activeEmitterID) {
+                                    allDone = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else if (!es.triggered) {
+                    allDone = false;
+                }
+            }
+
+            if (allDone && (effect.maxDuration <= 0.0f || effect.age >= effect.maxDuration)) {
+                for (auto& es : effect.emitterStates) {
+                    if (es.activeEmitterID != 0) {
+                        particleEmitters_.erase(es.activeEmitterID);
+                    }
+                }
+                it = particleSpellEffects_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    // ---- Build output ----
+    output.particleOutput.renderBuffer.clear();
+    output.particleOutput.renderBuffer.reserve(particleActiveCount_);
+    for (const auto& p : particlePool_) {
+        if (p.isAlive()) {
+            output.particleOutput.renderBuffer.push_back(p);
+        }
+    }
+    output.particleOutput.activeCount = particleActiveCount_;
+
+    // Build entity position/direction request sets
+    output.particleOutput.positionRequestEntities.clear();
+    output.particleOutput.directionRequestEntities.clear();
+    for (const auto& effect : particleSpellEffects_) {
+        if (effect.casterEntityID != 0) output.particleOutput.positionRequestEntities.insert(effect.casterEntityID);
+        if (effect.targetEntityID != 0) output.particleOutput.positionRequestEntities.insert(effect.targetEntityID);
+        for (const auto& es : effect.emitterStates) {
+            if (es.activeEmitterID != 0) {
+                auto emIt = particleEmitters_.find(es.activeEmitterID);
+                if (emIt != particleEmitters_.end()) {
+                    if (emIt->second.attachEntityID != 0) {
+                        output.particleOutput.positionRequestEntities.insert(emIt->second.attachEntityID);
+                    }
+                    if (emIt->second.useDynamicDirection && emIt->second.attachEntityID != 0) {
+                        output.particleOutput.directionRequestEntities.insert(emIt->second.attachEntityID);
+                    }
+                    if (emIt->second.isProjectile && emIt->second.targetEntityID != 0) {
+                        output.particleOutput.positionRequestEntities.insert(emIt->second.targetEntityID);
+                    }
+                }
+            }
+        }
+    }
+
+    output.particleOutput.valid = true;
+}
+
+// Particle allocation helpers
+int SimulationWorker::allocateParticle() {
+    if (particleFreeList_.empty()) return -1;
+    int idx = particleFreeList_.back();
+    particleFreeList_.pop_back();
+    particleActiveCount_++;
+    return idx;
+}
+
+void SimulationWorker::freeParticle(int index) {
+    if (index < 0 || index >= static_cast<int>(particlePool_.size())) return;
+    particlePool_[index].setAlive(false);
+    particleFreeList_.push_back(static_cast<uint16_t>(index));
+    particleActiveCount_--;
+}
+
+float SimulationWorker::particleRandomFloat(float minVal, float maxVal) {
+    std::uniform_real_distribution<float> dist(minVal, maxVal);
+    return dist(particleRng_);
+}
+
+int SimulationWorker::particleRandomInt(int minVal, int maxVal) {
+    std::uniform_int_distribution<int> dist(minVal, maxVal);
+    return dist(particleRng_);
+}
+
+void SimulationWorker::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t emitterID,
+                                             const glm::vec3& cameraPos, float transitionAlpha,
+                                             const glm::vec3& windDir, float windStrength) {
+    int idx = allocateParticle();
+    if (idx < 0) return;
+
+    UnifiedParticle& p = particlePool_[idx];
+
+    const glm::vec3& he = cfg.spawnVolumeHalfExtents;
+    p.position.x = cameraPos.x + particleRandomFloat(-he.x, he.x);
+    p.position.z = cameraPos.z + particleRandomFloat(-he.z, he.z);
+
+    float yRand = particleRandomFloat(0.0f, 1.0f);
+    if (yRand < cfg.spawnVolumeTopBias) {
+        p.position.y = cameraPos.y + he.y * particleRandomFloat(0.6f, 1.0f);
+    } else {
+        p.position.y = cameraPos.y + particleRandomFloat(-he.y, he.y * 0.6f);
+    }
+
+    p.velocity.x = cfg.velocityBase.x + particleRandomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+    p.velocity.y = cfg.velocityBase.y + particleRandomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+    p.velocity.z = cfg.velocityBase.z + particleRandomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+
+    p.maxLifetime = particleRandomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
+    p.age = 0.0f;
+    p.colorStart = cfg.colorStart;
+    p.colorEnd = cfg.colorEnd;
+    p.color = cfg.colorStart;
+
+    if (cfg.blendMode == UnifiedBlendMode::ADDITIVE) {
+        float alphaVar = particleRandomFloat(0.3f, cfg.colorStart.a);
+        p.colorStart.a = alphaVar;
+        p.color.a = alphaVar;
+    }
+
+    p.sizeStart = particleRandomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+    p.sizeEnd = particleRandomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+    p.size = p.sizeStart;
+
+    if (cfg.sizeSpeedCorrelation > 0.0f) {
+        float sizeRange = cfg.sizeStartMax - cfg.sizeStartMin;
+        float sizeFactor = (sizeRange > 0.0f) ? (p.sizeStart - cfg.sizeStartMin) / sizeRange : 0.0f;
+        p.velocity.y *= (1.0f - sizeFactor * cfg.sizeSpeedCorrelation);
+    }
+
+    p.drag = cfg.drag;
+    p.motionType = cfg.motionType;
+    p.phase = particleRandomFloat(0.0f, 6.28318f);
+
+    if (cfg.driftAmplitude == 0.0f && cfg.windResponse > 0.0f) {
+        float windAngle = std::atan2(windDir.x, windDir.y);
+        p.rotation = windAngle * cfg.windResponse * windStrength * 0.3f;
+    } else {
+        p.rotation = 0.0f;
+    }
+
+    if (cfg.textureRegionCount > 1) {
+        p.textureIndex = cfg.textureRegions[particleRandomInt(0, cfg.textureRegionCount - 1)];
+    } else {
+        p.textureIndex = cfg.textureRegions[0];
+    }
+
+    p.emitterID = emitterID;
+    p.setAlive(true);
+    p.setBlendMode(cfg.blendMode);
+}
+
+void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
+                                           const glm::vec3& emitterPos, const glm::vec3* dynamicDir) {
+    int idx = allocateParticle();
+    if (idx < 0) return;
+
+    UnifiedParticle& p = particlePool_[idx];
+
+    p.position = emitterPos;
+    if (cfg.spawnShape == SpawnShape::BOX) {
+        p.position.x += particleRandomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
+        p.position.y += particleRandomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
+        p.position.z += particleRandomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
+    } else if (cfg.spawnShape == SpawnShape::SPHERE) {
+        float r = particleRandomFloat(0.0f, cfg.spawnExtents.x);
+        float theta = particleRandomFloat(0.0f, 6.28318f);
+        float phi = particleRandomFloat(-1.5708f, 1.5708f);
+        p.position.x += r * std::cos(phi) * std::cos(theta);
+        p.position.y += r * std::sin(phi);
+        p.position.z += r * std::cos(phi) * std::sin(theta);
+    } else if (cfg.spawnShape == SpawnShape::RING) {
+        float angle = particleRandomFloat(0.0f, 6.28318f);
+        p.position.x += cfg.spawnExtents.x * std::cos(angle);
+        p.position.z += cfg.spawnExtents.x * std::sin(angle);
+    }
+
+    if (dynamicDir) {
+        float speed = glm::length(cfg.velocityBase);
+        if (speed < 0.01f) speed = 4.0f;
+        p.velocity = (*dynamicDir) * speed;
+        p.velocity.x += particleRandomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.y += particleRandomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+        p.velocity.z += particleRandomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+    } else if (cfg.motionType == MotionType::RADIAL_EXPAND) {
+        float angle = particleRandomFloat(0.0f, 6.28318f);
+        p.velocity.x = std::cos(angle) * cfg.expandSpeed + particleRandomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.z = std::sin(angle) * cfg.expandSpeed + particleRandomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+        p.velocity.y = cfg.velocityBase.y + particleRandomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+    } else if (cfg.motionType == MotionType::BURST) {
+        float angle = particleRandomFloat(0.0f, 6.28318f);
+        p.velocity.x = std::cos(angle) * cfg.velocityBase.x + particleRandomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.z = std::sin(angle) * cfg.velocityBase.x + particleRandomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+        p.velocity.y = cfg.velocityBase.y + particleRandomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+    } else {
+        p.velocity.x = cfg.velocityBase.x + particleRandomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
+        p.velocity.y = cfg.velocityBase.y + particleRandomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
+        p.velocity.z = cfg.velocityBase.z + particleRandomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
+    }
+
+    p.maxLifetime = particleRandomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
+    p.age = 0.0f;
+    p.colorStart = cfg.colorStart;
+    p.colorEnd = cfg.colorEnd;
+    p.color = cfg.colorStart;
+
+    p.sizeStart = particleRandomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+    p.sizeEnd = particleRandomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+    p.size = p.sizeStart;
+
+    p.drag = cfg.drag;
+    p.motionType = cfg.motionType;
+    p.phase = particleRandomFloat(0.0f, 6.28318f);
+    p.rotation = 0.0f;
+
+    if (cfg.motionType == MotionType::ORBITAL) {
+        p.radius = cfg.orbitalRadius;
+        p.angularVelocity = cfg.orbitalAngularVelocity;
+        p.position.x = emitterPos.x + p.radius * std::cos(p.phase);
+        p.position.z = emitterPos.z + p.radius * std::sin(p.phase);
+    }
+
+    if (cfg.textureRegionCount > 1) {
+        p.textureIndex = cfg.textureRegions[particleRandomInt(0, cfg.textureRegionCount - 1)];
+    } else {
+        p.textureIndex = cfg.textureRegions[0];
+    }
+
+    p.emitterID = emitterID;
+    p.setAlive(true);
+    p.setBlendMode(cfg.blendMode);
 }
 
 } // namespace Graphics

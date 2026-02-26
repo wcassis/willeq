@@ -116,12 +116,6 @@ public:
     // ========== Zone Management ==========
 
     /**
-     * Load a zone for rendering.
-     * @param zoneName Zone short name
-     */
-    void loadZone(const std::string& zoneName);
-
-    /**
      * Unload the current zone.
      */
     void unloadZone();

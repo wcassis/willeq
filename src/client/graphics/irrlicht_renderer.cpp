@@ -812,7 +812,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // NOTE: We do NOT create entity renderer or load models here.
     // That happens in loadGlobalAssets() which is called during graphics loading phase.
 
-    // Create tree wind animation manager (needed before loadZone())
+    // Create tree wind animation manager (needed before zone loading)
     if (!treeManager_) {
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
         treeManager_->setRenderDistance(renderDistance_);
@@ -822,7 +822,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         }
     }
 
-    // Create weather system (needed before loadZone())
+    // Create weather system (needed before zone loading)
     if (!weatherSystem_) {
         weatherSystem_ = std::make_unique<WeatherSystem>();
         // Connect weather system to tree manager via callback
@@ -1070,8 +1070,6 @@ void IrrlichtRenderer::hideLoadingScreen() {
     // recalculation until the player moves 5+ units — leaving lights disabled
     // and PVS stale on initial zone-in.
     lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
-    lastObjectPvsRegion_ = SIZE_MAX;
-    lastLightPvsRegion_ = SIZE_MAX;
     forcePvsUpdate_ = true;
 
     // Request deferred governor reset so the 11+ second loading screen frame
@@ -1518,573 +1516,8 @@ bool IrrlichtRenderer::isRegionPvsVisibleDebug(size_t regionIdx, const char* con
     return visible;
 }
 
-void IrrlichtRenderer::updateObjectVisibility() {
-    if (!camera_ || objectNodes_.empty()) return;
-
-    // Gate on PVS region change — object visibility depends primarily on which
-    // BSP region the camera is in. Render distance is a secondary filter.
-    if (currentPvsRegion_ == lastObjectPvsRegion_) {
-        return;
-    }
-    lastObjectPvsRegion_ = currentPvsRegion_;
-
-    irr::core::vector3df cameraPos = camera_->getPosition();
-
-    LOG_DEBUG(MOD_GRAPHICS, "=== OBJECT VISIBILITY UPDATE === camPos=({:.1f},{:.1f},{:.1f}) renderDist={} pvsRegion={}",
-        cameraPos.X, cameraPos.Y, cameraPos.Z, renderDistance_, currentPvsRegion_);
-
-    size_t inSceneCount = 0;
-    size_t removedCount = 0;
-
-    for (size_t i = 0; i < objectNodes_.size(); ++i) {
-        if (!objectNodes_[i]) continue;
-        if (i >= objectBoundingBoxes_.size()) continue;  // Safety check
-
-        const irr::core::aabbox3df& bbox = objectBoundingBoxes_[i];
-        bool shouldBeInScene = true;
-        float dist = 0.0f;
-
-        // 1. PVS check first (cheapest — bitvector lookup, no math)
-        if (shouldBeInScene && usePvsCulling_ && i < objectRegions_.size()
-            && objectRegions_[i] != SIZE_MAX && currentPvsRegion_ != SIZE_MAX
-            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
-            size_t objReg = objectRegions_[i];
-            if (camRegion && !camRegion->visibleRegions.empty()
-                && objReg < camRegion->visibleRegions.size()) {
-                if (!camRegion->visibleRegions[objReg]) {
-                    shouldBeInScene = false;
-                }
-            }
-        }
-
-        // 2. Render distance check (bbox edge distance)
-        bool validBbox = (bbox.MinEdge.X <= bbox.MaxEdge.X &&
-                          bbox.MinEdge.Y <= bbox.MaxEdge.Y &&
-                          bbox.MinEdge.Z <= bbox.MaxEdge.Z);
-        if (shouldBeInScene) {
-            if (validBbox) {
-                irr::core::vector3df closestPoint;
-                closestPoint.X = std::max(bbox.MinEdge.X, std::min(cameraPos.X, bbox.MaxEdge.X));
-                closestPoint.Y = std::max(bbox.MinEdge.Y, std::min(cameraPos.Y, bbox.MaxEdge.Y));
-                closestPoint.Z = std::max(bbox.MinEdge.Z, std::min(cameraPos.Z, bbox.MaxEdge.Z));
-                dist = cameraPos.getDistanceFrom(closestPoint);
-            } else {
-                dist = cameraPos.getDistanceFrom(objectPositions_[i]);
-            }
-            if (dist > renderDistance_) shouldBeInScene = false;
-        }
-
-        // 3. Occlusion culling for objects with known BSP regions
-        if (shouldBeInScene && !occlusionCulledRegions_.empty()
-            && i < objectRegions_.size() && objectRegions_[i] != SIZE_MAX
-            && occlusionCulledRegions_.count(objectRegions_[i])) {
-            shouldBeInScene = false;
-        }
-
-        // 4. Frustum check (object bboxes are in Irrlicht Y-up coords; always swap Y<->Z for EQ)
-        if (shouldBeInScene && frustumCuller_ && frustumCuller_->isEnabled() && validBbox) {
-            if (!frustumCuller_->testAABB(
-                    bbox.MinEdge.X, bbox.MinEdge.Z, bbox.MinEdge.Y,
-                    bbox.MaxEdge.X, bbox.MaxEdge.Z, bbox.MaxEdge.Y)) {
-                shouldBeInScene = false;
-            }
-        }
-
-        if (shouldBeInScene && !objectInSceneGraph_[i]) {
-            // Add back to scene graph
-            smgr_->getRootSceneNode()->addChild(objectNodes_[i]);
-            objectNodes_[i]->setVisible(true);
-            objectInSceneGraph_[i] = true;
-        } else if (!shouldBeInScene && objectInSceneGraph_[i]) {
-            // Remove from scene graph (but keep the node alive via grab())
-            objectNodes_[i]->remove();
-            objectInSceneGraph_[i] = false;
-        }
-
-        // Log VISIBLE objects with their distance
-        if (objectInSceneGraph_[i]) {
-            const char* name = objectNodes_[i]->getName();
-            LOG_DEBUG(MOD_GRAPHICS, "[OBJ VISIBLE] '{}' dist={:.1f} bbox=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f})",
-                name ? name : "unknown", dist,
-                bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z);
-            inSceneCount++;
-        } else {
-            removedCount++;
-        }
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "=== OBJECT VISIBILITY RESULT: {} VISIBLE, {} CULLED ===",
-        inSceneCount, removedCount);
-}
-
-void IrrlichtRenderer::updateZoneLightVisibility() {
-    if (!camera_ || zoneLightNodes_.empty()) return;
-
-    // Gate on PVS region change — zone light visibility only depends on which
-    // BSP region the camera is in, not on small position changes within a region.
-    // This also naturally handles the post-/loadzone case: currentPvsRegion_ changes
-    // from SIZE_MAX to a real value, so the first pass always runs.
-    if (currentPvsRegion_ == lastLightPvsRegion_) {
-        return;
-    }
-    lastLightPvsRegion_ = currentPvsRegion_;
-
-    irr::core::vector3df cameraPos = camera_->getPosition();
-
-    // Update scene graph membership based on distance
-    // This removes far lights entirely from the scene graph to skip traversal overhead
-    size_t inSceneCount = 0;
-    size_t removedCount = 0;
-    const float renderDistSq = renderDistance_ * renderDistance_;
-
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (!zoneLightNodes_[i]) continue;
-
-        float distSq = cameraPos.getDistanceFromSQ(zoneLightPositions_[i]);
-        bool shouldBeInScene = (distSq <= renderDistSq);
-
-        // Frustum culling for zone lights
-        // zoneLightPositions_ are in Irrlicht coords (Y-up), frustum expects EQ (Z-up)
-        if (shouldBeInScene && frustumCuller_ && frustumCuller_->isEnabled()) {
-            const auto& p = zoneLightPositions_[i];
-            if (!frustumCuller_->testSphere(p.X, p.Z, p.Y, 5.0f)) {
-                shouldBeInScene = false;
-            }
-        }
-
-        // PVS + occlusion culling for zone lights
-        if (shouldBeInScene && usePvsCulling_ && i < zoneLightRegions_.size()
-            && zoneLightRegions_[i] != SIZE_MAX && currentPvsRegion_ != SIZE_MAX
-            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
-            size_t lightReg = zoneLightRegions_[i];
-            if (camRegion && !camRegion->visibleRegions.empty()
-                && lightReg < camRegion->visibleRegions.size()) {
-                if (!camRegion->visibleRegions[lightReg]) {
-                    shouldBeInScene = false;
-                }
-            }
-            // Occlusion check
-            if (shouldBeInScene && !occlusionCulledRegions_.empty()
-                && occlusionCulledRegions_.count(lightReg)) {
-                shouldBeInScene = false;
-            }
-        }
-
-        if (shouldBeInScene && !zoneLightInSceneGraph_[i]) {
-            // Add back to scene graph
-            smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
-            zoneLightInSceneGraph_[i] = true;
-        } else if (!shouldBeInScene && zoneLightInSceneGraph_[i]) {
-            // Remove from scene graph (but keep the node alive via grab())
-            zoneLightNodes_[i]->remove();
-            zoneLightInSceneGraph_[i] = false;
-        }
-
-        if (zoneLightInSceneGraph_[i]) {
-            inSceneCount++;
-        } else {
-            removedCount++;
-        }
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "Zone light scene graph: {} in scene, {} removed (dist={})",
-        inSceneCount, removedCount, renderDistance_);
-}
-
-void IrrlichtRenderer::updateObjectLights() {
-    if (!camera_) return;
-
-    const float maxDistance = 500.0f;  // Maximum distance to consider a light
-    const size_t hardwareLightLimit = 8;  // Software renderer limit
-
-    irr::core::vector3df cameraPos = camera_->getPosition();
-
-    // Always update player light position (cheap, must track player movement)
-    if (playerLightNode_) {
-        playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
-    }
-
-    // Movement gate: skip expensive light distance/occlusion calculation
-    // when player hasn't moved 5+ units since last full update.
-    // Uses player position (EQ coords), not camera position, because light
-    // relevance depends on where the player is, not where the camera looks.
-    irr::core::vector3df playerPosEQ(playerX_, playerY_, playerZ_);
-    float playerMoved = playerPosEQ.getDistanceFrom(lastLightPlayerPos_);
-    if (playerMoved < 5.0f && lastLightPlayerPos_.getLengthSQ() > 0.01f) {
-        // Still refresh shader light positions every frame (cheap — just re-reads
-        // getPosition() from the existing activeLightNodes_ list). Without this,
-        // the player's point light appears frozen in the shader when standing still
-        // because setPointLight() only runs during full updates.
-        refreshShaderLightColors();
-        return;
-    }
-    lastLightPlayerPos_ = playerPosEQ;
-
-    // Player position for occlusion checks (EQ coords to Irrlicht: x, z, y)
-    // Raise to head height (~5 units) so low geometry doesn't block line of sight
-    irr::core::vector3df playerPos(playerX_, playerZ_ + 5.0f, playerY_);
-
-    // Helper to calculate horizontal (XZ plane) distance - ignores vertical (Y) component
-    // This ensures lights above/below the player are still considered "close"
-    auto horizontalDistance = [](const irr::core::vector3df& a, const irr::core::vector3df& b) -> float {
-        float dx = a.X - b.X;
-        float dz = a.Z - b.Z;
-        return std::sqrt(dx * dx + dz * dz);
-    };
-
-    // Helper to check if a light is visible from player position (not occluded by geometry)
-    auto isLightVisible = [this, &playerPos](const irr::core::vector3df& lightPos) -> bool {
-        if (!collisionManager_ || !zoneTriangleSelector_) {
-            return true;  // No collision detection available, assume visible
-        }
-
-        // Cast ray from player to light
-        irr::core::line3df ray(playerPos, lightPos);
-        irr::core::vector3df hitPoint;
-        irr::core::triangle3df hitTriangle;
-        irr::scene::ISceneNode* hitNode = nullptr;
-
-        // Check if ray hits geometry before reaching the light
-        hitNode = collisionManager_->getSceneNodeAndCollisionPointFromRay(
-            ray, hitPoint, hitTriangle, 0, nullptr);
-
-        if (hitNode) {
-            // Calculate distances
-            float distToLight = playerPos.getDistanceFrom(lightPos);
-            float distToHit = playerPos.getDistanceFrom(hitPoint);
-
-            // Light is occluded if we hit something closer than the light
-            // Use a small tolerance to avoid floating point issues
-            if (distToHit < distToLight - 5.0f) {
-                return false;  // Light is occluded
-            }
-        }
-
-        return true;  // Light is visible
-    };
-
-    // Unified light pool: stores {distance, light_node, is_zone_light, name, zone_light_index}
-    struct LightCandidate {
-        float distance;
-        irr::scene::ILightSceneNode* node;
-        bool isZoneLight;
-        std::string name;
-        size_t zoneLightIdx = SIZE_MAX;  // Index into zoneLightNodes_ (zone lights only)
-    };
-    std::vector<LightCandidate> candidates;
-    candidates.reserve(objectLights_.size() + zoneLightNodes_.size());
-
-    // First, disable all lights (including player light)
-    for (auto& objLight : objectLights_) {
-        if (objLight.node) {
-            objLight.node->setVisible(false);
-        }
-    }
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (zoneLightNodes_[i] && i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
-            zoneLightNodes_[i]->setVisible(false);
-        }
-    }
-    if (playerLightNode_) {
-        playerLightNode_->setVisible(false);
-        // Player light position already updated at top of updateObjectLights()
-    }
-
-    // Add player light first with distance 0 (always highest priority)
-    if (debugPlayerLightEnabled_ && playerLightNode_ && playerLightLevel_ > 0) {
-        candidates.push_back({0.0f, playerLightNode_, false, "player_light"});
-    }
-
-    // Add zone lights to the pool if zone lights are enabled
-    // Use PVS culling if available - skip lights in regions not visible from player's region
-    // This is much faster than raycasting for 200+ static lights
-    if (zoneLightsEnabled_) {
-        // Get current camera region's PVS data for visibility checks
-        std::shared_ptr<BspRegion> cameraRegion;
-        if (usePvsCulling_ && zoneBspTree_ && currentPvsRegion_ != SIZE_MAX &&
-            currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            cameraRegion = zoneBspTree_->regions[currentPvsRegion_];
-        }
-
-        size_t pvsSkipped = 0;
-        size_t distanceSkipped = 0;
-        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-            auto* node = zoneLightNodes_[i];
-            if (!node) continue;
-
-            // PVS culling: skip lights in regions not visible from camera
-            if (cameraRegion && !cameraRegion->visibleRegions.empty() &&
-                i < zoneLightRegions_.size()) {
-                size_t lightRegion = zoneLightRegions_[i];
-                if (lightRegion != SIZE_MAX && lightRegion < cameraRegion->visibleRegions.size()) {
-                    if (!cameraRegion->visibleRegions[lightRegion]) {
-                        pvsSkipped++;
-                        continue;
-                    }
-                }
-            }
-
-            // Occlusion culling: skip lights in occlusion-culled regions
-            if (!occlusionCulledRegions_.empty() && i < zoneLightRegions_.size()) {
-                size_t lightRegion = zoneLightRegions_[i];
-                if (lightRegion != SIZE_MAX && occlusionCulledRegions_.count(lightRegion)) {
-                    pvsSkipped++;
-                    continue;
-                }
-            }
-
-            // Distance culling (use cached positions — safe even for out-of-graph nodes)
-            irr::core::vector3df lightPos = (i < zoneLightPositions_.size()) ? zoneLightPositions_[i] : node->getPosition();
-            float dist = horizontalDistance(cameraPos, lightPos);
-            if (dist <= maxDistance) {
-                candidates.push_back({dist, node, true, "zone_light_" + std::to_string(i), i});
-            } else {
-                distanceSkipped++;
-            }
-        }
-
-        static size_t logCounter = 0;
-        if (++logCounter % 300 == 0) {  // Log every ~5 seconds at 60fps
-            LOG_DEBUG(MOD_GRAPHICS, "Zone light culling: {} PVS-culled, {} distance-culled, {} candidates",
-                pvsSkipped, distanceSkipped, candidates.size());
-        }
-    }
-
-    // Add object lights to the pool (up to maxObjectLights_ candidates)
-    // Performance: Raycast occlusion checks are expensive on low-end hardware (16 raycasts
-    // against full zone triangle selector = ~20ms on ARM). Skip them when render distance
-    // is constrained (PVS + distance culling is sufficient).
-    const bool skipLightOcclusion = (config_.constrainedConfig.clipDistance < 500.0f);
-    const size_t maxOcclusionChecks = skipLightOcclusion ? 0 : 16;
-
-    // First collect ALL lights in range by distance (no occlusion check yet)
-    std::vector<std::pair<float, size_t>> objectDistances;
-    objectDistances.reserve(objectLights_.size());
-    for (size_t i = 0; i < (debugObjectLightsEnabled_ ? objectLights_.size() : 0u); ++i) {
-        float dist = horizontalDistance(cameraPos, objectLights_[i].position);
-        if (dist <= maxDistance) {
-            objectDistances.push_back({dist, i});
-        }
-    }
-    std::sort(objectDistances.begin(), objectDistances.end());
-
-    // Only do occlusion checks on the closest N lights (skipped on constrained presets)
-    size_t inRangeCount = objectDistances.size();
-    size_t occludedCount = 0;
-    size_t checksPerformed = std::min(objectDistances.size(), maxOcclusionChecks);
-
-    std::vector<std::pair<float, size_t>> visibleLights;
-    if (skipLightOcclusion) {
-        // No occlusion checks - use all in-range lights sorted by distance
-        visibleLights = objectDistances;
-    } else {
-        visibleLights.reserve(checksPerformed);
-        for (size_t i = 0; i < checksPerformed; ++i) {
-            size_t idx = objectDistances[i].second;
-            if (isLightVisible(objectLights_[idx].position)) {
-                visibleLights.push_back(objectDistances[i]);
-            } else {
-                occludedCount++;
-            }
-        }
-    }
-
-    // Add the closest maxObjectLights_ visible object lights to candidates
-    size_t objectLightCount = std::min(visibleLights.size(), static_cast<size_t>(maxObjectLights_));
-    for (size_t i = 0; i < objectLightCount; ++i) {
-        size_t idx = visibleLights[i].second;
-        if (objectLights_[idx].node) {
-            candidates.push_back({visibleLights[i].first, objectLights_[idx].node, false, objectLights_[idx].objectName});
-        }
-    }
-
-    // Sort all candidates by distance (closest first)
-    std::sort(candidates.begin(), candidates.end(),
-        [](const LightCandidate& a, const LightCandidate& b) {
-            return a.distance < b.distance;
-        });
-
-    // Enable only the closest lights up to hardware limit
-    // Must ensure nodes are in the scene graph before enabling — updateZoneLightVisibility()
-    // may have removed them (frustum/PVS/distance culling), but lights still illuminate
-    // geometry even when the light source is off-screen.
-    size_t enabledCount = std::min(candidates.size(), hardwareLightLimit);
-    for (size_t i = 0; i < enabledCount; ++i) {
-        if (candidates[i].node) {
-            // Re-add zone lights to scene graph if removed by updateZoneLightVisibility()
-            if (candidates[i].isZoneLight && candidates[i].zoneLightIdx < zoneLightInSceneGraph_.size()
-                && !zoneLightInSceneGraph_[candidates[i].zoneLightIdx]) {
-                smgr_->getRootSceneNode()->addChild(candidates[i].node);
-                zoneLightInSceneGraph_[candidates[i].zoneLightIdx] = true;
-            }
-            candidates[i].node->setVisible(true);
-        }
-    }
-
-    // Store active nodes for lightweight shader color refresh
-    activeLightNodes_.clear();
-    for (size_t i = 0; i < enabledCount; ++i) {
-        if (candidates[i].node) {
-            activeLightNodes_.push_back(candidates[i].node);
-        }
-    }
-
-    // Feed point light data to GLSL shader (bypasses Irrlicht's dynamic light list)
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        zoneShader_->clearPointLights();
-        int shaderLightIdx = 0;
-        for (size_t i = 0; i < enabledCount; ++i) {
-            if (!candidates[i].node) continue;
-            // Only feed point lights to shader (skip directional sun)
-            irr::video::SLight& ld = candidates[i].node->getLightData();
-            if (ld.Type != irr::video::ELT_POINT) continue;
-            // Use getPosition() not getAbsolutePosition() — all light nodes are root-level
-            // (no parent), and AbsoluteTransformation is stale because OnAnimate() hasn't
-            // run yet (it runs during drawAll() which is after updateObjectLights()).
-            irr::core::vector3df pos = candidates[i].node->getPosition();
-            // Boost light color for GLSL shader — Irrlicht's DiffuseColor values
-            // (0.1-0.4 range) are designed for Irrlicht's built-in attenuation pipeline
-            // but are too dim when used directly as additive light color in our custom
-            // shader. Player light (index 0) gets 3x for visible torch illumination;
-            // zone torches get 1.5x to avoid overdriving bright textures (snow zones).
-            float boost = (shaderLightIdx == 0) ? 3.0f : 1.5f;
-            zoneShader_->setPointLight(shaderLightIdx,
-                pos.X, pos.Y, pos.Z,
-                ld.DiffuseColor.r * boost,
-                ld.DiffuseColor.g * boost,
-                ld.DiffuseColor.b * boost,
-                ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
-            shaderLightIdx++;
-        }
-        zoneShader_->setNumPointLights(shaderLightIdx);
-
-        LOG_DEBUG(MOD_GRAPHICS, "Shader lights: {} fed to GLSL", shaderLightIdx);
-    }
-
-    // Check if active lights changed and log if so (cleared by cycleObjectLights)
-    // Use "_none_" sentinel when 0 lights so we can distinguish "0 lights logged" from "needs re-log"
-    bool needsLog = previousActiveLights_.empty() ||
-                    (enabledCount == 0 && previousActiveLights_[0] != "_none_") ||
-                    (enabledCount > 0 && (previousActiveLights_.size() != enabledCount || previousActiveLights_[0] == "_none_"));
-    if (needsLog) {
-        previousActiveLights_.clear();
-        LOG_DEBUG(MOD_GRAPHICS, "Active lights: {} enabled (objLights: {} in range, checked {}, {} visible, {} occluded; maxObj={})",
-            enabledCount, inRangeCount, checksPerformed, visibleLights.size(), occludedCount, maxObjectLights_);
-        if (enabledCount == 0) {
-            previousActiveLights_.push_back("_none_");
-        } else {
-            previousActiveLights_.reserve(enabledCount);
-            for (size_t i = 0; i < enabledCount; ++i) {
-                previousActiveLights_.push_back(candidates[i].name);
-                if (candidates[i].node) {
-                    irr::core::vector3df pos = candidates[i].node->getPosition();
-                    LOG_DEBUG(MOD_GRAPHICS, "  #{} '{}' at ({:.1f}, {:.1f}, {:.1f}) dist={:.1f}",
-                        i, candidates[i].name, pos.X, pos.Y, pos.Z, candidates[i].distance);
-                }
-            }
-        }
-    }
-
-    // Debug: Create/update markers at active light positions
-    if (showLightDebugMarkers_ && smgr_) {
-        // Remove old markers
-        for (auto* marker : lightDebugMarkers_) {
-            if (marker) marker->remove();
-        }
-        lightDebugMarkers_.clear();
-
-        // Create new markers at enabled light positions
-        irr::scene::IMesh* cubeMesh = smgr_->getGeometryCreator()->createCubeMesh(irr::core::vector3df(2.0f, 2.0f, 2.0f));
-        if (cubeMesh) {
-            for (size_t i = 0; i < enabledCount; ++i) {
-                if (candidates[i].node) {
-                    irr::core::vector3df pos = candidates[i].node->getPosition();
-                    irr::scene::IMeshSceneNode* marker = smgr_->addMeshSceneNode(cubeMesh);
-                    if (marker) {
-                        marker->setPosition(pos);
-                        // Color based on light type: yellow for zone lights, orange for object lights
-                        irr::video::SColor color = candidates[i].isZoneLight ?
-                            irr::video::SColor(255, 255, 255, 0) :  // Yellow for zone
-                            irr::video::SColor(255, 255, 128, 0);   // Orange for object
-                        marker->getMaterial(0).Lighting = false;
-                        marker->getMaterial(0).EmissiveColor = color;
-                        marker->getMaterial(0).DiffuseColor = color;
-                        lightDebugMarkers_.push_back(marker);
-                    }
-                }
-            }
-            cubeMesh->drop();
-        }
-    }
-}
-
-void IrrlichtRenderer::updateVertexAnimations(float deltaMs) {
-    if (vertexAnimatedMeshes_.empty()) {
-        return;  // Nothing to animate
-    }
-
-    for (size_t i = 0; i < vertexAnimatedMeshes_.size(); ++i) {
-        auto& vam = vertexAnimatedMeshes_[i];
-        if (!vam.mesh || !vam.animData || vam.animData->frames.empty()) {
-            continue;
-        }
-
-        vam.elapsedMs += deltaMs;
-
-        // Check if we need to advance to the next frame
-        if (vam.elapsedMs >= static_cast<float>(vam.animData->delayMs)) {
-            vam.elapsedMs = std::fmod(vam.elapsedMs, static_cast<float>(vam.animData->delayMs));
-            vam.currentFrame = (vam.currentFrame + 1) % static_cast<int>(vam.animData->frames.size());
-
-            // Skip expensive per-vertex work for non-visible meshes
-            // Frame counter is still advanced above so animation stays in sync
-            if (vam.node && !vam.node->isVisible()) {
-                continue;
-            }
-
-            // Update mesh buffer vertices with the new frame's positions
-            const VertexAnimFrame& frame = vam.animData->frames[vam.currentFrame];
-            size_t expectedVerts = frame.positions.size() / 3;
-
-            // Update each mesh buffer using vertex mapping
-            for (irr::u32 b = 0; b < vam.mesh->getMeshBufferCount(); ++b) {
-                irr::scene::IMeshBuffer* buffer = vam.mesh->getMeshBuffer(b);
-                irr::video::S3DVertex* vertices = static_cast<irr::video::S3DVertex*>(buffer->getVertices());
-                irr::u32 vertexCount = buffer->getVertexCount();
-
-                // Check if we have mapping for this buffer
-                if (b >= vam.vertexMapping.size() || vam.vertexMapping[b].size() != vertexCount) {
-                    continue;
-                }
-
-                for (irr::u32 v = 0; v < vertexCount; ++v) {
-                    size_t animIdx = vam.vertexMapping[b][v];
-                    if (animIdx == SIZE_MAX || animIdx >= expectedVerts) {
-                        continue;  // No mapping for this vertex
-                    }
-
-                    // Get new position from animation frame (EQ coordinates)
-                    // Animation positions are relative to center, add center offset
-                    float eqX = frame.positions[animIdx * 3 + 0] + vam.centerOffsetX;
-                    float eqY = frame.positions[animIdx * 3 + 1] + vam.centerOffsetY;
-                    float eqZ = frame.positions[animIdx * 3 + 2] + vam.centerOffsetZ;
-
-                    // Apply EQ->Irrlicht coordinate transform
-                    // EQ (x, y, z) Z-up -> Irrlicht (x, z, y) Y-up
-                    vertices[v].Pos.X = eqX;
-                    vertices[v].Pos.Y = eqZ;
-                    vertices[v].Pos.Z = eqY;
-                }
-
-                // Mark buffer as dirty so Irrlicht knows to re-upload it
-                buffer->setDirty(irr::scene::EBT_VERTEX);
-            }
-        }
-    }
-}
+// Dead code removed: updateObjectVisibility(), updateZoneLightVisibility(), updateObjectLights()
+// These are now handled exclusively by SimulationWorker.
 
 void IrrlichtRenderer::setupFog() {
     if (!driver_) {
@@ -2509,317 +1942,6 @@ void IrrlichtRenderer::updateHUD() {
     }
 }
 
-bool IrrlichtRenderer::loadZone(const std::string& zoneName, float progressStart, float progressEnd) {
-    if (!initialized_) {
-        LOG_ERROR(MOD_GRAPHICS, "Renderer not initialized");
-        return false;
-    }
-
-    // Start zone load timing
-    EQT::PerformanceMetrics::instance().markZoneLoadStart(zoneName);
-
-    // Helper to scale internal progress (0.0-1.0) to the caller's specified range
-    auto scaleProgress = [progressStart, progressEnd](float internalProgress) {
-        return progressStart + internalProgress * (progressEnd - progressStart);
-    };
-
-    // Show initial loading screen
-    drawLoadingScreen(scaleProgress(0.0f), L"Unloading previous zone...");
-
-    unloadZone();
-
-    // Build path to zone S3D
-    std::string zonePath = config_.eqClientPath;
-    if (!zonePath.empty() && zonePath.back() != '/' && zonePath.back() != '\\') {
-        zonePath += '/';
-    }
-    zonePath += zoneName + ".s3d";
-
-    drawLoadingScreen(scaleProgress(0.05f), L"Loading zone archive...");
-
-    EQT::PerformanceMetrics::instance().startTimer("S3D Archive Load", EQT::MetricCategory::Zoning);
-    S3DLoader loader;
-    if (!loader.loadZone(zonePath)) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to load zone: {}", loader.getError());
-        EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
-        return false;
-    }
-    EQT::PerformanceMetrics::instance().stopTimer("S3D Archive Load");
-
-    // Pump network after S3D archive load (can take several seconds on ARM)
-    if (networkTickCallback_) networkTickCallback_();
-
-    drawLoadingScreen(scaleProgress(0.30f), L"Processing zone data...");
-
-    currentZone_ = loader.getZone();
-    currentZoneName_ = zoneName;
-
-    // Notify entity renderer of zone change for zone-specific model loading
-    if (entityRenderer_) {
-        entityRenderer_->setCurrentZone(zoneName);
-    }
-
-    // Set zone data for door manager (for finding door meshes)
-    if (doorManager_) {
-        doorManager_->setZone(currentZone_);
-        if (constrainedTextureCache_) {
-            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-        }
-    }
-
-    // Sky initialization is deferred to setZoneEnvironment() which is called
-    // after loadZone() with actual sky type from server NewZone packet
-
-    // Attempt to load texture atlas if enabled
-    if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
-        drawLoadingScreen(scaleProgress(0.35f), L"Loading texture atlas...");
-        std::string atlasDir = config_.constrainedConfig.atlasPath;
-        if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
-
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-        // Create GLES2 helper for ETC1 hardware upload via EGL image sharing (DRM only).
-        // Uses eglGetCurrentDisplay() to get the EGL display from the active context,
-        // avoiding the need to include CIrrDeviceFB.h (which depends on Irrlicht internals).
-        // Not needed when using native GLES2 backend (direct glCompressedTexImage2D works).
-        if (device_->getType() == irr::EIDT_FRAMEBUFFER && !gles2Helper_) {
-            EGLDisplay eglDisplay = eglGetCurrentDisplay();
-            if (eglDisplay != EGL_NO_DISPLAY) {
-                gles2Helper_ = std::make_unique<GLES2EGLHelper>();
-                if (!gles2Helper_->init(eglDisplay)) {
-                    LOG_WARN(MOD_GRAPHICS, "GLES2 EGL helper init failed, atlas will use direct GL upload");
-                    gles2Helper_.reset();
-                }
-            }
-        }
-#endif
-
-        zoneAtlas_ = std::make_unique<TextureAtlas>();
-        std::string zoneAtlasFile = atlasDir + zoneName + ".atlas";
-        bool zoneAtlasLoaded = false;
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-        if (gles2Helper_ && device_->getType() == irr::EIDT_FRAMEBUFFER) {
-            zoneAtlasLoaded = zoneAtlas_->load(zoneAtlasFile,
-                                                gles2Helper_.get(),
-                                                eglGetCurrentContext(),
-                                                eglGetCurrentSurface(EGL_DRAW));
-        } else
-#endif
-        {
-            zoneAtlasLoaded = zoneAtlas_->load(zoneAtlasFile);
-        }
-
-        if (!zoneAtlasLoaded) {
-            LOG_INFO(MOD_GRAPHICS, "No texture atlas found at {}, using per-texture rendering", zoneAtlasFile);
-            zoneAtlas_.reset();
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Texture atlas loaded: {} pages, {} tiles",
-                     zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
-            // Pass atlas page textures to shader manager for binding during draw calls
-            if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-                std::vector<uint32_t> pageTextures;
-                for (uint16_t p = 0; p < zoneAtlas_->getPageCount(); ++p) {
-                    uint32_t tex = zoneAtlas_->getPageTexture(p);
-                    pageTextures.push_back(tex);
-                    LOG_INFO(MOD_GRAPHICS, "Zone atlas page {} -> GL tex {}", p, tex);
-                }
-                zoneShader_->setAtlasPageTextures(pageTextures);
-            }
-        }
-
-        // Load object atlas too
-        objAtlas_ = std::make_unique<TextureAtlas>();
-        std::string objAtlasFile = atlasDir + zoneName + "_obj.atlas";
-        bool objAtlasLoaded = false;
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-        if (gles2Helper_ && device_->getType() == irr::EIDT_FRAMEBUFFER) {
-            objAtlasLoaded = objAtlas_->load(objAtlasFile,
-                                              gles2Helper_.get(),
-                                              eglGetCurrentContext(),
-                                              eglGetCurrentSurface(EGL_DRAW));
-        } else
-#endif
-        {
-            objAtlasLoaded = objAtlas_->load(objAtlasFile);
-        }
-
-        if (!objAtlasLoaded) {
-            objAtlas_.reset();
-        } else if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-            // Append object atlas page textures after zone atlas pages in the shader's array.
-            // Object mesh buffers use pageIndexOffset to reference the correct pages.
-            std::vector<uint32_t> objPageTextures;
-            for (uint16_t p = 0; p < objAtlas_->getPageCount(); ++p) {
-                objPageTextures.push_back(objAtlas_->getPageTexture(p));
-            }
-            objAtlasPageOffset_ = zoneShader_->appendAtlasPageTextures(objPageTextures);
-            LOG_INFO(MOD_GRAPHICS, "Object atlas loaded: {} pages, {} tiles (page offset {})",
-                     objAtlas_->getPageCount(), objAtlas_->getTileCount(), objAtlasPageOffset_);
-        }
-    } else {
-        zoneAtlas_.reset();
-        objAtlas_.reset();
-    }
-
-    // Atlas loading uses raw GL calls that bypass the GLES2 driver's state tracking.
-    // Unbind textures so the driver re-binds correctly for subsequent 2D drawing.
-#ifdef EQT_HAS_GLES2
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glActiveTexture(GL_TEXTURE0);
-#endif
-
-    // Build zone placeholder mesh from HCMap before zone geometry (provides immediate visual context)
-    if (config_.constrainedConfig.deferredAssetLoading && collisionMap_ && collisionMap_->IsLoaded()) {
-        buildZonePlaceholder();
-    }
-
-    drawLoadingScreen(scaleProgress(0.40f), L"Creating zone geometry...");
-    EQT::PerformanceMetrics::instance().startTimer("Zone Mesh Creation", EQT::MetricCategory::Zoning);
-    // Use PVS-based culling if available (falls back to combined mesh if not)
-    createZoneMeshWithPvs();
-    EQT::PerformanceMetrics::instance().stopTimer("Zone Mesh Creation");
-
-    // Enable front-to-back sorted zone drawing for PVS zones on GLES2
-    // (Also works on desktop GL but primarily benefits tile-based GPUs like Mali 400)
-    if (usePvsCulling_ && !regionMeshNodes_.empty()) {
-#ifdef EQT_HAS_GLES2
-        manualZoneDrawEnabled_ = true;
-#else
-        manualZoneDrawEnabled_ = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
-#endif
-        if (manualZoneDrawEnabled_) {
-            // Ensure render pass timer is installed (needed for OnRenderPassPreRender hook)
-            if (smgr_ && !renderPassTimer_) {
-                renderPassTimer_ = new RenderPassTimer();
-                renderPassTimer_->setRenderer(this);
-                smgr_->setLightManager(renderPassTimer_);
-            } else if (renderPassTimer_) {
-                renderPassTimer_->setRenderer(this);
-            }
-            // Remove zone mesh nodes from scene graph — manual draw path
-            // accesses them directly via regionMeshNodes_ map.
-            for (auto& [regionIdx, node] : regionMeshNodes_) {
-                if (node && node->getParent()) { node->grab(); node->remove(); }
-            }
-            if (fallbackMeshNode_ && fallbackMeshNode_->getParent()) {
-                fallbackMeshNode_->grab(); fallbackMeshNode_->remove();
-            }
-            LOG_INFO(MOD_GRAPHICS, "Front-to-back zone sorting ENABLED ({} regions, nodes removed from graph)",
-                     regionMeshNodes_.size());
-
-            // Defer portal extraction to first gameplay frame (saves ~650ms during loading)
-            if (zoneBspTree_ && !regionBoundingBoxes_.empty()) {
-                portalBuildPending_ = true;
-                LOG_DEBUG(MOD_GRAPHICS, "Portal build deferred to progressive loading");
-            }
-        }
-    }
-
-    // Pump network after zone mesh creation (can take several seconds on ARM)
-    if (networkTickCallback_) networkTickCallback_();
-
-    if (config_.constrainedConfig.deferredAssetLoading) {
-        drawLoadingScreen(scaleProgress(0.60f), L"Indexing objects...");
-        EQT::PerformanceMetrics::instance().startTimer("Object Index", EQT::MetricCategory::Zoning);
-        indexObjectMeshes();
-        EQT::PerformanceMetrics::instance().stopTimer("Object Index");
-    } else {
-        drawLoadingScreen(scaleProgress(0.60f), L"Creating object meshes...");
-        EQT::PerformanceMetrics::instance().startTimer("Object Mesh Creation", EQT::MetricCategory::Zoning);
-        createObjectMeshes();
-        EQT::PerformanceMetrics::instance().stopTimer("Object Mesh Creation");
-    }
-
-    // Pump network after object mesh creation
-    if (networkTickCallback_) networkTickCallback_();
-
-    drawLoadingScreen(scaleProgress(0.85f), L"Setting up zone lights...");
-    EQT::PerformanceMetrics::instance().startTimer("Zone Lights Setup", EQT::MetricCategory::Zoning);
-    createZoneLights();
-    EQT::PerformanceMetrics::instance().stopTimer("Zone Lights Setup");
-
-    drawLoadingScreen(scaleProgress(0.95f), L"Configuring camera...");
-
-    // Position camera at zone center and cache bounds for runtime use
-    if (currentZone_ && currentZone_->geometry) {
-        zoneBoundsMinX_ = currentZone_->geometry->minX;
-        zoneBoundsMaxX_ = currentZone_->geometry->maxX;
-        zoneBoundsMinY_ = currentZone_->geometry->minY;
-        zoneBoundsMaxY_ = currentZone_->geometry->maxY;
-        zoneBoundsValid_ = true;
-
-        float centerX = (currentZone_->geometry->minX + currentZone_->geometry->maxX) / 2.0f;
-        float centerY = (currentZone_->geometry->minY + currentZone_->geometry->maxY) / 2.0f;
-        float maxZ = currentZone_->geometry->maxZ;
-        float heightRange = currentZone_->geometry->maxZ - currentZone_->geometry->minZ;
-        float cameraHeight = maxZ + std::max(200.0f, heightRange * 0.3f);
-
-        camera_->setPosition(irr::core::vector3df(centerX, cameraHeight, centerY));
-        camera_->setTarget(irr::core::vector3df(centerX, maxZ, centerY));
-
-        LOG_INFO(MOD_GRAPHICS, "Zone loaded: {}", zoneName);
-        LOG_INFO(MOD_GRAPHICS, "Vertices: {}", currentZone_->geometry->vertices.size());
-        LOG_INFO(MOD_GRAPHICS, "Triangles: {}", currentZone_->geometry->triangles.size());
-        LOG_INFO(MOD_GRAPHICS, "Objects: {}", currentZone_->objects.size());
-        LOG_INFO(MOD_GRAPHICS, "Lights: {}", currentZone_->lights.size());
-        LOG_DEBUG(MOD_GRAPHICS, "Zone bounds (EQ coords): X[{} to {}] Y[{} to {}] Z[{} to {}]",
-                  currentZone_->geometry->minX, currentZone_->geometry->maxX,
-                  currentZone_->geometry->minY, currentZone_->geometry->maxY,
-                  currentZone_->geometry->minZ, currentZone_->geometry->minZ);
-    }
-
-    // Setup fog based on zone size
-    setupFog();
-
-    // NOTE: setupZoneCollision() is NOT called here — it runs later in
-    // eq.cpp::LoadZoneGraphics() after doors are created, ensuring collision
-    // includes door geometry and selectors are not created/destroyed twice.
-
-    // Tree wind init deferred to advanceDeferredInit() to reduce loading time
-
-    // Object texture preload removed — constrained cache loads textures on demand
-    // during door/object mesh building, avoiding upfront loading screen time.
-
-    // Rebuild any doors that were created with placeholder meshes before zone data loaded.
-    if (doorManager_) {
-        doorManager_->rebuildPlaceholderDoors();
-    }
-
-    // Release raw texture pixel data now that all zone meshes, objects, trees,
-    // and rebuilt doors have their textures uploaded to the GPU/constrained cache.
-    if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_ && !constrainedMeshCache_) {
-        size_t freed = currentZone_->releaseTexturePixelData();
-        LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
-                 freed / (1024.0f * 1024.0f));
-    }
-
-    // Initialize weather system for this zone (lightweight, no collision needed)
-    if (weatherSystem_) {
-        weatherSystem_->setWeatherFromZone(zoneName);
-    }
-
-    // NOTE: Particles, boids, tumbleweeds, detail objects, and display settings
-    // are deferred to advanceDeferredInit() which steps one init per GREEN frame
-    // after zoneReady_. This avoids blocking zone loading with optional
-    // visual systems and ensures collision selectors exist before use.
-
-    drawLoadingScreen(scaleProgress(1.0f), L"Zone loaded!");
-
-    // Log texture cache stats (cache was frozen at start of zone load)
-    if (constrainedTextureCache_) {
-        LOG_INFO(MOD_GRAPHICS, "Constrained texture cache - {} textures, {} bytes used (limit: {} bytes)",
-                 constrainedTextureCache_->getTextureCount(),
-                 constrainedTextureCache_->getCurrentUsage(),
-                 constrainedTextureCache_->getMemoryLimit());
-    }
-
-    EQT::PerformanceMetrics::instance().markZoneLoadEnd();
-
-    return true;
-}
-
 void IrrlichtRenderer::unloadZone() {
     // Wait for background zone load thread if still running
     if (zoneLoadThread_ && zoneLoadThread_->joinable()) {
@@ -2982,8 +2104,6 @@ void IrrlichtRenderer::unloadZone() {
     usePvsCulling_ = false;
     zoneBspTree_.reset();
     currentPvsRegion_ = SIZE_MAX;
-    lastLightPvsRegion_ = SIZE_MAX;
-    lastObjectPvsRegion_ = SIZE_MAX;
 
     // Reset manual zone draw state
     manualZoneDrawEnabled_ = false;
@@ -2994,7 +2114,6 @@ void IrrlichtRenderer::unloadZone() {
     portalOcclusionEligible_ = false;
     portalBuildPending_ = false;
     portalCacheDirty_ = true;
-    lastPortalRegion_ = SIZE_MAX;
     regionNeighbors_.clear();
 
     // Clear constrained mesh cache
@@ -3696,11 +2815,8 @@ void IrrlichtRenderer::advanceBspPreload() {
         doorManager_->recomputeAllBspRegions();
     }
 
-    // Signal PVS recalculation on next tier2 frame.
-    // Do NOT reset lastObjectPvsRegion_/lastLightPvsRegion_/lastLightPlayerPos_ —
-    // that would bypass PVS region gates and movement gates, forcing all visibility
-    // functions to do full recalculation on the same frame (cold-cache storm).
-    // forcePvsUpdate_ already resets the BSP lookup statics in updatePvsVisibility.
+    // Signal PVS recalculation on next frame.
+    // Do NOT reset lastLightPlayerPos_ — that would force full recalculation.
     forcePvsUpdate_ = true;
 
     LOG_INFO(MOD_GRAPHICS, "BSP preload installed: {} regions, PVS culling active",
@@ -5023,7 +4139,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         // Build a batch of region meshes per GREEN frame
         auto wldLoader = currentZone_->wldLoader;
         auto bspTree = wldLoader->getBspTree();
-        const size_t BATCH_SIZE = 50;
+        const size_t BATCH_SIZE = 10;
 
         ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
         if (constrainedTextureCache_)
@@ -5189,7 +4305,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         zoneLightNames_.clear();
         zoneLightAnimElapsed_.clear();
         zoneLightAnimFrame_.clear();
-        lastLightPvsRegion_ = SIZE_MAX;  // Force first visibility pass after light recreation
 
         if (currentZone_ && !currentZone_->lights.empty()) {
             for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
@@ -5595,8 +4710,8 @@ void IrrlichtRenderer::createZoneMesh() {
                 zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
 
-            // NOTE: Collision detection is now set up in setupZoneCollision() which should
-            // be called AFTER objects and doors are created to include them in collision.
+            // NOTE: Collision detection is set up progressively via setupMinimalZoneCollision()
+            // and addRegionToCollision() during the background zone loading phases.
 
             // Initialize animated texture manager for zone textures
             animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
@@ -5616,940 +4731,6 @@ void IrrlichtRenderer::createZoneMesh() {
             }
         }
         mesh->drop();
-    }
-}
-
-void IrrlichtRenderer::createZoneMeshWithPvs() {
-    if (!currentZone_ || !currentZone_->wldLoader) {
-        LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no zone or WLD loader");
-        createZoneMesh();  // Fall back to combined mesh
-        return;
-    }
-
-    auto wldLoader = currentZone_->wldLoader;
-    auto bspTree = wldLoader->getBspTree();
-
-    if (!bspTree || bspTree->regions.empty()) {
-        LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no BSP tree or regions");
-        createZoneMesh();
-        return;
-    }
-
-    if (!wldLoader->hasPvsData()) {
-        LOG_INFO(MOD_GRAPHICS, "Zone has no PVS data, using combined mesh");
-        createZoneMesh();
-        return;
-    }
-
-    // Clean up existing mesh nodes
-    if (zoneMeshNode_) {
-        zoneMeshNode_->remove();
-        zoneMeshNode_ = nullptr;
-    }
-
-    for (auto& [regionIdx, node] : regionMeshNodes_) {
-        if (node) {
-            if (node->getParent()) node->remove(); else node->drop();
-        }
-    }
-    regionMeshNodes_.clear();
-    regionBoundingBoxes_.clear();
-
-    if (fallbackMeshNode_) {
-        if (fallbackMeshNode_->getParent()) fallbackMeshNode_->remove(); else fallbackMeshNode_->drop();
-        fallbackMeshNode_ = nullptr;
-    }
-
-    // Store BSP tree for visibility queries
-    zoneBspTree_ = bspTree;
-    usePvsCulling_ = true;
-    currentPvsRegion_ = SIZE_MAX;
-
-    // Pass BSP tree and frustum culler to entity renderer and door manager
-    if (entityRenderer_) {
-        entityRenderer_->setBspTree(bspTree);
-        entityRenderer_->setFrustumCuller(frustumCuller_.get());
-        entityRenderer_->setOcclusionCuller(occlusionCuller_.get());
-    }
-    if (doorManager_) {
-        doorManager_->setBspTree(bspTree.get());
-        doorManager_->setPvsRegion(currentPvsRegion_);
-        doorManager_->setFrustumCuller(frustumCuller_.get());
-    }
-
-    ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
-
-    // Pass constrained texture cache if in constrained mode
-    if (constrainedTextureCache_) {
-        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
-    }
-    // Pass GLSL shader material types if available
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                       zoneShader_->getMaterialTypeAlphaTest());
-    }
-    // Pass atlas shader material types if available
-    if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
-                                             zoneShader_->getMaterialTypeAtlasAlpha());
-    }
-
-    // Count regions with geometry for progress tracking
-    size_t regionsWithGeometry = 0;
-    for (size_t i = 0; i < bspTree->regions.size(); ++i) {
-        if (wldLoader->getGeometryForRegion(i)) {
-            regionsWithGeometry++;
-        }
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "Creating PVS mesh with {} regions ({} with geometry)",
-        bspTree->regions.size(), regionsWithGeometry);
-
-    // Initialize constrained mesh cache if we have a mesh memory budget
-    if (config_.constrainedConfig.meshMemoryBytes > 0) {
-        constrainedMeshCache_ = std::make_unique<ConstrainedMeshCache>(
-            config_.constrainedConfig.meshMemoryBytes);
-        LOG_INFO(MOD_GRAPHICS, "Lazy mesh loading enabled: {} byte budget",
-            config_.constrainedConfig.meshMemoryBytes);
-    }
-
-    if (constrainedMeshCache_) {
-        // LAZY MODE: Only compute bounding boxes, register regions as unloaded.
-        // Mesh building happens per-frame in processFrameLazyLoad().
-        size_t registeredRegions = 0;
-        for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
-            auto geom = wldLoader->getGeometryForRegion(regionIdx);
-            if (!geom || geom->vertices.empty()) continue;
-
-            // Compute world-space bounding box from vertex data (same as eager path)
-            float vMinX = std::numeric_limits<float>::max();
-            float vMinY = vMinX, vMinZ = vMinX;
-            float vMaxX = std::numeric_limits<float>::lowest();
-            float vMaxY = vMaxX, vMaxZ = vMaxX;
-            for (const auto& v : geom->vertices) {
-                float wx = geom->centerX + v.x;
-                float wy = geom->centerY + v.y;
-                float wz = geom->centerZ + v.z;
-                if (wx < vMinX) vMinX = wx;
-                if (wy < vMinY) vMinY = wy;
-                if (wz < vMinZ) vMinZ = wz;
-                if (wx > vMaxX) vMaxX = wx;
-                if (wy > vMaxY) vMaxY = wy;
-                if (wz > vMaxZ) vMaxZ = wz;
-            }
-            irr::core::aabbox3df worldBounds;
-            worldBounds.MinEdge.X = vMinX;
-            worldBounds.MinEdge.Y = vMinY;
-            worldBounds.MinEdge.Z = vMinZ;
-            worldBounds.MaxEdge.X = vMaxX;
-            worldBounds.MaxEdge.Y = vMaxY;
-            worldBounds.MaxEdge.Z = vMaxZ;
-            regionBoundingBoxes_[regionIdx] = worldBounds;
-
-            // Register in mesh cache as unloaded, set node to nullptr
-            constrainedMeshCache_->registerRegion(regionIdx);
-            regionMeshNodes_[regionIdx] = nullptr;
-            registeredRegions++;
-        }
-
-        LOG_INFO(MOD_GRAPHICS, "Lazy mode: registered {} regions (no meshes built yet)", registeredRegions);
-    } else {
-    // EAGER MODE: Build all region meshes immediately (original path)
-    bool useZoneAtlas = zoneAtlas_ && zoneAtlas_->isLoaded() &&
-                        zoneShader_ && zoneShader_->isAtlasAvailable();
-    LOG_INFO(MOD_GRAPHICS, "Zone mesh rendering path: {}",
-             useZoneAtlas ? "ATLAS (ETC1 batched)" : "PER-TEXTURE (constrained cache)");
-
-    size_t createdMeshes = 0;
-    for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
-        auto geom = wldLoader->getGeometryForRegion(regionIdx);
-        if (!geom || geom->vertices.empty()) {
-            continue;
-        }
-
-        irr::scene::IMesh* mesh = nullptr;
-
-        if (!currentZone_->textures.empty() && !geom->textureNames.empty()) {
-            // Use atlas batching if atlas is loaded and atlas shaders are available
-            if (useZoneAtlas) {
-                mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
-            } else {
-                mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
-            }
-        } else {
-            mesh = builder.buildColoredMesh(*geom);
-        }
-
-        if (mesh) {
-            // Use regular mesh scene node (not octree - regions are already spatial partitions)
-            auto* node = smgr_->addMeshSceneNode(mesh);
-            if (node) {
-                // Apply mesh center offset to position the region correctly
-                // EQ coords: (x, y, z) -> Irrlicht coords: (x, z, y)
-                node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
-
-                // Log first 10 region mesh positions for debugging
-                if (createdMeshes < 10) {
-                    LOG_DEBUG(MOD_GRAPHICS, "Region {} mesh: EQ center=({:.1f},{:.1f},{:.1f}) bounds=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f})",
-                        regionIdx, geom->centerX, geom->centerY, geom->centerZ,
-                        geom->minX, geom->minY, geom->minZ,
-                        geom->maxX, geom->maxY, geom->maxZ);
-                }
-
-                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                    node->getMaterial(i).Lighting = lightingEnabled_;
-                    node->getMaterial(i).BackfaceCulling = false;
-                    node->getMaterial(i).GouraudShading = true;
-                    node->getMaterial(i).FogEnable = fogEnabled_;
-                    node->getMaterial(i).Wireframe = wireframeMode_;
-                    node->getMaterial(i).NormalizeNormals = true;
-                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-                }
-
-                regionMeshNodes_[regionIdx] = node;
-
-                // Upload static VBOs for zone geometry (GLES2 only)
-                uploadMeshHardwareBuffers(node);
-
-                // Compute world-space bounding box from actual vertex data (EQ coords).
-                // WLD fragment headers often store zero bounds for region meshes,
-                // so we compute from vertices instead. Vertices are relative to center.
-                if (!geom->vertices.empty()) {
-                    float vMinX = std::numeric_limits<float>::max();
-                    float vMinY = vMinX, vMinZ = vMinX;
-                    float vMaxX = std::numeric_limits<float>::lowest();
-                    float vMaxY = vMaxX, vMaxZ = vMaxX;
-                    for (const auto& v : geom->vertices) {
-                        float wx = geom->centerX + v.x;
-                        float wy = geom->centerY + v.y;
-                        float wz = geom->centerZ + v.z;
-                        if (wx < vMinX) vMinX = wx;
-                        if (wy < vMinY) vMinY = wy;
-                        if (wz < vMinZ) vMinZ = wz;
-                        if (wx > vMaxX) vMaxX = wx;
-                        if (wy > vMaxY) vMaxY = wy;
-                        if (wz > vMaxZ) vMaxZ = wz;
-                    }
-                    irr::core::aabbox3df worldBounds;
-                    worldBounds.MinEdge.X = vMinX;
-                    worldBounds.MinEdge.Y = vMinY;
-                    worldBounds.MinEdge.Z = vMinZ;
-                    worldBounds.MaxEdge.X = vMaxX;
-                    worldBounds.MaxEdge.Y = vMaxY;
-                    worldBounds.MaxEdge.Z = vMaxZ;
-                    regionBoundingBoxes_[regionIdx] = worldBounds;
-                }
-
-                createdMeshes++;
-            }
-            mesh->drop();
-        }
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "Created {} region mesh nodes for PVS culling", createdMeshes);
-    } // end eager mode
-
-    // Extract occluder triangles for software occlusion culling
-    if (occlusionCuller_) {
-        occlusionCuller_->clearOccluders();
-        const auto& occConfig = occlusionCuller_->getConfig();
-        size_t totalOccluders = 0;
-        size_t regionsWithOccluders = 0;
-
-        for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
-            auto geom = wldLoader->getGeometryForRegion(regionIdx);
-            if (!geom || geom->vertices.empty() || geom->triangles.empty()) continue;
-
-            // Collect candidate occluder triangles for this region
-            std::vector<OccluderTriangle> candidates;
-            for (const auto& tri : geom->triangles) {
-                // Skip invisible textures (water surfaces, invisible walls)
-                if (tri.textureIndex < geom->textureInvisible.size() &&
-                    geom->textureInvisible[tri.textureIndex]) {
-                    continue;
-                }
-
-                if (tri.v1 >= geom->vertices.size() ||
-                    tri.v2 >= geom->vertices.size() ||
-                    tri.v3 >= geom->vertices.size()) continue;
-
-                const auto& vert0 = geom->vertices[tri.v1];
-                const auto& vert1 = geom->vertices[tri.v2];
-                const auto& vert2 = geom->vertices[tri.v3];
-
-                // Compute world-space vertices (add center offset)
-                float w0[3] = {vert0.x + geom->centerX, vert0.y + geom->centerY, vert0.z + geom->centerZ};
-                float w1[3] = {vert1.x + geom->centerX, vert1.y + geom->centerY, vert1.z + geom->centerZ};
-                float w2[3] = {vert2.x + geom->centerX, vert2.y + geom->centerY, vert2.z + geom->centerZ};
-
-                // Compute edge vectors
-                float e1[3] = {w1[0]-w0[0], w1[1]-w0[1], w1[2]-w0[2]};
-                float e2[3] = {w2[0]-w0[0], w2[1]-w0[1], w2[2]-w0[2]};
-
-                // Cross product (normal)
-                float nx = e1[1]*e2[2] - e1[2]*e2[1];
-                float ny = e1[2]*e2[0] - e1[0]*e2[2];
-                float nz = e1[0]*e2[1] - e1[1]*e2[0];
-
-                // Area = 0.5 * |cross product|
-                float area = 0.5f * std::sqrt(nx*nx + ny*ny + nz*nz);
-                if (area < occConfig.minOccluderArea) continue;
-
-                // Normal filter: keep walls (horizontal normal length > 0.5) and floors/ceilings (|nz| > 0.7)
-                float normalLen = std::sqrt(nx*nx + ny*ny + nz*nz);
-                if (normalLen < 0.001f) continue;
-                float invNLen = 1.0f / normalLen;
-                float nnx = nx * invNLen, nny = ny * invNLen, nnz = nz * invNLen;
-                float horizontalNormal = std::sqrt(nnx*nnx + nny*nny);
-                bool isWall = (horizontalNormal > 0.5f);
-                bool isFloorCeiling = (std::abs(nnz) > 0.7f);
-                if (!isWall && !isFloorCeiling) continue;
-
-                OccluderTriangle occ;
-                occ.v0[0] = w0[0]; occ.v0[1] = w0[1]; occ.v0[2] = w0[2];
-                occ.v1[0] = w1[0]; occ.v1[1] = w1[1]; occ.v1[2] = w1[2];
-                occ.v2[0] = w2[0]; occ.v2[1] = w2[1]; occ.v2[2] = w2[2];
-                occ.area = area;
-                candidates.push_back(occ);
-            }
-
-            // Sort by area descending, keep top N
-            if (candidates.size() > static_cast<size_t>(occConfig.maxTrianglesPerRegion)) {
-                std::sort(candidates.begin(), candidates.end(),
-                    [](const OccluderTriangle& a, const OccluderTriangle& b) {
-                        return a.area > b.area;
-                    });
-                candidates.resize(occConfig.maxTrianglesPerRegion);
-            }
-
-            if (!candidates.empty()) {
-                totalOccluders += candidates.size();
-                regionsWithOccluders++;
-                occlusionCuller_->setRegionOccluders(regionIdx, std::move(candidates));
-            }
-        }
-
-        LOG_INFO(MOD_GRAPHICS, "Extracted {} occluder triangles from {} regions for software occlusion culling",
-            totalOccluders, regionsWithOccluders);
-    }
-
-    // Check for geometry not associated with any BSP region (fallback geometry)
-    // This geometry should always be visible
-    std::set<ZoneGeometry*> referencedGeometries;
-    for (size_t regionIdx = 0; regionIdx < bspTree->regions.size(); ++regionIdx) {
-        auto geom = wldLoader->getGeometryForRegion(regionIdx);
-        if (geom) {
-            referencedGeometries.insert(geom.get());
-        }
-    }
-
-    // Count unreferenced geometries
-    const auto& allGeometries = wldLoader->getGeometries();
-    size_t unreferencedCount = 0;
-    size_t unreferencedVerts = 0;
-    for (const auto& geom : allGeometries) {
-        if (referencedGeometries.find(geom.get()) == referencedGeometries.end()) {
-            unreferencedCount++;
-            unreferencedVerts += geom->vertices.size();
-        }
-    }
-
-    if (unreferencedCount > 0) {
-        LOG_WARN(MOD_GRAPHICS, "PVS: {} geometries ({} vertices) not referenced by any BSP region - creating fallback mesh",
-            unreferencedCount, unreferencedVerts);
-
-        // Build a combined mesh from unreferenced geometries
-        auto fallbackGeom = std::make_shared<ZoneGeometry>();
-        uint32_t vertexOffset = 0;
-
-        for (const auto& geom : allGeometries) {
-            if (referencedGeometries.find(geom.get()) == referencedGeometries.end()) {
-                // Add vertices with center offset applied (world coordinates)
-                for (const auto& v : geom->vertices) {
-                    Vertex3D worldV = v;
-                    worldV.x += geom->centerX;
-                    worldV.y += geom->centerY;
-                    worldV.z += geom->centerZ;
-                    fallbackGeom->vertices.push_back(worldV);
-                }
-
-                // Add triangles with adjusted indices
-                for (const auto& tri : geom->triangles) {
-                    Triangle t = tri;
-                    t.v1 += vertexOffset;
-                    t.v2 += vertexOffset;
-                    t.v3 += vertexOffset;
-                    fallbackGeom->triangles.push_back(t);
-                }
-
-                // Copy texture info
-                for (const auto& texName : geom->textureNames) {
-                    fallbackGeom->textureNames.push_back(texName);
-                }
-
-                vertexOffset += static_cast<uint32_t>(geom->vertices.size());
-            }
-        }
-
-        // Create the fallback mesh node (always visible)
-        if (!fallbackGeom->vertices.empty()) {
-            irr::scene::IMesh* fallbackMesh = nullptr;
-            if (!currentZone_->textures.empty() && !fallbackGeom->textureNames.empty()) {
-                fallbackMesh = builder.buildTexturedMesh(*fallbackGeom, currentZone_->textures);
-            } else {
-                fallbackMesh = builder.buildColoredMesh(*fallbackGeom);
-            }
-
-            if (fallbackMesh) {
-                fallbackMeshNode_ = smgr_->addMeshSceneNode(fallbackMesh);
-                if (fallbackMeshNode_) {
-                    // Fallback geometry is already in world coords, position at origin
-                    fallbackMeshNode_->setPosition(irr::core::vector3df(0, 0, 0));
-                    fallbackMeshNode_->setVisible(true);  // Always visible
-
-                    for (irr::u32 i = 0; i < fallbackMeshNode_->getMaterialCount(); ++i) {
-                        fallbackMeshNode_->getMaterial(i).Lighting = lightingEnabled_;
-                        fallbackMeshNode_->getMaterial(i).BackfaceCulling = false;
-                    }
-
-                    // Upload static VBOs for fallback geometry (GLES2 only)
-                    uploadMeshHardwareBuffers(fallbackMeshNode_);
-
-                    LOG_INFO(MOD_GRAPHICS, "Created fallback mesh with {} vertices, {} triangles",
-                        fallbackGeom->vertices.size(), fallbackGeom->triangles.size());
-                }
-                fallbackMesh->drop();
-            }
-        }
-    } else {
-        LOG_INFO(MOD_GRAPHICS, "All {} geometries are referenced by BSP regions", allGeometries.size());
-    }
-
-    // Initialize animated texture manager for water and other animated textures
-    if (currentZone_->geometry) {
-        animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
-
-        // Initialize with zone geometry for WLD-defined animations
-        int animCount = animatedTextureManager_->initialize(
-            *currentZone_->geometry, currentZone_->textures, nullptr);
-
-        // Auto-detect water texture animations by naming pattern (water01, water02, w1, w2, etc.)
-        int waterAnimCount = animatedTextureManager_->detectWaterAnimations(
-            currentZone_->textures, nullptr);
-        animCount += waterAnimCount;
-
-        if (animCount > 0) {
-            LOG_DEBUG(MOD_GRAPHICS, "PVS: Initialized {} animated textures ({} water auto-detected)",
-                      animCount, waterAnimCount);
-
-            // Register all region mesh nodes for animated texture updates
-            for (auto& [regionIdx, node] : regionMeshNodes_) {
-                if (node) {
-                    animatedTextureManager_->addSceneNode(node);
-                }
-            }
-            if (fallbackMeshNode_) {
-                animatedTextureManager_->addSceneNode(fallbackMeshNode_);
-            }
-        }
-    }
-}
-
-void IrrlichtRenderer::updatePvsVisibility() {
-    // DEBUG: Set to true to disable PVS culling and show all region meshes
-    static bool disablePvsForDebug = false;
-    if (disablePvsForDebug) {
-        // Show all region meshes for debugging
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (node) {
-                node->setVisible(true);
-            }
-        }
-        return;
-    }
-
-    if (!usePvsCulling_ || !zoneBspTree_) {
-        return;
-    }
-
-    // Player position for BSP/PVS lookup (which region is the player in)
-    float camX = playerX_;
-    float camY = playerY_;
-    float camZ = playerZ_;
-
-    // Actual camera position for occlusion culler (projection origin)
-    float occCamX = playerX_, occCamY = playerY_, occCamZ = playerZ_;
-    if (cameraController_) {
-        cameraController_->getPositionEQ(occCamX, occCamY, occCamZ);
-    }
-
-    // Cache BSP lookup - only recompute if position changed significantly (>5 units)
-    static float lastBspX = -99999.0f, lastBspY = -99999.0f, lastBspZ = -99999.0f;
-    static std::shared_ptr<EQT::Graphics::BspRegion> cachedRegion;
-    static size_t cachedRegionIdx = SIZE_MAX;
-
-    // Check if we need to force update (e.g., render distance changed)
-    if (forcePvsUpdate_) {
-        // Reset all static tracking variables to force recalculation
-        lastBspX = -99999.0f;
-        lastBspY = -99999.0f;
-        lastBspZ = -99999.0f;
-        cachedRegion = nullptr;
-        cachedRegionIdx = SIZE_MAX;
-        portalCacheDirty_ = true;  // Also invalidate portal computation cache
-        forcePvsUpdate_ = false;
-        LOG_DEBUG(MOD_GRAPHICS, "Forcing PVS visibility update due to render distance change");
-    }
-
-    float dx = camX - lastBspX;
-    float dy = camY - lastBspY;
-    float dz = camZ - lastBspZ;
-    float distSq = dx*dx + dy*dy + dz*dz;
-
-    size_t newRegionIdx = SIZE_MAX;
-    std::shared_ptr<EQT::Graphics::BspRegion> region;
-    if (distSq > 25.0f) {  // 5 units squared
-        // Position changed enough, do BSP lookup
-        newRegionIdx = zoneBspTree_->findRegionIndexForPoint(camX, camY, camZ);
-        if (newRegionIdx != SIZE_MAX && newRegionIdx < zoneBspTree_->regions.size()) {
-            region = zoneBspTree_->regions[newRegionIdx];
-        }
-        cachedRegion = region;
-        cachedRegionIdx = newRegionIdx;
-        lastBspX = camX;
-        lastBspY = camY;
-        lastBspZ = camZ;
-    } else {
-        // Use cached result
-        region = cachedRegion;
-        newRegionIdx = cachedRegionIdx;
-    }
-
-    // Always update currentPvsRegion_ — needed by portal entity culling even during
-    // placeholder mode when regionMeshNodes_ is empty (no S3D zone geometry yet).
-    bool regionChanged = (newRegionIdx != currentPvsRegion_);
-    currentPvsRegion_ = newRegionIdx;
-
-    // No zone mesh nodes to cull — BSP region lookup above is all we need.
-    // Portal entity culling uses currentPvsRegion_ set above.
-    if (regionMeshNodes_.empty()) {
-        return;
-    }
-
-    // Clear lazy load state for this frame
-    if (constrainedMeshCache_) {
-        meshLoadQueue_.clear();
-        protectedRegions_.clear();
-    }
-
-    // If camera is outside all regions or no PVS data, skip PVS but still apply distance + frustum culling
-    if (newRegionIdx == SIZE_MAX || region->visibleRegions.empty()) {
-        size_t visibleCount = 0;
-        size_t hiddenByDistCount = 0;
-        size_t hiddenByFrustumCount = 0;
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            // Distance culling (works on bounding boxes regardless of node state)
-            bool inRenderDistance = true;
-            float distToRegion = 0.0f;
-            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-            if (bboxIt != regionBoundingBoxes_.end()) {
-                const auto& bbox = bboxIt->second;
-                float closestX = std::max(bbox.MinEdge.X, std::min(camX, bbox.MaxEdge.X));
-                float closestY = std::max(bbox.MinEdge.Y, std::min(camY, bbox.MaxEdge.Y));
-                float closestZ = std::max(bbox.MinEdge.Z, std::min(camZ, bbox.MaxEdge.Z));
-                float ddx = camX - closestX;
-                float ddy = camY - closestY;
-                float ddz = camZ - closestZ;
-                distToRegion = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-                inRenderDistance = (distToRegion <= renderDistance_);
-            }
-
-            if (!inRenderDistance) {
-                if (node) node->setVisible(false);
-                hiddenByDistCount++;
-                continue;
-            }
-
-            // Frustum culling (region bboxes are in EQ Z-up coords, same as frustum)
-            bool inFrustum = true;
-            if (frustumCuller_ && frustumCuller_->isEnabled() && bboxIt != regionBoundingBoxes_.end()) {
-                const auto& bbox = bboxIt->second;
-                if (!frustumCuller_->testAABB(
-                        bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                        bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
-                    if (node) node->setVisible(false);
-                    hiddenByFrustumCount++;
-                    inFrustum = false;
-                }
-            }
-
-            if (!inFrustum) continue;
-
-            // Region should be visible
-            if (constrainedMeshCache_) {
-                protectedRegions_.insert(regionIdx);
-            }
-
-            if (node) {
-                node->setVisible(true);
-                if (constrainedMeshCache_) constrainedMeshCache_->touch(regionIdx);
-            } else if (constrainedMeshCache_) {
-                // Visible but not loaded — queue for lazy loading
-                meshLoadQueue_.push_back({regionIdx, distToRegion});
-                constrainedMeshCache_->cacheMiss();
-            }
-            visibleCount++;
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS: outside BSP/no PVS data -> {} visible, {} dist-culled, {} frustum-culled (renderDist={})",
-            visibleCount, hiddenByDistCount, hiddenByFrustumCount, renderDistance_);
-
-        // Sort load queue by distance (closest first)
-        if (constrainedMeshCache_ && !meshLoadQueue_.empty()) {
-            std::sort(meshLoadQueue_.begin(), meshLoadQueue_.end(),
-                [](const MeshLoadEntry& a, const MeshLoadEntry& b) {
-                    return a.distance < b.distance;
-                });
-        }
-
-        // Build sorted draw list for manual zone rendering (no-PVS fallback path)
-        if (manualZoneDrawEnabled_) {
-            sortedZoneDrawList_.clear();
-            sortedZoneDrawList_.reserve(visibleCount);
-            for (auto& [rIdx, rNode] : regionMeshNodes_) {
-                if (!rNode || !rNode->isVisible()) continue;
-                float dSq = 0.0f;
-                auto bbIt = regionBoundingBoxes_.find(rIdx);
-                if (bbIt != regionBoundingBoxes_.end()) {
-                    const auto& bb = bbIt->second;
-                    float cx = std::max(bb.MinEdge.X, std::min(camX, bb.MaxEdge.X));
-                    float cy = std::max(bb.MinEdge.Y, std::min(camY, bb.MaxEdge.Y));
-                    float cz = std::max(bb.MinEdge.Z, std::min(camZ, bb.MaxEdge.Z));
-                    float ex = camX - cx, ey = camY - cy, ez = camZ - cz;
-                    dSq = ex*ex + ey*ey + ez*ez;
-                }
-                sortedZoneDrawList_.push_back({rIdx, dSq, rNode});
-                rNode->setVisible(false);
-            }
-            std::sort(sortedZoneDrawList_.begin(), sortedZoneDrawList_.end(),
-                [](const SortedRegionEntry& a, const SortedRegionEntry& b) {
-                    return a.distanceSq < b.distanceSq;
-                });
-            if (fallbackMeshNode_) fallbackMeshNode_->setVisible(false);
-        }
-
-        return;
-    }
-
-    // Log PVS array details for debugging (only when region changes)
-    if (regionChanged) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} has visibleRegions.size()={}, regionMeshNodes_.size()={}",
-            newRegionIdx, region->visibleRegions.size(), regionMeshNodes_.size());
-
-        // Count how many regions the PVS says are visible
-        size_t pvsVisibleCount = 0;
-        for (size_t i = 0; i < region->visibleRegions.size(); ++i) {
-            if (region->visibleRegions[i]) pvsVisibleCount++;
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "PVS debug: region {} PVS marks {} regions as visible out of {}",
-            newRegionIdx, pvsVisibleCount, region->visibleRegions.size());
-    }
-
-    // Update visibility based on PVS + distance + frustum culling
-    // Zone geometry is culled if ANY of these fail:
-    //   1. PVS says it's not visible from current region (occlusion culling)
-    //   2. Nearest edge of region bounding box is beyond render distance
-    //   3. Region bounding box is outside the camera frustum
-    size_t visibleCount = 0;
-    size_t hiddenByPvsCount = 0;
-    size_t hiddenByDistCount = 0;
-    size_t hiddenByFrustumCount = 0;
-    size_t outOfRangeCount = 0;
-
-    for (auto& [regionIdx, node] : regionMeshNodes_) {
-        // 1. Check PVS (cheapest - simple array lookup)
-        bool pvsVisible = false;
-        if (regionIdx == newRegionIdx) {
-            pvsVisible = true;  // Always visible to self
-        } else if (regionIdx < region->visibleRegions.size()) {
-            pvsVisible = region->visibleRegions[regionIdx];
-        } else {
-            outOfRangeCount++;
-        }
-
-        if (!pvsVisible) {
-            if (node) node->setVisible(false);
-            hiddenByPvsCount++;
-            continue;
-        }
-
-        // 2. Check distance to nearest edge of region bounding box (EQ coords)
-        bool inRenderDistance = true;
-        float distToRegion = 0.0f;
-        auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-        if (bboxIt != regionBoundingBoxes_.end()) {
-            const auto& bbox = bboxIt->second;
-            float closestX = std::max(bbox.MinEdge.X, std::min(camX, bbox.MaxEdge.X));
-            float closestY = std::max(bbox.MinEdge.Y, std::min(camY, bbox.MaxEdge.Y));
-            float closestZ = std::max(bbox.MinEdge.Z, std::min(camZ, bbox.MaxEdge.Z));
-            float ddx = camX - closestX;
-            float ddy = camY - closestY;
-            float ddz = camZ - closestZ;
-            distToRegion = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-            inRenderDistance = (distToRegion <= renderDistance_);
-        }
-
-        if (!inRenderDistance) {
-            if (node) node->setVisible(false);
-            hiddenByDistCount++;
-            continue;
-        }
-
-        // 3. Frustum culling (region bboxes are in EQ Z-up coords, same as frustum)
-        if (frustumCuller_ && frustumCuller_->isEnabled() && bboxIt != regionBoundingBoxes_.end()) {
-            const auto& bbox = bboxIt->second;
-            if (!frustumCuller_->testAABB(
-                    bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                    bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
-                if (node) node->setVisible(false);
-                hiddenByFrustumCount++;
-                continue;
-            }
-        }
-
-        // Region should be visible
-        if (constrainedMeshCache_) {
-            protectedRegions_.insert(regionIdx);
-        }
-
-        if (node) {
-            node->setVisible(true);
-            if (constrainedMeshCache_) constrainedMeshCache_->touch(regionIdx);
-        } else if (constrainedMeshCache_) {
-            // Visible but not loaded — queue for lazy loading
-            meshLoadQueue_.push_back({regionIdx, distToRegion});
-            constrainedMeshCache_->cacheMiss();
-        }
-        visibleCount++;
-    }
-
-    // Buffer ring: protect PVS neighbors of current region (prevent pop-in on movement)
-    if (constrainedMeshCache_ && region && !region->visibleRegions.empty()) {
-        for (size_t i = 0; i < region->visibleRegions.size(); ++i) {
-            if (region->visibleRegions[i]) {
-                protectedRegions_.insert(i);
-                if (constrainedMeshCache_->isLoaded(i))
-                    constrainedMeshCache_->touch(i);
-            }
-        }
-    }
-
-    // Sort load queue: current region first, then by distance
-    if (constrainedMeshCache_ && !meshLoadQueue_.empty()) {
-        std::sort(meshLoadQueue_.begin(), meshLoadQueue_.end(),
-            [this](const MeshLoadEntry& a, const MeshLoadEntry& b) {
-                if (a.regionIdx == currentPvsRegion_) return true;
-                if (b.regionIdx == currentPvsRegion_) return false;
-                return a.distance < b.distance;
-            });
-    }
-
-    // 4. Software occlusion culling pass
-    // After PVS + distance + frustum, test remaining visible regions against a CPU depth buffer
-    // populated by rasterizing nearby wall triangles.
-    size_t hiddenByOcclusionCount = 0;
-    auto occStart = std::chrono::steady_clock::now();
-
-    if (occlusionCuller_ && occlusionCuller_->isEnabled() && occlusionCuller_->hasOccluders() && frustumCuller_) {
-        // Camera-movement gating: skip full recalc when camera hasn't moved/rotated significantly
-        float fwdX = frustumCuller_->getFwdX(), fwdY = frustumCuller_->getFwdY(), fwdZ = frustumCuller_->getFwdZ();
-        float posDx = occCamX - lastOccCamX_, posDy = occCamY - lastOccCamY_, posDz = occCamZ - lastOccCamZ_;
-        float posDist2 = posDx*posDx + posDy*posDy + posDz*posDz;
-        float fwdDot = fwdX*lastOccFwdX_ + fwdY*lastOccFwdY_ + fwdZ*lastOccFwdZ_;
-
-        bool cameraStatic = (posDist2 < 4.0f) && (fwdDot > 0.996f);
-
-        if (cameraStatic && !occlusionCulledRegions_.empty()) {
-            // Reuse previous frame's results — re-hide previously-occluded regions
-            // (PVS/frustum already reset visibility, so we must re-apply)
-            for (size_t regionIdx : occlusionCulledRegions_) {
-                auto nodeIt = regionMeshNodes_.find(regionIdx);
-                if (nodeIt != regionMeshNodes_.end() && nodeIt->second && nodeIt->second->isVisible()) {
-                    nodeIt->second->setVisible(false);
-                    hiddenByOcclusionCount++;
-                    visibleCount--;
-                }
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "OCCL: skipped (camera static), reapplied {} culled regions",
-                      occlusionCulledRegions_.size());
-        } else {
-            // Full occlusion recalculation
-            occlusionCulledRegions_.clear();
-            occlusionCuller_->resetStats();
-            occlusionCuller_->clear();
-
-            // Set camera from actual camera position + frustum culler's basis vectors
-            occlusionCuller_->setCamera(occCamX, occCamY, occCamZ,
-                fwdX, fwdY, fwdZ,
-                frustumCuller_->getRightX(), frustumCuller_->getRightY(), 0.0f,
-                frustumCuller_->getUpX(), frustumCuller_->getUpY(), frustumCuller_->getUpZ(),
-                camera_ ? camera_->getFOV() : 1.0f,
-                camera_ ? (static_cast<float>(driver_->getScreenSize().Width) /
-                            static_cast<float>(driver_->getScreenSize().Height)) : 1.33f);
-
-            // Collect visible regions with their distances for front-to-back sorting
-            struct RegionDist {
-                size_t regionIdx;
-                float distance;
-            };
-            std::vector<RegionDist> visibleRegionDists;
-            visibleRegionDists.reserve(visibleCount);
-
-            for (auto& [regionIdx, node] : regionMeshNodes_) {
-                if (!node || !node->isVisible()) continue;
-                auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-                if (bboxIt == regionBoundingBoxes_.end()) continue;
-                const auto& bbox = bboxIt->second;
-
-                // Distance from camera to nearest edge of bbox
-                float closestX = std::max(bbox.MinEdge.X, std::min(occCamX, bbox.MaxEdge.X));
-                float closestY = std::max(bbox.MinEdge.Y, std::min(occCamY, bbox.MaxEdge.Y));
-                float closestZ = std::max(bbox.MinEdge.Z, std::min(occCamZ, bbox.MaxEdge.Z));
-                float ddx = occCamX - closestX, ddy = occCamY - closestY, ddz = occCamZ - closestZ;
-                float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-
-                visibleRegionDists.push_back({regionIdx, dist});
-            }
-
-            // Sort front-to-back by distance
-            std::sort(visibleRegionDists.begin(), visibleRegionDists.end(),
-                [](const RegionDist& a, const RegionDist& b) { return a.distance < b.distance; });
-
-            // Rasterize occluder triangles from closest N regions
-            // Track which regions were used as occluders so we skip them during testing
-            const int maxOccRegions = occlusionCuller_->getConfig().maxOccluderRegions;
-            float maxOccluderDist = std::min(renderDistance_ * 0.5f, 150.0f);
-            std::unordered_set<size_t> rasterizedRegionIndices;
-            int rasterizedRegionCount = 0;
-            for (const auto& rd : visibleRegionDists) {
-                if (rd.distance > maxOccluderDist) break;  // Sorted front-to-back; all remaining are farther
-                if (rasterizedRegionCount >= maxOccRegions) break;
-                const auto& occluders = occlusionCuller_->getRegionOccluders(rd.regionIdx);
-                if (occluders.empty()) {
-                    LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} has NO occluders", rd.regionIdx, rd.distance);
-                    continue;
-                }
-
-                LOG_DEBUG(MOD_GRAPHICS, "OCCL: region {} dist={:.1f} rasterizing {} occluder tris", rd.regionIdx, rd.distance, occluders.size());
-                for (const auto& occ : occluders) {
-                    occlusionCuller_->rasterizeTriangle(occ.v0, occ.v1, occ.v2);
-                }
-                rasterizedRegionIndices.insert(rd.regionIdx);
-                rasterizedRegionCount++;
-            }
-
-            // Update rasterization stat and compute buffer fill
-            occlusionCuller_->getStatsMutable().regionsRasterized = rasterizedRegionCount;
-            occlusionCuller_->computeBufferFillStats();
-
-            // Early-out: if depth buffer is mostly empty, no region can be 95% covered
-            const auto& stats = occlusionCuller_->getStats();
-            float fillRatio = (stats.depthBufferTotalPixels > 0)
-                ? static_cast<float>(stats.depthBufferFilledPixels) / stats.depthBufferTotalPixels
-                : 0.0f;
-
-            if (fillRatio < 0.10f) {
-                LOG_DEBUG(MOD_GRAPHICS, "OCCL: skipping AABB tests, buffer fill {:.1f}% too low",
-                          fillRatio * 100.0f);
-            } else {
-                // Test ALL visible regions against the depth buffer.
-                // Rasterized regions are NOT skipped — the depth buffer uses min-depth writes,
-                // so closer walls from other regions correctly occlude farther regions even if
-                // the farther region's own walls were also rasterized. The camera's own region
-                // is naturally excluded by testAABB's projectedCount<8 check (corners behind camera).
-                for (size_t i = 0; i < visibleRegionDists.size(); ++i) {
-                    size_t regionIdx = visibleRegionDists[i].regionIdx;
-
-                    auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-                    if (bboxIt == regionBoundingBoxes_.end()) continue;
-                    const auto& bbox = bboxIt->second;
-
-                    // regionsTested incremented inside testAABB along with rejection reasons
-                    if (occlusionCuller_->testAABB(
-                            bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                            bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
-                        // Fully occluded - hide region
-                        auto nodeIt = regionMeshNodes_.find(regionIdx);
-                        if (nodeIt != regionMeshNodes_.end() && nodeIt->second) {
-                            nodeIt->second->setVisible(false);
-                            hiddenByOcclusionCount++;
-                            visibleCount--;
-                            occlusionCulledRegions_.insert(regionIdx);
-                        }
-                    }
-                }
-            }
-
-            // Update camera gating state
-            lastOccCamX_ = occCamX; lastOccCamY_ = occCamY; lastOccCamZ_ = occCamZ;
-            lastOccFwdX_ = fwdX; lastOccFwdY_ = fwdY; lastOccFwdZ_ = fwdZ;
-
-            // Notify entity renderer that the depth buffer was rebuilt
-            if (entityRenderer_) {
-                entityRenderer_->invalidateOcclusionCache();
-            }
-        }
-    }
-    frameTimings_.occlusionCulling = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - occStart).count();
-
-    // Log warning if many regions are outside PVS array
-    if (outOfRangeCount > 0) {
-        LOG_WARN(MOD_GRAPHICS, "PVS: {} region meshes have index >= visibleRegions.size() ({})",
-            outOfRangeCount, region->visibleRegions.size());
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "PVS update: region {} at cam({:.1f},{:.1f},{:.1f}) -> {} visible, {} PVS-hidden, {} dist-hidden, {} frustum-hidden, {} occlusion-hidden",
-        newRegionIdx, camX, camY, camZ, visibleCount, hiddenByPvsCount, hiddenByDistCount, hiddenByFrustumCount, hiddenByOcclusionCount);
-
-    // Build sorted draw list for manual zone rendering (front-to-back)
-    if (manualZoneDrawEnabled_) {
-        sortedZoneDrawList_.clear();
-        sortedZoneDrawList_.reserve(visibleCount);
-
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (!node || !node->isVisible()) continue;
-
-            // Compute squared distance from camera to nearest AABB edge
-            float distSq = 0.0f;
-            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-            if (bboxIt != regionBoundingBoxes_.end()) {
-                const auto& bbox = bboxIt->second;
-                float closestX = std::max(bbox.MinEdge.X, std::min(occCamX, bbox.MaxEdge.X));
-                float closestY = std::max(bbox.MinEdge.Y, std::min(occCamY, bbox.MaxEdge.Y));
-                float closestZ = std::max(bbox.MinEdge.Z, std::min(occCamZ, bbox.MaxEdge.Z));
-                float ddx = occCamX - closestX;
-                float ddy = occCamY - closestY;
-                float ddz = occCamZ - closestZ;
-                distSq = ddx*ddx + ddy*ddy + ddz*ddz;
-            }
-
-            sortedZoneDrawList_.push_back({regionIdx, distSq, node});
-
-            // Hide from Irrlicht's drawAll() — we draw manually
-            node->setVisible(false);
-        }
-
-        // Sort front-to-back (ascending distance)
-        std::sort(sortedZoneDrawList_.begin(), sortedZoneDrawList_.end(),
-            [](const SortedRegionEntry& a, const SortedRegionEntry& b) {
-                return a.distanceSq < b.distanceSq;
-            });
-
-        // Also hide fallback mesh — drawn at end of manual pass
-        if (fallbackMeshNode_) {
-            fallbackMeshNode_->setVisible(false);
-        }
     }
 }
 
@@ -6785,178 +4966,6 @@ void IrrlichtRenderer::buildRegionNeighborMap() {
               regionNeighbors_.size());
 }
 
-// If the visible set exceeds MAX_VISIBLE_REGIONS, we're in an open area
-// where portal culling provides no useful occlusion — clear the set so
-// the caller falls back to distance/frustum culling only.
-void IrrlichtRenderer::computePortalVisibleRegions() {
-    portalVisibleRegions_.clear();
-    if (!portalSystem_ || !portalSystem_->hasPortals() || currentPvsRegion_ == SIZE_MAX) {
-        return;
-    }
-
-    // One-shot diagnostic: dump portal graph traversal on first call
-    static bool diagDone = false;
-    bool doDiag = !diagDone;
-
-    // Camera position in EQ coords (Z-up)
-    float camX = playerX_, camY = playerY_, camZ = playerZ_;
-    if (cameraController_) {
-        cameraController_->getPositionEQ(camX, camY, camZ);
-    }
-
-    if (doDiag) {
-        diagDone = true;
-        LOG_INFO(MOD_GRAPHICS, "=== PORTAL ENTITY CULL DIAGNOSTIC ===");
-        LOG_INFO(MOD_GRAPHICS, "Camera EQ pos: ({:.1f}, {:.1f}, {:.1f}), BSP region {}",
-                 camX, camY, camZ, currentPvsRegion_);
-        const auto& camPortals = portalSystem_->getPortalsForRegion(currentPvsRegion_);
-        LOG_INFO(MOD_GRAPHICS, "Camera region {} has {} portals", currentPvsRegion_, camPortals.size());
-        for (size_t pi : camPortals) {
-            const Portal& p = portalSystem_->getData().portals[pi];
-            size_t other = portalSystem_->getOtherRegion(pi, currentPvsRegion_);
-            LOG_INFO(MOD_GRAPHICS, "  Portal {} -> region {}: center=({:.1f},{:.1f},{:.1f}) normal=({:.2f},{:.2f},{:.2f}) area={:.0f}",
-                     pi, other, p.centerX, p.centerY, p.centerZ, p.normalX, p.normalY, p.normalZ, p.area);
-        }
-
-        // Also dump BSP regions for nearby entities
-        if (zoneBspTree_) {
-            struct NpcPos { int sid; float x,y,z; };
-            // Hardcoded from npc1.log analysis — the 8 nearest entities
-            NpcPos npcs[] = {
-                {225, 313.0f, 310.5f, 17.0f},   // player
-                {226, 315.0f, 312.5f, 17.12f},  // pet
-                {97,  300.0f, 329.88f, 17.75f},
-                {99,  342.0f, 301.0f, 3.75f},
-                {108, 309.0f, 349.0f, 17.75f},
-                {7,   315.0f, 267.0f, 17.75f},
-                {98,  257.0f, 302.0f, 17.75f},
-                {62,  243.0f, 314.0f, 17.75f},
-            };
-            for (auto& n : npcs) {
-                size_t r = zoneBspTree_->findRegionIndexForPoint(n.x, n.y, n.z);
-                LOG_INFO(MOD_GRAPHICS, "  Entity {} at ({:.1f},{:.1f},{:.1f}) -> BSP region {}",
-                         n.sid, n.x, n.y, n.z, r == SIZE_MAX ? -1 : (int)r);
-            }
-        }
-    }
-
-    // Camera's room is always visible
-    portalVisibleRegions_.insert(currentPvsRegion_);
-
-    // BFS stack: (regionIdx, depth)
-    struct Entry { size_t region; int depth; };
-    std::vector<Entry> stack;
-    stack.push_back({currentPvsRegion_, 0});
-
-    constexpr int MAX_DEPTH = 1;
-    // If BFS finds more than this many regions, we're in an open area —
-    // portal culling won't help, so bail out and let distance/frustum handle it.
-    constexpr size_t MAX_VISIBLE_REGIONS = 16;
-
-    while (!stack.empty()) {
-        auto [fromRegion, depth] = stack.back();
-        stack.pop_back();
-        if (depth >= MAX_DEPTH) continue;
-
-        const auto& portals = portalSystem_->getPortalsForRegion(fromRegion);
-        for (size_t portalIdx : portals) {
-            size_t toRegion = portalSystem_->getOtherRegion(portalIdx, fromRegion);
-            if (toRegion == SIZE_MAX) continue;
-            if (portalVisibleRegions_.count(toRegion)) continue;
-
-            const Portal& portal = portalSystem_->getData().portals[portalIdx];
-
-            // Skip vertical portals — floor/ceiling AABB overlaps (|normalZ| > 0.7).
-            // These are artifacts of vertically-stacked BSP regions, not real doorways.
-            // Entities never walk through ceilings; real EQ doorways are vertical planes.
-            float absNZ = portal.normalZ < 0 ? -portal.normalZ : portal.normalZ;
-            if (absNZ > 0.7f) {
-                if (doDiag && depth == 0) {
-                    LOG_INFO(MOD_GRAPHICS, "  D0: region {} portal {} -> {}: REJECTED(vertical nZ={:.2f})",
-                             fromRegion, portalIdx, toRegion, portal.normalZ);
-                }
-                continue;
-            }
-
-            // Facing check: is the portal opening facing toward the camera?
-            // Portal normal points from regionA to regionB.
-            // If we're in regionA, the opening faces us when dot(cam-to-portal, normal) > 0.
-            // If we're in regionB, flip the normal direction.
-            float toPX = portal.centerX - camX;
-            float toPY = portal.centerY - camY;
-            float toPZ = portal.centerZ - camZ;
-            float normalSign = (fromRegion == portal.regionA) ? 1.0f : -1.0f;
-            float facingDot = normalSign * (toPX * portal.normalX + toPY * portal.normalY + toPZ * portal.normalZ);
-
-            if (doDiag && depth == 0) {
-                LOG_INFO(MOD_GRAPHICS, "  D0: region {} portal {} -> {}: facingDot={:.2f} area={:.0f} {}",
-                         fromRegion, portalIdx, toRegion, facingDot, portal.area,
-                         facingDot < 0 ? "REJECTED(facing)" : "PASS");
-            }
-
-            if (facingDot < 0.0f) continue;  // Portal faces away from camera
-
-            // Frustum check: is the portal opening visible?
-            if (frustumCuller_ && frustumCuller_->isEnabled()) {
-                // Compute tight AABB from portal's 4 vertices (EQ Z-up coords)
-                float minX = portal.vertices[0][0], maxX = portal.vertices[0][0];
-                float minY = portal.vertices[0][1], maxY = portal.vertices[0][1];
-                float minZ = portal.vertices[0][2], maxZ = portal.vertices[0][2];
-                for (int v = 1; v < 4; ++v) {
-                    if (portal.vertices[v][0] < minX) minX = portal.vertices[v][0];
-                    if (portal.vertices[v][0] > maxX) maxX = portal.vertices[v][0];
-                    if (portal.vertices[v][1] < minY) minY = portal.vertices[v][1];
-                    if (portal.vertices[v][1] > maxY) maxY = portal.vertices[v][1];
-                    if (portal.vertices[v][2] < minZ) minZ = portal.vertices[v][2];
-                    if (portal.vertices[v][2] > maxZ) maxZ = portal.vertices[v][2];
-                }
-                bool frustumPass = frustumCuller_->testAABB(minX, minY, minZ, maxX, maxY, maxZ);
-
-                if (doDiag && depth == 0) {
-                    LOG_INFO(MOD_GRAPHICS, "    frustum AABB ({:.0f},{:.0f},{:.0f})-({:.0f},{:.0f},{:.0f}): {}",
-                             minX, minY, minZ, maxX, maxY, maxZ,
-                             frustumPass ? "PASS" : "REJECTED");
-                }
-
-                if (!frustumPass) {
-                    continue;  // Portal opening is outside view frustum
-                }
-            }
-
-            portalVisibleRegions_.insert(toRegion);
-
-            if (doDiag) {
-                LOG_INFO(MOD_GRAPHICS, "  D{}: ADDED region {} (total visible: {})",
-                         depth, toRegion, portalVisibleRegions_.size());
-            }
-
-            // If we've reached too many visible regions, we're in an open area
-            // where portal culling provides no useful entity occlusion.
-            // Clear the set to disable portal entity culling for this frame.
-            if (portalVisibleRegions_.size() > MAX_VISIBLE_REGIONS) {
-                if (doDiag) {
-                    LOG_INFO(MOD_GRAPHICS, "  BAIL: exceeded {} visible regions, disabling portal entity cull",
-                             MAX_VISIBLE_REGIONS);
-                }
-                portalVisibleRegions_.clear();
-                return;
-            }
-
-            stack.push_back({toRegion, depth + 1});
-        }
-    }
-
-    if (doDiag) {
-        LOG_INFO(MOD_GRAPHICS, "  FINAL: {} portal-visible regions", portalVisibleRegions_.size());
-        std::string regionList;
-        for (size_t r : portalVisibleRegions_) {
-            if (!regionList.empty()) regionList += ", ";
-            regionList += std::to_string(r);
-        }
-        LOG_INFO(MOD_GRAPHICS, "  Regions: {}", regionList);
-    }
-}
-
 // ======== drawZoneGeometryWithPortals ========
 // Uses stencil-based portal occlusion to render only visible rooms.
 void IrrlichtRenderer::drawZoneGeometryWithPortals() {
@@ -7112,7 +5121,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     auto* node = smgr_->addMeshSceneNode(mesh);
     if (!node) { mesh->drop(); return false; }
 
-    // Apply same materials as createZoneMeshWithPvs eager path
+    // Apply standard zone region materials
     node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
     for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
         node->getMaterial(i).Lighting = lightingEnabled_;
@@ -7198,534 +5207,6 @@ void IrrlichtRenderer::processFrameLazyLoad() {
             }
             evictionsThisFrame++;
         }
-    }
-}
-
-void IrrlichtRenderer::updateFrustumCulling() {
-    if (!frustumCuller_ || !frustumCuller_->isEnabled() || regionMeshNodes_.empty()) return;
-
-    // Re-test currently visible region nodes against the updated frustum.
-    // This is called on non-Tier2 frames when the camera has rotated.
-    // Does NOT re-run BSP lookup - uses cached PVS state.
-    size_t hiddenCount = 0;
-    size_t visibleCount = 0;
-
-    for (auto& [regionIdx, node] : regionMeshNodes_) {
-        if (!node) continue;
-
-        // Only test nodes that PVS/distance already approved (currently visible)
-        // Nodes hidden by PVS stay hidden - we can only HIDE more, not reveal
-        if (!node->isVisible()) continue;
-
-        auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-        if (bboxIt != regionBoundingBoxes_.end()) {
-            const auto& bbox = bboxIt->second;
-            // Region bboxes are in EQ Z-up coords, same as frustum
-            if (!frustumCuller_->testAABB(
-                    bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-                    bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
-                node->setVisible(false);
-                hiddenCount++;
-                continue;
-            }
-        }
-        visibleCount++;
-    }
-
-    // Also re-test objects against frustum
-    for (size_t i = 0; i < objectNodes_.size(); ++i) {
-        if (!objectNodes_[i] || !objectInSceneGraph_[i]) continue;
-        if (!objectNodes_[i]->isVisible()) continue;
-
-        if (i < objectBoundingBoxes_.size()) {
-            const irr::core::aabbox3df& bbox = objectBoundingBoxes_[i];
-            bool validBbox = (bbox.MinEdge.X <= bbox.MaxEdge.X &&
-                              bbox.MinEdge.Y <= bbox.MaxEdge.Y &&
-                              bbox.MinEdge.Z <= bbox.MaxEdge.Z);
-            if (validBbox) {
-                // Object bboxes are in Irrlicht coords (Y-up), swap Y<->Z for EQ
-                if (!frustumCuller_->testAABB(
-                        bbox.MinEdge.X, bbox.MinEdge.Z, bbox.MinEdge.Y,
-                        bbox.MaxEdge.X, bbox.MaxEdge.Z, bbox.MaxEdge.Y)) {
-                    objectNodes_[i]->setVisible(false);
-                }
-            }
-        }
-    }
-
-    LOG_TRACE(MOD_GRAPHICS, "Frustum re-cull: {} visible, {} hidden (rotation-only update)",
-        visibleCount, hiddenCount);
-}
-
-void IrrlichtRenderer::createObjectMeshes() {
-    if (!currentZone_) {
-        return;
-    }
-
-    // Clear existing object nodes with proper reference counting
-    for (size_t i = 0; i < objectNodes_.size(); ++i) {
-        if (objectNodes_[i]) {
-            if (i < objectInSceneGraph_.size() && objectInSceneGraph_[i]) {
-                objectNodes_[i]->remove();
-            }
-            objectNodes_[i]->drop();  // Release our reference
-        }
-    }
-    objectNodes_.clear();
-    objectPositions_.clear();
-    objectBoundingBoxes_.clear();
-    objectInSceneGraph_.clear();
-    objectRegions_.clear();
-    lastObjectPvsRegion_ = SIZE_MAX;  // Force first visibility pass after object recreation
-
-    // Clear object lights
-    for (auto& objLight : objectLights_) {
-        if (objLight.node) {
-            objLight.node->remove();
-        }
-    }
-    objectLights_.clear();
-
-    // Clear vertex animated meshes
-    vertexAnimatedMeshes_.clear();
-
-    if (currentZone_->objects.empty()) {
-        return;
-    }
-
-    ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
-
-    // Pass constrained texture cache if in constrained mode
-    if (constrainedTextureCache_) {
-        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
-    }
-    // Pass GLSL shader material types if available
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                       zoneShader_->getMaterialTypeAlphaTest());
-    }
-    // Pass atlas shader material types if object atlas is available
-    if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
-                                             zoneShader_->getMaterialTypeAtlasAlpha());
-    }
-
-    // Use object atlas for batched rendering if available
-    bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
-                       zoneShader_ && zoneShader_->isAtlasAvailable();
-    LOG_INFO(MOD_GRAPHICS, "createObjectMeshes: object atlas {} ({}), rendering path: {}",
-             objAtlas_ ? "loaded" : "not loaded",
-             objAtlas_ ? std::to_string(objAtlas_->getTileCount()) + " tiles" : "n/a",
-             useObjAtlas ? "ATLAS (ETC1 batched)" : "PER-TEXTURE (constrained cache)");
-
-    std::map<std::string, irr::scene::IMesh*> meshCache;
-
-    for (const auto& objInstance : currentZone_->objects) {
-        if (!objInstance.geometry || !objInstance.placeable) {
-            continue;
-        }
-
-        const std::string& objName = objInstance.placeable->getName();
-
-        // Tree identification: on GPU path (shader support), trees fall through to
-        // createObjectMeshes with wind material for free PVS/frustum/distance culling.
-        // On software path, trees are skipped and handled by AnimatedTreeManager.
-        bool isWindTree = false;
-        if (treeManager_) {
-            std::string primaryTexture;
-            if (!objInstance.geometry->textureNames.empty()) {
-                primaryTexture = objInstance.geometry->textureNames[0];
-            }
-            if (treeManager_->isTreeObject(objName, primaryTexture)) {
-                bool hasGpuShaders = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
-                if (!hasGpuShaders) {
-                    LOG_DEBUG(MOD_GRAPHICS, "[OBJ] Skipping tree '{}' - handled by tree manager (software path)", objName);
-                    continue;
-                }
-                isWindTree = true;
-            }
-        }
-
-        irr::scene::IMesh* mesh = nullptr;
-
-        auto cacheIt = meshCache.find(objName);
-        if (cacheIt != meshCache.end()) {
-            mesh = cacheIt->second;
-        } else {
-            if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
-                if (useObjAtlas) {
-                    mesh = builder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
-                                                     *objAtlas_, objAtlasPageOffset_);
-                } else {
-                    mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
-                }
-            } else {
-                mesh = builder.buildColoredMesh(*objInstance.geometry);
-            }
-            if (mesh) {
-                meshCache[objName] = mesh;
-            }
-        }
-
-        if (!mesh) {
-            continue;
-        }
-
-        irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(mesh);
-        if (!node) {
-            continue;
-        }
-
-        // Get scale first (needed for height offset calculation)
-        float scaleX = objInstance.placeable->getScaleX();
-        float scaleY = objInstance.placeable->getScaleY();
-        float scaleZ = objInstance.placeable->getScaleZ();
-        node->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
-
-        // With center baked into vertices (matching eqsage), we don't need height offset
-        // The mesh origin is now at the bottom of the object
-        irr::core::aabbox3df bbox = mesh->getBoundingBox();
-
-        // Debug: log comprehensive object info
-        const auto& geom = objInstance.geometry;
-        LOG_DEBUG(MOD_GRAPHICS, "[OBJ] {} geomBounds=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}) center=({:.1f},{:.1f},{:.1f})",
-            objName, geom->minX, geom->minY, geom->minZ,
-            geom->maxX, geom->maxY, geom->maxZ,
-            geom->centerX, geom->centerY, geom->centerZ);
-        LOG_DEBUG(MOD_GRAPHICS, "[OBJ] {} meshBbox=({:.1f},{:.1f},{:.1f})-({:.1f},{:.1f},{:.1f}) scale=({:.2f},{:.2f},{:.2f})",
-            objName, bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
-            bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z, scaleX, scaleY, scaleZ);
-        LOG_DEBUG(MOD_GRAPHICS, "[OBJ] {} pos=({:.1f},{:.1f},{:.1f}) rot=({:.1f},{:.1f},{:.1f})",
-            objName, objInstance.placeable->getX(), objInstance.placeable->getY(), objInstance.placeable->getZ(),
-            objInstance.placeable->getRotateX(), objInstance.placeable->getRotateY(), objInstance.placeable->getRotateZ());
-
-        // Apply coordinate transform: EQ (x, y, z) Z-up → Irrlicht (x, z, y) Y-up
-        // Objects are placed at their raw ActorInstance positions (eqsage approach)
-        float x = objInstance.placeable->getX();
-        float y = objInstance.placeable->getY();
-        float z = objInstance.placeable->getZ();
-
-        // Position: EQ (x, y, z) → Irrlicht (x, z, y)
-        // No height offset needed since center is baked into mesh vertices
-        node->setPosition(irr::core::vector3df(x, z, y));
-
-        float rotX = objInstance.placeable->getRotateX();  // Always 0
-        float rotY = objInstance.placeable->getRotateY();  // Yaw (matches eqsage Location.rotateY)
-        float rotZ = objInstance.placeable->getRotateZ();  // Secondary rotation (matches eqsage Location.rotateZ)
-        // Transform internal representation → Irrlicht:
-        // Internal (matches eqsage Location): rotateY = yaw around Z-up, rotateZ = secondary
-        // Irrlicht: Y rotation = yaw around Y-up
-        //
-        // eqsage adds +180° for glTF (right-handed), but Irrlicht is left-handed like EQ,
-        // so we do NOT add +180°. Just map internal rotateY → Irrlicht Y rotation.
-        node->setRotation(irr::core::vector3df(rotX, rotY, rotZ));
-
-        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-            node->getMaterial(i).Lighting = lightingEnabled_;
-            node->getMaterial(i).BackfaceCulling = false;
-            node->getMaterial(i).GouraudShading = true;
-            node->getMaterial(i).FogEnable = fogEnabled_;
-            node->getMaterial(i).Wireframe = wireframeMode_;
-            node->getMaterial(i).NormalizeNormals = true;
-            // Set material colors for proper lighting response
-            node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-            node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-        }
-
-        // Apply wind shader to tree meshes on GPU path
-        if (isWindTree && zoneShader_ && zoneShader_->isWindAvailable()) {
-            // Get mesh Y bounds for the wind influence curve
-            irr::core::aabbox3df meshBbox = mesh->getBoundingBox();
-            float meshMinY = meshBbox.MinEdge.Y;
-            float meshMaxY = meshBbox.MaxEdge.Y;
-            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                node->getMaterial(i).MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                    zoneShader_->getMaterialTypeWindAlphaTest());
-                // Pack mesh Y bounds into material params for the wind callback
-                node->getMaterial(i).MaterialTypeParam = meshMinY;
-                node->getMaterial(i).MaterialTypeParam2 = meshMaxY;
-                node->getMaterial(i).BackfaceCulling = false;
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "[OBJ] Wind tree '{}' yBounds=[{:.1f},{:.1f}]", objName, meshMinY, meshMaxY);
-        }
-
-        // Add object mesh to animated texture manager for flame/water animations
-        if (animatedTextureManager_ && objInstance.geometry) {
-            animatedTextureManager_->addMesh(*objInstance.geometry, currentZone_->objectTextures, mesh);
-            // Register the scene node for texture updates
-            animatedTextureManager_->addSceneNode(node);
-        }
-
-        // Register vertex animated meshes (flags, banners, etc.)
-        if (objInstance.geometry && objInstance.geometry->animatedVertices) {
-            VertexAnimatedMesh vam;
-            vam.node = node;
-            vam.mesh = mesh;
-            vam.animData = objInstance.geometry->animatedVertices;
-            vam.elapsedMs = 0;
-            vam.currentFrame = 0;
-            vam.objectName = objName;
-
-            // Build vertex mapping from mesh buffer vertices to animation vertices
-            // The mesh has center baked in but animation positions are relative to center
-            // Also, buildTexturedMesh() reorders vertices by texture, so we need mapping
-            if (!vam.animData->frames.empty() && mesh->getMeshBufferCount() > 0) {
-                const auto& frame0 = vam.animData->frames[0];
-                size_t animVertCount = frame0.positions.size() / 3;
-
-                // First, calculate center offset from geometry (it was logged but cleared)
-                // We can recover it by finding the best match offset
-                if (animVertCount > 0) {
-                    irr::scene::IMeshBuffer* buffer0 = mesh->getMeshBuffer(0);
-                    if (buffer0 && buffer0->getVertexCount() > 0) {
-                        irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(buffer0->getVertices());
-
-                        // Find the center offset by matching the first mesh vertex to any anim vertex
-                        float meshX = verts[0].Pos.X;
-                        float meshY = verts[0].Pos.Y;  // Irrlicht Y = EQ Z
-                        float meshZ = verts[0].Pos.Z;  // Irrlicht Z = EQ Y
-
-                        float bestDist = 1e10f;
-                        for (size_t av = 0; av < animVertCount; ++av) {
-                            float animX = frame0.positions[av * 3 + 0];
-                            float animY = frame0.positions[av * 3 + 1];
-                            float animZ = frame0.positions[av * 3 + 2];
-
-                            // Try this as the center offset
-                            float offsetX = meshX - animX;
-                            float offsetY = meshZ - animY;  // Irrlicht Z = EQ Y
-                            float offsetZ = meshY - animZ;  // Irrlicht Y = EQ Z
-
-                            // Check if this offset works for vertex 0
-                            float dist = offsetX*offsetX + offsetY*offsetY + offsetZ*offsetZ;
-                            if (dist < bestDist) {
-                                bestDist = dist;
-                                vam.centerOffsetX = offsetX;
-                                vam.centerOffsetY = offsetY;
-                                vam.centerOffsetZ = offsetZ;
-                            }
-                        }
-
-                        LOG_DEBUG(MOD_GRAPHICS, "Vertex anim '{}' center offset: ({:.2f}, {:.2f}, {:.2f})",
-                                  objName, vam.centerOffsetX, vam.centerOffsetY, vam.centerOffsetZ);
-                    }
-                }
-
-                // Build vertex mapping with center offset applied
-                vam.vertexMapping.resize(mesh->getMeshBufferCount());
-                size_t totalMapped = 0;
-                for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
-                    irr::scene::IMeshBuffer* buffer = mesh->getMeshBuffer(b);
-                    irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(buffer->getVertices());
-                    irr::u32 vertexCount = buffer->getVertexCount();
-
-                    vam.vertexMapping[b].resize(vertexCount, SIZE_MAX);
-
-                    for (irr::u32 mv = 0; mv < vertexCount; ++mv) {
-                        // Mesh vertex is in Irrlicht coords
-                        float meshX = verts[mv].Pos.X;
-                        float meshY = verts[mv].Pos.Y;  // Irrlicht Y = EQ Z
-                        float meshZ = verts[mv].Pos.Z;  // Irrlicht Z = EQ Y
-
-                        // Find matching animation vertex (with center offset)
-                        float bestDist = 1e10f;
-                        size_t bestIdx = SIZE_MAX;
-                        for (size_t av = 0; av < animVertCount; ++av) {
-                            // Animation vertex in EQ coords + center offset
-                            float animX = frame0.positions[av * 3 + 0] + vam.centerOffsetX;
-                            float animY = frame0.positions[av * 3 + 1] + vam.centerOffsetY;
-                            float animZ = frame0.positions[av * 3 + 2] + vam.centerOffsetZ;
-
-                            // Compare: mesh(X,Y,Z) vs anim_centered(X,Z,Y) with coord transform
-                            float dx = meshX - animX;
-                            float dy = meshY - animZ;  // mesh Y (Irrlicht) = anim Z (EQ)
-                            float dz = meshZ - animY;  // mesh Z (Irrlicht) = anim Y (EQ)
-                            float dist = dx*dx + dy*dy + dz*dz;
-
-                            if (dist < bestDist) {
-                                bestDist = dist;
-                                bestIdx = av;
-                            }
-                        }
-
-                        if (bestDist < 1.0f) {  // Allow some tolerance
-                            vam.vertexMapping[b][mv] = bestIdx;
-                            totalMapped++;
-                        }
-                    }
-                }
-
-                LOG_DEBUG(MOD_GRAPHICS, "Vertex anim '{}' mapped {}/{} vertices",
-                          objName, totalMapped, animVertCount);
-            }
-
-            vertexAnimatedMeshes_.push_back(vam);
-            LOG_DEBUG(MOD_GRAPHICS, "Registered vertex animated mesh '{}' with {} frames", objName, vam.animData->frames.size());
-        }
-
-        // Store the object name in the scene node for later identification
-        node->setName(objName.c_str());
-        node->grab();  // Keep alive when removed from scene graph
-        objectNodes_.push_back(node);
-        objectPositions_.push_back(irr::core::vector3df(x, z, y));  // Cache position for distance culling
-
-        // Pre-assign object to BSP region for PVS culling
-        if (zoneBspTree_) {
-            objectRegions_.push_back(zoneBspTree_->findRegionIndexForPoint(x, y, z));
-        } else {
-            objectRegions_.push_back(SIZE_MAX);
-        }
-
-        // Update absolute transformation before getting bounding box
-        node->updateAbsolutePosition();
-        irr::core::aabbox3df worldBbox = node->getTransformedBoundingBox();
-        objectBoundingBoxes_.push_back(worldBbox);  // Cache world-space bounding box
-
-        // Debug: log bounding box for large objects
-        irr::core::vector3df extent = worldBbox.getExtent();
-        if (extent.X > 50 || extent.Y > 50 || extent.Z > 50) {
-            LOG_DEBUG(MOD_GRAPHICS, "[PLACEABLE] {} bbox: min=({:.1f},{:.1f},{:.1f}) max=({:.1f},{:.1f},{:.1f}) extent=({:.1f},{:.1f},{:.1f})",
-                objName, worldBbox.MinEdge.X, worldBbox.MinEdge.Y, worldBbox.MinEdge.Z,
-                worldBbox.MaxEdge.X, worldBbox.MaxEdge.Y, worldBbox.MaxEdge.Z,
-                extent.X, extent.Y, extent.Z);
-        }
-        // PVS check at insertion — start hidden if not in visible region
-        bool pvsVisible = isRegionPvsVisible(objectRegions_.back());
-        if (!pvsVisible) {
-            node->remove();  // Remove from scene graph (grab() keeps it alive)
-        }
-        objectInSceneGraph_.push_back(pvsVisible);
-
-        // Check if this object is a light source (torch, lantern, etc.)
-        std::string upperName = objName;
-        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-
-        // Also check texture names for fire detection (catches objects with non-obvious names)
-        bool hasFireTexture = false;
-        bool hasLanternTexture = false;
-        for (const auto& texName : objInstance.geometry->textureNames) {
-            std::string upperTex = texName;
-            std::transform(upperTex.begin(), upperTex.end(), upperTex.begin(), ::toupper);
-            if (upperTex.find("FIRE") != std::string::npos ||
-                upperTex.find("COAL") != std::string::npos ||
-                upperTex.find("TORCH") != std::string::npos) {
-                hasFireTexture = true;
-            }
-            if (upperTex.find("LANTERN") != std::string::npos ||
-                upperTex.find("LANT") != std::string::npos) {
-                hasLanternTexture = true;
-            }
-        }
-
-        bool isLightSource = false;
-        irr::video::SColorf lightColor(1.0f, 0.6f, 0.2f, 1.0f);  // Default: warm orange
-        float lightRadius = 100.0f;
-
-        if (upperName.find("TORCH") != std::string::npos ||
-            upperName.find("FIRE") != std::string::npos ||
-            upperName.find("BRAZIER") != std::string::npos ||
-            upperName.find("FLAME") != std::string::npos ||
-            hasFireTexture) {
-            // Torches/fire/campfires/braziers - orange-red
-            isLightSource = true;
-            lightColor = irr::video::SColorf(1.0f, 0.5f, 0.15f, 1.0f);
-            lightRadius = 120.0f;
-        } else if (upperName.find("LANTERN") != std::string::npos ||
-                   upperName.find("LANT") != std::string::npos ||
-                   upperName.find("LAMP") != std::string::npos ||
-                   upperName.find("LIGHT") != std::string::npos ||
-                   hasLanternTexture) {
-            // Lanterns/lamps/lightpoles (incl. HANGLANT) - warm yellow, reduced intensity (1/4 strength)
-            isLightSource = true;
-            lightColor = irr::video::SColorf(0.25f, 0.21f, 0.15f, 1.0f);
-            lightRadius = 100.0f;
-        } else if (upperName.find("CANDLE") != std::string::npos) {
-            // Candles - soft yellow, smaller radius
-            isLightSource = true;
-            lightColor = irr::video::SColorf(1.0f, 0.9f, 0.7f, 1.0f);
-            lightRadius = 50.0f;
-        }
-
-        if (isLightSource) {
-            // Start with object's base position (EQ coords to Irrlicht: x, z, y)
-            irr::core::vector3df lightPos(x, z, y);
-
-            // Try to find a nearby zone light with the correct elevated position
-            // Zone lights from WLD data have accurate light source positions (e.g., lantern height)
-            if (currentZone_ && !currentZone_->lights.empty()) {
-                float bestDist = 50.0f;  // Max horizontal distance to consider a match
-                for (const auto& zoneLight : currentZone_->lights) {
-                    // Calculate horizontal distance (ignore vertical)
-                    float dx = zoneLight->x - x;
-                    float dy = zoneLight->y - y;  // EQ Y is horizontal
-                    float hDist = std::sqrt(dx * dx + dy * dy);
-                    if (hDist < bestDist) {
-                        bestDist = hDist;
-                        // Use the zone light's position (transform EQ to Irrlicht)
-                        lightPos = irr::core::vector3df(zoneLight->x, zoneLight->z, zoneLight->y);
-                    }
-                }
-            }
-
-            irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
-                nullptr, lightPos, lightColor, lightRadius * 1.5f);  // Increase effective radius
-
-            if (lightNode) {
-                irr::video::SLight& lightData = lightNode->getLightData();
-                lightData.Type = irr::video::ELT_POINT;
-                // Attenuation: 1/(constant + linear*d + quadratic*d²)
-                // constant=1 (full brightness at source), linear for gradual falloff
-                lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
-                lightNode->setVisible(false);  // Start hidden, updateObjectLights will enable nearby ones
-
-                ObjectLight objLight;
-                objLight.node = lightNode;
-                objLight.position = lightPos;
-                objLight.objectName = objName;
-                objLight.originalColor = lightColor;  // Store for weather modification
-
-                // Mark fire sources for flickering effect
-                // Includes: torches, fires, campfires (BFIRE), braziers (NERBRAZIER),
-                // flames, candles, and objects with fire/coal/torch textures
-                if (upperName.find("TORCH") != std::string::npos ||
-                    upperName.find("FIRE") != std::string::npos ||
-                    upperName.find("BRAZIER") != std::string::npos ||
-                    upperName.find("FLAME") != std::string::npos ||
-                    upperName.find("CANDLE") != std::string::npos ||
-                    hasFireTexture) {
-                    objLight.isFireSource = true;
-                    objLight.flickerPhase = static_cast<float>(rand()) / RAND_MAX * 6.2832f;
-                    objLight.flickerSpeed = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
-                }
-
-                objectLights_.push_back(objLight);
-            }
-        }
-    }
-
-    for (auto& [name, mesh] : meshCache) {
-        if (mesh) {
-            mesh->drop();
-        }
-    }
-
-    // Log PVS summary for objects
-    {
-        size_t pvsVis = 0, pvsHid = 0, noRegion = 0;
-        for (size_t i = 0; i < objectNodes_.size(); ++i) {
-            if (objectRegions_[i] == SIZE_MAX) noRegion++;
-            else if (objectInSceneGraph_[i]) pvsVis++;
-            else pvsHid++;
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "createObjectMeshes: {} objects total, {} in scene graph (PVS-visible), "
-                  "{} PVS-hidden, {} no-region",
-                  objectNodes_.size(), pvsVis, pvsHid, noRegion);
-        LOG_DEBUG(MOD_GRAPHICS, "createObjectMeshes: PVS state: usePvsCulling_={}, currentPvsRegion_={}, bspTree={}",
-                  usePvsCulling_, currentPvsRegion_,
-                  zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) + " regions" : "null");
-    }
-    if (!objectLights_.empty()) {
-        LOG_DEBUG(MOD_GRAPHICS, "Created {} object light sources", objectLights_.size());
     }
 }
 
@@ -7922,7 +5403,7 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     objectInSceneGraph_.push_back(pvsVisible);
 
     // Create object light if this is a light source (torch, lantern, etc.)
-    // Mirrors the light creation logic in createObjectMeshes()
+    // Create object light if this is a light source (torch, lantern, etc.)
     std::string upperName = objName;
     std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
 
@@ -8021,181 +5502,6 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
 
     mesh->drop();
     deferred.meshBuilt = true;
-}
-
-void IrrlichtRenderer::createZoneLights() {
-    // Clear existing zone lights
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (zoneLightNodes_[i]) {
-            // Remove from scene graph if still in it
-            if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
-                zoneLightNodes_[i]->remove();
-            }
-            zoneLightNodes_[i]->drop();  // Release our reference
-        }
-    }
-    zoneLightNodes_.clear();
-    zoneLightPositions_.clear();
-    zoneLightRegions_.clear();
-    zoneLightInSceneGraph_.clear();
-    zoneLightNames_.clear();
-    zoneLightAnimElapsed_.clear();
-    zoneLightAnimFrame_.clear();
-
-    if (!currentZone_ || currentZone_->lights.empty()) {
-        return;
-    }
-
-    // Create ALL zone lights - unified light management in updateObjectLights()
-    // will select the closest ones based on distance and hardware limits.
-    // BSP region and PVS visibility are computed inline so lights start in the
-    // correct scene graph state (hidden if not PVS-visible from current camera region).
-    size_t lightsWithRegion = 0;
-    size_t lightsPvsCulled = 0;
-    for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-        const auto& light = currentZone_->lights[i];
-
-        // Transform EQ coordinates (Z-up) to Irrlicht (Y-up)
-        // EQ: x, y, z -> Irrlicht: x, z, y
-        irr::core::vector3df pos(light->x, light->z, light->y);
-
-        // Create point light at full intensity - updateZoneLightColors() will apply vision-based intensity
-        irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
-            nullptr,
-            pos,
-            irr::video::SColorf(light->r, light->g, light->b, 1.0f),
-            light->radius
-        );
-
-        if (lightNode) {
-            irr::video::SLight& lightData = lightNode->getLightData();
-            lightData.Type = irr::video::ELT_POINT;
-            // Compute attenuation from radius so light falls off naturally
-            // At d=radius: atten = 1/(1 + radius/radius + 1) = 1/3 ≈ 33%
-            // At d=0: atten = 1/1 = 100%
-            float r = std::max(light->radius, 1.0f);
-            lightData.Attenuation = irr::core::vector3df(1.0f, 1.0f / r, 1.0f / (r * r));
-
-            // Start hidden - updateObjectLights() manages visibility
-            lightNode->setVisible(false);
-
-            // Compute BSP region inline for PVS check at insertion
-            size_t regionIdx = SIZE_MAX;
-            if (zoneBspTree_) {
-                regionIdx = zoneBspTree_->findRegionIndexForPoint(light->x, light->y, light->z);
-                if (regionIdx != SIZE_MAX) lightsWithRegion++;
-            }
-
-            // PVS check at insertion — remove from scene graph if not visible
-            bool pvsVisible = isRegionPvsVisible(regionIdx);
-            if (!pvsVisible) {
-                lightNode->remove();  // Remove from scene graph (grab keeps it alive)
-                lightsPvsCulled++;
-            }
-
-            lightNode->grab();  // Keep alive when removed from scene graph
-            zoneLightNodes_.push_back(lightNode);
-            zoneLightPositions_.push_back(pos);
-            zoneLightRegions_.push_back(regionIdx);
-            zoneLightInSceneGraph_.push_back(pvsVisible);
-            zoneLightNames_.push_back(light->name);
-            zoneLightAnimElapsed_.push_back(0.0f);
-            zoneLightAnimFrame_.push_back(light->currentFrame);
-        }
-    }
-
-    if (zoneBspTree_) {
-        LOG_DEBUG(MOD_GRAPHICS, "createZoneLights: BSP regions for {} of {} zone lights ({} PVS-culled at insertion)",
-            lightsWithRegion, zoneLightNodes_.size(), lightsPvsCulled);
-        LOG_DEBUG(MOD_GRAPHICS, "createZoneLights: PVS state: usePvsCulling_={}, currentPvsRegion_={}, bspTree={} regions",
-            usePvsCulling_, currentPvsRegion_,
-            zoneBspTree_ ? zoneBspTree_->regions.size() : 0);
-
-        // Log bitvector info
-        if (usePvsCulling_ && currentPvsRegion_ != SIZE_MAX
-            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
-            if (camRegion) {
-                size_t bitvecSize = camRegion->visibleRegions.size();
-                size_t visCount = 0;
-                for (size_t b = 0; b < bitvecSize; ++b) {
-                    if (camRegion->visibleRegions[b]) visCount++;
-                }
-                LOG_DEBUG(MOD_GRAPHICS, "  Camera region {} bitvector: size={}, {} regions marked visible",
-                          currentPvsRegion_, bitvecSize, visCount);
-            }
-        }
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "Created {} zone lights (of {} available)", zoneLightNodes_.size(), currentZone_->lights.size());
-
-    // Log animated vs static light summary with names
-    {
-        size_t animatedCount = 0;
-        for (const auto& light : currentZone_->lights) {
-            if (light->isAnimated()) animatedCount++;
-        }
-        if (animatedCount > 0) {
-            LOG_INFO(MOD_GRAPHICS, "Zone lights: {} animated, {} static (of {} total)",
-                     animatedCount, zoneLightNodes_.size() - animatedCount, zoneLightNodes_.size());
-            // Log a few animated light names for debugging
-            size_t logged = 0;
-            for (size_t i = 0; i < currentZone_->lights.size() && logged < 5; ++i) {
-                const auto& light = currentZone_->lights[i];
-                if (light->isAnimated()) {
-                    LOG_DEBUG(MOD_GRAPHICS, "  Animated light [{}]: '{}' frames={} sleep={}ms colors={} levels={}",
-                              i, light->name, light->frameCount, light->sleepMs,
-                              light->colors.size(), light->lightLevels.size());
-                    logged++;
-                }
-            }
-            if (animatedCount > 5) {
-                LOG_DEBUG(MOD_GRAPHICS, "  ... and {} more animated lights", animatedCount - 5);
-            }
-        }
-    }
-
-    // Enable lighting and zone lights by default so vision system works on initial load
-    if (!zoneLightNodes_.empty()) {
-        lightingEnabled_ = true;
-        zoneLightsEnabled_ = true;
-
-        // Update zone mesh materials to enable lighting
-        if (zoneMeshNode_) {
-            for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
-                zoneMeshNode_->getMaterial(i).Lighting = true;
-            }
-        }
-
-        // Update PVS region mesh materials to enable lighting
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (node) {
-                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                    node->getMaterial(i).Lighting = true;
-                    node->getMaterial(i).NormalizeNormals = true;
-                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-                }
-            }
-        }
-
-        // Update object mesh materials to enable lighting
-        for (auto* node : objectNodes_) {
-            if (node) {
-                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                    node->getMaterial(i).Lighting = true;
-                }
-            }
-        }
-
-        // Update entity materials to enable lighting
-        if (entityRenderer_) {
-            entityRenderer_->setLightingEnabled(true);
-        }
-    }
-
-    // Apply vision-based intensity and color adjustments
-    updateZoneLightColors();
 }
 
 bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,
@@ -8706,73 +6012,6 @@ void IrrlichtRenderer::updateZoneLightColors() {
               zoneLightNodes_.size(), intensity * 100.0f, redShift * 100.0f, weatherMod);
 }
 
-void IrrlichtRenderer::updateLightAnimations(float deltaMs) {
-    if (!currentZone_ || zoneLightNodes_.empty()) return;
-
-    // Compute vision/weather modifiers (same logic as updateZoneLightColors)
-    float intensity = 0.25f;
-    float redShift = 0.0f;
-    switch (currentVision_) {
-        case VisionType::Ultravision:
-            intensity = 1.0f; break;
-        case VisionType::Infravision:
-            intensity = 0.75f; redShift = 0.3f; break;
-        default: break;
-    }
-    if (weatherEffects_ && weatherEffects_->isEnabled()) {
-        intensity *= weatherEffects_->getAmbientLightModifier();
-    }
-
-    for (size_t i = 0; i < zoneLightNodes_.size() && i < currentZone_->lights.size(); ++i) {
-        const auto& light = currentZone_->lights[i];
-        if (!light->isAnimated()) continue;
-
-        auto* node = zoneLightNodes_[i];
-        if (!node) continue;
-
-        // Advance elapsed time
-        zoneLightAnimElapsed_[i] += deltaMs;
-        float sleepMs = static_cast<float>(light->sleepMs);
-        if (sleepMs <= 0.0f) sleepMs = 100.0f;  // Default 100ms if unset
-
-        if (zoneLightAnimElapsed_[i] < sleepMs) continue;
-
-        // Advance frame(s), consuming elapsed time
-        while (zoneLightAnimElapsed_[i] >= sleepMs) {
-            zoneLightAnimElapsed_[i] -= sleepMs;
-            zoneLightAnimFrame_[i] = (zoneLightAnimFrame_[i] + 1) % light->frameCount;
-        }
-
-        uint32_t frame = zoneLightAnimFrame_[i];
-
-        // Compute frame color
-        float baseR, baseG, baseB;
-        if (!light->colors.empty() && frame < light->colors.size()) {
-            // Per-frame RGB colors
-            std::tie(baseR, baseG, baseB) = light->colors[frame];
-        } else if (!light->lightLevels.empty() && frame < light->lightLevels.size()) {
-            // Scale base color by light level
-            float level = light->lightLevels[frame];
-            baseR = light->r * level;
-            baseG = light->g * level;
-            baseB = light->b * level;
-        } else {
-            continue;  // No animation data for this frame
-        }
-
-        // Apply vision/weather modifiers
-        float r = baseR * intensity;
-        float g = baseG * intensity * (1.0f - redShift * 0.5f);
-        float b = baseB * intensity * (1.0f - redShift);
-        if (redShift > 0.0f) {
-            r = std::min(1.0f, r * (1.0f + redShift));
-        }
-
-        irr::video::SLight& lightData = node->getLightData();
-        lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
-    }
-}
-
 void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
     if (objectLights_.empty()) {
         return;
@@ -8898,11 +6137,7 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
     }
 
     // Force visibility and lighting recalculation on the next frame.
-    // PVS region gates may have been set before zone lights/objects existed,
-    // blocking updateObjectVisibility/updateZoneLightVisibility.
     lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
-    lastObjectPvsRegion_ = SIZE_MAX;
-    lastLightPvsRegion_ = SIZE_MAX;
     forcePvsUpdate_ = true;
 }
 
@@ -9064,6 +6299,28 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
         }
     }
 
+    // Copy zone light animation data (animated torches from WLD)
+    if (currentZone_) {
+        for (size_t i = 0; i < currentZone_->lights.size() && i < zoneLightNodes_.size(); ++i) {
+            const auto& light = currentZone_->lights[i];
+            if (!light->isAnimated()) continue;
+            SimulationZoneData::ZoneLightAnimData anim;
+            anim.lightIndex = i;
+            anim.frameCount = light->frameCount;
+            anim.sleepMs = light->sleepMs;
+            anim.baseR = light->r;
+            anim.baseG = light->g;
+            anim.baseB = light->b;
+            // Copy per-frame colors
+            for (const auto& c : light->colors) {
+                anim.frameColors.push_back(c);
+            }
+            // Copy light levels
+            anim.lightLevels = light->lightLevels;
+            zoneData.zoneLightAnims.push_back(std::move(anim));
+        }
+    }
+
     // Copy object light data
     zoneData.objectLights.resize(objectLights_.size());
     for (size_t i = 0; i < objectLights_.size(); ++i) {
@@ -9080,6 +6337,11 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
             old.attLinear = ld.Attenuation.Y;
             old.attQuadratic = ld.Attenuation.Z;
         }
+    }
+
+    // Portal system (non-owning const pointer, immutable after zone load)
+    if (portalSystem_) {
+        zoneData.portalSystem = portalSystem_.get();
     }
 
     // No trees or vertex anims yet — those get registered later
@@ -9201,6 +6463,12 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     // Player light
     input.playerLightLevel = playerLightLevel_;
 
+    // Vision and weather modifiers (for zone light animation colors)
+    input.visionType = static_cast<uint8_t>(currentVision_);
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        input.weatherAmbientModifier = weatherEffects_->getAmbientLightModifier();
+    }
+
     // Tree wind state snapshot
     if (treeManager_ && treeManager_->isEnabled()) {
         const auto& wc = treeManager_->getWindController();
@@ -9220,8 +6488,107 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
         input.treeWind.windDirY = dir.Y;
     }
 
+    // Sky state snapshot
+    if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+        input.skyEnabled = true;
+        input.skyInitialized = true;
+        input.skyCloudScrollOffset = skyRenderer_->getCloudScrollOffset();
+    }
+
+    // Weather effects state snapshot
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        input.weatherEnabled = true;
+        input.weatherTransitionProgress = weatherEffects_->getTransitionProgress();
+        input.weatherTransitionDuration = weatherEffects_->getTransitionDuration();
+        input.weatherCurrentDarkening = weatherEffects_->getCurrentDarkening();
+        input.weatherTargetDarkening = weatherEffects_->getTargetDarkening();
+        input.weatherLightningFlashTimer = weatherEffects_->getLightningFlashTimer();
+        input.weatherLightningBoltTimer = weatherEffects_->getLightningBoltTimer();
+        input.weatherLightningTimer = weatherEffects_->getLightningTimer();
+        input.weatherLightningActive = weatherEffects_->isLightningActive();
+        input.weatherLightningEnabled = weatherEffects_->isLightningEnabled();
+        input.weatherType = weatherEffects_->getCurrentType();
+        input.weatherIntensity = weatherEffects_->getCurrentIntensity();
+    }
+
     // Vertex animation timing
     input.vertAnimDeltaMs = deltaTime * 1000.0f;
+
+    // Particle system input
+    if (particleManager_ && zoneReady_) {
+        auto& pi = input.particleInput;
+        pi.deltaTime = deltaTime;
+        if (camera_) {
+            auto cp = camera_->getAbsolutePosition();
+            pi.cameraPos = glm::vec3(cp.X, cp.Y, cp.Z);
+        }
+
+        // Ambient color from zone shader
+        if (zoneShader_) {
+            const float* amb = zoneShader_->ambientColor();
+            pi.ambientColor = glm::vec3(amb[0], amb[1], amb[2]);
+        }
+
+        // Wind from particle manager's env state
+        pi.windDirection = particleManager_->getWindDirection();
+        pi.windStrength = particleManager_->getWindStrength();
+
+        // Entity positions/directions resolved last frame
+        pi.entityPositions = std::move(pendingParticleEntityPositions_);
+        pi.entityDirections = std::move(pendingParticleEntityDirections_);
+
+        // Commands from particle manager
+        pi.commands = particleManager_->drainCommands();
+
+        // State flags
+        pi.fireEnabled = particleManager_->isUnifiedFireEnabled();
+        pi.unifiedRendererInitialized = true;  // If we got here, it's initialized
+        pi.poolSize = 0;  // Worker determines pool size from config
+
+        // Weather lights: collect nearby lights for per-particle illumination
+        if (particleManager_->isWeatherParticlesActive()) {
+            float maxLightDist = 150.0f;
+            float maxLightDistSq = maxLightDist * maxLightDist;
+            float colorBoost = 2.5f;
+            glm::vec3 camIrr = pi.cameraPos;
+
+            for (size_t i = 0; i < zoneLightNodes_.size() && i < zoneLightPositions_.size(); ++i) {
+                auto* node = zoneLightNodes_[i];
+                if (!node) continue;
+                const auto& pos = zoneLightPositions_[i];
+                float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
+                float distSq = dx*dx + dy*dy + dz*dz;
+                if (distSq < maxLightDistSq) {
+                    auto& ld = node->getLightData();
+                    float radius = ld.Radius > 0 ? ld.Radius : 30.0f;
+                    pi.weatherLights.push_back({
+                        glm::vec3(pos.X, pos.Y, pos.Z),
+                        radius,
+                        glm::vec3(
+                            std::min(1.0f, ld.DiffuseColor.r * colorBoost),
+                            std::min(1.0f, ld.DiffuseColor.g * colorBoost),
+                            std::min(1.0f, ld.DiffuseColor.b * colorBoost)
+                        )
+                    });
+                }
+            }
+
+            // Player light
+            if (playerLightNode_ && playerLightLevel_ > 0) {
+                auto pos = playerLightNode_->getPosition();
+                auto& ld = playerLightNode_->getLightData();
+                pi.weatherLights.push_back({
+                    glm::vec3(pos.X, pos.Y, pos.Z),
+                    ld.Radius,
+                    glm::vec3(
+                        std::min(1.0f, ld.DiffuseColor.r * colorBoost),
+                        std::min(1.0f, ld.DiffuseColor.g * colorBoost),
+                        std::min(1.0f, ld.DiffuseColor.b * colorBoost)
+                    )
+                });
+            }
+        }
+    }
 
     simulationWorker_->postInput(input);
 }
@@ -9250,13 +6617,41 @@ void IrrlichtRenderer::applySimulationResults() {
             idx++;
         }
 
+        size_t prevPvsRegion = currentPvsRegion_;
         currentPvsRegion_ = results->currentPvsRegion;
+
+        // Always log PVS state from worker (throttled to every 30 frames)
+        static int simWorkerPvsLogCounter = 0;
+        if (++simWorkerPvsLogCounter % 30 == 1 || currentPvsRegion_ != prevPvsRegion) {
+            LOG_DEBUG(MOD_GRAPHICS, "SimWorker apply: PVS={}{} meshLoadQ={} protected={} regionVis={}",
+                      currentPvsRegion_,
+                      (currentPvsRegion_ != prevPvsRegion ? fmt::format(" (was {})", prevPvsRegion) : ""),
+                      results->meshLoadQueue.size(), results->protectedRegions.size(),
+                      results->regionVisible.size());
+        }
+
+        // Apply portal visible regions from worker
+        portalVisibleRegions_ = results->portalVisibleRegions;
+        if (entityRenderer_) {
+            entityRenderer_->setPortalVisibleRegions(
+                portalVisibleRegions_.empty() ? nullptr : &portalVisibleRegions_);
+        }
 
         // Copy mesh load queue and protected regions for constrained mesh cache
         if (constrainedMeshCache_) {
             meshLoadQueue_.clear();
+            size_t needBuildCount = 0;
             for (size_t regionIdx : results->meshLoadQueue) {
                 meshLoadQueue_.push_back({regionIdx, 0.0f});
+                if (!constrainedMeshCache_->isLoaded(regionIdx))
+                    needBuildCount++;
+            }
+            // Always log when there's work to do, throttled otherwise
+            static int meshLoadQLogCounter = 0;
+            if (needBuildCount > 0 || ++meshLoadQLogCounter % 60 == 1) {
+                LOG_DEBUG(MOD_GRAPHICS, "SimWorker meshLoadQueue: {} total, {} need building, {} loaded in cache",
+                          meshLoadQueue_.size(), needBuildCount,
+                          constrainedMeshCache_->getLoadedCount());
             }
             protectedRegions_.clear();
             protectedRegions_.insert(results->protectedRegions.begin(),
@@ -9338,6 +6733,36 @@ void IrrlichtRenderer::applySimulationResults() {
         }
     }
 
+    // Apply zone light animation colors from worker
+    if (!results->zoneLightAnimColors.empty()) {
+        for (const auto& alc : results->zoneLightAnimColors) {
+            if (!alc.updated) continue;
+            if (alc.lightIndex < zoneLightNodes_.size() && zoneLightNodes_[alc.lightIndex]) {
+                auto& ld = zoneLightNodes_[alc.lightIndex]->getLightData();
+                ld.DiffuseColor = irr::video::SColorf(alc.r, alc.g, alc.b, 1.0f);
+            }
+        }
+    }
+
+    // Apply sky state from worker
+    if (results->skyState.valid && skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+        SkyRenderer::SkyState skyState;
+        skyState.cloudScrollOffset = results->skyState.cloudScrollOffset;
+        skyRenderer_->applyState(skyState);
+    }
+
+    // Apply weather effects state from worker
+    if (results->weatherEffectsState.valid && weatherEffects_ && weatherEffects_->isEnabled()) {
+        WeatherEffectsController::WeatherEffectsState wes;
+        wes.transitionProgress = results->weatherEffectsState.transitionProgress;
+        wes.currentDarkening = results->weatherEffectsState.currentDarkening;
+        wes.lightningFlashTimer = results->weatherEffectsState.lightningFlashTimer;
+        wes.lightningBoltTimer = results->weatherEffectsState.lightningBoltTimer;
+        wes.lightningActive = results->weatherEffectsState.lightningActive;
+        wes.triggerLightningFlash = results->weatherEffectsState.triggerLightningFlash;
+        weatherEffects_->applyState(wes);
+    }
+
     // Update player light position (every frame, not gated)
     if (playerLightNode_ && playerLightLevel_ > 0) {
         playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
@@ -9397,6 +6822,28 @@ void IrrlichtRenderer::applySimulationResults() {
                 buffer->setDirty(irr::scene::EBT_VERTEX);
             }
         }
+    }
+
+    // Apply particle output from worker
+    if (results->particleOutput.valid && particleManager_) {
+        // Store render buffer pointer for use during rendering
+        particleRenderBuffer_ = &results->particleOutput.renderBuffer;
+
+        // Update particle manager's active count from worker
+        particleManager_->setWorkerActiveCount(results->particleOutput.activeCount);
+
+        // Resolve entity positions for the next frame's particle input
+        pendingParticleEntityPositions_.clear();
+        pendingParticleEntityDirections_.clear();
+
+        for (uint16_t entityID : results->particleOutput.positionRequestEntities) {
+            glm::vec3 pos;
+            if (particleManager_->resolveEntityPosition(entityID, pos)) {
+                pendingParticleEntityPositions_[entityID] = pos;
+            }
+        }
+    } else {
+        particleRenderBuffer_ = nullptr;
     }
 }
 
@@ -9741,7 +7188,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Tiered update: increment frame counter and accumulate delta for Tier 3
     frameNumber_++;
     tier3DeltaAccum_ += deltaTime;
-    tier2DeltaAccum_ += deltaTime;
     runTier2_ = (frameNumber_ % kTier2Interval == 0);
     runTier3_ = (frameNumber_ % kTier3Interval == 0);
 
@@ -9752,19 +7198,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     processFrameInput(deltaTime);
 
     // SimulationWorker: apply results from previous frame, then post new input
-    if (simulationWorker_ && simulationWorker_->isRunning()) {
-        sectionStart_ = std::chrono::steady_clock::now();
-        applySimulationResults();
-        frameTimings_.simWorkerApply = measureSection();
-    }
+    sectionStart_ = std::chrono::steady_clock::now();
+    applySimulationResults();
+    frameTimings_.simWorkerApply = measureSection();
 
     // Phase 2: Visibility
     processFrameVisibility();
 
     // SimulationWorker: post new input after frustum planes are updated
-    if (simulationWorker_ && simulationWorker_->isRunning()) {
-        postSimulationInput(deltaTime);
-    }
+    postSimulationInput(deltaTime);
 
     // Phase 2.5: Lazy mesh loading (constrained mode) / Progressive asset loading
     if (progressiveLoadingActive_) {
@@ -10278,8 +7720,6 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
 
                     // Force visibility rebuild
                     forcePvsUpdate_ = true;
-                    lastObjectPvsRegion_ = SIZE_MAX;
-                    lastLightPvsRegion_ = SIZE_MAX;
                 }
                 break;
 
@@ -10372,10 +7812,9 @@ void IrrlichtRenderer::processFrameVisibility() {
     // Update frustum planes every frame from actual Irrlicht camera direction.
     // We derive the direction from camera target - position (not CameraController yaw/pitch,
     // which can be stale or represent player facing rather than camera view in follow mode).
-    bool orientationChanged = false;
+    // Update frustum planes every frame (needed by SimulationWorker for next frame's input)
     if (frustumCuller_ && camera_) {
         irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
-        // Convert Irrlicht Y-up direction to EQ Z-up: (irrX, irrY, irrZ) -> (irrX, irrZ, irrY)
         float eqFwdX = irrFwd.X;
         float eqFwdY = irrFwd.Z;
         float eqFwdZ = irrFwd.Y;
@@ -10386,60 +7825,13 @@ void IrrlichtRenderer::processFrameVisibility() {
         float camX, camY, camZ;
         cameraController_->getPositionEQ(camX, camY, camZ);
 
-        // The dirty check inside update() will skip if nothing changed
         frustumCuller_->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
             fovV, aspect, 1.0f, renderDistance_);
-
-        // Detect camera direction change for inter-tier frustum re-cull.
-        // Use the actual forward direction components instead of yaw/pitch.
-        float fwdLen = std::sqrt(eqFwdX*eqFwdX + eqFwdY*eqFwdY + eqFwdZ*eqFwdZ);
-        if (fwdLen > 0.0001f) {
-            float nfx = eqFwdX / fwdLen, nfy = eqFwdY / fwdLen, nfz = eqFwdZ / fwdLen;
-            // Dot product with last direction - if < ~0.9999 (~0.8 degree change), re-cull
-            float dot = nfx * lastFrustumFwdX_ + nfy * lastFrustumFwdY_ + nfz * lastFrustumFwdZ_;
-            if (dot < 0.9999f) {
-                orientationChanged = true;
-                lastFrustumFwdX_ = nfx;
-                lastFrustumFwdY_ = nfy;
-                lastFrustumFwdZ_ = nfz;
-            }
-        }
     }
 
-    // When SimulationWorker is active, visibility/lighting are computed on the worker
-    // thread every frame. Results were already applied via applySimulationResults()
-    // above in processFrame(). Skip the main-thread Tier2 computation entirely.
-    bool workerHandlesVisibility = simulationWorker_ && simulationWorker_->isRunning();
+    // Visibility/lighting handled by SimulationWorker — results applied in applySimulationResults()
 
-    if (!workerHandlesVisibility) {
-        // Visibility culling MUST always run on Tier2 frames — PVS, object, and light
-        // culling are the primary geometry reduction mechanism (~3ms total cost, saves
-        // 200ms+ of render time). Never skip these based on budget prediction — the
-        // render cost EMA already includes the cost of drawing ALL visible geometry,
-        // so subtracting it at frame start always yields a negative budget, permanently
-        // disabling the very culling that would reduce render cost.
-        if (runTier2_) {
-            updatePvsVisibility();
-            frameTimings_.pvsVisibility = measureSection();
-
-            updateObjectVisibility();
-            // Update PVS visibility for animated trees (software path only)
-            if (treeManager_ && treeManager_->getAnimatedTreeCount() > 0 && zoneBspTree_) {
-                treeManager_->updatePvsVisibility(currentPvsRegion_, zoneBspTree_);
-            }
-            frameTimings_.objectVisibility = measureSection();
-            updateZoneLightVisibility();
-            frameTimings_.zoneLightVisibility = measureSection();
-
-            updateObjectLights();
-            frameTimings_.objectLights = measureSection();
-        } else if (orientationChanged && usePvsCulling_) {
-            // Camera rotated on a non-Tier2 frame: re-run frustum test only
-            updateFrustumCulling();
-        }
-    }
-
-    // Update camera position for atlas per-pixel lighting (always, regardless of worker)
+    // Update camera position for atlas per-pixel lighting
     if (zoneShader_ && zoneShader_->isAtlasAvailable() && camera_) {
         irr::core::vector3df camPos = camera_->getPosition();
         zoneShader_->setCameraPos(camPos.X, camPos.Y, camPos.Z);
@@ -10473,55 +7865,8 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             entityRenderer_->setCameraRegion(SIZE_MAX, nullptr);
         }
 
-        // Portal-based entity culling: walk portal graph from camera room.
-        // Cached — only recompute when region changes, position moves >5 units, or camera rotates.
-        if (portalSystem_ && portalSystem_->hasPortals() && currentPvsRegion_ != SIZE_MAX) {
-            bool needsPortalUpdate = portalCacheDirty_;
-
-            // Region changed
-            if (currentPvsRegion_ != lastPortalRegion_) needsPortalUpdate = true;
-
-            // Position moved >5 units
-            float pdx = playerX_ - lastPortalCamX_;
-            float pdy = playerY_ - lastPortalCamY_;
-            float pdz = playerZ_ - lastPortalCamZ_;
-            if (pdx*pdx + pdy*pdy + pdz*pdz > 25.0f) needsPortalUpdate = true;
-
-            // Camera orientation changed (~3.6 degrees)
-            if (camera_) {
-                auto fwd = camera_->getTarget() - camera_->getPosition();
-                float len = fwd.getLength();
-                if (len > 0.001f) {
-                    fwd /= len;
-                    float dot = fwd.X * lastPortalFwdX_ + fwd.Y * lastPortalFwdY_ + fwd.Z * lastPortalFwdZ_;
-                    if (dot < 0.998f) needsPortalUpdate = true;
-                }
-            }
-
-            if (needsPortalUpdate) {
-                computePortalVisibleRegions();
-                lastPortalRegion_ = currentPvsRegion_;
-                lastPortalCamX_ = playerX_;
-                lastPortalCamY_ = playerY_;
-                lastPortalCamZ_ = playerZ_;
-                if (camera_) {
-                    auto fwd = camera_->getTarget() - camera_->getPosition();
-                    float len = fwd.getLength();
-                    if (len > 0.001f) {
-                        fwd /= len;
-                        lastPortalFwdX_ = fwd.X;
-                        lastPortalFwdY_ = fwd.Y;
-                        lastPortalFwdZ_ = fwd.Z;
-                    }
-                }
-                portalCacheDirty_ = false;
-            }
-
-            entityRenderer_->setPortalVisibleRegions(
-                portalVisibleRegions_.empty() ? nullptr : &portalVisibleRegions_);
-        } else {
-            entityRenderer_->setPortalVisibleRegions(nullptr);
-        }
+        // Portal-based entity culling handled by SimulationWorker
+        // (results applied in applySimulationResults())
         if (camera_) entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
         // Now interpolate only visible entities
         entityRenderer_->updateInterpolation(deltaTime);
@@ -10547,15 +7892,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     if (animatedTextureManager_) animatedTextureManager_->update(deltaTime * 1000.0f);
     frameTimings_.animatedTextures = measureSection();
 
-    // Vertex animations — skip when worker handles them
-    {
-        bool workerHandlesVertexAnims = simulationWorker_ && simulationWorker_->isRunning();
-        if (!workerHandlesVertexAnims) {
-            updateVertexAnimations(deltaTime * 1000.0f);
-        }
-    }
-    // Light animations (flickering torches, etc.)
-    updateLightAnimations(deltaTime * 1000.0f);
+    // Vertex animations and light animations handled by SimulationWorker
     frameTimings_.vertexAnimations = measureSection();
 
     // Background BSP preload — install results when ready
@@ -10610,12 +7947,10 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         }
     }
 
-    // Tier 2: Detail + Tree
+    // Tier 2: Detail + Tree (~20Hz)
     // Skip while deferred init is still running — subsystems aren't ready yet
-    // When worker is active, run every frame (worker freed budget for visibility/lighting)
     {
-    bool runDetailTreeThisFrame = !deferredInitActive_ &&
-        (runTier2_ || (simulationWorker_ && simulationWorker_->isRunning()));
+    bool runDetailTreeThisFrame = !deferredInitActive_ && runTier2_;
     if (runDetailTreeThisFrame) {
         if (detailManager_ && detailManager_->isEnabled()) {
             irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
@@ -10632,66 +7967,36 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
                                    playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
         }
-        // CPU tree animation only on software path — GPU path uses wind shader
+        // Worker computes tree vertex positions — just advance wind controller time
         if (treeManager_ && treeManager_->isEnabled()
             && treeManager_->getAnimatedTreeCount() > 0) {
-            bool workerHandlesTrees = simulationWorker_ && simulationWorker_->isRunning();
-            if (workerHandlesTrees) {
-                // Worker computes vertex positions — just advance wind controller time
-                treeManager_->getWindController().update(deltaTime);
-            } else {
-                irr::core::vector3df cameraPos = camera_ ? camera_->getPosition() : irr::core::vector3df(0, 0, 0);
-                treeManager_->update(deltaTime, cameraPos);
-            }
+            treeManager_->getWindController().update(deltaTime);
         }
     }
     } // tier2 detail+tree block
     frameTimings_.tier2Update = measureSection();
 
-    // Fire light flickering (Tier 2 frequency) — skip when worker handles it
-    {
-        bool workerHandlesFlicker = simulationWorker_ && simulationWorker_->isRunning();
-        if (!workerHandlesFlicker && runTier2_ && fireEffectsEnabled_ && !objectLights_.empty()) {
-            float accDelta = tier2DeltaAccum_;
-            tier2DeltaAccum_ = 0.0f;
-            updateObjectLightColors(accDelta);
-            refreshShaderLightColors();
-        }
-    }
+    // Fire light flickering handled by SimulationWorker
     frameTimings_.fireFlicker = measureSection();
 
-    // Every-frame player light tracking — not gated by Tier2.
-    // When worker is active, player light position is set in applySimulationResults().
-    if (!(simulationWorker_ && simulationWorker_->isRunning())) {
-        if (!runTier2_ && playerLightNode_ && playerLightLevel_ > 0
-            && zoneShader_ && zoneShader_->isAvailable() && !activeLightNodes_.empty()) {
-            playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
-            refreshShaderLightColors();
-        }
-    }
+    // Player light position set in applySimulationResults() by SimulationWorker
 
-    // Tier 3: Environmental simulation
-    // When SimulationWorker is active, visibility/lighting/trees are offloaded,
-    // freeing ~7-8ms of main thread budget. Use that headroom to run all tier3
-    // operations every frame at 30Hz instead of the stepped 5Hz tier3 rate.
+    // Tier 3: Environmental simulation (~10Hz)
     {
         if (weatherSystem_) weatherSystem_->update(deltaTime);
         frameTimings_.weatherSystemUpdate = measureSection();
 
-        bool workerFreedBudget = simulationWorker_ && simulationWorker_->isRunning();
-        bool runEnvThisFrame = runTier3_ || workerFreedBudget;
+        bool runEnvThisFrame = runTier3_;
 
         if (runEnvThisFrame) {
-            // When worker is active, use real deltaTime for smooth animation.
-            // When tier3-gated, use accumulated delta as before.
-            float accDelta = workerFreedBudget ? deltaTime : tier3DeltaAccum_;
-            tier3DeltaAccum_ = 0.0f;  // Reset regardless to prevent unbounded growth
+            float accDelta = tier3DeltaAccum_;
+            tier3DeltaAccum_ = 0.0f;
 
-            if (weatherEffects_) weatherEffects_->update(accDelta);
+            // Weather effects: render-only update (rain/snow overlays, cloud layer)
+            // Timer/darkening/lightning state computed by SimulationWorker, applied in applySimulationResults()
+            if (weatherEffects_) weatherEffects_->updateRenderOnly(accDelta);
 
-            if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
-                skyRenderer_->update(accDelta);
-            }
+            // Sky cloud scrolling computed by SimulationWorker, applied in applySimulationResults()
 
             if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
                 particleManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
@@ -10700,104 +8005,12 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
                 particleManager_->update(accDelta);
             }
 
-            // Unified particles (fire + weather): update every Tier 3 frame
-            // Not gated by isEnabled() — fire/weather have their own toggles
+            // Unified particles (fire + weather + spell effects):
+            // Physics now runs in SimulationWorker. Weather light collection
+            // and command posting happen in postSimulationInput().
+            // updateUnified() is a no-op — kept for API compatibility.
             if (particleManager_ && zoneReady_) {
-                glm::vec3 camIrr(0.0f);
-                if (camera_) {
-                    auto cp = camera_->getAbsolutePosition();
-                    camIrr = glm::vec3(cp.X, cp.Y, cp.Z);
-                }
-                glm::vec3 ambientForParticles(0.1f);
-                if (zoneShader_) {
-                    const float* amb = zoneShader_->ambientColor();
-                    ambientForParticles = glm::vec3(amb[0], amb[1], amb[2]);
-                    particleManager_->setAmbientColor(ambientForParticles);
-                }
-
-                // Collect nearby lights for weather particle illumination
-                if (particleManager_->isWeatherParticlesActive()) {
-                    std::vector<Environment::ParticleManager::ParticleLight> nearbyLights;
-                    // Max distance from camera to consider a zone light.
-                    // Must cover weather spawn volume (half-extents up to 40) plus
-                    // typical light radii (30-100) so particles at volume edges
-                    // can still receive illumination from lights just outside.
-                    float maxLightDist = 150.0f;
-                    float maxLightDistSq = maxLightDist * maxLightDist;
-
-                    // Boost factor: Irrlicht's lighting pipeline applies per-vertex
-                    // attenuation via uniforms, so DiffuseColor values are in 0.1-0.4
-                    // range. For weather particles we use color as a direct multiplier,
-                    // so boost to produce visible illumination.
-                    float colorBoost = 2.5f;
-
-                    // Zone lights — use cached positions, not getAbsolutePosition(),
-                    // because invisible nodes have stale AbsoluteTransformation
-                    for (size_t i = 0; i < zoneLightNodes_.size() && i < zoneLightPositions_.size(); ++i) {
-                        auto* node = zoneLightNodes_[i];
-                        if (!node) continue;
-                        const auto& pos = zoneLightPositions_[i];
-                        float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
-                        float distSq = dx*dx + dy*dy + dz*dz;
-                        if (distSq < maxLightDistSq) {
-                            auto& ld = node->getLightData();
-                            float radius = ld.Radius > 0 ? ld.Radius : 30.0f;
-                            nearbyLights.push_back({
-                                glm::vec3(pos.X, pos.Y, pos.Z),
-                                radius,
-                                glm::vec3(
-                                    std::min(1.0f, ld.DiffuseColor.r * colorBoost),
-                                    std::min(1.0f, ld.DiffuseColor.g * colorBoost),
-                                    std::min(1.0f, ld.DiffuseColor.b * colorBoost)
-                                )
-                            });
-                        }
-                    }
-
-                    // Player light (lantern, lightstone, etc.)
-                    // Use getPosition() not getAbsolutePosition() — no parent node.
-                    if (playerLightNode_ && playerLightLevel_ > 0) {
-                        auto pos = playerLightNode_->getPosition();
-                        auto& ld = playerLightNode_->getLightData();
-                        nearbyLights.push_back({
-                            glm::vec3(pos.X, pos.Y, pos.Z),
-                            ld.Radius,
-                            glm::vec3(
-                                std::min(1.0f, ld.DiffuseColor.r * colorBoost),
-                                std::min(1.0f, ld.DiffuseColor.g * colorBoost),
-                                std::min(1.0f, ld.DiffuseColor.b * colorBoost)
-                            )
-                        });
-                    }
-
-                    // Periodic debug logging for weather light collection
-                    static int weatherLightLogCounter = 0;
-                    if (++weatherLightLogCounter >= 300) {  // ~every 6s at 50fps
-                        weatherLightLogCounter = 0;
-                        LOG_DEBUG(MOD_GRAPHICS,
-                            "WeatherLights: {} total ({} zone, {} player), ambient=({:.3f},{:.3f},{:.3f})",
-                            nearbyLights.size(),
-                            nearbyLights.size() - (playerLightNode_ && playerLightLevel_ > 0 ? 1 : 0),
-                            (playerLightNode_ && playerLightLevel_ > 0 ? 1 : 0),
-                            ambientForParticles.x, ambientForParticles.y, ambientForParticles.z);
-                        if (playerLightNode_ && playerLightLevel_ > 0) {
-                            auto ppos = playerLightNode_->getPosition();
-                            auto& pld = playerLightNode_->getLightData();
-                            LOG_DEBUG(MOD_GRAPHICS,
-                                "  PlayerLight: pos=({:.1f},{:.1f},{:.1f}), radius={:.1f}, "
-                                "diffuse=({:.3f},{:.3f},{:.3f}), boosted=({:.3f},{:.3f},{:.3f})",
-                                ppos.X, ppos.Y, ppos.Z, pld.Radius,
-                                pld.DiffuseColor.r, pld.DiffuseColor.g, pld.DiffuseColor.b,
-                                std::min(1.0f, pld.DiffuseColor.r * colorBoost),
-                                std::min(1.0f, pld.DiffuseColor.g * colorBoost),
-                                std::min(1.0f, pld.DiffuseColor.b * colorBoost));
-                        }
-                    }
-
-                    particleManager_->setWeatherLights(nearbyLights);
-                }
-
-                particleManager_->updateUnified(accDelta, camIrr);
+                particleManager_->updateUnified(0.0f);
             }
 
             if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_ && currentZone_) {
@@ -10972,7 +8185,8 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         float screenH = static_cast<float>(driver_->getScreenSize().Height);
         particleManager_->renderUnified(captured3DView_, captured3DProj_,
                                         camera_ ? camera_->getAbsolutePosition() : irr::core::vector3df(0, 0, 0),
-                                        fogStart, fogEnd, fogCol, screenH);
+                                        fogStart, fogEnd, fogCol, screenH,
+                                        particleRenderBuffer_);
     }
 #endif
     frameTimings_.particles = measureSection();
@@ -12963,162 +10177,6 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
 
 // --- Irrlicht-based Collision Detection (using zone mesh) ---
 
-void IrrlichtRenderer::setupZoneCollision() {
-    // Clean up old selectors
-    if (zoneTriangleSelector_) {
-        zoneTriangleSelector_->drop();
-        zoneTriangleSelector_ = nullptr;
-    }
-    if (terrainOnlySelector_) {
-        terrainOnlySelector_->drop();
-        terrainOnlySelector_ = nullptr;
-    }
-
-    // Clean up old collision node (used in PVS mode)
-    if (zoneCollisionNode_) {
-        zoneCollisionNode_->remove();
-        zoneCollisionNode_ = nullptr;
-    }
-
-    if (!smgr_) {
-        return;
-    }
-
-    // Create a meta triangle selector to combine zone, objects, and doors
-    irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
-    if (!metaSelector) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to create meta triangle selector");
-        return;
-    }
-
-    // Create a separate terrain-only selector for the detail system (excludes placeables)
-    irr::scene::IMetaTriangleSelector* terrainMeta = smgr_->createMetaTriangleSelector();
-    if (!terrainMeta) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to create terrain-only triangle selector");
-        metaSelector->drop();
-        return;
-    }
-
-    int selectorCount = 0;
-
-    // Add zone mesh selector(s)
-    // For PVS-based rendering, create a single combined collision mesh from all region geometry
-    // (Individual selectors per region would be too slow - 4000+ selectors!)
-    if (!regionMeshNodes_.empty() && currentZone_ && currentZone_->geometry) {
-        // PVS mode: build a combined collision mesh from the zone geometry
-        // Use the original combined geometry which has all triangles
-        ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
-        irr::scene::IMesh* collisionMesh = builder.buildMesh(*currentZone_->geometry);
-
-        if (collisionMesh) {
-            // Create a hidden scene node just for collision
-            zoneCollisionNode_ = smgr_->addMeshSceneNode(collisionMesh);
-            if (zoneCollisionNode_) {
-                zoneCollisionNode_->setVisible(false);  // Don't render, just use for collision
-                zoneCollisionNode_->setPosition(irr::core::vector3df(0, 0, 0));
-
-                irr::scene::ITriangleSelector* zoneSelector =
-                    smgr_->createOctreeTriangleSelector(collisionMesh, zoneCollisionNode_, 128);
-                if (zoneSelector) {
-                    metaSelector->addTriangleSelector(zoneSelector);
-                    terrainMeta->addTriangleSelector(zoneSelector);  // Also add to terrain-only
-                    zoneCollisionNode_->setTriangleSelector(zoneSelector);
-                    zoneSelector->drop();
-                    selectorCount++;
-                    LOG_DEBUG(MOD_GRAPHICS, "Added combined zone collision mesh (octree selector, {} triangles)",
-                              currentZone_->geometry->triangles.size());
-                }
-            }
-            collisionMesh->drop();
-        }
-
-        // Also add fallback mesh if it exists (geometry not in BSP regions)
-        if (fallbackMeshNode_ && fallbackMeshNode_->getMesh()) {
-            irr::scene::ITriangleSelector* fallbackSelector =
-                smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
-            if (fallbackSelector) {
-                metaSelector->addTriangleSelector(fallbackSelector);
-                terrainMeta->addTriangleSelector(fallbackSelector);  // Also add to terrain-only
-                fallbackMeshNode_->setTriangleSelector(fallbackSelector);
-                fallbackSelector->drop();
-                selectorCount++;
-                LOG_DEBUG(MOD_GRAPHICS, "Added fallback mesh to collision");
-            }
-        }
-    } else if (zoneMeshNode_) {
-        // Non-PVS mode: single combined zone mesh
-        irr::scene::IMesh* mesh = zoneMeshNode_->getMesh();
-        if (mesh) {
-            irr::scene::ITriangleSelector* zoneSelector =
-                smgr_->createOctreeTriangleSelector(mesh, zoneMeshNode_, 128);
-            if (zoneSelector) {
-                metaSelector->addTriangleSelector(zoneSelector);
-                terrainMeta->addTriangleSelector(zoneSelector);  // Also add to terrain-only
-                zoneMeshNode_->setTriangleSelector(zoneSelector);
-                zoneSelector->drop();
-                selectorCount++;
-                LOG_DEBUG(MOD_GRAPHICS, "Added zone mesh to collision (octree selector)");
-            }
-        }
-    }
-
-    // Store terrain-only selector (for detail system ground queries)
-    terrainOnlySelector_ = terrainMeta;
-
-    // Add placeable object selectors
-    for (auto* objectNode : objectNodes_) {
-        if (objectNode && objectNode->getMesh()) {
-            irr::scene::ITriangleSelector* objSelector =
-                smgr_->createTriangleSelector(objectNode->getMesh(), objectNode);
-            if (objSelector) {
-                metaSelector->addTriangleSelector(objSelector);
-                objectNode->setTriangleSelector(objSelector);
-                objSelector->drop();
-                selectorCount++;
-            }
-        }
-    }
-    if (!objectNodes_.empty()) {
-        LOG_DEBUG(MOD_GRAPHICS, "Added {} placeable objects to collision", objectNodes_.size());
-    }
-
-    // Add door selectors
-    if (doorManager_) {
-        auto doorNodes = doorManager_->getDoorSceneNodes();
-        for (auto* doorNode : doorNodes) {
-            if (doorNode && doorNode->getMesh()) {
-                irr::scene::ITriangleSelector* doorSelector =
-                    smgr_->createTriangleSelector(doorNode->getMesh(), doorNode);
-                if (doorSelector) {
-                    metaSelector->addTriangleSelector(doorSelector);
-                    doorNode->setTriangleSelector(doorSelector);
-                    doorSelector->drop();
-                    selectorCount++;
-                }
-            }
-        }
-        if (!doorNodes.empty()) {
-            LOG_DEBUG(MOD_GRAPHICS, "Added {} doors to collision", doorNodes.size());
-        }
-    }
-
-    zoneTriangleSelector_ = metaSelector;
-    LOG_DEBUG(MOD_GRAPHICS, "Zone collision setup complete ({} selectors)", selectorCount);
-
-    // Get collision manager
-    collisionManager_ = smgr_->getSceneCollisionManager();
-
-    // Set up camera collision detection for follow mode zoom
-    if (cameraController_ && collisionManager_ && zoneTriangleSelector_) {
-        cameraController_->setCollisionManager(collisionManager_, zoneTriangleSelector_);
-    }
-
-    // Defer environment system initialization until game is playable.
-    // Detail objects, particles, boids, tumbleweeds are optional and should
-    // not block zone loading or affect initial gameplay FPS.
-    environmentInitPending_ = true;
-}
-
 void IrrlichtRenderer::setupMinimalZoneCollision() {
     // Clean up old selectors
     if (zoneTriangleSelector_) {
@@ -13589,6 +10647,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
             if (rebuildRegionMesh(entry.regionIdx)) {
                 addRegionToCollision(entry.regionIdx);
+                LOG_DEBUG(MOD_GRAPHICS, "Progressive: built region {} + collision (PVS={}, queue={})",
+                          entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size());
                 didWork = true;
                 logAssetBuildTime("region", entry.regionIdx, stepStart);
             }
@@ -13940,36 +11000,20 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
         return;
     }
 
-    // If no collision map, fall back to distance-only
-    if (!collisionMap_) {
-        entityRenderer_->updateNameTags(camera_);
-        return;
+    // Get camera's BSP region for PVS visibility checks
+    // PVS bitvector lookup is cheap — no throttle needed (replaces 0.1s raycast timer)
+    std::shared_ptr<BspRegion> cameraRegion;
+    if (zoneBspTree_ && currentPvsRegion_ != SIZE_MAX
+        && currentPvsRegion_ < zoneBspTree_->regions.size()) {
+        cameraRegion = zoneBspTree_->regions[currentPvsRegion_];
     }
 
-    // Throttle LOS checks for performance
-    lastLOSCheckTime_ += deltaTime;
-    if (lastLOSCheckTime_ < playerConfig_.nameTagLOSCheckInterval) {
-        return;  // Skip this frame
-    }
-    lastLOSCheckTime_ = 0.0f;
-
-    // Player eye position (EQ coordinates)
-    glm::vec3 playerEye(playerX_, playerY_, playerZ_ + playerConfig_.eyeHeight);
-
-    // Check each entity for LOS visibility
     const auto& entities = entityRenderer_->getEntities();
     float nameTagDist = entityRenderer_->getNameTagDistance();
+    float nameTagDistSq = nameTagDist * nameTagDist;
     float renderDistSq = renderDistance_ * renderDistance_;
 
     for (const auto& [spawnId, visual] : entities) {
-        // Entity position (approximate chest height)
-        glm::vec3 entityPos(visual.lastX, visual.lastY, visual.lastZ + 5.0f);
-
-        // Calculate distance
-        glm::vec3 diff = entityPos - playerEye;
-        float distanceSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
-        float distance = std::sqrt(distanceSq);
-
         // Skip entities already removed from scene graph by updateConstrainedVisibility
         // (frustum-culled, occlusion-culled, or beyond constrained distance/count limits)
         if (!visual.inSceneGraph) {
@@ -13979,8 +11023,13 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
             continue;
         }
 
+        // Distance check (EQ coordinates)
+        float dx = visual.lastX - playerX_;
+        float dy = visual.lastY - playerY_;
+        float dz = visual.lastZ - playerZ_;
+        float distanceSq = dx * dx + dy * dy + dz * dz;
+
         // Check if within render distance AND not occluded (for entity model visibility)
-        // Use cached occlusion result from updateConstrainedVisibility (computed every frame)
         bool modelVisible = (distanceSq <= renderDistSq) && !visual.occlusionHidden;
         if (visual.animatedNode) {
             visual.animatedNode->setVisible(modelVisible);
@@ -13989,12 +11038,27 @@ void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
             visual.meshNode->setVisible(modelVisible);
         }
 
-        // Name tag visibility: within name tag distance AND not occluded AND has LOS
+        // Name tag visibility: within distance, not occluded, and PVS-visible
         if (visual.nameNode) {
-            bool nameVisible = (distance <= nameTagDist) && !visual.occlusionHidden;
-            if (nameVisible) {
-                nameVisible = collisionMap_->CheckLOS(playerEye, entityPos);
+            bool nameVisible = (distanceSq <= nameTagDistSq) && !visual.occlusionHidden;
+
+            if (nameVisible && cameraRegion && !cameraRegion->visibleRegions.empty()) {
+                // PVS bitvector check: is entity's BSP region visible from camera's region?
+                size_t entityRegion = visual.cachedBspRegion;
+                if (entityRegion != SIZE_MAX && entityRegion < cameraRegion->visibleRegions.size()) {
+                    nameVisible = cameraRegion->visibleRegions[entityRegion];
+                }
             }
+
+            // Finer-grained portal culling: if portal visible regions are computed,
+            // entity must be in one of those regions (or camera's own region)
+            if (nameVisible && !portalVisibleRegions_.empty()) {
+                size_t entityRegion = visual.cachedBspRegion;
+                if (entityRegion != SIZE_MAX && portalVisibleRegions_.find(entityRegion) == portalVisibleRegions_.end()) {
+                    nameVisible = false;
+                }
+            }
+
             visual.nameNode->setVisible(nameVisible);
         }
     }

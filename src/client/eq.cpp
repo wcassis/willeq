@@ -13859,8 +13859,8 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	}
 
 	// NOTE: Zone line visualization boxes are sent to the renderer in LoadZoneGraphics()
-	// AFTER loadZone() completes. If done here, the boxes get cleared when loadZone()
-	// calls unloadZone() internally.
+	// AFTER zone loading completes. If done here, the boxes get cleared when
+	// unloadZone() runs at the start of zone loading.
 }
 
 void EverQuest::CheckZoneLine()

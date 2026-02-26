@@ -404,6 +404,21 @@ void SkyRenderer::update(float deltaTime) {
     updateCloudScrolling();
 }
 
+SkyRenderer::SkyState SkyRenderer::computeState(float deltaTime) const {
+    SkyState state;
+    state.cloudScrollOffset = cloudScrollOffset_ + deltaTime * 0.01f;
+    if (state.cloudScrollOffset > 1.0f) {
+        state.cloudScrollOffset -= 1.0f;
+    }
+    return state;
+}
+
+void SkyRenderer::applyState(const SkyState& state) {
+    if (!initialized_ || !enabled_) return;
+    cloudScrollOffset_ = state.cloudScrollOffset;
+    updateCloudScrolling();
+}
+
 void SkyRenderer::setCameraPosition(const irr::core::vector3df& cameraPos) {
     if (!initialized_) {
         return;

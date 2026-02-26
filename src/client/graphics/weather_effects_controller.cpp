@@ -396,6 +396,111 @@ void WeatherEffectsController::update(float deltaTime) {
     }
 }
 
+WeatherEffectsController::WeatherEffectsState WeatherEffectsController::computeState(float deltaTime) const {
+    WeatherEffectsState state;
+
+    // Advance transition progress
+    state.transitionProgress = transitionProgress_;
+    if (state.transitionProgress < 1.0f) {
+        state.transitionProgress += deltaTime / transitionDuration_;
+        state.transitionProgress = std::min(1.0f, state.transitionProgress);
+    }
+
+    // Advance storm darkening
+    float darkeningSpeed = 0.5f;
+    state.currentDarkening = currentDarkening_;
+    if (state.currentDarkening < targetDarkening_) {
+        state.currentDarkening += darkeningSpeed * deltaTime;
+        state.currentDarkening = std::min(state.currentDarkening, targetDarkening_);
+    } else if (state.currentDarkening > targetDarkening_) {
+        state.currentDarkening -= darkeningSpeed * deltaTime;
+        state.currentDarkening = std::max(state.currentDarkening, targetDarkening_);
+    }
+
+    // Advance lightning timers
+    state.lightningFlashTimer = lightningFlashTimer_;
+    state.lightningBoltTimer = lightningBoltTimer_;
+    state.lightningActive = lightningActive_;
+    state.triggerLightningFlash = false;
+
+    if (state.lightningFlashTimer > 0.0f) {
+        state.lightningFlashTimer -= deltaTime;
+    }
+    if (state.lightningBoltTimer > 0.0f) {
+        state.lightningBoltTimer -= deltaTime;
+        if (state.lightningBoltTimer <= 0.0f) {
+            state.lightningActive = false;
+        }
+    }
+
+    // Check for next lightning strike (only during storms)
+    if (currentType_ == 1 && currentIntensity_ >= 3 && config_.storm.lightningEnabled) {
+        float timer = lightningTimer_ - deltaTime;
+        if (timer <= 0.0f) {
+            state.triggerLightningFlash = true;
+        }
+    }
+
+    return state;
+}
+
+void WeatherEffectsController::applyState(const WeatherEffectsState& state) {
+    transitionProgress_ = state.transitionProgress;
+    currentDarkening_ = state.currentDarkening;
+    lightningFlashTimer_ = state.lightningFlashTimer;
+    lightningBoltTimer_ = state.lightningBoltTimer;
+    lightningActive_ = state.lightningActive;
+
+    if (!state.lightningActive && lightningBoltTimer_ <= 0.0f) {
+        lightningBolt_.clear();
+    }
+
+    if (state.triggerLightningFlash) {
+        triggerLightning();
+        scheduleLightning();
+    }
+
+    // Rain and snow effects still call update sub-methods on render thread
+    // (they interact with particle manager which needs scene graph access)
+    if (currentType_ == 1 && currentIntensity_ > 0) {
+        // Rain particle updates would be done separately
+    }
+    if (currentType_ == 2 && currentIntensity_ > 0) {
+        // Snow particle updates would be done separately
+    }
+}
+
+void WeatherEffectsController::updateRenderOnly(float deltaTime) {
+    if (!enabled_ || !initialized_) return;
+
+    // Rain overlay (render-thread-only: camera queries)
+    if (currentType_ == 1 && currentIntensity_ > 0) {
+        updateRain(deltaTime);
+    }
+    // Snow overlay (render-thread-only: camera queries)
+    if (currentType_ == 2 && currentIntensity_ > 0) {
+        updateSnow(deltaTime);
+    }
+    // Storm cloud layer (render-thread-only: scene node update)
+    if (stormCloudLayer_ && isCloudOverlayEnabled()) {
+        glm::vec3 windDirection(1.0f, 0.0f, 0.0f);
+        float windStrength = 0.5f;
+        float timeOfDay = 12.0f;
+        glm::vec3 playerPos(0, 0, 0);
+        if (particleManager_) {
+            const auto& env = particleManager_->getEnvironmentState();
+            windDirection = env.windDirection;
+            windStrength = env.windStrength;
+            timeOfDay = env.timeOfDay;
+            playerPos = env.playerPosition;
+        } else if (smgr_ && smgr_->getActiveCamera()) {
+            irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
+            playerPos = glm::vec3(pos.X, pos.Z, pos.Y);
+        }
+        stormCloudLayer_->update(deltaTime, playerPos, windDirection, windStrength, currentIntensity_, timeOfDay);
+    }
+}
+
 void WeatherEffectsController::updateRain(float deltaTime) {
     if (isIndoorZone_) return;
 

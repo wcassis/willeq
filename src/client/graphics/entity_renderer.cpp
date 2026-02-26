@@ -1117,34 +1117,260 @@ bool EntityRenderer::processOneEntityBuildStep() {
         }
 
         case EntityBuildPhase::SceneNodeCreation: {
-            // Create animated mesh + scene node. All textures (base + variant) are
-            // already in the mesh builder cache, so this is fast (~10-15ms).
-            // We call buildEntityMesh which handles everything EXCEPT equipment attach.
-            // We override the equipment attach by skipping it here and doing it in
-            // the EquipmentAttach phase instead.
+            // Frame 1/3: Create node + set position/rotation/scale.
+            // This is the heaviest frame — mesh creation (~10-15ms).
+            // Materials and name tags are deferred to NodeSetup and MeshFinalize.
 
-            // Temporarily clear equipment IDs so buildEntityMesh doesn't call attachEquipment
+            // Promote any background-preloaded model data
+            if (entityPrepWorker_ && raceModelLoader_) {
+                raceModelLoader_->promotePreparedModels();
+            }
+
+            // Remove con-colored placeholder cube
+            if (vis.usesPlaceholder && vis.sceneNode) {
+                vis.sceneNode->remove();
+                vis.sceneNode->drop();
+                vis.sceneNode = nullptr;
+                vis.meshNode = nullptr;
+                vis.usesPlaceholder = false;
+            }
+
+            uint16_t raceId = vis.raceId;
+            uint8_t gender = vis.gender;
+
+            float scale = getScaleForRace(raceId);
+            if (scale <= 0.0f) {
+                vis.meshBuilt = true;
+                vis.buildPhase = EntityBuildPhase::Built;
+                return true;
+            }
+
+            // Recover serverSize from temporary storage in collisionHeight
+            float serverSize = vis.collisionHeight;
+            vis.collisionHeight = 0;
+
+            constexpr float REFERENCE_SIZE = 6.0f;
+            float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
+            scale *= sizeMultiplier;
+
+            // Temporarily clear weapon equipment IDs so createAnimatedNodeWithEquipment
+            // doesn't bake weapon geometry — weapons are attached in EquipmentAttach phase
             uint32_t savedPrimary = vis.appearance.equipment[7];
             uint32_t savedSecondary = vis.appearance.equipment[8];
             vis.appearance.equipment[7] = 0;
             vis.appearance.equipment[8] = 0;
 
-            buildEntityMesh(bestId);
+            // Try animated mesh first
+            EQAnimatedMeshSceneNode* animNode = nullptr;
+            if (raceModelLoader_) {
+                bool hasEquipment = false;
+                for (int i = 0; i < 9; i++) {
+                    if (vis.appearance.equipment[i] != 0) {
+                        hasEquipment = true;
+                        break;
+                    }
+                }
+                if (hasEquipment || vis.appearance.face != 0 || vis.appearance.texture != 0) {
+                    animNode = raceModelLoader_->createAnimatedNodeWithEquipment(
+                        raceId, gender, vis.appearance, smgr_->getRootSceneNode());
+                } else {
+                    animNode = raceModelLoader_->createAnimatedNode(raceId, gender, smgr_->getRootSceneNode());
+                }
+            }
 
-            // Restore equipment IDs for the EquipmentAttach phase
+            // Restore weapon equipment IDs for EquipmentAttach phase
             vis.appearance.equipment[7] = savedPrimary;
             vis.appearance.equipment[8] = savedSecondary;
 
-            // If we have equipment staging data, go to equip texture upload
-            // Otherwise skip straight to Built
+            if (animNode) {
+                vis.animatedNode = animNode;
+                vis.sceneNode = animNode;
+                vis.sceneNode->grab();
+                vis.inSceneGraph = true;
+                vis.isAnimated = true;
+                vis.usesPlaceholder = false;
+
+                if (vis.isPlayer) {
+                    animNode->setIsPlayerNode(true);
+                }
+                animNode->forceAnimationUpdate();
+
+                // Collision offset
+                irr::core::aabbox3df bbox = animNode->getBoundingBox();
+                float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+                vis.modelYOffset = 0;
+                vis.collisionZOffset = (bboxHeight / 2.0f) * scale;
+
+                // Position, rotation, scale
+                animNode->setPosition(irr::core::vector3df(vis.lastX, vis.lastZ + vis.modelYOffset, vis.lastY));
+                float visualHeading = -vis.lastHeading;
+                animNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
+                animNode->setScale(irr::core::vector3df(scale, scale, scale));
+            } else {
+                // Fall back to static mesh
+                irr::scene::IMesh* mesh = getMeshForRace(raceId, gender, vis.appearance);
+                if (!mesh) {
+                    // No model at all — fall back to synchronous buildEntityMesh
+                    buildEntityMesh(bestId);
+                    return true;
+                }
+
+                bool usesPlaceholder = (placeholderMeshCache_.find(raceId) != placeholderMeshCache_.end() &&
+                    placeholderMeshCache_[raceId] == mesh);
+                vis.usesPlaceholder = usesPlaceholder;
+                vis.isAnimated = false;
+
+                vis.meshNode = smgr_->addMeshSceneNode(mesh);
+                if (!vis.meshNode) {
+                    return false;
+                }
+                vis.sceneNode = vis.meshNode;
+                vis.sceneNode->grab();
+                vis.inSceneGraph = true;
+
+                // Collision offset
+                irr::core::aabbox3df bbox = mesh->getBoundingBox();
+                float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+                vis.modelYOffset = 0;
+                vis.collisionZOffset = (bboxHeight / 2.0f) * scale;
+
+                // Position, rotation, scale
+                vis.meshNode->setPosition(irr::core::vector3df(vis.lastX, vis.lastZ + vis.modelYOffset, vis.lastY));
+                float visualHeading = -vis.lastHeading;
+                vis.meshNode->setRotation(irr::core::vector3df(0, visualHeading, 0));
+                vis.meshNode->setScale(irr::core::vector3df(scale, scale, scale));
+            }
+
+            vis.buildPhase = EntityBuildPhase::NodeSetup;
+            return true;
+        }
+
+        case EntityBuildPhase::NodeSetup: {
+            // Frame 2/3: Set materials, animation speed, player highlight.
+            // Node was created in SceneNodeCreation — now configure rendering properties.
+
+            irr::scene::ISceneNode* node = vis.sceneNode;
+            if (!node) {
+                // Shouldn't happen — node was created in Frame 1
+                vis.buildPhase = EntityBuildPhase::MeshFinalize;
+                return true;
+            }
+
+            // Set material properties
+            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                auto& mat = node->getMaterial(i);
+                mat.BackfaceCulling = false;
+                if (shaderMaterialSolid_ >= 0) {
+                    if (mat.MaterialType == irr::video::EMT_SOLID) {
+                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                    } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    }
+                    mat.Lighting = false;
+                } else {
+                    mat.Lighting = lightingEnabled_;
+                    if (lightingEnabled_) {
+                        mat.NormalizeNormals = true;
+                        mat.AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                        mat.DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                    }
+                }
+            }
+
+            // Apply animation speed for animated nodes
+            if (vis.animatedNode) {
+                vis.animatedNode->setAnimationSpeed(10.0f * globalAnimationSpeed_);
+            }
+
+            // Player highlight
+            if (vis.isPlayer) {
+                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+                    node->getMaterial(i).EmissiveColor = irr::video::SColor(255, 50, 50, 100);
+                }
+            }
+
+            vis.buildPhase = EntityBuildPhase::MeshFinalize;
+            return true;
+        }
+
+        case EntityBuildPhase::MeshFinalize: {
+            // Frame 3/3: Name tag, corpse animation, light level, race ref tracking,
+            // and decide whether equipment phases are needed.
+
+            // Read scale back from the node (set in SceneNodeCreation)
+            float scale = vis.sceneNode ? vis.sceneNode->getScale().X : 1.0f;
+
+            // Create name tag
+            if (nameTagsVisible_ && !vis.name.empty() && vis.sceneNode) {
+                std::wstring wname = EQT::toDisplayNameW(vis.name);
+                float nameHeight;
+                if (vis.isAnimated) {
+                    nameHeight = 5.5f * scale;
+                } else {
+                    nameHeight = vis.usesPlaceholder ? 10.5f : 5.5f;
+                    nameHeight *= scale;
+                }
+                irr::video::SColor nameColor = vis.isPlayer
+                    ? irr::video::SColor(255, 100, 200, 255)
+                    : irr::video::SColor(255, 255, 255, 255);
+                vis.nameNode = smgr_->addTextSceneNode(
+                    smgr_->getGUIEnvironment()->getBuiltInFont(),
+                    wname.c_str(), nameColor, vis.sceneNode,
+                    irr::core::vector3df(0, nameHeight, 0));
+            }
+
+            // Boat collision (static mesh only, race 72=Ship, 73=Launch)
+            if (!vis.isAnimated && vis.meshNode && (vis.raceId == 72 || vis.raceId == 73)) {
+                vis.hasCollision = true;
+                irr::core::aabbox3df collBbox = vis.meshNode->getMesh()->getBoundingBox();
+                float bboxWidth = std::max(collBbox.MaxEdge.X - collBbox.MinEdge.X,
+                                           collBbox.MaxEdge.Z - collBbox.MinEdge.Z);
+                vis.collisionRadius = (bboxWidth / 2.0f) * scale;
+                vis.collisionHeight = (collBbox.MaxEdge.Y - collBbox.MinEdge.Y) * scale;
+                vis.deckZ = vis.lastZ + (vis.collisionHeight / 2.0f);
+            }
+
+            // Track race model reference for cache eviction
+            if (raceModelLoader_) {
+                raceModelLoader_->addMeshRef(vis.raceId, vis.gender);
+            }
+
+            // Corpse death animation (animated only)
+            if (vis.isCorpse && vis.animatedNode) {
+                bool hasD05 = vis.animatedNode->hasAnimation("d05");
+                bool hasD01 = vis.animatedNode->hasAnimation("d01");
+                bool hasD02 = vis.animatedNode->hasAnimation("d02");
+
+                std::string deathAnim;
+                if (hasD05) deathAnim = "d05";
+                else if (hasD02) deathAnim = "d02";
+                else if (hasD01) deathAnim = "d01";
+
+                if (!deathAnim.empty()) {
+                    vis.animatedNode->playAnimation(deathAnim, false, false);
+                    SkeletalAnimator& animator = vis.animatedNode->getAnimator();
+                    animator.setToLastFrame();
+                    vis.animatedNode->forceAnimationUpdate();
+                    vis.corpsePositionAdjusted = true;
+                    vis.corpseYOffset = 0.0f;
+                    vis.currentAnimation = deathAnim;
+                }
+            }
+
+            // Apply queued light level
+            if (vis.lightLevel != 0) {
+                setEntityLight(bestId, vis.lightLevel);
+            }
+
+            vis.meshBuilt = true;
+
+            // Decide next phase based on equipment data
             if (!vis.equipmentTextures.empty()) {
                 vis.buildPhase = EntityBuildPhase::EquipTextureUploading;
                 vis.nextEquipTextureUpload = 0;
             } else if (!vis.equipmentStaging.empty()) {
-                // Equipment data but no textures to upload (non-DDS textures)
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;
-            } else if (savedPrimary != 0 || savedSecondary != 0) {
-                // Has equipment IDs but no pre-loaded data — fallback to sync attach
+            } else if (vis.appearance.equipment[7] != 0 || vis.appearance.equipment[8] != 0) {
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;
             } else {
                 vis.buildPhase = EntityBuildPhase::Built;

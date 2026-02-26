@@ -123,6 +123,13 @@ public:
     // deltaTime: time since last update in seconds
     void update(float deltaTime);
 
+    // Compute/apply split for worker thread offloading
+    struct SkyState {
+        float cloudScrollOffset = 0.0f;
+    };
+    SkyState computeState(float deltaTime) const;
+    void applyState(const SkyState& state);
+
     // Update camera position - sky dome and celestial bodies follow the camera
     // so they appear infinitely far away regardless of player position
     void setCameraPosition(const irr::core::vector3df& cameraPos);
@@ -136,6 +143,9 @@ public:
 
     // Check if sky was successfully initialized
     bool isInitialized() const { return initialized_; }
+
+    // Get current cloud scroll offset (for worker thread snapshotting)
+    float getCloudScrollOffset() const { return cloudScrollOffset_; }
 
     // Check if prepareSkyType() has been called (pending applySkyType)
     bool isSkyPrepared() const { return skyPrepared_; }

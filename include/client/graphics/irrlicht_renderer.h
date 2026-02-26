@@ -384,7 +384,6 @@ struct PlayerModeConfig {
     float eyeHeight = 0.0f;              // Eye height offset from head bone position (Y/Shift+Y to adjust)
     float collisionRadius = 2.0f;        // Character collision radius
     float collisionStepHeight = 4.0f;    // Max step-up height for stairs
-    float nameTagLOSCheckInterval = 0.1f; // Seconds between LOS checks
     float collisionCheckHeight = 3.0f;   // Height above ground for collision raycast
     bool collisionEnabled = true;        // Toggle collision on/off for debugging
     bool collisionDebug = false;         // Print collision debug info
@@ -616,16 +615,11 @@ public:
     // Request the renderer to quit (for /q, /quit commands)
     void requestQuit();
 
-    // Load a zone for rendering
-    // progressStart/progressEnd: range for progress bar (0.0-1.0), allows caller to control
-    // where zone loading fits within overall loading sequence
-    bool loadZone(const std::string& zoneName, float progressStart = 0.0f, float progressEnd = 1.0f);
-
     // Unload current zone
     void unloadZone();
 
     // Set zone environment parameters (sky type, fog colors) from server data
-    // Call after loadZone() to apply zone-specific rendering settings
+    // Call after zone loading to apply zone-specific rendering settings
     // skyType: sky type from NewZone_Struct (0-255)
     // zoneType: zone type (0=outdoor, 1=dungeon, etc. - indoor zones disable sky)
     // fogRed/Green/Blue: fog color arrays (4 values for different fog ranges)
@@ -685,10 +679,6 @@ public:
                       bool initiallyOpen);
     void setDoorState(uint8_t doorId, bool open, bool userInitiated = false);
     void clearDoors();
-
-    // Collision setup - call after zone, objects, and doors are all loaded
-    // Creates a combined collision selector including zone geometry, placeables, and doors
-    void setupZoneCollision();
 
     // Deferred/progressive asset loading
     // Index objects without building meshes (deferred mode)
@@ -940,11 +930,8 @@ public:
         if (treeManager_) {
             treeManager_->setRenderDistance(renderDistance_);
         }
-        // Force visibility update on next frame by invalidating PVS region gates
-        lastObjectPvsRegion_ = SIZE_MAX;
-        lastLightPvsRegion_ = SIZE_MAX;
+        // Force visibility update on next frame
         lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
-        // Force PVS recalculation (resets static variables in updatePvsVisibility)
         forcePvsUpdate_ = true;
     }
     float getRenderDistance() const { return renderDistance_; }
@@ -1197,24 +1184,14 @@ private:
     void postSimulationInput(float deltaTime);  // Snapshot main thread state → worker input
     void applySimulationResults();   // Apply worker output → scene graph
 
-    void updateObjectLights();  // Distance-based culling of object lights
-    void updateObjectVisibility();  // Distance-based scene graph management for placeable objects
-    void updateZoneLightVisibility();  // Distance-based scene graph management for zone lights
-    void updateVertexAnimations(float deltaMs);  // Update vertex animated meshes
-    void updateLightAnimations(float deltaMs);   // Update animated zone light colors
     void setupFog();
     void setupHUD();
     void updateHUD();
     void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
     void advanceDeferredInit();              // One-step-per-GREEN-frame deferred environment init
     void createZoneMesh();
-    void createZoneMeshWithPvs();  // Create per-region meshes for PVS culling
-    void updatePvsVisibility();    // Update region visibility based on camera position
-    void updateFrustumCulling();   // Re-test visible nodes against frustum (for rotation-only changes)
     void processFrameLazyLoad();   // FPS-budgeted lazy mesh loading (constrained mode)
     bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
-    void createObjectMeshes();
-    void createZoneLights();
     void updateZoneLightColors();  // Update zone light colors based on current vision type
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
     void refreshShaderLightColors();  // Push updated fire-flicker colors to GLSL shader
@@ -1252,12 +1229,17 @@ private:
     // Occlusion camera-movement gating
     float lastOccCamX_ = 0.0f, lastOccCamY_ = 0.0f, lastOccCamZ_ = 0.0f;
     float lastOccFwdX_ = 0.0f, lastOccFwdY_ = 1.0f, lastOccFwdZ_ = 0.0f;
-    float lastFrustumFwdX_ = 0.0f, lastFrustumFwdY_ = 1.0f, lastFrustumFwdZ_ = 0.0f;
     bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
     std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
     bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
     std::unique_ptr<SimulationWorker> simulationWorker_;  // Background simulation (visibility, lighting, animation)
+
+    // Particle I/O state for SimulationWorker
+    std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityPositions_;   // Resolved positions for next frame
+    std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityDirections_;  // Resolved directions for next frame
+    const std::vector<Environment::UnifiedParticle>* particleRenderBuffer_ = nullptr;  // Points into SimulationOutput
+
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
@@ -1314,12 +1296,7 @@ private:
 
     // Portal-based entity culling (walks portal graph from camera room)
     std::unordered_set<size_t> portalVisibleRegions_;
-    void computePortalVisibleRegions();
 
-    // Portal computation cache — only recompute when camera region/position/orientation changes
-    size_t lastPortalRegion_ = SIZE_MAX;
-    float lastPortalCamX_ = -99999.f, lastPortalCamY_ = -99999.f, lastPortalCamZ_ = -99999.f;
-    float lastPortalFwdX_ = 0.f, lastPortalFwdY_ = 0.f, lastPortalFwdZ_ = 0.f;
     bool portalCacheDirty_ = true;  // Force first computation
     void drawZoneGeometryWithPortals();
     void drawRegionMesh(size_t regionIdx);
@@ -1378,7 +1355,7 @@ private:
 
     // Region mesh progressive building state (for RegionMeshSetup phase)
     size_t regionBuildIndex_ = 0;
-    bool regionBuildInitDone_ = false;  // True after createZoneMeshWithPvs() setup pass
+    bool regionBuildInitDone_ = false;  // True after BSP/PVS initialization pass
 
     // Progressive mesh cache install state (batch regionMeshNodes_ insertions across frames)
     bool regionMeshCacheInstallStarted_ = false;
@@ -1398,7 +1375,6 @@ private:
     std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
     std::vector<size_t> objectRegions_;  // BSP region per object (SIZE_MAX = unknown)
-    size_t lastObjectPvsRegion_ = SIZE_MAX;  // Last PVS region processed by updateObjectVisibility()
 
     // Unified render distance system
     // renderDistance_ is the effective limit - nothing renders beyond this
@@ -1414,7 +1390,6 @@ private:
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
     std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
-    size_t lastLightPvsRegion_ = SIZE_MAX;  // Last PVS region processed by updateZoneLightVisibility()
     std::vector<std::string> zoneLightNames_;  // Light names from WLD data
     std::vector<float> zoneLightAnimElapsed_;   // Per-light animation elapsed time (ms)
     std::vector<uint32_t> zoneLightAnimFrame_;  // Per-light current animation frame
@@ -1444,7 +1419,6 @@ private:
     static constexpr uint32_t kTier2Interval = 3;   // ~20Hz at 60fps
     static constexpr uint32_t kTier3Interval = 6;   // ~10Hz at 60fps
     float tier3DeltaAccum_ = 0.0f;  // Accumulated delta for Tier 3 simulation
-    float tier2DeltaAccum_ = 0.0f;  // Accumulated delta for fire flicker phase
     float windTime_ = 0.0f;  // Monotonic wind time for GPU wind shader (seconds)
 
     // Frame budget governor (Green/Yellow/Red state machine for load throttling)
@@ -1570,9 +1544,6 @@ private:
                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
     // Find ground Z at position. currentZ is model center (server Z), modelYOffset is offset from center to feet.
     float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
-
-    // LOS checking for name tags (Player Mode)
-    float lastLOSCheckTime_ = 0.0f;
 
     // Debug visualization for collision rays
     struct CollisionDebugLine {

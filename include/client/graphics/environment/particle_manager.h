@@ -4,11 +4,13 @@
 #include "particle_emitter.h"
 #include "unified_particle.h"
 #include "spell_particle_types.h"
+#include "client/graphics/simulation_worker.h"
 #include <irrlicht.h>
 #include <memory>
 #include <vector>
 #include <string>
 #include <functional>
+#include <atomic>
 #include <unordered_map>
 
 namespace EQT {
@@ -200,22 +202,21 @@ public:
     bool initUnifiedRenderer(int poolSize = 0);
 
     /**
-     * Update unified particles (spawn, motion, death).
-     * Call every frame for smooth fire/weather motion.
-     * @param deltaTime Time since last update (seconds)
-     * @param cameraPos Camera position in Irrlicht Y-up coordinates (for weather spawning)
+     * Update unified particles — now a no-op (physics moved to SimulationWorker).
+     * Kept for billboard emitter envState updates only.
      */
     void updateUnified(float deltaTime, const glm::vec3& cameraPos = glm::vec3(0));
 
     /**
      * Render unified particles via point sprites.
-     * Call after the existing billboard render pass.
+     * Uses external render buffer from SimulationWorker output.
      */
     void renderUnified(const irr::core::matrix4& viewMatrix,
                        const irr::core::matrix4& projMatrix,
                        const irr::core::vector3df& cameraPos,
                        float fogStart, float fogEnd, const float* fogColor,
-                       float screenHeight);
+                       float screenHeight,
+                       const std::vector<UnifiedParticle>* externalRenderBuffer = nullptr);
 
     /**
      * Create fire emitters at light source positions.
@@ -231,15 +232,29 @@ public:
     void clearUnifiedEmitters();
 
     /**
-     * Toggle unified fire particles on/off.
+     * Toggle unified fire particles on/off (enqueues command to worker).
      */
-    void toggleUnifiedFire() { unifiedFireEnabled_ = !unifiedFireEnabled_; }
+    void toggleUnifiedFire();
     bool isUnifiedFireEnabled() const { return unifiedFireEnabled_; }
 
     /**
-     * Get count of alive unified particles.
+     * Get count of alive unified particles (from last worker output).
      */
-    int getUnifiedActiveCount() const { return unifiedActiveCount_; }
+    int getUnifiedActiveCount() const { return lastWorkerActiveCount_; }
+
+    /**
+     * Set active count from worker output (called by renderer after applying results).
+     */
+    void setWorkerActiveCount(int count) { lastWorkerActiveCount_ = count; }
+
+    /**
+     * Drain pending commands for SimulationWorker (moves commands out).
+     */
+    std::vector<ParticleCommandData> drainCommands() {
+        std::vector<ParticleCommandData> cmds;
+        cmds.swap(pendingCommands_);
+        return cmds;
+    }
 
     // === Weather Particles ===
 
@@ -258,7 +273,7 @@ public:
     /**
      * Check if weather particles are currently active.
      */
-    bool isWeatherParticlesActive() const { return weatherEmitterID_ != 0; }
+    bool isWeatherParticlesActive() const { return weatherActive_; }
 
     /**
      * Set ambient color for tinting weather particles.
@@ -321,21 +336,21 @@ public:
     void clearAllSpellEffects();
 
     /**
-     * Light source for weather particle illumination.
-     * Positions in Irrlicht Y-up coordinates.
-     */
-    struct ParticleLight {
-        glm::vec3 position;
-        float radius;
-        glm::vec3 color;
-    };
-
-    /**
      * Set nearby light sources for per-particle weather illumination.
      * Call each frame from renderer with lights near camera.
      * Weather particles are only visible where illuminated by these lights.
      */
-    void setWeatherLights(const std::vector<ParticleLight>& lights) { weatherLights_ = lights; }
+    void setWeatherLights(const std::vector<Graphics::ParticleLight>& lights) { weatherLights_ = lights; }
+
+    /**
+     * Get current weather lights (for particle input snapshotting).
+     */
+    const std::vector<Graphics::ParticleLight>& getWeatherLights() const { return weatherLights_; }
+
+    /**
+     * Get current ambient color (for particle input snapshotting).
+     */
+    const glm::vec3& getAmbientColor() const { return ambientColor_; }
 
 private:
     /**
@@ -395,52 +410,32 @@ private:
     std::vector<ParticleEmitter*> externalEmitters_;
 
     // === Unified particle system (GLES2 point sprites) ===
-
-    std::vector<UnifiedParticle> unifiedPool_;       // Fixed pool of 1024
-    std::vector<uint16_t> freeList_;                  // Free indices for allocation
-    int unifiedActiveCount_ = 0;
-    uint16_t nextEmitterID_ = 1;
+    // Pool/emitter/spell state owned by SimulationWorker.
+    // ParticleManager is now a thin facade that enqueues commands.
 
 #ifdef EQT_HAS_GLES2
     std::unique_ptr<UnifiedParticleRenderer> unifiedRenderer_;
 #endif
 
-    std::unordered_map<uint16_t, ActiveEmitter> unifiedEmitters_;
     bool unifiedFireEnabled_ = true;
     bool unifiedRendererInitialized_ = false;
+    bool weatherActive_ = false;        // Tracks local weather activation state
+    int lastWorkerActiveCount_ = 0;     // From last worker output
 
-    // Weather particle state
-    uint16_t weatherEmitterID_ = 0;    // Active weather emitter ID (0 = none)
-    glm::vec3 ambientColor_{1.0f};     // Ambient tint for weather particles
-    std::vector<ParticleLight> weatherLights_;  // Nearby lights for per-particle illumination
+    // Ambient color for weather tinting (snapshotted into particle input)
+    glm::vec3 ambientColor_{1.0f};
+    // Weather lights (snapshotted into particle input)
+    std::vector<Graphics::ParticleLight> weatherLights_;
 
-    // Spell effect state
+    // Entity callbacks (kept for resolveEntityPosition and renderer-side resolution)
     EntityPosCallback entityPosCallback_;
     EntityDirCallback entityDirCallback_;
-    std::vector<SpellEffectInstance> activeSpellEffects_;
-    uint32_t nextSpellEffectID_ = 1;
 
-    // Temp buffer for collecting alive particles for rendering
-    std::vector<UnifiedParticle> unifiedRenderBuf_;
+    // Command queue (main thread accumulates, worker drains via drainCommands())
+    std::vector<ParticleCommandData> pendingCommands_;
 
-    // Allocate a particle from the free list, returns index or -1 if full
-    int allocateUnifiedParticle();
-
-    // Return a particle to the free list
-    void freeUnifiedParticle(int index);
-
-    // Spawn a single weather particle within the camera-relative volume
-    void spawnWeatherParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                              const glm::vec3& cameraPos, float transitionAlpha);
-
-    // Spawn a single particle for spell effects (BURST/RADIAL_EXPAND/ORBITAL)
-    // dynamicDir: if non-null, used as spray direction (overrides velocityBase)
-    void spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                            const glm::vec3& emitterPos,
-                            const glm::vec3* dynamicDir = nullptr);
-
-    // Update spell effect lifecycle (triggers, entity tracking, cleanup)
-    void updateSpellEffects(float deltaTime);
+    // Pre-assigned spell effect ID counter (main thread only, monotonically increasing)
+    std::atomic<uint32_t> nextLocalSpellEffectID_{1};
 };
 
 } // namespace Environment

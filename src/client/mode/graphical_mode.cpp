@@ -217,12 +217,6 @@ bool GraphicalMode::saveScreenshot(const std::string& filename) {
 
 // ========== Zone Management ==========
 
-void GraphicalMode::loadZone(const std::string& zoneName) {
-    if (m_renderer) {
-        m_renderer->loadZone(zoneName);
-    }
-}
-
 void GraphicalMode::unloadZone() {
     if (m_renderer) {
         m_renderer->unloadZone();

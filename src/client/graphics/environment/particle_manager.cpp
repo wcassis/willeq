@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
-#include <random>
 
 namespace EQT {
 namespace Graphics {
@@ -563,44 +562,11 @@ void ParticleManager::getAtlasUVs(uint8_t tileIndex, float& u0, float& v0, float
 // Unified Particle System (GLES2 point sprites)
 // =============================================================================
 
-// Thread-local RNG for particle randomization
-static std::mt19937& getParticleRNG() {
-    static thread_local std::mt19937 rng(std::random_device{}());
-    return rng;
-}
-
-static float randomFloat(float minVal, float maxVal) {
-    std::uniform_real_distribution<float> dist(minVal, maxVal);
-    return dist(getParticleRNG());
-}
-
-static int randomInt(int minVal, int maxVal) {
-    std::uniform_int_distribution<int> dist(minVal, maxVal);
-    return dist(getParticleRNG());
-}
-
 bool ParticleManager::initUnifiedRenderer(int poolSize) {
 #ifdef EQT_HAS_GLES2
     if (unifiedRendererInitialized_) return true;
 
-    // Determine pool size: explicit param > config > default 1024
-    int actualPoolSize = poolSize;
-    if (actualPoolSize <= 0) {
-        actualPoolSize = SpellEffectsConfig::instance().getGlobal().maxParticles;
-    }
-    if (actualPoolSize <= 0) {
-        actualPoolSize = 1024;
-    }
-
-    // Allocate the fixed particle pool
-    unifiedPool_.resize(actualPoolSize);
-    freeList_.resize(actualPoolSize);
-    for (int i = 0; i < actualPoolSize; ++i) {
-        freeList_[i] = static_cast<uint16_t>(i);
-        unifiedPool_[i].setAlive(false);
-    }
-    unifiedActiveCount_ = 0;
-    unifiedRenderBuf_.reserve(actualPoolSize);
+    // Pool is now owned by SimulationWorker — just init the GL renderer here.
 
     // Create and init the GLES2 renderer (self-contained, uses raw GL calls)
     unifiedRenderer_ = std::make_unique<UnifiedParticleRenderer>();
@@ -611,311 +577,32 @@ bool ParticleManager::initUnifiedRenderer(int poolSize) {
     }
 
     unifiedRendererInitialized_ = true;
-    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Unified particle system initialized (pool: {})", actualPoolSize);
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Unified particle renderer initialized (pool owned by worker)");
     return true;
 #else
     return false;
 #endif
 }
 
-int ParticleManager::allocateUnifiedParticle() {
-    if (freeList_.empty()) return -1;
-    int idx = freeList_.back();
-    freeList_.pop_back();
-    unifiedActiveCount_++;
-    return idx;
-}
-
-void ParticleManager::freeUnifiedParticle(int index) {
-    if (index < 0 || index >= static_cast<int>(unifiedPool_.size())) return;
-    unifiedPool_[index].setAlive(false);
-    freeList_.push_back(static_cast<uint16_t>(index));
-    unifiedActiveCount_--;
-}
-
 void ParticleManager::updateUnified(float deltaTime, const glm::vec3& cameraPos) {
-    if (!unifiedRendererInitialized_) return;
-    if (deltaTime <= 0.0f || deltaTime > 1.0f) return;  // Safety clamp
-
-    // Get camera frustum for emitter culling
-    irr::scene::ICameraSceneNode* camera = smgr_ ? smgr_->getActiveCamera() : nullptr;
-    const irr::scene::SViewFrustum* frustum = camera ? camera->getViewFrustum() : nullptr;
-
-    // Periodic debug: log update stats
-    static int updateLogCounter = 0;
-    int emittersActive = 0, emittersCulled = 0, totalSpawned = 0;
-
-    // Update emitters: spawn new particles
-    for (auto& [id, emitter] : unifiedEmitters_) {
-        if (!emitter.active) continue;
-
-        // Gate fire emitters by unifiedFireEnabled_; weather emitters always run
-        bool isWeather = (emitter.config.motionType == MotionType::CAMERA_RELATIVE);
-        if (!isWeather && !unifiedFireEnabled_) continue;
-
-        emittersActive++;
-
-        // Check emitter lifetime
-        if (emitter.config.emitterLifetime > 0.0f) {
-            emitter.emitterAge += deltaTime;
-            if (emitter.emitterAge >= emitter.config.emitterLifetime) {
-                emitter.active = false;
-                continue;
-            }
-        }
-
-        // Ramp transition alpha for weather emitters
-        if (isWeather && emitter.transitionAlpha < 1.0f) {
-            emitter.transitionAlpha += emitter.transitionRate * deltaTime;
-            if (emitter.transitionAlpha > 1.0f) emitter.transitionAlpha = 1.0f;
-        }
-
-        if (isWeather) {
-            // === CAMERA_RELATIVE: target-count spawning ===
-            // Move emitter to track camera
-            emitter.position = cameraPos;
-
-            // Count alive particles for this emitter
-            int aliveCount = 0;
-            for (const auto& p : unifiedPool_) {
-                if (p.isAlive() && p.emitterID == emitter.emitterID) {
-                    aliveCount++;
-                }
-            }
-
-            // Spawn deficit to reach target count (modulated by transition alpha)
-            int effectiveTarget = static_cast<int>(emitter.config.targetCount * emitter.transitionAlpha);
-            int deficit = effectiveTarget - aliveCount;
-            for (int s = 0; s < deficit; ++s) {
-                spawnWeatherParticle(emitter.config, emitter.emitterID, cameraPos, emitter.transitionAlpha);
-                totalSpawned++;
-            }
-        } else {
-            // === Non-weather spawning (fire, spell effects) ===
-
-            // Frustum cull emitters: skip spawning if outside view
-            if (frustum) {
-                irr::core::aabbox3df emitterBox(
-                    emitter.position.x - 2.0f, emitter.position.y - 2.0f, emitter.position.z - 2.0f,
-                    emitter.position.x + 2.0f, emitter.position.y + 8.0f, emitter.position.z + 2.0f);
-                if (!frustum->getBoundingBox().intersectsWithBox(emitterBox)) {
-                    emittersCulled++;
-                    continue;
-                }
-            }
-
-            // Resolve dynamic direction for spray emitters
-            const glm::vec3* dirPtr = nullptr;
-            if (emitter.useDynamicDirection) {
-                // Update direction from callback each frame
-                if (entityDirCallback_ && emitter.attachEntityID != 0) {
-                    entityDirCallback_(emitter.attachEntityID, emitter.dynamicDirection);
-                }
-                dirPtr = &emitter.dynamicDirection;
-            }
-
-            // BURST / RADIAL_EXPAND: one-shot spawn, all at once
-            if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
-                for (int s = 0; s < emitter.config.burstCount; ++s) {
-                    spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset, dirPtr);
-                    totalSpawned++;
-                }
-                emitter.isBurstSpawned = true;
-            }
-
-            // Spawn-rate spawning (LINEAR fire, ORBITAL spell effects)
-            if (emitter.config.spawnRate > 0.0f) {
-                emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
-                int toSpawn = static_cast<int>(emitter.spawnAccumulator);
-                emitter.spawnAccumulator -= static_cast<float>(toSpawn);
-
-                for (int s = 0; s < toSpawn; ++s) {
-                    spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset, dirPtr);
-                    totalSpawned++;
-                }
-            }
-        }
-    }
-
-    // Update all alive particles
-    for (auto& p : unifiedPool_) {
-        if (!p.isAlive()) continue;
-
-        p.age += deltaTime;
-        if (p.age >= p.maxLifetime) {
-            // Kill particle — CAMERA_RELATIVE will respawn via deficit
-            int idx = static_cast<int>(&p - unifiedPool_.data());
-            freeUnifiedParticle(idx);
-            continue;
-        }
-
-        float t = p.getNormalizedAge();  // 0 → 1
-
-        // Interpolate color
-        p.color = glm::mix(p.colorStart, p.colorEnd, t);
-
-        // Interpolate size
-        p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
-
-        if (p.motionType == MotionType::CAMERA_RELATIVE) {
-            // Look up emitter config
-            auto it = unifiedEmitters_.find(p.emitterID);
-            if (it == unifiedEmitters_.end()) continue;
-            const EmitterConfig& cfg = it->second.config;
-
-            // Apply gravity
-            p.velocity += cfg.gravity * deltaTime;
-
-            // Apply wind
-            if (cfg.windResponse > 0.0f && envState_.windStrength > 0.0f) {
-                // Wind direction is EQ Z-up; convert to Irrlicht Y-up: (x, z, y)
-                glm::vec3 windIrr(envState_.windDirection.x, envState_.windDirection.z, envState_.windDirection.y);
-                p.velocity += windIrr * (envState_.windStrength * cfg.windResponse * deltaTime * 10.0f);
-            }
-
-            // Apply drag
-            if (p.drag > 0.0f) {
-                float dampFactor = 1.0f - p.drag * deltaTime;
-                if (dampFactor < 0.0f) dampFactor = 0.0f;
-                p.velocity *= dampFactor;
-            }
-
-            // Snow-specific: lateral drift via sine wave
-            if (cfg.driftAmplitude > 0.0f && cfg.driftFrequency > 0.0f) {
-                float drift = std::sin(p.age * cfg.driftFrequency * 6.28318f + p.phase) * cfg.driftAmplitude * deltaTime;
-                p.position.x += drift;
-                p.position.z += drift * 0.5f;  // Slight Z drift too
-            }
-
-            // Snow-specific: alpha twinkle
-            if (cfg.twinkleSpeed > 0.0f) {
-                float baseAlpha = glm::mix(p.colorStart.a, p.colorEnd.a, t);
-                p.color.a = baseAlpha * (0.7f + 0.3f * std::sin(p.age * cfg.twinkleSpeed + p.phase));
-            }
-
-            // Update position
-            p.position += p.velocity * deltaTime;
-
-            // Per-particle light accumulation — rain/snow are only visible
-            // where illuminated by nearby light sources (torches, campfires,
-            // player lantern).
-            //
-            // Ambient factor: precipitation catches far less ambient light than
-            // opaque surfaces (small translucent droplets/flakes vs textured walls).
-            // This ensures rain far from any light source is nearly invisible at
-            // night, matching the visual "light sphere" on zone geometry.
-            //
-            // Quartic falloff: (1-d/r)^4 produces a sharp edge that matches the
-            // perceived light boundary on zone surfaces. Quadratic (1-d/r)^2 was
-            // too gentle — all particles within the spawn volume received similar
-            // illumination, making them appear uniformly bright.
-            // Particle light radius kept tighter than zone geometry (~15 units
-            // vs 52) so the 3D sphere doesn't visibly extend above the
-            // ground-level light circle.  Quartic falloff (1-d/r)^4 gives a
-            // sharp perceived edge matching the zone surface boundary.
-            constexpr float kParticleLightRadius = 15.0f;
-            constexpr float kAmbientFactor = 0.1f;
-            float lightR = ambientColor_.x * kAmbientFactor;
-            float lightG = ambientColor_.y * kAmbientFactor;
-            float lightB = ambientColor_.z * kAmbientFactor;
-            for (const auto& light : weatherLights_) {
-                glm::vec3 diff = p.position - light.position;
-                float distSq = glm::dot(diff, diff);
-                float dist = std::sqrt(distSq);
-                if (dist < light.radius) {
-                    float t = 1.0f - dist / light.radius;
-                    float atten = t * t;   // quadratic
-                    atten *= atten;         // quartic
-                    // Clamp effective radius to kParticleLightRadius
-                    if (dist > kParticleLightRadius) atten = 0.0f;
-                    lightR += light.color.x * atten;
-                    lightG += light.color.y * atten;
-                    lightB += light.color.z * atten;
-                }
-            }
-            p.color.r *= std::min(lightR, 1.0f);
-            p.color.g *= std::min(lightG, 1.0f);
-            p.color.b *= std::min(lightB, 1.0f);
-
-            // Recycle check: if particle is too far from camera or below volume, respawn
-            glm::vec3 offset = p.position - cameraPos;
-            float hExtX = cfg.spawnVolumeHalfExtents.x * 1.5f;
-            float hExtZ = cfg.spawnVolumeHalfExtents.z * 1.5f;
-            float hExtY = cfg.spawnVolumeHalfExtents.y;
-            if (std::abs(offset.x) > hExtX || std::abs(offset.z) > hExtZ || offset.y < -hExtY) {
-                // Respawn at a new position in the spawn volume
-                int idx = static_cast<int>(&p - unifiedPool_.data());
-                freeUnifiedParticle(idx);
-                // Deficit spawning will replace it next frame
-            }
-        } else if (p.motionType == MotionType::LINEAR ||
-                   p.motionType == MotionType::BURST ||
-                   p.motionType == MotionType::RADIAL_EXPAND) {
-            // LINEAR / BURST / RADIAL_EXPAND — all use the same physics:
-            // velocity + gravity + drag. Direction set at spawn time.
-            auto it = unifiedEmitters_.find(p.emitterID);
-            if (it != unifiedEmitters_.end()) {
-                p.velocity += it->second.config.gravity * deltaTime;
-            }
-
-            // Apply drag
-            if (p.drag > 0.0f) {
-                float dampFactor = 1.0f - p.drag * deltaTime;
-                if (dampFactor < 0.0f) dampFactor = 0.0f;
-                p.velocity *= dampFactor;
-            }
-
-            // Update position
-            p.position += p.velocity * deltaTime;
-
-        } else if (p.motionType == MotionType::ORBITAL) {
-            // ORBITAL — orbit center point with vertical drift
-            auto it = unifiedEmitters_.find(p.emitterID);
-            if (it != unifiedEmitters_.end()) {
-                glm::vec3 center = it->second.position + it->second.attachOffset;
-                p.phase += p.angularVelocity * deltaTime;
-                p.position.x = center.x + p.radius * std::cos(p.phase);
-                p.position.z = center.z + p.radius * std::sin(p.phase);
-                p.position.y += p.velocity.y * deltaTime;  // Vertical drift
-            }
-        }
-    }
-
-    // Update spell effects (entity tracking, trigger processing, cleanup)
-    updateSpellEffects(deltaTime);
-
-    // Periodic debug log (~every 5 seconds at tier3 rate)
-    if (++updateLogCounter >= 50) {
-        updateLogCounter = 0;
-        LOG_DEBUG(MOD_GRAPHICS,
-                  "updateUnified: dt={:.3f} emitters={} active={} culled={} spawned={} "
-                  "poolActive={} freeList={} spells={}",
-                  deltaTime, unifiedEmitters_.size(), emittersActive, emittersCulled,
-                  totalSpawned, unifiedActiveCount_, freeList_.size(),
-                  activeSpellEffects_.size());
-    }
+    // Physics moved to SimulationWorker — nothing to do here.
+    // Billboard emitters still updated via update() separately.
+    (void)deltaTime;
+    (void)cameraPos;
 }
 
 void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
                                      const irr::core::matrix4& projMatrix,
                                      const irr::core::vector3df& cameraPos,
                                      float fogStart, float fogEnd, const float* fogColor,
-                                     float screenHeight) {
+                                     float screenHeight,
+                                     const std::vector<UnifiedParticle>* externalRenderBuffer) {
 #ifdef EQT_HAS_GLES2
     if (!unifiedRendererInitialized_ || !unifiedRenderer_) return;
-    if (unifiedActiveCount_ <= 0) return;
     if (!atlasTexture_) return;
 
-    unifiedRenderBuf_.clear();
-    for (const auto& p : unifiedPool_) {
-        if (p.isAlive()) {
-            unifiedRenderBuf_.push_back(p);
-        }
-    }
-
-    if (unifiedRenderBuf_.empty()) return;
+    // Use external render buffer from SimulationWorker output
+    if (!externalRenderBuffer || externalRenderBuffer->empty()) return;
 
     // Get GL texture handle via the patched ITexture::getDriverTextureHandle()
     GLuint atlasGL = static_cast<GLuint>(atlasTexture_->getDriverTextureHandle());
@@ -925,11 +612,11 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
     static int frameCounter = 0;
     if (++frameCounter >= 250) {
         frameCounter = 0;
-        const auto& firstParticle = unifiedRenderBuf_[0];
+        const auto& firstParticle = (*externalRenderBuffer)[0];
         LOG_DEBUG(MOD_GRAPHICS,
-                  "UnifiedParticles: rendering {} alive, {} emitters, atlasGL={}, "
+                  "UnifiedParticles: rendering {} alive, atlasGL={}, "
                   "first pos=({:.1f},{:.1f},{:.1f}) size={:.2f} color=({:.2f},{:.2f},{:.2f},{:.2f})",
-                  unifiedRenderBuf_.size(), unifiedEmitters_.size(), atlasGL,
+                  externalRenderBuffer->size(), atlasGL,
                   firstParticle.position.x, firstParticle.position.y, firstParticle.position.z,
                   firstParticle.size,
                   firstParticle.color.r, firstParticle.color.g, firstParticle.color.b, firstParticle.color.a);
@@ -937,225 +624,58 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
 
     // Pass View and Projection separately — shader multiplies in GLSL
     // (same convention as built-in COGLES2 shaders)
-    unifiedRenderer_->render(unifiedRenderBuf_.data(),
-                             static_cast<int>(unifiedRenderBuf_.size()),
+    unifiedRenderer_->render(externalRenderBuffer->data(),
+                             static_cast<int>(externalRenderBuffer->size()),
                              viewMatrix.pointer(), projMatrix.pointer(),
                              fogStart, fogEnd, fogColor,
                              screenHeight, atlasGL);
 #endif
+    (void)cameraPos;
 }
 
 void ParticleManager::createFireEmitters(const std::vector<glm::vec3>& positions,
                                           const std::vector<float>& lightRadii) {
-    // Clear existing fire emitters first
-    clearUnifiedEmitters();
-
     if (positions.empty()) return;
 
-    // Campfire radius threshold — lights with radius >= this get campfire treatment
-    const float campfireRadiusThreshold = 150.0f;
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::CreateFireEmitters;
+    cmd.firePositions = positions;
+    cmd.fireRadii = lightRadii;
+    pendingCommands_.push_back(std::move(cmd));
 
-    for (size_t i = 0; i < positions.size(); ++i) {
-        const glm::vec3& eqPos = positions[i];
-        float radius = (i < lightRadii.size()) ? lightRadii[i] : 120.0f;
-
-        // Convert EQ coordinates (Z-up) to Irrlicht (Y-up): (x, y, z) → (x, z, y)
-        glm::vec3 irrPos(eqPos.x, eqPos.z, eqPos.y);
-
-        if (radius >= campfireRadiusThreshold) {
-            // Large light → campfire: flame + ember emitters
-            {
-                ActiveEmitter ae;
-                ae.config = FirePresets::CampfireFlame();
-                ae.position = irrPos;
-                ae.emitterID = nextEmitterID_++;
-                ae.lightRadius = radius;
-                unifiedEmitters_[ae.emitterID] = ae;
-            }
-            {
-                ActiveEmitter ae;
-                ae.config = FirePresets::CampfireEmber();
-                ae.position = irrPos;
-                ae.emitterID = nextEmitterID_++;
-                ae.lightRadius = radius;
-                unifiedEmitters_[ae.emitterID] = ae;
-            }
-        } else {
-            // Small/medium light → torch
-            ActiveEmitter ae;
-            ae.config = FirePresets::Torch();
-            ae.position = irrPos;
-            ae.emitterID = nextEmitterID_++;
-            ae.lightRadius = radius;
-            unifiedEmitters_[ae.emitterID] = ae;
-        }
-    }
-
-    // Log first few emitter positions for debugging
-    int logCount = 0;
-    for (const auto& [id, em] : unifiedEmitters_) {
-        if (logCount++ < 3) {
-            LOG_INFO(MOD_GRAPHICS,
-                     "  Fire emitter #{}: irrPos=({:.1f},{:.1f},{:.1f}) radius={:.0f} rate={:.0f}/s",
-                     id, em.position.x, em.position.y, em.position.z,
-                     em.lightRadius, em.config.spawnRate);
-        }
-    }
-    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Created {} unified fire emitters for {} sources",
-              unifiedEmitters_.size(), positions.size());
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Enqueued CreateFireEmitters for {} sources", positions.size());
 }
 
 void ParticleManager::clearUnifiedEmitters() {
-    // Kill all particles owned by unified emitters
-    for (auto& p : unifiedPool_) {
-        if (p.isAlive()) {
-            p.setAlive(false);
-        }
-    }
-
-    // Reset free list
-    freeList_.resize(unifiedPool_.size());
-    for (uint16_t i = 0; i < static_cast<uint16_t>(unifiedPool_.size()); ++i) {
-        freeList_[i] = i;
-    }
-    unifiedActiveCount_ = 0;
-
-    // Clear emitter map, weather state, and spell effects
-    unifiedEmitters_.clear();
-    weatherEmitterID_ = 0;
-    activeSpellEffects_.clear();
-    nextSpellEffectID_ = 1;
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::ClearUnifiedEmitters;
+    pendingCommands_.push_back(std::move(cmd));
+    weatherActive_ = false;
 }
 
 void ParticleManager::activateWeatherParticles(uint8_t type, uint8_t intensity) {
-    // Kill existing weather emitter if any
-    deactivateWeatherParticles();
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::ActivateWeather;
+    cmd.weatherType = type;
+    cmd.weatherIntensity = intensity;
+    pendingCommands_.push_back(std::move(cmd));
+    weatherActive_ = true;
 
-    // Create weather emitter config
-    EmitterConfig cfg;
-    if (type == 1) {
-        cfg = WeatherPresets::Rain(intensity);
-    } else if (type == 2) {
-        cfg = WeatherPresets::Snow(intensity);
-    } else {
-        return;
-    }
-
-    ActiveEmitter ae;
-    ae.config = cfg;
-    ae.position = glm::vec3(0.0f);  // Will be updated to camera pos each frame
-    ae.emitterID = nextEmitterID_++;
-    ae.transitionAlpha = 0.0f;  // Start at 0 for smooth ramp-up
-    ae.transitionRate = 0.5f;   // ~2 seconds to full intensity
-    unifiedEmitters_[ae.emitterID] = ae;
-    weatherEmitterID_ = ae.emitterID;
-
-    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Activated weather particles type={} intensity={} "
-             "target={} emitterID={}", type, intensity, cfg.targetCount, ae.emitterID);
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Enqueued ActivateWeather type={} intensity={}", type, intensity);
 }
 
 void ParticleManager::deactivateWeatherParticles() {
-    if (weatherEmitterID_ == 0) return;
+    if (!weatherActive_) return;
 
-    // Kill the weather emitter
-    auto it = unifiedEmitters_.find(weatherEmitterID_);
-    if (it != unifiedEmitters_.end()) {
-        it->second.active = false;
-        // Kill all particles belonging to this emitter
-        for (auto& p : unifiedPool_) {
-            if (p.isAlive() && p.emitterID == weatherEmitterID_) {
-                int idx = static_cast<int>(&p - unifiedPool_.data());
-                freeUnifiedParticle(idx);
-            }
-        }
-        unifiedEmitters_.erase(it);
-    }
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::DeactivateWeather;
+    pendingCommands_.push_back(std::move(cmd));
+    weatherActive_ = false;
 
-    weatherEmitterID_ = 0;
-    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Deactivated weather particles");
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Enqueued DeactivateWeather");
 }
 
-void ParticleManager::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                                            const glm::vec3& cameraPos, float transitionAlpha) {
-    int idx = allocateUnifiedParticle();
-    if (idx < 0) return;  // Pool full
-
-    UnifiedParticle& p = unifiedPool_[idx];
-
-    // Position: camera-relative spawn volume
-    const glm::vec3& he = cfg.spawnVolumeHalfExtents;
-    p.position.x = cameraPos.x + randomFloat(-he.x, he.x);
-    p.position.z = cameraPos.z + randomFloat(-he.z, he.z);
-
-    // Y position biased toward top of volume
-    float yRand = randomFloat(0.0f, 1.0f);
-    if (yRand < cfg.spawnVolumeTopBias) {
-        // Top portion (upper 20% of volume)
-        p.position.y = cameraPos.y + he.y * randomFloat(0.6f, 1.0f);
-    } else {
-        // Rest of volume
-        p.position.y = cameraPos.y + randomFloat(-he.y, he.y * 0.6f);
-    }
-
-    // Velocity: base + random spread
-    p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-    p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-    p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
-
-    // Lifetime
-    p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
-    p.age = 0.0f;
-
-    // Color
-    p.colorStart = cfg.colorStart;
-    p.colorEnd = cfg.colorEnd;
-    p.color = cfg.colorStart;
-
-    // Rain alpha variation for visual variety
-    if (cfg.blendMode == UnifiedBlendMode::ADDITIVE) {
-        float alphaVar = randomFloat(0.3f, cfg.colorStart.a);
-        p.colorStart.a = alphaVar;
-        p.color.a = alphaVar;
-    }
-
-    // Size
-    p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
-    p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
-    p.size = p.sizeStart;
-
-    // Size-speed correlation for snow: larger flakes fall slower
-    if (cfg.sizeSpeedCorrelation > 0.0f) {
-        float sizeRange = cfg.sizeStartMax - cfg.sizeStartMin;
-        float sizeFactor = (sizeRange > 0.0f) ? (p.sizeStart - cfg.sizeStartMin) / sizeRange : 0.0f;
-        p.velocity.y *= (1.0f - sizeFactor * cfg.sizeSpeedCorrelation);
-    }
-
-    // Motion
-    p.drag = cfg.drag;
-    p.motionType = cfg.motionType;
-    p.phase = randomFloat(0.0f, 6.28318f);
-
-    // Rotation: rain gets wind-angle rotation, snow gets none
-    if (cfg.driftAmplitude == 0.0f && cfg.windResponse > 0.0f) {
-        // Rain: slight rotation based on wind direction for angled streaks
-        float windAngle = std::atan2(envState_.windDirection.x, envState_.windDirection.y);
-        p.rotation = windAngle * cfg.windResponse * envState_.windStrength * 0.3f;
-    } else {
-        p.rotation = 0.0f;
-    }
-
-    // Texture: pick random region
-    if (cfg.textureRegionCount > 1) {
-        p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
-    } else {
-        p.textureIndex = cfg.textureRegions[0];
-    }
-
-    // Metadata
-    p.emitterID = emitterID;
-    p.setAlive(true);
-    p.setBlendMode(cfg.blendMode);
-}
+// spawnWeatherParticle moved to SimulationWorker
 
 bool ParticleManager::resolveEntityPosition(uint16_t entityID, glm::vec3& outPos) const {
     if (entityPosCallback_) return entityPosCallback_(entityID, outPos);
@@ -1163,107 +683,8 @@ bool ParticleManager::resolveEntityPosition(uint16_t entityID, glm::vec3& outPos
 }
 
 // =============================================================================
-// Spell Effect API
+// Spell Effect API — thin facade, enqueues commands for SimulationWorker
 // =============================================================================
-
-void ParticleManager::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                                          const glm::vec3& emitterPos,
-                                          const glm::vec3* dynamicDir) {
-    int idx = allocateUnifiedParticle();
-    if (idx < 0) return;  // Pool full
-
-    UnifiedParticle& p = unifiedPool_[idx];
-
-    // Position: emitter position + spawn shape offset
-    p.position = emitterPos;
-    if (cfg.spawnShape == SpawnShape::BOX) {
-        p.position.x += randomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
-        p.position.y += randomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
-        p.position.z += randomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);
-    } else if (cfg.spawnShape == SpawnShape::SPHERE) {
-        float r = randomFloat(0.0f, cfg.spawnExtents.x);
-        float theta = randomFloat(0.0f, 6.28318f);
-        float phi = randomFloat(-1.5708f, 1.5708f);
-        p.position.x += r * std::cos(phi) * std::cos(theta);
-        p.position.y += r * std::sin(phi);
-        p.position.z += r * std::cos(phi) * std::sin(theta);
-    } else if (cfg.spawnShape == SpawnShape::RING) {
-        float angle = randomFloat(0.0f, 6.28318f);
-        p.position.x += cfg.spawnExtents.x * std::cos(angle);
-        p.position.z += cfg.spawnExtents.x * std::sin(angle);
-    }
-
-    // Velocity: depends on motion type
-    if (dynamicDir) {
-        // Spray: cone along dynamic direction
-        // velocityBase.x = speed, velocitySpread = cone half-angle spread
-        float speed = glm::length(cfg.velocityBase);
-        if (speed < 0.01f) speed = 4.0f;
-        p.velocity = (*dynamicDir) * speed;
-        // Add cone spread perpendicular to direction
-        p.velocity.x += randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-        p.velocity.y += randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-        p.velocity.z += randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
-    } else if (cfg.motionType == MotionType::RADIAL_EXPAND) {
-        // Radial direction in XZ plane
-        float angle = randomFloat(0.0f, 6.28318f);
-        p.velocity.x = std::cos(angle) * cfg.expandSpeed + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-        p.velocity.z = std::sin(angle) * cfg.expandSpeed + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
-        p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-    } else if (cfg.motionType == MotionType::BURST) {
-        // Random scatter direction using velocityBase as magnitude hints
-        float angle = randomFloat(0.0f, 6.28318f);
-        p.velocity.x = std::cos(angle) * cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-        p.velocity.z = std::sin(angle) * cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
-        p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-    } else {
-        // LINEAR / ORBITAL: base + spread
-        p.velocity.x = cfg.velocityBase.x + randomFloat(-cfg.velocitySpread.x, cfg.velocitySpread.x);
-        p.velocity.y = cfg.velocityBase.y + randomFloat(-cfg.velocitySpread.y, cfg.velocitySpread.y);
-        p.velocity.z = cfg.velocityBase.z + randomFloat(-cfg.velocitySpread.z, cfg.velocitySpread.z);
-    }
-
-    // Lifetime
-    p.maxLifetime = randomFloat(cfg.lifetimeMin, cfg.lifetimeMax);
-    p.age = 0.0f;
-
-    // Color
-    p.colorStart = cfg.colorStart;
-    p.colorEnd = cfg.colorEnd;
-    p.color = cfg.colorStart;
-
-    // Size
-    p.sizeStart = randomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
-    p.sizeEnd = randomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
-    p.size = p.sizeStart;
-
-    // Motion
-    p.drag = cfg.drag;
-    p.motionType = cfg.motionType;
-    p.phase = randomFloat(0.0f, 6.28318f);
-    p.rotation = 0.0f;
-
-    // ORBITAL-specific: set orbit parameters
-    if (cfg.motionType == MotionType::ORBITAL) {
-        p.radius = cfg.orbitalRadius;
-        p.angularVelocity = cfg.orbitalAngularVelocity;
-        // Set initial orbital position
-        p.position.x = emitterPos.x + p.radius * std::cos(p.phase);
-        p.position.z = emitterPos.z + p.radius * std::sin(p.phase);
-    }
-
-    // Texture: pick random region
-    if (cfg.textureRegionCount > 1) {
-        p.textureIndex = cfg.textureRegions[randomInt(0, cfg.textureRegionCount - 1)];
-    } else {
-        p.textureIndex = cfg.textureRegions[0];
-    }
-
-    // Metadata
-    p.emitterID = emitterID;
-    p.setAlive(true);
-    p.setBlendMode(cfg.blendMode);
-}
 
 uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
                                              uint16_t casterID, uint16_t targetID,
@@ -1272,34 +693,24 @@ uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
                                              float projectileTravelDuration) {
     if (!unifiedRendererInitialized_) return 0;
 
-    SpellEffectInstance inst;
-    inst.effectID = nextSpellEffectID_++;
-    inst.spellID = 0;
-    inst.casterEntityID = casterID;
-    inst.targetEntityID = targetID;
-    inst.age = 0.0f;
-    inst.maxDuration = duration;
-    inst.def = def;
-    inst.useDynamicDirection = useDynamicDir;
-    if (projectileTravelDuration > 0.0f) {
-        inst.projectileTravelDuration = projectileTravelDuration;
-    }
+    // Pre-assign ID from local counter so we can return it immediately
+    uint32_t effectID = nextLocalSpellEffectID_++;
 
-    // Create emitter states for each emitter definition
-    for (int i = 0; i < static_cast<int>(def.emitters.size()); ++i) {
-        SpellEffectInstance::EmitterState es;
-        es.defIndex = i;
-        es.activeEmitterID = 0;
-        es.triggered = false;
-        inst.emitterStates.push_back(es);
-    }
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::CreateSpellEffect;
+    cmd.spellDef = def;
+    cmd.casterID = casterID;
+    cmd.targetID = targetID;
+    cmd.duration = duration;
+    cmd.useDynamicDir = useDynamicDir;
+    cmd.projectileTravelDuration = projectileTravelDuration;
+    cmd.preAssignedEffectID = effectID;
+    pendingCommands_.push_back(std::move(cmd));
 
-    activeSpellEffects_.push_back(std::move(inst));
+    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Enqueued CreateSpellEffect '{}' id={} caster={} target={}",
+              def.name, effectID, casterID, targetID);
 
-    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created spell effect '{}' id={} caster={} target={}",
-              def.name, inst.effectID, casterID, targetID);
-
-    return activeSpellEffects_.back().effectID;
+    return effectID;
 }
 
 uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
@@ -1307,269 +718,51 @@ uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
                                                        float duration) {
     if (!unifiedRendererInitialized_) return 0;
 
-    SpellEffectInstance inst;
-    inst.effectID = nextSpellEffectID_++;
-    inst.spellID = 0;
-    inst.casterEntityID = 0;
-    inst.targetEntityID = 0;
-    inst.groundTarget = worldPos;
-    inst.age = 0.0f;
-    inst.maxDuration = duration;
-    inst.def = def;
+    uint32_t effectID = nextLocalSpellEffectID_++;
 
-    // Override all emitters to GROUND_TARGET if they aren't already projectile/target
-    for (auto& e : inst.def.emitters) {
-        if (e.attach == SpellAttach::CASTER) {
-            e.attach = SpellAttach::GROUND_TARGET;
-        }
-    }
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::CreateSpellEffectAtPos;
+    cmd.spellDef = def;
+    cmd.worldPos = worldPos;
+    cmd.duration = duration;
+    cmd.preAssignedEffectID = effectID;
+    pendingCommands_.push_back(std::move(cmd));
 
-    for (int i = 0; i < static_cast<int>(def.emitters.size()); ++i) {
-        SpellEffectInstance::EmitterState es;
-        es.defIndex = i;
-        es.activeEmitterID = 0;
-        es.triggered = false;
-        inst.emitterStates.push_back(es);
-    }
+    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Enqueued CreateSpellEffectAtPos '{}' id={} at ({:.1f},{:.1f},{:.1f})",
+              def.name, effectID, worldPos.x, worldPos.y, worldPos.z);
 
-    activeSpellEffects_.push_back(std::move(inst));
-
-    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created spell effect '{}' id={} at ({:.1f},{:.1f},{:.1f})",
-              def.name, activeSpellEffects_.back().effectID, worldPos.x, worldPos.y, worldPos.z);
-
-    return activeSpellEffects_.back().effectID;
+    return effectID;
 }
 
 void ParticleManager::removeSpellEffect(uint32_t effectID) {
-    for (auto it = activeSpellEffects_.begin(); it != activeSpellEffects_.end(); ++it) {
-        if (it->effectID == effectID) {
-            // Kill emitters and their particles
-            for (auto& es : it->emitterStates) {
-                if (es.activeEmitterID != 0) {
-                    // Kill particles owned by this emitter
-                    for (auto& p : unifiedPool_) {
-                        if (p.isAlive() && p.emitterID == es.activeEmitterID) {
-                            int idx = static_cast<int>(&p - unifiedPool_.data());
-                            freeUnifiedParticle(idx);
-                        }
-                    }
-                    unifiedEmitters_.erase(es.activeEmitterID);
-                }
-            }
-            activeSpellEffects_.erase(it);
-            return;
-        }
-    }
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::RemoveSpellEffect;
+    cmd.preAssignedEffectID = effectID;
+    pendingCommands_.push_back(std::move(cmd));
 }
 
 void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID) {
-    for (auto it = activeSpellEffects_.begin(); it != activeSpellEffects_.end(); ) {
-        if (it->casterEntityID == entityID || it->targetEntityID == entityID) {
-            // Kill emitters and their particles
-            for (auto& es : it->emitterStates) {
-                if (es.activeEmitterID != 0) {
-                    for (auto& p : unifiedPool_) {
-                        if (p.isAlive() && p.emitterID == es.activeEmitterID) {
-                            int idx = static_cast<int>(&p - unifiedPool_.data());
-                            freeUnifiedParticle(idx);
-                        }
-                    }
-                    unifiedEmitters_.erase(es.activeEmitterID);
-                }
-            }
-            it = activeSpellEffects_.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::RemoveSpellEffectsEntity;
+    cmd.targetID = entityID;
+    pendingCommands_.push_back(std::move(cmd));
 }
 
 void ParticleManager::clearAllSpellEffects() {
-    for (auto& effect : activeSpellEffects_) {
-        for (auto& es : effect.emitterStates) {
-            if (es.activeEmitterID != 0) {
-                for (auto& p : unifiedPool_) {
-                    if (p.isAlive() && p.emitterID == es.activeEmitterID) {
-                        int idx = static_cast<int>(&p - unifiedPool_.data());
-                        freeUnifiedParticle(idx);
-                    }
-                }
-                unifiedEmitters_.erase(es.activeEmitterID);
-            }
-        }
-    }
-    activeSpellEffects_.clear();
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::ClearAllSpellEffects;
+    pendingCommands_.push_back(std::move(cmd));
 }
 
-void ParticleManager::updateSpellEffects(float deltaTime) {
-    if (activeSpellEffects_.empty()) return;
+void ParticleManager::toggleUnifiedFire() {
+    unifiedFireEnabled_ = !unifiedFireEnabled_;
 
-    for (auto it = activeSpellEffects_.begin(); it != activeSpellEffects_.end(); ) {
-        auto& effect = *it;
-        effect.age += deltaTime;
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::ToggleFire;
+    pendingCommands_.push_back(std::move(cmd));
 
-        // Check max duration
-        if (effect.maxDuration > 0.0f && effect.age >= effect.maxDuration) {
-            // Kill all emitters for this effect
-            for (auto& es : effect.emitterStates) {
-                if (es.activeEmitterID != 0) {
-                    auto emIt = unifiedEmitters_.find(es.activeEmitterID);
-                    if (emIt != unifiedEmitters_.end()) {
-                        emIt->second.active = false;
-                    }
-                }
-            }
-        }
-
-        // Process triggers and update entity positions
-        bool allDone = true;
-        for (auto& es : effect.emitterStates) {
-            const auto& emDef = effect.def.emitters[es.defIndex];
-
-            // Check trigger conditions
-            if (!es.triggered) {
-                bool shouldTrigger = false;
-                switch (emDef.trigger) {
-                    case SpellTrigger::IMMEDIATE:
-                        shouldTrigger = true;
-                        break;
-                    case SpellTrigger::DELAYED:
-                        shouldTrigger = (effect.age >= emDef.triggerDelay);
-                        break;
-                    case SpellTrigger::ON_CAST_COMPLETE:
-                        shouldTrigger = effect.castCompleteSignaled;
-                        break;
-                    case SpellTrigger::ON_HIT:
-                        shouldTrigger = effect.hitSignaled;
-                        break;
-                }
-
-                if (shouldTrigger) {
-                    es.triggered = true;
-
-                    // Resolve attach position
-                    glm::vec3 attachPos(0.0f);
-                    uint16_t attachEntity = 0;
-
-                    switch (emDef.attach) {
-                        case SpellAttach::CASTER:
-                            attachEntity = effect.casterEntityID;
-                            if (entityPosCallback_ && attachEntity != 0) {
-                                entityPosCallback_(attachEntity, attachPos);
-                            }
-                            break;
-                        case SpellAttach::TARGET:
-                            attachEntity = effect.targetEntityID;
-                            if (entityPosCallback_ && attachEntity != 0) {
-                                entityPosCallback_(attachEntity, attachPos);
-                            }
-                            break;
-                        case SpellAttach::GROUND_TARGET:
-                            attachPos = effect.groundTarget;
-                            break;
-                        case SpellAttach::PROJECTILE_PATH:
-                            // Start at caster position, will lerp to target
-                            if (entityPosCallback_ && effect.casterEntityID != 0) {
-                                entityPosCallback_(effect.casterEntityID, attachPos);
-                            }
-                            break;
-                    }
-
-                    // Create the unified emitter
-                    ActiveEmitter ae;
-                    ae.config = emDef.config;
-                    ae.position = attachPos;
-                    ae.emitterID = nextEmitterID_++;
-                    ae.attachEntityID = attachEntity;
-                    ae.attachOffset = emDef.positionOffset;
-                    ae.useDynamicDirection = effect.useDynamicDirection;
-
-                    // Set up projectile lerp state
-                    if (emDef.attach == SpellAttach::PROJECTILE_PATH) {
-                        ae.isProjectile = true;
-                        ae.projectileStartPos = attachPos;
-                        ae.targetEntityID = effect.targetEntityID;
-                        ae.travelDuration = effect.projectileTravelDuration;
-                        ae.travelElapsed = 0.0f;
-                        // Resolve initial target position
-                        if (entityPosCallback_ && effect.targetEntityID != 0) {
-                            entityPosCallback_(effect.targetEntityID, ae.projectileTargetPos);
-                        }
-                    }
-
-                    unifiedEmitters_[ae.emitterID] = ae;
-                    es.activeEmitterID = ae.emitterID;
-
-                    LOG_TRACE(MOD_GRAPHICS, "Spell effect '{}': triggered emitter {} at ({:.1f},{:.1f},{:.1f})",
-                              effect.def.name, ae.emitterID, attachPos.x, attachPos.y, attachPos.z);
-                }
-            }
-
-            // Update entity position for attached emitters
-            if (es.activeEmitterID != 0) {
-                auto emIt = unifiedEmitters_.find(es.activeEmitterID);
-                if (emIt != unifiedEmitters_.end()) {
-                    auto& emitter = emIt->second;
-
-                    // Projectile lerp: move emitter from start to target
-                    if (emitter.isProjectile) {
-                        emitter.travelElapsed += deltaTime;
-                        // Track moving target
-                        if (entityPosCallback_ && emitter.targetEntityID != 0) {
-                            glm::vec3 targetPos;
-                            if (entityPosCallback_(emitter.targetEntityID, targetPos)) {
-                                emitter.projectileTargetPos = targetPos;
-                            }
-                        }
-                        float t = (emitter.travelDuration > 0.0f)
-                            ? std::min(emitter.travelElapsed / emitter.travelDuration, 1.0f)
-                            : 1.0f;
-                        emitter.position = glm::mix(emitter.projectileStartPos,
-                                                     emitter.projectileTargetPos, t);
-                        if (t >= 1.0f) {
-                            emitter.active = false;
-                            effect.hitSignaled = true;  // triggers ON_HIT emitters
-                        }
-                    } else if (emitter.attachEntityID != 0 && entityPosCallback_) {
-                        glm::vec3 entityPos;
-                        if (entityPosCallback_(emitter.attachEntityID, entityPos)) {
-                            emitter.position = entityPos;
-                        }
-                    }
-
-                    // Check if this emitter is still alive
-                    if (emitter.active) {
-                        allDone = false;
-                    } else {
-                        // Check if any particles still alive for this emitter
-                        for (const auto& p : unifiedPool_) {
-                            if (p.isAlive() && p.emitterID == es.activeEmitterID) {
-                                allDone = false;
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    // Emitter was cleaned up by clearUnifiedEmitters
-                }
-            } else if (!es.triggered) {
-                allDone = false;  // Waiting for trigger
-            }
-        }
-
-        // Remove effect if all emitters are done (and duration expired or no duration)
-        if (allDone && (effect.maxDuration <= 0.0f || effect.age >= effect.maxDuration)) {
-            // Clean up any remaining emitters
-            for (auto& es : effect.emitterStates) {
-                if (es.activeEmitterID != 0) {
-                    unifiedEmitters_.erase(es.activeEmitterID);
-                }
-            }
-            it = activeSpellEffects_.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    LOG_INFO(MOD_GRAPHICS, "ParticleManager: Enqueued ToggleFire (local state now {})",
+             unifiedFireEnabled_ ? "ON" : "OFF");
 }
 
 } // namespace Environment

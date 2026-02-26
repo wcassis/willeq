@@ -129,6 +129,28 @@ public:
     void update(float deltaTime);
 
     /**
+     * Compute/apply split for worker thread offloading.
+     * computeState() advances timers and state (no scene graph calls).
+     * applyState() applies the computed state to the scene (render thread only).
+     */
+    struct WeatherEffectsState {
+        float transitionProgress = 1.0f;
+        float currentDarkening = 0.0f;
+        float lightningFlashTimer = 0.0f;
+        float lightningBoltTimer = 0.0f;
+        bool lightningActive = false;
+        bool triggerLightningFlash = false;  // Signal for render thread
+    };
+    WeatherEffectsState computeState(float deltaTime) const;
+    void applyState(const WeatherEffectsState& state);
+
+    /**
+     * Update only the render-thread-only parts (rain/snow overlays, storm cloud layer).
+     * Call after applyState() when worker handles timer/darkening state.
+     */
+    void updateRenderOnly(float deltaTime);
+
+    /**
      * Render weather effects (lightning bolts, etc.).
      * Call after main scene render but before UI.
      */
@@ -210,6 +232,17 @@ public:
      * Get lightning flash intensity (0-1).
      */
     float getLightningFlashIntensity() const;
+
+    // State getters for worker thread snapshotting
+    float getTransitionProgress() const { return transitionProgress_; }
+    float getTransitionDuration() const { return transitionDuration_; }
+    float getCurrentDarkening() const { return currentDarkening_; }
+    float getTargetDarkening() const { return targetDarkening_; }
+    float getLightningFlashTimer() const { return lightningFlashTimer_; }
+    float getLightningBoltTimer() const { return lightningBoltTimer_; }
+    float getLightningTimer() const { return lightningTimer_; }
+    bool isLightningActive() const { return lightningActive_; }
+    bool isLightningEnabled() const { return config_.storm.lightningEnabled; }
 
     /**
      * Set surface map for water detection.
