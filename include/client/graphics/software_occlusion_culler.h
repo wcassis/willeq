@@ -121,6 +121,9 @@ public:
     // Clear all occluder data (call when changing zones)
     void clearOccluders() { regionOccluders_.clear(); }
 
+    // Get the full region occluders map (for copying to worker thread)
+    const std::unordered_map<size_t, std::vector<OccluderTriangle>>& getRegionOccludersMap() const { return regionOccluders_; }
+
     // Count non-empty pixels in depth buffer and store in stats
     void computeBufferFillStats();
 

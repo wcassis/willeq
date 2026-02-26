@@ -645,6 +645,27 @@ void DetailChunk::applyWindAndDisturbance(const WindController& wind,
     }
 }
 
+void DetailChunk::applyWorkerShadow(const std::vector<irr::core::vector3df>& positions) {
+    if (!buffer_ || positions.empty()) return;
+
+    irr::u32 vertCount = buffer_->getVertexCount();
+    if (vertCount == 0 || positions.size() != vertCount) return;
+
+    irr::video::S3DVertex* verts = static_cast<irr::video::S3DVertex*>(buffer_->getVertices());
+    bool anyChanged = false;
+
+    for (irr::u32 i = 0; i < vertCount; ++i) {
+        if (verts[i].Pos != positions[i]) {
+            verts[i].Pos = positions[i];
+            anyChanged = true;
+        }
+    }
+
+    if (anyChanged) {
+        buffer_->setDirty(irr::scene::EBT_VERTEX);
+    }
+}
+
 void DetailChunk::attach() {
     if (attached_ || !smgr_ || !mesh_) return;
 

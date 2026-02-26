@@ -1204,8 +1204,6 @@ private:
     bool checkMovementCollision(float fromX, float fromY, float fromZ,
                                 float toX, float toY, float toZ);
     float findGroundZ(float x, float y, float currentZ);
-    void updateNameTagsWithLOS(float deltaTime);
-
     // PVS visibility check for a BSP region (used at insertion time for objects/lights)
     bool isRegionPvsVisible(size_t regionIdx) const;
     bool isRegionPvsVisibleDebug(size_t regionIdx, const char* context, int id) const;
@@ -1703,7 +1701,6 @@ private:
         int64_t totalFrame = 0;
         // Fine-grained fields (Phase 2 timing gaps)
         int64_t playerMovement = 0;      // updatePlayerMovement() - collision during movement
-        int64_t nameTagLOS = 0;          // updateNameTagsWithLOS() - periodic LOS raycasts
         int64_t occlusionCulling = 0;    // Software occlusion rasterize + test (inside PVS)
         int64_t zoneLightVisibility = 0; // updateZoneLightVisibility() (split from objectVisibility)
         int64_t windowManagerUpdate = 0; // windowManager_->update() at sim start

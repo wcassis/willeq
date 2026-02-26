@@ -942,9 +942,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         if (frustumCuller_) {
             entityRenderer_->setFrustumCuller(frustumCuller_.get());
         }
-        if (occlusionCuller_) {
-            entityRenderer_->setOcclusionCuller(occlusionCuller_.get());
-        }
+        // Note: entity occlusion culling is now handled by SimulationWorker
     }
 
     if (config_.constrainedConfig.deferredAssetLoading) {
@@ -1710,11 +1708,13 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         }
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            boidsManager_->setCollisionSelector(zoneTriangleSelector_);
-            if (detailManager_ && detailManager_->hasSurfaceMap()) {
-                boidsManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+            if (zoneBoundsValid_) {
+                boidsManager_->onZoneEnter(currentZoneName_, biome,
+                    glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
+                    glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
+            } else {
+                boidsManager_->onZoneEnter(currentZoneName_, biome);
             }
-            boidsManager_->onZoneEnter(currentZoneName_, biome);
         }
     }
 
@@ -1770,10 +1770,6 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         }
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            tumbleweedManager_->setCollisionSelector(zoneTriangleSelector_);
-            if (detailManager_ && detailManager_->hasSurfaceMap()) {
-                tumbleweedManager_->setSurfaceMap(detailManager_->getSurfaceMap());
-            }
             tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
         }
     }
@@ -2051,13 +2047,11 @@ void IrrlichtRenderer::unloadZone() {
 
     // Clear ambient creatures (boids) system
     if (boidsManager_) {
-        boidsManager_->setCollisionSelector(nullptr);  // Clear before dropping selector
         boidsManager_->onZoneLeave();
     }
 
     // Clear tumbleweed system
     if (tumbleweedManager_) {
-        tumbleweedManager_->setCollisionSelector(nullptr);  // Clear before dropping selector
         tumbleweedManager_->onZoneLeave();
     }
 
@@ -3459,7 +3453,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             });
             if (zoneBspTree_) entityRenderer_->setBspTree(zoneBspTree_);
             if (frustumCuller_) entityRenderer_->setFrustumCuller(frustumCuller_.get());
-            if (occlusionCuller_) entityRenderer_->setOcclusionCuller(occlusionCuller_.get());
+            // Entity occlusion culling handled by SimulationWorker
         }
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_ArchiveIndex;
         logAssetBuildTime("entity_renderer_init", 0, stepStart);
@@ -4016,7 +4010,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (entityRenderer_) {
             entityRenderer_->setBspTree(zoneBspTree_);
             entityRenderer_->setFrustumCuller(frustumCuller_.get());
-            entityRenderer_->setOcclusionCuller(occlusionCuller_.get());
+            // Entity occlusion culling handled by SimulationWorker
         }
         if (doorManager_) {
             doorManager_->setBspTree(zoneBspTree_.get());
@@ -6344,6 +6338,19 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
         zoneData.portalSystem = portalSystem_.get();
     }
 
+    // Collision map for entity ground snapping (immutable after zone load)
+    if (collisionMap_ && collisionMap_->IsLoaded()) {
+        zoneData.hcMap = collisionMap_;
+    }
+
+    // Copy occluder data from renderer's occlusion culler (if it has occluders)
+    if (occlusionCuller_ && occlusionCuller_->hasOccluders()) {
+        zoneData.regionOccluders = occlusionCuller_->getRegionOccludersMap();
+        zoneData.occlusionConfig = occlusionCuller_->getConfig();
+        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: copying {} region occluder sets to worker",
+                 zoneData.regionOccluders.size());
+    }
+
     // No trees or vertex anims yet — those get registered later
     simulationWorker_->setZoneData(zoneData);
     simulationWorker_->start();
@@ -6511,6 +6518,86 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
         input.weatherIntensity = weatherEffects_->getCurrentIntensity();
     }
 
+    // Occlusion camera state
+    if (frustumCuller_ && frustumCuller_->isEnabled()) {
+        auto& oc = input.occlusionCamera;
+        oc.fwdX = frustumCuller_->getFwdX();
+        oc.fwdY = frustumCuller_->getFwdY();
+        oc.fwdZ = frustumCuller_->getFwdZ();
+        oc.rightX = frustumCuller_->getRightX();
+        oc.rightY = frustumCuller_->getRightY();
+        oc.rightZ = 0;  // Right vector is horizontal in EQ Z-up
+        oc.upX = frustumCuller_->getUpX();
+        oc.upY = frustumCuller_->getUpY();
+        oc.upZ = frustumCuller_->getUpZ();
+        oc.fovRadV = frustumCuller_->getFov();
+        oc.aspect = frustumCuller_->getAspect();
+        oc.enabled = true;
+    }
+
+    // Entity snapshots for worker interpolation
+    if (entityRenderer_) {
+        // Drain pending updates for worker
+        auto drained = entityRenderer_->drainPendingUpdates();
+        input.entityPendingUpdates.reserve(drained.size());
+        for (const auto& d : drained) {
+            SimulationInput::EntityPendingUpdate epu;
+            epu.spawnId = d.spawnId;
+            epu.x = d.x; epu.y = d.y; epu.z = d.z;
+            epu.heading = d.heading;
+            epu.dx = d.dx; epu.dy = d.dy; epu.dz = d.dz;
+            epu.animation = d.animation;
+            input.entityPendingUpdates.push_back(epu);
+        }
+
+        // Build entity snapshots
+        const auto& entities = entityRenderer_->getEntities();
+        input.entitySnapshots.reserve(entities.size());
+        for (const auto& [spawnId, visual] : entities) {
+            if (!visual.sceneNode) continue;
+            SimulationInput::EntitySnapshot snap;
+            snap.spawnId = spawnId;
+            snap.lastX = visual.lastX;
+            snap.lastY = visual.lastY;
+            snap.lastZ = visual.lastZ;
+            snap.velocityX = visual.velocityX;
+            snap.velocityY = visual.velocityY;
+            snap.velocityZ = visual.velocityZ;
+            snap.serverX = visual.serverX;
+            snap.serverY = visual.serverY;
+            snap.serverZ = visual.serverZ;
+            snap.serverHeading = visual.serverHeading;
+            snap.timeSinceUpdate = visual.timeSinceUpdate;
+            snap.lastUpdateInterval = visual.lastUpdateInterval;
+            snap.collisionZOffset = visual.collisionZOffset;
+            snap.modelYOffset = visual.modelYOffset;
+            snap.serverAnimation = visual.serverAnimation;
+            snap.lastNonZeroAnimation = visual.lastNonZeroAnimation;
+            snap.cachedBspRegion = visual.cachedBspRegion;
+            snap.bspRegionDirty = visual.bspRegionDirty;
+            snap.isNPC = visual.isNPC;
+            snap.isPlayer = visual.isPlayer;
+            snap.isCorpse = visual.isCorpse;
+            snap.isFading = visual.isFading;
+            snap.inSceneGraph = visual.inSceneGraph;
+            snap.hasVelocity = (std::abs(visual.velocityX) > 0.01f ||
+                                std::abs(visual.velocityY) > 0.01f ||
+                                std::abs(visual.velocityZ) > 0.01f);
+            input.entitySnapshots.push_back(snap);
+        }
+
+        // Entity culling config
+        if (config_.constrainedConfig.enabled) {
+            input.entityRenderDistance = config_.constrainedConfig.entityRenderDistance;
+            input.maxVisibleEntities = config_.constrainedConfig.maxVisibleEntities;
+            input.entityCullingEnabled = true;
+        }
+
+        // Name tag visibility config
+        input.nameTagDistance = entityRenderer_->getNameTagDistance();
+        input.nameTagsVisible = entityRenderer_->areNameTagsVisible();
+    }
+
     // Vertex animation timing
     input.vertAnimDeltaMs = deltaTime * 1000.0f;
 
@@ -6588,6 +6675,84 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
                 });
             }
         }
+    }
+
+    // Boids system input
+    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
+        auto& bi = input.boidsInput;
+        bi.deltaTime = deltaTime;
+        bi.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+        bi.playerHeading = playerHeading_;
+        bi.timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+        bi.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+        bi.commands = boidsManager_->drainCommands();
+        bi.initialized = true;
+    }
+
+    // Tumbleweed system input
+    if (tumbleweedManager_ && tumbleweedManager_->isEnabled() && zoneReady_) {
+        auto& ti = input.tumbleweedInput;
+        ti.deltaTime = deltaTime;
+        ti.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+        ti.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+        ti.commands = tumbleweedManager_->drainCommands();
+        ti.initialized = true;
+    }
+
+    // Weather system input
+    if (weatherSystem_) {
+        auto& wi = input.weatherInput;
+        wi.deltaTime = deltaTime;
+        wi.commands = weatherSystem_->drainCommands();
+        wi.initialized = true;
+    }
+
+    // Spell VFX input (desktop GL worker-driven path)
+    if (spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
+        auto& svi = input.spellVfxInput;
+        svi.deltaTime = deltaTime;
+        svi.commands = spellVisualFX_->drainCommands();
+        svi.initialized = true;
+    }
+
+    // Detail wind/disturbance input
+    if (detailManager_ && detailManager_->isEnabled() && zoneReady_) {
+        auto& dti = input.detailInput;
+        dti.deltaTime = deltaTime;
+        // Wind params from detail manager's wind controller and zone config
+        const auto& wc = detailManager_->getWindController();
+        const auto& wcParams = wc.getParams();
+        dti.windStrength = detailManager_->getZoneConfig().windStrength;
+        dti.windFrequency = wcParams.frequency;
+        dti.gustFrequency = wcParams.gustFrequency;
+        dti.gustStrength = wcParams.gustStrength;
+        dti.windDirX = wcParams.direction.X;
+        dti.windDirY = wcParams.direction.Y;
+        // Disturbance params
+        const auto& dc = detailManager_->getFoliageDisturbanceConfig();
+        dti.disturbanceEnabled = dc.enabled;
+        dti.playerRadius = dc.playerRadius;
+        dti.playerStrength = dc.playerStrength;
+        dti.maxDisplacement = dc.maxDisplacement;
+        dti.verticalDipFactor = dc.verticalDipFactor;
+        dti.velocityInfluence = dc.velocityInfluence;
+        dti.heightExponent = dc.heightExponent;
+        dti.recoveryRate = dc.recoveryRate;
+        // Player state (Irrlicht Y-up coords)
+        dti.playerPosX = playerX_;
+        dti.playerPosY = playerZ_;  // EQ Z → Irrlicht Y
+        dti.playerPosZ = playerY_;  // EQ Y → Irrlicht Z
+        // Compute velocity for disturbance
+        static float lastDetailPX = playerX_, lastDetailPY = playerY_;
+        if (deltaTime > 0.001f) {
+            dti.playerVelX = (playerX_ - lastDetailPX) / deltaTime;
+            dti.playerVelZ = (playerY_ - lastDetailPY) / deltaTime;
+        }
+        lastDetailPX = playerX_;
+        lastDetailPY = playerY_;
+        dti.playerMoving = (dti.playerVelX * dti.playerVelX + dti.playerVelZ * dti.playerVelZ) > 0.1f;
+        dti.commands = detailManager_->drainCommands();
+        dti.initialized = true;
     }
 
     simulationWorker_->postInput(input);
@@ -6751,6 +6916,14 @@ void IrrlichtRenderer::applySimulationResults() {
         skyRenderer_->applyState(skyState);
     }
 
+    // Apply weather system state from worker (must fire listeners before weatherEffects apply)
+    if (results->weatherOutput.valid && weatherSystem_) {
+        const auto& wo = results->weatherOutput;
+        weatherSystem_->applyWorkerResults(wo.currentWeather, wo.targetWeather,
+                                           wo.transitionProgress, wo.windIntensity,
+                                           wo.weatherChanged, wo.newWeatherType);
+    }
+
     // Apply weather effects state from worker
     if (results->weatherEffectsState.valid && weatherEffects_ && weatherEffects_->isEnabled()) {
         WeatherEffectsController::WeatherEffectsState wes;
@@ -6786,6 +6959,16 @@ void IrrlichtRenderer::applySimulationResults() {
                 buffer->setDirty(irr::scene::EBT_VERTEX);
             }
         }
+    }
+
+    // Apply spell VFX results from worker (desktop GL path)
+    if (results->spellVfxOutput.valid && spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
+        spellVisualFX_->applyWorkerResults(*results);
+    }
+
+    // Apply detail wind/disturbance shadow vertices
+    if (detailManager_ && detailManager_->isEnabled() && results->detailOutput.valid) {
+        detailManager_->applyWorkerResults(results->detailOutput);
     }
 
     // Apply vertex animation results (frame index computed by worker)
@@ -6845,6 +7028,82 @@ void IrrlichtRenderer::applySimulationResults() {
     } else {
         particleRenderBuffer_ = nullptr;
     }
+
+    // Apply boids output from worker
+    if (results->boidsOutput.valid && boidsManager_) {
+        boidsManager_->applyWorkerResults(results->boidsOutput);
+    }
+
+    // Apply tumbleweed output from worker
+    if (results->tumbleweedOutput.valid && tumbleweedManager_) {
+        tumbleweedManager_->applyWorkerResults(results->tumbleweedOutput);
+    }
+
+    // Apply occlusion-culled regions from worker
+    occlusionCulledRegions_ = results->occlusionCulledRegions;
+
+    // Apply entity interpolation and visibility results
+    if (entityRenderer_ && !results->entityResults.empty()) {
+        auto& entities = const_cast<std::map<uint16_t, EntityVisual>&>(entityRenderer_->getEntities());
+
+        for (const auto& er : results->entityResults) {
+            auto it = entities.find(er.spawnId);
+            if (it == entities.end()) continue;
+            EntityVisual& visual = it->second;
+
+            // Apply interpolated position (skip player — camera controls it)
+            if (er.wasInterpolated && !visual.isPlayer) {
+                visual.lastX = er.posX;
+                visual.lastY = er.posY;
+                visual.lastZ = er.posZ;
+                if (visual.sceneNode) {
+                    visual.sceneNode->setPosition(irr::core::vector3df(
+                        er.posX, er.posZ + visual.modelYOffset, er.posY));
+                }
+                if (visual.lightNode) {
+                    visual.lightNode->setPosition(irr::core::vector3df(
+                        er.posX, er.posZ + visual.modelYOffset + 3.0f, er.posY));
+                }
+                // Boat collision fixup (rare)
+                float boatZ = entityRenderer_->findBoatDeckZ(er.posX, er.posY, er.posZ);
+                if (boatZ > -999000.0f) {
+                    float targetZ = boatZ;
+                    if (std::abs(targetZ - er.posZ) < 20.0f) {
+                        visual.lastZ = targetZ;
+                        if (visual.sceneNode) {
+                            visual.sceneNode->setPosition(irr::core::vector3df(
+                                er.posX, targetZ + visual.modelYOffset, er.posY));
+                        }
+                    }
+                }
+            }
+
+            // Apply BSP region cache
+            visual.cachedBspRegion = er.cachedBspRegion;
+            visual.bspRegionDirty = er.bspRegionDirty;
+
+            // Apply entity visibility (culling results)
+            if (visual.sceneNode) {
+                if (er.shouldBeVisible && !visual.inSceneGraph) {
+                    smgr_->getRootSceneNode()->addChild(visual.sceneNode);
+                    visual.sceneNode->setVisible(true);
+                    visual.inSceneGraph = true;
+                    if (visual.lightNode) {
+                        smgr_->getRootSceneNode()->addChild(visual.lightNode);
+                    }
+                } else if (!er.shouldBeVisible && visual.inSceneGraph) {
+                    visual.sceneNode->remove();
+                    visual.inSceneGraph = false;
+                    if (visual.lightNode) {
+                        visual.lightNode->remove();
+                    }
+                }
+            }
+            if (visual.nameNode) {
+                visual.nameNode->setVisible(er.nameTagVisible);
+            }
+        }
+    }
 }
 
 std::vector<std::string> IrrlichtRenderer::getSimWorkerDebugInfo() const {
@@ -6871,8 +7130,8 @@ std::vector<std::string> IrrlichtRenderer::getSimWorkerDebugInfo() const {
     lines.push_back(fmt::format("  Trees: {}, VertAnims: {}",
         treeManager_ ? treeManager_->getAnimatedTreeCount() : 0,
         vertexAnimatedMeshes_.size()));
-    lines.push_back("  Offloaded: visibility, lighting, trees, vertex anims, fire flicker");
-    lines.push_back("  Ungated: detail wind, particles, boids, tumbleweeds, sky, weather (30Hz)");
+    lines.push_back("  Offloaded: visibility, lighting, trees, vertex anims, fire flicker, boids, tumbleweeds");
+    lines.push_back("  Ungated: detail wind, particles, sky, weather (30Hz)");
 
     return lines;
 }
@@ -7274,7 +7533,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             SectionCost sections[] = {
                 {"inputHandling",    frameTimings_.inputHandling},
                 {"playerMovement",   frameTimings_.playerMovement},
-                {"nameTagLOS",       frameTimings_.nameTagLOS},
                 {"cameraUpdate",     frameTimings_.cameraUpdate},
                 {"pvsVisibility",    frameTimings_.pvsVisibility},
                 {"occlusionCulling", frameTimings_.occlusionCulling},
@@ -7327,7 +7585,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             struct SectionCost { const char* name; int64_t us; };
             SectionCost sections[] = {
                 {"playerMovement", frameTimings_.playerMovement},
-                {"nameTagLOS", frameTimings_.nameTagLOS},
                 {"pvsVisibility", frameTimings_.pvsVisibility},
                 {"occlusionCulling", frameTimings_.occlusionCulling},
                 {"meshLoading", frameTimings_.meshLoading},
@@ -7405,7 +7662,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.totalFrame += frameTimings_.totalFrame;
         // New fine-grained fields
         frameTimingsAccum_.playerMovement += frameTimings_.playerMovement;
-        frameTimingsAccum_.nameTagLOS += frameTimings_.nameTagLOS;
         frameTimingsAccum_.occlusionCulling += frameTimings_.occlusionCulling;
         frameTimingsAccum_.zoneLightVisibility += frameTimings_.zoneLightVisibility;
         frameTimingsAccum_.windowManagerUpdate += frameTimings_.windowManagerUpdate;
@@ -7472,9 +7728,6 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     // Update camera and player movement
     updatePlayerMovement(deltaTime);
     frameTimings_.playerMovement = measureSection();
-    updateNameTagsWithLOS(deltaTime);
-    frameTimings_.nameTagLOS = measureSection();
-
     // Update sky position to follow camera
     if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
         skyRenderer_->setCameraPosition(camera_->getPosition());
@@ -7851,13 +8104,14 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     }
     frameTimings_.windowManagerUpdate = measureSection();
 
-    // Entity update — visibility FIRST, then interpolation (so inSceneGraph is current)
+    // Entity update — worker handles interpolation + culling, main thread handles
+    // animation side-effects, corpse fading, equipment transforms, casting bars
     if (entityRenderer_) {
-        // Pass occlusion-culled regions to entity renderer for entity visibility
+        // Pass occlusion-culled regions to entity renderer for door manager etc.
         entityRenderer_->setOcclusionCulledRegions(
             occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
 
-        // Pass camera BSP region to entity renderer (eliminates duplicate BSP lookup)
+        // Pass camera BSP region to entity renderer
         if (zoneBspTree_ && currentPvsRegion_ != SIZE_MAX
             && currentPvsRegion_ < zoneBspTree_->regions.size()) {
             entityRenderer_->setCameraRegion(currentPvsRegion_, zoneBspTree_->regions[currentPvsRegion_]);
@@ -7865,11 +8119,13 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             entityRenderer_->setCameraRegion(SIZE_MAX, nullptr);
         }
 
-        // Portal-based entity culling handled by SimulationWorker
-        // (results applied in applySimulationResults())
-        if (camera_) entityRenderer_->updateConstrainedVisibility(camera_->getAbsolutePosition());
-        // Now interpolate only visible entities
-        entityRenderer_->updateInterpolation(deltaTime);
+        // Flush pending updates for animation processing only
+        // (position/velocity math was already drained for the worker in postSimulationInput)
+        entityRenderer_->flushPendingUpdatesForAnimations();
+
+        // Main-thread entity state: corpse fading, equipment transforms, animation timing
+        entityRenderer_->updateMainThreadEntityState(deltaTime);
+
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
         entityRenderer_->processExpiredCombatBuffers();
     }
@@ -7983,7 +8239,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
 
     // Tier 3: Environmental simulation (~10Hz)
     {
-        if (weatherSystem_) weatherSystem_->update(deltaTime);
+        // Weather state machine runs on SimulationWorker, results applied in applySimulationResults()
         frameTimings_.weatherSystemUpdate = measureSection();
 
         bool runEnvThisFrame = runTier3_;
@@ -8013,21 +8269,8 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
                 particleManager_->updateUnified(0.0f);
             }
 
-            if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_ && currentZone_) {
-                boidsManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
-                float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
-                boidsManager_->setTimeOfDay(timeOfDay);
-                boidsManager_->update(accDelta);
-            }
-
-            if (tumbleweedManager_ && tumbleweedManager_->isEnabled() && zoneReady_ && currentZone_) {
-                Environment::EnvironmentState envState;
-                envState.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
-                envState.windStrength = weatherSystem_ ? weatherSystem_->getWindIntensity() : 0.5f;
-                envState.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
-                tumbleweedManager_->setEnvironmentState(envState);
-                tumbleweedManager_->update(accDelta);
-            }
+            // Boids and tumbleweeds now run in SimulationWorker —
+            // input posted in postSimulationInput(), results applied in applySimulationResults()
         }
     }
     frameTimings_.tier3Update = measureSection();
@@ -8879,7 +9122,6 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
     LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.inputHandling), pct(frameTimingsAccum_.inputHandling));
     LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.playerMovement), pct(frameTimingsAccum_.playerMovement));
-    LOG_INFO(MOD_GRAPHICS, "    Name Tag LOS:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.nameTagLOS), pct(frameTimingsAccum_.nameTagLOS));
     LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
     LOG_INFO(MOD_GRAPHICS, "  WM Update (sim):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManagerUpdate), pct(frameTimingsAccum_.windowManagerUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
@@ -10511,10 +10753,13 @@ void IrrlichtRenderer::advanceDeferredInit() {
             stepName = "boids_init";
             if (boidsManager_) {
                 auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-                boidsManager_->setCollisionSelector(zoneTriangleSelector_);
-                if (detailManager_ && detailManager_->hasSurfaceMap())
-                    boidsManager_->setSurfaceMap(detailManager_->getSurfaceMap());
-                boidsManager_->onZoneEnter(currentZoneName_, biome);
+                if (zoneBoundsValid_) {
+                    boidsManager_->onZoneEnter(currentZoneName_, biome,
+                        glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
+                        glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
+                } else {
+                    boidsManager_->onZoneEnter(currentZoneName_, biome);
+                }
             }
             deferredInitStep_ = DeferredInitStep::TumbleweedInit;
             break;
@@ -10523,9 +10768,6 @@ void IrrlichtRenderer::advanceDeferredInit() {
             stepName = "tumbleweed_init";
             if (tumbleweedManager_) {
                 auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-                tumbleweedManager_->setCollisionSelector(zoneTriangleSelector_);
-                if (detailManager_ && detailManager_->hasSurfaceMap())
-                    tumbleweedManager_->setSurfaceMap(detailManager_->getSurfaceMap());
                 tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
             }
             deferredInitStep_ = DeferredInitStep::WeatherSurface;
@@ -10995,74 +11237,7 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
     return groundZ;
 }
 
-void IrrlichtRenderer::updateNameTagsWithLOS(float deltaTime) {
-    if (!entityRenderer_) {
-        return;
-    }
-
-    // Get camera's BSP region for PVS visibility checks
-    // PVS bitvector lookup is cheap — no throttle needed (replaces 0.1s raycast timer)
-    std::shared_ptr<BspRegion> cameraRegion;
-    if (zoneBspTree_ && currentPvsRegion_ != SIZE_MAX
-        && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-        cameraRegion = zoneBspTree_->regions[currentPvsRegion_];
-    }
-
-    const auto& entities = entityRenderer_->getEntities();
-    float nameTagDist = entityRenderer_->getNameTagDistance();
-    float nameTagDistSq = nameTagDist * nameTagDist;
-    float renderDistSq = renderDistance_ * renderDistance_;
-
-    for (const auto& [spawnId, visual] : entities) {
-        // Skip entities already removed from scene graph by updateConstrainedVisibility
-        // (frustum-culled, occlusion-culled, or beyond constrained distance/count limits)
-        if (!visual.inSceneGraph) {
-            if (visual.nameNode && visual.nameNode->isVisible()) {
-                visual.nameNode->setVisible(false);
-            }
-            continue;
-        }
-
-        // Distance check (EQ coordinates)
-        float dx = visual.lastX - playerX_;
-        float dy = visual.lastY - playerY_;
-        float dz = visual.lastZ - playerZ_;
-        float distanceSq = dx * dx + dy * dy + dz * dz;
-
-        // Check if within render distance AND not occluded (for entity model visibility)
-        bool modelVisible = (distanceSq <= renderDistSq) && !visual.occlusionHidden;
-        if (visual.animatedNode) {
-            visual.animatedNode->setVisible(modelVisible);
-        }
-        if (visual.meshNode) {
-            visual.meshNode->setVisible(modelVisible);
-        }
-
-        // Name tag visibility: within distance, not occluded, and PVS-visible
-        if (visual.nameNode) {
-            bool nameVisible = (distanceSq <= nameTagDistSq) && !visual.occlusionHidden;
-
-            if (nameVisible && cameraRegion && !cameraRegion->visibleRegions.empty()) {
-                // PVS bitvector check: is entity's BSP region visible from camera's region?
-                size_t entityRegion = visual.cachedBspRegion;
-                if (entityRegion != SIZE_MAX && entityRegion < cameraRegion->visibleRegions.size()) {
-                    nameVisible = cameraRegion->visibleRegions[entityRegion];
-                }
-            }
-
-            // Finer-grained portal culling: if portal visible regions are computed,
-            // entity must be in one of those regions (or camera's own region)
-            if (nameVisible && !portalVisibleRegions_.empty()) {
-                size_t entityRegion = visual.cachedBspRegion;
-                if (entityRegion != SIZE_MAX && portalVisibleRegions_.find(entityRegion) == portalVisibleRegions_.end()) {
-                    nameVisible = false;
-                }
-            }
-
-            visual.nameNode->setVisible(nameVisible);
-        }
-    }
-}
+// updateNameTagsWithLOS removed — name tag visibility now computed by SimulationWorker
 
 // --- Collision Debug Visualization ---
 
@@ -11965,6 +12140,12 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
             LOG_DEBUG(MOD_GRAPHICS, "SpellVisualFX: GLES2 particle delegation enabled");
         }
 #endif
+
+        // Enable worker-driven mode for desktop GL path when SimulationWorker is running
+        if (simulationWorker_ && simulationWorker_->isRunning()) {
+            spellVisualFX_->setWorkerDriven(true);
+            LOG_DEBUG(MOD_GRAPHICS, "SpellVisualFX: worker-driven mode enabled");
+        }
     }
 }
 

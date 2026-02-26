@@ -3,6 +3,7 @@
  */
 
 #include "client/graphics/spell_visual_fx.h"
+#include "client/graphics/simulation_worker.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/spell/spell_database.h"
 #include "client/spell/spell_constants.h"
@@ -260,6 +261,9 @@ irr::video::ITexture* SpellVisualFX::getTextureForSpell(uint32_t spell_id) const
 
 void SpellVisualFX::update(float delta_time)
 {
+    // Worker-driven path: update math runs on SimulationWorker thread
+    if (m_worker_driven) return;
+
     // Collect pending impacts to create after the update loop
     // (to avoid vector invalidation when createImpact adds to m_effects)
     std::vector<std::pair<uint16_t, uint32_t>> pendingImpacts;
@@ -375,6 +379,42 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         return 1;
     }
 #endif
+    if (m_worker_driven) {
+        // Remove existing cast glow via worker
+        if (hasCastGlow(caster_id)) {
+            EQT::Graphics::SpellVFXCommandData rmCmd;
+            rmCmd.type = EQT::Graphics::SpellVFXCommand::RemoveCastGlow;
+            rmCmd.sourceEntity = caster_id;
+            m_pending_commands.push_back(rmCmd);
+            // Also remove local scene nodes immediately
+            for (size_t i = 0; i < m_effects.size(); ) {
+                if (m_effects[i].type == SpellFXType::CastGlow &&
+                    m_effects[i].source_entity == caster_id) {
+                    removeEffect(i);
+                } else {
+                    ++i;
+                }
+            }
+        }
+
+        auto color = getSpellColor(spell_id);
+        uint32_t eid = m_next_effect_id++;
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::CreateEffect;
+        cmd.effectId = eid;
+        cmd.fxType = static_cast<uint8_t>(SpellFXType::CastGlow);
+        cmd.spellId = spell_id;
+        cmd.sourceEntity = caster_id;
+        cmd.lifetime = duration_ms / 1000.0f;
+        cmd.colorA = color.getAlpha();
+        cmd.colorR = color.getRed();
+        cmd.colorG = color.getGreen();
+        cmd.colorB = color.getBlue();
+        // Position resolved by worker from entity data
+        m_pending_commands.push_back(cmd);
+        return eid;
+    }
+
     // Check if already has a cast glow
     if (hasCastGlow(caster_id)) {
         removeCastGlow(caster_id);
@@ -429,6 +469,26 @@ void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uin
         return;
     }
 #endif
+    if (m_worker_driven) {
+        auto color = getSpellColor(spell_id);
+        uint32_t eid = m_next_effect_id++;
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::CreateEffect;
+        cmd.effectId = eid;
+        cmd.fxType = static_cast<uint8_t>(SpellFXType::ProjectileTravel);
+        cmd.spellId = spell_id;
+        cmd.sourceEntity = caster_id;
+        cmd.targetEntity = target_id;
+        cmd.lifetime = DEFAULT_PROJECTILE_DURATION;
+        cmd.colorA = color.getAlpha();
+        cmd.colorR = color.getRed();
+        cmd.colorG = color.getGreen();
+        cmd.colorB = color.getBlue();
+        // Positions resolved by worker from entity data
+        m_pending_commands.push_back(cmd);
+        return;
+    }
+
     SpellFXInstance effect;
     effect.type = SpellFXType::ProjectileTravel;
     effect.spell_id = spell_id;
@@ -463,6 +523,8 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
         return;
     }
 #endif
+    // Impacts are fire-and-forget (Irrlicht particle system drives them)
+    // No worker tracking needed — create directly even in worker-driven mode
     SpellFXInstance effect;
     effect.type = SpellFXType::ImpactBurst;
     effect.spell_id = spell_id;
@@ -606,6 +668,26 @@ uint32_t SpellVisualFX::createBuffAura(uint16_t entity_id, uint32_t spell_id)
         return m_particle_manager->createSpellEffect(def, entity_id, 0);
     }
 #endif
+    if (m_worker_driven) {
+        if (hasBuffAura(entity_id, spell_id)) return 0;
+
+        auto color = getSpellColor(spell_id);
+        uint32_t eid = m_next_effect_id++;
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::CreateEffect;
+        cmd.effectId = eid;
+        cmd.fxType = static_cast<uint8_t>(SpellFXType::AuraPersistent);
+        cmd.spellId = spell_id;
+        cmd.sourceEntity = entity_id;
+        cmd.lifetime = 0;  // Permanent
+        cmd.colorA = color.getAlpha();
+        cmd.colorR = color.getRed();
+        cmd.colorG = color.getGreen();
+        cmd.colorB = color.getBlue();
+        m_pending_commands.push_back(cmd);
+        return eid;
+    }
+
     // Don't create duplicate auras
     if (hasBuffAura(entity_id, spell_id)) {
         return 0;
@@ -645,6 +727,8 @@ void SpellVisualFX::createRainEffect(const irr::core::vector3df& center, float r
         return;
     }
 #endif
+    // Rain effects are fire-and-forget (Irrlicht particle system drives them)
+    // Create directly even in worker-driven mode
     SpellFXInstance effect;
     effect.type = SpellFXType::RainEffect;
     effect.spell_id = spell_id;
@@ -673,6 +757,8 @@ void SpellVisualFX::createGroundCircle(const irr::core::vector3df& center, float
         return;
     }
 #endif
+    // Ground circles are fire-and-forget (Irrlicht particle system drives them)
+    // Create directly even in worker-driven mode
     SpellFXInstance effect;
     effect.type = SpellFXType::GroundCircle;
     effect.spell_id = spell_id;
@@ -700,6 +786,13 @@ void SpellVisualFX::removeCastGlow(uint16_t caster_id)
         return;
     }
 #endif
+    if (m_worker_driven) {
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::RemoveCastGlow;
+        cmd.sourceEntity = caster_id;
+        m_pending_commands.push_back(cmd);
+    }
+    // Also remove local scene nodes immediately
     for (size_t i = 0; i < m_effects.size(); ) {
         if (m_effects[i].type == SpellFXType::CastGlow &&
             m_effects[i].source_entity == caster_id) {
@@ -718,6 +811,14 @@ void SpellVisualFX::removeBuffAura(uint16_t entity_id, uint32_t spell_id)
         return;
     }
 #endif
+    if (m_worker_driven) {
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::RemoveBuffAura;
+        cmd.sourceEntity = entity_id;
+        cmd.spellId = spell_id;
+        m_pending_commands.push_back(cmd);
+    }
+    // Also remove local scene nodes immediately
     for (size_t i = 0; i < m_effects.size(); ) {
         if (m_effects[i].type == SpellFXType::AuraPersistent &&
             m_effects[i].source_entity == entity_id &&
@@ -739,6 +840,13 @@ void SpellVisualFX::removeAllForEntity(uint16_t entity_id)
         // Fall through to also clean up any Irrlicht scene nodes
     }
 #endif
+    if (m_worker_driven) {
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::RemoveAllForEntity;
+        cmd.sourceEntity = entity_id;
+        m_pending_commands.push_back(cmd);
+    }
+    // Also remove local scene nodes immediately
     for (size_t i = 0; i < m_effects.size(); ) {
         if (m_effects[i].source_entity == entity_id ||
             m_effects[i].target_entity == entity_id) {
@@ -751,6 +859,11 @@ void SpellVisualFX::removeAllForEntity(uint16_t entity_id)
 
 void SpellVisualFX::clearAllEffects()
 {
+    if (m_worker_driven) {
+        EQT::Graphics::SpellVFXCommandData cmd;
+        cmd.type = EQT::Graphics::SpellVFXCommand::ClearAll;
+        m_pending_commands.push_back(cmd);
+    }
     for (auto& effect : m_effects) {
         cleanupEffectNode(effect);
     }
@@ -1215,6 +1328,102 @@ void SpellVisualFX::adjustParticleMultiplier(float delta)
         // Round to 1 decimal for display
         float display_mult = std::round(m_particle_multiplier * 10.0f) / 10.0f;
         LOG_DEBUG(MOD_GRAPHICS, "Particle multiplier: {:.1f}x", display_mult);
+    }
+}
+
+// ============================================================================
+// Worker-Driven Facade
+// ============================================================================
+
+std::vector<EQT::Graphics::SpellVFXCommandData> SpellVisualFX::drainCommands()
+{
+    std::vector<EQT::Graphics::SpellVFXCommandData> result;
+    result.swap(m_pending_commands);
+    return result;
+}
+
+void SpellVisualFX::applyWorkerResults(const EQT::Graphics::SimulationOutput& results)
+{
+    const auto& svo = results.spellVfxOutput;
+    if (!svo.valid) return;
+
+    // Process create events — build scene nodes for new effects
+    for (const auto& ce : svo.createEvents) {
+        SpellFXInstance effect;
+        effect.effect_id = ce.effectId;
+        effect.type = static_cast<SpellFXType>(ce.fxType);
+        effect.spell_id = ce.spellId;
+        effect.source_entity = ce.sourceEntity;
+        effect.target_entity = ce.targetEntity;
+        effect.source_pos = irr::core::vector3df(ce.posX, ce.posY, ce.posZ);
+        effect.target_pos = irr::core::vector3df(ce.targetPosX, ce.targetPosY, ce.targetPosZ);
+        effect.color = irr::video::SColor(ce.colorA, ce.colorR, ce.colorG, ce.colorB);
+        effect.lifetime = ce.lifetime;
+        effect.scale = ce.scale;
+        effect.active = true;
+
+        switch (effect.type) {
+            case SpellFXType::CastGlow:
+                createGlowNode(effect);
+                break;
+            case SpellFXType::ProjectileTravel:
+                createProjectileNode(effect);
+                break;
+            case SpellFXType::AuraPersistent:
+                createAuraNode(effect);
+                break;
+            default:
+                break;
+        }
+
+        m_effects.push_back(effect);
+    }
+
+    // Process remove events — find by effect_id and remove scene nodes
+    for (const auto& re : svo.removeEvents) {
+        for (size_t i = 0; i < m_effects.size(); ) {
+            if (m_effects[i].effect_id == re.effectId) {
+                removeEffect(i);
+            } else {
+                ++i;
+            }
+        }
+    }
+
+    // Process effect updates — apply positions/sizes/colors to scene nodes
+    for (const auto& eu : svo.effectUpdates) {
+        for (auto& effect : m_effects) {
+            if (effect.effect_id != eu.effectId) continue;
+
+            if (eu.hasBillboardUpdate && effect.billboard) {
+                effect.billboard->setPosition(irr::core::vector3df(eu.posX, eu.posY, eu.posZ));
+                if (eu.billboardWidth > 0 && eu.billboardHeight > 0) {
+                    effect.billboard->setSize(
+                        irr::core::dimension2df(eu.billboardWidth, eu.billboardHeight));
+                }
+            }
+
+            if (eu.hasParticleUpdate && effect.particle_system) {
+                effect.particle_system->setPosition(
+                    irr::core::vector3df(eu.particlePosX, eu.particlePosY, eu.particlePosZ));
+            }
+
+            if (eu.hasColorUpdate && effect.billboard) {
+                irr::video::SColor c(eu.colorA, eu.colorR, eu.colorG, eu.colorB);
+                effect.billboard->setColor(c);
+            }
+
+            break;  // Found matching effect
+        }
+    }
+
+    // Process impact events — create fire-and-forget impacts on main thread
+    for (const auto& ie : svo.impactEvents) {
+        // Temporarily disable worker-driven to avoid re-queuing command
+        bool wasWorkerDriven = m_worker_driven;
+        m_worker_driven = false;
+        createImpact(ie.targetEntity, ie.spellId);
+        m_worker_driven = wasWorkerDriven;
     }
 }
 

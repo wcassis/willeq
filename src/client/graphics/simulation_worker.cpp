@@ -3,6 +3,7 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/environment/unified_particle.h"
 #include "client/graphics/environment/spell_particle_types.h"
+#include "client/hc_map.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
@@ -93,6 +94,16 @@ void SimulationWorker::setZoneData(const SimulationZoneData& data) {
         flickerPhases_[i] = static_cast<float>(i) * 1.37f;
     }
 
+    // Initialize worker-owned occlusion culler from zone data
+    if (!zoneData_.regionOccluders.empty()) {
+        workerOcclusionCuller_ = std::make_unique<SoftwareOcclusionCuller>(zoneData_.occlusionConfig);
+        for (const auto& [regionIdx, triangles] : zoneData_.regionOccluders) {
+            workerOcclusionCuller_->setRegionOccluders(regionIdx, triangles);
+        }
+        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: occlusion culler initialized with {} region occluder sets",
+                 zoneData_.regionOccluders.size());
+    }
+
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker zone data set: {} regions, {} objects, {} zone lights, {} object lights",
              zoneData_.regionBounds.size(), zoneData_.objects.size(),
              zoneData_.zoneLights.size(), zoneData_.objectLights.size());
@@ -139,9 +150,14 @@ void SimulationWorker::clearZoneData() {
     zoneDataValid_ = false;
     zoneData_ = SimulationZoneData();
     flickerPhases_.clear();
+    workerOcclusionCuller_.reset();
+    workerEntities_.clear();
     for (int i = 0; i < 2; ++i) {
         output_[i] = SimulationOutput();
     }
+
+    // Reset spell VFX state
+    spellVfxEffects_.clear();
 
     // Reset particle state
     particlePool_.clear();
@@ -154,6 +170,31 @@ void SimulationWorker::clearZoneData() {
     particleSpellEffects_.clear();
     particleNextSpellEffectID_ = 1;
     particleNextEmitterID_ = 1;
+
+    // Reset boids state
+    boidsFlocks_.clear();
+    boidsSpawnTimer_ = 0.0f;
+
+    // Reset tumbleweed state
+    twInstances_.clear();
+    twSpawnTimer_ = 0.0f;
+    twNextPoolIndex_ = 0;
+
+    // Reset detail wind/disturbance state
+    detailChunks_.clear();
+    detailWindTime_ = 0;
+    detailResiduals_.clear();
+
+    // Reset weather state
+    weatherCurrentWeather_ = 1;  // Normal
+    weatherTargetWeather_ = 1;
+    weatherTransitionProgress_ = 1.0f;
+    weatherTimeSinceLastCheck_ = 0.0f;
+    weatherCurrentDuration_ = 0.0f;
+    weatherCurrentElapsed_ = 0.0f;
+    weatherWindIntensity_ = 0.6f;
+    weatherSimulationEnabled_ = true;
+    weatherZoneConfig_ = ZoneWeatherConfig();
 }
 
 // ============================================================================
@@ -263,21 +304,32 @@ void SimulationWorker::workerLoop() {
 void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput& output) {
     workerFrameCount_++;
 
-    // Critical tier — every frame: visibility + light selection
+    // Critical tier — every frame: visibility, occlusion, entities, light selection
     computeVisibility(input, output);
     computeObjectVisibility(input, output);
     computeLightVisibility(input, output);
+    computePortalVisibility(input, output);
+    computeSoftwareOcclusion(input, output);
+    computeEntitySync(input);
+    computeEntityPendingUpdates(input);
+    computeEntityInterpolation(input, output);
+    computeEntityVisibility(input, output);
+    computeNameTagVisibility(input, output);
     computeLightSelection(input, output);
 
-    // Normal tier — every frame: portals, fire flicker, trees, vertex anims, particles
-    computePortalVisibility(input, output);
+    // Normal tier — every frame: fire flicker, spell VFX, trees, vertex anims, detail wind, particles, boids, tumbleweeds
     computeFireFlicker(input, output);
+    computeSpellVFX(input, output);
     computeTreeAnimation(input, output);
     computeVertexAnimations(input, output);
+    computeDetailAnimation(input, output);
     computeParticles(input, output);
+    computeBoids(input, output);
+    computeTumbleweeds(input, output);
 
     // Background tier — every kBackgroundInterval frames
     if (workerFrameCount_ % kBackgroundInterval == 0) {
+        computeWeather(input, output);
         computeLightAnimations(input, output);
         computeSkyState(input, output);
         computeWeatherEffectsState(input, output);
@@ -870,6 +922,218 @@ void SimulationWorker::computeVertexAnimations(const SimulationInput& input, Sim
             result.frameChanged = false;
         }
     }
+}
+
+// ============================================================================
+// Detail Wind/Disturbance Animation
+// ============================================================================
+
+void SimulationWorker::computeDetailAnimation(const SimulationInput& input, SimulationOutput& output) {
+    const auto& di = input.detailInput;
+    if (!di.initialized) {
+        output.detailOutput.valid = false;
+        return;
+    }
+
+    // Process commands
+    for (const auto& cmd : di.commands) {
+        switch (cmd.type) {
+            case DetailCommand::AddChunk: {
+                // Upsert: find existing chunk by key or add new
+                bool found = false;
+                for (auto& chunk : detailChunks_) {
+                    if (chunk.keyX == cmd.chunkKeyX && chunk.keyZ == cmd.chunkKeyZ) {
+                        chunk.basePositions = cmd.basePositions;
+                        chunk.windInfluence = cmd.windInfluence;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    WorkerDetailChunk wdc;
+                    wdc.keyX = cmd.chunkKeyX;
+                    wdc.keyZ = cmd.chunkKeyZ;
+                    wdc.basePositions = cmd.basePositions;
+                    wdc.windInfluence = cmd.windInfluence;
+                    detailChunks_.push_back(std::move(wdc));
+                }
+                break;
+            }
+            case DetailCommand::RemoveChunk: {
+                detailChunks_.erase(
+                    std::remove_if(detailChunks_.begin(), detailChunks_.end(),
+                        [&cmd](const WorkerDetailChunk& c) {
+                            return c.keyX == cmd.chunkKeyX && c.keyZ == cmd.chunkKeyZ;
+                        }),
+                    detailChunks_.end());
+                break;
+            }
+            case DetailCommand::ClearAll:
+                detailChunks_.clear();
+                detailResiduals_.clear();
+                break;
+        }
+    }
+
+    if (detailChunks_.empty()) {
+        output.detailOutput.chunkShadows.clear();
+        output.detailOutput.valid = true;
+        return;
+    }
+
+    // Advance wind time
+    detailWindTime_ += di.deltaTime;
+
+    // Update disturbance residuals
+    if (di.disturbanceEnabled) {
+        // Add player as source if moving
+        if (di.playerMoving) {
+            // Grid key for player position (Irrlicht Y-up: X, Y=up, Z=horizontal)
+            int32_t gx = static_cast<int32_t>(std::floor(di.playerPosX / 1.0f));
+            int32_t gz = static_cast<int32_t>(std::floor(di.playerPosZ / 1.0f));
+            int64_t key = (static_cast<int64_t>(gx) << 32) | static_cast<uint32_t>(gz);
+
+            // Push direction from velocity
+            float velLen = std::sqrt(di.playerVelX * di.playerVelX + di.playerVelZ * di.playerVelZ);
+            float pushDirX = 0, pushDirZ = 1.0f;
+            if (velLen > 0.01f) {
+                pushDirX = di.playerVelX / velLen;
+                pushDirZ = di.playerVelZ / velLen;
+            }
+
+            auto it = detailResiduals_.find(key);
+            if (it != detailResiduals_.end()) {
+                it->second.posX = di.playerPosX;
+                it->second.posY = di.playerPosY;
+                it->second.posZ = di.playerPosZ;
+                it->second.dirX = pushDirX;
+                it->second.dirZ = pushDirZ;
+                it->second.intensity = std::max(it->second.intensity, di.playerStrength);
+            } else if (detailResiduals_.size() < 500) {
+                WorkerResidualDisturbance r;
+                r.posX = di.playerPosX;
+                r.posY = di.playerPosY;
+                r.posZ = di.playerPosZ;
+                r.dirX = pushDirX;
+                r.dirZ = pushDirZ;
+                r.intensity = di.playerStrength;
+                detailResiduals_[key] = r;
+            }
+        }
+
+        // Fade residuals
+        std::vector<int64_t> toRemove;
+        for (auto& [key, res] : detailResiduals_) {
+            res.intensity -= di.recoveryRate * di.deltaTime;
+            if (res.intensity <= 0.0f) {
+                toRemove.push_back(key);
+            }
+        }
+        for (int64_t key : toRemove) {
+            detailResiduals_.erase(key);
+        }
+    }
+
+    // Ensure output has correct number of shadow entries
+    output.detailOutput.chunkShadows.resize(detailChunks_.size());
+
+    constexpr float TWO_PI = 6.28318f;
+
+    for (size_t ci = 0; ci < detailChunks_.size(); ++ci) {
+        const auto& chunk = detailChunks_[ci];
+        auto& shadow = output.detailOutput.chunkShadows[ci];
+        shadow.keyX = chunk.keyX;
+        shadow.keyZ = chunk.keyZ;
+
+        size_t vertCount = chunk.basePositions.size();
+        if (vertCount == 0 || chunk.windInfluence.size() != vertCount) {
+            shadow.positions.clear();
+            shadow.dirty = false;
+            continue;
+        }
+
+        shadow.positions.resize(vertCount);
+
+        for (size_t v = 0; v < vertCount; ++v) {
+            const auto& basePos = chunk.basePositions[v];
+            float influence = chunk.windInfluence[v];
+
+            if (influence < 0.001f) {
+                shadow.positions[v] = basePos;
+                continue;
+            }
+
+            // Wind displacement (replicates WindController::getDisplacement)
+            irr::core::vector3df windDisp(0, 0, 0);
+            if (di.windStrength > 0.001f) {
+                float spatialPhase = (basePos.X * 0.1f + basePos.Z * 0.13f);
+                float baseWave = std::sin(detailWindTime_ * di.windFrequency * TWO_PI + spatialPhase);
+                float gustWave = std::sin(detailWindTime_ * di.gustFrequency * TWO_PI +
+                                          spatialPhase * 0.3f) * di.gustStrength;
+                float wave = (baseWave + gustWave) * di.windStrength * influence;
+                float heightInfluence = influence * influence;
+                wave *= heightInfluence;
+                windDisp.X = wave * di.windDirX * 0.15f;
+                windDisp.Y = -std::abs(wave) * 0.02f;
+                windDisp.Z = wave * di.windDirY * 0.15f;
+            }
+
+            // Disturbance displacement
+            irr::core::vector3df disturbDisp(0, 0, 0);
+            if (di.disturbanceEnabled) {
+                float heightScale = std::pow(influence, di.heightExponent);
+
+                // Active source (player) push
+                if (di.playerMoving) {
+                    float dx = basePos.X - di.playerPosX;
+                    float dz = basePos.Z - di.playerPosZ;
+                    float dist = std::sqrt(dx * dx + dz * dz);
+                    if (dist > 0.01f && dist < di.playerRadius) {
+                        float falloff = 1.0f - (dist / di.playerRadius);
+                        falloff = falloff * falloff;
+                        // Push away from player
+                        float pushDirX = dx / dist;
+                        float pushDirZ = dz / dist;
+                        // Blend with velocity direction
+                        float velLen = std::sqrt(di.playerVelX * di.playerVelX + di.playerVelZ * di.playerVelZ);
+                        if (velLen > 0.01f) {
+                            float velDirX = di.playerVelX / velLen;
+                            float velDirZ = di.playerVelZ / velLen;
+                            pushDirX += velDirX * di.velocityInfluence;
+                            pushDirZ += velDirZ * di.velocityInfluence;
+                            float pLen = std::sqrt(pushDirX * pushDirX + pushDirZ * pushDirZ);
+                            if (pLen > 0.01f) { pushDirX /= pLen; pushDirZ /= pLen; }
+                        }
+                        float disp = falloff * di.playerStrength * heightScale;
+                        disturbDisp.X += pushDirX * disp * di.maxDisplacement;
+                        disturbDisp.Z += pushDirZ * disp * di.maxDisplacement;
+                        disturbDisp.Y -= disp * di.verticalDipFactor;
+                    }
+                }
+
+                // Residual push
+                float residualRadius = di.playerRadius * 0.8f;
+                for (const auto& [rkey, res] : detailResiduals_) {
+                    if (res.intensity < 0.01f) continue;
+                    float dx = basePos.X - res.posX;
+                    float dz = basePos.Z - res.posZ;
+                    float dist = std::sqrt(dx * dx + dz * dz);
+                    if (dist >= residualRadius) continue;
+                    float falloff = 1.0f - (dist / residualRadius);
+                    falloff = falloff * falloff;
+                    float disp = falloff * res.intensity * heightScale;
+                    disturbDisp.X += res.dirX * disp * di.maxDisplacement;
+                    disturbDisp.Z += res.dirZ * disp * di.maxDisplacement;
+                    disturbDisp.Y -= disp * di.verticalDipFactor;
+                }
+            }
+
+            shadow.positions[v] = basePos + windDisp + disturbDisp;
+        }
+        shadow.dirty = true;
+    }
+
+    output.detailOutput.valid = true;
 }
 
 // ============================================================================
@@ -1904,6 +2168,1757 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
     p.emitterID = emitterID;
     p.setAlive(true);
     p.setBlendMode(cfg.blendMode);
+}
+
+// ============================================================================
+// Software Occlusion Culling
+// ============================================================================
+
+void SimulationWorker::computeSoftwareOcclusion(const SimulationInput& input, SimulationOutput& output) {
+    output.occlusionCulledRegions.clear();
+
+    if (!workerOcclusionCuller_ || !input.occlusionCamera.enabled) return;
+    if (output.sortedRegions.empty()) return;
+
+    const auto& cam = input.occlusionCamera;
+    workerOcclusionCuller_->setCamera(
+        input.camEqX, input.camEqY, input.camEqZ,
+        cam.fwdX, cam.fwdY, cam.fwdZ,
+        cam.rightX, cam.rightY, cam.rightZ,  // Note: rightZ is always 0 for 2D but we pass full vector
+        cam.upX, cam.upY, cam.upZ,
+        cam.fovRadV, cam.aspect);
+    workerOcclusionCuller_->clear();
+    workerOcclusionCuller_->resetStats();
+
+    // Rasterize occluders from N closest PVS-visible regions
+    int maxOccluderRegions = workerOcclusionCuller_->getConfig().maxOccluderRegions;
+    int rasterizedRegions = 0;
+
+    for (const auto& sr : output.sortedRegions) {
+        if (rasterizedRegions >= maxOccluderRegions) break;
+        const auto& occluders = workerOcclusionCuller_->getRegionOccluders(sr.regionIdx);
+        if (occluders.empty()) continue;
+        for (const auto& tri : occluders) {
+            workerOcclusionCuller_->rasterizeTriangle(tri.v0, tri.v1, tri.v2);
+        }
+        rasterizedRegions++;
+    }
+
+    if (rasterizedRegions == 0) return;
+
+    // Test PVS-visible region AABBs for occlusion
+    for (size_t i = 0; i < zoneData_.regionBounds.size(); ++i) {
+        if (output.regionVisible[i] == 0) continue;  // Already culled by PVS/frustum
+        const auto& rb = zoneData_.regionBounds[i];
+        if (workerOcclusionCuller_->testAABB(rb.minX, rb.minY, rb.minZ,
+                                              rb.maxX, rb.maxY, rb.maxZ)) {
+            output.occlusionCulledRegions.insert(rb.regionIdx);
+            output.regionVisible[i] = 0;
+        }
+    }
+
+    // Refine object visibility — mark objects in occluded regions as hidden
+    for (size_t i = 0; i < zoneData_.objects.size(); ++i) {
+        if (output.objectVisible[i] == 0) continue;
+        const auto& obj = zoneData_.objects[i];
+        if (obj.bspRegion != SIZE_MAX &&
+            output.occlusionCulledRegions.count(obj.bspRegion)) {
+            output.objectVisible[i] = 0;
+        }
+    }
+
+    // Refine light visibility — mark lights in occluded regions as hidden
+    for (size_t i = 0; i < zoneData_.zoneLights.size(); ++i) {
+        if (output.lightVisible[i] == 0) continue;
+        const auto& zl = zoneData_.zoneLights[i];
+        if (zl.bspRegion != SIZE_MAX &&
+            output.occlusionCulledRegions.count(zl.bspRegion)) {
+            output.lightVisible[i] = 0;
+        }
+    }
+}
+
+// ============================================================================
+// Entity Sync — reconcile worker entity list with main-thread snapshot
+// ============================================================================
+
+void SimulationWorker::computeEntitySync(const SimulationInput& input) {
+    if (input.entitySnapshots.empty()) {
+        workerEntities_.clear();
+        return;
+    }
+
+    // Build set of current spawn IDs from snapshot
+    std::unordered_set<uint16_t> currentIds;
+    currentIds.reserve(input.entitySnapshots.size());
+    for (const auto& snap : input.entitySnapshots) {
+        currentIds.insert(snap.spawnId);
+    }
+
+    // Remove entities no longer present
+    for (auto it = workerEntities_.begin(); it != workerEntities_.end(); ) {
+        if (currentIds.find(it->first) == currentIds.end()) {
+            it = workerEntities_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Create or update entries from snapshot
+    for (const auto& snap : input.entitySnapshots) {
+        auto it = workerEntities_.find(snap.spawnId);
+        if (it == workerEntities_.end()) {
+            // New entity — initialize from snapshot
+            WorkerEntityState state;
+            state.lastX = snap.lastX;
+            state.lastY = snap.lastY;
+            state.lastZ = snap.lastZ;
+            state.velocityX = snap.velocityX;
+            state.velocityY = snap.velocityY;
+            state.velocityZ = snap.velocityZ;
+            state.serverX = snap.serverX;
+            state.serverY = snap.serverY;
+            state.serverZ = snap.serverZ;
+            state.serverHeading = snap.serverHeading;
+            state.timeSinceUpdate = snap.timeSinceUpdate;
+            state.lastUpdateInterval = snap.lastUpdateInterval;
+            state.collisionZOffset = snap.collisionZOffset;
+            state.modelYOffset = snap.modelYOffset;
+            state.serverAnimation = snap.serverAnimation;
+            state.lastNonZeroAnimation = snap.lastNonZeroAnimation;
+            state.cachedBspRegion = snap.cachedBspRegion;
+            state.bspRegionDirty = snap.bspRegionDirty;
+            state.isNPC = snap.isNPC;
+            state.isPlayer = snap.isPlayer;
+            state.isCorpse = snap.isCorpse;
+            state.isFading = snap.isFading;
+            state.active = snap.hasVelocity;
+            workerEntities_[snap.spawnId] = state;
+        } else {
+            // Existing entity — sync immutable/server-controlled fields
+            auto& state = it->second;
+            state.isNPC = snap.isNPC;
+            state.isPlayer = snap.isPlayer;
+            state.isCorpse = snap.isCorpse;
+            state.isFading = snap.isFading;
+            state.collisionZOffset = snap.collisionZOffset;
+            state.modelYOffset = snap.modelYOffset;
+        }
+    }
+}
+
+// ============================================================================
+// Entity Pending Updates — process network updates on worker
+// ============================================================================
+
+void SimulationWorker::computeEntityPendingUpdates(const SimulationInput& input) {
+    for (const auto& update : input.entityPendingUpdates) {
+        auto it = workerEntities_.find(update.spawnId);
+        if (it == workerEntities_.end()) continue;
+
+        auto& state = it->second;
+
+        // Check if position changed
+        float serverDeltaX = update.x - state.serverX;
+        float serverDeltaY = update.y - state.serverY;
+        float serverDeltaZ = update.z - state.serverZ;
+        bool positionChanged = (std::abs(serverDeltaX) > 0.01f ||
+                                std::abs(serverDeltaY) > 0.01f ||
+                                std::abs(serverDeltaZ) > 0.01f);
+
+        if (positionChanged) {
+            state.bspRegionDirty = true;
+        }
+
+        // NPC velocity calculation (same logic as EntityRenderer::processUpdate)
+        if (state.isNPC) {
+            if (update.animation != 0) {
+                float headingRad = update.heading * 3.14159265f / 180.0f;
+                float speed = static_cast<float>(std::abs(update.animation)) * 0.58f;
+                float direction = (update.animation < 0) ? -1.0f : 1.0f;
+                state.velocityX = std::cos(headingRad) * speed * direction;
+                state.velocityY = std::sin(headingRad) * speed * direction;
+                state.velocityZ = 0;
+            } else {
+                state.velocityX = 0;
+                state.velocityY = 0;
+                state.velocityZ = 0;
+            }
+        } else {
+            // Player velocity
+            if (std::abs(update.dx) > 0.01f || std::abs(update.dy) > 0.01f || std::abs(update.dz) > 0.01f) {
+                state.velocityX = update.dx;
+                state.velocityY = update.dy;
+                state.velocityZ = update.dz;
+            } else if (positionChanged && state.timeSinceUpdate > 0.05f) {
+                float invTime = 1.0f / state.timeSinceUpdate;
+                state.velocityX = serverDeltaX * invTime;
+                state.velocityY = serverDeltaY * invTime;
+                state.velocityZ = serverDeltaZ * invTime;
+            } else if (!positionChanged) {
+                state.velocityX = 0;
+                state.velocityY = 0;
+                state.velocityZ = 0;
+            }
+        }
+
+        // Update server position tracking
+        state.serverX = update.x;
+        state.serverY = update.y;
+        state.serverZ = update.z;
+        state.serverHeading = update.heading;
+
+        // Snap interpolated position to server position
+        state.lastX = update.x;
+        state.lastY = update.y;
+        state.lastZ = update.z;
+
+        // Track update interval
+        if (state.timeSinceUpdate > 0.05f && state.timeSinceUpdate < 2.0f) {
+            state.lastUpdateInterval = state.lastUpdateInterval * 0.7f + state.timeSinceUpdate * 0.3f;
+        }
+        state.timeSinceUpdate = 0;
+        state.serverAnimation = update.animation;
+
+        // Mark active if has velocity
+        state.active = (std::abs(state.velocityX) > 0.01f ||
+                        std::abs(state.velocityY) > 0.01f ||
+                        std::abs(state.velocityZ) > 0.01f);
+
+        if (update.animation != 0) {
+            state.lastNonZeroAnimation = update.animation;
+        }
+    }
+}
+
+// ============================================================================
+// Entity Interpolation — velocity-based position computation on worker
+// ============================================================================
+
+void SimulationWorker::computeEntityInterpolation(const SimulationInput& input, SimulationOutput& output) {
+    output.entityResults.clear();
+    if (workerEntities_.empty()) return;
+
+    float deltaTime = input.deltaTime;
+    output.entityResults.reserve(workerEntities_.size());
+
+    for (auto& [spawnId, state] : workerEntities_) {
+        state.timeSinceUpdate += deltaTime;
+
+        SimulationOutput::EntityResult result;
+        result.spawnId = spawnId;
+        result.wasInterpolated = false;
+        result.shouldBeVisible = true;  // Default, culling sets this later
+        result.shouldDeactivate = false;
+
+        // Skip player/corpse/fading position interpolation
+        if (state.isPlayer || state.isCorpse || state.isFading) {
+            result.posX = state.lastX;
+            result.posY = state.lastY;
+            result.posZ = state.lastZ;
+            result.cachedBspRegion = state.cachedBspRegion;
+            result.bspRegionDirty = state.bspRegionDirty;
+            output.entityResults.push_back(result);
+            continue;
+        }
+
+        // Check if stationary
+        if (!state.active) {
+            result.posX = state.lastX;
+            result.posY = state.lastY;
+            result.posZ = state.lastZ;
+            result.cachedBspRegion = state.cachedBspRegion;
+            result.bspRegionDirty = state.bspRegionDirty;
+            result.shouldDeactivate = true;
+            output.entityResults.push_back(result);
+            continue;
+        }
+
+        if (std::abs(state.velocityX) < 0.01f &&
+            std::abs(state.velocityY) < 0.01f &&
+            std::abs(state.velocityZ) < 0.01f) {
+            state.active = false;
+            result.posX = state.lastX;
+            result.posY = state.lastY;
+            result.posZ = state.lastZ;
+            result.cachedBspRegion = state.cachedBspRegion;
+            result.bspRegionDirty = state.bspRegionDirty;
+            result.shouldDeactivate = true;
+            output.entityResults.push_back(result);
+            continue;
+        }
+
+        // Timeout handling
+        if (state.timeSinceUpdate > state.lastUpdateInterval * 1.5f) {
+            if (state.isNPC && state.serverAnimation != 0) {
+                // Recalculate velocity from heading with damping
+                float headingRad = state.serverHeading * 3.14159265f / 180.0f;
+                float dampingFactor = 0.85f;
+                float speed = static_cast<float>(std::abs(state.serverAnimation)) * 0.58f * dampingFactor;
+                float direction = (state.serverAnimation < 0) ? -1.0f : 1.0f;
+                state.velocityX = std::cos(headingRad) * speed * direction;
+                state.velocityY = std::sin(headingRad) * speed * direction;
+                state.velocityZ = 0;
+            } else {
+                // Stop movement
+                state.velocityX = 0;
+                state.velocityY = 0;
+                state.velocityZ = 0;
+                state.active = false;
+                result.posX = state.lastX;
+                result.posY = state.lastY;
+                result.posZ = state.lastZ;
+                result.cachedBspRegion = state.cachedBspRegion;
+                result.bspRegionDirty = state.bspRegionDirty;
+                result.shouldDeactivate = true;
+                output.entityResults.push_back(result);
+                continue;
+            }
+        }
+
+        // Interpolate position
+        float damping = 1.0f;
+        if (state.timeSinceUpdate > state.lastUpdateInterval * 3.0f) {
+            float overshootTime = state.timeSinceUpdate - state.lastUpdateInterval * 3.0f;
+            damping = std::exp(-0.14f * overshootTime);
+            damping = std::max(0.3f, damping);
+        }
+        state.lastX += state.velocityX * deltaTime * damping;
+        state.lastY += state.velocityY * deltaTime * damping;
+        state.lastZ += state.velocityZ * deltaTime * damping;
+
+        // NPC ground snap via HCMap
+        if (state.isNPC && zoneData_.hcMap &&
+            (std::abs(state.velocityX) > 0.01f || std::abs(state.velocityY) > 0.01f)) {
+            glm::vec3 startPos(state.lastX, state.lastY, state.lastZ + 10.0f);
+            glm::vec3 resultPos;
+            float groundZ = zoneData_.hcMap->FindBestZ(startPos, &resultPos);
+            if (groundZ > -999000.0f) {  // Valid result
+                float targetZ = groundZ + state.collisionZOffset;
+                float heightDiff = targetZ - state.lastZ;
+                if (std::abs(heightDiff) < 20.0f) {
+                    state.lastZ = targetZ;
+                }
+            }
+        }
+
+        result.posX = state.lastX;
+        result.posY = state.lastY;
+        result.posZ = state.lastZ;
+        result.cachedBspRegion = state.cachedBspRegion;
+        result.bspRegionDirty = state.bspRegionDirty;
+        result.wasInterpolated = true;
+        output.entityResults.push_back(result);
+    }
+}
+
+// ============================================================================
+// Entity Visibility — distance + frustum + portal + occlusion culling
+// ============================================================================
+
+void SimulationWorker::computeEntityVisibility(const SimulationInput& input, SimulationOutput& output) {
+    if (!input.entityCullingEnabled || output.entityResults.empty()) {
+        output.entityVisibleCount = static_cast<int>(output.entityResults.size());
+        return;
+    }
+
+    float maxDistSq = input.entityRenderDistance * input.entityRenderDistance;
+    int maxEntities = input.maxVisibleEntities;
+
+    // Build distance list
+    struct EntityDist {
+        size_t resultIdx;
+        float distanceSq;
+    };
+    std::vector<EntityDist> distances;
+    distances.reserve(output.entityResults.size());
+
+    for (size_t i = 0; i < output.entityResults.size(); ++i) {
+        const auto& er = output.entityResults[i];
+        float dx = er.posX - input.camEqX;
+        float dy = er.posY - input.camEqY;
+        float dz = er.posZ - input.camEqZ;
+        distances.push_back({i, dx*dx + dy*dy + dz*dz});
+    }
+
+    // Sort by distance
+    std::sort(distances.begin(), distances.end(),
+              [](const EntityDist& a, const EntityDist& b) {
+                  return a.distanceSq < b.distanceSq;
+              });
+
+    int visibleCount = 0;
+
+    for (const auto& ed : distances) {
+        auto& er = output.entityResults[ed.resultIdx];
+        auto wit = workerEntities_.find(er.spawnId);
+        if (wit == workerEntities_.end()) {
+            er.shouldBeVisible = false;
+            continue;
+        }
+        const auto& state = wit->second;
+
+        // Always show player
+        if (state.isPlayer) {
+            er.shouldBeVisible = true;
+            visibleCount++;
+            continue;
+        }
+
+        bool visible = (visibleCount < maxEntities) && (ed.distanceSq <= maxDistSq);
+
+        // Frustum culling
+        if (visible && input.frustumValid) {
+            // Simple sphere test using frustum planes
+            float cx = er.posX, cy = er.posY, cz = er.posZ;
+            float radius = 5.0f;
+            bool insideFrustum = true;
+            for (int p = 0; p < 6 && insideFrustum; ++p) {
+                float dot = input.frustumPlanes[p][0] * cx +
+                            input.frustumPlanes[p][1] * cy +
+                            input.frustumPlanes[p][2] * cz +
+                            input.frustumPlanes[p][3];
+                if (dot < -radius) insideFrustum = false;
+            }
+            if (!insideFrustum) visible = false;
+        }
+
+        // Portal culling — check if entity's BSP region is portal-visible
+        if (visible && !output.portalVisibleRegions.empty() && zoneData_.bspTree) {
+            // Re-lookup BSP region if dirty
+            if (state.bspRegionDirty || state.cachedBspRegion == SIZE_MAX) {
+                // Can't write to state here safely since we're iterating,
+                // but we can do a local lookup
+                size_t entityRegion = zoneData_.bspTree->findRegionIndexForPoint(
+                    er.posX, er.posY, er.posZ);
+                er.cachedBspRegion = entityRegion;
+                er.bspRegionDirty = false;
+            }
+            if (er.cachedBspRegion != SIZE_MAX &&
+                output.portalVisibleRegions.find(er.cachedBspRegion) == output.portalVisibleRegions.end()) {
+                visible = false;
+            }
+        }
+
+        // Occlusion test (when portals not active)
+        if (visible && output.portalVisibleRegions.empty() &&
+            workerOcclusionCuller_ && workerOcclusionCuller_->isEnabled()) {
+            if (workerOcclusionCuller_->testPoint(er.posX, er.posY, er.posZ + 3.0f)) {
+                visible = false;
+            }
+        }
+
+        er.shouldBeVisible = visible;
+        if (visible) visibleCount++;
+    }
+
+    output.entityVisibleCount = visibleCount;
+}
+
+// ============================================================================
+// Name Tag Visibility (moved from main thread updateNameTagsWithLOS)
+// ============================================================================
+
+void SimulationWorker::computeNameTagVisibility(const SimulationInput& input, SimulationOutput& output) {
+    if (output.entityResults.empty()) return;
+
+    float nameTagDistSq = input.nameTagDistance * input.nameTagDistance;
+
+    // Get PVS data for camera's current region
+    const BspRegion* cameraRegion = nullptr;
+    if (zoneData_.bspTree && output.currentPvsRegion != SIZE_MAX
+        && output.currentPvsRegion < zoneData_.bspTree->regions.size()) {
+        cameraRegion = zoneData_.bspTree->regions[output.currentPvsRegion].get();
+    }
+
+    for (auto& er : output.entityResults) {
+        er.nameTagVisible = false;
+
+        // Entity must be visible (not culled by distance/frustum/portal/occlusion)
+        if (!er.shouldBeVisible) continue;
+
+        // Global toggle
+        if (!input.nameTagsVisible) continue;
+
+        // Distance check from camera (EQ coordinates)
+        float dx = er.posX - input.camEqX;
+        float dy = er.posY - input.camEqY;
+        float dz = er.posZ - input.camEqZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > nameTagDistSq) continue;
+
+        bool visible = true;
+
+        // PVS bitvector check
+        if (visible && cameraRegion && !cameraRegion->visibleRegions.empty()) {
+            size_t entityRegion = er.cachedBspRegion;
+            if (entityRegion != SIZE_MAX && entityRegion < cameraRegion->visibleRegions.size()) {
+                if (!cameraRegion->visibleRegions[entityRegion]) {
+                    visible = false;
+                }
+            }
+        }
+
+        // Portal culling
+        if (visible && !output.portalVisibleRegions.empty()) {
+            size_t entityRegion = er.cachedBspRegion;
+            if (entityRegion != SIZE_MAX &&
+                output.portalVisibleRegions.find(entityRegion) == output.portalVisibleRegions.end()) {
+                visible = false;
+            }
+        }
+
+        // Occlusion test (when portals not active)
+        if (visible && output.portalVisibleRegions.empty() &&
+            workerOcclusionCuller_ && workerOcclusionCuller_->isEnabled()) {
+            if (workerOcclusionCuller_->testPoint(er.posX, er.posY, er.posZ + 3.0f)) {
+                visible = false;
+            }
+        }
+
+        er.nameTagVisible = visible;
+    }
+}
+
+// ============================================================================
+// Boids Simulation (worker thread)
+// ============================================================================
+
+float SimulationWorker::boidsRandomFloat(float minVal, float maxVal) {
+    std::uniform_real_distribution<float> dist(minVal, maxVal);
+    return dist(boidsRng_);
+}
+
+glm::vec3 SimulationWorker::boidsGetRandomSpawnPosition(const glm::vec3& playerPos) {
+    float angle = boidsRandomFloat(0.0f, 6.28318f);
+    float dist = boidsRandomFloat(40.0f, 80.0f);
+    glm::vec3 pos = playerPos;
+    pos.x += std::cos(angle) * dist;
+    pos.y += std::sin(angle) * dist;
+
+    if (boidsHasBounds_) {
+        pos.x = glm::clamp(pos.x, boidsBoundsMin_.x + 20.0f, boidsBoundsMax_.x - 20.0f);
+        pos.y = glm::clamp(pos.y, boidsBoundsMin_.y + 20.0f, boidsBoundsMax_.y - 20.0f);
+    }
+    return pos;
+}
+
+std::vector<Environment::CreatureType> SimulationWorker::boidsGetTypesForBiome(int biome, bool isDay) {
+    using CT = Environment::CreatureType;
+    using ZB = Environment::ZoneBiome;
+    std::vector<CT> types;
+    auto b = static_cast<ZB>(biome);
+
+    switch (b) {
+        case ZB::Forest:
+            if (isDay) { types.push_back(CT::Bird); types.push_back(CT::Butterfly); }
+            else { types.push_back(CT::Bat); types.push_back(CT::Firefly); }
+            break;
+        case ZB::Swamp:
+            if (isDay) { types.push_back(CT::Dragonfly); }
+            else { types.push_back(CT::Bat); types.push_back(CT::Firefly); }
+            break;
+        case ZB::Desert:
+            if (isDay) { types.push_back(CT::Crow); }
+            else { types.push_back(CT::Bat); }
+            break;
+        case ZB::Plains:
+            if (isDay) { types.push_back(CT::Bird); types.push_back(CT::Butterfly); }
+            else { types.push_back(CT::Bat); types.push_back(CT::Firefly); }
+            break;
+        case ZB::Urban:
+            if (isDay) { types.push_back(CT::Crow); types.push_back(CT::Bird); }
+            else { types.push_back(CT::Bat); }
+            break;
+        case ZB::Ocean:
+            if (isDay) { types.push_back(CT::Seagull); }
+            break;
+        case ZB::Dungeon:
+        case ZB::Cave:
+            types.push_back(CT::Bat);
+            break;
+        case ZB::Volcanic:
+            if (isDay) { types.push_back(CT::Crow); }
+            else { types.push_back(CT::Bat); }
+            break;
+        case ZB::Snow:
+            if (isDay) { types.push_back(CT::Crow); }
+            break;
+        default:
+            if (isDay) { types.push_back(CT::Bird); }
+            break;
+    }
+
+    // Filter disabled types
+    types.erase(
+        std::remove_if(types.begin(), types.end(),
+            [this](CT t) { return !boidsTypeEnabled_[static_cast<size_t>(t)]; }),
+        types.end());
+
+    return types;
+}
+
+void SimulationWorker::computeBoids(const SimulationInput& input, SimulationOutput& output) {
+    const auto& bi = input.boidsInput;
+    if (!bi.initialized) {
+        output.boidsOutput.valid = false;
+        return;
+    }
+
+    // Process commands
+    for (const auto& cmd : bi.commands) {
+        switch (cmd.type) {
+            case BoidsCommand::ZoneEnter:
+                boidsFlocks_.clear();
+                boidsSpawnTimer_ = 5.0f;
+                boidsZoneBiome_ = cmd.zoneBiome;
+                if (cmd.hasBounds) {
+                    boidsBoundsMin_ = cmd.boundsMin;
+                    boidsBoundsMax_ = cmd.boundsMax;
+                    boidsHasBounds_ = true;
+                }
+                break;
+            case BoidsCommand::ZoneLeave:
+                boidsFlocks_.clear();
+                boidsZoneBiome_ = 0;
+                boidsHasBounds_ = false;
+                break;
+            case BoidsCommand::SetQuality:
+                boidsQuality_ = cmd.quality;
+                break;
+            case BoidsCommand::SetDensity:
+                boidsDensity_ = cmd.density;
+                break;
+            case BoidsCommand::SetEnabled:
+                boidsEnabled_ = cmd.enabled;
+                if (!boidsEnabled_) boidsFlocks_.clear();
+                break;
+            case BoidsCommand::SetTypeEnabled:
+                if (cmd.creatureType < static_cast<uint8_t>(Environment::CreatureType::Count))
+                    boidsTypeEnabled_[cmd.creatureType] = cmd.typeEnabled;
+                break;
+        }
+    }
+
+    if (!boidsEnabled_ || boidsQuality_ == 0) {
+        output.boidsOutput.creatures.clear();
+        output.boidsOutput.activeCount = 0;
+        output.boidsOutput.valid = true;
+        return;
+    }
+
+    float dt = bi.deltaTime;
+    glm::vec3 playerPos = bi.playerPosition;
+    float timeOfDay = bi.timeOfDay;
+    bool isDay = (timeOfDay >= 6.0f && timeOfDay < 20.0f);
+
+    auto budget = Environment::BoidsBudget::fromQuality(boidsQuality_);
+
+    // Spawn logic
+    boidsSpawnTimer_ -= dt;
+    if (boidsSpawnTimer_ <= 0.0f) {
+        boidsSpawnTimer_ = boidsSpawnCooldown_;
+
+        if (static_cast<int>(boidsFlocks_.size()) < budget.maxFlocks) {
+            // Count total creatures
+            int totalCreatures = 0;
+            for (const auto& f : boidsFlocks_) totalCreatures += static_cast<int>(f.creatures.size());
+
+            if (totalCreatures < budget.maxCreatures) {
+                auto validTypes = boidsGetTypesForBiome(boidsZoneBiome_, isDay);
+                if (!validTypes.empty()) {
+                    std::uniform_int_distribution<size_t> typeDist(0, validTypes.size() - 1);
+                    auto type = validTypes[typeDist(boidsRng_)];
+                    auto config = Environment::getDefaultFlockConfig(type);
+
+                    float effectiveDensity = boidsDensity_ * budget.densityMult;
+                    config.minSize = std::max(2, static_cast<int>(config.minSize * effectiveDensity));
+                    config.maxSize = std::max(config.minSize, static_cast<int>(config.maxSize * effectiveDensity));
+
+                    glm::vec3 spawnPos = boidsGetRandomSpawnPosition(playerPos);
+                    float minSpawnZ = playerPos.z + config.heightMin;
+                    spawnPos.z = minSpawnZ + (config.heightMax - config.heightMin) * 0.5f;
+
+                    // Create flock
+                    WorkerFlockState flock;
+                    flock.config = config;
+                    flock.anchor = spawnPos;
+                    flock.destination = spawnPos;
+                    flock.center = spawnPos;
+                    if (boidsHasBounds_) {
+                        flock.boundsMin = boidsBoundsMin_;
+                        flock.boundsMax = boidsBoundsMax_;
+                        flock.hasBounds = true;
+                    }
+
+                    // Initialize creatures
+                    std::uniform_int_distribution<int> sizeDist(config.minSize, config.maxSize);
+                    int flockSize = sizeDist(boidsRng_);
+                    flock.creatures.reserve(flockSize);
+                    for (int i = 0; i < flockSize; ++i) {
+                        WorkerCreature c;
+                        c.position = spawnPos + glm::vec3(
+                            boidsRandomFloat(-5.0f, 5.0f),
+                            boidsRandomFloat(-5.0f, 5.0f),
+                            boidsRandomFloat(-2.0f, 2.0f));
+                        glm::vec3 dir = glm::normalize(glm::vec3(
+                            boidsRandomFloat(-1.0f, 1.0f),
+                            boidsRandomFloat(-1.0f, 1.0f),
+                            boidsRandomFloat(-0.3f, 0.3f)));
+                        c.speed = boidsRandomFloat(config.minSpeed, config.maxSpeed);
+                        c.velocity = dir * c.speed;
+                        c.size = boidsRandomFloat(0.8f, 1.2f);
+                        c.textureIndex = Environment::CreatureAtlas::getBaseIndex(config.type);
+                        c.animFrame = boidsRandomFloat(0.0f, 2.0f);
+                        c.animSpeed = boidsRandomFloat(config.animSpeedMin, config.animSpeedMax);
+                        flock.creatures.push_back(c);
+                    }
+
+                    // Set destination
+                    glm::vec3 dest = boidsGetRandomSpawnPosition(playerPos);
+                    dest.z = spawnPos.z;
+                    flock.destination = dest;
+
+                    boidsFlocks_.push_back(std::move(flock));
+                }
+            }
+        }
+    }
+
+    // Update each flock
+    for (auto& flock : boidsFlocks_) {
+        flock.timeAlive += dt;
+
+        // Handle scattering
+        if (flock.scattering) {
+            flock.scatterTimer -= dt;
+            if (flock.scatterTimer <= 0.0f) flock.scattering = false;
+        }
+
+        // Update destination
+        flock.destinationTimer -= dt;
+        if (flock.destinationTimer <= 0.0f) {
+            if (flock.hasBounds) {
+                flock.destination = glm::vec3(
+                    boidsRandomFloat(flock.boundsMin.x + 50.0f, flock.boundsMax.x - 50.0f),
+                    boidsRandomFloat(flock.boundsMin.y + 50.0f, flock.boundsMax.y - 50.0f),
+                    playerPos.z + boidsRandomFloat(flock.config.heightMin, flock.config.heightMax));
+            } else {
+                flock.destination = flock.anchor + glm::vec3(
+                    boidsRandomFloat(-flock.config.patrolRadius, flock.config.patrolRadius),
+                    boidsRandomFloat(-flock.config.patrolRadius, flock.config.patrolRadius),
+                    boidsRandomFloat(-10.0f, 10.0f));
+                flock.destination.z = std::max(flock.destination.z, playerPos.z + flock.config.heightMin);
+            }
+            float minZ = playerPos.z + flock.config.heightMin;
+            float maxZ = playerPos.z + flock.config.heightMax;
+            flock.destination.z = glm::clamp(flock.destination.z, minZ, maxZ);
+            flock.destinationTimer = flock.destinationInterval;
+        }
+
+        // Boids per-creature update
+        for (auto& creature : flock.creatures) {
+            // Separation
+            glm::vec3 separation{0.0f};
+            int sepCount = 0;
+            for (const auto& other : flock.creatures) {
+                if (&other == &creature) continue;
+                float d = glm::distance(creature.position, other.position);
+                if (d < flock.config.separationRadius && d > 0.001f) {
+                    separation += glm::normalize(creature.position - other.position) / d;
+                    sepCount++;
+                }
+            }
+            if (sepCount > 0) separation /= static_cast<float>(sepCount);
+
+            // Alignment
+            glm::vec3 alignment{0.0f};
+            int alignCount = 0;
+            for (const auto& other : flock.creatures) {
+                if (&other == &creature) continue;
+                if (glm::distance(creature.position, other.position) < flock.config.neighborRadius) {
+                    alignment += other.velocity;
+                    alignCount++;
+                }
+            }
+            if (alignCount > 0) alignment = alignment / static_cast<float>(alignCount) - creature.velocity;
+
+            // Cohesion
+            glm::vec3 cohesion{0.0f};
+            int cohCount = 0;
+            for (const auto& other : flock.creatures) {
+                if (&other == &creature) continue;
+                if (glm::distance(creature.position, other.position) < flock.config.neighborRadius) {
+                    cohesion += other.position;
+                    cohCount++;
+                }
+            }
+            if (cohCount > 0) {
+                cohesion = cohesion / static_cast<float>(cohCount) - creature.position;
+                if (glm::dot(cohesion, cohesion) > 0.01f) cohesion = glm::normalize(cohesion);
+            }
+
+            // Destination steer
+            glm::vec3 destSteer{0.0f};
+            glm::vec3 toDest = flock.destination - creature.position;
+            if (glm::length(toDest) > 5.0f) destSteer = glm::normalize(toDest);
+
+            // Bounds avoidance
+            glm::vec3 boundsAvoid{0.0f};
+            if (flock.hasBounds) {
+                const float margin = 30.0f;
+                if (creature.position.x < flock.boundsMin.x + margin)
+                    boundsAvoid.x = (flock.boundsMin.x + margin - creature.position.x) / margin;
+                else if (creature.position.x > flock.boundsMax.x - margin)
+                    boundsAvoid.x = (flock.boundsMax.x - margin - creature.position.x) / margin;
+                if (creature.position.y < flock.boundsMin.y + margin)
+                    boundsAvoid.y = (flock.boundsMin.y + margin - creature.position.y) / margin;
+                else if (creature.position.y > flock.boundsMax.y - margin)
+                    boundsAvoid.y = (flock.boundsMax.y - margin - creature.position.y) / margin;
+            }
+            const float heightMargin = 5.0f;
+            if (creature.position.z < flock.config.heightMin + heightMargin) {
+                float depth = (flock.config.heightMin + heightMargin) - creature.position.z;
+                boundsAvoid.z = 2.0f + depth * 0.5f;
+            } else if (creature.position.z > flock.config.heightMax - heightMargin) {
+                float excess = creature.position.z - (flock.config.heightMax - heightMargin);
+                boundsAvoid.z = -1.0f - excess * 0.3f;
+            }
+
+            // Player avoidance
+            glm::vec3 playerAvoid{0.0f};
+            glm::vec3 toPlayer = creature.position - playerPos;
+            float playerDist = glm::length(toPlayer);
+            if (playerDist < 15.0f && playerDist > 0.001f) {
+                playerAvoid = glm::normalize(toPlayer) * (15.0f - playerDist) / 15.0f;
+            }
+
+            // Terrain avoidance via HCMap
+            glm::vec3 terrainAvoid{0.0f};
+            if (zoneData_.hcMap && glm::length(creature.velocity) > 0.1f) {
+                glm::vec3 dir = glm::normalize(creature.velocity);
+                float lookAhead = 15.0f;
+                glm::vec3 futurePos = creature.position + dir * lookAhead;
+                glm::vec3 startAbove = futurePos;
+                startAbove.z = creature.position.z + 10.0f;
+                glm::vec3 groundResult;
+                if (zoneData_.hcMap->FindBestZ(startAbove, &groundResult) != BEST_Z_INVALID) {
+                    float groundZ = groundResult.z;
+                    float clearance = creature.position.z - groundZ;
+                    if (clearance < 5.0f) {
+                        float urgency = 1.0f - (clearance / 5.0f);
+                        terrainAvoid.z += urgency * 3.0f;
+                        terrainAvoid -= dir * urgency * 1.5f;
+                    }
+                }
+            }
+
+            // Combine forces
+            glm::vec3 accel =
+                separation * flock.config.behavior.separation +
+                alignment * flock.config.behavior.alignment +
+                cohesion * flock.config.behavior.cohesion +
+                destSteer * flock.config.behavior.destination +
+                boundsAvoid * flock.config.behavior.avoidance +
+                playerAvoid * flock.config.behavior.playerAvoidance +
+                terrainAvoid * flock.config.behavior.avoidance;
+
+            // Scatter force
+            if (flock.scattering) {
+                glm::vec3 away = creature.position - flock.scatterSource;
+                if (glm::dot(away, away) > 0.01f)
+                    accel += glm::normalize(away) * flock.scatterStrength * 20.0f;
+            }
+
+            // Apply acceleration and clamp velocity
+            creature.velocity += accel * dt;
+            float speed = glm::length(creature.velocity);
+            if (speed < 0.001f) {
+                creature.velocity = glm::normalize(glm::vec3(
+                    boidsRandomFloat(-1.0f, 1.0f),
+                    boidsRandomFloat(-1.0f, 1.0f),
+                    boidsRandomFloat(-0.2f, 0.2f))) * flock.config.minSpeed;
+            } else if (speed < flock.config.minSpeed) {
+                creature.velocity = glm::normalize(creature.velocity) * flock.config.minSpeed;
+            } else if (speed > flock.config.maxSpeed) {
+                creature.velocity = glm::normalize(creature.velocity) * flock.config.maxSpeed;
+            }
+            float maxVert = flock.config.maxSpeed * 0.5f;
+            creature.velocity.z = glm::clamp(creature.velocity.z, -maxVert, maxVert);
+
+            // Update position
+            creature.position += creature.velocity * dt;
+
+            // Hard clamp Z
+            float minZ = playerPos.z + flock.config.heightMin;
+            float maxZ = playerPos.z + flock.config.heightMax;
+            if (creature.position.z < minZ) {
+                creature.position.z = minZ;
+                if (creature.velocity.z < 0.0f) creature.velocity.z = 0.0f;
+            }
+            if (creature.position.z > maxZ) {
+                creature.position.z = maxZ;
+                if (creature.velocity.z > 0.0f) creature.velocity.z = 0.0f;
+            }
+
+            // Animation
+            uint8_t baseIndex = Environment::CreatureAtlas::getBaseIndex(flock.config.type);
+            if (creature.velocity.z > 1.0f) {
+                creature.animFrame += creature.animSpeed * dt;
+                creature.textureIndex = baseIndex + (static_cast<int>(creature.animFrame) % 2);
+            } else {
+                creature.animFrame = 0.0f;
+                creature.textureIndex = baseIndex;
+            }
+        }
+
+        // Update flock center
+        if (!flock.creatures.empty()) {
+            glm::vec3 sum{0.0f};
+            for (const auto& c : flock.creatures) sum += c.position;
+            flock.center = sum / static_cast<float>(flock.creatures.size());
+        }
+
+        // Check bounds exit
+        if (flock.hasBounds) {
+            const float margin = 50.0f;
+            if (flock.center.x < flock.boundsMin.x - margin || flock.center.x > flock.boundsMax.x + margin ||
+                flock.center.y < flock.boundsMin.y - margin || flock.center.y > flock.boundsMax.y + margin) {
+                flock.exitedBounds = true;
+            }
+        }
+    }
+
+    // Check player proximity for scatter
+    for (auto& flock : boidsFlocks_) {
+        float d = glm::distance(flock.center, playerPos);
+        if (d < boidsScatterRadius_) {
+            float strength = 1.0f - (d / boidsScatterRadius_);
+            flock.scattering = true;
+            flock.scatterSource = playerPos;
+            flock.scatterStrength = glm::clamp(strength, 0.0f, 1.0f);
+            flock.scatterTimer = 3.0f;
+        }
+    }
+
+    // Remove expired flocks
+    const float maxLifetime = 300.0f;
+    boidsFlocks_.erase(
+        std::remove_if(boidsFlocks_.begin(), boidsFlocks_.end(),
+            [maxLifetime](const WorkerFlockState& f) {
+                return f.exitedBounds || f.timeAlive > maxLifetime;
+            }),
+        boidsFlocks_.end());
+
+    // Build output
+    output.boidsOutput.creatures.clear();
+    int totalCreatures = 0;
+    for (const auto& flock : boidsFlocks_) {
+        if (!boidsTypeEnabled_[static_cast<size_t>(flock.config.type)]) continue;
+        for (const auto& c : flock.creatures) {
+            // Distance culling
+            glm::vec3 diff = c.position - playerPos;
+            if (glm::dot(diff, diff) > budget.cullDistance * budget.cullDistance) continue;
+
+            SimulationOutput::BoidsOutput::CreatureRender cr;
+            cr.position = c.position;
+            cr.size = c.size;
+            cr.textureIndex = c.textureIndex;
+            cr.alpha = c.alpha;
+            output.boidsOutput.creatures.push_back(cr);
+            totalCreatures++;
+        }
+    }
+    output.boidsOutput.activeCount = totalCreatures;
+    output.boidsOutput.valid = true;
+}
+
+// ============================================================================
+// Tumbleweed Simulation (worker thread)
+// ============================================================================
+
+float SimulationWorker::twRandomFloat(float minVal, float maxVal) {
+    std::uniform_real_distribution<float> dist(minVal, maxVal);
+    return dist(twRng_);
+}
+
+void SimulationWorker::computeTumbleweeds(const SimulationInput& input, SimulationOutput& output) {
+    const auto& ti = input.tumbleweedInput;
+    if (!ti.initialized) {
+        output.tumbleweedOutput.valid = false;
+        return;
+    }
+
+    // Process commands
+    for (const auto& cmd : ti.commands) {
+        switch (cmd.type) {
+            case TumbleweedCommand::ZoneEnter:
+                // Despawn all active
+                for (auto& tw : twInstances_) tw.active = false;
+                twZoneBiome_ = cmd.zoneBiome;
+                twSpawnTimer_ = 0.0f;
+                break;
+            case TumbleweedCommand::ZoneLeave:
+                for (auto& tw : twInstances_) tw.active = false;
+                twZoneBiome_ = 0;
+                break;
+            case TumbleweedCommand::SetEnabled:
+                twEnabled_ = cmd.enabled;
+                if (!twEnabled_) {
+                    for (auto& tw : twInstances_) tw.active = false;
+                }
+                break;
+        }
+    }
+
+    output.tumbleweedOutput.spawns.clear();
+    output.tumbleweedOutput.despawns.clear();
+
+    if (!twEnabled_) {
+        output.tumbleweedOutput.tumbleweeds.clear();
+        output.tumbleweedOutput.activeCount = 0;
+        output.tumbleweedOutput.valid = true;
+        return;
+    }
+
+    // Only active in desert/plains with wind
+    auto biome = static_cast<Environment::ZoneBiome>(twZoneBiome_);
+    if (biome != Environment::ZoneBiome::Desert && biome != Environment::ZoneBiome::Plains) {
+        output.tumbleweedOutput.tumbleweeds.clear();
+        output.tumbleweedOutput.activeCount = 0;
+        output.tumbleweedOutput.valid = true;
+        return;
+    }
+
+    float dt = ti.deltaTime;
+    glm::vec3 playerPos = ti.playerPosition;
+    glm::vec3 windDir = ti.windDirection;
+    float windStrength = weatherWindIntensity_;
+
+    // Spawn logic (only if wind is blowing)
+    if (windStrength >= 0.1f) {
+        twSpawnTimer_ += dt;
+        if (twSpawnTimer_ >= twSpawnCooldown_) {
+            twSpawnTimer_ = 0.0f;
+
+            // Count active
+            int activeCount = 0;
+            for (const auto& tw : twInstances_) if (tw.active) activeCount++;
+
+            if (activeCount < twMaxActive_) {
+                // Select spawn position upwind
+                glm::vec3 spawnDir = -windDir;
+                if (glm::length(spawnDir) < 0.01f) {
+                    float angle = twRandomFloat(0.0f, 6.28f);
+                    spawnDir = glm::vec3(std::cos(angle), std::sin(angle), 0.0f);
+                }
+                float angle = twRandomFloat(-1.05f, 1.05f);
+                float cosA = std::cos(angle), sinA = std::sin(angle);
+                spawnDir = glm::normalize(glm::vec3(
+                    spawnDir.x * cosA - spawnDir.y * sinA,
+                    spawnDir.x * sinA + spawnDir.y * cosA, 0.0f));
+
+                glm::vec3 spawnPos = playerPos + spawnDir * twSpawnDistance_;
+
+                // Get ground height via HCMap
+                float groundZ = playerPos.z;  // Fallback
+                if (zoneData_.hcMap) {
+                    glm::vec3 startAbove = spawnPos;
+                    startAbove.z = playerPos.z + 50.0f;
+                    glm::vec3 groundResult;
+                    if (zoneData_.hcMap->FindBestZ(startAbove, &groundResult) != BEST_Z_INVALID) {
+                        groundZ = groundResult.z;
+                    }
+                }
+                spawnPos.z = groundZ;
+
+                // Validate (reasonable height)
+                if (groundZ > -1000.0f && groundZ < 1000.0f) {
+                    WorkerTumbleweedInstance tw;
+                    tw.active = true;
+                    tw.position = spawnPos;
+                    tw.lifetime = 0.0f;
+                    tw.bounceCount = 0;
+                    tw.size = twRandomFloat(twSizeMin_, twSizeMax_);
+                    tw.radius = tw.size * 0.5f;
+                    tw.velocity = windDir * twRandomFloat(twMinSpeed_, twMaxSpeed_);
+                    tw.velocity.z = 0.0f;
+                    tw.rotation = glm::vec3(
+                        twRandomFloat(0.0f, 360.0f),
+                        twRandomFloat(0.0f, 360.0f),
+                        twRandomFloat(0.0f, 360.0f));
+                    tw.angularVelocity = glm::vec3(0.0f);
+                    tw.poolIndex = twNextPoolIndex_++;
+
+                    twInstances_.push_back(tw);
+
+                    // Emit spawn event
+                    output.tumbleweedOutput.spawns.push_back({tw.poolIndex, tw.size});
+                }
+            }
+        }
+    }
+
+    // Update each instance
+    for (auto& tw : twInstances_) {
+        if (!tw.active) continue;
+
+        // Wind force
+        glm::vec3 windForce = windDir * windStrength * twWindInfluence_;
+        tw.velocity += windForce * dt;
+
+        // Drag
+        float dragFactor = 1.0f - 0.3f * dt;
+        tw.velocity.x *= dragFactor;
+        tw.velocity.y *= dragFactor;
+
+        // Clamp speed
+        float speed = glm::length(glm::vec2(tw.velocity.x, tw.velocity.y));
+        if (speed > twMaxSpeed_) {
+            float scale = twMaxSpeed_ / speed;
+            tw.velocity.x *= scale;
+            tw.velocity.y *= scale;
+            speed = twMaxSpeed_;
+        }
+        if (speed < twMinSpeed_ && windStrength > 0.2f) {
+            if (speed > 0.01f) {
+                float scale = twMinSpeed_ / speed;
+                tw.velocity.x *= scale;
+                tw.velocity.y *= scale;
+            } else {
+                tw.velocity = windDir * twMinSpeed_;
+                tw.velocity.z = 0.0f;
+            }
+            speed = twMinSpeed_;
+        }
+
+        // Predict next position
+        glm::vec3 nextPos = tw.position + tw.velocity * dt;
+
+        // Ground following via HCMap
+        float groundZ = tw.position.z;
+        if (zoneData_.hcMap) {
+            glm::vec3 startAbove = nextPos;
+            startAbove.z = playerPos.z + 50.0f;
+            glm::vec3 groundResult;
+            if (zoneData_.hcMap->FindBestZ(startAbove, &groundResult) != BEST_Z_INVALID) {
+                groundZ = groundResult.z;
+            }
+        }
+        float targetZ = groundZ + tw.radius + twGroundOffset_;
+        float zDiff = targetZ - nextPos.z;
+        if (std::abs(zDiff) > 0.1f) {
+            if (zDiff < -2.0f) {
+                tw.velocity.z -= 10.0f * dt;
+            } else if (zDiff > 2.0f) {
+                // Hit a rise, bounce
+                glm::vec3 moveDir = glm::normalize(glm::vec3(tw.velocity.x, tw.velocity.y, 0.0f));
+                glm::vec3 normal = -moveDir;
+                normal.z = 0.3f;
+                normal = glm::normalize(normal);
+                float dot = glm::dot(tw.velocity, normal);
+                tw.velocity = tw.velocity - 2.0f * dot * normal;
+                tw.velocity *= twBounceDecay_;
+                tw.velocity.x += twRandomFloat(-0.5f, 0.5f);
+                tw.velocity.y += twRandomFloat(-0.5f, 0.5f);
+                tw.bounceCount++;
+                continue;  // Skip position update this frame
+            }
+        }
+        nextPos.z = targetZ;
+
+        // Wall collision via HCMap::CheckLOS
+        bool wallHit = false;
+        if (zoneData_.hcMap) {
+            glm::vec3 hitPoint;
+            if (!zoneData_.hcMap->CheckLOSWithHit(tw.position, nextPos, &hitPoint)) {
+                // LOS blocked (returns false) = wall hit
+                wallHit = true;
+                glm::vec3 moveDir = glm::normalize(nextPos - tw.position);
+                glm::vec3 normal = -moveDir;
+                normal.z = std::min(normal.z, 0.3f);
+                if (glm::length(normal) > 0.01f) normal = glm::normalize(normal);
+                else normal = glm::vec3(1.0f, 0.0f, 0.0f);
+
+                float dot = glm::dot(tw.velocity, normal);
+                tw.velocity = tw.velocity - 2.0f * dot * normal;
+                tw.velocity *= twBounceDecay_;
+                tw.velocity.x += twRandomFloat(-0.5f, 0.5f);
+                tw.velocity.y += twRandomFloat(-0.5f, 0.5f);
+                tw.bounceCount++;
+                tw.position = hitPoint + normal * (tw.radius + 0.2f);
+            }
+        }
+
+        if (!wallHit) {
+            tw.position = nextPos;
+        }
+
+        // Update rotation
+        if (speed > 0.1f) {
+            float rollSpeed = speed / tw.radius * 57.3f;
+            glm::vec2 moveDir2 = glm::normalize(glm::vec2(tw.velocity.x, tw.velocity.y));
+            tw.angularVelocity = glm::vec3(
+                rollSpeed * moveDir2.y,
+                -rollSpeed * moveDir2.x,
+                twRandomFloat(-10.0f, 10.0f));
+        }
+        tw.rotation += tw.angularVelocity * dt;
+        tw.rotation.x = std::fmod(tw.rotation.x, 360.0f);
+        tw.rotation.y = std::fmod(tw.rotation.y, 360.0f);
+        tw.rotation.z = std::fmod(tw.rotation.z, 360.0f);
+
+        // Lifetime
+        tw.lifetime += dt;
+
+        // Despawn checks
+        bool shouldDespawn = false;
+        if (glm::distance(tw.position, playerPos) > twDespawnDistance_) shouldDespawn = true;
+        if (tw.lifetime > twMaxLifetime_) shouldDespawn = true;
+        if (tw.bounceCount > static_cast<uint32_t>(twMaxBounces_)) shouldDespawn = true;
+
+        if (shouldDespawn) {
+            tw.active = false;
+            output.tumbleweedOutput.despawns.push_back({tw.poolIndex});
+        }
+    }
+
+    // Remove inactive from vector
+    twInstances_.erase(
+        std::remove_if(twInstances_.begin(), twInstances_.end(),
+            [](const WorkerTumbleweedInstance& tw) { return !tw.active; }),
+        twInstances_.end());
+
+    // Build output
+    output.tumbleweedOutput.tumbleweeds.clear();
+    int activeCount = 0;
+    for (const auto& tw : twInstances_) {
+        if (!tw.active) continue;
+        SimulationOutput::TumbleweedOutput::TumbleweedRender tr;
+        tr.position = tw.position;
+        tr.rotation = tw.rotation;
+        tr.size = tw.size;
+        tr.active = true;
+        tr.poolIndex = tw.poolIndex;
+        output.tumbleweedOutput.tumbleweeds.push_back(tr);
+        activeCount++;
+    }
+    output.tumbleweedOutput.activeCount = activeCount;
+    output.tumbleweedOutput.valid = true;
+}
+
+// ============================================================================
+// Weather System (state machine + transitions, owned by worker)
+// ============================================================================
+
+// Alias to disambiguate from Environment::WeatherType (particle weather)
+using TreeWeatherType = ::EQT::Graphics::WeatherType;
+
+void SimulationWorker::computeWeather(const SimulationInput& input, SimulationOutput& output) {
+    const auto& wi = input.weatherInput;
+    if (!wi.initialized) {
+        output.weatherOutput.valid = false;
+        return;
+    }
+
+    // Track weather type at start for change detection
+    uint8_t weatherAtStart = weatherCurrentWeather_;
+
+    // Process commands
+    for (const auto& cmd : wi.commands) {
+        switch (cmd.type) {
+            case WeatherCommand::SetZoneConfig: {
+                weatherZoneConfig_ = cmd.zoneConfig;
+                weatherTimeSinceLastCheck_ = 0.0f;
+                weatherCurrentElapsed_ = 0.0f;
+                weatherCurrentDuration_ = 0.0f;
+                // Set initial weather based on zone default
+                if (cmd.zoneConfig.enabled) {
+                    uint8_t newType = static_cast<uint8_t>(cmd.zoneConfig.defaultWeather);
+                    weatherCurrentWeather_ = newType;
+                    weatherTargetWeather_ = newType;
+                    weatherTransitionProgress_ = 1.0f;
+                    weatherCurrentElapsed_ = 0.0f;
+                    weatherCurrentDuration_ = 0.0f;
+                }
+                break;
+            }
+            case WeatherCommand::SetWeatherFromZone: {
+                ZoneWeatherConfig config;
+                if (loadZoneWeatherConfig(cmd.zoneName, config)) {
+                    LOG_INFO(MOD_GRAPHICS, "WeatherSystem(worker): Loaded weather config for zone '{}'", cmd.zoneName);
+                } else {
+                    config.zoneName = cmd.zoneName;
+                    config.defaultWeather = TreeWeatherType::Normal;
+                    config.enabled = true;
+                }
+                weatherZoneConfig_ = config;
+                weatherTimeSinceLastCheck_ = 0.0f;
+                weatherCurrentElapsed_ = 0.0f;
+                weatherCurrentDuration_ = 0.0f;
+                if (config.enabled) {
+                    uint8_t newType = static_cast<uint8_t>(config.defaultWeather);
+                    weatherCurrentWeather_ = newType;
+                    weatherTargetWeather_ = newType;
+                    weatherTransitionProgress_ = 1.0f;
+                    weatherCurrentElapsed_ = 0.0f;
+                    weatherCurrentDuration_ = 0.0f;
+                }
+                break;
+            }
+            case WeatherCommand::SetWeatherImmediate: {
+                uint8_t newType = cmd.weatherType;
+                if (newType != weatherCurrentWeather_ || weatherTransitionProgress_ < 1.0f) {
+                    weatherCurrentWeather_ = newType;
+                    weatherTargetWeather_ = newType;
+                    weatherTransitionProgress_ = 1.0f;
+                    weatherCurrentElapsed_ = 0.0f;
+                    weatherCurrentDuration_ = 0.0f;
+                }
+                break;
+            }
+            case WeatherCommand::TransitionToWeather: {
+                uint8_t newType = cmd.weatherType;
+                if (newType != weatherTargetWeather_ || weatherTransitionProgress_ < 1.0f) {
+                    weatherTargetWeather_ = newType;
+                    weatherTransitionDuration_ = std::max(0.1f, cmd.transitionTime);
+                    weatherTransitionProgress_ = 0.0f;
+                    weatherCurrentElapsed_ = 0.0f;
+                    weatherCurrentDuration_ = 0.0f;
+                }
+                break;
+            }
+            case WeatherCommand::SetSimulationEnabled:
+                weatherSimulationEnabled_ = cmd.simulationEnabled;
+                break;
+        }
+    }
+
+    float dt = wi.deltaTime;
+
+    // Advance transition if in progress
+    if (weatherTransitionProgress_ < 1.0f) {
+        weatherTransitionProgress_ += dt / weatherTransitionDuration_;
+        if (weatherTransitionProgress_ >= 1.0f) {
+            weatherTransitionProgress_ = 1.0f;
+            weatherCurrentWeather_ = weatherTargetWeather_;
+        }
+    }
+
+    // Run simulation timer
+    if (weatherSimulationEnabled_ && weatherZoneConfig_.enabled) {
+        weatherTimeSinceLastCheck_ += dt;
+        weatherCurrentElapsed_ += dt;
+
+        bool shouldCheck = (weatherTimeSinceLastCheck_ >= weatherZoneConfig_.checkIntervalSeconds);
+        bool durationExpired = (weatherCurrentDuration_ > 0 &&
+                               weatherCurrentElapsed_ >= weatherCurrentDuration_);
+
+        if (shouldCheck || durationExpired) {
+            weatherTimeSinceLastCheck_ = 0.0f;
+            weatherCheckChange();
+        }
+    }
+
+    // Compute wind intensity with smoothstep interpolation
+    float currentIntensity = weatherGetWindIntensity(weatherCurrentWeather_);
+    float targetIntensity = weatherGetWindIntensity(weatherTargetWeather_);
+    if (weatherTransitionProgress_ < 1.0f) {
+        float t = weatherTransitionProgress_;
+        float smooth = t * t * (3.0f - 2.0f * t);
+        weatherWindIntensity_ = currentIntensity + (targetIntensity - currentIntensity) * smooth;
+    } else {
+        weatherWindIntensity_ = currentIntensity;
+    }
+
+    // Detect weather changes (from commands or simulation rolls)
+    bool changed = (weatherCurrentWeather_ != weatherAtStart) ||
+                   (weatherTargetWeather_ != weatherAtStart && weatherTransitionProgress_ < 1.0f);
+
+    // Populate output
+    auto& wo = output.weatherOutput;
+    wo.currentWeather = weatherCurrentWeather_;
+    wo.targetWeather = weatherTargetWeather_;
+    wo.transitionProgress = weatherTransitionProgress_;
+    wo.windIntensity = weatherWindIntensity_;
+    wo.weatherChanged = changed;
+    wo.newWeatherType = changed ? weatherTargetWeather_ : weatherCurrentWeather_;
+    wo.valid = true;
+}
+
+void SimulationWorker::weatherCheckChange() {
+    // If we're in non-default weather and duration expired, return to default
+    uint8_t defaultType = static_cast<uint8_t>(weatherZoneConfig_.defaultWeather);
+    if (weatherCurrentWeather_ != defaultType &&
+        weatherCurrentDuration_ > 0 &&
+        weatherCurrentElapsed_ >= weatherCurrentDuration_) {
+
+        weatherTargetWeather_ = defaultType;
+        weatherTransitionDuration_ = 10.0f;
+        weatherTransitionProgress_ = 0.0f;
+        weatherCurrentElapsed_ = 0.0f;
+        weatherCurrentDuration_ = 0.0f;
+        return;
+    }
+
+    // Roll for new weather
+    uint8_t newWeather = weatherRollForWeather();
+
+    if (newWeather != weatherCurrentWeather_) {
+        weatherTargetWeather_ = newWeather;
+        weatherTransitionDuration_ = 10.0f;
+        weatherTransitionProgress_ = 0.0f;
+        weatherCurrentElapsed_ = 0.0f;
+
+        // Set duration for the new weather
+        if (newWeather == static_cast<uint8_t>(TreeWeatherType::Rain)) {
+            std::uniform_int_distribution<int> slot(0, 3);
+            int idx = slot(weatherRng_);
+            weatherCurrentDuration_ = weatherZoneConfig_.rainDuration[idx] * 60.0f;
+        } else if (newWeather == static_cast<uint8_t>(TreeWeatherType::Storm)) {
+            std::uniform_real_distribution<float> duration(60.0f, 300.0f);
+            weatherCurrentDuration_ = duration(weatherRng_);
+        } else {
+            weatherCurrentDuration_ = 0.0f;
+        }
+    }
+}
+
+uint8_t SimulationWorker::weatherRollForWeather() {
+    // Check rain chance
+    int totalRainChance = 0;
+    for (int i = 0; i < 4; i++) {
+        totalRainChance += weatherZoneConfig_.rainChance[i];
+    }
+
+    if (totalRainChance > 0) {
+        std::uniform_int_distribution<int> roll(0, 399);
+        int rainRoll = roll(weatherRng_);
+
+        if (rainRoll < totalRainChance) {
+            std::uniform_int_distribution<int> intensity(0, 99);
+            int intensityRoll = intensity(weatherRng_);
+
+            if (intensityRoll > 80) {
+                return static_cast<uint8_t>(TreeWeatherType::Storm);
+            } else if (intensityRoll > 40) {
+                return static_cast<uint8_t>(TreeWeatherType::Rain);
+            } else {
+                return static_cast<uint8_t>(TreeWeatherType::Normal);
+            }
+        }
+    }
+
+    // Check for calm conditions
+    std::uniform_int_distribution<int> calmRoll(0, 99);
+    if (calmRoll(weatherRng_) < 20) {
+        return static_cast<uint8_t>(TreeWeatherType::Calm);
+    }
+
+    return static_cast<uint8_t>(weatherZoneConfig_.defaultWeather);
+}
+
+float SimulationWorker::weatherGetWindIntensity(uint8_t type) {
+    switch (static_cast<TreeWeatherType>(type)) {
+        case TreeWeatherType::Calm:   return 0.3f;
+        case TreeWeatherType::Normal: return 0.6f;
+        case TreeWeatherType::Rain:   return 0.8f;
+        case TreeWeatherType::Storm:  return 1.0f;
+        default:                      return 0.6f;
+    }
+}
+
+// ============================================================================
+// Spell VFX Computation (desktop GL worker-driven path)
+// ============================================================================
+
+void SimulationWorker::computeSpellVFX(const SimulationInput& input, SimulationOutput& output) {
+    auto& svi = input.spellVfxInput;
+    auto& svo = output.spellVfxOutput;
+
+    if (!svi.initialized) {
+        svo.valid = false;
+        return;
+    }
+
+    svo.effectUpdates.clear();
+    svo.createEvents.clear();
+    svo.removeEvents.clear();
+    svo.impactEvents.clear();
+    svo.valid = true;
+
+    float dt = svi.deltaTime;
+
+    // SpellFXType values (must match EQ::SpellFXType enum)
+    constexpr uint8_t FX_CAST_GLOW = 1;
+    constexpr uint8_t FX_PROJECTILE = 2;
+    constexpr uint8_t FX_IMPACT = 3;
+    constexpr uint8_t FX_AURA = 4;
+    constexpr uint8_t FX_RAIN = 5;
+    constexpr uint8_t FX_GROUND_CIRCLE = 7;
+
+    // Process commands
+    for (const auto& cmd : svi.commands) {
+        switch (cmd.type) {
+            case SpellVFXCommand::CreateEffect: {
+                WorkerSpellEffect wfx;
+                wfx.effectId = cmd.effectId;
+                wfx.type = cmd.fxType;
+                wfx.spellId = cmd.spellId;
+                wfx.sourceEntity = cmd.sourceEntity;
+                wfx.targetEntity = cmd.targetEntity;
+                wfx.lifetime = cmd.lifetime;
+                wfx.scale = cmd.scale;
+                wfx.colorA = cmd.colorA;
+                wfx.colorR = cmd.colorR;
+                wfx.colorG = cmd.colorG;
+                wfx.colorB = cmd.colorB;
+                wfx.posX = cmd.posX;
+                wfx.posY = cmd.posY;
+                wfx.posZ = cmd.posZ;
+                wfx.targetPosX = cmd.targetPosX;
+                wfx.targetPosY = cmd.targetPosY;
+                wfx.targetPosZ = cmd.targetPosZ;
+                wfx.elapsed = 0;
+                wfx.active = true;
+
+                // Resolve initial positions from workerEntities_ if entity-attached
+                if (wfx.sourceEntity != 0 && wfx.posX == 0 && wfx.posY == 0 && wfx.posZ == 0) {
+                    auto it = workerEntities_.find(wfx.sourceEntity);
+                    if (it != workerEntities_.end()) {
+                        const auto& we = it->second;
+                        wfx.posX = we.lastX;
+                        wfx.posY = we.lastZ + we.modelYOffset;  // EQ Z → Irrlicht Y
+                        wfx.posZ = we.lastY;                     // EQ Y → Irrlicht Z
+                    }
+                }
+                if (wfx.targetEntity != 0 && wfx.targetPosX == 0 && wfx.targetPosY == 0 && wfx.targetPosZ == 0) {
+                    auto it = workerEntities_.find(wfx.targetEntity);
+                    if (it != workerEntities_.end()) {
+                        const auto& we = it->second;
+                        wfx.targetPosX = we.lastX;
+                        wfx.targetPosY = we.lastZ + we.modelYOffset;
+                        wfx.targetPosZ = we.lastY;
+                    }
+                }
+
+                // Emit create event for main thread
+                SimulationOutput::SpellVFXOutput::CreateEvent ce;
+                ce.effectId = wfx.effectId;
+                ce.fxType = wfx.type;
+                ce.spellId = wfx.spellId;
+                ce.sourceEntity = wfx.sourceEntity;
+                ce.targetEntity = wfx.targetEntity;
+                ce.posX = wfx.posX;
+                ce.posY = wfx.posY;
+                ce.posZ = wfx.posZ;
+                ce.targetPosX = wfx.targetPosX;
+                ce.targetPosY = wfx.targetPosY;
+                ce.targetPosZ = wfx.targetPosZ;
+                ce.lifetime = wfx.lifetime;
+                ce.scale = wfx.scale;
+                ce.colorA = wfx.colorA;
+                ce.colorR = wfx.colorR;
+                ce.colorG = wfx.colorG;
+                ce.colorB = wfx.colorB;
+                svo.createEvents.push_back(ce);
+
+                spellVfxEffects_.push_back(wfx);
+                break;
+            }
+            case SpellVFXCommand::RemoveCastGlow: {
+                for (size_t i = 0; i < spellVfxEffects_.size(); ) {
+                    if (spellVfxEffects_[i].type == FX_CAST_GLOW &&
+                        spellVfxEffects_[i].sourceEntity == cmd.sourceEntity) {
+                        svo.removeEvents.push_back({spellVfxEffects_[i].effectId});
+                        if (i != spellVfxEffects_.size() - 1)
+                            spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
+                        spellVfxEffects_.pop_back();
+                    } else {
+                        ++i;
+                    }
+                }
+                break;
+            }
+            case SpellVFXCommand::RemoveBuffAura: {
+                for (size_t i = 0; i < spellVfxEffects_.size(); ) {
+                    if (spellVfxEffects_[i].type == FX_AURA &&
+                        spellVfxEffects_[i].sourceEntity == cmd.sourceEntity &&
+                        spellVfxEffects_[i].spellId == cmd.spellId) {
+                        svo.removeEvents.push_back({spellVfxEffects_[i].effectId});
+                        if (i != spellVfxEffects_.size() - 1)
+                            spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
+                        spellVfxEffects_.pop_back();
+                    } else {
+                        ++i;
+                    }
+                }
+                break;
+            }
+            case SpellVFXCommand::RemoveAllForEntity: {
+                for (size_t i = 0; i < spellVfxEffects_.size(); ) {
+                    if (spellVfxEffects_[i].sourceEntity == cmd.sourceEntity ||
+                        spellVfxEffects_[i].targetEntity == cmd.sourceEntity) {
+                        svo.removeEvents.push_back({spellVfxEffects_[i].effectId});
+                        if (i != spellVfxEffects_.size() - 1)
+                            spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
+                        spellVfxEffects_.pop_back();
+                    } else {
+                        ++i;
+                    }
+                }
+                break;
+            }
+            case SpellVFXCommand::ClearAll: {
+                for (auto& fx : spellVfxEffects_) {
+                    svo.removeEvents.push_back({fx.effectId});
+                }
+                spellVfxEffects_.clear();
+                break;
+            }
+        }
+    }
+
+    // Update active effects
+    constexpr float PROJECTILE_SPEED = 500.0f;
+
+    for (size_t i = 0; i < spellVfxEffects_.size(); ) {
+        auto& fx = spellVfxEffects_[i];
+        if (!fx.active) {
+            svo.removeEvents.push_back({fx.effectId});
+            if (i != spellVfxEffects_.size() - 1)
+                spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
+            spellVfxEffects_.pop_back();
+            continue;
+        }
+
+        fx.elapsed += dt;
+
+        // Check lifetime expiration
+        if (fx.lifetime > 0 && fx.elapsed >= fx.lifetime) {
+            svo.removeEvents.push_back({fx.effectId});
+            if (i != spellVfxEffects_.size() - 1)
+                spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
+            spellVfxEffects_.pop_back();
+            continue;
+        }
+
+        switch (fx.type) {
+            case FX_PROJECTILE: {
+                // Update target position from entity
+                if (fx.targetEntity != 0) {
+                    auto it = workerEntities_.find(fx.targetEntity);
+                    if (it != workerEntities_.end()) {
+                        const auto& we = it->second;
+                        fx.targetPosX = we.lastX;
+                        fx.targetPosY = we.lastZ + we.modelYOffset;
+                        fx.targetPosZ = we.lastY;
+                    }
+                }
+
+                // Move toward target
+                float dx = fx.targetPosX - fx.posX;
+                float dy = fx.targetPosY - fx.posY;
+                float dz = fx.targetPosZ - fx.posZ;
+                float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+                if (dist < 3.0f) {
+                    // Arrived — emit impact event and deactivate
+                    svo.impactEvents.push_back({fx.targetEntity, fx.spellId});
+                    fx.active = false;
+                    // Will be removed next iteration
+                } else {
+                    float invDist = 1.0f / dist;
+                    float moveAmount = PROJECTILE_SPEED * dt;
+                    if (moveAmount > dist) moveAmount = dist;
+                    fx.posX += dx * invDist * moveAmount;
+                    fx.posY += dy * invDist * moveAmount;
+                    fx.posZ += dz * invDist * moveAmount;
+
+                    SimulationOutput::SpellVFXOutput::EffectUpdate eu;
+                    eu.effectId = fx.effectId;
+                    eu.posX = fx.posX;
+                    eu.posY = fx.posY;
+                    eu.posZ = fx.posZ;
+                    eu.hasBillboardUpdate = true;
+                    eu.hasParticleUpdate = false;
+                    eu.hasColorUpdate = false;
+                    eu.billboardWidth = 0;
+                    eu.billboardHeight = 0;
+                    svo.effectUpdates.push_back(eu);
+                }
+                break;
+            }
+            case FX_CAST_GLOW: {
+                // Follow source entity
+                if (fx.sourceEntity != 0) {
+                    auto it = workerEntities_.find(fx.sourceEntity);
+                    if (it != workerEntities_.end()) {
+                        const auto& we = it->second;
+                        fx.posX = we.lastX;
+                        fx.posY = we.lastZ + we.modelYOffset;
+                        fx.posZ = we.lastY;
+                    }
+                }
+
+                // Compute sine pulse
+                float pulse = 0.7f + 0.3f * std::sin(fx.elapsed * 6.0f);
+                float alpha = 80.0f + 40.0f * std::sin(fx.elapsed * 6.0f);
+
+                SimulationOutput::SpellVFXOutput::EffectUpdate eu;
+                eu.effectId = fx.effectId;
+                // Billboard at chest height (+3 Irrlicht Y)
+                eu.posX = fx.posX;
+                eu.posY = fx.posY + 3.0f;
+                eu.posZ = fx.posZ;
+                eu.billboardWidth = 12.0f * pulse;
+                eu.billboardHeight = 12.0f * pulse;
+                eu.hasBillboardUpdate = true;
+                // Particle system at base height (+1 Irrlicht Y)
+                eu.particlePosX = fx.posX;
+                eu.particlePosY = fx.posY + 1.0f;
+                eu.particlePosZ = fx.posZ;
+                eu.hasParticleUpdate = true;
+                // Color with pulsing alpha
+                eu.colorA = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, alpha)));
+                eu.colorR = fx.colorR;
+                eu.colorG = fx.colorG;
+                eu.colorB = fx.colorB;
+                eu.hasColorUpdate = true;
+                svo.effectUpdates.push_back(eu);
+                break;
+            }
+            case FX_AURA: {
+                // Follow source entity
+                if (fx.sourceEntity != 0) {
+                    auto it = workerEntities_.find(fx.sourceEntity);
+                    if (it != workerEntities_.end()) {
+                        const auto& we = it->second;
+                        fx.posX = we.lastX;
+                        fx.posY = we.lastZ + we.modelYOffset;
+                        fx.posZ = we.lastY;
+                    }
+                }
+
+                SimulationOutput::SpellVFXOutput::EffectUpdate eu;
+                eu.effectId = fx.effectId;
+                eu.particlePosX = fx.posX;
+                eu.particlePosY = fx.posY;
+                eu.particlePosZ = fx.posZ;
+                eu.hasBillboardUpdate = false;
+                eu.hasParticleUpdate = true;
+                eu.hasColorUpdate = false;
+                svo.effectUpdates.push_back(eu);
+                break;
+            }
+            default:
+                // ImpactBurst, RainEffect, GroundCircle — no per-frame update needed
+                // (Irrlicht internal particle systems drive them)
+                break;
+        }
+
+        ++i;
+    }
 }
 
 } // namespace Graphics

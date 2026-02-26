@@ -17,6 +17,13 @@
 #include <glm/glm.hpp>
 #include "client/graphics/environment/unified_particle.h"
 #include "client/graphics/environment/spell_particle_types.h"
+#include "client/graphics/environment/boids_types.h"
+#include "client/graphics/environment/particle_types.h"
+#include "client/graphics/software_occlusion_culler.h"
+#include "client/graphics/weather_system.h"
+
+// Forward declaration (global namespace)
+class HCMap;
 
 namespace EQT {
 namespace Graphics {
@@ -94,6 +101,103 @@ struct ParticleCommandData {
 };
 
 // ============================================================================
+// Boids Command Types — main thread → worker event queue
+// ============================================================================
+
+enum class BoidsCommand : uint8_t {
+    ZoneEnter, ZoneLeave, SetQuality, SetDensity, SetEnabled, SetTypeEnabled
+};
+
+struct BoidsCommandData {
+    BoidsCommand type;
+    std::string zoneName;
+    int zoneBiome = 0;
+    glm::vec3 boundsMin{-1000.0f};
+    glm::vec3 boundsMax{1000.0f};
+    bool hasBounds = false;
+    int quality = 2;
+    float density = 1.0f;
+    bool enabled = true;
+    uint8_t creatureType = 0;
+    bool typeEnabled = true;
+};
+
+// ============================================================================
+// Tumbleweed Command Types — main thread → worker event queue
+// ============================================================================
+
+enum class TumbleweedCommand : uint8_t {
+    ZoneEnter, ZoneLeave, SetEnabled
+};
+
+struct TumbleweedCommandData {
+    TumbleweedCommand type;
+    std::string zoneName;
+    int zoneBiome = 0;
+    bool enabled = true;
+};
+
+// ============================================================================
+// Weather Command Types — main thread → worker event queue
+// ============================================================================
+
+enum class WeatherCommand : uint8_t {
+    SetZoneConfig,
+    SetWeatherFromZone,
+    SetWeatherImmediate,
+    TransitionToWeather,
+    SetSimulationEnabled,
+};
+
+struct WeatherCommandData {
+    WeatherCommand type;
+    ZoneWeatherConfig zoneConfig;        // for SetZoneConfig
+    std::string zoneName;                // for SetWeatherFromZone
+    uint8_t weatherType = 0;             // WeatherType as uint8_t
+    float transitionTime = 5.0f;         // for TransitionToWeather
+    bool simulationEnabled = true;       // for SetSimulationEnabled
+};
+
+// ============================================================================
+// SpellVFX Command Types — main thread → worker event queue (desktop GL path)
+// ============================================================================
+
+enum class SpellVFXCommand : uint8_t {
+    CreateEffect,
+    RemoveCastGlow,
+    RemoveBuffAura,
+    RemoveAllForEntity,
+    ClearAll,
+};
+
+struct SpellVFXCommandData {
+    SpellVFXCommand type;
+    uint32_t effectId = 0;
+    uint8_t fxType = 0;           // SpellFXType cast to uint8_t
+    uint32_t spellId = 0;
+    uint16_t sourceEntity = 0;
+    uint16_t targetEntity = 0;
+    float lifetime = 0;
+    float scale = 1.0f;
+    uint8_t colorA = 255, colorR = 255, colorG = 255, colorB = 255;
+    float posX = 0, posY = 0, posZ = 0;       // Irrlicht Y-up
+    float targetPosX = 0, targetPosY = 0, targetPosZ = 0;  // Irrlicht Y-up
+};
+
+// ============================================================================
+// Detail Command Types — main thread → worker event queue
+// ============================================================================
+
+enum class DetailCommand : uint8_t { AddChunk, RemoveChunk, ClearAll };
+
+struct DetailCommandData {
+    DetailCommand type;
+    int32_t chunkKeyX = 0, chunkKeyZ = 0;
+    std::vector<irr::core::vector3df> basePositions;  // AddChunk only
+    std::vector<float> windInfluence;                   // AddChunk only
+};
+
+// ============================================================================
 // SimulationInput — snapshot of main thread state sent to worker each frame
 // ============================================================================
 
@@ -166,6 +270,48 @@ struct SimulationInput {
     uint8_t weatherIntensity = 0;
     bool weatherEnabled = false;
 
+    // Occlusion camera state (EQ Z-up basis vectors from FrustumCuller)
+    struct OcclusionCameraState {
+        float fwdX = 0, fwdY = 1, fwdZ = 0;
+        float rightX = 1, rightY = 0, rightZ = 0;  // Only X,Y needed (2D right)
+        float upX = 0, upY = 0, upZ = 1;
+        float fovRadV = 1.0f;
+        float aspect = 1.33f;
+        bool enabled = false;
+    } occlusionCamera;
+
+    // Entity snapshots for worker reconciliation
+    struct EntitySnapshot {
+        uint16_t spawnId;
+        float lastX, lastY, lastZ;
+        float velocityX, velocityY, velocityZ;
+        float serverX, serverY, serverZ;
+        float serverHeading;
+        float timeSinceUpdate, lastUpdateInterval;
+        float collisionZOffset, modelYOffset;
+        int32_t serverAnimation;
+        uint32_t lastNonZeroAnimation;
+        size_t cachedBspRegion;
+        bool bspRegionDirty, isNPC, isPlayer, isCorpse, isFading;
+        bool inSceneGraph, hasVelocity;
+    };
+    std::vector<EntitySnapshot> entitySnapshots;
+
+    struct EntityPendingUpdate {
+        uint16_t spawnId;
+        float x, y, z, heading, dx, dy, dz;
+        int32_t animation;
+    };
+    std::vector<EntityPendingUpdate> entityPendingUpdates;
+
+    float entityRenderDistance = 200.0f;
+    int maxVisibleEntities = 50;
+    bool entityCullingEnabled = false;
+
+    // Name tag visibility
+    float nameTagDistance = 200.0f;
+    bool nameTagsVisible = true;
+
     // Vertex animation time advance
     float vertAnimDeltaMs = 0;  // deltaTime * 1000
 
@@ -184,6 +330,65 @@ struct SimulationInput {
         bool unifiedRendererInitialized = false;
         int poolSize = 1024;  // For deferred initialization
     } particleInput;
+
+    // Boids system input
+    struct BoidsInput {
+        float deltaTime = 0;
+        glm::vec3 playerPosition{0.0f};
+        float playerHeading = 0;
+        float timeOfDay = 12.0f;
+        glm::vec3 windDirection{1.0f, 0.0f, 0.0f};
+        float windStrength = 0;
+        std::vector<BoidsCommandData> commands;
+        bool initialized = false;
+    } boidsInput;
+
+    // Tumbleweed system input
+    struct TumbleweedInput {
+        float deltaTime = 0;
+        glm::vec3 playerPosition{0.0f};
+        glm::vec3 windDirection{1.0f, 0.0f, 0.0f};
+        float windStrength = 0;
+        std::vector<TumbleweedCommandData> commands;
+        bool initialized = false;
+    } tumbleweedInput;
+
+    // Weather system input
+    struct WeatherInput {
+        float deltaTime = 0;
+        std::vector<WeatherCommandData> commands;
+        bool initialized = false;
+    } weatherInput;
+
+    // Spell VFX input (desktop GL worker-driven path)
+    struct SpellVFXInput {
+        float deltaTime = 0;
+        std::vector<SpellVFXCommandData> commands;
+        bool initialized = false;
+    } spellVfxInput;
+
+    // Detail wind/disturbance input
+    struct DetailInput {
+        float deltaTime = 0;
+        // Wind params (from WindController/ZoneDetailConfig)
+        float windStrength = 1.0f;
+        float windFrequency = 0.5f;
+        float gustFrequency = 0.1f;
+        float gustStrength = 0.3f;
+        float windDirX = 1.0f, windDirY = 0.0f;
+        // Disturbance params (from FoliageDisturbanceConfig)
+        bool disturbanceEnabled = false;
+        float playerRadius = 2.5f, playerStrength = 1.0f;
+        float maxDisplacement = 0.5f, verticalDipFactor = 0.1f;
+        float velocityInfluence = 0.5f, heightExponent = 2.0f;
+        float recoveryRate = 0.7f;
+        // Player state for disturbance (Irrlicht Y-up)
+        bool playerMoving = false;
+        float playerPosX = 0, playerPosY = 0, playerPosZ = 0;
+        float playerVelX = 0, playerVelY = 0, playerVelZ = 0;
+        std::vector<DetailCommandData> commands;
+        bool initialized = false;
+    } detailInput;
 };
 
 // ============================================================================
@@ -283,6 +488,108 @@ struct SimulationOutput {
         bool valid = false;
     } particleOutput;
 
+    // Boids system output
+    struct BoidsOutput {
+        struct CreatureRender {
+            glm::vec3 position;     // EQ Z-up
+            float size;
+            uint8_t textureIndex;
+            float alpha;
+        };
+        std::vector<CreatureRender> creatures;
+        int activeCount = 0;
+        bool valid = false;
+    } boidsOutput;
+
+    // Tumbleweed system output
+    struct TumbleweedOutput {
+        struct TumbleweedRender {
+            glm::vec3 position;     // EQ Z-up
+            glm::vec3 rotation;     // degrees
+            float size;
+            bool active;
+            int poolIndex;
+        };
+        struct SpawnEvent { int poolIndex; float size; };
+        struct DespawnEvent { int poolIndex; };
+        std::vector<TumbleweedRender> tumbleweeds;
+        std::vector<SpawnEvent> spawns;
+        std::vector<DespawnEvent> despawns;
+        int activeCount = 0;
+        bool valid = false;
+    } tumbleweedOutput;
+
+    // Weather system output
+    struct WeatherOutput {
+        uint8_t currentWeather = 1;      // WeatherType::Normal
+        uint8_t targetWeather = 1;
+        float transitionProgress = 1.0f;
+        float windIntensity = 0.6f;
+        bool weatherChanged = false;     // Main thread should fire listeners
+        uint8_t newWeatherType = 0;      // WeatherType to notify about
+        bool valid = false;
+    } weatherOutput;
+
+    // Detail wind/disturbance output (shadow vertex buffers per chunk)
+    struct DetailOutput {
+        struct ChunkShadow {
+            int32_t keyX = 0, keyZ = 0;
+            std::vector<irr::core::vector3df> positions;
+            bool dirty = false;
+        };
+        std::vector<ChunkShadow> chunkShadows;
+        bool valid = false;
+    } detailOutput;
+
+    // Spell VFX output (desktop GL worker-driven path)
+    struct SpellVFXOutput {
+        struct EffectUpdate {
+            uint32_t effectId;
+            float posX, posY, posZ;                     // Billboard position (Irrlicht Y-up)
+            float billboardWidth, billboardHeight;       // Size (0 = no change)
+            uint8_t colorA, colorR, colorG, colorB;
+            float particlePosX, particlePosY, particlePosZ;
+            bool hasBillboardUpdate = false;
+            bool hasParticleUpdate = false;
+            bool hasColorUpdate = false;
+        };
+        struct CreateEvent {
+            uint32_t effectId;
+            uint8_t fxType;
+            uint32_t spellId;
+            uint16_t sourceEntity, targetEntity;
+            float posX, posY, posZ;
+            float targetPosX, targetPosY, targetPosZ;
+            float lifetime, scale;
+            uint8_t colorA, colorR, colorG, colorB;
+        };
+        struct RemoveEvent { uint32_t effectId; };
+        struct ImpactEvent { uint16_t targetEntity; uint32_t spellId; };
+
+        std::vector<EffectUpdate> effectUpdates;
+        std::vector<CreateEvent> createEvents;
+        std::vector<RemoveEvent> removeEvents;
+        std::vector<ImpactEvent> impactEvents;
+        bool valid = false;
+    } spellVfxOutput;
+
+    // Occlusion-culled regions (populated by computeSoftwareOcclusion)
+    std::unordered_set<size_t> occlusionCulledRegions;
+
+    // Entity interpolation and visibility results
+    struct EntityResult {
+        uint16_t spawnId;
+        float posX, posY, posZ;
+        size_t cachedBspRegion;
+        bool bspRegionDirty;
+        bool wasInterpolated;    // Position changed
+        bool shouldBeVisible;    // Culling result
+        bool shouldDeactivate;   // Became stationary
+        bool nameTagVisible = false;  // Name tag visibility (distance + PVS + portal + occlusion)
+    };
+    std::vector<EntityResult> entityResults;
+    int entityVisibleCount = 0;
+
     // Whether this output has been computed at least once (valid data)
     bool valid = false;
 };
@@ -344,6 +651,16 @@ struct SimulationZoneData {
 
     // Portal system (non-owning, immutable after zone load)
     const PortalSystem* portalSystem = nullptr;
+
+    // Collision map for ground snapping (non-owning, immutable after zone load)
+    const ::HCMap* hcMap = nullptr;
+
+    // Region occluder triangles for software occlusion culling
+    // Keyed by region index → vector of wall triangles
+    std::unordered_map<size_t, std::vector<OccluderTriangle>> regionOccluders;
+
+    // Occlusion culler config
+    OcclusionCullerConfig occlusionConfig;
 
     // Animated tree data for wind computation
     struct AnimatedTreeData {
@@ -444,12 +761,23 @@ private:
     void computeLightSelection(const SimulationInput& input, SimulationOutput& output);
     void computeFireFlicker(const SimulationInput& input, SimulationOutput& output);
     void computePortalVisibility(const SimulationInput& input, SimulationOutput& output);
+    void computeSoftwareOcclusion(const SimulationInput& input, SimulationOutput& output);
+    void computeEntitySync(const SimulationInput& input);
+    void computeEntityPendingUpdates(const SimulationInput& input);
+    void computeEntityInterpolation(const SimulationInput& input, SimulationOutput& output);
+    void computeEntityVisibility(const SimulationInput& input, SimulationOutput& output);
+    void computeNameTagVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeTreeAnimation(const SimulationInput& input, SimulationOutput& output);
     void computeVertexAnimations(const SimulationInput& input, SimulationOutput& output);
     void computeLightAnimations(const SimulationInput& input, SimulationOutput& output);
     void computeSkyState(const SimulationInput& input, SimulationOutput& output);
     void computeWeatherEffectsState(const SimulationInput& input, SimulationOutput& output);
     void computeParticles(const SimulationInput& input, SimulationOutput& output);
+    void computeBoids(const SimulationInput& input, SimulationOutput& output);
+    void computeTumbleweeds(const SimulationInput& input, SimulationOutput& output);
+    void computeWeather(const SimulationInput& input, SimulationOutput& output);
+    void computeDetailAnimation(const SimulationInput& input, SimulationOutput& output);
+    void computeSpellVFX(const SimulationInput& input, SimulationOutput& output);
 
     // Tree wind displacement (replicates TreeWindController::getDisplacement)
     irr::core::vector3df computeTreeWindDisplacement(
@@ -478,6 +806,24 @@ private:
     // Zone data (read-only after setZoneData, thread-safe)
     SimulationZoneData zoneData_;
     bool zoneDataValid_ = false;
+
+    // Worker-owned software occlusion culler
+    std::unique_ptr<SoftwareOcclusionCuller> workerOcclusionCuller_;
+
+    // Worker entity state for interpolation
+    struct WorkerEntityState {
+        float lastX, lastY, lastZ;
+        float velocityX, velocityY, velocityZ;
+        float serverX, serverY, serverZ, serverHeading;
+        float timeSinceUpdate, lastUpdateInterval;
+        float collisionZOffset, modelYOffset;
+        int32_t serverAnimation;
+        uint32_t lastNonZeroAnimation;
+        size_t cachedBspRegion;
+        bool bspRegionDirty, isNPC, isPlayer, isCorpse, isFading;
+        bool active;  // Has velocity (in active set)
+    };
+    std::unordered_map<uint16_t, WorkerEntityState> workerEntities_;
 
     // Fire flicker state (owned by worker thread)
     std::vector<float> flickerPhases_;      // Per object light
@@ -528,6 +874,136 @@ private:
                             const glm::vec3& emitterPos, const glm::vec3* dynamicDir = nullptr);
     float particleRandomFloat(float minVal, float maxVal);
     int particleRandomInt(int minVal, int maxVal);
+
+    // --- Boids system state (owned by worker thread) ---
+    struct WorkerCreature {
+        glm::vec3 position{0.0f};
+        glm::vec3 velocity{0.0f};
+        float speed = 10.0f;
+        float size = 1.0f;
+        uint8_t textureIndex = 0;
+        float animFrame = 0.0f;
+        float animSpeed = 1.0f;
+        float alpha = 1.0f;
+    };
+    struct WorkerFlockState {
+        Environment::FlockConfig config;
+        std::vector<WorkerCreature> creatures;
+        glm::vec3 center{0.0f};
+        glm::vec3 anchor{0.0f};
+        glm::vec3 destination{0.0f};
+        glm::vec3 boundsMin{-1000.0f};
+        glm::vec3 boundsMax{1000.0f};
+        bool hasBounds = false;
+        float timeAlive = 0.0f;
+        float destinationTimer = 0.0f;
+        float destinationInterval = 15.0f;
+        bool exitedBounds = false;
+        bool scattering = false;
+        glm::vec3 scatterSource{0.0f};
+        float scatterStrength = 0.0f;
+        float scatterTimer = 0.0f;
+    };
+    std::vector<WorkerFlockState> boidsFlocks_;
+    float boidsSpawnTimer_ = 0.0f;
+    float boidsSpawnCooldown_ = 30.0f;
+    float boidsScatterRadius_ = 20.0f;
+    int boidsZoneBiome_ = 0;
+    int boidsQuality_ = 2;
+    float boidsDensity_ = 1.0f;
+    bool boidsEnabled_ = true;
+    bool boidsTypeEnabled_[static_cast<size_t>(Environment::CreatureType::Count)];
+    glm::vec3 boidsBoundsMin_{-1000.0f};
+    glm::vec3 boidsBoundsMax_{1000.0f};
+    bool boidsHasBounds_ = false;
+    std::mt19937 boidsRng_;
+
+    // Boids helpers
+    float boidsRandomFloat(float minVal, float maxVal);
+    glm::vec3 boidsGetRandomSpawnPosition(const glm::vec3& playerPos);
+    std::vector<Environment::CreatureType> boidsGetTypesForBiome(int biome, bool isDay);
+
+    // --- Tumbleweed system state (owned by worker thread) ---
+    struct WorkerTumbleweedInstance {
+        glm::vec3 position{0.0f};
+        glm::vec3 velocity{0.0f};
+        glm::vec3 rotation{0.0f};
+        glm::vec3 angularVelocity{0.0f};
+        float radius = 0.5f;
+        float size = 1.0f;
+        float lifetime = 0.0f;
+        uint32_t bounceCount = 0;
+        bool active = false;
+        int poolIndex = -1;
+    };
+    std::vector<WorkerTumbleweedInstance> twInstances_;
+    float twSpawnTimer_ = 0.0f;
+    float twSpawnCooldown_ = 10.0f;
+    int twZoneBiome_ = 0;
+    bool twEnabled_ = true;
+    int twMaxActive_ = 10;
+    float twSpawnDistance_ = 80.0f;
+    float twDespawnDistance_ = 120.0f;
+    float twMinSpeed_ = 2.0f;
+    float twMaxSpeed_ = 8.0f;
+    float twWindInfluence_ = 1.5f;
+    float twBounceDecay_ = 0.6f;
+    float twMaxLifetime_ = 60.0f;
+    float twGroundOffset_ = 0.3f;
+    float twSizeMin_ = 0.6f;
+    float twSizeMax_ = 1.4f;
+    int twMaxBounces_ = 20;
+    int twNextPoolIndex_ = 0;
+    std::mt19937 twRng_;
+
+    // Tumbleweed helpers
+    float twRandomFloat(float minVal, float maxVal);
+
+    // --- Weather system state (owned by worker thread) ---
+    uint8_t weatherCurrentWeather_ = 1;  // WeatherType::Normal
+    uint8_t weatherTargetWeather_ = 1;
+    float weatherTransitionProgress_ = 1.0f;
+    float weatherTransitionDuration_ = 5.0f;
+    float weatherTimeSinceLastCheck_ = 0.0f;
+    float weatherCurrentDuration_ = 0.0f;
+    float weatherCurrentElapsed_ = 0.0f;
+    bool weatherSimulationEnabled_ = true;
+    ZoneWeatherConfig weatherZoneConfig_;
+    std::mt19937 weatherRng_;
+    float weatherWindIntensity_ = 0.6f;  // Boids/tumbleweeds read this directly
+
+    void weatherCheckChange();
+    uint8_t weatherRollForWeather();
+    static float weatherGetWindIntensity(uint8_t type);
+
+    // --- Spell VFX state (owned by worker thread, desktop GL path) ---
+    struct WorkerSpellEffect {
+        uint32_t effectId;
+        uint8_t type;    // SpellFXType cast to uint8_t
+        uint32_t spellId;
+        uint16_t sourceEntity, targetEntity;
+        float elapsed = 0, lifetime = 0, scale = 1.0f;
+        uint8_t colorA, colorR, colorG, colorB;
+        float posX = 0, posY = 0, posZ = 0;           // Irrlicht Y-up
+        float targetPosX = 0, targetPosY = 0, targetPosZ = 0;  // Irrlicht Y-up
+        bool active = true;
+    };
+    std::vector<WorkerSpellEffect> spellVfxEffects_;
+
+    // --- Detail wind/disturbance state (owned by worker thread) ---
+    struct WorkerDetailChunk {
+        int32_t keyX, keyZ;
+        std::vector<irr::core::vector3df> basePositions;
+        std::vector<float> windInfluence;
+    };
+    std::vector<WorkerDetailChunk> detailChunks_;
+    float detailWindTime_ = 0;
+    struct WorkerResidualDisturbance {
+        float posX, posY, posZ;   // Irrlicht Y-up position
+        float dirX, dirZ;          // Push direction (XZ plane)
+        float intensity;
+    };
+    std::unordered_map<int64_t, WorkerResidualDisturbance> detailResiduals_;
 
     // Priority tier scheduling
     static constexpr uint32_t kBackgroundInterval = 3;  // Background tier runs every N frames

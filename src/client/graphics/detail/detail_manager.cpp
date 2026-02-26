@@ -3,6 +3,7 @@
 #include "client/graphics/detail/detail_texture_atlas.h"
 #include "client/graphics/detail/detail_config_loader.h"
 #include "client/graphics/eq/wld_loader.h"
+#include "client/graphics/simulation_worker.h"
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <cmath>
@@ -209,6 +210,11 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
 }
 
 void DetailManager::onZoneExit() {
+    // Queue ClearAll for SimulationWorker
+    DetailCommandData cmd;
+    cmd.type = DetailCommand::ClearAll;
+    pendingCommands_.push_back(std::move(cmd));
+
     // Detach and clear all chunks
     for (auto& [key, chunk] : chunks_) {
         if (chunk) {
@@ -251,47 +257,21 @@ void DetailManager::update(const irr::core::vector3df& cameraPos, float deltaTim
         return;
     }
 
-    // Update wind animation state
+    // Wind time advancement handled by SimulationWorker via detailWindTime_
+    // (windController_ still tracks time for getParams() accessors)
     windController_.update(deltaTimeMs);
 
-    // Update foliage disturbance state
-    if (disturbanceManager_ && disturbanceConfig_.enabled) {
-        disturbanceManager_->clearSources();
-
-        // Add player as disturbance source if moving
-        if (playerMoving) {
-            DisturbanceSource source;
-            source.position = playerPos;
-            source.velocity = playerVelocity;
-            source.radius = disturbanceConfig_.playerRadius;
-            source.strength = disturbanceConfig_.playerStrength;
-            disturbanceManager_->addDisturbanceSource(source);
-        }
-
-        disturbanceManager_->update(deltaTimeMs);
-    }
-
-    // Update footprints
+    // Update footprints (uses ITriangleSelector raycasts — stays on main thread)
     if (footprintManager_ && footprintConfig_.enabled) {
         float deltaTimeSec = deltaTimeMs / 1000.0f;
         footprintManager_->update(deltaTimeSec, playerPos, playerHeading, playerMoving);
     }
 
     // Update which chunks are visible based on camera position
+    // (creates/destroys Irrlicht scene nodes — stays on main thread)
     updateVisibleChunks(cameraPos);
 
-    // Apply wind and disturbance animation to active chunks
-    bool useDisturbance = disturbanceManager_ && disturbanceConfig_.enabled;
-
-    for (DetailChunk* chunk : activeChunks_) {
-        if (chunk) {
-            if (useDisturbance) {
-                chunk->applyWindAndDisturbance(windController_, *disturbanceManager_, config_);
-            } else if (config_.windStrength > 0.01f) {
-                chunk->applyWind(windController_, config_);
-            }
-        }
-    }
+    // Wind and disturbance vertex animation handled by SimulationWorker
 }
 
 void DetailManager::setDensity(float density) {
@@ -369,6 +349,11 @@ void DetailManager::setEnabled(bool enabled) {
     enabled_ = enabled;
 
     if (!enabled) {
+        // Queue ClearAll for SimulationWorker
+        DetailCommandData cmd;
+        cmd.type = DetailCommand::ClearAll;
+        pendingCommands_.push_back(std::move(cmd));
+
         // Release chunk mesh data and placements to free memory
         for (auto& [key, chunk] : chunks_) {
             if (chunk) chunk->detach();
@@ -401,6 +386,23 @@ const FoliageDisturbanceConfig& DetailManager::getFoliageDisturbanceConfig() con
 
 bool DetailManager::isFoliageDisturbanceEnabled() const {
     return disturbanceConfig_.enabled && disturbanceManager_ != nullptr;
+}
+
+std::vector<DetailCommandData> DetailManager::drainCommands() {
+    std::vector<DetailCommandData> cmds;
+    cmds.swap(pendingCommands_);
+    return cmds;
+}
+
+void DetailManager::applyWorkerResults(const SimulationOutput::DetailOutput& results) {
+    for (const auto& shadow : results.chunkShadows) {
+        if (!shadow.dirty) continue;
+        ChunkKey key{shadow.keyX, shadow.keyZ};
+        auto it = chunks_.find(key);
+        if (it != chunks_.end() && it->second) {
+            it->second->applyWorkerShadow(shadow.positions);
+        }
+    }
 }
 
 void DetailManager::setFootprintConfig(const FootprintConfig& config) {
@@ -535,6 +537,17 @@ void DetailManager::loadChunk(const ChunkKey& key) {
     // Build mesh with current density
     chunk->rebuildMesh(density_, categoryMask_, config_, atlasTexture_);
 
+    // Queue AddChunk command for SimulationWorker
+    if (!chunk->getBasePositions().empty()) {
+        DetailCommandData cmd;
+        cmd.type = DetailCommand::AddChunk;
+        cmd.chunkKeyX = key.x;
+        cmd.chunkKeyZ = key.z;
+        cmd.basePositions = chunk->getBasePositions();
+        cmd.windInfluence = chunk->getWindInfluence();
+        pendingCommands_.push_back(std::move(cmd));
+    }
+
     chunks_[key] = std::move(chunk);
 }
 
@@ -565,6 +578,12 @@ void DetailManager::unloadDistantChunks(const irr::core::vector3df& cameraPos) {
             if (it->second) {
                 it->second->detach();
             }
+            // Queue RemoveChunk command for SimulationWorker
+            DetailCommandData cmd;
+            cmd.type = DetailCommand::RemoveChunk;
+            cmd.chunkKeyX = key.x;
+            cmd.chunkKeyZ = key.z;
+            pendingCommands_.push_back(std::move(cmd));
             chunks_.erase(it);
         }
     }
@@ -574,6 +593,16 @@ void DetailManager::rebuildAllChunkMeshes() {
     for (auto& [key, chunk] : chunks_) {
         if (chunk) {
             chunk->rebuildMesh(density_, categoryMask_, config_, atlasTexture_);
+            // Re-queue AddChunk with fresh data after rebuild
+            if (!chunk->getBasePositions().empty()) {
+                DetailCommandData cmd;
+                cmd.type = DetailCommand::AddChunk;
+                cmd.chunkKeyX = key.x;
+                cmd.chunkKeyZ = key.z;
+                cmd.basePositions = chunk->getBasePositions();
+                cmd.windInfluence = chunk->getWindInfluence();
+                pendingCommands_.push_back(std::move(cmd));
+            }
         }
     }
 }

@@ -26,6 +26,14 @@ namespace Graphics {
 class RaceModelLoader;
 class EntityPrepWorker;
 struct ConstrainedRendererConfig;
+struct SimulationInput;
+
+// Entity pending update for worker drain (matches SimulationInput::EntityPendingUpdate layout)
+struct DrainedEntityUpdate {
+    uint16_t spawnId;
+    float x, y, z, heading, dx, dy, dz;
+    int32_t animation;
+};
 
 // Appearance data for entity rendering
 struct EntityAppearance {
@@ -224,6 +232,18 @@ public:
     // Interpolate entity positions based on velocity (call each frame)
     void updateInterpolation(float deltaTime);
 
+    // Main-thread entity state updates (corpse fading, animation timing, equipment)
+    // Called after worker results are applied. Handles things that must stay on main thread.
+    void updateMainThreadEntityState(float deltaTime);
+
+    // Drain pending updates into a vector for the simulation worker.
+    // Returns the contents (pendingUpdates_ cleared after flushPendingUpdatesForAnimations).
+    std::vector<DrainedEntityUpdate> drainPendingUpdates();
+
+    // Flush pending updates processing only animation/spatial-grid side effects.
+    // Position/velocity math is handled by the worker.
+    void flushPendingUpdatesForAnimations();
+
     // Remove an entity
     void removeEntity(uint16_t spawnId);
 
@@ -252,6 +272,7 @@ public:
 
     // Show/hide name tags
     void setNameTagsVisible(bool visible);
+    bool areNameTagsVisible() const { return nameTagsVisible_; }
 
     // Enable/disable lighting on entity materials
     void setLightingEnabled(bool enabled);

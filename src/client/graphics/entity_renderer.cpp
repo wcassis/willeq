@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/light_source.h"
@@ -1503,6 +1504,145 @@ void EntityRenderer::flushPendingUpdates() {
     }
 
     pendingUpdates_.clear();
+}
+
+std::vector<DrainedEntityUpdate> EntityRenderer::drainPendingUpdates() {
+    std::vector<DrainedEntityUpdate> result;
+    if (pendingUpdates_.empty()) return result;
+
+    result.reserve(pendingUpdates_.size());
+    for (const auto& [spawnId, pu] : pendingUpdates_) {
+        DrainedEntityUpdate epu;
+        epu.spawnId = pu.spawnId;
+        epu.x = pu.x;
+        epu.y = pu.y;
+        epu.z = pu.z;
+        epu.heading = pu.heading;
+        epu.dx = pu.dx;
+        epu.dy = pu.dy;
+        epu.dz = pu.dz;
+        epu.animation = pu.animation;
+        result.push_back(epu);
+    }
+    // Don't clear yet — flushPendingUpdatesForAnimations will process animations
+    return result;
+}
+
+void EntityRenderer::flushPendingUpdatesForAnimations() {
+    if (pendingUpdates_.empty()) return;
+
+    // Process only animation and spatial-grid side effects.
+    // Position/velocity math is handled by the worker.
+    for (const auto& [spawnId, update] : pendingUpdates_) {
+        processUpdate(update);
+    }
+
+    pendingUpdates_.clear();
+}
+
+void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
+    // Handle things that must stay on main thread:
+    // - Corpse fading (material mutations)
+    // - Corpse animation timing
+    // - Equipment transforms for visible entities
+    // - Idle animation transitions
+    // - Fully-faded corpse removal
+
+    std::vector<uint16_t> toRemove;
+    std::vector<uint16_t> toDeactivate;
+
+    for (uint16_t spawnId : activeEntities_) {
+        auto it = entities_.find(spawnId);
+        if (it == entities_.end()) continue;
+        EntityVisual& visual = it->second;
+        if (!visual.sceneNode || !visual.inSceneGraph) continue;
+
+        // Player equipment transforms
+        if (visual.isPlayer) {
+            updateEquipmentTransforms(visual);
+            continue;
+        }
+
+        // Handle fading entities (corpses decaying)
+        if (visual.isFading) {
+            visual.fadeTimer += deltaTime;
+            visual.fadeAlpha = 1.0f - (visual.fadeTimer / EntityVisual::FADE_DURATION);
+            if (visual.fadeAlpha <= 0.0f) {
+                visual.fadeAlpha = 0.0f;
+            }
+
+            irr::u8 colorVal = static_cast<irr::u8>(visual.fadeAlpha * 255);
+            irr::video::SColor fadeColor(255, colorVal, colorVal, colorVal);
+
+            if (visual.animatedNode) {
+                for (irr::u32 i = 0; i < visual.animatedNode->getMaterialCount(); ++i) {
+                    irr::video::SMaterial& mat = visual.animatedNode->getMaterial(i);
+                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                    mat.AmbientColor = fadeColor;
+                    mat.DiffuseColor = fadeColor;
+                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                }
+            } else if (visual.meshNode) {
+                for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
+                    irr::video::SMaterial& mat = visual.meshNode->getMaterial(i);
+                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                    mat.AmbientColor = fadeColor;
+                    mat.DiffuseColor = fadeColor;
+                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                }
+            }
+            if (visual.primaryEquipNode) {
+                for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
+                    irr::video::SMaterial& mat = visual.primaryEquipNode->getMaterial(i);
+                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                    mat.AmbientColor = fadeColor;
+                    mat.DiffuseColor = fadeColor;
+                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                }
+            }
+            if (visual.secondaryEquipNode) {
+                for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
+                    irr::video::SMaterial& mat = visual.secondaryEquipNode->getMaterial(i);
+                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+                    mat.AmbientColor = fadeColor;
+                    mat.DiffuseColor = fadeColor;
+                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
+                }
+            }
+            if (visual.nameNode) {
+                irr::video::SColor nameColor(colorVal, 255, 255, 255);
+                visual.nameNode->setTextColor(nameColor);
+            }
+            continue;
+        }
+
+        // Corpse animation timing
+        if (visual.isCorpse && !visual.corpsePositionAdjusted && visual.isAnimated && visual.animatedNode) {
+            visual.corpseTime += deltaTime;
+            SkeletalAnimator& animator = visual.animatedNode->getAnimator();
+            if (visual.corpseTime >= 0.5f) {
+                if (animator.getState() == AnimationState::Stopped ||
+                    (animator.getState() == AnimationState::Playing && !animator.isPlayingThrough())) {
+                    visual.corpsePositionAdjusted = true;
+                    visual.corpseYOffset = 0.0f;
+                }
+            }
+        }
+
+        // Equipment transforms for visible moving entities
+        updateEquipmentTransforms(visual);
+    }
+
+    // Remove fully faded entities
+    for (const auto& [spawnId, visual] : entities_) {
+        if (visual.isFading && visual.fadeAlpha <= 0.0f) {
+            toRemove.push_back(spawnId);
+        }
+    }
+    for (uint16_t spawnId : toRemove) {
+        LOG_DEBUG(MOD_ENTITY, "Removing fully faded corpse {}", spawnId);
+        removeEntity(spawnId);
+    }
 }
 
 void EntityRenderer::processUpdate(const PendingUpdate& update) {
@@ -4527,7 +4667,7 @@ void EntityRenderer::updateConstrainedVisibility(const irr::core::vector3df& cam
             }
         }
         // Only hide name tags for culled entities; visible entity name tags
-        // are managed by updateNameTagsWithLOS() which runs separately
+        // are managed by SimulationWorker::computeNameTagVisibility()
         if (visual.nameNode && !shouldBeVisible) {
             if (visual.nameNode->isVisible()) {
                 visual.nameNode->setVisible(false);

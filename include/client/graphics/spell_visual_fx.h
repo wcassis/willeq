@@ -20,6 +20,12 @@
 namespace EQT { namespace Graphics { namespace Environment { class ParticleManager; }}}
 #endif
 
+// Forward declarations for worker-driven spell VFX
+namespace EQT { namespace Graphics {
+    struct SpellVFXCommandData;
+    struct SimulationOutput;
+}}
+
 namespace EQ {
 
 // Forward declarations
@@ -51,6 +57,8 @@ struct SpellFXInstance {
     float elapsed = 0;          // Time elapsed in seconds
     float scale = 1.0f;
     bool active = true;
+
+    uint32_t effect_id = 0;  // Unique ID for worker<->main mapping
 
     // Scene nodes (may be nullptr if not applicable)
     irr::scene::ISceneNode* scene_node = nullptr;
@@ -161,6 +169,12 @@ public:
     // Get spell color by spell ID (for external particle creation)
     irr::video::SColor getSpellColorForSpell(uint32_t spell_id) const { return getSpellColor(spell_id); }
 
+    // Worker-driven facade (desktop GL path, offloads update math to SimulationWorker)
+    std::vector<EQT::Graphics::SpellVFXCommandData> drainCommands();
+    void applyWorkerResults(const EQT::Graphics::SimulationOutput& results);
+    bool isWorkerDriven() const { return m_worker_driven; }
+    void setWorkerDriven(bool driven) { m_worker_driven = driven; }
+
 #ifdef EQT_HAS_GLES2
     // Set particle manager for GLES2 delegation
     void setParticleManager(EQT::Graphics::Environment::ParticleManager* pm) { m_particle_manager = pm; }
@@ -219,6 +233,10 @@ private:
 #ifdef EQT_HAS_GLES2
     EQT::Graphics::Environment::ParticleManager* m_particle_manager = nullptr;
 #endif
+
+    // Worker-driven state
+    std::vector<EQT::Graphics::SpellVFXCommandData> m_pending_commands;
+    bool m_worker_driven = false;
 
     // Projectile speed in units per second
     static constexpr float PROJECTILE_SPEED = 500.0f;

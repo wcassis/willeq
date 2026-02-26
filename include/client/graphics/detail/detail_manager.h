@@ -13,6 +13,7 @@
 #include "client/graphics/detail/foliage_disturbance.h"
 #include "client/graphics/detail/footprint_config.h"
 #include "client/graphics/detail/footprint_manager.h"
+#include "client/graphics/simulation_worker.h"
 
 namespace EQT {
 namespace Graphics {
@@ -81,6 +82,12 @@ public:
     void setFoliageDisturbanceConfig(const FoliageDisturbanceConfig& config);
     const FoliageDisturbanceConfig& getFoliageDisturbanceConfig() const;
     bool isFoliageDisturbanceEnabled() const;
+
+    // SimulationWorker integration
+    std::vector<DetailCommandData> drainCommands();
+    void applyWorkerResults(const SimulationOutput::DetailOutput& results);
+    const WindController& getWindController() const { return windController_; }
+    const ZoneDetailConfig& getZoneConfig() const { return config_; }
 
     // Footprint system control
     void setFootprintConfig(const FootprintConfig& config);
@@ -161,6 +168,9 @@ private:
 
     // View distance in chunks
     int viewDistanceChunks_ = 2;  // 2 chunks in each direction = 5x5 grid
+
+    // SimulationWorker command queue
+    std::vector<DetailCommandData> pendingCommands_;
 
     // Wind animation
     WindController windController_;

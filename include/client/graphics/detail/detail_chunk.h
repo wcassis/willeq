@@ -51,6 +51,13 @@ public:
     // Check if placements have been generated
     bool hasGeneratedPlacements() const { return placementsGenerated_; }
 
+    // Access base positions and wind influence for SimulationWorker
+    const std::vector<irr::core::vector3df>& getBasePositions() const { return basePositions_; }
+    const std::vector<float>& getWindInfluence() const { return windInfluence_; }
+
+    // Apply pre-computed shadow positions from SimulationWorker
+    void applyWorkerShadow(const std::vector<irr::core::vector3df>& positions);
+
 private:
     void buildQuadGeometry(const DetailPlacement& p,
                            const DetailType& type,

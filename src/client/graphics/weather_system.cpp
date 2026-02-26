@@ -1,136 +1,84 @@
 #include "client/graphics/weather_system.h"
+#include "client/graphics/simulation_worker.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <chrono>
 
 namespace EQT {
 namespace Graphics {
 
-WeatherSystem::WeatherSystem() {
-    // Seed random number generator with current time
-    auto seed = static_cast<unsigned int>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
-    rng_.seed(seed);
-}
-
-void WeatherSystem::update(float deltaTime) {
-    // Update transition if in progress
-    if (transitionProgress_ < 1.0f) {
-        transitionProgress_ += deltaTime / transitionDuration_;
-        if (transitionProgress_ >= 1.0f) {
-            transitionProgress_ = 1.0f;
-            currentWeather_ = targetWeather_;
-            LOG_DEBUG(MOD_GRAPHICS, "WeatherSystem: Transition complete, now {}",
-                      getWeatherName(currentWeather_));
-        }
-    }
-
-    // Update weather simulation if enabled
-    if (simulationEnabled_ && zoneConfig_.enabled) {
-        timeSinceLastCheck_ += deltaTime;
-        currentWeatherElapsed_ += deltaTime;
-
-        // Check for weather change at intervals or when current weather duration expires
-        bool shouldCheck = (timeSinceLastCheck_ >= zoneConfig_.checkIntervalSeconds);
-        bool durationExpired = (currentWeatherDuration_ > 0 &&
-                               currentWeatherElapsed_ >= currentWeatherDuration_);
-
-        if (shouldCheck || durationExpired) {
-            timeSinceLastCheck_ = 0.0f;
-            checkWeatherChange();
-        }
-    }
-}
+WeatherSystem::WeatherSystem() = default;
 
 void WeatherSystem::setWeather(WeatherType type) {
-    if (type == currentWeather_ && transitionProgress_ >= 1.0f) {
-        return;  // Already at this weather
-    }
-
-    WeatherType oldWeather = currentWeather_;
-    currentWeather_ = type;
-    targetWeather_ = type;
-    transitionProgress_ = 1.0f;
-
-    // Reset weather duration tracking
-    currentWeatherElapsed_ = 0.0f;
-    currentWeatherDuration_ = 0.0f;
-
-    LOG_INFO(MOD_GRAPHICS, "WeatherSystem: Weather changed from {} to {}",
-             getWeatherName(oldWeather), getWeatherName(type));
-
-    notifyListeners(type);
+    WeatherCommandData cmd;
+    cmd.type = WeatherCommand::SetWeatherImmediate;
+    cmd.weatherType = static_cast<uint8_t>(type);
+    pendingCommands_.push_back(std::move(cmd));
 }
 
 void WeatherSystem::transitionToWeather(WeatherType type, float transitionTime) {
-    if (type == targetWeather_ && transitionProgress_ >= 1.0f) {
-        return;  // Already transitioning to or at this weather
-    }
-
-    targetWeather_ = type;
-    transitionDuration_ = std::max(0.1f, transitionTime);
-    transitionProgress_ = 0.0f;
-
-    // Reset weather duration tracking
-    currentWeatherElapsed_ = 0.0f;
-    currentWeatherDuration_ = 0.0f;
-
-    LOG_INFO(MOD_GRAPHICS, "WeatherSystem: Starting transition from {} to {} over {:.1f}s",
-             getWeatherName(currentWeather_), getWeatherName(type), transitionTime);
-
-    // Notify immediately so listeners can start their own transitions
-    notifyListeners(type);
-}
-
-float WeatherSystem::getWindIntensity() const {
-    float currentIntensity = getWindIntensityForWeather(currentWeather_);
-    float targetIntensity = getWindIntensityForWeather(targetWeather_);
-
-    // Smooth interpolation during transition
-    if (transitionProgress_ < 1.0f) {
-        // Use smoothstep for more natural transition
-        float t = transitionProgress_;
-        float smooth = t * t * (3.0f - 2.0f * t);
-        return currentIntensity + (targetIntensity - currentIntensity) * smooth;
-    }
-
-    return currentIntensity;
+    WeatherCommandData cmd;
+    cmd.type = WeatherCommand::TransitionToWeather;
+    cmd.weatherType = static_cast<uint8_t>(type);
+    cmd.transitionTime = transitionTime;
+    pendingCommands_.push_back(std::move(cmd));
 }
 
 void WeatherSystem::setZoneConfig(const ZoneWeatherConfig& config) {
     zoneConfig_ = config;
 
-    // Reset simulation state
-    timeSinceLastCheck_ = 0.0f;
-    currentWeatherElapsed_ = 0.0f;
-    currentWeatherDuration_ = 0.0f;
-
-    LOG_DEBUG(MOD_GRAPHICS, "WeatherSystem: Zone config set for '{}', enabled={}",
-              config.zoneName, config.enabled);
-
-    // Set initial weather based on zone default
-    if (config.enabled) {
-        setWeather(config.defaultWeather);
-    }
+    WeatherCommandData cmd;
+    cmd.type = WeatherCommand::SetZoneConfig;
+    cmd.zoneConfig = config;
+    pendingCommands_.push_back(std::move(cmd));
 }
 
 void WeatherSystem::setWeatherFromZone(const std::string& zoneName) {
+    // Cache zone config locally for debug info
     ZoneWeatherConfig config;
-
     if (loadZoneWeatherConfig(zoneName, config)) {
-        LOG_INFO(MOD_GRAPHICS, "WeatherSystem: Loaded weather config for zone '{}'", zoneName);
+        zoneConfig_ = config;
     } else {
-        // Use defaults
-        config.zoneName = zoneName;
-        config.defaultWeather = WeatherType::Normal;
-        config.enabled = true;
-        LOG_DEBUG(MOD_GRAPHICS, "WeatherSystem: Using default weather config for zone '{}'", zoneName);
+        zoneConfig_.zoneName = zoneName;
+        zoneConfig_.defaultWeather = WeatherType::Normal;
+        zoneConfig_.enabled = true;
     }
 
-    setZoneConfig(config);
+    WeatherCommandData cmd;
+    cmd.type = WeatherCommand::SetWeatherFromZone;
+    cmd.zoneName = zoneName;
+    pendingCommands_.push_back(std::move(cmd));
+}
+
+void WeatherSystem::setSimulationEnabled(bool enabled) {
+    simulationEnabled_ = enabled;
+
+    WeatherCommandData cmd;
+    cmd.type = WeatherCommand::SetSimulationEnabled;
+    cmd.simulationEnabled = enabled;
+    pendingCommands_.push_back(std::move(cmd));
+}
+
+std::vector<WeatherCommandData> WeatherSystem::drainCommands() {
+    std::vector<WeatherCommandData> commands;
+    commands.swap(pendingCommands_);
+    return commands;
+}
+
+void WeatherSystem::applyWorkerResults(uint8_t currentWeather, uint8_t targetWeather,
+                                       float transitionProgress, float windIntensity,
+                                       bool weatherChanged, uint8_t newWeatherType) {
+    currentWeather_ = static_cast<WeatherType>(currentWeather);
+    targetWeather_ = static_cast<WeatherType>(targetWeather);
+    transitionProgress_ = transitionProgress;
+    windIntensity_ = windIntensity;
+
+    if (weatherChanged) {
+        WeatherType newType = static_cast<WeatherType>(newWeatherType);
+        notifyListeners(newType);
+    }
 }
 
 void WeatherSystem::addListener(IWeatherListener* listener) {
@@ -165,87 +113,6 @@ void WeatherSystem::notifyListeners(WeatherType newWeather) {
     }
 }
 
-void WeatherSystem::checkWeatherChange() {
-    // If we're in non-default weather and duration expired, return to default
-    if (currentWeather_ != zoneConfig_.defaultWeather &&
-        currentWeatherDuration_ > 0 &&
-        currentWeatherElapsed_ >= currentWeatherDuration_) {
-
-        LOG_DEBUG(MOD_GRAPHICS, "WeatherSystem: Weather duration expired, returning to {}",
-                  getWeatherName(zoneConfig_.defaultWeather));
-        transitionToWeather(zoneConfig_.defaultWeather, 10.0f);
-        return;
-    }
-
-    // Roll for new weather
-    WeatherType newWeather = rollForWeather();
-
-    if (newWeather != currentWeather_) {
-        transitionToWeather(newWeather, 10.0f);  // 10 second transition
-
-        // Set duration for the new weather
-        if (newWeather == WeatherType::Rain) {
-            // Use rain duration from config (in minutes, convert to seconds)
-            std::uniform_int_distribution<int> slot(0, 3);
-            int idx = slot(rng_);
-            currentWeatherDuration_ = zoneConfig_.rainDuration[idx] * 60.0f;
-        } else if (newWeather == WeatherType::Storm) {
-            // Storms are shorter than rain
-            std::uniform_real_distribution<float> duration(60.0f, 300.0f);
-            currentWeatherDuration_ = duration(rng_);
-        } else {
-            currentWeatherDuration_ = 0.0f;  // Default weather has no duration limit
-        }
-    }
-}
-
-WeatherType WeatherSystem::rollForWeather() {
-    // Check rain chance
-    int totalRainChance = 0;
-    for (int i = 0; i < 4; i++) {
-        totalRainChance += zoneConfig_.rainChance[i];
-    }
-
-    if (totalRainChance > 0) {
-        std::uniform_int_distribution<int> roll(0, 399);  // 4 slots * 100 max
-        int rainRoll = roll(rng_);
-
-        if (rainRoll < totalRainChance) {
-            // It's raining! Determine intensity
-            std::uniform_int_distribution<int> intensity(0, 99);
-            int intensityRoll = intensity(rng_);
-
-            // Higher intensity roll = storm
-            if (intensityRoll > 80) {
-                return WeatherType::Storm;
-            } else if (intensityRoll > 40) {
-                return WeatherType::Rain;
-            } else {
-                // Light rain is just normal weather with slightly more wind
-                return WeatherType::Normal;
-            }
-        }
-    }
-
-    // Check for calm conditions (inverse of rain in clear weather)
-    std::uniform_int_distribution<int> calmRoll(0, 99);
-    if (calmRoll(rng_) < 20) {  // 20% chance of calm
-        return WeatherType::Calm;
-    }
-
-    return zoneConfig_.defaultWeather;
-}
-
-float WeatherSystem::getWindIntensityForWeather(WeatherType type) {
-    switch (type) {
-        case WeatherType::Calm:   return 0.3f;
-        case WeatherType::Normal: return 0.6f;
-        case WeatherType::Rain:   return 0.8f;
-        case WeatherType::Storm:  return 1.0f;
-        default:                  return 0.6f;
-    }
-}
-
 const char* WeatherSystem::getWeatherName(WeatherType type) {
     switch (type) {
         case WeatherType::Calm:   return "Calm";
@@ -265,7 +132,7 @@ std::string WeatherSystem::getDebugInfo() const {
         ss << " (" << static_cast<int>(transitionProgress_ * 100) << "%)";
     }
 
-    ss << " | Wind: " << static_cast<int>(getWindIntensity() * 100) << "%";
+    ss << " | Wind: " << static_cast<int>(windIntensity_ * 100) << "%";
     ss << " | Zone: " << (zoneConfig_.zoneName.empty() ? "none" : zoneConfig_.zoneName);
     ss << " | Sim: " << (simulationEnabled_ ? "ON" : "OFF");
 

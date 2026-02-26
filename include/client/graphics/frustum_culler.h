@@ -58,6 +58,9 @@ public:
     float getUpZ() const { return diagUpZ_; }
     // Get plane data for diagnostics
     const float* getPlane(int i) const { return planes_[i]; }
+    // Get cached FOV and aspect ratio
+    float getFov() const { return lastFov_; }
+    float getAspect() const { return lastAspect_; }
 
 private:
     void invalidate() {
