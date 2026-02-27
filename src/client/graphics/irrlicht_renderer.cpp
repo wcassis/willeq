@@ -2204,12 +2204,17 @@ void IrrlichtRenderer::unloadZone() {
     clearWorldObjects();
 
     // Clear object lights (they reference freed zone data)
-    for (auto& objLight : objectLights_) {
-        if (objLight.node) {
-            objLight.node->remove();
+    for (size_t i = 0; i < objectLights_.size(); ++i) {
+        if (objectLights_[i].node) {
+            bool isInScene = (i < objectLightInSceneGraph_.size()) ? objectLightInSceneGraph_[i] : false;
+            if (isInScene) {
+                objectLights_[i].node->remove();
+            }
+            objectLights_[i].node->drop();
         }
     }
     objectLights_.clear();
+    objectLightInSceneGraph_.clear();
 
     // Clear vertex animated meshes (they reference freed zone mesh buffers)
     vertexAnimatedMeshes_.clear();
@@ -5475,13 +5480,17 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
             irr::video::SLight& lightData = lightNode->getLightData();
             lightData.Type = irr::video::ELT_POINT;
             lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
-            lightNode->setVisible(false);
+
+            // grab() + remove() pattern: keep node alive but out of scene graph
+            lightNode->grab();
+            lightNode->remove();
 
             ObjectLight objLight;
             objLight.node = lightNode;
             objLight.position = lightPos;
             objLight.objectName = objName;
             objLight.originalColor = lightColor;
+            objLight.bspRegion = objectRegions_.back();  // Same BSP region as parent object
 
             if (upperName.find("TORCH") != std::string::npos ||
                 upperName.find("FIRE") != std::string::npos ||
@@ -5494,9 +5503,16 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
                 objLight.flickerSpeed = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
             }
 
+            // Initial PVS check — only add to scene if region is visible
+            bool pvsVis = isRegionPvsVisible(objLight.bspRegion);
+            if (pvsVis) {
+                smgr_->getRootSceneNode()->addChild(lightNode);
+            }
+            objectLightInSceneGraph_.push_back(pvsVis);
+
             objectLights_.push_back(objLight);
-            LOG_DEBUG(MOD_GRAPHICS, "Deferred object light created: {} at ({:.1f},{:.1f},{:.1f})",
-                objName, lightPos.X, lightPos.Y, lightPos.Z);
+            LOG_DEBUG(MOD_GRAPHICS, "Deferred object light created: {} at ({:.1f},{:.1f},{:.1f}) region={}",
+                objName, lightPos.X, lightPos.Y, lightPos.Z, objLight.bspRegion);
         }
     }
 
@@ -6330,6 +6346,7 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
         old.isFireSource = objectLights_[i].isFireSource;
         old.flickerSpeed = objectLights_[i].flickerSpeed;
         old.objectName = objectLights_[i].objectName;
+        old.bspRegion = objectLights_[i].bspRegion;
         if (objectLights_[i].node) {
             const auto& ld = objectLights_[i].node->getLightData();
             old.radius = ld.Radius;
@@ -6899,6 +6916,25 @@ void IrrlichtRenderer::applySimulationResults() {
                 sl.attConstant, sl.attLinear, sl.attQuadratic);
         }
         zoneShader_->setNumPointLights(results->activeLightCount);
+    }
+
+    // Apply object light PVS visibility (scene graph add/remove)
+    if (!results->objectLightVisible.empty()) {
+        for (size_t i = 0; i < results->objectLightVisible.size() && i < objectLights_.size(); ++i) {
+            auto* node = objectLights_[i].node;
+            if (!node) continue;
+            bool shouldBeVisible = results->objectLightVisible[i] != 0;
+            bool isInScene = (i < objectLightInSceneGraph_.size()) ? objectLightInSceneGraph_[i] : false;
+            if (shouldBeVisible && !isInScene) {
+                smgr_->getRootSceneNode()->addChild(node);
+                if (i < objectLightInSceneGraph_.size())
+                    objectLightInSceneGraph_[i] = true;
+            } else if (!shouldBeVisible && isInScene) {
+                node->remove();
+                if (i < objectLightInSceneGraph_.size())
+                    objectLightInSceneGraph_[i] = false;
+            }
+        }
     }
 
     // Apply fire flicker colors to object lights (for other systems that read them)

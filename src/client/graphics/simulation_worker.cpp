@@ -309,6 +309,7 @@ void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput
     computeObjectVisibility(input, output);
     computeLightVisibility(input, output);
     computePortalVisibility(input, output);
+    computeObjectLightVisibility(input, output);
     computeSoftwareOcclusion(input, output);
     computeEntitySync(input);
     computeEntityPendingUpdates(input);
@@ -634,6 +635,74 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
 }
 
 // ============================================================================
+// Object Light Visibility Computation
+// ============================================================================
+
+void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input, SimulationOutput& output) {
+    size_t lightCount = zoneData_.objectLights.size();
+    if (lightCount == 0) return;
+
+    if (output.objectLightVisible.size() != lightCount) {
+        output.objectLightVisible.resize(lightCount, 0);
+    }
+
+    float renderDistSq = input.renderDistance * input.renderDistance;
+    const auto& camPos = input.cameraPos;
+
+    for (size_t i = 0; i < lightCount; ++i) {
+        const auto& light = zoneData_.objectLights[i];
+
+        // Distance culling (Irrlicht Y-up)
+        float dx = light.position.X - camPos.X;
+        float dy = light.position.Y - camPos.Y;
+        float dz = light.position.Z - camPos.Z;
+        float distSq = dx*dx + dy*dy + dz*dz;
+
+        if (distSq > renderDistSq) {
+            output.objectLightVisible[i] = 0;
+            continue;
+        }
+
+        // PVS check
+        if (zoneData_.usePvsCulling && zoneData_.bspTree &&
+            light.bspRegion != SIZE_MAX && output.currentPvsRegion != SIZE_MAX) {
+            const auto& regions = zoneData_.bspTree->regions;
+            if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
+                const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
+                if (!pvs.empty() && light.bspRegion < pvs.size() && !pvs[light.bspRegion]) {
+                    output.objectLightVisible[i] = 0;
+                    continue;
+                }
+            }
+        }
+
+        // Portal culling
+        if (!output.portalVisibleRegions.empty() && light.bspRegion != SIZE_MAX) {
+            if (output.portalVisibleRegions.find(light.bspRegion) == output.portalVisibleRegions.end()) {
+                output.objectLightVisible[i] = 0;
+                continue;
+            }
+        }
+
+        // Frustum culling: convert Irrlicht Y-up position to EQ Z-up
+        if (input.frustumValid) {
+            float eqX = light.position.X;
+            float eqY = light.position.Z;  // Irrlicht Z → EQ Y
+            float eqZ = light.position.Y;  // Irrlicht Y → EQ Z
+            float testRadius = 30.0f;
+            if (!testFrustumAABB(input.frustumPlanes,
+                                  eqX - testRadius, eqY - testRadius, eqZ - testRadius,
+                                  eqX + testRadius, eqY + testRadius, eqZ + testRadius)) {
+                output.objectLightVisible[i] = 0;
+                continue;
+            }
+        }
+
+        output.objectLightVisible[i] = 1;
+    }
+}
+
+// ============================================================================
 // Light Selection (Top 8)
 // ============================================================================
 
@@ -678,6 +747,9 @@ void SimulationWorker::computeLightSelection(const SimulationInput& input, Simul
 
     // Object lights
     for (size_t i = 0; i < zoneData_.objectLights.size(); ++i) {
+        // Skip lights that aren't PVS-visible
+        if (i < output.objectLightVisible.size() && !output.objectLightVisible[i]) continue;
+
         const auto& ol = zoneData_.objectLights[i];
         float dx = ol.position.X - playerPosIrr.X;
         float dy = ol.position.Y - playerPosIrr.Y;

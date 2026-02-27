@@ -400,6 +400,7 @@ struct SimulationOutput {
     std::vector<uint8_t> regionVisible;     // 1=visible, 0=hidden
     std::vector<uint8_t> objectVisible;     // 1=visible, 0=hidden
     std::vector<uint8_t> lightVisible;      // 1=visible, 0=hidden
+    std::vector<uint8_t> objectLightVisible; // 1=visible, 0=hidden (object lights)
     size_t currentPvsRegion = SIZE_MAX;     // Camera's current BSP region
 
     // Portal-visible regions (BFS walk from camera room through portal graph)
@@ -637,6 +638,7 @@ struct SimulationZoneData {
         bool isFireSource;
         float flickerSpeed;
         std::string objectName;            // For debugging
+        size_t bspRegion = SIZE_MAX;       // BSP region for PVS culling
     };
     std::vector<ObjectLightData> objectLights;
 
@@ -758,6 +760,7 @@ private:
     void computeVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeObjectVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeLightVisibility(const SimulationInput& input, SimulationOutput& output);
+    void computeObjectLightVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeLightSelection(const SimulationInput& input, SimulationOutput& output);
     void computeFireFlicker(const SimulationInput& input, SimulationOutput& output);
     void computePortalVisibility(const SimulationInput& input, SimulationOutput& output);

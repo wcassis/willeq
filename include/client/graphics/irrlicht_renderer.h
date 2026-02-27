@@ -308,6 +308,7 @@ struct ObjectLight {
     bool isFireSource = false;    // True for torches, fires, braziers, flames, candles
     float flickerPhase = 0.0f;   // Randomized phase for fire flickering
     float flickerSpeed = 1.0f;   // Randomized speed multiplier for flickering
+    size_t bspRegion = SIZE_MAX; // BSP region for PVS culling
 };
 
 // Player position update for server synchronization
@@ -1382,6 +1383,7 @@ private:
     std::vector<float> zoneLightAnimElapsed_;   // Per-light animation elapsed time (ms)
     std::vector<uint32_t> zoneLightAnimFrame_;  // Per-light current animation frame
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
+    std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
     bool showLightDebugMarkers_ = false;  // Show debug markers for active lights
     std::vector<std::string> previousActiveLights_;  // Track active lights to detect changes
