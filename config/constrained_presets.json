@@ -1,6 +1,8 @@
 {
   "presets": {
     "orangepi": {
+      "renderingBackend": "gles2",
+      "useDRM": true,
       "maxTextureDimension": 512,
       "maxPolygonsPerFrame": 80000,
       "clipDistance": 300.0,
@@ -14,7 +16,14 @@
       "enableAlphaToCoverage": true,
       "enableShaders": true,
       "antiAliasLevel": 4,
-      "anisotropicFilterLevel": 4
+      "anisotropicFilterLevel": 4,
+      "fog": true,
+      "playerLight": true,
+      "objectLights": true,
+      "directionalLight": true,
+      "fireEffects": true,
+      "skyRendering": true,
+      "nameTagsEnabled": true
     }
   }
 }

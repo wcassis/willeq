@@ -34,22 +34,22 @@ TEST_F(ConstrainedRendererConfigTest, ParsePreset_TNT) {
     EXPECT_EQ(ConstrainedRendererConfig::parsePreset("TNT"), ConstrainedRenderingPreset::TNT);
 }
 
-TEST_F(ConstrainedRendererConfigTest, ParsePreset_Max) {
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("max"), ConstrainedRenderingPreset::Max);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("MAX"), ConstrainedRenderingPreset::Max);
+TEST_F(ConstrainedRendererConfigTest, ParsePreset_MaxMapsToOrangePi) {
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("max"), ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("MAX"), ConstrainedRenderingPreset::OrangePi);
 }
 
-TEST_F(ConstrainedRendererConfigTest, ParsePreset_NoneOffDisabled_MapToMax) {
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("none"), ConstrainedRenderingPreset::Max);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("NONE"), ConstrainedRenderingPreset::Max);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("off"), ConstrainedRenderingPreset::Max);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("disabled"), ConstrainedRenderingPreset::Max);
+TEST_F(ConstrainedRendererConfigTest, ParsePreset_NoneOffDisabled_MapToOrangePi) {
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("none"), ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("NONE"), ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("off"), ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("disabled"), ConstrainedRenderingPreset::OrangePi);
 }
 
 TEST_F(ConstrainedRendererConfigTest, ParsePreset_Invalid) {
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("invalid"), ConstrainedRenderingPreset::Max);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset(""), ConstrainedRenderingPreset::Max);
-    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("voodoo3"), ConstrainedRenderingPreset::Max);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("invalid"), ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset(""), ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(ConstrainedRendererConfig::parsePreset("voodoo3"), ConstrainedRenderingPreset::OrangePi);
 }
 
 // =============================================================================
@@ -68,8 +68,8 @@ TEST_F(ConstrainedRendererConfigTest, PresetName_TNT) {
     EXPECT_EQ(ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset::TNT), "TNT");
 }
 
-TEST_F(ConstrainedRendererConfigTest, PresetName_Max) {
-    EXPECT_EQ(ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset::Max), "Max");
+TEST_F(ConstrainedRendererConfigTest, PresetName_OrangePi) {
+    EXPECT_EQ(ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset::OrangePi), "OrangePi");
 }
 
 // =============================================================================
@@ -79,7 +79,7 @@ TEST_F(ConstrainedRendererConfigTest, PresetName_Max) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo1);
 
-    EXPECT_TRUE(config.enabled);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::Software);
     EXPECT_EQ(config.framebufferMemoryBytes, 2 * 1024 * 1024);  // 2MB
     EXPECT_EQ(config.textureMemoryBytes, 2 * 1024 * 1024);      // 2MB
     EXPECT_EQ(config.maxTextureDimension, 64);  // Very constrained - fits ~128 textures
@@ -89,7 +89,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo2) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo2);
 
-    EXPECT_TRUE(config.enabled);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::Software);
     EXPECT_EQ(config.framebufferMemoryBytes, 4 * 1024 * 1024);  // 4MB
     EXPECT_EQ(config.textureMemoryBytes, 8 * 1024 * 1024);      // 8MB
     EXPECT_EQ(config.maxTextureDimension, 128);  // Fits ~128 textures in 8MB
@@ -99,37 +99,37 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo2) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_TNT) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
 
-    EXPECT_TRUE(config.enabled);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::OpenGL);
     EXPECT_EQ(config.framebufferMemoryBytes, 8 * 1024 * 1024);  // 8MB
     EXPECT_EQ(config.textureMemoryBytes, 16 * 1024 * 1024);     // 16MB
     EXPECT_EQ(config.maxTextureDimension, 512);
     EXPECT_EQ(config.colorDepthBits, 16);
+    EXPECT_TRUE(config.enableShaders);
 }
 
-TEST_F(ConstrainedRendererConfigTest, FromPreset_Max) {
-    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Max);
+TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_Backend) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
-    EXPECT_TRUE(config.enabled);
-    EXPECT_EQ(config.framebufferMemoryBytes, 256 * 1024 * 1024);  // 256MB
-    EXPECT_EQ(config.textureMemoryBytes, 256 * 1024 * 1024);      // 256MB
-    EXPECT_EQ(config.colorDepthBits, 32);
-    EXPECT_EQ(config.maxTextureDimension, 4096);
-    EXPECT_FLOAT_EQ(config.clipDistance, 99999.0f);
-    EXPECT_FLOAT_EQ(config.entityRenderDistance, 99999.0f);
-    EXPECT_EQ(config.maxVisibleEntities, 10000);
-    EXPECT_EQ(config.maxPolygonsPerFrame, 10000000);
-    EXPECT_EQ(config.occlusionBufferWidth, 256);
-    EXPECT_EQ(config.occlusionBufferHeight, 128);
-    EXPECT_EQ(config.occlusionMaxOccluderRegions, 64);
-    EXPECT_EQ(config.totalMemoryBudgetBytes, 0);  // No RAM constraint
-    EXPECT_FALSE(config.lazyPfsLoading);
-    EXPECT_FALSE(config.releaseTextureDataAfterUpload);
-    // GPU feature flags
-    EXPECT_TRUE(config.enableMipmaps);
-    EXPECT_TRUE(config.enableNPOT);
-    EXPECT_TRUE(config.enableStencilBuffer);
-    EXPECT_FALSE(config.enableAlphaToCoverage);  // Off by default (needs MSAA)
-    EXPECT_EQ(config.antiAliasLevel, 0);
+#ifdef EQT_HAS_GLES2
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
+#else
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::OpenGL);
+#endif
+    EXPECT_TRUE(config.useDRM);
+    EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
+    EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
+    EXPECT_EQ(config.colorDepthBits, 16);
+    EXPECT_EQ(config.maxTextureDimension, 512);
+    // Rendering feature defaults
+    EXPECT_TRUE(config.fog);
+    EXPECT_TRUE(config.playerLight);
+    EXPECT_TRUE(config.objectLights);
+    EXPECT_TRUE(config.directionalLight);
+    EXPECT_TRUE(config.fireEffects);
+    EXPECT_TRUE(config.skyRendering);
+    EXPECT_TRUE(config.nameTagsEnabled);
+    EXPECT_FALSE(config.wireframe);
+    EXPECT_FALSE(config.frameTimingEnabled);
 }
 
 // =============================================================================
@@ -336,7 +336,6 @@ TEST_F(ConstrainedRendererConfigTest, ClampResolution_TNTPreset) {
 TEST_F(ConstrainedRendererConfigTest, CustomConfig_ResolutionFromMemory) {
     // Test custom configuration with 3MB framebuffer
     ConstrainedRendererConfig config;
-    config.enabled = true;
     config.framebufferMemoryBytes = 3 * 1024 * 1024;  // 3MB
     config.colorDepthBits = 16;
     config.calculateMaxResolution();
@@ -386,7 +385,6 @@ TEST_F(ConstrainedRendererConfigTest, FramebufferUsage_ZeroResolution) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
-    EXPECT_TRUE(config.enabled);
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
     EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
     EXPECT_EQ(config.maxTextureDimension, 512);
@@ -573,6 +571,86 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_PartialOverride) {
     EXPECT_EQ(config.maxTextureDimension, 256);  // Overridden
     EXPECT_FLOAT_EQ(config.clipDistance, 300.0f);  // Kept from preset
     EXPECT_TRUE(config.enableMipmaps);  // Kept from preset
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackend) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_rb.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "renderingBackend": "opengl",
+                    "fog": false,
+                    "playerLight": false,
+                    "frameTimingEnabled": true
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.renderingBackend = RenderingBackend::Software;
+    config.fog = true;
+    config.playerLight = true;
+    config.frameTimingEnabled = false;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::OpenGL);
+    EXPECT_FALSE(config.fog);
+    EXPECT_FALSE(config.playerLight);
+    EXPECT_TRUE(config.frameTimingEnabled);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_BackwardCompat_UseGLES2) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_bc.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "useGLES2": true
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.renderingBackend = RenderingBackend::Software;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_ExplicitBackendOverridesUseGLES2) {
+    // When both renderingBackend and useGLES2 are present, renderingBackend wins
+    const std::string testJsonPath = "/tmp/test_constrained_presets_eo.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "renderingBackend": "software",
+                    "useGLES2": true
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.renderingBackend = RenderingBackend::OpenGL;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::Software);
 
     std::remove(testJsonPath.c_str());
 }

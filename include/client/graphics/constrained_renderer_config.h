@@ -8,9 +8,25 @@
 namespace EQT {
 namespace Graphics {
 
+// Rendering backend selection
+enum class RenderingBackend {
+    Software,   // Irrlicht Burnings software renderer (no GPU)
+    OpenGL,     // Desktop OpenGL 2.1
+    GLES2       // OpenGL ES 2.0 (COpenGLES2Driver)
+};
+
+// Get backend name as string
+inline std::string backendName(RenderingBackend backend) {
+    switch (backend) {
+        case RenderingBackend::Software: return "Software";
+        case RenderingBackend::OpenGL:   return "OpenGL";
+        case RenderingBackend::GLES2:    return "GLES2";
+        default:                         return "Unknown";
+    }
+}
+
 // Preset configurations for different hardware classes
 enum class ConstrainedRenderingPreset {
-    Max,        // No practical limits (modern hardware) - default
     Voodoo1,    // 2MB FBI, 2MB TMU, 256x256 max, 16-bit, 640x480 max
     Voodoo2,    // 4MB FBI, 8MB TMU, 256x256 max, 16-bit, 800x600 max
     TNT,        // 8MB FBI, 16MB TMU, 512x512 max, 16-bit, 1024x768 max
@@ -21,7 +37,22 @@ enum class ConstrainedRenderingPreset {
 // Configuration for resource-constrained rendering
 // Enforces hard memory limits for both framebuffer and texture memory
 struct ConstrainedRendererConfig {
-    bool enabled = true;
+    // Rendering backend and display mode
+    RenderingBackend renderingBackend = RenderingBackend::Software;
+    bool useDRM = false;           // Use DRM/KMS framebuffer device (no X11)
+
+    // Rendering feature toggles (startup defaults, may be overridden at runtime)
+    bool fog = true;
+    bool wireframe = false;
+    bool frontToBackSorting = false;
+    bool portalOcclusion = false;
+    bool playerLight = true;
+    bool objectLights = true;
+    bool directionalLight = true;
+    bool fireEffects = true;
+    bool skyRendering = true;
+    bool nameTagsEnabled = true;
+    bool frameTimingEnabled = false;
 
     // Framebuffer memory (determines max resolution)
     // Includes: front buffer + back buffer + depth-stencil buffer
@@ -59,7 +90,6 @@ struct ConstrainedRendererConfig {
     bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
     bool enableShaders = false;              // Use GLSL shaders for fog/lighting/tint
     bool enableTextureAtlas = false;         // Use pre-built ETC1 atlas files for zone textures
-    bool useGLES2 = false;                   // Use GLES2 backend (COpenGLES2Driver) instead of desktop GL
     std::string atlasPath;                   // Directory containing .atlas files
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
     int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)

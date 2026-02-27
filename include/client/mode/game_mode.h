@@ -58,11 +58,7 @@ struct ModeConfig {
     std::string eqClientPath;  // Path to EQ client files
 
     // Rendering options (for graphical mode)
-    bool softwareRenderer = true;  // Use software rendering (no GPU)
-    bool wireframe = false;
-    bool fog = true;
     bool lighting = false;
-    bool showNameTags = true;
 
     // Console options (for headless mode)
     bool verbose = false;          // Show entity spawn/despawn

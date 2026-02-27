@@ -30,11 +30,7 @@ bool GraphicalMode::initialize(state::GameState& state, const ModeConfig& config
     rendererConfig.fullscreen = config.fullscreen;
     rendererConfig.windowTitle = config.windowTitle;
     rendererConfig.eqClientPath = config.eqClientPath;
-    rendererConfig.softwareRenderer = (m_rendererType == GraphicalRendererType::IrrlichtSoftware);
-    rendererConfig.wireframe = config.wireframe;
-    rendererConfig.fog = config.fog;
     rendererConfig.lighting = config.lighting;
-    rendererConfig.showNameTags = config.showNameTags;
 
 #ifdef EQT_HAS_GRAPHICS
     // When IrrlichtRenderer is adapted, create it here based on m_rendererType

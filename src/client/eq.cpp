@@ -18070,14 +18070,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
-	config.softwareRenderer = !m_use_opengl;  // Use software renderer unless OpenGL requested
-	config.useDRM = m_use_drm;  // DRM/KMS framebuffer device (no X11)
-	config.useGLES2 = m_use_gles2;  // GLES2 backend (auto-detected from preset or --gles2)
 	config.eqClientPath = m_eq_client_path;
 	config.windowTitle = "WillEQ - " + m_character;
-	config.fog = true;
 	config.lighting = false;  // Fullbright mode
-	config.showNameTags = true;
 	config.constrainedPreset = m_constrained_preset;  // Constrained rendering mode (startup-only)
 	if (m_constrained_config) {
 		config.constrainedPreset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
@@ -19782,7 +19777,7 @@ void EverQuest::InitializeAudio() {
 		LOG_INFO(MOD_AUDIO, "Audio memory constraints: soundCache={}KB, lazyPfs={}",
 			m_constrained_config->soundBufferCacheBytes / 1024,
 			m_constrained_config->lazyPfsLoading ? "yes" : "no");
-	} else if (m_constrained_preset != EQT::Graphics::ConstrainedRenderingPreset::Max) {
+	} else {
 		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(m_constrained_preset);
 		if (cfg.totalMemoryBudgetBytes > 0) {
 			m_audio_manager->setMemoryConstraints(cfg.soundBufferCacheBytes, cfg.lazyPfsLoading);

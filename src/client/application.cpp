@@ -185,34 +185,62 @@ bool Application::initialize(const ApplicationConfig& config) {
     m_graphicsInitialized = false;
     if (config.graphicsEnabled && config.operatingMode == mode::OperatingMode::GraphicalInteractive) {
         if (!config.eqClientPath.empty()) {
-            // Apply constrained rendering and OpenGL settings before init
-            if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
-                m_eqClient->SetUseOpenGL(true);
-            }
-            if (config.useDRM) {
-                m_eqClient->SetUseDRM(true);
-            }
-            if (config.useGLES2) {
-                m_eqClient->SetUseGLES2(true);
-            }
-            if (!config.constrainedPreset.empty()) {
-                EQT::Graphics::ConstrainedRendererConfig customConfig;
-                if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, customConfig)) {
-                    // Try loading JSON overrides on top of memory-spec config
-                    customConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
-                    if (!config.atlasPath.empty()) customConfig.atlasPath = config.atlasPath;
-                    m_eqClient->SetConstrainedConfig(customConfig);
+            // Build constrained config: preset → JSON overrides → CLI overrides
+            {
+                EQT::Graphics::ConstrainedRendererConfig builtConfig;
+                bool customMemorySpec = false;
+
+                if (!config.constrainedPreset.empty()) {
+                    if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
+                        customMemorySpec = true;
+                        builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    } else {
+                        auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
+                        builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
+                        builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    }
                 } else {
-                    auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
-                    auto presetConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
-                    // Apply JSON overrides on top of preset defaults
-                    presetConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
-                    if (!config.atlasPath.empty()) presetConfig.atlasPath = config.atlasPath;
-                    m_eqClient->SetConstrainedConfig(presetConfig);
+                    // Default to OrangePi preset
+                    builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+                        EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
+                    builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
                 }
-            } else {
-                // Default to Max preset (no practical limits)
-                m_eqClient->SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset::Max);
+
+                // CLI overrides: --opengl/--gpu sets backend to OpenGL
+                if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
+                    builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
+                }
+                // CLI override: --gles2 sets backend to GLES2
+                if (config.useGLES2) {
+                    builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::GLES2;
+                }
+                // CLI override: --drm sets DRM mode
+                if (config.useDRM) {
+                    builtConfig.useDRM = true;
+                }
+                // CLI override: --atlas-path
+                if (!config.atlasPath.empty()) {
+                    builtConfig.atlasPath = config.atlasPath;
+                }
+
+                // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
+#ifndef EQT_HAS_GLES2
+                if (builtConfig.renderingBackend == EQT::Graphics::RenderingBackend::GLES2) {
+                    LOG_WARN(MOD_GRAPHICS, "GLES2 backend requested but EQT_HAS_GLES2 not defined; falling back to OpenGL");
+                    builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
+                }
+#endif
+
+                m_eqClient->SetConstrainedConfig(builtConfig);
+
+                // Derive graphicalRendererType for mode creation
+                if (builtConfig.renderingBackend != EQT::Graphics::RenderingBackend::Software) {
+                    m_config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
+                }
+
+                LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
+                         EQT::Graphics::backendName(builtConfig.renderingBackend),
+                         builtConfig.useDRM ? "yes" : "no");
             }
 
             LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
@@ -841,8 +869,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
-            std::cout << "  --opengl, --gpu          Use OpenGL renderer (default: software)\n";
-            std::cout << "  --constrained <preset|NxNxN>  Constrained rendering (voodoo1, voodoo2, tnt, orangepi, or 128x32x4)\n";
+            std::cout << "  --opengl, --gpu          Override backend to OpenGL\n";
+            std::cout << "  --constrained <preset|NxNxN>  Rendering preset (default: orangepi; voodoo1, voodoo2, tnt, orangepi, or 128x32x4)\n";
             std::cout << "  --atlas-path <dir>       Directory containing .atlas texture atlas files\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
             std::cout << "  --gles2                  Use OpenGL ES 2.0 backend (auto on DRM+OrangePi)\n";

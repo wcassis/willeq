@@ -464,22 +464,24 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
                  targetFps, governor_->getTargetFrameTimeMs());
     }
 
-    // Choose driver type
+    // Choose driver type from constrained config backend
     irr::video::E_DRIVER_TYPE driverType;
-    bool useGLES2 = config.useGLES2 || config_.constrainedConfig.useGLES2;
-    if (config.softwareRenderer) {
-        driverType = irr::video::EDT_BURNINGSVIDEO;
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: Burnings Software (--opengl not set)");
-    }
+    switch (config_.constrainedConfig.renderingBackend) {
 #ifdef EQT_HAS_GLES2
-    else if (useGLES2) {
-        driverType = irr::video::EDT_OGLES2;
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL ES 2.0 (GLES2 mode)");
-    }
+        case RenderingBackend::GLES2:
+            driverType = irr::video::EDT_OGLES2;
+            LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL ES 2.0 (GLES2 backend)");
+            break;
 #endif
-    else {
-        driverType = irr::video::EDT_OPENGL;
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL (--opengl flag set)");
+        case RenderingBackend::OpenGL:
+            driverType = irr::video::EDT_OPENGL;
+            LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL");
+            break;
+        case RenderingBackend::Software:
+        default:
+            driverType = irr::video::EDT_BURNINGSVIDEO;
+            LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: Burnings Software");
+            break;
     }
 
     // Create device
@@ -493,7 +495,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
 #ifdef EQT_HAS_DRM
     // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
-    if (config.useDRM) {
+    if (config_.constrainedConfig.useDRM) {
         params.DeviceType = irr::EIDT_FRAMEBUFFER;
         LOG_INFO(MOD_GRAPHICS, "[GL] Using DRM/KMS framebuffer device (no X11)");
     }
@@ -503,7 +505,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
               config.width, config.height, config.fullscreen, true,
               config_.constrainedConfig.enableStencilBuffer,
               config_.constrainedConfig.antiAliasLevel);
-    if (!config.useDRM) {
+    if (!config_.constrainedConfig.useDRM) {
         LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
     }
 
@@ -511,7 +513,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
 
     if (!device_) {
         LOG_WARN(MOD_GRAPHICS, "[GL] Failed to create device with {} driver, falling back to software",
-                 config.softwareRenderer ? "Burnings" : "OpenGL");
+                 backendName(config_.constrainedConfig.renderingBackend));
         // Fall back to basic software renderer
         params.DriverType = irr::video::EDT_SOFTWARE;
         device_ = irr::createDeviceEx(params);
@@ -535,7 +537,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     logDriverDetails(driver_, device_, params);
 
     // In DRM mode, enable and create software cursor (no hardware cursor available)
-    if (config_.useDRM && device_->getCursorControl()) {
+    if (config_.constrainedConfig.useDRM && device_->getCursorControl()) {
         device_->getCursorControl()->setVisible(true);
     }
     createSoftwareCursor();
@@ -571,7 +573,8 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     setupLighting();
 
     // Initialize GLSL shader pipeline (if enabled and driver supports it)
-    if (config_.constrainedConfig.enableShaders && !config_.softwareRenderer) {
+    if (config_.constrainedConfig.enableShaders &&
+        config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
         auto* gpu = driver_->getGPUProgrammingServices();
         if (gpu) {
             zoneShader_ = std::make_unique<ZoneShaderManager>(driver_, gpu);
@@ -588,7 +591,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create entity renderer
     entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
     entityRenderer_->setClientPath(config.eqClientPath);
-    entityRenderer_->setNameTagsVisible(config.showNameTags);
+    entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
     entityRenderer_->setRenderDistance(renderDistance_);
 
     // Pass constrained config to entity renderer for visibility limits
@@ -644,9 +647,9 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // This prevents crash-causing systems (e.g. boids on ARM) from initializing
     // when the user has disabled them in settings.
 
-    // Apply initial settings
-    wireframeMode_ = config.wireframe;
-    fogEnabled_ = config.fog;
+    // Apply initial settings from constrained config
+    wireframeMode_ = config_.constrainedConfig.wireframe;
+    fogEnabled_ = config_.constrainedConfig.fog;
     lightingEnabled_ = config.lighting;
 
     initialized_ = true;
@@ -685,22 +688,24 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
                  targetFps, governor_->getTargetFrameTimeMs());
     }
 
-    // Choose driver type
+    // Choose driver type from constrained config backend
     irr::video::E_DRIVER_TYPE driverType;
-    bool loadingUseGLES2 = config.useGLES2 || config_.constrainedConfig.useGLES2;
-    if (config.softwareRenderer) {
-        driverType = irr::video::EDT_BURNINGSVIDEO;
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: Burnings Software");
-    }
+    switch (config_.constrainedConfig.renderingBackend) {
 #ifdef EQT_HAS_GLES2
-    else if (loadingUseGLES2) {
-        driverType = irr::video::EDT_OGLES2;
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL ES 2.0");
-    }
+        case RenderingBackend::GLES2:
+            driverType = irr::video::EDT_OGLES2;
+            LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL ES 2.0");
+            break;
 #endif
-    else {
-        driverType = irr::video::EDT_OPENGL;
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL");
+        case RenderingBackend::OpenGL:
+            driverType = irr::video::EDT_OPENGL;
+            LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL");
+            break;
+        case RenderingBackend::Software:
+        default:
+            driverType = irr::video::EDT_BURNINGSVIDEO;
+            LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: Burnings Software");
+            break;
     }
 
     // Create device
@@ -714,7 +719,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
 #ifdef EQT_HAS_DRM
     // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
-    if (config.useDRM) {
+    if (config_.constrainedConfig.useDRM) {
         params.DeviceType = irr::EIDT_FRAMEBUFFER;
         LOG_INFO(MOD_GRAPHICS, "[GL] Loading screen: using DRM/KMS framebuffer device");
     }
@@ -724,7 +729,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
               config.width, config.height, config.fullscreen, true,
               config_.constrainedConfig.enableStencilBuffer,
               config_.constrainedConfig.antiAliasLevel);
-    if (!config.useDRM) {
+    if (!config_.constrainedConfig.useDRM) {
         LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
     }
 
@@ -732,7 +737,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     if (!device_) {
         LOG_WARN(MOD_GRAPHICS, "[GL] Failed to create device with {} driver, falling back to software",
-                 config.softwareRenderer ? "Burnings" : "OpenGL");
+                 backendName(config_.constrainedConfig.renderingBackend));
         params.DriverType = irr::video::EDT_SOFTWARE;
         device_ = irr::createDeviceEx(params);
     }
@@ -754,7 +759,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     logDriverDetails(driver_, device_, params);
 
     // In DRM mode, enable and create software cursor (no hardware cursor available)
-    if (config_.useDRM && device_->getCursorControl()) {
+    if (config_.constrainedConfig.useDRM && device_->getCursorControl()) {
         device_->getCursorControl()->setVisible(true);
     }
     createSoftwareCursor();
@@ -790,7 +795,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     setupLighting();
 
     // Initialize GLSL shader pipeline (if enabled and driver supports it)
-    if (config_.constrainedConfig.enableShaders && !config_.softwareRenderer) {
+    if (config_.constrainedConfig.enableShaders &&
+        config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
         auto* gpu = driver_->getGPUProgrammingServices();
         if (gpu) {
             zoneShader_ = std::make_unique<ZoneShaderManager>(driver_, gpu);
@@ -804,9 +810,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Setup HUD (needed for loading screen text)
     setupHUD();
 
-    // Apply initial settings
-    wireframeMode_ = config.wireframe;
-    fogEnabled_ = config.fog;
+    // Apply initial settings from constrained config
+    wireframeMode_ = config_.constrainedConfig.wireframe;
+    fogEnabled_ = config_.constrainedConfig.fog;
     lightingEnabled_ = config.lighting;
 
     // NOTE: We do NOT create entity renderer or load models here.
@@ -918,7 +924,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     if (!entityRenderer_) {
         entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
         entityRenderer_->setClientPath(config_.eqClientPath);
-        entityRenderer_->setNameTagsVisible(config_.showNameTags);
+        entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
         entityRenderer_->setRenderDistance(renderDistance_);
         // Pass constrained config to entity renderer for visibility limits
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
@@ -1167,7 +1173,7 @@ void IrrlichtRenderer::requestQuit() {
 }
 
 void IrrlichtRenderer::createSoftwareCursor() {
-    if (!driver_ || !config_.useDRM) return;
+    if (!driver_ || !config_.constrainedConfig.useDRM) return;
 
     // Create an 8x10 arrow cursor texture with alpha transparency
     const int W = 8, H = 10;
@@ -2529,7 +2535,7 @@ void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float play
     if (!entityRenderer_ && smgr_ && driver_ && device_) {
         entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
         entityRenderer_->setClientPath(config_.eqClientPath);
-        entityRenderer_->setNameTagsVisible(config_.showNameTags);
+        entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
         entityRenderer_->setRenderDistance(renderDistance_);
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
         if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -3438,7 +3444,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (!entityRenderer_) {
             entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
             entityRenderer_->setClientPath(config_.eqClientPath);
-            entityRenderer_->setNameTagsVisible(config_.showNameTags);
+            entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
             entityRenderer_->setRenderDistance(renderDistance_);
             entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
             if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -6586,12 +6592,10 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
             input.entitySnapshots.push_back(snap);
         }
 
-        // Entity culling config
-        if (config_.constrainedConfig.enabled) {
-            input.entityRenderDistance = config_.constrainedConfig.entityRenderDistance;
-            input.maxVisibleEntities = config_.constrainedConfig.maxVisibleEntities;
-            input.entityCullingEnabled = true;
-        }
+        // Entity culling config (always active)
+        input.entityRenderDistance = config_.constrainedConfig.entityRenderDistance;
+        input.maxVisibleEntities = config_.constrainedConfig.maxVisibleEntities;
+        input.entityCullingEnabled = true;
 
         // Name tag visibility config
         input.nameTagDistance = entityRenderer_->getNameTagDistance();
@@ -6821,6 +6825,17 @@ void IrrlichtRenderer::applySimulationResults() {
             protectedRegions_.clear();
             protectedRegions_.insert(results->protectedRegions.begin(),
                                      results->protectedRegions.end());
+        }
+
+        // Apply sorted region draw list for front-to-back zone rendering
+        if (manualZoneDrawEnabled_ && !results->sortedRegions.empty()) {
+            sortedZoneDrawList_.clear();
+            sortedZoneDrawList_.reserve(results->sortedRegions.size());
+            for (const auto& sr : results->sortedRegions) {
+                auto it = regionMeshNodes_.find(sr.regionIdx);
+                irr::scene::IMeshSceneNode* node = (it != regionMeshNodes_.end()) ? it->second : nullptr;
+                sortedZoneDrawList_.push_back({sr.regionIdx, sr.distanceSq, node});
+            }
         }
     }
 
@@ -7527,7 +7542,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
         // RED STATE: Full diagnostic dump — every section, every frame, so we can
         // trace exactly which subsystem is the budget hog and eliminate it.
-        if (config_.constrainedConfig.enabled && governor_ &&
+        if (governor_ &&
             governor_->getState() == BudgetState::Red) {
             struct SectionCost { const char* name; int64_t us; };
             SectionCost sections[] = {
@@ -7581,7 +7596,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             }
         }
         // Yellow/Green budget violation: condensed top-3 warning
-        else if (config_.constrainedConfig.enabled && totalFrameMs > budgetMs * 1.2f) {
+        else if (totalFrameMs > budgetMs * 1.2f) {
             struct SectionCost { const char* name; int64_t us; };
             SectionCost sections[] = {
                 {"playerMovement", frameTimings_.playerMovement},
@@ -8720,7 +8735,7 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
 #ifdef EQT_HAS_DRM
     // DRM/EGL: Irrlicht's createScreenShot() reads GL_FRONT which doesn't exist
     // in EGL (only GLX has separate front/back read targets).  Read GL_BACK instead.
-    if (config_.useDRM) {
+    if (config_.constrainedConfig.useDRM) {
         irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
         uint32_t w = screenSize.Width;
         uint32_t h = screenSize.Height;
@@ -8814,8 +8829,8 @@ void IrrlichtRenderer::toggleAllUI() {
 
 void IrrlichtRenderer::toggleNameTags() {
     if (entityRenderer_) {
-        bool visible = !config_.showNameTags;
-        config_.showNameTags = visible;
+        bool visible = !config_.constrainedConfig.nameTagsEnabled;
+        config_.constrainedConfig.nameTagsEnabled = visible;
         entityRenderer_->setNameTagsVisible(visible);
         LOG_INFO(MOD_GRAPHICS, "Name tags: {}", (visible ? "ON" : "OFF"));
     }
@@ -12855,7 +12870,7 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
         size_t totalFb = config_.constrainedConfig.calculateFramebufferUsage(
             static_cast<int>(screenSize.Width), static_cast<int>(screenSize.Height));
         totalEstimate += totalFb;
-        int colorBpp = (isConstrainedMode() && config_.constrainedConfig.colorDepthBits == 16) ? 16 : 32;
+        int colorBpp = (config_.constrainedConfig.colorDepthBits == 16) ? 16 : 32;
         lines.push_back(fmt::format("[Framebuffer] {} ({}x{}, {}bpp color, D24S8)",
             formatBytes(totalFb), screenSize.Width, screenSize.Height, colorBpp));
     }

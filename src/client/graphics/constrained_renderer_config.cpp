@@ -1,4 +1,5 @@
 #include "client/graphics/constrained_renderer_config.h"
+#include "common/logging.h"
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -96,7 +97,6 @@ size_t ConstrainedRendererConfig::calculateFramebufferUsage(int width, int heigh
 
 std::string ConstrainedRendererConfig::presetName(ConstrainedRenderingPreset preset) {
     switch (preset) {
-        case ConstrainedRenderingPreset::Max:     return "Max";
         case ConstrainedRenderingPreset::Voodoo1: return "Voodoo1";
         case ConstrainedRenderingPreset::Voodoo2: return "Voodoo2";
         case ConstrainedRenderingPreset::TNT:      return "TNT";
@@ -113,7 +113,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
         case ConstrainedRenderingPreset::Voodoo1:
             // 3dfx Voodoo 1: 2MB FBI + 2MB TMU
             // Very constrained - use 64x64 textures to fit ~128 textures in 2MB
-            config.enabled = true;
+            config.renderingBackend = RenderingBackend::Software;
             config.framebufferMemoryBytes = 2 * 1024 * 1024;  // 2MB
             config.textureMemoryBytes = 2 * 1024 * 1024;      // 2MB
             config.colorDepthBits = 16;
@@ -132,7 +132,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
         case ConstrainedRenderingPreset::Voodoo2:
             // 3dfx Voodoo 2: 4MB FBI + 8MB TMU (with SLI could be more)
             // Use 128x128 textures to fit ~128 textures in 8MB
-            config.enabled = true;
+            config.renderingBackend = RenderingBackend::Software;
             config.framebufferMemoryBytes = 4 * 1024 * 1024;  // 4MB
             config.textureMemoryBytes = 8 * 1024 * 1024;      // 8MB
             config.colorDepthBits = 16;
@@ -150,7 +150,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
 
         case ConstrainedRenderingPreset::TNT:
             // NVIDIA RIVA TNT: unified memory, typically 16MB total
-            config.enabled = true;
+            config.renderingBackend = RenderingBackend::OpenGL;
             config.framebufferMemoryBytes = 8 * 1024 * 1024;   // 8MB for framebuffer
             config.textureMemoryBytes = 16 * 1024 * 1024;      // 16MB for textures
             config.colorDepthBits = 16;
@@ -162,6 +162,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.maxPolygonsPerFrame = 100000;
             // GPU feature flags
             config.enableMipmaps = true;
+            config.enableShaders = true;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             config.meshMemoryBytes = 16 * 1024 * 1024;  // 16MB mesh cache
@@ -173,7 +174,12 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // 10MB framebuffer: 1280x720 @ 16-bit + D24S8 = 7.03MB + headroom for FBO RTTs
             // (MSAA is free on tile-based Mali 400 — resolved in on-chip tile SRAM)
             // 64MB texture budget: 512x512 textures with mipmaps = ~349KB each, ~187 textures
-            config.enabled = true;
+#ifdef EQT_HAS_GLES2
+            config.renderingBackend = RenderingBackend::GLES2;
+#else
+            config.renderingBackend = RenderingBackend::OpenGL;
+#endif
+            config.useDRM = true;
             config.framebufferMemoryBytes = 10 * 1024 * 1024;  // 10MB
             config.textureMemoryBytes = 64 * 1024 * 1024;      // 64MB
             config.colorDepthBits = 16;
@@ -197,9 +203,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableShaders = true;
             config.enableCompressedTextures = false;  // Mali 400 via Lima software-decodes S3TC; no GPU savings, extra CPU cost
             config.enableTextureAtlas = true;  // Use ETC1-compressed atlas files (Mali 400 hardware ETC1 decode)
-#ifdef EQT_HAS_GLES2
-            config.useGLES2 = true;  // Native GLES2 backend for Mali 400
-#endif
             config.antiAliasLevel = 4;
             config.anisotropicFilterLevel = 4;
             // System RAM budget
@@ -211,31 +214,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             break;
 
         case ConstrainedRenderingPreset::Custom:
-            // Custom: enabled but use default values, caller should override
-            config.enabled = true;
-            break;
-
-        case ConstrainedRenderingPreset::Max:
         default:
-            // Max: no practical limits (modern hardware)
-            config.enabled = true;
-            config.framebufferMemoryBytes = 256 * 1024 * 1024;  // 256MB
-            config.textureMemoryBytes = 256 * 1024 * 1024;      // 256MB
-            config.colorDepthBits = 32;
-            config.maxTextureDimension = 4096;
-            config.clipDistance = 99999.0f;
-            config.entityRenderDistance = 99999.0f;
-            config.maxVisibleEntities = 10000;
-            config.maxPolygonsPerFrame = 10000000;
-            config.occlusionBufferWidth = 256;
-            config.occlusionBufferHeight = 128;
-            config.occlusionMaxOccluderRegions = 64;
-            // GPU feature flags
-            config.enableMipmaps = true;
-            config.enableNPOT = true;
-            config.enableStencilBuffer = true;
-            config.enableShaders = true;
-            config.totalMemoryBudgetBytes = 0;  // No RAM constraint
+            // Custom: use default values, caller should override
             break;
     }
 
@@ -268,11 +248,15 @@ ConstrainedRenderingPreset ConstrainedRendererConfig::parsePreset(const std::str
         return ConstrainedRenderingPreset::Custom;
     }
     if (lower == "max" || lower == "none" || lower == "off" || lower == "disabled") {
-        return ConstrainedRenderingPreset::Max;
+        LOG_WARN(MOD_GRAPHICS, "Preset '{}' is deprecated, mapping to OrangePi", name);
+        return ConstrainedRenderingPreset::OrangePi;
     }
 
-    // Unrecognized preset name
-    return ConstrainedRenderingPreset::Max;
+    // Unrecognized preset name — default to OrangePi
+    if (!lower.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "Unknown preset '{}', defaulting to OrangePi", name);
+    }
+    return ConstrainedRenderingPreset::OrangePi;
 }
 
 bool ConstrainedRendererConfig::parseMemorySpec(const std::string& spec, ConstrainedRendererConfig& outConfig) {
@@ -288,7 +272,6 @@ bool ConstrainedRendererConfig::parseMemorySpec(const std::string& spec, Constra
         return false;
     }
 
-    outConfig.enabled = true;
     outConfig.totalMemoryBudgetBytes = static_cast<size_t>(totalMB) * 1024 * 1024;
     outConfig.textureMemoryBytes = static_cast<size_t>(texMB) * 1024 * 1024;
     outConfig.framebufferMemoryBytes = static_cast<size_t>(fbMB) * 1024 * 1024;
@@ -403,8 +386,6 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableShaders = preset["enableShaders"].asBool();
     if (preset.isMember("enableTextureAtlas"))
         enableTextureAtlas = preset["enableTextureAtlas"].asBool();
-    if (preset.isMember("useGLES2"))
-        useGLES2 = preset["useGLES2"].asBool();
     if (preset.isMember("atlasPath"))
         atlasPath = preset["atlasPath"].asString();
     if (preset.isMember("antiAliasLevel"))
@@ -417,6 +398,48 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         meshMemoryBytes = static_cast<size_t>(preset["meshMemoryBytes"].asUInt64());
     if (preset.isMember("targetFps"))
         targetFps = preset["targetFps"].asFloat();
+
+    // Rendering backend
+    if (preset.isMember("renderingBackend")) {
+        std::string backend = preset["renderingBackend"].asString();
+        std::string lowerBackend = backend;
+        std::transform(lowerBackend.begin(), lowerBackend.end(), lowerBackend.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (lowerBackend == "software") renderingBackend = RenderingBackend::Software;
+        else if (lowerBackend == "opengl" || lowerBackend == "gl") renderingBackend = RenderingBackend::OpenGL;
+        else if (lowerBackend == "gles2" || lowerBackend == "opengles2") renderingBackend = RenderingBackend::GLES2;
+    } else if (preset.isMember("useGLES2") && preset["useGLES2"].asBool()) {
+        // Backward compatibility: "useGLES2": true → GLES2 backend
+        renderingBackend = RenderingBackend::GLES2;
+    }
+
+    // Display mode
+    if (preset.isMember("useDRM"))
+        useDRM = preset["useDRM"].asBool();
+
+    // Rendering feature toggles
+    if (preset.isMember("fog"))
+        fog = preset["fog"].asBool();
+    if (preset.isMember("wireframe"))
+        wireframe = preset["wireframe"].asBool();
+    if (preset.isMember("frontToBackSorting"))
+        frontToBackSorting = preset["frontToBackSorting"].asBool();
+    if (preset.isMember("portalOcclusion"))
+        portalOcclusion = preset["portalOcclusion"].asBool();
+    if (preset.isMember("playerLight"))
+        playerLight = preset["playerLight"].asBool();
+    if (preset.isMember("objectLights"))
+        objectLights = preset["objectLights"].asBool();
+    if (preset.isMember("directionalLight"))
+        directionalLight = preset["directionalLight"].asBool();
+    if (preset.isMember("fireEffects"))
+        fireEffects = preset["fireEffects"].asBool();
+    if (preset.isMember("skyRendering"))
+        skyRendering = preset["skyRendering"].asBool();
+    if (preset.isMember("nameTagsEnabled"))
+        nameTagsEnabled = preset["nameTagsEnabled"].asBool();
+    if (preset.isMember("frameTimingEnabled"))
+        frameTimingEnabled = preset["frameTimingEnabled"].asBool();
 
     return true;
 }

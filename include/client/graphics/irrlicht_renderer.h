@@ -394,22 +394,15 @@ struct RendererConfig {
     int width = 800;
     int height = 600;
     bool fullscreen = false;
-    bool softwareRenderer = true;  // Use Burnings software renderer by default (no GPU)
-    bool useDRM = false;           // Use DRM/KMS framebuffer device (no X11)
-    bool useGLES2 = false;         // Use GLES2 backend (COpenGLES2Driver)
     std::string windowTitle = "WillEQ";
     std::string eqClientPath;      // Path to EQ client files
 
     // Rendering options
-    bool wireframe = false;
-    bool fog = true;
     bool lighting = false;         // Fullbright mode by default
-    bool showNameTags = true;
     float ambientIntensity = 0.4f;
 
-    // Constrained rendering mode (startup-only, cannot change at runtime)
-    // When enabled, enforces memory limits for texture and framebuffer
-    ConstrainedRenderingPreset constrainedPreset = ConstrainedRenderingPreset::Max;
+    // Constrained rendering config (always active, default OrangePi preset)
+    ConstrainedRenderingPreset constrainedPreset = ConstrainedRenderingPreset::OrangePi;
     ConstrainedRendererConfig constrainedConfig;
 };
 
@@ -912,7 +905,7 @@ public:
     void setRenderDistance(float distance) {
         userRenderDistance_ = distance;
         // Cap effective render distance by constrained preset's clip distance
-        if (config_.constrainedConfig.enabled && config_.constrainedConfig.clipDistance > 0.0f) {
+        if (config_.constrainedConfig.clipDistance > 0.0f) {
             distance = std::min(distance, config_.constrainedConfig.clipDistance);
         }
         // Cap effective render distance by server-provided zone max clip plane
@@ -1100,9 +1093,6 @@ public:
 
     // Frame budget governor access (always available after init)
     FrameBudgetGovernor* getGovernor() { return governor_.get(); }
-
-    // Check if constrained rendering mode is active
-    bool isConstrainedMode() const { return config_.constrainedConfig.enabled; }
 
     // Check if deferred asset loading is enabled
     bool isDeferredAssetLoading() const { return config_.constrainedConfig.deferredAssetLoading; }

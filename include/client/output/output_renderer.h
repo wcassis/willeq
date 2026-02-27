@@ -27,11 +27,7 @@ struct RendererConfig {
     std::string eqClientPath;  // Path to EQ client files
 
     // Rendering options
-    bool softwareRenderer = true;   // Use software rendering (no GPU)
-    bool wireframe = false;
-    bool fog = true;
     bool lighting = false;
-    bool showNameTags = true;
 
     // Console-specific options
     bool verbose = false;           // Show spawn/despawn messages
