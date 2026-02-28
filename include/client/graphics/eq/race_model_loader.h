@@ -211,26 +211,6 @@ public:
     void addMeshRef(uint16_t raceId, uint8_t gender);
     void removeMeshRef(uint16_t raceId, uint8_t gender);
 
-    // Accept pre-built global assets from background thread (avoids re-parsing archives)
-    void adoptGlobalAssets(
-        std::vector<std::shared_ptr<CharacterModel>>&& globalCharacters,
-        std::map<std::string, std::shared_ptr<TextureInfo>>&& globalTextures,
-        std::map<int, std::vector<std::shared_ptr<CharacterModel>>>&& numberedGlobalCharacters,
-        std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>>&& numberedGlobalTextures,
-        std::map<std::string, ArmorTextureRef>&& armorTextureIndex);
-
-    // Thread-safe static loaders (no GL, no Irrlicht — for background thread)
-    static bool loadGlobalModelsStatic(const std::string& clientPath,
-        std::vector<std::shared_ptr<CharacterModel>>& outCharacters,
-        std::map<std::string, std::shared_ptr<TextureInfo>>& outTextures);
-
-    static bool loadNumberedGlobalModelsStatic(const std::string& clientPath,
-        std::map<int, std::vector<std::shared_ptr<CharacterModel>>>& outCharacters,
-        std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>>& outTextures);
-
-    static bool loadArmorTextureIndexStatic(const std::string& clientPath,
-        std::map<std::string, ArmorTextureRef>& outIndex);
-
     // Set maximum cached _chr.s3d entries (0 = unlimited)
     void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
 

@@ -64,6 +64,7 @@ namespace Graphics {
     class IrrlichtRenderer;
     struct PlayerPositionUpdate;
     enum class ConstrainedRenderingPreset;
+    enum class ManualLoadStep : uint8_t;
 }
 }
 #include "client/graphics/constrained_renderer_config.h"
@@ -1573,6 +1574,11 @@ private:
 	// Command registry for chat commands
 	std::unique_ptr<eqt::ui::CommandRegistry> m_command_registry;
 	void RegisterCommands();  // Initialize all chat commands
+
+	// Manual zone load diagnostics helpers
+	void runPmemDiagnostics(const std::string& label);
+	void runLoadDiagnostics(const std::string& label);
+	static EQT::Graphics::ManualLoadStep parseManualLoadStep(const std::string& arg);
 
 	// Player mode loot state
 	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted in Player mode (0 = not looting)

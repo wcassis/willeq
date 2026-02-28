@@ -152,14 +152,6 @@ struct PendingZoneComputations {
     // Archive index built on background thread (deferred asset loading only)
     std::unique_ptr<GraphicsArchiveIndex> archiveIndex;
 
-    // Equipment index built on background thread
-    struct EquipmentIndexData {
-        std::map<int, EquipmentModelLoader::EquipmentModelRef> modelIndex;
-        std::map<std::string, EquipmentModelLoader::EquipmentTextureRef> textureIndex;
-        std::map<uint32_t, int> itemToModelMap;
-    };
-    std::unique_ptr<EquipmentIndexData> equipmentIndex;
-
     // Sky data loaded on background thread (sky.s3d + sky.ini — no GL)
     struct SkyLoadData {
         std::unique_ptr<SkyLoader> skyLoader;
@@ -179,16 +171,6 @@ struct PendingZoneComputations {
         std::unique_ptr<PrecomputedSkyDome> precomputedDome;
     };
     std::unique_ptr<SkyLoadData> skyLoadData;
-
-    // Global character assets built on background thread
-    struct GlobalAssetsData {
-        std::vector<std::shared_ptr<CharacterModel>> globalCharacters;
-        std::map<std::string, std::shared_ptr<TextureInfo>> globalTextures;
-        std::map<int, std::vector<std::shared_ptr<CharacterModel>>> numberedGlobalCharacters;
-        std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>> numberedGlobalTextures;
-        std::map<std::string, RaceModelLoader::ArmorTextureRef> armorTextureIndex;
-    };
-    std::unique_ptr<GlobalAssetsData> globalAssets;
 
     // Atlas preload data (file I/O + tile lookup on background thread, GL upload on main thread)
     TextureAtlas::PreloadData zoneAtlasPreload;
@@ -269,6 +251,27 @@ enum class BackgroundZoneLoadPhase : uint8_t {
     EntityLoading,           // Mark complete
     Complete                 // Done
 };
+
+// Manual zone load steps — each groups multiple BackgroundZoneLoadPhases
+// Used by /load command for step-by-step zone loading with diagnostics
+enum class ManualLoadStep : uint8_t {
+    None,
+    S3d,        // Spawns bg thread → Loading → DataReady_Notify
+    Data,       // DataReady_Notify → DataReady_ModelView → DataReady_Env_SkyPrepare
+    Sky,        // DataReady_Env_SkyPrepare → DataReady_Env_SkyColors → Atlas_Zone_Upload
+    Atlas,      // Atlas_Zone_Upload → Atlas_Shader → RegionMesh_InstallBsp
+    Regions,    // RegionMesh_InstallBsp → RegionMesh_InstallPortal → Lights_CreateNodes
+    Lights,     // Lights_CreateNodes → Lights_InstallRegions → Objects_Install
+    Objects,    // Objects_Install → Misc_ZoneBounds
+    Misc,       // Misc_ZoneBounds → Misc_ReleaseData → CollisionRebuild
+    Collision,  // CollisionRebuild → EnvironmentInit
+    Env,        // EnvironmentInit (all DeferredInitStep sub-steps) → EntityLoading
+    Entities,   // EntityLoading → Complete
+    All         // Run everything remaining without pausing
+};
+
+// Callback fired when manual load reaches a pause point
+using ManualLoadPauseCallback = std::function<void(const std::string& label)>;
 
 // Vision types affecting zone light visibility
 // Can be upgraded by race, items, or buffs (never downgraded)
@@ -719,6 +722,15 @@ public:
     bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
     // Begin full zone asset loading (called by /loadzone command)
     void beginZoneAssetLoad(const std::string& eqClientPath);
+
+    // Manual step-by-step zone loading (called by /load command)
+    void beginManualZoneLoad(const std::string& eqClientPath);
+    bool advanceManualLoadStep(ManualLoadStep step);  // Returns false on error (wrong order)
+    bool isManualLoadMode() const { return manualLoadMode_; }
+    ManualLoadStep getNextExpectedStep() const;
+    void setManualLoadPauseCallback(ManualLoadPauseCallback cb) { manualLoadPauseCallback_ = std::move(cb); }
+    static const char* phaseToString(BackgroundZoneLoadPhase phase);
+    static const char* manualLoadStepToString(ManualLoadStep step);
 
     // Background BSP preload — loads WLD/BSP data for entity PVS culling during placeholder mode
     void startBspPreload(const std::string& zoneName, const std::string& eqClientPath);
@@ -1328,6 +1340,17 @@ private:
     std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after join
     std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;  // CPU-only results from bg thread
 
+    // Manual load step-by-step state
+    bool manualLoadMode_ = false;
+    ManualLoadStep currentManualStep_ = ManualLoadStep::None;
+    BackgroundZoneLoadPhase manualLoadPauseAt_ = BackgroundZoneLoadPhase::Idle;
+    bool manualLoadPauseReached_ = false;
+    ManualLoadPauseCallback manualLoadPauseCallback_;
+
+    // Manual load step → phase mapping helpers
+    static BackgroundZoneLoadPhase getStepEndPhase(ManualLoadStep step);
+    static BackgroundZoneLoadPhase getStepStartPhase(ManualLoadStep step);
+
     // Background BSP preload (WLD parse + bounding boxes + portals during placeholder mode)
     std::unique_ptr<std::thread> bspPreloadThread_;
     std::atomic<bool> bspPreloadComplete_{false};
@@ -1425,7 +1448,6 @@ private:
     std::function<void()> networkTickCallback_;  // Called between heavy loading stages to pump network
     bool initialized_ = false;
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
-    bool globalAssetsLoaded_ = false;  // True when loadGlobalAssets() has completed
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
     bool environmentInitPending_ = false;  // Deferred init after game becomes playable
     DeferredInitStep deferredInitStep_ = DeferredInitStep::TreeConfig;

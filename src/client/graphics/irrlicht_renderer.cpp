@@ -905,7 +905,6 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     initialized_ = true;
     loadingScreenVisible_ = true;  // Show loading screen by default
-    globalAssetsLoaded_ = false;
     lastFpsTime_ = device_->getTimer()->getTime();
 
     LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer loading screen initialized: {}x{}", config.width, config.height);
@@ -918,7 +917,8 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         return false;
     }
 
-    if (globalAssetsLoaded_) {
+    // loadGlobalAssets() is idempotent — entity renderer check serves as guard
+    if (entityRenderer_) {
         LOG_DEBUG(MOD_GRAPHICS, "Global assets already loaded, skipping");
         return true;
     }
@@ -1057,7 +1057,6 @@ bool IrrlichtRenderer::loadGlobalAssets() {
                                       entityRenderer_->getEquipmentModelLoader());
     }
 
-    globalAssetsLoaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "Global assets loaded successfully");
     return true;
 }
@@ -1147,7 +1146,6 @@ void IrrlichtRenderer::shutdown() {
     hotkeysText_ = nullptr;
     initialized_ = false;
     loadingScreenVisible_ = true;
-    globalAssetsLoaded_ = false;
 
     LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer shutdown");
 }
@@ -2636,6 +2634,196 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     LOG_INFO(MOD_GRAPHICS, "Zone asset load initiated for '{}'", currentZoneName_);
 }
 
+// ── Manual step-by-step zone loading ────────────────────────────────────────
+
+const char* IrrlichtRenderer::phaseToString(BackgroundZoneLoadPhase phase) {
+    switch (phase) {
+    case BackgroundZoneLoadPhase::Idle:                     return "Idle";
+    case BackgroundZoneLoadPhase::Pending:                  return "Pending";
+    case BackgroundZoneLoadPhase::Loading:                  return "Loading";
+    case BackgroundZoneLoadPhase::DataReady_Notify:         return "DataReady_Notify";
+    case BackgroundZoneLoadPhase::DataReady_EntityRenderer: return "DataReady_EntityRenderer";
+    case BackgroundZoneLoadPhase::DataReady_ArchiveIndex:   return "DataReady_ArchiveIndex";
+    case BackgroundZoneLoadPhase::DataReady_GlobalAssets:   return "DataReady_GlobalAssets";
+    case BackgroundZoneLoadPhase::DataReady_Equipment:      return "DataReady_Equipment";
+    case BackgroundZoneLoadPhase::DataReady_DoorManager:    return "DataReady_DoorManager";
+    case BackgroundZoneLoadPhase::DataReady_SkyCreate:      return "DataReady_SkyCreate";
+    case BackgroundZoneLoadPhase::DataReady_DetailManager:  return "DataReady_DetailManager";
+    case BackgroundZoneLoadPhase::DataReady_ModelView:      return "DataReady_ModelView";
+    case BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare:     return "DataReady_Env_SkyPrepare";
+    case BackgroundZoneLoadPhase::DataReady_Env_FogSetup:       return "DataReady_Env_FogSetup";
+    case BackgroundZoneLoadPhase::DataReady_Env_WeatherApply:   return "DataReady_Env_WeatherApply";
+    case BackgroundZoneLoadPhase::DataReady_Env_SkyTextures:    return "DataReady_Env_SkyTextures";
+    case BackgroundZoneLoadPhase::DataReady_Env_SkyRelease:     return "DataReady_Env_SkyRelease";
+    case BackgroundZoneLoadPhase::DataReady_Env_SkyDome:        return "DataReady_Env_SkyDome";
+    case BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials:  return "DataReady_Env_SkyCelestials";
+    case BackgroundZoneLoadPhase::DataReady_Env_SkyColors:      return "DataReady_Env_SkyColors";
+    case BackgroundZoneLoadPhase::Atlas_Zone_Upload:        return "Atlas_Zone_Upload";
+    case BackgroundZoneLoadPhase::Atlas_Zone_Finalize:      return "Atlas_Zone_Finalize";
+    case BackgroundZoneLoadPhase::Atlas_Object_Upload:      return "Atlas_Object_Upload";
+    case BackgroundZoneLoadPhase::Atlas_Object_Finalize:    return "Atlas_Object_Finalize";
+    case BackgroundZoneLoadPhase::Atlas_Shader:             return "Atlas_Shader";
+    case BackgroundZoneLoadPhase::RegionMesh_InstallBsp:    return "RegionMesh_InstallBsp";
+    case BackgroundZoneLoadPhase::RegionMesh_InitCache:     return "RegionMesh_InitCache";
+    case BackgroundZoneLoadPhase::RegionMesh_EagerBatch:    return "RegionMesh_EagerBatch";
+    case BackgroundZoneLoadPhase::RegionMesh_SortSetup:     return "RegionMesh_SortSetup";
+    case BackgroundZoneLoadPhase::RegionMesh_InstallPortal: return "RegionMesh_InstallPortal";
+    case BackgroundZoneLoadPhase::Lights_CreateNodes:       return "Lights_CreateNodes";
+    case BackgroundZoneLoadPhase::Lights_InstallRegions:    return "Lights_InstallRegions";
+    case BackgroundZoneLoadPhase::Objects_Install:          return "Objects_Install";
+    case BackgroundZoneLoadPhase::Misc_ZoneBounds:          return "Misc_ZoneBounds";
+    case BackgroundZoneLoadPhase::Misc_Fog:                 return "Misc_Fog";
+    case BackgroundZoneLoadPhase::Misc_DoorSetup:           return "Misc_DoorSetup";
+    case BackgroundZoneLoadPhase::Misc_ReleaseData:         return "Misc_ReleaseData";
+    case BackgroundZoneLoadPhase::CollisionRebuild:         return "CollisionRebuild";
+    case BackgroundZoneLoadPhase::EnvironmentInit:          return "EnvironmentInit";
+    case BackgroundZoneLoadPhase::EntityLoading:            return "EntityLoading";
+    case BackgroundZoneLoadPhase::Complete:                 return "Complete";
+    }
+    return "Unknown";
+}
+
+const char* IrrlichtRenderer::manualLoadStepToString(ManualLoadStep step) {
+    switch (step) {
+    case ManualLoadStep::None:      return "none";
+    case ManualLoadStep::S3d:       return "s3d";
+    case ManualLoadStep::Data:      return "data";
+    case ManualLoadStep::Sky:       return "sky";
+    case ManualLoadStep::Atlas:     return "atlas";
+    case ManualLoadStep::Regions:   return "regions";
+    case ManualLoadStep::Lights:    return "lights";
+    case ManualLoadStep::Objects:   return "objects";
+    case ManualLoadStep::Misc:      return "misc";
+    case ManualLoadStep::Collision: return "collision";
+    case ManualLoadStep::Env:       return "env";
+    case ManualLoadStep::Entities:  return "entities";
+    case ManualLoadStep::All:       return "all";
+    }
+    return "unknown";
+}
+
+// Returns the phase at which the given step should PAUSE (the first phase of the NEXT step)
+BackgroundZoneLoadPhase IrrlichtRenderer::getStepEndPhase(ManualLoadStep step) {
+    switch (step) {
+    case ManualLoadStep::S3d:       return BackgroundZoneLoadPhase::DataReady_Notify;
+    case ManualLoadStep::Data:      return BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
+    case ManualLoadStep::Sky:       return BackgroundZoneLoadPhase::Atlas_Zone_Upload;
+    case ManualLoadStep::Atlas:     return BackgroundZoneLoadPhase::RegionMesh_InstallBsp;
+    case ManualLoadStep::Regions:   return BackgroundZoneLoadPhase::Lights_CreateNodes;
+    case ManualLoadStep::Lights:    return BackgroundZoneLoadPhase::Objects_Install;
+    case ManualLoadStep::Objects:   return BackgroundZoneLoadPhase::Misc_ZoneBounds;
+    case ManualLoadStep::Misc:      return BackgroundZoneLoadPhase::CollisionRebuild;
+    case ManualLoadStep::Collision: return BackgroundZoneLoadPhase::EnvironmentInit;
+    case ManualLoadStep::Env:       return BackgroundZoneLoadPhase::EntityLoading;
+    case ManualLoadStep::Entities:  return BackgroundZoneLoadPhase::Complete;
+    case ManualLoadStep::All:       return BackgroundZoneLoadPhase::Complete;
+    default:                        return BackgroundZoneLoadPhase::Idle;
+    }
+}
+
+// Returns the expected current phase when starting the given step
+BackgroundZoneLoadPhase IrrlichtRenderer::getStepStartPhase(ManualLoadStep step) {
+    switch (step) {
+    case ManualLoadStep::S3d:       return BackgroundZoneLoadPhase::Idle;
+    case ManualLoadStep::Data:      return BackgroundZoneLoadPhase::DataReady_Notify;
+    case ManualLoadStep::Sky:       return BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
+    case ManualLoadStep::Atlas:     return BackgroundZoneLoadPhase::Atlas_Zone_Upload;
+    case ManualLoadStep::Regions:   return BackgroundZoneLoadPhase::RegionMesh_InstallBsp;
+    case ManualLoadStep::Lights:    return BackgroundZoneLoadPhase::Lights_CreateNodes;
+    case ManualLoadStep::Objects:   return BackgroundZoneLoadPhase::Objects_Install;
+    case ManualLoadStep::Misc:      return BackgroundZoneLoadPhase::Misc_ZoneBounds;
+    case ManualLoadStep::Collision: return BackgroundZoneLoadPhase::CollisionRebuild;
+    case ManualLoadStep::Env:       return BackgroundZoneLoadPhase::EnvironmentInit;
+    case ManualLoadStep::Entities:  return BackgroundZoneLoadPhase::EntityLoading;
+    case ManualLoadStep::All:       return BackgroundZoneLoadPhase::Idle;  // Validated separately in advanceManualLoadStep
+    default:                        return BackgroundZoneLoadPhase::Idle;
+    }
+}
+
+void IrrlichtRenderer::beginManualZoneLoad(const std::string& eqClientPath) {
+    manualLoadMode_ = true;
+    currentManualStep_ = ManualLoadStep::S3d;
+    manualLoadPauseAt_ = BackgroundZoneLoadPhase::DataReady_Notify;
+    manualLoadPauseReached_ = false;
+
+    // Use the same init path as normal zone loading
+    beginZoneAssetLoad(eqClientPath);
+
+    LOG_INFO(MOD_GRAPHICS, "Manual zone load started — will pause at {}",
+             phaseToString(manualLoadPauseAt_));
+}
+
+bool IrrlichtRenderer::advanceManualLoadStep(ManualLoadStep step) {
+    if (!manualLoadMode_) {
+        LOG_WARN(MOD_GRAPHICS, "advanceManualLoadStep called but not in manual mode");
+        return false;
+    }
+
+    // 'all' is special — accept any current phase and run to completion
+    if (step == ManualLoadStep::All) {
+        manualLoadPauseAt_ = BackgroundZoneLoadPhase::Complete;
+        manualLoadPauseReached_ = false;
+        currentManualStep_ = ManualLoadStep::All;
+        LOG_INFO(MOD_GRAPHICS, "Manual load: running all remaining steps to completion");
+        return true;
+    }
+
+    // Validate the current phase matches what this step expects
+    BackgroundZoneLoadPhase expectedStart = getStepStartPhase(step);
+    if (backgroundZoneLoadPhase_ != expectedStart) {
+        LOG_WARN(MOD_GRAPHICS, "Manual load step '{}' expects phase {} but current is {}",
+                 manualLoadStepToString(step),
+                 phaseToString(expectedStart),
+                 phaseToString(backgroundZoneLoadPhase_));
+        return false;
+    }
+
+    // Set pause target and release
+    manualLoadPauseAt_ = getStepEndPhase(step);
+    manualLoadPauseReached_ = false;
+    currentManualStep_ = step;
+
+    LOG_INFO(MOD_GRAPHICS, "Manual load: advancing step '{}' — will pause at {}",
+             manualLoadStepToString(step), phaseToString(manualLoadPauseAt_));
+    return true;
+}
+
+ManualLoadStep IrrlichtRenderer::getNextExpectedStep() const {
+    if (!manualLoadMode_) return ManualLoadStep::None;
+
+    auto phase = backgroundZoneLoadPhase_;
+
+    // Map current phase to the next expected manual step
+    if (phase == BackgroundZoneLoadPhase::Idle || phase == BackgroundZoneLoadPhase::Pending)
+        return ManualLoadStep::S3d;
+    if (phase == BackgroundZoneLoadPhase::DataReady_Notify)
+        return ManualLoadStep::Data;
+    if (phase == BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare)
+        return ManualLoadStep::Sky;
+    if (phase == BackgroundZoneLoadPhase::Atlas_Zone_Upload)
+        return ManualLoadStep::Atlas;
+    if (phase == BackgroundZoneLoadPhase::RegionMesh_InstallBsp)
+        return ManualLoadStep::Regions;
+    if (phase == BackgroundZoneLoadPhase::Lights_CreateNodes)
+        return ManualLoadStep::Lights;
+    if (phase == BackgroundZoneLoadPhase::Objects_Install)
+        return ManualLoadStep::Objects;
+    if (phase == BackgroundZoneLoadPhase::Misc_ZoneBounds)
+        return ManualLoadStep::Misc;
+    if (phase == BackgroundZoneLoadPhase::CollisionRebuild)
+        return ManualLoadStep::Collision;
+    if (phase == BackgroundZoneLoadPhase::EnvironmentInit)
+        return ManualLoadStep::Env;
+    if (phase == BackgroundZoneLoadPhase::EntityLoading)
+        return ManualLoadStep::Entities;
+    if (phase == BackgroundZoneLoadPhase::Complete)
+        return ManualLoadStep::None;
+
+    // Phase is somewhere in the middle of a step (still running)
+    // Return the step that's currently in progress
+    return currentManualStep_;
+}
+
 void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::string& eqClientPath) {
     // Don't start if already running or if full zone load is in progress
     if (bspPreloadThread_ || backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) return;
@@ -3186,67 +3374,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
             }
         }
 
-        // 7. Build equipment model index (PFS + WLD parsing — no GL)
-        {
-            auto equipIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
-
-            // Load item model mapping
-            std::vector<std::string> searchPaths = {
-                "data/item_models.json",
-                "../data/item_models.json",
-                eqClientPathCopy + "../data/item_models.json",
-                eqClientPathCopy + "../../eqt-irrlicht/data/item_models.json"
-            };
-            for (const auto& path : searchPaths) {
-                if (EquipmentModelLoader::loadItemModelMappingStatic(path, equipIdx->itemToModelMap) >= 0) {
-                    LOG_INFO(MOD_GRAPHICS, "Background: loaded {} item-to-model mappings from {}",
-                             equipIdx->itemToModelMap.size(), path);
-                    break;
-                }
-            }
-
-            // Index gequip archives
-            if (EquipmentModelLoader::buildEquipmentIndex(eqClientPathCopy,
-                    equipIdx->modelIndex, equipIdx->textureIndex)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: equipment index built ({} models, {} textures)",
-                         equipIdx->modelIndex.size(), equipIdx->textureIndex.size());
-                computations->equipmentIndex = std::move(equipIdx);
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Background: equipment index build failed");
-            }
-        }
-
-        // 8. Pre-load global character archives (S3D parsing — no GL)
-        {
-            auto assets = std::make_unique<PendingZoneComputations::GlobalAssetsData>();
-
-            // 8a. global_chr.s3d
-            if (RaceModelLoader::loadGlobalModelsStatic(eqClientPathCopy,
-                    assets->globalCharacters, assets->globalTextures)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: loaded {} characters from global_chr.s3d",
-                         assets->globalCharacters.size());
-            }
-
-            // 8b. global2-7_chr.s3d
-            if (RaceModelLoader::loadNumberedGlobalModelsStatic(eqClientPathCopy,
-                    assets->numberedGlobalCharacters, assets->numberedGlobalTextures)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: loaded {} numbered global archives",
-                         assets->numberedGlobalCharacters.size());
-            }
-
-            // 8c. global17-23_amr.s3d armor texture index
-            if (RaceModelLoader::loadArmorTextureIndexStatic(eqClientPathCopy,
-                    assets->armorTextureIndex)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: indexed {} armor textures",
-                         assets->armorTextureIndex.size());
-            }
-
-            if (!assets->globalCharacters.empty()) {
-                computations->globalAssets = std::move(assets);
-            }
-        }
-
-        // 9. Pre-load sky data (S3D archive + INI parsing — no GL)
+        // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
         {
             auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
             skyData->skyLoader = std::make_unique<SkyLoader>();
@@ -3428,13 +3556,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
         }
 
-        // If global assets already loaded, skip to environment step
-        if (globalAssetsLoaded_) {
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
-            LOG_DEBUG(MOD_GRAPHICS, "Global assets already loaded, skipping to environment");
-        } else {
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_EntityRenderer;
-        }
+        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_EntityRenderer;
         logAssetBuildTime("data_notify", 0, stepStart);
         break;
     }
@@ -3507,17 +3629,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::DataReady_GlobalAssets: {
-        // Adopt pre-built global character assets from background thread
-        if (pendingZoneComputations_ && pendingZoneComputations_->globalAssets &&
-            entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
-            auto& ga = *pendingZoneComputations_->globalAssets;
-            entityRenderer_->getRaceModelLoader()->adoptGlobalAssets(
-                std::move(ga.globalCharacters), std::move(ga.globalTextures),
-                std::move(ga.numberedGlobalCharacters), std::move(ga.numberedGlobalTextures),
-                std::move(ga.armorTextureIndex));
-            LOG_INFO(MOD_GRAPHICS, "Global character assets adopted from background thread");
-        }
-        // Ensure RaceModelLoader knows the current zone (may be skipped in DataReady_Notify on first load)
+        // Global character archives are no longer pre-loaded on the background thread.
+        // RaceModelLoader and EquipmentModelLoader self-init lazily when first needed.
         if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
             entityRenderer_->getRaceModelLoader()->setCurrentZone(currentZoneName_);
         }
@@ -3529,20 +3642,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::DataReady_Equipment: {
-        if (pendingZoneComputations_ && pendingZoneComputations_->equipmentIndex) {
-            // Background thread already built the index — adopt it
-            auto& idx = *pendingZoneComputations_->equipmentIndex;
-            entityRenderer_->getEquipmentModelLoader()->adoptIndex(
-                std::move(idx.modelIndex), std::move(idx.textureIndex), std::move(idx.itemToModelMap));
-            LOG_INFO(MOD_GRAPHICS, "Equipment index adopted from background thread");
-        } else {
-            // Fallback: build synchronously
-            if (entityRenderer_->loadEquipmentModels()) {
-                LOG_INFO(MOD_GRAPHICS, "Equipment models loaded (fallback)");
-            } else {
-                LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
-            }
-        }
+        // Equipment index is no longer pre-built on background thread.
+        // EquipmentModelLoader self-inits lazily on first getModelRef()/getEquipmentMesh() call.
         if (networkTickCallback_) networkTickCallback_();
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_DoorManager;
         logAssetBuildTime("equipment_models", 0, stepStart);
@@ -3633,8 +3734,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                                                entityRenderer_->getRaceModelLoader(),
                                                entityRenderer_->getEquipmentModelLoader());
         }
-        globalAssetsLoaded_ = true;
-        LOG_INFO(MOD_GRAPHICS, "Global assets loaded (model view deferred to first inventory open)");
+        LOG_INFO(MOD_GRAPHICS, "Model view deps stored (deferred to first inventory open)");
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
         logAssetBuildTime("model_view_deps", 0, stepStart);
         break;
@@ -4579,6 +4679,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     case BackgroundZoneLoadPhase::EntityLoading:
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
+        if (manualLoadMode_) {
+            manualLoadMode_ = false;
+            currentManualStep_ = ManualLoadStep::None;
+            manualLoadPauseAt_ = BackgroundZoneLoadPhase::Idle;
+            LOG_INFO(MOD_GRAPHICS, "Manual zone load completed for zone '{}'", currentZoneName_);
+        }
         LOG_INFO(MOD_GRAPHICS, "Background zone load pipeline complete for zone '{}'", currentZoneName_);
         break;
 
@@ -8187,11 +8293,30 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     // This supersedes the old environmentInitPending_ path when active
     if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle &&
         backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Complete) {
-        // Loading phase polls without GREEN gate (just checking atomic bool)
-        // All other phases require GREEN budget
-        if (backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Loading ||
-            !governor_ || governor_->getState() == BudgetState::Green) {
-            advanceBackgroundZoneLoad();
+
+        // Manual load pause check — stop advancing when we reach the target phase
+        if (manualLoadMode_ && !manualLoadPauseReached_ &&
+            backgroundZoneLoadPhase_ == manualLoadPauseAt_) {
+            manualLoadPauseReached_ = true;
+            LOG_INFO(MOD_GRAPHICS, "Manual load paused at phase: {}",
+                     phaseToString(backgroundZoneLoadPhase_));
+            if (manualLoadPauseCallback_) {
+                std::string label = fmt::format("AFTER /load {}",
+                    manualLoadStepToString(currentManualStep_));
+                manualLoadPauseCallback_(label);
+            }
+        }
+
+        // Skip advancing if paused at target
+        if (manualLoadMode_ && manualLoadPauseReached_) {
+            // Don't advance — wait for next /load step
+        } else {
+            // Loading phase polls without GREEN gate (just checking atomic bool)
+            // All other phases require GREEN budget
+            if (backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Loading ||
+                !governor_ || governor_->getState() == BudgetState::Green) {
+                advanceBackgroundZoneLoad();
+            }
         }
     }
 

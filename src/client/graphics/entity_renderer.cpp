@@ -3243,8 +3243,8 @@ bool EntityRenderer::loadEquipmentModels() {
 }
 
 void EntityRenderer::attachEquipment(EntityVisual& visual) {
-    if (!equipmentModelLoader_ || !equipmentModelLoader_->isLoaded()) {
-        LOG_DEBUG(MOD_ENTITY, "attachEquipment: Equipment loader not ready");
+    if (!equipmentModelLoader_) {
+        LOG_DEBUG(MOD_ENTITY, "attachEquipment: Equipment loader not available");
         return;
     }
 

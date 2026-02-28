@@ -6,6 +6,7 @@
 #include <irrlicht.h>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -113,9 +114,9 @@ public:
     static std::shared_ptr<EquipmentModelData> extractEquipmentModelOffThread(
         const EquipmentModelRef& modelRef, int modelId);
 
-    // Const getters for index access from background thread
-    const EquipmentModelRef* getModelRef(int modelId) const;
-    const EquipmentTextureRef* getTextureRef(const std::string& name) const;
+    // Getters for index access (triggers lazy-init if needed)
+    const EquipmentModelRef* getModelRef(int modelId);
+    const EquipmentTextureRef* getTextureRef(const std::string& name);
 
     // Cache pre-extracted equipment model data (from background thread prep)
     // This makes it available for getEquipmentMeshByModelId to build Irrlicht mesh
@@ -140,6 +141,9 @@ public:
                                           std::map<uint32_t, int>& outMap);
 
 private:
+    // Lazy-init: build equipment index on first use (if not already loaded via adoptIndex)
+    void ensureIndexLoaded();
+
     // Index-only scan of a single S3D archive (no geometry or texture data loaded)
     bool loadEquipmentArchive(const std::string& archivePath);
 
@@ -193,6 +197,7 @@ private:
 
     bool archivesLoaded_ = false;
     bool mappingLoaded_ = false;
+    std::mutex initMutex_;  // Guards ensureIndexLoaded() for thread safety
 };
 
 } // namespace Graphics

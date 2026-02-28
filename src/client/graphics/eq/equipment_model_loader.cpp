@@ -91,6 +91,38 @@ int EquipmentModelLoader::parseModelIdFromActorName(const std::string& actorName
     return -1;
 }
 
+void EquipmentModelLoader::ensureIndexLoaded() {
+    if (archivesLoaded_) return;
+
+    std::lock_guard<std::mutex> lock(initMutex_);
+    if (archivesLoaded_) return;  // Double-check after acquiring lock
+    if (clientPath_.empty()) return;
+
+    // Build equipment index from gequip archives
+    if (buildEquipmentIndex(clientPath_, equipmentModelIndex_, textureIndex_)) {
+        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: lazy-init built index ({} models, {} textures)",
+                 equipmentModelIndex_.size(), textureIndex_.size());
+    }
+
+    // Load item-to-model mapping
+    std::vector<std::string> searchPaths = {
+        "data/item_models.json",
+        "../data/item_models.json",
+        clientPath_ + "../data/item_models.json",
+        clientPath_ + "../../eqt-irrlicht/data/item_models.json"
+    };
+    for (const auto& path : searchPaths) {
+        if (loadItemModelMappingStatic(path, itemToModelMap_) >= 0) {
+            LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: lazy-init loaded {} item-to-model mappings from {}",
+                     itemToModelMap_.size(), path);
+            mappingLoaded_ = true;
+            break;
+        }
+    }
+
+    archivesLoaded_ = true;
+}
+
 bool EquipmentModelLoader::loadEquipmentArchives() {
     if (clientPath_.empty()) {
         LOG_ERROR(MOD_GRAPHICS, "EquipmentModelLoader: Client path not set");
@@ -394,6 +426,7 @@ irr::scene::IMesh* EquipmentModelLoader::getEquipmentMeshByModelId(int modelId) 
     if (modelId < 0) {
         return nullptr;
     }
+    ensureIndexLoaded();
 
     // Check mesh cache first
     auto cacheIt = meshCache_.find(modelId);
@@ -429,6 +462,7 @@ irr::scene::IMesh* EquipmentModelLoader::getEquipmentMeshByModelId(int modelId) 
 }
 
 irr::scene::IMesh* EquipmentModelLoader::getEquipmentMesh(uint32_t equipmentId) {
+    ensureIndexLoaded();
     // First try to look up as a database item ID (for player inventory items)
     int modelId = getModelIdForItem(equipmentId);
     if (modelId >= 0) {
@@ -854,12 +888,14 @@ int EquipmentModelLoader::loadItemModelMappingStatic(const std::string& jsonPath
     return static_cast<int>(outMap.size());
 }
 
-const EquipmentModelLoader::EquipmentModelRef* EquipmentModelLoader::getModelRef(int modelId) const {
+const EquipmentModelLoader::EquipmentModelRef* EquipmentModelLoader::getModelRef(int modelId) {
+    ensureIndexLoaded();
     auto it = equipmentModelIndex_.find(modelId);
     return (it != equipmentModelIndex_.end()) ? &it->second : nullptr;
 }
 
-const EquipmentModelLoader::EquipmentTextureRef* EquipmentModelLoader::getTextureRef(const std::string& name) const {
+const EquipmentModelLoader::EquipmentTextureRef* EquipmentModelLoader::getTextureRef(const std::string& name) {
+    ensureIndexLoaded();
     auto it = textureIndex_.find(name);
     return (it != textureIndex_.end()) ? &it->second : nullptr;
 }

@@ -7469,6 +7469,143 @@ void EverQuest::ProcessChatInput(const std::string &input)
 }
 
 #ifdef EQT_HAS_GRAPHICS
+
+// ── Manual zone load diagnostics helpers ────────────────────────────────────
+
+void EverQuest::runPmemDiagnostics(const std::string& label) {
+	if (!m_renderer) return;
+
+	EQT::Graphics::MemoryReportInput ext;
+
+#ifdef __linux__
+	{
+		FILE* f = fopen("/proc/self/statm", "r");
+		if (f) {
+			unsigned long vm = 0, rss = 0;
+			if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
+				long ps = sysconf(_SC_PAGESIZE);
+				ext.processRssBytes = static_cast<size_t>(rss) * ps;
+				ext.processVmBytes = static_cast<size_t>(vm) * ps;
+			}
+			fclose(f);
+		}
+	}
+
+	{
+		FILE* f = fopen("/proc/self/smaps_rollup", "r");
+		if (f) {
+			char line[256];
+			while (fgets(line, sizeof(line), f)) {
+				unsigned long kb = 0;
+				if (sscanf(line, "Shared_Clean: %lu kB", &kb) == 1 ||
+				    sscanf(line, "Shared_Dirty: %lu kB", &kb) == 1) {
+					ext.sharedLibBytes += static_cast<size_t>(kb) * 1024;
+				} else if (sscanf(line, "Anonymous: %lu kB", &kb) == 1) {
+					ext.anonBytes = static_cast<size_t>(kb) * 1024;
+				}
+			}
+			fclose(f);
+		}
+		f = fopen("/proc/self/status", "r");
+		if (f) {
+			char line[256];
+			while (fgets(line, sizeof(line), f)) {
+				unsigned long kb = 0;
+				if (sscanf(line, "VmStk: %lu kB", &kb) == 1) {
+					ext.stackBytes = static_cast<size_t>(kb) * 1024;
+					break;
+				}
+			}
+			fclose(f);
+		}
+	}
+#endif
+
+#ifdef WITH_AUDIO
+	if (m_audio_manager && m_audio_manager->isInitialized()) {
+		ext.audioAvailable = true;
+		ext.soundBufferCacheBytes = m_audio_manager->getSoundBufferCacheBytes();
+		ext.soundBufferCacheMaxBytes = m_audio_manager->getSoundBufferCacheMaxBytes();
+		ext.soundFontEstimateBytes = m_audio_manager->getSoundFontMemoryEstimate();
+		ext.musicDecodedBytes = m_audio_manager->getMusicDecodedBytes();
+		ext.audioPfsArchiveBytes = m_audio_manager->getPfsArchiveCacheBytes();
+		if (auto* sfx = m_audio_manager->getSfxManager()) {
+			ext.sfxCacheBytes = sfx->getCacheSize();
+		}
+	}
+	if (m_zone_audio_manager) {
+		ext.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
+		ext.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
+	}
+#endif
+
+	auto addConn = [&](const std::string& name, std::shared_ptr<EQ::Net::DaybreakConnection> conn) {
+		if (!conn) return;
+		auto stats = conn->GetStats();
+		EQT::Graphics::MemoryReportInput::ConnectionInfo ci;
+		ci.name = name;
+		ci.recvBytes = stats.recv_bytes;
+		ci.sentBytes = stats.sent_bytes;
+		ci.avgPing = conn->GetRollingPing();
+		ext.connections.push_back(std::move(ci));
+	};
+	addConn("Zone", m_zone_connection);
+	addConn("World", m_world_connection);
+	addConn("Login", m_login_connection);
+
+	ext.entityCount = m_entities.size();
+	ext.entityEstimateBytes = m_entities.size() * sizeof(Entity);
+	ext.doorCount = m_doors.size();
+	ext.doorEstimateBytes = m_doors.size() * sizeof(Door);
+	if (m_spell_manager) {
+		ext.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
+		ext.spellDbEstimateBytes = ext.spellDbCount * 512;
+	}
+
+	if (!label.empty()) {
+		LOG_INFO(MOD_MAIN, "=== /pmem [{}] ===", label);
+	}
+	auto report = m_renderer->getMemoryReport(ext);
+	for (const auto& line : report) {
+		LOG_INFO(MOD_MAIN, "{}", line);
+	}
+}
+
+void EverQuest::runLoadDiagnostics(const std::string& label) {
+	LOG_INFO(MOD_MAIN, "");
+	LOG_INFO(MOD_MAIN, "╔══════════════════════════════════════════════════════════════");
+	LOG_INFO(MOD_MAIN, "║ LOAD DIAGNOSTICS: {}", label);
+	LOG_INFO(MOD_MAIN, "║ Phase: {}", EQT::Graphics::IrrlichtRenderer::phaseToString(
+		m_renderer->getBackgroundZoneLoadPhase()));
+	LOG_INFO(MOD_MAIN, "╚══════════════════════════════════════════════════════════════");
+
+	// Scene dump
+	m_renderer->dumpScene();
+
+	// Memory report
+	runPmemDiagnostics(label);
+
+	LOG_INFO(MOD_MAIN, "══════════════════════════════════════════════════════════════");
+	LOG_INFO(MOD_MAIN, "");
+}
+
+EQT::Graphics::ManualLoadStep EverQuest::parseManualLoadStep(const std::string& arg) {
+	using S = EQT::Graphics::ManualLoadStep;
+	if (arg == "s3d")       return S::S3d;
+	if (arg == "data")      return S::Data;
+	if (arg == "sky")       return S::Sky;
+	if (arg == "atlas")     return S::Atlas;
+	if (arg == "regions")   return S::Regions;
+	if (arg == "lights")    return S::Lights;
+	if (arg == "objects")   return S::Objects;
+	if (arg == "misc")      return S::Misc;
+	if (arg == "collision") return S::Collision;
+	if (arg == "env")       return S::Env;
+	if (arg == "entities")  return S::Entities;
+	if (arg == "all")       return S::All;
+	return S::None;
+}
+
 void EverQuest::RegisterCommands()
 {
 	using namespace eqt::ui;
@@ -9191,6 +9328,101 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(loadzonecmd);
 
+	Command loadcmd;
+	loadcmd.name = "load";
+	loadcmd.aliases = {};
+	loadcmd.usage = "/load [s3d|data|sky|atlas|regions|lights|objects|misc|collision|env|entities|all]";
+	loadcmd.description = "Step-by-step zone loading with before/after diagnostics";
+	loadcmd.category = "Utility";
+	loadcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) {
+			AddChatSystemMessage("No renderer available");
+			return;
+		}
+
+		using Phase = EQT::Graphics::BackgroundZoneLoadPhase;
+		using Step = EQT::Graphics::ManualLoadStep;
+
+		std::string arg = args;
+		// Trim whitespace
+		while (!arg.empty() && (arg.front() == ' ' || arg.front() == '\t')) arg.erase(arg.begin());
+		while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t')) arg.pop_back();
+		// Lowercase
+		for (auto& c : arg) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+		// No args: show status
+		if (arg.empty()) {
+			auto phase = m_renderer->getBackgroundZoneLoadPhase();
+			bool manual = m_renderer->isManualLoadMode();
+			AddChatSystemMessage(fmt::format("Phase: {} | Manual: {} | Next: {}",
+				EQT::Graphics::IrrlichtRenderer::phaseToString(phase),
+				manual ? "yes" : "no",
+				manual ? EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(
+					m_renderer->getNextExpectedStep()) : "n/a"));
+			return;
+		}
+
+		Step step = parseManualLoadStep(arg);
+		if (step == Step::None) {
+			AddChatSystemMessage(fmt::format("Unknown load step: '{}'. Use: s3d data sky atlas regions lights objects misc collision env entities all", arg));
+			return;
+		}
+
+		// First step (s3d) — enter manual mode
+		if (step == Step::S3d) {
+			if (m_renderer->isManualLoadMode()) {
+				AddChatSystemMessage("Manual load already in progress. Use /load <next step> to continue.");
+				return;
+			}
+			if (m_renderer->isProgressiveLoadingActive() ||
+				m_renderer->getBackgroundZoneLoadPhase() != Phase::Idle) {
+				AddChatSystemMessage("Zone loading already in progress");
+				return;
+			}
+
+			// Set up callback for AFTER diagnostics
+			m_renderer->setManualLoadPauseCallback([this](const std::string& label) {
+				runLoadDiagnostics(label);
+				auto next = m_renderer->getNextExpectedStep();
+				AddChatSystemMessage(fmt::format("Paused. Next: /load {}",
+					EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(next)));
+			});
+
+			// BEFORE diagnostics
+			runLoadDiagnostics("BEFORE /load s3d");
+
+			// Start manual zone load (sets up bg thread + pause at DataReady_Notify)
+			m_renderer->beginManualZoneLoad(m_eq_client_path);
+			AddChatSystemMessage("Manual zone load started — loading S3D...");
+			return;
+		}
+
+		// Subsequent steps — must be in manual mode
+		if (!m_renderer->isManualLoadMode()) {
+			AddChatSystemMessage("Not in manual load mode. Start with /load s3d");
+			return;
+		}
+
+		// BEFORE diagnostics
+		runLoadDiagnostics(fmt::format("BEFORE /load {}", arg));
+
+		// Advance to this step
+		if (!m_renderer->advanceManualLoadStep(step)) {
+			auto next = m_renderer->getNextExpectedStep();
+			AddChatSystemMessage(fmt::format("Wrong step order. Expected: /load {}",
+				EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(next)));
+			return;
+		}
+
+		if (step == Step::All) {
+			AddChatSystemMessage("Running all remaining load steps...");
+		} else {
+			AddChatSystemMessage(fmt::format("Loading step: {}...",
+				EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(step)));
+		}
+	};
+	m_command_registry->registerCommand(loadcmd);
+
 	Command renderdist;
 	renderdist.name = "renderdist";
 	renderdist.aliases = {"clipplane", "viewdist"};
@@ -10073,114 +10305,8 @@ void EverQuest::RegisterCommands()
 			AddChatSystemMessage("Graphics renderer not available");
 			return;
 		}
-
-		EQT::Graphics::MemoryReportInput ext;
-
-		// --- Process RSS/VM from /proc/self/statm ---
-#ifdef __linux__
-		{
-			FILE* f = fopen("/proc/self/statm", "r");
-			if (f) {
-				unsigned long vm = 0, rss = 0;
-				if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
-					long ps = sysconf(_SC_PAGESIZE);
-					ext.processRssBytes = static_cast<size_t>(rss) * ps;
-					ext.processVmBytes = static_cast<size_t>(vm) * ps;
-				}
-				fclose(f);
-			}
-		}
-#endif
-
-		// --- Process memory breakdown from /proc/self/smaps_rollup ---
-#ifdef __linux__
-		{
-			FILE* f = fopen("/proc/self/smaps_rollup", "r");
-			if (f) {
-				char line[256];
-				while (fgets(line, sizeof(line), f)) {
-					unsigned long kb = 0;
-					if (sscanf(line, "Shared_Clean: %lu kB", &kb) == 1 ||
-					    sscanf(line, "Shared_Dirty: %lu kB", &kb) == 1) {
-						ext.sharedLibBytes += static_cast<size_t>(kb) * 1024;
-					} else if (sscanf(line, "Anonymous: %lu kB", &kb) == 1) {
-						ext.anonBytes = static_cast<size_t>(kb) * 1024;
-					}
-				}
-				fclose(f);
-			}
-			// Thread stacks from /proc/self/status
-			f = fopen("/proc/self/status", "r");
-			if (f) {
-				char line[256];
-				while (fgets(line, sizeof(line), f)) {
-					unsigned long kb = 0;
-					if (sscanf(line, "VmStk: %lu kB", &kb) == 1) {
-						ext.stackBytes = static_cast<size_t>(kb) * 1024;
-						break;
-					}
-				}
-				fclose(f);
-			}
-		}
-#endif
-
-		// --- Audio ---
-#ifdef WITH_AUDIO
-		if (m_audio_manager && m_audio_manager->isInitialized()) {
-			ext.audioAvailable = true;
-			ext.soundBufferCacheBytes = m_audio_manager->getSoundBufferCacheBytes();
-			ext.soundBufferCacheMaxBytes = m_audio_manager->getSoundBufferCacheMaxBytes();
-			ext.soundFontEstimateBytes = m_audio_manager->getSoundFontMemoryEstimate();
-			ext.musicDecodedBytes = m_audio_manager->getMusicDecodedBytes();
-			ext.audioPfsArchiveBytes = m_audio_manager->getPfsArchiveCacheBytes();
-			if (auto* sfx = m_audio_manager->getSfxManager()) {
-				ext.sfxCacheBytes = sfx->getCacheSize();
-			}
-		}
-		if (m_zone_audio_manager) {
-			ext.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
-			ext.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
-		}
-#endif
-
-		// --- Network ---
-		auto addConn = [&](const std::string& name, std::shared_ptr<EQ::Net::DaybreakConnection> conn) {
-			if (!conn) return;
-			auto stats = conn->GetStats();
-			EQT::Graphics::MemoryReportInput::ConnectionInfo ci;
-			ci.name = name;
-			ci.recvBytes = stats.recv_bytes;
-			ci.sentBytes = stats.sent_bytes;
-			ci.avgPing = conn->GetRollingPing();
-			ext.connections.push_back(std::move(ci));
-		};
-		addConn("Zone", m_zone_connection);
-		addConn("World", m_world_connection);
-		addConn("Login", m_login_connection);
-
-		// --- Game Data ---
-		ext.entityCount = m_entities.size();
-		ext.entityEstimateBytes = m_entities.size() * sizeof(Entity);
-		ext.doorCount = m_doors.size();
-		ext.doorEstimateBytes = m_doors.size() * sizeof(Door);
-		if (m_spell_manager) {
-			ext.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
-			ext.spellDbEstimateBytes = ext.spellDbCount * 512;  // ~500 bytes avg per SpellData
-		}
-
-		auto report = m_renderer->getMemoryReport(ext);
-		for (const auto& line : report) {
-			LOG_INFO(MOD_MAIN, "{}", line);
-		}
-
-		// Show RSS summary in chat
-		if (ext.processRssBytes > 0) {
-			AddChatSystemMessage(fmt::format("Memory: RSS {:.1f}MB. Full report in console.",
-				ext.processRssBytes / (1024.0 * 1024.0)));
-		} else {
-			AddChatSystemMessage("Memory report written to console.");
-		}
+		runPmemDiagnostics("");
+		AddChatSystemMessage("Memory report written to console.");
 	};
 	m_command_registry->registerCommand(pmem);
 
