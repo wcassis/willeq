@@ -72,11 +72,8 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
     }
 
     // Store zone geometry data for texture lookups
-    // Prefer passed zoneGeometry (same as renderer uses), fall back to wldLoader
     if (zoneGeometry) {
         zoneGeometry_ = zoneGeometry;
-    } else if (wldLoader) {
-        zoneGeometry_ = wldLoader->getCombinedGeometry();
     }
 
     if (zoneGeometry_) {

@@ -694,6 +694,8 @@ public:
     void setupHCMapCollision();
     // Start background S3D load thread
     void startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath);
+    // Launch deferred background work (phases 6-10) after manual /load data
+    void launchDeferredBackgroundWork();
     // Advance background zone load state machine (one step per GREEN frame)
     void advanceBackgroundZoneLoad();
     // Store zone environment data for deferred application (after sky renderer init)
@@ -1339,6 +1341,10 @@ private:
     std::atomic<bool> zoneLoadComplete_{false};
     std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after join
     std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;  // CPU-only results from bg thread
+
+    // Deferred background work thread (runs phases 6-10 when manual /load data triggers)
+    std::unique_ptr<std::thread> deferredWorkThread_;
+    std::atomic<bool> deferredWorkComplete_{true};
 
     // Manual load step-by-step state
     bool manualLoadMode_ = false;

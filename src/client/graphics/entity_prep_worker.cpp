@@ -21,6 +21,7 @@ EntityPrepWorker::~EntityPrepWorker() {
 void EntityPrepWorker::start() {
     if (running_.load()) return;
     running_.store(true);
+    idle_.store(true, std::memory_order_release);
     worker_ = std::thread(&EntityPrepWorker::workerLoop, this);
     LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: background thread started (equipLoader={})",
              equipLoader_ ? "yes" : "no");
@@ -37,20 +38,36 @@ void EntityPrepWorker::stop() {
 }
 
 void EntityPrepWorker::requestPrep(const PrepRequest& req) {
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        // Check for duplicate: don't re-queue same spawnId
-        for (const auto& existing : requestQueue_) {
-            if (existing.spawnId == req.spawnId) {
-                return;  // Already queued
-            }
+    // Main-thread-only: no mutex needed for pendingQueue_
+    for (const auto& existing : pendingQueue_) {
+        if (existing.spawnId == req.spawnId) {
+            return;  // Already queued
         }
-        requestQueue_.push_back(req);
-        pendingSpawnIds_.insert(req.spawnId);
     }
-    cv_.notify_one();
+    pendingQueue_.push_back(req);
+    pendingSpawnIds_.insert(req.spawnId);
     LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: queued prep for spawn={} race={} gender={}",
               req.spawnId, req.raceId, req.gender);
+}
+
+void EntityPrepWorker::dispatchOne() {
+    // Main-thread-only: called when governor is GREEN
+    if (pendingQueue_.empty()) return;
+    if (!idle_.load(std::memory_order_acquire)) return;
+
+    PrepRequest req = pendingQueue_.front();
+    pendingQueue_.pop_front();
+    pendingSpawnIds_.erase(req.spawnId);
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        dispatchedRequest_ = req;
+        hasDispatchedWork_ = true;
+    }
+    cv_.notify_one();
+
+    LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: dispatched spawn={} race={} gender={} ({} pending)",
+              req.spawnId, req.raceId, req.gender, pendingQueue_.size());
 }
 
 bool EntityPrepWorker::pollResult(PrepResult& out) {
@@ -61,41 +78,69 @@ bool EntityPrepWorker::pollResult(PrepResult& out) {
     return true;
 }
 
+void EntityPrepWorker::sortPendingByModel() {
+    // Main-thread-only: stable sort groups same race/gender together
+    std::stable_sort(pendingQueue_.begin(), pendingQueue_.end(),
+        [](const PrepRequest& a, const PrepRequest& b) {
+            uint32_t keyA = (static_cast<uint32_t>(a.raceId) << 8) | a.gender;
+            uint32_t keyB = (static_cast<uint32_t>(b.raceId) << 8) | b.gender;
+            return keyA < keyB;
+        });
+}
+
+void EntityPrepWorker::cancelPrep(uint16_t spawnId) {
+    // Main-thread-only: remove from pending queue
+    auto it = std::remove_if(pendingQueue_.begin(), pendingQueue_.end(),
+        [spawnId](const PrepRequest& req) { return req.spawnId == spawnId; });
+    if (it != pendingQueue_.end()) {
+        pendingQueue_.erase(it, pendingQueue_.end());
+        pendingSpawnIds_.erase(spawnId);
+    }
+}
+
 bool EntityPrepWorker::isPendingForEntity(uint16_t spawnId) const {
-    // Check active work
+    // Check active work (worker thread)
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
         if (activeSpawnId_ == spawnId) return true;
     }
-    // Check queue
+    // Check dispatch slot
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        return pendingSpawnIds_.count(spawnId) > 0;
+        if (hasDispatchedWork_ && dispatchedRequest_.spawnId == spawnId) return true;
     }
+    // Check pending queue (main-thread-only, no lock needed)
+    return pendingSpawnIds_.count(spawnId) > 0;
 }
 
 bool EntityPrepWorker::isPending(uint16_t raceId, uint8_t gender) const {
+    uint32_t key = (static_cast<uint32_t>(raceId) << 8) | gender;
     // Check active work
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
-        uint32_t key = (static_cast<uint32_t>(raceId) << 8) | gender;
         if (activeKey_ == key) return true;
     }
-    // Check queue
+    // Check dispatch slot
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        for (const auto& req : requestQueue_) {
-            if (req.raceId == raceId && req.gender == gender) return true;
+        if (hasDispatchedWork_) {
+            uint32_t dKey = (static_cast<uint32_t>(dispatchedRequest_.raceId) << 8)
+                            | dispatchedRequest_.gender;
+            if (dKey == key) return true;
         }
+    }
+    // Check pending queue (main-thread-only)
+    for (const auto& req : pendingQueue_) {
+        if (req.raceId == raceId && req.gender == gender) return true;
     }
     return false;
 }
 
 size_t EntityPrepWorker::getPendingCount() const {
-    size_t count = 0;
+    size_t count = pendingQueue_.size();
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        count = requestQueue_.size();
+        if (hasDispatchedWork_) count++;
     }
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
@@ -109,14 +154,15 @@ void EntityPrepWorker::workerLoop() {
         PrepRequest req;
         {
             std::unique_lock<std::mutex> lock(queueMutex_);
-            cv_.wait(lock, [this] { return !requestQueue_.empty() || !running_.load(); });
+            cv_.wait(lock, [this] { return hasDispatchedWork_ || !running_.load(); });
             if (!running_.load()) break;
-            if (requestQueue_.empty()) continue;
-            req = requestQueue_.front();
-            requestQueue_.pop_front();
+            if (!hasDispatchedWork_) continue;
+            req = dispatchedRequest_;
+            hasDispatchedWork_ = false;
         }
 
-        // Mark as active
+        // Mark as active, no longer idle
+        idle_.store(false, std::memory_order_release);
         uint32_t key = (static_cast<uint32_t>(req.raceId) << 8) | req.gender;
         {
             std::lock_guard<std::mutex> lock(activeMutex_);
@@ -189,15 +235,11 @@ void EntityPrepWorker::workerLoop() {
         LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: spawn={} total prep took {}ms (variants={}, equip={})",
                  req.spawnId, totalElapsed, result.variantTextures.size(), result.equipmentData.size());
 
-        // Clear active marker and remove from pending set
+        // Clear active marker
         {
             std::lock_guard<std::mutex> lock(activeMutex_);
             activeKey_ = 0;
             activeSpawnId_ = 0;
-        }
-        {
-            std::lock_guard<std::mutex> lock(queueMutex_);
-            pendingSpawnIds_.erase(req.spawnId);
         }
 
         // Push result
@@ -205,6 +247,9 @@ void EntityPrepWorker::workerLoop() {
             std::lock_guard<std::mutex> lock(resultMutex_);
             resultQueue_.push_back(std::move(result));
         }
+
+        // Signal idle — main thread can dispatch next item on next GREEN frame
+        idle_.store(true, std::memory_order_release);
     }
 }
 

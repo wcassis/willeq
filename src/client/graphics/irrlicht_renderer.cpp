@@ -1953,6 +1953,12 @@ void IrrlichtRenderer::unloadZone() {
         zoneLoadThread_->join();
     }
     zoneLoadThread_.reset();
+    // Wait for deferred work thread if still running
+    if (deferredWorkThread_ && deferredWorkThread_->joinable()) {
+        deferredWorkThread_->join();
+    }
+    deferredWorkThread_.reset();
+    deferredWorkComplete_ = true;
     pendingZoneData_.reset();
     zoneLoadComplete_ = false;
     backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
@@ -2614,7 +2620,9 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     entityPrepReady_ = false;
 
     // Create background entity prep worker early so it's ready when archives load.
-    if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
+    // Skip if skipEntityBuild is set (e.g., OrangePi debug preset).
+    if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
+        && !config_.constrainedConfig.skipEntityBuild) {
         entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
             entityRenderer_->getRaceModelLoader(),
             entityRenderer_->getEquipmentModelLoader());
@@ -2782,6 +2790,12 @@ bool IrrlichtRenderer::advanceManualLoadStep(ManualLoadStep step) {
     manualLoadPauseAt_ = getStepEndPhase(step);
     manualLoadPauseReached_ = false;
     currentManualStep_ = step;
+
+    // Launch deferred background work when Data or All step starts
+    // (loads objects, archive index, sky, weather, atlas in background)
+    if ((step == ManualLoadStep::Data || step == ManualLoadStep::All) && !deferredWorkThread_) {
+        launchDeferredBackgroundWork();
+    }
 
     LOG_INFO(MOD_GRAPHICS, "Manual load: advancing step '{}' — will pause at {}",
              manualLoadStepToString(step), phaseToString(manualLoadPauseAt_));
@@ -3209,15 +3223,22 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
     // set in constructor. loadConfig() that modifies patterns runs during DeferredInitStep::TreeConfig,
     // which is well after the background thread is joined.
     const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
+    bool isManualMode = manualLoadMode_;
 
     zoneLoadThread_ = std::make_unique<std::thread>([this, zonePath, computations,
                                                       deferredAssetLoading, lazyPfsLoading,
                                                       enableAtlas, atlasPathCopy, zoneNameCopy,
                                                       eqClientPathCopy, meshMemoryBudget,
-                                                      treeIdentifier]() {
-        // 1. S3D parse (existing)
+                                                      treeIdentifier, isManualMode]() {
+        // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
+        //    and objects based on mode
+        S3DLoadOptions loadOptions;
+        loadOptions.loadCharacters = false;                            // Always skip — duplicate of RaceModelLoader
+        loadOptions.computeCombinedGeometry = (meshMemoryBudget == 0); // Skip on constrained path
+        loadOptions.loadObjects = !isManualMode;                       // Defer to /load data in manual mode
+
         S3DLoader loader;
-        if (!loader.loadZone(zonePath)) {
+        if (!loader.loadZone(zonePath, loadOptions)) {
             LOG_ERROR(MOD_GRAPHICS, "Background S3D load failed: {}", loader.getError());
             zoneLoadComplete_ = true;
             return;
@@ -3361,6 +3382,14 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
             }
         }
 
+        // Manual mode: stop after S3D + CPU work. Phases 6-10 (archive index, sky, weather,
+        // display, atlas) are deferred to launchDeferredBackgroundWork() when /load data runs.
+        if (isManualMode) {
+            LOG_INFO(MOD_GRAPHICS, "Manual mode: background thread stopping after S3D + CPU work");
+            zoneLoadComplete_ = true;
+            return;
+        }
+
         // 6. Build graphics archive index (filesystem I/O — no GL)
         if (deferredAssetLoading) {
             computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
@@ -3492,6 +3521,160 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
     LOG_INFO(MOD_GRAPHICS, "Background S3D load started (with CPU post-processing): {}", zonePath);
 }
 
+void IrrlichtRenderer::launchDeferredBackgroundWork() {
+    if (deferredWorkThread_) return;  // Already running
+
+    deferredWorkComplete_ = false;
+    auto* computations = pendingZoneComputations_.get();
+    if (!computations) {
+        LOG_WARN(MOD_GRAPHICS, "launchDeferredBackgroundWork: no pending computations");
+        deferredWorkComplete_ = true;
+        return;
+    }
+
+    // Capture config values by copy for background thread
+    bool deferredAssetLoading = config_.constrainedConfig.deferredAssetLoading;
+    bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
+    bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
+    std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
+    std::string zoneNameCopy = currentZoneName_;
+    std::string eqClientPathCopy = config_.eqClientPath;
+    if (!eqClientPathCopy.empty() && eqClientPathCopy.back() != '/' && eqClientPathCopy.back() != '\\')
+        eqClientPathCopy += '/';
+
+    // Load objects if they were deferred in manual mode
+    auto zone = pendingZoneData_;
+    std::string zonePath = eqClientPathCopy + zoneNameCopy + ".s3d";
+
+    deferredWorkThread_ = std::make_unique<std::thread>([this, computations,
+                                                          deferredAssetLoading, lazyPfsLoading,
+                                                          enableAtlas, atlasPathCopy, zoneNameCopy,
+                                                          eqClientPathCopy, zone, zonePath]() {
+        // Load objects that were skipped in manual S3d step
+        if (zone && zone->objects.empty()) {
+            S3DLoader objLoader;
+            objLoader.setZone(zone);
+            objLoader.loadObjects(zonePath);
+            LOG_INFO(MOD_GRAPHICS, "Deferred: loaded {} objects from _obj.s3d",
+                     zone->objects.size());
+        }
+
+        // 6. Build graphics archive index (filesystem I/O — no GL)
+        if (deferredAssetLoading) {
+            computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
+            if (computations->archiveIndex->buildIndex(eqClientPathCopy, lazyPfsLoading)) {
+                LOG_INFO(MOD_GRAPHICS, "Deferred: graphics archive index built ({} race entries, {} archives)",
+                         computations->archiveIndex->getRaceEntryCount(),
+                         computations->archiveIndex->getArchiveCount());
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "Deferred: graphics archive index build failed");
+                computations->archiveIndex.reset();
+            }
+        }
+
+        // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
+        {
+            auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
+            skyData->skyLoader = std::make_unique<SkyLoader>();
+            skyData->skyConfig = std::make_unique<SkyConfig>();
+
+            if (skyData->skyLoader->load(eqClientPathCopy)) {
+                LOG_INFO(MOD_GRAPHICS, "Deferred: sky.s3d loaded ({} textures)",
+                         skyData->skyLoader->getSkyData()->textures.size());
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "Deferred: sky.s3d load failed");
+            }
+
+            std::string skyIniPath = eqClientPathCopy + "sky.ini";
+            if (skyData->skyConfig->loadFromFile(skyIniPath)) {
+                LOG_INFO(MOD_GRAPHICS, "Deferred: sky.ini loaded ({} zone configs)",
+                         skyData->skyConfig->getZoneCount());
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "Deferred: sky.ini load failed, will use defaults");
+            }
+
+            // Pre-decode + upscale BMP sky textures (no GL)
+            if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
+                const auto& textures = skyData->skyLoader->getSkyData()->textures;
+                for (const auto& [texName, texInfo] : textures) {
+                    if (!texInfo || texInfo->data.size() < 2) continue;
+                    if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
+
+                    PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
+                    preTex.name = texName;
+
+                    uint32_t decW = 0, decH = 0;
+                    std::vector<uint8_t> decoded;
+                    if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) continue;
+
+                    if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
+                        const uint32_t targetSize = 512;
+                        bilinearUpscaleARGB(decoded.data(), decW, decH,
+                                            preTex.pixels, targetSize, targetSize);
+                        preTex.width = targetSize;
+                        preTex.height = targetSize;
+                    } else {
+                        preTex.pixels = std::move(decoded);
+                        preTex.width = decW;
+                        preTex.height = decH;
+                    }
+                    skyData->preDecodedTextures.push_back(std::move(preTex));
+                }
+                LOG_INFO(MOD_GRAPHICS, "Deferred: pre-decoded {} BMP sky textures",
+                         skyData->preDecodedTextures.size());
+            }
+
+            // Pre-compute dome mesh geometry
+            skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
+            SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
+                                            skyData->precomputedDome->indices);
+
+            computations->skyLoadData = std::move(skyData);
+        }
+
+        // 8. Pre-load weather config (file I/O + JSON — no GL)
+        {
+            auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
+            ZoneWeatherConfig wconfig;
+            if (loadZoneWeatherConfig(zoneNameCopy, wconfig)) {
+                weatherData->config = wconfig;
+                weatherData->loaded = true;
+            } else {
+                weatherData->config.zoneName = zoneNameCopy;
+                weatherData->config.defaultWeather = WeatherType::Normal;
+                weatherData->config.enabled = true;
+                weatherData->loaded = true;
+            }
+            computations->weatherConfig = std::move(weatherData);
+        }
+
+        // 9. Pre-load display settings (file I/O + JSON — no GL)
+        {
+            auto dispData = std::make_unique<PendingZoneComputations::DisplaySettingsData>();
+            dispData->skyEnabled = loadDisplaySettingsFromFile().skyEnabled;
+            dispData->loaded = true;
+            computations->displaySettings = std::move(dispData);
+        }
+
+        // 10. Pre-load atlas files (file I/O + tile lookup — no GL)
+        if (enableAtlas && !atlasPathCopy.empty()) {
+            std::string atlasDir = atlasPathCopy;
+            if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
+
+            std::string zoneAtlasFile = atlasDir + zoneNameCopy + ".atlas";
+            computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
+
+            std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
+            computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+        }
+
+        LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
+        deferredWorkComplete_ = true;
+    });
+
+    LOG_INFO(MOD_GRAPHICS, "Deferred background work thread launched");
+}
+
 void IrrlichtRenderer::storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
                                               const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
                                               const float fogMinClip[4], const float fogMaxClip[4]) {
@@ -3589,31 +3772,24 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::DataReady_ArchiveIndex: {
+        // Wait for deferred work thread if it's still running (manual mode)
+        if (deferredWorkThread_ && !deferredWorkComplete_.load()) {
+            break;  // Spin until deferred background work finishes
+        }
+        if (deferredWorkThread_ && deferredWorkThread_->joinable()) {
+            deferredWorkThread_->join();
+            deferredWorkThread_.reset();
+        }
+
         if (pendingZoneComputations_ && pendingZoneComputations_->archiveIndex) {
-            // Background thread already built the index — just move it
+            // Background or deferred thread built the index — just move it
             graphicsArchiveIndex_ = std::move(pendingZoneComputations_->archiveIndex);
             if (entityRenderer_->getRaceModelLoader()) {
                 entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
             }
             LOG_INFO(MOD_GRAPHICS, "Graphics archive index adopted from background thread ({} race entries, {} archives)",
                      graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
-        } else if (config_.constrainedConfig.deferredAssetLoading) {
-            // Fallback: build synchronously (background build failed or wasn't attempted)
-            graphicsArchiveIndex_ = std::make_unique<GraphicsArchiveIndex>();
-            bool lazyMode = config_.constrainedConfig.lazyPfsLoading;
-            if (graphicsArchiveIndex_->buildIndex(config_.eqClientPath, lazyMode, networkTickCallback_)) {
-                LOG_INFO(MOD_GRAPHICS, "Graphics archive index built (fallback): {} race entries from {} archives",
-                         graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
-                if (entityRenderer_->getRaceModelLoader()) {
-                    entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
-                }
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Graphics archive index build failed, falling back to eager loading");
-                entityRenderer_->loadGlobalCharacters();
-                if (networkTickCallback_) networkTickCallback_();
-                entityRenderer_->loadNumberedGlobals();
-            }
-        } else {
+        } else if (!config_.constrainedConfig.deferredAssetLoading) {
             // Non-deferred: eager loading (unchanged)
             if (entityRenderer_->loadGlobalCharacters()) {
                 LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
@@ -3683,12 +3859,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                     LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized from background data");
                 }
             } else {
-                // Fallback: synchronous load (no background data available)
-                if (!skyRenderer_->initialize(config_.eqClientPath)) {
-                    LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed");
-                } else {
-                    LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized (synchronous fallback)");
-                }
+                // No background sky data — sky creation skipped
+                LOG_INFO(MOD_GRAPHICS, "Sky renderer created without background data (sky textures will be missing)");
             }
         } else if (hasBgData) {
             // Re-adopt fresh sky data on /loadzone (skyRenderer_ already exists)
@@ -4078,6 +4250,9 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     case BackgroundZoneLoadPhase::RegionMesh_InstallBsp: {
         if (!currentZone_ || !currentZone_->wldLoader) {
             LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no zone or WLD loader");
+            // Compute combined geometry on-demand if it was skipped during S3D parse
+            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
+                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
             createZoneMesh();  // Fall back to combined mesh
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
             break;
@@ -4088,6 +4263,9 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
         if (!bspTree || bspTree->regions.empty() || !wldLoader->hasPvsData()) {
             LOG_INFO(MOD_GRAPHICS, "Zone has no PVS data, using combined mesh");
+            // Compute combined geometry on-demand if it was skipped during S3D parse
+            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
+                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
             createZoneMesh();
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
             break;
@@ -4547,6 +4725,19 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             zoneBoundsMinY_ = currentZone_->geometry->minY;
             zoneBoundsMaxY_ = currentZone_->geometry->maxY;
             zoneBoundsValid_ = true;
+        } else if (!regionBoundingBoxes_.empty()) {
+            // Fallback: compute bounds from per-region bounding boxes
+            // (combined geometry may be null when computeCombinedGeometry was skipped)
+            float rMinX = std::numeric_limits<float>::max(), rMaxX = std::numeric_limits<float>::lowest();
+            float rMinY = std::numeric_limits<float>::max(), rMaxY = std::numeric_limits<float>::lowest();
+            for (const auto& [idx, bb] : regionBoundingBoxes_) {
+                rMinX = std::min(rMinX, bb.MinEdge.X); rMaxX = std::max(rMaxX, bb.MaxEdge.X);
+                rMinY = std::min(rMinY, bb.MinEdge.Y); rMaxY = std::max(rMaxY, bb.MaxEdge.Y);
+            }
+            zoneBoundsMinX_ = rMinX; zoneBoundsMaxX_ = rMaxX;
+            zoneBoundsMinY_ = rMinY; zoneBoundsMaxY_ = rMaxY;
+            zoneBoundsValid_ = true;
+            LOG_INFO(MOD_GRAPHICS, "Zone bounds computed from {} region bounding boxes", regionBoundingBoxes_.size());
         }
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_Fog;
         logAssetBuildTime("zone_bounds", 0, stepStart);
@@ -10637,7 +10828,9 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
 
     // Create background entity prep worker if not already started (may have been created
     // early in beginZoneAssetLoad() for the deferred /loadzone path).
-    if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
+    // Skip if skipEntityBuild is set (e.g., OrangePi debug preset).
+    if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
+        && !config_.constrainedConfig.skipEntityBuild) {
         entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
             entityRenderer_->getRaceModelLoader(),
             entityRenderer_->getEquipmentModelLoader());
@@ -10997,7 +11190,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
                       "meshLoadQueue_.size={} needBuild={}",
                       governor_->getStateName(), meshLoadQueue_.size(), qNeedBuild);
         }
-        // Queue background prep even when not GREEN (free work)
+        // Populate pending queue even when not GREEN (zero-cost, main-thread-only).
+        // Do NOT dispatch — worker stays idle during non-GREEN frames.
         queueEntityPrepRequests();
         checkProgressiveLoadingComplete();
         return;
@@ -11017,6 +11211,14 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 
     // Priority 1: Process one entity build step (most visible missing asset)
     if (!didWork && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
+        // Populate pending queue, then dispatch one item if worker is idle.
+        // Sort by model key right before dispatch for cache locality.
+        queueEntityPrepRequests();
+        if (entityPrepWorker_ && entityPrepWorker_->isIdle()) {
+            entityPrepWorker_->sortPendingByModel();
+            entityPrepWorker_->dispatchOne();
+        }
+
         // Poll completed prep results and distribute per-entity data
         entityRenderer_->pollAndDistributePrepResults();
 

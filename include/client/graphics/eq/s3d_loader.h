@@ -216,6 +216,13 @@ struct S3DZone {
     }
 };
 
+// Options for selective zone loading
+struct S3DLoadOptions {
+    bool loadObjects = true;
+    bool loadCharacters = true;
+    bool computeCombinedGeometry = true;
+};
+
 // High-level S3D zone loader
 class S3DLoader {
 public:
@@ -226,6 +233,7 @@ public:
     // archivePath: path to the .s3d file
     // Returns true on success
     bool loadZone(const std::string& archivePath);
+    bool loadZone(const std::string& archivePath, const S3DLoadOptions& options);
 
     // Get the loaded zone data
     std::shared_ptr<S3DZone> getZone() const { return zone_; }
@@ -271,11 +279,16 @@ public:
         return zone_ ? zone_->lights.size() : 0;
     }
 
+    // Set zone from an external source (for deferred object loading on a separate thread)
+    void setZone(std::shared_ptr<S3DZone> zone) { zone_ = zone; zoneName_ = zone->zoneName; }
+
+    // Load placeable objects from _obj.s3d (public for deferred loading)
+    bool loadObjects(const std::string& archivePath);
+
 private:
     bool loadTextures(PfsArchive& archive);
     bool loadObjectTextures(PfsArchive& archive);
     bool loadCharacterTextures(PfsArchive& archive);
-    bool loadObjects(const std::string& archivePath);
     bool loadCharacters(const std::string& archivePath);
     bool loadLights(const std::string& archivePath);
     void flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,

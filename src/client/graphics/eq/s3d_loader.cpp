@@ -105,6 +105,10 @@ struct Mat4 {
 };
 
 bool S3DLoader::loadZone(const std::string& archivePath) {
+    return loadZone(archivePath, S3DLoadOptions{});
+}
+
+bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& options) {
     zone_ = nullptr;
     error_.clear();
     zoneName_ = extractZoneName(archivePath);
@@ -152,21 +156,34 @@ bool S3DLoader::loadZone(const std::string& archivePath) {
     zone_ = std::make_shared<S3DZone>();
     zone_->zoneName = zoneName_;
     zone_->wldLoader = wldLoader;  // Store for PVS access
-    zone_->geometry = wldLoader->getCombinedGeometry();
 
-    if (!zone_->geometry) {
-        error_ = "No geometry extracted from WLD";
-        return false;
+    if (options.computeCombinedGeometry) {
+        zone_->geometry = wldLoader->getCombinedGeometry();
+
+        if (!zone_->geometry) {
+            error_ = "No geometry extracted from WLD";
+            return false;
+        }
+    } else {
+        // Validate WLD parsed successfully without computing combined geometry
+        if (wldLoader->getGeometries().empty()) {
+            error_ = "No geometry extracted from WLD";
+            return false;
+        }
     }
 
     // Load textures (optional - rendering can work with vertex colors)
     loadTextures(archive);
 
     // Load placeable objects (optional)
-    loadObjects(archivePath);
+    if (options.loadObjects) {
+        loadObjects(archivePath);
+    }
 
     // Load character models (optional)
-    loadCharacters(archivePath);
+    if (options.loadCharacters) {
+        loadCharacters(archivePath);
+    }
 
     // Load light sources (optional)
     loadLights(archivePath);
