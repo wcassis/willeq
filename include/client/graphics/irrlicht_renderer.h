@@ -1185,7 +1185,7 @@ private:
     void createZoneMesh();
     void processFrameLazyLoad();   // FPS-budgeted lazy mesh loading (constrained mode)
     bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
-    void updateZoneLightColors();  // Update zone light colors based on current vision type
+    // updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
     void refreshShaderLightColors();  // Push updated fire-flicker colors to GLSL shader
 
@@ -1377,13 +1377,16 @@ private:
     float fogThickness_ = 50.0f;       // Thickness of fog fade zone at edge
     irr::core::vector3df lastLightPlayerPos_;    // Last player pos (EQ coords) when object lights were updated
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
-    std::vector<irr::scene::ILightSceneNode*> zoneLightNodes_;
+    // Zone light data — no scene nodes, just base data for worker
+    struct ZoneLightData {
+        float radius;
+        float attConstant, attLinear, attQuadratic;
+        irr::video::SColorf baseDiffuseColor;  // Original color from WLD
+    };
+    std::vector<ZoneLightData> zoneLightData_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
-    std::vector<bool> zoneLightInSceneGraph_;  // Track which lights are in scene graph
     std::vector<std::string> zoneLightNames_;  // Light names from WLD data
-    std::vector<float> zoneLightAnimElapsed_;   // Per-light animation elapsed time (ms)
-    std::vector<uint32_t> zoneLightAnimFrame_;  // Per-light current animation frame
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
     std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions

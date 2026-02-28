@@ -418,7 +418,7 @@ struct SimulationOutput {
         irr::video::SColorf originalColor; // Original color (pre-flicker)
         float radius = 0;
         float attConstant = 0, attLinear = 0, attQuadratic = 0;
-        size_t sourceIndex = SIZE_MAX;     // Index into zoneLightNodes_ or objectLights_
+        size_t sourceIndex = SIZE_MAX;     // Index into zoneLightData_ or objectLights_
         bool isZoneLight = false;
         bool isPlayerLight = false;
         bool valid = false;
@@ -457,7 +457,7 @@ struct SimulationOutput {
     // Zone light animation colors (one per animated zone light)
     // Only lights with frameCount > 1 have entries here
     struct ZoneLightAnimColor {
-        size_t lightIndex;  // Index into zoneLightNodes_
+        size_t lightIndex;  // Index into zoneLightData_
         float r, g, b;
         bool updated = false;  // True if frame changed this tick
     };
@@ -678,7 +678,7 @@ struct SimulationZoneData {
 
     // Zone light animation data (animated torches from WLD Fragment 0x1B)
     struct ZoneLightAnimData {
-        size_t lightIndex;                  // Index into zoneLightNodes_
+        size_t lightIndex;                  // Index into zoneLightData_
         uint32_t frameCount = 1;
         uint32_t sleepMs = 100;             // Delay between frames
         // Per-frame colors (RGB, size == frameCount)
@@ -844,6 +844,16 @@ private:
         uint32_t currentFrame = 0;
     };
     std::vector<LightAnimState> lightAnimStates_;
+
+    // Original zone light base colors (captured at setZoneData time, never modified)
+    std::vector<irr::video::SColorf> zoneLightBaseColors_;
+
+    // Cached vision/weather state for change detection (zone light color updates)
+    uint8_t cachedVisionType_ = 255;            // Force initial apply (255 = invalid)
+    float cachedWeatherAmbientModifier_ = -1.0f; // Force initial apply
+
+    // Apply vision/weather modifiers to all non-animated zone light colors in zoneData_
+    void applyVisionWeatherToZoneLights(uint8_t visionType, float weatherAmbientModifier);
 
     // --- Particle system state (owned by worker thread) ---
     // Pool and allocation

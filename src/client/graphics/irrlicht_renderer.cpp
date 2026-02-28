@@ -1404,7 +1404,7 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
         static float lastWeatherMod = 1.0f;
         // Only update light colors when weather modifier changes significantly
         if (std::abs(weatherMod - lastWeatherMod) > 0.005f) {
-            updateZoneLightColors();
+            // Zone light colors now handled by SimulationWorker (vision/weather applied there)
             updateObjectLightColors();
             lastWeatherMod = weatherMod;
         }
@@ -2166,21 +2166,10 @@ void IrrlichtRenderer::unloadZone() {
     objectBoundingBoxes_.clear();
     objectInSceneGraph_.clear();
 
-    // Remove zone light nodes
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (zoneLightNodes_[i]) {
-            if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
-                zoneLightNodes_[i]->remove();
-            }
-            zoneLightNodes_[i]->drop();  // Release our reference
-        }
-    }
-    zoneLightNodes_.clear();
+    // Clear zone light data (no scene nodes to remove)
+    zoneLightData_.clear();
     zoneLightPositions_.clear();
-    zoneLightInSceneGraph_.clear();
     zoneLightNames_.clear();
-    zoneLightAnimElapsed_.clear();
-    zoneLightAnimFrame_.clear();
 
     // Clear entity renderer
     if (entityRenderer_) {
@@ -4316,57 +4305,36 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── Lights & Objects sub-steps ───────────────────────────────────────
 
     case BackgroundZoneLoadPhase::Lights_CreateNodes: {
-        // Create zone light scene nodes (GPU: scene node creation)
-        // Clear existing zone lights
-        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-            if (zoneLightNodes_[i]) {
-                if (i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i])
-                    zoneLightNodes_[i]->remove();
-                zoneLightNodes_[i]->drop();
-            }
-        }
-        zoneLightNodes_.clear();
+        // Populate zone light data (no scene nodes — shader gets data from worker)
+        zoneLightData_.clear();
         zoneLightPositions_.clear();
         zoneLightRegions_.clear();
-        zoneLightInSceneGraph_.clear();
         zoneLightNames_.clear();
-        zoneLightAnimElapsed_.clear();
-        zoneLightAnimFrame_.clear();
 
         if (currentZone_ && !currentZone_->lights.empty()) {
             for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
                 const auto& light = currentZone_->lights[i];
                 irr::core::vector3df pos(light->x, light->z, light->y);
 
-                irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
-                    nullptr, pos,
-                    irr::video::SColorf(light->r, light->g, light->b, 1.0f),
-                    light->radius);
+                ZoneLightData zld;
+                zld.radius = std::max(light->radius, 1.0f);
+                zld.attConstant = 1.0f;
+                zld.attLinear = 1.0f / zld.radius;
+                zld.attQuadratic = 1.0f / (zld.radius * zld.radius);
+                zld.baseDiffuseColor = irr::video::SColorf(light->r, light->g, light->b, 1.0f);
 
-                if (lightNode) {
-                    irr::video::SLight& lightData = lightNode->getLightData();
-                    lightData.Type = irr::video::ELT_POINT;
-                    float r = std::max(light->radius, 1.0f);
-                    lightData.Attenuation = irr::core::vector3df(1.0f, 1.0f / r, 1.0f / (r * r));
-                    lightNode->setVisible(false);
-                    lightNode->grab();
-                    lightNode->remove();  // Remove from scene graph immediately (PVS will add back visible ones)
-                    zoneLightNodes_.push_back(lightNode);
-                    zoneLightPositions_.push_back(pos);
-                    zoneLightInSceneGraph_.push_back(false);
-                    zoneLightNames_.push_back(light->name);
-                    zoneLightAnimElapsed_.push_back(0.0f);
-                    zoneLightAnimFrame_.push_back(light->currentFrame);
-                }
+                zoneLightData_.push_back(zld);
+                zoneLightPositions_.push_back(pos);
+                zoneLightNames_.push_back(light->name);
             }
-            LOG_DEBUG(MOD_GRAPHICS, "Created {} zone light scene nodes (all out of scene graph, pending PVS classification)",
-                      zoneLightNodes_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "Created {} zone light data entries (no scene nodes)",
+                      zoneLightData_.size());
             LOG_DEBUG(MOD_GRAPHICS, "  PVS state at Lights_CreateNodes: usePvsCulling_={}, currentPvsRegion_={}, bspTree={}",
                       usePvsCulling_, currentPvsRegion_,
                       zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) + " regions" : "null");
         }
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_InstallRegions;
-        logAssetBuildTime("lights_create_nodes", zoneLightNodes_.size(), stepStart);
+        logAssetBuildTime("lights_create_nodes", zoneLightData_.size(), stepStart);
         break;
     }
 
@@ -4394,97 +4362,18 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             LOG_DEBUG(MOD_GRAPHICS, "Computed BSP regions for {} of {} zone lights (fallback)",
                       lightsWithRegion, zoneLightRegions_.size());
         } else {
-            zoneLightRegions_.resize(zoneLightNodes_.size(), SIZE_MAX);
+            zoneLightRegions_.resize(zoneLightData_.size(), SIZE_MAX);
             LOG_DEBUG(MOD_GRAPHICS, "No BSP/zone data for light regions — all set to SIZE_MAX");
         }
 
-        // Log PVS state before culling
+        // Log PVS state
         LOG_DEBUG(MOD_GRAPHICS, "Lights_InstallRegions PVS state: usePvsCulling_={}, currentPvsRegion_={}, "
-                  "bspTree={}, zoneLightNodes_={}, zoneLightRegions_={}",
+                  "bspTree={}, zoneLightData_={}, zoneLightRegions_={}",
                   usePvsCulling_, currentPvsRegion_,
                   zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) : "null",
-                  zoneLightNodes_.size(), zoneLightRegions_.size());
+                  zoneLightData_.size(), zoneLightRegions_.size());
 
-        // Log bitvector info for current camera region
-        if (usePvsCulling_ && currentPvsRegion_ != SIZE_MAX && zoneBspTree_
-            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
-            if (camRegion) {
-                size_t bitvecSize = camRegion->visibleRegions.size();
-                size_t visCount = 0;
-                for (size_t b = 0; b < bitvecSize; ++b) {
-                    if (camRegion->visibleRegions[b]) visCount++;
-                }
-                LOG_DEBUG(MOD_GRAPHICS, "  Camera region {} bitvector: size={}, {} regions marked visible",
-                          currentPvsRegion_, bitvecSize, visCount);
-            } else {
-                LOG_DEBUG(MOD_GRAPHICS, "  Camera region {} is null!", currentPvsRegion_);
-            }
-        }
-
-        // PVS check — add PVS-visible lights to scene graph (all start out-of-graph)
-        {
-            size_t pvsCulled = 0;
-            size_t pvsVisible = 0;
-            size_t alreadyInGraph = 0;
-            size_t noNode = 0;
-
-            // Log first 20 lights with full detail
-            size_t detailLogged = 0;
-            for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-                if (!zoneLightNodes_[i]) { noNode++; continue; }
-
-                size_t regionIdx = (i < zoneLightRegions_.size()) ? zoneLightRegions_[i] : SIZE_MAX;
-                bool vis;
-                if (detailLogged < 20) {
-                    vis = isRegionPvsVisibleDebug(regionIdx, "zlight", static_cast<int>(i));
-                    detailLogged++;
-                } else {
-                    vis = isRegionPvsVisible(regionIdx);
-                }
-
-                if (vis) {
-                    if (!zoneLightInSceneGraph_[i]) {
-                        smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
-                        zoneLightInSceneGraph_[i] = true;
-                    } else {
-                        alreadyInGraph++;
-                    }
-                    pvsVisible++;
-                } else {
-                    if (zoneLightInSceneGraph_[i]) {
-                        zoneLightNodes_[i]->remove();
-                        zoneLightInSceneGraph_[i] = false;
-                    }
-                    pvsCulled++;
-                }
-            }
-
-            LOG_DEBUG(MOD_GRAPHICS, "Lights_InstallRegions PVS result: {} PVS-visible (added to graph), {} PVS-culled (out of graph), "
-                      "{} already-in-graph, {} no-node (total={})",
-                      pvsVisible, pvsCulled, alreadyInGraph, noNode, zoneLightNodes_.size());
-
-            // Log unique regions that lights are in and their PVS status
-            {
-                std::unordered_map<size_t, size_t> regionLightCount;
-                for (size_t i = 0; i < zoneLightRegions_.size(); ++i) {
-                    regionLightCount[zoneLightRegions_[i]]++;
-                }
-                size_t visRegionCount = 0;
-                size_t hidRegionCount = 0;
-                for (auto& [region, count] : regionLightCount) {
-                    bool vis = isRegionPvsVisible(region);
-                    if (vis) visRegionCount++;
-                    else hidRegionCount++;
-                    if (count > 3 || !vis) {  // Log regions with many lights or hidden regions
-                        LOG_DEBUG(MOD_GRAPHICS, "  Light region {}: {} lights, PVS={}",
-                                  region, count, vis ? "visible" : "HIDDEN");
-                    }
-                }
-                LOG_DEBUG(MOD_GRAPHICS, "  {} unique regions contain lights: {} PVS-visible, {} PVS-hidden",
-                          regionLightCount.size(), visRegionCount, hidRegionCount);
-            }
-        }
+        // No scene graph add/remove needed — worker handles visibility via lightVisible output
 
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Objects_Install;
         logAssetBuildTime("lights_install_regions", 0, stepStart);
@@ -6097,7 +5986,7 @@ void IrrlichtRenderer::setPlayerRace(uint16_t raceId) {
     LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
              raceId, currentVision_ == VisionType::Ultravision ? "Ultravision" :
                      currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
-    updateZoneLightColors();
+    // Zone light colors updated by SimulationWorker via visionType in SimulationInput
 }
 
 void IrrlichtRenderer::setVisionType(VisionType vision) {
@@ -6107,7 +5996,7 @@ void IrrlichtRenderer::setVisionType(VisionType vision) {
         LOG_INFO(MOD_GRAPHICS, "Vision upgraded to: {}",
                  currentVision_ == VisionType::Ultravision ? "Ultravision" :
                  currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
-        updateZoneLightColors();
+        // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     }
 }
 
@@ -6117,65 +6006,11 @@ void IrrlichtRenderer::resetVisionToBase() {
         LOG_INFO(MOD_GRAPHICS, "Vision reset to base: {}",
                  currentVision_ == VisionType::Ultravision ? "Ultravision" :
                  currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
-        updateZoneLightColors();
+        // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     }
 }
 
-void IrrlichtRenderer::updateZoneLightColors() {
-    if (!currentZone_ || zoneLightNodes_.empty()) {
-        return;
-    }
-
-    // Determine intensity and color shift based on vision type
-    float intensity = 0.25f;  // Normal (base)
-    float redShift = 0.0f;
-
-    switch (currentVision_) {
-        case VisionType::Ultravision:
-            intensity = 1.0f;  // Full intensity
-            redShift = 0.0f;   // Normal colors
-            break;
-        case VisionType::Infravision:
-            intensity = 0.75f; // 75% intensity
-            redShift = 0.3f;   // Shift toward red spectrum
-            break;
-        case VisionType::Normal:
-        default:
-            intensity = 0.25f; // Base intensity (25%)
-            redShift = 0.0f;   // Normal colors
-            break;
-    }
-
-    // Apply weather effects to zone lights (darker during storms)
-    float weatherMod = 1.0f;
-    if (weatherEffects_ && weatherEffects_->isEnabled()) {
-        weatherMod = weatherEffects_->getAmbientLightModifier();
-        intensity *= weatherMod;
-    }
-
-    // Update all zone light colors
-    for (size_t i = 0; i < zoneLightNodes_.size() && i < currentZone_->lights.size(); ++i) {
-        auto* node = zoneLightNodes_[i];
-        const auto& light = currentZone_->lights[i];
-        if (node) {
-            // Apply intensity and red shift
-            float r = light->r * intensity;
-            float g = light->g * intensity * (1.0f - redShift * 0.5f);  // Reduce green for infravision
-            float b = light->b * intensity * (1.0f - redShift);         // Reduce blue more for infravision
-
-            // Boost red for infravision
-            if (redShift > 0.0f) {
-                r = std::min(1.0f, r * (1.0f + redShift));
-            }
-
-            irr::video::SLight& lightData = node->getLightData();
-            lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
-        }
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "Updated {} zone lights: intensity={:.0f}%, redShift={:.0f}%, weatherMod={:.2f}",
-              zoneLightNodes_.size(), intensity * 100.0f, redShift * 100.0f, weatherMod);
-}
+// updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
 
 void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
     if (objectLights_.empty()) {
@@ -6440,33 +6275,30 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
     }
 
     // Copy zone light data
-    zoneData.zoneLights.resize(zoneLightNodes_.size());
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+    zoneData.zoneLights.resize(zoneLightData_.size());
+    for (size_t i = 0; i < zoneLightData_.size(); ++i) {
         auto& zld = zoneData.zoneLights[i];
         if (i < zoneLightPositions_.size())
             zld.position = zoneLightPositions_[i];
         zld.bspRegion = (i < zoneLightRegions_.size()) ? zoneLightRegions_[i] : SIZE_MAX;
     }
 
-    // Copy zone light node data for light selection
-    zoneData.zoneLightNodes.resize(zoneLightNodes_.size());
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
+    // Copy zone light node data for light selection (from zoneLightData_, no scene nodes)
+    zoneData.zoneLightNodes.resize(zoneLightData_.size());
+    for (size_t i = 0; i < zoneLightData_.size(); ++i) {
         auto& zlnd = zoneData.zoneLightNodes[i];
         if (i < zoneLightPositions_.size())
             zlnd.position = zoneLightPositions_[i];
-        if (zoneLightNodes_[i]) {
-            const auto& ld = zoneLightNodes_[i]->getLightData();
-            zlnd.diffuseColor = ld.DiffuseColor;
-            zlnd.radius = ld.Radius;
-            zlnd.attConstant = ld.Attenuation.X;
-            zlnd.attLinear = ld.Attenuation.Y;
-            zlnd.attQuadratic = ld.Attenuation.Z;
-        }
+        zlnd.diffuseColor = zoneLightData_[i].baseDiffuseColor;
+        zlnd.radius = zoneLightData_[i].radius;
+        zlnd.attConstant = zoneLightData_[i].attConstant;
+        zlnd.attLinear = zoneLightData_[i].attLinear;
+        zlnd.attQuadratic = zoneLightData_[i].attQuadratic;
     }
 
     // Copy zone light animation data (animated torches from WLD)
     if (currentZone_) {
-        for (size_t i = 0; i < currentZone_->lights.size() && i < zoneLightNodes_.size(); ++i) {
+        for (size_t i = 0; i < currentZone_->lights.size() && i < zoneLightData_.size(); ++i) {
             const auto& light = currentZone_->lights[i];
             if (!light->isAnimated()) continue;
             SimulationZoneData::ZoneLightAnimData anim;
@@ -6809,22 +6641,20 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
             float colorBoost = 2.5f;
             glm::vec3 camIrr = pi.cameraPos;
 
-            for (size_t i = 0; i < zoneLightNodes_.size() && i < zoneLightPositions_.size(); ++i) {
-                auto* node = zoneLightNodes_[i];
-                if (!node) continue;
+            for (size_t i = 0; i < zoneLightData_.size() && i < zoneLightPositions_.size(); ++i) {
                 const auto& pos = zoneLightPositions_[i];
                 float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
                 float distSq = dx*dx + dy*dy + dz*dz;
                 if (distSq < maxLightDistSq) {
-                    auto& ld = node->getLightData();
-                    float radius = ld.Radius > 0 ? ld.Radius : 30.0f;
+                    const auto& zld = zoneLightData_[i];
+                    float radius = zld.radius > 0 ? zld.radius : 30.0f;
                     pi.weatherLights.push_back({
                         glm::vec3(pos.X, pos.Y, pos.Z),
                         radius,
                         glm::vec3(
-                            std::min(1.0f, ld.DiffuseColor.r * colorBoost),
-                            std::min(1.0f, ld.DiffuseColor.g * colorBoost),
-                            std::min(1.0f, ld.DiffuseColor.b * colorBoost)
+                            std::min(1.0f, zld.baseDiffuseColor.r * colorBoost),
+                            std::min(1.0f, zld.baseDiffuseColor.g * colorBoost),
+                            std::min(1.0f, zld.baseDiffuseColor.b * colorBoost)
                         )
                     });
                 }
@@ -7027,27 +6857,8 @@ void IrrlichtRenderer::applySimulationResults() {
         }
     }
 
-    // Apply zone light visibility
-    if (!results->lightVisible.empty()) {
-        for (size_t i = 0; i < results->lightVisible.size() && i < zoneLightNodes_.size(); ++i) {
-            auto* node = zoneLightNodes_[i];
-            if (!node) continue;
-
-            bool shouldBeVisible = results->lightVisible[i] != 0;
-            bool isInScene = (i < zoneLightInSceneGraph_.size()) ? zoneLightInSceneGraph_[i] : false;
-
-            if (shouldBeVisible && !isInScene) {
-                smgr_->getRootSceneNode()->addChild(node);
-                node->setVisible(true);
-                if (i < zoneLightInSceneGraph_.size())
-                    zoneLightInSceneGraph_[i] = true;
-            } else if (!shouldBeVisible && isInScene) {
-                node->remove();
-                if (i < zoneLightInSceneGraph_.size())
-                    zoneLightInSceneGraph_[i] = false;
-            }
-        }
-    }
+    // Zone light visibility: no scene nodes to add/remove.
+    // Worker uses lightVisible output internally for light selection filtering.
 
     // Apply light selection to shader
     if (results->activeLightCount > 0 && zoneShader_ && zoneShader_->isAvailable()) {
@@ -7114,16 +6925,8 @@ void IrrlichtRenderer::applySimulationResults() {
         }
     }
 
-    // Apply zone light animation colors from worker
-    if (!results->zoneLightAnimColors.empty()) {
-        for (const auto& alc : results->zoneLightAnimColors) {
-            if (!alc.updated) continue;
-            if (alc.lightIndex < zoneLightNodes_.size() && zoneLightNodes_[alc.lightIndex]) {
-                auto& ld = zoneLightNodes_[alc.lightIndex]->getLightData();
-                ld.DiffuseColor = irr::video::SColorf(alc.r, alc.g, alc.b, 1.0f);
-            }
-        }
-    }
+    // Zone light animation colors: worker applies them to its own zoneData_ internally.
+    // No scene nodes to update on main thread.
 
     // Apply sky state from worker
     if (results->skyState.valid && skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
@@ -7415,16 +7218,8 @@ void IrrlichtRenderer::dumpScene() const {
     }
 
     // --- Zone Lights ---
-    {
-        size_t inGraph = 0, outGraph = 0;
-        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-            if (!zoneLightNodes_[i]) continue;
-            bool ig = (i < zoneLightInSceneGraph_.size()) ? zoneLightInSceneGraph_[i] : true;
-            if (ig) inGraph++; else outGraph++;
-        }
-        LOG_INFO(MOD_GRAPHICS, "  ZONE LIGHTS: {} total, {} in-graph, {} out-of-graph",
-                 zoneLightNodes_.size(), inGraph, outGraph);
-    }
+    LOG_INFO(MOD_GRAPHICS, "  ZONE LIGHTS: {} total (no scene nodes, data-only)",
+             zoneLightData_.size());
 
     // --- Zone Meshes ---
     {
@@ -7526,12 +7321,7 @@ void IrrlichtRenderer::dumpScene() const {
             knownNodes.insert(objectNodes_[i]);
         }
     }
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (zoneLightNodes_[i] && i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
-            otherNodes--;
-            knownNodes.insert(zoneLightNodes_[i]);
-        }
-    }
+    // Zone lights have no scene nodes — nothing to subtract
     // Subtract zone mesh nodes that are in the scene graph
     for (const auto& [regionIdx, node] : regionMeshNodes_) {
         if (node && node->getParent()) {
@@ -9091,7 +8881,7 @@ void IrrlichtRenderer::toggleZoneLights() {
         if (sunLight_) {
             sunLight_->setVisible(true);
         }
-        LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: ON ({} lights)", zoneLightNodes_.size());
+        LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: ON ({} lights)", zoneLightData_.size());
     } else if (lightingEnabled_ && zoneLightsEnabled_) {
         // State 2 -> State 3: Turn both OFF
         zoneLightsEnabled_ = false;
@@ -9469,13 +9259,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
             if (objectNodes_[i]) objectNodes_[i]->setVisible(false);
         }
         if (doorManager_) doorManager_->setAllDoorsVisible(false);
-        // Remove lights from scene graph
-        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-            if (zoneLightNodes_[i] && i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
-                zoneLightNodes_[i]->remove();
-                zoneLightInSceneGraph_[i] = false;
-            }
-        }
+        // Zone lights have no scene nodes — nothing to hide
         if (sunLight_) sunLight_->setVisible(false);
         if (playerLightNode_) playerLightNode_->setVisible(false);
     };
@@ -9494,14 +9278,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
             }
         }
         if (doorManager_) doorManager_->setAllDoorsVisible(true);
-        // Add lights back to scene graph
-        for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-            if (zoneLightNodes_[i] && i < zoneLightInSceneGraph_.size() && !zoneLightInSceneGraph_[i]) {
-                smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
-                zoneLightInSceneGraph_[i] = true;
-                zoneLightNodes_[i]->setVisible(false);  // updateObjectLights will enable nearby ones
-            }
-        }
+        // Zone lights have no scene nodes — nothing to show
         if (sunLight_) sunLight_->setVisible(true);
         if (playerLightNode_) playerLightNode_->setVisible(true);
     };
@@ -9510,7 +9287,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     breakdown.entityCount = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
     breakdown.objectCount = static_cast<int>(objectNodes_.size());
     breakdown.doorCount = doorManager_ ? static_cast<int>(doorManager_->getDoorCount()) : 0;
-    int lightCount = static_cast<int>(zoneLightNodes_.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
+    int lightCount = static_cast<int>(zoneLightData_.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
 
     // Count total scene nodes recursively
     std::function<int(irr::scene::ISceneNode*)> countNodes = [&](irr::scene::ISceneNode* node) -> int {
@@ -9604,16 +9381,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     int doorPolyCount = static_cast<int>(doorPolys - baselinePolys);
     if (doorManager_) doorManager_->setAllDoorsVisible(false);
 
-    // 6. Measure lights only
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (zoneLightNodes_[i]) {
-            if (i < zoneLightInSceneGraph_.size() && !zoneLightInSceneGraph_[i]) {
-                smgr_->getRootSceneNode()->addChild(zoneLightNodes_[i]);
-                zoneLightInSceneGraph_[i] = true;
-            }
-            zoneLightNodes_[i]->setVisible(true);
-        }
-    }
+    // 6. Measure lights only (zone lights have no scene nodes, just sun + player light)
     if (sunLight_) sunLight_->setVisible(true);
     if (playerLightNode_) playerLightNode_->setVisible(true);
     int64_t lightSum = 0;
@@ -9624,11 +9392,6 @@ void IrrlichtRenderer::profileSceneBreakdown() {
         driver_->endScene();
     }
     int64_t lightTime = (lightSum / numSamples) - baseline;
-    for (size_t i = 0; i < zoneLightNodes_.size(); ++i) {
-        if (zoneLightNodes_[i] && i < zoneLightInSceneGraph_.size() && zoneLightInSceneGraph_[i]) {
-            zoneLightNodes_[i]->setVisible(false);
-        }
-    }
     if (sunLight_) sunLight_->setVisible(false);
     if (playerLightNode_) playerLightNode_->setVisible(false);
 
@@ -13012,7 +12775,7 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     {
         size_t regionCount = regionMeshNodes_.size();
         size_t objectCount = objectNodes_.size();
-        size_t lightCount = zoneLightNodes_.size();
+        size_t lightCount = zoneLightData_.size();
         size_t objectLightCount = objectLights_.size();
 
         // Estimate zone mesh memory from Irrlicht mesh buffers

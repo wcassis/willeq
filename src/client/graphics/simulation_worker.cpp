@@ -87,6 +87,15 @@ void SimulationWorker::setZoneData(const SimulationZoneData& data) {
         output_[i].valid = false;
     }
 
+    // Capture original base colors for vision/weather recomputation
+    zoneLightBaseColors_.resize(zoneData_.zoneLightNodes.size());
+    for (size_t i = 0; i < zoneData_.zoneLightNodes.size(); ++i) {
+        zoneLightBaseColors_[i] = zoneData_.zoneLightNodes[i].diffuseColor;
+    }
+    // Reset cached vision/weather to force initial application
+    cachedVisionType_ = 255;
+    cachedWeatherAmbientModifier_ = -1.0f;
+
     // Init flicker phases
     flickerPhases_.resize(zoneData_.objectLights.size(), 0.0f);
     for (size_t i = 0; i < flickerPhases_.size(); ++i) {
@@ -149,6 +158,9 @@ void SimulationWorker::updateVertexAnimData(std::vector<SimulationZoneData::Vert
 void SimulationWorker::clearZoneData() {
     zoneDataValid_ = false;
     zoneData_ = SimulationZoneData();
+    zoneLightBaseColors_.clear();
+    cachedVisionType_ = 255;
+    cachedWeatherAmbientModifier_ = -1.0f;
     flickerPhases_.clear();
     workerOcclusionCuller_.reset();
     workerEntities_.clear();
@@ -304,6 +316,12 @@ void SimulationWorker::workerLoop() {
 void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput& output) {
     workerFrameCount_++;
 
+    // Apply vision/weather modifiers to zone light colors when they change
+    if (input.visionType != cachedVisionType_ ||
+        std::abs(input.weatherAmbientModifier - cachedWeatherAmbientModifier_) > 0.005f) {
+        applyVisionWeatherToZoneLights(input.visionType, input.weatherAmbientModifier);
+    }
+
     // Critical tier — every frame: visibility, occlusion, entities, light selection
     computeVisibility(input, output);
     computeObjectVisibility(input, output);
@@ -332,6 +350,15 @@ void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput
     if (workerFrameCount_ % kBackgroundInterval == 0) {
         computeWeather(input, output);
         computeLightAnimations(input, output);
+
+        // Apply animation results to zoneData_ so light selection reads animated colors
+        for (const auto& alc : output.zoneLightAnimColors) {
+            if (alc.updated && alc.lightIndex < zoneData_.zoneLightNodes.size()) {
+                zoneData_.zoneLightNodes[alc.lightIndex].diffuseColor =
+                    irr::video::SColorf(alc.r, alc.g, alc.b, 1.0f);
+            }
+        }
+
         computeSkyState(input, output);
         computeWeatherEffectsState(input, output);
     }
@@ -1230,6 +1257,49 @@ bool SimulationWorker::testFrustumAABB(const float planes[6][4],
         }
     }
     return true;  // At least partially inside all planes
+}
+
+// ============================================================================
+// Vision/Weather Zone Light Color Application
+// ============================================================================
+
+void SimulationWorker::applyVisionWeatherToZoneLights(uint8_t visionType, float weatherAmbientModifier) {
+    cachedVisionType_ = visionType;
+    cachedWeatherAmbientModifier_ = weatherAmbientModifier;
+
+    if (zoneLightBaseColors_.size() != zoneData_.zoneLightNodes.size()) return;
+
+    // Compute vision-based intensity and red shift (same logic as old updateZoneLightColors)
+    float intensity = 0.25f;
+    float redShift = 0.0f;
+    switch (visionType) {
+        case 1: // Ultravision
+            intensity = 1.0f; break;
+        case 2: // Infravision
+            intensity = 0.75f; redShift = 0.3f; break;
+        default: break;
+    }
+    intensity *= weatherAmbientModifier;
+
+    // Build set of animated light indices (skip those — computeLightAnimations handles them)
+    std::unordered_set<size_t> animatedLights;
+    for (const auto& anim : zoneData_.zoneLightAnims) {
+        animatedLights.insert(anim.lightIndex);
+    }
+
+    // Apply to all non-animated zone lights using original base colors
+    for (size_t i = 0; i < zoneData_.zoneLightNodes.size(); ++i) {
+        if (animatedLights.count(i)) continue;
+
+        const auto& base = zoneLightBaseColors_[i];
+        float r = base.r * intensity;
+        float g = base.g * intensity * (1.0f - redShift * 0.5f);
+        float b = base.b * intensity * (1.0f - redShift);
+        if (redShift > 0.0f) {
+            r = std::min(1.0f, r * (1.0f + redShift));
+        }
+        zoneData_.zoneLightNodes[i].diffuseColor = irr::video::SColorf(r, g, b, 1.0f);
+    }
 }
 
 // ============================================================================
