@@ -239,11 +239,14 @@ private:
     }
 
     // RTT content cache (message area, not input field)
-    irr::video::ITexture* messageAreaRT_ = nullptr;
+    irr::video::ITexture* messageAreaRT_ = nullptr;   // RTT for chrome (bg, tabs, scrollbar, grip)
+    irr::video::ITexture* messageTextRT_ = nullptr;    // RTT for message text
     irr::video::IVideoDriver* cachedDriver_ = nullptr;
     bool messageAreaDirty_ = true;
     int messageAreaRTWidth_ = 0;
     int messageAreaRTHeight_ = 0;
+    int messageTextRTWidth_ = 0;
+    int messageTextRTHeight_ = 0;
     void ensureMessageAreaRT(irr::video::IVideoDriver* driver);
     void renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui);
 

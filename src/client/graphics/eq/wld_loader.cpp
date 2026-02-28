@@ -32,9 +32,17 @@ void decodeStringHash(char* str, size_t len) {
 size_t WldLoader::getMemoryUsage() const {
     size_t total = sizeof(WldLoader);
 
-    // Per-region geometries (the biggest chunk usually)
-    for (const auto& geom : geometries_)
-        if (geom) total += geom->getMemoryUsage();
+    // Per-region geometries — deduplicate shared materialData
+    std::set<const void*> seenMaterials;
+    for (const auto& geom : geometries_) {
+        if (!geom) continue;
+        total += geom->getMemoryUsage();
+        if (geom->materialData) {
+            if (seenMaterials.insert(geom->materialData.get()).second) {
+                total += geom->materialData->getMemoryUsage();
+            }
+        }
+    }
 
     // Geometry-by-fragment index (just map overhead)
     total += geometryByFragIndex_.size() * (sizeof(uint32_t) + sizeof(std::shared_ptr<ZoneGeometry>) + 48);
@@ -129,6 +137,126 @@ size_t WldLoader::getMemoryUsage() const {
     return total;
 }
 
+void WldLoader::logMemoryBreakdown() const {
+    auto fmtBytes = [](size_t bytes) -> std::string {
+        if (bytes >= 1024 * 1024)
+            return fmt::format("{:.1f} MB", bytes / (1024.0 * 1024.0));
+        if (bytes >= 1024)
+            return fmt::format("{:.1f} KB", bytes / 1024.0);
+        return fmt::format("{} B", bytes);
+    };
+
+    // Geometry vertex/triangle data
+    size_t geomVertexBytes = 0, geomTriBytes = 0, geomOtherBytes = 0;
+    std::set<const void*> seenMaterials;
+    size_t materialBytes = 0;
+    size_t uniqueMaterialCount = 0;
+
+    for (const auto& geom : geometries_) {
+        if (!geom) continue;
+        geomVertexBytes += geom->vertices.capacity() * sizeof(Vertex3D);
+        geomTriBytes += geom->triangles.capacity() * sizeof(Triangle);
+        geomOtherBytes += sizeof(ZoneGeometry) + geom->vertexPieces.capacity() * sizeof(VertexPiece);
+        if (geom->animatedVertices) {
+            geomOtherBytes += sizeof(MeshAnimatedVertices);
+            for (const auto& f : geom->animatedVertices->frames)
+                geomOtherBytes += f.positions.capacity() * sizeof(float);
+        }
+        if (geom->materialData && seenMaterials.insert(geom->materialData.get()).second) {
+            materialBytes += geom->materialData->getMemoryUsage();
+            uniqueMaterialCount++;
+        }
+    }
+
+    // BSP tree
+    size_t bspBytes = 0, pvsBytes = 0;
+    size_t bspNodeCount = 0, bspRegionCount = 0;
+    if (bspTree_) {
+        bspNodeCount = bspTree_->nodes.size();
+        bspRegionCount = bspTree_->regions.size();
+        bspBytes += sizeof(BspTree) + bspTree_->nodes.capacity() * sizeof(BspNode);
+        for (const auto& region : bspTree_->regions) {
+            if (!region) continue;
+            bspBytes += sizeof(BspRegion) + region->regionTypes.capacity() * sizeof(RegionType);
+            size_t pvs = region->visibleRegions.capacity() / 8;
+            pvsBytes += pvs;
+            bspBytes += pvs;
+        }
+    }
+
+    // Skeleton/Animation
+    size_t skelBytes = 0;
+    for (const auto& [id, st] : skeletonTracks_) {
+        if (!st) continue;
+        skelBytes += sizeof(SkeletonTrack) + st->name.capacity();
+        skelBytes += st->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        for (const auto& bone : st->allBones)
+            if (bone) skelBytes += sizeof(SkeletonBone) + bone->name.capacity();
+    }
+    for (const auto& [id, td] : trackDefs_)
+        if (td) skelBytes += sizeof(TrackDef) + td->name.capacity() + td->frames.capacity() * sizeof(BoneTransform);
+
+    // Textures map
+    size_t texMapBytes = 0;
+    for (const auto& [id, tex] : textures_) {
+        for (const auto& f : tex.frames) texMapBytes += f.capacity();
+        texMapBytes += tex.frames.capacity() * sizeof(std::string);
+    }
+    for (const auto& n : textureNames_) texMapBytes += n.capacity();
+    texMapBytes += textureNames_.capacity() * sizeof(std::string);
+
+    // Lights
+    size_t lightBytes = 0;
+    for (const auto& light : lights_)
+        if (light) lightBytes += sizeof(ZoneLight) + light->name.capacity()
+            + light->lightLevels.capacity() * sizeof(float)
+            + light->colors.capacity() * sizeof(std::tuple<float,float,float>);
+
+    LOG_INFO(MOD_GRAPHICS, "[WLD Memory Breakdown]");
+    LOG_INFO(MOD_GRAPHICS, "  Geometries: {} (vertices {}, triangles {}, other {}, total {})",
+        geometries_.size(), fmtBytes(geomVertexBytes), fmtBytes(geomTriBytes),
+        fmtBytes(geomOtherBytes), fmtBytes(geomVertexBytes + geomTriBytes + geomOtherBytes));
+    LOG_INFO(MOD_GRAPHICS, "  Material data: {} ({} unique lists shared across {} geometries)",
+        fmtBytes(materialBytes), uniqueMaterialCount, geometries_.size());
+    LOG_INFO(MOD_GRAPHICS, "  BSP tree: {} ({} nodes, {} regions, PVS {})",
+        fmtBytes(bspBytes), bspNodeCount, bspRegionCount, fmtBytes(pvsBytes));
+    LOG_INFO(MOD_GRAPHICS, "  Textures map: {}", fmtBytes(texMapBytes));
+    LOG_INFO(MOD_GRAPHICS, "  Skeleton/Animation: {}", fmtBytes(skelBytes));
+    LOG_INFO(MOD_GRAPHICS, "  Lights: {}", fmtBytes(lightBytes));
+    LOG_INFO(MOD_GRAPHICS, "  Total: {}", fmtBytes(getMemoryUsage()));
+}
+
+void WldLoader::releasePostLoadData() {
+    // Release data already extracted to zone source (characters, objects, lights)
+    // or only needed during initial mesh building. Preserve what the mesh cache
+    // needs for progressive region rebuilds: geometries_, geometryByFragIndex_,
+    // bspTree_, textures_, textureNames_.
+
+    skeletonTracks_.clear();
+    skeletonRefs_.clear();
+    boneOrientations_.clear();
+    boneOrientationRefs_.clear();
+    trackDefs_.clear();
+    trackRefs_.clear();
+    placeables_.clear();
+    objectDefs_.clear();
+    modelRefs_.clear();
+    lights_.clear();
+    lightDefs_.clear();
+    lightDefRefs_.clear();
+    ambientLightRegions_.clear();
+    globalAmbientLight_.reset();
+    meshAnimatedVertices_.clear();
+    meshAnimatedVerticesRefs_.clear();
+
+    // Material resolution data — only needed during parseFragment36/2C
+    brushes_.clear();
+    materials_.clear();
+    brushSets_.clear();
+    textureRefs_.clear();
+    resolvedMaterialListCache_.clear();
+}
+
 bool WldLoader::parseFromArchive(const std::string& archivePath, const std::string& wldName) {
     geometries_.clear();
     textures_.clear();
@@ -152,6 +280,7 @@ bool WldLoader::parseFromArchive(const std::string& archivePath, const std::stri
     trackRefs_.clear();
     meshAnimatedVertices_.clear();
     meshAnimatedVerticesRefs_.clear();
+    resolvedMaterialListCache_.clear();
     bspTree_.reset();
     totalRegionCount_ = 0;
 
@@ -609,74 +738,83 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
     // This data maps vertices to textures but we don't need it for rendering
     ptr += 4 * header.vertexTexCount;
 
-    // Resolve texture names
+    // Resolve texture names — use cached material list when multiple meshes
+    // reference the same 0x31 fragment (e.g. all 1915 meshes in qeynos2)
     if (header.frag1 > 0) {
-        auto it31 = brushSets_.find(header.frag1);
-        if (it31 != brushSets_.end()) {
-            const WldTextureBrushSet& brushSet = it31->second;
+        auto cacheIt = resolvedMaterialListCache_.find(header.frag1);
+        if (cacheIt != resolvedMaterialListCache_.end()) {
+            // Cache hit — share the resolved material list
+            geom->materialData = cacheIt->second;
+        } else {
+            auto it31 = brushSets_.find(header.frag1);
+            if (it31 != brushSets_.end()) {
+                auto matList = std::make_shared<ResolvedMaterialList>();
+                const WldTextureBrushSet& brushSet = it31->second;
 
-            for (uint32_t brushRef : brushSet.brushRefs) {
-                std::string texName;
-                bool isInvisible = false;
-                TextureAnimationInfo animInfo;
+                for (uint32_t brushRef : brushSet.brushRefs) {
+                    std::string texName;
+                    bool isInvisible = false;
+                    TextureAnimationInfo animInfo;
 
-                auto it30 = materials_.find(brushRef);
-                if (it30 != materials_.end()) {
-                    const WldTextureBrush& material = it30->second;
+                    auto it30 = materials_.find(brushRef);
+                    if (it30 != materials_.end()) {
+                        const WldTextureBrush& material = it30->second;
 
-                    if (material.flags & 1) {
-                        isInvisible = true;
-                    }
+                        if (material.flags & 1) {
+                            isInvisible = true;
+                        }
 
-                    if (!material.textureRefs.empty()) {
-                        uint32_t brushIdx = material.textureRefs[0];
-                        auto it04 = brushes_.find(brushIdx);
-                        if (it04 != brushes_.end()) {
-                            const WldTextureBrush& brush = it04->second;
+                        if (!material.textureRefs.empty()) {
+                            uint32_t brushIdx = material.textureRefs[0];
+                            auto it04 = brushes_.find(brushIdx);
+                            if (it04 != brushes_.end()) {
+                                const WldTextureBrush& brush = it04->second;
 
-                            // Get animation info from the brush (Fragment 0x04)
-                            animInfo.isAnimated = brush.isAnimated;
-                            animInfo.animationDelayMs = brush.animationDelayMs;
+                                animInfo.isAnimated = brush.isAnimated;
+                                animInfo.animationDelayMs = brush.animationDelayMs;
 
-                            // Collect all frame texture names from all referenced 0x03 fragments
-                            for (uint32_t texIdx : brush.textureRefs) {
-                                auto it03 = textures_.find(texIdx);
-                                if (it03 != textures_.end()) {
-                                    const WldTexture& tex = it03->second;
-                                    for (const auto& frame : tex.frames) {
-                                        animInfo.frames.push_back(frame);
+                                for (uint32_t texIdx : brush.textureRefs) {
+                                    auto it03 = textures_.find(texIdx);
+                                    if (it03 != textures_.end()) {
+                                        const WldTexture& tex = it03->second;
+                                        for (const auto& frame : tex.frames) {
+                                            animInfo.frames.push_back(frame);
+                                        }
                                     }
                                 }
-                            }
 
-                            // Primary texture name is the first frame
-                            if (!animInfo.frames.empty()) {
-                                texName = animInfo.frames[0];
+                                if (!animInfo.frames.empty()) {
+                                    texName = animInfo.frames[0];
+                                }
                             }
+                        } else {
+                            isInvisible = true;
                         }
                     } else {
                         isInvisible = true;
                     }
-                } else {
-                    isInvisible = true;
+
+                    matList->textureNames.push_back(texName);
+                    matList->textureInvisible.push_back(isInvisible);
+                    matList->textureAnimations.push_back(animInfo);
                 }
 
-                geom->textureNames.push_back(texName);
-                geom->textureInvisible.push_back(isInvisible);
-                geom->textureAnimations.push_back(animInfo);
+                resolvedMaterialListCache_[header.frag1] = matList;
+                geom->materialData = matList;
             }
         }
     }
 
-    if (geom->textureNames.empty()) {
+    if (geom->textureNames().empty()) {
         std::set<uint32_t> uniqueTexIndices;
         for (const auto& tri : geom->triangles) {
             uniqueTexIndices.insert(tri.textureIndex);
         }
         uint32_t maxIdx = uniqueTexIndices.empty() ? 0 : *uniqueTexIndices.rbegin();
-        geom->textureNames.resize(maxIdx + 1);
-        geom->textureInvisible.resize(maxIdx + 1, false);
-        geom->textureAnimations.resize(maxIdx + 1);
+        auto& mat = geom->mutableMaterialData();
+        mat.textureNames.resize(maxIdx + 1);
+        mat.textureInvisible.resize(maxIdx + 1, false);
+        mat.textureAnimations.resize(maxIdx + 1);
     }
 
     // Link vertex animation data if this mesh has animated vertices
@@ -711,6 +849,7 @@ std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
 
     auto combined = std::make_shared<ZoneGeometry>();
     combined->name = "combined";
+    auto& combinedMat = combined->mutableMaterialData();
 
     combined->minX = combined->minY = combined->minZ = std::numeric_limits<float>::max();
     combined->maxX = combined->maxY = combined->maxZ = std::numeric_limits<float>::lowest();
@@ -720,31 +859,31 @@ std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
 
     for (const auto& geom : geometries_) {
         std::vector<uint32_t> texRemap;
-        for (size_t i = 0; i < geom->textureNames.size(); ++i) {
-            const auto& texName = geom->textureNames[i];
-            bool isInvisible = (i < geom->textureInvisible.size()) ? geom->textureInvisible[i] : false;
+        for (size_t i = 0; i < geom->textureNames().size(); ++i) {
+            const auto& texName = geom->textureNames()[i];
+            bool isInvisible = (i < geom->textureInvisible().size()) ? geom->textureInvisible()[i] : false;
             TextureAnimationInfo animInfo;
-            if (i < geom->textureAnimations.size()) {
-                animInfo = geom->textureAnimations[i];
+            if (i < geom->textureAnimations().size()) {
+                animInfo = geom->textureAnimations()[i];
             }
 
             auto it = globalTexMap.find(texName);
             if (it != globalTexMap.end()) {
                 texRemap.push_back(it->second);
-                if (isInvisible && it->second < combined->textureInvisible.size()) {
-                    combined->textureInvisible[it->second] = true;
+                if (isInvisible && it->second < combinedMat.textureInvisible.size()) {
+                    combinedMat.textureInvisible[it->second] = true;
                 }
                 // Update animation info if this one has animation and existing doesn't
-                if (animInfo.isAnimated && it->second < combined->textureAnimations.size() &&
-                    !combined->textureAnimations[it->second].isAnimated) {
-                    combined->textureAnimations[it->second] = animInfo;
+                if (animInfo.isAnimated && it->second < combinedMat.textureAnimations.size() &&
+                    !combinedMat.textureAnimations[it->second].isAnimated) {
+                    combinedMat.textureAnimations[it->second] = animInfo;
                 }
             } else {
-                uint32_t newIdx = static_cast<uint32_t>(combined->textureNames.size());
+                uint32_t newIdx = static_cast<uint32_t>(combinedMat.textureNames.size());
                 globalTexMap[texName] = newIdx;
-                combined->textureNames.push_back(texName);
-                combined->textureInvisible.push_back(isInvisible);
-                combined->textureAnimations.push_back(animInfo);
+                combinedMat.textureNames.push_back(texName);
+                combinedMat.textureInvisible.push_back(isInvisible);
+                combinedMat.textureAnimations.push_back(animInfo);
                 texRemap.push_back(newIdx);
             }
         }
@@ -1138,76 +1277,82 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
     // Skip verticesByTex entries
     ptr += 4 * header.vertexTexCount;
 
-    // Resolve texture names - try fragment reference from flags
-    // Legacy mesh may store texture brush set reference differently
-    uint32_t texBrushSetRef = header.flags & 0xFFFF;  // Lower 16 bits might be the reference
+    // Resolve texture names — use cached material list (same as parseFragment36)
+    uint32_t texBrushSetRef = header.flags & 0xFFFF;
     if (texBrushSetRef > 0) {
-        auto it31 = brushSets_.find(texBrushSetRef);
-        if (it31 != brushSets_.end()) {
-            const WldTextureBrushSet& brushSet = it31->second;
+        auto cacheIt = resolvedMaterialListCache_.find(texBrushSetRef);
+        if (cacheIt != resolvedMaterialListCache_.end()) {
+            geom->materialData = cacheIt->second;
+        } else {
+            auto it31 = brushSets_.find(texBrushSetRef);
+            if (it31 != brushSets_.end()) {
+                auto matList = std::make_shared<ResolvedMaterialList>();
+                const WldTextureBrushSet& brushSet = it31->second;
 
-            for (uint32_t brushRef : brushSet.brushRefs) {
-                std::string texName;
-                bool isInvisible = false;
-                TextureAnimationInfo animInfo;
+                for (uint32_t brushRef : brushSet.brushRefs) {
+                    std::string texName;
+                    bool isInvisible = false;
+                    TextureAnimationInfo animInfo;
 
-                auto it30 = materials_.find(brushRef);
-                if (it30 != materials_.end()) {
-                    const WldTextureBrush& material = it30->second;
+                    auto it30 = materials_.find(brushRef);
+                    if (it30 != materials_.end()) {
+                        const WldTextureBrush& material = it30->second;
 
-                    if (material.flags & 1) {
-                        isInvisible = true;
-                    }
+                        if (material.flags & 1) {
+                            isInvisible = true;
+                        }
 
-                    if (!material.textureRefs.empty()) {
-                        uint32_t brushIdx = material.textureRefs[0];
-                        auto it04 = brushes_.find(brushIdx);
-                        if (it04 != brushes_.end()) {
-                            const WldTextureBrush& brush = it04->second;
+                        if (!material.textureRefs.empty()) {
+                            uint32_t brushIdx = material.textureRefs[0];
+                            auto it04 = brushes_.find(brushIdx);
+                            if (it04 != brushes_.end()) {
+                                const WldTextureBrush& brush = it04->second;
 
-                            // Get animation info from the brush (Fragment 0x04)
-                            animInfo.isAnimated = brush.isAnimated;
-                            animInfo.animationDelayMs = brush.animationDelayMs;
+                                animInfo.isAnimated = brush.isAnimated;
+                                animInfo.animationDelayMs = brush.animationDelayMs;
 
-                            // Collect all frame texture names from all referenced 0x03 fragments
-                            for (uint32_t texIdx : brush.textureRefs) {
-                                auto it03 = textures_.find(texIdx);
-                                if (it03 != textures_.end()) {
-                                    const WldTexture& tex = it03->second;
-                                    for (const auto& frame : tex.frames) {
-                                        animInfo.frames.push_back(frame);
+                                for (uint32_t texIdx : brush.textureRefs) {
+                                    auto it03 = textures_.find(texIdx);
+                                    if (it03 != textures_.end()) {
+                                        const WldTexture& tex = it03->second;
+                                        for (const auto& frame : tex.frames) {
+                                            animInfo.frames.push_back(frame);
+                                        }
                                     }
                                 }
-                            }
 
-                            // Primary texture name is the first frame
-                            if (!animInfo.frames.empty()) {
-                                texName = animInfo.frames[0];
+                                if (!animInfo.frames.empty()) {
+                                    texName = animInfo.frames[0];
+                                }
                             }
+                        } else {
+                            isInvisible = true;
                         }
                     } else {
                         isInvisible = true;
                     }
-                } else {
-                    isInvisible = true;
+
+                    matList->textureNames.push_back(texName);
+                    matList->textureInvisible.push_back(isInvisible);
+                    matList->textureAnimations.push_back(animInfo);
                 }
 
-                geom->textureNames.push_back(texName);
-                geom->textureInvisible.push_back(isInvisible);
-                geom->textureAnimations.push_back(animInfo);
+                resolvedMaterialListCache_[texBrushSetRef] = matList;
+                geom->materialData = matList;
             }
         }
     }
 
-    if (geom->textureNames.empty()) {
+    if (geom->textureNames().empty()) {
         std::set<uint32_t> uniqueTexIndices;
         for (const auto& tri : geom->triangles) {
             uniqueTexIndices.insert(tri.textureIndex);
         }
         uint32_t maxIdx = uniqueTexIndices.empty() ? 0 : *uniqueTexIndices.rbegin();
-        geom->textureNames.resize(maxIdx + 1);
-        geom->textureInvisible.resize(maxIdx + 1, false);
-        geom->textureAnimations.resize(maxIdx + 1);
+        auto& mat = geom->mutableMaterialData();
+        mat.textureNames.resize(maxIdx + 1);
+        mat.textureInvisible.resize(maxIdx + 1, false);
+        mat.textureAnimations.resize(maxIdx + 1);
     }
 
     if (!geom->vertices.empty() && !geom->triangles.empty()) {

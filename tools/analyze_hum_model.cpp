@@ -174,14 +174,14 @@ int main(int argc, char* argv[]) {
         std::cout << ")\n";
 
         // Show textures used
-        if (!geom->textureNames.empty()) {
+        if (!geom->textureNames().empty()) {
             std::cout << "    Textures: ";
-            for (size_t i = 0; i < std::min(geom->textureNames.size(), size_t(5)); ++i) {
+            for (size_t i = 0; i < std::min(geom->textureNames().size(), size_t(5)); ++i) {
                 if (i > 0) std::cout << ", ";
-                std::cout << geom->textureNames[i];
+                std::cout << geom->textureNames()[i];
             }
-            if (geom->textureNames.size() > 5) {
-                std::cout << " ... (" << geom->textureNames.size() << " total)";
+            if (geom->textureNames().size() > 5) {
+                std::cout << " ... (" << geom->textureNames().size() << " total)";
             }
             std::cout << "\n";
         }

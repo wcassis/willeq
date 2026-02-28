@@ -89,6 +89,10 @@ ChatWindow::~ChatWindow()
         cachedDriver_->removeTexture(messageAreaRT_);
         messageAreaRT_ = nullptr;
     }
+    if (messageTextRT_ && cachedDriver_) {
+        cachedDriver_->removeTexture(messageTextRT_);
+        messageTextRT_ = nullptr;
+    }
 }
 
 ChatWindow::ChatWindow()
@@ -224,6 +228,24 @@ void ChatWindow::ensureMessageAreaRT(irr::video::IVideoDriver* driver)
         messageAreaDirty_ = true;
     }
 
+    // Create/resize message text RTT with same dimensions
+    if (messageTextRT_ && messageTextRTWidth_ == w && messageTextRTHeight_ == h) {
+        // Already correct size
+    } else {
+        if (messageTextRT_) {
+            driver->removeTexture(messageTextRT_);
+            messageTextRT_ = nullptr;
+        }
+        messageTextRT_ = driver->addRenderTargetTexture(
+            irr::core::dimension2d<irr::u32>(w, h), "ChatTextCache",
+            irr::video::ECF_A8R8G8B8);
+        if (messageTextRT_) {
+            messageTextRTWidth_ = w;
+            messageTextRTHeight_ = h;
+            messageAreaDirty_ = true;
+        }
+    }
+
     cachedDriver_ = driver;
 }
 
@@ -314,6 +336,32 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
 
         driver->setRenderTarget(nullptr, false, false);
 
+        // Render message text into separate FBO (full opacity, survives chrome fade)
+        if (messageTextRT_) {
+            if (driver->setRenderTarget(messageTextRT_, true, true,
+                                        irr::video::SColor(0, 0, 0, 0))) {
+                // Adjust lastMouseX_/Y_ to FBO-relative coords for underline hover check
+                int savedMouseX = lastMouseX_;
+                int savedMouseY = lastMouseY_;
+                lastMouseX_ -= realBounds.UpperLeftCorner.X;
+                lastMouseY_ -= realBounds.UpperLeftCorner.Y;
+
+                int inputY = content.LowerRightCorner.Y - inputFieldHeight;
+                bool isFaded = (backgroundOpacity_ < 0.99f);
+                irr::core::recti messageArea(
+                    content.UpperLeftCorner.X,
+                    isFaded ? content.UpperLeftCorner.Y : content.UpperLeftCorner.Y + tabBarHeight_,
+                    isFaded ? content.LowerRightCorner.X - 2 : content.LowerRightCorner.X - scrollbarWidth - 2,
+                    inputY - 2);
+                renderMessages(driver, gui, messageArea);
+
+                lastMouseX_ = savedMouseX;
+                lastMouseY_ = savedMouseY;
+
+                driver->setRenderTarget(nullptr, false, false);
+            }
+        }
+
         bounds_ = realBounds;
         titleBar_ = realTitleBar;
 
@@ -344,6 +392,19 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
         irr::core::recti destRect = bounds_;
         irr::core::recti srcRect(0, 0, messageAreaRTWidth_, messageAreaRTHeight_);
         driver->draw2DImage(messageAreaRT_, destRect, srcRect, nullptr, blitColors, true);
+    }
+
+    // Blit message text at full opacity (always readable, survives chrome fade)
+    if (messageTextRT_) {
+        irr::video::SColor textColors[4] = {
+            irr::video::SColor(255, 255, 255, 255),
+            irr::video::SColor(255, 255, 255, 255),
+            irr::video::SColor(255, 255, 255, 255),
+            irr::video::SColor(255, 255, 255, 255)
+        };
+        irr::core::recti destRect = bounds_;
+        irr::core::recti srcRect(0, 0, messageTextRTWidth_, messageTextRTHeight_);
+        driver->draw2DImage(messageTextRT_, destRect, srcRect, nullptr, textColors, true);
     }
 }
 
@@ -378,25 +439,14 @@ void ChatWindow::render(irr::video::IVideoDriver* driver,
         return;
     }
 
-    // Render cached chrome (bg, tabs, scrollbar, grip) with fade alpha
+    // Render cached chrome + messages (chrome fades, messages stay full opacity)
     renderCachedMessageArea(driver, gui);
 
-    // Render messages directly to screen (always full opacity, survives chrome fade)
+    // Draw input field live at screen coords (cursor blink needs per-frame update)
     irr::core::recti content = getContentArea();
     int scrollbarWidth = getScrollbarWidth();
     int inputFieldHeight = getInputFieldHeight();
     int inputY = content.LowerRightCorner.Y - inputFieldHeight;
-
-    bool isFaded = (backgroundOpacity_ < 0.99f);
-    irr::core::recti messageArea(
-        content.UpperLeftCorner.X,
-        isFaded ? content.UpperLeftCorner.Y : content.UpperLeftCorner.Y + tabBarHeight_,
-        isFaded ? content.LowerRightCorner.X - 2 : content.LowerRightCorner.X - scrollbarWidth - 2,
-        inputY - 2
-    );
-    renderMessages(driver, gui, messageArea);
-
-    // Draw input field live at screen coords (always full opacity)
     irr::core::recti inputArea(
         content.UpperLeftCorner.X,
         inputY,
@@ -984,7 +1034,12 @@ bool ChatWindow::handleMouseMove(int x, int y) {
     lastMouseX_ = x;
     lastMouseY_ = y;
     hoveredLinkIndex_ = -1;
+    // renderedLinks_ bounds are in FBO-relative coords — adjust mouse position
     irr::core::vector2di point(x, y);
+    if (messageTextRT_) {
+        point.X -= bounds_.UpperLeftCorner.X;
+        point.Y -= bounds_.UpperLeftCorner.Y;
+    }
     for (size_t i = 0; i < renderedLinks_.size(); ++i) {
         if (renderedLinks_[i].bounds.isPointInside(point)) {
             hoveredLinkIndex_ = static_cast<int>(i);
@@ -1134,7 +1189,12 @@ void ChatWindow::setLinkClickCallback(LinkClickCallback callback) {
 }
 
 const MessageLink* ChatWindow::getLinkAtPosition(int x, int y) const {
+    // renderedLinks_ bounds are in FBO-relative coords — adjust mouse position
     irr::core::vector2di point(x, y);
+    if (messageTextRT_) {
+        point.X -= bounds_.UpperLeftCorner.X;
+        point.Y -= bounds_.UpperLeftCorner.Y;
+    }
     for (const auto& rendered : renderedLinks_) {
         if (rendered.bounds.isPointInside(point)) {
             return &rendered.link;

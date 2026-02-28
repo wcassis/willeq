@@ -50,13 +50,13 @@ std::shared_ptr<ZoneGeometry> combineCharacterParts(
         }
 
         // Merge texture names
-        for (const auto& texName : part->textureNames) {
-            combined->textureNames.push_back(texName);
+        for (const auto& texName : part->textureNames()) {
+            combined->mutableMaterialData().textureNames.push_back(texName);
         }
 
         // Merge invisible flags
-        for (bool inv : part->textureInvisible) {
-            combined->textureInvisible.push_back(inv);
+        for (bool inv : part->textureInvisible()) {
+            combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
         // Merge vertex pieces
@@ -65,7 +65,7 @@ std::shared_ptr<ZoneGeometry> combineCharacterParts(
         }
 
         vertexOffset += static_cast<uint32_t>(part->vertices.size());
-        textureOffset += static_cast<uint32_t>(part->textureNames.size());
+        textureOffset += static_cast<uint32_t>(part->textureNames().size());
     }
 
     if (combined->vertices.empty() || combined->triangles.empty()) {
@@ -169,13 +169,13 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
         }
 
         // Merge texture names
-        for (const auto& texName : part.geometry->textureNames) {
-            combined->textureNames.push_back(texName);
+        for (const auto& texName : part.geometry->textureNames()) {
+            combined->mutableMaterialData().textureNames.push_back(texName);
         }
 
         // Merge invisible flags
-        for (bool inv : part.geometry->textureInvisible) {
-            combined->textureInvisible.push_back(inv);
+        for (bool inv : part.geometry->textureInvisible()) {
+            combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
         // Merge vertex pieces with adjusted vertex offsets
@@ -187,7 +187,7 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
         }
 
         vertexOffset += static_cast<uint32_t>(part.geometry->vertices.size());
-        textureOffset += static_cast<uint32_t>(part.geometry->textureNames.size());
+        textureOffset += static_cast<uint32_t>(part.geometry->textureNames().size());
     }
 
     if (combined->vertices.empty() || combined->triangles.empty()) {
@@ -242,13 +242,13 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
         }
 
         // Merge texture names
-        for (const auto& texName : part.geometry->textureNames) {
-            combined->textureNames.push_back(texName);
+        for (const auto& texName : part.geometry->textureNames()) {
+            combined->mutableMaterialData().textureNames.push_back(texName);
         }
 
         // Merge invisible flags
-        for (bool inv : part.geometry->textureInvisible) {
-            combined->textureInvisible.push_back(inv);
+        for (bool inv : part.geometry->textureInvisible()) {
+            combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
         // Merge vertex pieces (critical for animation!)
@@ -257,7 +257,7 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
         }
 
         vertexOffset += static_cast<uint32_t>(part.geometry->vertices.size());
-        textureOffset += static_cast<uint32_t>(part.geometry->textureNames.size());
+        textureOffset += static_cast<uint32_t>(part.geometry->textureNames().size());
     }
 
     if (combined->vertices.empty() || combined->triangles.empty()) {

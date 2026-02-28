@@ -90,6 +90,12 @@ struct ConstrainedRendererConfig {
     bool enableAlphaToCoverage = false;      // Use MSAA alpha-to-coverage for vegetation
     bool enableShaders = false;              // Use GLSL shaders for fog/lighting/tint
     bool enableTextureAtlas = false;         // Use pre-built ETC1 atlas files for zone textures
+    bool skipManualZoneDraw = false;         // Debug: skip drawZoneGeometrySorted (isolate endScene)
+    bool skipVBOUpload = false;              // Debug: skip glBufferData for zone meshes (use client arrays)
+    bool skipEntityTextureUpload = false;    // Debug: skip entity texture uploads (glTexImage2D)
+    bool skipEntityBuild = false;            // Debug: skip entity scene node creation entirely
+    bool skipConstrainedTextureUpload = false; // Debug: skip constrained cache glTexImage2D uploads
+    bool skipSkyTextureUpload = false;         // Debug: skip sky texture GPU uploads (untextured sky dome)
     std::string atlasPath;                   // Directory containing .atlas files
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
     int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)

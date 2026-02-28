@@ -710,8 +710,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                         rawGeom->name = geom->name;
                         rawGeom->vertices = geom->vertices;  // Copy vertices
                         rawGeom->triangles = geom->triangles;
-                        rawGeom->textureNames = geom->textureNames;
-                        rawGeom->textureInvisible = geom->textureInvisible;
+                        rawGeom->materialData = geom->materialData;
                         rawGeom->vertexPieces = geom->vertexPieces;
                         rawGeom->minX = geom->minX; rawGeom->minY = geom->minY; rawGeom->minZ = geom->minZ;
                         rawGeom->maxX = geom->maxX; rawGeom->maxY = geom->maxY; rawGeom->maxZ = geom->maxZ;

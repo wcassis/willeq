@@ -707,6 +707,8 @@ public:
     void queueEntityPrepRequests();
     // Log build time and warn if over budget
     void logAssetBuildTime(const char* type, size_t id, std::chrono::steady_clock::time_point start);
+    // Send loading progress message to chat window
+    void sendLoadProgress(const std::string& msg);
     // Incremental collision helpers
     void addRegionToCollision(size_t regionIdx);
     void addDoorToCollision(uint8_t doorId);

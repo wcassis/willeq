@@ -904,6 +904,11 @@ bool EntityRenderer::processOneEntityBuildStep() {
         // In-progress = any phase past Placeholder
         bool inProgress = (vis.buildPhase != EntityBuildPhase::Placeholder);
 
+        // Only build entities that are currently visible (in scene graph).
+        // Culled entities (distance/frustum/portal/occlusion) stay as placeholders.
+        // Exception: entities already in-progress — finish them to avoid wasted partial work.
+        if (!inProgress && !vis.inSceneGraph) continue;
+
         float dx = vis.lastX - playerX;
         float dy = vis.lastY - playerY;
         float distSq = dx * dx + dy * dy;
@@ -939,6 +944,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
 
     auto& vis = entities_[bestId];
 
+    for (;;) { // Loop to fall through trivial phase transitions without wasting frames
     switch (vis.buildPhase) {
         case EntityBuildPhase::Placeholder: {
             // Wait for background prep to complete (both race model AND per-entity data)
@@ -971,7 +977,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
             if (modelData->decodedTextures.empty() && modelData->combinedGeometry &&
                 !modelData->textures.empty()) {
                 size_t totalDecodable = 0;
-                for (const auto& texName : modelData->combinedGeometry->textureNames) {
+                for (const auto& texName : modelData->combinedGeometry->textureNames()) {
                     std::string lowerName = texName;
                     std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                    [](unsigned char c) { return std::tolower(c); });
@@ -988,12 +994,12 @@ bool EntityRenderer::processOneEntityBuildStep() {
                     vis.nextTextureUpload = 0;
                     vis.uploadedTextures.clear();
                     vis.uploadedTextureAlpha.clear();
-                    return true;
+                    continue;  // trivial transition — fall through
                 }
 
                 // Decode ONE texture this frame
                 size_t decodeIdx = 0;
-                for (const auto& texName : modelData->combinedGeometry->textureNames) {
+                for (const auto& texName : modelData->combinedGeometry->textureNames()) {
                     std::string lowerName = texName;
                     std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                    [](unsigned char c) { return std::tolower(c); });
@@ -1050,7 +1056,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
                 vis.nextTextureUpload = 0;
                 vis.uploadedTextures.clear();
                 vis.uploadedTextureAlpha.clear();
-                return true;
+                continue;  // trivial transition — fall through
             }
 
             // Background thread already decoded textures — go to upload
@@ -1062,7 +1068,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
                 LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame build: {} textures to upload",
                           bestId, vis.name, modelData->decodedTextures.size());
             }
-            return true;
+            continue;  // trivial transition — fall through
         }
 
         case EntityBuildPhase::TextureUploading: {
@@ -1072,12 +1078,15 @@ bool EntityRenderer::processOneEntityBuildStep() {
                 // All base textures uploaded — move to variant textures
                 vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
                 vis.nextVariantUpload = 0;
-                return true;
+                continue;  // trivial transition — fall through
             }
 
             const auto& decoded = modelData->decodedTextures[vis.nextTextureUpload];
-            irr::video::ITexture* tex = uploadDecodedTexture(
-                driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            irr::video::ITexture* tex = nullptr;
+            if (!skipTextureUpload_) {
+                tex = uploadDecodedTexture(
+                    driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            }
 
             vis.uploadedTextures.push_back(tex);
             vis.uploadedTextureAlpha.push_back(decoded.hasAlpha);
@@ -1099,11 +1108,12 @@ bool EntityRenderer::processOneEntityBuildStep() {
             if (vis.nextVariantUpload >= vis.variantTextures.size()) {
                 // No variant textures or all uploaded — move to scene node creation
                 vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
-                return true;
+                continue;  // trivial transition — fall through
             }
 
             const auto& decoded = vis.variantTextures[vis.nextVariantUpload];
-            uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            if (!skipTextureUpload_)
+                uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
 
             vis.nextVariantUpload++;
 
@@ -1254,7 +1264,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
             if (!node) {
                 // Shouldn't happen — node was created in Frame 1
                 vis.buildPhase = EntityBuildPhase::MeshFinalize;
-                return true;
+                continue;  // trivial transition — fall through
             }
 
             // Set material properties
@@ -1383,7 +1393,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
             // Upload one pre-decoded equipment texture per frame
             if (vis.nextEquipTextureUpload >= vis.equipmentTextures.size()) {
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;
-                return true;
+                continue;  // trivial transition — fall through
             }
 
             const auto& decoded = vis.equipmentTextures[vis.nextEquipTextureUpload];
@@ -1391,7 +1401,8 @@ bool EntityRenderer::processOneEntityBuildStep() {
             // Upload to GPU via addTexture and register in race model mesh builder cache.
             // Equipment mesh builder (buildMeshFromGeometry) finds textures via
             // driver_->getTexture(name) so the addTexture call is sufficient.
-            uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            if (!skipTextureUpload_)
+                uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
 
             vis.nextEquipTextureUpload++;
 
@@ -1415,7 +1426,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
                         equipData->modelName = "IT" + std::to_string(staging.modelId);
                         equipData->geometry = staging.geometry;
                         equipData->textures = staging.rawTextures;
-                        for (const auto& texName : staging.geometry->textureNames) {
+                        for (const auto& texName : staging.geometry->textureNames()) {
                             equipData->textureNames.push_back(texName);
                         }
                         equipmentModelLoader_->cacheEquipmentModelData(staging.modelId, equipData);
@@ -1454,6 +1465,7 @@ bool EntityRenderer::processOneEntityBuildStep() {
     }
 
     return false;
+    } // end for(;;) fall-through loop
 }
 
 bool EntityRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std::string& name,

@@ -80,7 +80,7 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
     }
 
     if (zoneGeometry_) {
-        zoneTextureNames_ = zoneGeometry_->textureNames;
+        zoneTextureNames_ = zoneGeometry_->textureNames();
         LOG_INFO(MOD_GRAPHICS, "DetailManager: Loaded zone geometry with {} triangles, {} textures",
                  zoneGeometry_->triangles.size(), zoneTextureNames_.size());
 

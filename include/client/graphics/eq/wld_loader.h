@@ -563,28 +563,15 @@ struct MeshAnimatedVertices {
     std::vector<VertexAnimFrame> frames;      // All animation frames
 };
 
-struct ZoneGeometry {
-    std::vector<Vertex3D> vertices;
-    std::vector<Triangle> triangles;
-    std::string name;
-    float minX, minY, minZ;
-    float maxX, maxY, maxZ;
-    // Mesh center point (vertices are stored relative to this)
-    float centerX = 0, centerY = 0, centerZ = 0;
+// Resolved material list — shared between geometries that reference the same 0x31 fragment.
+// In qeynos2, all 1915 mesh fragments share one material list, saving ~33 MB.
+struct ResolvedMaterialList {
     std::vector<std::string> textureNames;
     std::vector<bool> textureInvisible;
-    // Texture animation info (indexed by textureIndex)
     std::vector<TextureAnimationInfo> textureAnimations;
-    // For character models - vertex to bone mapping
-    std::vector<VertexPiece> vertexPieces;
-    // Vertex animation data (for flags, banners, etc.)
-    std::shared_ptr<MeshAnimatedVertices> animatedVertices;
 
-    // Memory usage estimate (CPU-side source data)
     size_t getMemoryUsage() const {
-        size_t total = sizeof(ZoneGeometry);
-        total += vertices.capacity() * sizeof(Vertex3D);
-        total += triangles.capacity() * sizeof(Triangle);
+        size_t total = sizeof(ResolvedMaterialList);
         for (const auto& n : textureNames) total += n.capacity();
         total += textureNames.capacity() * sizeof(std::string);
         total += textureInvisible.capacity() / 8;  // vector<bool>
@@ -594,6 +581,54 @@ struct ZoneGeometry {
             total += a.frames.capacity() * sizeof(std::string);
         }
         total += textureAnimations.capacity() * sizeof(TextureAnimationInfo);
+        return total;
+    }
+};
+
+struct ZoneGeometry {
+    std::vector<Vertex3D> vertices;
+    std::vector<Triangle> triangles;
+    std::string name;
+    float minX, minY, minZ;
+    float maxX, maxY, maxZ;
+    // Mesh center point (vertices are stored relative to this)
+    float centerX = 0, centerY = 0, centerZ = 0;
+
+    // Texture mapping data — shared between geometries using same material list
+    std::shared_ptr<ResolvedMaterialList> materialData;
+
+    // Const accessors (return empty defaults if materialData is null)
+    const std::vector<std::string>& textureNames() const {
+        static const std::vector<std::string> empty;
+        return materialData ? materialData->textureNames : empty;
+    }
+    const std::vector<bool>& textureInvisible() const {
+        static const std::vector<bool> empty;
+        return materialData ? materialData->textureInvisible : empty;
+    }
+    const std::vector<TextureAnimationInfo>& textureAnimations() const {
+        static const std::vector<TextureAnimationInfo> empty;
+        return materialData ? materialData->textureAnimations : empty;
+    }
+
+    // Ensure materialData exists for write access, returns reference
+    ResolvedMaterialList& mutableMaterialData() {
+        if (!materialData) materialData = std::make_shared<ResolvedMaterialList>();
+        return *materialData;
+    }
+
+    // For character models - vertex to bone mapping
+    std::vector<VertexPiece> vertexPieces;
+    // Vertex animation data (for flags, banners, etc.)
+    std::shared_ptr<MeshAnimatedVertices> animatedVertices;
+
+    // Memory usage estimate (CPU-side source data, excluding shared materialData)
+    size_t getMemoryUsage() const {
+        size_t total = sizeof(ZoneGeometry);
+        total += vertices.capacity() * sizeof(Vertex3D);
+        total += triangles.capacity() * sizeof(Triangle);
+        // materialData counted separately to handle sharing (see WldLoader::getMemoryUsage)
+        total += sizeof(std::shared_ptr<ResolvedMaterialList>);
         total += vertexPieces.capacity() * sizeof(VertexPiece);
         if (animatedVertices) {
             total += sizeof(MeshAnimatedVertices);
@@ -601,6 +636,13 @@ struct ZoneGeometry {
                 total += f.positions.capacity() * sizeof(float);
             total += animatedVertices->frames.capacity() * sizeof(VertexAnimFrame);
         }
+        return total;
+    }
+
+    // Full memory usage including materialData (for standalone geometries not in WldLoader)
+    size_t getFullMemoryUsage() const {
+        size_t total = getMemoryUsage();
+        if (materialData) total += materialData->getMemoryUsage();
         return total;
     }
 };
@@ -633,6 +675,14 @@ public:
 
     // Memory usage estimate (all CPU-side data in this loader)
     size_t getMemoryUsage() const;
+
+    // Log per-component memory breakdown (called from /pmem)
+    void logMemoryBreakdown() const;
+
+    // Release data no longer needed after BSP install and region mesh initialization.
+    // Preserves geometries_, geometryByFragIndex_, bspTree_, textures_, textureNames_
+    // (needed by mesh cache for progressive region rebuilds).
+    void releasePostLoadData();
 
     // PVS (Potentially Visible Set) accessors
     // Get the geometry associated with a BSP region (via meshReference)
@@ -714,12 +764,13 @@ private:
     std::string resolveTextureName(uint32_t texIndex) const;
 
     std::vector<std::shared_ptr<ZoneGeometry>> geometries_;
-    std::string currentHash_;
     std::map<uint32_t, WldTexture> textures_;
     std::map<uint32_t, WldTextureBrush> brushes_;
     std::map<uint32_t, uint32_t> textureRefs_;
     std::map<uint32_t, WldTextureBrush> materials_;
     std::map<uint32_t, WldTextureBrushSet> brushSets_;
+    // Cache of resolved material lists keyed by 0x31 fragment index
+    std::map<uint32_t, std::shared_ptr<ResolvedMaterialList>> resolvedMaterialListCache_;
     std::vector<std::string> textureNames_;
     std::vector<std::shared_ptr<Placeable>> placeables_;
     std::map<std::string, WldObjectDef> objectDefs_;

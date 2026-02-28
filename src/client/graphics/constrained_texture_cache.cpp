@@ -47,6 +47,11 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
 
     ++cacheMisses_;
 
+    // Debug: skip all texture uploads to isolate endScene regression
+    if (config_.skipConstrainedTextureUpload) {
+        return nullptr;
+    }
+
     // Try compressed upload first (skips CPU decode, saves GPU memory)
     if (compressedTexturesAvailable_) {
         irr::video::ITexture* compressed = tryCompressedUpload(name, data);

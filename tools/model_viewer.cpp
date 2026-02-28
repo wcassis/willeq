@@ -1142,15 +1142,15 @@ void combineCurrentVariants() {
             combined->triangles.push_back(t);
         }
 
-        for (const auto& texName : part->textureNames) {
-            combined->textureNames.push_back(texName);
+        for (const auto& texName : part->textureNames()) {
+            combined->mutableMaterialData().textureNames.push_back(texName);
         }
-        for (bool inv : part->textureInvisible) {
-            combined->textureInvisible.push_back(inv);
+        for (bool inv : part->textureInvisible()) {
+            combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
         vertexOffset += static_cast<u32>(part->vertices.size());
-        textureOffset += static_cast<u32>(part->textureNames.size());
+        textureOffset += static_cast<u32>(part->textureNames().size());
     }
 
     combined->name = "combined_variant";
@@ -1260,8 +1260,8 @@ scene::IMesh* buildMesh(const ZoneGeometry& geometry, bool doSwapXY) {
         // Get texture
         std::string texName;
         video::ITexture* texture = nullptr;
-        if (texIdx < geometry.textureNames.size()) {
-            texName = geometry.textureNames[texIdx];
+        if (texIdx < geometry.textureNames().size()) {
+            texName = geometry.textureNames()[texIdx];
             if (!texName.empty()) {
                 std::string lowerTexName = texName;
                 std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),
@@ -1450,15 +1450,15 @@ std::shared_ptr<ZoneGeometry> combineCharacterParts(
             combined->triangles.push_back(t);
         }
 
-        for (const auto& texName : part->textureNames) {
-            combined->textureNames.push_back(texName);
+        for (const auto& texName : part->textureNames()) {
+            combined->mutableMaterialData().textureNames.push_back(texName);
         }
-        for (bool inv : part->textureInvisible) {
-            combined->textureInvisible.push_back(inv);
+        for (bool inv : part->textureInvisible()) {
+            combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
         vertexOffset += static_cast<u32>(part->vertices.size());
-        textureOffset += static_cast<u32>(part->textureNames.size());
+        textureOffset += static_cast<u32>(part->textureNames().size());
     }
 
     if (combined->vertices.empty() || combined->triangles.empty()) return nullptr;

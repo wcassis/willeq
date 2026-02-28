@@ -1,4 +1,5 @@
 #include "client/graphics/frame_budget_governor.h"
+#include "common/logging.h"
 #include <algorithm>
 
 namespace EQT {
@@ -23,17 +24,43 @@ void FrameBudgetGovernor::beginFrame() {
     frameStart_ = std::chrono::steady_clock::now();
 }
 
-void FrameBudgetGovernor::endFrame() {
+void FrameBudgetGovernor::endFrame(float endSceneUs, bool hasPendingWork) {
     auto now = std::chrono::steady_clock::now();
     float frameMs = std::chrono::duration_cast<std::chrono::microseconds>(
         now - frameStart_).count() / 1000.0f;
 
-    // Record in ring buffer
+    // Record full wall-clock frame time (including endScene/VSYNC wait).
+    // On the shared-bus ARM SoC, progressive loading (VBO/texture uploads)
+    // competes for memory bandwidth with the GPU's tile renderer. If the
+    // governor ignores endScene time, it stays GREEN and keeps loading every
+    // frame, saturating the bus and causing eglSwapBuffers to block 70ms+.
+    // Tracking full frame time provides natural backpressure: governor goes
+    // Yellow/Red when frames exceed budget, halting loads, letting the GPU
+    // drain, and endScene drops back to normal. The 30-frame ring buffer
+    // already smooths the double-buffer vsync oscillation (7ms/33ms averages
+    // to 20ms correctly).
     frameTimes_[ringHead_] = frameMs;
     ringHead_ = (ringHead_ + 1) % kRingSize;
     if (ringCount_ < kRingSize) ringCount_++;
 
     updateState();
+
+    // Stall watchdog: if the governor is stuck non-Green with pending work,
+    // a transient spike (particle init, GC, kernel scheduling) may have
+    // poisoned the ring buffer. After kStallThreshold consecutive stall frames,
+    // reset history to re-anchor the EMA to current reality.
+    if (forcedState_ < 0 && state_ != BudgetState::Green && hasPendingWork) {
+        consecutiveStallFrames_++;
+        if (consecutiveStallFrames_ >= kStallThreshold) {
+            LOG_INFO(MOD_GRAPHICS, "Governor watchdog: {} consecutive non-Green frames with "
+                     "pending work (avg {:.1f}ms, frame {:.1f}ms) — resetting history",
+                     consecutiveStallFrames_, getAverageFrameTimeMs(), frameMs);
+            resetHistory();
+            consecutiveStallFrames_ = 0;
+        }
+    } else {
+        consecutiveStallFrames_ = 0;
+    }
 }
 
 void FrameBudgetGovernor::updateState() {

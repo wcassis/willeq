@@ -98,6 +98,20 @@ public:
     const float* lightAtten() const { return lightAtten_; }
     const float* cameraPos() const { return cameraPos_; }
 
+    // Per-pixel player light (FS uniforms, GLES2 only)
+    void setPlayerLightPos(float x, float y, float z) {
+        playerLightPos_[0] = x; playerLightPos_[1] = y; playerLightPos_[2] = z;
+    }
+    void setPlayerLightColor(float r, float g, float b) {
+        playerLightColor_[0] = r; playerLightColor_[1] = g; playerLightColor_[2] = b;
+    }
+    void setPlayerLightAtten(float c, float l, float q) {
+        playerLightAtten_[0] = c; playerLightAtten_[1] = l; playerLightAtten_[2] = q;
+    }
+    const float* playerLightPos() const { return playerLightPos_; }
+    const float* playerLightColor() const { return playerLightColor_; }
+    const float* playerLightAtten() const { return playerLightAtten_; }
+
     // Atlas tile scale (TILE_INNER / ATLAS_WIDTH, e.g. 248.0/2048.0)
     void setAtlasTileScale(float scale) { atlasTileScale_ = scale; }
     float atlasTileScale() const { return atlasTileScale_; }
@@ -143,6 +157,11 @@ private:
 
     // Camera position (for atlas per-pixel lighting)
     float cameraPos_[3] = {0.0f, 0.0f, 0.0f};
+
+    // Per-pixel player light FS uniforms (GLES2)
+    float playerLightPos_[3] = {0.0f, 0.0f, 0.0f};
+    float playerLightColor_[3] = {0.0f, 0.0f, 0.0f};
+    float playerLightAtten_[3] = {1.0f, 0.0f, 0.0f};
 
     // Atlas tile scale uniform
     float atlasTileScale_ = 248.0f / 2048.0f;

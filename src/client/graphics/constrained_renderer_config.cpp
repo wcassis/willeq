@@ -386,6 +386,18 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableShaders = preset["enableShaders"].asBool();
     if (preset.isMember("enableTextureAtlas"))
         enableTextureAtlas = preset["enableTextureAtlas"].asBool();
+    if (preset.isMember("skipManualZoneDraw"))
+        skipManualZoneDraw = preset["skipManualZoneDraw"].asBool();
+    if (preset.isMember("skipVBOUpload"))
+        skipVBOUpload = preset["skipVBOUpload"].asBool();
+    if (preset.isMember("skipEntityTextureUpload"))
+        skipEntityTextureUpload = preset["skipEntityTextureUpload"].asBool();
+    if (preset.isMember("skipEntityBuild"))
+        skipEntityBuild = preset["skipEntityBuild"].asBool();
+    if (preset.isMember("skipConstrainedTextureUpload"))
+        skipConstrainedTextureUpload = preset["skipConstrainedTextureUpload"].asBool();
+    if (preset.isMember("skipSkyTextureUpload"))
+        skipSkyTextureUpload = preset["skipSkyTextureUpload"].asBool();
     if (preset.isMember("atlasPath"))
         atlasPath = preset["atlasPath"].asString();
     if (preset.isMember("antiAliasLevel"))

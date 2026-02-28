@@ -352,7 +352,7 @@ int main(int argc, char* argv[]) {
     auto& geom = *zone->geometry;
     std::cout << "Loaded geometry: " << geom.vertices.size() << " vertices, "
               << geom.triangles.size() << " triangles, "
-              << geom.textureNames.size() << " textures\n";
+              << geom.textureNames().size() << " textures\n";
 
     // Count texture index usage in triangles
     std::map<uint32_t, size_t> texUsage;
@@ -370,7 +370,7 @@ int main(int argc, char* argv[]) {
     for (size_t i = 0; i < sortedUsage.size() && i < 30; ++i) {
         uint32_t texIdx = sortedUsage[i].first;
         size_t count = sortedUsage[i].second;
-        std::string origName = (texIdx < geom.textureNames.size()) ? geom.textureNames[texIdx] : "";
+        std::string origName = (texIdx < geom.textureNames().size()) ? geom.textureNames()[texIdx] : "";
         std::string displayName = origName.empty() ? "<empty>" : origName;
         if (origName.empty()) {
             emptyCount += count;
@@ -515,8 +515,8 @@ int main(int argc, char* argv[]) {
                 if (nz < 0.5f) {
                     slopeFailCount++;
                     // Track the texture for diagnostics
-                    if (tri.textureIndex < geom.textureNames.size()) {
-                        lastSlopeFailTex = geom.textureNames[tri.textureIndex];
+                    if (tri.textureIndex < geom.textureNames().size()) {
+                        lastSlopeFailTex = geom.textureNames()[tri.textureIndex];
                         lastSlopeFailNz = nz;
                     }
                     continue;  // Skip walls, ceilings, steep slopes
@@ -545,8 +545,8 @@ int main(int argc, char* argv[]) {
 
                 // Get texture name
                 std::string texName;
-                if (tri.textureIndex < geom.textureNames.size()) {
-                    texName = geom.textureNames[tri.textureIndex];
+                if (tri.textureIndex < geom.textureNames().size()) {
+                    texName = geom.textureNames()[tri.textureIndex];
                 }
 
                 // Classify surface type
@@ -599,8 +599,8 @@ int main(int argc, char* argv[]) {
                             if (avgZ < bestZ && avgZ > groundZ && (bestZ - avgZ) < 10.0f) {
                                 // Check texture type
                                 std::string gTexName;
-                                if (gTri.textureIndex < geom.textureNames.size()) {
-                                    gTexName = geom.textureNames[gTri.textureIndex];
+                                if (gTri.textureIndex < geom.textureNames().size()) {
+                                    gTexName = geom.textureNames()[gTri.textureIndex];
                                 }
                                 SurfaceType gSurfType = classifyTexture(gTexName, zoneName);
 
@@ -618,8 +618,8 @@ int main(int argc, char* argv[]) {
                     // If we found ground beneath the water, use that instead
                     if (groundTriIdx != SIZE_MAX) {
                         const auto& gTri = geom.triangles[groundTriIdx];
-                        if (gTri.textureIndex < geom.textureNames.size()) {
-                            texName = geom.textureNames[gTri.textureIndex];
+                        if (gTri.textureIndex < geom.textureNames().size()) {
+                            texName = geom.textureNames()[gTri.textureIndex];
                         }
                         surfType = classifyTexture(texName, zoneName);
                         bestZ = groundZ;  // Use ground height, not water height

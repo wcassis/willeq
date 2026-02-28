@@ -143,8 +143,8 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
 
         // Load texture for this buffer
         irr::video::ITexture* texture = nullptr;
-        if (texIdx < geometry->textureNames.size() && meshBuilder_) {
-            const std::string& texName = geometry->textureNames[texIdx];
+        if (texIdx < geometry->textureNames().size() && meshBuilder_) {
+            const std::string& texName = geometry->textureNames()[texIdx];
             if (!texName.empty()) {
                 std::string lowerTexName = texName;
                 std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),

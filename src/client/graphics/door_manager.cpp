@@ -168,7 +168,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
         // No custom shader — doors use built-in EMT_SOLID/EMT_TRANSPARENT_ALPHA_CHANNEL_REF
         // which route through the cheap Solid3D/AlphaTest3D programs (no per-node callback)
-        if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames.empty()) {
+        if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames().empty()) {
             mesh = builder.buildTexturedMesh(*geomIt->second, currentZone_->objectTextures);
         } else {
             mesh = builder.buildColoredMesh(*geomIt->second);
@@ -194,7 +194,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
                 upperDoorName, name, geom->vertices.size());
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-            if (!currentZone_->objectTextures.empty() && !geom->textureNames.empty()) {
+            if (!currentZone_->objectTextures.empty() && !geom->textureNames().empty()) {
                 mesh = builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
             } else {
                 mesh = builder.buildColoredMesh(*geom);
@@ -223,7 +223,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (matched) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-            if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
+            if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
                 mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
                 mesh = builder.buildColoredMesh(*objInstance.geometry);

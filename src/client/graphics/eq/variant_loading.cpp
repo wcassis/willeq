@@ -64,7 +64,7 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRaceWithAppearance(uint16_t raceId
     }
 
     irr::scene::IMesh* mesh = nullptr;
-    if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames.empty()) {
+    if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames().empty()) {
         mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);  // flipV for character models
     } else {
         mesh = meshBuilder_->buildColoredMesh(*modelData->combinedGeometry);

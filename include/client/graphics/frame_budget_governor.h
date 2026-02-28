@@ -31,8 +31,13 @@ public:
     // Call at the start of each frame
     void beginFrame();
 
-    // Call at the end of each frame (records frame time into ring buffer)
-    void endFrame();
+    // Call at the end of each frame (records full wall-clock frame time).
+    // endSceneUs: microseconds spent in driver->endScene() — logged but NOT
+    //             subtracted. Subtracting it blinds the governor to GPU pipeline
+    //             stalls caused by progressive loading on shared-bus ARM SoCs.
+    // hasPendingWork: true if progressive/lazy load queues have unbuilt items.
+    //                 Drives the stall watchdog that recovers from transient spikes.
+    void endFrame(float endSceneUs = 0.0f, bool hasPendingWork = false);
 
     // Policy check: can a task of this weight class start now?
     bool canStartTask(LoadTaskWeight weight) const;
@@ -76,13 +81,17 @@ public:
     void clearForcedState() { forcedState_ = -1; }
     bool isForced() const { return forcedState_ >= 0; }
 
+    // Stall watchdog state (read-only for diagnostics)
+    int getStallCounter() const { return consecutiveStallFrames_; }
+    static constexpr int kStallThreshold = 90;  // ~3 seconds at 30fps
+
 private:
     void updateState();
 
     float targetFps_;
     float targetFrameTimeMs_;
 
-    // 30-frame ring buffer for frame times
+    // 30-frame ring buffer for wall-clock frame times (including endScene)
     static constexpr int kRingSize = 30;
     float frameTimes_[kRingSize] = {};
     int ringHead_ = 0;
@@ -92,6 +101,9 @@ private:
     BudgetState state_ = BudgetState::Green;
     int consecutiveGoodFrames_ = 0;
     static constexpr int kUpgradeThreshold = 10;  // 10 good frames to upgrade one step
+
+    // Stall watchdog: resets history after prolonged non-Green with pending work
+    int consecutiveStallFrames_ = 0;
 
     // Per-frame timing
     std::chrono::steady_clock::time_point frameStart_;

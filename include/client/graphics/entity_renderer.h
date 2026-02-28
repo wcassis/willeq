@@ -212,6 +212,9 @@ public:
     // Set the base path for EQ client files (S3D archives)
     void setClientPath(const std::string& path);
 
+    // Debug: skip texture uploads during entity build (isolate glTexImage2D)
+    void setSkipTextureUpload(bool skip) { skipTextureUpload_ = skip; }
+
     // Load global character models (global_chr.s3d)
     bool loadGlobalCharacters();
 
@@ -687,6 +690,9 @@ private:
 
     // Player spawn ID (for filtering player from entity casting bars)
     uint16_t playerSpawnId_ = 0;
+
+    // Debug flags
+    bool skipTextureUpload_ = false;
 
     // Constrained rendering state
     const ConstrainedRendererConfig* constrainedConfig_ = nullptr;

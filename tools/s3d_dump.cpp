@@ -291,7 +291,7 @@ void dumpModelWithHierarchy(const std::string& archivePath,
                                      << " T:" << part.geometry->triangles.size() << ")";
 
                                 // List textures
-                                for (const auto& tex : part.geometry->textureNames) {
+                                for (const auto& tex : part.geometry->textureNames()) {
                                     std::string texLower = tex;
                                     std::transform(texLower.begin(), texLower.end(), texLower.begin(), ::tolower);
                                     summary.textures.insert(texLower);
@@ -323,7 +323,7 @@ void dumpModelWithHierarchy(const std::string& archivePath,
                 summary.meshCount++;
                 summary.vertexCount += part->vertices.size();
                 summary.triangleCount += part->triangles.size();
-                for (const auto& tex : part->textureNames) {
+                for (const auto& tex : part->textureNames()) {
                     std::string texLower = tex;
                     std::transform(texLower.begin(), texLower.end(), texLower.begin(), ::tolower);
                     summary.textures.insert(texLower);

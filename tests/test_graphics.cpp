@@ -355,7 +355,7 @@ TEST_F(WldLoaderTest, ZoneGeometry_DefaultEmpty) {
     ZoneGeometry geom;
     EXPECT_TRUE(geom.vertices.empty());
     EXPECT_TRUE(geom.triangles.empty());
-    EXPECT_TRUE(geom.textureNames.empty());
+    EXPECT_TRUE(geom.textureNames().empty());
 }
 
 // Test Vertex3D structure

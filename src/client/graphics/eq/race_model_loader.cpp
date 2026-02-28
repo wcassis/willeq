@@ -321,7 +321,7 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
     }
 
     irr::scene::IMesh* mesh = nullptr;
-    if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames.empty()) {
+    if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames().empty()) {
         mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);  // flipV for character models
     } else {
         mesh = meshBuilder_->buildColoredMesh(*modelData->combinedGeometry);
@@ -595,7 +595,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
     // Decode textures to ARGB on background thread (CPU-only, no GL calls).
     // Main thread can then upload one texture per frame via driver_->addTexture().
     if (modelData->combinedGeometry && !modelData->textures.empty()) {
-        for (const auto& texName : modelData->combinedGeometry->textureNames) {
+        for (const auto& texName : modelData->combinedGeometry->textureNames()) {
             std::string lowerName = texName;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                            [](unsigned char c) { return std::tolower(c); });

@@ -254,8 +254,8 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
             LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' loaded via constrained cache ({} bytes)", name, data.size());
             return texture;
         }
-        LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), falling back to direct load", name, data.size());
-        // Fall through to unconstrained loading path below
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), skipping (no fallback)", name, data.size());
+        return nullptr;  // Debug: do NOT fall through to unconstrained path
     }
 
     // Check cache first (unconstrained mode)
@@ -361,7 +361,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
     }
 
     // If no textures available, fall back to colored mesh
-    if (textures.empty() || geometry.textureNames.empty()) {
+    if (textures.empty() || geometry.textureNames().empty()) {
         return buildColoredMesh(geometry);
     }
 
@@ -385,8 +385,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
         if (triIndices.empty()) continue;
 
         // Check if this texture is marked as invisible (collision-only / sky)
-        bool isInvisible = (texIdx < geometry.textureInvisible.size()) && geometry.textureInvisible[texIdx];
-        std::string texNameForLog = (texIdx < geometry.textureNames.size()) ? geometry.textureNames[texIdx] : "";
+        bool isInvisible = (texIdx < geometry.textureInvisible().size()) && geometry.textureInvisible()[texIdx];
+        std::string texNameForLog = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
         if (isInvisible) {
             // Only skip if it's truly a collision-only material (empty texture name)
             if (texNameForLog.empty()) {
@@ -398,8 +398,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
         std::string texName;
         irr::video::ITexture* texture = nullptr;
 
-        if (texIdx < geometry.textureNames.size()) {
-            texName = geometry.textureNames[texIdx];
+        if (texIdx < geometry.textureNames().size()) {
+            texName = geometry.textureNames()[texIdx];
             if (!texName.empty()) {
                 // Convert to lowercase for lookup (textures stored with lowercase keys)
                 std::string lowerTexName = texName;
@@ -590,9 +590,9 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
     for (const auto& [texIdx, triIndices] : trianglesByTexture) {
         if (triIndices.empty()) continue;
 
-        bool isInvisible = (texIdx < geometry.textureInvisible.size()) && geometry.textureInvisible[texIdx];
+        bool isInvisible = (texIdx < geometry.textureInvisible().size()) && geometry.textureInvisible()[texIdx];
         if (isInvisible) {
-            std::string texName = (texIdx < geometry.textureNames.size()) ? geometry.textureNames[texIdx] : "";
+            std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
             if (texName.empty()) continue;
         }
 
@@ -732,21 +732,21 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         uint32_t texIdx = tri.textureIndex;
 
         // Skip invisible/collision-only textures
-        if (texIdx < geometry.textureInvisible.size() && geometry.textureInvisible[texIdx]) {
-            std::string texName = (texIdx < geometry.textureNames.size()) ? geometry.textureNames[texIdx] : "";
+        if (texIdx < geometry.textureInvisible().size() && geometry.textureInvisible()[texIdx]) {
+            std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
             if (texName.empty()) continue;
         }
 
-        if (texIdx >= geometry.textureNames.size()) {
+        if (texIdx >= geometry.textureNames().size()) {
             fallbackTriangles[texIdx].push_back(i);
             continue;
         }
 
-        const std::string& texName = geometry.textureNames[texIdx];
+        const std::string& texName = geometry.textureNames()[texIdx];
 
         // Skip animated textures — they must use per-texture fallback rendering
-        if (texIdx < geometry.textureAnimations.size() &&
-            geometry.textureAnimations[texIdx].isAnimated) {
+        if (texIdx < geometry.textureAnimations().size() &&
+            geometry.textureAnimations()[texIdx].isAnimated) {
             fallbackTriangles[texIdx].push_back(i);
             continue;
         }
@@ -801,13 +801,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         for (const auto& [pageIdx, bucket] : pageBuckets) {
             for (size_t triIdx : bucket.triangleIndices) {
                 uint32_t texIdx = geometry.triangles[triIdx].textureIndex;
-                if (texIdx < geometry.textureNames.size())
-                    atlasedNames.insert(geometry.textureNames[texIdx]);
+                if (texIdx < geometry.textureNames().size())
+                    atlasedNames.insert(geometry.textureNames()[texIdx]);
             }
         }
         for (const auto& [texIdx, triIndices] : fallbackTriangles) {
-            if (texIdx < geometry.textureNames.size())
-                fallbackNames.insert(geometry.textureNames[texIdx]);
+            if (texIdx < geometry.textureNames().size())
+                fallbackNames.insert(geometry.textureNames()[texIdx]);
         }
         for (const auto& n : atlasedNames)
             LOG_DEBUG(MOD_GRAPHICS, "  [ATLAS] texture '{}' -> atlas page (pageOffset={})", n, pageIndexOffset);
@@ -842,7 +842,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
             uint32_t texIdx = tri.textureIndex;
 
             // Look up tile info for this triangle's texture
-            std::string texName = geometry.textureNames[texIdx];
+            std::string texName = geometry.textureNames()[texIdx];
             std::string lowerName = texName;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                            [](unsigned char c) { return std::tolower(c); });
@@ -966,8 +966,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         std::string texName;
         irr::video::ITexture* texture = nullptr;
 
-        if (texIdx < geometry.textureNames.size()) {
-            texName = geometry.textureNames[texIdx];
+        if (texIdx < geometry.textureNames().size()) {
+            texName = geometry.textureNames()[texIdx];
             if (!texName.empty()) {
                 std::string lowerTexName = texName;
                 std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),

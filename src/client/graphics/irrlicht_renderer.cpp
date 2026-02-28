@@ -855,6 +855,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
         }
+        // Compile the point sprite shader program now (during init, under the loading
+        // screen) rather than during deferred init where the ~260ms Mali 400 shader
+        // compilation spikes the governor into Red. The shader has zero zone data
+        // dependencies — it only needs the GLES2 context.
+        particleManager_->initUnifiedRenderer();
         // Atmospheric particles setting controls billboard emitters (dust, pollen, etc.)
         // Unified fire has its own toggle and works regardless of this setting
         particleManager_->setEnabled(displaySettings.atmosphericParticles);
@@ -3146,8 +3151,8 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                     if (treeIdentifier) {
                         const std::string& objName = objInstance.placeable->getName();
                         std::string primaryTexture;
-                        if (!objInstance.geometry->textureNames.empty())
-                            primaryTexture = objInstance.geometry->textureNames[0];
+                        if (!objInstance.geometry->textureNames().empty())
+                            primaryTexture = objInstance.geometry->textureNames()[0];
                         if (treeIdentifier->isTreeMesh(objName, primaryTexture))
                             continue;
                     }
@@ -3452,6 +3457,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
             entityRenderer_->setRenderDistance(renderDistance_);
             entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+            entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
                                                         zoneShader_->getMaterialTypeAlphaTest());
@@ -3714,6 +3720,20 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     case BackgroundZoneLoadPhase::DataReady_Env_SkyTextures: {
         // Upload pre-decoded sky textures from background thread to GPU.
         // On first entry skyTexUploadIndex_ is 0; repeats until all are uploaded.
+
+        if (config_.constrainedConfig.skipSkyTextureUpload) {
+            // Skip all sky texture GPU uploads to reduce memory pressure.
+            // The sky dome mesh will still be created but with no textures.
+            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+                pendingZoneComputations_->skyLoadData->preDecodedTextures.clear();
+                pendingZoneComputations_->skyLoadData->preDecodedTextures.shrink_to_fit();
+            }
+            LOG_INFO(MOD_GRAPHICS, "Sky texture upload skipped (skipSkyTextureUpload=true)");
+            skyTexUploadIndex_ = 0;
+            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyRelease;
+            logAssetBuildTime("env_sky_textures_skipped", 0, stepStart);
+            break;
+        }
 
         if (skyRenderer_ && pendingZoneComputations_ &&
             pendingZoneComputations_->skyLoadData) {
@@ -4167,7 +4187,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             if (!geom || geom->vertices.empty()) continue;
 
             irr::scene::IMesh* mesh = nullptr;
-            if (!currentZone_->textures.empty() && !geom->textureNames.empty()) {
+            if (!currentZone_->textures.empty() && !geom->textureNames().empty()) {
                 if (useZoneAtlas) {
                     mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
                 } else {
@@ -4195,7 +4215,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 }
 
                 regionMeshNodes_[regionBuildIndex_] = node;
-                uploadMeshHardwareBuffers(node);
+                if (!config_.constrainedConfig.skipVBOUpload)
+                    uploadMeshHardwareBuffers(node);
                 builtInBatch++;
 
                 // Bounding box should already be pre-computed on background thread
@@ -4220,7 +4241,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     case BackgroundZoneLoadPhase::RegionMesh_SortSetup: {
         // Enable front-to-back sorted zone drawing for PVS zones
-        if (usePvsCulling_ && !regionMeshNodes_.empty()) {
+        if (usePvsCulling_ && !regionMeshNodes_.empty() && !config_.constrainedConfig.skipManualZoneDraw) {
 #ifdef EQT_HAS_GLES2
             manualZoneDrawEnabled_ = true;
 #else
@@ -4249,8 +4270,9 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
         }
 
-        // Placeholder is redundant now that real zone meshes are rendering
-        destroyZonePlaceholder();
+        // Placeholder stays visible until progressive loading completes —
+        // Z-buffer occludes it behind real textured meshes as they load.
+        // destroyZonePlaceholder() is called in checkProgressiveLoadingComplete().
 
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InstallPortal;
         logAssetBuildTime("region_sort_setup", 0, stepStart);
@@ -4487,8 +4509,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 if (treeManager_) {
                     const std::string& objName = objInstance.placeable->getName();
                     std::string primaryTexture;
-                    if (!objInstance.geometry->textureNames.empty())
-                        primaryTexture = objInstance.geometry->textureNames[0];
+                    if (!objInstance.geometry->textureNames().empty())
+                        primaryTexture = objInstance.geometry->textureNames()[0];
                     if (treeManager_->isTreeObject(objName, primaryTexture)) {
                         // Only skip trees on software path — GPU path handles them as objects
                         bool hasGpuShaders = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
@@ -4625,6 +4647,17 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
                      freed / (1024.0f * 1024.0f));
         }
+        // Release duplicate character data from zone source. RaceModelLoader independently
+        // loads _chr.s3d into its own cache, so currentZone_->characters is an unused copy.
+        if (currentZone_) {
+            currentZone_->clearCharacterData();
+            LOG_INFO(MOD_GRAPHICS, "Released zone character data (loadzone path)");
+        }
+        // Release WLD data no longer needed after BSP install and mesh cache init.
+        if (currentZone_ && currentZone_->wldLoader) {
+            currentZone_->wldLoader->releasePostLoadData();
+            LOG_INFO(MOD_GRAPHICS, "Released WLD post-load data");
+        }
         // Clean up background computations — all data consumed
         pendingZoneComputations_.reset();
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::CollisionRebuild;
@@ -4636,7 +4669,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     case BackgroundZoneLoadPhase::CollisionRebuild: {
         setupMinimalZoneCollision();
-        destroyZonePlaceholder();
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EnvironmentInit;
         logAssetBuildTime("collision_rebuild", 0, stepStart);
         break;
@@ -4690,7 +4722,7 @@ void IrrlichtRenderer::createZoneMesh() {
 
     irr::scene::IMesh* mesh = nullptr;
 
-    if (!currentZone_->textures.empty() && !currentZone_->geometry->textureNames.empty()) {
+    if (!currentZone_->textures.empty() && !currentZone_->geometry->textureNames().empty()) {
         mesh = builder.buildTexturedMesh(*currentZone_->geometry, currentZone_->textures);
     } else {
         mesh = builder.buildColoredMesh(*currentZone_->geometry);
@@ -5081,7 +5113,22 @@ void IrrlichtRenderer::drawPortalRecursive(size_t fromRegion, int stencilLevel,
 }
 
 bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
-    if (!currentZone_ || !currentZone_->wldLoader) return false;
+    auto rebuildStart = std::chrono::steady_clock::now();
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: BEGIN region {} | currentZone_={} wldLoader={} "
+             "constrainedMeshCache_={} meshCacheLoaded={} regionMeshNodes_.count={}",
+             regionIdx,
+             currentZone_ != nullptr,
+             (currentZone_ && currentZone_->wldLoader) ? true : false,
+             constrainedMeshCache_ != nullptr,
+             (constrainedMeshCache_ ? constrainedMeshCache_->isLoaded(regionIdx) : false),
+             regionMeshNodes_.count(regionIdx));
+
+    if (!currentZone_ || !currentZone_->wldLoader) {
+        LOG_WARN(MOD_GRAPHICS, "rebuildRegionMesh: ABORT region {} — currentZone_={} wldLoader={}",
+                 regionIdx, currentZone_ != nullptr,
+                 (currentZone_ ? (currentZone_->wldLoader != nullptr) : false));
+        return false;
+    }
 
     // Clean up existing node if rebuilding (prevents scene node leak)
     auto existingIt = regionMeshNodes_.find(regionIdx);
@@ -5097,34 +5144,82 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     }
 
     auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
-    if (!geom || geom->vertices.empty()) return false;
+    if (!geom || geom->vertices.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "rebuildRegionMesh: ABORT region {} — getGeometryForRegion returned {} "
+                 "(vertices={})",
+                 regionIdx, geom ? "geom" : "nullptr",
+                 geom ? geom->vertices.size() : 0);
+        return false;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} geom OK — verts={} tris={} texNames={} "
+             "center=({:.1f},{:.1f},{:.1f})",
+             regionIdx, geom->vertices.size(), geom->triangles.size(),
+             geom->textureNames().size(),
+             geom->centerX, geom->centerY, geom->centerZ);
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
     if (constrainedTextureCache_)
         builder.setConstrainedTextureCache(constrainedTextureCache_.get());
-    if (zoneShader_ && zoneShader_->isAvailable())
+
+    bool shaderAvail = zoneShader_ && zoneShader_->isAvailable();
+    bool atlasAvail = zoneShader_ && zoneShader_->isAtlasAvailable();
+    if (shaderAvail)
         builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
                                        zoneShader_->getMaterialTypeAlphaTest());
-    if (zoneShader_ && zoneShader_->isAtlasAvailable())
+    if (atlasAvail)
         builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
                                              zoneShader_->getMaterialTypeAtlasAlpha());
 
+    bool hasTextures = !currentZone_->textures.empty();
+    bool hasTexNames = !geom->textureNames().empty();
+    bool hasAtlas = zoneAtlas_ && zoneAtlas_->isLoaded();
+
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} build config — shader={} atlas={} "
+             "hasTextures={} (count={}) hasTexNames={} hasAtlas={}",
+             regionIdx, shaderAvail, atlasAvail,
+             hasTextures, currentZone_->textures.size(),
+             hasTexNames, hasAtlas);
+
     irr::scene::IMesh* mesh = nullptr;
-    if (!currentZone_->textures.empty() && !geom->textureNames.empty()) {
-        if (zoneAtlas_ && zoneAtlas_->isLoaded() &&
-            zoneShader_ && zoneShader_->isAtlasAvailable()) {
+    const char* buildPath = "none";
+    auto meshBuildStart = std::chrono::steady_clock::now();
+
+    if (hasTextures && hasTexNames) {
+        if (hasAtlas && atlasAvail) {
+            buildPath = "buildAtlasedMesh";
             mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
         } else {
+            buildPath = "buildTexturedMesh";
             mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
         }
     } else {
+        buildPath = "buildColoredMesh";
         mesh = builder.buildColoredMesh(*geom);
     }
 
-    if (!mesh) return false;
+    auto meshBuildEnd = std::chrono::steady_clock::now();
+    auto meshBuildMs = std::chrono::duration_cast<std::chrono::microseconds>(
+        meshBuildEnd - meshBuildStart).count() / 1000.0f;
+
+    if (!mesh) {
+        LOG_ERROR(MOD_GRAPHICS, "rebuildRegionMesh: FAILED region {} — {} returned null "
+                  "(took {:.1f}ms) | textures.size={} texNames.size={}",
+                  regionIdx, buildPath, meshBuildMs,
+                  currentZone_->textures.size(), geom->textureNames().size());
+        return false;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} mesh built via {} in {:.1f}ms — "
+             "buffers={}", regionIdx, buildPath, meshBuildMs, mesh->getMeshBufferCount());
 
     auto* node = smgr_->addMeshSceneNode(mesh);
-    if (!node) { mesh->drop(); return false; }
+    if (!node) {
+        LOG_ERROR(MOD_GRAPHICS, "rebuildRegionMesh: FAILED region {} — addMeshSceneNode returned null",
+                  regionIdx);
+        mesh->drop();
+        return false;
+    }
 
     // Apply standard zone region materials
     node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
@@ -5164,7 +5259,8 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     regionMeshNodes_[regionIdx] = node;
 
     // Upload static VBOs for zone geometry (GLES2 only)
-    uploadMeshHardwareBuffers(node);
+    if (!config_.constrainedConfig.skipVBOUpload)
+        uploadMeshHardwareBuffers(node);
 
     // Register with animated texture manager
     if (animatedTextureManager_)
@@ -5174,23 +5270,76 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     size_t meshSize = ConstrainedMeshCache::estimateMeshSize(node);
     constrainedMeshCache_->onLoaded(regionIdx, node, meshSize);
 
-    LOG_DEBUG(MOD_GRAPHICS, "MeshCache: built region {} ({} bytes)", regionIdx, meshSize);
+    auto rebuildEnd = std::chrono::steady_clock::now();
+    auto totalMs = std::chrono::duration_cast<std::chrono::microseconds>(
+        rebuildEnd - rebuildStart).count() / 1000.0f;
+
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: SUCCESS region {} — {} bytes, {:.1f}ms total "
+             "(mesh build {:.1f}ms) | cache usage {}/{} bytes, {} loaded",
+             regionIdx, meshSize, totalMs, meshBuildMs,
+             constrainedMeshCache_->getCurrentUsage(),
+             constrainedMeshCache_->getMemoryLimit(),
+             constrainedMeshCache_->getLoadedCount());
     return true;
 }
 
 void IrrlichtRenderer::processFrameLazyLoad() {
-    if (!constrainedMeshCache_ || !currentZone_ || !currentZone_->wldLoader) return;
+    if (!constrainedMeshCache_ || !currentZone_ || !currentZone_->wldLoader) {
+        static int lazyLoadSkipLog = 0;
+        if (++lazyLoadSkipLog % 300 == 1) {
+            LOG_DEBUG(MOD_GRAPHICS, "processFrameLazyLoad: SKIP — cache={} zone={} wld={}",
+                      constrainedMeshCache_ != nullptr, currentZone_ != nullptr,
+                      (currentZone_ ? (currentZone_->wldLoader != nullptr) : false));
+        }
+        return;
+    }
 
     // GREEN-only: max 1 region build per frame to stay within budget.
-    if (governor_ && governor_->getState() != BudgetState::Green) return;
+    if (governor_ && governor_->getState() != BudgetState::Green) {
+        static int lazyLoadGovLog = 0;
+        if (++lazyLoadGovLog % 300 == 1) {
+            LOG_DEBUG(MOD_GRAPHICS, "processFrameLazyLoad: SKIP — governor state={} (not GREEN) | "
+                      "meshLoadQueue_.size={}", governor_->getStateName(),
+                      meshLoadQueue_.size());
+        }
+        return;
+    }
+
+    // Log queue state before scanning
+    size_t queueSize = meshLoadQueue_.size();
+    size_t alreadyLoaded = 0;
+    size_t needBuild = 0;
+    for (const auto& entry : meshLoadQueue_) {
+        if (constrainedMeshCache_->isLoaded(entry.regionIdx))
+            alreadyLoaded++;
+        else
+            needBuild++;
+    }
+
+    static int lazyLoadQueueLog = 0;
+    if (needBuild > 0 || ++lazyLoadQueueLog % 300 == 1) {
+        LOG_DEBUG(MOD_GRAPHICS, "processFrameLazyLoad: queue={} (loaded={} needBuild={}) | "
+                  "cache usage {}/{} bytes, {} loaded total",
+                  queueSize, alreadyLoaded, needBuild,
+                  constrainedMeshCache_->getCurrentUsage(),
+                  constrainedMeshCache_->getMemoryLimit(),
+                  constrainedMeshCache_->getLoadedCount());
+    }
 
     for (const auto& entry : meshLoadQueue_) {
         if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
+        LOG_INFO(MOD_GRAPHICS, "processFrameLazyLoad: attempting region {} (first unloaded in queue)",
+                 entry.regionIdx);
         if (rebuildRegionMesh(entry.regionIdx)) {
-            LOG_DEBUG(MOD_GRAPHICS, "MeshCache: built region {} (usage {}/{} bytes)",
+            LOG_INFO(MOD_GRAPHICS, "processFrameLazyLoad: SUCCESS region {} | cache usage {}/{} bytes",
                 entry.regionIdx,
                 constrainedMeshCache_->getCurrentUsage(),
                 constrainedMeshCache_->getMemoryLimit());
+            sendLoadProgress(fmt::format("[LazyLoad] Region {} [{}/{}]",
+                entry.regionIdx, alreadyLoaded + 1, queueSize));
+        } else {
+            LOG_ERROR(MOD_GRAPHICS, "processFrameLazyLoad: FAILED region {} — rebuildRegionMesh returned false",
+                      entry.regionIdx);
         }
         break;  // One region max per frame
     }
@@ -5233,8 +5382,8 @@ void IrrlichtRenderer::indexObjectMeshes() {
         if (treeManager_) {
             const std::string& objName = objInstance.placeable->getName();
             std::string primaryTexture;
-            if (!objInstance.geometry->textureNames.empty()) {
-                primaryTexture = objInstance.geometry->textureNames[0];
+            if (!objInstance.geometry->textureNames().empty()) {
+                primaryTexture = objInstance.geometry->textureNames()[0];
             }
             if (treeManager_->isTreeObject(objName, primaryTexture)) {
                 bool hasGpuShaders = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
@@ -5314,7 +5463,7 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
                        zoneShader_ && zoneShader_->isAtlasAvailable();
 
     irr::scene::IMesh* mesh = nullptr;
-    if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames.empty()) {
+    if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
         if (useObjAtlas) {
             mesh = builder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
                                              *objAtlas_, objAtlasPageOffset_);
@@ -5366,8 +5515,8 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     // Apply wind shader to tree meshes on GPU path (deferred build)
     if (treeManager_ && zoneShader_ && zoneShader_->isWindAvailable()) {
         std::string primaryTexture;
-        if (!objInstance.geometry->textureNames.empty()) {
-            primaryTexture = objInstance.geometry->textureNames[0];
+        if (!objInstance.geometry->textureNames().empty()) {
+            primaryTexture = objInstance.geometry->textureNames()[0];
         }
         if (treeManager_->isTreeObject(objName, primaryTexture)) {
             irr::core::aabbox3df meshBbox = mesh->getBoundingBox();
@@ -5415,7 +5564,7 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     bool hasFireTexture = false;
     bool hasLanternTexture = false;
     if (objInstance.geometry) {
-        for (const auto& texName : objInstance.geometry->textureNames) {
+        for (const auto& texName : objInstance.geometry->textureNames()) {
             std::string upperTex = texName;
             std::transform(upperTex.begin(), upperTex.end(), upperTex.begin(), ::toupper);
             if (upperTex.find("FIRE") != std::string::npos ||
@@ -6827,9 +6976,9 @@ void IrrlichtRenderer::applySimulationResults() {
         if (constrainedMeshCache_) {
             meshLoadQueue_.clear();
             size_t needBuildCount = 0;
-            for (size_t regionIdx : results->meshLoadQueue) {
-                meshLoadQueue_.push_back({regionIdx, 0.0f});
-                if (!constrainedMeshCache_->isLoaded(regionIdx))
+            for (const auto& sr : results->sortedRegions) {
+                meshLoadQueue_.push_back({sr.regionIdx, sr.distanceSq});
+                if (!constrainedMeshCache_->isLoaded(sr.regionIdx))
                     needBuildCount++;
             }
             // Always log when there's work to do, throttled otherwise
@@ -6903,6 +7052,7 @@ void IrrlichtRenderer::applySimulationResults() {
     // Apply light selection to shader
     if (results->activeLightCount > 0 && zoneShader_ && zoneShader_->isAvailable()) {
         activeLightNodes_.clear();
+        bool playerLightSet = false;
         for (int i = 0; i < results->activeLightCount; ++i) {
             const auto& sl = results->selectedLights[i];
             if (!sl.valid) continue;
@@ -6914,6 +7064,21 @@ void IrrlichtRenderer::applySimulationResults() {
                 sl.diffuseColor.g * boost,
                 sl.diffuseColor.b * boost,
                 sl.attConstant, sl.attLinear, sl.attQuadratic);
+
+            // Set per-pixel player light FS uniforms (GLES2: computed in fragment shader)
+            if (i == 0 && sl.isPlayerLight) {
+                zoneShader_->setPlayerLightPos(sl.position.X, sl.position.Y, sl.position.Z);
+                zoneShader_->setPlayerLightColor(
+                    sl.diffuseColor.r * boost,
+                    sl.diffuseColor.g * boost,
+                    sl.diffuseColor.b * boost);
+                zoneShader_->setPlayerLightAtten(sl.attConstant, sl.attLinear, sl.attQuadratic);
+                playerLightSet = true;
+            }
+        }
+        // Clear player light FS uniforms if no player light active
+        if (!playerLightSet) {
+            zoneShader_->setPlayerLightColor(0.0f, 0.0f, 0.0f);
         }
         zoneShader_->setNumPointLights(results->activeLightCount);
     }
@@ -7570,8 +7735,25 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                            frameTimings_.windowManagerUpdate;
         essentialSimCostAvgUs_ = essentialSimCostAvgUs_ * 0.9f + static_cast<float>(essSimUs) * 0.1f;
 
-        // Record frame in governor and log budget violations
-        if (governor_) governor_->endFrame();
+        // Record frame in governor and log budget violations.
+        // endScene is passed for diagnostics but NOT subtracted — full wall-clock
+        // frame time is recorded. On shared-bus ARM SoCs, subtracting endScene
+        // blinds the governor to GPU pipeline stalls from progressive loading.
+        if (governor_) {
+            bool hasPendingWork = progressiveLoadingActive_;
+            // meshLoadQueue_ is repopulated every frame by SimulationWorker
+            // (it's a "regions that should be loaded" list, not a drain queue).
+            // Only count as pending work if entries actually need building.
+            if (!hasPendingWork && constrainedMeshCache_) {
+                for (const auto& entry : meshLoadQueue_) {
+                    if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
+                        hasPendingWork = true;
+                        break;
+                    }
+                }
+            }
+            governor_->endFrame(static_cast<float>(frameTimings_.endScene), hasPendingWork);
+        }
 
         float totalFrameMs = frameTimings_.totalFrame / 1000.0f;
         float budgetMs = governor_ ? governor_->getTargetFrameTimeMs() : 33.3f;
@@ -7619,10 +7801,12 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                       [](const auto& a, const auto& b) { return a.us > b.us; });
 
             // Log header with totals
-            LOG_WARN(MOD_GRAPHICS, "RED STATE: {:.1f}ms / {:.1f}ms budget ({:.0f}% over) — avg {:.1f}ms — ALL LOADING HALTED",
+            LOG_WARN(MOD_GRAPHICS, "RED STATE: {:.1f}ms / {:.1f}ms budget ({:.0f}% over) — avg {:.1f}ms, stall {}/{} — ALL LOADING HALTED",
                      totalFrameMs, budgetMs,
                      (totalFrameMs / budgetMs - 1.0f) * 100.0f,
-                     governor_->getAverageFrameTimeMs());
+                     governor_->getAverageFrameTimeMs(),
+                     governor_->getStallCounter(),
+                     FrameBudgetGovernor::kStallThreshold);
             // Log every section that consumed >0.1ms, sorted by cost
             for (const auto& s : sections) {
                 if (s.us < 100) continue;  // Skip <0.1ms noise
@@ -10765,9 +10949,11 @@ void IrrlichtRenderer::advanceDeferredInit() {
         case DeferredInitStep::ParticleUnifiedInit: {
             stepName = "particle_unified_init";
             if (particleManager_) {
-                // initUnifiedRenderer must be called before createFireEmitters
+                // Shader compilation moved to init() (under loading screen) to avoid
+                // ~260ms Mali 400 spike during progressive loading. This call is a
+                // no-op if already initialized (guarded by unifiedRendererInitialized_).
                 particleManager_->initUnifiedRenderer();
-                // Re-collect fire sources for createFireEmitters (cheap — just iterating vectors)
+                // Collect fire sources and enqueue emitter creation (~1-2ms CPU work)
                 std::vector<glm::vec3> fireSources;
                 std::vector<float> fireRadii;
                 for (const auto& objLight : objectLights_) {
@@ -10836,12 +11022,12 @@ void IrrlichtRenderer::advanceDeferredInit() {
             stepName = "release_geometry";
             // Release combined zone geometry vectors (only when detail system is disabled)
             if (currentZone_ && currentZone_->geometry && !detailManager_) {
-                size_t before = currentZone_->geometry->getMemoryUsage();
+                size_t before = currentZone_->geometry->getFullMemoryUsage();
                 currentZone_->geometry->vertices.clear();
                 currentZone_->geometry->vertices.shrink_to_fit();
                 currentZone_->geometry->triangles.clear();
                 currentZone_->geometry->triangles.shrink_to_fit();
-                size_t after = currentZone_->geometry->getMemoryUsage();
+                size_t after = currentZone_->geometry->getFullMemoryUsage();
                 LOG_INFO(MOD_GRAPHICS, "Released combined zone geometry vectors: {:.1f} MB freed",
                          (before - after) / (1024.0f * 1024.0f));
             }
@@ -10895,10 +11081,17 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     // P1: Player's BSP region (must have ground to stand on)
     if (constrainedMeshCache_ && currentPvsRegion_ != SIZE_MAX &&
         !constrainedMeshCache_->isLoaded(currentPvsRegion_)) {
-        rebuildRegionMesh(currentPvsRegion_);
-        addRegionToCollision(currentPvsRegion_);
-        LOG_DEBUG(MOD_GRAPHICS, "Progressive: built player region {} (Critical)",
-            currentPvsRegion_);
+        LOG_INFO(MOD_GRAPHICS, "Progressive P1: building CRITICAL player region {} (not loaded in cache)",
+                 currentPvsRegion_);
+        bool ok = rebuildRegionMesh(currentPvsRegion_);
+        if (ok) {
+            addRegionToCollision(currentPvsRegion_);
+            LOG_INFO(MOD_GRAPHICS, "Progressive P1: SUCCESS built player region {} + collision",
+                     currentPvsRegion_);
+        } else {
+            LOG_ERROR(MOD_GRAPHICS, "Progressive P1: FAILED to build player region {}!",
+                      currentPvsRegion_);
+        }
     }
 
     // Player entity goes through processOneEntityBuildStep() like other entities
@@ -10906,6 +11099,16 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 
     // --- GREEN gate: exactly ONE non-critical step per frame when GREEN ---
     if (governor_ && governor_->getState() != BudgetState::Green) {
+        static int progGovLog = 0;
+        if (++progGovLog % 300 == 1) {
+            size_t qNeedBuild = 0;
+            for (const auto& e : meshLoadQueue_)
+                if (constrainedMeshCache_ && !constrainedMeshCache_->isLoaded(e.regionIdx))
+                    qNeedBuild++;
+            LOG_DEBUG(MOD_GRAPHICS, "Progressive: GREEN gate blocked — governor={} | "
+                      "meshLoadQueue_.size={} needBuild={}",
+                      governor_->getStateName(), meshLoadQueue_.size(), qNeedBuild);
+        }
         // Queue background prep even when not GREEN (free work)
         queueEntityPrepRequests();
         checkProgressiveLoadingComplete();
@@ -10920,39 +11123,79 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         if (windowManager_->loadOnePendingIconSheet()) {
             didWork = true;
             logAssetBuildTime("icon_sheet", 0, stepStart);
+            sendLoadProgress("[Load] Icon sheet");
         }
     }
 
     // Priority 1: Process one entity build step (most visible missing asset)
-    if (!didWork && entityRenderer_) {
+    if (!didWork && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
         // Poll completed prep results and distribute per-entity data
         entityRenderer_->pollAndDistributePrepResults();
 
         if (entityRenderer_->processOneEntityBuildStep()) {
             didWork = true;
             logAssetBuildTime("entity_step", 0, stepStart);
+            // Report entity progress to chat
+            size_t totalEntities = 0, builtEntities = 0;
+            for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+                if (vis.inSceneGraph) {
+                    totalEntities++;
+                    if (vis.meshBuilt) builtEntities++;
+                }
+            }
+            sendLoadProgress(fmt::format("[Load] Entity {}/{}", builtEntities, totalEntities));
         }
     }
 
     // Priority 2: Build one PVS neighbor region
     if (!didWork && constrainedMeshCache_) {
+        size_t qNeedBuild = 0;
+        size_t firstUnloaded = SIZE_MAX;
+        for (const auto& entry : meshLoadQueue_) {
+            if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
+                qNeedBuild++;
+                if (firstUnloaded == SIZE_MAX) firstUnloaded = entry.regionIdx;
+            }
+        }
+        if (qNeedBuild > 0) {
+            LOG_INFO(MOD_GRAPHICS, "Progressive P2: attempting region {} ({} need building in queue of {})",
+                     firstUnloaded, qNeedBuild, meshLoadQueue_.size());
+        }
+
         for (const auto& entry : meshLoadQueue_) {
             if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
             if (rebuildRegionMesh(entry.regionIdx)) {
                 addRegionToCollision(entry.regionIdx);
-                LOG_DEBUG(MOD_GRAPHICS, "Progressive: built region {} + collision (PVS={}, queue={})",
-                          entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size());
+                LOG_INFO(MOD_GRAPHICS, "Progressive P2: SUCCESS region {} + collision (PVS={}, queue={}, "
+                          "needBuild={})",
+                          entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size(), qNeedBuild - 1);
                 didWork = true;
                 logAssetBuildTime("region", entry.regionIdx, stepStart);
+                sendLoadProgress(fmt::format("[Load] Region {} [{}/{}]",
+                    entry.regionIdx, meshLoadQueue_.size() - (qNeedBuild - 1), meshLoadQueue_.size()));
+            } else {
+                LOG_ERROR(MOD_GRAPHICS, "Progressive P2: FAILED region {} — rebuildRegionMesh returned false "
+                          "(PVS={}, queue={})",
+                          entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size());
             }
             break;  // One attempt max
         }
     }
 
-    // Priority 3: Build one door in current PVS set
+    // Priority 3: Build one door in current PVS set (nearest first)
     if (!didWork && doorManager_) {
         std::vector<uint8_t> pvsDoors;
         doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
+        std::sort(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t a, uint8_t b) {
+            const auto* da = doorManager_->getDoor(a);
+            const auto* db = doorManager_->getDoor(b);
+            if (!da || !db) return false;
+            float distA = (da->x - playerX_) * (da->x - playerX_) + (da->y - playerY_) * (da->y - playerY_);
+            float distB = (db->x - playerX_) * (db->x - playerX_) + (db->y - playerY_) * (db->y - playerY_);
+            return distA < distB;
+        });
+        size_t totalPvsDoors = pvsDoors.size();
+        size_t doorIndex = 0;
         for (auto doorId : pvsDoors) {
             if (doorManager_->isDoorMeshBuilt(doorId)) continue;
             // Use rebuildSingleDoor to properly clean up placeholder nodes
@@ -10961,32 +11204,48 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             addDoorToCollision(doorId);
             didWork = true;
             logAssetBuildTime("door", doorId, stepStart);
+            const auto* dv = doorManager_->getDoor(doorId);
+            sendLoadProgress(fmt::format("[Load] Door {} '{}' [{}/{}]",
+                doorId, dv ? dv->modelName : "?", doorIndex + 1, totalPvsDoors));
             break;  // One door max
         }
     }
 
     // Priority 4: Build one PVS object
     if (!didWork) {
+        size_t totalPvsObjects = 0, builtPvsObjects = 0;
+        for (const auto& obj : deferredObjects_) {
+            if (protectedRegions_.count(obj.bspRegion) > 0) {
+                totalPvsObjects++;
+                if (obj.meshBuilt) builtPvsObjects++;
+            }
+        }
+        // Collect unbuilt PVS objects with distance, sort nearest-first
+        std::vector<std::pair<size_t, float>> objCandidates;
         for (size_t i = 0; i < deferredObjects_.size(); ++i) {
             if (deferredObjects_[i].meshBuilt) continue;
             if (protectedRegions_.count(deferredObjects_[i].bspRegion) == 0) continue;
+            auto center = deferredObjects_[i].worldBounds.getCenter();
+            // worldBounds is Irrlicht Y-up: (x, z_eq, y_eq)
+            float dx = center.X - playerX_;
+            float dy = center.Z - playerY_;  // Irr Z = EQ Y
+            objCandidates.push_back({i, dx*dx + dy*dy});
+        }
+        std::sort(objCandidates.begin(), objCandidates.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+        if (!objCandidates.empty()) {
+            size_t i = objCandidates[0].first;
             buildDeferredObject(i);
             addObjectToCollision(objectNodes_.size() - 1);
             didWork = true;
             logAssetBuildTime("pvs_object", i, stepStart);
-            break;  // One object max
-        }
-    }
-
-    // Priority 5: Build one non-PVS object
-    if (!didWork) {
-        for (size_t i = 0; i < deferredObjects_.size(); ++i) {
-            if (deferredObjects_[i].meshBuilt) continue;
-            buildDeferredObject(i);
-            addObjectToCollision(objectNodes_.size() - 1);
-            didWork = true;
-            logAssetBuildTime("object", i, stepStart);
-            break;  // One object max
+            std::string objName = "?";
+            if (currentZone_ && deferredObjects_[i].objectIndex < currentZone_->objects.size()) {
+                const auto& objInstance = currentZone_->objects[deferredObjects_[i].objectIndex];
+                if (objInstance.placeable) objName = objInstance.placeable->getName();
+            }
+            sendLoadProgress(fmt::format("[Load] Object '{}' [{}/{}]",
+                objName, builtPvsObjects + 1, totalPvsObjects));
         }
     }
 
@@ -11034,6 +11293,8 @@ void IrrlichtRenderer::queueEntityPrepRequests() {
         auto it = entities.find(spawnId);
         if (it == entities.end()) continue;
         const auto& vis = it->second;
+        // Don't prep invisible entities — matches build step visibility filter
+        if (!vis.inSceneGraph) continue;
         // Don't re-queue entities whose background prep already completed
         if (vis.entityPrepComplete) continue;
         // Per-entity dedup: each entity gets its own prep job (equipment/variant work differs)
@@ -11054,6 +11315,15 @@ void IrrlichtRenderer::logAssetBuildTime(const char* type, size_t id,
     }
 }
 
+void IrrlichtRenderer::sendLoadProgress(const std::string& msg) {
+    if (windowManager_) {
+        auto* chatWindow = windowManager_->getChatWindow();
+        if (chatWindow) {
+            chatWindow->addSystemMessage(msg);
+        }
+    }
+}
+
 void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     if (!progressiveLoadingActive_) return;
 
@@ -11063,19 +11333,36 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     size_t unbuiltObjects = 0;
 
     if (entityRenderer_) {
-        std::vector<uint16_t> unbuilt;
-        entityRenderer_->getUnbuiltEntities(unbuilt);
-        unbuiltEntities = unbuilt.size();
+        for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+            if (!vis.meshBuilt && vis.inSceneGraph) unbuiltEntities++;
+        }
     }
 
     if (doorManager_) {
-        std::vector<uint8_t> unbuilt;
-        doorManager_->getUnbuiltDoors(unbuilt);
-        unbuiltDoors = unbuilt.size();
+        std::vector<uint8_t> pvsDoors;
+        doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
+        unbuiltDoors = pvsDoors.size();
     }
 
     for (const auto& obj : deferredObjects_) {
-        if (!obj.meshBuilt) unbuiltObjects++;
+        if (!obj.meshBuilt && protectedRegions_.count(obj.bspRegion) > 0) unbuiltObjects++;
+    }
+
+    // Periodic status log for progressive loading (every 5 seconds)
+    static int progCheckLog = 0;
+    if (++progCheckLog % 150 == 1) {
+        size_t unbuiltRegions = 0;
+        if (constrainedMeshCache_) {
+            for (const auto& entry : meshLoadQueue_) {
+                if (!constrainedMeshCache_->isLoaded(entry.regionIdx))
+                    unbuiltRegions++;
+            }
+        }
+        LOG_INFO(MOD_GRAPHICS, "Progressive status: entities={} doors={} objects={} "
+                 "queuedRegions={} | governor={} | progressive={}",
+                 unbuiltEntities, unbuiltDoors, unbuiltObjects, unbuiltRegions,
+                 governor_ ? governor_->getStateName() : "N/A",
+                 progressiveLoadingActive_);
     }
 
     if (unbuiltEntities == 0 && unbuiltDoors == 0 && unbuiltObjects == 0) {
@@ -11117,6 +11404,7 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - progressiveLoadStartTime_).count();
         LOG_INFO(MOD_GRAPHICS, "Progressive loading complete: {}ms total streaming time", elapsed);
+        sendLoadProgress(fmt::format("[Load] Complete ({:.1f}s)", elapsed / 1000.0f));
 
         // Regenerate detail chunks now that all terrain is in the selector
         // (chunks generated during progressive loading had incomplete terrain raycasts)
@@ -12865,15 +13153,20 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
         totalEstimate += zoneSourceBytes;
 
         // Break down major components
-        size_t combinedGeomBytes = currentZone_->geometry ? currentZone_->geometry->getMemoryUsage() : 0;
+        size_t combinedGeomBytes = currentZone_->geometry ? currentZone_->geometry->getFullMemoryUsage() : 0;
         size_t wldBytes = currentZone_->wldLoader ? currentZone_->wldLoader->getMemoryUsage() : 0;
         size_t objGeomBytes = 0;
         for (const auto& [name, geom] : currentZone_->objectGeometries)
-            if (geom) objGeomBytes += geom->getMemoryUsage();
+            if (geom) objGeomBytes += geom->getFullMemoryUsage();
 
         lines.push_back(fmt::format("[S3D Zone Source Data] {} (combined geom {}, WLD {}, obj geom {})",
             formatBytes(zoneSourceBytes), formatBytes(combinedGeomBytes),
             formatBytes(wldBytes), formatBytes(objGeomBytes)));
+
+        // Log detailed WLD memory breakdown
+        if (currentZone_->wldLoader) {
+            currentZone_->wldLoader->logMemoryBreakdown();
+        }
     }
 
     // --- GPU Texture Memory (actual GPU-side allocations in shared RAM) ---

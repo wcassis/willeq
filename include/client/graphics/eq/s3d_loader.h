@@ -122,8 +122,8 @@ struct S3DZone {
     size_t getMemoryUsage() const {
         size_t total = sizeof(S3DZone);
 
-        // Combined zone geometry
-        if (geometry) total += geometry->getMemoryUsage();
+        // Combined zone geometry (standalone, not shared via WldLoader)
+        if (geometry) total += geometry->getFullMemoryUsage();
 
         // Zone texture raw pixel data (may be released after GPU upload)
         for (const auto& [name, tex] : textures)
@@ -135,9 +135,9 @@ struct S3DZone {
         // Placeable objects (ObjectInstance = shared_ptr pair, geometry may be shared)
         total += objects.capacity() * sizeof(ObjectInstance);
 
-        // Object geometries from _obj.s3d
+        // Object geometries from _obj.s3d (standalone, not shared via WldLoader)
         for (const auto& [name, geom] : objectGeometries)
-            if (geom) total += geom->getMemoryUsage();
+            if (geom) total += geom->getFullMemoryUsage();
 
         // Object textures
         for (const auto& [name, tex] : objectTextures)
@@ -148,7 +148,7 @@ struct S3DZone {
             if (!model) continue;
             total += sizeof(CharacterModel);
             for (const auto& part : model->parts)
-                if (part) total += part->getMemoryUsage();
+                if (part) total += part->getFullMemoryUsage();
             total += model->partsWithTransforms.capacity() * sizeof(CharacterPart);
             total += model->rawParts.capacity() * sizeof(CharacterPart);
             // Skeleton and animation data accounted via CharacterSkeleton below

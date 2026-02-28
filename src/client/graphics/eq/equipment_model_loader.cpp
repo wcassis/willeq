@@ -193,7 +193,7 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
                                   [](unsigned char c) { return std::toupper(c); });
                     if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
                         hasGeometry = true;
-                        for (const auto& texName : geom->textureNames) {
+                        for (const auto& texName : geom->textureNames()) {
                             bool found = false;
                             for (const auto& existing : modelTexNames) {
                                 if (existing == texName) { found = true; break; }
@@ -306,13 +306,13 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
             combinedGeom->triangles.push_back(newTri);
         }
 
-        for (const auto& texName : geom->textureNames) {
+        for (const auto& texName : geom->textureNames()) {
             bool found = false;
-            for (const auto& existing : combinedGeom->textureNames) {
+            for (const auto& existing : combinedGeom->mutableMaterialData().textureNames) {
                 if (existing == texName) { found = true; break; }
             }
             if (!found) {
-                combinedGeom->textureNames.push_back(texName);
+                combinedGeom->mutableMaterialData().textureNames.push_back(texName);
                 equipModel->textureNames.push_back(texName);
             }
         }
@@ -455,8 +455,8 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
     std::map<std::string, std::vector<Triangle>> trianglesByTexture;
     for (const auto& tri : geometry->triangles) {
         std::string texName = "";
-        if (tri.textureIndex < geometry->textureNames.size()) {
-            texName = geometry->textureNames[tri.textureIndex];
+        if (tri.textureIndex < geometry->textureNames().size()) {
+            texName = geometry->textureNames()[tri.textureIndex];
         }
         trianglesByTexture[texName].push_back(tri);
     }
@@ -780,7 +780,7 @@ bool EquipmentModelLoader::indexEquipmentArchive(
                                   [](unsigned char c) { return std::toupper(c); });
                     if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
                         hasGeometry = true;
-                        for (const auto& texName : geom->textureNames) {
+                        for (const auto& texName : geom->textureNames()) {
                             bool found = false;
                             for (const auto& existing : modelTexNames) {
                                 if (existing == texName) { found = true; break; }
@@ -943,13 +943,13 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractEquipmentModelO
             combinedGeom->triangles.push_back(newTri);
         }
 
-        for (const auto& texName : geom->textureNames) {
+        for (const auto& texName : geom->textureNames()) {
             bool found = false;
-            for (const auto& existing : combinedGeom->textureNames) {
+            for (const auto& existing : combinedGeom->mutableMaterialData().textureNames) {
                 if (existing == texName) { found = true; break; }
             }
             if (!found) {
-                combinedGeom->textureNames.push_back(texName);
+                combinedGeom->mutableMaterialData().textureNames.push_back(texName);
                 equipModel->textureNames.push_back(texName);
             }
         }

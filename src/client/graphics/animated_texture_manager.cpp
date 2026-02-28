@@ -91,15 +91,15 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
     int animatedCount = 0;
 
     // Find all animated textures from geometry
-    for (size_t i = 0; i < geometry.textureAnimations.size(); ++i) {
-        const TextureAnimationInfo& animInfo = geometry.textureAnimations[i];
+    for (size_t i = 0; i < geometry.textureAnimations().size(); ++i) {
+        const TextureAnimationInfo& animInfo = geometry.textureAnimations()[i];
 
         if (!animInfo.isAnimated || animInfo.frames.size() <= 1) {
             continue;  // Not animated or only 1 frame
         }
 
-        std::string primaryName = (i < geometry.textureNames.size()) ?
-                                   geometry.textureNames[i] : "";
+        std::string primaryName = (i < geometry.textureNames().size()) ?
+                                   geometry.textureNames()[i] : "";
         if (primaryName.empty() && !animInfo.frames.empty()) {
             primaryName = animInfo.frames[0];
         }
@@ -204,15 +204,15 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
     }
 
     // Also check for new animated textures from this mesh's geometry
-    for (size_t i = 0; i < geometry.textureAnimations.size(); ++i) {
-        const TextureAnimationInfo& animInfo = geometry.textureAnimations[i];
+    for (size_t i = 0; i < geometry.textureAnimations().size(); ++i) {
+        const TextureAnimationInfo& animInfo = geometry.textureAnimations()[i];
 
         if (!animInfo.isAnimated || animInfo.frames.size() <= 1) {
             continue;
         }
 
-        std::string primaryName = (i < geometry.textureNames.size()) ?
-                                   geometry.textureNames[i] : "";
+        std::string primaryName = (i < geometry.textureNames().size()) ?
+                                   geometry.textureNames()[i] : "";
         if (primaryName.empty() && !animInfo.frames.empty()) {
             primaryName = animInfo.frames[0];
         }

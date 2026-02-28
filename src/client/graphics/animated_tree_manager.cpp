@@ -75,8 +75,8 @@ void AnimatedTreeManager::beginInitialize(const std::vector<ObjectInstance>& obj
         }
         const std::string& objName = obj.placeable->getName();
         std::string primaryTexture;
-        if (!obj.geometry->textureNames.empty()) {
-            primaryTexture = obj.geometry->textureNames[0];
+        if (!obj.geometry->textureNames().empty()) {
+            primaryTexture = obj.geometry->textureNames()[0];
         }
         if (treeIdentifier_.isTreeMesh(objName, primaryTexture)) {
             pendingTreeIndices_.push_back(i);
@@ -212,8 +212,8 @@ void AnimatedTreeManager::identifyTrees(const std::vector<ObjectInstance>& objec
     size_t logCount = 0;
     for (const auto& obj : objects) {
         if (obj.placeable && logCount < 10) {
-            std::string tex = (obj.geometry && !obj.geometry->textureNames.empty()) ?
-                              obj.geometry->textureNames[0] : "(none)";
+            std::string tex = (obj.geometry && !obj.geometry->textureNames().empty()) ?
+                              obj.geometry->textureNames()[0] : "(none)";
             LOG_DEBUG(MOD_GRAPHICS, "AnimatedTreeManager: Sample obj[{}]: name='{}' tex='{}' pos=({:.1f},{:.1f},{:.1f})",
                       logCount, obj.placeable->getName(), tex,
                       obj.placeable->getX(), obj.placeable->getY(), obj.placeable->getZ());
@@ -234,8 +234,8 @@ void AnimatedTreeManager::identifyTrees(const std::vector<ObjectInstance>& objec
 
         // Get primary texture name for this geometry
         std::string primaryTexture;
-        if (!obj.geometry->textureNames.empty()) {
-            primaryTexture = obj.geometry->textureNames[0];
+        if (!obj.geometry->textureNames().empty()) {
+            primaryTexture = obj.geometry->textureNames()[0];
         }
 
         // Check if this is a tree
@@ -533,8 +533,8 @@ irr::scene::SMesh* AnimatedTreeManager::buildAnimatedMesh(
         const auto& tri = geometry.triangles[i];
 
         // Skip invisible textures
-        if (tri.textureIndex < geometry.textureInvisible.size() &&
-            geometry.textureInvisible[tri.textureIndex]) {
+        if (tri.textureIndex < geometry.textureInvisible().size() &&
+            geometry.textureInvisible()[tri.textureIndex]) {
             continue;
         }
 
@@ -555,8 +555,8 @@ irr::scene::SMesh* AnimatedTreeManager::buildAnimatedMesh(
 
         // Get texture for this group
         std::string texName;
-        if (texIdx < geometry.textureNames.size()) {
-            texName = geometry.textureNames[texIdx];
+        if (texIdx < geometry.textureNames().size()) {
+            texName = geometry.textureNames()[texIdx];
         }
 
         irr::video::ITexture* texture = getOrLoadTexture(texName, textures);

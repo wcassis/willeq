@@ -308,34 +308,28 @@ void dumpWld(const std::vector<char>& data, const std::string& name) {
             std::cout << "### " << name << std::endl;
             std::cout << std::endl;
 
-            // Parse mesh header
+            // Parse mesh header using packed struct (matches main parser)
             const char* meshData = fragPtr + offset + 8;
             size_t meshSize = fragSize;
 
-            if (meshSize >= 40) {
-                uint32_t flags = *reinterpret_cast<const uint32_t*>(meshData + 4);
-                int32_t matListRef = *reinterpret_cast<const int32_t*>(meshData + 8);
-                int32_t animVertRef = *reinterpret_cast<const int32_t*>(meshData + 12);
-                // Skip center (3 floats) and params (3 values)
-                uint16_t vertexCount = *reinterpret_cast<const uint16_t*>(meshData + 36);
-                uint16_t texCoordCount = *reinterpret_cast<const uint16_t*>(meshData + 38);
-                uint16_t normalCount = *reinterpret_cast<const uint16_t*>(meshData + 40);
-                uint16_t colorCount = *reinterpret_cast<const uint16_t*>(meshData + 42);
-                uint16_t polyCount = *reinterpret_cast<const uint16_t*>(meshData + 44);
-                uint16_t vertexPieceCount = *reinterpret_cast<const uint16_t*>(meshData + 46);
-                uint16_t polyTexCount = *reinterpret_cast<const uint16_t*>(meshData + 48);
-                uint16_t vertexTexCount = *reinterpret_cast<const uint16_t*>(meshData + 50);
+            if (meshSize >= 4 + sizeof(WldFragment36Header)) {
+                WldFragment36Header header;
+                std::memcpy(&header, meshData + 4, sizeof(header));  // +4 to skip nameRef
 
-                std::cout << "- Flags: 0x" << std::hex << flags << std::dec << std::endl;
-                std::cout << "- Material List Ref: " << matListRef << std::endl;
-                std::cout << "- Vertices: " << vertexCount << std::endl;
-                std::cout << "- TexCoords: " << texCoordCount << std::endl;
-                std::cout << "- Normals: " << normalCount << std::endl;
-                std::cout << "- Colors: " << colorCount << std::endl;
-                std::cout << "- Polygons: " << polyCount << std::endl;
-                std::cout << "- Vertex Pieces: " << vertexPieceCount << std::endl;
-                std::cout << "- Poly Tex Entries: " << polyTexCount << std::endl;
-                std::cout << "- Vertex Tex Entries: " << vertexTexCount << std::endl;
+                std::cout << "- Flags: 0x" << std::hex << header.flags << std::dec << std::endl;
+                std::cout << "- Material List Ref: " << header.frag1 << std::endl;
+                std::cout << "- Center: (" << header.centerX << ", " << header.centerY << ", " << header.centerZ << ")" << std::endl;
+                std::cout << "- Bounds: (" << header.minX << "," << header.minY << "," << header.minZ
+                          << ") - (" << header.maxX << "," << header.maxY << "," << header.maxZ << ")" << std::endl;
+                std::cout << "- Vertices: " << header.vertexCount << std::endl;
+                std::cout << "- TexCoords: " << header.texCoordCount << std::endl;
+                std::cout << "- Normals: " << header.normalCount << std::endl;
+                std::cout << "- Colors: " << header.colorCount << std::endl;
+                std::cout << "- Polygons: " << header.polygonCount << std::endl;
+                std::cout << "- Vertex Pieces: " << header.size6 << std::endl;
+                std::cout << "- Poly Tex Entries: " << header.polygonTexCount << std::endl;
+                std::cout << "- Vertex Tex Entries: " << header.vertexTexCount << std::endl;
+                std::cout << "- Scale: " << header.scale << std::endl;
                 std::cout << std::endl;
             }
         }

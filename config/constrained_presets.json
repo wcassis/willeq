@@ -23,7 +23,14 @@
       "directionalLight": true,
       "fireEffects": true,
       "skyRendering": true,
-      "nameTagsEnabled": true
+      "nameTagsEnabled": true,
+      "skipManualZoneDraw": true,
+      "skipVBOUpload": true,
+      "skipEntityTextureUpload": true,
+      "skipEntityBuild": true,
+      "skipConstrainedTextureUpload": true,
+      "skipSkyTextureUpload": true,
+      "enableTextureAtlas": false
     }
   }
 }

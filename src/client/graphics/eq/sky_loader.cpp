@@ -147,13 +147,13 @@ bool SkyLoader::parseWld(const std::string& archivePath) {
 
     // Extract texture names from geometries to build material->texture mapping
     for (const auto& geom : geometries) {
-        if (!geom->textureNames.empty() && !geom->name.empty()) {
+        if (!geom->textureNames().empty() && !geom->name.empty()) {
             std::string upperName = geom->name;
             std::transform(upperName.begin(), upperName.end(), upperName.begin(),
                           [](unsigned char c) { return std::toupper(c); });
 
             // First texture is the primary texture for this layer
-            std::string texName = geom->textureNames[0];
+            std::string texName = geom->textureNames()[0];
             std::transform(texName.begin(), texName.end(), texName.begin(),
                           [](unsigned char c) { return std::tolower(c); });
             materialTextures_[upperName] = texName;
