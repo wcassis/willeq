@@ -2,6 +2,9 @@
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
 #include "client/graphics/gles2_egl_helper.h"
 #endif
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/gpu_upload_thread.h"
+#endif
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
@@ -15,6 +18,7 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <fmt/format.h>
 
 namespace EQT {
 namespace Graphics {
@@ -227,6 +231,61 @@ bool TextureAtlas::uploadPreloadedPage(PreloadData& data, int pageIndex) {
     return isLast;
 #endif
 }
+
+#ifdef EQT_HAS_GLES2
+bool TextureAtlas::uploadPreloadedPageAsync(PreloadData& data, int pageIndex,
+                                             GPUUploadThread* uploadThread, uint32_t atlasType) {
+    if (!data.valid || pageIndex < 0 || pageIndex >= static_cast<int>(data.pages.size())) {
+        return true;  // Nothing to do
+    }
+
+    if (!uploadThread || !uploadThread->isAvailable()) {
+        // Fall back to synchronous upload
+        return uploadPreloadedPage(data, pageIndex);
+    }
+
+    // Ensure pageTextures_ vector is large enough
+    if (pageTextures_.size() < data.pages.size()) {
+        pageTextures_.resize(data.pages.size(), 0);
+    }
+
+    auto& page = data.pages[pageIndex];
+
+    // Build upload request
+    UploadRequest req;
+    req.type = UploadRequestType::CompressedTexture;
+    req.width = data.atlasWidth;
+    req.height = data.atlasHeight;
+    req.pixelData = std::move(page.etc1Data);
+    req.compressedSize = page.dataSize;
+    req.textureName = fmt::format("atlas_{}_{}", atlasType, pageIndex);
+    // Encode atlas type + page index in callbackKey
+    req.callbackKey = (static_cast<uint64_t>(atlasType) << 32) | static_cast<uint64_t>(pageIndex);
+
+    uploadThread->submit(std::move(req));
+
+    // Data moved out, clear source
+    page.etc1Data.clear();
+    page.etc1Data.shrink_to_fit();
+
+    LOG_INFO(MOD_GRAPHICS, "TextureAtlas: queued async upload for page {} (type={}, {}x{}, {} bytes)",
+             pageIndex, atlasType, data.atlasWidth, data.atlasHeight, page.dataSize);
+
+    bool isLast = (pageIndex >= static_cast<int>(data.pages.size()) - 1);
+    return isLast;
+}
+
+void TextureAtlas::setPageTexture(int pageIndex, uint32_t glTexId, size_t gpuBytes) {
+    if (pageIndex < 0 || pageIndex >= static_cast<int>(pageTextures_.size()))
+        return;
+
+    pageTextures_[pageIndex] = glTexId;
+    gpuMemoryUsage_ += gpuBytes;
+
+    LOG_DEBUG(MOD_GRAPHICS, "TextureAtlas: async page {} ready (texId={}, {} bytes)",
+              pageIndex, glTexId, gpuBytes);
+}
+#endif // EQT_HAS_GLES2
 
 void TextureAtlas::finalizePreload(PreloadData& data) {
     if (!data.valid) return;

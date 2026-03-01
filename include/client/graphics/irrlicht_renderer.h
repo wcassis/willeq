@@ -34,6 +34,7 @@
 #include "client/graphics/environment/tumbleweed_manager.h"
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/gpu_upload_thread.h"
 #include "client/input/hotkey_manager.h"
 
 #ifdef WITH_RDP
@@ -885,9 +886,18 @@ public:
     void toggleManualZoneDraw();
     bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
 
+    // Toggle GPU upload thread on/off at runtime (for A/B frame timing comparison)
+    void toggleGPUUploadThread();
+#ifdef EQT_HAS_GLES2
+    bool isGPUUploadThreadEnabled() const { return gpuUploadEnabled_; }
+#else
+    bool isGPUUploadThreadEnabled() const { return false; }
+#endif
+
     // Debug lighting toggles (for isolating performance regressions)
     void togglePlayerLight();
     bool isPlayerLightEnabled() const { return debugPlayerLightEnabled_; }
+    void swapZoneMeshMaterials();  // Walk zone meshes and swap material types after shader variant change
     void toggleObjectLights();
     bool isObjectLightsEnabled() const { return debugObjectLightsEnabled_; }
     void toggleDirectionalLight();
@@ -1239,6 +1249,13 @@ private:
     std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
     bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
     std::unique_ptr<SimulationWorker> simulationWorker_;  // Background simulation (visibility, lighting, animation)
+#ifdef EQT_HAS_GLES2
+    std::unique_ptr<GPUUploadThread> gpuUploadThread_;   // Async GPU upload thread (shared EGL context)
+    std::unordered_set<size_t> pendingVBOUploads_;       // Region indices with VBO uploads in flight
+    bool gpuUploadEnabled_ = true;                       // Runtime toggle for /upload command
+    void initGPUUploadThread();
+    void processCompletedUploads();
+#endif
 
     // Particle I/O state for SimulationWorker
     std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityPositions_;   // Resolved positions for next frame

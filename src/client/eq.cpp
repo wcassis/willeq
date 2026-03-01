@@ -9129,6 +9129,20 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(sortcmd);
 
+	Command uploadcmd;
+	uploadcmd.name = "upload";
+	uploadcmd.aliases = {};
+	uploadcmd.usage = "/upload";
+	uploadcmd.description = "Toggle GPU upload thread (async texture/VBO uploads)";
+	uploadcmd.category = "Utility";
+	uploadcmd.handler = [this](const std::string& args) {
+		if (!m_renderer) return;
+		m_renderer->toggleGPUUploadThread();
+		AddChatSystemMessage(fmt::format("GPU upload thread: {}",
+			m_renderer->isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
+	};
+	m_command_registry->registerCommand(uploadcmd);
+
 	Command portalcmd;
 	portalcmd.name = "portal";
 	portalcmd.aliases = {};

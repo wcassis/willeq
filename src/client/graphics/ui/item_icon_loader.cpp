@@ -1,5 +1,8 @@
 #include "client/graphics/ui/item_icon_loader.h"
 #include "client/graphics/constrained_texture_cache.h"
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/gpu_upload_thread.h"
+#endif
 #include <fstream>
 #include <iostream>
 #include "common/logging.h"
@@ -472,8 +475,35 @@ irr::video::ITexture* ItemIconLoader::extractIcon(uint32_t iconId, int sheetInde
     }
 
     // Create texture name
-    std::ostringstream texName;
-    texName << "icon_" << iconId;
+    std::string texName = "icon_" + std::to_string(iconId);
+
+#ifdef EQT_HAS_GLES2
+    // Async path: submit RGBA data to GPU upload thread
+    if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+        // Convert BGRA (Irrlicht) → RGBA (GL) for glTexImage2D
+        std::vector<uint8_t> rgba(ICON_SIZE * ICON_SIZE * 4);
+        for (int i = 0; i < ICON_SIZE * ICON_SIZE; ++i) {
+            int idx = i * 4;
+            rgba[idx + 0] = iconPixels[idx + 2];  // R (was at B position in BGRA)
+            rgba[idx + 1] = iconPixels[idx + 1];  // G
+            rgba[idx + 2] = iconPixels[idx + 0];  // B (was at R position in BGRA)
+            rgba[idx + 3] = iconPixels[idx + 3];  // A
+        }
+
+        EQT::Graphics::UploadRequest req;
+        req.type = EQT::Graphics::UploadRequestType::Texture;
+        req.width = ICON_SIZE;
+        req.height = ICON_SIZE;
+        req.pixelData = std::move(rgba);
+        req.textureName = texName;
+        // High byte 4 = icon, low bits = icon ID
+        req.callbackKey = (uint64_t(4) << 56) | static_cast<uint64_t>(iconId);
+
+        gpuUploadThread_->submit(std::move(req));
+        pendingAsyncIcons_.insert(iconId);
+        return nullptr;  // Texture will be registered when upload completes
+    }
+#endif
 
     // Create Irrlicht image from pixel data
     irr::video::IImage* image = driver_->createImageFromData(
@@ -489,7 +519,7 @@ irr::video::ITexture* ItemIconLoader::extractIcon(uint32_t iconId, int sheetInde
     }
 
     // Create texture from image
-    irr::video::ITexture* texture = driver_->addTexture(texName.str().c_str(), image);
+    irr::video::ITexture* texture = driver_->addTexture(texName.c_str(), image);
     image->drop();
 
     if (!texture) {
@@ -686,10 +716,10 @@ bool ItemIconLoader::processOneLazyIcon() {
             continue;  // Sheet not ready yet
         }
 
-        // Extract the icon
+        // Extract the icon (may return nullptr if async upload submitted)
         irr::video::ITexture* tex = extractIcon(iconId, sheetKey, localIndex);
 
-        // Register with constrained cache
+        // Register with constrained cache (sync path only — async registers in processCompletedUploads)
         if (tex && constrainedCache_) {
             std::string texName = "icon_" + std::to_string(iconId);
             // 40x40 ARGB = 6400 bytes
@@ -697,7 +727,7 @@ bool ItemIconLoader::processOneLazyIcon() {
             constrainedCache_->registerTexture(texName, tex, iconBytes, true);
         }
 
-        // Remove from queue
+        // Remove from queue (async icons track via pendingAsyncIcons_ instead)
         lazyIconQueue_.erase(it);
         lazyIconQueued_.erase(iconId);
         return true;
@@ -705,6 +735,12 @@ bool ItemIconLoader::processOneLazyIcon() {
 
     // Step 3: Pending icons but no sheet ready — can't progress
     return false;
+}
+
+void ItemIconLoader::registerAsyncIcon(uint32_t iconId, irr::video::ITexture* tex) {
+    if (tex) {
+        iconCache_[iconId] = tex;
+    }
 }
 
 void ItemIconLoader::clear() {
@@ -716,6 +752,7 @@ void ItemIconLoader::clear() {
     requestedSheetKeys_.clear();
     lazyIconQueue_.clear();
     lazyIconQueued_.clear();
+    pendingAsyncIcons_.clear();
 }
 
 } // namespace ui

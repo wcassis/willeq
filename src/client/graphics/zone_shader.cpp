@@ -487,6 +487,285 @@ void main() {
 }
 )";
 
+// ============================================================================
+// Lightweight shader variants (GLSL ES 1.00) — no per-pixel player light
+// ============================================================================
+// These variants eliminate vWorldPos and vWorldNormal varyings (6 fewer floats
+// interpolated per fragment), yielding a trivial FS identical to the built-in
+// GLES2 programs. All 8 point lights are computed per-vertex with standard
+// Lambertian (same loop structure as the desktop GL shaders that fit within
+// Mali 400's 512-instruction VS limit).
+
+// Lightweight VS (standard) — all 8 lights per-vertex, 3 varyings output
+static const char* VERTEX_SHADER_LIGHTWEIGHT_SRC = R"(
+precision highp float;
+
+attribute vec3 aPosition;
+attribute vec3 aNormal;
+attribute vec4 aColor;
+attribute vec2 aTexCoord0;
+
+uniform mat4 mWorldViewProj;
+uniform mat4 mWorld;
+
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uAmbientColor;
+uniform vec3 uTintColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+
+uniform vec3 uLightPos[8];
+uniform vec3 uLightColor[8];
+uniform vec3 uLightAtten[8];
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 pos = vec4(aPosition, 1.0);
+    gl_Position = mWorldViewProj * pos;
+    vTexCoord = aTexCoord0;
+
+    vec3 worldPos = (mWorld * pos).xyz;
+    vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
+
+    // Directional sun light
+    vec3 sunL = normalize(-uSunDir);
+    float sunNdotL = max(dot(worldN, sunL), 0.0);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+
+    // All 8 point lights per-vertex (standard Lambertian, single loop)
+    vec3 pointLighting = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        vec3 lVec = uLightPos[i] - worldPos;
+        float d = length(lVec) + 0.001;
+        float atten = 1.0 / (uLightAtten[i].x
+                            + uLightAtten[i].y * d
+                            + uLightAtten[i].z * d * d + 0.0001);
+        float nl = max(dot(worldN, normalize(lVec)), 0.0);
+        pointLighting += uLightColor[i] * nl * atten;
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+
+    // Linear fog factor (1.0 = no fog, 0.0 = full fog)
+    float fogDist = length((mWorldViewProj * pos).xyz);
+    vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
+}
+)";
+
+// Lightweight VS (atlas) — precomputed atlas UV from texcoord1
+static const char* ATLAS_VERTEX_SHADER_LIGHTWEIGHT_SRC = R"(
+precision highp float;
+
+attribute vec3 aPosition;
+attribute vec3 aNormal;
+attribute vec4 aColor;
+attribute vec2 aTexCoord0;
+attribute vec2 aTexCoord1;
+
+uniform mat4 mWorldViewProj;
+uniform mat4 mWorld;
+
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uAmbientColor;
+uniform vec3 uTintColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+
+uniform vec3 uLightPos[8];
+uniform vec3 uLightColor[8];
+uniform vec3 uLightAtten[8];
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 pos = vec4(aPosition, 1.0);
+    gl_Position = mWorldViewProj * pos;
+
+    // Use precomputed atlas UV from texcoord1
+    vTexCoord = aTexCoord1;
+
+    vec3 worldPos = (mWorld * pos).xyz;
+    vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
+
+    // Directional sun light
+    vec3 sunL = normalize(-uSunDir);
+    float sunNdotL = max(dot(worldN, sunL), 0.0);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+
+    // All 8 point lights per-vertex (standard Lambertian, single loop)
+    vec3 pointLighting = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        vec3 lVec = uLightPos[i] - worldPos;
+        float d = length(lVec) + 0.001;
+        float atten = 1.0 / (uLightAtten[i].x
+                            + uLightAtten[i].y * d
+                            + uLightAtten[i].z * d * d + 0.0001);
+        float nl = max(dot(worldN, normalize(lVec)), 0.0);
+        pointLighting += uLightColor[i] * nl * atten;
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+
+    // Linear fog factor (1.0 = no fog, 0.0 = full fog)
+    float fogDist = length((mWorldViewProj * pos).xyz);
+    vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
+}
+)";
+
+// Lightweight FS (solid) — trivial: tex * vColor + fog
+static const char* FRAGMENT_SHADER_LIGHTWEIGHT_SOLID_SRC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// Lightweight FS (alpha-test) — discard + tex * vColor + fog
+static const char* FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_SRC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    if (texColor.a < 0.5) discard;
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// Lightweight FS (atlas alpha, dual ETC1) — alpha from unit 1
+static const char* ATLAS_FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_SRC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
+uniform vec4 uFogColor;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    if (alpha < 0.5) discard;
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// Lightweight wind VS — vertex displacement + all 8 lights per-vertex
+static const char* WIND_VERTEX_SHADER_LIGHTWEIGHT_SRC = R"(
+precision highp float;
+
+attribute vec3 aPosition;
+attribute vec3 aNormal;
+attribute vec4 aColor;
+attribute vec2 aTexCoord0;
+
+uniform mat4 mWorldViewProj;
+uniform mat4 mWorld;
+
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uAmbientColor;
+uniform vec3 uTintColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+
+uniform vec3 uLightPos[8];
+uniform vec3 uLightColor[8];
+uniform vec3 uLightAtten[8];
+
+uniform float uWindTime;
+uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
+uniform vec2 uMeshYBounds;  // minY, maxY in local mesh space (Irrlicht Y-up)
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 pos = vec4(aPosition, 1.0);
+    vTexCoord = aTexCoord0;
+
+    // Wind displacement based on vertex height within mesh
+    float range = uMeshYBounds.y - uMeshYBounds.x;
+    float normalizedH = 0.0;
+    if (range > 0.001) {
+        normalizedH = clamp((aPosition.y - uMeshYBounds.x) / range, 0.0, 1.0);
+    }
+    float influence = max(normalizedH - 0.3, 0.0) / 0.7;
+    influence = influence * influence;
+
+    vec3 meshCenter = (mWorld * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    float seed = fract(sin(meshCenter.x * 12.9898 + meshCenter.z * 78.233) * 43758.5453) * 6.283;
+
+    float baseStr = uWindParams.x;
+    float baseFreq = uWindParams.y;
+    float gustStr = uWindParams.z;
+    float gustFreq = uWindParams.w;
+
+    float sway = sin(uWindTime * baseFreq * 6.283 + seed);
+    float gust = sin(uWindTime * gustFreq * 6.283 + seed * 0.7) * 0.5 + 0.5;
+    float strength = baseStr + gustStr * gust;
+
+    pos.x += influence * strength * sway;
+    pos.z += influence * strength * sin(uWindTime * baseFreq * 6.283 + seed + 1.57);
+
+    gl_Position = mWorldViewProj * pos;
+
+    vec3 worldPos = (mWorld * pos).xyz;
+    vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
+
+    // Directional sun light
+    vec3 sunL = normalize(-uSunDir);
+    float sunNdotL = max(dot(worldN, sunL), 0.0);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+
+    // All 8 point lights per-vertex (standard Lambertian, single loop)
+    vec3 pointLighting = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        vec3 lVec = uLightPos[i] - worldPos;
+        float d = length(lVec) + 0.001;
+        float atten = 1.0 / (uLightAtten[i].x
+                            + uLightAtten[i].y * d
+                            + uLightAtten[i].z * d * d + 0.0001);
+        float nl = max(dot(worldN, normalize(lVec)), 0.0);
+        pointLighting += uLightColor[i] * nl * atten;
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+
+    // Linear fog factor
+    float fogDist = length((mWorldViewProj * pos).xyz);
+    vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
+}
+)";
+
 #else // !EQT_HAS_GLES2 — Desktop GL / GLSL 1.20
 
 // ============================================================================
@@ -1343,6 +1622,108 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
         LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: Wind GLSL shader compiled (alphaTest={})",
                  materialWindAlphaTest_);
     }
+
+#ifdef EQT_HAS_GLES2
+    // Compile lightweight variants (no per-pixel player light, 3 varyings only)
+    // These reuse existing ShaderCallback/AtlasShaderCallback/WindShaderCallback —
+    // the loc*_ fields for removed uniforms resolve to -1, and if (loc >= 0) guards skip them.
+    ShaderCallback* lwSolidCb = new ShaderCallback(this);
+    materialLWSolid_ = gpu->addHighLevelShaderMaterial(
+        VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+        FRAGMENT_SHADER_LIGHTWEIGHT_SOLID_SRC, "main", irr::video::EPST_PS_1_1,
+        lwSolidCb, irr::video::EMT_SOLID);
+    lwSolidCb->drop();
+
+    if (materialLWSolid_ < 0) {
+        LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight solid shader");
+    } else {
+        ShaderCallback* lwAlphaCb = new ShaderCallback(this);
+        materialLWAlphaTest_ = gpu->addHighLevelShaderMaterial(
+            VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_SRC, "main", irr::video::EPST_PS_1_1,
+            lwAlphaCb, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+        lwAlphaCb->drop();
+
+        if (materialLWAlphaTest_ < 0) {
+            LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight alpha shader");
+            materialLWSolid_ = -1;
+        }
+    }
+
+    if (materialLWSolid_ >= 0) {
+        // Lightweight atlas solid
+        AtlasShaderCallback* lwAtlasSolidCb = new AtlasShaderCallback(this, false);
+        materialLWAtlasSolid_ = gpu->addHighLevelShaderMaterial(
+            ATLAS_VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_LIGHTWEIGHT_SOLID_SRC, "main", irr::video::EPST_PS_1_1,
+            lwAtlasSolidCb, irr::video::EMT_SOLID);
+        lwAtlasSolidCb->drop();
+
+        // Lightweight atlas alpha
+        AtlasShaderCallback* lwAtlasAlphaCb = new AtlasShaderCallback(this, true);
+        materialLWAtlasAlpha_ = gpu->addHighLevelShaderMaterial(
+            ATLAS_VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            ATLAS_FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_SRC, "main", irr::video::EPST_PS_1_1,
+            lwAtlasAlphaCb, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+        lwAtlasAlphaCb->drop();
+
+        if (materialLWAtlasSolid_ < 0 || materialLWAtlasAlpha_ < 0) {
+            LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight atlas shaders");
+            materialLWAtlasSolid_ = -1;
+            materialLWAtlasAlpha_ = -1;
+        }
+
+        // Lightweight wind alpha-test
+        WindShaderCallback* lwWindCb = new WindShaderCallback(this);
+        materialLWWindAlphaTest_ = gpu->addHighLevelShaderMaterial(
+            WIND_VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_SRC, "main", irr::video::EPST_PS_1_1,
+            lwWindCb, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+        lwWindCb->drop();
+
+        if (materialLWWindAlphaTest_ < 0) {
+            LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight wind shader");
+        }
+
+        LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: Lightweight shaders compiled (solid={}, alpha={}, "
+                 "atlasSolid={}, atlasAlpha={}, wind={})",
+                 materialLWSolid_, materialLWAlphaTest_,
+                 materialLWAtlasSolid_, materialLWAtlasAlpha_, materialLWWindAlphaTest_);
+    }
+#endif // EQT_HAS_GLES2
+}
+
+// ============================================================================
+// Active material getters (lightweight vs per-pixel)
+// ============================================================================
+
+irr::s32 ZoneShaderManager::getActiveSolid() const {
+    if (perPixelPlayerLight_ || materialLWSolid_ < 0) return materialSolid_;
+    return materialLWSolid_;
+}
+
+irr::s32 ZoneShaderManager::getActiveAlphaTest() const {
+    if (perPixelPlayerLight_ || materialLWAlphaTest_ < 0) return materialAlphaTest_;
+    return materialLWAlphaTest_;
+}
+
+irr::s32 ZoneShaderManager::getActiveAtlasSolid() const {
+    if (perPixelPlayerLight_ || materialLWAtlasSolid_ < 0) return materialAtlasSolid_;
+    return materialLWAtlasSolid_;
+}
+
+irr::s32 ZoneShaderManager::getActiveAtlasAlpha() const {
+    if (perPixelPlayerLight_ || materialLWAtlasAlpha_ < 0) return materialAtlasAlpha_;
+    return materialLWAtlasAlpha_;
+}
+
+irr::s32 ZoneShaderManager::getActiveWindAlphaTest() const {
+    if (perPixelPlayerLight_ || materialLWWindAlphaTest_ < 0) return materialWindAlphaTest_;
+    return materialLWWindAlphaTest_;
+}
+
+void ZoneShaderManager::setPerPixelPlayerLight(bool enabled) {
+    perPixelPlayerLight_ = enabled;
 }
 
 // ============================================================================

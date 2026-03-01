@@ -384,6 +384,10 @@ IF(EQT_GRAPHICS)
     IF(EQT_DRM AND NOT EQT_GLES2)
         LIST(APPEND GRAPHICS_SOURCES src/client/graphics/gles2_egl_helper.cpp)
     ENDIF()
+    # GPU upload thread (GLES2 only — shared EGL context for async texture/VBO uploads)
+    IF(EQT_GLES2)
+        LIST(APPEND GRAPHICS_SOURCES src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
 ENDIF()
 
 # RDP server sources (optional, requires FreeRDP)
@@ -565,6 +569,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/environment/emitters/ember_emitter.cpp
         src/client/graphics/environment/emitters/smoke_emitter.cpp
     )
+    # GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(model_viewer PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src

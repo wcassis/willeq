@@ -25,6 +25,7 @@ namespace Graphics {
 // Forward declarations
 class RaceModelLoader;
 class EntityPrepWorker;
+class GPUUploadThread;
 struct ConstrainedRendererConfig;
 struct SimulationInput;
 
@@ -214,6 +215,12 @@ public:
 
     // Debug: skip texture uploads during entity build (isolate glTexImage2D)
     void setSkipTextureUpload(bool skip) { skipTextureUpload_ = skip; }
+
+    // Set GPU upload thread for async texture uploads (GLES2 only)
+    void setGPUUploadThread(GPUUploadThread* thread) { gpuUploadThread_ = thread; }
+
+    // Get mesh builder from race model loader (for async texture registration)
+    ZoneMeshBuilder* getMeshBuilder() const;
 
     // Load global character models (global_chr.s3d)
     bool loadGlobalCharacters();
@@ -703,6 +710,9 @@ private:
 
     // Background entity prep worker (non-owning, owned by IrrlichtRenderer)
     EntityPrepWorker* entityPrepWorker_ = nullptr;
+
+    // GPU upload thread for async texture uploads (non-owning, owned by IrrlichtRenderer)
+    GPUUploadThread* gpuUploadThread_ = nullptr;
 };
 
 } // namespace Graphics

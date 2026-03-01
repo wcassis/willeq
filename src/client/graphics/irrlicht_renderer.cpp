@@ -37,6 +37,7 @@
 #ifdef EQT_HAS_DRM
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
+#include <EGL/eglext.h>
 #else
 #include <GL/gl.h>
 #endif
@@ -53,6 +54,12 @@ extern void gles2DeleteAllStaticHWBuffers(void* driver);
 extern size_t gles2GetHWBufferMemoryUsage(void* driver);
 extern size_t gles2GetHWBufferCount(void* driver);
 extern size_t gles2GetGpuTextureMemoryUsage(void* driver);
+extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+                               unsigned int width, unsigned int height);
+extern void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
+                                           unsigned int vbo, unsigned int ebo,
+                                           unsigned int vertexCount, unsigned int indexCount,
+                                           int vertexType);
 #endif
 #include <algorithm>
 #include <chrono>
@@ -572,6 +579,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Setup lighting
     setupLighting();
 
+    // Apply initial settings from constrained config (must come BEFORE shader variant sync)
+    wireframeMode_ = config_.constrainedConfig.wireframe;
+    fogEnabled_ = config_.constrainedConfig.fog;
+    lightingEnabled_ = config.lighting;
+    debugPlayerLightEnabled_ = config_.constrainedConfig.playerLight;
+
     // Initialize GLSL shader pipeline (if enabled and driver supports it)
     if (config_.constrainedConfig.enableShaders &&
         config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
@@ -581,9 +594,17 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
             if (!zoneShader_->isAvailable()) {
                 LOG_WARN(MOD_GRAPHICS, "GLSL shaders requested but compilation failed; using fixed-function fallback");
                 zoneShader_.reset();
+            } else if (zoneShader_->isLightweightAvailable()) {
+                // Sync shader variant with constrained config playerLight setting
+                zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
             }
         }
     }
+
+    // Initialize GPU upload thread (shared EGL context for async texture/VBO uploads)
+#ifdef EQT_HAS_GLES2
+    initGPUUploadThread();
+#endif
 
     // Setup HUD
     setupHUD();
@@ -593,13 +614,17 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     entityRenderer_->setClientPath(config.eqClientPath);
     entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
     entityRenderer_->setRenderDistance(renderDistance_);
+#ifdef EQT_HAS_GLES2
+    if (gpuUploadThread_)
+        entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
+#endif
 
     // Pass constrained config to entity renderer for visibility limits
     entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
     // Pass GLSL shader material types if available
     if (zoneShader_ && zoneShader_->isAvailable()) {
-        entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                                zoneShader_->getMaterialTypeAlphaTest());
+        entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                zoneShader_->getActiveAlphaTest());
     }
     // Apply chr cache limit to race model loader
     if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
@@ -632,8 +657,8 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
     treeManager_->setRenderDistance(renderDistance_);
     if (zoneShader_ && zoneShader_->isAvailable()) {
-        treeManager_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                             zoneShader_->getMaterialTypeAlphaTest());
+        treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                             zoneShader_->getActiveAlphaTest());
     }
 
     // Create weather system
@@ -650,11 +675,6 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // so that display_settings.json can control whether they are created at all.
     // This prevents crash-causing systems (e.g. boids on ARM) from initializing
     // when the user has disabled them in settings.
-
-    // Apply initial settings from constrained config
-    wireframeMode_ = config_.constrainedConfig.wireframe;
-    fogEnabled_ = config_.constrainedConfig.fog;
-    lightingEnabled_ = config.lighting;
 
     initialized_ = true;
     lastFpsTime_ = device_->getTimer()->getTime();
@@ -781,6 +801,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
+#ifdef EQT_HAS_GLES2
+        if (gpuUploadThread_)
+            constrainedTextureCache_->setGPUUploadThread(gpuUploadThread_.get());
+#endif
         LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
@@ -798,6 +822,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Setup lighting (basic setup)
     setupLighting();
 
+    // Apply initial settings from constrained config (must come BEFORE shader variant sync)
+    wireframeMode_ = config_.constrainedConfig.wireframe;
+    fogEnabled_ = config_.constrainedConfig.fog;
+    debugPlayerLightEnabled_ = config_.constrainedConfig.playerLight;
+    lightingEnabled_ = config.lighting;
+
     // Initialize GLSL shader pipeline (if enabled and driver supports it)
     if (config_.constrainedConfig.enableShaders &&
         config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
@@ -807,17 +837,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
             if (!zoneShader_->isAvailable()) {
                 LOG_WARN(MOD_GRAPHICS, "GLSL shaders requested but compilation failed; using fixed-function fallback");
                 zoneShader_.reset();
+            } else if (zoneShader_->isLightweightAvailable()) {
+                zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
             }
         }
     }
 
     // Setup HUD (needed for loading screen text)
     setupHUD();
-
-    // Apply initial settings from constrained config
-    wireframeMode_ = config_.constrainedConfig.wireframe;
-    fogEnabled_ = config_.constrainedConfig.fog;
-    lightingEnabled_ = config.lighting;
 
     // NOTE: We do NOT create entity renderer or load models here.
     // That happens in loadGlobalAssets() which is called during graphics loading phase.
@@ -827,8 +854,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
         treeManager_->setRenderDistance(renderDistance_);
         if (zoneShader_ && zoneShader_->isAvailable()) {
-            treeManager_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                                 zoneShader_->getMaterialTypeAlphaTest());
+            treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                 zoneShader_->getActiveAlphaTest());
         }
     }
 
@@ -935,12 +962,16 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         entityRenderer_->setClientPath(config_.eqClientPath);
         entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
         entityRenderer_->setRenderDistance(renderDistance_);
+#ifdef EQT_HAS_GLES2
+        if (gpuUploadThread_)
+            entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
+#endif
         // Pass constrained config to entity renderer for visibility limits
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
         // Pass GLSL shader material types if available
         if (zoneShader_ && zoneShader_->isAvailable()) {
-            entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                                    zoneShader_->getMaterialTypeAlphaTest());
+            entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                    zoneShader_->getActiveAlphaTest());
         }
         if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
             entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
@@ -1102,6 +1133,14 @@ void IrrlichtRenderer::hideLoadingScreen() {
 }
 
 void IrrlichtRenderer::shutdown() {
+    // Stop GPU upload thread before any other cleanup (must stop before EGL context destroyed)
+#ifdef EQT_HAS_GLES2
+    if (gpuUploadThread_) {
+        gpuUploadThread_->stop();
+        gpuUploadThread_.reset();
+    }
+#endif
+
     // Stop simulation worker before any other cleanup
     stopSimulationWorker();
 
@@ -1154,6 +1193,183 @@ void IrrlichtRenderer::shutdown() {
     loadingScreenVisible_ = true;
 
     LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer shutdown");
+}
+
+#ifdef EQT_HAS_GLES2
+void IrrlichtRenderer::initGPUUploadThread() {
+    if (!device_ || !driver_ || driver_->getDriverType() != irr::video::EDT_OGLES2)
+        return;
+
+#ifdef EQT_HAS_DRM
+    // Get EGL handles from current context (avoids dependency on internal Irrlicht headers)
+    EGLDisplay eglDisplay = eglGetCurrentDisplay();
+    EGLContext eglContext = eglGetCurrentContext();
+    if (eglDisplay == EGL_NO_DISPLAY || eglContext == EGL_NO_CONTEXT) {
+        LOG_WARN(MOD_GRAPHICS, "GPU upload thread: no current EGL context, skipping");
+        return;
+    }
+
+    // Retrieve the EGLConfig associated with the current context
+    EGLint configId = 0;
+    eglQueryContext(eglDisplay, eglContext, EGL_CONFIG_ID, &configId);
+    EGLConfig eglConfig = nullptr;
+    EGLint numConfigs = 0;
+    EGLint configAttribs[] = { EGL_CONFIG_ID, configId, EGL_NONE };
+    eglChooseConfig(eglDisplay, configAttribs, &eglConfig, 1, &numConfigs);
+    if (numConfigs == 0 || !eglConfig) {
+        LOG_WARN(MOD_GRAPHICS, "GPU upload thread: failed to resolve EGLConfig, skipping");
+        return;
+    }
+
+    gpuUploadThread_ = std::make_unique<GPUUploadThread>();
+    if (gpuUploadThread_->init(eglDisplay, eglContext, eglConfig)) {
+        gpuUploadThread_->start();
+        // Wire to subsystems already created
+        if (constrainedTextureCache_)
+            constrainedTextureCache_->setGPUUploadThread(gpuUploadThread_.get());
+    } else {
+        LOG_WARN(MOD_GRAPHICS, "GPU upload thread: init failed, falling back to render-thread uploads");
+        gpuUploadThread_.reset();
+    }
+#else
+    LOG_DEBUG(MOD_GRAPHICS, "GPU upload thread: DRM not available, skipping");
+#endif
+}
+
+void IrrlichtRenderer::processCompletedUploads() {
+    if (!gpuUploadThread_ || !gpuUploadThread_->isAvailable())
+        return;
+
+    auto results = gpuUploadThread_->pollResults();
+    if (results.empty())
+        return;
+
+    // Resolve EGL fence wait function pointer (cached, one-time)
+    static auto eglClientWaitSyncKHR = reinterpret_cast<PFNEGLCLIENTWAITSYNCKHRPROC>(
+        eglGetProcAddress("eglClientWaitSyncKHR"));
+    static auto eglDestroySyncKHR = reinterpret_cast<PFNEGLDESTROYSYNCKHRPROC>(
+        eglGetProcAddress("eglDestroySyncKHR"));
+
+    EGLDisplay display = gpuUploadThread_->getEGLDisplay();
+
+    for (auto& result : results) {
+        // Wait on GPU fence (should be near-instant if upload already finished)
+        if (result.fence != EGL_NO_SYNC_KHR && eglClientWaitSyncKHR && eglDestroySyncKHR) {
+            EGLint waitResult = eglClientWaitSyncKHR(display, result.fence,
+                                                      EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
+                                                      EGL_FOREVER_KHR);
+            if (waitResult == EGL_FALSE) {
+                LOG_WARN(MOD_GRAPHICS, "GPUUpload: fence wait failed for request {}", result.requestId);
+            }
+            eglDestroySyncKHR(display, result.fence);
+        }
+
+        switch (result.type) {
+            case UploadRequestType::Texture:
+            case UploadRequestType::CompressedTexture: {
+                // Wrap the externally-uploaded GL texture as an Irrlicht ITexture
+                irr::video::ITexture* wrappedTex = nullptr;
+                if (result.glTextureName != 0 && !result.textureName.empty()) {
+                    wrappedTex = static_cast<irr::video::ITexture*>(
+                        gles2WrapTexture(driver_, result.textureName.c_str(),
+                                         result.glTextureName,
+                                         result.width, result.height));
+                    LOG_DEBUG(MOD_GRAPHICS, "GPUUpload: texture '{}' ready ({}x{}, {} bytes)",
+                              result.textureName, result.width, result.height, result.gpuBytes);
+                }
+
+                // Route based on high byte of callbackKey
+                uint8_t sourceType = static_cast<uint8_t>(result.callbackKey >> 56);
+
+                if (sourceType == 2) {
+                    // Entity texture — register in mesh builder so SceneNodeCreation finds it
+                    if (wrappedTex && entityRenderer_) {
+                        auto* meshBuilder = entityRenderer_->getMeshBuilder();
+                        if (meshBuilder) {
+                            // Determine alpha from texture name (best effort — entity textures
+                            // with alpha are rare; mesh builder tracks alpha separately)
+                            meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
+                        }
+                    }
+                } else if (sourceType == 3) {
+                    // Constrained cache texture — register in LRU cache
+                    if (wrappedTex && constrainedTextureCache_) {
+                        size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
+                        constrainedTextureCache_->registerTexture(result.textureName, wrappedTex, texSize, false);
+                        constrainedTextureCache_->clearPendingAsync(result.textureName);
+                    }
+                } else if (sourceType == 4) {
+                    // Icon texture — register in icon loader cache
+                    uint32_t iconId = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
+                    if (wrappedTex && windowManager_) {
+                        auto& iconLoader = windowManager_->getIconLoader();
+                        iconLoader.registerAsyncIcon(iconId, wrappedTex);
+                        iconLoader.clearPendingAsyncIcon(iconId);
+                        // Also register in constrained cache for LRU tracking
+                        if (constrainedTextureCache_) {
+                            std::string texName = "icon_" + std::to_string(iconId);
+                            size_t iconBytes = 40 * 40 * 4;  // 40x40 ARGB
+                            constrainedTextureCache_->registerTexture(texName, wrappedTex, iconBytes, true);
+                        }
+                    }
+                } else {
+                    // Atlas texture (sourceType 0 or 1, legacy encoding)
+                    // callbackKey encoding: high 32 bits = atlas type (0=zone, 1=obj), low 32 bits = page index
+                    uint32_t atlasType = static_cast<uint32_t>(result.callbackKey >> 32);
+                    uint32_t pageIndex = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
+                    TextureAtlas* atlas = (atlasType == 0) ? zoneAtlas_.get() : objAtlas_.get();
+                    if (atlas && result.glTextureName != 0) {
+                        atlas->setPageTexture(static_cast<int>(pageIndex),
+                                               result.glTextureName, result.gpuBytes);
+                    }
+                }
+                break;
+            }
+
+            case UploadRequestType::VertexBuffer: {
+                // Decode callbackKey: high 16 bits = buffer index, low 48 bits = region index
+                uint32_t bufferIdx = static_cast<uint32_t>(result.callbackKey >> 48);
+                size_t regionIdx = static_cast<size_t>(result.callbackKey & 0xFFFFFFFFFFFFULL);
+                auto it = regionMeshNodes_.find(regionIdx);
+                if (it != regionMeshNodes_.end() && it->second) {
+                    irr::scene::IMesh* mesh = it->second->getMesh();
+                    if (mesh && bufferIdx < mesh->getMeshBufferCount()) {
+                        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bufferIdx);
+                        if (buf) {
+                            gles2RegisterExternalHWBuffer(
+                                driver_, buf,
+                                result.vbo, result.ebo,
+                                result.vertexCount, result.indexCount,
+                                static_cast<int>(buf->getVertexType()));
+                            LOG_DEBUG(MOD_GRAPHICS, "GPUUpload: VBO for region {} buf {} ready (verts={}, indices={})",
+                                      regionIdx, bufferIdx, result.vertexCount, result.indexCount);
+                        }
+                    }
+                }
+                pendingVBOUploads_.erase(regionIdx);
+                break;
+            }
+        }
+    }
+}
+#endif // EQT_HAS_GLES2
+
+void IrrlichtRenderer::toggleGPUUploadThread() {
+#ifdef EQT_HAS_GLES2
+    gpuUploadEnabled_ = !gpuUploadEnabled_;
+    LOG_INFO(MOD_GRAPHICS, "GPU upload thread: {}", gpuUploadEnabled_ ? "ENABLED" : "DISABLED");
+
+    // Propagate to subsystems: set or clear their gpuUploadThread_ pointers
+    GPUUploadThread* ptr = gpuUploadEnabled_ ? gpuUploadThread_.get() : nullptr;
+    if (entityRenderer_)
+        entityRenderer_->setGPUUploadThread(ptr);
+    if (constrainedTextureCache_)
+        constrainedTextureCache_->setGPUUploadThread(ptr);
+    if (windowManager_)
+        windowManager_->getIconLoader().setGPUUploadThread(ptr);
+#else
+    LOG_INFO(MOD_GRAPHICS, "GPU upload thread: not available (non-GLES2 build)");
+#endif
 }
 
 bool IrrlichtRenderer::isRunning() const {
@@ -2546,10 +2762,14 @@ void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float play
         entityRenderer_->setClientPath(config_.eqClientPath);
         entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
         entityRenderer_->setRenderDistance(renderDistance_);
+#ifdef EQT_HAS_GLES2
+        if (gpuUploadThread_)
+            entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
+#endif
         entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
         if (zoneShader_ && zoneShader_->isAvailable()) {
-            entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                                    zoneShader_->getMaterialTypeAlphaTest());
+            entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                    zoneShader_->getActiveAlphaTest());
         }
         if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
             entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
@@ -3756,11 +3976,15 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             entityRenderer_->setClientPath(config_.eqClientPath);
             entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
             entityRenderer_->setRenderDistance(renderDistance_);
+#ifdef EQT_HAS_GLES2
+            if (gpuUploadThread_)
+                entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
+#endif
             entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
             entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
             if (zoneShader_ && zoneShader_->isAvailable()) {
-                entityRenderer_->setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                                        zoneShader_->getMaterialTypeAlphaTest());
+                entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                        zoneShader_->getActiveAlphaTest());
             }
             if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
                 entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
@@ -4157,7 +4381,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 zoneAtlas_ = std::make_unique<TextureAtlas>();
                 atlasZonePageIndex_ = 0;
             }
+#ifdef EQT_HAS_GLES2
+            bool done = (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable())
+                ? zoneAtlas_->uploadPreloadedPageAsync(preload, atlasZonePageIndex_,
+                                                        gpuUploadThread_.get(), 0)
+                : zoneAtlas_->uploadPreloadedPage(preload, atlasZonePageIndex_);
+#else
             bool done = zoneAtlas_->uploadPreloadedPage(preload, atlasZonePageIndex_);
+#endif
             logAssetBuildTime("atlas_zone_page", atlasZonePageIndex_, stepStart);
             ++atlasZonePageIndex_;
             if (!done) {
@@ -4191,7 +4422,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 objAtlas_ = std::make_unique<TextureAtlas>();
                 atlasObjPageIndex_ = 0;
             }
+#ifdef EQT_HAS_GLES2
+            bool done = (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable())
+                ? objAtlas_->uploadPreloadedPageAsync(preload, atlasObjPageIndex_,
+                                                       gpuUploadThread_.get(), 1)
+                : objAtlas_->uploadPreloadedPage(preload, atlasObjPageIndex_);
+#else
             bool done = objAtlas_->uploadPreloadedPage(preload, atlasObjPageIndex_);
+#endif
             logAssetBuildTime("atlas_obj_page", atlasObjPageIndex_, stepStart);
             ++atlasObjPageIndex_;
             if (!done) {
@@ -4443,11 +4681,11 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (constrainedTextureCache_)
             builder.setConstrainedTextureCache(constrainedTextureCache_.get());
         if (zoneShader_ && zoneShader_->isAvailable())
-            builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                           zoneShader_->getMaterialTypeAlphaTest());
+            builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                           zoneShader_->getActiveAlphaTest());
         if (zoneShader_ && zoneShader_->isAtlasAvailable())
-            builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
-                                                 zoneShader_->getMaterialTypeAtlasAlpha());
+            builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
+                                                 zoneShader_->getActiveAtlasAlpha());
 
         bool useZoneAtlas = zoneAtlas_ && zoneAtlas_->isLoaded() &&
                             zoneShader_ && zoneShader_->isAtlasAvailable();
@@ -4488,8 +4726,43 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 }
 
                 regionMeshNodes_[regionBuildIndex_] = node;
-                if (!config_.constrainedConfig.skipVBOUpload)
+                if (!config_.constrainedConfig.skipVBOUpload) {
+#ifdef EQT_HAS_GLES2
+                    if (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable() &&
+                        node->getMesh() && node->getMesh()->getMeshBufferCount() > 0) {
+                        irr::scene::IMesh* mesh = node->getMesh();
+                        for (irr::u32 bi = 0; bi < mesh->getMeshBufferCount(); ++bi) {
+                            irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bi);
+                            if (!buf || buf->getVertexCount() == 0 || buf->getIndexCount() == 0)
+                                continue;
+                            UploadRequest req;
+                            req.type = UploadRequestType::VertexBuffer;
+                            req.vertexCount = buf->getVertexCount();
+                            req.indexCount = buf->getIndexCount();
+                            switch (buf->getVertexType()) {
+                                case irr::video::EVT_STANDARD:  req.vertexStride = 36; break;
+                                case irr::video::EVT_2TCOORDS:  req.vertexStride = 44; break;
+                                case irr::video::EVT_TANGENTS:  req.vertexStride = 60; break;
+                                default: req.vertexStride = 36; break;
+                            }
+                            size_t vboSize = req.vertexCount * req.vertexStride;
+                            req.vertexData.resize(vboSize);
+                            std::memcpy(req.vertexData.data(), buf->getVertices(), vboSize);
+                            req.indexData.resize(req.indexCount);
+                            std::memcpy(req.indexData.data(), buf->getIndices(),
+                                        req.indexCount * sizeof(uint16_t));
+                            req.callbackKey = (static_cast<uint64_t>(bi) << 48) |
+                                              (static_cast<uint64_t>(regionBuildIndex_) & 0xFFFFFFFFFFFFULL);
+                            gpuUploadThread_->submit(std::move(req));
+                        }
+                        pendingVBOUploads_.insert(regionBuildIndex_);
+                    } else {
+                        uploadMeshHardwareBuffers(node);
+                    }
+#else
                     uploadMeshHardwareBuffers(node);
+#endif
+                }
                 builtInBatch++;
 
                 // Bounding box should already be pre-computed on background thread
@@ -4922,8 +5195,8 @@ void IrrlichtRenderer::createZoneMesh() {
     }
     // Pass GLSL shader material types if available
     if (zoneShader_ && zoneShader_->isAvailable()) {
-        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                       zoneShader_->getMaterialTypeAlphaTest());
+        builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                       zoneShader_->getActiveAlphaTest());
     }
 
     irr::scene::IMesh* mesh = nullptr;
@@ -5371,11 +5644,11 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     bool shaderAvail = zoneShader_ && zoneShader_->isAvailable();
     bool atlasAvail = zoneShader_ && zoneShader_->isAtlasAvailable();
     if (shaderAvail)
-        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                       zoneShader_->getMaterialTypeAlphaTest());
+        builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                       zoneShader_->getActiveAlphaTest());
     if (atlasAvail)
-        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
-                                             zoneShader_->getMaterialTypeAtlasAlpha());
+        builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
+                                             zoneShader_->getActiveAtlasAlpha());
 
     bool hasTextures = !currentZone_->textures.empty();
     bool hasTexNames = !geom->textureNames().empty();
@@ -5465,8 +5738,52 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     regionMeshNodes_[regionIdx] = node;
 
     // Upload static VBOs for zone geometry (GLES2 only)
-    if (!config_.constrainedConfig.skipVBOUpload)
+    if (!config_.constrainedConfig.skipVBOUpload) {
+#ifdef EQT_HAS_GLES2
+        if (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable() &&
+            node->getMesh() && node->getMesh()->getMeshBufferCount() > 0) {
+            // Submit VBO uploads asynchronously — mesh renders via software vertex
+            // path (client-side arrays) until each buffer's upload completes.
+            irr::scene::IMesh* mesh = node->getMesh();
+            for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+                irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+                if (!buf || buf->getVertexCount() == 0 || buf->getIndexCount() == 0)
+                    continue;
+
+                UploadRequest req;
+                req.type = UploadRequestType::VertexBuffer;
+                req.vertexCount = buf->getVertexCount();
+                req.indexCount = buf->getIndexCount();
+
+                switch (buf->getVertexType()) {
+                    case irr::video::EVT_STANDARD:  req.vertexStride = 36; break;
+                    case irr::video::EVT_2TCOORDS:  req.vertexStride = 44; break;
+                    case irr::video::EVT_TANGENTS:  req.vertexStride = 60; break;
+                    default: req.vertexStride = 36; break;
+                }
+
+                size_t vboSize = req.vertexCount * req.vertexStride;
+                req.vertexData.resize(vboSize);
+                std::memcpy(req.vertexData.data(), buf->getVertices(), vboSize);
+
+                req.indexData.resize(req.indexCount);
+                std::memcpy(req.indexData.data(), buf->getIndices(),
+                            req.indexCount * sizeof(uint16_t));
+
+                // Encode regionIdx (low 48 bits) + buffer index (high 16 bits)
+                req.callbackKey = (static_cast<uint64_t>(i) << 48) |
+                                  (static_cast<uint64_t>(regionIdx) & 0xFFFFFFFFFFFFULL);
+
+                gpuUploadThread_->submit(std::move(req));
+            }
+            pendingVBOUploads_.insert(regionIdx);
+        } else {
+            uploadMeshHardwareBuffers(node);
+        }
+#else
         uploadMeshHardwareBuffers(node);
+#endif
+    }
 
     // Register with animated texture manager
     if (animatedTextureManager_)
@@ -5657,12 +5974,12 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
         builder.setConstrainedTextureCache(constrainedTextureCache_.get());
     }
     if (zoneShader_ && zoneShader_->isAvailable()) {
-        builder.setShaderMaterialTypes(zoneShader_->getMaterialTypeSolid(),
-                                       zoneShader_->getMaterialTypeAlphaTest());
+        builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                       zoneShader_->getActiveAlphaTest());
     }
     if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-        builder.setAtlasShaderMaterialTypes(zoneShader_->getMaterialTypeAtlasSolid(),
-                                             zoneShader_->getMaterialTypeAtlasAlpha());
+        builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
+                                             zoneShader_->getActiveAtlasAlpha());
     }
 
     bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
@@ -5730,7 +6047,7 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
             float meshMaxY = meshBbox.MaxEdge.Y;
             for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
                 node->getMaterial(i).MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                    zoneShader_->getMaterialTypeWindAlphaTest());
+                    zoneShader_->getActiveWindAlphaTest());
                 node->getMaterial(i).MaterialTypeParam = meshMinY;
                 node->getMaterial(i).MaterialTypeParam2 = meshMaxY;
                 node->getMaterial(i).BackfaceCulling = false;
@@ -7805,6 +8122,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Phase 1: Input
     processFrameInput(deltaTime);
 
+    // Process completed GPU uploads (texture/VBO from upload thread)
+#ifdef EQT_HAS_GLES2
+    processCompletedUploads();
+#endif
+
     // SimulationWorker: apply results from previous frame, then post new input
     sectionStart_ = std::chrono::steady_clock::now();
     applySimulationResults();
@@ -9327,9 +9649,100 @@ void IrrlichtRenderer::toggleZoneLights() {
 
 void IrrlichtRenderer::togglePlayerLight() {
     debugPlayerLightEnabled_ = !debugPlayerLightEnabled_;
+    // Toggle shader variant (GLES2 only — lightweight vs per-pixel player light)
+    if (zoneShader_ && zoneShader_->isLightweightAvailable()) {
+        zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
+        swapZoneMeshMaterials();
+    }
     // Force light recalculation
     lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
     LOG_INFO(MOD_GRAPHICS, "Debug: Player light {}", debugPlayerLightEnabled_ ? "ENABLED" : "DISABLED");
+}
+
+void IrrlichtRenderer::swapZoneMeshMaterials() {
+    if (!zoneShader_) return;
+
+    // Build mapping from old material type IDs to new active variant IDs.
+    // After setPerPixelPlayerLight(), the getActive*() and getMaterialType*() methods
+    // return the new and old types respectively (or vice versa).
+    // We need to map both directions: per-pixel ↔ lightweight.
+    struct MaterialMap {
+        irr::s32 ppSolid, ppAlpha, ppAtlasSolid, ppAtlasAlpha, ppWind;
+        irr::s32 lwSolid, lwAlpha, lwAtlasSolid, lwAtlasAlpha, lwWind;
+    };
+    MaterialMap m;
+    m.ppSolid = zoneShader_->getMaterialTypeSolid();
+    m.ppAlpha = zoneShader_->getMaterialTypeAlphaTest();
+    m.ppAtlasSolid = zoneShader_->getMaterialTypeAtlasSolid();
+    m.ppAtlasAlpha = zoneShader_->getMaterialTypeAtlasAlpha();
+    m.ppWind = zoneShader_->getMaterialTypeWindAlphaTest();
+    m.lwSolid = zoneShader_->getMaterialTypeLWSolid();
+    m.lwAlpha = zoneShader_->getMaterialTypeLWAlphaTest();
+    m.lwAtlasSolid = zoneShader_->getMaterialTypeLWAtlasSolid();
+    m.lwAtlasAlpha = zoneShader_->getMaterialTypeLWAtlasAlpha();
+    m.lwWind = zoneShader_->getMaterialTypeLWWindAlphaTest();
+
+    // Determine target for each known custom material type
+    auto mapMaterial = [&](irr::s32 cur) -> irr::s32 {
+        // Per-pixel → lightweight
+        if (cur == m.ppSolid && m.lwSolid >= 0) return zoneShader_->getActiveSolid();
+        if (cur == m.ppAlpha && m.lwAlpha >= 0) return zoneShader_->getActiveAlphaTest();
+        if (cur == m.ppAtlasSolid && m.lwAtlasSolid >= 0) return zoneShader_->getActiveAtlasSolid();
+        if (cur == m.ppAtlasAlpha && m.lwAtlasAlpha >= 0) return zoneShader_->getActiveAtlasAlpha();
+        if (cur == m.ppWind && m.lwWind >= 0) return zoneShader_->getActiveWindAlphaTest();
+        // Lightweight → per-pixel
+        if (cur == m.lwSolid) return zoneShader_->getActiveSolid();
+        if (cur == m.lwAlpha) return zoneShader_->getActiveAlphaTest();
+        if (cur == m.lwAtlasSolid) return zoneShader_->getActiveAtlasSolid();
+        if (cur == m.lwAtlasAlpha) return zoneShader_->getActiveAtlasAlpha();
+        if (cur == m.lwWind) return zoneShader_->getActiveWindAlphaTest();
+        return cur;  // Not a custom shader material — leave unchanged
+    };
+
+    auto swapNode = [&](irr::scene::IMeshSceneNode* node) {
+        if (!node) return;
+        auto* mesh = node->getMesh();
+        if (!mesh) return;
+        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+            auto& mat = mesh->getMeshBuffer(i)->getMaterial();
+            irr::s32 cur = mat.MaterialType;
+            irr::s32 mapped = mapMaterial(cur);
+            if (mapped != cur) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
+            }
+        }
+    };
+
+    // Swap zone mesh node (non-PVS single mesh)
+    swapNode(zoneMeshNode_);
+
+    // Swap PVS region mesh nodes
+    for (auto& [regionIdx, node] : regionMeshNodes_) {
+        swapNode(node);
+    }
+
+    // Swap fallback mesh node
+    swapNode(fallbackMeshNode_);
+
+    // Swap object nodes (trees use wind material)
+    for (auto* node : objectNodes_) {
+        swapNode(node);
+    }
+
+    // Rebuild sorted draw list if manual zone draw is active (material keys changed)
+    if (manualZoneDrawEnabled_) {
+        sortedDrawEntries_.clear();
+    }
+
+    // Update entity renderer and tree manager with new active material types
+    if (entityRenderer_ && zoneShader_->isAvailable()) {
+        entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                zoneShader_->getActiveAlphaTest());
+    }
+    if (treeManager_ && zoneShader_->isAvailable()) {
+        treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                             zoneShader_->getActiveAlphaTest());
+    }
 }
 
 void IrrlichtRenderer::toggleObjectLights() {
@@ -12505,6 +12918,10 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
         if (constrainedTextureCache_) {
             windowManager_->setIconConstrainedTextureCache(constrainedTextureCache_.get());
         }
+#ifdef EQT_HAS_GLES2
+        if (gpuUploadThread_)
+            windowManager_->getIconLoader().setGPUUploadThread(gpuUploadThread_.get());
+#endif
 
         // Apply UI settings from config (UISettings was loaded in main.cpp)
         windowManager_->applyUISettings();
@@ -13375,6 +13792,16 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
             lines.push_back(fmt::format("[VBO/EBO GPU Buffers] {} ({} buffers)",
                 formatBytes(hwbBytes), hwbCount));
         }
+    }
+
+    // --- GPU Upload Thread ---
+    if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+        size_t pending = gpuUploadThread_->getPendingCount();
+        uint64_t completed = gpuUploadThread_->getTotalUploadsCompleted();
+        uint64_t totalUs = gpuUploadThread_->getTotalUploadTimeUs();
+        float avgUs = completed > 0 ? static_cast<float>(totalUs) / completed : 0.0f;
+        lines.push_back(fmt::format("[GPU Upload Thread] {} pending, {} completed, avg {:.0f}us/upload",
+            pending, completed, avgUs));
     }
 #endif
 

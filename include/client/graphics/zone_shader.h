@@ -34,6 +34,23 @@ public:
     irr::s32 getMaterialTypeWindAlphaTest() const { return materialWindAlphaTest_; }
     bool isWindAvailable() const { return materialWindAlphaTest_ >= 0; }
 
+    // Lightweight material types (no per-pixel player light, 3 varyings)
+    irr::s32 getMaterialTypeLWSolid() const { return materialLWSolid_; }
+    irr::s32 getMaterialTypeLWAlphaTest() const { return materialLWAlphaTest_; }
+    irr::s32 getMaterialTypeLWAtlasSolid() const { return materialLWAtlasSolid_; }
+    irr::s32 getMaterialTypeLWAtlasAlpha() const { return materialLWAtlasAlpha_; }
+    irr::s32 getMaterialTypeLWWindAlphaTest() const { return materialLWWindAlphaTest_; }
+    bool isLightweightAvailable() const { return materialLWSolid_ >= 0; }
+
+    // Active material resolution — returns lightweight or per-pixel variant
+    irr::s32 getActiveSolid() const;
+    irr::s32 getActiveAlphaTest() const;
+    irr::s32 getActiveAtlasSolid() const;
+    irr::s32 getActiveAtlasAlpha() const;
+    irr::s32 getActiveWindAlphaTest() const;
+    void setPerPixelPlayerLight(bool enabled);
+    bool isPerPixelPlayerLight() const { return perPixelPlayerLight_; }
+
     // Wind uniform state (updated per frame by renderer)
     void setWindTime(float t) { windTime_ = t; }
     float windTime() const { return windTime_; }
@@ -139,6 +156,14 @@ private:
     irr::s32 materialAtlasSolid_ = -1;
     irr::s32 materialAtlasAlpha_ = -1;
     irr::s32 materialWindAlphaTest_ = -1;
+
+    // Lightweight material types (no per-pixel player light, 3 varyings)
+    irr::s32 materialLWSolid_ = -1;
+    irr::s32 materialLWAlphaTest_ = -1;
+    irr::s32 materialLWAtlasSolid_ = -1;
+    irr::s32 materialLWAtlasAlpha_ = -1;
+    irr::s32 materialLWWindAlphaTest_ = -1;
+    bool perPixelPlayerLight_ = false;  // Default OFF (lightweight)
 
     // Uniform values (updated per frame)
     float fogStart_ = 200.0f;

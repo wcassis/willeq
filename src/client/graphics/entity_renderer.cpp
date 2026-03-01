@@ -13,6 +13,9 @@
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/gpu_upload_thread.h"
+#endif
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -883,6 +886,51 @@ static irr::video::ITexture* uploadDecodedTexture(
     return tex;
 }
 
+ZoneMeshBuilder* EntityRenderer::getMeshBuilder() const {
+    return raceModelLoader_ ? raceModelLoader_->getMeshBuilder() : nullptr;
+}
+
+#ifdef EQT_HAS_GLES2
+// Helper: submit a decoded texture to the GPU upload thread asynchronously.
+// Converts ARGB pixel data to RGBA for glTexImage2D(GL_RGBA).
+// Returns true if the upload was submitted, false if fallback to sync is needed.
+static bool submitAsyncEntityTexture(GPUUploadThread* thread,
+                                      const DecodedTexture& decoded,
+                                      uint16_t spawnId) {
+    if (!thread || !thread->isAvailable() || decoded.argbPixels.empty())
+        return false;
+
+    std::string lowerName = decoded.name;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    // Convert ARGB → RGBA for glTexImage2D(GL_RGBA)
+    size_t pixelCount = decoded.argbPixels.size();
+    std::vector<uint8_t> rgba(pixelCount * 4);
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(decoded.argbPixels.data());
+    for (size_t i = 0; i < pixelCount; ++i) {
+        size_t si = i * 4;
+        // ARGB (Irrlicht ECF_A8R8G8B8 in memory: B G R A)
+        rgba[si + 0] = src[si + 2];  // R (was at offset 2 in BGRA/ARGB)
+        rgba[si + 1] = src[si + 1];  // G
+        rgba[si + 2] = src[si + 0];  // B
+        rgba[si + 3] = src[si + 3];  // A
+    }
+
+    UploadRequest req;
+    req.type = UploadRequestType::Texture;
+    req.width = decoded.width;
+    req.height = decoded.height;
+    req.pixelData = std::move(rgba);
+    req.textureName = lowerName;
+    // High byte 2 = entity texture, low bits = spawn ID
+    req.callbackKey = (uint64_t(2) << 56) | static_cast<uint64_t>(spawnId);
+
+    thread->submit(std::move(req));
+    return true;
+}
+#endif // EQT_HAS_GLES2
+
 bool EntityRenderer::processOneEntityBuildStep() {
     if (!smgr_ || !raceModelLoader_) return false;
 
@@ -1089,8 +1137,17 @@ bool EntityRenderer::processOneEntityBuildStep() {
             const auto& decoded = modelData->decodedTextures[vis.nextTextureUpload];
             irr::video::ITexture* tex = nullptr;
             if (!skipTextureUpload_) {
-                tex = uploadDecodedTexture(
-                    driver_, raceModelLoader_->getMeshBuilder(), decoded);
+#ifdef EQT_HAS_GLES2
+                if (gpuUploadThread_) {
+                    submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
+                    // tex stays nullptr — will be resolved by processCompletedUploads()
+                    // via gles2WrapTexture + meshBuilder->registerUploadedTexture()
+                } else
+#endif
+                {
+                    tex = uploadDecodedTexture(
+                        driver_, raceModelLoader_->getMeshBuilder(), decoded);
+                }
             }
 
             vis.uploadedTextures.push_back(tex);
@@ -1117,8 +1174,14 @@ bool EntityRenderer::processOneEntityBuildStep() {
             }
 
             const auto& decoded = vis.variantTextures[vis.nextVariantUpload];
-            if (!skipTextureUpload_)
-                uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            if (!skipTextureUpload_) {
+#ifdef EQT_HAS_GLES2
+                if (gpuUploadThread_)
+                    submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
+                else
+#endif
+                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            }
 
             vis.nextVariantUpload++;
 
@@ -1406,8 +1469,14 @@ bool EntityRenderer::processOneEntityBuildStep() {
             // Upload to GPU via addTexture and register in race model mesh builder cache.
             // Equipment mesh builder (buildMeshFromGeometry) finds textures via
             // driver_->getTexture(name) so the addTexture call is sufficient.
-            if (!skipTextureUpload_)
-                uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            if (!skipTextureUpload_) {
+#ifdef EQT_HAS_GLES2
+                if (gpuUploadThread_)
+                    submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
+                else
+#endif
+                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+            }
 
             vis.nextEquipTextureUpload++;
 

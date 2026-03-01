@@ -15,6 +15,7 @@
 namespace EQT {
 namespace Graphics {
 class ConstrainedTextureCache;
+class GPUUploadThread;
 }
 }
 
@@ -59,6 +60,15 @@ public:
 
     // Constrained mode: share the constrained texture cache for LRU eviction
     void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
+
+    // Set GPU upload thread for async icon uploads (GLES2 only)
+    void setGPUUploadThread(EQT::Graphics::GPUUploadThread* thread) { gpuUploadThread_ = thread; }
+
+    // Register a completed async icon upload into the icon cache
+    void registerAsyncIcon(uint32_t iconId, irr::video::ITexture* tex);
+
+    // Remove an icon from the pending async set (called when upload completes)
+    void clearPendingAsyncIcon(uint32_t iconId) { pendingAsyncIcons_.erase(iconId); }
 
     // Enable/disable icon loading (disabled = always return placeholder)
     void setEnabled(bool enabled) { enabled_ = enabled; }
@@ -159,6 +169,11 @@ private:
     // Lazy icon extraction queue (main-thread only)
     std::deque<uint32_t> lazyIconQueue_;
     std::set<uint32_t> lazyIconQueued_;
+
+    // GPU upload thread for async icon uploads (non-owning)
+    EQT::Graphics::GPUUploadThread* gpuUploadThread_ = nullptr;
+    // Icon IDs currently being uploaded asynchronously (prevents duplicate submissions)
+    std::set<uint32_t> pendingAsyncIcons_;
 
     // Compute sheet key for an icon ID (for sorting by sheet locality)
     static int sheetKeyForIcon(uint32_t iconId);

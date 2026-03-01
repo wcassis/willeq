@@ -8,9 +8,12 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <unordered_set>
 
 namespace EQT {
 namespace Graphics {
+
+class GPUUploadThread;
 
 // LRU texture cache with memory budget enforcement
 // Used for resource-constrained rendering modes (Voodoo1, etc.)
@@ -77,6 +80,12 @@ public:
 
     // Get config for debug display
     const ConstrainedRendererConfig& getConfig() const { return config_; }
+
+    // Set GPU upload thread for async texture uploads (GLES2 only)
+    void setGPUUploadThread(GPUUploadThread* thread) { gpuUploadThread_ = thread; }
+
+    // Remove a texture name from the pending async set (called when upload completes)
+    void clearPendingAsync(const std::string& name) { pendingAsyncUploads_.erase(name); }
 
     // Set scene manager for safe eviction (scans meshes to remove texture references)
     void setSceneManager(irr::scene::ISceneManager* smgr) { smgr_ = smgr; }
@@ -174,6 +183,11 @@ private:
 
     // Frozen flag - when true, no evictions occur
     bool frozen_ = false;
+
+    // GPU upload thread for async texture uploads (non-owning)
+    GPUUploadThread* gpuUploadThread_ = nullptr;
+    // Texture names currently being uploaded asynchronously (prevents duplicate submissions)
+    std::unordered_set<std::string> pendingAsyncUploads_;
 };
 
 } // namespace Graphics

@@ -326,6 +326,12 @@ public:
     void deleteStaticHardwareBuffer(const scene::IMeshBuffer* mb);
     void deleteAllHardwareBuffers();
 
+    // Register pre-created VBO/EBO from shared context (GPU upload thread)
+    void registerExternalHWBuffer(const scene::IMeshBuffer* mb,
+                                  GLuint vbo, GLuint ebo,
+                                  u32 vertexCount, u32 indexCount,
+                                  E_VERTEX_TYPE vType = EVT_STANDARD);
+
     // Hardware buffer memory queries
     size_t getHWBufferMemoryUsage() const;
     size_t getHWBufferCount() const;

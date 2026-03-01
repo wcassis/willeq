@@ -19,6 +19,10 @@ namespace Graphics {
 class GLES2EGLHelper;
 #endif
 
+#ifdef EQT_HAS_GLES2
+class GPUUploadThread;
+#endif
+
 // Atlas file format constants (must match zone_atlas_builder.cpp)
 static constexpr uint32_t ATLAS_MAGIC     = 0x54415145;  // "EQAT" little-endian
 static constexpr uint16_t ATLAS_VERSION   = 1;
@@ -66,6 +70,18 @@ public:
     // Main thread: uploads one page to GL. Call once per GREEN frame.
     // Returns true when this was the last page (all pages uploaded).
     bool uploadPreloadedPage(PreloadData& data, int pageIndex);
+
+#ifdef EQT_HAS_GLES2
+    // Main thread: submit one page upload to the GPU upload thread.
+    // Returns true when this was the last page (all pages submitted).
+    // The actual GL upload happens asynchronously; page texture handle is set
+    // when processCompletedUploads() receives the result.
+    bool uploadPreloadedPageAsync(PreloadData& data, int pageIndex,
+                                  GPUUploadThread* uploadThread, uint32_t atlasType);
+
+    // Set page texture handle from async upload result
+    void setPageTexture(int pageIndex, uint32_t glTexId, size_t gpuBytes);
+#endif
 
     // Main thread: adopts tile lookup from preload data, marks atlas as loaded.
     // Call after all pages have been uploaded.

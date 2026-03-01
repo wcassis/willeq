@@ -1674,6 +1674,34 @@ void COpenGLES2Driver::deleteStaticHardwareBuffer(const scene::IMeshBuffer* mb)
     HWBufferMap.erase(it);
 }
 
+void COpenGLES2Driver::registerExternalHWBuffer(const scene::IMeshBuffer* mb,
+                                                 GLuint vbo, GLuint ebo,
+                                                 u32 vertexCount, u32 indexCount,
+                                                 E_VERTEX_TYPE vType)
+{
+    if (!mb || vbo == 0 || ebo == 0)
+        return;
+
+    // Remove existing entry if present
+    auto it = HWBufferMap.find(mb);
+    if (it != HWBufferMap.end()) {
+        SHWBuffer& old = it->second;
+        if (old.vbo) glDeleteBuffers(1, &old.vbo);
+        if (old.ebo) glDeleteBuffers(1, &old.ebo);
+        HWBufferMap.erase(it);
+    }
+
+    SHWBuffer hwb;
+    hwb.vbo = vbo;
+    hwb.ebo = ebo;
+    hwb.vertexCount = vertexCount;
+    hwb.indexCount = indexCount;
+    hwb.vType = vType;
+    hwb.mappedVertexCount = vertexCount;
+
+    HWBufferMap[mb] = hwb;
+}
+
 void COpenGLES2Driver::deleteAllHardwareBuffers()
 {
     for (auto& [mb, hwb] : HWBufferMap) {
@@ -1808,6 +1836,18 @@ void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     irr::core::dimension2d<irr::u32> size(width, height);
     return d->wrapExternalTexture(irr::io::path(name), (GLuint)glTexName, size);
+}
+
+void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
+                                    unsigned int vbo, unsigned int ebo,
+                                    unsigned int vertexCount, unsigned int indexCount,
+                                    int vertexType)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    auto* mb = static_cast<const irr::scene::IMeshBuffer*>(meshBuffer);
+    d->registerExternalHWBuffer(mb, (GLuint)vbo, (GLuint)ebo,
+                                 (irr::u32)vertexCount, (irr::u32)indexCount,
+                                 static_cast<irr::video::E_VERTEX_TYPE>(vertexType));
 }
 
 #endif // _IRR_COMPILE_WITH_OGLES2_

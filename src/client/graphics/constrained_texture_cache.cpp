@@ -1,6 +1,9 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "common/logging.h"
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/gpu_upload_thread.h"
+#endif
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -69,6 +72,30 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: processTextureData failed for '{}' ({} bytes)", name, data.size());
         return nullptr;
     }
+
+#ifdef EQT_HAS_GLES2
+    // Async path: submit RGBA data to GPU upload thread instead of driver->addTexture()
+    if (gpuUploadThread_ && gpuUploadThread_->isAvailable() &&
+        pendingAsyncUploads_.find(name) == pendingAsyncUploads_.end()) {
+        UploadRequest req;
+        req.type = UploadRequestType::Texture;
+        req.width = static_cast<uint32_t>(width);
+        req.height = static_cast<uint32_t>(height);
+        req.pixelData = std::move(processedData);  // Already RGBA from processTextureData
+        req.textureName = name;
+        // High byte 3 = constrained cache texture
+        req.callbackKey = uint64_t(3) << 56;
+
+        gpuUploadThread_->submit(std::move(req));
+        pendingAsyncUploads_.insert(name);
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: async upload submitted for '{}' ({}x{})", name, width, height);
+        return nullptr;  // Caller retries next frame
+    }
+    // If already pending, return nullptr without resubmitting
+    if (pendingAsyncUploads_.find(name) != pendingAsyncUploads_.end()) {
+        return nullptr;
+    }
+#endif
 
     // Calculate size needed for this texture
     size_t textureSize = calculateTextureSize(width, height);
