@@ -2625,17 +2625,8 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     regionMeshCacheInstallStarted_ = false;
     entityPrepReady_ = false;
 
-    // Create background entity prep worker early so it's ready when archives load.
-    // Skip if skipEntityBuild is set (e.g., OrangePi debug preset).
-    if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
-        && !config_.constrainedConfig.skipEntityBuild) {
-        entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
-            entityRenderer_->getRaceModelLoader(),
-            entityRenderer_->getEquipmentModelLoader());
-        entityPrepWorker_->start();
-        entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
-        LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started early for progressive entity loading");
-    }
+    // EntityPrepWorker is now created at EntityLoading phase (not here)
+    // so entity work doesn't start until /load entities in manual mode.
 
     // Start background icon sheet worker (disk I/O + TGA decode off main thread)
     if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
@@ -3818,7 +3809,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             entityRenderer_->getRaceModelLoader()->setCurrentZone(currentZoneName_);
         }
         if (networkTickCallback_) networkTickCallback_();
-        entityPrepReady_ = true;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Equipment;
         logAssetBuildTime("global_assets", 0, stepStart);
         break;
@@ -4875,7 +4865,20 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         }
         break;
 
-    case BackgroundZoneLoadPhase::EntityLoading:
+    case BackgroundZoneLoadPhase::EntityLoading: {
+        // Create and start EntityPrepWorker here (moved from beginZoneAssetLoad)
+        if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
+            && !config_.constrainedConfig.skipEntityBuild) {
+            entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
+                entityRenderer_->getRaceModelLoader(),
+                entityRenderer_->getEquipmentModelLoader());
+            entityPrepWorker_->start();
+            entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
+            LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started at EntityLoading phase");
+        }
+        entityPrepReady_ = true;
+        LOG_INFO(MOD_GRAPHICS, "Entity loading enabled (entityPrepReady=true)");
+
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
         if (manualLoadMode_) {
             manualLoadMode_ = false;
@@ -4885,6 +4888,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         }
         LOG_INFO(MOD_GRAPHICS, "Background zone load pipeline complete for zone '{}'", currentZoneName_);
         break;
+    }
 
     default:
         break;
@@ -11186,7 +11190,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     // Promote background-preloaded model data to main cache.
     // This moves RaceModelData from the staging map to loadedModels_ so that
     // getMeshForRace() can find it. Must happen before any buildEntityMesh() calls.
-    if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
+    if (entityPrepReady_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
         entityRenderer_->getRaceModelLoader()->promotePreparedModels();
     }
 
@@ -11234,7 +11238,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     auto stepStart = std::chrono::steady_clock::now();
 
     // Priority 1: Process one entity build step (most visible missing asset)
-    if (!didWork && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
+    if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
         // Populate pending queue, then dispatch one item if worker is idle.
         // Sort by model key right before dispatch for cache locality.
         queueEntityPrepRequests();
@@ -11408,6 +11412,9 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 void IrrlichtRenderer::queueEntityPrepRequests() {
     if (!entityPrepWorker_ || !entityRenderer_ || !entityPrepReady_) return;
 
+    // Require valid PVS region — BSP must be installed and SimulationWorker running
+    if (currentPvsRegion_ == SIZE_MAX) return;
+
     std::vector<uint16_t> unbuilt;
     entityRenderer_->getUnbuiltEntities(unbuilt);
     if (unbuilt.empty()) return;
@@ -11422,6 +11429,8 @@ void IrrlichtRenderer::queueEntityPrepRequests() {
         if (!vis.inSceneGraph) continue;
         // Don't re-queue entities whose background prep already completed
         if (vis.entityPrepComplete) continue;
+        // PVS gate: only prep entities in the player's current BSP region
+        if (vis.cachedBspRegion != currentPvsRegion_) continue;
         // Per-entity dedup: each entity gets its own prep job (equipment/variant work differs)
         if (!entityPrepWorker_->isPendingForEntity(spawnId)) {
             entityPrepWorker_->requestPrep({spawnId, vis.raceId, vis.gender, vis.appearance});
