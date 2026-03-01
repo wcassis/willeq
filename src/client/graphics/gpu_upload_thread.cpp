@@ -51,6 +51,11 @@ bool GPUUploadThread::init(EGLDisplay display, EGLContext mainContext, EGLConfig
         return false;
     }
 
+    // Save main thread's current EGL state so we can restore it after testing
+    EGLContext savedContext = eglGetCurrentContext();
+    EGLSurface savedDrawSurface = eglGetCurrentSurface(EGL_DRAW);
+    EGLSurface savedReadSurface = eglGetCurrentSurface(EGL_READ);
+
     // Try surfaceless context first (EGL_KHR_surfaceless_context)
     if (eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, sharedContext_)) {
         LOG_INFO(MOD_GRAPHICS, "GPUUploadThread: surfaceless context OK");
@@ -69,6 +74,8 @@ bool GPUUploadThread::init(EGLDisplay display, EGLContext mainContext, EGLConfig
             LOG_WARN(MOD_GRAPHICS, "GPUUploadThread: eglCreatePbufferSurface failed (error 0x{:04X})", err);
             eglDestroyContext(display_, sharedContext_);
             sharedContext_ = EGL_NO_CONTEXT;
+            // Restore main context before returning
+            eglMakeCurrent(display_, savedDrawSurface, savedReadSurface, savedContext);
             return false;
         }
 
@@ -79,12 +86,14 @@ bool GPUUploadThread::init(EGLDisplay display, EGLContext mainContext, EGLConfig
             eglDestroyContext(display_, sharedContext_);
             surface_ = EGL_NO_SURFACE;
             sharedContext_ = EGL_NO_CONTEXT;
+            // Restore main context before returning
+            eglMakeCurrent(display_, savedDrawSurface, savedReadSurface, savedContext);
             return false;
         }
     }
 
-    // Unbind context — worker thread will bind it in its own loop
-    eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    // Restore main thread's EGL context (init() runs on the main/render thread)
+    eglMakeCurrent(display_, savedDrawSurface, savedReadSurface, savedContext);
 
     available_.store(true, std::memory_order_release);
     LOG_INFO(MOD_GRAPHICS, "GPU upload thread: initialized (shared EGL context)");

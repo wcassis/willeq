@@ -843,6 +843,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         }
     }
 
+    // Initialize GPU upload thread (shared EGL context for async texture/VBO uploads)
+#ifdef EQT_HAS_GLES2
+    initGPUUploadThread();
+#endif
+
     // Setup HUD (needed for loading screen text)
     setupHUD();
 
@@ -1197,8 +1202,19 @@ void IrrlichtRenderer::shutdown() {
 
 #ifdef EQT_HAS_GLES2
 void IrrlichtRenderer::initGPUUploadThread() {
-    if (!device_ || !driver_ || driver_->getDriverType() != irr::video::EDT_OGLES2)
+    if (!device_) {
+        LOG_WARN(MOD_GRAPHICS, "GPU upload thread: no device, skipping");
         return;
+    }
+    if (!driver_) {
+        LOG_WARN(MOD_GRAPHICS, "GPU upload thread: no driver, skipping");
+        return;
+    }
+    if (driver_->getDriverType() != irr::video::EDT_OGLES2) {
+        LOG_WARN(MOD_GRAPHICS, "GPU upload thread: driver type {} != EDT_OGLES2 ({}), skipping",
+                 static_cast<int>(driver_->getDriverType()), static_cast<int>(irr::video::EDT_OGLES2));
+        return;
+    }
 
 #ifdef EQT_HAS_DRM
     // Get EGL handles from current context (avoids dependency on internal Irrlicht headers)
