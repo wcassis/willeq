@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include <set>
+#include <chrono>
 
 namespace eqt {
 namespace ui {
@@ -260,6 +261,10 @@ private:
     int lastWindowWidth_ = 0;
     int lastWindowHeight_ = 0;
     int lastHoveredLink_ = -1;
+
+    // FBO re-render throttle (for new-message-only dirty)
+    std::chrono::steady_clock::time_point lastFboRenderTime_{};
+    static constexpr int kMinFboRerenderIntervalMs = 500;
 
     // Hovered link tracking for visual feedback
     int hoveredLinkIndex_ = -1;  // Index into renderedLinks_, -1 means none

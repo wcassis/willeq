@@ -257,11 +257,33 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
     int w = bounds_.getWidth();
     int h = bounds_.getHeight();
 
-    if (msgCount != lastMessageCount_ || combatMsgCount != lastCombatMessageCount_ ||
-        scrollOffset_ != lastScrollOffset_ || combatScrollOffset_ != lastCombatScrollOffset_ ||
-        activeTabIndex_ != lastActiveTabIndex_ || showTimestamps_ != lastShowTimestamps_ ||
-        w != lastWindowWidth_ || h != lastWindowHeight_ || hoveredLinkIndex_ != lastHoveredLink_) {
+    // Separate message-only dirty from interactive dirty
+    bool messageCountDirty = (msgCount != lastMessageCount_ ||
+                              combatMsgCount != lastCombatMessageCount_);
+    bool interactiveDirty = (scrollOffset_ != lastScrollOffset_ ||
+                             combatScrollOffset_ != lastCombatScrollOffset_ ||
+                             activeTabIndex_ != lastActiveTabIndex_ ||
+                             showTimestamps_ != lastShowTimestamps_ ||
+                             w != lastWindowWidth_ || h != lastWindowHeight_ ||
+                             hoveredLinkIndex_ != lastHoveredLink_);
+
+    if (messageCountDirty || interactiveDirty) {
         messageAreaDirty_ = true;
+    }
+
+    // Throttle FBO re-renders when only new messages caused the dirty flag.
+    // Interactive changes (scroll, resize, tab, hover) render immediately.
+    if (messageAreaDirty_ && !interactiveDirty) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - lastFboRenderTime_).count();
+        if (elapsedMs < kMinFboRerenderIntervalMs) {
+            // Skip FBO re-render — blit stale cache below.
+            // dirty flag stays set; lastMessageCount_ not updated,
+            // so next frame re-checks.
+            messageAreaDirty_ = false;  // prevent entering FBO block this frame
+            // (will be re-set next frame by the dirty check above)
+        }
     }
 
     if (messageAreaDirty_) {
@@ -374,6 +396,7 @@ void ChatWindow::renderCachedMessageArea(irr::video::IVideoDriver* driver, irr::
         }
 
         messageAreaDirty_ = false;
+        lastFboRenderTime_ = std::chrono::steady_clock::now();
     }
 
     // Blit cached content with alpha modulation for fade
@@ -1598,13 +1621,7 @@ void ChatWindow::setChannelEnabled(ChatChannel channel, bool enabled) {
 }
 
 bool ChatWindow::isChannelEnabled(ChatChannel channel) const {
-    bool enabled = enabledChannels_.find(channel) != enabledChannels_.end();
-    // Debug: log channel enable status for combat channels
-    if (static_cast<int>(channel) >= 100 && static_cast<int>(channel) <= 105) {
-        LOG_DEBUG(MOD_UI, "[ChatWindow] isChannelEnabled: channel={} enabled={} (enabledChannels_.size={})",
-                  static_cast<int>(channel), enabled, enabledChannels_.size());
-    }
-    return enabled;
+    return enabledChannels_.find(channel) != enabledChannels_.end();
 }
 
 void ChatWindow::toggleChannel(ChatChannel channel) {
