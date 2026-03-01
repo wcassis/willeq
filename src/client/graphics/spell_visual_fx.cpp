@@ -23,8 +23,11 @@ SpellVisualFX::SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideo
     , m_driver(driver)
     , m_eq_client_path(eqClientPath)
 {
-    // Load particle textures from EQ client SpellEffects directory
+#ifndef EQT_HAS_GLES2
+    // Load particle textures from EQ client SpellEffects directory.
+    // GLES2 uses ParticleManager with color-only point sprites — no textures needed.
     loadParticleTextures();
+#endif
 }
 
 SpellVisualFX::~SpellVisualFX()
