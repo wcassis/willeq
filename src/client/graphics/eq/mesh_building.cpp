@@ -19,12 +19,13 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
     // Order: global_chr.s3d -> global2-7_chr.s3d -> armor textures -> zone_chr.s3d (overrides)
 
     // Ensure numbered globals are loaded (they contain some armor textures)
-    if (!numberedGlobalsLoaded_) {
+    // Skip eager loading when archive index is active (per-archive loads only)
+    if (!numberedGlobalsLoaded_ && !graphicsArchiveIndex_) {
         loadNumberedGlobalModels();
     }
 
     // Ensure armor textures are loaded (global17-23_amr.s3d contain high-tier armor textures)
-    if (!armorTexturesLoaded_) {
+    if (!armorTexturesLoaded_ && !graphicsArchiveIndex_) {
         loadArmorTextures();
     }
 

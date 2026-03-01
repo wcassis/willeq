@@ -425,6 +425,11 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
 }
 
 bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
+    // If entity building is disabled, keep placeholder (zero disk I/O)
+    if (constrainedConfig_ && constrainedConfig_->skipEntityBuild) {
+        return false;
+    }
+
     auto it = entities_.find(spawnId);
     if (it == entities_.end() || !smgr_) {
         return false;

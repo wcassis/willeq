@@ -241,6 +241,9 @@ private:
     // Load model from a chr file using otherChrCaches_ (preserves cache, for JSON-specified files)
     bool loadModelFromCachedChr(const std::string& chrFilename, uint16_t raceId, uint8_t gender);
 
+    // Load model using GraphicsArchiveIndex for targeted per-archive loading
+    bool loadModelFromArchiveIndex(uint16_t raceId, uint8_t gender);
+
     // Search all loaded global character archives for a model
     bool searchAllGlobalsForModel(uint16_t raceId, uint8_t gender);
 

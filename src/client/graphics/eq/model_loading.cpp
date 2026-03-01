@@ -6,6 +6,7 @@
 #include "client/graphics/eq/geometry_combiner.h"
 #include "client/graphics/eq/animation_mapping.h"
 #include "client/graphics/eq/pfs.h"
+#include "client/graphics/graphics_archive_index.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <filesystem>
@@ -303,6 +304,7 @@ bool RaceModelLoader::loadModelFromS3D(const std::string& s3dPath, uint16_t race
 
 bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
     if (!globalModelsLoaded_) {
+        if (graphicsArchiveIndex_) return false;  // Don't eager-load; caller should use archive index path
         if (!loadGlobalModels()) {
             return false;
         }
@@ -1180,7 +1182,20 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
     return false;
 }
 
+bool RaceModelLoader::loadModelFromArchiveIndex(uint16_t raceId, uint8_t gender) {
+    if (!graphicsArchiveIndex_) return false;
+
+    std::string archivePath = graphicsArchiveIndex_->getArchiveForRace(raceId, gender);
+    if (archivePath.empty()) return false;
+
+    // Extract just the filename — loadModelFromCachedChr prepends clientPath_
+    std::string filename = std::filesystem::path(archivePath).filename().string();
+    return loadModelFromCachedChr(filename, raceId, gender);
+}
+
 bool RaceModelLoader::searchAllGlobalsForModel(uint16_t raceId, uint8_t gender) {
+    if (graphicsArchiveIndex_) return false;  // Don't eager-load; caller should use archive index path
+
     // First try main global_chr.s3d
     if (loadModelFromGlobalChr(raceId, gender)) {
         return true;

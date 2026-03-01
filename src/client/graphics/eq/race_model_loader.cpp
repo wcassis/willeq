@@ -243,21 +243,28 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
                 }
             }
 
-            // 2. If not found, try current zone's _chr.s3d file
+            // 2. If not found, try archive index (targeted per-archive load)
+            if (modelIt == loadedModels_.end() && graphicsArchiveIndex_) {
+                if (loadModelFromArchiveIndex(raceId, gender)) {
+                    modelIt = loadedModels_.find(key);
+                }
+            }
+
+            // 3. If not found, try current zone's _chr.s3d file
             if (modelIt == loadedModels_.end() && !currentZoneName_.empty()) {
                 if (loadModelFromZoneChr(currentZoneName_, raceId, gender)) {
                     modelIt = loadedModels_.find(key);
                 }
             }
 
-            // 3. If not found in zone, try global_chr.s3d (classic models)
+            // 4. If not found in zone, try global_chr.s3d (classic models)
             if (modelIt == loadedModels_.end()) {
                 if (loadModelFromGlobalChr(raceId, gender)) {
                     modelIt = loadedModels_.find(key);
                 }
             }
 
-            // 4. If still not found, try numbered globals (global2-7_chr.s3d)
+            // 5. If still not found, try numbered globals (global2-7_chr.s3d)
             if (modelIt == loadedModels_.end()) {
                 if (!numberedGlobalsLoaded_) {
                     loadNumberedGlobalModels();
@@ -280,6 +287,13 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
             if (!raceFilename.empty()) {
                 std::string racePath = clientPath_ + raceFilename;
                 if (loadModelFromS3D(racePath, raceId, gender)) {
+                    modelIt = loadedModels_.find(key);
+                }
+            }
+
+            // If not found, try archive index (targeted per-archive load)
+            if (modelIt == loadedModels_.end() && graphicsArchiveIndex_) {
+                if (loadModelFromArchiveIndex(raceId, gender)) {
                     modelIt = loadedModels_.find(key);
                 }
             }

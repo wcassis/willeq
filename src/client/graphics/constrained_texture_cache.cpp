@@ -170,6 +170,41 @@ irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& nam
     return nullptr;
 }
 
+bool ConstrainedTextureCache::registerTexture(const std::string& name,
+                                               irr::video::ITexture* texture,
+                                               size_t sizeBytes, bool hasAlphaFlag) {
+    if (!texture) return false;
+
+    // Already in cache — just touch
+    auto it = cache_.find(name);
+    if (it != cache_.end()) {
+        touch(name);
+        return true;
+    }
+
+    // Too large to ever fit
+    if (sizeBytes > config_.textureMemoryBytes) {
+        return false;
+    }
+
+    // Evict textures if needed to make room
+    if (!evictUntilAvailable(sizeBytes)) {
+        return false;
+    }
+
+    // Add to LRU cache
+    lruOrder_.push_back(name);
+    CachedTexture entry;
+    entry.texture = texture;
+    entry.sizeBytes = sizeBytes;
+    entry.hasAlpha = hasAlphaFlag;
+    entry.lruIterator = std::prev(lruOrder_.end());
+    cache_[name] = entry;
+    currentUsage_ += sizeBytes;
+
+    return true;
+}
+
 bool ConstrainedTextureCache::hasAlpha(const std::string& name) const {
     auto it = cache_.find(name);
     return it != cache_.end() && it->second.hasAlpha;

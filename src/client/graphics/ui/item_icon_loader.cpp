@@ -1,9 +1,11 @@
 #include "client/graphics/ui/item_icon_loader.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include <fstream>
 #include <iostream>
 #include "common/logging.h"
 #include <sstream>
 #include <cstring>
+#include <algorithm>
 
 namespace eqt {
 namespace ui {
@@ -155,7 +157,41 @@ bool ItemIconLoader::hasPendingSheets() const {
 }
 
 irr::video::ITexture* ItemIconLoader::getIcon(uint32_t iconId) {
-    // Check cache first
+    // Disabled: always return placeholder
+    if (!enabled_) {
+        return getPlaceholderIcon();
+    }
+
+    // Constrained mode: use constrained texture cache as single source of truth
+    if (constrainedCache_) {
+        std::string texName = "icon_" + std::to_string(iconId);
+        irr::video::ITexture* cached = constrainedCache_->getTexture(texName);
+        if (cached) {
+            return cached;
+        }
+
+        // Cache miss — queue for lazy extraction and return placeholder
+        if (lazyIconQueued_.find(iconId) == lazyIconQueued_.end()) {
+            lazyIconQueue_.push_back(iconId);
+            lazyIconQueued_.insert(iconId);
+
+            // Ensure the right sheet is queued for background loading
+            int sk = sheetKeyForIcon(iconId);
+            if (sk < 0) {
+                int sheetNumber = -sk;
+                if (sheets_.find(-sheetNumber) == sheets_.end()) {
+                    queueSheetRequest(sheetNumber, true);
+                }
+            } else {
+                if (sheets_.find(sk) == sheets_.end()) {
+                    queueSheetRequest(sk, false);
+                }
+            }
+        }
+        return getPlaceholderIcon();
+    }
+
+    // Non-constrained mode: use original iconCache_ path
     auto it = iconCache_.find(iconId);
     if (it != iconCache_.end()) {
         if (it->second == nullptr) {
@@ -574,6 +610,103 @@ bool ItemIconLoader::loadTGA(const std::string& path, std::vector<uint8_t>& pixe
     return true;
 }
 
+irr::video::ITexture* ItemIconLoader::getPlaceholderIcon() {
+    if (placeholderIcon_) return placeholderIcon_;
+    if (!driver_) return nullptr;
+
+    // Create a 40x40 dark gray texture as placeholder
+    const int size = ICON_SIZE;
+    std::vector<uint32_t> pixels(size * size);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            // Dark gray fill with slightly lighter 1px border
+            bool border = (x == 0 || y == 0 || x == size - 1 || y == size - 1);
+            pixels[y * size + x] = border ? 0xFF404040 : 0xFF282828;  // ARGB
+        }
+    }
+
+    irr::video::IImage* image = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2d<irr::u32>(size, size),
+        pixels.data(), false);
+
+    if (image) {
+        placeholderIcon_ = driver_->addTexture("_icon_placeholder_", image);
+        image->drop();
+    }
+
+    return placeholderIcon_;
+}
+
+int ItemIconLoader::sheetKeyForIcon(uint32_t iconId) {
+    if (iconId < static_cast<uint32_t>(ICON_ID_BASE)) {
+        // Spell icon: negative sheet key
+        return -(static_cast<int>(iconId / ICONS_PER_SHEET) + 1);
+    }
+    // Item icon: positive sheet key
+    return static_cast<int>((iconId - ICON_ID_BASE) / ICONS_PER_SHEET) + 1;
+}
+
+void ItemIconLoader::sortPendingBySheet() {
+    if (lazyIconQueue_.size() <= 1) return;
+
+    std::stable_sort(lazyIconQueue_.begin(), lazyIconQueue_.end(),
+        [](uint32_t a, uint32_t b) {
+            return sheetKeyForIcon(a) < sheetKeyForIcon(b);
+        });
+}
+
+bool ItemIconLoader::processOneLazyIcon() {
+    if (lazyIconQueue_.empty()) return false;
+
+    // Step 1: Poll one completed sheet from worker (if any ready)
+    bool polledSheet = pollCompletedSheet();
+    if (polledSheet) return true;
+
+    // Step 2: Try to extract one pending icon from an already-loaded sheet
+    for (auto it = lazyIconQueue_.begin(); it != lazyIconQueue_.end(); ++it) {
+        uint32_t iconId = *it;
+        int sk = sheetKeyForIcon(iconId);
+
+        // Check if the required sheet is loaded
+        int sheetKey;
+        int localIndex;
+        if (iconId < static_cast<uint32_t>(ICON_ID_BASE)) {
+            int sheetNumber = (iconId / ICONS_PER_SHEET) + 1;
+            sheetKey = -sheetNumber;
+            localIndex = iconId % ICONS_PER_SHEET;
+        } else {
+            int adjustedId = iconId - ICON_ID_BASE;
+            sheetKey = (adjustedId / ICONS_PER_SHEET) + 1;
+            localIndex = adjustedId % ICONS_PER_SHEET;
+        }
+        (void)sk;  // sk == sheetKey (already computed by sheetKeyForIcon)
+
+        if (sheets_.find(sheetKey) == sheets_.end()) {
+            continue;  // Sheet not ready yet
+        }
+
+        // Extract the icon
+        irr::video::ITexture* tex = extractIcon(iconId, sheetKey, localIndex);
+
+        // Register with constrained cache
+        if (tex && constrainedCache_) {
+            std::string texName = "icon_" + std::to_string(iconId);
+            // 40x40 ARGB = 6400 bytes
+            size_t iconBytes = static_cast<size_t>(ICON_SIZE) * ICON_SIZE * 4;
+            constrainedCache_->registerTexture(texName, tex, iconBytes, true);
+        }
+
+        // Remove from queue
+        lazyIconQueue_.erase(it);
+        lazyIconQueued_.erase(iconId);
+        return true;
+    }
+
+    // Step 3: Pending icons but no sheet ready — can't progress
+    return false;
+}
+
 void ItemIconLoader::clear() {
     stopWorker();
     // Textures are managed by Irrlicht's texture cache
@@ -581,6 +714,8 @@ void ItemIconLoader::clear() {
     iconCache_.clear();
     sheets_.clear();
     requestedSheetKeys_.clear();
+    lazyIconQueue_.clear();
+    lazyIconQueued_.clear();
 }
 
 } // namespace ui

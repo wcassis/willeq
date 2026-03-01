@@ -44,6 +44,7 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+uniform int uNumPointLights;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -69,14 +70,16 @@ void main() {
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
-    for (int i = 1; i < 8; i++) {
-        vec3 lVec = uLightPos[i] - worldPos;
-        float d = length(lVec) + 0.001;
-        float atten = 1.0 / (uLightAtten[i].x
-                            + uLightAtten[i].y * d
-                            + uLightAtten[i].z * d * d + 0.0001);
-        float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        pointLighting += uLightColor[i] * nl * atten;
+    if (uNumPointLights > 1) {
+        for (int i = 1; i < 8; i++) {
+            vec3 lVec = uLightPos[i] - worldPos;
+            float d = length(lVec) + 0.001;
+            float atten = 1.0 / (uLightAtten[i].x
+                                + uLightAtten[i].y * d
+                                + uLightAtten[i].z * d * d + 0.0001);
+            float nl = max(dot(worldN, normalize(lVec)), 0.0);
+            pointLighting += uLightColor[i] * nl * atten;
+        }
     }
 
     vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
@@ -107,13 +110,16 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    // Per-pixel player light (skipped when color is zero — /plight off or no player light)
+    vec3 pLight = vec3(0.0);
+    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
+        vec3 pLv = uPlayerLightPos - vWorldPos;
+        float pLd = length(pLv) + 0.001;
+        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+        pLight = uPlayerLightColor * pLn * pLa;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -140,12 +146,15 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    vec3 pLight = vec3(0.0);
+    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
+        vec3 pLv = uPlayerLightPos - vWorldPos;
+        float pLd = length(pLv) + 0.001;
+        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+        pLight = uPlayerLightColor * pLn * pLa;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -175,12 +184,15 @@ void main() {
     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
     if (texColor.a < threshold) discard;
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    vec3 pLight = vec3(0.0);
+    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
+        vec3 pLv = uPlayerLightPos - vWorldPos;
+        float pLd = length(pLv) + 0.001;
+        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+        pLight = uPlayerLightColor * pLn * pLa;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -211,6 +223,7 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+uniform int uNumPointLights;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -238,14 +251,16 @@ void main() {
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
-    for (int i = 1; i < 8; i++) {
-        vec3 lVec = uLightPos[i] - worldPos;
-        float d = length(lVec) + 0.001;
-        float atten = 1.0 / (uLightAtten[i].x
-                            + uLightAtten[i].y * d
-                            + uLightAtten[i].z * d * d + 0.0001);
-        float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        pointLighting += uLightColor[i] * nl * atten;
+    if (uNumPointLights > 1) {
+        for (int i = 1; i < 8; i++) {
+            vec3 lVec = uLightPos[i] - worldPos;
+            float d = length(lVec) + 0.001;
+            float atten = 1.0 / (uLightAtten[i].x
+                                + uLightAtten[i].y * d
+                                + uLightAtten[i].z * d * d + 0.0001);
+            float nl = max(dot(worldN, normalize(lVec)), 0.0);
+            pointLighting += uLightColor[i] * nl * atten;
+        }
     }
 
     vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
@@ -275,12 +290,15 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    vec3 pLight = vec3(0.0);
+    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
+        vec3 pLv = uPlayerLightPos - vWorldPos;
+        float pLd = length(pLv) + 0.001;
+        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+        pLight = uPlayerLightColor * pLn * pLa;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -309,12 +327,15 @@ void main() {
     if (alpha < 0.5) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    vec3 pLight = vec3(0.0);
+    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
+        vec3 pLv = uPlayerLightPos - vWorldPos;
+        float pLd = length(pLv) + 0.001;
+        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+        pLight = uPlayerLightColor * pLn * pLa;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -346,12 +367,15 @@ void main() {
     if (alpha < threshold) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float pLd = length(pLv) + 0.001;
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                        + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-    float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    vec3 pLight = vec3(0.0);
+    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
+        vec3 pLv = uPlayerLightPos - vWorldPos;
+        float pLd = length(pLv) + 0.001;
+        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
+                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
+        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
+        pLight = uPlayerLightColor * pLn * pLa;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -385,6 +409,7 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+uniform int uNumPointLights;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -442,14 +467,16 @@ void main() {
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
-    for (int i = 1; i < 8; i++) {
-        vec3 lVec = uLightPos[i] - worldPos;
-        float d = length(lVec) + 0.001;
-        float atten = 1.0 / (uLightAtten[i].x
-                            + uLightAtten[i].y * d
-                            + uLightAtten[i].z * d * d + 0.0001);
-        float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        pointLighting += uLightColor[i] * nl * atten;
+    if (uNumPointLights > 1) {
+        for (int i = 1; i < 8; i++) {
+            vec3 lVec = uLightPos[i] - worldPos;
+            float d = length(lVec) + 0.001;
+            float atten = 1.0 / (uLightAtten[i].x
+                                + uLightAtten[i].y * d
+                                + uLightAtten[i].z * d * d + 0.0001);
+            float nl = max(dot(worldN, normalize(lVec)), 0.0);
+            pointLighting += uLightColor[i] * nl * atten;
+        }
     }
 
     vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
@@ -483,6 +510,7 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+uniform int uNumPointLights;
 
 varying vec4 vColor;
 varying float vFogFactor;
@@ -503,15 +531,17 @@ void main() {
     float sunNdotL = max(dot(worldN, sunL), 0.0);
     vec3 lighting = uAmbientColor + sunNdotL * uSunColor;
 
-    // Point lights (world space, always iterate all 8)
-    for (int i = 0; i < 8; i++) {
-        vec3 lVec = uLightPos[i] - worldPos;
-        float d = length(lVec) + 0.001;
-        float atten = 1.0 / (uLightAtten[i].x
-                            + uLightAtten[i].y * d
-                            + uLightAtten[i].z * d * d + 0.0001);
-        float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        lighting += uLightColor[i] * nl * atten;
+    // Point lights (world space, guarded by light count)
+    if (uNumPointLights > 0) {
+        for (int i = 0; i < 8; i++) {
+            vec3 lVec = uLightPos[i] - worldPos;
+            float d = length(lVec) + 0.001;
+            float atten = 1.0 / (uLightAtten[i].x
+                                + uLightAtten[i].y * d
+                                + uLightAtten[i].z * d * d + 0.0001);
+            float nl = max(dot(worldN, normalize(lVec)), 0.0);
+            lighting += uLightColor[i] * nl * atten;
+        }
     }
 
     vColor = vec4(lighting * uTintColor, 1.0) * gl_Color;
@@ -593,6 +623,7 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+uniform int uNumPointLights;
 
 varying vec4 vColor;
 varying float vFogFactor;
@@ -612,15 +643,17 @@ void main() {
     float sunNdotL = max(dot(worldN, sunL), 0.0);
     vec3 lighting = uAmbientColor + sunNdotL * uSunColor;
 
-    // Point lights (world space, always iterate all 8)
-    for (int i = 0; i < 8; i++) {
-        vec3 lVec = uLightPos[i] - worldPos;
-        float d = length(lVec) + 0.001;
-        float atten = 1.0 / (uLightAtten[i].x
-                            + uLightAtten[i].y * d
-                            + uLightAtten[i].z * d * d + 0.0001);
-        float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        lighting += uLightColor[i] * nl * atten;
+    // Point lights (world space, guarded by light count)
+    if (uNumPointLights > 0) {
+        for (int i = 0; i < 8; i++) {
+            vec3 lVec = uLightPos[i] - worldPos;
+            float d = length(lVec) + 0.001;
+            float atten = 1.0 / (uLightAtten[i].x
+                                + uLightAtten[i].y * d
+                                + uLightAtten[i].z * d * d + 0.0001);
+            float nl = max(dot(worldN, normalize(lVec)), 0.0);
+            lighting += uLightColor[i] * nl * atten;
+        }
     }
 
     vColor = vec4(lighting * uTintColor, 1.0);
@@ -689,6 +722,7 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+uniform int uNumPointLights;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -735,15 +769,17 @@ void main() {
     float sunNdotL = max(dot(worldN, sunL), 0.0);
     vec3 lighting = uAmbientColor + sunNdotL * uSunColor;
 
-    // Point lights (world space, always iterate all 8)
-    for (int i = 0; i < 8; i++) {
-        vec3 lVec = uLightPos[i] - worldPos;
-        float d = length(lVec) + 0.001;
-        float atten = 1.0 / (uLightAtten[i].x
-                            + uLightAtten[i].y * d
-                            + uLightAtten[i].z * d * d + 0.0001);
-        float nl = max(dot(worldN, normalize(lVec)), 0.0);
-        lighting += uLightColor[i] * nl * atten;
+    // Point lights (world space, guarded by light count)
+    if (uNumPointLights > 0) {
+        for (int i = 0; i < 8; i++) {
+            vec3 lVec = uLightPos[i] - worldPos;
+            float d = length(lVec) + 0.001;
+            float atten = 1.0 / (uLightAtten[i].x
+                                + uLightAtten[i].y * d
+                                + uLightAtten[i].z * d * d + 0.0001);
+            float nl = max(dot(worldN, normalize(lVec)), 0.0);
+            lighting += uLightColor[i] * nl * atten;
+        }
     }
 
     vColor = vec4(lighting * uTintColor, 1.0) * gl_Color;
@@ -798,6 +834,7 @@ public:
             locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
+            locNumPointLights_   = glGetUniformLocation(prog, "uNumPointLights");
         }
 
         // Per-node uniforms (change every node — depend on World matrix)
@@ -831,6 +868,7 @@ public:
             if (locPlayerLightPos_ >= 0)   glUniform3fv(locPlayerLightPos_, 1, owner_->playerLightPos());
             if (locPlayerLightColor_ >= 0) glUniform3fv(locPlayerLightColor_, 1, owner_->playerLightColor());
             if (locPlayerLightAtten_ >= 0) glUniform3fv(locPlayerLightAtten_, 1, owner_->playerLightAtten());
+            if (locNumPointLights_ >= 0)   glUniform1i(locNumPointLights_, owner_->numPointLights());
         }
 #else
         // Desktop GL path — use string-based setVertexShaderConstant (no perf concern)
@@ -867,6 +905,9 @@ public:
         services->setPixelShaderConstant("uPlayerLightPos", owner_->playerLightPos(), 3);
         services->setPixelShaderConstant("uPlayerLightColor", owner_->playerLightColor(), 3);
         services->setPixelShaderConstant("uPlayerLightAtten", owner_->playerLightAtten(), 3);
+
+        irr::s32 numLights = owner_->numPointLights();
+        services->setVertexShaderConstant("uNumPointLights", &numLights, 1);
 #endif
     }
 
@@ -880,6 +921,7 @@ private:
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
     GLint locFogColor_ = -2, locTexture_ = -2;
     GLint locPlayerLightPos_ = -2, locPlayerLightColor_ = -2, locPlayerLightAtten_ = -2;
+    GLint locNumPointLights_ = -2;
     uint64_t lastFrameId_ = 0;
 #endif
 };
@@ -956,6 +998,7 @@ public:
             locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
+            locNumPointLights_   = glGetUniformLocation(prog, "uNumPointLights");
         }
 
         // Per-node uniforms
@@ -994,6 +1037,7 @@ public:
             if (locPlayerLightPos_ >= 0)   glUniform3fv(locPlayerLightPos_, 1, owner_->playerLightPos());
             if (locPlayerLightColor_ >= 0) glUniform3fv(locPlayerLightColor_, 1, owner_->playerLightColor());
             if (locPlayerLightAtten_ >= 0) glUniform3fv(locPlayerLightAtten_, 1, owner_->playerLightAtten());
+            if (locNumPointLights_ >= 0)   glUniform1i(locNumPointLights_, owner_->numPointLights());
         }
 #else
         // Desktop GL path
@@ -1034,6 +1078,9 @@ public:
         services->setPixelShaderConstant("uPlayerLightPos", owner_->playerLightPos(), 3);
         services->setPixelShaderConstant("uPlayerLightColor", owner_->playerLightColor(), 3);
         services->setPixelShaderConstant("uPlayerLightAtten", owner_->playerLightAtten(), 3);
+
+        irr::s32 numLights = owner_->numPointLights();
+        services->setVertexShaderConstant("uNumPointLights", &numLights, 1);
 #endif
     }
 
@@ -1052,6 +1099,7 @@ private:
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
     GLint locFogColor_ = -2, locTexture_ = -2, locAlphaTex_ = -2;
     GLint locPlayerLightPos_ = -2, locPlayerLightColor_ = -2, locPlayerLightAtten_ = -2;
+    GLint locNumPointLights_ = -2;
     uint64_t lastFrameId_ = 0;
 #endif
 };
@@ -1092,6 +1140,7 @@ public:
             locWindTime_   = glGetUniformLocation(prog, "uWindTime");
             locWindParams_ = glGetUniformLocation(prog, "uWindParams");
             locMeshYBounds_ = glGetUniformLocation(prog, "uMeshYBounds");
+            locNumPointLights_ = glGetUniformLocation(prog, "uNumPointLights");
         }
 
         // Per-node uniforms
@@ -1128,6 +1177,7 @@ public:
             if (locTexture_ >= 0)    glUniform1i(locTexture_, 0);
             if (locWindTime_ >= 0)   glUniform1f(locWindTime_, owner_->windTime());
             if (locWindParams_ >= 0) glUniform4fv(locWindParams_, 1, owner_->windParams());
+            if (locNumPointLights_ >= 0) glUniform1i(locNumPointLights_, owner_->numPointLights());
         }
 #else
         // Desktop GL path
@@ -1166,6 +1216,9 @@ public:
 
         irr::s32 texUnit = 0;
         services->setPixelShaderConstant("uTexture", &texUnit, 1);
+
+        irr::s32 numLights = owner_->numPointLights();
+        services->setVertexShaderConstant("uNumPointLights", &numLights, 1);
 #endif
     }
 
@@ -1180,6 +1233,7 @@ private:
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
     GLint locFogColor_ = -2, locTexture_ = -2;
     GLint locWindTime_ = -2, locWindParams_ = -2, locMeshYBounds_ = -2;
+    GLint locNumPointLights_ = -2;
     uint64_t lastFrameId_ = 0;
 #endif
 };

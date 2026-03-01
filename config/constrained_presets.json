@@ -22,15 +22,16 @@
       "objectLights": true,
       "directionalLight": true,
       "fireEffects": true,
-      "skyRendering": true,
+      "skyRendering": false,
       "nameTagsEnabled": true,
-      "skipManualZoneDraw": true,
-      "skipVBOUpload": true,
-      "skipEntityTextureUpload": true,
-      "skipEntityBuild": true,
-      "skipConstrainedTextureUpload": true,
+      "skipManualZoneDraw": false,
+      "skipVBOUpload": false,
+      "skipEntityTextureUpload": false,
+      "skipEntityBuild": false,
+      "skipConstrainedTextureUpload": false,
       "skipSkyTextureUpload": true,
-      "enableTextureAtlas": false
+      "enableTextureAtlas": true,
+      "enableItemIcons": true
     }
   }
 }

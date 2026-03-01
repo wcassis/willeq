@@ -210,6 +210,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.meshMemoryBytes = 24 * 1024 * 1024;  // 24MB mesh cache
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
+            config.enableItemIcons = false;
             config.targetFps = 30.0f;
             break;
 
@@ -452,6 +453,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         nameTagsEnabled = preset["nameTagsEnabled"].asBool();
     if (preset.isMember("frameTimingEnabled"))
         frameTimingEnabled = preset["frameTimingEnabled"].asBool();
+    if (preset.isMember("enableItemIcons"))
+        enableItemIcons = preset["enableItemIcons"].asBool();
 
     return true;
 }

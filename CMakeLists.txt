@@ -542,6 +542,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/graphics_archive_index.cpp
         src/common/performance_metrics.cpp
         # Spell test mode dependencies
         src/client/spell/spell_database.cpp

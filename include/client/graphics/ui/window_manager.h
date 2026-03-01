@@ -415,6 +415,17 @@ public:
     // Access icon loader for worker lifecycle management
     ItemIconLoader& getIconLoader() { return iconLoader_; }
 
+    // Constrained mode icon loading configuration
+    void setIconConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) {
+        iconLoader_.setConstrainedTextureCache(cache);
+    }
+    void setIconLoadingEnabled(bool enabled) {
+        iconLoader_.setEnabled(enabled);
+    }
+
+    // Process one lazy icon extraction (called per GREEN frame)
+    bool processOneLazyIcon() { return iconLoader_.processOneLazyIcon(); }
+
     // State queries
     bool isInventoryOpen() const;
     bool hasOpenWindows() const;

@@ -53,6 +53,7 @@ struct ConstrainedRendererConfig {
     bool skyRendering = true;
     bool nameTagsEnabled = true;
     bool frameTimingEnabled = false;
+    bool enableItemIcons = true;  // Load item/spell icon textures (disable to save RAM)
 
     // Framebuffer memory (determines max resolution)
     // Includes: front buffer + back buffer + depth-stencil buffer

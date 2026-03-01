@@ -612,13 +612,17 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     });
 
     // Preload numbered global character models for better coverage
-    entityRenderer_->loadNumberedGlobals();
+    if (!config_.constrainedConfig.skipEntityBuild) {
+        entityRenderer_->loadNumberedGlobals();
+    }
 
     // Load equipment models from gequip.s3d archives
-    if (entityRenderer_->loadEquipmentModels()) {
-        LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
-    } else {
-        LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
+    if (!config_.constrainedConfig.skipEntityBuild) {
+        if (entityRenderer_->loadEquipmentModels()) {
+            LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
+        }
     }
 
     // Create door manager
@@ -993,10 +997,12 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     if (networkTickCallback_) networkTickCallback_();
 
     // Load equipment models from gequip.s3d archives
-    if (entityRenderer_->loadEquipmentModels()) {
-        LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
-    } else {
-        LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
+    if (!config_.constrainedConfig.skipEntityBuild) {
+        if (entityRenderer_->loadEquipmentModels()) {
+            LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
+        }
     }
 
     // Pump network after equipment model load
@@ -2632,7 +2638,7 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     }
 
     // Start background icon sheet worker (disk I/O + TGA decode off main thread)
-    if (windowManager_) {
+    if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
         windowManager_->getIconLoader().startWorker();
     }
 
@@ -3789,7 +3795,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
             LOG_INFO(MOD_GRAPHICS, "Graphics archive index adopted from background thread ({} race entries, {} archives)",
                      graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
-        } else if (!config_.constrainedConfig.deferredAssetLoading) {
+        } else if (!config_.constrainedConfig.deferredAssetLoading
+                   && !config_.constrainedConfig.skipEntityBuild) {
             // Non-deferred: eager loading (unchanged)
             if (entityRenderer_->loadGlobalCharacters()) {
                 LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
@@ -7188,7 +7195,33 @@ void IrrlichtRenderer::applySimulationResults() {
         if (!playerLightSet) {
             zoneShader_->setPlayerLightColor(0.0f, 0.0f, 0.0f);
         }
-        zoneShader_->setNumPointLights(results->activeLightCount);
+
+        // Apply debug toggles (/plight, /olight, L key)
+        int effectiveLightCount = results->activeLightCount;
+
+        // /plight off: zero player light in both VS (light[0]) and FS
+        if (!debugPlayerLightEnabled_) {
+            zoneShader_->setPointLight(0, 0,0,0, 0,0,0, 1,0,0);
+            zoneShader_->setPlayerLightColor(0.0f, 0.0f, 0.0f);
+            if (playerLightSet) effectiveLightCount--;
+            playerLightSet = false;
+        }
+
+        // /olight off: zero all zone lights (indices 1-7) in VS
+        if (!debugObjectLightsEnabled_) {
+            for (int i = 1; i < ZoneShaderManager::MAX_POINT_LIGHTS; ++i)
+                zoneShader_->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
+            effectiveLightCount = playerLightSet ? 1 : 0;
+        } else if (maxObjectLights_ < effectiveLightCount - (playerLightSet ? 1 : 0)) {
+            // L key: limit zone light count, zero excess slots
+            int maxZone = maxObjectLights_;
+            int startClear = (playerLightSet ? 1 : 0) + maxZone;
+            for (int i = startClear; i < ZoneShaderManager::MAX_POINT_LIGHTS; ++i)
+                zoneShader_->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
+            effectiveLightCount = (playerLightSet ? 1 : 0) + maxZone;
+        }
+
+        zoneShader_->setNumPointLights(effectiveLightCount);
     }
 
     // Apply object light PVS visibility (scene graph add/remove)
@@ -7779,14 +7812,14 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimings_.meshLoading = measureSection();
     }
 
-    // Poll completed icon sheets even when progressive loading is inactive
-    // (spell gem icons are queued on first render and need loading regardless).
-    // Background worker does disk I/O; this just moves a pointer (<0.1ms).
-    if (!progressiveLoadingActive_ && windowManager_) {
-        // Lazy-start worker if icons were requested outside of progressive loading
-        windowManager_->getIconLoader().startWorker();
-        if (windowManager_->loadOnePendingIconSheet()) {
-            frameTimings_.meshLoading = measureSection();
+    // Lazy icon loading outside progressive mode (spell gems, UI on-demand)
+    if (!progressiveLoadingActive_ && windowManager_ &&
+        config_.constrainedConfig.enableItemIcons) {
+        if (!governor_ || governor_->getState() == BudgetState::Green) {
+            windowManager_->getIconLoader().startWorker();
+            if (windowManager_->processOneLazyIcon()) {
+                frameTimings_.meshLoading = measureSection();
+            }
         }
     }
 
@@ -10840,7 +10873,7 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     }
 
     // Start background icon sheet worker if not already started
-    if (windowManager_) {
+    if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
         windowManager_->getIconLoader().startWorker();
     }
 
@@ -11200,15 +11233,6 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     bool didWork = false;
     auto stepStart = std::chrono::steady_clock::now();
 
-    // Priority 0.5: Load one pending icon sheet (spell/item TGA from disk, ~40-80ms)
-    if (!didWork && windowManager_) {
-        if (windowManager_->loadOnePendingIconSheet()) {
-            didWork = true;
-            logAssetBuildTime("icon_sheet", 0, stepStart);
-            sendLoadProgress("[Load] Icon sheet");
-        }
-    }
-
     // Priority 1: Process one entity build step (most visible missing asset)
     if (!didWork && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
         // Populate pending queue, then dispatch one item if worker is idle.
@@ -11336,6 +11360,17 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             }
             sendLoadProgress(fmt::format("[Load] Object '{}' [{}/{}]",
                 objName, builtPvsObjects + 1, totalPvsObjects));
+        }
+    }
+
+    // Priority 5: Lazy icon extraction (lowest priority, one icon per GREEN frame)
+    // Sort by sheet key before processing so all icons from the same resident sheet
+    // are extracted consecutively before triggering a new sheet load.
+    if (!didWork && windowManager_ && config_.constrainedConfig.enableItemIcons) {
+        windowManager_->getIconLoader().sortPendingBySheet();
+        if (windowManager_->processOneLazyIcon()) {
+            didWork = true;
+            logAssetBuildTime("icon", 0, stepStart);
         }
     }
 
@@ -12434,6 +12469,12 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
     if (!windowManager_ && inventoryManager_ && driver_ && guienv_) {
         windowManager_ = std::make_unique<eqt::ui::WindowManager>();
         windowManager_->init(driver_, guienv_, inventoryManager_, config_.width, config_.height, config_.eqClientPath);
+
+        // Wire up constrained icon loading config
+        windowManager_->setIconLoadingEnabled(config_.constrainedConfig.enableItemIcons);
+        if (constrainedTextureCache_) {
+            windowManager_->setIconConstrainedTextureCache(constrainedTextureCache_.get());
+        }
 
         // Apply UI settings from config (UISettings was loaded in main.cpp)
         windowManager_->applyUISettings();

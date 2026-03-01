@@ -37,6 +37,13 @@ public:
     // Get a cached texture without loading (returns nullptr if not cached)
     irr::video::ITexture* getTexture(const std::string& name);
 
+    // Register an externally-created texture into the LRU cache.
+    // The texture must already be created via driver_->addTexture().
+    // Performs LRU bookkeeping and eviction but skips decode/upload.
+    // Returns true if registered, false if texture is too large for budget.
+    bool registerTexture(const std::string& name, irr::video::ITexture* texture,
+                         size_t sizeBytes, bool hasAlpha = false);
+
     // Check if a cached texture has alpha transparency
     bool hasAlpha(const std::string& name) const;
 

@@ -12,6 +12,12 @@
 #include <deque>
 #include <set>
 
+namespace EQT {
+namespace Graphics {
+class ConstrainedTextureCache;
+}
+}
+
 namespace eqt {
 namespace ui {
 
@@ -50,6 +56,25 @@ public:
 
     // Check if there are pending sheets (queued requests or completed results to poll)
     bool hasPendingSheets() const;
+
+    // Constrained mode: share the constrained texture cache for LRU eviction
+    void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
+
+    // Enable/disable icon loading (disabled = always return placeholder)
+    void setEnabled(bool enabled) { enabled_ = enabled; }
+    bool isEnabled() const { return enabled_; }
+
+    // Get placeholder icon (created on first call, reused thereafter)
+    irr::video::ITexture* getPlaceholderIcon();
+
+    // Process one lazy icon extraction per frame (GREEN-gated by caller).
+    // Returns true if work was done (sheet polled or icon extracted).
+    bool processOneLazyIcon();
+
+    // Sort pending lazy icon queue by sheet key for cache locality.
+    // Groups icons from the same sheet together so a single sheet load
+    // serves all pending icons from that sheet before the next sheet is loaded.
+    void sortPendingBySheet();
 
     // Constants
     static constexpr int ICON_SIZE = 40;           // Each icon is 40x40 pixels
@@ -125,6 +150,18 @@ private:
 
     // Track requested sheet keys to prevent duplicate queue entries (main-thread only)
     std::set<int> requestedSheetKeys_;
+
+    // Constrained mode state
+    EQT::Graphics::ConstrainedTextureCache* constrainedCache_ = nullptr;
+    irr::video::ITexture* placeholderIcon_ = nullptr;
+    bool enabled_ = true;
+
+    // Lazy icon extraction queue (main-thread only)
+    std::deque<uint32_t> lazyIconQueue_;
+    std::set<uint32_t> lazyIconQueued_;
+
+    // Compute sheet key for an icon ID (for sorting by sheet locality)
+    static int sheetKeyForIcon(uint32_t iconId);
 };
 
 } // namespace ui
