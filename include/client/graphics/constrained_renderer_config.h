@@ -95,6 +95,7 @@ struct ConstrainedRendererConfig {
     bool skipVBOUpload = false;              // Debug: skip glBufferData for zone meshes (use client arrays)
     bool skipEntityTextureUpload = false;    // Debug: skip entity texture uploads (glTexImage2D)
     bool skipEntityBuild = false;            // Debug: skip entity scene node creation entirely
+    bool skipObjectBuild = false;            // Skip placeable object loading entirely (geometry + textures)
     bool skipConstrainedTextureUpload = false; // Debug: skip constrained cache glTexImage2D uploads
     bool skipSkyTextureUpload = false;         // Debug: skip sky texture GPU uploads (untextured sky dome)
     std::string atlasPath;                   // Directory containing .atlas files

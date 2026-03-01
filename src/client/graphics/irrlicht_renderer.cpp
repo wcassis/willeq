@@ -3222,17 +3222,20 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
     const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
     bool isManualMode = manualLoadMode_;
 
+    bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+
     zoneLoadThread_ = std::make_unique<std::thread>([this, zonePath, computations,
                                                       deferredAssetLoading, lazyPfsLoading,
                                                       enableAtlas, atlasPathCopy, zoneNameCopy,
                                                       eqClientPathCopy, meshMemoryBudget,
-                                                      treeIdentifier, isManualMode]() {
+                                                      treeIdentifier, isManualMode,
+                                                      skipObjectBuild]() {
         // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
         //    and objects based on mode
         S3DLoadOptions loadOptions;
         loadOptions.loadCharacters = false;                            // Always skip — duplicate of RaceModelLoader
         loadOptions.computeCombinedGeometry = (meshMemoryBudget == 0); // Skip on constrained path
-        loadOptions.loadObjects = !isManualMode;                       // Defer to /load data in manual mode
+        loadOptions.loadObjects = !isManualMode && !skipObjectBuild;   // Defer or skip entirely
 
         S3DLoader loader;
         if (!loader.loadZone(zonePath, loadOptions)) {
@@ -3508,8 +3511,10 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
             std::string zoneAtlasFile = atlasDir + zoneNameCopy + ".atlas";
             computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
 
-            std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
-            computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+            if (!skipObjectBuild) {
+                std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
+                computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+            }
         }
 
         zoneLoadComplete_ = true;
@@ -3533,6 +3538,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
     bool deferredAssetLoading = config_.constrainedConfig.deferredAssetLoading;
     bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
     bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
+    bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
     std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
     std::string zoneNameCopy = currentZoneName_;
     std::string eqClientPathCopy = config_.eqClientPath;
@@ -3546,9 +3552,10 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
     deferredWorkThread_ = std::make_unique<std::thread>([this, computations,
                                                           deferredAssetLoading, lazyPfsLoading,
                                                           enableAtlas, atlasPathCopy, zoneNameCopy,
-                                                          eqClientPathCopy, zone, zonePath]() {
+                                                          eqClientPathCopy, zone, zonePath,
+                                                          skipObjectBuild]() {
         // Load objects that were skipped in manual S3d step
-        if (zone && zone->objects.empty()) {
+        if (zone && zone->objects.empty() && !skipObjectBuild) {
             S3DLoader objLoader;
             objLoader.setZone(zone);
             objLoader.loadObjects(zonePath);
@@ -3661,8 +3668,10 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
             std::string zoneAtlasFile = atlasDir + zoneNameCopy + ".atlas";
             computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
 
-            std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
-            computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+            if (!skipObjectBuild) {
+                std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
+                computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+            }
         }
 
         LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
@@ -10863,18 +10872,9 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     progressiveLoadingActive_ = true;
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
 
-    // Create background entity prep worker if not already started (may have been created
-    // early in beginZoneAssetLoad() for the deferred /loadzone path).
-    // Skip if skipEntityBuild is set (e.g., OrangePi debug preset).
-    if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
-        && !config_.constrainedConfig.skipEntityBuild) {
-        entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
-            entityRenderer_->getRaceModelLoader(),
-            entityRenderer_->getEquipmentModelLoader());
-        entityPrepWorker_->start();
-        entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
-        LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started for progressive entity loading");
-    }
+    // NOTE: EntityPrepWorker is NOT created here — it is created during the
+    // EntityLoading phase (beginZoneAssetLoad) which runs after CollisionRebuild.
+    // Creating it here would bypass the manual load gate.
 
     // Start background icon sheet worker if not already started
     if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
@@ -11510,6 +11510,27 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
                 entityRenderer_->setEntityPrepWorker(nullptr);
             }
             LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker stopped — all entities loaded");
+        }
+
+        // Release object texture pixel data — all deferred objects and doors are built.
+        // Safe even with constrainedMeshCache_ active (only zone textures needed for region rebuilds).
+        if (currentZone_ && !currentZone_->objectTextures.empty()) {
+            size_t freed = 0;
+            for (auto& [name, texInfo] : currentZone_->objectTextures) {
+                if (!texInfo) continue;
+                freed += texInfo->data.capacity();
+                texInfo->data.clear();
+                texInfo->data.shrink_to_fit();
+                for (auto& frame : texInfo->frames) {
+                    freed += frame.data.capacity();
+                    frame.data.clear();
+                    frame.data.shrink_to_fit();
+                }
+            }
+            if (freed > 0) {
+                LOG_INFO(MOD_GRAPHICS, "Released {:.1f}KB object texture pixel data (progressive complete)",
+                         freed / 1024.0f);
+            }
         }
 
         // Stop background icon sheet worker — progressive loading complete

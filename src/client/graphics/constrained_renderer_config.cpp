@@ -211,6 +211,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
             config.enableItemIcons = false;
+            config.skipObjectBuild = true;
             config.targetFps = 30.0f;
             break;
 
@@ -395,6 +396,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         skipEntityTextureUpload = preset["skipEntityTextureUpload"].asBool();
     if (preset.isMember("skipEntityBuild"))
         skipEntityBuild = preset["skipEntityBuild"].asBool();
+    if (preset.isMember("skipObjectBuild"))
+        skipObjectBuild = preset["skipObjectBuild"].asBool();
     if (preset.isMember("skipConstrainedTextureUpload"))
         skipConstrainedTextureUpload = preset["skipConstrainedTextureUpload"].asBool();
     if (preset.isMember("skipSkyTextureUpload"))
