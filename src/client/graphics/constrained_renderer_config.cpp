@@ -213,6 +213,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableItemIcons = false;
             config.skipObjectBuild = true;
             config.targetFps = 30.0f;
+            // Entity prep: queue entities up to 2 portal hops away
+            config.entityPrepMaxPvsDepth = 2;
             break;
 
         case ConstrainedRenderingPreset::Custom:
@@ -414,6 +416,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         meshMemoryBytes = static_cast<size_t>(preset["meshMemoryBytes"].asUInt64());
     if (preset.isMember("targetFps"))
         targetFps = preset["targetFps"].asFloat();
+    if (preset.isMember("entityPrepMaxPvsDepth"))
+        entityPrepMaxPvsDepth = preset["entityPrepMaxPvsDepth"].asInt();
 
     // Rendering backend
     if (preset.isMember("renderingBackend")) {

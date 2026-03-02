@@ -3,6 +3,7 @@
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
+#include "client/graphics/work_priority.h"
 #endif
 #include <algorithm>
 #include <cstring>
@@ -85,6 +86,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         req.textureName = name;
         // High byte 3 = constrained cache texture
         req.callbackKey = uint64_t(3) << 56;
+        req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
 
         gpuUploadThread_->submit(std::move(req));
         pendingAsyncUploads_.insert(name);

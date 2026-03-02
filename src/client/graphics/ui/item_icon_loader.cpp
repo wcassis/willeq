@@ -2,6 +2,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
+#include "client/graphics/work_priority.h"
 #endif
 #include <fstream>
 #include <iostream>
@@ -467,6 +468,7 @@ irr::video::ITexture* ItemIconLoader::extractIcon(uint32_t iconId, int sheetInde
         req.textureName = texName;
         // High byte 4 = icon, low bits = icon ID
         req.callbackKey = (uint64_t(4) << 56) | static_cast<uint64_t>(iconId);
+        req.priority = EQT::Graphics::WorkPriorityKey::makeNonSpatial(EQT::Graphics::AssetType::Icon).value;
 
         gpuUploadThread_->submit(std::move(req));
         pendingAsyncIcons_.insert(iconId);

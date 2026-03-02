@@ -15,6 +15,7 @@
 #include "common/performance_metrics.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
+#include "client/graphics/work_priority.h"
 #endif
 #include <algorithm>
 #include <iostream>
@@ -962,6 +963,7 @@ static bool submitAsyncEntityTexture(GPUUploadThread* thread,
     req.textureName = lowerName;
     // High byte 2 = entity texture, low bits = spawn ID
     req.callbackKey = (uint64_t(2) << 56) | static_cast<uint64_t>(spawnId);
+    req.priority = WorkPriorityKey::make(0, AssetType::EntityTexture).value;
 
     thread->submit(std::move(req));
     return true;

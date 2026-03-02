@@ -32,7 +32,8 @@
       "skipObjectBuild": false,
       "skipConstrainedTextureUpload": false,
       "enableTextureAtlas": true,
-      "enableItemIcons": true
+      "enableItemIcons": true,
+      "entityPrepMaxPvsDepth": 2
     }
   }
 }

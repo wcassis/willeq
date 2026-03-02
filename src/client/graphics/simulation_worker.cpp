@@ -161,6 +161,8 @@ void SimulationWorker::clearZoneData() {
     zoneLightBaseColors_.clear();
     cachedVisionType_ = 255;
     cachedWeatherAmbientModifier_ = -1.0f;
+    cachedDepthMapRegion_ = SIZE_MAX;
+    cachedDepthMap_.clear();
     flickerPhases_.clear();
     workerOcclusionCuller_.reset();
     workerEntities_.clear();
@@ -449,6 +451,19 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
     // Sort front-to-back by distance
     std::sort(output.sortedRegions.begin(), output.sortedRegions.end(),
               [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
+
+    // Compute PVS depth map (portal adjacency BFS)
+    computeRegionDepthMap(input, output);
+
+    // Fallback for outdoor zones / regions not reachable via portals:
+    // Assign depth based on Euclidean distance buckets (100 units per depth level)
+    for (const auto& sr : output.sortedRegions) {
+        if (output.regionPvsDepth.count(sr.regionIdx) == 0) {
+            float dist = std::sqrt(sr.distanceSq);
+            uint8_t depth = static_cast<uint8_t>(std::min(254.0f, dist / 100.0f));
+            output.regionPvsDepth[sr.regionIdx] = depth;
+        }
+    }
 }
 
 // ============================================================================
@@ -531,6 +546,53 @@ void SimulationWorker::computePortalVisibility(const SimulationInput& input, Sim
             stack.push_back({toRegion, depth + 1});
         }
     }
+}
+
+// ============================================================================
+// PVS Depth Map (pure adjacency BFS, no frustum/facing checks)
+// ============================================================================
+
+void SimulationWorker::computeRegionDepthMap(const SimulationInput& input, SimulationOutput& output) {
+    output.regionPvsDepth.clear();
+    const auto* portalSystem = zoneData_.portalSystem;
+    if (!portalSystem || !portalSystem->hasPortals() || output.currentPvsRegion == SIZE_MAX)
+        return;
+
+    // Cache: skip BFS if region unchanged from previous frame
+    if (output.currentPvsRegion == cachedDepthMapRegion_ && !cachedDepthMap_.empty()) {
+        output.regionPvsDepth = cachedDepthMap_;
+        return;
+    }
+
+    size_t cameraRegion = output.currentPvsRegion;
+    output.regionPvsDepth[cameraRegion] = 0;
+
+    struct Entry { size_t region; uint8_t depth; };
+    std::vector<Entry> queue;
+    queue.push_back({cameraRegion, 0});
+    size_t head = 0;
+
+    constexpr uint8_t MAX_DEPTH = 8;
+
+    while (head < queue.size()) {
+        auto [fromRegion, depth] = queue[head++];
+        if (depth >= MAX_DEPTH) continue;
+
+        const auto& portals = portalSystem->getPortalsForRegion(fromRegion);
+        for (size_t portalIdx : portals) {
+            size_t toRegion = portalSystem->getOtherRegion(portalIdx, fromRegion);
+            if (toRegion == SIZE_MAX) continue;
+            if (output.regionPvsDepth.count(toRegion)) continue;
+
+            uint8_t newDepth = depth + 1;
+            output.regionPvsDepth[toRegion] = newDepth;
+            queue.push_back({toRegion, newDepth});
+        }
+    }
+
+    // Cache for next frame
+    cachedDepthMapRegion_ = cameraRegion;
+    cachedDepthMap_ = output.regionPvsDepth;
 }
 
 // ============================================================================

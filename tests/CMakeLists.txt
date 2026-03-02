@@ -188,6 +188,13 @@ ADD_EXECUTABLE(test_background_work_queue
 TARGET_LINK_LIBRARIES(test_background_work_queue GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_background_work_queue)
 
+# Test WorkPriorityKey unified priority system (header-only, no external dependencies)
+ADD_EXECUTABLE(test_work_priority
+    test_work_priority.cpp
+)
+TARGET_LINK_LIBRARIES(test_work_priority GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_work_priority)
+
 # Test StringDatabase loading and formatting
 ADD_EXECUTABLE(test_string_database
     test_string_database.cpp

@@ -31,6 +31,8 @@ public:
         uint16_t raceId;
         uint8_t gender;
         EntityAppearance appearance;
+        uint8_t pvsDepth = 255;          // PVS depth from depth map (0 = player region)
+        size_t bspRegion = SIZE_MAX;     // Cached BSP region for re-prioritization
     };
 
     struct PrepResult {
@@ -90,9 +92,12 @@ public:
     // Get number of pending requests (queued + dispatched + in-progress)
     size_t getPendingCount() const;
 
+    // Re-sort pending queue with updated PVS depths (called on region change)
+    void updateDepths(std::function<uint8_t(size_t)> depthLookup);
+
 private:
-    // Stable-sort pendingQueue_ by (raceId << 8 | gender) for cache locality
-    void sortPendingByModel();
+    // Stable-sort pendingQueue_ by (pvsDepth, raceKey) for priority + cache locality
+    void sortPendingByPriority();
 
     // Process a single prep request (runs on worker thread)
     PrepResult processRequest(PrepRequest&& req);

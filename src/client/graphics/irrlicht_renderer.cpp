@@ -4795,6 +4795,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                                         req.indexCount * sizeof(uint16_t));
                             req.callbackKey = (static_cast<uint64_t>(bi) << 48) |
                                               (static_cast<uint64_t>(regionBuildIndex_) & 0xFFFFFFFFFFFFULL);
+                            req.priority = WorkPriorityKey::make(getRegionPvsDepth(regionBuildIndex_), AssetType::ZoneMesh).value;
                             gpuUploadThread_->submit(std::move(req));
                         }
                         pendingVBOUploads_.insert(regionBuildIndex_);
@@ -5826,6 +5827,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
                 // Encode regionIdx (low 48 bits) + buffer index (high 16 bits)
                 req.callbackKey = (static_cast<uint64_t>(i) << 48) |
                                   (static_cast<uint64_t>(regionIdx) & 0xFFFFFFFFFFFFULL);
+                req.priority = WorkPriorityKey::make(getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
 
                 gpuUploadThread_->submit(std::move(req));
             }
@@ -7506,6 +7508,14 @@ void IrrlichtRenderer::applySimulationResults() {
 
         size_t prevPvsRegion = currentPvsRegion_;
         currentPvsRegion_ = results->currentPvsRegion;
+
+        // Apply PVS depth map from simulation worker
+        regionPvsDepthMap_ = results->regionPvsDepth;
+
+        // Re-prioritize pending queues on PVS region change
+        if (currentPvsRegion_ != prevPvsRegion && prevPvsRegion != SIZE_MAX) {
+            onPvsRegionChanged();
+        }
 
         // Always log PVS state from worker (throttled to every 30 frames)
         static int simWorkerPvsLogCounter = 0;
@@ -12002,6 +12012,44 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     checkProgressiveLoadingComplete();
 }
 
+uint8_t IrrlichtRenderer::getRegionPvsDepth(size_t regionIdx) const {
+    auto it = regionPvsDepthMap_.find(regionIdx);
+    return (it != regionPvsDepthMap_.end()) ? it->second : 255;
+}
+
+void IrrlichtRenderer::onPvsRegionChanged() {
+    // Re-sort entity prep pending queue with updated PVS depths
+    if (entityPrepWorker_) {
+        entityPrepWorker_->updateDepths([this](size_t bspRegion) {
+            return getRegionPvsDepth(bspRegion);
+        });
+    }
+
+#ifdef EQT_HAS_GLES2
+    // Re-prioritize GPU upload queue
+    if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+        gpuUploadThread_->reprioritize([this](const UploadRequest& req) -> uint32_t {
+            uint8_t sourceType = static_cast<uint8_t>(req.callbackKey >> 56);
+            if (sourceType == 0 || sourceType == 1) {
+                // VBO upload: low 48 bits = region index
+                size_t regionIdx = req.callbackKey & 0xFFFFFFFFFFFFULL;
+                uint8_t depth = getRegionPvsDepth(regionIdx);
+                return WorkPriorityKey::make(depth, AssetType::ZoneMesh).value;
+            } else if (sourceType == 2) {
+                // Entity texture
+                return WorkPriorityKey::make(0, AssetType::EntityTexture).value;
+            } else if (sourceType == 3) {
+                // Constrained cache texture
+                return WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
+            }
+            // Icons and unknown: lowest priority
+            return WorkPriorityKey::makeNonSpatial(AssetType::Icon).value;
+        });
+    }
+#endif
+    // meshLoadQueue_ and textureRebuildQueue_ are repopulated each frame — no action needed
+}
+
 void IrrlichtRenderer::queueEntityPrepRequests() {
     if (!entityPrepWorker_ || !entityRenderer_ || !entityPrepReady_) return;
 
@@ -12022,13 +12070,26 @@ void IrrlichtRenderer::queueEntityPrepRequests() {
         if (!vis.inSceneGraph) continue;
         // Don't re-queue entities whose background prep already completed
         if (vis.entityPrepComplete) continue;
-        // PVS gate: only prep entities in the player's current BSP region
-        // Player is always at currentPvsRegion_ by definition (cachedBspRegion
-        // is never computed for the player by SimulationWorker)
-        if (spawnId != playerSpawnId_ && vis.cachedBspRegion != currentPvsRegion_) continue;
+
+        // PVS depth gate: queue entities within configured portal hop distance
+        uint8_t depth = 255;
+        if (spawnId == playerSpawnId_) {
+            depth = 0;
+        } else {
+            depth = getRegionPvsDepth(vis.cachedBspRegion);
+        }
+        if (depth > static_cast<uint8_t>(config_.constrainedConfig.entityPrepMaxPvsDepth)) continue;
+
         // Per-entity dedup: each entity gets its own prep job (equipment/variant work differs)
         if (!entityPrepWorker_->isPendingForEntity(spawnId)) {
-            entityPrepWorker_->requestPrep({spawnId, vis.raceId, vis.gender, vis.appearance});
+            EntityPrepWorker::PrepRequest req;
+            req.spawnId = spawnId;
+            req.raceId = vis.raceId;
+            req.gender = vis.gender;
+            req.appearance = vis.appearance;
+            req.pvsDepth = depth;
+            req.bspRegion = vis.cachedBspRegion;
+            entityPrepWorker_->requestPrep(req);
         }
     }
 }

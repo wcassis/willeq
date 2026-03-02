@@ -54,8 +54,8 @@ void EntityPrepWorker::dispatchOne() {
     if (pendingQueue_.empty()) return;
     if (queue_ && !queue_->isIdle()) return;
 
-    // Sort pending queue by model key for cache locality before dispatching
-    sortPendingByModel();
+    // Sort pending queue by priority (PVS depth, then model key) before dispatching
+    sortPendingByPriority();
 
     PrepRequest req = pendingQueue_.front();
     pendingQueue_.pop_front();
@@ -82,14 +82,22 @@ bool EntityPrepWorker::isIdle() const {
     return !queue_ || queue_->isIdle();
 }
 
-void EntityPrepWorker::sortPendingByModel() {
-    // Main-thread-only: stable sort groups same race/gender together
+void EntityPrepWorker::sortPendingByPriority() {
+    // Main-thread-only: stable sort by PVS depth first, then model key for cache locality
     std::stable_sort(pendingQueue_.begin(), pendingQueue_.end(),
         [](const PrepRequest& a, const PrepRequest& b) {
+            if (a.pvsDepth != b.pvsDepth) return a.pvsDepth < b.pvsDepth;
             uint32_t keyA = (static_cast<uint32_t>(a.raceId) << 8) | a.gender;
             uint32_t keyB = (static_cast<uint32_t>(b.raceId) << 8) | b.gender;
             return keyA < keyB;
         });
+}
+
+void EntityPrepWorker::updateDepths(std::function<uint8_t(size_t)> depthLookup) {
+    for (auto& req : pendingQueue_) {
+        req.pvsDepth = (req.bspRegion != SIZE_MAX) ? depthLookup(req.bspRegion) : 255;
+    }
+    sortPendingByPriority();
 }
 
 void EntityPrepWorker::cancelPrep(uint16_t spawnId) {

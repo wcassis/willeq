@@ -406,6 +406,10 @@ struct SimulationOutput {
     // Portal-visible regions (BFS walk from camera room through portal graph)
     std::unordered_set<size_t> portalVisibleRegions;
 
+    // Region → portal BFS depth (0 = camera region, 1+ = adjacent through portals)
+    // Regions not in this map are unreachable via portals (depth = 255 fallback)
+    std::unordered_map<size_t, uint8_t> regionPvsDepth;
+
     // Regions needing lazy mesh loading (for constrained mesh cache)
     std::vector<size_t> meshLoadQueue;
     // Protected regions (visible + buffer ring, skip during eviction)
@@ -1017,6 +1021,11 @@ private:
         float intensity;
     };
     std::unordered_map<int64_t, WorkerResidualDisturbance> detailResiduals_;
+
+    // PVS depth map cache (BFS adjacency, no frustum checks)
+    size_t cachedDepthMapRegion_ = SIZE_MAX;
+    std::unordered_map<size_t, uint8_t> cachedDepthMap_;
+    void computeRegionDepthMap(const SimulationInput& input, SimulationOutput& output);
 
     // Priority tier scheduling
     static constexpr uint32_t kBackgroundInterval = 3;  // Background tier runs every N frames

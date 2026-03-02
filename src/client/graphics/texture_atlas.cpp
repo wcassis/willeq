@@ -4,6 +4,7 @@
 #endif
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
+#include "client/graphics/work_priority.h"
 #endif
 #include "common/logging.h"
 
@@ -261,6 +262,7 @@ bool TextureAtlas::uploadPreloadedPageAsync(PreloadData& data, int pageIndex,
     req.textureName = fmt::format("atlas_{}_{}", atlasType, pageIndex);
     // Encode atlas type + page index in callbackKey
     req.callbackKey = (static_cast<uint64_t>(atlasType) << 32) | static_cast<uint64_t>(pageIndex);
+    req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
 
     uploadThread->submit(std::move(req));
 

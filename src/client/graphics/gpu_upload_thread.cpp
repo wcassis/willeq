@@ -5,6 +5,7 @@
 #include "client/graphics/gpu_upload_thread.h"
 #include "common/logging.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 
@@ -178,8 +179,12 @@ void GPUUploadThread::workerLoop() {
                 break;
 
             if (!requestQueue_.empty()) {
-                request = std::move(requestQueue_.front());
-                requestQueue_.erase(requestQueue_.begin());
+                auto minIt = std::min_element(requestQueue_.begin(), requestQueue_.end(),
+                    [](const UploadRequest& a, const UploadRequest& b) {
+                        return a.priority < b.priority;
+                    });
+                request = std::move(*minIt);
+                requestQueue_.erase(minIt);
                 hasWork = true;
             }
         }
@@ -197,15 +202,19 @@ void GPUUploadThread::workerLoop() {
 
         processRequest(request);
 
-        // Drain remaining queued requests while context is bound
+        // Drain remaining queued requests while context is bound (min-priority first)
         while (running_.load(std::memory_order_acquire)) {
             UploadRequest nextReq;
             {
                 std::lock_guard<std::mutex> lock(requestMutex_);
                 if (requestQueue_.empty())
                     break;
-                nextReq = std::move(requestQueue_.front());
-                requestQueue_.erase(requestQueue_.begin());
+                auto minIt = std::min_element(requestQueue_.begin(), requestQueue_.end(),
+                    [](const UploadRequest& a, const UploadRequest& b) {
+                        return a.priority < b.priority;
+                    });
+                nextReq = std::move(*minIt);
+                requestQueue_.erase(minIt);
             }
             processRequest(nextReq);
         }
@@ -371,6 +380,13 @@ void GPUUploadThread::processVertexBufferUpload(const UploadRequest& req) {
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
         resultQueue_.push_back(std::move(result));
+    }
+}
+
+void GPUUploadThread::reprioritize(std::function<uint32_t(const UploadRequest&)> computePriority) {
+    std::lock_guard<std::mutex> lock(requestMutex_);
+    for (auto& req : requestQueue_) {
+        req.priority = computePriority(req);
     }
 }
 

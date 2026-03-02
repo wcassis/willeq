@@ -11,6 +11,7 @@
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -50,6 +51,9 @@ struct UploadRequest {
 
     // Callback routing key (regionIdx, atlasPageIndex, entity spawn ID, etc.)
     uint64_t callbackKey = 0;
+
+    // WorkPriorityKey::value. Lower = higher priority. Default = lowest.
+    uint32_t priority = 0xFFFFFFFF;
 };
 
 struct UploadResult {
@@ -109,6 +113,10 @@ public:
 
     // Number of completed uploads waiting to be polled
     size_t getCompletedCount() const;
+
+    // Re-prioritize pending requests (called from main thread on PVS region change).
+    // The callback computes a new priority for each pending request.
+    void reprioritize(std::function<uint32_t(const UploadRequest&)> computePriority);
 
     // Statistics for /pmem diagnostics
     uint64_t getTotalUploadsCompleted() const { return totalCompleted_.load(std::memory_order_relaxed); }
