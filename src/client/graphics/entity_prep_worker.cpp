@@ -19,21 +19,20 @@ EntityPrepWorker::~EntityPrepWorker() {
 }
 
 void EntityPrepWorker::start() {
-    if (running_.load()) return;
-    running_.store(true);
-    idle_.store(true, std::memory_order_release);
-    worker_ = std::thread(&EntityPrepWorker::workerLoop, this);
+    if (queue_) return;  // already started
+    queue_ = std::make_unique<BackgroundWorkQueue<PrepRequest, PrepResult>>(
+        [this](PrepRequest&& req) -> PrepResult { return processRequest(std::move(req)); });
+    queue_->start();
     LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: background thread started (equipLoader={})",
              equipLoader_ ? "yes" : "no");
 }
 
 void EntityPrepWorker::stop() {
-    if (!running_.load()) return;
-    running_.store(false);
-    cv_.notify_all();
-    if (worker_.joinable()) {
-        worker_.join();
-    }
+    if (!queue_) return;
+    queue_->stop();
+    queue_.reset();
+    dispatchedSpawnId_ = 0;
+    dispatchedKey_ = 0;
     LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: background thread stopped");
 }
 
@@ -53,7 +52,7 @@ void EntityPrepWorker::requestPrep(const PrepRequest& req) {
 void EntityPrepWorker::dispatchOne() {
     // Main-thread-only: called when governor is GREEN
     if (pendingQueue_.empty()) return;
-    if (!idle_.load(std::memory_order_acquire)) return;
+    if (queue_ && !queue_->isIdle()) return;
 
     // Sort pending queue by model key for cache locality before dispatching
     sortPendingByModel();
@@ -62,23 +61,25 @@ void EntityPrepWorker::dispatchOne() {
     pendingQueue_.pop_front();
     pendingSpawnIds_.erase(req.spawnId);
 
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        dispatchedRequest_ = req;
-        hasDispatchedWork_ = true;
-    }
-    cv_.notify_one();
+    dispatchedSpawnId_ = req.spawnId;
+    dispatchedKey_ = (static_cast<uint32_t>(req.raceId) << 8) | req.gender;
+
+    if (queue_) queue_->submit(std::move(req));
 
     LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: dispatched spawn={} race={} gender={} ({} pending)",
-              req.spawnId, req.raceId, req.gender, pendingQueue_.size());
+              dispatchedSpawnId_, dispatchedKey_ >> 8, dispatchedKey_ & 0xFF, pendingQueue_.size());
 }
 
 bool EntityPrepWorker::pollResult(PrepResult& out) {
-    std::lock_guard<std::mutex> lock(resultMutex_);
-    if (resultQueue_.empty()) return false;
-    out = std::move(resultQueue_.front());
-    resultQueue_.pop_front();
+    if (!queue_) return false;
+    if (!queue_->pollOne(out)) return false;
+    dispatchedSpawnId_ = 0;
+    dispatchedKey_ = 0;
     return true;
+}
+
+bool EntityPrepWorker::isIdle() const {
+    return !queue_ || queue_->isIdle();
 }
 
 void EntityPrepWorker::sortPendingByModel() {
@@ -102,36 +103,16 @@ void EntityPrepWorker::cancelPrep(uint16_t spawnId) {
 }
 
 bool EntityPrepWorker::isPendingForEntity(uint16_t spawnId) const {
-    // Check active work (worker thread)
-    {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeSpawnId_ == spawnId) return true;
-    }
-    // Check dispatch slot
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        if (hasDispatchedWork_ && dispatchedRequest_.spawnId == spawnId) return true;
-    }
+    // Check in-flight work (main-thread-only tracking)
+    if (dispatchedSpawnId_ == spawnId) return true;
     // Check pending queue (main-thread-only, no lock needed)
     return pendingSpawnIds_.count(spawnId) > 0;
 }
 
 bool EntityPrepWorker::isPending(uint16_t raceId, uint8_t gender) const {
     uint32_t key = (static_cast<uint32_t>(raceId) << 8) | gender;
-    // Check active work
-    {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeKey_ == key) return true;
-    }
-    // Check dispatch slot
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        if (hasDispatchedWork_) {
-            uint32_t dKey = (static_cast<uint32_t>(dispatchedRequest_.raceId) << 8)
-                            | dispatchedRequest_.gender;
-            if (dKey == key) return true;
-        }
-    }
+    // Check in-flight work (main-thread-only tracking)
+    if (dispatchedKey_ == key) return true;
     // Check pending queue (main-thread-only)
     for (const auto& req : pendingQueue_) {
         if (req.raceId == raceId && req.gender == gender) return true;
@@ -140,120 +121,77 @@ bool EntityPrepWorker::isPending(uint16_t raceId, uint8_t gender) const {
 }
 
 size_t EntityPrepWorker::getPendingCount() const {
-    size_t count = pendingQueue_.size();
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        if (hasDispatchedWork_) count++;
-    }
-    {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeKey_ != 0) count++;
-    }
-    return count;
+    return pendingQueue_.size() + (dispatchedSpawnId_ != 0 ? 1 : 0);
 }
 
-void EntityPrepWorker::workerLoop() {
-    while (running_.load()) {
-        PrepRequest req;
-        {
-            std::unique_lock<std::mutex> lock(queueMutex_);
-            cv_.wait(lock, [this] { return hasDispatchedWork_ || !running_.load(); });
-            if (!running_.load()) break;
-            if (!hasDispatchedWork_) continue;
-            req = dispatchedRequest_;
-            hasDispatchedWork_ = false;
-        }
+EntityPrepWorker::PrepResult EntityPrepWorker::processRequest(PrepRequest&& req) {
+    auto start = std::chrono::steady_clock::now();
 
-        // Mark as active, no longer idle
-        idle_.store(false, std::memory_order_release);
-        uint32_t key = (static_cast<uint32_t>(req.raceId) << 8) | req.gender;
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            activeKey_ = key;
-            activeSpawnId_ = req.spawnId;
-        }
+    // Step 1: Base race model prep (S3D load, WLD parse, animation merge)
+    uint32_t key = (static_cast<uint32_t>(req.raceId) << 8) | req.gender;
+    bool alreadyCached = modelLoader_->isModelDataCached(key);
 
-        auto start = std::chrono::steady_clock::now();
+    bool success = false;
+    if (alreadyCached) {
+        success = true;
+        LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: race={} gender={} already cached, skipping base prep",
+                  req.raceId, req.gender);
+    } else {
+        // CPU-heavy work (300-500ms on ARM) — runs OFF main thread
+        success = modelLoader_->preloadModelData(req.raceId, req.gender);
 
-        // Step 1: Base race model prep (S3D load, WLD parse, animation merge)
-        bool alreadyCached = modelLoader_->isModelDataCached(key);
-
-        bool success = false;
-        if (alreadyCached) {
-            success = true;
-            LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: race={} gender={} already cached, skipping base prep",
-                      req.raceId, req.gender);
-        } else {
-            // CPU-heavy work (300-500ms on ARM) — runs OFF main thread
-            success = modelLoader_->preloadModelData(req.raceId, req.gender);
-
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start).count();
-            LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: preload race={} gender={} took {}ms success={}",
-                     req.raceId, req.gender, elapsed, success);
-        }
-
-        // Step 1b: Variant model prep (S3D load + WLD parse + animation merge for zone-specific variants)
-        // This moves the expensive S3D load (e.g., commons_chr.s3d for QCM) off the render thread
-        if (success) {
-            uint8_t headVariant = req.appearance.helm;
-            uint8_t bodyVariant = 0;
-
-            // Check for robe body variant from texture or chest equipment
-            uint8_t chestMaterial = static_cast<uint8_t>(
-                req.appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF);
-            if (isRobeTexture(req.appearance.texture) || isRobeTexture(chestMaterial)) {
-                bodyVariant = 1;
-            }
-
-            if (headVariant != 0 || bodyVariant != 0) {
-                auto variantStart = std::chrono::steady_clock::now();
-                bool variantOk = modelLoader_->preloadVariantModel(
-                    req.raceId, req.gender, headVariant, bodyVariant);
-                auto variantElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - variantStart).count();
-                LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: variant prep race={} head={} body={} took {}ms success={}",
-                         req.raceId, (int)headVariant, (int)bodyVariant, variantElapsed, variantOk);
-            }
-        }
-
-        // Build result with per-entity data
-        PrepResult result;
-        result.spawnId = req.spawnId;
-        result.raceId = req.raceId;
-        result.gender = req.gender;
-        result.appearance = req.appearance;
-        result.success = success;
-
-        if (success) {
-            // Step 2: Variant texture decode (body-part overrides based on appearance)
-            prepVariantTextures(req, result);
-
-            // Step 3: Equipment S3D extraction + texture decode
-            prepEquipmentModels(req, result);
-        }
-
-        auto totalElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
-        LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: spawn={} total prep took {}ms (variants={}, equip={})",
-                 req.spawnId, totalElapsed, result.variantTextures.size(), result.equipmentData.size());
-
-        // Clear active marker
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            activeKey_ = 0;
-            activeSpawnId_ = 0;
-        }
-
-        // Push result
-        {
-            std::lock_guard<std::mutex> lock(resultMutex_);
-            resultQueue_.push_back(std::move(result));
-        }
-
-        // Signal idle — main thread can dispatch next item on next GREEN frame
-        idle_.store(true, std::memory_order_release);
+        LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: preload race={} gender={} took {}ms success={}",
+                 req.raceId, req.gender, elapsed, success);
     }
+
+    // Step 1b: Variant model prep (S3D load + WLD parse + animation merge for zone-specific variants)
+    // This moves the expensive S3D load (e.g., commons_chr.s3d for QCM) off the render thread
+    if (success) {
+        uint8_t headVariant = req.appearance.helm;
+        uint8_t bodyVariant = 0;
+
+        // Check for robe body variant from texture or chest equipment
+        uint8_t chestMaterial = static_cast<uint8_t>(
+            req.appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF);
+        if (isRobeTexture(req.appearance.texture) || isRobeTexture(chestMaterial)) {
+            bodyVariant = 1;
+        }
+
+        if (headVariant != 0 || bodyVariant != 0) {
+            auto variantStart = std::chrono::steady_clock::now();
+            bool variantOk = modelLoader_->preloadVariantModel(
+                req.raceId, req.gender, headVariant, bodyVariant);
+            auto variantElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - variantStart).count();
+            LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: variant prep race={} head={} body={} took {}ms success={}",
+                     req.raceId, (int)headVariant, (int)bodyVariant, variantElapsed, variantOk);
+        }
+    }
+
+    // Build result with per-entity data
+    PrepResult result;
+    result.spawnId = req.spawnId;
+    result.raceId = req.raceId;
+    result.gender = req.gender;
+    result.appearance = req.appearance;
+    result.success = success;
+
+    if (success) {
+        // Step 2: Variant texture decode (body-part overrides based on appearance)
+        prepVariantTextures(req, result);
+
+        // Step 3: Equipment S3D extraction + texture decode
+        prepEquipmentModels(req, result);
+    }
+
+    auto totalElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: spawn={} total prep took {}ms (variants={}, equip={})",
+             req.spawnId, totalElapsed, result.variantTextures.size(), result.equipmentData.size());
+
+    return result;
 }
 
 // Decode a BMP file (raw BMP, not DDS-disguised-as-BMP) to ARGB pixels
