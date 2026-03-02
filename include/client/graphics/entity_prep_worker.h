@@ -80,9 +80,6 @@ public:
     // True when the worker has no active work item and is waiting for dispatch
     bool isIdle() const { return idle_.load(std::memory_order_acquire); }
 
-    // Stable-sort pendingQueue_ by (raceId << 8 | gender) for cache locality
-    void sortPendingByModel();
-
     // Remove a specific entity from the pending queue (despawn/left visibility)
     void cancelPrep(uint16_t spawnId);
 
@@ -96,6 +93,9 @@ public:
     size_t getPendingCount() const;
 
 private:
+    // Stable-sort pendingQueue_ by (raceId << 8 | gender) for cache locality
+    void sortPendingByModel();
+
     void workerLoop();
 
     // Decode variant textures for an entity's appearance (body-part overrides)

@@ -2285,6 +2285,7 @@ void IrrlichtRenderer::unloadZone() {
     environmentInitPending_ = false;
     deferredInitActive_ = false;
     entityPrepReady_ = false;
+    entityPrepScanCounter_ = 0;
 
     // Log texture counts before cleanup
     if (constrainedTextureCache_) {
@@ -2903,6 +2904,7 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     regionBuildInitDone_ = false;
     regionMeshCacheInstallStarted_ = false;
     entityPrepReady_ = false;
+    entityPrepScanCounter_ = 0;
 
     // EntityPrepWorker is now created at EntityLoading phase (not here)
     // so entity work doesn't start until /load entities in manual mode.
@@ -8253,45 +8255,48 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     // Entity prep runs for the entire session (entities move in/out of scene graph).
-    // Outside progressive loading, handle prep queue/dispatch/poll/build under GREEN governor.
+    // Outside progressive loading: lightweight ops always run, heavy ops use didWork mutual exclusion.
     if (!progressiveLoadingActive_ && entityPrepReady_ && entityPrepWorker_ && entityRenderer_) {
-        // Promote background-preloaded model data to main cache
+        // Lightweight ops (always run, no governor gate):
         entityRenderer_->getRaceModelLoader()->promotePreparedModels();
-
-        if (!governor_ || governor_->getState() == BudgetState::Green) {
+        if (++entityPrepScanCounter_ % 10 == 0) {
             queueEntityPrepRequests();
-            if (entityPrepWorker_->isIdle()) {
-                entityPrepWorker_->sortPendingByModel();
-                entityPrepWorker_->dispatchOne();
-            }
-            entityRenderer_->pollAndDistributePrepResults();
-            if (!config_.constrainedConfig.skipEntityBuild) {
-                entityRenderer_->processOneEntityBuildStep();
-            }
         }
-    }
+        if (entityPrepWorker_->isIdle()) {
+            entityPrepWorker_->dispatchOne();
+        }
 
-    // Texture-ready region rebuilds outside progressive mode (GREEN-only, 1 per frame)
-    if (!progressiveLoadingActive_ && constrainedMeshCache_ && !textureRebuildQueue_.empty()) {
+        // Heavy ops (ONE per GREEN frame, mutual exclusion with texture rebuilds):
         if (!governor_ || governor_->getState() == BudgetState::Green) {
-            auto texEntry = textureRebuildQueue_.front();
-            textureRebuildQueue_.erase(textureRebuildQueue_.begin());
+            bool didWork = false;
 
-            auto existingIt = regionMeshNodes_.find(texEntry.regionIdx);
-            if (existingIt != regionMeshNodes_.end() && existingIt->second) {
-                deleteMeshHardwareBuffers(existingIt->second);
-                if (animatedTextureManager_)
-                    animatedTextureManager_->removeSceneNode(existingIt->second);
-                if (existingIt->second->getParent()) existingIt->second->remove();
-                else existingIt->second->drop();
-                existingIt->second = nullptr;
+            if (!didWork) {
+                didWork = entityRenderer_->pollAndDistributePrepResults();
             }
+            if (!didWork && !config_.constrainedConfig.skipEntityBuild) {
+                didWork = entityRenderer_->processOneEntityBuildStep(currentPvsRegion_);
+            }
+            if (!didWork && constrainedMeshCache_ && !textureRebuildQueue_.empty()) {
+                auto texEntry = textureRebuildQueue_.front();
+                textureRebuildQueue_.erase(textureRebuildQueue_.begin());
 
-            constrainedMeshCache_->markForRebuild(texEntry.regionIdx);
-            if (rebuildRegionMesh(texEntry.regionIdx)) {
-                addRegionToCollision(texEntry.regionIdx);
-                LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt region {} with textures (queue remaining: {})",
-                         texEntry.regionIdx, textureRebuildQueue_.size());
+                auto existingIt = regionMeshNodes_.find(texEntry.regionIdx);
+                if (existingIt != regionMeshNodes_.end() && existingIt->second) {
+                    deleteMeshHardwareBuffers(existingIt->second);
+                    if (animatedTextureManager_)
+                        animatedTextureManager_->removeSceneNode(existingIt->second);
+                    if (existingIt->second->getParent()) existingIt->second->remove();
+                    else existingIt->second->drop();
+                    existingIt->second = nullptr;
+                }
+
+                constrainedMeshCache_->markForRebuild(texEntry.regionIdx);
+                if (rebuildRegionMesh(texEntry.regionIdx)) {
+                    addRegionToCollision(texEntry.regionIdx);
+                    LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt region {} with textures (queue remaining: {})",
+                             texEntry.regionIdx, textureRebuildQueue_.size());
+                }
+                didWork = true;
             }
         }
     }
@@ -11791,7 +11796,9 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         }
         // Populate pending queue even when not GREEN (zero-cost, main-thread-only).
         // Do NOT dispatch — worker stays idle during non-GREEN frames.
-        queueEntityPrepRequests();
+        if (++entityPrepScanCounter_ % 10 == 0) {
+            queueEntityPrepRequests();
+        }
         checkProgressiveLoadingComplete();
         return;
     }
@@ -11799,20 +11806,26 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     bool didWork = false;
     auto stepStart = std::chrono::steady_clock::now();
 
-    // Priority 1: Process one entity build step (most visible missing asset)
-    if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
-        // Populate pending queue, then dispatch one item if worker is idle.
-        // Sort by model key right before dispatch for cache locality.
-        queueEntityPrepRequests();
+    // Lightweight entity ops (always run under GREEN, no didWork cost):
+    if (entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
+        if (++entityPrepScanCounter_ % 10 == 0) {
+            queueEntityPrepRequests();
+        }
         if (entityPrepWorker_ && entityPrepWorker_->isIdle()) {
-            entityPrepWorker_->sortPendingByModel();
             entityPrepWorker_->dispatchOne();
         }
+    }
 
-        // Poll completed prep results and distribute per-entity data
-        entityRenderer_->pollAndDistributePrepResults();
-
-        if (entityRenderer_->processOneEntityBuildStep()) {
+    // Priority 1: Heavy entity ops (cost didWork budget)
+    if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
+        // Poll completed prep results — distributing a result consumes the budget
+        if (entityRenderer_->pollAndDistributePrepResults()) {
+            didWork = true;
+            logAssetBuildTime("entity_poll", 0, stepStart);
+        }
+    }
+    if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
+        if (entityRenderer_->processOneEntityBuildStep(currentPvsRegion_)) {
             didWork = true;
             logAssetBuildTime("entity_step", 0, stepStart);
             // Report entity progress to chat
@@ -12069,7 +12082,14 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
 
     if (entityRenderer_) {
         for (const auto& [id, vis] : entityRenderer_->getEntities()) {
-            if (!vis.meshBuilt && vis.inSceneGraph) unbuiltEntities++;
+            if (!vis.meshBuilt && vis.inSceneGraph) {
+                // Only count entities in the player's PVS region as blocking.
+                // Out-of-region entities will be built lazily when the player moves.
+                if (currentPvsRegion_ != SIZE_MAX &&
+                    id != playerSpawnId_ && vis.cachedBspRegion != currentPvsRegion_)
+                    continue;
+                unbuiltEntities++;
+            }
         }
     }
 

@@ -55,6 +55,9 @@ void EntityPrepWorker::dispatchOne() {
     if (pendingQueue_.empty()) return;
     if (!idle_.load(std::memory_order_acquire)) return;
 
+    // Sort pending queue by model key for cache locality before dispatching
+    sortPendingByModel();
+
     PrepRequest req = pendingQueue_.front();
     pendingQueue_.pop_front();
     pendingSpawnIds_.erase(req.spawnId);

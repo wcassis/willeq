@@ -122,6 +122,7 @@ struct EntityVisual {
     size_t nextEquipTextureUpload = 0;
 
     bool entityPrepComplete = false;  // Background prep finished for this entity
+    bool texturesSubmittedToGpu = false;  // All decoded textures submitted to GPU upload thread
 
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played
@@ -506,7 +507,8 @@ public:
     bool buildEntityMesh(uint16_t spawnId);
     // Advance one entity through the multi-frame build pipeline.
     // Returns true if work was done this frame.
-    bool processOneEntityBuildStep();
+    // pvsRegion: only build entities in this BSP region (SIZE_MAX = no filter).
+    bool processOneEntityBuildStep(size_t pvsRegion = SIZE_MAX);
     // Check if entity mesh is built
     bool isEntityMeshBuilt(uint16_t spawnId) const;
     // Get spawn IDs of all entities with meshBuilt == false
@@ -518,7 +520,8 @@ public:
     // Poll completed prep results from background thread and distribute
     // variant/equipment data to the corresponding EntityVisual structs.
     // Call this once per frame before processOneEntityBuildStep().
-    void pollAndDistributePrepResults();
+    // Returns true if any results were distributed (consumes governor budget).
+    bool pollAndDistributePrepResults();
 
     // Constrained rendering support
     // Set the constrained renderer config for entity visibility limits

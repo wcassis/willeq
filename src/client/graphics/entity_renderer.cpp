@@ -826,8 +826,16 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     return true;
 }
 
-void EntityRenderer::pollAndDistributePrepResults() {
-    if (!entityPrepWorker_) return;
+#ifdef EQT_HAS_GLES2
+// Forward declaration — defined below pollAndDistributePrepResults
+static bool submitAsyncEntityTexture(GPUUploadThread* thread,
+                                      const DecodedTexture& decoded,
+                                      uint16_t spawnId);
+#endif
+
+bool EntityRenderer::pollAndDistributePrepResults() {
+    if (!entityPrepWorker_) return false;
+    bool distributed = false;
     EntityPrepWorker::PrepResult result;
     while (entityPrepWorker_->pollResult(result)) {
         auto it = entities_.find(result.spawnId);
@@ -851,11 +859,40 @@ void EntityRenderer::pollAndDistributePrepResults() {
             vis.equipmentStaging.push_back(std::move(staging));
         }
 
+#ifdef EQT_HAS_GLES2
+        // Submit ALL decoded textures to GPU upload thread immediately.
+        // This moves texture upload work off the render thread entirely —
+        // the TextureUploading/VariantTextureUploading/EquipTextureUploading
+        // phases will trivially fall through when texturesSubmittedToGpu is set.
+        if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+            // Get base race model decoded textures
+            auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
+            if (modelData) {
+                for (const auto& decoded : modelData->decodedTextures) {
+                    submitAsyncEntityTexture(gpuUploadThread_, decoded, result.spawnId);
+                }
+            }
+            // Variant textures
+            for (const auto& decoded : vis.variantTextures) {
+                submitAsyncEntityTexture(gpuUploadThread_, decoded, result.spawnId);
+            }
+            // Equipment textures
+            for (const auto& decoded : vis.equipmentTextures) {
+                submitAsyncEntityTexture(gpuUploadThread_, decoded, result.spawnId);
+            }
+            vis.texturesSubmittedToGpu = true;
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) submitted all textures to GPU upload thread",
+                      result.spawnId, vis.name);
+        }
+#endif
+
         vis.entityPrepComplete = true;
+        distributed = true;
         LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) prep complete: {} variant tex, {} equip pieces, {} equip tex",
                   result.spawnId, vis.name, vis.variantTextures.size(),
                   vis.equipmentStaging.size(), vis.equipmentTextures.size());
     }
+    return distributed;
 }
 
 // Helper: upload one pre-decoded texture to GPU and register in mesh builder cache
@@ -931,7 +968,7 @@ static bool submitAsyncEntityTexture(GPUUploadThread* thread,
 }
 #endif // EQT_HAS_GLES2
 
-bool EntityRenderer::processOneEntityBuildStep() {
+bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
     if (!smgr_ || !raceModelLoader_) return false;
 
     // Find nearest unbuilt entity that's ready for work
@@ -961,6 +998,14 @@ bool EntityRenderer::processOneEntityBuildStep() {
         // Culled entities (distance/frustum/portal/occlusion) stay as placeholders.
         // Exception: entities already in-progress — finish them to avoid wasted partial work.
         if (!inProgress && !vis.inSceneGraph) continue;
+
+        // PVS region gate: only build entities in the player's region.
+        // Before PVS is active (pvsRegion == SIZE_MAX), skip all non-in-progress entities
+        // — entity loading must wait until BSP/PVS culling has run.
+        if (!inProgress && spawnId != playerSpawnId_) {
+            if (pvsRegion == SIZE_MAX) continue;
+            if (vis.cachedBspRegion != pvsRegion) continue;
+        }
 
         float dx = vis.lastX - playerX;
         float dy = vis.lastY - playerY;
@@ -1125,6 +1170,13 @@ bool EntityRenderer::processOneEntityBuildStep() {
         }
 
         case EntityBuildPhase::TextureUploading: {
+            // Textures already submitted to GPU upload thread — skip to next phase
+            if (vis.texturesSubmittedToGpu) {
+                vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
+                vis.nextVariantUpload = 0;
+                continue;  // trivial transition — fall through
+            }
+
             // Upload one pre-decoded base race texture per frame
             auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
             if (!modelData || vis.nextTextureUpload >= modelData->decodedTextures.size()) {
@@ -1166,6 +1218,12 @@ bool EntityRenderer::processOneEntityBuildStep() {
         }
 
         case EntityBuildPhase::VariantTextureUploading: {
+            // Textures already submitted to GPU upload thread — skip to next phase
+            if (vis.texturesSubmittedToGpu) {
+                vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
+                continue;  // trivial transition — fall through
+            }
+
             // Upload one pre-decoded variant texture per frame
             if (vis.nextVariantUpload >= vis.variantTextures.size()) {
                 // No variant textures or all uploaded — move to scene node creation
@@ -1458,6 +1516,12 @@ bool EntityRenderer::processOneEntityBuildStep() {
         }
 
         case EntityBuildPhase::EquipTextureUploading: {
+            // Textures already submitted to GPU upload thread — skip to next phase
+            if (vis.texturesSubmittedToGpu) {
+                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
+                continue;  // trivial transition — fall through
+            }
+
             // Upload one pre-decoded equipment texture per frame
             if (vis.nextEquipTextureUpload >= vis.equipmentTextures.size()) {
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;

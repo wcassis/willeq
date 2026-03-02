@@ -1248,6 +1248,7 @@ private:
     std::unique_ptr<EntityRenderer> entityRenderer_;
     std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
     bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
+    int entityPrepScanCounter_ = 0;  // Throttle queueEntityPrepRequests to every ~10 frames
     std::unique_ptr<SimulationWorker> simulationWorker_;  // Background simulation (visibility, lighting, animation)
 #ifdef EQT_HAS_GLES2
     std::unique_ptr<GPUUploadThread> gpuUploadThread_;   // Async GPU upload thread (shared EGL context)
