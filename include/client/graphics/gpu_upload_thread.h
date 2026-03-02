@@ -1,5 +1,6 @@
 // gpu_upload_thread.h — Dedicated GPU upload thread with shared EGL context
 // Processes texture and VBO uploads asynchronously to avoid render thread stalls.
+// Uses BackgroundWorkQueue with batch hooks for EGL context bind/unbind.
 // Uses EGL_KHR_fence_sync for GPU synchronization between contexts.
 
 #ifndef EQT_GRAPHICS_GPU_UPLOAD_THREAD_H
@@ -7,18 +8,16 @@
 
 #ifdef EQT_HAS_GLES2
 
+#include "client/graphics/background_work_queue.h"
+
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace EQT {
@@ -118,11 +117,10 @@ public:
     EGLDisplay getEGLDisplay() const { return display_; }
 
 private:
-    void workerLoop();
-    void processRequest(const UploadRequest& req);
-    void processTextureUpload(const UploadRequest& req);
-    void processCompressedTextureUpload(const UploadRequest& req);
-    void processVertexBufferUpload(const UploadRequest& req);
+    UploadResult processRequest(const UploadRequest& req);
+    UploadResult processTextureUpload(const UploadRequest& req);
+    UploadResult processCompressedTextureUpload(const UploadRequest& req);
+    UploadResult processVertexBufferUpload(const UploadRequest& req);
 
     // EGL state
     EGLDisplay display_ = EGL_NO_DISPLAY;
@@ -135,19 +133,9 @@ private:
     PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR_ = nullptr;
     PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR_ = nullptr;
 
-    // Thread state
-    std::unique_ptr<std::thread> thread_;
-    std::atomic<bool> running_{false};
+    // Background work queue
+    std::unique_ptr<BackgroundWorkQueue<UploadRequest, UploadResult>> queue_;
     std::atomic<bool> available_{false};
-
-    // Request queue (any thread pushes, worker thread pops)
-    std::mutex requestMutex_;
-    std::condition_variable requestCv_;
-    std::vector<UploadRequest> requestQueue_;
-
-    // Result queue (worker thread pushes, render thread pops)
-    mutable std::mutex resultMutex_;
-    std::vector<UploadResult> resultQueue_;
 
     // Request ID generator
     std::atomic<uint32_t> nextRequestId_{1};
