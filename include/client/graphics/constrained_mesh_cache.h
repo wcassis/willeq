@@ -28,6 +28,10 @@ public:
     // Mark region as recently accessed (move to back of LRU).
     void touch(size_t regionIdx);
 
+    // Mark a loaded region for rebuild (resets loaded state without eviction).
+    // Subtracts old size from budget so onLoaded() won't double-count.
+    void markForRebuild(size_t regionIdx);
+
     // Check if region mesh is currently loaded.
     bool isLoaded(size_t regionIdx) const;
 

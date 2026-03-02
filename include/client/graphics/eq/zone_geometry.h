@@ -99,6 +99,10 @@ public:
     }
 #endif
 
+    // Textures that were null during the last build (async GPU upload not yet complete).
+    // Caller can check after buildAtlasedMesh/buildTexturedMesh to queue rebuilds.
+    const std::vector<std::string>& getMissingTextures() const { return missingTextures_; }
+
 private:
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
@@ -115,6 +119,9 @@ private:
 
     // Optional constrained texture cache for memory-limited rendering
     ConstrainedTextureCache* constrainedCache_ = nullptr;
+
+    // Textures that resolved to null during mesh build (async upload pending)
+    std::vector<std::string> missingTextures_;
 
     // GLSL shader material type IDs (-1 = not available)
     irr::s32 shaderMaterialSolid_ = -1;

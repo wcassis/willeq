@@ -1746,13 +1746,14 @@ size_t COpenGLES2Driver::getHWBufferCount() const
 }
 
 ITexture* COpenGLES2Driver::wrapExternalTexture(const io::path& name, GLuint glTexName,
-                                                 const core::dimension2d<u32>& size)
+                                                 const core::dimension2d<u32>& size,
+                                                 u32 gpuBytes)
 {
     ITexture* existing = findTexture(name);
     if (existing)
         return existing;
 
-    COGLES2Texture* tex = new COGLES2Texture(name, glTexName, size, this);
+    COGLES2Texture* tex = new COGLES2Texture(name, glTexName, size, this, gpuBytes);
     CNullDriver::addTexture(tex);
     tex->drop();
     return tex;
@@ -1831,11 +1832,12 @@ size_t gles2GetGpuTextureMemoryUsage(void* driver)
 }
 
 void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
-                        unsigned int width, unsigned int height)
+                        unsigned int width, unsigned int height,
+                        unsigned int gpuBytes)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     irr::core::dimension2d<irr::u32> size(width, height);
-    return d->wrapExternalTexture(irr::io::path(name), (GLuint)glTexName, size);
+    return d->wrapExternalTexture(irr::io::path(name), (GLuint)glTexName, size, gpuBytes);
 }
 
 void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,

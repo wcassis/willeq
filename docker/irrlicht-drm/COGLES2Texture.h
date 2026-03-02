@@ -29,8 +29,10 @@ public:
                    COpenGLES2Driver* driver);
 
     // Wrap an already-uploaded GL texture (no glGenTextures/glTexImage2D — caller owns the upload)
+    // gpuBytes: actual GPU memory consumed (0 = assume RGBA8888 = w*h*4)
     COGLES2Texture(const io::path& name, GLuint glTexName,
-                   const core::dimension2d<u32>& size, COpenGLES2Driver* driver);
+                   const core::dimension2d<u32>& size, COpenGLES2Driver* driver,
+                   u32 gpuBytes = 0);
 
     virtual ~COGLES2Texture();
 

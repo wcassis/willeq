@@ -1346,6 +1346,17 @@ private:
     std::unordered_set<size_t> protectedRegions_;  // visible + buffer ring (skip during eviction)
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
+    // Regions waiting for async fallback textures to complete GPU upload.
+    // Maps texture name → set of region indices that were built without that texture.
+    std::unordered_map<std::string, std::unordered_set<size_t>> pendingTextureRegions_;
+
+    // Regions queued for texture-ready rebuild (sorted: player region first, then by distance)
+    struct TextureRebuildEntry {
+        size_t regionIdx;
+        float distanceSq;
+    };
+    std::vector<TextureRebuildEntry> textureRebuildQueue_;
+
     // Deferred/progressive asset loading state (DeferredObject defined above PendingZoneComputations)
     std::vector<DeferredObject> deferredObjects_;
     bool progressiveLoadingActive_ = false;

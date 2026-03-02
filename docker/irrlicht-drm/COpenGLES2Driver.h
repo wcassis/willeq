@@ -337,8 +337,10 @@ public:
     size_t getHWBufferCount() const;
 
     // Wrap an already-uploaded GL texture as an ITexture (for strip uploads)
+    // gpuBytes: actual GPU memory consumed (0 = assume RGBA8888 = w*h*4)
     ITexture* wrapExternalTexture(const io::path& name, GLuint glTexName,
-                                   const core::dimension2d<u32>& size);
+                                   const core::dimension2d<u32>& size,
+                                   u32 gpuBytes = 0);
 
     // GPU texture memory query (sum of all texture GpuBytes)
     size_t getGpuTextureMemoryUsage() const;

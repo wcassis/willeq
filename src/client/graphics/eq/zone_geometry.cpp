@@ -355,6 +355,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
     const ZoneGeometry& geometry,
     const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
     bool flipV) {
+    missingTextures_.clear();
 
     if (geometry.vertices.empty() || geometry.triangles.empty()) {
         return nullptr;
@@ -434,6 +435,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                             texturesWithAlpha_.insert(texName);
                         }
                     }
+                }
+
+                // Record textures that resolved to null (async GPU upload still pending)
+                if (!texture && !lowerTexName.empty()) {
+                    missingTextures_.push_back(lowerTexName);
                 }
             }
         }
@@ -705,6 +711,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
     const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
     const TextureAtlas& atlas,
     int pageIndexOffset) {
+    missingTextures_.clear();
 
     if (geometry.vertices.empty() || geometry.triangles.empty()) {
         return nullptr;
@@ -979,6 +986,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
                 if (!texture && constrainedCache_) {
                     texture = constrainedCache_->getTexture(lowerTexName);
                     if (!texture) texture = constrainedCache_->getTexture(texName);
+                }
+
+                // Record textures that resolved to null (async GPU upload still pending)
+                if (!texture && !lowerTexName.empty()) {
+                    missingTextures_.push_back(lowerTexName);
                 }
             }
         }

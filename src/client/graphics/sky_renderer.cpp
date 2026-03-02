@@ -11,7 +11,8 @@
 #include <GLES2/gl2.h>
 // Bridge function defined in COpenGLES2Driver.cpp
 extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
-                                unsigned int width, unsigned int height);
+                                unsigned int width, unsigned int height,
+                                unsigned int gpuBytes = 0);
 #endif
 
 namespace EQT {

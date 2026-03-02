@@ -53,6 +53,28 @@ void ConstrainedMeshCache::onLoaded(size_t regionIdx, irr::scene::IMeshSceneNode
     cacheHits_++;
 }
 
+void ConstrainedMeshCache::markForRebuild(size_t regionIdx) {
+    auto it = cache_.find(regionIdx);
+    if (it == cache_.end()) return;
+
+    auto& entry = it->second;
+    if (!entry.loaded) return;  // Already unloaded, nothing to do
+
+    // Subtract old size from budget so onLoaded() won't double-count
+    if (entry.sizeBytes <= currentUsage_) {
+        currentUsage_ -= entry.sizeBytes;
+    } else {
+        currentUsage_ = 0;
+    }
+
+    entry.loaded = false;
+    entry.node = nullptr;  // Caller handles node cleanup before calling this
+    entry.sizeBytes = 0;
+
+    LOG_DEBUG(MOD_GRAPHICS, "MeshCache: marked region {} for rebuild (usage now {} bytes)",
+              regionIdx, currentUsage_);
+}
+
 void ConstrainedMeshCache::touch(size_t regionIdx) {
     auto it = cache_.find(regionIdx);
     if (it == cache_.end() || !it->second.loaded) return;
