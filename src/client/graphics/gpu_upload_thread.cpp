@@ -162,17 +162,12 @@ size_t GPUUploadThread::getCompletedCount() const {
 }
 
 void GPUUploadThread::workerLoop() {
-    // Bind shared context to this thread
-    if (!eglMakeCurrent(display_, surface_, surface_, sharedContext_)) {
-        EGLint err = eglGetError();
-        LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread worker: eglMakeCurrent failed (error 0x{:04X})", err);
-        running_.store(false, std::memory_order_release);
-        return;
-    }
-    LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: EGL context bound");
+    LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: started (context unbound)");
 
     while (running_.load(std::memory_order_acquire)) {
+        // Wait for work (context unbound — no cross-context sync overhead)
         UploadRequest request;
+        bool hasWork = false;
         {
             std::unique_lock<std::mutex> lock(requestMutex_);
             requestCv_.wait(lock, [this] {
@@ -182,17 +177,45 @@ void GPUUploadThread::workerLoop() {
             if (!running_.load(std::memory_order_acquire))
                 break;
 
-            if (requestQueue_.empty())
-                continue;
+            if (!requestQueue_.empty()) {
+                request = std::move(requestQueue_.front());
+                requestQueue_.erase(requestQueue_.begin());
+                hasWork = true;
+            }
+        }
 
-            request = std::move(requestQueue_.front());
-            requestQueue_.erase(requestQueue_.begin());
+        if (!hasWork)
+            continue;
+
+        // Bind context before processing
+        if (!eglMakeCurrent(display_, surface_, surface_, sharedContext_)) {
+            EGLint err = eglGetError();
+            LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: eglMakeCurrent bind failed (0x{:04X})", err);
+            running_.store(false, std::memory_order_release);
+            return;
         }
 
         processRequest(request);
+
+        // Drain remaining queued requests while context is bound
+        while (running_.load(std::memory_order_acquire)) {
+            UploadRequest nextReq;
+            {
+                std::lock_guard<std::mutex> lock(requestMutex_);
+                if (requestQueue_.empty())
+                    break;
+                nextReq = std::move(requestQueue_.front());
+                requestQueue_.erase(requestQueue_.begin());
+            }
+            processRequest(nextReq);
+        }
+
+        // Unbind context before sleeping — critical for avoiding
+        // cross-context synchronization overhead in eglSwapBuffers
+        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     }
 
-    // Unbind context
+    // Ensure context is unbound on exit (may already be unbound)
     eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: exited");
 }
