@@ -1,14 +1,11 @@
 #pragma once
 
+#include "client/graphics/background_work_queue.h"
 #include <irrlicht.h>
 #include <string>
 #include <map>
 #include <vector>
 #include <memory>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
 #include <deque>
 #include <set>
 
@@ -25,7 +22,7 @@ namespace ui {
 // Loads item icons from EQ client dragitem*.tga files
 // Each TGA file is 256x256 containing a 6x6 grid of 40x40 pixel icons
 //
-// Sheet loading (disk I/O + TGA decode) runs on a background worker thread.
+// Sheet loading (disk I/O + TGA decode) runs on a BackgroundWorkQueue worker thread.
 // The main thread only polls completed SheetData results (<0.1ms per poll).
 // Icon extraction (extractIcon → driver_->addTexture()) is lazy, triggered
 // by getIcon()/getSpellIcon() on demand on the main thread.
@@ -119,9 +116,6 @@ private:
     // Queue a sheet for background loading (called from getIcon/getSpellIcon on main thread)
     void queueSheetRequest(int sheetNumber, bool isSpellSheet);
 
-    // Background worker thread loop
-    void workerLoop();
-
     irr::video::IVideoDriver* driver_ = nullptr;
     std::string eqClientPath_;
 
@@ -133,30 +127,25 @@ private:
     };
     std::map<int, std::unique_ptr<SheetData>> sheets_;
 
-    // Cached individual icon textures
-    std::map<uint32_t, irr::video::ITexture*> iconCache_;
-
-    // Background worker thread
-    std::thread worker_;
-    std::atomic<bool> workerRunning_{false};
-
-    // Request queue (main thread → worker)
+    // Sheet request/result types and processor (used by BackgroundWorkQueue)
     struct SheetRequest {
         int sheetNumber = 0;
         bool isSpellSheet = false;
         std::vector<std::string> paths;  // File paths to try
     };
-    mutable std::mutex requestMutex_;
-    std::condition_variable requestCV_;
-    std::deque<SheetRequest> requestQueue_;
 
-    // Result queue (worker → main thread)
     struct SheetResult {
         int sheetKey = 0;  // positive=item, negative=spell
         std::unique_ptr<SheetData> data;  // null if load failed
     };
-    mutable std::mutex resultMutex_;
-    std::deque<SheetResult> resultQueue_;
+
+    SheetResult processSheet(SheetRequest&& req);
+
+    // Cached individual icon textures
+    std::map<uint32_t, irr::video::ITexture*> iconCache_;
+
+    // Background work queue for sheet loading
+    std::unique_ptr<EQT::Graphics::BackgroundWorkQueue<SheetRequest, SheetResult>> queue_;
 
     // Track requested sheet keys to prevent duplicate queue entries (main-thread only)
     std::set<int> requestedSheetKeys_;

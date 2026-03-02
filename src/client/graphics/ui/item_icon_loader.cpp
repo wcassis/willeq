@@ -39,68 +39,48 @@ bool ItemIconLoader::init(irr::video::IVideoDriver* driver, const std::string& e
 }
 
 void ItemIconLoader::startWorker() {
-    if (workerRunning_.load()) return;
-    workerRunning_.store(true);
-    worker_ = std::thread(&ItemIconLoader::workerLoop, this);
+    if (queue_) return;  // already started
+    queue_ = std::make_unique<EQT::Graphics::BackgroundWorkQueue<SheetRequest, SheetResult>>(
+        [this](SheetRequest&& req) -> SheetResult { return processSheet(std::move(req)); });
+    queue_->start();
     LOG_INFO(MOD_UI, "Icon sheet background worker started");
 }
 
 void ItemIconLoader::stopWorker() {
-    if (!workerRunning_.load()) return;
-    workerRunning_.store(false);
-    requestCV_.notify_all();
-    if (worker_.joinable()) {
-        worker_.join();
-    }
+    if (!queue_) return;
+    queue_->stop();
+    queue_.reset();
     LOG_INFO(MOD_UI, "Icon sheet background worker stopped");
 }
 
-void ItemIconLoader::workerLoop() {
-    while (workerRunning_.load()) {
-        SheetRequest req;
-        {
-            std::unique_lock<std::mutex> lock(requestMutex_);
-            requestCV_.wait(lock, [this] {
-                return !requestQueue_.empty() || !workerRunning_.load();
-            });
-            if (!workerRunning_.load()) break;
-            if (requestQueue_.empty()) continue;
-            req = std::move(requestQueue_.front());
-            requestQueue_.pop_front();
-        }
+ItemIconLoader::SheetResult ItemIconLoader::processSheet(SheetRequest&& req) {
+    // Try each path: readFileToBuffer + decodeTGA (all thread-safe, no Irrlicht calls)
+    auto sheet = std::make_unique<SheetData>();
+    bool found = false;
 
-        // Try each path: readFileToBuffer + decodeTGA (all thread-safe, no Irrlicht calls)
-        auto sheet = std::make_unique<SheetData>();
-        bool found = false;
-
-        for (const auto& path : req.paths) {
-            std::vector<uint8_t> rawFileData;
-            if (readFileToBuffer(path, rawFileData)) {
-                if (decodeTGA(rawFileData, sheet->pixels, sheet->width, sheet->height)) {
-                    LOG_DEBUG(MOD_UI, "Worker: decoded {} sheet {} from {} ({}x{})",
-                              req.isSpellSheet ? "spell" : "item", req.sheetNumber,
-                              path, sheet->width, sheet->height);
-                    found = true;
-                    break;
-                }
+    for (const auto& path : req.paths) {
+        std::vector<uint8_t> rawFileData;
+        if (readFileToBuffer(path, rawFileData)) {
+            if (decodeTGA(rawFileData, sheet->pixels, sheet->width, sheet->height)) {
+                LOG_DEBUG(MOD_UI, "Worker: decoded {} sheet {} from {} ({}x{})",
+                          req.isSpellSheet ? "spell" : "item", req.sheetNumber,
+                          path, sheet->width, sheet->height);
+                found = true;
+                break;
             }
         }
-
-        if (!found) {
-            LOG_ERROR(MOD_UI, "Worker: failed to load {} sheet {} from any path",
-                      req.isSpellSheet ? "spell" : "item", req.sheetNumber);
-        }
-
-        // Push result (even on failure, so hasPendingSheets() stays accurate)
-        int sheetKey = req.isSpellSheet ? -req.sheetNumber : req.sheetNumber;
-        {
-            std::lock_guard<std::mutex> lock(resultMutex_);
-            SheetResult result;
-            result.sheetKey = sheetKey;
-            result.data = found ? std::move(sheet) : nullptr;
-            resultQueue_.push_back(std::move(result));
-        }
     }
+
+    if (!found) {
+        LOG_ERROR(MOD_UI, "Worker: failed to load {} sheet {} from any path",
+                  req.isSpellSheet ? "spell" : "item", req.sheetNumber);
+    }
+
+    int sheetKey = req.isSpellSheet ? -req.sheetNumber : req.sheetNumber;
+    SheetResult result;
+    result.sheetKey = sheetKey;
+    result.data = found ? std::move(sheet) : nullptr;
+    return result;
 }
 
 void ItemIconLoader::queueSheetRequest(int sheetNumber, bool isSpellSheet) {
@@ -127,21 +107,16 @@ void ItemIconLoader::queueSheetRequest(int sheetNumber, bool isSpellSheet) {
         };
     }
 
-    {
-        std::lock_guard<std::mutex> lock(requestMutex_);
-        requestQueue_.push_back(std::move(req));
-    }
-    requestCV_.notify_one();
+    if (queue_) queue_->submit(std::move(req));
 
     LOG_DEBUG(MOD_UI, "Queued {} sheet {} for background load",
               isSpellSheet ? "spell" : "item", sheetNumber);
 }
 
 bool ItemIconLoader::pollCompletedSheet() {
-    std::lock_guard<std::mutex> lock(resultMutex_);
-    if (resultQueue_.empty()) return false;
-    auto result = std::move(resultQueue_.front());
-    resultQueue_.pop_front();
+    if (!queue_) return false;
+    SheetResult result;
+    if (!queue_->pollOne(result)) return false;
     if (result.data) {
         sheets_[result.sheetKey] = std::move(result.data);
     }
@@ -149,14 +124,8 @@ bool ItemIconLoader::pollCompletedSheet() {
 }
 
 bool ItemIconLoader::hasPendingSheets() const {
-    {
-        std::lock_guard<std::mutex> lock(resultMutex_);
-        if (!resultQueue_.empty()) return true;
-    }
-    {
-        std::lock_guard<std::mutex> lock(requestMutex_);
-        return !requestQueue_.empty();
-    }
+    if (!queue_) return false;
+    return !queue_->isIdle() || queue_->getCompletedCount() > 0;
 }
 
 irr::video::ITexture* ItemIconLoader::getIcon(uint32_t iconId) {
