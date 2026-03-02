@@ -9,8 +9,6 @@
 #include <vector>
 #include <map>
 #include <unordered_set>
-#include <thread>
-#include <atomic>
 #include <glm/glm.hpp>
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/camera_controller.h"
@@ -33,6 +31,7 @@
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
 #include "client/graphics/frame_budget_governor.h"
+#include "client/graphics/background_work_queue.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/gpu_upload_thread.h"
 #include "client/input/hotkey_manager.h"
@@ -133,6 +132,13 @@ struct BspPreloadResult {
     std::unique_ptr<PortalSystem> portalSystem;
     bool portalOcclusionEligible = false;
 };
+
+// Single-shot work request/result types for BackgroundWorkQueue-based threads
+struct ZoneLoadRequest {};
+struct ZoneLoadResult { bool success = false; };
+struct DeferredWorkRequest {};
+struct DeferredWorkResult { bool success = false; };
+struct BspPreloadRequest {};
 
 // Deferred/progressive object for lazy mesh building
 struct DeferredObject {
@@ -1366,14 +1372,12 @@ private:
 
     // Background zone load state machine
     BackgroundZoneLoadPhase backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
-    std::unique_ptr<std::thread> zoneLoadThread_;
-    std::atomic<bool> zoneLoadComplete_{false};
-    std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after join
+    std::unique_ptr<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>> zoneLoadQueue_;
+    std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after poll
     std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;  // CPU-only results from bg thread
 
-    // Deferred background work thread (runs phases 6-10 when manual /load data triggers)
-    std::unique_ptr<std::thread> deferredWorkThread_;
-    std::atomic<bool> deferredWorkComplete_{true};
+    // Deferred background work queue (runs phases 6-10 when manual /load data triggers)
+    std::unique_ptr<BackgroundWorkQueue<DeferredWorkRequest, DeferredWorkResult>> deferredWorkQueue_;
 
     // Manual load step-by-step state
     bool manualLoadMode_ = false;
@@ -1387,9 +1391,7 @@ private:
     static BackgroundZoneLoadPhase getStepStartPhase(ManualLoadStep step);
 
     // Background BSP preload (WLD parse + bounding boxes + portals during placeholder mode)
-    std::unique_ptr<std::thread> bspPreloadThread_;
-    std::atomic<bool> bspPreloadComplete_{false};
-    std::unique_ptr<BspPreloadResult> pendingBspResult_;
+    std::unique_ptr<BackgroundWorkQueue<BspPreloadRequest, BspPreloadResult>> bspPreloadQueue_;
 
     // Atlas page upload batching state (for Atlas_Zone_Upload / Atlas_Object_Upload phases)
     int atlasZonePageIndex_ = 0;

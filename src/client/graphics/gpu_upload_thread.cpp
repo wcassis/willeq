@@ -101,37 +101,25 @@ bool GPUUploadThread::init(EGLDisplay display, EGLContext mainContext, EGLConfig
 }
 
 void GPUUploadThread::start() {
-    if (!available_.load(std::memory_order_acquire) || queue_)
+    if (!available_.load(std::memory_order_acquire) || running_.load(std::memory_order_acquire))
         return;
 
-    queue_ = std::make_unique<BackgroundWorkQueue<UploadRequest, UploadResult>>(
-        [this](UploadRequest&& req) -> UploadResult {
-            return processRequest(req);
-        });
-
-    // Batch hooks: bind EGL context before processing, unbind after batch completes.
-    // Unbinding when idle avoids cross-context synchronization overhead in eglSwapBuffers.
-    queue_->setBatchHooks(
-        [this]() {
-            if (!eglMakeCurrent(display_, surface_, surface_, sharedContext_)) {
-                EGLint err = eglGetError();
-                LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: eglMakeCurrent bind failed (0x{:04X})", err);
-            }
-        },
-        [this]() {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        });
-
-    queue_->start();
+    running_.store(true, std::memory_order_release);
+    thread_ = std::make_unique<std::thread>(&GPUUploadThread::workerLoop, this);
     LOG_INFO(MOD_GRAPHICS, "GPU upload thread: started");
 }
 
 void GPUUploadThread::stop() {
-    if (!queue_)
+    if (!running_.load(std::memory_order_acquire))
         return;
 
-    queue_->stop();
-    queue_.reset();
+    running_.store(false, std::memory_order_release);
+    requestCv_.notify_all();
+
+    if (thread_ && thread_->joinable()) {
+        thread_->join();
+    }
+    thread_.reset();
 
     // Clean up EGL resources
     if (sharedContext_ != EGL_NO_CONTEXT) {
@@ -149,37 +137,101 @@ void GPUUploadThread::stop() {
 
 void GPUUploadThread::submit(UploadRequest&& request) {
     request.requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
-    if (queue_) queue_->submit(std::move(request));
+    {
+        std::lock_guard<std::mutex> lock(requestMutex_);
+        requestQueue_.push_back(std::move(request));
+    }
+    requestCv_.notify_one();
 }
 
 std::vector<UploadResult> GPUUploadThread::pollResults() {
-    if (!queue_) return {};
-    return queue_->pollAll();
+    std::lock_guard<std::mutex> lock(resultMutex_);
+    std::vector<UploadResult> results;
+    results.swap(resultQueue_);
+    return results;
 }
 
 size_t GPUUploadThread::getPendingCount() const {
-    if (!queue_) return 0;
-    return queue_->getPendingCount();
+    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(requestMutex_));
+    return requestQueue_.size();
 }
 
 size_t GPUUploadThread::getCompletedCount() const {
-    if (!queue_) return 0;
-    return queue_->getCompletedCount();
+    std::lock_guard<std::mutex> lock(resultMutex_);
+    return resultQueue_.size();
 }
 
-UploadResult GPUUploadThread::processRequest(const UploadRequest& req) {
+void GPUUploadThread::workerLoop() {
+    LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: started (context unbound)");
+
+    while (running_.load(std::memory_order_acquire)) {
+        // Wait for work (context unbound — no cross-context sync overhead)
+        UploadRequest request;
+        bool hasWork = false;
+        {
+            std::unique_lock<std::mutex> lock(requestMutex_);
+            requestCv_.wait(lock, [this] {
+                return !requestQueue_.empty() || !running_.load(std::memory_order_acquire);
+            });
+
+            if (!running_.load(std::memory_order_acquire))
+                break;
+
+            if (!requestQueue_.empty()) {
+                request = std::move(requestQueue_.front());
+                requestQueue_.erase(requestQueue_.begin());
+                hasWork = true;
+            }
+        }
+
+        if (!hasWork)
+            continue;
+
+        // Bind context before processing
+        if (!eglMakeCurrent(display_, surface_, surface_, sharedContext_)) {
+            EGLint err = eglGetError();
+            LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: eglMakeCurrent bind failed (0x{:04X})", err);
+            running_.store(false, std::memory_order_release);
+            return;
+        }
+
+        processRequest(request);
+
+        // Drain remaining queued requests while context is bound
+        while (running_.load(std::memory_order_acquire)) {
+            UploadRequest nextReq;
+            {
+                std::lock_guard<std::mutex> lock(requestMutex_);
+                if (requestQueue_.empty())
+                    break;
+                nextReq = std::move(requestQueue_.front());
+                requestQueue_.erase(requestQueue_.begin());
+            }
+            processRequest(nextReq);
+        }
+
+        // Unbind context before sleeping — critical for avoiding
+        // cross-context synchronization overhead in eglSwapBuffers
+        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+
+    // Ensure context is unbound on exit (may already be unbound)
+    eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: exited");
+}
+
+void GPUUploadThread::processRequest(const UploadRequest& req) {
     auto start = std::chrono::steady_clock::now();
 
-    UploadResult result;
     switch (req.type) {
         case UploadRequestType::Texture:
-            result = processTextureUpload(req);
+            processTextureUpload(req);
             break;
         case UploadRequestType::CompressedTexture:
-            result = processCompressedTextureUpload(req);
+            processCompressedTextureUpload(req);
             break;
         case UploadRequestType::VertexBuffer:
-            result = processVertexBufferUpload(req);
+            processVertexBufferUpload(req);
             break;
     }
 
@@ -187,11 +239,9 @@ UploadResult GPUUploadThread::processRequest(const UploadRequest& req) {
         std::chrono::steady_clock::now() - start).count();
     totalUploadTimeUs_.fetch_add(static_cast<uint64_t>(elapsed), std::memory_order_relaxed);
     totalCompleted_.fetch_add(1, std::memory_order_relaxed);
-
-    return result;
 }
 
-UploadResult GPUUploadThread::processTextureUpload(const UploadRequest& req) {
+void GPUUploadThread::processTextureUpload(const UploadRequest& req) {
     GLuint texId = 0;
     glGenTextures(1, &texId);
     glBindTexture(GL_TEXTURE_2D, texId);
@@ -227,10 +277,13 @@ UploadResult GPUUploadThread::processTextureUpload(const UploadRequest& req) {
     result.gpuBytes = static_cast<size_t>(req.width) * req.height * 4;
     result.callbackKey = req.callbackKey;
 
-    return result;
+    {
+        std::lock_guard<std::mutex> lock(resultMutex_);
+        resultQueue_.push_back(std::move(result));
+    }
 }
 
-UploadResult GPUUploadThread::processCompressedTextureUpload(const UploadRequest& req) {
+void GPUUploadThread::processCompressedTextureUpload(const UploadRequest& req) {
     GLuint texId = 0;
     glGenTextures(1, &texId);
     glBindTexture(GL_TEXTURE_2D, texId);
@@ -266,10 +319,13 @@ UploadResult GPUUploadThread::processCompressedTextureUpload(const UploadRequest
     result.gpuBytes = req.compressedSize;
     result.callbackKey = req.callbackKey;
 
-    return result;
+    {
+        std::lock_guard<std::mutex> lock(resultMutex_);
+        resultQueue_.push_back(std::move(result));
+    }
 }
 
-UploadResult GPUUploadThread::processVertexBufferUpload(const UploadRequest& req) {
+void GPUUploadThread::processVertexBufferUpload(const UploadRequest& req) {
     GLuint vbo = 0, ebo = 0;
 
     glGenBuffers(1, &vbo);
@@ -312,7 +368,10 @@ UploadResult GPUUploadThread::processVertexBufferUpload(const UploadRequest& req
                       static_cast<size_t>(req.indexCount) * sizeof(uint16_t);
     result.callbackKey = req.callbackKey;
 
-    return result;
+    {
+        std::lock_guard<std::mutex> lock(resultMutex_);
+        resultQueue_.push_back(std::move(result));
+    }
 }
 
 } // namespace Graphics

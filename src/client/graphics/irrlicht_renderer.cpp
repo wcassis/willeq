@@ -2227,19 +2227,17 @@ void IrrlichtRenderer::updateHUD() {
 }
 
 void IrrlichtRenderer::unloadZone() {
-    // Wait for background zone load thread if still running
-    if (zoneLoadThread_ && zoneLoadThread_->joinable()) {
-        zoneLoadThread_->join();
+    // Stop background zone load queue if still running
+    if (zoneLoadQueue_) {
+        zoneLoadQueue_->stop();
+        zoneLoadQueue_.reset();
     }
-    zoneLoadThread_.reset();
-    // Wait for deferred work thread if still running
-    if (deferredWorkThread_ && deferredWorkThread_->joinable()) {
-        deferredWorkThread_->join();
+    // Stop deferred work queue if still running
+    if (deferredWorkQueue_) {
+        deferredWorkQueue_->stop();
+        deferredWorkQueue_.reset();
     }
-    deferredWorkThread_.reset();
-    deferredWorkComplete_ = true;
     pendingZoneData_.reset();
-    zoneLoadComplete_ = false;
     backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
     atlasZonePageIndex_ = 0;
     atlasObjPageIndex_ = 0;
@@ -2251,12 +2249,10 @@ void IrrlichtRenderer::unloadZone() {
     regionMeshCacheInstallStarted_ = false;
     storedZoneEnvironment_.pending = false;
 
-    // Wait for background BSP preload thread if still running
-    if (bspPreloadThread_) {
-        if (bspPreloadThread_->joinable()) bspPreloadThread_->join();
-        bspPreloadThread_.reset();
-        pendingBspResult_.reset();
-        bspPreloadComplete_ = false;
+    // Stop background BSP preload queue if still running
+    if (bspPreloadQueue_) {
+        bspPreloadQueue_->stop();
+        bspPreloadQueue_.reset();
     }
 
     // Stop simulation worker before zone cleanup
@@ -2887,12 +2883,10 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     // Stop simulation worker during zone transition
     stopSimulationWorker();
 
-    // Join BSP preload thread if still running (full S3D load will rebuild BSP data)
-    if (bspPreloadThread_) {
-        if (bspPreloadThread_->joinable()) bspPreloadThread_->join();
-        bspPreloadThread_.reset();
-        pendingBspResult_.reset();
-        bspPreloadComplete_ = false;
+    // Stop BSP preload queue if still running (full S3D load will rebuild BSP data)
+    if (bspPreloadQueue_) {
+        bspPreloadQueue_->stop();
+        bspPreloadQueue_.reset();
     }
 
     progressiveLoadingActive_ = true;
@@ -3071,7 +3065,7 @@ bool IrrlichtRenderer::advanceManualLoadStep(ManualLoadStep step) {
 
     // Launch deferred background work when Data or All step starts
     // (loads objects, archive index, sky, weather, atlas in background)
-    if ((step == ManualLoadStep::Data || step == ManualLoadStep::All) && !deferredWorkThread_) {
+    if ((step == ManualLoadStep::Data || step == ManualLoadStep::All) && !deferredWorkQueue_) {
         launchDeferredBackgroundWork();
     }
 
@@ -3118,10 +3112,7 @@ ManualLoadStep IrrlichtRenderer::getNextExpectedStep() const {
 
 void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::string& eqClientPath) {
     // Don't start if already running or if full zone load is in progress
-    if (bspPreloadThread_ || backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) return;
-
-    bspPreloadComplete_ = false;
-    pendingBspResult_ = std::make_unique<BspPreloadResult>();
+    if (bspPreloadQueue_ || backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) return;
 
     std::string zonePath = eqClientPath;
     if (!zonePath.empty() && zonePath.back() != '/' && zonePath.back() != '\\')
@@ -3131,22 +3122,13 @@ void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::s
     // Capture indoor flag for portal eligibility check (set by setZoneEnvironment before this call)
     bool indoor = isIndoorZone_;
 
-    auto* result = pendingBspResult_.get();
-    bspPreloadThread_ = std::make_unique<std::thread>([this, zonePath, indoor, result]() {
-        // Set thread to lowest priority so we never steal CPU from render thread
-#ifdef __linux__
-        struct sched_param param = {};
-        if (pthread_setschedparam(pthread_self(), SCHED_IDLE, &param) != 0) {
-            nice(19);
-        }
-#endif
-
+    bspPreloadQueue_ = std::make_unique<BackgroundWorkQueue<BspPreloadRequest, BspPreloadResult>>(
+        [this, zonePath, indoor](BspPreloadRequest&&) -> BspPreloadResult {
         // 1. Open the S3D archive
         PfsArchive archive;
         if (!archive.open(zonePath)) {
             LOG_ERROR(MOD_GRAPHICS, "BSP preload: failed to open archive: {}", zonePath);
-            bspPreloadComplete_ = true;
-            return;
+            return {};
         }
 
         // 2. Find main WLD (same filter as S3DLoader::loadZone)
@@ -3154,8 +3136,7 @@ void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::s
         archive.getFilenames(".wld", wldFiles);
         if (wldFiles.empty()) {
             LOG_ERROR(MOD_GRAPHICS, "BSP preload: no WLD file in archive");
-            bspPreloadComplete_ = true;
-            return;
+            return {};
         }
 
         std::string mainWld;
@@ -3174,16 +3155,14 @@ void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::s
         auto wldLoader = std::make_shared<WldLoader>();
         if (!wldLoader->parseFromArchive(zonePath, mainWld)) {
             LOG_ERROR(MOD_GRAPHICS, "BSP preload: failed to parse WLD: {}", mainWld);
-            bspPreloadComplete_ = true;
-            return;
+            return {};
         }
 
         // 4. Get BSP tree and verify PVS data
         auto bspTree = wldLoader->getBspTree();
         if (!bspTree || !wldLoader->hasPvsData()) {
             LOG_INFO(MOD_GRAPHICS, "BSP preload: zone has no PVS data, skipping");
-            bspPreloadComplete_ = true;
-            return;
+            return {};
         }
 
         // 5. Compute region bounding boxes from vertex data
@@ -3223,45 +3202,46 @@ void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::s
         bool portalEligible = portalSystem->hasPortals() &&
                               (portalSystem->getData().portals.size() > 10);
 
-        // 7. Store results
-        result->bspTree = bspTree;
-        result->regionBoundingBoxes = std::move(regionBoundingBoxes);
-        result->portalSystem = std::move(portalSystem);
-        result->portalOcclusionEligible = portalEligible;
+        // 7. Build result
+        BspPreloadResult result;
+        result.bspTree = bspTree;
+        result.regionBoundingBoxes = std::move(regionBoundingBoxes);
+        result.portalSystem = std::move(portalSystem);
+        result.portalOcclusionEligible = portalEligible;
 
         LOG_INFO(MOD_GRAPHICS, "BSP preload complete: {} regions, {} portals, PVS eligible={}",
-                 bspTree->regions.size(), result->portalSystem->getData().portals.size(),
+                 bspTree->regions.size(), result.portalSystem->getData().portals.size(),
                  portalEligible ? "yes" : "no");
 
-        // Release heavy WLD/archive data BEFORE signaling completion.
-        // BSP tree survives via shared_ptr in result->bspTree.
-        // Without this, the destructors run after bspPreloadComplete_ is set,
-        // and join() blocks ~150ms on ARM freeing 2000+ regions of parsed geometry.
+        // Release heavy WLD/archive data before returning result.
+        // BSP tree survives via shared_ptr in result.bspTree.
+        // Explicit cleanup avoids ~150ms ARM destructor cost blocking the poll path.
         wldLoader.reset();
         archive.close();
 
-        bspPreloadComplete_ = true;
+        return result;
     });
+    bspPreloadQueue_->start();
+    bspPreloadQueue_->submit(BspPreloadRequest{});
 
     LOG_INFO(MOD_GRAPHICS, "BSP preload started for zone '{}'", zoneName);
 }
 
 void IrrlichtRenderer::advanceBspPreload() {
-    if (!bspPreloadThread_) return;
+    if (!bspPreloadQueue_) return;
 
-    // Join the thread
-    if (bspPreloadThread_->joinable())
-        bspPreloadThread_->join();
-    bspPreloadThread_.reset();
+    // Poll the completed result
+    BspPreloadResult result;
+    if (!bspPreloadQueue_->pollOne(result)) return;
 
-    if (!pendingBspResult_ || !pendingBspResult_->bspTree) {
+    // Single-shot usage — stop and destroy the queue
+    bspPreloadQueue_->stop();
+    bspPreloadQueue_.reset();
+
+    if (!result.bspTree) {
         // Preload produced no usable data
-        pendingBspResult_.reset();
-        bspPreloadComplete_ = false;
         return;
     }
-
-    auto& result = *pendingBspResult_;
 
     // Install BSP tree
     zoneBspTree_ = result.bspTree;
@@ -3306,9 +3286,6 @@ void IrrlichtRenderer::advanceBspPreload() {
         buildZonePlaceholder(playerX_, playerZ_, playerY_);
         setupHCMapCollision();
     }
-
-    pendingBspResult_.reset();
-    bspPreloadComplete_ = false;
 }
 
 void IrrlichtRenderer::setupHCMapCollision() {
@@ -3477,7 +3454,6 @@ static void bilinearUpscaleARGB(const uint8_t* src, uint32_t srcW, uint32_t srcH
 
 void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath) {
     backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Loading;
-    zoneLoadComplete_ = false;
     pendingZoneComputations_ = std::make_unique<PendingZoneComputations>();
 
     std::string zonePath = eqClientPath;
@@ -3505,12 +3481,13 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
 
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
 
-    zoneLoadThread_ = std::make_unique<std::thread>([this, zonePath, computations,
-                                                      deferredAssetLoading, lazyPfsLoading,
-                                                      enableAtlas, atlasPathCopy, zoneNameCopy,
-                                                      eqClientPathCopy, meshMemoryBudget,
-                                                      treeIdentifier, isManualMode,
-                                                      skipObjectBuild]() {
+    zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>>(
+        [this, zonePath, computations,
+         deferredAssetLoading, lazyPfsLoading,
+         enableAtlas, atlasPathCopy, zoneNameCopy,
+         eqClientPathCopy, meshMemoryBudget,
+         treeIdentifier, isManualMode,
+         skipObjectBuild](ZoneLoadRequest&&) -> ZoneLoadResult {
         // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
         //    and objects based on mode
         S3DLoadOptions loadOptions;
@@ -3521,8 +3498,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
         S3DLoader loader;
         if (!loader.loadZone(zonePath, loadOptions)) {
             LOG_ERROR(MOD_GRAPHICS, "Background S3D load failed: {}", loader.getError());
-            zoneLoadComplete_ = true;
-            return;
+            return ZoneLoadResult{false};
         }
         pendingZoneData_ = loader.getZone();
         auto zone = pendingZoneData_;
@@ -3667,8 +3643,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
         // display, atlas) are deferred to launchDeferredBackgroundWork() when /load data runs.
         if (isManualMode) {
             LOG_INFO(MOD_GRAPHICS, "Manual mode: background thread stopping after S3D + CPU work");
-            zoneLoadComplete_ = true;
-            return;
+            return ZoneLoadResult{true};
         }
 
         // 6. Build graphics archive index (filesystem I/O — no GL)
@@ -3798,20 +3773,20 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
             }
         }
 
-        zoneLoadComplete_ = true;
+        return ZoneLoadResult{true};
     });
+    zoneLoadQueue_->start();
+    zoneLoadQueue_->submit(ZoneLoadRequest{});
 
     LOG_INFO(MOD_GRAPHICS, "Background S3D load started (with CPU post-processing): {}", zonePath);
 }
 
 void IrrlichtRenderer::launchDeferredBackgroundWork() {
-    if (deferredWorkThread_) return;  // Already running
+    if (deferredWorkQueue_) return;  // Already running
 
-    deferredWorkComplete_ = false;
     auto* computations = pendingZoneComputations_.get();
     if (!computations) {
         LOG_WARN(MOD_GRAPHICS, "launchDeferredBackgroundWork: no pending computations");
-        deferredWorkComplete_ = true;
         return;
     }
 
@@ -3830,11 +3805,12 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
     auto zone = pendingZoneData_;
     std::string zonePath = eqClientPathCopy + zoneNameCopy + ".s3d";
 
-    deferredWorkThread_ = std::make_unique<std::thread>([this, computations,
-                                                          deferredAssetLoading, lazyPfsLoading,
-                                                          enableAtlas, atlasPathCopy, zoneNameCopy,
-                                                          eqClientPathCopy, zone, zonePath,
-                                                          skipObjectBuild]() {
+    deferredWorkQueue_ = std::make_unique<BackgroundWorkQueue<DeferredWorkRequest, DeferredWorkResult>>(
+        [this, computations,
+         deferredAssetLoading, lazyPfsLoading,
+         enableAtlas, atlasPathCopy, zoneNameCopy,
+         eqClientPathCopy, zone, zonePath,
+         skipObjectBuild](DeferredWorkRequest&&) -> DeferredWorkResult {
         // Load objects that were skipped in manual S3d step
         if (zone && zone->objects.empty() && !skipObjectBuild) {
             S3DLoader objLoader;
@@ -3956,10 +3932,12 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
         }
 
         LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
-        deferredWorkComplete_ = true;
+        return DeferredWorkResult{true};
     });
+    deferredWorkQueue_->start();
+    deferredWorkQueue_->submit(DeferredWorkRequest{});
 
-    LOG_INFO(MOD_GRAPHICS, "Deferred background work thread launched");
+    LOG_INFO(MOD_GRAPHICS, "Deferred background work queue launched");
 }
 
 void IrrlichtRenderer::storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
@@ -3993,12 +3971,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     switch (backgroundZoneLoadPhase_) {
 
-    // ── Loading: poll background thread (no GREEN gate) ──────────────────
-    case BackgroundZoneLoadPhase::Loading:
-        if (zoneLoadComplete_) {
-            if (zoneLoadThread_ && zoneLoadThread_->joinable())
-                zoneLoadThread_->join();
-            zoneLoadThread_.reset();
+    // ── Loading: poll background work queue (no GREEN gate) ────────────────
+    case BackgroundZoneLoadPhase::Loading: {
+        ZoneLoadResult zoneResult;
+        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(zoneResult)) {
+            zoneLoadQueue_->stop();
+            zoneLoadQueue_.reset();
 
             if (pendingZoneData_) {
                 backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Notify;
@@ -4011,6 +3989,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
         }
         break;
+    }
 
     // ── DataReady sub-steps ──────────────────────────────────────────────
 
@@ -4063,13 +4042,15 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::DataReady_ArchiveIndex: {
-        // Wait for deferred work thread if it's still running (manual mode)
-        if (deferredWorkThread_ && !deferredWorkComplete_.load()) {
+        // Wait for deferred work queue if still processing (manual mode)
+        if (deferredWorkQueue_ && !deferredWorkQueue_->isIdle()) {
             break;  // Spin until deferred background work finishes
         }
-        if (deferredWorkThread_ && deferredWorkThread_->joinable()) {
-            deferredWorkThread_->join();
-            deferredWorkThread_.reset();
+        if (deferredWorkQueue_) {
+            DeferredWorkResult deferredResult;
+            deferredWorkQueue_->pollOne(deferredResult);  // Drain result
+            deferredWorkQueue_->stop();
+            deferredWorkQueue_.reset();
         }
 
         if (pendingZoneComputations_ && pendingZoneComputations_->archiveIndex) {
@@ -8996,7 +8977,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     frameTimings_.vertexAnimations = measureSection();
 
     // Background BSP preload — install results when ready
-    if (bspPreloadThread_ && bspPreloadComplete_) {
+    if (bspPreloadQueue_ && bspPreloadQueue_->getCompletedCount() > 0) {
         advanceBspPreload();
     }
     // Reset timing section so BSP preload/zone load time isn't attributed to tier2Update
