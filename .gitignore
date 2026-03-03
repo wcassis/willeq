@@ -60,3 +60,4 @@ tests/*_tests.cmake
 .agent/
 
 data/detail/zones/
+data/eq_client

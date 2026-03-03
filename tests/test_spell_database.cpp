@@ -19,7 +19,7 @@ static std::string getEQPath() {
     if (env_path) {
         return std::string(env_path);
     }
-    return "/home/user/projects/claude/EverQuestP1999";
+    return EQ_CLIENT_DATA_PATH;
 }
 
 class SpellDatabaseTest : public ::testing::Test {

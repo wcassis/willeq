@@ -16,7 +16,7 @@ protected:
             return env_path;
         }
         // Default to known location
-        return "/home/user/projects/claude/EverQuestP1999";
+        return EQ_CLIENT_DATA_PATH;
     }
 
     std::string getEqStrPath() {

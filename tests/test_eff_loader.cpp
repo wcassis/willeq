@@ -10,7 +10,11 @@
 using namespace EQT::Audio;
 
 // Path to EQ client files for testing
-static const char* EQ_PATH = "/home/user/projects/claude/EverQuestP1999";
+static std::string getEqClientPath() {
+    const char* env = std::getenv("EQ_CLIENT_PATH");
+    return env ? env : EQ_CLIENT_DATA_PATH;
+}
+static const std::string EQ_PATH = getEqClientPath();
 
 // =============================================================================
 // EffSoundEntry Structure Tests

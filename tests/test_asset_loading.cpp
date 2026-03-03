@@ -9,7 +9,7 @@
  * - Zone lights
  *
  * Requirements:
- * - EQ client files at EQ_CLIENT_PATH or /home/user/projects/claude/EverQuestP1999
+ * - EQ client files at EQ_CLIENT_PATH or data/eq_client symlink
  *
  * Usage:
  *   ./bin/test_asset_loading [--gtest_filter=*Equipment*]
@@ -41,7 +41,7 @@ protected:
         if (envPath) {
             eqClientPath_ = envPath;
         } else {
-            eqClientPath_ = "/home/user/projects/claude/EverQuestP1999";
+            eqClientPath_ = EQ_CLIENT_DATA_PATH;
         }
 
         // Ensure path ends with /

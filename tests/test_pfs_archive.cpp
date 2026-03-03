@@ -13,7 +13,8 @@ using namespace EQT::Graphics;
 
 // Path to EQ client files for integration tests
 static std::string getEQClientPath() {
-    return "/home/user/projects/claude/EverQuestP1999";
+    const char* env = std::getenv("EQ_CLIENT_PATH");
+    return env ? env : EQ_CLIENT_DATA_PATH;
 }
 
 // ============================================================================

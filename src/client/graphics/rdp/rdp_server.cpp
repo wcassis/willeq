@@ -340,9 +340,9 @@ void RDPServer::stop() {
     }
 
     // Wait for all peer threads
-    for (auto& thread : peerThreads_) {
-        if (thread.joinable()) {
-            thread.join();
+    for (auto& entry : peerThreads_) {
+        if (entry->thread.joinable()) {
+            entry->thread.join();
         }
     }
     peerThreads_.clear();
@@ -421,8 +421,28 @@ void RDPServer::onMouseEventInternal(uint16_t flags, uint16_t x, uint16_t y) {
     }
 }
 
-void RDPServer::addPeerThread(std::thread&& thread) {
-    peerThreads_.push_back(std::move(thread));
+void RDPServer::cleanupFinishedPeerThreads() {
+    peerThreads_.erase(
+        std::remove_if(peerThreads_.begin(), peerThreads_.end(),
+            [](const std::unique_ptr<PeerThreadEntry>& entry) {
+                if (entry->finished.load()) {
+                    if (entry->thread.joinable()) {
+                        entry->thread.join();
+                    }
+                    return true;
+                }
+                return false;
+            }),
+        peerThreads_.end()
+    );
+}
+
+void RDPServer::addPeerThread(freerdp_peer* client) {
+    cleanupFinishedPeerThreads();
+    auto entry = std::make_unique<PeerThreadEntry>();
+    auto* finishedPtr = &entry->finished;
+    entry->thread = std::thread(&RDPServer::peerThreadImpl, this, client, finishedPtr);
+    peerThreads_.push_back(std::move(entry));
 }
 
 void RDPServer::listenerThread() {
@@ -458,7 +478,7 @@ void RDPServer::listenerThread() {
     }
 }
 
-void RDPServer::peerThreadImpl(freerdp_peer* client) {
+void RDPServer::peerThreadImpl(freerdp_peer* client, std::atomic<bool>* finished) {
     RDPPeerContext* context = reinterpret_cast<RDPPeerContext*>(client->context);
     rdpSettings* settings = client->context->settings;
     rdpInput* input = nullptr;  // Declared early to avoid goto issues
@@ -635,6 +655,7 @@ cleanup:
     client->Disconnect(client);
     freerdp_peer_context_free(client);
     freerdp_peer_free(client);
+    finished->store(true);
 }
 
 void RDPServer::sendFrameToPeer(RDPPeerContext* context) {
@@ -749,7 +770,7 @@ static BOOL onPeerAccepted(freerdp_listener* instance, freerdp_peer* client) {
     }
 
     // Start a thread to handle this peer
-    server->addPeerThread(std::thread(&RDPServer::peerThreadImpl, server, client));
+    server->addPeerThread(client);
 
     return TRUE;
 }

@@ -9,6 +9,9 @@ INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/src
 )
 
+# Default EQ client path (resolved at configure time, overridable via EQ_CLIENT_PATH env var)
+ADD_COMPILE_DEFINITIONS(EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+
 # Helper variable for fmt library
 IF(fmt_FOUND)
     SET(FMT_LIB fmt::fmt)

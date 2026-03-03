@@ -70,4 +70,4 @@ refactoring plan, or were incompletely addressed.
 |----|-------------|--------|
 | C09 | ~~Dead code in zone_lines.cpp: 3 #if 0 blocks + hasBspZoneLines() + debugTestCoordinateMappings()~~ **DONE**: Removed 3 `#if 0` blocks (~130 lines), 2 dead functions (`hasBspZoneLines`, `debugTestCoordinateMappings`), `resolveZoneLine` helper, unused members (`bspTree_`, zone bounds, `wldZonePoints_`), `wld_loader.h` include, and debug call in eq.cpp. 267 lines deleted. | `1b1bc53` |
 | C10 | ~~Configurable thread counts not implemented~~ **DONE**: Added `--threads N` CLI flag to override per-preset `backgroundThreadCount` at launch time. Follows preset → JSON → CLI override chain. | `147115f` |
-| C11 | RDP peer thread accumulation | Old Issue 1.4 — unchanged |
+| C11 | ~~RDP peer thread accumulation~~ **DONE**: Added `PeerThreadEntry` struct with `std::atomic<bool> finished` flag. `addPeerThread()` sweeps and joins completed threads before adding new ones via `cleanupFinishedPeerThreads()`. `peerThreadImpl()` sets `finished` flag at exit. `peerThreads_` changed from `vector<thread>` to `vector<unique_ptr<PeerThreadEntry>>`. | `938e947` |

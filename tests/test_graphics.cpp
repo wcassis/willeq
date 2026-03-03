@@ -991,7 +991,7 @@ protected:
         if (envPath) {
             eqClientPath_ = envPath;
         } else {
-            eqClientPath_ = "/home/user/projects/claude/EverQuestP1999";
+            eqClientPath_ = EQ_CLIENT_DATA_PATH;
         }
     }
 

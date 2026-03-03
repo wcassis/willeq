@@ -17,12 +17,18 @@
 #include <functional>
 #include <string>
 #include <cstdint>
+#include <memory>
 
 namespace EQT {
 namespace Graphics {
 
 // Forward declarations
 struct RDPPeerContext;
+
+struct PeerThreadEntry {
+    std::thread thread;
+    std::atomic<bool> finished{false};
+};
 
 /**
  * Callback type for keyboard events from RDP clients.
@@ -184,10 +190,10 @@ public:
     void initAudioForPeer(RDPPeerContext* context);
 
     // Peer handling thread function (public for C callback)
-    void peerThreadImpl(freerdp_peer* client);
+    void peerThreadImpl(freerdp_peer* client, std::atomic<bool>* finished);
 
-    // Add peer thread to tracking
-    void addPeerThread(std::thread&& thread);
+    // Add peer thread to tracking (creates the thread internally)
+    void addPeerThread(freerdp_peer* client);
 
     // Getters for peer initialization
     uint32_t getWidth() const { return width_; }
@@ -205,6 +211,8 @@ private:
     bool generateSelfSignedCertificate();
     // Listener thread function
     void listenerThread();
+    // Join and remove finished peer threads
+    void cleanupFinishedPeerThreads();
 
     // Send a frame to a specific peer
     void sendFrameToPeer(RDPPeerContext* context);
@@ -214,7 +222,7 @@ private:
 
     // Threads
     std::thread listenerThread_;
-    std::vector<std::thread> peerThreads_;
+    std::vector<std::unique_ptr<PeerThreadEntry>> peerThreads_;
 
     // State
     std::atomic<bool> running_;
