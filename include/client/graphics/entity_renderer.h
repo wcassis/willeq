@@ -26,6 +26,7 @@ namespace Graphics {
 class RaceModelLoader;
 class EntityPrepWorker;
 class GPUUploadThread;
+class ConstrainedTextureCache;
 struct ConstrainedRendererConfig;
 struct SimulationInput;
 
@@ -218,6 +219,9 @@ public:
 
     // Set GPU upload thread for async texture uploads (GLES2 only)
     void setGPUUploadThread(GPUUploadThread* thread) { gpuUploadThread_ = thread; }
+
+    // Set constrained texture cache for LRU tracking of entity/equipment textures
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
     // Get mesh builder from race model loader (for async texture registration)
     ZoneMeshBuilder* getMeshBuilder() const;
@@ -715,6 +719,9 @@ private:
 
     // GPU upload thread for async texture uploads (non-owning, owned by IrrlichtRenderer)
     GPUUploadThread* gpuUploadThread_ = nullptr;
+
+    // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)
+    ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
 };
 
 } // namespace Graphics

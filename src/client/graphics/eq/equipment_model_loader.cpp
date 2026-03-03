@@ -2,6 +2,7 @@
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
@@ -601,6 +602,11 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
                     }
 
                     if (tex) {
+                        if (constrainedTextureCache_) {
+                            auto texSize = tex->getSize();
+                            size_t bytes = static_cast<size_t>(texSize.Width) * texSize.Height * 4;
+                            constrainedTextureCache_->registerTexture(lowerTexName, tex, bytes, false);
+                        }
                         buffer->Material.setTexture(0, tex);
                         buffer->Material.MaterialType = irr::video::EMT_SOLID;
                     }
@@ -642,6 +648,9 @@ void EquipmentModelLoader::removeMeshRef(int modelId) {
                         std::string lowerName = texName;
                         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                       [](unsigned char c) { return std::tolower(c); });
+                        if (constrainedTextureCache_ && constrainedTextureCache_->hasTexture(lowerName)) {
+                            continue;  // Cache owns this texture — leave it for LRU eviction
+                        }
                         auto* tex = driver_->getTexture(lowerName.c_str());
                         if (tex) {
                             driver_->removeTexture(tex);

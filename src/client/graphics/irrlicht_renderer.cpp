@@ -1249,6 +1249,11 @@ void IrrlichtRenderer::processCompletedUploads() {
                             // with alpha are rare; mesh builder tracks alpha separately)
                             meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
                         }
+                        if (constrainedTextureCache_) {
+                            size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
+                            constrainedTextureCache_->registerTexture(
+                                result.textureName, wrappedTex, texSize, false);
+                        }
                     }
                 } else if (sourceType == 3) {
                     // Constrained cache texture — register in LRU cache
@@ -2709,6 +2714,8 @@ void IrrlichtRenderer::createEntityRenderer() {
     if (gpuUploadThread_)
         entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
 #endif
+    if (constrainedTextureCache_)
+        entityRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
     entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
     entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
     if (zoneShader_ && zoneShader_->isAvailable()) {

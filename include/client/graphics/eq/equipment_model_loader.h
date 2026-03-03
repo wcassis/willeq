@@ -13,6 +13,8 @@
 namespace EQT {
 namespace Graphics {
 
+class ConstrainedTextureCache;
+
 // Equipment model data - geometry for a single equipment item
 struct EquipmentModelData {
     std::shared_ptr<ZoneGeometry> geometry;
@@ -31,6 +33,9 @@ public:
     EquipmentModelLoader(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                          irr::io::IFileSystem* fileSystem);
     ~EquipmentModelLoader();
+
+    // Set constrained texture cache for LRU tracking of equipment textures
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
 
     // Set the base path for EQ client files
     void setClientPath(const std::string& path);
@@ -198,6 +203,9 @@ private:
     bool archivesLoaded_ = false;
     bool mappingLoaded_ = false;
     std::mutex initMutex_;  // Guards ensureIndexLoaded() for thread safety
+
+    // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)
+    ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
 };
 
 } // namespace Graphics

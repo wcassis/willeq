@@ -2,6 +2,7 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
@@ -899,7 +900,7 @@ bool EntityRenderer::pollAndDistributePrepResults() {
 // Helper: upload one pre-decoded texture to GPU and register in mesh builder cache
 static irr::video::ITexture* uploadDecodedTexture(
     irr::video::IVideoDriver* driver, ZoneMeshBuilder* meshBuilder,
-    const DecodedTexture& decoded) {
+    const DecodedTexture& decoded, ConstrainedTextureCache* cache = nullptr) {
 
     irr::video::IImage* img = driver->createImageFromData(
         irr::video::ECF_A8R8G8B8,
@@ -917,8 +918,15 @@ static irr::video::ITexture* uploadDecodedTexture(
         img->drop();
     }
 
-    if (tex && meshBuilder) {
-        meshBuilder->registerUploadedTexture(decoded.name, tex, decoded.hasAlpha);
+    if (tex) {
+        if (cache) {
+            auto texSize = tex->getSize();
+            size_t bytes = static_cast<size_t>(texSize.Width) * texSize.Height * 4;
+            cache->registerTexture(decoded.name, tex, bytes, decoded.hasAlpha);
+        }
+        if (meshBuilder) {
+            meshBuilder->registerUploadedTexture(decoded.name, tex, decoded.hasAlpha);
+        }
     }
 
     return tex;
@@ -926,6 +934,12 @@ static irr::video::ITexture* uploadDecodedTexture(
 
 ZoneMeshBuilder* EntityRenderer::getMeshBuilder() const {
     return raceModelLoader_ ? raceModelLoader_->getMeshBuilder() : nullptr;
+}
+
+void EntityRenderer::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    constrainedTextureCache_ = cache;
+    if (equipmentModelLoader_)
+        equipmentModelLoader_->setConstrainedTextureCache(cache);
 }
 
 #ifdef EQT_HAS_GLES2
@@ -1200,7 +1214,8 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 #endif
                 {
                     tex = uploadDecodedTexture(
-                        driver_, raceModelLoader_->getMeshBuilder(), decoded);
+                        driver_, raceModelLoader_->getMeshBuilder(),
+                        decoded, constrainedTextureCache_);
                 }
             }
 
@@ -1240,7 +1255,8 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                     submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
                 else
 #endif
-                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(),
+                                        decoded, constrainedTextureCache_);
             }
 
             vis.nextVariantUpload++;
@@ -1541,7 +1557,8 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                     submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
                 else
 #endif
-                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(), decoded);
+                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(),
+                                        decoded, constrainedTextureCache_);
             }
 
             vis.nextEquipTextureUpload++;
