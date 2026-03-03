@@ -222,6 +222,10 @@ bool Application::initialize(const ApplicationConfig& config) {
                 if (!config.atlasPath.empty()) {
                     builtConfig.atlasPath = config.atlasPath;
                 }
+                // CLI override: --threads
+                if (config.backgroundThreadCount > 0) {
+                    builtConfig.backgroundThreadCount = config.backgroundThreadCount;
+                }
 
                 // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
 #ifndef EQT_HAS_GLES2
@@ -859,6 +863,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.rdpPort = static_cast<uint16_t>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--threads") {
+            if (i + 1 < argc) {
+                config.backgroundThreadCount = std::atoi(argv[++i]);
+            }
         } else if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
             std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -874,6 +882,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --atlas-path <dir>       Directory containing .atlas texture atlas files\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
             std::cout << "  --gles2                  Use OpenGL ES 2.0 backend (auto on DRM+OrangePi)\n";
+            std::cout << "  --threads <N>            Background thread pool size (default: from preset)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
             std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
 #ifdef WITH_RDP

@@ -78,6 +78,7 @@ struct ApplicationConfig {
     // Constrained rendering
     std::string constrainedPreset;
     std::string atlasPath;  // Directory containing .atlas files for texture atlasing
+    int backgroundThreadCount = 0;  // 0 = use preset default
 
     // Profiling
     bool frameTimingEnabled = false;
