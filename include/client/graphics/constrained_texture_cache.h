@@ -18,6 +18,15 @@ class GPUUploadThread;
 class BackgroundThreadPool;
 class ZoneMeshBuilder;
 
+// Listener interface for texture eviction notifications.
+// Subsystems that register textures with the cache can implement this
+// to null out local pointers when their textures are evicted.
+class TextureEvictionListener {
+public:
+    virtual ~TextureEvictionListener() = default;
+    virtual void onTextureEvicted(const std::string& name) = 0;
+};
+
 // Decoded texture pixels waiting for GPU upload
 struct DecodedUpload {
     std::string name;
@@ -130,6 +139,10 @@ public:
     // Set mesh builder for entity texture registration (non-owning)
     void setMeshBuilder(ZoneMeshBuilder* meshBuilder) { meshBuilder_ = meshBuilder; }
 
+    // Eviction listener management
+    void addEvictionListener(TextureEvictionListener* listener);
+    void removeEvictionListener(TextureEvictionListener* listener);
+
 private:
     // Remove all references to a texture from mesh materials in the scene
     // This must be called before driver_->removeTexture() to prevent dangling pointers
@@ -238,6 +251,9 @@ private:
 
     // Texture names submitted for background decode but not yet uploaded (render thread only)
     std::unordered_set<std::string> pendingDecodes_;
+
+    // Eviction listeners (non-owning)
+    std::vector<TextureEvictionListener*> evictionListeners_;
 };
 
 } // namespace Graphics

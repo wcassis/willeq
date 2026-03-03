@@ -17,7 +17,30 @@ AnimatedTreeManager::AnimatedTreeManager(irr::scene::ISceneManager* smgr,
 }
 
 AnimatedTreeManager::~AnimatedTreeManager() {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
     cleanup();
+}
+
+void AnimatedTreeManager::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    constrainedCache_ = cache;
+    if (constrainedCache_) {
+        constrainedCache_->addEvictionListener(this);
+    }
+}
+
+void AnimatedTreeManager::onTextureEvicted(const std::string& name) {
+    // Tree textures are registered with "tree_" prefix
+    if (name.substr(0, 5) != "tree_") return;
+    std::string stripped = name.substr(5);
+    auto it = textureCache_.find(stripped);
+    if (it != textureCache_.end()) {
+        it->second = nullptr;
+    }
 }
 
 void AnimatedTreeManager::initialize(const std::vector<ObjectInstance>& objects,
@@ -192,8 +215,8 @@ void AnimatedTreeManager::cleanup() {
         tree.buffers.clear();  // Buffers are owned by mesh
     }
     animatedTrees_.clear();
-    // Remove textures from driver before clearing cache
-    if (driver_) {
+    // Don't call driver_->removeTexture() if cache owns textures
+    if (!constrainedCache_ && driver_) {
         for (auto& [name, texture] : textureCache_) {
             if (texture) {
                 driver_->removeTexture(texture);
@@ -516,6 +539,12 @@ irr::video::ITexture* AnimatedTreeManager::getOrLoadTexture(
     }
 
     textureCache_[name] = texture;
+    if (texture && constrainedCache_) {
+        auto dim = texture->getOriginalSize();
+        bool hasAlpha = texture->hasAlpha();
+        constrainedCache_->registerTexture("tree_" + name, texture,
+            static_cast<size_t>(dim.Width) * dim.Height * 4, hasAlpha);
+    }
     return texture;
 }
 

@@ -13,7 +13,34 @@ StormCloudLayer::StormCloudLayer() {
 }
 
 StormCloudLayer::~StormCloudLayer() {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
     shutdown();
+}
+
+void StormCloudLayer::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    constrainedCache_ = cache;
+    if (constrainedCache_) {
+        constrainedCache_->addEvictionListener(this);
+    }
+}
+
+void StormCloudLayer::onTextureEvicted(const std::string& name) {
+    if (name == "storm_cloud_blended") {
+        blendedTexture_ = nullptr;
+        return;
+    }
+    // Cloud frame textures: registered as "storm_cloud_frame_N"
+    for (size_t i = 0; i < cloudFrames_.size(); ++i) {
+        if (name == "storm_cloud_frame_" + std::to_string(i)) {
+            cloudFrames_[i] = nullptr;
+            return;
+        }
+    }
 }
 
 bool StormCloudLayer::initialize(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
@@ -47,6 +74,10 @@ bool StormCloudLayer::initialize(irr::scene::ISceneManager* smgr, irr::video::IV
 
     // Create initial blended texture
     blendedTexture_ = driver_->addTexture("storm_cloud_blended", blendImage_);
+    if (blendedTexture_ && constrainedCache_) {
+        constrainedCache_->registerTexture("storm_cloud_blended", blendedTexture_,
+            static_cast<size_t>(size) * size * 4, true);
+    }
 
     // Create scene node
     domeNode_ = smgr_->addMeshSceneNode(domeMesh_);
@@ -290,6 +321,12 @@ void StormCloudLayer::generateCloudTextures() {
             return;
         }
         cloudFrames_.push_back(tex);
+        if (constrainedCache_) {
+            auto dim = tex->getOriginalSize();
+            constrainedCache_->registerTexture(
+                "storm_cloud_frame_" + std::to_string(i), tex,
+                static_cast<size_t>(dim.Width) * dim.Height * 4, true);
+        }
     }
     LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} cloud textures", cloudFrames_.size());
 }
@@ -430,8 +467,17 @@ void StormCloudLayer::updateBlendedTexture() {
 
     // Update the blended texture from the image
     // Remove old texture and create new one
-    driver_->removeTexture(blendedTexture_);
+    if (!constrainedCache_) {
+        driver_->removeTexture(blendedTexture_);
+    }
+    // Note: if constrainedCache_ is set, registerTexture() below handles evicting
+    // the old texture via re-registration (same name, different pointer).
     blendedTexture_ = driver_->addTexture("storm_cloud_blended", blendImage_);
+    if (blendedTexture_ && constrainedCache_) {
+        int size = settings_.textureSize;
+        constrainedCache_->registerTexture("storm_cloud_blended", blendedTexture_,
+            static_cast<size_t>(size) * size * 4, true);
+    }
 
     // Update scene node material
     if (domeNode_ && blendedTexture_) {

@@ -660,6 +660,9 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create tree wind animation manager
     treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
     treeManager_->setRenderDistance(renderDistance_);
+    if (constrainedTextureCache_) {
+        treeManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
     if (zoneShader_ && zoneShader_->isAvailable()) {
         treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                              zoneShader_->getActiveAlphaTest());
@@ -864,6 +867,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     if (!treeManager_) {
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
         treeManager_->setRenderDistance(renderDistance_);
+        if (constrainedTextureCache_) {
+            treeManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
         if (zoneShader_ && zoneShader_->isAvailable()) {
             treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                  zoneShader_->getActiveAlphaTest());
@@ -932,6 +938,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
         }
+        if (constrainedTextureCache_) {
+            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
         // Connect weather system to weather effects
         if (weatherSystem_) {
             weatherSystem_->addListener(weatherEffects_.get());
@@ -990,6 +999,9 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     // Create sky renderer (if not already created)
     if (!skyRenderer_) {
         skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
+        if (constrainedTextureCache_) {
+            skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
         if (!skyRenderer_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed - sky will not be rendered");
         } else {
@@ -1004,6 +1016,9 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         if (detailSettings.detailObjectsEnabled) {
             detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
             detailManager_->setSurfaceMapsPath("data/detail/zones");
+            if (constrainedTextureCache_) {
+                detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            }
             LOG_INFO(MOD_GRAPHICS, "Detail manager initialized (detail objects enabled in settings)");
         } else {
             LOG_INFO(MOD_GRAPHICS, "Detail manager skipped (detail objects disabled in settings)");
@@ -1815,6 +1830,9 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
         }
+        if (constrainedTextureCache_) {
+            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
         if (weatherSystem_) {
             weatherSystem_->addListener(weatherEffects_.get());
         }
@@ -1888,6 +1906,9 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     if (settings.detailObjectsEnabled && !detailManager_ && smgr_ && driver_) {
         detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
         detailManager_->setSurfaceMapsPath("data/detail/zones");
+        if (constrainedTextureCache_) {
+            detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
         LOG_INFO(MOD_GRAPHICS, "Detail manager created (toggled on via settings)");
 
         // If zone is loaded, schedule deferred init
@@ -3893,6 +3914,9 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                          pendingZoneComputations_->skyLoadData->skyLoader;
         if (!skyRenderer_) {
             skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
+            if (constrainedTextureCache_) {
+                skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            }
             if (hasBgData) {
                 // Adopt pre-loaded loader + config (lightweight pointer moves)
                 // NOTE: skyLoadData is NOT reset here — pre-decoded textures are
@@ -3931,6 +3955,9 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             if (detailSettings.detailObjectsEnabled) {
                 detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
                 detailManager_->setSurfaceMapsPath("data/detail/zones");
+                if (constrainedTextureCache_) {
+                    detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+                }
                 LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
             }
         }
@@ -5029,6 +5056,9 @@ void IrrlichtRenderer::createZoneMesh() {
 
             // Initialize animated texture manager for zone textures
             animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
+            if (constrainedTextureCache_) {
+                animatedTextureManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            }
             int animCount = animatedTextureManager_->initialize(
                 *currentZone_->geometry, currentZone_->textures, mesh);
 

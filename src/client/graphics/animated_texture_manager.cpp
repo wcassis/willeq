@@ -14,7 +14,11 @@ AnimatedTextureManager::AnimatedTextureManager(irr::video::IVideoDriver* driver,
 }
 
 AnimatedTextureManager::~AnimatedTextureManager() {
-    if (driver_) {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    // Don't call driver_->removeTexture() if cache owns textures
+    if (!constrainedCache_ && driver_) {
         for (auto& [name, texture] : textureCache_) {
             if (texture) {
                 driver_->removeTexture(texture);
@@ -23,6 +27,35 @@ AnimatedTextureManager::~AnimatedTextureManager() {
     }
     textureCache_.clear();
     animatedTextures_.clear();
+}
+
+void AnimatedTextureManager::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    constrainedCache_ = cache;
+    if (constrainedCache_) {
+        constrainedCache_->addEvictionListener(this);
+    }
+}
+
+void AnimatedTextureManager::onTextureEvicted(const std::string& name) {
+    auto it = textureCache_.find(name);
+    if (it == textureCache_.end()) return;
+
+    irr::video::ITexture* evictedTex = it->second;
+    it->second = nullptr;
+
+    // Also null out matching frame pointers in animated textures
+    if (evictedTex) {
+        for (auto& [primaryName, state] : animatedTextures_) {
+            for (auto& frameTex : state.frameTextures) {
+                if (frameTex == evictedTex) {
+                    frameTex = nullptr;
+                }
+            }
+        }
+    }
 }
 
 irr::video::ITexture* AnimatedTextureManager::loadTexture(const std::string& name,
@@ -81,6 +114,12 @@ irr::video::ITexture* AnimatedTextureManager::loadTexture(const std::string& nam
     }
 
     textureCache_[name] = texture;
+    if (texture && constrainedCache_) {
+        auto dim = texture->getOriginalSize();
+        bool hasAlpha = texture->hasAlpha();
+        constrainedCache_->registerTexture(name, texture,
+            static_cast<size_t>(dim.Width) * dim.Height * 4, hasAlpha);
+    }
     return texture;
 }
 
@@ -349,6 +388,7 @@ void AnimatedTextureManager::update(float deltaMs) {
 
             // Update all affected mesh buffers with the new texture
             irr::video::ITexture* newTex = state.frameTextures[state.currentFrame];
+            if (!newTex) continue;  // Skip evicted frames
             for (irr::scene::IMeshBuffer* buffer : state.affectedBuffers) {
                 buffer->getMaterial().setTexture(0, newTex);
             }

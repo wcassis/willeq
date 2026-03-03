@@ -3,6 +3,7 @@
 
 #include "client/graphics/tree_wind_controller.h"
 #include "client/graphics/tree_identifier.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include <cstddef>
@@ -22,11 +23,17 @@ namespace Graphics {
  * copies, and updates vertex positions each frame based on wind simulation.
  * Uses CPU vertex animation for software renderer compatibility.
  */
-class AnimatedTreeManager {
+class AnimatedTreeManager : public TextureEvictionListener {
 public:
     AnimatedTreeManager(irr::scene::ISceneManager* smgr,
                         irr::video::IVideoDriver* driver);
     ~AnimatedTreeManager();
+
+    // Set constrained texture cache for budget tracking
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener
+    void onTextureEvicted(const std::string& name) override;
 
     /**
      * Initialize the manager with placeable objects.
@@ -233,8 +240,11 @@ private:
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
 
-    // Texture cache (textures are owned by driver, we just cache pointers)
+    // Texture cache (textures are owned by driver or constrained cache)
     std::unordered_map<std::string, irr::video::ITexture*> textureCache_;
+
+    // Constrained texture cache for budget tracking (non-owning, may be null)
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     // Wind simulation
     TreeWindController windController_;

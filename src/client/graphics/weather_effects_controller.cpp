@@ -255,6 +255,12 @@ void WeatherEffectsController::setLightningCallback(std::function<void()> callba
     lightningCallback_ = callback;
 }
 
+void WeatherEffectsController::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (stormCloudLayer_) {
+        stormCloudLayer_->setConstrainedTextureCache(cache);
+    }
+}
+
 void WeatherEffectsController::setSurfaceMap(const Detail::SurfaceMap* surfaceMap) {
     surfaceMap_ = surfaceMap;
 }

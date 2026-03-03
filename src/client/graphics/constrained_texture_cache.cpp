@@ -138,11 +138,15 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
                                                size_t sizeBytes, bool hasAlphaFlag) {
     if (!texture) return false;
 
-    // Already in cache — just touch
+    // Already in cache — check if same texture (just touch) or replacement
     auto it = cache_.find(name);
     if (it != cache_.end()) {
-        touch(name);
-        return true;
+        if (it->second.texture == texture) {
+            touch(name);
+            return true;
+        }
+        // Different texture under same name — evict the old one first
+        evictTexture(name);
     }
 
     // Too large to ever fit
@@ -174,7 +178,11 @@ bool ConstrainedTextureCache::hasAlpha(const std::string& name) const {
 }
 
 void ConstrainedTextureCache::clear() {
+    // Notify listeners for each texture being cleared
     for (auto& pair : cache_) {
+        for (auto* listener : evictionListeners_) {
+            listener->onTextureEvicted(pair.first);
+        }
         if (pair.second.texture) {
             driver_->removeTexture(pair.second.texture);
         }
@@ -220,6 +228,11 @@ void ConstrainedTextureCache::evictTexture(const std::string& name) {
     size_t sizeBytes = it->second.sizeBytes;
 
     LOG_DEBUG(MOD_GRAPHICS, "Evicting texture '{}' ({} bytes)", name, sizeBytes);
+
+    // Notify listeners before clearing references and removing texture
+    for (auto* listener : evictionListeners_) {
+        listener->onTextureEvicted(name);
+    }
 
     // CRITICAL: Clear all references to this texture from mesh materials BEFORE removing
     // This prevents crashes from dangling texture pointers during rendering
@@ -853,6 +866,18 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
     (void)data;
     return nullptr;
 #endif
+}
+
+void ConstrainedTextureCache::addEvictionListener(TextureEvictionListener* listener) {
+    if (listener) {
+        evictionListeners_.push_back(listener);
+    }
+}
+
+void ConstrainedTextureCache::removeEvictionListener(TextureEvictionListener* listener) {
+    evictionListeners_.erase(
+        std::remove(evictionListeners_.begin(), evictionListeners_.end(), listener),
+        evictionListeners_.end());
 }
 
 } // namespace Graphics

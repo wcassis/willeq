@@ -14,6 +14,7 @@
 #include "client/graphics/detail/footprint_config.h"
 #include "client/graphics/detail/footprint_manager.h"
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/constrained_texture_cache.h"
 
 namespace EQT {
 namespace Graphics {
@@ -27,11 +28,17 @@ namespace Detail {
 
 class DetailChunk;
 
-class DetailManager {
+class DetailManager : public TextureEvictionListener {
 public:
     DetailManager(irr::scene::ISceneManager* smgr,
                   irr::video::IVideoDriver* driver);
     ~DetailManager();
+
+    // Set constrained texture cache for budget tracking
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener
+    void onTextureEvicted(const std::string& name) override;
 
     // Frame update - call from IrrlichtRenderer::processFrame
     // playerPos/playerVelocity: for foliage disturbance (grass bending when walking)
@@ -160,6 +167,9 @@ private:
 
     // Texture atlas (nullptr for Phase 1 - uses colored quads)
     irr::video::ITexture* atlasTexture_ = nullptr;
+
+    // Constrained texture cache for budget tracking (non-owning, may be null)
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     // Chunk management
     std::unordered_map<ChunkKey, std::unique_ptr<DetailChunk>, ChunkKeyHash> chunks_;

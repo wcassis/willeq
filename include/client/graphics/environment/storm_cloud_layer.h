@@ -1,5 +1,6 @@
 #pragma once
 
+#include "client/graphics/constrained_texture_cache.h"
 #include <glm/glm.hpp>
 #include <string>
 #include <set>
@@ -84,10 +85,16 @@ struct StormCloudSettings {
  * - Opacity fades with storm intensity
  * - Multiple overlapping layers for depth
  */
-class StormCloudLayer {
+class StormCloudLayer : public TextureEvictionListener {
 public:
     StormCloudLayer();
     ~StormCloudLayer();
+
+    // Set constrained texture cache for budget tracking
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener
+    void onTextureEvicted(const std::string& name) override;
 
     // Non-copyable
     StormCloudLayer(const StormCloudLayer&) = delete;
@@ -242,6 +249,9 @@ private:
 
     // Path for loading textures
     std::string eqClientPath_;
+
+    // Constrained texture cache for budget tracking (non-owning, may be null)
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 };
 
 } // namespace Environment

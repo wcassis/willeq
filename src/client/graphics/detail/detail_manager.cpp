@@ -36,8 +36,27 @@ DetailManager::DetailManager(irr::scene::ISceneManager* smgr,
 }
 
 DetailManager::~DetailManager() {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
     onZoneExit();
     LOG_INFO(MOD_GRAPHICS, "DetailManager: Destroyed");
+}
+
+void DetailManager::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    constrainedCache_ = cache;
+    if (constrainedCache_) {
+        constrainedCache_->addEvictionListener(this);
+    }
+}
+
+void DetailManager::onTextureEvicted(const std::string& name) {
+    if (name == "detail_atlas") {
+        atlasTexture_ = nullptr;
+    }
 }
 
 void DetailManager::setSurfaceMapsPath(const std::string& path) {
@@ -121,6 +140,11 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
             LOG_WARN(MOD_GRAPHICS, "DetailManager: Atlas not found at {}, disabling detail objects. Run generate_textures tool.", atlasPath);
             enabled_ = false;
             return;
+        }
+        if (constrainedCache_) {
+            auto dim = atlasTexture_->getOriginalSize();
+            constrainedCache_->registerTexture("detail_atlas", atlasTexture_,
+                static_cast<size_t>(dim.Width) * dim.Height * 4, true);
         }
     }
 

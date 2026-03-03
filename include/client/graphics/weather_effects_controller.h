@@ -2,6 +2,7 @@
 
 #include "client/graphics/weather_system.h"
 #include "client/graphics/environment/particle_types.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <functional>
@@ -243,6 +244,11 @@ public:
     float getLightningTimer() const { return lightningTimer_; }
     bool isLightningActive() const { return lightningActive_; }
     bool isLightningEnabled() const { return config_.storm.lightningEnabled; }
+
+    /**
+     * Set constrained texture cache (forwarded to storm cloud layer).
+     */
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
     /**
      * Set surface map for water detection.

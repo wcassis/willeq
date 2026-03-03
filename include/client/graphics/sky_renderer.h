@@ -8,6 +8,7 @@
 #include <map>
 #include <irrlicht.h>
 #include "client/graphics/sky_config.h"
+#include "client/graphics/constrained_texture_cache.h"
 
 namespace EQT {
 namespace Graphics {
@@ -45,11 +46,17 @@ struct SkyColorSet {
 };
 
 // Sky renderer - renders sky dome, clouds, and celestial bodies
-class SkyRenderer {
+class SkyRenderer : public TextureEvictionListener {
 public:
     SkyRenderer(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                 irr::io::IFileSystem* fileSystem);
     ~SkyRenderer();
+
+    // Set constrained texture cache for budget tracking
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener
+    void onTextureEvicted(const std::string& name) override;
 
     // Initialize sky renderer with EQ client path
     // Loads sky.s3d and sky.ini
@@ -261,6 +268,9 @@ private:
     irr::scene::ISceneManager* smgr_;
     irr::video::IVideoDriver* driver_;
     irr::io::IFileSystem* fileSystem_;
+
+    // Constrained texture cache for budget tracking (non-owning, may be null)
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     // Sky data loaders
     std::unique_ptr<SkyLoader> skyLoader_;

@@ -27,7 +27,29 @@ SkyRenderer::SkyRenderer(irr::scene::ISceneManager* smgr, irr::video::IVideoDriv
 }
 
 SkyRenderer::~SkyRenderer() {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
     clearSkyNodes();
+    // Don't call driver_->removeTexture() — cache owns the textures now
+    textureCache_.clear();
+}
+
+void SkyRenderer::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    constrainedCache_ = cache;
+    if (constrainedCache_) {
+        constrainedCache_->addEvictionListener(this);
+    }
+}
+
+void SkyRenderer::onTextureEvicted(const std::string& name) {
+    auto it = textureCache_.find(name);
+    if (it != textureCache_.end()) {
+        it->second = nullptr;
+    }
 }
 
 bool SkyRenderer::initialize(const std::string& eqClientPath) {
@@ -343,6 +365,10 @@ irr::video::ITexture* SkyRenderer::uploadPreDecodedTexture(const std::string& na
 
     if (texture) {
         textureCache_[name] = texture;
+        if (constrainedCache_) {
+            constrainedCache_->registerTexture(name, texture,
+                static_cast<size_t>(width) * height * 4, false);
+        }
         LOG_DEBUG(MOD_GRAPHICS, "Uploaded pre-decoded sky texture: {} ({}x{})", name, width, height);
     } else {
         LOG_WARN(MOD_GRAPHICS, "Failed to upload pre-decoded sky texture: {}", name);
@@ -1690,6 +1716,10 @@ void SkyRenderer::finalizeStripUpload() {
 
     if (tex) {
         textureCache_[stripState_.textureName] = tex;
+        if (constrainedCache_) {
+            constrainedCache_->registerTexture(stripState_.textureName, tex,
+                static_cast<size_t>(stripState_.texWidth) * stripState_.texHeight * 4, false);
+        }
         LOG_DEBUG(MOD_GRAPHICS, "finalizeStripUpload: {} ({}x{})",
                   stripState_.textureName, stripState_.texWidth, stripState_.texHeight);
     } else {

@@ -8,6 +8,7 @@
 #include <memory>
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/graphics/constrained_texture_cache.h"
 
 namespace EQT {
 namespace Graphics {
@@ -29,10 +30,16 @@ struct AnimatedTextureState {
 };
 
 // Manages animated textures and updates them over time
-class AnimatedTextureManager {
+class AnimatedTextureManager : public TextureEvictionListener {
 public:
     AnimatedTextureManager(irr::video::IVideoDriver* driver, irr::io::IFileSystem* fileSystem);
     ~AnimatedTextureManager();
+
+    // Set constrained texture cache for budget tracking
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener
+    void onTextureEvicted(const std::string& name) override;
 
     // Initialize from zone geometry and textures
     // Returns the number of animated textures found
@@ -89,6 +96,9 @@ private:
 
     // Cache of all loaded textures (including frame textures)
     std::map<std::string, irr::video::ITexture*> textureCache_;
+
+    // Constrained texture cache for budget tracking (non-owning, may be null)
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 };
 
 } // namespace Graphics
