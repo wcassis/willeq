@@ -33,6 +33,7 @@
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/ui/options_window.h"
 #include "client/graphics/background_work_queue.h"
+#include "client/graphics/background_thread_pool.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/gpu_upload_thread.h"
 #include "client/graphics/work_priority.h"
@@ -1383,6 +1384,9 @@ private:
     bool progressiveLoadingActive_ = false;
     bool portalBuildPending_ = false;  // Deferred portal extraction from loadZone
     std::chrono::steady_clock::time_point progressiveLoadStartTime_;  // When progressive loading began
+
+    // Shared background thread pool (replaces per-queue dedicated threads)
+    std::unique_ptr<BackgroundThreadPool> backgroundThreadPool_;
 
     // Background zone load state machine
     BackgroundZoneLoadPhase backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;

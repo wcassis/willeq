@@ -63,6 +63,9 @@ public:
     explicit EntityPrepWorker(RaceModelLoader* modelLoader, EquipmentModelLoader* equipLoader = nullptr);
     ~EntityPrepWorker();
 
+    /// Set the shared thread pool (must be called before start()).
+    void setBackgroundThreadPool(BackgroundThreadPool* pool) { pool_ = pool; }
+
     void start();
     void stop();
 
@@ -101,6 +104,7 @@ private:
 
     RaceModelLoader* modelLoader_;
     EquipmentModelLoader* equipLoader_;
+    BackgroundThreadPool* pool_ = nullptr;
 
     std::unique_ptr<BackgroundWorkQueue<PrepRequest, PrepResult>> queue_;
 

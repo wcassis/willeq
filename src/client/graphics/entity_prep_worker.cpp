@@ -1,4 +1,5 @@
 #include "client/graphics/entity_prep_worker.h"
+#include "client/graphics/work_priority.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/equipment_textures.h"
@@ -20,11 +21,17 @@ EntityPrepWorker::~EntityPrepWorker() {
 
 void EntityPrepWorker::start() {
     if (queue_) return;  // already started
-    queue_ = std::make_unique<BackgroundWorkQueue<PrepRequest, PrepResult>>(
-        [this](PrepRequest&& req) -> PrepResult { return processRequest(std::move(req)); });
-    queue_->start();
-    LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: background thread started (equipLoader={})",
-             equipLoader_ ? "yes" : "no");
+    if (pool_) {
+        queue_ = std::make_unique<BackgroundWorkQueue<PrepRequest, PrepResult>>(
+            [this](PrepRequest&& req) -> PrepResult { return processRequest(std::move(req)); },
+            pool_);
+    } else {
+        queue_ = std::make_unique<BackgroundWorkQueue<PrepRequest, PrepResult>>(
+            [this](PrepRequest&& req) -> PrepResult { return processRequest(std::move(req)); });
+        queue_->start();
+    }
+    LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker: background {} started (equipLoader={})",
+             pool_ ? "pool-backed" : "thread", equipLoader_ ? "yes" : "no");
 }
 
 void EntityPrepWorker::stop() {
@@ -64,7 +71,15 @@ void EntityPrepWorker::dispatchOne() {
     dispatchedSpawnId_ = req.spawnId;
     dispatchedKey_ = (static_cast<uint32_t>(req.raceId) << 8) | req.gender;
 
-    if (queue_) queue_->submit(std::move(req));
+    if (queue_) {
+        if (pool_) {
+            uint32_t priority = WorkPriorityKey::make(
+                req.pvsDepth, AssetType::EntityMesh, 0.0f).value;
+            queue_->submit(std::move(req), priority);
+        } else {
+            queue_->submit(std::move(req));
+        }
+    }
 
     LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: dispatched spawn={} race={} gender={} ({} pending)",
               dispatchedSpawnId_, dispatchedKey_ >> 8, dispatchedKey_ & 0xFF, pendingQueue_.size());

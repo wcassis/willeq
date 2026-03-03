@@ -1,8 +1,8 @@
 #include "client/graphics/ui/item_icon_loader.h"
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/work_priority.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
-#include "client/graphics/work_priority.h"
 #endif
 #include <fstream>
 #include <iostream>
@@ -41,10 +41,17 @@ bool ItemIconLoader::init(irr::video::IVideoDriver* driver, const std::string& e
 
 void ItemIconLoader::startWorker() {
     if (queue_) return;  // already started
-    queue_ = std::make_unique<EQT::Graphics::BackgroundWorkQueue<SheetRequest, SheetResult>>(
-        [this](SheetRequest&& req) -> SheetResult { return processSheet(std::move(req)); });
-    queue_->start();
-    LOG_INFO(MOD_UI, "Icon sheet background worker started");
+    if (pool_) {
+        queue_ = std::make_unique<EQT::Graphics::BackgroundWorkQueue<SheetRequest, SheetResult>>(
+            [this](SheetRequest&& req) -> SheetResult { return processSheet(std::move(req)); },
+            pool_,
+            EQT::Graphics::WorkPriorityKey::makeNonSpatial(EQT::Graphics::AssetType::Icon).value);
+    } else {
+        queue_ = std::make_unique<EQT::Graphics::BackgroundWorkQueue<SheetRequest, SheetResult>>(
+            [this](SheetRequest&& req) -> SheetResult { return processSheet(std::move(req)); });
+        queue_->start();
+    }
+    LOG_INFO(MOD_UI, "Icon sheet background worker started (pool={})", pool_ ? "yes" : "no");
 }
 
 void ItemIconLoader::stopWorker() {

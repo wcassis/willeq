@@ -55,6 +55,9 @@ public:
     // Check if there are pending sheets (queued requests or completed results to poll)
     bool hasPendingSheets() const;
 
+    // Set shared background thread pool (must be called before startWorker())
+    void setBackgroundThreadPool(EQT::Graphics::BackgroundThreadPool* pool) { pool_ = pool; }
+
     // Constrained mode: share the constrained texture cache for LRU eviction
     void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
 
@@ -149,6 +152,9 @@ private:
 
     // Track requested sheet keys to prevent duplicate queue entries (main-thread only)
     std::set<int> requestedSheetKeys_;
+
+    // Shared background thread pool (non-owning)
+    EQT::Graphics::BackgroundThreadPool* pool_ = nullptr;
 
     // Constrained mode state
     EQT::Graphics::ConstrainedTextureCache* constrainedCache_ = nullptr;

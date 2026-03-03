@@ -181,12 +181,21 @@ ADD_EXECUTABLE(test_simd_math
 TARGET_LINK_LIBRARIES(test_simd_math GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_simd_math)
 
-# Test BackgroundWorkQueue abstraction (header-only, no external dependencies)
+# Test BackgroundWorkQueue abstraction (pool-backed mode needs background_thread_pool.cpp)
 ADD_EXECUTABLE(test_background_work_queue
     test_background_work_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
 )
 TARGET_LINK_LIBRARIES(test_background_work_queue GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_background_work_queue)
+
+# Test BackgroundThreadPool (shared priority-ordered thread pool)
+ADD_EXECUTABLE(test_background_thread_pool
+    test_background_thread_pool.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
+)
+TARGET_LINK_LIBRARIES(test_background_thread_pool GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_background_thread_pool)
 
 # Test WorkPriorityKey unified priority system (header-only, no external dependencies)
 ADD_EXECUTABLE(test_work_priority

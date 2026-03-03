@@ -279,6 +279,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
+        src/client/graphics/background_thread_pool.cpp
         src/client/graphics/entity_prep_worker.cpp
         src/client/graphics/simulation_worker.cpp
         src/client/graphics/door_manager.cpp
@@ -940,6 +941,26 @@ IF(EQT_GRAPHICS)
             ${FMT_LIBRARY}
             EtcLib
         )
+    ENDIF()
+ENDIF()
+
+# Atlas UV audit tool (check which textures can be atlased)
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(atlas_uv_audit
+        tools/atlas_uv_audit.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(atlas_uv_audit PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    IF(fmt_FOUND)
+        TARGET_LINK_LIBRARIES(atlas_uv_audit ${ZLIB_LIBRARIES} fmt::fmt)
+    ELSE()
+        TARGET_LINK_LIBRARIES(atlas_uv_audit ${ZLIB_LIBRARIES} ${FMT_LIBRARY})
     ENDIF()
 ENDIF()
 

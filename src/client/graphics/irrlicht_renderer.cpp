@@ -479,6 +479,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
                  targetFps, governor_->getTargetFrameTimeMs());
     }
 
+    // Create shared background thread pool
+    backgroundThreadPool_ = std::make_unique<BackgroundThreadPool>(
+        config_.constrainedConfig.backgroundThreadCount);
+    LOG_INFO(MOD_GRAPHICS, "Background thread pool: {} thread(s)",
+             config_.constrainedConfig.backgroundThreadCount);
+
     // One-time file I/O at app startup (before render loop begins).
     // Caches display settings so render-thread code never reads JSON.
     if (!displaySettingsCached_) {
@@ -1067,6 +1073,12 @@ void IrrlichtRenderer::shutdown() {
     }
 
     unloadZone();
+
+    // Shutdown shared thread pool (all queue users already stopped above)
+    if (backgroundThreadPool_) {
+        backgroundThreadPool_->shutdown();
+        backgroundThreadPool_.reset();
+    }
 
     // Reset all managers that hold Irrlicht resources BEFORE dropping the device
     // Their destructors may try to remove scene nodes which requires a valid device
@@ -2769,6 +2781,7 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
 
     // Start background icon sheet worker (disk I/O + TGA decode off main thread)
     if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
+        windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
         windowManager_->getIconLoader().startWorker();
     }
 
@@ -3084,8 +3097,7 @@ void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::s
         archive.close();
 
         return result;
-    });
-    bspPreloadQueue_->start();
+    }, backgroundThreadPool_.get(), 0);
     bspPreloadQueue_->submit(BspPreloadRequest{});
 
     LOG_INFO(MOD_GRAPHICS, "BSP preload started for zone '{}'", zoneName);
@@ -3671,8 +3683,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                               zoneNameCopy, eqClientPathCopy});
 
         return ZoneLoadResult{true};
-    });
-    zoneLoadQueue_->start();
+    }, backgroundThreadPool_.get(), 0);
     zoneLoadQueue_->submit(ZoneLoadRequest{});
 
     LOG_INFO(MOD_GRAPHICS, "Background S3D load started (with CPU post-processing): {}", zonePath);
@@ -3724,8 +3735,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
 
         LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
         return DeferredWorkResult{true};
-    });
-    deferredWorkQueue_->start();
+    }, backgroundThreadPool_.get(), 1);
     deferredWorkQueue_->submit(DeferredWorkRequest{});
 
     LOG_INFO(MOD_GRAPHICS, "Deferred background work queue launched");
@@ -4948,6 +4958,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
                 entityRenderer_->getRaceModelLoader(),
                 entityRenderer_->getEquipmentModelLoader());
+            entityPrepWorker_->setBackgroundThreadPool(backgroundThreadPool_.get());
             entityPrepWorker_->start();
             entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
             LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started at EntityLoading phase");
@@ -8066,6 +8077,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     if (!progressiveLoadingActive_ && windowManager_ &&
         config_.constrainedConfig.enableItemIcons) {
         if (!governor_ || governor_->getState() == BudgetState::Green) {
+            windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
             windowManager_->getIconLoader().startWorker();
             if (windowManager_->processOneLazyIcon()) {
                 frameTimings_.meshLoading = measureSection();
@@ -11196,6 +11208,7 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
 
     // Start background icon sheet worker if not already started
     if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
+        windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
         windowManager_->getIconLoader().startWorker();
     }
 

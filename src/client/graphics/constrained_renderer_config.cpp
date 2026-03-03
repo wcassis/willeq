@@ -126,6 +126,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 32 * 1024 * 1024;  // 32MB
             config.meshMemoryBytes = 4 * 1024 * 1024;  // 4MB mesh cache
+            config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             break;
 
@@ -145,6 +146,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 64 * 1024 * 1024;  // 64MB
             config.meshMemoryBytes = 8 * 1024 * 1024;  // 8MB mesh cache
+            config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             break;
 
@@ -166,6 +168,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
             config.meshMemoryBytes = 16 * 1024 * 1024;  // 16MB mesh cache
+            config.backgroundThreadCount = 2;
             config.targetFps = 60.0f;
             break;
 
@@ -212,6 +215,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.deferredAssetLoading = true;
             config.enableItemIcons = false;
             config.skipObjectBuild = true;
+            config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             // Entity prep: queue entities up to 2 portal hops away
             config.entityPrepMaxPvsDepth = 2;
@@ -418,6 +422,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         targetFps = preset["targetFps"].asFloat();
     if (preset.isMember("entityPrepMaxPvsDepth"))
         entityPrepMaxPvsDepth = preset["entityPrepMaxPvsDepth"].asInt();
+    if (preset.isMember("backgroundThreadCount"))
+        backgroundThreadCount = preset["backgroundThreadCount"].asInt();
 
     // Rendering backend
     if (preset.isMember("renderingBackend")) {
