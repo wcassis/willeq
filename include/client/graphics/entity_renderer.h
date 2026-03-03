@@ -277,9 +277,6 @@ public:
     // Get count of entities with actual models (not placeholders)
     size_t getModeledEntityCount() const;
 
-    // Update name tag positions (call each frame)
-    void updateNameTags(irr::scene::ICameraSceneNode* camera);
-
     // Show/hide name tags
     void setNameTagsVisible(bool visible);
     bool areNameTagsVisible() const { return nameTagsVisible_; }
@@ -526,11 +523,6 @@ public:
     // Set the constrained renderer config for entity visibility limits
     // When set, limits the number of visible entities and their render distance
     void setConstrainedConfig(const ConstrainedRendererConfig* config);
-
-    // Update entity visibility based on constrained mode limits
-    // Call this each frame after updating entity positions
-    // cameraPos: camera position in Irrlicht coordinates
-    void updateConstrainedVisibility(const irr::core::vector3df& cameraPos);
 
     // Get number of entities currently visible (for debug HUD)
     int getVisibleEntityCount() const { return visibleEntityCount_; }
