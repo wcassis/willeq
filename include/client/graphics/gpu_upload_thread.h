@@ -111,9 +111,6 @@ public:
     // Number of pending (not yet processed) upload requests
     size_t getPendingCount() const;
 
-    // Number of completed uploads waiting to be polled
-    size_t getCompletedCount() const;
-
     // Re-prioritize pending requests (called from main thread on PVS region change).
     // The callback computes a new priority for each pending request.
     void reprioritize(std::function<uint32_t(const UploadRequest&)> computePriority);

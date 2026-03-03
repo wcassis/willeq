@@ -301,13 +301,6 @@ private:
     void applySkinning(std::shared_ptr<ZoneGeometry>& mesh,
                        const std::shared_ptr<SkeletonTrack>& skeleton);
 
-    // Build bone transforms array by traversing skeleton hierarchy
-    void buildBoneTransforms(const std::shared_ptr<SkeletonBone>& bone,
-                             std::vector<CharacterPart>& transforms,
-                             int boneIndex,
-                             float parentShiftX, float parentShiftY, float parentShiftZ,
-                             float parentRotX, float parentRotY, float parentRotZ);
-
     // Build animated skeleton from WLD track data
     std::shared_ptr<CharacterSkeleton> buildAnimatedSkeleton(
         const std::string& modelCode,

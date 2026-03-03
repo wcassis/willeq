@@ -80,17 +80,8 @@ public:
     // True when the worker has no active work item and is waiting for dispatch
     bool isIdle() const;
 
-    // Remove a specific entity from the pending queue (despawn/left visibility)
-    void cancelPrep(uint16_t spawnId);
-
     // Check if a specific entity (by spawnId) is being prepped, dispatched, or queued
     bool isPendingForEntity(uint16_t spawnId) const;
-
-    // Check if a specific race/gender is being prepped, dispatched, or queued
-    bool isPending(uint16_t raceId, uint8_t gender) const;
-
-    // Get number of pending requests (queued + dispatched + in-progress)
-    size_t getPendingCount() const;
 
     // Re-sort pending queue with updated PVS depths (called on region change)
     void updateDepths(std::function<uint8_t(size_t)> depthLookup);

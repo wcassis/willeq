@@ -742,10 +742,6 @@ public:
     // The returned pointer is valid until the next call to swapAndGetResults().
     const SimulationOutput* swapAndGetResults();
 
-    // Get the current front buffer (last successfully swapped results).
-    // Returns nullptr if no results have ever been produced.
-    const SimulationOutput* getFrontBuffer() const;
-
     // Debug info
     struct DebugInfo {
         uint64_t framesComputed = 0;

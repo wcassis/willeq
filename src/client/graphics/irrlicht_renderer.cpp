@@ -1061,10 +1061,7 @@ void IrrlichtRenderer::hideLoadingScreen() {
     // During loading, Tier2 updates (PVS, object culling, lights) run and cache
     // camera positions. By the time loading completes, these caches are populated
     // at the camera's loading-phase position. Without resetting here, the movement
-    // gates in updateObjectLights() and updateZoneLightVisibility() block
-    // recalculation until the player moves 5+ units — leaving lights disabled
-    // and PVS stale on initial zone-in.
-    lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
+    // Force PVS recalculation on initial zone-in.
     forcePvsUpdate_ = true;
 
     // Request deferred governor reset so the 11+ second loading screen frame
@@ -1696,56 +1693,6 @@ bool IrrlichtRenderer::isRegionPvsVisible(size_t regionIdx) const {
     return camRegion->visibleRegions[regionIdx];
 }
 
-// Debug version that logs why a region is considered visible/hidden
-bool IrrlichtRenderer::isRegionPvsVisibleDebug(size_t regionIdx, const char* context, int id) const {
-    if (!usePvsCulling_) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (usePvsCulling_=false)",
-                  context, id, regionIdx);
-        return true;
-    }
-    if (regionIdx == SIZE_MAX) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region=SIZE_MAX: VISIBLE (no region assigned)",
-                  context, id);
-        return true;
-    }
-    if (currentPvsRegion_ == SIZE_MAX) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (currentPvsRegion_=SIZE_MAX)",
-                  context, id, regionIdx);
-        return true;
-    }
-    if (!zoneBspTree_) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (no BSP tree)",
-                  context, id, regionIdx);
-        return true;
-    }
-    if (currentPvsRegion_ >= zoneBspTree_->regions.size()) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (camRegion {} >= tree size {})",
-                  context, id, regionIdx, currentPvsRegion_, zoneBspTree_->regions.size());
-        return true;
-    }
-    auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
-    if (!camRegion) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (camRegion {} is null)",
-                  context, id, regionIdx, currentPvsRegion_);
-        return true;
-    }
-    if (camRegion->visibleRegions.empty()) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (camRegion {} visibleRegions empty)",
-                  context, id, regionIdx, currentPvsRegion_);
-        return true;
-    }
-    if (regionIdx >= camRegion->visibleRegions.size()) {
-        LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: VISIBLE (region >= bitvector size {})",
-                  context, id, regionIdx, camRegion->visibleRegions.size());
-        return true;
-    }
-    bool visible = camRegion->visibleRegions[regionIdx];
-    LOG_DEBUG(MOD_GRAPHICS, "PVS-DBG [{}#{}] region={}: {} (bitvector[{}]={}; camRegion={}, bitvecSize={})",
-              context, id, regionIdx, visible ? "VISIBLE" : "HIDDEN",
-              regionIdx, visible ? 1 : 0, currentPvsRegion_, camRegion->visibleRegions.size());
-    return visible;
-}
-
 // Dead code removed: updateObjectVisibility(), updateZoneLightVisibility(), updateObjectLights()
 // These are now handled exclusively by SimulationWorker.
 
@@ -2342,7 +2289,6 @@ void IrrlichtRenderer::unloadZone() {
     portalOcclusionEnabled_ = false;
     portalOcclusionEligible_ = false;
     portalBuildPending_ = false;
-    portalCacheDirty_ = true;
     regionNeighbors_.clear();
 
     // Clear constrained mesh cache
@@ -2395,8 +2341,6 @@ void IrrlichtRenderer::unloadZone() {
     // Clear zone light data (no scene nodes to remove)
     zoneLightData_.clear();
     zoneLightPositions_.clear();
-    zoneLightNames_.clear();
-
     // Clear entity renderer
     if (entityRenderer_) {
         // Clear mesh caches first to force fresh mesh/texture rebuild on next zone-in.
@@ -3229,7 +3173,6 @@ void IrrlichtRenderer::advanceBspPreload() {
     }
 
     // Signal PVS recalculation on next frame.
-    // Do NOT reset lastLightPlayerPos_ — that would force full recalculation.
     forcePvsUpdate_ = true;
 
     LOG_INFO(MOD_GRAPHICS, "BSP preload installed: {} regions, PVS culling active",
@@ -4755,8 +4698,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         zoneLightData_.clear();
         zoneLightPositions_.clear();
         zoneLightRegions_.clear();
-        zoneLightNames_.clear();
-
         if (currentZone_ && !currentZone_->lights.empty()) {
             for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
                 const auto& light = currentZone_->lights[i];
@@ -4771,7 +4712,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
                 zoneLightData_.push_back(zld);
                 zoneLightPositions_.push_back(pos);
-                zoneLightNames_.push_back(light->name);
             }
             LOG_DEBUG(MOD_GRAPHICS, "Created {} zone light data entries (no scene nodes)",
                       zoneLightData_.size());
@@ -6267,8 +6207,6 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
                 LOG_INFO(MOD_GRAPHICS, "Created player light: level={}, radius={:.1f}", lightLevel, radius);
             }
         }
-        // Invalidate light cache to force recalculation with new player light
-        lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
         return;
     }
 
@@ -6714,8 +6652,7 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
                  static_cast<int>(cameraMode_), playerInBounds, camera_ != nullptr);
     }
 
-    // Force visibility and lighting recalculation on the next frame.
-    lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
+    // Force visibility recalculation on the next frame.
     forcePvsUpdate_ = true;
 }
 
@@ -9641,9 +9578,6 @@ void IrrlichtRenderer::toggleZoneLights() {
         }
         LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: OFF (dark mode)");
     }
-    // Note: light visibility is managed by updateObjectLights() unified light management
-    // Invalidate light cache to force recalculation
-    lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
 }
 
 void IrrlichtRenderer::togglePlayerLight() {
@@ -9653,8 +9587,6 @@ void IrrlichtRenderer::togglePlayerLight() {
         zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
         swapZoneMeshMaterials();
     }
-    // Force light recalculation
-    lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
     LOG_INFO(MOD_GRAPHICS, "Debug: Player light {}", debugPlayerLightEnabled_ ? "ENABLED" : "DISABLED");
 }
 
@@ -9746,7 +9678,6 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
 
 void IrrlichtRenderer::toggleObjectLights() {
     debugObjectLightsEnabled_ = !debugObjectLightsEnabled_;
-    lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
     LOG_INFO(MOD_GRAPHICS, "Debug: Object lights {}", debugObjectLightsEnabled_ ? "ENABLED" : "DISABLED");
 }
 
@@ -9773,11 +9704,6 @@ void IrrlichtRenderer::cycleObjectLights() {
     } else {
         maxObjectLights_++;
     }
-
-    // Clear previous to force re-logging of active lights on next update
-    previousActiveLights_.clear();
-    // Invalidate light cache to force recalculation
-    lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
 
     LOG_INFO(MOD_GRAPHICS, "Object lights: {} max", maxObjectLights_);
 }

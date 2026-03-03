@@ -100,36 +100,11 @@ void EntityPrepWorker::updateDepths(std::function<uint8_t(size_t)> depthLookup) 
     sortPendingByPriority();
 }
 
-void EntityPrepWorker::cancelPrep(uint16_t spawnId) {
-    // Main-thread-only: remove from pending queue
-    auto it = std::remove_if(pendingQueue_.begin(), pendingQueue_.end(),
-        [spawnId](const PrepRequest& req) { return req.spawnId == spawnId; });
-    if (it != pendingQueue_.end()) {
-        pendingQueue_.erase(it, pendingQueue_.end());
-        pendingSpawnIds_.erase(spawnId);
-    }
-}
-
 bool EntityPrepWorker::isPendingForEntity(uint16_t spawnId) const {
     // Check in-flight work (main-thread-only tracking)
     if (dispatchedSpawnId_ == spawnId) return true;
     // Check pending queue (main-thread-only, no lock needed)
     return pendingSpawnIds_.count(spawnId) > 0;
-}
-
-bool EntityPrepWorker::isPending(uint16_t raceId, uint8_t gender) const {
-    uint32_t key = (static_cast<uint32_t>(raceId) << 8) | gender;
-    // Check in-flight work (main-thread-only tracking)
-    if (dispatchedKey_ == key) return true;
-    // Check pending queue (main-thread-only)
-    for (const auto& req : pendingQueue_) {
-        if (req.raceId == raceId && req.gender == gender) return true;
-    }
-    return false;
-}
-
-size_t EntityPrepWorker::getPendingCount() const {
-    return pendingQueue_.size() + (dispatchedSpawnId_ != 0 ? 1 : 0);
 }
 
 EntityPrepWorker::PrepResult EntityPrepWorker::processRequest(PrepRequest&& req) {

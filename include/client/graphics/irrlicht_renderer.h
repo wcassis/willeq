@@ -961,7 +961,6 @@ public:
             treeManager_->setRenderDistance(renderDistance_);
         }
         // Force visibility update on next frame
-        lastLightPlayerPos_ = irr::core::vector3df(0, 0, 0);
         forcePvsUpdate_ = true;
     }
     float getRenderDistance() const { return renderDistance_; }
@@ -1233,8 +1232,6 @@ private:
     float findGroundZ(float x, float y, float currentZ);
     // PVS visibility check for a BSP region (used at insertion time for objects/lights)
     bool isRegionPvsVisible(size_t regionIdx) const;
-    bool isRegionPvsVisibleDebug(size_t regionIdx, const char* context, int id) const;
-
     // Mouse targeting
     void handleMouseTargeting(int clickX, int clickY);
     uint16_t getEntityAtScreenPos(int screenX, int screenY);
@@ -1335,7 +1332,6 @@ private:
     uint8_t getRegionPvsDepth(size_t regionIdx) const;
     void onPvsRegionChanged();
 
-    bool portalCacheDirty_ = true;  // Force first computation
     void drawZoneGeometryWithPortals();
     void drawRegionMesh(size_t regionIdx);
     void drawPortalQuad(const Portal& portal);
@@ -1444,7 +1440,6 @@ private:
     float userRenderDistance_ = 300.0f; // User's desired render distance (slider value)
     float zoneMaxClip_ = 99999.0f;     // Server-provided max clip plane for current zone (0 = no limit)
     float fogThickness_ = 50.0f;       // Thickness of fog fade zone at edge
-    irr::core::vector3df lastLightPlayerPos_;    // Last player pos (EQ coords) when object lights were updated
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
     // Zone light data — no scene nodes, just base data for worker
     struct ZoneLightData {
@@ -1455,12 +1450,8 @@ private:
     std::vector<ZoneLightData> zoneLightData_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
     std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
-    std::vector<std::string> zoneLightNames_;  // Light names from WLD data
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
-    std::vector<irr::scene::IMeshSceneNode*> lightDebugMarkers_;  // Debug markers showing active light positions
-    bool showLightDebugMarkers_ = false;  // Show debug markers for active lights
-    std::vector<std::string> previousActiveLights_;  // Track active lights to detect changes
     std::vector<irr::scene::ILightSceneNode*> activeLightNodes_;  // Currently enabled lights (max 8)
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
     irr::scene::ILightSceneNode* sunLight_ = nullptr;  // Directional sun light

@@ -245,13 +245,6 @@ const SimulationOutput* SimulationWorker::swapAndGetResults() {
     return nullptr;
 }
 
-const SimulationOutput* SimulationWorker::getFrontBuffer() const {
-    if (output_[frontIdx_].valid) {
-        return &output_[frontIdx_];
-    }
-    return nullptr;
-}
-
 SimulationWorker::DebugInfo SimulationWorker::getDebugInfo() const {
     std::lock_guard<std::mutex> lock(debugMutex_);
     DebugInfo info;

@@ -157,11 +157,6 @@ size_t GPUUploadThread::getPendingCount() const {
     return requestQueue_.size();
 }
 
-size_t GPUUploadThread::getCompletedCount() const {
-    std::lock_guard<std::mutex> lock(resultMutex_);
-    return resultQueue_.size();
-}
-
 void GPUUploadThread::workerLoop() {
     LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: started (context unbound)");
 

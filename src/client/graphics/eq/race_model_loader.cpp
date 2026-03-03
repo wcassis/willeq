@@ -472,8 +472,8 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
 
     // Check staging cache (thread-safe). If already staged or will be promoted,
     // no need to redo the work. Note: we do NOT read loadedModels_ here because
-    // that map is main-thread-only (no lock). The main thread's isPending() check
-    // and promotePreparedModels() flow ensures no redundant work.
+    // that map is main-thread-only (no lock). The main thread's
+    // promotePreparedModels() flow ensures no redundant work.
     {
         std::lock_guard<std::mutex> lock(preparedDataMutex_);
         if (preparedModelData_.count(key) > 0) return true;

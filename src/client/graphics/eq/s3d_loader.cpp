@@ -924,19 +924,6 @@ bool S3DLoader::loadLights(const std::string& archivePath) {
     return !zone_->lights.empty();
 }
 
-// Note: buildBoneTransforms is no longer used - applySkinning handles bone transforms
-// using proper quaternion-based matrix multiplication. Keeping declaration for ABI compatibility.
-void S3DLoader::buildBoneTransforms(const std::shared_ptr<SkeletonBone>& bone,
-                                     std::vector<CharacterPart>& transforms,
-                                     int boneIndex,
-                                     float parentShiftX, float parentShiftY, float parentShiftZ,
-                                     float parentRotX, float parentRotY, float parentRotZ) {
-    // Deprecated - bone transforms now handled by applySkinning with Mat4 matrices
-    (void)bone; (void)transforms; (void)boneIndex;
-    (void)parentShiftX; (void)parentShiftY; (void)parentShiftZ;
-    (void)parentRotX; (void)parentRotY; (void)parentRotZ;
-}
-
 void S3DLoader::applySkinning(std::shared_ptr<ZoneGeometry>& mesh,
                                const std::shared_ptr<SkeletonTrack>& skeleton) {
     if (!mesh || !skeleton || mesh->vertexPieces.empty()) {

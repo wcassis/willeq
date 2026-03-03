@@ -99,7 +99,6 @@ struct EntityVisual {
 
     // Deferred mesh building (progressive loading)
     bool meshBuilt = false;          // false = registered only, true = scene node built
-    bool meshBuildQueued = false;    // true = queued for build this frame
     EntityBuildPhase buildPhase = EntityBuildPhase::Placeholder;
     size_t nextTextureUpload = 0;              // Index into decodedTextures
     std::vector<irr::video::ITexture*> uploadedTextures;  // GPU textures ready for mesh
