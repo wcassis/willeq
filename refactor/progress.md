@@ -59,7 +59,7 @@ refactoring plan, or were incompletely addressed.
 
 | ID | Description | Source |
 |----|-------------|--------|
-| C05 | Unbudgeted addTexture() calls: sky, animated textures, trees, storm clouds, detail atlas | Old Issue 3.5 — not addressed by B03 |
+| C05 | ~~Unbudgeted addTexture() calls: sky, animated textures, trees, storm clouds, detail atlas~~ **DONE**: Added TextureEvictionListener interface to ConstrainedTextureCache. All 5 subsystems (SkyRenderer, AnimatedTextureManager, AnimatedTreeManager, StormCloudLayer, DetailManager) now register textures into the shared LRU cache and handle eviction callbacks. ~4-10 MB previously untracked textures are now evictable under memory pressure. | `b444583` |
 | C06 | Thread safety of budget accounting (no mutex on caches) | Old Issue 3.6 — unchanged, blocks future multi-worker expansion |
 | C07 | DDS decode duplication (ConstrainedTextureCache + TextureDecoder) | NEW |
 | C08 | One loadDisplaySettingsFromFile() call at line 3454 missed by B04 | Residual from B04 |
