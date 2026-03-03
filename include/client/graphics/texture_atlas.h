@@ -7,17 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-#include <EGL/egl.h>
-#endif
-
 namespace EQT {
 namespace Graphics {
-
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-// Forward declaration (only needed for DMA-BUF blit path, not native GLES2)
-class GLES2EGLHelper;
-#endif
 
 #ifdef EQT_HAS_GLES2
 class GPUUploadThread;
@@ -86,19 +77,6 @@ public:
     // Main thread: adopts tile lookup from preload data, marks atlas as loaded.
     // Call after all pages have been uploaded.
     void finalizePreload(PreloadData& data);
-
-    // Load an atlas file and upload ETC1 pages to GPU.
-    // Returns true on success.
-    bool load(const std::string& atlasPath);
-
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-    // Load with GLES2 EGL image sharing for ETC1 hardware decode on Lima/Mali.
-    // Falls back to direct GL upload if gles2Helper is null or unavailable.
-    // Not needed when using native GLES2 backend (direct glCompressedTexImage2D works).
-    bool load(const std::string& atlasPath,
-              GLES2EGLHelper* gles2Helper,
-              EGLContext glContext, EGLSurface glSurface);
-#endif
 
     // Unload all GPU textures and clear data
     void unload();

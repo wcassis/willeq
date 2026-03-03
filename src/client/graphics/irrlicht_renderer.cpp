@@ -4188,10 +4188,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 atlasZonePageIndex_ = 0;
             }
 #ifdef EQT_HAS_GLES2
-            bool done = (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable())
-                ? zoneAtlas_->uploadPreloadedPageAsync(preload, atlasZonePageIndex_,
-                                                        gpuUploadThread_.get(), 0)
-                : zoneAtlas_->uploadPreloadedPage(preload, atlasZonePageIndex_);
+            bool done = zoneAtlas_->uploadPreloadedPageAsync(preload, atlasZonePageIndex_,
+                                                              gpuUploadThread_.get(), 0);
 #else
             bool done = zoneAtlas_->uploadPreloadedPage(preload, atlasZonePageIndex_);
 #endif
@@ -4229,10 +4227,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 atlasObjPageIndex_ = 0;
             }
 #ifdef EQT_HAS_GLES2
-            bool done = (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable())
-                ? objAtlas_->uploadPreloadedPageAsync(preload, atlasObjPageIndex_,
-                                                       gpuUploadThread_.get(), 1)
-                : objAtlas_->uploadPreloadedPage(preload, atlasObjPageIndex_);
+            bool done = objAtlas_->uploadPreloadedPageAsync(preload, atlasObjPageIndex_,
+                                                              gpuUploadThread_.get(), 1);
 #else
             bool done = objAtlas_->uploadPreloadedPage(preload, atlasObjPageIndex_);
 #endif

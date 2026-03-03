@@ -1,7 +1,4 @@
 #include "client/graphics/texture_atlas.h"
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-#include "client/graphics/gles2_egl_helper.h"
-#endif
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
 #include "client/graphics/work_priority.h"
@@ -240,17 +237,20 @@ bool TextureAtlas::uploadPreloadedPageAsync(PreloadData& data, int pageIndex,
         return true;  // Nothing to do
     }
 
-    if (!uploadThread || !uploadThread->isAvailable()) {
-        // Fall back to synchronous upload
-        return uploadPreloadedPage(data, pageIndex);
-    }
-
     // Ensure pageTextures_ vector is large enough
     if (pageTextures_.size() < data.pages.size()) {
         pageTextures_.resize(data.pages.size(), 0);
     }
 
     auto& page = data.pages[pageIndex];
+
+    if (!uploadThread || !uploadThread->isAvailable()) {
+        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: GPU upload thread unavailable, skipping page {}", pageIndex);
+        page.etc1Data.clear();
+        page.etc1Data.shrink_to_fit();
+        bool isLast = (pageIndex >= static_cast<int>(data.pages.size()) - 1);
+        return isLast;
+    }
 
     // Build upload request
     UploadRequest req;
@@ -303,242 +303,6 @@ void TextureAtlas::finalizePreload(PreloadData& data) {
 
     data.valid = false;  // Consumed
 }
-
-bool TextureAtlas::load(const std::string& atlasPath) {
-#ifndef EQT_HAS_GRAPHICS
-    LOG_WARN(MOD_GRAPHICS, "TextureAtlas: Graphics not available");
-    return false;
-#else
-    if (loaded_) {
-        unload();
-    }
-
-    std::ifstream file(atlasPath, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: Cannot open {}", atlasPath);
-        return false;
-    }
-
-    size_t fileSize = file.tellg();
-    file.seekg(0);
-
-    // Read header
-    AtlasFileHeader header;
-    if (fileSize < sizeof(header)) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: File too small: {}", atlasPath);
-        return false;
-    }
-    file.read(reinterpret_cast<char*>(&header), sizeof(header));
-
-    if (header.magic != ATLAS_MAGIC) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: Bad magic in {}", atlasPath);
-        return false;
-    }
-    if (header.version != ATLAS_VERSION) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: Unsupported version {} in {}", header.version, atlasPath);
-        return false;
-    }
-
-    atlasWidth_ = header.atlasWidth;
-    atlasHeight_ = header.atlasHeight;
-
-    // Read page entries
-    std::vector<AtlasFilePageEntry> pageEntries(header.numPages);
-    file.read(reinterpret_cast<char*>(pageEntries.data()),
-              sizeof(AtlasFilePageEntry) * header.numPages);
-
-    // Read tile entries
-    std::vector<AtlasFileTileEntry> tileEntries(header.numTiles);
-    file.read(reinterpret_cast<char*>(tileEntries.data()),
-              sizeof(AtlasFileTileEntry) * header.numTiles);
-
-    // Upload ETC1 pages to GL
-    pageTextures_.resize(header.numPages, 0);
-    glGenTextures(header.numPages, pageTextures_.data());
-
-    for (int i = 0; i < header.numPages; ++i) {
-        const auto& pe = pageEntries[i];
-
-        // Read ETC1 data from file
-        std::vector<uint8_t> etc1Data(pe.dataSize);
-        file.seekg(pe.dataOffset);
-        file.read(reinterpret_cast<char*>(etc1Data.data()), pe.dataSize);
-
-        // Upload to GL
-        glBindTexture(GL_TEXTURE_2D, pageTextures_[i]);
-        glCompressedTexImage2D(GL_TEXTURE_2D, 0,
-                               GL_ETC1_RGB8_OES,
-                               header.atlasWidth, header.atlasHeight,
-                               0,
-                               static_cast<GLsizei>(pe.dataSize),
-                               etc1Data.data());
-
-        // Set filtering
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        gpuMemoryUsage_ += pe.dataSize;
-
-        GLenum err = glGetError();
-        if (err != GL_NO_ERROR) {
-            LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: GL error 0x{:04X} uploading page {}", err, i);
-            unload();
-            return false;
-        }
-    }
-
-    // Build tile lookup
-    float tileSize = static_cast<float>(header.tileSize);
-    float atlasW = static_cast<float>(header.atlasWidth);
-    float atlasH = static_cast<float>(header.atlasHeight);
-    float border = static_cast<float>(ATLAS_TILE_BORDER);
-    float inner = static_cast<float>(ATLAS_TILE_INNER);
-
-    for (int i = 0; i < header.numTiles; ++i) {
-        const auto& te = tileEntries[i];
-
-        AtlasTileInfo info;
-        info.pageIndex = te.pageIndex;
-        // Tile starts at (col * tileSize + border, row * tileSize + border) in atlas
-        info.uvOffsetU = (te.tileCol * tileSize + border) / atlasW;
-        info.uvOffsetV = (te.tileRow * tileSize + border) / atlasH;
-        info.uvScale = inner / atlasW;
-        info.hasAlpha = (te.hasAlpha != 0);
-        info.alphaPageIndex = te.alphaPageIndex;
-
-        std::string name(te.textureName);
-        // Ensure lowercase
-        std::transform(name.begin(), name.end(), name.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-
-        tileLookup_[name] = info;
-    }
-
-    loaded_ = true;
-    LOG_INFO(MOD_GRAPHICS, "TextureAtlas: Loaded {} ({} pages, {} tiles, {:.1f}MB GPU)",
-             atlasPath, header.numPages, header.numTiles,
-             gpuMemoryUsage_ / (1024.0f * 1024.0f));
-
-    return true;
-#endif // EQT_HAS_GRAPHICS
-}
-
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-bool TextureAtlas::load(const std::string& atlasPath,
-                        GLES2EGLHelper* gles2Helper,
-                        EGLContext glContext, EGLSurface glSurface) {
-#ifndef EQT_HAS_GRAPHICS
-    LOG_WARN(MOD_GRAPHICS, "TextureAtlas: Graphics not available");
-    return false;
-#else
-    // Fall back to direct GL upload if no GLES2 helper available
-    if (!gles2Helper || !gles2Helper->isAvailable()) {
-        return load(atlasPath);
-    }
-
-    if (loaded_) {
-        unload();
-    }
-
-    std::ifstream file(atlasPath, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: Cannot open {}", atlasPath);
-        return false;
-    }
-
-    size_t fileSize = file.tellg();
-    file.seekg(0);
-
-    // Read header
-    AtlasFileHeader header;
-    if (fileSize < sizeof(header)) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: File too small: {}", atlasPath);
-        return false;
-    }
-    file.read(reinterpret_cast<char*>(&header), sizeof(header));
-
-    if (header.magic != ATLAS_MAGIC) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: Bad magic in {}", atlasPath);
-        return false;
-    }
-    if (header.version != ATLAS_VERSION) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: Unsupported version {} in {}", header.version, atlasPath);
-        return false;
-    }
-
-    atlasWidth_ = header.atlasWidth;
-    atlasHeight_ = header.atlasHeight;
-
-    // Read page entries
-    std::vector<AtlasFilePageEntry> pageEntries(header.numPages);
-    file.read(reinterpret_cast<char*>(pageEntries.data()),
-              sizeof(AtlasFilePageEntry) * header.numPages);
-
-    // Read tile entries
-    std::vector<AtlasFileTileEntry> tileEntries(header.numTiles);
-    file.read(reinterpret_cast<char*>(tileEntries.data()),
-              sizeof(AtlasFileTileEntry) * header.numTiles);
-
-    // Upload ETC1 pages via GLES2 EGL image sharing
-    pageTextures_.resize(header.numPages, 0);
-
-    for (int i = 0; i < header.numPages; ++i) {
-        const auto& pe = pageEntries[i];
-
-        // Read ETC1 data from file
-        std::vector<uint8_t> etc1Data(pe.dataSize);
-        file.seekg(pe.dataOffset);
-        file.read(reinterpret_cast<char*>(etc1Data.data()), pe.dataSize);
-
-        uint32_t tex = gles2Helper->uploadETC1AsSharedTexture(
-            header.atlasWidth, header.atlasHeight,
-            etc1Data.data(), etc1Data.size(),
-            glContext, glSurface);
-        if (tex == 0) {
-            LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: EGL image sharing failed for page {}", i);
-            unload();
-            return false;
-        }
-        pageTextures_[i] = tex;
-        gpuMemoryUsage_ += pe.dataSize;
-    }
-
-    // Build tile lookup (same as direct load path)
-    float tileSize = static_cast<float>(header.tileSize);
-    float atlasW = static_cast<float>(header.atlasWidth);
-    float atlasH = static_cast<float>(header.atlasHeight);
-    float border = static_cast<float>(ATLAS_TILE_BORDER);
-    float inner = static_cast<float>(ATLAS_TILE_INNER);
-
-    for (int i = 0; i < header.numTiles; ++i) {
-        const auto& te = tileEntries[i];
-
-        AtlasTileInfo info;
-        info.pageIndex = te.pageIndex;
-        info.uvOffsetU = (te.tileCol * tileSize + border) / atlasW;
-        info.uvOffsetV = (te.tileRow * tileSize + border) / atlasH;
-        info.uvScale = inner / atlasW;
-        info.hasAlpha = (te.hasAlpha != 0);
-        info.alphaPageIndex = te.alphaPageIndex;
-
-        std::string name(te.textureName);
-        std::transform(name.begin(), name.end(), name.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-
-        tileLookup_[name] = info;
-    }
-
-    loaded_ = true;
-    LOG_INFO(MOD_GRAPHICS, "TextureAtlas: Loaded {} ({} pages, {} tiles, {:.1f}MB GPU) [EGL image sharing]",
-             atlasPath, header.numPages, header.numTiles,
-             gpuMemoryUsage_ / (1024.0f * 1024.0f));
-
-    return true;
-#endif // EQT_HAS_GRAPHICS
-}
-#endif // EQT_HAS_DRM && !EQT_HAS_GLES2
 
 void TextureAtlas::unload() {
 #ifdef EQT_HAS_GRAPHICS
