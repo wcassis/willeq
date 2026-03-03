@@ -2238,14 +2238,16 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
         bool isDungeon = (zoneType == 2);
         isIndoorZone_ = isDungeon;
 
-        // Check user setting
+        // Check user setting and constrained config
         bool skySettingEnabled = getDisplaySettings().skyEnabled;
-        skyRenderer_->setEnabled(!isDungeon && skySettingEnabled);
+        bool skyAllowed = !isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering;
+        skyRenderer_->setEnabled(skyAllowed);
 
-        LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {} (setting={})",
+        LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {} (setting={}, constrained={})",
                   skyType, zoneType, isDungeon ? "dungeon" : "outdoor",
-                  (!isDungeon && skySettingEnabled) ? "enabled" : "disabled",
-                  skySettingEnabled ? "on" : "off");
+                  skyAllowed ? "enabled" : "disabled",
+                  skySettingEnabled ? "on" : "off",
+                  config_.constrainedConfig.skyRendering ? "on" : "off");
     }
 
     // Apply server-provided max clip plane as ceiling on render distance
@@ -3179,6 +3181,7 @@ struct DeferredAssetParams {
     bool lazyPfsLoading;
     bool enableAtlas;
     bool skipObjectBuild;
+    bool skyRendering;
     ConstrainedRendererConfig::SkyDomeMode skyDomeMode;
     std::string atlasPath;
     std::string zoneName;
@@ -3215,7 +3218,7 @@ static void preloadDeferredAssets(const DeferredAssetParams& p) {
     }
 
     // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
-    {
+    if (p.skyRendering) {
         auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
         skyData->skyLoader = std::make_unique<SkyLoader>();
         skyData->skyConfig = std::make_unique<SkyConfig>();
@@ -3363,6 +3366,8 @@ static void preloadDeferredAssets(const DeferredAssetParams& p) {
         }
 
         p.computations->skyLoadData = std::move(skyData);
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "Preload: sky rendering disabled, skipping sky.s3d load");
     }
 
     // 8. Pre-load weather config (file I/O + JSON — no GL)
@@ -3426,6 +3431,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
     bool isManualMode = manualLoadMode_;
 
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+    bool skyRendering = config_.constrainedConfig.skyRendering;
     auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
 
     zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>>(
@@ -3434,7 +3440,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
          enableAtlas, atlasPathCopy, zoneNameCopy,
          eqClientPathCopy, meshMemoryBudget,
          treeIdentifier, isManualMode,
-         skipObjectBuild, skyDomeMode](ZoneLoadRequest&&) -> ZoneLoadResult {
+         skipObjectBuild, skyRendering, skyDomeMode](ZoneLoadRequest&&) -> ZoneLoadResult {
         // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
         //    and objects based on mode
         S3DLoadOptions loadOptions;
@@ -3595,8 +3601,8 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
 
         // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
         preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
-                              enableAtlas, skipObjectBuild, skyDomeMode, atlasPathCopy,
-                              zoneNameCopy, eqClientPathCopy});
+                              enableAtlas, skipObjectBuild, skyRendering, skyDomeMode,
+                              atlasPathCopy, zoneNameCopy, eqClientPathCopy});
 
         return ZoneLoadResult{true};
     }, backgroundThreadPool_.get(), 0);
@@ -3619,6 +3625,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
     bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
     bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+    bool skyRendering = config_.constrainedConfig.skyRendering;
     auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
     std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
     std::string zoneNameCopy = currentZoneName_;
@@ -3635,7 +3642,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
          deferredAssetLoading, lazyPfsLoading,
          enableAtlas, atlasPathCopy, zoneNameCopy,
          eqClientPathCopy, zone, zonePath,
-         skipObjectBuild, skyDomeMode](DeferredWorkRequest&&) -> DeferredWorkResult {
+         skipObjectBuild, skyRendering, skyDomeMode](DeferredWorkRequest&&) -> DeferredWorkResult {
         // Load objects that were skipped in manual S3d step
         if (zone && zone->objects.empty() && !skipObjectBuild) {
             S3DLoader objLoader;
@@ -3647,8 +3654,8 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
 
         // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
         preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
-                              enableAtlas, skipObjectBuild, skyDomeMode, atlasPathCopy,
-                              zoneNameCopy, eqClientPathCopy});
+                              enableAtlas, skipObjectBuild, skyRendering, skyDomeMode,
+                              atlasPathCopy, zoneNameCopy, eqClientPathCopy});
 
         LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
         return DeferredWorkResult{true};
@@ -3889,7 +3896,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 isIndoorZone_ = isDungeon;
 
                 bool skySettingEnabled = getDisplaySettings().skyEnabled;
-                skyRenderer_->setEnabled(!isDungeon && skySettingEnabled);
+                skyRenderer_->setEnabled(!isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering);
             }
         }
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_FogSetup;

@@ -7,7 +7,7 @@
       "maxPolygonsPerFrame": 40000,
       "clipDistance": 300.0,
       "entityRenderDistance": 300.0,
-      "textureMemoryBytes": 16777216,
+      "textureMemoryBytes": 33554432,
       "framebufferMemoryBytes": 10485760,
       "enableMipmaps": true,
       "enableCompressedTextures": false,
