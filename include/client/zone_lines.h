@@ -7,7 +7,6 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include "client/graphics/eq/wld_loader.h"
 
 // Forward declaration
 class HCMap;
@@ -106,9 +105,6 @@ public:
         return !extractedZoneLines_.empty();
     }
 
-    // Check if we have BSP-based zone lines
-    bool hasBspZoneLines() const;
-
     // Get the number of zone lines
     size_t getZoneLineCount() const;
 
@@ -116,18 +112,11 @@ public:
     // Calculates approximate bounds for BSP zone lines and exact bounds for proximity zone points
     std::vector<ZoneLineBoundingBox> getZoneLineBoundingBoxes() const;
 
-    // Debug: test all coordinate mappings to find which reaches zone line regions
-    void debugTestCoordinateMappings(float serverX, float serverY, float serverZ) const;
-
     // Expand zone line trigger boxes to fill passages using collision detection
     // This should be called after loading zone lines and setting the collision map
     void expandZoneLinesToGeometry(HCMap* collisionMap);
 
 private:
-    // Resolve a zone line info to a concrete result
-    ZoneLineResult resolveZoneLine(const Graphics::ZoneLineInfo& info,
-                                    float currentX, float currentY, float currentZ) const;
-
     // Check extracted zone lines (trigger box detection)
     ZoneLineResult checkExtractedZoneLines(float x, float y, float z,
                                             float currentX, float currentY, float currentZ) const;
@@ -135,19 +124,8 @@ private:
     // Pre-extracted zone lines from zone_lines.json (preferred)
     std::vector<ExtractedZoneLine> extractedZoneLines_;
 
-    // BSP tree from WLD file (fallback for zone line detection)
-    std::shared_ptr<Graphics::BspTree> bspTree_;
-
-    // Zone geometry bounds (used for BSP region bounds computation)
-    float zoneMinX_ = -10000.0f, zoneMinY_ = -10000.0f, zoneMinZ_ = -1000.0f;
-    float zoneMaxX_ = 10000.0f, zoneMaxY_ = 10000.0f, zoneMaxZ_ = 1000.0f;
-    bool hasZoneBounds_ = false;
-
     // Zone points from server (keyed by zone point number)
     std::map<uint32_t, ZonePoint> serverZonePoints_;
-
-    // Zone points parsed from WLD (fallback if server doesn't send them)
-    std::map<uint32_t, ZonePoint> wldZonePoints_;
 };
 
 } // namespace EQT

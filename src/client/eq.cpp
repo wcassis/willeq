@@ -14050,15 +14050,6 @@ void EverQuest::CheckZoneLine()
 	m_last_zone_check_y = m_y;
 	m_last_zone_check_z = m_z;
 
-	// Run coordinate mapping test ONCE to find correct transformation
-	static bool ranCoordTest = false;
-	if (!ranCoordTest) {
-		ranCoordTest = true;
-		// m_x = server_y, m_y = server_x (client swaps coords)
-		// So server coords are (m_y, m_x, m_z)
-		m_zone_lines->debugTestCoordinateMappings(m_y, m_x, m_z);
-	}
-
 	// Check if currently in a zone line region
 	// The extracted zone lines use BSP coordinates which need to be checked against player position
 	// m_x = server_y, m_y = server_x (from spawn struct)
