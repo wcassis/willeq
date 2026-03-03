@@ -5,6 +5,7 @@
 #include <irrlicht.h>
 #include <map>
 #include <list>
+#include <mutex>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -14,6 +15,17 @@ namespace EQT {
 namespace Graphics {
 
 class GPUUploadThread;
+class BackgroundThreadPool;
+class ZoneMeshBuilder;
+
+// Decoded texture pixels waiting for GPU upload
+struct DecodedUpload {
+    std::string name;
+    std::vector<uint8_t> rgbaPixels;  // Decoded RGBA, ready for GPU
+    int width = 0;
+    int height = 0;
+    bool hasAlpha = false;
+};
 
 // LRU texture cache with memory budget enforcement
 // Used for resource-constrained rendering modes (Voodoo1, etc.)
@@ -92,6 +104,31 @@ public:
 
     // Get placeholder texture (used when a texture is evicted from a mesh material)
     irr::video::ITexture* getPlaceholderTexture();
+
+    // Queue decoded RGBA pixels for budget-safe GPU upload on the render thread.
+    // Thread-safe — may be called from background threads or the render thread.
+    void queueDecoded(const std::string& name, std::vector<uint8_t> rgbaPixels,
+                      int width, int height, bool hasAlpha);
+
+    // Queue decoded ARGB pixels (Irrlicht ECF_A8R8G8B8 format) for GPU upload.
+    // Converts ARGB → RGBA internally then pushes to the upload queue.
+    // Thread-safe — may be called from background threads or the render thread.
+    void queueDecodedARGB(const std::string& name, const std::vector<uint32_t>& argbPixels,
+                          int width, int height, bool hasAlpha);
+
+    // Process queued decoded textures: budget check, evict, GPU upload, register.
+    // Call once per render frame from the main thread.
+    // Returns the number of textures uploaded this frame.
+    int processUploadQueue();
+
+    // Check if a texture name is pending decode or upload (not yet in cache)
+    bool isPending(const std::string& name) const;
+
+    // Set background thread pool for async texture decode (non-owning)
+    void setBackgroundThreadPool(BackgroundThreadPool* pool) { bgThreadPool_ = pool; }
+
+    // Set mesh builder for entity texture registration (non-owning)
+    void setMeshBuilder(ZoneMeshBuilder* meshBuilder) { meshBuilder_ = meshBuilder; }
 
 private:
     // Remove all references to a texture from mesh materials in the scene
@@ -188,6 +225,19 @@ private:
     GPUUploadThread* gpuUploadThread_ = nullptr;
     // Texture names currently being uploaded asynchronously (prevents duplicate submissions)
     std::unordered_set<std::string> pendingAsyncUploads_;
+
+    // Background thread pool for async texture decode (non-owning)
+    BackgroundThreadPool* bgThreadPool_ = nullptr;
+
+    // Mesh builder for entity texture registration (non-owning)
+    ZoneMeshBuilder* meshBuilder_ = nullptr;
+
+    // Thread-safe queue of decoded textures waiting for GPU upload
+    mutable std::mutex decodedQueueMutex_;
+    std::vector<DecodedUpload> decodedQueue_;
+
+    // Texture names submitted for background decode but not yet uploaded (render thread only)
+    std::unordered_set<std::string> pendingDecodes_;
 };
 
 } // namespace Graphics

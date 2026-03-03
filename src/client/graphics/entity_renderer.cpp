@@ -14,10 +14,6 @@
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
-#ifdef EQT_HAS_GLES2
-#include "client/graphics/gpu_upload_thread.h"
-#include "client/graphics/work_priority.h"
-#endif
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -804,13 +800,6 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     return true;
 }
 
-#ifdef EQT_HAS_GLES2
-// Forward declaration — defined below pollAndDistributePrepResults
-static bool submitAsyncEntityTexture(GPUUploadThread* thread,
-                                      const DecodedTexture& decoded,
-                                      uint16_t spawnId);
-#endif
-
 bool EntityRenderer::pollAndDistributePrepResults() {
     if (!entityPrepWorker_) return false;
     bool distributed = false;
@@ -837,32 +826,48 @@ bool EntityRenderer::pollAndDistributePrepResults() {
             vis.equipmentStaging.push_back(std::move(staging));
         }
 
-#ifdef EQT_HAS_GLES2
-        // Submit ALL decoded textures to GPU upload thread immediately.
+        // Submit ALL decoded textures to constrained cache upload queue.
         // This moves texture upload work off the render thread entirely —
         // the TextureUploading/VariantTextureUploading/EquipTextureUploading
         // phases will trivially fall through when texturesSubmittedToGpu is set.
-        if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+        if (constrainedTextureCache_) {
             // Get base race model decoded textures
             auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
             if (modelData) {
                 for (const auto& decoded : modelData->decodedTextures) {
-                    submitAsyncEntityTexture(gpuUploadThread_, decoded, result.spawnId);
+                    if (!decoded.argbPixels.empty()) {
+                        std::string lowerName = decoded.name;
+                        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                       [](unsigned char c) { return std::tolower(c); });
+                        constrainedTextureCache_->queueDecodedARGB(
+                            lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
+                    }
                 }
             }
             // Variant textures
             for (const auto& decoded : vis.variantTextures) {
-                submitAsyncEntityTexture(gpuUploadThread_, decoded, result.spawnId);
+                if (!decoded.argbPixels.empty()) {
+                    std::string lowerName = decoded.name;
+                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    constrainedTextureCache_->queueDecodedARGB(
+                        lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
+                }
             }
             // Equipment textures
             for (const auto& decoded : vis.equipmentTextures) {
-                submitAsyncEntityTexture(gpuUploadThread_, decoded, result.spawnId);
+                if (!decoded.argbPixels.empty()) {
+                    std::string lowerName = decoded.name;
+                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    constrainedTextureCache_->queueDecodedARGB(
+                        lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
+                }
             }
             vis.texturesSubmittedToGpu = true;
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) submitted all textures to GPU upload thread",
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) submitted all textures to constrained cache queue",
                       result.spawnId, vis.name);
         }
-#endif
 
         vis.entityPrepComplete = true;
         distributed = true;
@@ -871,41 +876,6 @@ bool EntityRenderer::pollAndDistributePrepResults() {
                   vis.equipmentStaging.size(), vis.equipmentTextures.size());
     }
     return distributed;
-}
-
-// Helper: upload one pre-decoded texture to GPU and register in mesh builder cache
-static irr::video::ITexture* uploadDecodedTexture(
-    irr::video::IVideoDriver* driver, ZoneMeshBuilder* meshBuilder,
-    const DecodedTexture& decoded, ConstrainedTextureCache* cache = nullptr) {
-
-    irr::video::IImage* img = driver->createImageFromData(
-        irr::video::ECF_A8R8G8B8,
-        irr::core::dimension2du(decoded.width, decoded.height),
-        const_cast<uint32_t*>(decoded.argbPixels.data()),
-        false  // don't own data
-    );
-
-    irr::video::ITexture* tex = nullptr;
-    if (img) {
-        std::string lowerName = decoded.name;
-        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        tex = driver->addTexture(lowerName.c_str(), img);
-        img->drop();
-    }
-
-    if (tex) {
-        if (cache) {
-            auto texSize = tex->getSize();
-            size_t bytes = static_cast<size_t>(texSize.Width) * texSize.Height * 4;
-            cache->registerTexture(decoded.name, tex, bytes, decoded.hasAlpha);
-        }
-        if (meshBuilder) {
-            meshBuilder->registerUploadedTexture(decoded.name, tex, decoded.hasAlpha);
-        }
-    }
-
-    return tex;
 }
 
 ZoneMeshBuilder* EntityRenderer::getMeshBuilder() const {
@@ -917,48 +887,6 @@ void EntityRenderer::setConstrainedTextureCache(ConstrainedTextureCache* cache) 
     if (equipmentModelLoader_)
         equipmentModelLoader_->setConstrainedTextureCache(cache);
 }
-
-#ifdef EQT_HAS_GLES2
-// Helper: submit a decoded texture to the GPU upload thread asynchronously.
-// Converts ARGB pixel data to RGBA for glTexImage2D(GL_RGBA).
-// Returns true if the upload was submitted, false if fallback to sync is needed.
-static bool submitAsyncEntityTexture(GPUUploadThread* thread,
-                                      const DecodedTexture& decoded,
-                                      uint16_t spawnId) {
-    if (!thread || !thread->isAvailable() || decoded.argbPixels.empty())
-        return false;
-
-    std::string lowerName = decoded.name;
-    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    // Convert ARGB → RGBA for glTexImage2D(GL_RGBA)
-    size_t pixelCount = decoded.argbPixels.size();
-    std::vector<uint8_t> rgba(pixelCount * 4);
-    const uint8_t* src = reinterpret_cast<const uint8_t*>(decoded.argbPixels.data());
-    for (size_t i = 0; i < pixelCount; ++i) {
-        size_t si = i * 4;
-        // ARGB (Irrlicht ECF_A8R8G8B8 in memory: B G R A)
-        rgba[si + 0] = src[si + 2];  // R (was at offset 2 in BGRA/ARGB)
-        rgba[si + 1] = src[si + 1];  // G
-        rgba[si + 2] = src[si + 0];  // B
-        rgba[si + 3] = src[si + 3];  // A
-    }
-
-    UploadRequest req;
-    req.type = UploadRequestType::Texture;
-    req.width = decoded.width;
-    req.height = decoded.height;
-    req.pixelData = std::move(rgba);
-    req.textureName = lowerName;
-    // High byte 2 = entity texture, low bits = spawn ID
-    req.callbackKey = (uint64_t(2) << 56) | static_cast<uint64_t>(spawnId);
-    req.priority = WorkPriorityKey::make(0, AssetType::EntityTexture).value;
-
-    thread->submit(std::move(req));
-    return true;
-}
-#endif // EQT_HAS_GLES2
 
 bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
     if (!smgr_ || !raceModelLoader_) return false;
@@ -1169,7 +1097,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 continue;  // trivial transition — fall through
             }
 
-            // Upload one pre-decoded base race texture per frame
+            // Upload one pre-decoded base race texture per frame via unified queue
             auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
             if (!modelData || vis.nextTextureUpload >= modelData->decodedTextures.size()) {
                 // All base textures uploaded — move to variant textures
@@ -1179,23 +1107,15 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
             }
 
             const auto& decoded = modelData->decodedTextures[vis.nextTextureUpload];
-            irr::video::ITexture* tex = nullptr;
-            if (!skipTextureUpload_) {
-#ifdef EQT_HAS_GLES2
-                if (gpuUploadThread_) {
-                    submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
-                    // tex stays nullptr — will be resolved by processCompletedUploads()
-                    // via gles2WrapTexture + meshBuilder->registerUploadedTexture()
-                } else
-#endif
-                {
-                    tex = uploadDecodedTexture(
-                        driver_, raceModelLoader_->getMeshBuilder(),
-                        decoded, constrainedTextureCache_);
-                }
+            if (!skipTextureUpload_ && constrainedTextureCache_) {
+                std::string lowerName = decoded.name;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                constrainedTextureCache_->queueDecodedARGB(
+                    lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
             }
 
-            vis.uploadedTextures.push_back(tex);
+            vis.uploadedTextures.push_back(nullptr);  // Resolved later by processUploadQueue
             vis.uploadedTextureAlpha.push_back(decoded.hasAlpha);
             vis.nextTextureUpload++;
 
@@ -1204,20 +1124,20 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 vis.nextVariantUpload = 0;
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded base texture {}/{}: '{}'",
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) queued base texture {}/{}: '{}'",
                       bestId, vis.name, vis.nextTextureUpload,
                       modelData->decodedTextures.size(), decoded.name);
             return true;
         }
 
         case EntityBuildPhase::VariantTextureUploading: {
-            // Textures already submitted to GPU upload thread — skip to next phase
+            // Textures already submitted to cache queue — skip to next phase
             if (vis.texturesSubmittedToGpu) {
                 vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
                 continue;  // trivial transition — fall through
             }
 
-            // Upload one pre-decoded variant texture per frame
+            // Upload one pre-decoded variant texture per frame via unified queue
             if (vis.nextVariantUpload >= vis.variantTextures.size()) {
                 // No variant textures or all uploaded — move to scene node creation
                 vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
@@ -1225,14 +1145,12 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
             }
 
             const auto& decoded = vis.variantTextures[vis.nextVariantUpload];
-            if (!skipTextureUpload_) {
-#ifdef EQT_HAS_GLES2
-                if (gpuUploadThread_)
-                    submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
-                else
-#endif
-                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(),
-                                        decoded, constrainedTextureCache_);
+            if (!skipTextureUpload_ && constrainedTextureCache_) {
+                std::string lowerName = decoded.name;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                constrainedTextureCache_->queueDecodedARGB(
+                    lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
             }
 
             vis.nextVariantUpload++;
@@ -1241,7 +1159,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded variant texture {}/{}: '{}'",
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) queued variant texture {}/{}: '{}'",
                       bestId, vis.name, vis.nextVariantUpload,
                       vis.variantTextures.size(), decoded.name);
             return true;
@@ -1524,17 +1442,13 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 
             const auto& decoded = vis.equipmentTextures[vis.nextEquipTextureUpload];
 
-            // Upload to GPU via addTexture and register in race model mesh builder cache.
-            // Equipment mesh builder (buildMeshFromGeometry) finds textures via
-            // driver_->getTexture(name) so the addTexture call is sufficient.
-            if (!skipTextureUpload_) {
-#ifdef EQT_HAS_GLES2
-                if (gpuUploadThread_)
-                    submitAsyncEntityTexture(gpuUploadThread_, decoded, bestId);
-                else
-#endif
-                    uploadDecodedTexture(driver_, raceModelLoader_->getMeshBuilder(),
-                                        decoded, constrainedTextureCache_);
+            // Queue equipment texture for budget-safe GPU upload via unified path
+            if (!skipTextureUpload_ && constrainedTextureCache_) {
+                std::string lowerName = decoded.name;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                constrainedTextureCache_->queueDecodedARGB(
+                    lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
             }
 
             vis.nextEquipTextureUpload++;
@@ -1543,7 +1457,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) uploaded equip texture {}/{}: '{}'",
+            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) queued equip texture {}/{}: '{}'",
                       bestId, vis.name, vis.nextEquipTextureUpload,
                       vis.equipmentTextures.size(), decoded.name);
             return true;

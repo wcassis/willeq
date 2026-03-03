@@ -599,6 +599,8 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
+        if (backgroundThreadPool_)
+            constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
         LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
@@ -803,6 +805,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
             config_.constrainedConfig, driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
+        if (backgroundThreadPool_)
+            constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
 #ifdef EQT_HAS_GLES2
         if (gpuUploadThread_)
             constrainedTextureCache_->setGPUUploadThread(gpuUploadThread_.get());
@@ -1216,27 +1220,21 @@ void IrrlichtRenderer::processCompletedUploads() {
                 // Route based on high byte of callbackKey
                 uint8_t sourceType = static_cast<uint8_t>(result.callbackKey >> 56);
 
-                if (sourceType == 2) {
-                    // Entity texture — register in mesh builder so SceneNodeCreation finds it
-                    if (wrappedTex && entityRenderer_) {
-                        auto* meshBuilder = entityRenderer_->getMeshBuilder();
-                        if (meshBuilder) {
-                            // Determine alpha from texture name (best effort — entity textures
-                            // with alpha are rare; mesh builder tracks alpha separately)
-                            meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
-                        }
-                        if (constrainedTextureCache_) {
-                            size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
-                            constrainedTextureCache_->registerTexture(
-                                result.textureName, wrappedTex, texSize, false);
-                        }
-                    }
-                } else if (sourceType == 3) {
-                    // Constrained cache texture — register in LRU cache
+                if (sourceType == 3) {
+                    // Unified constrained cache texture (zone + entity textures)
+                    // Register in LRU cache and mesh builder for entity scene node creation
                     if (wrappedTex && constrainedTextureCache_) {
                         size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
                         constrainedTextureCache_->registerTexture(result.textureName, wrappedTex, texSize, false);
                         constrainedTextureCache_->clearPendingAsync(result.textureName);
+
+                        // Also register in mesh builder so entity SceneNodeCreation finds it
+                        if (entityRenderer_) {
+                            auto* meshBuilder = entityRenderer_->getMeshBuilder();
+                            if (meshBuilder) {
+                                meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
+                            }
+                        }
 
                         // Check if any regions were waiting for this texture
                         auto pendIt = pendingTextureRegions_.find(result.textureName);
@@ -1340,8 +1338,6 @@ void IrrlichtRenderer::toggleGPUUploadThread() {
 
     // Propagate to subsystems: set or clear their gpuUploadThread_ pointers
     GPUUploadThread* ptr = gpuUploadEnabled_ ? gpuUploadThread_.get() : nullptr;
-    if (entityRenderer_)
-        entityRenderer_->setGPUUploadThread(ptr);
     if (constrainedTextureCache_)
         constrainedTextureCache_->setGPUUploadThread(ptr);
     if (windowManager_)
@@ -2681,12 +2677,13 @@ void IrrlichtRenderer::createEntityRenderer() {
     entityRenderer_->setClientPath(config_.eqClientPath);
     entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
     entityRenderer_->setRenderDistance(renderDistance_);
-#ifdef EQT_HAS_GLES2
-    if (gpuUploadThread_)
-        entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
-#endif
-    if (constrainedTextureCache_)
+    if (constrainedTextureCache_) {
         entityRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        // Wire mesh builder into cache for entity texture registration during processUploadQueue
+        auto* meshBuilder = entityRenderer_->getMeshBuilder();
+        if (meshBuilder)
+            constrainedTextureCache_->setMeshBuilder(meshBuilder);
+    }
     entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
     entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
     if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -8002,6 +7999,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     processCompletedUploads();
 #endif
 
+    // Process unified texture upload queue (decoded textures → GPU)
+    if (constrainedTextureCache_) {
+        constrainedTextureCache_->processUploadQueue();
+    }
+
     // SimulationWorker: apply results from previous frame, then post new input
     sectionStart_ = std::chrono::steady_clock::now();
     applySimulationResults();
@@ -11804,11 +11806,8 @@ void IrrlichtRenderer::onPvsRegionChanged() {
                 size_t regionIdx = req.callbackKey & 0xFFFFFFFFFFFFULL;
                 uint8_t depth = getRegionPvsDepth(regionIdx);
                 return WorkPriorityKey::make(depth, AssetType::ZoneMesh).value;
-            } else if (sourceType == 2) {
-                // Entity texture
-                return WorkPriorityKey::make(0, AssetType::EntityTexture).value;
             } else if (sourceType == 3) {
-                // Constrained cache texture
+                // Constrained cache texture (unified: zone + entity textures)
                 return WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
             }
             // Icons and unknown: lowest priority

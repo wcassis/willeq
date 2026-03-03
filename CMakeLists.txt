@@ -570,6 +570,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/environment/emitters/ember_emitter.cpp
         src/client/graphics/environment/emitters/smoke_emitter.cpp
     )
+    # Background thread pool (needed by constrained_texture_cache)
+    TARGET_SOURCES(model_viewer PRIVATE src/client/graphics/background_thread_pool.cpp)
     # GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
         TARGET_SOURCES(model_viewer PRIVATE src/client/graphics/gpu_upload_thread.cpp)
@@ -676,6 +678,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(s3d_dump PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -774,6 +777,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(analyze_hum_model PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -795,6 +799,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_animation PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -817,6 +822,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(extract_zone_lines PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -839,6 +845,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(bsp_coordinate_finder PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -861,6 +868,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(generate_surface_map PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -891,6 +899,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(zone_line_editor PRIVATE
         ${CMAKE_SOURCE_DIR}/include

@@ -1,5 +1,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/dds_decoder.h"
+#include "client/graphics/eq/zone_geometry.h"
+#include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/gpu_upload_thread.h"
@@ -56,6 +58,11 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return nullptr;
     }
 
+    // Already pending decode or upload — return nullptr without resubmitting
+    if (pendingDecodes_.count(name) || pendingAsyncUploads_.count(name)) {
+        return nullptr;
+    }
+
     // Try compressed upload first (skips CPU decode, saves GPU memory)
     if (compressedTexturesAvailable_) {
         irr::video::ITexture* compressed = tryCompressedUpload(name, data);
@@ -64,7 +71,31 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         }
     }
 
-    // Process texture data: decode, downsample, convert to 16-bit
+    // Submit decode task to background thread pool
+    if (bgThreadPool_) {
+        pendingDecodes_.insert(name);
+        // Copy data for the background thread (source data lifetime may not outlast the task)
+        auto dataCopy = std::make_shared<std::vector<char>>(data);
+        std::string texName = name;
+        bgThreadPool_->submit(10, [this, texName, dataCopy]() {
+            std::vector<uint8_t> processedData;
+            int width = 0, height = 0;
+            bool hasAlpha = false;
+            if (processTextureData(*dataCopy, processedData, width, height, hasAlpha)) {
+                queueDecoded(texName, std::move(processedData), width, height, hasAlpha);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: bg decode failed for '{}'", texName);
+                // Remove from pending on failure so it can be retried
+                std::lock_guard<std::mutex> lock(decodedQueueMutex_);
+                // Use a sentinel empty entry to signal removal from pendingDecodes_ on render thread
+                decodedQueue_.push_back({texName, {}, 0, 0, false});
+            }
+        });
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: bg decode submitted for '{}' ({} bytes)", name, data.size());
+        return nullptr;  // Caller retries next frame
+    }
+
+    // Fallback: synchronous decode + upload (no background thread pool)
     std::vector<uint8_t> processedData;
     int width = 0, height = 0;
     bool hasAlpha = false;
@@ -74,106 +105,9 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return nullptr;
     }
 
-#ifdef EQT_HAS_GLES2
-    // Async path: submit RGBA data to GPU upload thread instead of driver->addTexture()
-    if (gpuUploadThread_ && gpuUploadThread_->isAvailable() &&
-        pendingAsyncUploads_.find(name) == pendingAsyncUploads_.end()) {
-        UploadRequest req;
-        req.type = UploadRequestType::Texture;
-        req.width = static_cast<uint32_t>(width);
-        req.height = static_cast<uint32_t>(height);
-        req.pixelData = std::move(processedData);  // Already RGBA from processTextureData
-        req.textureName = name;
-        // High byte 3 = constrained cache texture
-        req.callbackKey = uint64_t(3) << 56;
-        req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
-
-        gpuUploadThread_->submit(std::move(req));
-        pendingAsyncUploads_.insert(name);
-        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: async upload submitted for '{}' ({}x{})", name, width, height);
-        return nullptr;  // Caller retries next frame
-    }
-    // If already pending, return nullptr without resubmitting
-    if (pendingAsyncUploads_.find(name) != pendingAsyncUploads_.end()) {
-        return nullptr;
-    }
-#endif
-
-    // Calculate size needed for this texture
-    size_t textureSize = calculateTextureSize(width, height);
-
-    // Evict textures if needed to make room
-    if (!evictUntilAvailable(textureSize)) {
-        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: eviction failed for '{}' (need {} bytes, budget {} bytes, used {} bytes)",
-            name, textureSize, config_.textureMemoryBytes, currentUsage_);
-        return nullptr;
-    }
-
-    // Create Irrlicht texture from processed data
-    // Always use 32-bit ARGB format for compatibility with Irrlicht's software renderer
-    // (16-bit formats like ECF_A1R5G5B5/ECF_R5G6B5 can cause crashes in Burning's Video)
-    irr::video::ITexture* texture = nullptr;
-
-    // Convert RGBA to ARGB (Irrlicht's native format)
-    std::vector<uint8_t> argbData(processedData.size());
-    for (size_t i = 0; i < processedData.size(); i += 4) {
-        argbData[i + 0] = processedData[i + 2];  // B
-        argbData[i + 1] = processedData[i + 1];  // G
-        argbData[i + 2] = processedData[i + 0];  // R
-        argbData[i + 3] = processedData[i + 3];  // A
-    }
-
-    irr::core::dimension2d<irr::u32> size(width, height);
-    irr::video::IImage* image = driver_->createImageFromData(
-        irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
-
-    if (image) {
-        texture = driver_->addTexture(name.c_str(), image);
-        image->drop();
-    }
-
-    if (!image) {
-        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: createImageFromData returned null for '{}' ({}x{})", name, width, height);
-        return nullptr;
-    }
-
-    if (!texture) {
-        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: addTexture returned null for '{}'", name);
-        return nullptr;
-    }
-
-#ifdef EQT_HAS_DRM
-    // Irrlicht's GLSL custom material renderer doesn't apply texture filtering
-    // flags via glTexParameteri on some drivers (Lima/Mali400). Set bilinear
-    // filtering directly on the GL texture object at creation time.
-    {
-        irr::u32 glName = texture->getDriverTextureHandle();
-        if (glName != 0) {
-            glBindTexture(GL_TEXTURE_2D, glName);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            if (config_.enableMipmaps) {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            } else {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            }
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
-    }
-#endif
-
-    LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: loaded '{}' {}x{} ({} bytes)", name, width, height, textureSize);
-
-    // Add to cache
-    lruOrder_.push_back(name);
-    CachedTexture entry;
-    entry.texture = texture;
-    entry.sizeBytes = textureSize;
-    entry.hasAlpha = hasAlpha;
-    entry.lruIterator = std::prev(lruOrder_.end());
-    cache_[name] = entry;
-    currentUsage_ += textureSize;
-
-    return texture;
+    // Queue for upload on render thread (processUploadQueue will handle budget + GPU upload)
+    queueDecoded(name, std::move(processedData), width, height, hasAlpha);
+    return nullptr;  // Will be available after processUploadQueue runs
 }
 
 void ConstrainedTextureCache::touch(const std::string& name) {
@@ -609,6 +543,156 @@ void ConstrainedTextureCache::clearTextureReferences(irr::video::ITexture* textu
 
     // Start scan from root
     scanNode(smgr_->getRootSceneNode());
+}
+
+void ConstrainedTextureCache::queueDecoded(const std::string& name,
+                                            std::vector<uint8_t> rgbaPixels,
+                                            int width, int height, bool hasAlpha) {
+    std::lock_guard<std::mutex> lock(decodedQueueMutex_);
+    decodedQueue_.push_back({name, std::move(rgbaPixels), width, height, hasAlpha});
+}
+
+void ConstrainedTextureCache::queueDecodedARGB(const std::string& name,
+                                                const std::vector<uint32_t>& argbPixels,
+                                                int width, int height, bool hasAlpha) {
+    // Convert ARGB (Irrlicht ECF_A8R8G8B8 in memory: B G R A) → RGBA for GL
+    size_t pixelCount = argbPixels.size();
+    std::vector<uint8_t> rgba(pixelCount * 4);
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(argbPixels.data());
+    for (size_t i = 0; i < pixelCount; ++i) {
+        size_t si = i * 4;
+        rgba[si + 0] = src[si + 2];  // R (was at offset 2 in BGRA layout)
+        rgba[si + 1] = src[si + 1];  // G
+        rgba[si + 2] = src[si + 0];  // B
+        rgba[si + 3] = src[si + 3];  // A
+    }
+    queueDecoded(name, std::move(rgba), width, height, hasAlpha);
+}
+
+int ConstrainedTextureCache::processUploadQueue() {
+    // Move queued items to a local batch (minimal lock contention)
+    std::vector<DecodedUpload> batch;
+    {
+        std::lock_guard<std::mutex> lock(decodedQueueMutex_);
+        batch.swap(decodedQueue_);
+    }
+
+    if (batch.empty()) return 0;
+
+    int uploaded = 0;
+    for (auto& item : batch) {
+        // Clear from pending decode set
+        pendingDecodes_.erase(item.name);
+
+        // Sentinel: empty pixels means decode failed — just clean up
+        if (item.rgbaPixels.empty()) {
+            continue;
+        }
+
+        // Already in cache (raced with another upload path)
+        if (cache_.find(item.name) != cache_.end()) {
+            touch(item.name);
+            continue;
+        }
+
+        // Budget check: calculate size and evict if needed
+        size_t textureSize = calculateTextureSize(item.width, item.height);
+        if (!evictUntilAvailable(textureSize)) {
+            LOG_WARN(MOD_GRAPHICS, "Constrained cache: budget exhausted, dropping '{}' (need {} bytes, budget {} bytes, used {} bytes)",
+                item.name, textureSize, config_.textureMemoryBytes, currentUsage_);
+            continue;
+        }
+
+#ifdef EQT_HAS_GLES2
+        // GLES2 async path: submit to GPU upload thread
+        if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+            UploadRequest req;
+            req.type = UploadRequestType::Texture;
+            req.width = static_cast<uint32_t>(item.width);
+            req.height = static_cast<uint32_t>(item.height);
+            req.pixelData = std::move(item.rgbaPixels);
+            req.textureName = item.name;
+            // High byte 3 = constrained cache texture (unified path)
+            req.callbackKey = uint64_t(3) << 56;
+            req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
+
+            gpuUploadThread_->submit(std::move(req));
+            pendingAsyncUploads_.insert(item.name);
+            ++uploaded;
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: queued GPU upload for '{}' ({}x{})",
+                      item.name, item.width, item.height);
+            continue;
+        }
+#endif
+
+        // Desktop GL / software: synchronous upload via driver_->addTexture()
+        // Convert RGBA to ARGB (Irrlicht's native format)
+        std::vector<uint8_t> argbData(item.rgbaPixels.size());
+        for (size_t i = 0; i < item.rgbaPixels.size(); i += 4) {
+            argbData[i + 0] = item.rgbaPixels[i + 2];  // B
+            argbData[i + 1] = item.rgbaPixels[i + 1];  // G
+            argbData[i + 2] = item.rgbaPixels[i + 0];  // R
+            argbData[i + 3] = item.rgbaPixels[i + 3];  // A
+        }
+
+        irr::core::dimension2d<irr::u32> size(item.width, item.height);
+        irr::video::IImage* image = driver_->createImageFromData(
+            irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
+
+        irr::video::ITexture* texture = nullptr;
+        if (image) {
+            texture = driver_->addTexture(item.name.c_str(), image);
+            image->drop();
+        }
+
+        if (!texture) {
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: addTexture failed for '{}' ({}x{})",
+                      item.name, item.width, item.height);
+            continue;
+        }
+
+#ifdef EQT_HAS_DRM
+        // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
+        {
+            irr::u32 glName = texture->getDriverTextureHandle();
+            if (glName != 0) {
+                glBindTexture(GL_TEXTURE_2D, glName);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                if (config_.enableMipmaps) {
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                } else {
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                }
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+        }
+#endif
+
+        // Register in LRU cache
+        lruOrder_.push_back(item.name);
+        CachedTexture entry;
+        entry.texture = texture;
+        entry.sizeBytes = textureSize;
+        entry.hasAlpha = item.hasAlpha;
+        entry.lruIterator = std::prev(lruOrder_.end());
+        cache_[item.name] = entry;
+        currentUsage_ += textureSize;
+
+        // Also register in mesh builder for entity texture lookups
+        if (meshBuilder_) {
+            meshBuilder_->registerUploadedTexture(item.name, texture, item.hasAlpha);
+        }
+
+        ++uploaded;
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: uploaded '{}' {}x{} ({} bytes)",
+                  item.name, item.width, item.height, textureSize);
+    }
+
+    return uploaded;
+}
+
+bool ConstrainedTextureCache::isPending(const std::string& name) const {
+    return pendingDecodes_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;
 }
 
 void ConstrainedTextureCache::probeCompressedTextureSupport() {

@@ -276,6 +276,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -317,6 +318,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_asset_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -340,6 +342,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_door_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_door_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
