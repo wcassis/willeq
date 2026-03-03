@@ -410,8 +410,14 @@ struct SimulationOutput {
     // Regions not in this map are unreachable via portals (depth = 255 fallback)
     std::unordered_map<size_t, uint8_t> regionPvsDepth;
 
+    // Sorted region entry (shared by draw list and mesh load queue)
+    struct SortedRegion {
+        size_t regionIdx;
+        float distanceSq;
+    };
+
     // Regions needing lazy mesh loading (for constrained mesh cache)
-    std::vector<size_t> meshLoadQueue;
+    std::vector<SortedRegion> meshLoadQueue;
     // Protected regions (visible + buffer ring, skip during eviction)
     std::vector<size_t> protectedRegions;
 
@@ -437,10 +443,6 @@ struct SimulationOutput {
     std::vector<LightColor> objectLightColors;
 
     // Sorted region draw list for front-to-back rendering
-    struct SortedRegion {
-        size_t regionIdx;
-        float distanceSq;
-    };
     std::vector<SortedRegion> sortedRegions;
 
     // Shadow vertex buffers for tree wind animation

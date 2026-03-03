@@ -7125,7 +7125,7 @@ void IrrlichtRenderer::applySimulationResults() {
         if (constrainedMeshCache_) {
             meshLoadQueue_.clear();
             size_t needBuildCount = 0;
-            for (const auto& sr : results->sortedRegions) {
+            for (const auto& sr : results->meshLoadQueue) {
                 meshLoadQueue_.push_back({sr.regionIdx, sr.distanceSq});
                 if (!constrainedMeshCache_->isLoaded(sr.regionIdx))
                     needBuildCount++;

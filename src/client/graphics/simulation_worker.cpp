@@ -419,7 +419,13 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
             continue;
         }
 
-        // Frustum culling (EQ Z-up coordinates)
+        // Queue for lazy mesh loading (PVS + distance only — orientation-independent)
+        output.meshLoadQueue.push_back({regionIdx, distSq});
+
+        // Track for mesh cache protection (all PVS+distance regions)
+        output.protectedRegions.push_back(regionIdx);
+
+        // Frustum culling (EQ Z-up coordinates) — only affects draw list
         if (input.frustumValid) {
             if (!testFrustumAABB(input.frustumPlanes,
                                   rb.minX, rb.minY, rb.minZ,
@@ -431,18 +437,16 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
 
         output.regionVisible[i] = 1;
 
-        // Add to sorted draw list
+        // Add to sorted draw list (frustum-visible only)
         output.sortedRegions.push_back({regionIdx, distSq});
-
-        // Queue for lazy mesh loading (main thread filters already-loaded via isLoaded())
-        output.meshLoadQueue.push_back(regionIdx);
-
-        // Track for mesh cache protection
-        output.protectedRegions.push_back(regionIdx);
     }
 
     // Sort front-to-back by distance
     std::sort(output.sortedRegions.begin(), output.sortedRegions.end(),
+              [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
+
+    // Sort mesh load queue nearest-first for priority preloading
+    std::sort(output.meshLoadQueue.begin(), output.meshLoadQueue.end(),
               [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
 
     // Compute PVS depth map (portal adjacency BFS)
