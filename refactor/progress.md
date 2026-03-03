@@ -51,9 +51,9 @@ refactoring plan, or were incompletely addressed.
 
 | ID | Description | Source |
 |----|-------------|--------|
-| C02 | ~~5 BackgroundWorkQueue instances still separate threads~~ **DONE**: Unified into shared BackgroundThreadPool | Pool-backed mode in BWQ, all 5 queues wired to shared pool, configurable thread count per preset |
-| C03 | `glGenTextures` on render thread in TextureAtlas fallback (uploadPreloadedPage, line 187) | NEW — original audit noted as "Low" generically |
-| C04 | Entity/equipment texture allocate-then-register pattern — GPU alloc before budget check | Residual from B03 — success path fixed, failure path risk remains |
+| C02 | ~~5 BackgroundWorkQueue instances still separate threads~~ **DONE**: Unified into shared BackgroundThreadPool | `5154357` |
+| C03 | ~~`glGenTextures` on render thread in TextureAtlas fallback~~ **DONE**: Removed sync fallback from `uploadPreloadedPageAsync()`, simplified GLES2 calling code in renderer, removed 2 dead `load()` methods (~235 lines) | `c822a8f` |
+| C04 | ~~Entity/equipment texture allocate-then-register pattern — GPU alloc before budget check~~ **DONE**: Unified zone + entity texture uploads into single decodedQueue_ with budget-check-first via processUploadQueue(). Removed uploadDecodedTexture(), submitAsyncEntityTexture(), setGPUUploadThread() from EntityRenderer. Eliminated all #ifdef EQT_HAS_GLES2 from entity texture upload code. | `89c0709` |
 
 ### Medium
 
