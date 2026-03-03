@@ -114,6 +114,13 @@ static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
     return settings;
 }
 
+eqt::ui::DisplaySettings IrrlichtRenderer::getDisplaySettings() {
+    if (windowManager_ && windowManager_->getOptionsWindow()) {
+        return windowManager_->getOptionsWindow()->getDisplaySettings();
+    }
+    return cachedDisplaySettings_;  // loaded once at startup
+}
+
 // Log detailed OpenGL/driver information for debugging GPU issues
 static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevice* device,
                              const irr::SIrrlichtCreationParameters& params) {
@@ -472,6 +479,29 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
                  targetFps, governor_->getTargetFrameTimeMs());
     }
 
+    // One-time file I/O at app startup (before render loop begins).
+    // Caches display settings so render-thread code never reads JSON.
+    if (!displaySettingsCached_) {
+        cachedDisplaySettings_ = loadDisplaySettingsFromFile();
+        displaySettingsCached_ = true;
+    }
+
+    // One-time race mappings load (JSON file I/O)
+    if (!areRaceMappingsLoaded()) {
+        for (const auto& path : {"config/race_models.json", "../config/race_models.json",
+                                  "../../config/race_models.json"}) {
+            if (loadRaceMappings(path)) break;
+        }
+    }
+
+    // Pre-load item-to-model mapping (tiny JSON, never changes)
+    if (itemToModelMap_.empty()) {
+        for (const auto& path : {"data/item_models.json", "../data/item_models.json"}) {
+            if (EquipmentModelLoader::loadItemModelMappingStatic(path, itemToModelMap_) >= 0)
+                break;
+        }
+    }
+
     // Choose driver type from constrained config backend
     irr::video::E_DRIVER_TYPE driverType;
     switch (config_.constrainedConfig.renderingBackend) {
@@ -613,19 +643,8 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     // Create entity renderer
     createEntityRenderer();
 
-    // Preload numbered global character models for better coverage
-    if (!config_.constrainedConfig.skipEntityBuild) {
-        entityRenderer_->loadNumberedGlobals();
-    }
-
-    // Load equipment models from gequip.s3d archives
-    if (!config_.constrainedConfig.skipEntityBuild) {
-        if (entityRenderer_->loadEquipmentModels()) {
-            LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
-        }
-    }
+    // Global character models and equipment archives are loaded on the background
+    // thread (or lazily on first use). No eager file I/O here.
 
     // Create door manager
     doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
@@ -853,13 +872,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
 
     // Check display settings to determine which environmental managers to create.
-    // Use OptionsWindow settings if available, otherwise read from JSON file directly.
-    eqt::ui::DisplaySettings displaySettings;
-    if (windowManager_ && windowManager_->getOptionsWindow()) {
-        displaySettings = windowManager_->getOptionsWindow()->getDisplaySettings();
-    } else {
-        displaySettings = loadDisplaySettingsFromFile();
-    }
+    auto displaySettings = getDisplaySettings();
 
     // Always create particle manager — needed for unified fire system even when
     // atmospheric particles (dust, pollen, fireflies) are disabled
@@ -936,57 +949,13 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         return true;
     }
 
-    LOG_INFO(MOD_GRAPHICS, "Loading global assets (character models, equipment)...");
-
     // Create entity renderer (if not already created by init())
     createEntityRenderer();
 
-    if (config_.constrainedConfig.deferredAssetLoading) {
-        // Deferred mode: build lightweight archive index instead of loading all models
-        graphicsArchiveIndex_ = std::make_unique<GraphicsArchiveIndex>();
-        bool lazyMode = config_.constrainedConfig.lazyPfsLoading;
-        if (graphicsArchiveIndex_->buildIndex(config_.eqClientPath, lazyMode, networkTickCallback_)) {
-            LOG_INFO(MOD_GRAPHICS, "Graphics archive index built: {} race entries from {} archives",
-                     graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
-            // Pass archive index to RaceModelLoader for on-demand loading
-            if (entityRenderer_->getRaceModelLoader()) {
-                entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
-            }
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "Graphics archive index build failed, falling back to eager loading");
-            // Fall back to eager loading
-            entityRenderer_->loadGlobalCharacters();
-            if (networkTickCallback_) networkTickCallback_();
-            entityRenderer_->loadNumberedGlobals();
-        }
-    } else {
-        // Eager mode: load all global character models into memory
-        if (entityRenderer_->loadGlobalCharacters()) {
-            LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
-        }
+    // All S3D archive loading (global characters, numbered globals, equipment)
+    // is handled by the background thread via DataReady_ArchiveIndex and
+    // DataReady_Equipment phases, or lazily on first use. No eager file I/O here.
 
-        // Pump network after global character model load
-        if (networkTickCallback_) networkTickCallback_();
-
-        // Preload numbered global character models for better coverage (global2-7_chr.s3d)
-        entityRenderer_->loadNumberedGlobals();
-    }
-
-    // Pump network after character model loading
-    if (networkTickCallback_) networkTickCallback_();
-
-    // Load equipment models from gequip.s3d archives
-    if (!config_.constrainedConfig.skipEntityBuild) {
-        if (entityRenderer_->loadEquipmentModels()) {
-            LOG_INFO(MOD_GRAPHICS, "Equipment models loaded");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Could not load equipment models");
-        }
-    }
-
-    // Pump network after equipment model load
     if (networkTickCallback_) networkTickCallback_();
 
     // Create door manager (if not already created)
@@ -1020,12 +989,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
 
     // Create detail manager (grass, plants, debris) - only if enabled in settings
     if (!detailManager_) {
-        eqt::ui::DisplaySettings detailSettings;
-        if (windowManager_ && windowManager_->getOptionsWindow()) {
-            detailSettings = windowManager_->getOptionsWindow()->getDisplaySettings();
-        } else {
-            detailSettings = loadDisplaySettingsFromFile();
-        }
+        auto detailSettings = getDisplaySettings();
 
         if (detailSettings.detailObjectsEnabled) {
             detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
@@ -2419,12 +2383,7 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
         isIndoorZone_ = isDungeon;
 
         // Check user setting
-        bool skySettingEnabled = true;
-        if (windowManager_ && windowManager_->getOptionsWindow()) {
-            skySettingEnabled = windowManager_->getOptionsWindow()->getDisplaySettings().skyEnabled;
-        } else {
-            skySettingEnabled = loadDisplaySettingsFromFile().skyEnabled;
-        }
+        bool skySettingEnabled = getDisplaySettings().skyEnabled;
         skyRenderer_->setEnabled(!isDungeon && skySettingEnabled);
 
         LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {} (setting={})",
@@ -3385,6 +3344,18 @@ static void preloadDeferredAssets(const DeferredAssetParams& p) {
         }
     }
 
+    // 6.5 Pre-build equipment index (S3D archive headers — no GL)
+    {
+        auto eqIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
+        if (EquipmentModelLoader::buildEquipmentIndex(p.eqClientPath,
+                eqIdx->modelIndex, eqIdx->textureIndex)) {
+            eqIdx->loaded = true;
+            LOG_INFO(MOD_GRAPHICS, "Preload: equipment index ({} models, {} textures)",
+                     eqIdx->modelIndex.size(), eqIdx->textureIndex.size());
+        }
+        p.computations->equipmentIndex = std::move(eqIdx);
+    }
+
     // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
     {
         auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
@@ -3857,17 +3828,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
             LOG_INFO(MOD_GRAPHICS, "Graphics archive index adopted from background thread ({} race entries, {} archives)",
                      graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
-        } else if (!config_.constrainedConfig.deferredAssetLoading
-                   && !config_.constrainedConfig.skipEntityBuild) {
-            // Non-deferred: eager loading (unchanged)
-            if (entityRenderer_->loadGlobalCharacters()) {
-                LOG_DEBUG(MOD_GRAPHICS, "Global character models loaded");
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Could not load global character models (will use placeholders)");
-            }
-            if (networkTickCallback_) networkTickCallback_();
-            entityRenderer_->loadNumberedGlobals();
         }
+        // No eager fallback — entities use placeholders via lazy-init if index build fails
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_GlobalAssets;
         logAssetBuildTime("archive_index", 0, stepStart);
         break;
@@ -3886,8 +3848,17 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::DataReady_Equipment: {
-        // Equipment index is no longer pre-built on background thread.
-        // EquipmentModelLoader self-inits lazily on first getModelRef()/getEquipmentMesh() call.
+        // Adopt pre-built equipment index from background thread (no file I/O here)
+        if (pendingZoneComputations_ && pendingZoneComputations_->equipmentIndex &&
+            pendingZoneComputations_->equipmentIndex->loaded && entityRenderer_) {
+            if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+                eml->adoptIndex(
+                    std::move(pendingZoneComputations_->equipmentIndex->modelIndex),
+                    std::move(pendingZoneComputations_->equipmentIndex->textureIndex),
+                    std::map<uint32_t, int>(itemToModelMap_));  // copy from app-startup cache
+                LOG_INFO(MOD_GRAPHICS, "Equipment index adopted from background thread");
+            }
+        }
         if (networkTickCallback_) networkTickCallback_();
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_DoorManager;
         logAssetBuildTime("equipment_models", 0, stepStart);
@@ -3949,12 +3920,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     case BackgroundZoneLoadPhase::DataReady_DetailManager: {
         if (!detailManager_) {
-            eqt::ui::DisplaySettings detailSettings;
-            if (windowManager_ && windowManager_->getOptionsWindow()) {
-                detailSettings = windowManager_->getOptionsWindow()->getDisplaySettings();
-            } else {
-                detailSettings = loadDisplaySettingsFromFile();
-            }
+            auto detailSettings = getDisplaySettings();
             if (detailSettings.detailObjectsEnabled) {
                 detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
                 detailManager_->setSurfaceMapsPath("data/detail/zones");
@@ -3989,15 +3955,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 bool isDungeon = (storedZoneEnvironment_.zoneType == 2);
                 isIndoorZone_ = isDungeon;
 
-                bool skySettingEnabled = true;
-                if (windowManager_ && windowManager_->getOptionsWindow()) {
-                    skySettingEnabled = windowManager_->getOptionsWindow()->getDisplaySettings().skyEnabled;
-                } else if (pendingZoneComputations_ && pendingZoneComputations_->displaySettings &&
-                           pendingZoneComputations_->displaySettings->loaded) {
-                    skySettingEnabled = pendingZoneComputations_->displaySettings->skyEnabled;
-                } else {
-                    skySettingEnabled = loadDisplaySettingsFromFile().skyEnabled;
-                }
+                bool skySettingEnabled = getDisplaySettings().skyEnabled;
                 skyRenderer_->setEnabled(!isDungeon && skySettingEnabled);
             }
         }
@@ -9056,6 +9014,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
 #ifdef __linux__
         {
+            // Governor exception: procfs is memory-mapped kernel data, not disk I/O (~1μs)
             FILE* f = fopen("/proc/self/statm", "r");
             if (f) {
                 unsigned long vm = 0, rss = 0;

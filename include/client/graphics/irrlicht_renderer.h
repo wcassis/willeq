@@ -31,6 +31,7 @@
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
 #include "client/graphics/frame_budget_governor.h"
+#include "client/graphics/ui/options_window.h"
 #include "client/graphics/background_work_queue.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/gpu_upload_thread.h"
@@ -207,6 +208,14 @@ struct PendingZoneComputations {
 
     // Pre-built deferred objects (tree-filtered + world bounds on background thread)
     std::vector<DeferredObject> prebuiltDeferredObjects;
+
+    // Pre-built equipment index (S3D archive headers — no GL)
+    struct EquipmentIndexData {
+        std::map<int, EquipmentModelLoader::EquipmentModelRef> modelIndex;
+        std::map<std::string, EquipmentModelLoader::EquipmentTextureRef> textureIndex;
+        bool loaded = false;
+    };
+    std::unique_ptr<EquipmentIndexData> equipmentIndex;
 };
 
 // Background zone load state machine — S3D loads off-thread, then progressive setup on main thread
@@ -1483,6 +1492,15 @@ private:
 
     RendererConfig config_;
     std::function<void()> networkTickCallback_;  // Called between heavy loading stages to pump network
+
+    // Cached display settings (loaded once at app startup, before render loop)
+    eqt::ui::DisplaySettings cachedDisplaySettings_;
+    bool displaySettingsCached_ = false;
+    eqt::ui::DisplaySettings getDisplaySettings();
+
+    // Pre-loaded item-to-model mapping (tiny JSON, loaded once at app startup)
+    std::map<uint32_t, int> itemToModelMap_;
+
     bool initialized_ = false;
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
