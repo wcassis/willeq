@@ -450,7 +450,7 @@ IrrlichtRenderer::~IrrlichtRenderer() {
     shutdown();
 }
 
-bool IrrlichtRenderer::init(const RendererConfig& config) {
+bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     config_ = config;
 
     // Apply constrained rendering configuration
@@ -472,7 +472,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
              config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
              config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
     // Create frame budget governor
-    {
+    if (!governor_) {
         float targetFps = config_.constrainedConfig.targetFps;
         governor_ = std::make_unique<FrameBudgetGovernor>(targetFps);
         LOG_INFO(MOD_GRAPHICS, "Frame budget governor: target {:.0f} FPS ({:.1f}ms budget)",
@@ -480,10 +480,12 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     }
 
     // Create shared background thread pool
-    backgroundThreadPool_ = std::make_unique<BackgroundThreadPool>(
-        config_.constrainedConfig.backgroundThreadCount);
-    LOG_INFO(MOD_GRAPHICS, "Background thread pool: {} thread(s)",
-             config_.constrainedConfig.backgroundThreadCount);
+    if (!backgroundThreadPool_) {
+        backgroundThreadPool_ = std::make_unique<BackgroundThreadPool>(
+            config_.constrainedConfig.backgroundThreadCount);
+        LOG_INFO(MOD_GRAPHICS, "Background thread pool: {} thread(s)",
+                 config_.constrainedConfig.backgroundThreadCount);
+    }
 
     // One-time file I/O at app startup (before render loop begins).
     // Caches display settings so render-thread code never reads JSON.
@@ -506,217 +508,6 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
             if (EquipmentModelLoader::loadItemModelMappingStatic(path, itemToModelMap_) >= 0)
                 break;
         }
-    }
-
-    // Choose driver type from constrained config backend
-    irr::video::E_DRIVER_TYPE driverType;
-    switch (config_.constrainedConfig.renderingBackend) {
-#ifdef EQT_HAS_GLES2
-        case RenderingBackend::GLES2:
-            driverType = irr::video::EDT_OGLES2;
-            LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL ES 2.0 (GLES2 backend)");
-            break;
-#endif
-        case RenderingBackend::OpenGL:
-            driverType = irr::video::EDT_OPENGL;
-            LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: OpenGL");
-            break;
-        case RenderingBackend::Software:
-        default:
-            driverType = irr::video::EDT_BURNINGSVIDEO;
-            LOG_DEBUG(MOD_GRAPHICS, "[GL] Driver selection: Burnings Software");
-            break;
-    }
-
-    // Create device
-    irr::SIrrlichtCreationParameters params;
-    params.DriverType = driverType;
-    params.WindowSize = irr::core::dimension2d<irr::u32>(config.width, config.height);
-    params.Fullscreen = config.fullscreen;
-    params.Stencilbuffer = config_.constrainedConfig.enableStencilBuffer;
-    params.Vsync = true;
-    params.AntiAlias = config_.constrainedConfig.antiAliasLevel;
-
-#ifdef EQT_HAS_DRM
-    // DRM/KMS: use framebuffer device type (renders via EGL/GBM, no X11)
-    if (config_.constrainedConfig.useDRM) {
-        params.DeviceType = irr::EIDT_FRAMEBUFFER;
-        LOG_INFO(MOD_GRAPHICS, "[GL] Using DRM/KMS framebuffer device (no X11)");
-    }
-#endif
-
-    LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
-              config.width, config.height, config.fullscreen, true,
-              config_.constrainedConfig.enableStencilBuffer,
-              config_.constrainedConfig.antiAliasLevel);
-    if (!config_.constrainedConfig.useDRM) {
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
-    }
-
-    device_ = irr::createDeviceEx(params);
-
-    if (!device_) {
-        LOG_WARN(MOD_GRAPHICS, "[GL] Failed to create device with {} driver, falling back to software",
-                 backendName(config_.constrainedConfig.renderingBackend));
-        // Fall back to basic software renderer
-        params.DriverType = irr::video::EDT_SOFTWARE;
-        device_ = irr::createDeviceEx(params);
-    }
-
-    if (!device_) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device (all drivers failed)");
-        return false;
-    }
-
-    // Allow Irrlicht logging at DEBUG level, suppress at INFO
-    device_->getLogger()->setLogLevel(irr::ELL_WARNING);
-
-    device_->setWindowCaption(irr::core::stringw(config.windowTitle.c_str()).c_str());
-
-    driver_ = device_->getVideoDriver();
-    smgr_ = device_->getSceneManager();
-    guienv_ = device_->getGUIEnvironment();
-
-    // Log comprehensive driver/OpenGL details
-    logDriverDetails(driver_, device_, params);
-
-    // In DRM mode, enable and create software cursor (no hardware cursor available)
-    if (config_.constrainedConfig.useDRM && device_->getCursorControl()) {
-        device_->getCursorControl()->setVisible(true);
-    }
-    createSoftwareCursor();
-
-    // Configure mipmap generation based on constrained config
-    if (driver_) {
-        driver_->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS,
-                                         config_.constrainedConfig.enableMipmaps);
-        LOG_DEBUG(MOD_GRAPHICS, "[GL] Mipmap generation: {}",
-                  config_.constrainedConfig.enableMipmaps ? "enabled" : "disabled");
-    }
-
-    // Create constrained texture cache (always active; Max preset has generous limits)
-    if (driver_) {
-        constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
-            config_.constrainedConfig, driver_);
-        constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
-        if (backgroundThreadPool_)
-            constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
-        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
-                 config_.constrainedConfig.textureMemoryBytes / 1024,
-                 config_.constrainedConfig.maxTextureDimension,
-                 config_.constrainedConfig.maxTextureDimension,
-                 config_.constrainedConfig.enableMipmaps ? "yes" : "no");
-    }
-
-    // Create event receiver
-    eventReceiver_ = std::make_unique<RendererEventReceiver>();
-    device_->setEventReceiver(eventReceiver_.get());
-
-    // Setup camera
-    setupCamera();
-
-    // Setup lighting
-    setupLighting();
-
-    // Apply initial settings from constrained config (must come BEFORE shader variant sync)
-    wireframeMode_ = config_.constrainedConfig.wireframe;
-    fogEnabled_ = config_.constrainedConfig.fog;
-    lightingEnabled_ = config.lighting;
-    debugPlayerLightEnabled_ = config_.constrainedConfig.playerLight;
-
-    // Initialize GLSL shader pipeline (if enabled and driver supports it)
-    if (config_.constrainedConfig.enableShaders &&
-        config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
-        auto* gpu = driver_->getGPUProgrammingServices();
-        if (gpu) {
-            zoneShader_ = std::make_unique<ZoneShaderManager>(driver_, gpu);
-            if (!zoneShader_->isAvailable()) {
-                LOG_WARN(MOD_GRAPHICS, "GLSL shaders requested but compilation failed; using fixed-function fallback");
-                zoneShader_.reset();
-            } else if (zoneShader_->isLightweightAvailable()) {
-                // Sync shader variant with constrained config playerLight setting
-                zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
-            }
-        }
-    }
-
-    // Initialize GPU upload thread (shared EGL context for async texture/VBO uploads)
-#ifdef EQT_HAS_GLES2
-    initGPUUploadThread();
-#endif
-
-    // Setup HUD
-    setupHUD();
-
-    // Create entity renderer
-    createEntityRenderer();
-
-    // Global character models and equipment archives are loaded on the background
-    // thread (or lazily on first use). No eager file I/O here.
-
-    // Create door manager
-    doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
-
-    // Create tree wind animation manager
-    treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
-    treeManager_->setRenderDistance(renderDistance_);
-    if (constrainedTextureCache_) {
-        treeManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-    }
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                             zoneShader_->getActiveAlphaTest());
-    }
-
-    // Create weather system
-    weatherSystem_ = std::make_unique<WeatherSystem>();
-    // Connect weather system to tree manager via callback
-    weatherSystem_->addCallback([this](WeatherType weather) {
-        if (treeManager_) {
-            treeManager_->setWeather(weather);
-        }
-    });
-
-    // Environmental managers (particleManager_, boidsManager_, tumbleweedManager_,
-    // weatherEffects_, detailManager_) are deferred to initializeForZone() / loadGlobalAssets()
-    // so that display_settings.json can control whether they are created at all.
-    // This prevents crash-causing systems (e.g. boids on ARM) from initializing
-    // when the user has disabled them in settings.
-
-    initialized_ = true;
-    lastFpsTime_ = device_->getTimer()->getTime();
-
-    LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer initialized: {}x{}", config.width, config.height);
-    return true;
-}
-
-bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
-    config_ = config;
-
-    // Apply constrained rendering configuration
-    // Constrained mode is always active; Max preset has no practical limits
-    // Populate config from preset (unless custom NxNxN config was already set)
-    if (config_.constrainedPreset != ConstrainedRenderingPreset::Custom) {
-        config_.constrainedConfig = ConstrainedRendererConfig::fromPreset(config_.constrainedPreset);
-    }
-    config_.constrainedConfig.calculateMaxResolution();
-    config_.constrainedConfig.calculateMemoryLimits();
-    if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
-        LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
-                 config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
-    }
-    LOG_INFO(MOD_GRAPHICS, "Constrained rendering mode: {} ({}x{}, {}MB texture, {}MB framebuffer, {}MB RAM budget)",
-             ConstrainedRendererConfig::presetName(config_.constrainedPreset),
-             config_.width, config_.height,
-             config_.constrainedConfig.textureMemoryBytes / (1024 * 1024),
-             config_.constrainedConfig.framebufferMemoryBytes / (1024 * 1024),
-             config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
-    // Create frame budget governor (if not already created by init())
-    if (!governor_) {
-        float targetFps = config_.constrainedConfig.targetFps;
-        governor_ = std::make_unique<FrameBudgetGovernor>(targetFps);
-        LOG_INFO(MOD_GRAPHICS, "Frame budget governor: target {:.0f} FPS ({:.1f}ms budget)",
-                 targetFps, governor_->getTargetFrameTimeMs());
     }
 
     // Choose driver type from constrained config backend
@@ -968,7 +759,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         return true;
     }
 
-    // Create entity renderer (if not already created by init())
+    // Create entity renderer
     createEntityRenderer();
 
     // All S3D archive loading (global characters, numbered globals, equipment)

@@ -594,11 +594,8 @@ public:
     IrrlichtRenderer();
     ~IrrlichtRenderer();
 
-    // Initialize the renderer
-    bool init(const RendererConfig& config);
-
-    // Initialize only the loading screen (window + progress bar, no model loading)
-    // Use this at startup for early progress display, then call loadGlobalAssets() later
+    // Initialize the renderer (window, GPU, subsystems, background thread pool).
+    // Use this at startup for early progress display, then call loadGlobalAssets() later.
     bool initLoadingScreen(const RendererConfig& config);
 
     // Load global assets (character models, equipment) - call after initLoadingScreen()
