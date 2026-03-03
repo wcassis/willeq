@@ -611,9 +611,13 @@ bool ConstrainedTextureCache::processTextureData(const std::vector<char>& rawDat
                                                   bool& hasAlpha) {
     // Decode based on format
     if (DDSDecoder::isDDS(rawData)) {
-        if (!decodeDDS(rawData, processedData, width, height)) {
+        DecodedImage image = DDSDecoder::decode(rawData);
+        if (!image.isValid()) {
             return false;
         }
+        width = static_cast<int>(image.width);
+        height = static_cast<int>(image.height);
+        processedData = std::move(image.pixels);
     } else {
         // Assume BMP
         if (!decodeBMP(rawData, processedData, width, height)) {
@@ -791,20 +795,6 @@ bool ConstrainedTextureCache::decodeBMP(const std::vector<char>& data,
     return true;
 }
 
-bool ConstrainedTextureCache::decodeDDS(const std::vector<char>& data,
-                                         std::vector<uint8_t>& rgba,
-                                         int& width, int& height) {
-    DecodedImage image = DDSDecoder::decode(data);
-    if (!image.isValid()) {
-        return false;
-    }
-
-    width = static_cast<int>(image.width);
-    height = static_cast<int>(image.height);
-    rgba = std::move(image.pixels);
-
-    return true;
-}
 
 void ConstrainedTextureCache::clearTextureReferences(irr::video::ITexture* texture) {
     if (!smgr_ || !texture) {

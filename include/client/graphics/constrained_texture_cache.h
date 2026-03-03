@@ -199,11 +199,6 @@ private:
                    std::vector<uint8_t>& rgba,
                    int& width, int& height);
 
-    // Decode DDS data to RGBA (uses existing DDSDecoder)
-    bool decodeDDS(const std::vector<char>& data,
-                   std::vector<uint8_t>& rgba,
-                   int& width, int& height);
-
     // Cached texture entry
     struct CachedTexture {
         irr::video::ITexture* texture;
