@@ -1,0 +1,34 @@
+EGL 1.5 (DRM/GBM, GLES2 context)
+GL_RENDERER:  Mali400
+GL_VERSION:   OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+GL_OES_standard_derivatives: YES
+
+=== Test 1: dFdx(vUV.x), dFdy(vUV.y) ===
+  dFdx(vUV.x) * W:  avg=1.000  min=1.000  max=1.000  (expected ~1.0)
+  dFdy(vUV.y) * H:  avg=1.000  min=1.000  max=1.000  (expected ~1.0)
+  Result: PASS
+
+=== Test 2: fwidth(vUV.x), fwidth(vUV.y) ===
+  fwidth(vUV.x) * W:  avg=1.000  min=1.000  max=1.000  (expected ~1.0)
+  fwidth(vUV.y) * H:  avg=1.000  min=1.000  max=1.000  (expected ~1.0)
+  Result: PASS
+
+=== Test 3: fwidth(texture alpha) — NaN check ===
+  alpha value:         avg=0.501  min=0.000  max=1.000
+  fwidth(alpha)*W:     avg=0.750  min=0.000  max=1.000
+  isFinite (B chan):    avg=1.000  (1.0=all finite, <1.0=has NaN)
+  NaN fragments:       0 / 1024
+  Result: PASS
+
+=== Test 4: clamp(0.5 - fwidth(alpha), 0.1, 0.5) — real use case ===
+  threshold:           avg=0.469  min=0.455  max=0.502  (expected 0.1-0.5)
+  fwidth(alpha) raw:   avg=0.031  min=0.000  max=0.043
+  isFinite (B chan):    avg=1.000  (1.0=all finite, <1.0=has NaN)
+  NaN fragments:       0 / 1024
+  Result: PASS
+
+=== SUMMARY ===
+Tests passed: 4 / 4
+
+GL_OES_standard_derivatives works correctly.
+fwidth() can be safely enabled for alpha threshold smoothing.

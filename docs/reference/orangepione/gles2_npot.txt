@@ -1,0 +1,84 @@
+EGL 1.5 (DRM/GBM, GLES2 context)
+
+=== GLES2 NPOT Texture Test ===
+GL_RENDERER:  Mali400
+GL_VERSION:   OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+GL_OES_texture_npot: YES
+
+--- Test 1: POT 256x256, CLAMP_TO_EDGE, LINEAR (no mip) ---
+  Upload: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 2: POT 256x256, REPEAT, LINEAR (no mip) ---
+  Upload: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 3: POT 256x256, REPEAT, LINEAR_MIPMAP_LINEAR (mipmap) ---
+  Upload: OK
+  glGenerateMipmap: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 4: NPOT 300x300, CLAMP_TO_EDGE, LINEAR (no mip) ---
+  Upload: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 5: NPOT 300x300, REPEAT, LINEAR (no mip) ---
+  Upload: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.499 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 6: NPOT 300x300, REPEAT, LINEAR_MIPMAP_LINEAR (mipmap) ---
+  Upload: OK
+  glGenerateMipmap: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.516 G=0.483 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 7: NPOT 300x300, CLAMP_TO_EDGE, LINEAR_MIPMAP_LINEAR (mipmap) ---
+  Upload: OK
+  glGenerateMipmap: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 8: NPOT 127x253, CLAMP_TO_EDGE, LINEAR (no mip) ---
+  Upload: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+--- Test 9: NPOT 127x253, REPEAT, LINEAR (no mip) ---
+  Upload: OK
+  Draw: OK
+  ReadPixels: OK
+  Avg color: R=0.500 G=0.500 B=0.000 (expected ~0.5/0.5/0.0)
+  Result: PASS
+
+=== SUMMARY ===
+Tests passed: 9 / 9
+
+NPOT + CLAMP_TO_EDGE (no mipmap):  WORKS
+NPOT + GL_REPEAT (no mipmap):      WORKS
+NPOT + mipmaps + REPEAT:           WORKS
+NPOT + mipmaps + CLAMP:            WORKS
+NPOT odd dims + CLAMP:             WORKS
+NPOT odd dims + REPEAT:            WORKS
+
+Recommendation: Full NPOT support available. GL_REPEAT and mipmaps work on NPOT textures.
