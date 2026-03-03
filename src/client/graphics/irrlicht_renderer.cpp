@@ -6175,6 +6175,14 @@ bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const s
 
     if (result) {
         loadedEntityCount_++;
+        // Re-enable progressive loading so the multi-frame pipeline picks up
+        // this entity (progressiveLoadingActive_ may have been set to false
+        // after initial zone load completed all entity builds)
+        if (!progressiveLoadingActive_ && entityPrepReady_) {
+            progressiveLoadingActive_ = true;
+            LOG_DEBUG(MOD_GRAPHICS, "Progressive loading re-enabled for post-load entity: {} ({})",
+                      name, spawnId);
+        }
     }
 
     return result;

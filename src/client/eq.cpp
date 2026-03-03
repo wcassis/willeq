@@ -19304,9 +19304,12 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		appearance.equipment_tint[i] = entity.equipment_tint[i];
 	}
 
-	m_renderer->createEntity(entity.spawn_id, entity.race_id, entity.name,
-	                         entity.x, entity.y, entity.z, entity.heading,
-	                         false, entity.gender, appearance, isNPC, isCorpse, entity.size);
+	// Register entity for multi-frame pipeline build (placeholder cube now,
+	// mesh built progressively over subsequent frames to avoid frame hitches)
+	m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
+	                           entity.x, entity.y, entity.z, entity.heading,
+	                           false, entity.gender, appearance, isNPC, isCorpse, entity.size,
+	                           entity.level);
 
 	// Set entity light source if equipped
 	if (entity.light > 0) {
