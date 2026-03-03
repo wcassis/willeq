@@ -23,7 +23,7 @@
       "directionalLight": true,
       "fireEffects": true,
       "skyRendering": false,
-      "skipSkyTextureUpload": true,
+      "skipSkyTextureUpload": false,
       "nameTagsEnabled": true,
       "skipManualZoneDraw": false,
       "skipVBOUpload": false,
@@ -33,7 +33,10 @@
       "skipConstrainedTextureUpload": false,
       "enableTextureAtlas": true,
       "enableItemIcons": true,
-      "entityPrepMaxPvsDepth": 2
+      "entityPrepMaxPvsDepth": 3,
+      "terrainPrepMaxPvsDepth": 5,
+      "objectPrepMaxPvsDepth": 3,
+      "backgroundThreadCount": 1
     }
   }
 }

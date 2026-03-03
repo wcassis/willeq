@@ -219,6 +219,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.targetFps = 30.0f;
             // Entity prep: queue entities up to 2 portal hops away
             config.entityPrepMaxPvsDepth = 2;
+            config.terrainPrepMaxPvsDepth = 5;
+            config.objectPrepMaxPvsDepth = 3;
             break;
 
         case ConstrainedRenderingPreset::Custom:
@@ -422,6 +424,10 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         targetFps = preset["targetFps"].asFloat();
     if (preset.isMember("entityPrepMaxPvsDepth"))
         entityPrepMaxPvsDepth = preset["entityPrepMaxPvsDepth"].asInt();
+    if (preset.isMember("terrainPrepMaxPvsDepth"))
+        terrainPrepMaxPvsDepth = preset["terrainPrepMaxPvsDepth"].asInt();
+    if (preset.isMember("objectPrepMaxPvsDepth"))
+        objectPrepMaxPvsDepth = preset["objectPrepMaxPvsDepth"].asInt();
     if (preset.isMember("backgroundThreadCount"))
         backgroundThreadCount = preset["backgroundThreadCount"].asInt();
 

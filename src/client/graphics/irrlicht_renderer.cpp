@@ -11573,6 +11573,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         size_t firstUnloaded = SIZE_MAX;
         for (const auto& entry : meshLoadQueue_) {
             if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
+                if (getRegionPvsDepth(entry.regionIdx) > static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth)) continue;
                 qNeedBuild++;
                 if (firstUnloaded == SIZE_MAX) firstUnloaded = entry.regionIdx;
             }
@@ -11584,6 +11585,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 
         for (const auto& entry : meshLoadQueue_) {
             if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
+            // PVS depth gate: skip regions beyond configured depth
+            if (getRegionPvsDepth(entry.regionIdx) > static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth)) continue;
             if (rebuildRegionMesh(entry.regionIdx)) {
                 addRegionToCollision(entry.regionIdx);
                 LOG_INFO(MOD_GRAPHICS, "Progressive P2: SUCCESS region {} + collision (PVS={}, queue={}, "
@@ -11606,6 +11609,12 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!didWork && doorManager_) {
         std::vector<uint8_t> pvsDoors;
         doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
+        // PVS depth gate: remove doors beyond configured depth
+        pvsDoors.erase(std::remove_if(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t doorId) {
+            const auto* dv = doorManager_->getDoor(doorId);
+            if (!dv) return true;
+            return getRegionPvsDepth(dv->bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth);
+        }), pvsDoors.end());
         std::sort(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t a, uint8_t b) {
             const auto* da = doorManager_->getDoor(a);
             const auto* db = doorManager_->getDoor(b);
@@ -11642,7 +11651,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!didWork) {
         size_t totalPvsObjects = 0, builtPvsObjects = 0;
         for (const auto& obj : deferredObjects_) {
-            if (protectedRegions_.count(obj.bspRegion) > 0) {
+            if (protectedRegions_.count(obj.bspRegion) > 0 &&
+                getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) {
                 totalPvsObjects++;
                 if (obj.meshBuilt) builtPvsObjects++;
             }
@@ -11652,6 +11662,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         for (size_t i = 0; i < deferredObjects_.size(); ++i) {
             if (deferredObjects_[i].meshBuilt) continue;
             if (protectedRegions_.count(deferredObjects_[i].bspRegion) == 0) continue;
+            // PVS depth gate
+            if (getRegionPvsDepth(deferredObjects_[i].bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) continue;
             auto center = deferredObjects_[i].worldBounds.getCenter();
             // worldBounds is Irrlicht Y-up: (x, z_eq, y_eq)
             float dx = center.X - playerX_;
@@ -11849,11 +11861,18 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     if (doorManager_) {
         std::vector<uint8_t> pvsDoors;
         doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
+        // PVS depth gate: only count doors within configured depth
+        pvsDoors.erase(std::remove_if(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t doorId) {
+            const auto* dv = doorManager_->getDoor(doorId);
+            return dv && getRegionPvsDepth(dv->bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth);
+        }), pvsDoors.end());
         unbuiltDoors = pvsDoors.size();
     }
 
     for (const auto& obj : deferredObjects_) {
-        if (!obj.meshBuilt && protectedRegions_.count(obj.bspRegion) > 0) unbuiltObjects++;
+        if (!obj.meshBuilt && protectedRegions_.count(obj.bspRegion) > 0 &&
+            getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth))
+            unbuiltObjects++;
     }
 
     // Periodic status log for progressive loading (every 5 seconds)
@@ -11862,7 +11881,8 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         size_t unbuiltRegions = 0;
         if (constrainedMeshCache_) {
             for (const auto& entry : meshLoadQueue_) {
-                if (!constrainedMeshCache_->isLoaded(entry.regionIdx))
+                if (!constrainedMeshCache_->isLoaded(entry.regionIdx) &&
+                    getRegionPvsDepth(entry.regionIdx) <= static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth))
                     unbuiltRegions++;
             }
         }
