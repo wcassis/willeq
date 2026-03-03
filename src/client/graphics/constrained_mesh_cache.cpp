@@ -14,6 +14,7 @@ ConstrainedMeshCache::~ConstrainedMeshCache() {
 }
 
 void ConstrainedMeshCache::registerRegion(size_t regionIdx) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (cache_.find(regionIdx) != cache_.end()) return;
 
     CachedRegionMesh entry;
@@ -29,6 +30,7 @@ void ConstrainedMeshCache::registerRegion(size_t regionIdx) {
 }
 
 void ConstrainedMeshCache::onLoaded(size_t regionIdx, irr::scene::IMeshSceneNode* node, size_t sizeBytes) {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(regionIdx);
     if (it == cache_.end()) return;
 
@@ -61,6 +63,7 @@ void ConstrainedMeshCache::onLoaded(size_t regionIdx, irr::scene::IMeshSceneNode
 }
 
 void ConstrainedMeshCache::markForRebuild(size_t regionIdx) {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(regionIdx);
     if (it == cache_.end()) return;
 
@@ -83,6 +86,7 @@ void ConstrainedMeshCache::markForRebuild(size_t regionIdx) {
 }
 
 void ConstrainedMeshCache::touch(size_t regionIdx) {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(regionIdx);
     if (it == cache_.end() || !it->second.loaded) return;
 
@@ -95,11 +99,13 @@ void ConstrainedMeshCache::touch(size_t regionIdx) {
 }
 
 bool ConstrainedMeshCache::isLoaded(size_t regionIdx) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(regionIdx);
     return it != cache_.end() && it->second.loaded;
 }
 
 irr::scene::IMeshSceneNode* ConstrainedMeshCache::getNode(size_t regionIdx) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(regionIdx);
     if (it != cache_.end() && it->second.loaded) {
         return it->second.node;
@@ -109,6 +115,7 @@ irr::scene::IMeshSceneNode* ConstrainedMeshCache::getNode(size_t regionIdx) cons
 
 std::vector<size_t> ConstrainedMeshCache::evictUntilAvailable(size_t bytesNeeded,
     const std::unordered_set<size_t>& protectedRegions) {
+    std::lock_guard<std::mutex> lock(mutex_);
     std::vector<size_t> result;
     if (frozen_) return result;
 
@@ -159,6 +166,7 @@ std::vector<size_t> ConstrainedMeshCache::evictUntilAvailable(size_t bytesNeeded
 }
 
 void ConstrainedMeshCache::getUnloadedRegions(std::vector<size_t>& out) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     out.clear();
     for (const auto& [regionIdx, entry] : cache_) {
         if (!entry.loaded) {
@@ -168,12 +176,48 @@ void ConstrainedMeshCache::getUnloadedRegions(std::vector<size_t>& out) const {
 }
 
 void ConstrainedMeshCache::clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
     cache_.clear();
     lruOrder_.clear();
     currentUsage_ = 0;
 }
 
+// ---------------------------------------------------------------------------
+// Freeze / stats (moved from inline, all lock mutex_)
+// ---------------------------------------------------------------------------
+
+void ConstrainedMeshCache::freeze() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    frozen_ = true;
+}
+
+void ConstrainedMeshCache::unfreeze() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    frozen_ = false;
+}
+
+bool ConstrainedMeshCache::isFrozen() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return frozen_;
+}
+
+void ConstrainedMeshCache::cacheMiss() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cacheMisses_++;
+}
+
+size_t ConstrainedMeshCache::getCurrentUsage() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return currentUsage_;
+}
+
+size_t ConstrainedMeshCache::getMemoryLimit() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return budgetBytes_;
+}
+
 size_t ConstrainedMeshCache::getLoadedCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     size_t count = 0;
     for (const auto& [idx, entry] : cache_) {
         if (entry.loaded) count++;
@@ -182,6 +226,7 @@ size_t ConstrainedMeshCache::getLoadedCount() const {
 }
 
 size_t ConstrainedMeshCache::getEvictedCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     size_t count = 0;
     for (const auto& [idx, entry] : cache_) {
         if (!entry.loaded && entry.wasEverLoaded) count++;
@@ -189,13 +234,30 @@ size_t ConstrainedMeshCache::getEvictedCount() const {
     return count;
 }
 
+size_t ConstrainedMeshCache::getTotalCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cache_.size();
+}
+
+size_t ConstrainedMeshCache::getEvictionCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return evictionCount_;
+}
+
+size_t ConstrainedMeshCache::getRebuildCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return rebuildCount_;
+}
+
 float ConstrainedMeshCache::getHitRate() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     size_t total = cacheHits_ + cacheMisses_;
     if (total == 0) return 0.0f;
     return (static_cast<float>(cacheHits_) / total) * 100.0f;
 }
 
 void ConstrainedMeshCache::resetStatistics() {
+    std::lock_guard<std::mutex> lock(mutex_);
     cacheHits_ = 0;
     cacheMisses_ = 0;
     evictionCount_ = 0;

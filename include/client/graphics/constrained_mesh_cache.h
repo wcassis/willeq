@@ -4,6 +4,7 @@
 #include <irrlicht.h>
 #include <map>
 #include <list>
+#include <mutex>
 #include <vector>
 #include <unordered_set>
 #include <cstddef>
@@ -51,21 +52,21 @@ public:
     void clear();
 
     // Freeze/unfreeze (prevent eviction during transitions).
-    void freeze() { frozen_ = true; }
-    void unfreeze() { frozen_ = false; }
-    bool isFrozen() const { return frozen_; }
+    void freeze();
+    void unfreeze();
+    bool isFrozen() const;
 
     // Record a cache miss (visible region was not loaded)
-    void cacheMiss() { cacheMisses_++; }
+    void cacheMiss();
 
     // Stats
-    size_t getCurrentUsage() const { return currentUsage_; }
-    size_t getMemoryLimit() const { return budgetBytes_; }
+    size_t getCurrentUsage() const;
+    size_t getMemoryLimit() const;
     size_t getLoadedCount() const;
     size_t getEvictedCount() const;
-    size_t getTotalCount() const { return cache_.size(); }
-    size_t getEvictionCount() const { return evictionCount_; }
-    size_t getRebuildCount() const { return rebuildCount_; }
+    size_t getTotalCount() const;
+    size_t getEvictionCount() const;
+    size_t getRebuildCount() const;
     float getHitRate() const;
     void resetStatistics();
 
@@ -81,6 +82,7 @@ private:
         bool wasEverLoaded = false;  // true if loaded at least once (for rebuild count)
     };
 
+    mutable std::mutex mutex_;                    // protects all mutable state
     std::map<size_t, CachedRegionMesh> cache_;   // regionIdx -> entry
     std::list<size_t> lruOrder_;                  // front=oldest, back=newest
     size_t currentUsage_ = 0;

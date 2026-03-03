@@ -38,46 +38,104 @@ ConstrainedTextureCache::~ConstrainedTextureCache() {
     clear();
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name,
-                                                          const std::vector<char>& data) {
-    // Check if already cached
+// ---------------------------------------------------------------------------
+// Internal helpers (called while holding mutex_)
+// ---------------------------------------------------------------------------
+
+void ConstrainedTextureCache::touchInternal(const std::string& name) {
     auto it = cache_.find(name);
     if (it != cache_.end()) {
-        // Move to back of LRU list (most recently used)
         lruOrder_.erase(it->second.lruIterator);
         lruOrder_.push_back(name);
         it->second.lruIterator = std::prev(lruOrder_.end());
-        ++cacheHits_;
-        return it->second.texture;
+    }
+}
+
+irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTextureInternal() {
+    if (placeholderTexture_) {
+        return placeholderTexture_;
     }
 
-    ++cacheMisses_;
-
-    // Debug: skip all texture uploads to isolate endScene regression
-    if (config_.skipConstrainedTextureUpload) {
-        return nullptr;
-    }
-
-    // Already pending decode or upload — return nullptr without resubmitting
-    if (pendingDecodes_.count(name) || pendingAsyncUploads_.count(name)) {
-        return nullptr;
-    }
-
-    // Try compressed upload first (skips CPU decode, saves GPU memory)
-    if (compressedTexturesAvailable_) {
-        irr::video::ITexture* compressed = tryCompressedUpload(name, data);
-        if (compressed) {
-            return compressed;
+    // Create a small checkerboard placeholder texture (8x8 magenta/black)
+    const int size = 8;
+    std::vector<uint32_t> pixels(size * size);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            // Checkerboard pattern: magenta and dark gray
+            bool checker = ((x / 2) + (y / 2)) % 2 == 0;
+            pixels[y * size + x] = checker ? 0xFFFF00FF : 0xFF202020;  // ARGB
         }
     }
 
+    irr::video::IImage* image = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2d<irr::u32>(size, size),
+        pixels.data(), false);
+
+    if (image) {
+        placeholderTexture_ = driver_->addTexture("_placeholder_", image);
+        image->drop();
+    }
+
+    return placeholderTexture_;
+}
+
+// ---------------------------------------------------------------------------
+// Public methods — all acquire mutex_ (except queueDecoded/queueDecodedARGB
+// which only use decodedQueueMutex_)
+// ---------------------------------------------------------------------------
+
+irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name,
+                                                          const std::vector<char>& data) {
+    // Capture bgThreadPool_ under lock; release mutex_ before calling into
+    // the pool or doing synchronous decode (avoids mutex_ → decodedQueueMutex_
+    // lock-order inversion with processUploadQueue).
+    BackgroundThreadPool* pool = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        // Check if already cached
+        auto it = cache_.find(name);
+        if (it != cache_.end()) {
+            touchInternal(name);
+            ++cacheHits_;
+            return it->second.texture;
+        }
+
+        ++cacheMisses_;
+
+        // Debug: skip all texture uploads to isolate endScene regression
+        if (config_.skipConstrainedTextureUpload) {
+            return nullptr;
+        }
+
+        // Already pending decode or upload — return nullptr without resubmitting
+        if (pendingDecodes_.count(name) || pendingAsyncUploads_.count(name)) {
+            return nullptr;
+        }
+
+        // Try compressed upload first (skips CPU decode, saves GPU memory)
+        if (compressedTexturesAvailable_) {
+            irr::video::ITexture* compressed = tryCompressedUpload(name, data);
+            if (compressed) {
+                return compressed;
+            }
+        }
+
+        // Decide path: background or synchronous
+        if (bgThreadPool_) {
+            pendingDecodes_.insert(name);
+            pool = bgThreadPool_;
+        }
+    }
+    // mutex_ released
+
     // Submit decode task to background thread pool
-    if (bgThreadPool_) {
-        pendingDecodes_.insert(name);
+    if (pool) {
         // Copy data for the background thread (source data lifetime may not outlast the task)
         auto dataCopy = std::make_shared<std::vector<char>>(data);
         std::string texName = name;
-        bgThreadPool_->submit(10, [this, texName, dataCopy]() {
+        pool->submit(10, [this, texName, dataCopy]() {
             std::vector<uint8_t> processedData;
             int width = 0, height = 0;
             bool hasAlpha = false;
@@ -86,7 +144,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
             } else {
                 LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: bg decode failed for '{}'", texName);
                 // Remove from pending on failure so it can be retried
-                std::lock_guard<std::mutex> lock(decodedQueueMutex_);
+                std::lock_guard<std::mutex> lk(decodedQueueMutex_);
                 // Use a sentinel empty entry to signal removal from pendingDecodes_ on render thread
                 decodedQueue_.push_back({texName, {}, 0, 0, false});
             }
@@ -95,7 +153,9 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return nullptr;  // Caller retries next frame
     }
 
-    // Fallback: synchronous decode + upload (no background thread pool)
+    // Fallback: synchronous decode (no background thread pool).
+    // processTextureData only reads immutable config_ and local data — safe without mutex_.
+    // queueDecoded only locks decodedQueueMutex_ — no lock-order issue.
     std::vector<uint8_t> processedData;
     int width = 0, height = 0;
     bool hasAlpha = false;
@@ -111,23 +171,20 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
 }
 
 void ConstrainedTextureCache::touch(const std::string& name) {
-    auto it = cache_.find(name);
-    if (it != cache_.end()) {
-        // Move to back of LRU list
-        lruOrder_.erase(it->second.lruIterator);
-        lruOrder_.push_back(name);
-        it->second.lruIterator = std::prev(lruOrder_.end());
-    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    touchInternal(name);
 }
 
 bool ConstrainedTextureCache::hasTexture(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     return cache_.find(name) != cache_.end();
 }
 
 irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name) {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(name);
     if (it != cache_.end()) {
-        touch(name);
+        touchInternal(name);
         return it->second.texture;
     }
     return nullptr;
@@ -138,11 +195,13 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
                                                size_t sizeBytes, bool hasAlphaFlag) {
     if (!texture) return false;
 
+    std::lock_guard<std::mutex> lock(mutex_);
+
     // Already in cache — check if same texture (just touch) or replacement
     auto it = cache_.find(name);
     if (it != cache_.end()) {
         if (it->second.texture == texture) {
-            touch(name);
+            touchInternal(name);
             return true;
         }
         // Different texture under same name — evict the old one first
@@ -173,11 +232,13 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
 }
 
 bool ConstrainedTextureCache::hasAlpha(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(name);
     return it != cache_.end() && it->second.hasAlpha;
 }
 
 void ConstrainedTextureCache::clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
     // Notify listeners for each texture being cleared
     for (auto& pair : cache_) {
         for (auto* listener : evictionListeners_) {
@@ -192,17 +253,298 @@ void ConstrainedTextureCache::clear() {
     currentUsage_ = 0;
 }
 
+// ---------------------------------------------------------------------------
+// Statistics (lock mutex_ for consistent reads)
+// ---------------------------------------------------------------------------
+
+size_t ConstrainedTextureCache::getCurrentUsage() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return currentUsage_;
+}
+
+size_t ConstrainedTextureCache::getMemoryLimit() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return config_.textureMemoryBytes;
+}
+
+size_t ConstrainedTextureCache::getAvailableMemory() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return config_.textureMemoryBytes - currentUsage_;
+}
+
+size_t ConstrainedTextureCache::getTextureCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cache_.size();
+}
+
+size_t ConstrainedTextureCache::getCacheHits() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cacheHits_;
+}
+
+size_t ConstrainedTextureCache::getCacheMisses() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cacheMisses_;
+}
+
+size_t ConstrainedTextureCache::getEvictionCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return evictionCount_;
+}
+
+size_t ConstrainedTextureCache::getCompressedUploadCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return compressedUploadCount_;
+}
+
 float ConstrainedTextureCache::getHitRate() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     size_t total = cacheHits_ + cacheMisses_;
     if (total == 0) return 0.0f;
     return (static_cast<float>(cacheHits_) / total) * 100.0f;
 }
 
 void ConstrainedTextureCache::resetStatistics() {
+    std::lock_guard<std::mutex> lock(mutex_);
     cacheHits_ = 0;
     cacheMisses_ = 0;
     evictionCount_ = 0;
 }
+
+// ---------------------------------------------------------------------------
+// Freeze / setters (lock mutex_)
+// ---------------------------------------------------------------------------
+
+void ConstrainedTextureCache::freeze() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    frozen_ = true;
+}
+
+void ConstrainedTextureCache::unfreeze() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    frozen_ = false;
+}
+
+bool ConstrainedTextureCache::isFrozen() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return frozen_;
+}
+
+void ConstrainedTextureCache::setGPUUploadThread(GPUUploadThread* thread) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    gpuUploadThread_ = thread;
+}
+
+void ConstrainedTextureCache::clearPendingAsync(const std::string& name) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pendingAsyncUploads_.erase(name);
+}
+
+void ConstrainedTextureCache::setSceneManager(irr::scene::ISceneManager* smgr) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    smgr_ = smgr;
+}
+
+void ConstrainedTextureCache::setBackgroundThreadPool(BackgroundThreadPool* pool) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bgThreadPool_ = pool;
+}
+
+void ConstrainedTextureCache::setMeshBuilder(ZoneMeshBuilder* meshBuilder) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    meshBuilder_ = meshBuilder;
+}
+
+// ---------------------------------------------------------------------------
+// Placeholder texture (public locks, internal does not)
+// ---------------------------------------------------------------------------
+
+irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTexture() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return getPlaceholderTextureInternal();
+}
+
+// ---------------------------------------------------------------------------
+// Upload queue (decodedQueueMutex_ for queue, then mutex_ for cache state)
+// ---------------------------------------------------------------------------
+
+void ConstrainedTextureCache::queueDecoded(const std::string& name,
+                                            std::vector<uint8_t> rgbaPixels,
+                                            int width, int height, bool hasAlpha) {
+    std::lock_guard<std::mutex> lock(decodedQueueMutex_);
+    decodedQueue_.push_back({name, std::move(rgbaPixels), width, height, hasAlpha});
+}
+
+void ConstrainedTextureCache::queueDecodedARGB(const std::string& name,
+                                                const std::vector<uint32_t>& argbPixels,
+                                                int width, int height, bool hasAlpha) {
+    // Convert ARGB (Irrlicht ECF_A8R8G8B8 in memory: B G R A) → RGBA for GL
+    size_t pixelCount = argbPixels.size();
+    std::vector<uint8_t> rgba(pixelCount * 4);
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(argbPixels.data());
+    for (size_t i = 0; i < pixelCount; ++i) {
+        size_t si = i * 4;
+        rgba[si + 0] = src[si + 2];  // R (was at offset 2 in BGRA layout)
+        rgba[si + 1] = src[si + 1];  // G
+        rgba[si + 2] = src[si + 0];  // B
+        rgba[si + 3] = src[si + 3];  // A
+    }
+    queueDecoded(name, std::move(rgba), width, height, hasAlpha);
+}
+
+int ConstrainedTextureCache::processUploadQueue() {
+    // Step 1: Acquire decodedQueueMutex_, swap batch out, release.
+    // This is the ONLY lock on decodedQueueMutex_ in this method — mutex_ is
+    // acquired AFTER release, maintaining the lock-ordering invariant.
+    std::vector<DecodedUpload> batch;
+    {
+        std::lock_guard<std::mutex> lock(decodedQueueMutex_);
+        batch.swap(decodedQueue_);
+    }
+
+    if (batch.empty()) return 0;
+
+    // Step 2: Acquire mutex_ for all cache mutations.
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    int uploaded = 0;
+    for (auto& item : batch) {
+        // Clear from pending decode set
+        pendingDecodes_.erase(item.name);
+
+        // Sentinel: empty pixels means decode failed — just clean up
+        if (item.rgbaPixels.empty()) {
+            continue;
+        }
+
+        // Already in cache (raced with another upload path)
+        if (cache_.find(item.name) != cache_.end()) {
+            touchInternal(item.name);
+            continue;
+        }
+
+        // Budget check: calculate size and evict if needed
+        size_t textureSize = calculateTextureSize(item.width, item.height);
+        if (!evictUntilAvailable(textureSize)) {
+            LOG_WARN(MOD_GRAPHICS, "Constrained cache: budget exhausted, dropping '{}' (need {} bytes, budget {} bytes, used {} bytes)",
+                item.name, textureSize, config_.textureMemoryBytes, currentUsage_);
+            continue;
+        }
+
+#ifdef EQT_HAS_GLES2
+        // GLES2 async path: submit to GPU upload thread
+        if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+            UploadRequest req;
+            req.type = UploadRequestType::Texture;
+            req.width = static_cast<uint32_t>(item.width);
+            req.height = static_cast<uint32_t>(item.height);
+            req.pixelData = std::move(item.rgbaPixels);
+            req.textureName = item.name;
+            // High byte 3 = constrained cache texture (unified path)
+            req.callbackKey = uint64_t(3) << 56;
+            req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
+
+            gpuUploadThread_->submit(std::move(req));
+            pendingAsyncUploads_.insert(item.name);
+            ++uploaded;
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: queued GPU upload for '{}' ({}x{})",
+                      item.name, item.width, item.height);
+            continue;
+        }
+#endif
+
+        // Desktop GL / software: synchronous upload via driver_->addTexture()
+        // Convert RGBA to ARGB (Irrlicht's native format)
+        std::vector<uint8_t> argbData(item.rgbaPixels.size());
+        for (size_t i = 0; i < item.rgbaPixels.size(); i += 4) {
+            argbData[i + 0] = item.rgbaPixels[i + 2];  // B
+            argbData[i + 1] = item.rgbaPixels[i + 1];  // G
+            argbData[i + 2] = item.rgbaPixels[i + 0];  // R
+            argbData[i + 3] = item.rgbaPixels[i + 3];  // A
+        }
+
+        irr::core::dimension2d<irr::u32> size(item.width, item.height);
+        irr::video::IImage* image = driver_->createImageFromData(
+            irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
+
+        irr::video::ITexture* texture = nullptr;
+        if (image) {
+            texture = driver_->addTexture(item.name.c_str(), image);
+            image->drop();
+        }
+
+        if (!texture) {
+            LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: addTexture failed for '{}' ({}x{})",
+                      item.name, item.width, item.height);
+            continue;
+        }
+
+#ifdef EQT_HAS_DRM
+        // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
+        {
+            irr::u32 glName = texture->getDriverTextureHandle();
+            if (glName != 0) {
+                glBindTexture(GL_TEXTURE_2D, glName);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                if (config_.enableMipmaps) {
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                } else {
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                }
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+        }
+#endif
+
+        // Register in LRU cache
+        lruOrder_.push_back(item.name);
+        CachedTexture entry;
+        entry.texture = texture;
+        entry.sizeBytes = textureSize;
+        entry.hasAlpha = item.hasAlpha;
+        entry.lruIterator = std::prev(lruOrder_.end());
+        cache_[item.name] = entry;
+        currentUsage_ += textureSize;
+
+        // Also register in mesh builder for entity texture lookups
+        if (meshBuilder_) {
+            meshBuilder_->registerUploadedTexture(item.name, texture, item.hasAlpha);
+        }
+
+        ++uploaded;
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: uploaded '{}' {}x{} ({} bytes)",
+                  item.name, item.width, item.height, textureSize);
+    }
+
+    return uploaded;
+}
+
+bool ConstrainedTextureCache::isPending(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return pendingDecodes_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Eviction listeners (lock mutex_)
+// ---------------------------------------------------------------------------
+
+void ConstrainedTextureCache::addEvictionListener(TextureEvictionListener* listener) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (listener) {
+        evictionListeners_.push_back(listener);
+    }
+}
+
+void ConstrainedTextureCache::removeEvictionListener(TextureEvictionListener* listener) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    evictionListeners_.erase(
+        std::remove(evictionListeners_.begin(), evictionListeners_.end(), listener),
+        evictionListeners_.end());
+}
+
+// ---------------------------------------------------------------------------
+// Private methods — NO locking (always called under mutex_ or immutable data)
+// ---------------------------------------------------------------------------
 
 bool ConstrainedTextureCache::evictUntilAvailable(size_t bytesNeeded) {
     // Check if texture is too large to ever fit
@@ -464,42 +806,13 @@ bool ConstrainedTextureCache::decodeDDS(const std::vector<char>& data,
     return true;
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTexture() {
-    if (placeholderTexture_) {
-        return placeholderTexture_;
-    }
-
-    // Create a small checkerboard placeholder texture (8x8 magenta/black)
-    const int size = 8;
-    std::vector<uint32_t> pixels(size * size);
-    for (int y = 0; y < size; ++y) {
-        for (int x = 0; x < size; ++x) {
-            // Checkerboard pattern: magenta and dark gray
-            bool checker = ((x / 2) + (y / 2)) % 2 == 0;
-            pixels[y * size + x] = checker ? 0xFFFF00FF : 0xFF202020;  // ARGB
-        }
-    }
-
-    irr::video::IImage* image = driver_->createImageFromData(
-        irr::video::ECF_A8R8G8B8,
-        irr::core::dimension2d<irr::u32>(size, size),
-        pixels.data(), false);
-
-    if (image) {
-        placeholderTexture_ = driver_->addTexture("_placeholder_", image);
-        image->drop();
-    }
-
-    return placeholderTexture_;
-}
-
 void ConstrainedTextureCache::clearTextureReferences(irr::video::ITexture* texture) {
     if (!smgr_ || !texture) {
         return;
     }
 
-    // Get placeholder to replace evicted textures
-    irr::video::ITexture* placeholder = getPlaceholderTexture();
+    // Get placeholder to replace evicted textures (use internal — already under mutex_)
+    irr::video::ITexture* placeholder = getPlaceholderTextureInternal();
 
     // Recursively scan all scene nodes and their mesh materials
     std::function<void(irr::scene::ISceneNode*)> scanNode = [&](irr::scene::ISceneNode* node) {
@@ -556,156 +869,6 @@ void ConstrainedTextureCache::clearTextureReferences(irr::video::ITexture* textu
 
     // Start scan from root
     scanNode(smgr_->getRootSceneNode());
-}
-
-void ConstrainedTextureCache::queueDecoded(const std::string& name,
-                                            std::vector<uint8_t> rgbaPixels,
-                                            int width, int height, bool hasAlpha) {
-    std::lock_guard<std::mutex> lock(decodedQueueMutex_);
-    decodedQueue_.push_back({name, std::move(rgbaPixels), width, height, hasAlpha});
-}
-
-void ConstrainedTextureCache::queueDecodedARGB(const std::string& name,
-                                                const std::vector<uint32_t>& argbPixels,
-                                                int width, int height, bool hasAlpha) {
-    // Convert ARGB (Irrlicht ECF_A8R8G8B8 in memory: B G R A) → RGBA for GL
-    size_t pixelCount = argbPixels.size();
-    std::vector<uint8_t> rgba(pixelCount * 4);
-    const uint8_t* src = reinterpret_cast<const uint8_t*>(argbPixels.data());
-    for (size_t i = 0; i < pixelCount; ++i) {
-        size_t si = i * 4;
-        rgba[si + 0] = src[si + 2];  // R (was at offset 2 in BGRA layout)
-        rgba[si + 1] = src[si + 1];  // G
-        rgba[si + 2] = src[si + 0];  // B
-        rgba[si + 3] = src[si + 3];  // A
-    }
-    queueDecoded(name, std::move(rgba), width, height, hasAlpha);
-}
-
-int ConstrainedTextureCache::processUploadQueue() {
-    // Move queued items to a local batch (minimal lock contention)
-    std::vector<DecodedUpload> batch;
-    {
-        std::lock_guard<std::mutex> lock(decodedQueueMutex_);
-        batch.swap(decodedQueue_);
-    }
-
-    if (batch.empty()) return 0;
-
-    int uploaded = 0;
-    for (auto& item : batch) {
-        // Clear from pending decode set
-        pendingDecodes_.erase(item.name);
-
-        // Sentinel: empty pixels means decode failed — just clean up
-        if (item.rgbaPixels.empty()) {
-            continue;
-        }
-
-        // Already in cache (raced with another upload path)
-        if (cache_.find(item.name) != cache_.end()) {
-            touch(item.name);
-            continue;
-        }
-
-        // Budget check: calculate size and evict if needed
-        size_t textureSize = calculateTextureSize(item.width, item.height);
-        if (!evictUntilAvailable(textureSize)) {
-            LOG_WARN(MOD_GRAPHICS, "Constrained cache: budget exhausted, dropping '{}' (need {} bytes, budget {} bytes, used {} bytes)",
-                item.name, textureSize, config_.textureMemoryBytes, currentUsage_);
-            continue;
-        }
-
-#ifdef EQT_HAS_GLES2
-        // GLES2 async path: submit to GPU upload thread
-        if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
-            UploadRequest req;
-            req.type = UploadRequestType::Texture;
-            req.width = static_cast<uint32_t>(item.width);
-            req.height = static_cast<uint32_t>(item.height);
-            req.pixelData = std::move(item.rgbaPixels);
-            req.textureName = item.name;
-            // High byte 3 = constrained cache texture (unified path)
-            req.callbackKey = uint64_t(3) << 56;
-            req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
-
-            gpuUploadThread_->submit(std::move(req));
-            pendingAsyncUploads_.insert(item.name);
-            ++uploaded;
-            LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: queued GPU upload for '{}' ({}x{})",
-                      item.name, item.width, item.height);
-            continue;
-        }
-#endif
-
-        // Desktop GL / software: synchronous upload via driver_->addTexture()
-        // Convert RGBA to ARGB (Irrlicht's native format)
-        std::vector<uint8_t> argbData(item.rgbaPixels.size());
-        for (size_t i = 0; i < item.rgbaPixels.size(); i += 4) {
-            argbData[i + 0] = item.rgbaPixels[i + 2];  // B
-            argbData[i + 1] = item.rgbaPixels[i + 1];  // G
-            argbData[i + 2] = item.rgbaPixels[i + 0];  // R
-            argbData[i + 3] = item.rgbaPixels[i + 3];  // A
-        }
-
-        irr::core::dimension2d<irr::u32> size(item.width, item.height);
-        irr::video::IImage* image = driver_->createImageFromData(
-            irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
-
-        irr::video::ITexture* texture = nullptr;
-        if (image) {
-            texture = driver_->addTexture(item.name.c_str(), image);
-            image->drop();
-        }
-
-        if (!texture) {
-            LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: addTexture failed for '{}' ({}x{})",
-                      item.name, item.width, item.height);
-            continue;
-        }
-
-#ifdef EQT_HAS_DRM
-        // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
-        {
-            irr::u32 glName = texture->getDriverTextureHandle();
-            if (glName != 0) {
-                glBindTexture(GL_TEXTURE_2D, glName);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                if (config_.enableMipmaps) {
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                } else {
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                }
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-        }
-#endif
-
-        // Register in LRU cache
-        lruOrder_.push_back(item.name);
-        CachedTexture entry;
-        entry.texture = texture;
-        entry.sizeBytes = textureSize;
-        entry.hasAlpha = item.hasAlpha;
-        entry.lruIterator = std::prev(lruOrder_.end());
-        cache_[item.name] = entry;
-        currentUsage_ += textureSize;
-
-        // Also register in mesh builder for entity texture lookups
-        if (meshBuilder_) {
-            meshBuilder_->registerUploadedTexture(item.name, texture, item.hasAlpha);
-        }
-
-        ++uploaded;
-        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache: uploaded '{}' {}x{} ({} bytes)",
-                  item.name, item.width, item.height, textureSize);
-    }
-
-    return uploaded;
-}
-
-bool ConstrainedTextureCache::isPending(const std::string& name) const {
-    return pendingDecodes_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;
 }
 
 void ConstrainedTextureCache::probeCompressedTextureSupport() {
@@ -866,18 +1029,6 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
     (void)data;
     return nullptr;
 #endif
-}
-
-void ConstrainedTextureCache::addEvictionListener(TextureEvictionListener* listener) {
-    if (listener) {
-        evictionListeners_.push_back(listener);
-    }
-}
-
-void ConstrainedTextureCache::removeEvictionListener(TextureEvictionListener* listener) {
-    evictionListeners_.erase(
-        std::remove(evictionListeners_.begin(), evictionListeners_.end(), listener),
-        evictionListeners_.end());
 }
 
 } // namespace Graphics

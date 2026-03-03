@@ -75,16 +75,16 @@ public:
     void clear();
 
     // Memory statistics
-    size_t getCurrentUsage() const { return currentUsage_; }
-    size_t getMemoryLimit() const { return config_.textureMemoryBytes; }
-    size_t getAvailableMemory() const { return config_.textureMemoryBytes - currentUsage_; }
-    size_t getTextureCount() const { return cache_.size(); }
+    size_t getCurrentUsage() const;
+    size_t getMemoryLimit() const;
+    size_t getAvailableMemory() const;
+    size_t getTextureCount() const;
 
     // Cache statistics
-    size_t getCacheHits() const { return cacheHits_; }
-    size_t getCacheMisses() const { return cacheMisses_; }
-    size_t getEvictionCount() const { return evictionCount_; }
-    size_t getCompressedUploadCount() const { return compressedUploadCount_; }
+    size_t getCacheHits() const;
+    size_t getCacheMisses() const;
+    size_t getEvictionCount() const;
+    size_t getCompressedUploadCount() const;
 
     // Get hit rate as percentage (0-100)
     float getHitRate() const;
@@ -95,21 +95,21 @@ public:
     // Freeze/unfreeze the cache
     // When frozen, no evictions occur (prevents crashes from dangling texture pointers)
     // Call freeze() after zone load is complete to protect zone textures
-    void freeze() { frozen_ = true; }
-    void unfreeze() { frozen_ = false; }
-    bool isFrozen() const { return frozen_; }
+    void freeze();
+    void unfreeze();
+    bool isFrozen() const;
 
     // Get config for debug display
     const ConstrainedRendererConfig& getConfig() const { return config_; }
 
     // Set GPU upload thread for async texture uploads (GLES2 only)
-    void setGPUUploadThread(GPUUploadThread* thread) { gpuUploadThread_ = thread; }
+    void setGPUUploadThread(GPUUploadThread* thread);
 
     // Remove a texture name from the pending async set (called when upload completes)
-    void clearPendingAsync(const std::string& name) { pendingAsyncUploads_.erase(name); }
+    void clearPendingAsync(const std::string& name);
 
     // Set scene manager for safe eviction (scans meshes to remove texture references)
-    void setSceneManager(irr::scene::ISceneManager* smgr) { smgr_ = smgr; }
+    void setSceneManager(irr::scene::ISceneManager* smgr);
 
     // Get placeholder texture (used when a texture is evicted from a mesh material)
     irr::video::ITexture* getPlaceholderTexture();
@@ -134,16 +134,22 @@ public:
     bool isPending(const std::string& name) const;
 
     // Set background thread pool for async texture decode (non-owning)
-    void setBackgroundThreadPool(BackgroundThreadPool* pool) { bgThreadPool_ = pool; }
+    void setBackgroundThreadPool(BackgroundThreadPool* pool);
 
     // Set mesh builder for entity texture registration (non-owning)
-    void setMeshBuilder(ZoneMeshBuilder* meshBuilder) { meshBuilder_ = meshBuilder; }
+    void setMeshBuilder(ZoneMeshBuilder* meshBuilder);
 
     // Eviction listener management
     void addEvictionListener(TextureEvictionListener* listener);
     void removeEvictionListener(TextureEvictionListener* listener);
 
 private:
+    // Move name to back of LRU list — call only while holding mutex_
+    void touchInternal(const std::string& name);
+
+    // Get or create placeholder — call only while holding mutex_
+    irr::video::ITexture* getPlaceholderTextureInternal();
+
     // Remove all references to a texture from mesh materials in the scene
     // This must be called before driver_->removeTexture() to prevent dangling pointers
     void clearTextureReferences(irr::video::ITexture* texture);
@@ -205,6 +211,9 @@ private:
         bool hasAlpha = false;
         std::list<std::string>::iterator lruIterator;
     };
+
+    // Protects all state except decodedQueue_ (which has its own decodedQueueMutex_)
+    mutable std::mutex mutex_;
 
     ConstrainedRendererConfig config_;
     irr::video::IVideoDriver* driver_;
