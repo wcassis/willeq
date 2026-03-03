@@ -193,13 +193,6 @@ struct PendingZoneComputations {
     };
     std::unique_ptr<WeatherConfigData> weatherConfig;
 
-    // Display settings pre-loaded on background thread (file I/O + JSON parse)
-    struct DisplaySettingsData {
-        bool skyEnabled = true;
-        bool loaded = false;
-    };
-    std::unique_ptr<DisplaySettingsData> displaySettings;
-
     // Pre-built mesh cache (created + all regions registered on background thread)
     struct PrebuiltMeshCacheData {
         std::unique_ptr<ConstrainedMeshCache> cache;

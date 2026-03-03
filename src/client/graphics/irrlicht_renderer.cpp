@@ -3478,15 +3478,7 @@ static void preloadDeferredAssets(const DeferredAssetParams& p) {
         p.computations->weatherConfig = std::move(weatherData);
     }
 
-    // 9. Pre-load display settings (file I/O + JSON — no GL)
-    {
-        auto dispData = std::make_unique<PendingZoneComputations::DisplaySettingsData>();
-        dispData->skyEnabled = loadDisplaySettingsFromFile().skyEnabled;
-        dispData->loaded = true;
-        p.computations->displaySettings = std::move(dispData);
-    }
-
-    // 10. Pre-load atlas files (file I/O + tile lookup — no GL)
+    // 9. Pre-load atlas files (file I/O + tile lookup — no GL)
     if (p.enableAtlas && !p.atlasPath.empty()) {
         std::string atlasDir = p.atlasPath;
         if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
