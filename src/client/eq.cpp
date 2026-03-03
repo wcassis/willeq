@@ -19071,6 +19071,14 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		// Process a frame
 		bool result = m_renderer->processFrame(deltaTime);
 
+		// Check if automatic asset loading completed behind loading screen.
+		// progressiveLoadingActive goes false only after all entities, doors,
+		// objects, and regions are built — not just when the phase pipeline finishes.
+		if (m_renderer->isLoadingScreenVisible() &&
+		    !m_renderer->isProgressiveLoadingActive()) {
+			OnGraphicsComplete();
+		}
+
 		if (zone_transition_logging) {
 			LOG_TRACE(MOD_GRAPHICS, "processFrame returned {}", result);
 		}
@@ -19236,10 +19244,14 @@ void EverQuest::LoadZoneGraphics() {
 
 	m_player_graphics_entity_pending = true;
 
-	// 8. Mark graphics ready — hides loading screen, governor starts clean
-	OnGraphicsComplete();
-
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: instant scene ready, awaiting /loadzone command");
+	// 8. In automatic mode, keep loading screen visible during asset loading.
+	//    In manual mode, hide loading screen — user drives /loadzone.
+	if (m_renderer->isProgressiveLoadingActive()) {
+		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: automatic mode — loading screen remains visible during asset loading");
+	} else {
+		OnGraphicsComplete();
+		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: instant scene ready, awaiting /loadzone command");
+	}
 }
 #endif
 

@@ -461,6 +461,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
     config_.constrainedConfig.calculateMaxResolution();
     config_.constrainedConfig.calculateMemoryLimits();
+    // In automatic deferred loading mode, mark progressive loading active from the start
+    // so the loading screen stays visible until all assets are built.
+    if (config_.constrainedConfig.deferredAssetLoading) {
+        progressiveLoadingActive_ = true;
+    }
     if (config_.constrainedConfig.clampResolution(config_.width, config_.height)) {
         LOG_WARN(MOD_GRAPHICS, "Resolution clamped to {}x{} (framebuffer memory limit: {} bytes)",
                  config_.width, config_.height, config_.constrainedConfig.framebufferMemoryBytes);
@@ -2713,6 +2718,214 @@ const char* IrrlichtRenderer::manualLoadStepToString(ManualLoadStep step) {
     return "unknown";
 }
 
+float IrrlichtRenderer::getBackgroundLoadProgress() const {
+    // Phase pipeline: 0.50–0.92 (50%–92%)
+    // Post-pipeline progressive loading (entities/doors/objects): 0.92–1.00
+    using Phase = BackgroundZoneLoadPhase;
+
+    // Helper: interpolate within a range based on sub-progress fraction
+    auto lerp = [](float lo, float hi, float frac) {
+        return lo + (hi - lo) * std::min(frac, 1.0f);
+    };
+
+    switch (backgroundZoneLoadPhase_) {
+    case Phase::Idle:                     return 0.50f;
+    case Phase::Pending:                  return 0.51f;
+    case Phase::Loading:                  return 0.52f;
+    case Phase::DataReady_Notify:         return 0.55f;
+    case Phase::DataReady_EntityRenderer: return 0.56f;
+    case Phase::DataReady_ArchiveIndex:   return 0.57f;
+    case Phase::DataReady_GlobalAssets:   return 0.58f;
+    case Phase::DataReady_Equipment:      return 0.59f;
+    case Phase::DataReady_DoorManager:    return 0.60f;
+    case Phase::DataReady_SkyCreate:      return 0.61f;
+    case Phase::DataReady_DetailManager:  return 0.62f;
+    case Phase::DataReady_ModelView:      return 0.63f;
+    case Phase::DataReady_Env_SkyPrepare:     return 0.64f;
+    case Phase::DataReady_Env_FogSetup:       return 0.65f;
+    case Phase::DataReady_Env_WeatherApply:   return 0.66f;
+    case Phase::DataReady_Env_SkyTextures:    return 0.67f;
+    case Phase::DataReady_Env_SkyRelease:     return 0.68f;
+    case Phase::DataReady_Env_SkyDome:        return 0.69f;
+    case Phase::DataReady_Env_SkyCelestials:  return 0.70f;
+    case Phase::DataReady_Env_SkyColors:      return 0.71f;
+    case Phase::Atlas_Zone_Upload: {
+        // 0.72–0.75 based on pages uploaded
+        uint16_t total = pendingZoneComputations_ ? pendingZoneComputations_->zoneAtlasPreload.numPages : 0;
+        float frac = (total > 0) ? static_cast<float>(atlasZonePageIndex_) / total : 0.0f;
+        return lerp(0.72f, 0.75f, frac);
+    }
+    case Phase::Atlas_Zone_Finalize:      return 0.75f;
+    case Phase::Atlas_Object_Upload: {
+        // 0.75–0.77 based on pages uploaded
+        uint16_t total = pendingZoneComputations_ ? pendingZoneComputations_->objAtlasPreload.numPages : 0;
+        float frac = (total > 0) ? static_cast<float>(atlasObjPageIndex_) / total : 0.0f;
+        return lerp(0.75f, 0.77f, frac);
+    }
+    case Phase::Atlas_Object_Finalize:    return 0.77f;
+    case Phase::Atlas_Shader:             return 0.78f;
+    case Phase::RegionMesh_InstallBsp:    return 0.79f;
+    case Phase::RegionMesh_InitCache:     return 0.80f;
+    case Phase::RegionMesh_EagerBatch: {
+        // 0.80–0.87 based on regions built
+        size_t total = 0;
+        if (currentZone_ && currentZone_->wldLoader) {
+            auto bspTree = currentZone_->wldLoader->getBspTree();
+            if (bspTree) total = bspTree->regions.size();
+        }
+        float frac = (total > 0) ? static_cast<float>(regionBuildIndex_) / total : 0.0f;
+        return lerp(0.80f, 0.87f, frac);
+    }
+    case Phase::RegionMesh_SortSetup:     return 0.87f;
+    case Phase::RegionMesh_InstallPortal: return 0.88f;
+    case Phase::Lights_CreateNodes:       return 0.89f;
+    case Phase::Lights_InstallRegions:    return 0.89f;
+    case Phase::Objects_Install:          return 0.90f;
+    case Phase::Misc_ZoneBounds:          return 0.90f;
+    case Phase::Misc_Fog:                 return 0.90f;
+    case Phase::Misc_DoorSetup:           return 0.91f;
+    case Phase::Misc_ReleaseData:         return 0.91f;
+    case Phase::CollisionRebuild:         return 0.91f;
+    case Phase::EnvironmentInit:          return 0.92f;
+    case Phase::EntityLoading:            return 0.92f;
+    case Phase::Complete: {
+        // Phase pipeline done — progress 0.92–1.00 based on progressive build completion
+        if (!progressiveLoadingActive_) return 1.00f;
+        size_t totalWork = 0, doneWork = 0;
+        if (entityRenderer_) {
+            for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+                if (vis.inSceneGraph) { totalWork++; if (vis.meshBuilt) doneWork++; }
+            }
+        }
+        for (const auto& obj : deferredObjects_) {
+            totalWork++;
+            if (obj.meshBuilt) doneWork++;
+        }
+        // Reserve the last 2% (0.98–1.00) for GPU upload completion
+        float meshFrac = (totalWork > 0) ? static_cast<float>(doneWork) / totalWork : 1.0f;
+        float meshProgress = lerp(0.92f, 0.98f, meshFrac);
+        // If all meshes are built, check if GPU work is still pending
+        if (doneWork >= totalWork) {
+            bool gpuPending = false;
+#ifdef EQT_HAS_GLES2
+            if (!pendingVBOUploads_.empty()) gpuPending = true;
+#endif
+            if (constrainedTextureCache_ && constrainedTextureCache_->hasPendingWork())
+                gpuPending = true;
+            if (!objectTextureRebuildQueue_.empty() || !textureRebuildQueue_.empty())
+                gpuPending = true;
+            return gpuPending ? 0.99f : 1.00f;
+        }
+        return meshProgress;
+    }
+    }
+    return 0.50f;
+}
+
+std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
+    using Phase = BackgroundZoneLoadPhase;
+
+    switch (backgroundZoneLoadPhase_) {
+    case Phase::Idle:
+    case Phase::Pending:
+    case Phase::Loading:
+        return L"Loading zone data...";
+    case Phase::DataReady_Notify:
+    case Phase::DataReady_EntityRenderer:
+    case Phase::DataReady_ArchiveIndex:
+    case Phase::DataReady_GlobalAssets:
+    case Phase::DataReady_Equipment:
+    case Phase::DataReady_DoorManager:
+        return L"Preparing assets...";
+    case Phase::DataReady_SkyCreate:
+    case Phase::DataReady_DetailManager:
+    case Phase::DataReady_ModelView:
+        return L"Creating renderers...";
+    case Phase::DataReady_Env_SkyPrepare:
+    case Phase::DataReady_Env_FogSetup:
+    case Phase::DataReady_Env_WeatherApply:
+    case Phase::DataReady_Env_SkyTextures:
+    case Phase::DataReady_Env_SkyRelease:
+    case Phase::DataReady_Env_SkyDome:
+    case Phase::DataReady_Env_SkyCelestials:
+    case Phase::DataReady_Env_SkyColors:
+        return L"Setting up sky...";
+    case Phase::Atlas_Zone_Upload: {
+        uint16_t total = pendingZoneComputations_ ? pendingZoneComputations_->zoneAtlasPreload.numPages : 0;
+        if (total > 0) {
+            return L"Uploading textures [" +
+                   std::to_wstring(std::min(atlasZonePageIndex_ + 1, static_cast<int>(total))) +
+                   L"/" + std::to_wstring(total) + L"]...";
+        }
+        return L"Uploading textures...";
+    }
+    case Phase::Atlas_Zone_Finalize:
+    case Phase::Atlas_Object_Upload:
+    case Phase::Atlas_Object_Finalize:
+    case Phase::Atlas_Shader:
+        return L"Uploading textures...";
+    case Phase::RegionMesh_InstallBsp:
+    case Phase::RegionMesh_InitCache:
+        return L"Building zone geometry...";
+    case Phase::RegionMesh_EagerBatch: {
+        size_t total = 0;
+        if (currentZone_ && currentZone_->wldLoader) {
+            auto bspTree = currentZone_->wldLoader->getBspTree();
+            if (bspTree) total = bspTree->regions.size();
+        }
+        if (total > 0) {
+            return L"Building regions [" + std::to_wstring(regionBuildIndex_) +
+                   L"/" + std::to_wstring(total) + L"]...";
+        }
+        return L"Building zone geometry...";
+    }
+    case Phase::RegionMesh_SortSetup:
+    case Phase::RegionMesh_InstallPortal:
+        return L"Building zone geometry...";
+    case Phase::Lights_CreateNodes:
+    case Phase::Lights_InstallRegions:
+        return L"Creating lights...";
+    case Phase::Objects_Install:
+        return L"Placing objects...";
+    case Phase::Misc_ZoneBounds:
+    case Phase::Misc_Fog:
+    case Phase::Misc_DoorSetup:
+    case Phase::Misc_ReleaseData:
+        return L"Finalizing zone...";
+    case Phase::CollisionRebuild:
+        return L"Building collision...";
+    case Phase::EnvironmentInit:
+        return L"Initializing environment...";
+    case Phase::EntityLoading:
+        return L"Loading entities...";
+    case Phase::Complete: {
+        if (!progressiveLoadingActive_) return L"Zone ready!";
+        size_t totalEntities = 0, builtEntities = 0;
+        if (entityRenderer_) {
+            for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+                if (vis.inSceneGraph) { totalEntities++; if (vis.meshBuilt) builtEntities++; }
+            }
+        }
+        size_t totalObjs = 0, builtObjs = 0;
+        for (const auto& obj : deferredObjects_) {
+            totalObjs++;
+            if (obj.meshBuilt) builtObjs++;
+        }
+        if (totalEntities > builtEntities) {
+            return L"Loading entities [" + std::to_wstring(builtEntities) +
+                   L"/" + std::to_wstring(totalEntities) + L"]...";
+        }
+        if (totalObjs > builtObjs) {
+            return L"Building objects [" + std::to_wstring(builtObjs) +
+                   L"/" + std::to_wstring(totalObjs) + L"]...";
+        }
+        // All meshes built but GPU work still pending (texture uploads, VBOs, rebuilds)
+        return L"Uploading to GPU...";
+    }
+    }
+    return L"Loading...";
+}
+
 // Returns the phase at which the given step should PAUSE (the first phase of the NEXT step)
 BackgroundZoneLoadPhase IrrlichtRenderer::getStepEndPhase(ManualLoadStep step) {
     switch (step) {
@@ -3699,6 +3912,9 @@ void IrrlichtRenderer::applyStoredZoneEnvironment() {
 }
 
 void IrrlichtRenderer::advanceBackgroundZoneLoad() {
+    // Loading screen progress is updated by processFrameProgressiveLoad()
+    // which runs earlier in the frame — no need to duplicate here.
+
     auto stepStart = std::chrono::steady_clock::now();
 
     switch (backgroundZoneLoadPhase_) {
@@ -8803,7 +9019,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             // Loading phase polls without GREEN gate (just checking atomic bool)
             // All other phases require GREEN budget
             if (backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Loading ||
-                !governor_ || governor_->getState() == BudgetState::Green) {
+                !governor_ || loadingScreenVisible_ || governor_->getState() == BudgetState::Green) {
                 advanceBackgroundZoneLoad();
             }
         }
@@ -11549,8 +11765,15 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     // Player entity goes through processOneEntityBuildStep() like other entities
     // (no synchronous build here — avoids 7.6s render thread stall from disk I/O)
 
+    // Update loading screen progress during asset loading.
+    // Only after pipeline starts (not Idle) — eq.cpp owns 0–50% progress.
+    if (loadingScreenVisible_ && backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) {
+        setLoadingProgress(getBackgroundLoadProgress(), getLoadingPhaseText());
+    }
+
     // --- GREEN gate: exactly ONE non-critical step per frame when GREEN ---
-    if (governor_ && governor_->getState() != BudgetState::Green) {
+    // Bypass when loading screen is visible (no scene to compete with).
+    if (governor_ && !loadingScreenVisible_ && governor_->getState() != BudgetState::Green) {
         static int progGovLog = 0;
         if (++progGovLog % 300 == 1) {
             size_t qNeedBuild = 0;
@@ -11945,6 +12168,10 @@ void IrrlichtRenderer::sendLoadProgress(const std::string& msg) {
 void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     if (!progressiveLoadingActive_) return;
 
+    // Phase pipeline must reach Complete before we can declare progressive loading done.
+    // Otherwise zero counts just mean "nothing queued yet" (pre-zone-load).
+    if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Complete) return;
+
     // Count unbuilt assets
     size_t unbuiltEntities = 0;
     size_t unbuiltDoors = 0;
@@ -11991,14 +12218,36 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
                     unbuiltRegions++;
             }
         }
+        bool pendingTextures = constrainedTextureCache_ && constrainedTextureCache_->hasPendingWork();
+        size_t pendingVBOs = 0;
+#ifdef EQT_HAS_GLES2
+        pendingVBOs = pendingVBOUploads_.size();
+#endif
         LOG_INFO(MOD_GRAPHICS, "Progressive status: entities={} doors={} objects={} "
-                 "queuedRegions={} | governor={} | progressive={}",
+                 "queuedRegions={} pendingVBOs={} pendingTextures={} texRebuild={} objRebuild={} "
+                 "| governor={} | progressive={}",
                  unbuiltEntities, unbuiltDoors, unbuiltObjects, unbuiltRegions,
+                 pendingVBOs, pendingTextures,
+                 textureRebuildQueue_.size(), objectTextureRebuildQueue_.size(),
                  governor_ ? governor_->getStateName() : "N/A",
                  progressiveLoadingActive_);
     }
 
     if (unbuiltEntities == 0 && unbuiltDoors == 0 && unbuiltObjects == 0) {
+        // Also wait for async GPU work (texture decodes/uploads, VBOs, rebuild queues)
+        // before declaring progressive loading complete. Without this, the loading
+        // screen hides while textures are still in flight → garbled first frame.
+        bool gpuWorkPending = false;
+#ifdef EQT_HAS_GLES2
+        if (!pendingVBOUploads_.empty())
+            gpuWorkPending = true;
+#endif
+        if (constrainedTextureCache_ && constrainedTextureCache_->hasPendingWork())
+            gpuWorkPending = true;
+        if (!objectTextureRebuildQueue_.empty() || !textureRebuildQueue_.empty())
+            gpuWorkPending = true;
+        if (gpuWorkPending) return;
+
         progressiveLoadingActive_ = false;
 
         // EntityPrepWorker stays alive for the entire session — entities move

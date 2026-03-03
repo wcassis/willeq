@@ -751,6 +751,9 @@ public:
     void setManualLoadPauseCallback(ManualLoadPauseCallback cb) { manualLoadPauseCallback_ = std::move(cb); }
     static const char* phaseToString(BackgroundZoneLoadPhase phase);
     static const char* manualLoadStepToString(ManualLoadStep step);
+    // Loading screen progress for automatic deferred loading (50%–100%)
+    float getBackgroundLoadProgress() const;
+    std::wstring getLoadingPhaseText() const;
 
     // Background BSP preload — loads WLD/BSP data for entity PVS culling during placeholder mode
     void startBspPreload(const std::string& zoneName, const std::string& eqClientPath);

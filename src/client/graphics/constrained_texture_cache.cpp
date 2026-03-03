@@ -524,6 +524,11 @@ bool ConstrainedTextureCache::isPending(const std::string& name) const {
     return pendingDecodes_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;
 }
 
+bool ConstrainedTextureCache::hasPendingWork() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return !pendingDecodes_.empty() || !pendingAsyncUploads_.empty();
+}
+
 // ---------------------------------------------------------------------------
 // Eviction listeners (lock mutex_)
 // ---------------------------------------------------------------------------

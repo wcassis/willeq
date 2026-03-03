@@ -133,6 +133,9 @@ public:
     // Check if a texture name is pending decode or upload (not yet in cache)
     bool isPending(const std::string& name) const;
 
+    // Check if any textures are pending decode or async upload
+    bool hasPendingWork() const;
+
     // Set background thread pool for async texture decode (non-owning)
     void setBackgroundThreadPool(BackgroundThreadPool* pool);
 
