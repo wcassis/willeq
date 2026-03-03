@@ -167,10 +167,11 @@ bool COpenGLES2Driver::initDriver()
     }
 
     // Initialize shaders
-    // Note: GL_OES_standard_derivatives detected but NOT used for alpha threshold.
-    // Lima driver's fwidth() returns degenerate values (likely NaN) that propagate
-    // through clamp() and break alpha-test discard entirely.
-    if (!shaderManager_.init(false)) {
+    // GL_OES_standard_derivatives enables fwidth()-based adaptive alpha threshold
+    // for smoother vegetation edges. Tested and confirmed working on Mali 400 / Lima
+    // (Mesa 25.2.8, Ubuntu Noble) via gles2_derivatives_test — all 4 tests pass,
+    // dFdx/dFdy/fwidth return correct values, no NaN.
+    if (!shaderManager_.init(extensions_.hasStandardDerivatives)) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
         return false;
     }
