@@ -513,5 +513,55 @@ std::vector<std::shared_ptr<CelestialBody>> SkyLoader::getCelestialBodiesForSkyT
     return result;
 }
 
+std::vector<std::string> SkyLoader::getTextureNamesForSkyType(int skyTypeId) const {
+    std::vector<std::string> result;
+    if (!skyData_) return result;
+
+    auto typeIt = skyData_->skyTypes.find(skyTypeId);
+    if (typeIt == skyData_->skyTypes.end()) {
+        // Fall back to default (type 0)
+        typeIt = skyData_->skyTypes.find(0);
+        if (typeIt == skyData_->skyTypes.end()) return result;
+    }
+
+    const auto& skyType = typeIt->second;
+
+    // Collect texture names from background layers
+    for (int layerNum : skyType.backgroundLayers) {
+        auto layerIt = skyData_->layers.find(layerNum);
+        if (layerIt != skyData_->layers.end() && layerIt->second) {
+            if (!layerIt->second->textureName.empty()) {
+                result.push_back(layerIt->second->textureName);
+            }
+        }
+    }
+
+    // Collect texture names from cloud layers
+    for (int layerNum : skyType.cloudLayers) {
+        auto layerIt = skyData_->layers.find(layerNum);
+        if (layerIt != skyData_->layers.end() && layerIt->second) {
+            if (!layerIt->second->textureName.empty()) {
+                result.push_back(layerIt->second->textureName);
+            }
+        }
+    }
+
+    // Collect texture names from celestial bodies
+    for (const auto& name : skyType.celestialBodies) {
+        std::string upperName = name;
+        std::transform(upperName.begin(), upperName.end(), upperName.begin(),
+                      [](unsigned char c) { return std::toupper(c); });
+
+        auto bodyIt = skyData_->celestialBodies.find(upperName);
+        if (bodyIt != skyData_->celestialBodies.end() && bodyIt->second) {
+            if (!bodyIt->second->textureName.empty()) {
+                result.push_back(bodyIt->second->textureName);
+            }
+        }
+    }
+
+    return result;
+}
+
 } // namespace Graphics
 } // namespace EQT

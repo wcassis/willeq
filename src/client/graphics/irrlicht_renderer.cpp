@@ -3179,6 +3179,7 @@ struct DeferredAssetParams {
     bool lazyPfsLoading;
     bool enableAtlas;
     bool skipObjectBuild;
+    ConstrainedRendererConfig::SkyDomeMode skyDomeMode;
     std::string atlasPath;
     std::string zoneName;
     std::string eqClientPath;  // with trailing slash
@@ -3235,12 +3236,25 @@ static void preloadDeferredAssets(const DeferredAssetParams& p) {
         }
 
         // Pre-decode + upscale BMP sky textures on background thread (no GL)
+        // Filter to only textures needed for this zone's sky type
         if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
+            std::set<std::string> neededSet;
+            if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
+                std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(p.zoneName);
+                int skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
+                auto neededTextures = skyData->skyLoader->getTextureNamesForSkyType(skyTypeId);
+                neededSet.insert(neededTextures.begin(), neededTextures.end());
+                LOG_INFO(MOD_GRAPHICS, "Preload: sky type {} needs {} textures (zone={}, weather={})",
+                         skyTypeId, neededSet.size(), p.zoneName, weatherType);
+            }
+
             const auto& textures = skyData->skyLoader->getSkyData()->textures;
             for (const auto& [texName, texInfo] : textures) {
                 if (!texInfo || texInfo->data.size() < 2) continue;
                 // Only handle BMPs (header bytes 'B','M')
                 if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
+                // Only decode textures needed for this zone's sky type
+                if (!neededSet.empty() && neededSet.find(texName) == neededSet.end()) continue;
 
                 PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
                 preTex.name = texName;
@@ -3276,13 +3290,77 @@ static void preloadDeferredAssets(const DeferredAssetParams& p) {
                      skyData->preDecodedTextures.size());
         }
 
-        // Pre-compute dome mesh geometry (pure CPU trig, ~5ms)
-        skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
-        SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
-                                        skyData->precomputedDome->indices);
-        LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed sky dome mesh ({} verts, {} indices)",
-                 skyData->precomputedDome->vertices.size(),
-                 skyData->precomputedDome->indices.size());
+        // Pre-compute dome mesh geometry (pure CPU, no GL)
+        using SkyDomeMode = ConstrainedRendererConfig::SkyDomeMode;
+        bool usedWldDome = false;
+
+        if (p.skyDomeMode == SkyDomeMode::Original &&
+            skyData->skyLoader && skyData->skyLoader->isLoaded()) {
+            // Extract WLD dome mesh from background layer geometry
+            int skyTypeId = 0;
+            if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
+                std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(p.zoneName);
+                skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
+            }
+            auto layers = skyData->skyLoader->getLayersForSkyType(skyTypeId);
+            // Find the first background layer with geometry
+            std::shared_ptr<SkyLayer> bgLayer;
+            for (const auto& layer : layers) {
+                if (layer && layer->type == SkyLayerType::Background && layer->geometry) {
+                    bgLayer = layer;
+                    break;
+                }
+            }
+            if (bgLayer && bgLayer->geometry && !bgLayer->geometry->vertices.empty()) {
+                const auto& geom = *bgLayer->geometry;
+                // Find max extent for scaling to SKY_DOME_RADIUS (1800)
+                float maxExtent = 0.0f;
+                for (const auto& v : geom.vertices) {
+                    float ext = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+                    if (ext > maxExtent) maxExtent = ext;
+                }
+                float scale = (maxExtent > 0.001f) ? (1800.0f / maxExtent) : 1.0f;
+
+                auto wldDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedWldDome>();
+                wldDome->vertices.resize(geom.vertices.size());
+                for (size_t i = 0; i < geom.vertices.size(); ++i) {
+                    const auto& v = geom.vertices[i];
+                    auto& iv = wldDome->vertices[i];
+                    // EQ to Irrlicht coordinate conversion: (x, y, z) -> (x, z, y), scaled
+                    iv.Pos.X = v.x * scale;
+                    iv.Pos.Y = v.z * scale;  // EQ Z (vertical) -> Irrlicht Y
+                    iv.Pos.Z = v.y * scale;  // EQ Y (horizontal) -> Irrlicht Z
+                    // Normals flipped inward (we view from inside the dome)
+                    iv.Normal.X = -v.nx;
+                    iv.Normal.Y = -v.nz;
+                    iv.Normal.Z = -v.ny;
+                    iv.TCoords.X = v.u;
+                    iv.TCoords.Y = v.v;
+                    iv.Color = irr::video::SColor(255, 255, 255, 255);
+                }
+                // Build index buffer from triangles
+                wldDome->indices.reserve(geom.triangles.size() * 3);
+                for (const auto& tri : geom.triangles) {
+                    wldDome->indices.push_back(static_cast<irr::u16>(tri.v1));
+                    wldDome->indices.push_back(static_cast<irr::u16>(tri.v2));
+                    wldDome->indices.push_back(static_cast<irr::u16>(tri.v3));
+                }
+                LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed WLD sky dome ({} verts, {} indices, scale={:.2f})",
+                         wldDome->vertices.size(), wldDome->indices.size(), scale);
+                skyData->precomputedWldDome = std::move(wldDome);
+                usedWldDome = true;
+            }
+        }
+
+        if (!usedWldDome) {
+            // Procedural dome: generate hemisphere mesh with trig (~5ms)
+            skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
+            SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
+                                            skyData->precomputedDome->indices);
+            LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed procedural sky dome ({} verts, {} indices)",
+                     skyData->precomputedDome->vertices.size(),
+                     skyData->precomputedDome->indices.size());
+        }
 
         p.computations->skyLoadData = std::move(skyData);
     }
@@ -3348,6 +3426,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
     bool isManualMode = manualLoadMode_;
 
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+    auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
 
     zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>>(
         [this, zonePath, computations,
@@ -3355,7 +3434,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
          enableAtlas, atlasPathCopy, zoneNameCopy,
          eqClientPathCopy, meshMemoryBudget,
          treeIdentifier, isManualMode,
-         skipObjectBuild](ZoneLoadRequest&&) -> ZoneLoadResult {
+         skipObjectBuild, skyDomeMode](ZoneLoadRequest&&) -> ZoneLoadResult {
         // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
         //    and objects based on mode
         S3DLoadOptions loadOptions;
@@ -3516,7 +3595,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
 
         // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
         preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
-                              enableAtlas, skipObjectBuild, atlasPathCopy,
+                              enableAtlas, skipObjectBuild, skyDomeMode, atlasPathCopy,
                               zoneNameCopy, eqClientPathCopy});
 
         return ZoneLoadResult{true};
@@ -3540,6 +3619,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
     bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
     bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+    auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
     std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
     std::string zoneNameCopy = currentZoneName_;
     std::string eqClientPathCopy = config_.eqClientPath;
@@ -3555,7 +3635,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
          deferredAssetLoading, lazyPfsLoading,
          enableAtlas, atlasPathCopy, zoneNameCopy,
          eqClientPathCopy, zone, zonePath,
-         skipObjectBuild](DeferredWorkRequest&&) -> DeferredWorkResult {
+         skipObjectBuild, skyDomeMode](DeferredWorkRequest&&) -> DeferredWorkResult {
         // Load objects that were skipped in manual S3d step
         if (zone && zone->objects.empty() && !skipObjectBuild) {
             S3DLoader objLoader;
@@ -3567,7 +3647,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
 
         // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
         preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
-                              enableAtlas, skipObjectBuild, atlasPathCopy,
+                              enableAtlas, skipObjectBuild, skyDomeMode, atlasPathCopy,
                               zoneNameCopy, eqClientPathCopy});
 
         LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
@@ -3974,19 +4054,30 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         // Texture lookups hit cache (uploaded in env_sky_textures phase).
         if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isSkyPrepared()) {
             skyRenderer_->clearSkyForRebuild();
-            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData &&
-                pendingZoneComputations_->skyLoadData->precomputedDome) {
-                auto& dome = *pendingZoneComputations_->skyLoadData->precomputedDome;
-                skyRenderer_->createSkyDomeFromPrecomputed(dome.vertices, dome.indices);
+            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+                auto& skyData = *pendingZoneComputations_->skyLoadData;
+                if (skyData.precomputedWldDome) {
+                    skyRenderer_->createSkyDomeFromWldGeometry(
+                        skyData.precomputedWldDome->vertices,
+                        skyData.precomputedWldDome->indices);
+                } else if (skyData.precomputedDome) {
+                    skyRenderer_->createSkyDomeFromPrecomputed(
+                        skyData.precomputedDome->vertices,
+                        skyData.precomputedDome->indices);
+                } else {
+                    // Fallback: generate dome on render thread (no pre-computed data)
+                    LOG_WARN(MOD_GRAPHICS, "No pre-computed dome data, creating dome on render thread");
+                    skyRenderer_->applySkyType();
+                }
             } else {
-                // Fallback: generate dome on render thread (no pre-computed data)
                 LOG_WARN(MOD_GRAPHICS, "No pre-computed dome data, creating dome on render thread");
                 skyRenderer_->applySkyType();
             }
         }
-        // Free dome data now that it's been consumed
+        // Free both dome data structs now that they've been consumed
         if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
             pendingZoneComputations_->skyLoadData->precomputedDome.reset();
+            pendingZoneComputations_->skyLoadData->precomputedWldDome.reset();
         }
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials;
         logAssetBuildTime("env_sky_dome", 0, stepStart);

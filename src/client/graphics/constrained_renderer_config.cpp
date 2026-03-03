@@ -221,6 +221,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityPrepMaxPvsDepth = 2;
             config.terrainPrepMaxPvsDepth = 5;
             config.objectPrepMaxPvsDepth = 3;
+            // Use lower-poly WLD dome mesh instead of procedural hemisphere
+            config.skyDomeMode = SkyDomeMode::Original;
             break;
 
         case ConstrainedRenderingPreset::Custom:
@@ -475,6 +477,11 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         fireEffects = preset["fireEffects"].asBool();
     if (preset.isMember("skyRendering"))
         skyRendering = preset["skyRendering"].asBool();
+    if (preset.isMember("skyTextures")) {
+        std::string val = preset["skyTextures"].asString();
+        if (val == "original") skyDomeMode = SkyDomeMode::Original;
+        else if (val == "procedural") skyDomeMode = SkyDomeMode::Procedural;
+    }
     if (preset.isMember("nameTagsEnabled"))
         nameTagsEnabled = preset["nameTagsEnabled"].asBool();
     if (preset.isMember("frameTimingEnabled"))

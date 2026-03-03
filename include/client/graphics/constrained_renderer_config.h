@@ -51,6 +51,14 @@ struct ConstrainedRendererConfig {
     bool directionalLight = true;
     bool fireEffects = true;
     bool skyRendering = true;
+
+    // Sky dome mesh source
+    enum class SkyDomeMode {
+        Procedural,   // Current procedural hemisphere (693 verts, smooth color gradients)
+        Original      // WLD dome mesh from sky.s3d (145 verts, lower poly count)
+    };
+    SkyDomeMode skyDomeMode = SkyDomeMode::Procedural;  // Default: current behavior
+
     bool nameTagsEnabled = true;
     bool frameTimingEnabled = false;
     bool enableItemIcons = true;  // Load item/spell icon textures (disable to save RAM)

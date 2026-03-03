@@ -23,6 +23,7 @@
       "directionalLight": true,
       "fireEffects": true,
       "skyRendering": false,
+      "skyTextures": "original",
       "skipSkyTextureUpload": false,
       "nameTagsEnabled": true,
       "skipManualZoneDraw": false,

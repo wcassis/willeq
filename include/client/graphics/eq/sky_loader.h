@@ -119,6 +119,10 @@ public:
     // Get celestial bodies for a sky type
     std::vector<std::shared_ptr<CelestialBody>> getCelestialBodiesForSkyType(int skyTypeId) const;
 
+    // Get all texture names needed for a sky type (backgrounds + clouds + celestial bodies)
+    // Returns lowercase names matching the key format in skyData_->textures
+    std::vector<std::string> getTextureNamesForSkyType(int skyTypeId) const;
+
     // Check if loaded successfully
     bool isLoaded() const { return skyData_ != nullptr; }
 

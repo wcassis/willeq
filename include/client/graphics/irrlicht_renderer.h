@@ -180,6 +180,12 @@ struct PendingZoneComputations {
             std::vector<irr::u16> indices;                 // 3840 indices
         };
         std::unique_ptr<PrecomputedSkyDome> precomputedDome;
+        // Pre-computed WLD dome mesh from sky.s3d (lower poly, ~145 verts)
+        struct PrecomputedWldDome {
+            std::vector<irr::video::S3DVertex> vertices;
+            std::vector<irr::u16> indices;
+        };
+        std::unique_ptr<PrecomputedWldDome> precomputedWldDome;
     };
     std::unique_ptr<SkyLoadData> skyLoadData;
 

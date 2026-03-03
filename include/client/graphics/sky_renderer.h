@@ -86,6 +86,11 @@ public:
     void createSkyDomeFromPrecomputed(const std::vector<irr::video::S3DVertex>& vertices,
                                        const std::vector<irr::u16>& indices);
 
+    // Create dome mesh node from WLD geometry data (lower poly count than procedural dome).
+    // Vertices should already be in Irrlicht Y-up coords, scaled to SKY_DOME_RADIUS.
+    void createSkyDomeFromWldGeometry(const std::vector<irr::video::S3DVertex>& vertices,
+                                       const std::vector<irr::u16>& indices);
+
     // Create sun/moon billboard scene nodes (cache-hit texture lookups).
     void createCelestialBodiesOnly();
 

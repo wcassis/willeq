@@ -329,6 +329,85 @@ void SkyRenderer::createSkyDomeFromPrecomputed(const std::vector<irr::video::S3D
              vertices.size(), indices.size() / 3);
 }
 
+void SkyRenderer::createSkyDomeFromWldGeometry(const std::vector<irr::video::S3DVertex>& vertices,
+                                                 const std::vector<irr::u16>& indices) {
+    if (!initialized_ || !smgr_ || !driver_ || vertices.empty()) {
+        return;
+    }
+
+    // Find dome texture from sky type config (same logic as createSkyDomeFromPrecomputed)
+    irr::video::ITexture* texture = nullptr;
+    const auto& skyData = skyLoader_->getSkyData();
+    if (skyData) {
+        auto skyTypeIt = skyData->skyTypes.find(currentSkyType_);
+        if (skyTypeIt == skyData->skyTypes.end()) {
+            skyTypeIt = skyData->skyTypes.find(0);
+        }
+        if (skyTypeIt != skyData->skyTypes.end()) {
+            const SkyType& skyType = skyTypeIt->second;
+            if (!skyType.backgroundLayers.empty()) {
+                int layerNum = skyType.backgroundLayers[0];
+                auto layerIt = skyData->layers.find(layerNum);
+                if (layerIt != skyData->layers.end() && layerIt->second) {
+                    texture = loadSkyTexture(layerIt->second->textureName);
+                }
+            }
+        }
+    }
+
+    // Build mesh from WLD geometry data (memcpy, no trig)
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+    buffer->Vertices.set_used(vertices.size());
+    buffer->Indices.set_used(indices.size());
+
+    memcpy(buffer->Vertices.pointer(), vertices.data(),
+           vertices.size() * sizeof(irr::video::S3DVertex));
+    memcpy(buffer->Indices.pointer(), indices.data(),
+           indices.size() * sizeof(irr::u16));
+
+    buffer->recalculateBoundingBox();
+    mesh->addMeshBuffer(buffer);
+    mesh->recalculateBoundingBox();
+    buffer->drop();
+
+    skyDomeMeshNode_ = smgr_->addMeshSceneNode(mesh);
+    mesh->drop();
+
+    if (!skyDomeMeshNode_) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create sky dome mesh node from WLD geometry");
+        return;
+    }
+
+    skyDomeMeshBuffer_ = static_cast<irr::scene::SMeshBuffer*>(
+        skyDomeMeshNode_->getMesh()->getMeshBuffer(0));
+
+    // Set material properties
+    if (texture) {
+        skyDomeMeshNode_->setMaterialTexture(0, texture);
+    }
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZBUFFER, true);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
+    skyDomeMeshNode_->setMaterialType(irr::video::EMT_TRANSPARENT_VERTEX_ALPHA);
+
+    irr::video::SMaterial& mat = skyDomeMeshNode_->getMaterial(0);
+    mat.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+    mat.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+    mat.TextureLayer[0].BilinearFilter = true;
+
+    skyDomeMeshNode_->setMaterialFlag(irr::video::EMF_FOG_ENABLE, false);
+    skyDomeMeshNode_->setPosition(lastCameraPos_);
+
+    updateDomeVertexAlpha();
+
+    LOG_INFO(MOD_GRAPHICS, "Created sky dome from WLD geometry: {} vertices, {} triangles",
+             vertices.size(), indices.size() / 3);
+}
+
 void SkyRenderer::createCelestialBodiesOnly() {
     // Delegates to the existing createCelestialBodies() implementation
     createCelestialBodies();
@@ -652,12 +731,6 @@ void SkyRenderer::updateDomeVertexAlpha() {
         return;
     }
 
-    const float bottomPitch = SKY_DOME_BOTTOM_PITCH;
-    const float topPitch = static_cast<float>(M_PI) / 2.0f;
-    const float pitchRange = topPitch - bottomPitch;
-    const int hSegs = SKY_DOME_HORI_SEGMENTS;
-    const int vRings = SKY_DOME_VERT_RINGS;
-
     // Compute camera-height-interpolated parameters
     float cameraZ = lastCameraZ_;
     float camRange = currentZoneConfig_.maxCameraZ - currentZoneConfig_.minCameraZ;
@@ -674,11 +747,15 @@ void SkyRenderer::updateDomeVertexAlpha() {
     float effectiveFadeWidth = currentZoneConfig_.transparentAngle + interpWidth;
     float effectiveTransparentBoundary = effectiveOpaqueAngle - effectiveFadeWidth;
 
-    // Update vertex alpha based on pitch angle
-    int vi = 0;
-    for (int ring = 0; ring <= vRings; ++ring) {
-        float pitchFrac = static_cast<float>(ring) / static_cast<float>(vRings);
-        float pitch = bottomPitch + pitchFrac * pitchRange;
+    // Update vertex alpha based on position-derived pitch angle.
+    // Uses atan2(Y, horizontalDist) which works for both procedural and WLD dome topologies,
+    // since both are centered at origin in Irrlicht Y-up coordinates.
+    const int vertCount = skyDomeMeshBuffer_->Vertices.size();
+    for (int i = 0; i < vertCount; ++i) {
+        irr::video::S3DVertex& vert = skyDomeMeshBuffer_->Vertices[i];
+        // Compute pitch from vertex position (Irrlicht Y-up)
+        float hDist = std::sqrt(vert.Pos.X * vert.Pos.X + vert.Pos.Z * vert.Pos.Z);
+        float pitch = std::atan2(vert.Pos.Y, hDist);
 
         // Compute alpha based on pitch relative to fade zone
         irr::u32 alpha;
@@ -688,20 +765,11 @@ void SkyRenderer::updateDomeVertexAlpha() {
             alpha = 0;
         } else {
             float fadeRange = effectiveOpaqueAngle - effectiveTransparentBoundary;
-            if (fadeRange > 0.0001f) {
-                float fadeT = (pitch - effectiveTransparentBoundary) / fadeRange;
-                alpha = static_cast<irr::u32>(255.0f * fadeT);
-            } else {
-                alpha = 255;
-            }
+            alpha = (fadeRange > 0.0001f)
+                ? static_cast<irr::u32>(255.0f * (pitch - effectiveTransparentBoundary) / fadeRange)
+                : 255;
         }
-
-        for (int seg = 0; seg <= hSegs; ++seg) {
-            irr::video::S3DVertex& vert = skyDomeMeshBuffer_->Vertices[vi];
-            // Preserve RGB, set new alpha
-            vert.Color.setAlpha(alpha);
-            ++vi;
-        }
+        vert.Color.setAlpha(alpha);
     }
 
     // Mark buffer dirty so Irrlicht re-uploads vertices to GPU
