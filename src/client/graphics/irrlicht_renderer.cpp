@@ -2588,12 +2588,19 @@ void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float play
         startBspPreload(zoneName, config_.eqClientPath);
     }
 
-    // Set zone ready flags — but do NOT activate progressive loading
-    // Loading is deferred until /loadzone command
+    // Set zone ready flags
     zoneReady_ = true;
 
-    LOG_INFO(MOD_GRAPHICS, "Instant scene ready for zone '{}' — HCMap placeholder + collision, awaiting /loadzone",
-             zoneName);
+    // In automatic mode, begin asset loading immediately.
+    // In manual mode, loading is deferred until /loadzone command.
+    if (config_.constrainedConfig.deferredAssetLoading && !config_.eqClientPath.empty()) {
+        LOG_INFO(MOD_GRAPHICS, "Instant scene ready for zone '{}' — auto-starting asset load (deferredAssetLoading=automatic)",
+                 zoneName);
+        beginZoneAssetLoad(config_.eqClientPath);
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "Instant scene ready for zone '{}' — HCMap placeholder + collision, awaiting /loadzone",
+                 zoneName);
+    }
 }
 
 void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
