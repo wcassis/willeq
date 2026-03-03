@@ -5630,8 +5630,22 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     if (animatedTextureManager_)
         animatedTextureManager_->addSceneNode(node);
 
-    // Update cache
+    // Pre-evict to make room, then update cache
     size_t meshSize = ConstrainedMeshCache::estimateMeshSize(node);
+    auto evicted = constrainedMeshCache_->evictUntilAvailable(meshSize, protectedRegions_);
+    for (size_t idx : evicted) {
+        auto it = regionMeshNodes_.find(idx);
+        if (it != regionMeshNodes_.end() && it->second) {
+            deleteMeshHardwareBuffers(it->second);
+            if (animatedTextureManager_)
+                animatedTextureManager_->removeSceneNode(it->second);
+            if (it->second->getParent()) it->second->remove(); else it->second->drop();
+            it->second = nullptr;
+        }
+        for (auto& [texName, regions] : pendingTextureRegions_) {
+            regions.erase(idx);
+        }
+    }
     constrainedMeshCache_->onLoaded(regionIdx, node, meshSize);
 
     auto rebuildEnd = std::chrono::steady_clock::now();

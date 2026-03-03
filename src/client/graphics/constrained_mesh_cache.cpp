@@ -45,6 +45,13 @@ void ConstrainedMeshCache::onLoaded(size_t regionIdx, irr::scene::IMeshSceneNode
     entry.wasEverLoaded = true;
     currentUsage_ += sizeBytes;
 
+    if (currentUsage_ > budgetBytes_) {
+        LOG_WARN(MOD_GRAPHICS, "MeshCache: budget exceeded after onLoaded region {} "
+                 "({} bytes) — usage {}/{} bytes ({}% over)",
+                 regionIdx, sizeBytes, currentUsage_, budgetBytes_,
+                 (currentUsage_ - budgetBytes_) * 100 / budgetBytes_);
+    }
+
     // Move to back of LRU (most recently used)
     lruOrder_.erase(entry.lruIterator);
     lruOrder_.push_back(regionIdx);
