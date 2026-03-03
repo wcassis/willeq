@@ -3452,6 +3452,150 @@ static void bilinearUpscaleARGB(const uint8_t* src, uint32_t srcW, uint32_t srcH
     }
 }
 
+// Parameters for preloadDeferredAssets() — all values captured by copy from caller
+struct DeferredAssetParams {
+    PendingZoneComputations* computations;
+    bool deferredAssetLoading;
+    bool lazyPfsLoading;
+    bool enableAtlas;
+    bool skipObjectBuild;
+    std::string atlasPath;
+    std::string zoneName;
+    std::string eqClientPath;  // with trailing slash
+};
+
+// Phases 6-10: shared asset preload used by both automatic and manual loading paths.
+// Runs on a background thread. Only writes to p.computations (owned by main thread,
+// not accessed until background work completes) and reads config values passed by value.
+static void preloadDeferredAssets(const DeferredAssetParams& p) {
+    // 6. Build graphics archive index (filesystem I/O — no GL)
+    if (p.deferredAssetLoading) {
+        p.computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
+        if (p.computations->archiveIndex->buildIndex(p.eqClientPath, p.lazyPfsLoading)) {
+            LOG_INFO(MOD_GRAPHICS, "Preload: graphics archive index built ({} race entries, {} archives)",
+                     p.computations->archiveIndex->getRaceEntryCount(),
+                     p.computations->archiveIndex->getArchiveCount());
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "Preload: graphics archive index build failed");
+            p.computations->archiveIndex.reset();
+        }
+    }
+
+    // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
+    {
+        auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
+        skyData->skyLoader = std::make_unique<SkyLoader>();
+        skyData->skyConfig = std::make_unique<SkyConfig>();
+
+        if (skyData->skyLoader->load(p.eqClientPath)) {
+            LOG_INFO(MOD_GRAPHICS, "Preload: sky.s3d loaded ({} textures)",
+                     skyData->skyLoader->getSkyData()->textures.size());
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "Preload: sky.s3d load failed");
+        }
+
+        std::string skyIniPath = p.eqClientPath + "sky.ini";
+        if (skyData->skyConfig->loadFromFile(skyIniPath)) {
+            LOG_INFO(MOD_GRAPHICS, "Preload: sky.ini loaded ({} zone configs)",
+                     skyData->skyConfig->getZoneCount());
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "Preload: sky.ini load failed, will use defaults");
+        }
+
+        // Pre-decode + upscale BMP sky textures on background thread (no GL)
+        if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
+            const auto& textures = skyData->skyLoader->getSkyData()->textures;
+            for (const auto& [texName, texInfo] : textures) {
+                if (!texInfo || texInfo->data.size() < 2) continue;
+                // Only handle BMPs (header bytes 'B','M')
+                if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
+
+                PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
+                preTex.name = texName;
+
+                uint32_t decW = 0, decH = 0;
+                std::vector<uint8_t> decoded;
+                if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
+                    LOG_WARN(MOD_GRAPHICS, "Preload: failed to decode BMP sky texture: {}", texName);
+                    continue;
+                }
+
+                // Upscale small textures (<=128x128) to 512x512 with bilinear interpolation
+                if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
+                    const uint32_t targetSize = 512;
+                    bilinearUpscaleARGB(decoded.data(), decW, decH,
+                                        preTex.pixels, targetSize, targetSize);
+                    preTex.width = targetSize;
+                    preTex.height = targetSize;
+                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded + upscaled sky texture: {} ({}x{} -> {}x{})",
+                             texName, decW, decH, targetSize, targetSize);
+                } else {
+                    // Already large enough, just store decoded pixels
+                    preTex.pixels = std::move(decoded);
+                    preTex.width = decW;
+                    preTex.height = decH;
+                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded sky texture: {} ({}x{})",
+                             texName, decW, decH);
+                }
+
+                skyData->preDecodedTextures.push_back(std::move(preTex));
+            }
+            LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded {} BMP sky textures",
+                     skyData->preDecodedTextures.size());
+        }
+
+        // Pre-compute dome mesh geometry (pure CPU trig, ~5ms)
+        skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
+        SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
+                                        skyData->precomputedDome->indices);
+        LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed sky dome mesh ({} verts, {} indices)",
+                 skyData->precomputedDome->vertices.size(),
+                 skyData->precomputedDome->indices.size());
+
+        p.computations->skyLoadData = std::move(skyData);
+    }
+
+    // 8. Pre-load weather config (file I/O + JSON — no GL)
+    {
+        auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
+        ZoneWeatherConfig wconfig;
+        if (loadZoneWeatherConfig(p.zoneName, wconfig)) {
+            weatherData->config = wconfig;
+            weatherData->loaded = true;
+            LOG_INFO(MOD_GRAPHICS, "Preload: pre-loaded weather config for '{}'", p.zoneName);
+        } else {
+            weatherData->config.zoneName = p.zoneName;
+            weatherData->config.defaultWeather = WeatherType::Normal;
+            weatherData->config.enabled = true;
+            weatherData->loaded = true;
+            LOG_DEBUG(MOD_GRAPHICS, "Preload: default weather config for '{}'", p.zoneName);
+        }
+        p.computations->weatherConfig = std::move(weatherData);
+    }
+
+    // 9. Pre-load display settings (file I/O + JSON — no GL)
+    {
+        auto dispData = std::make_unique<PendingZoneComputations::DisplaySettingsData>();
+        dispData->skyEnabled = loadDisplaySettingsFromFile().skyEnabled;
+        dispData->loaded = true;
+        p.computations->displaySettings = std::move(dispData);
+    }
+
+    // 10. Pre-load atlas files (file I/O + tile lookup — no GL)
+    if (p.enableAtlas && !p.atlasPath.empty()) {
+        std::string atlasDir = p.atlasPath;
+        if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
+
+        std::string zoneAtlasFile = atlasDir + p.zoneName + ".atlas";
+        p.computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
+
+        if (!p.skipObjectBuild) {
+            std::string objAtlasFile = atlasDir + p.zoneName + "_obj.atlas";
+            p.computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+        }
+    }
+}
+
 void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath) {
     backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Loading;
     pendingZoneComputations_ = std::make_unique<PendingZoneComputations>();
@@ -3646,132 +3790,10 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
             return ZoneLoadResult{true};
         }
 
-        // 6. Build graphics archive index (filesystem I/O — no GL)
-        if (deferredAssetLoading) {
-            computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
-            if (computations->archiveIndex->buildIndex(eqClientPathCopy, lazyPfsLoading)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: graphics archive index built ({} race entries, {} archives)",
-                         computations->archiveIndex->getRaceEntryCount(),
-                         computations->archiveIndex->getArchiveCount());
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Background: graphics archive index build failed");
-                computations->archiveIndex.reset();
-            }
-        }
-
-        // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
-        {
-            auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
-            skyData->skyLoader = std::make_unique<SkyLoader>();
-            skyData->skyConfig = std::make_unique<SkyConfig>();
-
-            if (skyData->skyLoader->load(eqClientPathCopy)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: sky.s3d loaded ({} textures)",
-                         skyData->skyLoader->getSkyData()->textures.size());
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Background: sky.s3d load failed");
-            }
-
-            std::string skyIniPath = eqClientPathCopy + "sky.ini";
-            if (skyData->skyConfig->loadFromFile(skyIniPath)) {
-                LOG_INFO(MOD_GRAPHICS, "Background: sky.ini loaded ({} zone configs)",
-                         skyData->skyConfig->getZoneCount());
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Background: sky.ini load failed, will use defaults");
-            }
-
-            // Pre-decode + upscale BMP sky textures on background thread (no GL)
-            if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
-                const auto& textures = skyData->skyLoader->getSkyData()->textures;
-                for (const auto& [texName, texInfo] : textures) {
-                    if (!texInfo || texInfo->data.size() < 2) continue;
-                    // Only handle BMPs (header bytes 'B','M')
-                    if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
-
-                    PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
-                    preTex.name = texName;
-
-                    uint32_t decW = 0, decH = 0;
-                    std::vector<uint8_t> decoded;
-                    if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
-                        LOG_WARN(MOD_GRAPHICS, "Background: failed to decode BMP sky texture: {}", texName);
-                        continue;
-                    }
-
-                    // Upscale small textures (<=128x128) to 512x512 with bilinear interpolation
-                    if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
-                        const uint32_t targetSize = 512;
-                        bilinearUpscaleARGB(decoded.data(), decW, decH,
-                                            preTex.pixels, targetSize, targetSize);
-                        preTex.width = targetSize;
-                        preTex.height = targetSize;
-                        LOG_INFO(MOD_GRAPHICS, "Background: pre-decoded + upscaled sky texture: {} ({}x{} -> {}x{})",
-                                 texName, decW, decH, targetSize, targetSize);
-                    } else {
-                        // Already large enough, just store decoded pixels
-                        preTex.pixels = std::move(decoded);
-                        preTex.width = decW;
-                        preTex.height = decH;
-                        LOG_INFO(MOD_GRAPHICS, "Background: pre-decoded sky texture: {} ({}x{})",
-                                 texName, decW, decH);
-                    }
-
-                    skyData->preDecodedTextures.push_back(std::move(preTex));
-                }
-                LOG_INFO(MOD_GRAPHICS, "Background: pre-decoded {} BMP sky textures",
-                         skyData->preDecodedTextures.size());
-            }
-
-            // Pre-compute dome mesh geometry (pure CPU trig, ~5ms)
-            skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
-            SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
-                                            skyData->precomputedDome->indices);
-            LOG_INFO(MOD_GRAPHICS, "Background: pre-computed sky dome mesh ({} verts, {} indices)",
-                     skyData->precomputedDome->vertices.size(),
-                     skyData->precomputedDome->indices.size());
-
-            computations->skyLoadData = std::move(skyData);
-        }
-
-        // 9b. Pre-load weather config (file I/O + JSON — no GL)
-        {
-            auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
-            ZoneWeatherConfig wconfig;
-            if (loadZoneWeatherConfig(zoneNameCopy, wconfig)) {
-                weatherData->config = wconfig;
-                weatherData->loaded = true;
-                LOG_INFO(MOD_GRAPHICS, "Background: pre-loaded weather config for '{}'", zoneNameCopy);
-            } else {
-                weatherData->config.zoneName = zoneNameCopy;
-                weatherData->config.defaultWeather = WeatherType::Normal;
-                weatherData->config.enabled = true;
-                weatherData->loaded = true;
-                LOG_DEBUG(MOD_GRAPHICS, "Background: default weather config for '{}'", zoneNameCopy);
-            }
-            computations->weatherConfig = std::move(weatherData);
-        }
-
-        // 9c. Pre-load display settings (file I/O + JSON — no GL)
-        {
-            auto dispData = std::make_unique<PendingZoneComputations::DisplaySettingsData>();
-            dispData->skyEnabled = loadDisplaySettingsFromFile().skyEnabled;
-            dispData->loaded = true;
-            computations->displaySettings = std::move(dispData);
-        }
-
-        // 10. Pre-load atlas files (file I/O + tile lookup — no GL)
-        if (enableAtlas && !atlasPathCopy.empty()) {
-            std::string atlasDir = atlasPathCopy;
-            if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
-
-            std::string zoneAtlasFile = atlasDir + zoneNameCopy + ".atlas";
-            computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
-
-            if (!skipObjectBuild) {
-                std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
-                computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
-            }
-        }
+        // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
+        preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
+                              enableAtlas, skipObjectBuild, atlasPathCopy,
+                              zoneNameCopy, eqClientPathCopy});
 
         return ZoneLoadResult{true};
     });
@@ -3806,7 +3828,7 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
     std::string zonePath = eqClientPathCopy + zoneNameCopy + ".s3d";
 
     deferredWorkQueue_ = std::make_unique<BackgroundWorkQueue<DeferredWorkRequest, DeferredWorkResult>>(
-        [this, computations,
+        [computations,
          deferredAssetLoading, lazyPfsLoading,
          enableAtlas, atlasPathCopy, zoneNameCopy,
          eqClientPathCopy, zone, zonePath,
@@ -3820,116 +3842,10 @@ void IrrlichtRenderer::launchDeferredBackgroundWork() {
                      zone->objects.size());
         }
 
-        // 6. Build graphics archive index (filesystem I/O — no GL)
-        if (deferredAssetLoading) {
-            computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
-            if (computations->archiveIndex->buildIndex(eqClientPathCopy, lazyPfsLoading)) {
-                LOG_INFO(MOD_GRAPHICS, "Deferred: graphics archive index built ({} race entries, {} archives)",
-                         computations->archiveIndex->getRaceEntryCount(),
-                         computations->archiveIndex->getArchiveCount());
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Deferred: graphics archive index build failed");
-                computations->archiveIndex.reset();
-            }
-        }
-
-        // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
-        {
-            auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
-            skyData->skyLoader = std::make_unique<SkyLoader>();
-            skyData->skyConfig = std::make_unique<SkyConfig>();
-
-            if (skyData->skyLoader->load(eqClientPathCopy)) {
-                LOG_INFO(MOD_GRAPHICS, "Deferred: sky.s3d loaded ({} textures)",
-                         skyData->skyLoader->getSkyData()->textures.size());
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Deferred: sky.s3d load failed");
-            }
-
-            std::string skyIniPath = eqClientPathCopy + "sky.ini";
-            if (skyData->skyConfig->loadFromFile(skyIniPath)) {
-                LOG_INFO(MOD_GRAPHICS, "Deferred: sky.ini loaded ({} zone configs)",
-                         skyData->skyConfig->getZoneCount());
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "Deferred: sky.ini load failed, will use defaults");
-            }
-
-            // Pre-decode + upscale BMP sky textures (no GL)
-            if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
-                const auto& textures = skyData->skyLoader->getSkyData()->textures;
-                for (const auto& [texName, texInfo] : textures) {
-                    if (!texInfo || texInfo->data.size() < 2) continue;
-                    if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
-
-                    PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
-                    preTex.name = texName;
-
-                    uint32_t decW = 0, decH = 0;
-                    std::vector<uint8_t> decoded;
-                    if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) continue;
-
-                    if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
-                        const uint32_t targetSize = 512;
-                        bilinearUpscaleARGB(decoded.data(), decW, decH,
-                                            preTex.pixels, targetSize, targetSize);
-                        preTex.width = targetSize;
-                        preTex.height = targetSize;
-                    } else {
-                        preTex.pixels = std::move(decoded);
-                        preTex.width = decW;
-                        preTex.height = decH;
-                    }
-                    skyData->preDecodedTextures.push_back(std::move(preTex));
-                }
-                LOG_INFO(MOD_GRAPHICS, "Deferred: pre-decoded {} BMP sky textures",
-                         skyData->preDecodedTextures.size());
-            }
-
-            // Pre-compute dome mesh geometry
-            skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
-            SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
-                                            skyData->precomputedDome->indices);
-
-            computations->skyLoadData = std::move(skyData);
-        }
-
-        // 8. Pre-load weather config (file I/O + JSON — no GL)
-        {
-            auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
-            ZoneWeatherConfig wconfig;
-            if (loadZoneWeatherConfig(zoneNameCopy, wconfig)) {
-                weatherData->config = wconfig;
-                weatherData->loaded = true;
-            } else {
-                weatherData->config.zoneName = zoneNameCopy;
-                weatherData->config.defaultWeather = WeatherType::Normal;
-                weatherData->config.enabled = true;
-                weatherData->loaded = true;
-            }
-            computations->weatherConfig = std::move(weatherData);
-        }
-
-        // 9. Pre-load display settings (file I/O + JSON — no GL)
-        {
-            auto dispData = std::make_unique<PendingZoneComputations::DisplaySettingsData>();
-            dispData->skyEnabled = loadDisplaySettingsFromFile().skyEnabled;
-            dispData->loaded = true;
-            computations->displaySettings = std::move(dispData);
-        }
-
-        // 10. Pre-load atlas files (file I/O + tile lookup — no GL)
-        if (enableAtlas && !atlasPathCopy.empty()) {
-            std::string atlasDir = atlasPathCopy;
-            if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
-
-            std::string zoneAtlasFile = atlasDir + zoneNameCopy + ".atlas";
-            computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
-
-            if (!skipObjectBuild) {
-                std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
-                computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
-            }
-        }
+        // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
+        preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
+                              enableAtlas, skipObjectBuild, atlasPathCopy,
+                              zoneNameCopy, eqClientPathCopy});
 
         LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
         return DeferredWorkResult{true};
