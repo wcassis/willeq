@@ -695,6 +695,9 @@ public:
     // Progressive per-frame asset building (priority-ordered, GREEN-only single-step)
     void processFrameProgressiveLoad();
 
+    // Create and configure EntityRenderer (idempotent — skips if already created)
+    void createEntityRenderer();
+
     // Background zone loading — instant scene + deferred S3D
     // Build HCMap placeholder + collision for immediate gameplay (<5ms)
     void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0);

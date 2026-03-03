@@ -611,31 +611,7 @@ bool IrrlichtRenderer::init(const RendererConfig& config) {
     setupHUD();
 
     // Create entity renderer
-    entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
-    entityRenderer_->setClientPath(config.eqClientPath);
-    entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
-    entityRenderer_->setRenderDistance(renderDistance_);
-#ifdef EQT_HAS_GLES2
-    if (gpuUploadThread_)
-        entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
-#endif
-
-    // Pass constrained config to entity renderer for visibility limits
-    entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
-    // Pass GLSL shader material types if available
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                zoneShader_->getActiveAlphaTest());
-    }
-    // Apply chr cache limit to race model loader
-    if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
-        entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
-    }
-
-    // Set ground finder callback for NPC terrain snapping during interpolation
-    entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
-        return this->findGroundZ(x, y, currentZ);
-    });
+    createEntityRenderer();
 
     // Preload numbered global character models for better coverage
     if (!config_.constrainedConfig.skipEntityBuild) {
@@ -963,39 +939,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     LOG_INFO(MOD_GRAPHICS, "Loading global assets (character models, equipment)...");
 
     // Create entity renderer (if not already created by init())
-    if (!entityRenderer_) {
-        entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
-        entityRenderer_->setClientPath(config_.eqClientPath);
-        entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
-        entityRenderer_->setRenderDistance(renderDistance_);
-#ifdef EQT_HAS_GLES2
-        if (gpuUploadThread_)
-            entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
-#endif
-        // Pass constrained config to entity renderer for visibility limits
-        entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
-        // Pass GLSL shader material types if available
-        if (zoneShader_ && zoneShader_->isAvailable()) {
-            entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                    zoneShader_->getActiveAlphaTest());
-        }
-        if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
-            entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
-        }
-        // Set ground finder callback for NPC terrain snapping during interpolation
-        entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
-            return this->findGroundZ(x, y, currentZ);
-        });
-        // If zone was already loaded before entity renderer was created,
-        // pass BSP tree, frustum culler, and occlusion culler now
-        if (zoneBspTree_) {
-            entityRenderer_->setBspTree(zoneBspTree_);
-        }
-        if (frustumCuller_) {
-            entityRenderer_->setFrustumCuller(frustumCuller_.get());
-        }
-        // Note: entity occlusion culling is now handled by SimulationWorker
-    }
+    createEntityRenderer();
 
     if (config_.constrainedConfig.deferredAssetLoading) {
         // Deferred mode: build lightweight archive index instead of loading all models
@@ -2809,34 +2753,44 @@ void IrrlichtRenderer::destroyZonePlaceholder() {
     }
 }
 
+void IrrlichtRenderer::createEntityRenderer() {
+    if (entityRenderer_) return;
+    if (!smgr_ || !driver_ || !device_) return;
+
+    entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
+    entityRenderer_->setClientPath(config_.eqClientPath);
+    entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
+    entityRenderer_->setRenderDistance(renderDistance_);
+#ifdef EQT_HAS_GLES2
+    if (gpuUploadThread_)
+        entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
+#endif
+    entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
+    entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
+    if (zoneShader_ && zoneShader_->isAvailable()) {
+        entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                zoneShader_->getActiveAlphaTest());
+    }
+    if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
+        entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
+    }
+    entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
+        return this->findGroundZ(x, y, currentZ);
+    });
+    if (zoneBspTree_) {
+        entityRenderer_->setBspTree(zoneBspTree_);
+    }
+    if (frustumCuller_) {
+        entityRenderer_->setFrustumCuller(frustumCuller_.get());
+    }
+}
+
 void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float playerX, float playerY, float playerZ) {
     currentZoneName_ = zoneName;
 
     // Create entity renderer for placeholder cubes (no model loading yet)
-    if (!entityRenderer_ && smgr_ && driver_ && device_) {
-        entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
-        entityRenderer_->setClientPath(config_.eqClientPath);
-        entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
-        entityRenderer_->setRenderDistance(renderDistance_);
-#ifdef EQT_HAS_GLES2
-        if (gpuUploadThread_)
-            entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
-#endif
-        entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
-        if (zoneShader_ && zoneShader_->isAvailable()) {
-            entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                    zoneShader_->getActiveAlphaTest());
-        }
-        if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
-            entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
-        }
-        entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
-            return this->findGroundZ(x, y, currentZ);
-        });
-        // Pass frustum culler for entity visibility culling during placeholder mode
-        if (frustumCuller_) {
-            entityRenderer_->setFrustumCuller(frustumCuller_.get());
-        }
+    createEntityRenderer();
+    if (entityRenderer_) {
         LOG_INFO(MOD_GRAPHICS, "Entity renderer created for instant scene (placeholder cubes only)");
     }
 
@@ -3927,31 +3881,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::DataReady_EntityRenderer: {
-        if (!entityRenderer_) {
-            entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
-            entityRenderer_->setClientPath(config_.eqClientPath);
-            entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
-            entityRenderer_->setRenderDistance(renderDistance_);
-#ifdef EQT_HAS_GLES2
-            if (gpuUploadThread_)
-                entityRenderer_->setGPUUploadThread(gpuUploadThread_.get());
-#endif
-            entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
-            entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
-            if (zoneShader_ && zoneShader_->isAvailable()) {
-                entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                        zoneShader_->getActiveAlphaTest());
-            }
-            if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
-                entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
-            }
-            entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
-                return this->findGroundZ(x, y, currentZ);
-            });
-            if (zoneBspTree_) entityRenderer_->setBspTree(zoneBspTree_);
-            if (frustumCuller_) entityRenderer_->setFrustumCuller(frustumCuller_.get());
-            // Entity occlusion culling handled by SimulationWorker
-        }
+        createEntityRenderer();
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_ArchiveIndex;
         logAssetBuildTime("entity_renderer_init", 0, stepStart);
         break;
