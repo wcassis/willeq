@@ -226,6 +226,10 @@ bool Application::initialize(const ApplicationConfig& config) {
                 if (config.backgroundThreadCount > 0) {
                     builtConfig.backgroundThreadCount = config.backgroundThreadCount;
                 }
+                // CLI override: --zone-load
+                if (config.zoneLoadMode >= 0) {
+                    builtConfig.deferredAssetLoading = (config.zoneLoadMode == 1);
+                }
 
                 // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
 #ifndef EQT_HAS_GLES2
@@ -863,6 +867,15 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.rdpPort = static_cast<uint16_t>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--zone-load") {
+            if (i + 1 < argc) {
+                std::string mode = argv[++i];
+                if (mode == "auto" || mode == "automatic") {
+                    config.zoneLoadMode = 1;
+                } else if (mode == "manual") {
+                    config.zoneLoadMode = 0;
+                }
+            }
         } else if (arg == "--threads") {
             if (i + 1 < argc) {
                 config.backgroundThreadCount = std::atoi(argv[++i]);
@@ -883,6 +896,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
             std::cout << "  --gles2                  Use OpenGL ES 2.0 backend (auto on DRM+OrangePi)\n";
             std::cout << "  --threads <N>            Background thread pool size (default: from preset)\n";
+            std::cout << "  --zone-load <mode>       Zone loading mode: manual (all at load) or automatic (progressive)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";
             std::cout << "  --scene-profile, --sp    Run scene breakdown profiler after zone load\n";
 #ifdef WITH_RDP

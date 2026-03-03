@@ -36,6 +36,7 @@
       "entityPrepMaxPvsDepth": 3,
       "terrainPrepMaxPvsDepth": 5,
       "objectPrepMaxPvsDepth": 3,
+      "deferredAssetLoading": "automatic",
       "backgroundThreadCount": 1
     }
   }

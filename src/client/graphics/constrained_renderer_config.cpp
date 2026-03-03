@@ -428,6 +428,13 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         terrainPrepMaxPvsDepth = preset["terrainPrepMaxPvsDepth"].asInt();
     if (preset.isMember("objectPrepMaxPvsDepth"))
         objectPrepMaxPvsDepth = preset["objectPrepMaxPvsDepth"].asInt();
+    if (preset.isMember("deferredAssetLoading")) {
+        std::string mode = preset["deferredAssetLoading"].asString();
+        std::string lowerMode = mode;
+        std::transform(lowerMode.begin(), lowerMode.end(), lowerMode.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        deferredAssetLoading = (lowerMode == "automatic" || lowerMode == "auto" || lowerMode == "true" || lowerMode == "1");
+    }
     if (preset.isMember("backgroundThreadCount"))
         backgroundThreadCount = preset["backgroundThreadCount"].asInt();
 
