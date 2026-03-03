@@ -68,6 +68,6 @@ refactoring plan, or were incompletely addressed.
 
 | ID | Description | Source |
 |----|-------------|--------|
-| C09 | Dead code in zone_lines.cpp: 3 #if 0 blocks + hasBspZoneLines() + debugTestCoordinateMappings() | NEW — not in original audit's dead code list |
+| C09 | ~~Dead code in zone_lines.cpp: 3 #if 0 blocks + hasBspZoneLines() + debugTestCoordinateMappings()~~ **DONE**: Removed 3 `#if 0` blocks (~130 lines), 2 dead functions (`hasBspZoneLines`, `debugTestCoordinateMappings`), `resolveZoneLine` helper, unused members (`bspTree_`, zone bounds, `wldZonePoints_`), `wld_loader.h` include, and debug call in eq.cpp. 267 lines deleted. | `1b1bc53` |
 | C10 | Configurable thread counts not implemented | Old Issue 1.2 — unchanged |
 | C11 | RDP peer thread accumulation | Old Issue 1.4 — unchanged |
