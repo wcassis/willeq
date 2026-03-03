@@ -141,6 +141,8 @@ float DoorManager::calculateOpenHeading(float closedHeading, uint32_t incline, u
 
 irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
 {
+    lastMissingTextures_.clear();
+
     if (!currentZone_ || !smgr_) {
         return nullptr;
     }
@@ -177,7 +179,12 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             LOG_WARN(MOD_GRAPHICS, "Failed to build mesh for door '{}' (verts={}, tris={})",
                 upperDoorName, geomIt->second->vertices.size(), geomIt->second->triangles.size());
         }
-        if (mesh) {
+        // Only cache when all textures are present — if async textures are pending,
+        // skip cache so the mesh will be rebuilt when textures arrive
+        const auto& missing = builder.getMissingTextures();
+        if (!missing.empty()) {
+            lastMissingTextures_.insert(lastMissingTextures_.end(), missing.begin(), missing.end());
+        } else if (mesh) {
             const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
         }
         return mesh;
@@ -199,7 +206,10 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             } else {
                 mesh = builder.buildColoredMesh(*geom);
             }
-            if (mesh) {
+            const auto& missing = builder.getMissingTextures();
+            if (!missing.empty()) {
+                lastMissingTextures_.insert(lastMissingTextures_.end(), missing.begin(), missing.end());
+            } else if (mesh) {
                 const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
             }
             return mesh;
@@ -228,7 +238,10 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             } else {
                 mesh = builder.buildColoredMesh(*objInstance.geometry);
             }
-            if (mesh) {
+            const auto& missing = builder.getMissingTextures();
+            if (!missing.empty()) {
+                lastMissingTextures_.insert(lastMissingTextures_.end(), missing.begin(), missing.end());
+            } else if (mesh) {
                 const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
             }
             return mesh;
@@ -236,6 +249,12 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
     }
 
     return nullptr;
+}
+
+void DoorManager::invalidateMeshCache(const std::string& doorName) {
+    std::string upper = doorName;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+    doorMeshCache_.erase(upper);
 }
 
 // Generate a unique color from a door name using a simple hash

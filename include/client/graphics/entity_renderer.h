@@ -535,6 +535,9 @@ public:
     // Get number of entities currently visible (for debug HUD)
     int getVisibleEntityCount() const { return visibleEntityCount_; }
 
+    // Set visible entity count (from SimulationWorker results)
+    void setVisibleEntityCount(int count) { visibleEntityCount_ = count; }
+
     // Get per-instance animated mesh memory (instanceMesh_ + animator state per entity)
     size_t getPerInstanceMemoryBytes() const;
 

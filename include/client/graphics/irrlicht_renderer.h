@@ -149,6 +149,7 @@ struct DeferredObject {
     size_t bspRegion = SIZE_MAX;     // BSP region for priority
     irr::core::aabbox3df worldBounds;
     bool meshBuilt = false;
+    size_t nodeIndex = SIZE_MAX;     // Index into objectNodes_ (set after first build)
 };
 
 // CPU-only computations performed on background thread after S3D parse
@@ -1368,6 +1369,16 @@ private:
         float distanceSq;
     };
     std::vector<TextureRebuildEntry> textureRebuildQueue_;
+
+    // Doors waiting for async textures to complete GPU upload.
+    // Maps texture name → set of door IDs that were built without that texture.
+    std::unordered_map<std::string, std::unordered_set<uint8_t>> pendingTextureDoors_;
+    std::vector<uint8_t> doorTextureRebuildQueue_;
+
+    // PVS objects waiting for async textures to complete GPU upload.
+    // Maps texture name → set of deferred object indices.
+    std::unordered_map<std::string, std::unordered_set<size_t>> pendingTextureObjects_;
+    std::vector<size_t> objectTextureRebuildQueue_;
 
     // Deferred/progressive asset loading state (DeferredObject defined above PendingZoneComputations)
     std::vector<DeferredObject> deferredObjects_;

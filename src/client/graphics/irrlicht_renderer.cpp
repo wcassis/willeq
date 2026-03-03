@@ -1072,6 +1072,38 @@ void IrrlichtRenderer::processCompletedUploads() {
                                      result.textureName, pendIt->second.size());
                             pendingTextureRegions_.erase(pendIt);
                         }
+
+                        // Doors waiting for this texture
+                        auto doorPendIt = pendingTextureDoors_.find(result.textureName);
+                        if (doorPendIt != pendingTextureDoors_.end()) {
+                            for (uint8_t doorId : doorPendIt->second) {
+                                if (doorManager_) {
+                                    const auto* dv = doorManager_->getDoor(doorId);
+                                    if (dv) doorManager_->invalidateMeshCache(dv->modelName);
+                                }
+                                if (std::find(doorTextureRebuildQueue_.begin(),
+                                              doorTextureRebuildQueue_.end(), doorId) == doorTextureRebuildQueue_.end()) {
+                                    doorTextureRebuildQueue_.push_back(doorId);
+                                }
+                            }
+                            LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} doors for rebuild",
+                                     result.textureName, doorPendIt->second.size());
+                            pendingTextureDoors_.erase(doorPendIt);
+                        }
+
+                        // PVS objects waiting for this texture
+                        auto objPendIt = pendingTextureObjects_.find(result.textureName);
+                        if (objPendIt != pendingTextureObjects_.end()) {
+                            for (size_t objIdx : objPendIt->second) {
+                                if (std::find(objectTextureRebuildQueue_.begin(),
+                                              objectTextureRebuildQueue_.end(), objIdx) == objectTextureRebuildQueue_.end()) {
+                                    objectTextureRebuildQueue_.push_back(objIdx);
+                                }
+                            }
+                            LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} objects for rebuild",
+                                     result.textureName, objPendIt->second.size());
+                            pendingTextureObjects_.erase(objPendIt);
+                        }
                     }
                 } else if (sourceType == 4) {
                     // Icon texture — register in icon loader cache
@@ -2091,6 +2123,10 @@ void IrrlichtRenderer::unloadZone() {
     protectedRegions_.clear();
     pendingTextureRegions_.clear();
     textureRebuildQueue_.clear();
+    pendingTextureDoors_.clear();
+    doorTextureRebuildQueue_.clear();
+    pendingTextureObjects_.clear();
+    objectTextureRebuildQueue_.clear();
 
     // Clear occlusion culler data
     if (occlusionCuller_) {
@@ -4670,9 +4706,16 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (doorRebuildIndex_ < doorRebuildList_.size()) {
             uint8_t doorId = doorRebuildList_[doorRebuildIndex_];
             bool rebuilt = doorManager_->rebuildSingleDoor(doorId);
-            LOG_DEBUG(MOD_GRAPHICS, "door_rebuild_one: door {} {} ({}/{})",
+            // Track any textures that were pending async upload
+            const auto& missing = doorManager_->getLastMissingTextures();
+            if (!missing.empty()) {
+                for (const auto& texName : missing) {
+                    pendingTextureDoors_[texName].insert(doorId);
+                }
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "door_rebuild_one: door {} {} ({}/{}) missing_tex={}",
                       doorId, rebuilt ? "rebuilt" : "skipped",
-                      doorRebuildIndex_ + 1, doorRebuildList_.size());
+                      doorRebuildIndex_ + 1, doorRebuildList_.size(), missing.size());
             logAssetBuildTime("door_rebuild_one", doorId, stepStart);
             ++doorRebuildIndex_;
             break;  // Stay in Misc_DoorSetup phase, yield to next frame
@@ -5669,6 +5712,14 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
         mesh = builder.buildColoredMesh(*objInstance.geometry);
     }
 
+    // Track textures that were missing (async pending) for rebuild when they arrive
+    const auto& missingObjTex = builder.getMissingTextures();
+    if (!missingObjTex.empty()) {
+        for (const auto& texName : missingObjTex) {
+            pendingTextureObjects_[texName].insert(idx);
+        }
+    }
+
     if (!mesh) {
         deferred.meshBuilt = true;
         return;
@@ -5734,6 +5785,7 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
 
     node->setName(objName.c_str());
     node->grab();
+    size_t newNodeIndex = objectNodes_.size();
     objectNodes_.push_back(node);
     objectPositions_.push_back(irr::core::vector3df(x, z, y));
     if (zoneBspTree_) {
@@ -5743,6 +5795,9 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     }
     node->updateAbsolutePosition();
     objectBoundingBoxes_.push_back(node->getTransformedBoundingBox());
+
+    // Track deferred→node mapping for texture rebuild
+    deferred.nodeIndex = newNodeIndex;
 
     // PVS check at insertion — start hidden if not in visible region
     bool pvsVisible = isRegionPvsVisible(objectRegions_.back());
@@ -7467,6 +7522,7 @@ void IrrlichtRenderer::applySimulationResults() {
                 visual.nameNode->setVisible(er.nameTagVisible);
             }
         }
+        entityRenderer_->setVisibleEntityCount(results->entityVisibleCount);
     }
 }
 
@@ -7880,6 +7936,37 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                              texEntry.regionIdx, textureRebuildQueue_.size());
                 }
                 didWork = true;
+            }
+            // Post-progressive: rebuild one door whose async textures have arrived
+            if (!didWork && !doorTextureRebuildQueue_.empty() && doorManager_) {
+                uint8_t doorId = doorTextureRebuildQueue_.front();
+                doorTextureRebuildQueue_.erase(doorTextureRebuildQueue_.begin());
+                doorManager_->rebuildSingleDoor(doorId);
+                didWork = true;
+                LOG_INFO(MOD_GRAPHICS, "Post-progressive P1.6: rebuilt door {} with textures (queue: {})",
+                         doorId, doorTextureRebuildQueue_.size());
+            }
+            // Post-progressive: rebuild one PVS object whose async textures have arrived
+            if (!didWork && !objectTextureRebuildQueue_.empty()) {
+                size_t objIdx = objectTextureRebuildQueue_.front();
+                objectTextureRebuildQueue_.erase(objectTextureRebuildQueue_.begin());
+                if (objIdx < deferredObjects_.size()) {
+                    size_t nodeIdx = deferredObjects_[objIdx].nodeIndex;
+                    if (nodeIdx != SIZE_MAX && nodeIdx < objectNodes_.size() && objectNodes_[nodeIdx]) {
+                        auto* oldNode = objectNodes_[nodeIdx];
+                        if (animatedTextureManager_)
+                            animatedTextureManager_->removeSceneNode(oldNode);
+                        if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
+                        objectNodes_[nodeIdx] = nullptr;
+                        if (nodeIdx < objectInSceneGraph_.size())
+                            objectInSceneGraph_[nodeIdx] = false;
+                    }
+                    deferredObjects_[objIdx].meshBuilt = false;
+                    buildDeferredObject(objIdx);
+                    didWork = true;
+                    LOG_INFO(MOD_GRAPHICS, "Post-progressive P1.7: rebuilt object {} with textures (queue: {})",
+                             objIdx, objectTextureRebuildQueue_.size());
+                }
             }
         }
     }
@@ -11444,6 +11531,42 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         }
     }
 
+    // Priority 1.6: Rebuild one door whose async textures have arrived
+    if (!didWork && !doorTextureRebuildQueue_.empty() && doorManager_) {
+        uint8_t doorId = doorTextureRebuildQueue_.front();
+        doorTextureRebuildQueue_.erase(doorTextureRebuildQueue_.begin());
+        doorManager_->rebuildSingleDoor(doorId);
+        didWork = true;
+        logAssetBuildTime("door_tex_rebuild", doorId, stepStart);
+        LOG_INFO(MOD_GRAPHICS, "Progressive P1.6: rebuilt door {} with textures (queue: {})",
+                 doorId, doorTextureRebuildQueue_.size());
+    }
+
+    // Priority 1.7: Rebuild one PVS object whose async textures have arrived
+    if (!didWork && !objectTextureRebuildQueue_.empty()) {
+        size_t objIdx = objectTextureRebuildQueue_.front();
+        objectTextureRebuildQueue_.erase(objectTextureRebuildQueue_.begin());
+        if (objIdx < deferredObjects_.size()) {
+            // Find and remove the existing scene node for this deferred object
+            size_t nodeIdx = deferredObjects_[objIdx].nodeIndex;
+            if (nodeIdx != SIZE_MAX && nodeIdx < objectNodes_.size() && objectNodes_[nodeIdx]) {
+                auto* oldNode = objectNodes_[nodeIdx];
+                if (animatedTextureManager_)
+                    animatedTextureManager_->removeSceneNode(oldNode);
+                if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
+                objectNodes_[nodeIdx] = nullptr;
+                if (nodeIdx < objectInSceneGraph_.size())
+                    objectInSceneGraph_[nodeIdx] = false;
+            }
+            deferredObjects_[objIdx].meshBuilt = false;
+            buildDeferredObject(objIdx);
+            didWork = true;
+            logAssetBuildTime("obj_tex_rebuild", objIdx, stepStart);
+            LOG_INFO(MOD_GRAPHICS, "Progressive P1.7: rebuilt object {} with textures (queue: {})",
+                     objIdx, objectTextureRebuildQueue_.size());
+        }
+    }
+
     // Priority 2: Build one PVS neighbor region
     if (!didWork && constrainedMeshCache_) {
         size_t qNeedBuild = 0;
@@ -11498,6 +11621,13 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             // Use rebuildSingleDoor to properly clean up placeholder nodes
             // before building real mesh (direct buildDoorMesh leaks placeholders)
             doorManager_->rebuildSingleDoor(doorId);
+            // Track any textures that were pending async upload
+            const auto& missingDoorTex = doorManager_->getLastMissingTextures();
+            if (!missingDoorTex.empty()) {
+                for (const auto& texName : missingDoorTex) {
+                    pendingTextureDoors_[texName].insert(doorId);
+                }
+            }
             addDoorToCollision(doorId);
             didWork = true;
             logAssetBuildTime("door", doorId, stepStart);

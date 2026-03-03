@@ -919,12 +919,14 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
         // Exception: entities already in-progress — finish them to avoid wasted partial work.
         if (!inProgress && !vis.inSceneGraph) continue;
 
-        // PVS region gate: only build entities in the player's region.
+        // PVS region gate: only build entities near the player's region.
         // Before PVS is active (pvsRegion == SIZE_MAX), skip all non-in-progress entities
         // — entity loading must wait until BSP/PVS culling has run.
+        // Entities with entityPrepComplete (already PVS-depth-gated by prep system)
+        // are eligible regardless of exact BSP region. Without prep, require same-region.
         if (!inProgress && spawnId != playerSpawnId_) {
             if (pvsRegion == SIZE_MAX) continue;
-            if (vis.cachedBspRegion != pvsRegion) continue;
+            if (!vis.entityPrepComplete && vis.cachedBspRegion != pvsRegion) continue;
         }
 
         float dx = vis.lastX - playerX;

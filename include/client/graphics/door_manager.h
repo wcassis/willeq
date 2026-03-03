@@ -156,6 +156,12 @@ public:
     // Get door info (for debugging)
     const DoorVisual* getDoor(uint8_t doorId) const;
 
+    // Get textures that were missing (async pending) during the last findDoorMesh() call
+    const std::vector<std::string>& getLastMissingTextures() const { return lastMissingTextures_; }
+
+    // Invalidate cached mesh for a door model (forces rebuild on next findDoorMesh)
+    void invalidateMeshCache(const std::string& doorName);
+
     // Remove all doors (zone change)
     void clearDoors();
 
@@ -188,6 +194,7 @@ private:
     std::map<uint8_t, DoorVisual> doors_;
     std::set<uint8_t> invisibleDoors_;  // Track invisible doors to suppress state update warnings
     std::unordered_map<std::string, irr::scene::IMesh*> doorMeshCache_;  // Cached meshes by uppercase door name
+    mutable std::vector<std::string> lastMissingTextures_;  // Textures pending async upload from last findDoorMesh
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     std::shared_ptr<S3DZone> currentZone_;
