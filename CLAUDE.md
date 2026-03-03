@@ -8,7 +8,7 @@ WillEQ is a standalone EverQuest client targeting the Titanium client version wi
 
 ## Build Commands
 
-**IMPORTANT: Do NOT use the `-j` flag when building. Always use `cmake --build .` without parallel jobs.**
+**IMPORTANT: `-j$(nproc)` causes problems when executed directly in a Bash tool command (the shell expansion doesn't work reliably in Claude Code interactive sessions). Use a hardcoded value instead, e.g. `cmake --build build -j24` for this 24-core host. If building from a script (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.**
 
 ```bash
 # Configure (from project root)

@@ -115,6 +115,10 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
         file "$OUTPUT_DIR/bin/gles2_derivatives_test"
         ls -lh "$OUTPUT_DIR/bin/gles2_derivatives_test"
     fi
+    if [ -f "$OUTPUT_DIR/bin/gles2_npot_test" ]; then
+        file "$OUTPUT_DIR/bin/gles2_npot_test"
+        ls -lh "$OUTPUT_DIR/bin/gles2_npot_test"
+    fi
     echo ""
     echo "Binaries: $OUTPUT_DIR/bin/willeq"
     echo "          $OUTPUT_DIR/bin/model_viewer"
@@ -123,9 +127,10 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     echo "          $OUTPUT_DIR/bin/egl_image_sharing_test"
     echo "          $OUTPUT_DIR/bin/test_gl_points"
     echo "          $OUTPUT_DIR/bin/gles2_derivatives_test"
+    echo "          $OUTPUT_DIR/bin/gles2_npot_test"
     echo ""
     echo "Deploy to Orange Pi (Armbian Noble):"
-    echo "  scp $OUTPUT_DIR/bin/willeq $OUTPUT_DIR/bin/model_viewer $OUTPUT_DIR/bin/gpu_texture_formats $OUTPUT_DIR/bin/gles2_etc1_benchmark $OUTPUT_DIR/bin/egl_image_sharing_test $OUTPUT_DIR/bin/test_gl_points $OUTPUT_DIR/bin/gles2_derivatives_test orangepi:~/willeq/"
+    echo "  scp $OUTPUT_DIR/bin/willeq $OUTPUT_DIR/bin/model_viewer $OUTPUT_DIR/bin/gpu_texture_formats $OUTPUT_DIR/bin/gles2_etc1_benchmark $OUTPUT_DIR/bin/egl_image_sharing_test $OUTPUT_DIR/bin/test_gl_points $OUTPUT_DIR/bin/gles2_derivatives_test $OUTPUT_DIR/bin/gles2_npot_test orangepi:~/willeq/"
     echo ""
     echo "Run on Orange Pi (DRM/KMS, Lima GPU, Mesa GL 2.1 - no X11 needed):"
     echo "  ./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600"
