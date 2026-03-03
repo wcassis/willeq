@@ -60,9 +60,9 @@ refactoring plan, or were incompletely addressed.
 | ID | Description | Source |
 |----|-------------|--------|
 | C05 | ~~Unbudgeted addTexture() calls: sky, animated textures, trees, storm clouds, detail atlas~~ **DONE**: Added TextureEvictionListener interface to ConstrainedTextureCache. All 5 subsystems (SkyRenderer, AnimatedTextureManager, AnimatedTreeManager, StormCloudLayer, DetailManager) now register textures into the shared LRU cache and handle eviction callbacks. ~4-10 MB previously untracked textures are now evictable under memory pressure. | `b444583` |
-| C06 | Thread safety of budget accounting (no mutex on caches) | Old Issue 3.6 — unchanged, blocks future multi-worker expansion |
-| C07 | DDS decode duplication (ConstrainedTextureCache + TextureDecoder) | NEW |
-| C08 | One loadDisplaySettingsFromFile() call at line 3454 missed by B04 | Residual from B04 |
+| C06 | ~~Thread safety of budget accounting (no mutex on caches)~~ **DONE**: Added `std::mutex` to both `ConstrainedTextureCache` and `ConstrainedMeshCache`. All public methods acquire `mutex_` via `lock_guard`. Lock ordering invariant: `decodedQueueMutex_` (queue only) is never held simultaneously with `mutex_` (all other state). Internal `touchInternal()` and `getPlaceholderTextureInternal()` avoid recursive locking. 16 inline methods in texture cache and 9 in mesh cache moved out-of-line. `getOrLoad()` releases `mutex_` before sync decode path to prevent lock-order inversion with `processUploadQueue()`. | `a8b7001` |
+| C07 | ~~DDS decode duplication (ConstrainedTextureCache + DDSDecoder)~~ **DONE**: Inlined `DDSDecoder::decode()` at call site in `processTextureData()`, removed trivial `decodeDDS()` wrapper method (declaration + implementation). | `7100bc9` |
+| C08 | ~~One loadDisplaySettingsFromFile() call at line 3484 missed by B04~~ **DONE**: Removed dead code block in `preloadDeferredAssets()` that populated `computations->displaySettings` (never read). Removed `DisplaySettingsData` struct and member from `PendingZoneComputations`. | `3a64788` |
 
 ### Low
 
