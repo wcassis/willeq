@@ -73,16 +73,30 @@ public:
     // Get the constrained texture cache (may be nullptr)
     ConstrainedTextureCache* getConstrainedTextureCache() const { return constrainedCache_; }
 
+    // Info about a fallback mesh buffer whose texture was deferred (background mesh building).
+    // Used by the render thread to assign real textures or placeholders after finalization.
+    struct FallbackBufferInfo {
+        irr::u32 bufferIndex;
+        std::string textureName;  // lowercase
+    };
+
+    // Get fallback buffer map from last buildAtlasedMesh(deferTextures=true) call.
+    // Maps buffer indices to texture names that need assignment on the render thread.
+    const std::vector<FallbackBufferInfo>& getFallbackBufferMap() const { return fallbackBufferMap_; }
+
 #ifdef EQT_HAS_TEXTURE_ATLAS
     // Build mesh batched by atlas page — groups all triangles sharing the same
     // atlas page into a single mesh buffer using S3DVertex2TCoords.
     // TCoords = original UVs (for fract() tiling), TCoords2 = atlas tile offset.
     // Textures not in the atlas (animated, missing) fall through to per-texture buffers.
+    // When deferTextures=true, fallback buffers skip texture loading and use white
+    // vertex colors + solid material. Caller must assign textures via getFallbackBufferMap().
     irr::scene::IMesh* buildAtlasedMesh(
         const ZoneGeometry& geometry,
         const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
         const TextureAtlas& atlas,
-        int pageIndexOffset = 0);
+        int pageIndexOffset = 0,
+        bool deferTextures = false);
 #endif
 
     // Set GLSL shader material type IDs (negative = not available, use fixed-function)
@@ -126,6 +140,9 @@ private:
     // GLSL shader material type IDs (-1 = not available)
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
+
+    // Fallback buffer map from last buildAtlasedMesh(deferTextures=true) call
+    std::vector<FallbackBufferInfo> fallbackBufferMap_;
 
 #ifdef EQT_HAS_TEXTURE_ATLAS
     // Atlas-specific shader material type IDs (-1 = not available)

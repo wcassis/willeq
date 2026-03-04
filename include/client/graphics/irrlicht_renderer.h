@@ -8,9 +8,11 @@
 #include <functional>
 #include <vector>
 #include <map>
+#include <mutex>
 #include <unordered_set>
 #include <glm/glm.hpp>
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/equipment_model_loader.h"
@@ -112,6 +114,14 @@ struct RendererEvent {
     RendererEvent(RendererAction a, int8_t d = -1) : action(a), intData(d) {}
 };
 
+// Phase state for zone loading pipeline — tracks whether a phase's deferred/async
+// work has completed before the pipeline advances to the next phase.
+enum class PhaseState : uint8_t {
+    Ready,    // Phase hasn't started yet
+    Running,  // Phase is executing (may have deferred work in flight)
+    Finished  // Phase complete, all deferred work returned — safe to advance
+};
+
 // Deferred environment init steps — one step per GREEN frame
 enum class DeferredInitStep : uint8_t {
     TreeConfig,         // treeManager_->loadConfig()
@@ -125,6 +135,7 @@ enum class DeferredInitStep : uint8_t {
     TumbleweedInit,     // tumbleweedManager_->onZoneEnter()
     WeatherSurface,     // weatherEffects_->setSurfaceMap() + applyEnvironmentalDisplaySettings()
     ReleaseGeometry,    // Release combined zone geometry vectors + governor reset
+    WaitForSimWorker,   // Wait for SimulationWorker's first valid PVS output
     Complete            // Done
 };
 
@@ -1272,7 +1283,12 @@ private:
     std::unordered_set<size_t> pendingVBOUploads_;       // Region indices with VBO uploads in flight
     bool gpuUploadEnabled_ = true;                       // Runtime toggle for /upload command
     void initGPUUploadThread();
-    void processCompletedUploads();
+    void processCompletedUploads();   // Batch mode (loading screen)
+
+    // Split drain/process-one for GREEN-gated post-loading work
+    std::vector<UploadResult> pendingGPUResults_;  // Drained from GPU upload thread
+    void drainGPUResults();       // Cheap queue drain, no GL
+    bool processOneGPUResult();   // Process 1 result (fence wait, register). GREEN-gated.
 #endif
 
     // Particle I/O state for SimulationWorker
@@ -1292,7 +1308,7 @@ private:
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)
     std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
-    std::unique_ptr<TextureAtlas> zoneAtlas_;  // ETC1 texture atlas for zone geometry
+    std::shared_ptr<TextureAtlas> zoneAtlas_;  // ETC1 texture atlas for zone geometry (shared_ptr for bg thread capture)
     std::unique_ptr<TextureAtlas> objAtlas_;   // ETC1 texture atlas for zone objects
     int objAtlasPageOffset_ = 0;              // Offset for object atlas pages in shader's page texture array
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
@@ -1379,6 +1395,41 @@ private:
     };
     std::vector<TextureRebuildEntry> textureRebuildQueue_;
 
+    // Background mesh build result from thread pool
+    struct BackgroundMeshResult {
+        size_t regionIdx;
+        std::string zoneName;
+        irr::scene::SMesh* mesh;
+        std::vector<ZoneMeshBuilder::FallbackBufferInfo> fallbackBuffers;
+        std::vector<std::string> missingTextures;
+        float centerX, centerY, centerZ;
+        float buildTimeMs;
+    };
+
+    std::mutex meshResultMutex_;
+    std::vector<BackgroundMeshResult> meshResultQueue_;
+    std::vector<BackgroundMeshResult> localMeshResults_;  // Drained from meshResultQueue_
+    std::unordered_set<size_t> pendingMeshBuilds_;
+
+    // Material swap: replace placeholder texture with real texture on specific buffers
+    struct MaterialSwapEntry {
+        size_t regionIdx;
+        std::string textureName;
+        irr::video::ITexture* texture;
+        bool hasAlpha;
+    };
+    std::vector<MaterialSwapEntry> materialSwapQueue_;
+
+    // regionIdx → (textureName → buffer indices with placeholder texture)
+    std::unordered_map<size_t, std::unordered_map<std::string, std::vector<irr::u32>>> pendingTextureBuffers_;
+
+    void drainMeshResults();       // Move from meshResultQueue_ to localMeshResults_ (mutex swap)
+    bool finalizeOneMeshResult();  // Add one bg mesh to scene graph (render thread, lightweight)
+    bool processOneMaterialSwap(); // Swap placeholder → real texture on one region
+    bool submitOneBgMeshBuild();   // Submit one region to bg thread pool
+    void updateRegionMaterials(size_t regionIdx, const std::string& textureName,
+                               irr::video::ITexture* texture, bool hasAlpha);
+
     // Doors waiting for async textures to complete GPU upload.
     // Maps texture name → set of door IDs that were built without that texture.
     std::unordered_map<std::string, std::unordered_set<uint8_t>> pendingTextureDoors_;
@@ -1400,6 +1451,7 @@ private:
 
     // Background zone load state machine
     BackgroundZoneLoadPhase backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
+    PhaseState phaseState_ = PhaseState::Ready;
     std::unique_ptr<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>> zoneLoadQueue_;
     std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after poll
     std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;  // CPU-only results from bg thread

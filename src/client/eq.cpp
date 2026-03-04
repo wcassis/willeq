@@ -3005,6 +3005,19 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 			}
 		}
 
+		// Extract safe spawn coordinates (struct offsets 492/496/500, +2 for opcode)
+		if (p.Length() >= 504) {
+			float safe_server_y = p.GetFloat(494);  // safe_y in struct = server Y
+			float safe_server_x = p.GetFloat(498);  // safe_x in struct = server X
+			float safe_z = p.GetFloat(502);         // safe_z
+			// Swap X/Y from server INVERSEXY format to client coords
+			m_safe_x = safe_server_y;
+			m_safe_y = safe_server_x;
+			m_safe_z = safe_z;
+			LOG_DEBUG(MOD_ZONE, "Zone safe coordinates: server=({:.2f},{:.2f},{:.2f}) -> client=({:.2f},{:.2f},{:.2f})",
+			          safe_server_x, safe_server_y, safe_z, m_safe_x, m_safe_y, m_safe_z);
+		}
+
 		// Phase 7.3: Also update WorldState
 		m_game_state.world().setZone(m_current_zone_name, m_current_zone_id);
 

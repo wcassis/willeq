@@ -710,8 +710,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
     const ZoneGeometry& geometry,
     const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
     const TextureAtlas& atlas,
-    int pageIndexOffset) {
+    int pageIndexOffset,
+    bool deferTextures) {
     missingTextures_.clear();
+    fallbackBufferMap_.clear();
 
     if (geometry.vertices.empty() || geometry.triangles.empty()) {
         return nullptr;
@@ -827,10 +829,14 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         if (bucket.triangleIndices.empty()) continue;
 
         // Get the atlas page GL texture handle
-        uint32_t glTexHandle = atlas.getPageTexture(static_cast<uint16_t>(pageIdx));
-        if (glTexHandle == 0) {
-            LOG_WARN(MOD_GRAPHICS, "buildAtlasedMesh: No GL texture for atlas page {}", pageIdx);
-            continue;
+        // When deferTextures is true (background thread), skip this check —
+        // the shader callback handles missing pages, and GL textures aren't accessible off-thread.
+        if (!deferTextures) {
+            uint32_t glTexHandle = atlas.getPageTexture(static_cast<uint16_t>(pageIdx));
+            if (glTexHandle == 0) {
+                LOG_WARN(MOD_GRAPHICS, "buildAtlasedMesh: No GL texture for atlas page {}", pageIdx);
+                continue;
+            }
         }
 
         // Split into sub-buffers for 16-bit index limit
@@ -971,24 +977,29 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         if (triIndices.empty()) continue;
 
         std::string texName;
+        std::string lowerTexName;
         irr::video::ITexture* texture = nullptr;
 
         if (texIdx < geometry.textureNames().size()) {
             texName = geometry.textureNames()[texIdx];
             if (!texName.empty()) {
-                std::string lowerTexName = texName;
+                lowerTexName = texName;
                 std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
-                auto texIt = textures.find(lowerTexName);
-                if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                    texture = loadTextureFromBMP(texName, texIt->second->data);
-                }
-                if (!texture && constrainedCache_) {
-                    texture = constrainedCache_->getTexture(lowerTexName);
-                    if (!texture) texture = constrainedCache_->getTexture(texName);
+
+                if (!deferTextures) {
+                    // Synchronous path: load texture now
+                    auto texIt = textures.find(lowerTexName);
+                    if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                        texture = loadTextureFromBMP(texName, texIt->second->data);
+                    }
+                    if (!texture && constrainedCache_) {
+                        texture = constrainedCache_->getTexture(lowerTexName);
+                        if (!texture) texture = constrainedCache_->getTexture(texName);
+                    }
                 }
 
-                // Record textures that resolved to null (async GPU upload still pending)
+                // Record textures that resolved to null (async GPU upload still pending, or deferred)
                 if (!texture && !lowerTexName.empty()) {
                     missingTextures_.push_back(lowerTexName);
                 }
@@ -1000,28 +1011,45 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         std::unordered_map<uint64_t, irr::u16> globalToLocal;
         irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
-        buffer->Material.BackfaceCulling = false;
-        buffer->Material.Lighting = false;
-        if (texture) {
-            buffer->Material.setTexture(0, texture);
-            bool hasAlpha = (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
-            if (hasAlpha) {
-                if (shaderMaterialAlphaTest_ >= 0) {
-                    buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+        // Helper lambda to set up fallback buffer material
+        auto setupFallbackMaterial = [&](irr::scene::SMeshBuffer* buf) {
+            buf->Material.BackfaceCulling = false;
+            buf->Material.Lighting = false;
+            if (texture) {
+                buf->Material.setTexture(0, texture);
+                bool hasAlpha = (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
+                if (hasAlpha) {
+                    if (shaderMaterialAlphaTest_ >= 0) {
+                        buf->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    } else {
+                        buf->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    }
                 } else {
-                    buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    if (shaderMaterialSolid_ >= 0) {
+                        buf->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                    } else {
+                        buf->Material.MaterialType = irr::video::EMT_SOLID;
+                    }
                 }
-            } else {
+                buf->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                buf->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+                buf->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+            } else if (deferTextures) {
+                // Deferred mode: use solid shader, no texture assigned yet
                 if (shaderMaterialSolid_ >= 0) {
-                    buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                    buf->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
                 } else {
-                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                    buf->Material.MaterialType = irr::video::EMT_SOLID;
                 }
+                buf->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                buf->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
+                buf->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
             }
-            buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-            buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
-            buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
-        }
+        };
+
+        setupFallbackMaterial(buffer);
+        // Track initial buffer index for fallback recording
+        irr::u32 fallbackBufferStartIdx = mesh->getMeshBufferCount();
 
         for (size_t triIdx : triIndices) {
             const auto& tri = geometry.triangles[triIdx];
@@ -1030,19 +1058,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
             if (buffer->Vertices.size() + 3 > MAX_VERTICES_PER_BUFFER) {
                 buffer->recalculateBoundingBox();
                 mesh->addMeshBuffer(buffer);
+                // Record fallback buffer info for deferred texture assignment
+                if (deferTextures && !texture && !lowerTexName.empty()) {
+                    fallbackBufferMap_.push_back({mesh->getMeshBufferCount() - 1, lowerTexName});
+                }
                 buffer->drop();
                 buffer = new irr::scene::SMeshBuffer();
-                buffer->Material.BackfaceCulling = false;
-                buffer->Material.Lighting = false;
-                if (texture) {
-                    buffer->Material.setTexture(0, texture);
-                    if (shaderMaterialSolid_ >= 0) {
-                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
-                    }
-                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-                    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
-                    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
-                }
+                setupFallbackMaterial(buffer);
                 globalToLocal.clear();
             }
 
@@ -1073,7 +1095,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
                     vertex.Normal.Z = v.ny;
                     vertex.TCoords.X = v.u - static_cast<float>(cellU);
                     vertex.TCoords.Y = v.v - static_cast<float>(cellV);
-                    vertex.Color = texture ? irr::video::SColor(255, 255, 255, 255)
+                    // In deferred mode with no texture: white vertices (placeholder)
+                    vertex.Color = (texture || deferTextures) ? irr::video::SColor(255, 255, 255, 255)
                                            : heightToColor(v.z, geometry.minZ, geometry.maxZ);
 
                     irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
@@ -1087,6 +1110,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         if (!buffer->Indices.empty()) {
             buffer->recalculateBoundingBox();
             mesh->addMeshBuffer(buffer);
+            // Record final fallback buffer info
+            if (deferTextures && !texture && !lowerTexName.empty()) {
+                fallbackBufferMap_.push_back({mesh->getMeshBufferCount() - 1, lowerTexName});
+            }
         }
         buffer->drop();
     }

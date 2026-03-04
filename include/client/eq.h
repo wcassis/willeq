@@ -1378,6 +1378,7 @@ private:
 	uint8_t m_zone_fog_blue[4] = {0};
 	float m_zone_fog_minclip[4] = {0};     // Fog min clip distances
 	float m_zone_fog_maxclip[4] = {0};     // Fog max clip distances
+	float m_safe_x = 0, m_safe_y = 0, m_safe_z = 0;  // Zone safe coordinates (client coords)
 
 	std::vector<glm::vec3> m_current_path;
 	size_t m_current_path_index = 0;

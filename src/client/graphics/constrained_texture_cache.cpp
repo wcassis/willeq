@@ -519,6 +519,136 @@ int ConstrainedTextureCache::processUploadQueue() {
     return uploaded;
 }
 
+void ConstrainedTextureCache::drainDecodedQueue() {
+    std::vector<DecodedUpload> batch;
+    {
+        std::lock_guard<std::mutex> dqLock(decodedQueueMutex_);
+        if (decodedQueue_.empty()) return;
+        batch.swap(decodedQueue_);
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& item : batch)
+        stagedUploads_.push_back(std::move(item));
+}
+
+bool ConstrainedTextureCache::processOneUpload() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stagedUploads_.empty()) return false;
+
+    auto item = std::move(stagedUploads_.front());
+    stagedUploads_.erase(stagedUploads_.begin());
+
+    // Clear from pending decode set
+    pendingDecodes_.erase(item.name);
+
+    // Sentinel: empty pixels means decode failed — just clean up
+    if (item.rgbaPixels.empty()) {
+        return true;  // consumed work
+    }
+
+    // Already in cache (raced with another upload path)
+    if (cache_.find(item.name) != cache_.end()) {
+        touchInternal(item.name);
+        return true;
+    }
+
+    // Budget check: calculate size and evict if needed
+    size_t textureSize = calculateTextureSize(item.width, item.height);
+    if (!evictUntilAvailable(textureSize)) {
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache processOne: budget exhausted, dropping '{}' (need {} bytes, budget {} bytes, used {} bytes)",
+            item.name, textureSize, config_.textureMemoryBytes, currentUsage_);
+        return true;
+    }
+
+#ifdef EQT_HAS_GLES2
+    // GLES2 async path: submit to GPU upload thread
+    if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
+        UploadRequest req;
+        req.type = UploadRequestType::Texture;
+        req.width = static_cast<uint32_t>(item.width);
+        req.height = static_cast<uint32_t>(item.height);
+        req.pixelData = std::move(item.rgbaPixels);
+        req.textureName = item.name;
+        // High byte 3 = constrained cache texture (unified path)
+        req.callbackKey = uint64_t(3) << 56;
+        req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
+
+        gpuUploadThread_->submit(std::move(req));
+        pendingAsyncUploads_.insert(item.name);
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache processOne: queued GPU upload for '{}' ({}x{})",
+                  item.name, item.width, item.height);
+        return true;
+    }
+#endif
+
+    // Desktop GL / software: synchronous upload via driver_->addTexture()
+    // Convert RGBA to ARGB (Irrlicht's native format)
+    std::vector<uint8_t> argbData(item.rgbaPixels.size());
+    for (size_t i = 0; i < item.rgbaPixels.size(); i += 4) {
+        argbData[i + 0] = item.rgbaPixels[i + 2];  // B
+        argbData[i + 1] = item.rgbaPixels[i + 1];  // G
+        argbData[i + 2] = item.rgbaPixels[i + 0];  // R
+        argbData[i + 3] = item.rgbaPixels[i + 3];  // A
+    }
+
+    irr::core::dimension2d<irr::u32> size(item.width, item.height);
+    irr::video::IImage* image = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
+
+    irr::video::ITexture* texture = nullptr;
+    if (image) {
+        texture = driver_->addTexture(item.name.c_str(), image);
+        image->drop();
+    }
+
+    if (!texture) {
+        LOG_DEBUG(MOD_GRAPHICS, "Constrained cache processOne: addTexture failed for '{}' ({}x{})",
+                  item.name, item.width, item.height);
+        return true;
+    }
+
+#ifdef EQT_HAS_DRM
+    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
+    {
+        irr::u32 glName = texture->getDriverTextureHandle();
+        if (glName != 0) {
+            glBindTexture(GL_TEXTURE_2D, glName);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            if (config_.enableMipmaps) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            } else {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            }
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
+#endif
+
+    // Register in LRU cache
+    lruOrder_.push_back(item.name);
+    CachedTexture entry;
+    entry.texture = texture;
+    entry.sizeBytes = textureSize;
+    entry.hasAlpha = item.hasAlpha;
+    entry.lruIterator = std::prev(lruOrder_.end());
+    cache_[item.name] = entry;
+    currentUsage_ += textureSize;
+
+    // Also register in mesh builder for entity texture lookups
+    if (meshBuilder_) {
+        meshBuilder_->registerUploadedTexture(item.name, texture, item.hasAlpha);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Constrained cache processOne: uploaded '{}' {}x{} ({} bytes)",
+              item.name, item.width, item.height, textureSize);
+    return true;
+}
+
+size_t ConstrainedTextureCache::getStagedUploadCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return stagedUploads_.size();
+}
+
 bool ConstrainedTextureCache::isPending(const std::string& name) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return pendingDecodes_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;

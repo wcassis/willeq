@@ -610,6 +610,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (gpuUploadThread_)
             constrainedTextureCache_->setGPUUploadThread(gpuUploadThread_.get());
 #endif
+        // Pre-create placeholder texture before render loop starts
+        constrainedTextureCache_->getPlaceholderTexture();
         LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
                  config_.constrainedConfig.textureMemoryBytes / 1024,
                  config_.constrainedConfig.maxTextureDimension,
@@ -1171,6 +1173,213 @@ void IrrlichtRenderer::processCompletedUploads() {
                       return a.distanceSq < b.distanceSq;
                   });
     }
+}
+
+void IrrlichtRenderer::drainGPUResults() {
+    if (!gpuUploadThread_ || !gpuUploadThread_->isAvailable())
+        return;
+
+    auto results = gpuUploadThread_->pollResults();
+    for (auto& r : results)
+        pendingGPUResults_.push_back(std::move(r));
+}
+
+bool IrrlichtRenderer::processOneGPUResult() {
+    if (pendingGPUResults_.empty()) return false;
+
+    auto result = std::move(pendingGPUResults_.front());
+    pendingGPUResults_.erase(pendingGPUResults_.begin());
+
+    // Resolve EGL fence wait function pointer (cached, one-time)
+    static auto eglClientWaitSyncKHR = reinterpret_cast<PFNEGLCLIENTWAITSYNCKHRPROC>(
+        eglGetProcAddress("eglClientWaitSyncKHR"));
+    static auto eglDestroySyncKHR = reinterpret_cast<PFNEGLDESTROYSYNCKHRPROC>(
+        eglGetProcAddress("eglDestroySyncKHR"));
+
+    EGLDisplay display = gpuUploadThread_->getEGLDisplay();
+
+    // Wait on GPU fence (should be near-instant if upload already finished)
+    if (result.fence != EGL_NO_SYNC_KHR && eglClientWaitSyncKHR && eglDestroySyncKHR) {
+        EGLint waitResult = eglClientWaitSyncKHR(display, result.fence,
+                                                  EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
+                                                  EGL_FOREVER_KHR);
+        if (waitResult == EGL_FALSE) {
+            LOG_WARN(MOD_GRAPHICS, "GPUUpload processOne: fence wait failed for request {}", result.requestId);
+        }
+        eglDestroySyncKHR(display, result.fence);
+    }
+
+    switch (result.type) {
+        case UploadRequestType::Texture:
+        case UploadRequestType::CompressedTexture: {
+            // Wrap the externally-uploaded GL texture as an Irrlicht ITexture
+            irr::video::ITexture* wrappedTex = nullptr;
+            if (result.glTextureName != 0 && !result.textureName.empty()) {
+                wrappedTex = static_cast<irr::video::ITexture*>(
+                    gles2WrapTexture(driver_, result.textureName.c_str(),
+                                     result.glTextureName,
+                                     result.width, result.height,
+                                     result.gpuBytes));
+                LOG_DEBUG(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' ready ({}x{}, {} bytes)",
+                          result.textureName, result.width, result.height, result.gpuBytes);
+            }
+
+            // Route based on high byte of callbackKey
+            uint8_t sourceType = static_cast<uint8_t>(result.callbackKey >> 56);
+
+            if (sourceType == 3) {
+                // Unified constrained cache texture (zone + entity textures)
+                if (wrappedTex && constrainedTextureCache_) {
+                    size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
+                    constrainedTextureCache_->registerTexture(result.textureName, wrappedTex, texSize, false);
+                    constrainedTextureCache_->clearPendingAsync(result.textureName);
+
+                    // Also register in mesh builder so entity SceneNodeCreation finds it
+                    if (entityRenderer_) {
+                        auto* meshBuilder = entityRenderer_->getMeshBuilder();
+                        if (meshBuilder) {
+                            meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
+                        }
+                    }
+
+                    // Check if any regions were waiting for this texture → material swap queue
+                    auto pendIt = pendingTextureRegions_.find(result.textureName);
+                    if (pendIt != pendingTextureRegions_.end()) {
+                        // Check if we have pendingTextureBuffers_ entries for material swap
+                        bool usedMaterialSwap = false;
+                        for (size_t regionIdx : pendIt->second) {
+                            auto ptbIt = pendingTextureBuffers_.find(regionIdx);
+                            if (ptbIt != pendingTextureBuffers_.end()) {
+                                auto bufIt = ptbIt->second.find(result.textureName);
+                                if (bufIt != ptbIt->second.end() && !bufIt->second.empty()) {
+                                    bool texHasAlpha = constrainedTextureCache_->hasAlpha(result.textureName);
+                                    materialSwapQueue_.push_back({regionIdx, result.textureName, wrappedTex, texHasAlpha});
+                                    usedMaterialSwap = true;
+                                    continue;
+                                }
+                            }
+                            // No buffer map → fall back to full rebuild (textureRebuildQueue_)
+                            bool alreadyQueued = false;
+                            for (const auto& entry : textureRebuildQueue_) {
+                                if (entry.regionIdx == regionIdx) {
+                                    alreadyQueued = true;
+                                    break;
+                                }
+                            }
+                            if (!alreadyQueued) {
+                                float distSq = 0.0f;
+                                auto bbIt = regionBoundingBoxes_.find(regionIdx);
+                                if (bbIt != regionBoundingBoxes_.end()) {
+                                    auto center = bbIt->second.getCenter();
+                                    float dx = center.X - playerX_;
+                                    float dy = center.Y - playerY_;
+                                    distSq = dx * dx + dy * dy;
+                                }
+                                if (regionIdx == currentPvsRegion_) distSq = -1.0f;
+                                textureRebuildQueue_.push_back({regionIdx, distSq});
+                            }
+                        }
+                        if (usedMaterialSwap) {
+                            LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued material swaps for regions",
+                                     result.textureName);
+                        } else {
+                            LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} regions for rebuild",
+                                     result.textureName, pendIt->second.size());
+                        }
+                        pendingTextureRegions_.erase(pendIt);
+                    }
+
+                    // Doors waiting for this texture
+                    auto doorPendIt = pendingTextureDoors_.find(result.textureName);
+                    if (doorPendIt != pendingTextureDoors_.end()) {
+                        for (uint8_t doorId : doorPendIt->second) {
+                            if (doorManager_) {
+                                const auto* dv = doorManager_->getDoor(doorId);
+                                if (dv) doorManager_->invalidateMeshCache(dv->modelName);
+                            }
+                            if (std::find(doorTextureRebuildQueue_.begin(),
+                                          doorTextureRebuildQueue_.end(), doorId) == doorTextureRebuildQueue_.end()) {
+                                doorTextureRebuildQueue_.push_back(doorId);
+                            }
+                        }
+                        LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} doors for rebuild",
+                                 result.textureName, doorPendIt->second.size());
+                        pendingTextureDoors_.erase(doorPendIt);
+                    }
+
+                    // PVS objects waiting for this texture
+                    auto objPendIt = pendingTextureObjects_.find(result.textureName);
+                    if (objPendIt != pendingTextureObjects_.end()) {
+                        for (size_t objIdx : objPendIt->second) {
+                            if (std::find(objectTextureRebuildQueue_.begin(),
+                                          objectTextureRebuildQueue_.end(), objIdx) == objectTextureRebuildQueue_.end()) {
+                                objectTextureRebuildQueue_.push_back(objIdx);
+                            }
+                        }
+                        LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} objects for rebuild",
+                                 result.textureName, objPendIt->second.size());
+                        pendingTextureObjects_.erase(objPendIt);
+                    }
+                }
+            } else if (sourceType == 4) {
+                // Icon texture — register in icon loader cache
+                uint32_t iconId = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
+                if (wrappedTex && windowManager_) {
+                    auto& iconLoader = windowManager_->getIconLoader();
+                    iconLoader.registerAsyncIcon(iconId, wrappedTex);
+                    iconLoader.clearPendingAsyncIcon(iconId);
+                    if (constrainedTextureCache_) {
+                        std::string texName = "icon_" + std::to_string(iconId);
+                        size_t iconBytes = 40 * 40 * 4;
+                        constrainedTextureCache_->registerTexture(texName, wrappedTex, iconBytes, true);
+                    }
+                }
+            } else {
+                // Atlas texture (sourceType 0 or 1, legacy encoding)
+                uint32_t atlasType = static_cast<uint32_t>(result.callbackKey >> 32);
+                uint32_t pageIndex = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
+                TextureAtlas* atlas = (atlasType == 0) ? zoneAtlas_.get() : objAtlas_.get();
+                if (atlas && result.glTextureName != 0) {
+                    atlas->setPageTexture(static_cast<int>(pageIndex),
+                                           result.glTextureName, result.gpuBytes);
+                }
+            }
+            break;
+        }
+
+        case UploadRequestType::VertexBuffer: {
+            uint32_t bufferIdx = static_cast<uint32_t>(result.callbackKey >> 48);
+            size_t regionIdx = static_cast<size_t>(result.callbackKey & 0xFFFFFFFFFFFFULL);
+            auto it = regionMeshNodes_.find(regionIdx);
+            if (it != regionMeshNodes_.end() && it->second) {
+                irr::scene::IMesh* mesh = it->second->getMesh();
+                if (mesh && bufferIdx < mesh->getMeshBufferCount()) {
+                    irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bufferIdx);
+                    if (buf) {
+                        gles2RegisterExternalHWBuffer(
+                            driver_, buf,
+                            result.vbo, result.ebo,
+                            result.vertexCount, result.indexCount,
+                            static_cast<int>(buf->getVertexType()));
+                        LOG_DEBUG(MOD_GRAPHICS, "GPUUpload processOne: VBO for region {} buf {} ready (verts={}, indices={})",
+                                  regionIdx, bufferIdx, result.vertexCount, result.indexCount);
+                    }
+                }
+            }
+            pendingVBOUploads_.erase(regionIdx);
+            break;
+        }
+    }
+
+    // Sort texture rebuild queue: player's region first (distSq=-1), then nearest
+    if (!textureRebuildQueue_.empty()) {
+        std::sort(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
+                  [](const TextureRebuildEntry& a, const TextureRebuildEntry& b) {
+                      return a.distanceSq < b.distanceSq;
+                  });
+    }
+
+    return true;
 }
 #endif // EQT_HAS_GLES2
 
@@ -2133,6 +2342,22 @@ void IrrlichtRenderer::unloadZone() {
     pendingTextureObjects_.clear();
     objectTextureRebuildQueue_.clear();
 
+    // Clean up background mesh build state
+    pendingTextureBuffers_.clear();
+    pendingMeshBuilds_.clear();
+    materialSwapQueue_.clear();
+    localMeshResults_.clear();
+#ifdef EQT_HAS_GLES2
+    pendingGPUResults_.clear();
+#endif
+    {
+        std::lock_guard<std::mutex> lock(meshResultMutex_);
+        for (auto& r : meshResultQueue_) {
+            if (r.mesh) r.mesh->drop();
+        }
+        meshResultQueue_.clear();
+    }
+
     // Clear occlusion culler data
     if (occlusionCuller_) {
         occlusionCuller_->clearOccluders();
@@ -2626,6 +2851,7 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
 
     progressiveLoadingActive_ = true;
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+    phaseState_ = PhaseState::Ready;
     skyTexUploadIndex_ = 0;
     doorRebuildIndex_ = 0;
     doorRebuildList_.clear();
@@ -3228,6 +3454,7 @@ void IrrlichtRenderer::advanceBspPreload() {
         buildZonePlaceholder(playerX_, playerZ_, playerY_);
         setupHCMapCollision();
     }
+
 }
 
 void IrrlichtRenderer::setupHCMapCollision() {
@@ -3648,6 +3875,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
     // set in constructor. loadConfig() that modifies patterns runs during DeferredInitStep::TreeConfig,
     // which is well after the background thread is joined.
     const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
+    bool hasGpuShaders = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
     bool isManualMode = manualLoadMode_;
 
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
@@ -3659,7 +3887,7 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
          deferredAssetLoading, lazyPfsLoading,
          enableAtlas, atlasPathCopy, zoneNameCopy,
          eqClientPathCopy, meshMemoryBudget,
-         treeIdentifier, isManualMode,
+         treeIdentifier, hasGpuShaders, isManualMode,
          skipObjectBuild, skyRendering, skyDomeMode](ZoneLoadRequest&&) -> ZoneLoadResult {
         // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
         //    and objects based on mode
@@ -3776,12 +4004,13 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                     if (!objInstance.geometry || !objInstance.placeable) continue;
 
                     // Tree filter using captured const TreeIdentifier
+                    // Only skip trees on software path — GPU path keeps them for wind shader
                     if (treeIdentifier) {
                         const std::string& objName = objInstance.placeable->getName();
                         std::string primaryTexture;
                         if (!objInstance.geometry->textureNames().empty())
                             primaryTexture = objInstance.geometry->textureNames()[0];
-                        if (treeIdentifier->isTreeMesh(objName, primaryTexture))
+                        if (treeIdentifier->isTreeMesh(objName, primaryTexture) && !hasGpuShaders)
                             continue;
                     }
 
@@ -3921,11 +4150,13 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     // ── Loading: poll background work queue (no GREEN gate) ────────────────
     case BackgroundZoneLoadPhase::Loading: {
+        phaseState_ = PhaseState::Running;
         ZoneLoadResult zoneResult;
         if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(zoneResult)) {
             zoneLoadQueue_->stop();
             zoneLoadQueue_.reset();
 
+            phaseState_ = PhaseState::Finished;
             if (pendingZoneData_) {
                 backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Notify;
                 LOG_INFO(MOD_GRAPHICS, "S3D data + computations received on main thread for zone '{}'",
@@ -3942,6 +4173,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── DataReady sub-steps ──────────────────────────────────────────────
 
     case BackgroundZoneLoadPhase::DataReady_Notify: {
+        phaseState_ = PhaseState::Running;
         // Install zone data and notify subsystems
         currentZone_ = pendingZoneData_;
         pendingZoneData_.reset();
@@ -3953,19 +4185,23 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
         }
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_EntityRenderer;
         logAssetBuildTime("data_notify", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_EntityRenderer: {
+        phaseState_ = PhaseState::Running;
         createEntityRenderer();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_ArchiveIndex;
         logAssetBuildTime("entity_renderer_init", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_ArchiveIndex: {
+        phaseState_ = PhaseState::Running;
         // Wait for deferred work queue if still processing (manual mode)
         if (deferredWorkQueue_ && !deferredWorkQueue_->isIdle()) {
             break;  // Spin until deferred background work finishes
@@ -3987,24 +4223,28 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                      graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
         }
         // No eager fallback — entities use placeholders via lazy-init if index build fails
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_GlobalAssets;
         logAssetBuildTime("archive_index", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_GlobalAssets: {
+        phaseState_ = PhaseState::Running;
         // Global character archives are no longer pre-loaded on the background thread.
         // RaceModelLoader and EquipmentModelLoader self-init lazily when first needed.
         if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
             entityRenderer_->getRaceModelLoader()->setCurrentZone(currentZoneName_);
         }
         if (networkTickCallback_) networkTickCallback_();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Equipment;
         logAssetBuildTime("global_assets", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Equipment: {
+        phaseState_ = PhaseState::Running;
         // Adopt pre-built equipment index from background thread (no file I/O here)
         if (pendingZoneComputations_ && pendingZoneComputations_->equipmentIndex &&
             pendingZoneComputations_->equipmentIndex->loaded && entityRenderer_) {
@@ -4017,12 +4257,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
         }
         if (networkTickCallback_) networkTickCallback_();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_DoorManager;
         logAssetBuildTime("equipment_models", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_DoorManager: {
+        phaseState_ = PhaseState::Running;
         if (!doorManager_) {
             doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
             if (constrainedTextureCache_) {
@@ -4033,12 +4275,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             doorManager_->setPvsRegion(currentPvsRegion_);
             if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_SkyCreate;
         logAssetBuildTime("door_manager_init", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_SkyCreate: {
+        phaseState_ = PhaseState::Running;
         bool hasBgData = pendingZoneComputations_ && pendingZoneComputations_->skyLoadData &&
                          pendingZoneComputations_->skyLoadData->skyLoader;
         if (!skyRenderer_) {
@@ -4073,12 +4317,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                       pendingZoneComputations_->skyLoadData->preDecodedTextures.size(),
                       pendingZoneComputations_->skyLoadData->precomputedDome ? "yes" : "no");
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_DetailManager;
         logAssetBuildTime("sky_create", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_DetailManager: {
+        phaseState_ = PhaseState::Running;
         if (!detailManager_) {
             auto detailSettings = getDisplaySettings();
             if (detailSettings.detailObjectsEnabled) {
@@ -4090,12 +4336,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
             }
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_ModelView;
         logAssetBuildTime("detail_manager_init", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_ModelView: {
+        phaseState_ = PhaseState::Running;
         // Model view init deferred to first inventory open (saves ~21ms during zone-in)
         // Just store the loader pointers so WindowManager can lazy-init later
         if (windowManager_ && entityRenderer_) {
@@ -4104,12 +4352,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                                                entityRenderer_->getEquipmentModelLoader());
         }
         LOG_INFO(MOD_GRAPHICS, "Model view deps stored (deferred to first inventory open)");
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
         logAssetBuildTime("model_view_deps", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare: {
+        phaseState_ = PhaseState::Running;
         // Sky type config lookups only (no GL, no scene nodes) — ~2ms
         if (storedZoneEnvironment_.pending) {
             if (skyRenderer_ && skyRenderer_->isInitialized()) {
@@ -4122,12 +4372,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 skyRenderer_->setEnabled(!isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering);
             }
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_FogSetup;
         logAssetBuildTime("env_sky_prepare", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_FogSetup: {
+        phaseState_ = PhaseState::Running;
         // Fog + clip plane + render distance (has GL call) — ~5-8ms
         if (storedZoneEnvironment_.pending) {
             zoneMaxClip_ = (storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
@@ -4145,12 +4397,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                                 fogStart, fogEnd, 0.0f, true, false);
             }
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_WeatherApply;
         logAssetBuildTime("env_fog_setup", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_WeatherApply: {
+        phaseState_ = PhaseState::Running;
         // Weather config apply (no GL, no file I/O — pre-loaded on background thread) — ~1ms
         if (storedZoneEnvironment_.pending && weatherSystem_) {
             if (pendingZoneComputations_ && pendingZoneComputations_->weatherConfig &&
@@ -4162,12 +4416,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             LOG_INFO(MOD_GRAPHICS, "Applied zone environment config (sky={}, ztype={})",
                      storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyTextures;
         logAssetBuildTime("env_weather_apply", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_SkyTextures: {
+        phaseState_ = PhaseState::Running;
         // Upload pre-decoded sky textures from background thread to GPU.
         // On first entry skyTexUploadIndex_ is 0; repeats until all are uploaded.
 
@@ -4180,6 +4436,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
             LOG_INFO(MOD_GRAPHICS, "Sky texture upload skipped (skipSkyTextureUpload=true)");
             skyTexUploadIndex_ = 0;
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyRelease;
             logAssetBuildTime("env_sky_textures_skipped", 0, stepStart);
             break;
@@ -4263,23 +4520,27 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             logAssetBuildTime("env_sky_textures", 0, stepStart);
         }
         skyTexUploadIndex_ = 0;
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyRelease;
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_SkyRelease: {
+        phaseState_ = PhaseState::Running;
         // Free the pre-decoded sky texture pixel data (already uploaded to GPU).
         // Keep skyLoadData alive — precomputedDome is needed by DataReady_Env_SkyDome.
         if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
             pendingZoneComputations_->skyLoadData->preDecodedTextures.clear();
             pendingZoneComputations_->skyLoadData->preDecodedTextures.shrink_to_fit();
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyDome;
         logAssetBuildTime("env_sky_release", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_SkyDome: {
+        phaseState_ = PhaseState::Running;
         // Create dome mesh node from pre-computed vertex/index data + set material.
         // Texture lookups hit cache (uploaded in env_sky_textures phase).
         if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isSkyPrepared()) {
@@ -4309,22 +4570,26 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             pendingZoneComputations_->skyLoadData->precomputedDome.reset();
             pendingZoneComputations_->skyLoadData->precomputedWldDome.reset();
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials;
         logAssetBuildTime("env_sky_dome", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials: {
+        phaseState_ = PhaseState::Running;
         // Create sun/moon billboard scene nodes (texture lookups are cache hits).
         if (skyRenderer_ && skyRenderer_->isInitialized()) {
             skyRenderer_->createCelestialBodiesOnly();
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyColors;
         logAssetBuildTime("env_sky_celestials", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::DataReady_Env_SkyColors: {
+        phaseState_ = PhaseState::Running;
         // Calculate sky colors + update vertex alpha + celestial positions.
         if (skyRenderer_ && skyRenderer_->isInitialized()) {
             skyRenderer_->applyInitialColors();
@@ -4337,6 +4602,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
             pendingZoneComputations_->skyLoadData.reset();
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Zone_Upload;
         logAssetBuildTime("env_sky_colors", 0, stepStart);
         break;
@@ -4345,10 +4611,11 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── Atlas sub-steps (preloaded on bg thread, 1 GL page upload per GREEN frame) ──
 
     case BackgroundZoneLoadPhase::Atlas_Zone_Upload: {
+        phaseState_ = PhaseState::Running;
         if (pendingZoneComputations_ && pendingZoneComputations_->zoneAtlasPreload.valid) {
             auto& preload = pendingZoneComputations_->zoneAtlasPreload;
             if (!zoneAtlas_) {
-                zoneAtlas_ = std::make_unique<TextureAtlas>();
+                zoneAtlas_ = std::make_shared<TextureAtlas>();
                 atlasZonePageIndex_ = 0;
             }
 #ifdef EQT_HAS_GLES2
@@ -4362,10 +4629,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             if (!done) {
                 break;  // Stay in this phase — more pages to upload
             }
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Zone_Finalize;
         } else {
             // No zone atlas preloaded — skip
             zoneAtlas_.reset();
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Object_Upload;
             logAssetBuildTime("atlas_zone_skip", 0, stepStart);
         }
@@ -4373,17 +4642,20 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::Atlas_Zone_Finalize: {
+        phaseState_ = PhaseState::Running;
         if (zoneAtlas_ && pendingZoneComputations_) {
             zoneAtlas_->finalizePreload(pendingZoneComputations_->zoneAtlasPreload);
             LOG_INFO(MOD_GRAPHICS, "Zone atlas finalized: {} pages, {} tiles",
                      zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Object_Upload;
         logAssetBuildTime("atlas_zone_finalize", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Atlas_Object_Upload: {
+        phaseState_ = PhaseState::Running;
         if (pendingZoneComputations_ && pendingZoneComputations_->objAtlasPreload.valid) {
             auto& preload = pendingZoneComputations_->objAtlasPreload;
             if (!objAtlas_) {
@@ -4401,10 +4673,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             if (!done) {
                 break;  // Stay in this phase — more pages to upload
             }
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Object_Finalize;
         } else {
             // No object atlas preloaded — skip
             objAtlas_.reset();
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Shader;
             logAssetBuildTime("atlas_obj_skip", 0, stepStart);
         }
@@ -4412,17 +4686,20 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::Atlas_Object_Finalize: {
+        phaseState_ = PhaseState::Running;
         if (objAtlas_ && pendingZoneComputations_) {
             objAtlas_->finalizePreload(pendingZoneComputations_->objAtlasPreload);
             LOG_INFO(MOD_GRAPHICS, "Object atlas finalized: {} pages, {} tiles",
                      objAtlas_->getPageCount(), objAtlas_->getTileCount());
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Shader;
         logAssetBuildTime("atlas_obj_finalize", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Atlas_Shader: {
+        phaseState_ = PhaseState::Running;
         // Set shader page textures for zone atlas
         if (zoneAtlas_ && zoneAtlas_->isLoaded() && zoneShader_ && zoneShader_->isAtlasAvailable()) {
             std::vector<uint32_t> pageTextures;
@@ -4450,6 +4727,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         glActiveTexture(GL_TEXTURE0);
 #endif
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InstallBsp;
         logAssetBuildTime("atlas_shader", 0, stepStart);
         break;
@@ -4458,12 +4736,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── Region mesh sub-steps ────────────────────────────────────────────
 
     case BackgroundZoneLoadPhase::RegionMesh_InstallBsp: {
+        phaseState_ = PhaseState::Running;
         if (!currentZone_ || !currentZone_->wldLoader) {
             LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no zone or WLD loader");
             // Compute combined geometry on-demand if it was skipped during S3D parse
             if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
                 currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
             createZoneMesh();  // Fall back to combined mesh
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
             break;
         }
@@ -4477,6 +4757,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
                 currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
             createZoneMesh();
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
             break;
         }
@@ -4526,12 +4807,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             doorManager_->setFrustumCuller(frustumCuller_.get());
         }
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InitCache;
         logAssetBuildTime("region_install_bsp", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::RegionMesh_InitCache: {
+        phaseState_ = PhaseState::Running;
         auto wldLoader = currentZone_->wldLoader;
         auto bspTree = wldLoader->getBspTree();
 
@@ -4563,6 +4846,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 LOG_INFO(MOD_GRAPHICS, "Lazy mode: registered {} regions (no meshes built yet, pre-built)",
                          regionBoundingBoxes_.size());
                 regionMeshCacheInstallStarted_ = false;
+                phaseState_ = PhaseState::Finished;
                 backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_SortSetup;
                 logAssetBuildTime("region_init_cache", regionBoundingBoxes_.size(), stepStart);
             }
@@ -4627,10 +4911,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 }
             }
             LOG_INFO(MOD_GRAPHICS, "Lazy mode: registered {} regions (no meshes built yet)", registeredRegions);
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_SortSetup;
         } else {
             regionBuildIndex_ = 0;
             regionBuildInitDone_ = true;
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_EagerBatch;
         }
         logAssetBuildTime("region_init_cache", 0, stepStart);
@@ -4638,6 +4924,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::RegionMesh_EagerBatch: {
+        phaseState_ = PhaseState::Running;
         // Build a batch of region meshes per GREEN frame
         auto wldLoader = currentZone_->wldLoader;
         auto bspTree = wldLoader->getBspTree();
@@ -4745,6 +5032,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
         if (regionBuildIndex_ >= bspTree->regions.size()) {
             LOG_INFO(MOD_GRAPHICS, "Eager mode: built {} region meshes", regionMeshNodes_.size());
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_SortSetup;
         }
         // else: stay in RegionMesh_EagerBatch, build next batch on next GREEN frame
@@ -4753,6 +5041,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     }
 
     case BackgroundZoneLoadPhase::RegionMesh_SortSetup: {
+        phaseState_ = PhaseState::Running;
         // Enable front-to-back sorted zone drawing for PVS zones
         if (usePvsCulling_ && !regionMeshNodes_.empty() && !config_.constrainedConfig.skipManualZoneDraw) {
 #ifdef EQT_HAS_GLES2
@@ -4787,12 +5076,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         // Z-buffer occludes it behind real textured meshes as they load.
         // destroyZonePlaceholder() is called in checkProgressiveLoadingComplete().
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InstallPortal;
         logAssetBuildTime("region_sort_setup", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::RegionMesh_InstallPortal: {
+        phaseState_ = PhaseState::Running;
         // Install pre-built portal system from background thread (preserve existing if already installed)
         if (!portalSystem_) {
             if (pendingZoneComputations_ && pendingZoneComputations_->portalSystem) {
@@ -4821,6 +5112,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
         }
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
         logAssetBuildTime("region_install_portal", 0, stepStart);
         break;
@@ -4829,6 +5121,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── Lights & Objects sub-steps ───────────────────────────────────────
 
     case BackgroundZoneLoadPhase::Lights_CreateNodes: {
+        phaseState_ = PhaseState::Running;
         // Populate zone light data (no scene nodes — shader gets data from worker)
         zoneLightData_.clear();
         zoneLightPositions_.clear();
@@ -4854,12 +5147,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                       usePvsCulling_, currentPvsRegion_,
                       zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) + " regions" : "null");
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_InstallRegions;
         logAssetBuildTime("lights_create_nodes", zoneLightData_.size(), stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Lights_InstallRegions: {
+        phaseState_ = PhaseState::Running;
         // Install pre-computed light BSP regions from background thread
         if (pendingZoneComputations_ && !pendingZoneComputations_->zoneLightRegions.empty()) {
             zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
@@ -4896,12 +5191,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
         // No scene graph add/remove needed — worker handles visibility via lightVisible output
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Objects_Install;
         logAssetBuildTime("lights_install_regions", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Objects_Install: {
+        phaseState_ = PhaseState::Running;
         deferredObjects_.clear();
 
         if (pendingZoneComputations_ && !pendingZoneComputations_->prebuiltDeferredObjects.empty()) {
@@ -4956,12 +5253,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             // Fallback 2: run indexObjectMeshes() on main thread
             indexObjectMeshes();
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ZoneBounds;
         logAssetBuildTime("objects_install", deferredObjects_.size(), stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Misc_ZoneBounds: {
+        phaseState_ = PhaseState::Running;
         if (currentZone_ && currentZone_->geometry) {
             zoneBoundsMinX_ = currentZone_->geometry->minX;
             zoneBoundsMaxX_ = currentZone_->geometry->maxX;
@@ -4982,20 +5281,25 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             zoneBoundsValid_ = true;
             LOG_INFO(MOD_GRAPHICS, "Zone bounds computed from {} region bounding boxes", regionBoundingBoxes_.size());
         }
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_Fog;
         logAssetBuildTime("zone_bounds", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Misc_Fog: {
+        phaseState_ = PhaseState::Running;
         setupFog();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_DoorSetup;
         logAssetBuildTime("fog_setup", 0, stepStart);
         break;
     }
 
     case BackgroundZoneLoadPhase::Misc_DoorSetup: {
+        phaseState_ = PhaseState::Running;
         if (!doorManager_) {
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ReleaseData;
             break;
         }
@@ -5014,6 +5318,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             doorRebuildIndex_ = 0;
             if (doorRebuildList_.empty()) {
                 // No doors to rebuild — advance immediately
+                phaseState_ = PhaseState::Finished;
                 backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ReleaseData;
                 logAssetBuildTime("door_setup_init", 0, stepStart);
                 break;
@@ -5067,11 +5372,13 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         }
         doorRebuildIndex_ = 0;
         doorRebuildList_.clear();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ReleaseData;
         break;
     }
 
     case BackgroundZoneLoadPhase::Misc_ReleaseData: {
+        phaseState_ = PhaseState::Running;
         if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_ && !constrainedMeshCache_) {
             size_t freed = currentZone_->releaseTexturePixelData();
             LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
@@ -5090,6 +5397,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         }
         // Clean up background computations — all data consumed
         pendingZoneComputations_.reset();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::CollisionRebuild;
         logAssetBuildTime("release_data", 0, stepStart);
         break;
@@ -5098,7 +5406,9 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── Collision + Environment + Entity (unchanged) ─────────────────────
 
     case BackgroundZoneLoadPhase::CollisionRebuild: {
+        phaseState_ = PhaseState::Running;
         setupMinimalZoneCollision();
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EnvironmentInit;
         logAssetBuildTime("collision_rebuild", 0, stepStart);
         break;
@@ -5106,6 +5416,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     case BackgroundZoneLoadPhase::EnvironmentInit:
         if (!deferredInitActive_) {
+            phaseState_ = PhaseState::Running;
             deferredInitActive_ = true;
             deferredInitStep_ = DeferredInitStep::TreeConfig;
             startSimulationWorkerEarly();  // Start worker immediately with core data
@@ -5114,11 +5425,13 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         advanceDeferredInit();
         if (deferredInitStep_ == DeferredInitStep::Complete) {
             deferredInitActive_ = false;
+            phaseState_ = PhaseState::Finished;
             backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EntityLoading;
         }
         break;
 
     case BackgroundZoneLoadPhase::EntityLoading: {
+        phaseState_ = PhaseState::Running;
         // Create and start EntityPrepWorker here (moved from beginZoneAssetLoad)
         if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
             && !config_.constrainedConfig.skipEntityBuild) {
@@ -5133,6 +5446,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         entityPrepReady_ = true;
         LOG_INFO(MOD_GRAPHICS, "Entity loading enabled (entityPrepReady=true)");
 
+        phaseState_ = PhaseState::Finished;
         backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
         if (manualLoadMode_) {
             manualLoadMode_ = false;
@@ -5921,6 +6235,283 @@ void IrrlichtRenderer::processFrameLazyLoad() {
             evictionsThisFrame++;
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Background mesh build: drain, finalize, material swap, submit
+// ---------------------------------------------------------------------------
+
+void IrrlichtRenderer::drainMeshResults() {
+    std::lock_guard<std::mutex> lock(meshResultMutex_);
+    if (meshResultQueue_.empty()) return;
+    for (auto& r : meshResultQueue_)
+        localMeshResults_.push_back(std::move(r));
+    meshResultQueue_.clear();
+}
+
+bool IrrlichtRenderer::finalizeOneMeshResult() {
+    if (localMeshResults_.empty()) return false;
+
+    auto result = std::move(localMeshResults_.front());
+    localMeshResults_.erase(localMeshResults_.begin());
+    pendingMeshBuilds_.erase(result.regionIdx);
+
+    // Discard stale results from a different zone
+    if (result.zoneName != currentZoneName_) {
+        if (result.mesh) result.mesh->drop();
+        return true;  // consumed work (discarded)
+    }
+
+    // Clean up existing node if present
+    auto existingIt = regionMeshNodes_.find(result.regionIdx);
+    if (existingIt != regionMeshNodes_.end() && existingIt->second) {
+        auto* oldNode = existingIt->second;
+        deleteMeshHardwareBuffers(oldNode);
+        if (animatedTextureManager_)
+            animatedTextureManager_->removeSceneNode(oldNode);
+        if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
+        existingIt->second = nullptr;
+    }
+
+    if (!result.mesh) return true;
+
+    auto* node = smgr_->addMeshSceneNode(result.mesh);
+    if (!node) {
+        result.mesh->drop();
+        return true;
+    }
+
+    // Apply standard zone region materials
+    node->setPosition(irr::core::vector3df(result.centerX, result.centerZ, result.centerY));
+    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+        node->getMaterial(i).Lighting = lightingEnabled_;
+        node->getMaterial(i).BackfaceCulling = false;
+        node->getMaterial(i).GouraudShading = true;
+        node->getMaterial(i).FogEnable = fogEnabled_;
+        node->getMaterial(i).Wireframe = wireframeMode_;
+        node->getMaterial(i).NormalizeNormals = true;
+        node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+        node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+    }
+    result.mesh->drop();
+
+    node->updateAbsolutePosition();
+    node->setVisible(false);
+
+    if (manualZoneDrawEnabled_) {
+        node->grab();
+        node->remove();
+    }
+
+    regionMeshNodes_[result.regionIdx] = node;
+
+    // Assign textures to fallback buffers (placeholder or real if already in cache)
+    auto* placeholder = constrainedTextureCache_ ? constrainedTextureCache_->getPlaceholderTexture() : nullptr;
+    for (const auto& fb : result.fallbackBuffers) {
+        if (fb.bufferIndex >= node->getMesh()->getMeshBufferCount()) continue;
+        auto* buf = node->getMesh()->getMeshBuffer(fb.bufferIndex);
+        if (!buf) continue;
+
+        auto* tex = constrainedTextureCache_ ? constrainedTextureCache_->getTexture(fb.textureName) : nullptr;
+        if (tex) {
+            buf->getMaterial().setTexture(0, tex);
+            bool hasAlpha = constrainedTextureCache_->hasAlpha(fb.textureName);
+            if (hasAlpha && zoneShader_ && zoneShader_->getActiveAlphaTest() >= 0) {
+                buf->getMaterial().MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                    zoneShader_->getActiveAlphaTest());
+            }
+        } else {
+            if (placeholder) {
+                buf->getMaterial().setTexture(0, placeholder);
+            }
+            pendingTextureBuffers_[result.regionIdx][fb.textureName].push_back(fb.bufferIndex);
+        }
+    }
+
+    // Track missing textures for arrival notification
+    for (const auto& texName : result.missingTextures) {
+        pendingTextureRegions_[texName].insert(result.regionIdx);
+    }
+
+    // Upload static VBOs (GLES2 only)
+    if (!config_.constrainedConfig.skipVBOUpload) {
+#ifdef EQT_HAS_GLES2
+        if (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable() &&
+            node->getMesh() && node->getMesh()->getMeshBufferCount() > 0) {
+            irr::scene::IMesh* mesh = node->getMesh();
+            for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+                irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+                if (!buf || buf->getVertexCount() == 0 || buf->getIndexCount() == 0) continue;
+
+                UploadRequest req;
+                req.type = UploadRequestType::VertexBuffer;
+                req.vertexCount = buf->getVertexCount();
+                req.indexCount = buf->getIndexCount();
+
+                switch (buf->getVertexType()) {
+                    case irr::video::EVT_STANDARD:  req.vertexStride = 36; break;
+                    case irr::video::EVT_2TCOORDS:  req.vertexStride = 44; break;
+                    case irr::video::EVT_TANGENTS:  req.vertexStride = 60; break;
+                    default: req.vertexStride = 36; break;
+                }
+
+                size_t vboSize = req.vertexCount * req.vertexStride;
+                req.vertexData.resize(vboSize);
+                std::memcpy(req.vertexData.data(), buf->getVertices(), vboSize);
+                req.indexData.resize(req.indexCount);
+                std::memcpy(req.indexData.data(), buf->getIndices(), req.indexCount * sizeof(uint16_t));
+
+                req.callbackKey = (static_cast<uint64_t>(i) << 48) |
+                                  (static_cast<uint64_t>(result.regionIdx) & 0xFFFFFFFFFFFFULL);
+                req.priority = WorkPriorityKey::make(getRegionPvsDepth(result.regionIdx), AssetType::ZoneMesh).value;
+                gpuUploadThread_->submit(std::move(req));
+            }
+            pendingVBOUploads_.insert(result.regionIdx);
+        } else {
+            uploadMeshHardwareBuffers(node);
+        }
+#else
+        uploadMeshHardwareBuffers(node);
+#endif
+    }
+
+    // Register with animated texture manager
+    if (animatedTextureManager_)
+        animatedTextureManager_->addSceneNode(node);
+
+    // Mesh cache bookkeeping (evict + track)
+    if (constrainedMeshCache_) {
+        size_t meshSize = ConstrainedMeshCache::estimateMeshSize(node);
+        auto evicted = constrainedMeshCache_->evictUntilAvailable(meshSize, protectedRegions_);
+        for (size_t idx : evicted) {
+            auto it = regionMeshNodes_.find(idx);
+            if (it != regionMeshNodes_.end() && it->second) {
+                deleteMeshHardwareBuffers(it->second);
+                if (animatedTextureManager_)
+                    animatedTextureManager_->removeSceneNode(it->second);
+                if (it->second->getParent()) it->second->remove(); else it->second->drop();
+                it->second = nullptr;
+            }
+            pendingTextureBuffers_.erase(idx);
+            pendingMeshBuilds_.erase(idx);
+            for (auto& [texName, regions] : pendingTextureRegions_)
+                regions.erase(idx);
+        }
+        constrainedMeshCache_->onLoaded(result.regionIdx, node, meshSize);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "finalizeOneMeshResult: region {} finalized ({:.1f}ms bg build)",
+             result.regionIdx, result.buildTimeMs);
+    return true;
+}
+
+void IrrlichtRenderer::updateRegionMaterials(size_t regionIdx, const std::string& textureName,
+                                              irr::video::ITexture* texture, bool hasAlpha) {
+    auto ptbIt = pendingTextureBuffers_.find(regionIdx);
+    if (ptbIt == pendingTextureBuffers_.end()) return;
+
+    auto bufIt = ptbIt->second.find(textureName);
+    if (bufIt == ptbIt->second.end()) return;
+
+    auto nodeIt = regionMeshNodes_.find(regionIdx);
+    if (nodeIt == regionMeshNodes_.end() || !nodeIt->second) {
+        ptbIt->second.erase(bufIt);
+        if (ptbIt->second.empty()) pendingTextureBuffers_.erase(ptbIt);
+        return;
+    }
+
+    auto* mesh = nodeIt->second->getMesh();
+    if (!mesh) {
+        ptbIt->second.erase(bufIt);
+        if (ptbIt->second.empty()) pendingTextureBuffers_.erase(ptbIt);
+        return;
+    }
+
+    for (irr::u32 bufferIdx : bufIt->second) {
+        if (bufferIdx >= mesh->getMeshBufferCount()) continue;
+        auto* buf = mesh->getMeshBuffer(bufferIdx);
+        if (!buf) continue;
+
+        buf->getMaterial().setTexture(0, texture);
+        if (hasAlpha && zoneShader_ && zoneShader_->getActiveAlphaTest() >= 0) {
+            buf->getMaterial().MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                zoneShader_->getActiveAlphaTest());
+        }
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "updateRegionMaterials: region {} texture '{}' → {} buffers",
+              regionIdx, textureName, bufIt->second.size());
+
+    ptbIt->second.erase(bufIt);
+    if (ptbIt->second.empty()) pendingTextureBuffers_.erase(ptbIt);
+}
+
+bool IrrlichtRenderer::processOneMaterialSwap() {
+    if (materialSwapQueue_.empty()) return false;
+
+    auto entry = std::move(materialSwapQueue_.front());
+    materialSwapQueue_.erase(materialSwapQueue_.begin());
+    updateRegionMaterials(entry.regionIdx, entry.textureName, entry.texture, entry.hasAlpha);
+    return true;
+}
+
+bool IrrlichtRenderer::submitOneBgMeshBuild() {
+    if (!constrainedMeshCache_ || !backgroundThreadPool_ || !currentZone_) return false;
+    if (!zoneAtlas_ || !zoneAtlas_->isLoaded()) return false;
+
+    for (const auto& entry : meshLoadQueue_) {
+        if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
+        if (pendingMeshBuilds_.count(entry.regionIdx)) continue;
+
+        auto zone = currentZone_;
+        auto atlas = zoneAtlas_;
+        auto zoneName = currentZoneName_;
+        size_t regionIdx = entry.regionIdx;
+        int shaderSolid = zoneShader_ ? zoneShader_->getActiveSolid() : -1;
+        int shaderAlpha = zoneShader_ ? zoneShader_->getActiveAlphaTest() : -1;
+        int shaderAtlasSolid = zoneShader_ ? zoneShader_->getActiveAtlasSolid() : -1;
+        int shaderAtlasAlpha = zoneShader_ ? zoneShader_->getActiveAtlasAlpha() : -1;
+
+        pendingMeshBuilds_.insert(regionIdx);
+        uint32_t priority = WorkPriorityKey::make(
+            getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
+
+        backgroundThreadPool_->submit(priority, [=, this]() {
+            auto geom = zone->wldLoader->getGeometryForRegion(regionIdx);
+            if (!geom || geom->vertices.empty()) {
+                std::lock_guard<std::mutex> lock(meshResultMutex_);
+                meshResultQueue_.push_back({regionIdx, zoneName, nullptr, {}, {}, 0, 0, 0, 0});
+                return;
+            }
+
+            ZoneMeshBuilder builder(nullptr, nullptr, nullptr);
+            builder.setShaderMaterialTypes(shaderSolid, shaderAlpha);
+            builder.setAtlasShaderMaterialTypes(shaderAtlasSolid, shaderAtlasAlpha);
+
+            auto start = std::chrono::steady_clock::now();
+            auto* mesh = builder.buildAtlasedMesh(
+                *geom, zone->textures, *atlas, 0, /*deferTextures=*/true);
+            float elapsed = std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - start).count();
+
+            BackgroundMeshResult r;
+            r.regionIdx = regionIdx;
+            r.zoneName = zoneName;
+            r.mesh = static_cast<irr::scene::SMesh*>(mesh);
+            r.fallbackBuffers = builder.getFallbackBufferMap();
+            r.missingTextures = {builder.getMissingTextures().begin(), builder.getMissingTextures().end()};
+            r.centerX = geom->centerX;
+            r.centerY = geom->centerY;
+            r.centerZ = geom->centerZ;
+            r.buildTimeMs = elapsed;
+
+            std::lock_guard<std::mutex> lock(meshResultMutex_);
+            meshResultQueue_.push_back(std::move(r));
+        });
+
+        return true;  // consumed 1 unit of work
+    }
+    return false;
 }
 
 void IrrlichtRenderer::indexObjectMeshes() {
@@ -8184,14 +8775,22 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // Phase 1: Input
     processFrameInput(deltaTime);
 
-    // Process completed GPU uploads (texture/VBO from upload thread)
+    // ─── Always: drain queues (cheap data moves, no GL) ───
 #ifdef EQT_HAS_GLES2
-    processCompletedUploads();
+    if (progressiveLoadingActive_) {
+        // Loading screen: batch process freely (§4.2: no governor restriction)
+        processCompletedUploads();
+    } else {
+        drainGPUResults();  // move to pendingGPUResults_ (no GL)
+    }
 #endif
 
-    // Process unified texture upload queue (decoded textures → GPU)
     if (constrainedTextureCache_) {
-        constrainedTextureCache_->processUploadQueue();
+        if (progressiveLoadingActive_) {
+            constrainedTextureCache_->processUploadQueue();  // batch during loading
+        } else {
+            constrainedTextureCache_->drainDecodedQueue();   // drain only (no GL)
+        }
     }
 
     // SimulationWorker: apply results from previous frame, then post new input
@@ -8205,37 +8804,43 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // SimulationWorker: post new input after frustum planes are updated
     postSimulationInput(deltaTime);
 
-    // Phase 2.5: Lazy mesh loading (constrained mode) / Progressive asset loading
+    // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (progressiveLoadingActive_) {
         processFrameProgressiveLoad();
         frameTimings_.meshLoading = measureSection();
-    } else if (constrainedMeshCache_) {
-        processFrameLazyLoad();
-        frameTimings_.meshLoading = measureSection();
     }
 
-    // Entity prep runs for the entire session (entities move in/out of scene graph).
-    // Outside progressive loading: lightweight ops always run, heavy ops use didWork mutual exclusion.
-    if (!progressiveLoadingActive_ && entityPrepReady_ && entityPrepWorker_ && entityRenderer_) {
-        // Lightweight ops (always run, no governor gate):
-        entityRenderer_->getRaceModelLoader()->promotePreparedModels();
-        if (++entityPrepScanCounter_ % 10 == 0) {
-            queueEntityPrepRequests();
-        }
-        if (entityPrepWorker_->isIdle()) {
-            entityPrepWorker_->dispatchOne();
-        }
+    // ─── Post-loading: all work GREEN-gated, 1 unit per GREEN frame ───
+    if (!progressiveLoadingActive_) {
+        // Drain bg mesh results (cheap mutex swap, no GL)
+        drainMeshResults();
 
-        // Heavy ops (ONE per GREEN frame, mutual exclusion with texture rebuilds):
         if (!governor_ || governor_->getState() == BudgetState::Green) {
             bool didWork = false;
 
-            if (!didWork) {
+            // Priority 1: Complete in-flight GPU work (VBO/texture registration)
+#ifdef EQT_HAS_GLES2
+            if (!didWork) didWork = processOneGPUResult();
+#endif
+
+            // Priority 2: Progress texture decode pipeline (decoded → GPU submit)
+            if (!didWork && constrainedTextureCache_) didWork = constrainedTextureCache_->processOneUpload();
+
+            // Priority 3: Finalize background mesh build (add to scene graph)
+            if (!didWork) didWork = finalizeOneMeshResult();
+
+            // Priority 4: Material swap (placeholder → real texture)
+            if (!didWork) didWork = processOneMaterialSwap();
+
+            // Priority 5: Entity prep results
+            if (!didWork && entityPrepReady_ && entityRenderer_)
                 didWork = entityRenderer_->pollAndDistributePrepResults();
-            }
-            if (!didWork && !config_.constrainedConfig.skipEntityBuild) {
+
+            // Priority 6: Entity mesh building
+            if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild)
                 didWork = entityRenderer_->processOneEntityBuildStep(currentPvsRegion_);
-            }
+
+            // Priority 7: Texture rebuild (full rebuild for regions without buffer map)
             if (!didWork && constrainedMeshCache_ && !textureRebuildQueue_.empty()) {
                 auto texEntry = textureRebuildQueue_.front();
                 textureRebuildQueue_.erase(textureRebuildQueue_.begin());
@@ -8258,16 +8863,18 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 }
                 didWork = true;
             }
-            // Post-progressive: rebuild one door whose async textures have arrived
+
+            // Priority 8: Door texture arrival
             if (!didWork && !doorTextureRebuildQueue_.empty() && doorManager_) {
                 uint8_t doorId = doorTextureRebuildQueue_.front();
                 doorTextureRebuildQueue_.erase(doorTextureRebuildQueue_.begin());
                 doorManager_->rebuildSingleDoor(doorId);
                 didWork = true;
-                LOG_INFO(MOD_GRAPHICS, "Post-progressive P1.6: rebuilt door {} with textures (queue: {})",
+                LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt door {} with textures (queue: {})",
                          doorId, doorTextureRebuildQueue_.size());
             }
-            // Post-progressive: rebuild one PVS object whose async textures have arrived
+
+            // Priority 9: Object texture arrival
             if (!didWork && !objectTextureRebuildQueue_.empty()) {
                 size_t objIdx = objectTextureRebuildQueue_.front();
                 objectTextureRebuildQueue_.erase(objectTextureRebuildQueue_.begin());
@@ -8285,22 +8892,31 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                     deferredObjects_[objIdx].meshBuilt = false;
                     buildDeferredObject(objIdx);
                     didWork = true;
-                    LOG_INFO(MOD_GRAPHICS, "Post-progressive P1.7: rebuilt object {} with textures (queue: {})",
+                    LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt object {} with textures (queue: {})",
                              objIdx, objectTextureRebuildQueue_.size());
                 }
             }
-        }
-    }
 
-    // Lazy icon loading outside progressive mode (spell gems, UI on-demand)
-    if (!progressiveLoadingActive_ && windowManager_ &&
-        config_.constrainedConfig.enableItemIcons) {
-        if (!governor_ || governor_->getState() == BudgetState::Green) {
-            windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
-            windowManager_->getIconLoader().startWorker();
-            if (windowManager_->processOneLazyIcon()) {
+            // Priority 10: Submit new background mesh build
+            if (!didWork && constrainedMeshCache_) didWork = submitOneBgMeshBuild();
+
+            // Priority 11: Lazy icon loading
+            if (!didWork && windowManager_ && config_.constrainedConfig.enableItemIcons) {
+                windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
+                windowManager_->getIconLoader().startWorker();
+                didWork = windowManager_->processOneLazyIcon();
+            }
+
+            if (didWork) {
                 frameTimings_.meshLoading = measureSection();
             }
+        }
+
+        // Lightweight entity housekeeping (always runs, not didWork-gated):
+        if (entityPrepReady_ && entityPrepWorker_ && entityRenderer_) {
+            entityRenderer_->getRaceModelLoader()->promotePreparedModels();
+            if (++entityPrepScanCounter_ % 10 == 0) queueEntityPrepRequests();
+            if (entityPrepWorker_->isIdle()) entityPrepWorker_->dispatchOne();
         }
     }
 
@@ -11721,9 +12337,41 @@ void IrrlichtRenderer::advanceDeferredInit() {
             }
             // Register vertex anim data with worker (flags, banners — set up by Objects_Install)
             registerSimulationWorkerVertexAnimData();
-            deferredInitStep_ = DeferredInitStep::Complete;
-            deferredInitActive_ = false;
-            LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
+            deferredInitStep_ = DeferredInitStep::WaitForSimWorker;
+            break;
+
+        case DeferredInitStep::WaitForSimWorker:
+            stepName = "wait_sim_worker";
+            if (simulationWorker_ && simulationWorker_->isRunning()) {
+                // postSimulationInput() and applySimulationResults() run earlier in the
+                // frame loop, so by the time we get here, currentPvsRegion_ and
+                // regionPvsDepthMap_ reflect the latest SimulationWorker output.
+                //
+                // The SimulationWorker computes PVS atomically in one computeAll() call:
+                //   computeVisibility() → finds currentPvsRegion via BSP lookup
+                //   computeRegionDepthMap() → BFS portal walk populating regionPvsDepth
+                //   distance fallback → fills remaining regions with Euclidean depth
+                // So if currentPvsRegion_ is valid AND regionPvsDepthMap_ is populated,
+                // the entire PVS depth computation is complete.
+                bool pvsReady = (currentPvsRegion_ != SIZE_MAX && !regionPvsDepthMap_.empty());
+                if (pvsReady) {
+                    LOG_INFO(MOD_GRAPHICS, "SimulationWorker PVS ready: region={}, depthMap={} entries",
+                             currentPvsRegion_, regionPvsDepthMap_.size());
+                    deferredInitStep_ = DeferredInitStep::Complete;
+                    deferredInitActive_ = false;
+                    LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
+                } else {
+                    // Stay on this step — worker hasn't produced valid PVS yet
+                    LOG_DEBUG(MOD_GRAPHICS, "WaitForSimWorker: PVS not ready (region={}, depthMap={})",
+                              currentPvsRegion_, regionPvsDepthMap_.size());
+                }
+            } else {
+                // No simulation worker (e.g., non-PVS zone or worker not configured)
+                LOG_INFO(MOD_GRAPHICS, "No simulation worker running — skipping WaitForSimWorker");
+                deferredInitStep_ = DeferredInitStep::Complete;
+                deferredInitActive_ = false;
+                LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
+            }
             break;
 
         case DeferredInitStep::Complete:
@@ -12104,12 +12752,11 @@ void IrrlichtRenderer::onPvsRegionChanged() {
 void IrrlichtRenderer::queueEntityPrepRequests() {
     if (!entityPrepWorker_ || !entityRenderer_ || !entityPrepReady_) return;
 
-    // Require valid PVS region — BSP must be installed and SimulationWorker running
-    if (currentPvsRegion_ == SIZE_MAX) return;
-
     std::vector<uint16_t> unbuilt;
     entityRenderer_->getUnbuiltEntities(unbuilt);
     if (unbuilt.empty()) return;
+
+    const bool pvsValid = (currentPvsRegion_ != SIZE_MAX);
 
     const auto& entities = entityRenderer_->getEntities();
     for (auto spawnId : unbuilt) {
@@ -12121,6 +12768,9 @@ void IrrlichtRenderer::queueEntityPrepRequests() {
         if (!vis.inSceneGraph) continue;
         // Don't re-queue entities whose background prep already completed
         if (vis.entityPrepComplete) continue;
+
+        // When player is outside all BSP regions (SIZE_MAX), only build the player entity
+        if (!pvsValid && spawnId != playerSpawnId_) continue;
 
         // PVS depth gate: queue entities within configured portal hop distance
         uint8_t depth = 255;
@@ -12182,6 +12832,10 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
             if (!vis.meshBuilt && vis.inSceneGraph) {
                 // Only count entities in the player's PVS region as blocking.
                 // Out-of-region entities will be built lazily when the player moves.
+                // When player is outside all BSP regions (SIZE_MAX), only the player
+                // entity counts as blocking — other entities can't be built anyway.
+                if (currentPvsRegion_ == SIZE_MAX && id != playerSpawnId_)
+                    continue;
                 if (currentPvsRegion_ != SIZE_MAX &&
                     id != playerSpawnId_ && vis.cachedBspRegion != currentPvsRegion_)
                     continue;

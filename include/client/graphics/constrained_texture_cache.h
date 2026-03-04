@@ -126,9 +126,19 @@ public:
                           int width, int height, bool hasAlpha);
 
     // Process queued decoded textures: budget check, evict, GPU upload, register.
-    // Call once per render frame from the main thread.
+    // Call once per render frame from the main thread (batch mode, for loading screen).
     // Returns the number of textures uploaded this frame.
     int processUploadQueue();
+
+    // Drain decoded texture queue into staging buffer (cheap, no GL). Call every frame.
+    void drainDecodedQueue();
+
+    // Process at most 1 staged upload (budget check, evict, GPU submit or sync create).
+    // Returns true if an item was processed. GREEN-gated by caller.
+    bool processOneUpload();
+
+    // How many staged uploads are waiting
+    size_t getStagedUploadCount() const;
 
     // Check if a texture name is pending decode or upload (not yet in cache)
     bool isPending(const std::string& name) const;
@@ -255,6 +265,10 @@ private:
     // Thread-safe queue of decoded textures waiting for GPU upload
     mutable std::mutex decodedQueueMutex_;
     std::vector<DecodedUpload> decodedQueue_;
+
+    // Staged uploads: drained from decodedQueue_ on render thread, processed one-at-a-time
+    // Protected by mutex_ (render thread only)
+    std::vector<DecodedUpload> stagedUploads_;
 
     // Texture names submitted for background decode but not yet uploaded (render thread only)
     std::unordered_set<std::string> pendingDecodes_;

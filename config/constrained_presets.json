@@ -34,9 +34,9 @@
       "skipConstrainedTextureUpload": false,
       "enableTextureAtlas": true,
       "enableItemIcons": true,
-      "entityPrepMaxPvsDepth": 3,
-      "terrainPrepMaxPvsDepth": 5,
-      "objectPrepMaxPvsDepth": 3,
+      "entityPrepMaxPvsDepth": 255,
+      "terrainPrepMaxPvsDepth": 255,
+      "objectPrepMaxPvsDepth": 255,
       "deferredAssetLoading": "automatic",
       "backgroundThreadCount": 1
     }
