@@ -72,7 +72,42 @@ refactoring plan, or were incompletely addressed.
 | C10 | ~~Configurable thread counts not implemented~~ **DONE**: Added `--threads N` CLI flag to override per-preset `backgroundThreadCount` at launch time. Follows preset → JSON → CLI override chain. | `147115f` |
 | C11 | ~~RDP peer thread accumulation~~ **DONE**: Added `PeerThreadEntry` struct with `std::atomic<bool> finished` flag. `addPeerThread()` sweeps and joins completed threads before adding new ones via `cleanupFinishedPeerThreads()`. `peerThreadImpl()` sets `finished` flag at exit. `peerThreads_` changed from `vector<thread>` to `vector<unique_ptr<PeerThreadEntry>>`. | `938e947` |
 
-## Batch D — Game State Threading
+## Batch L — Loading Thread Separation (prerequisite for Batch D)
+
+Move zone loading onto a dedicated thread so the main thread is never blocked
+during zone load. Full plan: `refactor/L_loading_thread.md`.
+
+### Phase L1 — Infrastructure
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| L01 | LoadingStatus struct, LoadingThread class, GL context transfer | done | (uncommitted) |
+| L02 | Renderer `isLoading()` guard on all public entry points | done | (uncommitted) |
+
+### Phase L2 — Sequential Zone Loading
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| L03 | Sequential zone loading function (replaces advanceBackgroundZoneLoad) | pending | |
+| L04 | Loading screen progress updates from sequential loader | pending | |
+
+### Phase L3 — Integration
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| L05 | Initial zone load via loading thread | pending | |
+| L06 | Re-zone via loading thread | pending | |
+
+### Phase L4 — Cleanup
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| L07 | Remove old loading state machine (advanceBackgroundZoneLoad) | pending | |
+| L08 | Remove networkTickCallback_, update docs | pending | |
+
+---
+
+## Batch D — Game State Threading (after Batch L)
 
 Decouple game state from rendering into separate threads via event/intent bridge.
 Full plan: `refactor/D_game_state_threading.md`.

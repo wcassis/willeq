@@ -836,11 +836,13 @@ bool IrrlichtRenderer::loadGlobalAssets() {
 }
 
 void IrrlichtRenderer::showLoadingScreen() {
+    if (isLoading()) return;
     loadingScreenVisible_ = true;
     LOG_DEBUG(MOD_GRAPHICS, "Loading screen shown");
 }
 
 void IrrlichtRenderer::hideLoadingScreen() {
+    if (isLoading()) return;
     loadingScreenVisible_ = false;
     LOG_DEBUG(MOD_GRAPHICS, "Loading screen hidden");
 
@@ -1384,6 +1386,7 @@ bool IrrlichtRenderer::processOneGPUResult() {
 #endif // EQT_HAS_GLES2
 
 void IrrlichtRenderer::toggleGPUUploadThread() {
+    if (isLoading()) return;
 #ifdef EQT_HAS_GLES2
     gpuUploadEnabled_ = !gpuUploadEnabled_;
     LOG_INFO(MOD_GRAPHICS, "GPU upload thread: {}", gpuUploadEnabled_ ? "ENABLED" : "DISABLED");
@@ -1526,6 +1529,7 @@ void IrrlichtRenderer::setupLighting() {
 }
 
 void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
+    if (isLoading()) return;
     if (!smgr_) return;
 
     currentHour_ = hour;
@@ -2153,6 +2157,7 @@ void IrrlichtRenderer::updateHUD() {
 }
 
 void IrrlichtRenderer::unloadZone() {
+    if (isLoading()) return;
     // Stop background zone load queue if still running
     if (zoneLoadQueue_) {
         zoneLoadQueue_->stop();
@@ -2507,6 +2512,7 @@ void IrrlichtRenderer::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
 }
 
 void IrrlichtRenderer::toggleSky() {
+    if (isLoading()) return;
     if (skyRenderer_) {
         bool newState = !skyRenderer_->isEnabled();
         skyRenderer_->setEnabled(newState);
@@ -2515,6 +2521,7 @@ void IrrlichtRenderer::toggleSky() {
 }
 
 void IrrlichtRenderer::forceSkyType(uint8_t skyTypeId) {
+    if (isLoading()) return;
     if (skyRenderer_ && skyRenderer_->isInitialized()) {
         skyRenderer_->setSkyType(skyTypeId, currentZoneName_);
         LOG_INFO(MOD_GRAPHICS, "Forced sky type to {}", skyTypeId);
@@ -2993,6 +3000,21 @@ float IrrlichtRenderer::getBackgroundLoadProgress() const {
     case Phase::P03_Atlas_Shader:        return 0.68f;
     case Phase::P04_Regions_InitCache:   return 0.69f;
     case Phase::P04_Regions_EagerBatch: {
+        if (constrainedMeshCache_) {
+            // Lazy mode: progress based on mesh cache loaded count vs queue
+            size_t queueTotal = meshLoadQueue_.size();
+            if (queueTotal > 0) {
+                size_t loaded = 0;
+                for (const auto& entry : meshLoadQueue_) {
+                    if (constrainedMeshCache_->isLoaded(entry.regionIdx))
+                        loaded++;
+                }
+                float frac = static_cast<float>(loaded) / queueTotal;
+                return lerp(0.69f, 0.76f, frac);
+            }
+            return 0.76f;  // Queue empty = done
+        }
+        // Eager mode: progress based on regionBuildIndex_
         size_t total = 0;
         if (currentZone_ && currentZone_->wldLoader) {
             auto bspTree = currentZone_->wldLoader->getBspTree();
@@ -3011,11 +3033,34 @@ float IrrlichtRenderer::getBackgroundLoadProgress() const {
     case Phase::P05_Assets_ModelView:    return 0.82f;
     case Phase::P06_Objects_Install:     return 0.83f;
     case Phase::P06_Objects_Bounds:      return 0.83f;
-    case Phase::P06_Objects_Wait:        return 0.83f;
+    case Phase::P06_Objects_Wait: {
+        size_t total = 0, built = 0;
+        for (const auto& obj : deferredObjects_) {
+            if (protectedRegions_.count(obj.bspRegion) > 0) {
+                total++;
+                if (obj.meshBuilt) built++;
+            }
+        }
+        float frac = (total > 0) ? static_cast<float>(built) / total : 0.0f;
+        return lerp(0.83f, 0.84f, frac);
+    }
     case Phase::P07_Doors_Create:        return 0.84f;
     case Phase::P07_Doors_Rebuild:       return 0.85f;
-    case Phase::P08_Entities:            return 0.86f;
-    case Phase::P08_Entities_Wait:       return 0.86f;
+    case Phase::P08_Entities:
+    case Phase::P08_Entities_Wait: {
+        if (entityRenderer_) {
+            size_t total = 0, built = 0;
+            for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+                if (vis.inSceneGraph) {
+                    total++;
+                    if (vis.meshBuilt) built++;
+                }
+            }
+            float frac = (total > 0) ? static_cast<float>(built) / total : 0.0f;
+            return lerp(0.86f, 0.87f, frac);
+        }
+        return 0.86f;
+    }
     case Phase::P09_Collision:           return 0.87f;
     case Phase::P10_Sky_Submit:          return 0.87f;
     case Phase::P10_Sky_Poll:            return 0.88f;
@@ -3109,6 +3154,21 @@ std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
     case Phase::P04_Regions_InitCache:
         return L"Building zone geometry...";
     case Phase::P04_Regions_EagerBatch: {
+        if (constrainedMeshCache_) {
+            // Lazy mode: show loaded count vs queue total
+            size_t queueTotal = meshLoadQueue_.size();
+            if (queueTotal > 0) {
+                size_t loaded = 0;
+                for (const auto& entry : meshLoadQueue_) {
+                    if (constrainedMeshCache_->isLoaded(entry.regionIdx))
+                        loaded++;
+                }
+                return L"Building regions [" + std::to_wstring(loaded) +
+                       L"/" + std::to_wstring(queueTotal) + L"]...";
+            }
+            return L"Building zone geometry...";
+        }
+        // Eager mode
         size_t total = 0;
         if (currentZone_ && currentZone_->wldLoader) {
             auto bspTree = currentZone_->wldLoader->getBspTree();
@@ -3134,14 +3194,40 @@ std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
         return L"Placing objects...";
     case Phase::P06_Objects_Bounds:
         return L"Computing bounds...";
-    case Phase::P06_Objects_Wait:
+    case Phase::P06_Objects_Wait: {
+        size_t total = 0, built = 0;
+        for (const auto& obj : deferredObjects_) {
+            if (protectedRegions_.count(obj.bspRegion) > 0) {
+                total++;
+                if (obj.meshBuilt) built++;
+            }
+        }
+        if (total > 0) {
+            return L"Building objects [" + std::to_wstring(built) +
+                   L"/" + std::to_wstring(total) + L"]...";
+        }
         return L"Building objects...";
+    }
     case Phase::P07_Doors_Create:
     case Phase::P07_Doors_Rebuild:
         return L"Building doors...";
     case Phase::P08_Entities:
-    case Phase::P08_Entities_Wait:
+    case Phase::P08_Entities_Wait: {
+        if (entityRenderer_) {
+            size_t total = 0, built = 0;
+            for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+                if (vis.inSceneGraph) {
+                    total++;
+                    if (vis.meshBuilt) built++;
+                }
+            }
+            if (total > 0) {
+                return L"Loading entities [" + std::to_wstring(built) +
+                       L"/" + std::to_wstring(total) + L"]...";
+            }
+        }
         return L"Loading entities...";
+    }
     case Phase::P09_Collision:
         return L"Building collision...";
     case Phase::P10_Sky_Submit:
@@ -7318,6 +7404,7 @@ bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const s
                                        float x, float y, float z, float heading, bool isPlayer,
                                        uint8_t gender, const EntityAppearance& appearance, bool isNPC,
                                        bool isCorpse, float serverSize, uint8_t entityLevel) {
+    if (isLoading()) return false;
     if (!entityRenderer_) {
         return false;
     }
@@ -7340,24 +7427,28 @@ bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const s
 
 void IrrlichtRenderer::updateEntity(uint16_t spawnId, float x, float y, float z, float heading,
                                      float dx, float dy, float dz, uint32_t animation) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->updateEntity(spawnId, x, y, z, heading, dx, dy, dz, animation);
     }
 }
 
 void IrrlichtRenderer::removeEntity(uint16_t spawnId) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->removeEntity(spawnId);
     }
 }
 
 void IrrlichtRenderer::startCorpseDecay(uint16_t spawnId) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->startCorpseDecay(spawnId);
     }
 }
 
 void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
+    if (isLoading()) return;
     // Handle player light specially - it's always highest priority in light pool
     if (spawnId == playerSpawnId_ && playerSpawnId_ != 0) {
         playerLightLevel_ = lightLevel;
@@ -7427,6 +7518,7 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
 }
 
 void IrrlichtRenderer::clearEntities() {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->clearEntities();
     }
@@ -7437,6 +7529,7 @@ void IrrlichtRenderer::clearEntities() {
 // ============================================================================
 
 void IrrlichtRenderer::setExpectedEntityCount(size_t count) {
+    if (isLoading()) return;
     expectedEntityCount_ = count;
     // Note: Entity count is tracked for informational purposes only.
     // Zone ready is triggered when the player entity is created (isPlayer=true in createEntity).
@@ -7451,6 +7544,7 @@ void IrrlichtRenderer::notifyEntityLoaded() {
 }
 
 void IrrlichtRenderer::setNetworkReady(bool ready) {
+    if (isLoading()) return;
     networkReady_ = ready;
     LOG_DEBUG(MOD_GRAPHICS, "Network ready: {}", ready);
 
@@ -7467,6 +7561,7 @@ void IrrlichtRenderer::setNetworkReady(bool ready) {
 }
 
 void IrrlichtRenderer::setWeather(uint8_t type, uint8_t intensity) {
+    if (isLoading()) return;
     LOG_DEBUG(MOD_GRAPHICS, "Weather update: type={}, intensity={}", type, intensity);
     if (weatherEffects_) {
         weatherEffects_->setWeather(type, intensity);
@@ -7500,12 +7595,14 @@ bool IrrlichtRenderer::registerDoor(uint8_t doorId, const std::string& name,
 }
 
 void IrrlichtRenderer::setDoorState(uint8_t doorId, bool open, bool userInitiated) {
+    if (isLoading()) return;
     if (doorManager_) {
         doorManager_->setDoorState(doorId, open, userInitiated);
     }
 }
 
 void IrrlichtRenderer::clearDoors() {
+    if (isLoading()) return;
     if (doorManager_) {
         doorManager_->clearDoors();
     }
@@ -7517,6 +7614,7 @@ void IrrlichtRenderer::clearDoors() {
 
 void IrrlichtRenderer::addWorldObject(uint32_t dropId, float x, float y, float z,
                                        uint32_t objectType, const std::string& name) {
+    if (isLoading()) return;
     WorldObjectVisual obj;
     obj.dropId = dropId;
     obj.x = x;
@@ -7618,6 +7716,7 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 }
 
 void IrrlichtRenderer::playEntityDeathAnimation(uint16_t spawnId) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         // Mark entity as corpse and play death animation
         entityRenderer_->markEntityAsCorpse(spawnId);
@@ -7626,6 +7725,7 @@ void IrrlichtRenderer::playEntityDeathAnimation(uint16_t spawnId) {
 }
 
 bool IrrlichtRenderer::setEntityAnimation(uint16_t spawnId, const std::string& animCode, bool loop, bool playThrough) {
+    if (isLoading()) return false;
     if (entityRenderer_) {
         return entityRenderer_->setEntityAnimation(spawnId, animCode, loop, playThrough);
     }
@@ -7633,6 +7733,7 @@ bool IrrlichtRenderer::setEntityAnimation(uint16_t spawnId, const std::string& a
 }
 
 void IrrlichtRenderer::setEntityPoseState(uint16_t spawnId, EntityPoseState pose) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         // Convert from IrrlichtRenderer::EntityPoseState to EntityVisual::PoseState
         EntityVisual::PoseState internalPose;
@@ -7647,6 +7748,7 @@ void IrrlichtRenderer::setEntityPoseState(uint16_t spawnId, EntityPoseState pose
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
+    if (isLoading()) return;
     playerSpawnId_ = spawnId;
     LOG_INFO(MOD_GRAPHICS, "[IrrlichtRenderer] Player spawn ID set to: {}", spawnId);
 
@@ -7716,6 +7818,7 @@ void IrrlichtRenderer::setPlayerRace(uint16_t raceId) {
 }
 
 void IrrlichtRenderer::setVisionType(VisionType vision) {
+    if (isLoading()) return;
     // Only upgrade vision, never downgrade below base
     if (vision > currentVision_) {
         currentVision_ = vision;
@@ -7727,6 +7830,7 @@ void IrrlichtRenderer::setVisionType(VisionType vision) {
 }
 
 void IrrlichtRenderer::resetVisionToBase() {
+    if (isLoading()) return;
     if (currentVision_ != baseVision_) {
         currentVision_ = baseVision_;
         LOG_INFO(MOD_GRAPHICS, "Vision reset to base: {}",
@@ -7797,6 +7901,7 @@ void IrrlichtRenderer::refreshShaderLightColors() {
 }
 
 void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float heading) {
+    if (isLoading()) return;
     playerX_ = x;
     playerY_ = y;
     playerZ_ = z;
@@ -7867,6 +7972,7 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
 }
 
 void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {
+    if (isLoading()) return;
     if (playerMovement_.isSwimming != swimming) {
         LOG_INFO(MOD_GRAPHICS, "[Swimming] {} water (swimSpeed={}, levitating={})",
                  swimming ? "Entering" : "Exiting", swimSpeed, levitating);
@@ -7884,6 +7990,7 @@ void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool lev
 }
 
 void IrrlichtRenderer::setCameraMode(CameraMode mode) {
+    if (isLoading()) return;
     cameraMode_ = mode;
 
     // Show/hide player entity based on camera mode
@@ -10869,6 +10976,7 @@ void IrrlichtRenderer::toggleZoneLights() {
 }
 
 void IrrlichtRenderer::togglePlayerLight() {
+    if (isLoading()) return;
     debugPlayerLightEnabled_ = !debugPlayerLightEnabled_;
     // Toggle shader variant (GLES2 only — lightweight vs per-pixel player light)
     if (zoneShader_ && zoneShader_->isLightweightAvailable()) {
@@ -10965,11 +11073,13 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
 }
 
 void IrrlichtRenderer::toggleObjectLights() {
+    if (isLoading()) return;
     debugObjectLightsEnabled_ = !debugObjectLightsEnabled_;
     LOG_INFO(MOD_GRAPHICS, "Debug: Object lights {}", debugObjectLightsEnabled_ ? "ENABLED" : "DISABLED");
 }
 
 void IrrlichtRenderer::toggleDirectionalLight() {
+    if (isLoading()) return;
     debugDirectionalLightEnabled_ = !debugDirectionalLightEnabled_;
     if (zoneShader_ && zoneShader_->isAvailable()) {
         if (!debugDirectionalLightEnabled_) {
@@ -11027,6 +11137,7 @@ bool IrrlichtRenderer::isUsingOldModels() const {
 }
 
 void IrrlichtRenderer::toggleManualZoneDraw() {
+    if (isLoading()) return;
     if (!usePvsCulling_ || regionMeshNodes_.empty()) {
         LOG_INFO(MOD_GRAPHICS, "Manual zone draw not available (no PVS culling)");
         return;
@@ -11064,6 +11175,7 @@ void IrrlichtRenderer::toggleManualZoneDraw() {
 }
 
 void IrrlichtRenderer::togglePortalOcclusion() {
+    if (isLoading()) return;
     if (!portalOcclusionEligible_) {
         LOG_INFO(MOD_GRAPHICS, "Portal occlusion not available (no portals or too few)");
         return;
@@ -11074,18 +11186,21 @@ void IrrlichtRenderer::togglePortalOcclusion() {
 }
 
 void IrrlichtRenderer::togglePortalDebugDraw() {
+    if (isLoading()) return;
     portalDebugDraw_ = !portalDebugDraw_;
     LOG_INFO(MOD_GRAPHICS, "Portal debug draw: {}",
              portalDebugDraw_ ? "ENABLED" : "DISABLED");
 }
 
 void IrrlichtRenderer::toggleStencilDebugDraw() {
+    if (isLoading()) return;
     stencilDebugDraw_ = !stencilDebugDraw_;
     LOG_INFO(MOD_GRAPHICS, "Stencil debug draw: {}",
              stencilDebugDraw_ ? "ENABLED" : "DISABLED");
 }
 
 void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
+    if (isLoading()) return;
     frameTimingEnabled_ = enabled;
     if (enabled) {
         // Reset accumulators when starting
@@ -11434,6 +11549,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
 // --- Renderer Mode Implementation ---
 
 void IrrlichtRenderer::setClipDistance(float distance) {
+    if (isLoading()) return;
     // Clamp to reasonable range
     if (distance < 100.0f) distance = 100.0f;
     if (distance > 50000.0f) distance = 50000.0f;
@@ -12623,6 +12739,9 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     }
 
     bool didWork = false;
+    // During loading screen, never mark didWork so all priorities run each frame
+    // (no scene rendering to compete with).
+    const bool canMarkWork = !loadingScreenVisible_;
     auto stepStart = std::chrono::steady_clock::now();
 
     // Lightweight entity ops (always run under GREEN, no didWork cost):
@@ -12639,13 +12758,13 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
         // Poll completed prep results — distributing a result consumes the budget
         if (entityRenderer_->pollAndDistributePrepResults()) {
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("entity_poll", 0, stepStart);
         }
     }
     if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild) {
         if (entityRenderer_->processOneEntityBuildStep(currentPvsRegion_)) {
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("entity_step", 0, stepStart);
             // Report entity progress to chat
             size_t totalEntities = 0, builtEntities = 0;
@@ -12680,7 +12799,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             addRegionToCollision(entry.regionIdx);
             LOG_INFO(MOD_GRAPHICS, "Progressive P1.5: rebuilt region {} with textures (queue remaining: {})",
                      entry.regionIdx, textureRebuildQueue_.size());
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("tex_rebuild", entry.regionIdx, stepStart);
         } else {
             LOG_WARN(MOD_GRAPHICS, "Progressive P1.5: FAILED to rebuild region {} with textures",
@@ -12693,7 +12812,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         uint8_t doorId = doorTextureRebuildQueue_.front();
         doorTextureRebuildQueue_.erase(doorTextureRebuildQueue_.begin());
         doorManager_->rebuildSingleDoor(doorId);
-        didWork = true;
+        didWork = canMarkWork;
         logAssetBuildTime("door_tex_rebuild", doorId, stepStart);
         LOG_INFO(MOD_GRAPHICS, "Progressive P1.6: rebuilt door {} with textures (queue: {})",
                  doorId, doorTextureRebuildQueue_.size());
@@ -12717,7 +12836,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             }
             deferredObjects_[objIdx].meshBuilt = false;
             buildDeferredObject(objIdx);
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("obj_tex_rebuild", objIdx, stepStart);
             LOG_INFO(MOD_GRAPHICS, "Progressive P1.7: rebuilt object {} with textures (queue: {})",
                      objIdx, objectTextureRebuildQueue_.size());
@@ -12749,7 +12868,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
                 LOG_INFO(MOD_GRAPHICS, "Progressive P2: SUCCESS region {} + collision (PVS={}, queue={}, "
                           "needBuild={})",
                           entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size(), qNeedBuild - 1);
-                didWork = true;
+                didWork = canMarkWork;
                 logAssetBuildTime("region", entry.regionIdx, stepStart);
                 sendLoadProgress(fmt::format("[Load] Region {} [{}/{}]",
                     entry.regionIdx, meshLoadQueue_.size() - (qNeedBuild - 1), meshLoadQueue_.size()));
@@ -12795,7 +12914,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
                 }
             }
             addDoorToCollision(doorId);
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("door", doorId, stepStart);
             const auto* dv = doorManager_->getDoor(doorId);
             sendLoadProgress(fmt::format("[Load] Door {} '{}' [{}/{}]",
@@ -12833,7 +12952,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
             size_t i = objCandidates[0].first;
             buildDeferredObject(i);
             addObjectToCollision(objectNodes_.size() - 1);
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("pvs_object", i, stepStart);
             std::string objName = "?";
             if (currentZone_ && deferredObjects_[i].objectIndex < currentZone_->objects.size()) {
@@ -12851,7 +12970,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!didWork && windowManager_ && config_.constrainedConfig.enableItemIcons) {
         windowManager_->getIconLoader().sortPendingBySheet();
         if (windowManager_->processOneLazyIcon()) {
-            didWork = true;
+            didWork = canMarkWork;
             logAssetBuildTime("icon", 0, stepStart);
         }
     }
@@ -13873,6 +13992,7 @@ void IrrlichtRenderer::setCurrentTarget(uint16_t spawnId, const std::string& nam
 }
 
 void IrrlichtRenderer::clearCurrentTarget() {
+    if (isLoading()) return;
     currentTargetId_ = 0;
     currentTargetName_.clear();
     currentTargetHpPercent_ = 100;
@@ -13885,6 +14005,7 @@ void IrrlichtRenderer::clearCurrentTarget() {
 }
 
 void IrrlichtRenderer::setCurrentTargetInfo(const TargetInfo& info) {
+    if (isLoading()) return;
     currentTargetInfo_ = info;
     // Also update the legacy fields for backward compatibility
     currentTargetId_ = info.spawnId;
@@ -13898,6 +14019,7 @@ void IrrlichtRenderer::setCurrentTargetInfo(const TargetInfo& info) {
 }
 
 void IrrlichtRenderer::updateCurrentTargetHP(uint8_t hpPercent) {
+    if (isLoading()) return;
     currentTargetHpPercent_ = hpPercent;
     currentTargetInfo_.hpPercent = hpPercent;
 }
@@ -14069,6 +14191,7 @@ bool IrrlichtRenderer::checkEntityLOS(const irr::core::vector3df& cameraPos, con
 // --- Inventory UI Methods ---
 
 void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* manager) {
+    if (isLoading()) return;
     inventoryManager_ = manager;
 
     // Create window manager if not already created
@@ -14236,18 +14359,21 @@ void IrrlichtRenderer::toggleInventory() {
 }
 
 void IrrlichtRenderer::openInventory() {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->openInventory();
     }
 }
 
 void IrrlichtRenderer::closeInventory() {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->closeInventory();
     }
 }
 
 void IrrlichtRenderer::showNoteWindow(const std::string& text, uint8_t type) {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->showNoteWindow(text, type);
     }
@@ -14258,18 +14384,21 @@ bool IrrlichtRenderer::isInventoryOpen() const {
 }
 
 void IrrlichtRenderer::setCharacterInfo(const std::wstring& name, int level, const std::wstring& className) {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->setCharacterInfo(name, level, className);
     }
 }
 
 void IrrlichtRenderer::setCharacterDeity(const std::wstring& deity) {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->setCharacterDeity(deity);
     }
 }
 
 void IrrlichtRenderer::setExpProgress(float progress) {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->setExpProgress(progress);
     }
@@ -14283,6 +14412,7 @@ void IrrlichtRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
                                              int pr, int mr, int dr, int fr, int cr,
                                              float weight, float maxWeight,
                                              uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    if (isLoading()) return;
     if (windowManager_) {
         windowManager_->updateCharacterStats(curHp, maxHp, curMana, maxMana, curEnd, maxEnd,
                                              ac, atk, str, sta, agi, dex, wis, intel, cha,
@@ -14293,6 +14423,7 @@ void IrrlichtRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
 
 void IrrlichtRenderer::updatePlayerAppearance(uint16_t raceId, uint8_t gender,
                                                const EntityAppearance& appearance) {
+    if (isLoading()) return;
     LOG_DEBUG(MOD_GRAPHICS, "IrrlichtRenderer::updatePlayerAppearance race={} gender={}", raceId, gender);
     if (windowManager_) {
         windowManager_->setPlayerAppearance(raceId, gender, appearance);
@@ -14301,6 +14432,7 @@ void IrrlichtRenderer::updatePlayerAppearance(uint16_t raceId, uint8_t gender,
 
 void IrrlichtRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,
                                                const EntityAppearance& appearance) {
+    if (isLoading()) return;
     LOG_DEBUG(MOD_GRAPHICS, "IrrlichtRenderer::updateEntityAppearance spawn={} race={} gender={}",
               spawnId, raceId, gender);
     if (entityRenderer_) {
@@ -14322,6 +14454,7 @@ void IrrlichtRenderer::setReadItemCallback(ReadItemCallback callback) {
 }
 
 void IrrlichtRenderer::setZoneLineDebug(bool inZoneLine, uint16_t targetZoneId, const std::string& debugText) {
+    if (isLoading()) return;
     inZoneLine_ = inZoneLine;
     zoneLineTargetZoneId_ = targetZoneId;
     zoneLineDebugText_ = debugText;
@@ -14375,6 +14508,7 @@ void IrrlichtRenderer::drawZoneLineOverlay() {
 }
 
 void IrrlichtRenderer::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) {
+    if (isLoading()) return;
     // Clear existing boxes first
     clearZoneLineBoundingBoxes();
 
@@ -14640,6 +14774,7 @@ void IrrlichtRenderer::drawFPSCounter() {
 }
 
 void IrrlichtRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->setEntityWeaponSkills(spawnId, primaryWeaponSkill, secondaryWeaponSkill);
     }
@@ -14661,6 +14796,7 @@ uint8_t IrrlichtRenderer::getEntitySecondaryWeaponSkill(uint16_t spawnId) const 
 
 void IrrlichtRenderer::queueCombatAnimation(uint16_t sourceId, uint16_t targetId,
                                              uint8_t weaponSkill, int32_t damage, float damagePercent) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->queueCombatAnimation(sourceId, targetId, weaponSkill, damage, damagePercent);
     }
@@ -14674,18 +14810,21 @@ bool IrrlichtRenderer::hasEntityPendingCombatAnims(uint16_t spawnId) const {
 }
 
 void IrrlichtRenderer::queueReceivedDamageAnimation(uint16_t spawnId) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->queueReceivedDamageAnimation(spawnId);
     }
 }
 
 void IrrlichtRenderer::queueSkillAnimation(uint16_t spawnId, const std::string& animCode) {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->queueSkillAnimation(spawnId, animCode);
     }
 }
 
 void IrrlichtRenderer::triggerFirstPersonAttack() {
+    if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->triggerFirstPersonAttack();
     }

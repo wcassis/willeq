@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_IRRLICHT_RENDERER_H
 
 #include <irrlicht.h>
+#include <atomic>
 #include <chrono>
 #include <string>
 #include <memory>
@@ -650,6 +651,10 @@ public:
     // the caller to pump the network event loop (prevents connection timeouts on slow hardware)
     void setNetworkTickCallback(std::function<void()> callback) { networkTickCallback_ = std::move(callback); }
 
+    // Loading thread owns GL context — main thread must not call GL-mutating methods.
+    void setLoading(bool loading) { loading_.store(loading, std::memory_order_release); }
+    bool isLoading() const { return loading_.load(std::memory_order_acquire); }
+
     // Show/hide loading screen (progress bar overlay)
     void showLoadingScreen();
     void hideLoadingScreen();
@@ -986,6 +991,7 @@ public:
     // Unified render distance (controls fog and object culling, NOT camera far plane)
     // The camera far plane must be larger to include the sky dome
     void setRenderDistance(float distance) {
+        if (isLoading()) return;
         userRenderDistance_ = distance;
         // Cap effective render distance by constrained preset's clip distance
         if (config_.constrainedConfig.clipDistance > 0.0f) {
@@ -1016,6 +1022,7 @@ public:
 
     // Fog thickness (fade zone at edge of render distance)
     void setFogThickness(float thickness) {
+        if (isLoading()) return;
         fogThickness_ = thickness;
         setupFog();
     }
@@ -1080,10 +1087,10 @@ public:
     const TargetInfo& getCurrentTargetInfo() const { return currentTargetInfo_; }
 
     // Collision map for player mode movement
-    void setCollisionMap(HCMap* map) { collisionMap_ = map; }
+    void setCollisionMap(HCMap* map) { if (isLoading()) return; collisionMap_ = map; }
 
     // Navmesh pathfinder for navmesh overlay visualization
-    void setNavmesh(PathfinderNavmesh* navmesh) { navmesh_ = navmesh; }
+    void setNavmesh(PathfinderNavmesh* navmesh) { if (isLoading()) return; navmesh_ = navmesh; }
 
     // Clip distance (camera far plane) - for constrained rendering mode
     void setClipDistance(float distance);
@@ -1100,7 +1107,7 @@ public:
 
     // Zone ready state - controls whether to show loading screen
     // Note: zoneReady is only true when BOTH network AND graphics are ready
-    void setZoneReady(bool ready) { zoneReady_ = ready; }
+    void setZoneReady(bool ready) { if (isLoading()) return; zoneReady_ = ready; }
     bool isZoneReady() const { return zoneReady_; }
 
     // Entity loading state - tracks when all entities have been fully loaded
@@ -1113,6 +1120,7 @@ public:
 
     // Loading progress for zone transitions
     void setLoadingProgress(float progress, const std::wstring& text) {
+        if (isLoading()) return;
         loadingProgress_ = progress;
         loadingText_ = text;
         // Immediately redraw loading screen so progress updates are visible
@@ -1590,6 +1598,7 @@ private:
     std::map<uint32_t, int> itemToModelMap_;
 
     bool initialized_ = false;
+    std::atomic<bool> loading_{false};   // True while loading thread owns GL context
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
     bool environmentInitPending_ = false;  // Deferred init after game becomes playable

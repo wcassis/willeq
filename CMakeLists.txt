@@ -282,6 +282,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/entity_prep_worker.cpp
         src/client/graphics/simulation_worker.cpp
+        src/client/graphics/loading_thread.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp
