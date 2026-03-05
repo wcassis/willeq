@@ -12361,22 +12361,33 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
         }
     }
 
-    // Create meta selector with just the player's region (if available)
+    // Create meta selector and populate with ALL loaded region meshes
     irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
     if (!metaSelector) {
         return;
     }
 
-    // Add player's region mesh to collision
-    if (playerRegion != SIZE_MAX) {
-        auto regionIt = regionMeshNodes_.find(playerRegion);
-        if (regionIt != regionMeshNodes_.end() && regionIt->second && regionIt->second->getMesh()) {
-            irr::scene::ITriangleSelector* regionSelector =
-                smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
-            if (regionSelector) {
-                metaSelector->addTriangleSelector(regionSelector);
-                regionSelector->drop();
+    // Also create a terrain-only selector and populate with zone geometry
+    // (DetailManager uses this for ground raycasts when generating detail objects)
+    terrainOnlySelector_ = smgr_->createMetaTriangleSelector();
+    auto* terrainMeta = terrainOnlySelector_
+        ? static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_)
+        : nullptr;
+
+    // Add ALL loaded region meshes to collision (not just player's region)
+    // By step 9, step 4 has already built all PVS-visible regions
+    size_t regionsAdded = 0;
+    for (const auto& [regionIdx, node] : regionMeshNodes_) {
+        if (!node || !node->getMesh()) continue;
+        irr::scene::ITriangleSelector* regionSelector =
+            smgr_->createTriangleSelector(node->getMesh(), node);
+        if (regionSelector) {
+            metaSelector->addTriangleSelector(regionSelector);
+            if (terrainMeta) {
+                terrainMeta->addTriangleSelector(regionSelector);
             }
+            regionSelector->drop();
+            regionsAdded++;
         }
     }
 
@@ -12386,37 +12397,15 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
             smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
         if (fallbackSelector) {
             metaSelector->addTriangleSelector(fallbackSelector);
+            if (terrainMeta) {
+                terrainMeta->addTriangleSelector(fallbackSelector);
+            }
             fallbackSelector->drop();
         }
     }
 
     zoneTriangleSelector_ = metaSelector;
-
-    // Also create a terrain-only selector and populate with zone geometry
-    // (DetailManager uses this for ground raycasts when generating detail objects)
-    terrainOnlySelector_ = smgr_->createMetaTriangleSelector();
-    if (terrainOnlySelector_) {
-        auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_);
-        if (playerRegion != SIZE_MAX) {
-            auto regionIt = regionMeshNodes_.find(playerRegion);
-            if (regionIt != regionMeshNodes_.end() && regionIt->second && regionIt->second->getMesh()) {
-                irr::scene::ITriangleSelector* regionSelector =
-                    smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
-                if (regionSelector) {
-                    terrainMeta->addTriangleSelector(regionSelector);
-                    regionSelector->drop();
-                }
-            }
-        }
-        if (fallbackMeshNode_ && fallbackMeshNode_->getMesh()) {
-            irr::scene::ITriangleSelector* fallbackSelector =
-                smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
-            if (fallbackSelector) {
-                terrainMeta->addTriangleSelector(fallbackSelector);
-                fallbackSelector->drop();
-            }
-        }
-    }
+    LOG_INFO(MOD_GRAPHICS, "Collision selectors populated with {} loaded regions", regionsAdded);
 
     collisionManager_ = smgr_->getSceneCollisionManager();
 

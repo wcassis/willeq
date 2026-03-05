@@ -383,6 +383,7 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
                 visual.meshNode->setPosition(irr::core::vector3df(x, z, y));
                 visual.meshNode->setRotation(irr::core::vector3df(0, -heading, 0));
                 visual.usesPlaceholder = true;
+                visual.inSceneGraph = true;  // Placeholder is in scene graph — enables SimWorker PVS management and entity prep queueing
                 visual.modelYOffset = 0;
                 visual.collisionZOffset = (cubeSize / 2.0f);
 
