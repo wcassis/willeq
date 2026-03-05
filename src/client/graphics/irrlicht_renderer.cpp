@@ -5797,6 +5797,75 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                   zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) : "null",
                   zoneLightData_.size(), zoneLightRegions_.size());
 
+        // Update SimulationWorker with zone light data (it started with 0 lights at step 2)
+        if (simulationWorker_ && simulationWorker_->isRunning()) {
+            // Build zone light visibility data
+            std::vector<SimulationZoneData::ZoneLightData> simLights(zoneLightData_.size());
+            for (size_t i = 0; i < zoneLightData_.size(); ++i) {
+                if (i < zoneLightPositions_.size())
+                    simLights[i].position = zoneLightPositions_[i];
+                simLights[i].bspRegion = (i < zoneLightRegions_.size()) ? zoneLightRegions_[i] : SIZE_MAX;
+            }
+            // Build zone light node data for light selection
+            std::vector<SimulationZoneData::ZoneLightNodeData> simNodes(zoneLightData_.size());
+            for (size_t i = 0; i < zoneLightData_.size(); ++i) {
+                if (i < zoneLightPositions_.size())
+                    simNodes[i].position = zoneLightPositions_[i];
+                simNodes[i].diffuseColor = zoneLightData_[i].baseDiffuseColor;
+                simNodes[i].radius = zoneLightData_[i].radius;
+                simNodes[i].attConstant = zoneLightData_[i].attConstant;
+                simNodes[i].attLinear = zoneLightData_[i].attLinear;
+                simNodes[i].attQuadratic = zoneLightData_[i].attQuadratic;
+            }
+            // Build zone light animation data
+            std::vector<SimulationZoneData::ZoneLightAnimData> simAnims;
+            if (currentZone_) {
+                for (size_t i = 0; i < currentZone_->lights.size() && i < zoneLightData_.size(); ++i) {
+                    const auto& light = currentZone_->lights[i];
+                    if (!light->isAnimated()) continue;
+                    SimulationZoneData::ZoneLightAnimData anim;
+                    anim.lightIndex = i;
+                    anim.frameCount = light->frameCount;
+                    anim.sleepMs = light->sleepMs;
+                    anim.baseR = light->r;
+                    anim.baseG = light->g;
+                    anim.baseB = light->b;
+                    for (const auto& c : light->colors)
+                        anim.frameColors.push_back(c);
+                    anim.lightLevels = light->lightLevels;
+                    simAnims.push_back(std::move(anim));
+                }
+            }
+            simulationWorker_->updateZoneLightData(
+                std::move(simLights), std::move(simNodes), std::move(simAnims));
+
+            // Also update object light data (created during progressive object building)
+            if (!objectLights_.empty()) {
+                std::vector<SimulationZoneData::ObjectLightData> simObjLights(objectLights_.size());
+                for (size_t i = 0; i < objectLights_.size(); ++i) {
+                    simObjLights[i].position = objectLights_[i].position;
+                    simObjLights[i].originalColor = objectLights_[i].originalColor;
+                    simObjLights[i].isFireSource = objectLights_[i].isFireSource;
+                    simObjLights[i].flickerSpeed = objectLights_[i].flickerSpeed;
+                    simObjLights[i].objectName = objectLights_[i].objectName;
+                    simObjLights[i].bspRegion = objectLights_[i].bspRegion;
+                    if (objectLights_[i].node) {
+                        const auto& ld = objectLights_[i].node->getLightData();
+                        simObjLights[i].radius = ld.Radius;
+                        simObjLights[i].attConstant = ld.Attenuation.X;
+                        simObjLights[i].attLinear = ld.Attenuation.Y;
+                        simObjLights[i].attQuadratic = ld.Attenuation.Z;
+                    } else {
+                        simObjLights[i].radius = 100.0f;
+                        simObjLights[i].attConstant = 1.0f;
+                        simObjLights[i].attLinear = 0.007f;
+                        simObjLights[i].attQuadratic = 0.0002f;
+                    }
+                }
+                simulationWorker_->updateObjectLightData(std::move(simObjLights));
+            }
+        }
+
         phaseState_ = PhaseState::Finished;
         zoneLoadPhase_ = ZoneLoadPhase::P13_Cleanup;
         logAssetBuildTime("lights_install_regions", 0, stepStart);
@@ -8111,7 +8180,8 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     }
 
     input.renderDistance = renderDistance_;
-    input.loadingActive = loadingScreenVisible_;
+    input.loadingActive = loadingScreenVisible_ ||
+        (zoneLoadPhase_ != ZoneLoadPhase::Idle && zoneLoadPhase_ != ZoneLoadPhase::Complete);
 
     // Player (EQ Z-up)
     input.playerX = playerX_;

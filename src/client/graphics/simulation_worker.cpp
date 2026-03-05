@@ -155,6 +155,57 @@ void SimulationWorker::updateVertexAnimData(std::vector<SimulationZoneData::Vert
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker: updated vertex anim data ({} anims)", zoneData_.vertexAnims.size());
 }
 
+void SimulationWorker::updateZoneLightData(std::vector<SimulationZoneData::ZoneLightData>&& lights,
+                                            std::vector<SimulationZoneData::ZoneLightNodeData>&& nodes,
+                                            std::vector<SimulationZoneData::ZoneLightAnimData>&& anims) {
+    // Called between frames when worker is sleeping (after swapAndGetResults, before postInput)
+    zoneData_.zoneLights = std::move(lights);
+    zoneData_.zoneLightNodes = std::move(nodes);
+    zoneData_.zoneLightAnims = std::move(anims);
+
+    // Resize light visibility output buffers
+    for (int i = 0; i < 2; ++i) {
+        output_[i].lightVisible.resize(zoneData_.zoneLights.size(), 0);
+    }
+
+    // Resize light animation state and capture base colors
+    lightAnimStates_.resize(zoneData_.zoneLightAnims.size());
+    for (auto& s : lightAnimStates_) {
+        s.elapsedMs = 0;
+        s.currentFrame = 0;
+    }
+    zoneLightBaseColors_.resize(zoneData_.zoneLightNodes.size());
+    for (size_t i = 0; i < zoneData_.zoneLightNodes.size(); ++i) {
+        zoneLightBaseColors_[i] = zoneData_.zoneLightNodes[i].diffuseColor;
+    }
+    // Force vision/weather reapply
+    cachedVisionType_ = 255;
+    cachedWeatherAmbientModifier_ = -1.0f;
+
+    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: updated zone light data ({} lights, {} nodes, {} anims)",
+             zoneData_.zoneLights.size(), zoneData_.zoneLightNodes.size(), zoneData_.zoneLightAnims.size());
+}
+
+void SimulationWorker::updateObjectLightData(std::vector<SimulationZoneData::ObjectLightData>&& lights) {
+    // Called between frames when worker is sleeping (after swapAndGetResults, before postInput)
+    zoneData_.objectLights = std::move(lights);
+
+    // Resize object light output buffers
+    for (int i = 0; i < 2; ++i) {
+        output_[i].objectLightColors.resize(zoneData_.objectLights.size());
+        output_[i].objectLightVisible.resize(zoneData_.objectLights.size(), 0);
+    }
+
+    // Resize flicker phases
+    flickerPhases_.resize(zoneData_.objectLights.size());
+    for (size_t i = 0; i < zoneData_.objectLights.size(); ++i) {
+        flickerPhases_[i] = static_cast<float>(i) * 1.3f;  // Staggered phases
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: updated object light data ({} lights)",
+             zoneData_.objectLights.size());
+}
+
 void SimulationWorker::clearZoneData() {
     zoneDataValid_ = false;
     zoneData_ = SimulationZoneData();
@@ -359,6 +410,14 @@ void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput
         for (auto& er : output.entityResults) {
             er.shouldBeVisible = true;
             er.nameTagVisible = false;
+
+            // Compute BSP regions during loading so entities have valid regions
+            // for PVS depth gating in queueEntityPrepRequests()
+            if (zoneData_.bspTree && (er.bspRegionDirty || er.cachedBspRegion == SIZE_MAX)) {
+                er.cachedBspRegion = zoneData_.bspTree->findRegionIndexForPoint(
+                    er.posX, er.posY, er.posZ);
+                er.bspRegionDirty = false;
+            }
         }
         output.entityVisibleCount = static_cast<int>(output.entityResults.size());
     } else {

@@ -734,6 +734,10 @@ public:
     // Safe to call after swapAndGetResults() and before postInput() — worker is sleeping.
     void updateTreeData(std::vector<SimulationZoneData::AnimatedTreeData>&& trees);
     void updateVertexAnimData(std::vector<SimulationZoneData::VertexAnimData>&& vertAnims);
+    void updateZoneLightData(std::vector<SimulationZoneData::ZoneLightData>&& lights,
+                             std::vector<SimulationZoneData::ZoneLightNodeData>&& nodes,
+                             std::vector<SimulationZoneData::ZoneLightAnimData>&& anims);
+    void updateObjectLightData(std::vector<SimulationZoneData::ObjectLightData>&& lights);
 
     // Per-frame protocol (called from main thread)
 
