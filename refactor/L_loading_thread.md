@@ -478,7 +478,7 @@ Remove the old loading path and clean up.
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | L07 | Remove old loading state machine (advanceBackgroundZoneLoad) | pending | |
-| L08 | Remove networkTickCallback_, update docs | pending | |
+| L08 | Remove networkTickCallback_, update docs | done | (uncommitted) |
 
 #### L07: Remove Old Loading Path
 

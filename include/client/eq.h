@@ -68,6 +68,7 @@ namespace Graphics {
 }
 }
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/loading_thread.h"
 namespace eqt {
 namespace inventory {
     class InventoryManager;
@@ -1569,6 +1570,15 @@ private:
 	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
 	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
 
+	// Loading thread — owns GL context during zone loading
+	std::unique_ptr<EQT::Graphics::LoadingThread> m_loading_thread;
+	EQT::Graphics::LoadingStatus m_loading_status;
+	EQT::Graphics::GLContextHandles m_gl_handles;
+
+	void StartLoadingThread();
+	void JoinLoadingThread();
+	void LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& status);
+
 	// Inventory manager
 	std::unique_ptr<eqt::inventory::InventoryManager> m_inventory_manager;
 
@@ -1579,7 +1589,6 @@ private:
 	// Manual zone load diagnostics helpers
 	void runPmemDiagnostics(const std::string& label);
 	void runLoadDiagnostics(const std::string& label);
-	static EQT::Graphics::ZoneLoadStep parseZoneLoadStep(const std::string& arg);
 
 	// Player mode loot state
 	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted in Player mode (0 = not looting)

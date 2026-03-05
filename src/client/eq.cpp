@@ -1046,7 +1046,10 @@ void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
 	         phaseNum, progress * 100.0f, m_loading_status_text);
 
 #ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
+	// Write to LoadingStatus for the loading thread's passive display loop
+	m_loading_status.setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
+
+	if (m_renderer && !m_renderer->isLoading()) {
 		std::wstring wstatus(m_loading_status_text, m_loading_status_text + strlen(m_loading_status_text));
 		m_renderer->setLoadingProgress(progress, wstatus.c_str());
 	}
@@ -1106,8 +1109,11 @@ void EverQuest::OnGameStateComplete() {
 
 #ifdef EQT_HAS_GRAPHICS
 	if (m_renderer) {
-		// Trigger graphics loading now that game state is ready
-		LoadZoneGraphics();
+		SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
+
+		// Signal loading thread to enter active phase (zone loading)
+		m_loading_status.graphicsLoadReady.store(true, std::memory_order_release);
+		LOG_INFO(MOD_GRAPHICS, "OnGameStateComplete: signaled graphicsLoadReady to loading thread");
 	} else {
 		// No graphics mode - we're done
 		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
@@ -7588,8 +7594,6 @@ void EverQuest::runLoadDiagnostics(const std::string& label) {
 	LOG_INFO(MOD_MAIN, "");
 	LOG_INFO(MOD_MAIN, "╔══════════════════════════════════════════════════════════════");
 	LOG_INFO(MOD_MAIN, "║ LOAD DIAGNOSTICS: {}", label);
-	LOG_INFO(MOD_MAIN, "║ Phase: {}", EQT::Graphics::IrrlichtRenderer::phaseToString(
-		m_renderer->getZoneLoadPhase()));
 	LOG_INFO(MOD_MAIN, "╚══════════════════════════════════════════════════════════════");
 
 	// Scene dump
@@ -7600,25 +7604,6 @@ void EverQuest::runLoadDiagnostics(const std::string& label) {
 
 	LOG_INFO(MOD_MAIN, "══════════════════════════════════════════════════════════════");
 	LOG_INFO(MOD_MAIN, "");
-}
-
-EQT::Graphics::ZoneLoadStep EverQuest::parseZoneLoadStep(const std::string& arg) {
-	using S = EQT::Graphics::ZoneLoadStep;
-	if (arg == "s3d"  || arg == "1")  return S::S3d;
-	if (arg == "bsp"  || arg == "2")  return S::Bsp;
-	if (arg == "atlas" || arg == "3") return S::Atlas;
-	if (arg == "regions" || arg == "4") return S::Regions;
-	if (arg == "assets" || arg == "5") return S::Assets;
-	if (arg == "objects" || arg == "6") return S::Objects;
-	if (arg == "doors" || arg == "7") return S::Doors;
-	if (arg == "entities" || arg == "8") return S::Entities;
-	if (arg == "collision" || arg == "9") return S::Collision;
-	if (arg == "sky"  || arg == "10") return S::Sky;
-	if (arg == "env"  || arg == "11") return S::Env;
-	if (arg == "lights" || arg == "12") return S::Lights;
-	if (arg == "cleanup" || arg == "13") return S::Cleanup;
-	if (arg == "all")                 return S::All;
-	return S::None;
 }
 
 void EverQuest::RegisterCommands()
@@ -9335,122 +9320,6 @@ void EverQuest::RegisterCommands()
 			pm->isUnifiedFireEnabled() ? "ENABLED" : "DISABLED"));
 	};
 	m_command_registry->registerCommand(firecmd);
-
-	Command loadzonecmd;
-	loadzonecmd.name = "loadzone";
-	loadzonecmd.aliases = {};
-	loadzonecmd.usage = "/loadzone";
-	loadzonecmd.description = "Start loading zone S3D assets (textures, geometry, models)";
-	loadzonecmd.category = "Utility";
-	loadzonecmd.handler = [this](const std::string& args) {
-		if (!m_renderer) {
-			AddChatSystemMessage("No renderer available");
-			return;
-		}
-		if (m_renderer->isProgressiveLoadingActive() ||
-			m_renderer->getZoneLoadPhase() != EQT::Graphics::ZoneLoadPhase::Idle) {
-			AddChatSystemMessage("Zone loading already in progress");
-			return;
-		}
-		AddChatSystemMessage("Starting zone asset load...");
-		m_renderer->beginZoneAssetLoad(m_eq_client_path);
-	};
-	m_command_registry->registerCommand(loadzonecmd);
-
-	Command loadcmd;
-	loadcmd.name = "load";
-	loadcmd.aliases = {};
-	loadcmd.usage = "/load [s3d|bsp|atlas|regions|assets|objects|doors|entities|collision|sky|env|lights|cleanup|all] or [1-13]";
-	loadcmd.description = "Step-by-step zone loading with before/after diagnostics";
-	loadcmd.category = "Utility";
-	loadcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) {
-			AddChatSystemMessage("No renderer available");
-			return;
-		}
-
-		using Phase = EQT::Graphics::ZoneLoadPhase;
-		using Step = EQT::Graphics::ZoneLoadStep;
-
-		std::string arg = args;
-		// Trim whitespace
-		while (!arg.empty() && (arg.front() == ' ' || arg.front() == '\t')) arg.erase(arg.begin());
-		while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t')) arg.pop_back();
-		// Lowercase
-		for (auto& c : arg) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-		// No args: show status
-		if (arg.empty()) {
-			auto phase = m_renderer->getZoneLoadPhase();
-			bool manual = m_renderer->isManualLoadMode();
-			AddChatSystemMessage(fmt::format("Phase: {} | Manual: {} | Next: {}",
-				EQT::Graphics::IrrlichtRenderer::phaseToString(phase),
-				manual ? "yes" : "no",
-				manual ? EQT::Graphics::IrrlichtRenderer::stepToString(
-					m_renderer->getNextExpectedStep()) : "n/a"));
-			return;
-		}
-
-		Step step = parseZoneLoadStep(arg);
-		if (step == Step::None) {
-			AddChatSystemMessage(fmt::format("Unknown load step: '{}'. Use: s3d(1) bsp(2) atlas(3) regions(4) assets(5) objects(6) doors(7) entities(8) collision(9) sky(10) env(11) lights(12) cleanup(13) all", arg));
-			return;
-		}
-
-		// First step (s3d) — enter manual mode
-		if (step == Step::S3d) {
-			if (m_renderer->isManualLoadMode()) {
-				AddChatSystemMessage("Manual load already in progress. Use /load <next step> to continue.");
-				return;
-			}
-			if (m_renderer->isProgressiveLoadingActive() ||
-				m_renderer->getZoneLoadPhase() != Phase::Idle) {
-				AddChatSystemMessage("Zone loading already in progress");
-				return;
-			}
-
-			// Set up callback for AFTER diagnostics
-			m_renderer->setManualLoadPauseCallback([this](const std::string& label) {
-				runLoadDiagnostics(label);
-				auto next = m_renderer->getNextExpectedStep();
-				AddChatSystemMessage(fmt::format("Paused. Next: /load {}",
-					EQT::Graphics::IrrlichtRenderer::stepToString(next)));
-			});
-
-			// BEFORE diagnostics
-			runLoadDiagnostics("BEFORE /load s3d");
-
-			// Start manual zone load (sets up bg thread + pause at P02_Bsp_Submit)
-			m_renderer->beginManualZoneLoad(m_eq_client_path);
-			AddChatSystemMessage("Manual zone load started — loading S3D...");
-			return;
-		}
-
-		// Subsequent steps — must be in manual mode
-		if (!m_renderer->isManualLoadMode()) {
-			AddChatSystemMessage("Not in manual load mode. Start with /load s3d");
-			return;
-		}
-
-		// BEFORE diagnostics
-		runLoadDiagnostics(fmt::format("BEFORE /load {}", arg));
-
-		// Advance to this step
-		if (!m_renderer->advanceManualLoadStep(step)) {
-			auto next = m_renderer->getNextExpectedStep();
-			AddChatSystemMessage(fmt::format("Wrong step order. Expected: /load {}",
-				EQT::Graphics::IrrlichtRenderer::stepToString(next)));
-			return;
-		}
-
-		if (step == Step::All) {
-			AddChatSystemMessage("Running all remaining load steps...");
-		} else {
-			AddChatSystemMessage(fmt::format("Loading step: {}...",
-				EQT::Graphics::IrrlichtRenderer::stepToString(step)));
-		}
-	};
-	m_command_registry->registerCommand(loadcmd);
 
 	Command renderdist;
 	renderdist.name = "renderdist";
@@ -13707,10 +13576,18 @@ void EverQuest::ProcessDeferredZoneChange()
 	LOG_DEBUG(MOD_ZONE, "Processing deferred zone change");
 
 	LOG_TRACE(MOD_ZONE, "Step 1: Disconnecting from current zone");
-	// NOTE: DisconnectFromZone() calls CleanupZone() which sets DISCONNECTED phase
-	// and shows loading screen. No need for separate setLoadingProgress call.
+	// NOTE: DisconnectFromZone() calls CleanupZone() which does unloadZone() and
+	// sets DISCONNECTED phase. Main thread still owns GL at this point.
 	DisconnectFromZone();
 	LOG_TRACE(MOD_ZONE, "Step 1 complete: Zone disconnected");
+
+#ifdef EQT_HAS_GRAPHICS
+	// Start loading thread to render loading screen during world reconnection.
+	// CleanupZone() already called unloadZone() while main thread held GL.
+	// Now transfer GL to loading thread for the passive display loop (0-45%).
+	// OnGameStateComplete() will signal graphicsLoadReady for the active phase.
+	StartLoadingThread();
+#endif
 
 	// Reconnect to world server to get new zone info
 	if (!m_world_server_host.empty()) {
@@ -18240,11 +18117,6 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
 	TickNetwork();
 
-	// Set network tick callback so renderer can pump event loop during heavy loading stages
-	m_renderer->setNetworkTickCallback([this]() {
-		TickNetwork();
-	});
-
 	// Set up HUD callback to display player stats (HP/Mana bars)
 	// Zone, location, entities are displayed by the renderer HUD
 	m_renderer->setHUDCallback([this]() -> std::wstring {
@@ -18999,10 +18871,20 @@ bool EverQuest::InitGraphics(int width, int height) {
 		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering with {} entities", m_entities.size());
 	}
 
+	// Start loading thread — transfers GL context to loading thread for progress bar
+	StartLoadingThread();
+
 	return true;
 }
 
 void EverQuest::ShutdownGraphics() {
+	// Join loading thread before destroying renderer (it may own the GL context)
+	if (m_loading_thread && m_loading_thread->isRunning()) {
+		m_loading_status.quitRequested.store(true, std::memory_order_release);
+		JoinLoadingThread();
+	}
+	m_loading_thread.reset();
+
 	if (m_inventory_manager) {
 		m_inventory_manager->clearAll();
 		m_inventory_manager.reset();
@@ -19030,6 +18912,16 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 			LOG_TRACE(MOD_GRAPHICS, "UpdateGraphics: no renderer (initialized={})", m_graphics_initialized);
 		}
 		return true;  // No renderer, just return success
+	}
+
+	// Loading thread owns GL context — skip all rendering.
+	// Check for loading completion and join.
+	if (m_loading_thread && m_loading_thread->isRunning()) {
+		if (m_loading_status.loadingComplete.load(std::memory_order_acquire)) {
+			JoinLoadingThread();
+			OnGraphicsComplete();
+		}
+		return true;  // Loading thread active, no GL work on main thread
 	}
 
 	if (zone_transition_logging) {
@@ -19157,6 +19049,169 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 }
 
 #ifdef EQT_HAS_GRAPHICS
+
+void EverQuest::StartLoadingThread() {
+	if (!m_renderer || !m_graphics_initialized) return;
+	if (m_loading_thread && m_loading_thread->isRunning()) {
+		LOG_WARN(MOD_GRAPHICS, "StartLoadingThread: loading thread already running");
+		return;
+	}
+
+	// Extract GL handles while main thread still owns context
+	m_gl_handles = EQT::Graphics::LoadingThread::extractGLHandles(
+		m_renderer->getDevice(), m_renderer->getDriver());
+
+	// Reset loading status
+	m_loading_status.reset();
+
+	// Get font for loading screen
+	irr::gui::IGUIFont* font = nullptr;
+	if (m_renderer->getGUIEnvironment())
+		font = m_renderer->getGUIEnvironment()->getBuiltInFont();
+
+	// Release GL context on main thread
+	EQT::Graphics::LoadingThread::releaseContext(m_gl_handles);
+
+	// Set the renderer loading flag so main thread skips GL calls
+	m_renderer->setLoading(true);
+
+	// Start loading thread with active phase callback
+	m_loading_thread = std::make_unique<EQT::Graphics::LoadingThread>();
+	m_loading_thread->start(
+		m_renderer->getDevice(), m_renderer->getDriver(), font, m_gl_handles,
+		m_loading_status,
+		[this](EQT::Graphics::LoadingStatus& status) {
+			LoadZoneGraphicsOnLoadingThread(status);
+		});
+
+	LOG_INFO(MOD_GRAPHICS, "StartLoadingThread: loading thread started, GL context transferred");
+}
+
+void EverQuest::JoinLoadingThread() {
+	if (!m_loading_thread) return;
+
+	m_loading_thread->join();
+	m_loading_thread.reset();
+
+	// Reacquire GL context on main thread
+	EQT::Graphics::LoadingThread::acquireContext(m_gl_handles);
+
+	// Clear loading flag
+	if (m_renderer)
+		m_renderer->setLoading(false);
+
+	LOG_INFO(MOD_GRAPHICS, "JoinLoadingThread: loading thread joined, GL context reacquired");
+}
+
+void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& status) {
+	// This runs on the loading thread, which owns the GL context.
+	// Equivalent to LoadZoneGraphics() but called from loading thread.
+
+	if (!m_renderer) return;
+
+	// Temporarily clear loading flag so renderer methods work on this thread.
+	// Main thread won't call renderer methods because UpdateGraphics() returns
+	// early when loading thread is active (checked before this point).
+	m_renderer->setLoading(false);
+
+	// 1. Collision map
+	if (m_zone_map)
+		m_renderer->setCollisionMap(m_zone_map.get());
+
+	// 2. Zone lines
+	if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map)
+		m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
+	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+		auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
+		if (!boxes.empty())
+			m_renderer->setZoneLineBoundingBoxes(boxes);
+	}
+
+	// 3. Build HCMap placeholder + minimal collision
+	m_renderer->setupInstantScene(m_current_zone_name, m_x, m_y, m_z);
+
+	// 4. Zone environment data
+	if (!m_current_zone_name.empty()) {
+		m_renderer->storeZoneEnvironment(m_zone_sky_type, m_zone_type,
+			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
+			m_zone_fog_minclip, m_zone_fog_maxclip);
+	}
+
+	// 5. Register all entities
+	if (m_renderer->getEntityRenderer())
+		m_renderer->getEntityRenderer()->setPlayerLevel(m_level);
+
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: registering {} entities", m_entities.size());
+
+	size_t registered = 0, failed = 0;
+	for (const auto& [spawn_id, entity] : m_entities) {
+		bool isPlayer = (entity.name == m_character);
+		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
+		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
+		if (!isCorpse && entity.name.find("corpse") != std::string::npos)
+			isCorpse = true;
+
+		EQT::Graphics::EntityAppearance appearance;
+		appearance.face = entity.face;
+		appearance.haircolor = entity.haircolor;
+		appearance.hairstyle = entity.hairstyle;
+		appearance.beardcolor = entity.beardcolor;
+		appearance.beard = entity.beard;
+		appearance.texture = entity.equip_chest2;
+		appearance.helm = entity.helm;
+		for (int i = 0; i < 9; i++) {
+			appearance.equipment[i] = entity.equipment[i];
+			appearance.equipment_tint[i] = entity.equipment_tint[i];
+		}
+
+		bool ok = m_renderer->registerEntity(spawn_id, entity.race_id, entity.name,
+		                           entity.x, entity.y, entity.z, entity.heading,
+		                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
+		                           entity.level);
+		if (ok) registered++; else failed++;
+
+		if (isPlayer) {
+			m_renderer->setPlayerSpawnId(m_my_spawn_id);
+			if (entity.light > 0)
+				m_renderer->setEntityLight(spawn_id, entity.light);
+			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+		} else if (entity.light > 0) {
+			m_renderer->setEntityLight(spawn_id, entity.light);
+		}
+	}
+
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: {} registered, {} failed", registered, failed);
+
+	// 6. Register doors
+	for (const auto& [door_id, door] : m_doors) {
+		bool initiallyOpen = (door.state != 0) != door.invert_state;
+		m_renderer->registerDoor(door.door_id, door.name, door.x, door.y, door.z,
+		                         door.heading, door.incline, door.size, door.opentype,
+		                         initiallyOpen);
+	}
+
+	// 7. Camera
+	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+	float heading512 = m_heading * 512.0f / 360.0f;
+	m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
+
+	// 8. Hotbar callback
+	auto* windowMgr = m_renderer->getWindowManager();
+	if (windowMgr) {
+		windowMgr->setHotbarChangedCallback([this]() {
+			SaveHotbarConfig();
+		});
+	}
+
+	m_player_graphics_entity_pending = true;
+
+	// 9. Sequential zone asset loading
+	m_renderer->loadZoneSequential(m_eq_client_path, status);
+
+	// Restore loading flag — will be cleared by JoinLoadingThread on main thread
+	m_renderer->setLoading(true);
+}
+
 void EverQuest::LoadZoneGraphics() {
 	if (!m_graphics_initialized || !m_renderer) {
 		LOG_WARN(MOD_GRAPHICS, "LoadZoneGraphics called but graphics not initialized");

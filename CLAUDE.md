@@ -459,6 +459,29 @@ On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses 
 
 **`/pmem` diagnostics**: Shows tracked memory across all subsystems (texture cache, mesh cache, GPU textures, atlas pages, S3D zone source data, entity renderer, audio, etc.) compared against RSS. Texture cache is NOT added to the tracked total because its textures are already counted in GPU Textures (created via `driver_->addTexture()`).
 
+### Zone Loading Thread
+
+Zone loading runs on a dedicated **LoadingThread** that owns the GL context during the load. This keeps the main thread free to pump the network and handle packets while the loading screen is displayed.
+
+**Architecture:**
+- `LoadingThread` (`include/client/graphics/loading_thread.h`) — spawns a thread, transfers GL context ownership, runs `loadZoneSequential()`, renders loading screen progress
+- `LoadingStatus` — shared atomic struct for thread-safe progress communication (step number, percentage, status text)
+- `GLContextHandles` — platform-specific GL context handles (EGL on ARM/GLES2, GLX on desktop) for cross-thread transfer
+- `loadZoneSequential()` — 13-step sequential zone loading function that replaces the old async state machine
+
+**Flow (initial zone load and re-zoning):**
+1. Main thread calls `StartLoadingThread()` — transfers GL context to loading thread
+2. Loading thread enters passive phase (renders loading screen at 0-45% while main thread completes network handshake)
+3. Main thread receives zone data packets, calls `OnGameStateComplete()` which signals `graphicsLoadReady`
+4. Loading thread enters active phase — runs `loadZoneSequential()` (45-100%), loading S3D archives, building meshes, uploading textures
+5. Loading thread completes, main thread calls `JoinLoadingThread()` — GL context returns to main thread
+6. Main thread calls `OnGraphicsComplete()` to finalize (hide loading screen, start simulation)
+
+**Key design decisions:**
+- Network runs entirely on the main thread — no `networkTickCallback_` needed
+- GL context is exclusively owned by one thread at a time (never shared)
+- Loading thread renders the loading screen directly (no cross-thread render requests)
+
 ### Packet Structures
 
 Titanium-specific packet structures are defined in `include/common/packet_structs.h`. These are binary-compatible with the Titanium client protocol.

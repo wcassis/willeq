@@ -88,22 +88,22 @@ during zone load. Full plan: `refactor/L_loading_thread.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L03 | Sequential zone loading function (replaces advanceBackgroundZoneLoad) | pending | |
-| L04 | Loading screen progress updates from sequential loader | pending | |
+| L03 | Sequential zone loading function (replaces advanceBackgroundZoneLoad) | done | (uncommitted) |
+| L04 | Loading screen progress updates from sequential loader | done | (uncommitted) |
 
 ### Phase L3 — Integration
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L05 | Initial zone load via loading thread | pending | |
-| L06 | Re-zone via loading thread | pending | |
+| L05 | Initial zone load via loading thread | done | (uncommitted) |
+| L06 | Re-zone via loading thread | done | (uncommitted) |
 
 ### Phase L4 — Cleanup
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L07 | Remove old loading state machine (advanceBackgroundZoneLoad) | pending | |
-| L08 | Remove networkTickCallback_, update docs | pending | |
+| L07 | Remove old loading state machine (advanceBackgroundZoneLoad) | done | (uncommitted) |
+| L08 | Remove networkTickCallback_, update docs | done | (uncommitted) |
 
 ---
 

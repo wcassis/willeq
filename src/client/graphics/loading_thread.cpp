@@ -113,7 +113,8 @@ void LoadingThread::start(irr::IrrlichtDevice* device,
                            irr::video::IVideoDriver* driver,
                            irr::gui::IGUIFont* font,
                            const GLContextHandles& handles,
-                           LoadingStatus& status) {
+                           LoadingStatus& status,
+                           ActivePhaseCallback activeCallback) {
     if (running_.load()) {
         LOG_WARN(MOD_GRAPHICS, "LoadingThread: already running");
         return;
@@ -121,7 +122,7 @@ void LoadingThread::start(irr::IrrlichtDevice* device,
 
     running_.store(true, std::memory_order_relaxed);
     thread_ = std::thread(&LoadingThread::threadFunc, this, device, driver, font, handles,
-                           std::ref(status));
+                           std::ref(status), std::move(activeCallback));
 }
 
 void LoadingThread::join() {
@@ -135,7 +136,8 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
                                 irr::video::IVideoDriver* driver,
                                 irr::gui::IGUIFont* font,
                                 GLContextHandles handles,
-                                LoadingStatus& status) {
+                                LoadingStatus& status,
+                                ActivePhaseCallback activeCallback) {
     // Acquire GL context on this thread
     if (!acquireContext(handles)) {
         LOG_ERROR(MOD_GRAPHICS, "LoadingThread: failed to acquire GL context, aborting");
@@ -171,8 +173,10 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
 
     LOG_INFO(MOD_GRAPHICS, "LoadingThread: graphicsLoadReady, entering active loading phase");
 
-    // TODO (L03): Active loading phase — execute zone loading steps sequentially.
-    // For now, just signal completion so the main thread can join.
+    // Execute the active loading callback (zone loading + renderer setup)
+    if (activeCallback) {
+        activeCallback(status);
+    }
 
     // Release GL context before signaling completion
     releaseContext(handles);

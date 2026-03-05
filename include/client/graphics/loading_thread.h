@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -105,14 +106,20 @@ public:
     // Acquire GL context on the calling thread.
     static bool acquireContext(const GLContextHandles& handles);
 
+    // Callback for the active loading phase.
+    // Called on the loading thread after graphicsLoadReady is signaled.
+    // The loading thread owns the GL context when this runs.
+    using ActivePhaseCallback = std::function<void(LoadingStatus& status)>;
+
     // Start the loading thread. Main thread must have already released the GL context.
     // The loading thread will acquire it, render the loading screen, and wait for
-    // graphicsLoadReady before starting active loading work.
+    // graphicsLoadReady before calling activeCallback (which does zone loading).
     void start(irr::IrrlichtDevice* device,
                irr::video::IVideoDriver* driver,
                irr::gui::IGUIFont* font,
                const GLContextHandles& handles,
-               LoadingStatus& status);
+               LoadingStatus& status,
+               ActivePhaseCallback activeCallback);
 
     // Join the loading thread. Blocks until the thread completes.
     // After this returns, the main thread should reacquire the GL context.
@@ -125,7 +132,8 @@ private:
                     irr::video::IVideoDriver* driver,
                     irr::gui::IGUIFont* font,
                     GLContextHandles handles,
-                    LoadingStatus& status);
+                    LoadingStatus& status,
+                    ActivePhaseCallback activeCallback);
 
     // Render one frame of the loading screen.
     static void drawLoadingFrame(irr::video::IVideoDriver* driver,
