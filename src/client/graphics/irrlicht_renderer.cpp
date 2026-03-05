@@ -4366,7 +4366,34 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 
     case ZoneLoadPhase::P04_Regions_EagerBatch: {
         phaseState_ = PhaseState::Running;
-        // Build a batch of region meshes per GREEN frame
+
+        // Lazy mode: wait for processFrameProgressiveLoad() to build all visible regions.
+        // SimWorker provides meshLoadQueue_ with regions sorted by PVS depth; the progressive
+        // loader builds one per GREEN frame. We stay here until the queue is drained.
+        if (constrainedMeshCache_) {
+            size_t needBuild = 0;
+            for (const auto& entry : meshLoadQueue_) {
+                if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
+                    if (getRegionPvsDepth(entry.regionIdx) <= static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth))
+                        needBuild++;
+                }
+            }
+            if (needBuild == 0) {
+                size_t loadedCount = 0;
+                for (const auto& [idx, node] : regionMeshNodes_) {
+                    if (node) loadedCount++;
+                }
+                LOG_INFO(MOD_GRAPHICS, "Lazy mode: all visible regions built ({} loaded, queue drained)",
+                         loadedCount);
+                phaseState_ = PhaseState::Finished;
+                zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_Submit;
+                logAssetBuildTime("region_wait_mesh_builds", loadedCount, stepStart);
+            }
+            // else: stay in P04_Regions_EagerBatch, processFrameProgressiveLoad() builds next region
+            break;
+        }
+
+        // Eager mode: build a batch of region meshes per GREEN frame
         auto wldLoader = currentZone_->wldLoader;
         auto bspTree = wldLoader->getBspTree();
         const size_t BATCH_SIZE = 10;
@@ -4510,9 +4537,17 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
         }
 
-        phaseState_ = PhaseState::Finished;
-        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_Submit;
-        logAssetBuildTime("region_sort_setup", 0, stepStart);
+        // In lazy mode with SimWorker running, wait for visible region meshes to build
+        // before declaring step 4 complete. Mesh building happens in processFrameProgressiveLoad().
+        if (constrainedMeshCache_ && simulationWorker_ && simulationWorker_->isRunning()) {
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P04_Regions_EagerBatch;  // Reuse as "wait for mesh builds"
+            logAssetBuildTime("region_sort_setup", 0, stepStart);
+        } else {
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_Submit;
+            logAssetBuildTime("region_sort_setup", 0, stepStart);
+        }
         break;
     }
 
