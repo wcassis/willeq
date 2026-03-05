@@ -862,6 +862,18 @@ void IrrlichtRenderer::hideLoadingScreen() {
         LOG_DEBUG(MOD_GRAPHICS, "Governor reset requested — will start GREEN next frame");
     }
 
+    // Start SimulationWorker thread for ongoing runtime updates.
+    // Worker was created and zone data set by loadZoneSequential() on the loading thread,
+    // which also ran computeOnce() to populate the first frame's scene state.
+    if (simulationWorker_ && !simulationWorker_->isRunning()) {
+        simulationWorker_->start();
+        LOG_INFO(MOD_GRAPHICS, "SimulationWorker thread started for runtime updates");
+    } else if (!simulationWorker_) {
+        // Fallback: loading thread didn't create worker (shouldn't happen)
+        LOG_WARN(MOD_GRAPHICS, "SimulationWorker not created by loading thread, creating now");
+        startSimulationWorkerEarly();
+    }
+
     // Release duplicate character data from zone source. RaceModelLoader independently
     // loads _chr.s3d into its own cache, so currentZone_->characters is an unused copy.
     if (currentZone_) {
@@ -3258,12 +3270,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             int pageIdx = 0;
             bool done = false;
             while (!done) {
-#ifdef EQT_HAS_GLES2
-                done = zoneAtlas_->uploadPreloadedPageAsync(computations->zoneAtlasPreload, pageIdx,
-                                                              gpuUploadThread_.get(), 0);
-#else
+                // Synchronous GL upload — loading thread owns the GL context,
+                // so upload directly instead of deferring to GPU upload thread.
                 done = zoneAtlas_->uploadPreloadedPage(computations->zoneAtlasPreload, pageIdx);
-#endif
                 ++pageIdx;
                 ++atlasPagesDone;
                 if (totalAtlasPages > 0) {
@@ -3285,12 +3294,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             int pageIdx = 0;
             bool done = false;
             while (!done) {
-#ifdef EQT_HAS_GLES2
-                done = objAtlas_->uploadPreloadedPageAsync(computations->objAtlasPreload, pageIdx,
-                                                              gpuUploadThread_.get(), 1);
-#else
                 done = objAtlas_->uploadPreloadedPage(computations->objAtlasPreload, pageIdx);
-#endif
                 ++pageIdx;
                 ++atlasPagesDone;
                 if (totalAtlasPages > 0) {
@@ -3340,8 +3344,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             auto bspTree = wldLoader->getBspTree();
 
             ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
-            if (constrainedTextureCache_)
-                builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+            // Do NOT set constrained texture cache during sequential loading.
+            // The constrained cache defers to background threads and returns nullptr
+            // on first call, which breaks single-pass mesh building. The unconstrained
+            // path does synchronous DDS decode + driver_->addTexture() inline.
             if (zoneShader_ && zoneShader_->isAvailable())
                 builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                zoneShader_->getActiveAlphaTest());
@@ -3371,6 +3377,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(mesh);
                 if (node) {
                     node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
+                    // Force AbsoluteTransformation update — same as rebuildRegionMesh().
+                    // Without this, triangle selectors in setupMinimalZoneCollision() use
+                    // stale identity transforms, placing collision geometry at origin.
+                    node->updateAbsolutePosition();
                     for (irr::u32 m = 0; m < node->getMaterialCount(); ++m) {
                         node->getMaterial(m).Lighting = lightingEnabled_;
                         node->getMaterial(m).BackfaceCulling = false;
@@ -3552,8 +3562,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Build all object meshes eagerly inline (no deferred/PVS-gated build at runtime)
         {
             ZoneMeshBuilder objBuilder(smgr_, driver_, device_->getFileSystem());
-            if (constrainedTextureCache_)
-                objBuilder.setConstrainedTextureCache(constrainedTextureCache_.get());
+            // Do NOT set constrained texture cache — use synchronous unconstrained path
+            // (same rationale as region mesh building above).
             if (zoneShader_ && zoneShader_->isAvailable())
                 objBuilder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                    zoneShader_->getActiveAlphaTest());
@@ -3779,8 +3789,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         auto stepStart = std::chrono::steady_clock::now();
         if (!doorManager_) {
             doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
-            if (constrainedTextureCache_)
-                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            // Do NOT set constrained texture cache yet — sequential builds use
+            // synchronous unconstrained path. Set it after building for runtime use.
             if (currentZone_) doorManager_->setZone(currentZone_);
             if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
             doorManager_->setPvsRegion(currentPvsRegion_);
@@ -3817,6 +3827,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: rebuilt {} doors", totalDoors);
         }
+        // Now set constrained cache for runtime door rebuilds (texture arrivals, etc.)
+        if (doorManager_ && constrainedTextureCache_)
+            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
         logAssetBuildTime("seq_doors", 0, stepStart);
     }
 
@@ -4663,6 +4676,248 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_lights", zoneLightData_.size(), stepStart);
     }
 
+    // ── Step 12b: SimulationWorker first-frame computation ──────────────────
+    // Create SimulationWorker, set zone data, and run one synchronous computation
+    // so the first rendered frame after loading has full PVS culling, sorted draw
+    // list, lighting, weather, particles, etc. — no visual pop-in.
+    updateProgress(99, "Computing scene...");
+    {
+        auto stepStart = std::chrono::steady_clock::now();
+
+        if (!simulationWorker_) {
+            simulationWorker_ = std::make_unique<SimulationWorker>();
+        }
+
+        // Build and register zone data
+        SimulationZoneData zoneData = buildSimulationZoneData();
+        simulationWorker_->setZoneData(zoneData);
+
+        // Update frustum culler with current camera so frustum planes are valid
+        if (frustumCuller_ && camera_) {
+            irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
+            float eqFwdX = irrFwd.X;
+            float eqFwdY = irrFwd.Z;
+            float eqFwdZ = irrFwd.Y;
+            float fovV = camera_->getFOV();
+            auto screenSize = driver_->getScreenSize();
+            float aspect = (float)screenSize.Width / (float)screenSize.Height;
+            float camX, camY, camZ;
+            cameraController_->getPositionEQ(camX, camY, camZ);
+            frustumCuller_->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
+                fovV, aspect, 1.0f, renderDistance_);
+        }
+
+        // Build SimulationInput from current state
+        SimulationInput input;
+
+        // Camera (Irrlicht Y-up)
+        if (camera_) {
+            input.cameraPos = camera_->getPosition();
+            input.cameraTarget = camera_->getTarget();
+        }
+        if (cameraController_) {
+            cameraController_->getPositionEQ(input.camEqX, input.camEqY, input.camEqZ);
+        }
+
+        // Frustum planes (EQ Z-up)
+        if (frustumCuller_ && frustumCuller_->isEnabled()) {
+            for (int i = 0; i < 6; ++i) {
+                const float* plane = frustumCuller_->getPlane(i);
+                input.frustumPlanes[i][0] = plane[0];
+                input.frustumPlanes[i][1] = plane[1];
+                input.frustumPlanes[i][2] = plane[2];
+                input.frustumPlanes[i][3] = plane[3];
+            }
+            input.frustumValid = true;
+
+            // Occlusion camera
+            auto& oc = input.occlusionCamera;
+            oc.fwdX = frustumCuller_->getFwdX();
+            oc.fwdY = frustumCuller_->getFwdY();
+            oc.fwdZ = frustumCuller_->getFwdZ();
+            oc.rightX = frustumCuller_->getRightX();
+            oc.rightY = frustumCuller_->getRightY();
+            oc.rightZ = 0;
+            oc.upX = frustumCuller_->getUpX();
+            oc.upY = frustumCuller_->getUpY();
+            oc.upZ = frustumCuller_->getUpZ();
+            oc.fovRadV = frustumCuller_->getFov();
+            oc.aspect = frustumCuller_->getAspect();
+            oc.enabled = true;
+        }
+
+        input.renderDistance = renderDistance_;
+        input.loadingActive = false;  // Full culling, not loading-mode
+
+        // Player (EQ Z-up)
+        input.playerX = playerX_;
+        input.playerY = playerY_;
+        input.playerZ = playerZ_;
+        input.playerHeading = playerHeading_;
+
+        // Timing (first frame)
+        input.deltaTime = 1.0f / 30.0f;
+        input.frameNumber = frameNumber_;
+
+        // Environment
+        input.currentHour = currentHour_;
+        input.currentMinute = currentMinute_;
+        input.timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+
+        // Player light
+        input.playerLightLevel = playerLightLevel_;
+
+        // Vision and weather modifiers
+        input.visionType = static_cast<uint8_t>(currentVision_);
+        if (weatherEffects_ && weatherEffects_->isEnabled()) {
+            input.weatherAmbientModifier = weatherEffects_->getAmbientLightModifier();
+        }
+
+        // Entity snapshots
+        if (entityRenderer_) {
+            const auto& entities = entityRenderer_->getEntities();
+            input.entitySnapshots.reserve(entities.size());
+            for (const auto& [spawnId, visual] : entities) {
+                if (!visual.sceneNode) continue;
+                SimulationInput::EntitySnapshot snap;
+                snap.spawnId = spawnId;
+                snap.lastX = visual.lastX;
+                snap.lastY = visual.lastY;
+                snap.lastZ = visual.lastZ;
+                snap.serverX = visual.serverX;
+                snap.serverY = visual.serverY;
+                snap.serverZ = visual.serverZ;
+                snap.serverHeading = visual.serverHeading;
+                snap.timeSinceUpdate = visual.timeSinceUpdate;
+                snap.lastUpdateInterval = visual.lastUpdateInterval;
+                snap.collisionZOffset = visual.collisionZOffset;
+                snap.modelYOffset = visual.modelYOffset;
+                snap.serverAnimation = visual.serverAnimation;
+                snap.lastNonZeroAnimation = visual.lastNonZeroAnimation;
+                snap.cachedBspRegion = visual.cachedBspRegion;
+                snap.bspRegionDirty = visual.bspRegionDirty;
+                snap.isNPC = visual.isNPC;
+                snap.isPlayer = visual.isPlayer;
+                snap.isCorpse = visual.isCorpse;
+                snap.isFading = visual.isFading;
+                snap.inSceneGraph = visual.inSceneGraph;
+                snap.hasVelocity = false;
+                input.entitySnapshots.push_back(snap);
+            }
+            input.entityRenderDistance = config_.constrainedConfig.entityRenderDistance;
+            input.maxVisibleEntities = config_.constrainedConfig.maxVisibleEntities;
+            input.entityCullingEnabled = true;
+            input.nameTagDistance = entityRenderer_->getNameTagDistance();
+            input.nameTagsVisible = entityRenderer_->areNameTagsVisible();
+        }
+
+        // Sky state
+        if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+            input.skyEnabled = true;
+            input.skyInitialized = true;
+            input.skyCloudScrollOffset = skyRenderer_->getCloudScrollOffset();
+        }
+
+        // Weather effects state
+        if (weatherEffects_ && weatherEffects_->isEnabled()) {
+            input.weatherEnabled = true;
+            input.weatherTransitionProgress = weatherEffects_->getTransitionProgress();
+            input.weatherTransitionDuration = weatherEffects_->getTransitionDuration();
+            input.weatherCurrentDarkening = weatherEffects_->getCurrentDarkening();
+            input.weatherTargetDarkening = weatherEffects_->getTargetDarkening();
+            input.weatherLightningFlashTimer = weatherEffects_->getLightningFlashTimer();
+            input.weatherLightningBoltTimer = weatherEffects_->getLightningBoltTimer();
+            input.weatherLightningTimer = weatherEffects_->getLightningTimer();
+            input.weatherLightningActive = weatherEffects_->isLightningActive();
+            input.weatherLightningEnabled = weatherEffects_->isLightningEnabled();
+            input.weatherType = weatherEffects_->getCurrentType();
+            input.weatherIntensity = weatherEffects_->getCurrentIntensity();
+        }
+
+        // Particle system input
+        if (particleManager_) {
+            auto& pi = input.particleInput;
+            pi.deltaTime = input.deltaTime;
+            if (camera_) {
+                auto cp = camera_->getAbsolutePosition();
+                pi.cameraPos = glm::vec3(cp.X, cp.Y, cp.Z);
+            }
+            if (zoneShader_) {
+                const float* amb = zoneShader_->ambientColor();
+                pi.ambientColor = glm::vec3(amb[0], amb[1], amb[2]);
+            }
+            pi.windDirection = particleManager_->getWindDirection();
+            pi.windStrength = particleManager_->getWindStrength();
+            pi.fireEnabled = particleManager_->isUnifiedFireEnabled();
+            pi.unifiedRendererInitialized = true;
+        }
+
+        // Boids system input
+        if (boidsManager_ && boidsManager_->isEnabled()) {
+            auto& bi = input.boidsInput;
+            bi.deltaTime = input.deltaTime;
+            bi.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+            bi.playerHeading = playerHeading_;
+            bi.timeOfDay = input.timeOfDay;
+            bi.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+            bi.initialized = true;
+        }
+
+        // Tumbleweed system input
+        if (tumbleweedManager_ && tumbleweedManager_->isEnabled()) {
+            auto& ti = input.tumbleweedInput;
+            ti.deltaTime = input.deltaTime;
+            ti.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+            ti.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+            ti.initialized = true;
+        }
+
+        // Weather system input
+        if (weatherSystem_) {
+            auto& wi = input.weatherInput;
+            wi.deltaTime = input.deltaTime;
+            wi.initialized = true;
+        }
+
+        // Detail wind/disturbance input
+        if (detailManager_ && detailManager_->isEnabled()) {
+            auto& dti = input.detailInput;
+            dti.deltaTime = input.deltaTime;
+            const auto& wc = detailManager_->getWindController();
+            const auto& wcParams = wc.getParams();
+            dti.windStrength = detailManager_->getZoneConfig().windStrength;
+            dti.windFrequency = wcParams.frequency;
+            dti.gustFrequency = wcParams.gustFrequency;
+            dti.gustStrength = wcParams.gustStrength;
+            dti.windDirX = wcParams.direction.X;
+            dti.windDirY = wcParams.direction.Y;
+            dti.playerPosX = playerX_;
+            dti.playerPosY = playerZ_;
+            dti.playerPosZ = playerY_;
+            dti.initialized = true;
+        }
+
+        // Run synchronous computation
+        SimulationOutput output;
+        simulationWorker_->computeOnce(input, output);
+
+        // Apply results to renderer state
+        applySimulationOutput(output);
+
+        // CRITICAL: applySimulationOutput sets particleRenderBuffer_ to point
+        // into output.particleOutput.renderBuffer. But 'output' is a local
+        // variable that will be destroyed when this scope ends, leaving a
+        // dangling pointer. Null it now — the runtime SimulationWorker will
+        // set it correctly from its persistent double-buffered output.
+        particleRenderBuffer_ = nullptr;
+
+        LOG_INFO(MOD_GRAPHICS, "Sequential: SimulationWorker first-frame computed and applied "
+                 "(regions={}, objects={}, lights={}, entities={})",
+                 output.regionVisible.size(), output.objectVisible.size(),
+                 output.lightVisible.size(), output.entityResults.size());
+        logAssetBuildTime("seq_simulation", 0, stepStart);
+    }
+
     // ── Step 13: Cleanup ───────────────────────────────────────────────────
     updateProgress(100, "Finalizing...");
     {
@@ -5153,7 +5408,10 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
              geom->centerX, geom->centerY, geom->centerZ);
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
-    if (constrainedTextureCache_)
+    // Only use constrained cache at runtime — during sequential loading, the cache's
+    // async background decode submits to bgThreadPool_ which may not be initialized,
+    // causing pthread_mutex_lock(NULL) crashes.
+    if (constrainedTextureCache_ && !isLoading())
         builder.setConstrainedTextureCache(constrainedTextureCache_.get());
 
     bool shaderAvail = zoneShader_ && zoneShader_->isAvailable();
@@ -6761,15 +7019,7 @@ void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
 // SimulationWorker Integration
 // ============================================================================
 
-void IrrlichtRenderer::startSimulationWorkerEarly() {
-    if (simulationWorker_ && simulationWorker_->isRunning()) return;  // Already running
-
-    if (!simulationWorker_) {
-        simulationWorker_ = std::make_unique<SimulationWorker>();
-    }
-
-    // Build core zone data snapshot — BSP, regions, objects, lights only.
-    // Tree and vertex anim data will be registered later via update methods.
+SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
     SimulationZoneData zoneData;
     zoneData.bspTree = zoneBspTree_;
     zoneData.usePvsCulling = usePvsCulling_;
@@ -6880,7 +7130,17 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
                  zoneData.regionOccluders.size());
     }
 
-    // No trees or vertex anims yet — those get registered later
+    return zoneData;
+}
+
+void IrrlichtRenderer::startSimulationWorkerEarly() {
+    if (simulationWorker_ && simulationWorker_->isRunning()) return;  // Already running
+
+    if (!simulationWorker_) {
+        simulationWorker_ = std::make_unique<SimulationWorker>();
+    }
+
+    SimulationZoneData zoneData = buildSimulationZoneData();
     simulationWorker_->setZoneData(zoneData);
     simulationWorker_->start();
 
@@ -7289,6 +7549,12 @@ void IrrlichtRenderer::applySimulationResults() {
 
     const SimulationOutput* results = simulationWorker_->swapAndGetResults();
     if (!results) return;
+
+    applySimulationOutput(*results);
+}
+
+void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef) {
+    const SimulationOutput* results = &resultsRef;
 
     // Apply PVS region visibility
     if (usePvsCulling_ && !results->regionVisible.empty()) {
@@ -8969,6 +9235,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (skyRenderer_ && skyRenderer_->isEnabled() && skyRenderer_->isInitialized()) {
         clearColor = skyRenderer_->getCurrentClearColor();
     }
+    LOG_DEBUG(MOD_GRAPHICS, "PRE-DRAW checkpoint 0: beginScene");
     driver_->beginScene(true, true, clearColor);
     sectionStart_ = std::chrono::steady_clock::now();
     if (renderPassTimer_) renderPassTimer_->reset();
@@ -9007,9 +9274,11 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
     }
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
     // Track polygon count for constrained mode budget
     lastPolygonCount_ = driver_->getPrimitiveCountDrawn();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 2: footprints (detail={})", detailManager_ != nullptr);
     // Render footprints (after terrain, before UI)
     if (detailManager_ && detailManager_->isFootprintEnabled()) {
         detailManager_->renderFootprints();
@@ -9070,6 +9339,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 #endif
     }
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
     // Draw selection indicator around targeted entity
 #ifdef EQT_HAS_GLES2
     drawTargetOutline();
@@ -9078,9 +9348,14 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 #endif
     frameTimings_.targetBox = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
+              particleManager_ != nullptr,
+              particleManager_ ? particleManager_->isEnabled() : false,
+              zoneReady_);
     // Render environmental particles (render every frame, update at Tier 3)
     if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
     // Unified particle system (fire point sprites, GLES2 only)
     // Not gated by isEnabled() — fire has its own toggle (unifiedFireEnabled_)
 #ifdef EQT_HAS_GLES2
@@ -9100,10 +9375,12 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 #endif
     frameTimings_.particles = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
     // Render ambient creatures (render every frame, update at Tier 3)
     if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) boidsManager_->render();
     frameTimings_.boids = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
     // Render weather effects
     if (weatherEffects_ && weatherEffects_->isEnabled()) weatherEffects_->render();
     frameTimings_.weatherRender = measureSection();
@@ -9286,16 +9563,19 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     frameTimings_.debugOverlays = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", entityRenderer_ != nullptr);
     // Draw entity casting bars
     if (!allUIHidden_ && entityRenderer_) entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
     frameTimings_.castingBars = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
     if (!allUIHidden_) {
         guienv_->drawAll();
         drawFPSCounter();
     }
     frameTimings_.guiDrawAll = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager");
     // Render inventory UI windows (on top of HUD)
     if (!allUIHidden_ && windowManager_) windowManager_->render();
     frameTimings_.windowManager = measureSection();
@@ -9348,9 +9628,11 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
     frameTimings_.postRender = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
     driver_->endScene();
     frameTimings_.endScene = measureSection();
 
+    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
     return true;
 }
 
@@ -11166,7 +11448,8 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     size_t playerRegion = SIZE_MAX;
     if (zoneBspTree_) {
         playerRegion = zoneBspTree_->findRegionIndexForPoint(playerX_, playerY_, playerZ_);
-        if (playerRegion != SIZE_MAX &&
+        bool alreadyBuilt = regionMeshNodes_.count(playerRegion) && regionMeshNodes_[playerRegion];
+        if (playerRegion != SIZE_MAX && !alreadyBuilt &&
             (!constrainedMeshCache_ || !constrainedMeshCache_->isLoaded(playerRegion))) {
             rebuildRegionMesh(playerRegion);
             LOG_INFO(MOD_GRAPHICS, "Built player BSP region {} synchronously for deferred loading", playerRegion);
