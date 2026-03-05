@@ -2902,9 +2902,11 @@ const char* IrrlichtRenderer::phaseToString(ZoneLoadPhase phase) {
     case ZoneLoadPhase::P05_Assets_ModelView:    return "P05_Assets_ModelView";
     case ZoneLoadPhase::P06_Objects_Install:     return "P06_Objects_Install";
     case ZoneLoadPhase::P06_Objects_Bounds:      return "P06_Objects_Bounds";
+    case ZoneLoadPhase::P06_Objects_Wait:        return "P06_Objects_Wait";
     case ZoneLoadPhase::P07_Doors_Create:        return "P07_Doors_Create";
     case ZoneLoadPhase::P07_Doors_Rebuild:       return "P07_Doors_Rebuild";
     case ZoneLoadPhase::P08_Entities:            return "P08_Entities";
+    case ZoneLoadPhase::P08_Entities_Wait:       return "P08_Entities_Wait";
     case ZoneLoadPhase::P09_Collision:           return "P09_Collision";
     case ZoneLoadPhase::P10_Sky_Submit:          return "P10_Sky_Submit";
     case ZoneLoadPhase::P10_Sky_Poll:            return "P10_Sky_Poll";
@@ -3009,9 +3011,11 @@ float IrrlichtRenderer::getBackgroundLoadProgress() const {
     case Phase::P05_Assets_ModelView:    return 0.82f;
     case Phase::P06_Objects_Install:     return 0.83f;
     case Phase::P06_Objects_Bounds:      return 0.83f;
+    case Phase::P06_Objects_Wait:        return 0.83f;
     case Phase::P07_Doors_Create:        return 0.84f;
     case Phase::P07_Doors_Rebuild:       return 0.85f;
     case Phase::P08_Entities:            return 0.86f;
+    case Phase::P08_Entities_Wait:       return 0.86f;
     case Phase::P09_Collision:           return 0.87f;
     case Phase::P10_Sky_Submit:          return 0.87f;
     case Phase::P10_Sky_Poll:            return 0.88f;
@@ -3130,10 +3134,13 @@ std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
         return L"Placing objects...";
     case Phase::P06_Objects_Bounds:
         return L"Computing bounds...";
+    case Phase::P06_Objects_Wait:
+        return L"Building objects...";
     case Phase::P07_Doors_Create:
     case Phase::P07_Doors_Rebuild:
         return L"Building doors...";
     case Phase::P08_Entities:
+    case Phase::P08_Entities_Wait:
         return L"Loading entities...";
     case Phase::P09_Collision:
         return L"Building collision...";
@@ -4784,8 +4791,29 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             LOG_INFO(MOD_GRAPHICS, "Zone bounds computed from {} region bounding boxes", regionBoundingBoxes_.size());
         }
         phaseState_ = PhaseState::Finished;
-        zoneLoadPhase_ = ZoneLoadPhase::P07_Doors_Create;
+        zoneLoadPhase_ = ZoneLoadPhase::P06_Objects_Wait;
         logAssetBuildTime("zone_bounds", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P06_Objects_Wait: {
+        // Wait for processFrameProgressiveLoad() to build all visible object meshes.
+        // Similar to P04_Regions_EagerBatch lazy-mode wait.
+        size_t totalPvs = 0, builtPvs = 0;
+        for (const auto& obj : deferredObjects_) {
+            if (protectedRegions_.count(obj.bspRegion) > 0 &&
+                getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) {
+                totalPvs++;
+                if (obj.meshBuilt) builtPvs++;
+            }
+        }
+        if (builtPvs >= totalPvs) {
+            LOG_INFO(MOD_GRAPHICS, "All visible objects built ({}/{} PVS objects)", builtPvs, totalPvs);
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P07_Doors_Create;
+            logAssetBuildTime("objects_wait", builtPvs, stepStart);
+        }
+        // else: stay in P06_Objects_Wait, processFrameProgressiveLoad() builds objects
         break;
     }
 
@@ -4905,7 +4933,33 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         LOG_INFO(MOD_GRAPHICS, "Entity loading enabled (entityPrepReady=true)");
 
         phaseState_ = PhaseState::Finished;
-        zoneLoadPhase_ = ZoneLoadPhase::P09_Collision;
+        zoneLoadPhase_ = ZoneLoadPhase::P08_Entities_Wait;
+        break;
+    }
+
+    case ZoneLoadPhase::P08_Entities_Wait: {
+        // Wait for processFrameProgressiveLoad() to build all visible entity meshes.
+        if (!entityRenderer_ || config_.constrainedConfig.skipEntityBuild) {
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P09_Collision;
+            break;
+        }
+        size_t totalPvs = 0, builtPvs = 0;
+        for (const auto& [id, vis] : entityRenderer_->getEntities()) {
+            if (!vis.inSceneGraph) continue;
+            uint8_t depth = (id == playerSpawnId_) ? 0 : getRegionPvsDepth(vis.cachedBspRegion);
+            if (depth <= static_cast<uint8_t>(config_.constrainedConfig.entityPrepMaxPvsDepth)) {
+                totalPvs++;
+                if (vis.meshBuilt) builtPvs++;
+            }
+        }
+        if (builtPvs >= totalPvs) {
+            LOG_INFO(MOD_GRAPHICS, "All visible entities built ({}/{} PVS entities)", builtPvs, totalPvs);
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P09_Collision;
+            logAssetBuildTime("entities_wait", builtPvs, stepStart);
+        }
+        // else: stay in P08_Entities_Wait, processFrameProgressiveLoad() builds entities
         break;
     }
 
@@ -9957,9 +10011,15 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         if (manualLoadMode_ && manualLoadPauseReached_) {
             // Don't advance — wait for next /load step
         } else {
-            // Loading phase polls without GREEN gate (just checking atomic bool)
+            // Poll/wait phases without GREEN gate (just checking counts or atomic bools)
             // All other phases require GREEN budget
             if (zoneLoadPhase_ == ZoneLoadPhase::P01_S3d_Poll ||
+                zoneLoadPhase_ == ZoneLoadPhase::P02_Bsp_Poll ||
+                zoneLoadPhase_ == ZoneLoadPhase::P03_Atlas_Poll ||
+                zoneLoadPhase_ == ZoneLoadPhase::P05_Assets_Poll ||
+                zoneLoadPhase_ == ZoneLoadPhase::P06_Objects_Wait ||
+                zoneLoadPhase_ == ZoneLoadPhase::P08_Entities_Wait ||
+                zoneLoadPhase_ == ZoneLoadPhase::P10_Sky_Poll ||
                 !governor_ || loadingScreenVisible_ || governor_->getState() == BudgetState::Green) {
                 advanceBackgroundZoneLoad();
             }

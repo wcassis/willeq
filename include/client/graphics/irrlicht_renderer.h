@@ -279,6 +279,7 @@ enum class ZoneLoadPhase : uint8_t {
     // Step 6: Objects — zone objects
     P06_Objects_Install,     // Install deferred objects
     P06_Objects_Bounds,      // Cache zone bounds
+    P06_Objects_Wait,        // Wait for visible object meshes to be built
 
     // Step 7: Doors — door meshes
     P07_Doors_Create,        // Create DoorManager, set zone/BSP/caches
@@ -286,6 +287,7 @@ enum class ZoneLoadPhase : uint8_t {
 
     // Step 8: Entities
     P08_Entities,            // Create/start EntityPrepWorker
+    P08_Entities_Wait,       // Wait for visible entity meshes to be built
 
     // Step 9: Collision
     P09_Collision,           // setupMinimalZoneCollision()
