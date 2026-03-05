@@ -317,18 +317,63 @@ void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput
         applyVisionWeatherToZoneLights(input.visionType, input.weatherAmbientModifier);
     }
 
-    // Critical tier — every frame: visibility, occlusion, entities, light selection
-    computeVisibility(input, output);
-    computeObjectVisibility(input, output);
-    computeLightVisibility(input, output);
-    computePortalVisibility(input, output);
-    computeObjectLightVisibility(input, output);
-    computeSoftwareOcclusion(input, output);
+    // Prep layer — always runs (region lookup, mesh load queue, depth map)
+    calculateRegions(input, output);
+
+    // Entity state — always runs
     computeEntitySync(input);
     computeEntityPendingUpdates(input);
     computeEntityInterpolation(input, output);
-    computeEntityVisibility(input, output);
-    computeNameTagVisibility(input, output);
+
+    if (input.loadingActive) {
+        // During loading: default all visibility to "visible" so applySimulationResults
+        // doesn't hide pre-built nodes
+        size_t regionCount = zoneData_.regionBounds.size();
+        if (output.regionVisible.size() != regionCount)
+            output.regionVisible.resize(regionCount, 1);
+        else
+            std::fill(output.regionVisible.begin(), output.regionVisible.end(), 1);
+
+        size_t objectCount = zoneData_.objects.size();
+        if (output.objectVisible.size() != objectCount)
+            output.objectVisible.resize(objectCount, 1);
+        else
+            std::fill(output.objectVisible.begin(), output.objectVisible.end(), 1);
+
+        size_t lightCount = zoneData_.zoneLights.size();
+        if (output.lightVisible.size() != lightCount)
+            output.lightVisible.resize(lightCount, 1);
+        else
+            std::fill(output.lightVisible.begin(), output.lightVisible.end(), 1);
+
+        size_t objLightCount = zoneData_.objectLights.size();
+        if (output.objectLightVisible.size() != objLightCount)
+            output.objectLightVisible.resize(objLightCount, 1);
+        else
+            std::fill(output.objectLightVisible.begin(), output.objectLightVisible.end(), 1);
+
+        output.sortedRegions.clear();
+        output.portalVisibleRegions.clear();
+        output.occlusionCulledRegions.clear();
+
+        for (auto& er : output.entityResults) {
+            er.shouldBeVisible = true;
+            er.nameTagVisible = false;
+        }
+        output.entityVisibleCount = static_cast<int>(output.entityResults.size());
+    } else {
+        // Render layer — culling
+        computeVisibility(input, output);
+        computeObjectVisibility(input, output);
+        computeLightVisibility(input, output);
+        computePortalVisibility(input, output);
+        computeObjectLightVisibility(input, output);
+        computeSoftwareOcclusion(input, output);
+        computeEntityVisibility(input, output);
+        computeNameTagVisibility(input, output);
+    }
+
+    // Light selection — always runs
     computeLightSelection(input, output);
 
     // Normal tier — every frame: fire flicker, spell VFX, trees, vertex anims, detail wind, particles, boids, tumbleweeds
@@ -360,26 +405,20 @@ void SimulationWorker::computeAll(const SimulationInput& input, SimulationOutput
 }
 
 // ============================================================================
-// PVS Visibility Computation
+// Region Calculation (prep layer — runs during loading too)
 // ============================================================================
 
-void SimulationWorker::computeVisibility(const SimulationInput& input, SimulationOutput& output) {
+void SimulationWorker::calculateRegions(const SimulationInput& input, SimulationOutput& output) {
     if (!zoneData_.bspTree || zoneData_.regionBounds.empty()) return;
 
     const auto& bsp = *zoneData_.bspTree;
     size_t regionCount = zoneData_.regionBounds.size();
 
-    // Ensure output is sized correctly
-    if (output.regionVisible.size() != regionCount) {
-        output.regionVisible.resize(regionCount, 0);
-    }
-
     // BSP lookup — find which region the camera is in (EQ Z-up coords)
     size_t cameraRegion = bsp.findRegionIndexForPoint(input.camEqX, input.camEqY, input.camEqZ);
     output.currentPvsRegion = cameraRegion;
 
-    // Clear sorted draw list
-    output.sortedRegions.clear();
+    // Clear prep-layer outputs
     output.meshLoadQueue.clear();
     output.protectedRegions.clear();
 
@@ -395,12 +434,11 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
         const auto& rb = zoneData_.regionBounds[i];
         size_t regionIdx = rb.regionIdx;
 
-        // PVS check: if we have PVS data, only show regions visible from camera's region
+        // PVS check
         if (zoneData_.usePvsCulling && currentRegion) {
             if (!currentRegion->visibleRegions.empty() &&
                 regionIdx < currentRegion->visibleRegions.size() &&
                 !currentRegion->visibleRegions[regionIdx]) {
-                output.regionVisible[i] = 0;
                 continue;
             }
         }
@@ -414,18 +452,88 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
         float dz = nearZ - input.camEqZ;
         float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (distSq > renderDistSq) {
-            output.regionVisible[i] = 0;
-            continue;
-        }
+        if (distSq > renderDistSq) continue;
 
         // Queue for lazy mesh loading (PVS + distance only — orientation-independent)
         output.meshLoadQueue.push_back({regionIdx, distSq});
 
         // Track for mesh cache protection (all PVS+distance regions)
         output.protectedRegions.push_back(regionIdx);
+    }
 
-        // Frustum culling (EQ Z-up coordinates) — only affects draw list
+    // Sort mesh load queue nearest-first for priority preloading
+    std::sort(output.meshLoadQueue.begin(), output.meshLoadQueue.end(),
+              [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
+
+    // Compute PVS depth map (portal adjacency BFS)
+    computeRegionDepthMap(input, output);
+
+    // Fallback for outdoor zones / regions not reachable via portals:
+    // Assign depth based on Euclidean distance buckets (100 units per depth level)
+    for (const auto& sr : output.meshLoadQueue) {
+        if (output.regionPvsDepth.count(sr.regionIdx) == 0) {
+            float dist = std::sqrt(sr.distanceSq);
+            uint8_t depth = static_cast<uint8_t>(std::min(254.0f, dist / 100.0f));
+            output.regionPvsDepth[sr.regionIdx] = depth;
+        }
+    }
+}
+
+// ============================================================================
+// PVS Visibility Computation (render layer — skipped during loading)
+// ============================================================================
+
+void SimulationWorker::computeVisibility(const SimulationInput& input, SimulationOutput& output) {
+    if (!zoneData_.bspTree || zoneData_.regionBounds.empty()) return;
+
+    size_t regionCount = zoneData_.regionBounds.size();
+
+    // Ensure output is sized correctly
+    if (output.regionVisible.size() != regionCount) {
+        output.regionVisible.resize(regionCount, 0);
+    }
+
+    // currentPvsRegion already set by calculateRegions()
+    output.sortedRegions.clear();
+
+    // Get PVS data for current region
+    const auto& bsp = *zoneData_.bspTree;
+    const BspRegion* currentRegion = nullptr;
+    if (output.currentPvsRegion < bsp.regions.size() && bsp.regions[output.currentPvsRegion]) {
+        currentRegion = bsp.regions[output.currentPvsRegion].get();
+    }
+
+    float renderDistSq = input.renderDistance * input.renderDistance;
+
+    for (size_t i = 0; i < regionCount; ++i) {
+        const auto& rb = zoneData_.regionBounds[i];
+        size_t regionIdx = rb.regionIdx;
+
+        // PVS check
+        if (zoneData_.usePvsCulling && currentRegion) {
+            if (!currentRegion->visibleRegions.empty() &&
+                regionIdx < currentRegion->visibleRegions.size() &&
+                !currentRegion->visibleRegions[regionIdx]) {
+                output.regionVisible[i] = 0;
+                continue;
+            }
+        }
+
+        // Distance culling
+        float nearX = std::max(rb.minX, std::min(input.camEqX, rb.maxX));
+        float nearY = std::max(rb.minY, std::min(input.camEqY, rb.maxY));
+        float nearZ = std::max(rb.minZ, std::min(input.camEqZ, rb.maxZ));
+        float dx = nearX - input.camEqX;
+        float dy = nearY - input.camEqY;
+        float dz = nearZ - input.camEqZ;
+        float distSq = dx*dx + dy*dy + dz*dz;
+
+        if (distSq > renderDistSq) {
+            output.regionVisible[i] = 0;
+            continue;
+        }
+
+        // Frustum culling (EQ Z-up coordinates)
         if (input.frustumValid) {
             if (!testFrustumAABB(input.frustumPlanes,
                                   rb.minX, rb.minY, rb.minZ,
@@ -444,23 +552,6 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
     // Sort front-to-back by distance
     std::sort(output.sortedRegions.begin(), output.sortedRegions.end(),
               [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
-
-    // Sort mesh load queue nearest-first for priority preloading
-    std::sort(output.meshLoadQueue.begin(), output.meshLoadQueue.end(),
-              [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
-
-    // Compute PVS depth map (portal adjacency BFS)
-    computeRegionDepthMap(input, output);
-
-    // Fallback for outdoor zones / regions not reachable via portals:
-    // Assign depth based on Euclidean distance buckets (100 units per depth level)
-    for (const auto& sr : output.sortedRegions) {
-        if (output.regionPvsDepth.count(sr.regionIdx) == 0) {
-            float dist = std::sqrt(sr.distanceSq);
-            uint8_t depth = static_cast<uint8_t>(std::min(254.0f, dist / 100.0f));
-            output.regionPvsDepth[sr.regionIdx] = depth;
-        }
-    }
 }
 
 // ============================================================================

@@ -7589,7 +7589,7 @@ void EverQuest::runLoadDiagnostics(const std::string& label) {
 	LOG_INFO(MOD_MAIN, "╔══════════════════════════════════════════════════════════════");
 	LOG_INFO(MOD_MAIN, "║ LOAD DIAGNOSTICS: {}", label);
 	LOG_INFO(MOD_MAIN, "║ Phase: {}", EQT::Graphics::IrrlichtRenderer::phaseToString(
-		m_renderer->getBackgroundZoneLoadPhase()));
+		m_renderer->getZoneLoadPhase()));
 	LOG_INFO(MOD_MAIN, "╚══════════════════════════════════════════════════════════════");
 
 	// Scene dump
@@ -7602,20 +7602,22 @@ void EverQuest::runLoadDiagnostics(const std::string& label) {
 	LOG_INFO(MOD_MAIN, "");
 }
 
-EQT::Graphics::ManualLoadStep EverQuest::parseManualLoadStep(const std::string& arg) {
-	using S = EQT::Graphics::ManualLoadStep;
-	if (arg == "s3d")       return S::S3d;
-	if (arg == "data")      return S::Data;
-	if (arg == "sky")       return S::Sky;
-	if (arg == "atlas")     return S::Atlas;
-	if (arg == "regions")   return S::Regions;
-	if (arg == "lights")    return S::Lights;
-	if (arg == "objects")   return S::Objects;
-	if (arg == "misc")      return S::Misc;
-	if (arg == "collision") return S::Collision;
-	if (arg == "env")       return S::Env;
-	if (arg == "entities")  return S::Entities;
-	if (arg == "all")       return S::All;
+EQT::Graphics::ZoneLoadStep EverQuest::parseZoneLoadStep(const std::string& arg) {
+	using S = EQT::Graphics::ZoneLoadStep;
+	if (arg == "s3d"  || arg == "1")  return S::S3d;
+	if (arg == "bsp"  || arg == "2")  return S::Bsp;
+	if (arg == "atlas" || arg == "3") return S::Atlas;
+	if (arg == "regions" || arg == "4") return S::Regions;
+	if (arg == "assets" || arg == "5") return S::Assets;
+	if (arg == "objects" || arg == "6") return S::Objects;
+	if (arg == "doors" || arg == "7") return S::Doors;
+	if (arg == "entities" || arg == "8") return S::Entities;
+	if (arg == "collision" || arg == "9") return S::Collision;
+	if (arg == "sky"  || arg == "10") return S::Sky;
+	if (arg == "env"  || arg == "11") return S::Env;
+	if (arg == "lights" || arg == "12") return S::Lights;
+	if (arg == "cleanup" || arg == "13") return S::Cleanup;
+	if (arg == "all")                 return S::All;
 	return S::None;
 }
 
@@ -9346,7 +9348,7 @@ void EverQuest::RegisterCommands()
 			return;
 		}
 		if (m_renderer->isProgressiveLoadingActive() ||
-			m_renderer->getBackgroundZoneLoadPhase() != EQT::Graphics::BackgroundZoneLoadPhase::Idle) {
+			m_renderer->getZoneLoadPhase() != EQT::Graphics::ZoneLoadPhase::Idle) {
 			AddChatSystemMessage("Zone loading already in progress");
 			return;
 		}
@@ -9358,7 +9360,7 @@ void EverQuest::RegisterCommands()
 	Command loadcmd;
 	loadcmd.name = "load";
 	loadcmd.aliases = {};
-	loadcmd.usage = "/load [s3d|data|sky|atlas|regions|lights|objects|misc|collision|env|entities|all]";
+	loadcmd.usage = "/load [s3d|bsp|atlas|regions|assets|objects|doors|entities|collision|sky|env|lights|cleanup|all] or [1-13]";
 	loadcmd.description = "Step-by-step zone loading with before/after diagnostics";
 	loadcmd.category = "Utility";
 	loadcmd.handler = [this](const std::string& args) {
@@ -9367,8 +9369,8 @@ void EverQuest::RegisterCommands()
 			return;
 		}
 
-		using Phase = EQT::Graphics::BackgroundZoneLoadPhase;
-		using Step = EQT::Graphics::ManualLoadStep;
+		using Phase = EQT::Graphics::ZoneLoadPhase;
+		using Step = EQT::Graphics::ZoneLoadStep;
 
 		std::string arg = args;
 		// Trim whitespace
@@ -9379,19 +9381,19 @@ void EverQuest::RegisterCommands()
 
 		// No args: show status
 		if (arg.empty()) {
-			auto phase = m_renderer->getBackgroundZoneLoadPhase();
+			auto phase = m_renderer->getZoneLoadPhase();
 			bool manual = m_renderer->isManualLoadMode();
 			AddChatSystemMessage(fmt::format("Phase: {} | Manual: {} | Next: {}",
 				EQT::Graphics::IrrlichtRenderer::phaseToString(phase),
 				manual ? "yes" : "no",
-				manual ? EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(
+				manual ? EQT::Graphics::IrrlichtRenderer::stepToString(
 					m_renderer->getNextExpectedStep()) : "n/a"));
 			return;
 		}
 
-		Step step = parseManualLoadStep(arg);
+		Step step = parseZoneLoadStep(arg);
 		if (step == Step::None) {
-			AddChatSystemMessage(fmt::format("Unknown load step: '{}'. Use: s3d data sky atlas regions lights objects misc collision env entities all", arg));
+			AddChatSystemMessage(fmt::format("Unknown load step: '{}'. Use: s3d(1) bsp(2) atlas(3) regions(4) assets(5) objects(6) doors(7) entities(8) collision(9) sky(10) env(11) lights(12) cleanup(13) all", arg));
 			return;
 		}
 
@@ -9402,7 +9404,7 @@ void EverQuest::RegisterCommands()
 				return;
 			}
 			if (m_renderer->isProgressiveLoadingActive() ||
-				m_renderer->getBackgroundZoneLoadPhase() != Phase::Idle) {
+				m_renderer->getZoneLoadPhase() != Phase::Idle) {
 				AddChatSystemMessage("Zone loading already in progress");
 				return;
 			}
@@ -9412,13 +9414,13 @@ void EverQuest::RegisterCommands()
 				runLoadDiagnostics(label);
 				auto next = m_renderer->getNextExpectedStep();
 				AddChatSystemMessage(fmt::format("Paused. Next: /load {}",
-					EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(next)));
+					EQT::Graphics::IrrlichtRenderer::stepToString(next)));
 			});
 
 			// BEFORE diagnostics
 			runLoadDiagnostics("BEFORE /load s3d");
 
-			// Start manual zone load (sets up bg thread + pause at DataReady_Notify)
+			// Start manual zone load (sets up bg thread + pause at P02_Bsp_Submit)
 			m_renderer->beginManualZoneLoad(m_eq_client_path);
 			AddChatSystemMessage("Manual zone load started — loading S3D...");
 			return;
@@ -9437,7 +9439,7 @@ void EverQuest::RegisterCommands()
 		if (!m_renderer->advanceManualLoadStep(step)) {
 			auto next = m_renderer->getNextExpectedStep();
 			AddChatSystemMessage(fmt::format("Wrong step order. Expected: /load {}",
-				EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(next)));
+				EQT::Graphics::IrrlichtRenderer::stepToString(next)));
 			return;
 		}
 
@@ -9445,7 +9447,7 @@ void EverQuest::RegisterCommands()
 			AddChatSystemMessage("Running all remaining load steps...");
 		} else {
 			AddChatSystemMessage(fmt::format("Loading step: {}...",
-				EQT::Graphics::IrrlichtRenderer::manualLoadStepToString(step)));
+				EQT::Graphics::IrrlichtRenderer::stepToString(step)));
 		}
 	};
 	m_command_registry->registerCommand(loadcmd);
@@ -19087,8 +19089,13 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		// Check if automatic asset loading completed behind loading screen.
 		// progressiveLoadingActive goes false only after all entities, doors,
 		// objects, and regions are built — not just when the phase pipeline finishes.
+		// Guard: only fires when we're actually in the graphics loading phases,
+		// not at startup when the loading screen is visible but no zone load
+		// has started yet.
 		if (m_renderer->isLoadingScreenVisible() &&
-		    !m_renderer->isProgressiveLoadingActive()) {
+		    !m_renderer->isProgressiveLoadingActive() &&
+		    m_loading_phase >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
+		    m_loading_phase < LoadingPhase::COMPLETE) {
 			OnGraphicsComplete();
 		}
 

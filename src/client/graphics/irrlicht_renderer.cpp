@@ -2158,13 +2158,8 @@ void IrrlichtRenderer::unloadZone() {
         zoneLoadQueue_->stop();
         zoneLoadQueue_.reset();
     }
-    // Stop deferred work queue if still running
-    if (deferredWorkQueue_) {
-        deferredWorkQueue_->stop();
-        deferredWorkQueue_.reset();
-    }
     pendingZoneData_.reset();
-    backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
+    zoneLoadPhase_ = ZoneLoadPhase::Idle;
     atlasZonePageIndex_ = 0;
     atlasObjPageIndex_ = 0;
     skyTexUploadIndex_ = 0;
@@ -2205,7 +2200,6 @@ void IrrlichtRenderer::unloadZone() {
     loadedEntityCount_ = 0;
     zoneReady_ = false;
     environmentInitPending_ = false;
-    deferredInitActive_ = false;
     entityPrepReady_ = false;
     entityPrepScanCounter_ = 0;
 
@@ -2834,9 +2828,9 @@ void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float play
 }
 
 void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
-    if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) {
+    if (zoneLoadPhase_ != ZoneLoadPhase::Idle) {
         LOG_WARN(MOD_GRAPHICS, "Zone asset load already in progress (phase {})",
-                 static_cast<int>(backgroundZoneLoadPhase_));
+                 static_cast<int>(zoneLoadPhase_));
         return;
     }
 
@@ -2861,7 +2855,7 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
     entityPrepReady_ = false;
     entityPrepScanCounter_ = 0;
 
-    // EntityPrepWorker is now created at EntityLoading phase (not here)
+    // EntityPrepWorker is now created at P08_Entities phase (not here)
     // so entity work doesn't start until /load entities in manual mode.
 
     // Start background icon sheet worker (disk I/O + TGA decode off main thread)
@@ -2878,68 +2872,84 @@ void IrrlichtRenderer::beginZoneAssetLoad(const std::string& eqClientPath) {
 
 // ── Manual step-by-step zone loading ────────────────────────────────────────
 
-const char* IrrlichtRenderer::phaseToString(BackgroundZoneLoadPhase phase) {
+const char* IrrlichtRenderer::phaseToString(ZoneLoadPhase phase) {
     switch (phase) {
-    case BackgroundZoneLoadPhase::Idle:                     return "Idle";
-    case BackgroundZoneLoadPhase::Pending:                  return "Pending";
-    case BackgroundZoneLoadPhase::Loading:                  return "Loading";
-    case BackgroundZoneLoadPhase::DataReady_Notify:         return "DataReady_Notify";
-    case BackgroundZoneLoadPhase::DataReady_EntityRenderer: return "DataReady_EntityRenderer";
-    case BackgroundZoneLoadPhase::DataReady_ArchiveIndex:   return "DataReady_ArchiveIndex";
-    case BackgroundZoneLoadPhase::DataReady_GlobalAssets:   return "DataReady_GlobalAssets";
-    case BackgroundZoneLoadPhase::DataReady_Equipment:      return "DataReady_Equipment";
-    case BackgroundZoneLoadPhase::DataReady_DoorManager:    return "DataReady_DoorManager";
-    case BackgroundZoneLoadPhase::DataReady_SkyCreate:      return "DataReady_SkyCreate";
-    case BackgroundZoneLoadPhase::DataReady_DetailManager:  return "DataReady_DetailManager";
-    case BackgroundZoneLoadPhase::DataReady_ModelView:      return "DataReady_ModelView";
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare:     return "DataReady_Env_SkyPrepare";
-    case BackgroundZoneLoadPhase::DataReady_Env_FogSetup:       return "DataReady_Env_FogSetup";
-    case BackgroundZoneLoadPhase::DataReady_Env_WeatherApply:   return "DataReady_Env_WeatherApply";
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyTextures:    return "DataReady_Env_SkyTextures";
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyRelease:     return "DataReady_Env_SkyRelease";
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyDome:        return "DataReady_Env_SkyDome";
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials:  return "DataReady_Env_SkyCelestials";
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyColors:      return "DataReady_Env_SkyColors";
-    case BackgroundZoneLoadPhase::Atlas_Zone_Upload:        return "Atlas_Zone_Upload";
-    case BackgroundZoneLoadPhase::Atlas_Zone_Finalize:      return "Atlas_Zone_Finalize";
-    case BackgroundZoneLoadPhase::Atlas_Object_Upload:      return "Atlas_Object_Upload";
-    case BackgroundZoneLoadPhase::Atlas_Object_Finalize:    return "Atlas_Object_Finalize";
-    case BackgroundZoneLoadPhase::Atlas_Shader:             return "Atlas_Shader";
-    case BackgroundZoneLoadPhase::RegionMesh_InstallBsp:    return "RegionMesh_InstallBsp";
-    case BackgroundZoneLoadPhase::RegionMesh_InitCache:     return "RegionMesh_InitCache";
-    case BackgroundZoneLoadPhase::RegionMesh_EagerBatch:    return "RegionMesh_EagerBatch";
-    case BackgroundZoneLoadPhase::RegionMesh_SortSetup:     return "RegionMesh_SortSetup";
-    case BackgroundZoneLoadPhase::RegionMesh_InstallPortal: return "RegionMesh_InstallPortal";
-    case BackgroundZoneLoadPhase::Lights_CreateNodes:       return "Lights_CreateNodes";
-    case BackgroundZoneLoadPhase::Lights_InstallRegions:    return "Lights_InstallRegions";
-    case BackgroundZoneLoadPhase::Objects_Install:          return "Objects_Install";
-    case BackgroundZoneLoadPhase::Misc_ZoneBounds:          return "Misc_ZoneBounds";
-    case BackgroundZoneLoadPhase::Misc_Fog:                 return "Misc_Fog";
-    case BackgroundZoneLoadPhase::Misc_DoorSetup:           return "Misc_DoorSetup";
-    case BackgroundZoneLoadPhase::Misc_ReleaseData:         return "Misc_ReleaseData";
-    case BackgroundZoneLoadPhase::CollisionRebuild:         return "CollisionRebuild";
-    case BackgroundZoneLoadPhase::EnvironmentInit:          return "EnvironmentInit";
-    case BackgroundZoneLoadPhase::EntityLoading:            return "EntityLoading";
-    case BackgroundZoneLoadPhase::Complete:                 return "Complete";
+    case ZoneLoadPhase::Idle:                    return "Idle";
+    case ZoneLoadPhase::Pending:                 return "Pending";
+    case ZoneLoadPhase::P01_S3d_Submit:          return "P01_S3d_Submit";
+    case ZoneLoadPhase::P01_S3d_Poll:            return "P01_S3d_Poll";
+    case ZoneLoadPhase::P01_S3d_Install:         return "P01_S3d_Install";
+    case ZoneLoadPhase::P02_Bsp_Submit:          return "P02_Bsp_Submit";
+    case ZoneLoadPhase::P02_Bsp_Poll:            return "P02_Bsp_Poll";
+    case ZoneLoadPhase::P02_Bsp_Install:         return "P02_Bsp_Install";
+    case ZoneLoadPhase::P02_Bsp_Portal:          return "P02_Bsp_Portal";
+    case ZoneLoadPhase::P03_Atlas_Submit:        return "P03_Atlas_Submit";
+    case ZoneLoadPhase::P03_Atlas_Poll:          return "P03_Atlas_Poll";
+    case ZoneLoadPhase::P03_Atlas_ZoneUpload:    return "P03_Atlas_ZoneUpload";
+    case ZoneLoadPhase::P03_Atlas_ZoneFinalize:  return "P03_Atlas_ZoneFinalize";
+    case ZoneLoadPhase::P03_Atlas_ObjUpload:     return "P03_Atlas_ObjUpload";
+    case ZoneLoadPhase::P03_Atlas_ObjFinalize:   return "P03_Atlas_ObjFinalize";
+    case ZoneLoadPhase::P03_Atlas_Shader:        return "P03_Atlas_Shader";
+    case ZoneLoadPhase::P04_Regions_InitCache:   return "P04_Regions_InitCache";
+    case ZoneLoadPhase::P04_Regions_EagerBatch:  return "P04_Regions_EagerBatch";
+    case ZoneLoadPhase::P04_Regions_SortSetup:   return "P04_Regions_SortSetup";
+    case ZoneLoadPhase::P05_Assets_Submit:       return "P05_Assets_Submit";
+    case ZoneLoadPhase::P05_Assets_Poll:         return "P05_Assets_Poll";
+    case ZoneLoadPhase::P05_Assets_EntityRenderer: return "P05_Assets_EntityRenderer";
+    case ZoneLoadPhase::P05_Assets_ArchiveIndex: return "P05_Assets_ArchiveIndex";
+    case ZoneLoadPhase::P05_Assets_Equipment:    return "P05_Assets_Equipment";
+    case ZoneLoadPhase::P05_Assets_GlobalAssets: return "P05_Assets_GlobalAssets";
+    case ZoneLoadPhase::P05_Assets_ModelView:    return "P05_Assets_ModelView";
+    case ZoneLoadPhase::P06_Objects_Install:     return "P06_Objects_Install";
+    case ZoneLoadPhase::P06_Objects_Bounds:      return "P06_Objects_Bounds";
+    case ZoneLoadPhase::P07_Doors_Create:        return "P07_Doors_Create";
+    case ZoneLoadPhase::P07_Doors_Rebuild:       return "P07_Doors_Rebuild";
+    case ZoneLoadPhase::P08_Entities:            return "P08_Entities";
+    case ZoneLoadPhase::P09_Collision:           return "P09_Collision";
+    case ZoneLoadPhase::P10_Sky_Submit:          return "P10_Sky_Submit";
+    case ZoneLoadPhase::P10_Sky_Poll:            return "P10_Sky_Poll";
+    case ZoneLoadPhase::P10_Sky_Create:          return "P10_Sky_Create";
+    case ZoneLoadPhase::P10_Sky_Textures:        return "P10_Sky_Textures";
+    case ZoneLoadPhase::P10_Sky_Finalize:        return "P10_Sky_Finalize";
+    case ZoneLoadPhase::P11_Env_SimWorker:       return "P11_Env_SimWorker";
+    case ZoneLoadPhase::P11_Env_TreeConfig:      return "P11_Env_TreeConfig";
+    case ZoneLoadPhase::P11_Env_TreeInit:        return "P11_Env_TreeInit";
+    case ZoneLoadPhase::P11_Env_DetailCreate:    return "P11_Env_DetailCreate";
+    case ZoneLoadPhase::P11_Env_DetailZoneEnter: return "P11_Env_DetailZoneEnter";
+    case ZoneLoadPhase::P11_Env_DetailAddMeshNodes: return "P11_Env_DetailAddMeshNodes";
+    case ZoneLoadPhase::P11_Env_ParticleZoneEnter: return "P11_Env_ParticleZoneEnter";
+    case ZoneLoadPhase::P11_Env_ParticleFireSetup: return "P11_Env_ParticleFireSetup";
+    case ZoneLoadPhase::P11_Env_ParticleUnifiedInit: return "P11_Env_ParticleUnifiedInit";
+    case ZoneLoadPhase::P11_Env_BoidsInit:       return "P11_Env_BoidsInit";
+    case ZoneLoadPhase::P11_Env_TumbleweedInit:  return "P11_Env_TumbleweedInit";
+    case ZoneLoadPhase::P11_Env_WeatherSurface:  return "P11_Env_WeatherSurface";
+    case ZoneLoadPhase::P11_Env_ReleaseGeometry: return "P11_Env_ReleaseGeometry";
+    case ZoneLoadPhase::P11_Env_WaitSimWorker:   return "P11_Env_WaitSimWorker";
+    case ZoneLoadPhase::P12_Lights_Create:       return "P12_Lights_Create";
+    case ZoneLoadPhase::P12_Lights_Regions:      return "P12_Lights_Regions";
+    case ZoneLoadPhase::P13_Cleanup:             return "P13_Cleanup";
+    case ZoneLoadPhase::Complete:                return "Complete";
     }
     return "Unknown";
 }
 
-const char* IrrlichtRenderer::manualLoadStepToString(ManualLoadStep step) {
+const char* IrrlichtRenderer::stepToString(ZoneLoadStep step) {
     switch (step) {
-    case ManualLoadStep::None:      return "none";
-    case ManualLoadStep::S3d:       return "s3d";
-    case ManualLoadStep::Data:      return "data";
-    case ManualLoadStep::Sky:       return "sky";
-    case ManualLoadStep::Atlas:     return "atlas";
-    case ManualLoadStep::Regions:   return "regions";
-    case ManualLoadStep::Lights:    return "lights";
-    case ManualLoadStep::Objects:   return "objects";
-    case ManualLoadStep::Misc:      return "misc";
-    case ManualLoadStep::Collision: return "collision";
-    case ManualLoadStep::Env:       return "env";
-    case ManualLoadStep::Entities:  return "entities";
-    case ManualLoadStep::All:       return "all";
+    case ZoneLoadStep::None:      return "none";
+    case ZoneLoadStep::S3d:       return "s3d";
+    case ZoneLoadStep::Bsp:       return "bsp";
+    case ZoneLoadStep::Atlas:     return "atlas";
+    case ZoneLoadStep::Regions:   return "regions";
+    case ZoneLoadStep::Assets:    return "assets";
+    case ZoneLoadStep::Objects:   return "objects";
+    case ZoneLoadStep::Doors:     return "doors";
+    case ZoneLoadStep::Entities:  return "entities";
+    case ZoneLoadStep::Collision: return "collision";
+    case ZoneLoadStep::Sky:       return "sky";
+    case ZoneLoadStep::Env:       return "env";
+    case ZoneLoadStep::Lights:    return "lights";
+    case ZoneLoadStep::Cleanup:   return "cleanup";
+    case ZoneLoadStep::All:       return "all";
     }
     return "unknown";
 }
@@ -2947,73 +2957,84 @@ const char* IrrlichtRenderer::manualLoadStepToString(ManualLoadStep step) {
 float IrrlichtRenderer::getBackgroundLoadProgress() const {
     // Phase pipeline: 0.50–0.92 (50%–92%)
     // Post-pipeline progressive loading (entities/doors/objects): 0.92–1.00
-    using Phase = BackgroundZoneLoadPhase;
+    using Phase = ZoneLoadPhase;
 
     // Helper: interpolate within a range based on sub-progress fraction
     auto lerp = [](float lo, float hi, float frac) {
         return lo + (hi - lo) * std::min(frac, 1.0f);
     };
 
-    switch (backgroundZoneLoadPhase_) {
-    case Phase::Idle:                     return 0.50f;
-    case Phase::Pending:                  return 0.51f;
-    case Phase::Loading:                  return 0.52f;
-    case Phase::DataReady_Notify:         return 0.55f;
-    case Phase::DataReady_EntityRenderer: return 0.56f;
-    case Phase::DataReady_ArchiveIndex:   return 0.57f;
-    case Phase::DataReady_GlobalAssets:   return 0.58f;
-    case Phase::DataReady_Equipment:      return 0.59f;
-    case Phase::DataReady_DoorManager:    return 0.60f;
-    case Phase::DataReady_SkyCreate:      return 0.61f;
-    case Phase::DataReady_DetailManager:  return 0.62f;
-    case Phase::DataReady_ModelView:      return 0.63f;
-    case Phase::DataReady_Env_SkyPrepare:     return 0.64f;
-    case Phase::DataReady_Env_FogSetup:       return 0.65f;
-    case Phase::DataReady_Env_WeatherApply:   return 0.66f;
-    case Phase::DataReady_Env_SkyTextures:    return 0.67f;
-    case Phase::DataReady_Env_SkyRelease:     return 0.68f;
-    case Phase::DataReady_Env_SkyDome:        return 0.69f;
-    case Phase::DataReady_Env_SkyCelestials:  return 0.70f;
-    case Phase::DataReady_Env_SkyColors:      return 0.71f;
-    case Phase::Atlas_Zone_Upload: {
-        // 0.72–0.75 based on pages uploaded
+    switch (zoneLoadPhase_) {
+    case Phase::Idle:                    return 0.50f;
+    case Phase::Pending:                 return 0.51f;
+    case Phase::P01_S3d_Submit:          return 0.52f;
+    case Phase::P01_S3d_Poll:            return 0.52f;
+    case Phase::P01_S3d_Install:         return 0.55f;
+    case Phase::P02_Bsp_Submit:          return 0.56f;
+    case Phase::P02_Bsp_Poll:            return 0.57f;
+    case Phase::P02_Bsp_Install:         return 0.58f;
+    case Phase::P02_Bsp_Portal:          return 0.59f;
+    case Phase::P03_Atlas_Submit:        return 0.60f;
+    case Phase::P03_Atlas_Poll:          return 0.61f;
+    case Phase::P03_Atlas_ZoneUpload: {
         uint16_t total = pendingZoneComputations_ ? pendingZoneComputations_->zoneAtlasPreload.numPages : 0;
         float frac = (total > 0) ? static_cast<float>(atlasZonePageIndex_) / total : 0.0f;
-        return lerp(0.72f, 0.75f, frac);
+        return lerp(0.62f, 0.65f, frac);
     }
-    case Phase::Atlas_Zone_Finalize:      return 0.75f;
-    case Phase::Atlas_Object_Upload: {
-        // 0.75–0.77 based on pages uploaded
+    case Phase::P03_Atlas_ZoneFinalize:  return 0.65f;
+    case Phase::P03_Atlas_ObjUpload: {
         uint16_t total = pendingZoneComputations_ ? pendingZoneComputations_->objAtlasPreload.numPages : 0;
         float frac = (total > 0) ? static_cast<float>(atlasObjPageIndex_) / total : 0.0f;
-        return lerp(0.75f, 0.77f, frac);
+        return lerp(0.65f, 0.67f, frac);
     }
-    case Phase::Atlas_Object_Finalize:    return 0.77f;
-    case Phase::Atlas_Shader:             return 0.78f;
-    case Phase::RegionMesh_InstallBsp:    return 0.79f;
-    case Phase::RegionMesh_InitCache:     return 0.80f;
-    case Phase::RegionMesh_EagerBatch: {
-        // 0.80–0.87 based on regions built
+    case Phase::P03_Atlas_ObjFinalize:   return 0.67f;
+    case Phase::P03_Atlas_Shader:        return 0.68f;
+    case Phase::P04_Regions_InitCache:   return 0.69f;
+    case Phase::P04_Regions_EagerBatch: {
         size_t total = 0;
         if (currentZone_ && currentZone_->wldLoader) {
             auto bspTree = currentZone_->wldLoader->getBspTree();
             if (bspTree) total = bspTree->regions.size();
         }
         float frac = (total > 0) ? static_cast<float>(regionBuildIndex_) / total : 0.0f;
-        return lerp(0.80f, 0.87f, frac);
+        return lerp(0.69f, 0.76f, frac);
     }
-    case Phase::RegionMesh_SortSetup:     return 0.87f;
-    case Phase::RegionMesh_InstallPortal: return 0.88f;
-    case Phase::Lights_CreateNodes:       return 0.89f;
-    case Phase::Lights_InstallRegions:    return 0.89f;
-    case Phase::Objects_Install:          return 0.90f;
-    case Phase::Misc_ZoneBounds:          return 0.90f;
-    case Phase::Misc_Fog:                 return 0.90f;
-    case Phase::Misc_DoorSetup:           return 0.91f;
-    case Phase::Misc_ReleaseData:         return 0.91f;
-    case Phase::CollisionRebuild:         return 0.91f;
-    case Phase::EnvironmentInit:          return 0.92f;
-    case Phase::EntityLoading:            return 0.92f;
+    case Phase::P04_Regions_SortSetup:   return 0.76f;
+    case Phase::P05_Assets_Submit:       return 0.77f;
+    case Phase::P05_Assets_Poll:         return 0.77f;
+    case Phase::P05_Assets_EntityRenderer: return 0.78f;
+    case Phase::P05_Assets_ArchiveIndex: return 0.79f;
+    case Phase::P05_Assets_Equipment:    return 0.80f;
+    case Phase::P05_Assets_GlobalAssets: return 0.81f;
+    case Phase::P05_Assets_ModelView:    return 0.82f;
+    case Phase::P06_Objects_Install:     return 0.83f;
+    case Phase::P06_Objects_Bounds:      return 0.83f;
+    case Phase::P07_Doors_Create:        return 0.84f;
+    case Phase::P07_Doors_Rebuild:       return 0.85f;
+    case Phase::P08_Entities:            return 0.86f;
+    case Phase::P09_Collision:           return 0.87f;
+    case Phase::P10_Sky_Submit:          return 0.87f;
+    case Phase::P10_Sky_Poll:            return 0.88f;
+    case Phase::P10_Sky_Create:          return 0.88f;
+    case Phase::P10_Sky_Textures:        return 0.89f;
+    case Phase::P10_Sky_Finalize:        return 0.89f;
+    case Phase::P11_Env_SimWorker:       return 0.90f;
+    case Phase::P11_Env_TreeConfig:      return 0.90f;
+    case Phase::P11_Env_TreeInit:        return 0.90f;
+    case Phase::P11_Env_DetailCreate:    return 0.90f;
+    case Phase::P11_Env_DetailZoneEnter: return 0.90f;
+    case Phase::P11_Env_DetailAddMeshNodes: return 0.90f;
+    case Phase::P11_Env_ParticleZoneEnter: return 0.91f;
+    case Phase::P11_Env_ParticleFireSetup: return 0.91f;
+    case Phase::P11_Env_ParticleUnifiedInit: return 0.91f;
+    case Phase::P11_Env_BoidsInit:       return 0.91f;
+    case Phase::P11_Env_TumbleweedInit:  return 0.91f;
+    case Phase::P11_Env_WeatherSurface:  return 0.91f;
+    case Phase::P11_Env_ReleaseGeometry: return 0.91f;
+    case Phase::P11_Env_WaitSimWorker:   return 0.92f;
+    case Phase::P12_Lights_Create:       return 0.92f;
+    case Phase::P12_Lights_Regions:      return 0.92f;
+    case Phase::P13_Cleanup:             return 0.92f;
     case Phase::Complete: {
         // Phase pipeline done — progress 0.92–1.00 based on progressive build completion
         if (!progressiveLoadingActive_) return 1.00f;
@@ -3049,34 +3070,25 @@ float IrrlichtRenderer::getBackgroundLoadProgress() const {
 }
 
 std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
-    using Phase = BackgroundZoneLoadPhase;
+    using Phase = ZoneLoadPhase;
 
-    switch (backgroundZoneLoadPhase_) {
+    switch (zoneLoadPhase_) {
     case Phase::Idle:
     case Phase::Pending:
-    case Phase::Loading:
+    case Phase::P01_S3d_Submit:
+    case Phase::P01_S3d_Poll:
         return L"Loading zone data...";
-    case Phase::DataReady_Notify:
-    case Phase::DataReady_EntityRenderer:
-    case Phase::DataReady_ArchiveIndex:
-    case Phase::DataReady_GlobalAssets:
-    case Phase::DataReady_Equipment:
-    case Phase::DataReady_DoorManager:
-        return L"Preparing assets...";
-    case Phase::DataReady_SkyCreate:
-    case Phase::DataReady_DetailManager:
-    case Phase::DataReady_ModelView:
-        return L"Creating renderers...";
-    case Phase::DataReady_Env_SkyPrepare:
-    case Phase::DataReady_Env_FogSetup:
-    case Phase::DataReady_Env_WeatherApply:
-    case Phase::DataReady_Env_SkyTextures:
-    case Phase::DataReady_Env_SkyRelease:
-    case Phase::DataReady_Env_SkyDome:
-    case Phase::DataReady_Env_SkyCelestials:
-    case Phase::DataReady_Env_SkyColors:
-        return L"Setting up sky...";
-    case Phase::Atlas_Zone_Upload: {
+    case Phase::P01_S3d_Install:
+        return L"Installing zone...";
+    case Phase::P02_Bsp_Submit:
+    case Phase::P02_Bsp_Poll:
+    case Phase::P02_Bsp_Install:
+    case Phase::P02_Bsp_Portal:
+        return L"Building spatial data...";
+    case Phase::P03_Atlas_Submit:
+    case Phase::P03_Atlas_Poll:
+        return L"Loading textures...";
+    case Phase::P03_Atlas_ZoneUpload: {
         uint16_t total = pendingZoneComputations_ ? pendingZoneComputations_->zoneAtlasPreload.numPages : 0;
         if (total > 0) {
             return L"Uploading textures [" +
@@ -3085,15 +3097,14 @@ std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
         }
         return L"Uploading textures...";
     }
-    case Phase::Atlas_Zone_Finalize:
-    case Phase::Atlas_Object_Upload:
-    case Phase::Atlas_Object_Finalize:
-    case Phase::Atlas_Shader:
+    case Phase::P03_Atlas_ZoneFinalize:
+    case Phase::P03_Atlas_ObjUpload:
+    case Phase::P03_Atlas_ObjFinalize:
+    case Phase::P03_Atlas_Shader:
         return L"Uploading textures...";
-    case Phase::RegionMesh_InstallBsp:
-    case Phase::RegionMesh_InitCache:
+    case Phase::P04_Regions_InitCache:
         return L"Building zone geometry...";
-    case Phase::RegionMesh_EagerBatch: {
+    case Phase::P04_Regions_EagerBatch: {
         size_t total = 0;
         if (currentZone_ && currentZone_->wldLoader) {
             auto bspTree = currentZone_->wldLoader->getBspTree();
@@ -3105,25 +3116,53 @@ std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
         }
         return L"Building zone geometry...";
     }
-    case Phase::RegionMesh_SortSetup:
-    case Phase::RegionMesh_InstallPortal:
+    case Phase::P04_Regions_SortSetup:
         return L"Building zone geometry...";
-    case Phase::Lights_CreateNodes:
-    case Phase::Lights_InstallRegions:
-        return L"Creating lights...";
-    case Phase::Objects_Install:
+    case Phase::P05_Assets_Submit:
+    case Phase::P05_Assets_Poll:
+    case Phase::P05_Assets_EntityRenderer:
+    case Phase::P05_Assets_ArchiveIndex:
+    case Phase::P05_Assets_Equipment:
+    case Phase::P05_Assets_GlobalAssets:
+    case Phase::P05_Assets_ModelView:
+        return L"Preparing assets...";
+    case Phase::P06_Objects_Install:
         return L"Placing objects...";
-    case Phase::Misc_ZoneBounds:
-    case Phase::Misc_Fog:
-    case Phase::Misc_DoorSetup:
-    case Phase::Misc_ReleaseData:
-        return L"Finalizing zone...";
-    case Phase::CollisionRebuild:
-        return L"Building collision...";
-    case Phase::EnvironmentInit:
-        return L"Initializing environment...";
-    case Phase::EntityLoading:
+    case Phase::P06_Objects_Bounds:
+        return L"Computing bounds...";
+    case Phase::P07_Doors_Create:
+    case Phase::P07_Doors_Rebuild:
+        return L"Building doors...";
+    case Phase::P08_Entities:
         return L"Loading entities...";
+    case Phase::P09_Collision:
+        return L"Building collision...";
+    case Phase::P10_Sky_Submit:
+    case Phase::P10_Sky_Poll:
+    case Phase::P10_Sky_Create:
+    case Phase::P10_Sky_Textures:
+    case Phase::P10_Sky_Finalize:
+        return L"Setting up sky...";
+    case Phase::P11_Env_SimWorker:
+    case Phase::P11_Env_TreeConfig:
+    case Phase::P11_Env_TreeInit:
+    case Phase::P11_Env_DetailCreate:
+    case Phase::P11_Env_DetailZoneEnter:
+    case Phase::P11_Env_DetailAddMeshNodes:
+    case Phase::P11_Env_ParticleZoneEnter:
+    case Phase::P11_Env_ParticleFireSetup:
+    case Phase::P11_Env_ParticleUnifiedInit:
+    case Phase::P11_Env_BoidsInit:
+    case Phase::P11_Env_TumbleweedInit:
+    case Phase::P11_Env_WeatherSurface:
+    case Phase::P11_Env_ReleaseGeometry:
+    case Phase::P11_Env_WaitSimWorker:
+        return L"Initializing environment...";
+    case Phase::P12_Lights_Create:
+    case Phase::P12_Lights_Regions:
+        return L"Creating lights...";
+    case Phase::P13_Cleanup:
+        return L"Finalizing zone...";
     case Phase::Complete: {
         if (!progressiveLoadingActive_) return L"Zone ready!";
         size_t totalEntities = 0, builtEntities = 0;
@@ -3153,47 +3192,51 @@ std::wstring IrrlichtRenderer::getLoadingPhaseText() const {
 }
 
 // Returns the phase at which the given step should PAUSE (the first phase of the NEXT step)
-BackgroundZoneLoadPhase IrrlichtRenderer::getStepEndPhase(ManualLoadStep step) {
+ZoneLoadPhase IrrlichtRenderer::getStepEndPhase(ZoneLoadStep step) {
     switch (step) {
-    case ManualLoadStep::S3d:       return BackgroundZoneLoadPhase::DataReady_Notify;
-    case ManualLoadStep::Data:      return BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
-    case ManualLoadStep::Sky:       return BackgroundZoneLoadPhase::Atlas_Zone_Upload;
-    case ManualLoadStep::Atlas:     return BackgroundZoneLoadPhase::RegionMesh_InstallBsp;
-    case ManualLoadStep::Regions:   return BackgroundZoneLoadPhase::Lights_CreateNodes;
-    case ManualLoadStep::Lights:    return BackgroundZoneLoadPhase::Objects_Install;
-    case ManualLoadStep::Objects:   return BackgroundZoneLoadPhase::Misc_ZoneBounds;
-    case ManualLoadStep::Misc:      return BackgroundZoneLoadPhase::CollisionRebuild;
-    case ManualLoadStep::Collision: return BackgroundZoneLoadPhase::EnvironmentInit;
-    case ManualLoadStep::Env:       return BackgroundZoneLoadPhase::EntityLoading;
-    case ManualLoadStep::Entities:  return BackgroundZoneLoadPhase::Complete;
-    case ManualLoadStep::All:       return BackgroundZoneLoadPhase::Complete;
-    default:                        return BackgroundZoneLoadPhase::Idle;
+    case ZoneLoadStep::S3d:       return ZoneLoadPhase::P02_Bsp_Submit;
+    case ZoneLoadStep::Bsp:       return ZoneLoadPhase::P03_Atlas_Submit;
+    case ZoneLoadStep::Atlas:     return ZoneLoadPhase::P04_Regions_InitCache;
+    case ZoneLoadStep::Regions:   return ZoneLoadPhase::P05_Assets_Submit;
+    case ZoneLoadStep::Assets:    return ZoneLoadPhase::P06_Objects_Install;
+    case ZoneLoadStep::Objects:   return ZoneLoadPhase::P07_Doors_Create;
+    case ZoneLoadStep::Doors:     return ZoneLoadPhase::P08_Entities;
+    case ZoneLoadStep::Entities:  return ZoneLoadPhase::P09_Collision;
+    case ZoneLoadStep::Collision: return ZoneLoadPhase::P10_Sky_Submit;
+    case ZoneLoadStep::Sky:       return ZoneLoadPhase::P11_Env_SimWorker;
+    case ZoneLoadStep::Env:       return ZoneLoadPhase::P12_Lights_Create;
+    case ZoneLoadStep::Lights:    return ZoneLoadPhase::P13_Cleanup;
+    case ZoneLoadStep::Cleanup:   return ZoneLoadPhase::Complete;
+    case ZoneLoadStep::All:       return ZoneLoadPhase::Complete;
+    default:                      return ZoneLoadPhase::Idle;
     }
 }
 
 // Returns the expected current phase when starting the given step
-BackgroundZoneLoadPhase IrrlichtRenderer::getStepStartPhase(ManualLoadStep step) {
+ZoneLoadPhase IrrlichtRenderer::getStepStartPhase(ZoneLoadStep step) {
     switch (step) {
-    case ManualLoadStep::S3d:       return BackgroundZoneLoadPhase::Idle;
-    case ManualLoadStep::Data:      return BackgroundZoneLoadPhase::DataReady_Notify;
-    case ManualLoadStep::Sky:       return BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
-    case ManualLoadStep::Atlas:     return BackgroundZoneLoadPhase::Atlas_Zone_Upload;
-    case ManualLoadStep::Regions:   return BackgroundZoneLoadPhase::RegionMesh_InstallBsp;
-    case ManualLoadStep::Lights:    return BackgroundZoneLoadPhase::Lights_CreateNodes;
-    case ManualLoadStep::Objects:   return BackgroundZoneLoadPhase::Objects_Install;
-    case ManualLoadStep::Misc:      return BackgroundZoneLoadPhase::Misc_ZoneBounds;
-    case ManualLoadStep::Collision: return BackgroundZoneLoadPhase::CollisionRebuild;
-    case ManualLoadStep::Env:       return BackgroundZoneLoadPhase::EnvironmentInit;
-    case ManualLoadStep::Entities:  return BackgroundZoneLoadPhase::EntityLoading;
-    case ManualLoadStep::All:       return BackgroundZoneLoadPhase::Idle;  // Validated separately in advanceManualLoadStep
-    default:                        return BackgroundZoneLoadPhase::Idle;
+    case ZoneLoadStep::S3d:       return ZoneLoadPhase::P01_S3d_Submit;
+    case ZoneLoadStep::Bsp:       return ZoneLoadPhase::P02_Bsp_Submit;
+    case ZoneLoadStep::Atlas:     return ZoneLoadPhase::P03_Atlas_Submit;
+    case ZoneLoadStep::Regions:   return ZoneLoadPhase::P04_Regions_InitCache;
+    case ZoneLoadStep::Assets:    return ZoneLoadPhase::P05_Assets_Submit;
+    case ZoneLoadStep::Objects:   return ZoneLoadPhase::P06_Objects_Install;
+    case ZoneLoadStep::Doors:     return ZoneLoadPhase::P07_Doors_Create;
+    case ZoneLoadStep::Entities:  return ZoneLoadPhase::P08_Entities;
+    case ZoneLoadStep::Collision: return ZoneLoadPhase::P09_Collision;
+    case ZoneLoadStep::Sky:       return ZoneLoadPhase::P10_Sky_Submit;
+    case ZoneLoadStep::Env:       return ZoneLoadPhase::P11_Env_SimWorker;
+    case ZoneLoadStep::Lights:    return ZoneLoadPhase::P12_Lights_Create;
+    case ZoneLoadStep::Cleanup:   return ZoneLoadPhase::P13_Cleanup;
+    case ZoneLoadStep::All:       return ZoneLoadPhase::Idle;
+    default:                      return ZoneLoadPhase::Idle;
     }
 }
 
 void IrrlichtRenderer::beginManualZoneLoad(const std::string& eqClientPath) {
     manualLoadMode_ = true;
-    currentManualStep_ = ManualLoadStep::S3d;
-    manualLoadPauseAt_ = BackgroundZoneLoadPhase::DataReady_Notify;
+    currentManualStep_ = ZoneLoadStep::S3d;
+    manualLoadPauseAt_ = ZoneLoadPhase::P02_Bsp_Submit;  // Pause at start of step 2
     manualLoadPauseReached_ = false;
 
     // Use the same init path as normal zone loading
@@ -3203,28 +3246,28 @@ void IrrlichtRenderer::beginManualZoneLoad(const std::string& eqClientPath) {
              phaseToString(manualLoadPauseAt_));
 }
 
-bool IrrlichtRenderer::advanceManualLoadStep(ManualLoadStep step) {
+bool IrrlichtRenderer::advanceManualLoadStep(ZoneLoadStep step) {
     if (!manualLoadMode_) {
-        LOG_WARN(MOD_GRAPHICS, "advanceManualLoadStep called but not in manual mode");
+        LOG_WARN(MOD_GRAPHICS, "advanceZoneLoadStep called but not in manual mode");
         return false;
     }
 
     // 'all' is special — accept any current phase and run to completion
-    if (step == ManualLoadStep::All) {
-        manualLoadPauseAt_ = BackgroundZoneLoadPhase::Complete;
+    if (step == ZoneLoadStep::All) {
+        manualLoadPauseAt_ = ZoneLoadPhase::Complete;
         manualLoadPauseReached_ = false;
-        currentManualStep_ = ManualLoadStep::All;
+        currentManualStep_ = ZoneLoadStep::All;
         LOG_INFO(MOD_GRAPHICS, "Manual load: running all remaining steps to completion");
         return true;
     }
 
     // Validate the current phase matches what this step expects
-    BackgroundZoneLoadPhase expectedStart = getStepStartPhase(step);
-    if (backgroundZoneLoadPhase_ != expectedStart) {
+    ZoneLoadPhase expectedStart = getStepStartPhase(step);
+    if (zoneLoadPhase_ != expectedStart) {
         LOG_WARN(MOD_GRAPHICS, "Manual load step '{}' expects phase {} but current is {}",
-                 manualLoadStepToString(step),
+                 stepToString(step),
                  phaseToString(expectedStart),
-                 phaseToString(backgroundZoneLoadPhase_));
+                 phaseToString(zoneLoadPhase_));
         return false;
     }
 
@@ -3233,47 +3276,45 @@ bool IrrlichtRenderer::advanceManualLoadStep(ManualLoadStep step) {
     manualLoadPauseReached_ = false;
     currentManualStep_ = step;
 
-    // Launch deferred background work when Data or All step starts
-    // (loads objects, archive index, sky, weather, atlas in background)
-    if ((step == ManualLoadStep::Data || step == ManualLoadStep::All) && !deferredWorkQueue_) {
-        launchDeferredBackgroundWork();
-    }
-
     LOG_INFO(MOD_GRAPHICS, "Manual load: advancing step '{}' — will pause at {}",
-             manualLoadStepToString(step), phaseToString(manualLoadPauseAt_));
+             stepToString(step), phaseToString(manualLoadPauseAt_));
     return true;
 }
 
-ManualLoadStep IrrlichtRenderer::getNextExpectedStep() const {
-    if (!manualLoadMode_) return ManualLoadStep::None;
+ZoneLoadStep IrrlichtRenderer::getNextExpectedStep() const {
+    if (!manualLoadMode_) return ZoneLoadStep::None;
 
-    auto phase = backgroundZoneLoadPhase_;
+    auto phase = zoneLoadPhase_;
 
-    // Map current phase to the next expected manual step
-    if (phase == BackgroundZoneLoadPhase::Idle || phase == BackgroundZoneLoadPhase::Pending)
-        return ManualLoadStep::S3d;
-    if (phase == BackgroundZoneLoadPhase::DataReady_Notify)
-        return ManualLoadStep::Data;
-    if (phase == BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare)
-        return ManualLoadStep::Sky;
-    if (phase == BackgroundZoneLoadPhase::Atlas_Zone_Upload)
-        return ManualLoadStep::Atlas;
-    if (phase == BackgroundZoneLoadPhase::RegionMesh_InstallBsp)
-        return ManualLoadStep::Regions;
-    if (phase == BackgroundZoneLoadPhase::Lights_CreateNodes)
-        return ManualLoadStep::Lights;
-    if (phase == BackgroundZoneLoadPhase::Objects_Install)
-        return ManualLoadStep::Objects;
-    if (phase == BackgroundZoneLoadPhase::Misc_ZoneBounds)
-        return ManualLoadStep::Misc;
-    if (phase == BackgroundZoneLoadPhase::CollisionRebuild)
-        return ManualLoadStep::Collision;
-    if (phase == BackgroundZoneLoadPhase::EnvironmentInit)
-        return ManualLoadStep::Env;
-    if (phase == BackgroundZoneLoadPhase::EntityLoading)
-        return ManualLoadStep::Entities;
-    if (phase == BackgroundZoneLoadPhase::Complete)
-        return ManualLoadStep::None;
+    // Map current phase to the next expected manual step (pause points)
+    if (phase == ZoneLoadPhase::Idle || phase == ZoneLoadPhase::Pending)
+        return ZoneLoadStep::S3d;
+    if (phase == ZoneLoadPhase::P02_Bsp_Submit)
+        return ZoneLoadStep::Bsp;
+    if (phase == ZoneLoadPhase::P03_Atlas_Submit)
+        return ZoneLoadStep::Atlas;
+    if (phase == ZoneLoadPhase::P04_Regions_InitCache)
+        return ZoneLoadStep::Regions;
+    if (phase == ZoneLoadPhase::P05_Assets_Submit)
+        return ZoneLoadStep::Assets;
+    if (phase == ZoneLoadPhase::P06_Objects_Install)
+        return ZoneLoadStep::Objects;
+    if (phase == ZoneLoadPhase::P07_Doors_Create)
+        return ZoneLoadStep::Doors;
+    if (phase == ZoneLoadPhase::P08_Entities)
+        return ZoneLoadStep::Entities;
+    if (phase == ZoneLoadPhase::P09_Collision)
+        return ZoneLoadStep::Collision;
+    if (phase == ZoneLoadPhase::P10_Sky_Submit)
+        return ZoneLoadStep::Sky;
+    if (phase == ZoneLoadPhase::P11_Env_SimWorker)
+        return ZoneLoadStep::Env;
+    if (phase == ZoneLoadPhase::P12_Lights_Create)
+        return ZoneLoadStep::Lights;
+    if (phase == ZoneLoadPhase::P13_Cleanup)
+        return ZoneLoadStep::Cleanup;
+    if (phase == ZoneLoadPhase::Complete)
+        return ZoneLoadStep::None;
 
     // Phase is somewhere in the middle of a step (still running)
     // Return the step that's currently in progress
@@ -3282,7 +3323,7 @@ ManualLoadStep IrrlichtRenderer::getNextExpectedStep() const {
 
 void IrrlichtRenderer::startBspPreload(const std::string& zoneName, const std::string& eqClientPath) {
     // Don't start if already running or if full zone load is in progress
-    if (bspPreloadQueue_ || backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) return;
+    if (bspPreloadQueue_ || zoneLoadPhase_ != ZoneLoadPhase::Idle) return;
 
     std::string zonePath = eqClientPath;
     if (!zonePath.empty() && zonePath.back() != '/' && zonePath.back() != '\\')
@@ -3621,237 +3662,9 @@ static void bilinearUpscaleARGB(const uint8_t* src, uint32_t srcW, uint32_t srcH
     }
 }
 
-// Parameters for preloadDeferredAssets() — all values captured by copy from caller
-struct DeferredAssetParams {
-    PendingZoneComputations* computations;
-    bool deferredAssetLoading;
-    bool lazyPfsLoading;
-    bool enableAtlas;
-    bool skipObjectBuild;
-    bool skyRendering;
-    ConstrainedRendererConfig::SkyDomeMode skyDomeMode;
-    std::string atlasPath;
-    std::string zoneName;
-    std::string eqClientPath;  // with trailing slash
-};
-
-// Phases 6-10: shared asset preload used by both automatic and manual loading paths.
-// Runs on a background thread. Only writes to p.computations (owned by main thread,
-// not accessed until background work completes) and reads config values passed by value.
-static void preloadDeferredAssets(const DeferredAssetParams& p) {
-    // 6. Build graphics archive index (filesystem I/O — no GL)
-    if (p.deferredAssetLoading) {
-        p.computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
-        if (p.computations->archiveIndex->buildIndex(p.eqClientPath, p.lazyPfsLoading)) {
-            LOG_INFO(MOD_GRAPHICS, "Preload: graphics archive index built ({} race entries, {} archives)",
-                     p.computations->archiveIndex->getRaceEntryCount(),
-                     p.computations->archiveIndex->getArchiveCount());
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "Preload: graphics archive index build failed");
-            p.computations->archiveIndex.reset();
-        }
-    }
-
-    // 6.5 Pre-build equipment index (S3D archive headers — no GL)
-    {
-        auto eqIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
-        if (EquipmentModelLoader::buildEquipmentIndex(p.eqClientPath,
-                eqIdx->modelIndex, eqIdx->textureIndex)) {
-            eqIdx->loaded = true;
-            LOG_INFO(MOD_GRAPHICS, "Preload: equipment index ({} models, {} textures)",
-                     eqIdx->modelIndex.size(), eqIdx->textureIndex.size());
-        }
-        p.computations->equipmentIndex = std::move(eqIdx);
-    }
-
-    // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
-    if (p.skyRendering) {
-        auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
-        skyData->skyLoader = std::make_unique<SkyLoader>();
-        skyData->skyConfig = std::make_unique<SkyConfig>();
-
-        if (skyData->skyLoader->load(p.eqClientPath)) {
-            LOG_INFO(MOD_GRAPHICS, "Preload: sky.s3d loaded ({} textures)",
-                     skyData->skyLoader->getSkyData()->textures.size());
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "Preload: sky.s3d load failed");
-        }
-
-        std::string skyIniPath = p.eqClientPath + "sky.ini";
-        if (skyData->skyConfig->loadFromFile(skyIniPath)) {
-            LOG_INFO(MOD_GRAPHICS, "Preload: sky.ini loaded ({} zone configs)",
-                     skyData->skyConfig->getZoneCount());
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "Preload: sky.ini load failed, will use defaults");
-        }
-
-        // Pre-decode + upscale BMP sky textures on background thread (no GL)
-        // Filter to only textures needed for this zone's sky type
-        if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
-            std::set<std::string> neededSet;
-            if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
-                std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(p.zoneName);
-                int skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
-                auto neededTextures = skyData->skyLoader->getTextureNamesForSkyType(skyTypeId);
-                neededSet.insert(neededTextures.begin(), neededTextures.end());
-                LOG_INFO(MOD_GRAPHICS, "Preload: sky type {} needs {} textures (zone={}, weather={})",
-                         skyTypeId, neededSet.size(), p.zoneName, weatherType);
-            }
-
-            const auto& textures = skyData->skyLoader->getSkyData()->textures;
-            for (const auto& [texName, texInfo] : textures) {
-                if (!texInfo || texInfo->data.size() < 2) continue;
-                // Only handle BMPs (header bytes 'B','M')
-                if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
-                // Only decode textures needed for this zone's sky type
-                if (!neededSet.empty() && neededSet.find(texName) == neededSet.end()) continue;
-
-                PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
-                preTex.name = texName;
-
-                uint32_t decW = 0, decH = 0;
-                std::vector<uint8_t> decoded;
-                if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
-                    LOG_WARN(MOD_GRAPHICS, "Preload: failed to decode BMP sky texture: {}", texName);
-                    continue;
-                }
-
-                // Upscale small textures (<=128x128) to 512x512 with bilinear interpolation
-                if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
-                    const uint32_t targetSize = 512;
-                    bilinearUpscaleARGB(decoded.data(), decW, decH,
-                                        preTex.pixels, targetSize, targetSize);
-                    preTex.width = targetSize;
-                    preTex.height = targetSize;
-                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded + upscaled sky texture: {} ({}x{} -> {}x{})",
-                             texName, decW, decH, targetSize, targetSize);
-                } else {
-                    // Already large enough, just store decoded pixels
-                    preTex.pixels = std::move(decoded);
-                    preTex.width = decW;
-                    preTex.height = decH;
-                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded sky texture: {} ({}x{})",
-                             texName, decW, decH);
-                }
-
-                skyData->preDecodedTextures.push_back(std::move(preTex));
-            }
-            LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded {} BMP sky textures",
-                     skyData->preDecodedTextures.size());
-        }
-
-        // Pre-compute dome mesh geometry (pure CPU, no GL)
-        using SkyDomeMode = ConstrainedRendererConfig::SkyDomeMode;
-        bool usedWldDome = false;
-
-        if (p.skyDomeMode == SkyDomeMode::Original &&
-            skyData->skyLoader && skyData->skyLoader->isLoaded()) {
-            // Extract WLD dome mesh from background layer geometry
-            int skyTypeId = 0;
-            if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
-                std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(p.zoneName);
-                skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
-            }
-            auto layers = skyData->skyLoader->getLayersForSkyType(skyTypeId);
-            // Find the first background layer with geometry
-            std::shared_ptr<SkyLayer> bgLayer;
-            for (const auto& layer : layers) {
-                if (layer && layer->type == SkyLayerType::Background && layer->geometry) {
-                    bgLayer = layer;
-                    break;
-                }
-            }
-            if (bgLayer && bgLayer->geometry && !bgLayer->geometry->vertices.empty()) {
-                const auto& geom = *bgLayer->geometry;
-                // Find max extent for scaling to SKY_DOME_RADIUS (1800)
-                float maxExtent = 0.0f;
-                for (const auto& v : geom.vertices) {
-                    float ext = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-                    if (ext > maxExtent) maxExtent = ext;
-                }
-                float scale = (maxExtent > 0.001f) ? (1800.0f / maxExtent) : 1.0f;
-
-                auto wldDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedWldDome>();
-                wldDome->vertices.resize(geom.vertices.size());
-                for (size_t i = 0; i < geom.vertices.size(); ++i) {
-                    const auto& v = geom.vertices[i];
-                    auto& iv = wldDome->vertices[i];
-                    // EQ to Irrlicht coordinate conversion: (x, y, z) -> (x, z, y), scaled
-                    iv.Pos.X = v.x * scale;
-                    iv.Pos.Y = v.z * scale;  // EQ Z (vertical) -> Irrlicht Y
-                    iv.Pos.Z = v.y * scale;  // EQ Y (horizontal) -> Irrlicht Z
-                    // Normals flipped inward (we view from inside the dome)
-                    iv.Normal.X = -v.nx;
-                    iv.Normal.Y = -v.nz;
-                    iv.Normal.Z = -v.ny;
-                    iv.TCoords.X = v.u;
-                    iv.TCoords.Y = v.v;
-                    iv.Color = irr::video::SColor(255, 255, 255, 255);
-                }
-                // Build index buffer from triangles
-                wldDome->indices.reserve(geom.triangles.size() * 3);
-                for (const auto& tri : geom.triangles) {
-                    wldDome->indices.push_back(static_cast<irr::u16>(tri.v1));
-                    wldDome->indices.push_back(static_cast<irr::u16>(tri.v2));
-                    wldDome->indices.push_back(static_cast<irr::u16>(tri.v3));
-                }
-                LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed WLD sky dome ({} verts, {} indices, scale={:.2f})",
-                         wldDome->vertices.size(), wldDome->indices.size(), scale);
-                skyData->precomputedWldDome = std::move(wldDome);
-                usedWldDome = true;
-            }
-        }
-
-        if (!usedWldDome) {
-            // Procedural dome: generate hemisphere mesh with trig (~5ms)
-            skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
-            SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
-                                            skyData->precomputedDome->indices);
-            LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed procedural sky dome ({} verts, {} indices)",
-                     skyData->precomputedDome->vertices.size(),
-                     skyData->precomputedDome->indices.size());
-        }
-
-        p.computations->skyLoadData = std::move(skyData);
-    } else {
-        LOG_INFO(MOD_GRAPHICS, "Preload: sky rendering disabled, skipping sky.s3d load");
-    }
-
-    // 8. Pre-load weather config (file I/O + JSON — no GL)
-    {
-        auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
-        ZoneWeatherConfig wconfig;
-        if (loadZoneWeatherConfig(p.zoneName, wconfig)) {
-            weatherData->config = wconfig;
-            weatherData->loaded = true;
-            LOG_INFO(MOD_GRAPHICS, "Preload: pre-loaded weather config for '{}'", p.zoneName);
-        } else {
-            weatherData->config.zoneName = p.zoneName;
-            weatherData->config.defaultWeather = WeatherType::Normal;
-            weatherData->config.enabled = true;
-            weatherData->loaded = true;
-            LOG_DEBUG(MOD_GRAPHICS, "Preload: default weather config for '{}'", p.zoneName);
-        }
-        p.computations->weatherConfig = std::move(weatherData);
-    }
-
-    // 9. Pre-load atlas files (file I/O + tile lookup — no GL)
-    if (p.enableAtlas && !p.atlasPath.empty()) {
-        std::string atlasDir = p.atlasPath;
-        if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
-
-        std::string zoneAtlasFile = atlasDir + p.zoneName + ".atlas";
-        p.computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
-
-        if (!p.skipObjectBuild) {
-            std::string objAtlasFile = atlasDir + p.zoneName + "_obj.atlas";
-            p.computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
-        }
-    }
-}
 
 void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath) {
-    backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Loading;
+    zoneLoadPhase_ = ZoneLoadPhase::P01_S3d_Poll;
     pendingZoneComputations_ = std::make_unique<PendingZoneComputations>();
 
     std::string zonePath = eqClientPath;
@@ -3859,59 +3672,147 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
         zonePath += '/';
     zonePath += zoneName + ".s3d";
 
-    auto* computations = pendingZoneComputations_.get();
-
-    // Capture config values by copy for background thread (set once at init, never modified)
-    bool deferredAssetLoading = config_.constrainedConfig.deferredAssetLoading;
-    bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
-    bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
-    std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
-    std::string zoneNameCopy = zoneName;
-    std::string eqClientPathCopy = eqClientPath;
-    if (!eqClientPathCopy.empty() && eqClientPathCopy.back() != '/' && eqClientPathCopy.back() != '\\')
-        eqClientPathCopy += '/';
+    // Capture config values by copy for background thread
     size_t meshMemoryBudget = config_.constrainedConfig.meshMemoryBytes;
-    // TreeIdentifier::isTreeMesh() is const — pure read-only string matching against patterns
-    // set in constructor. loadConfig() that modifies patterns runs during DeferredInitStep::TreeConfig,
-    // which is well after the background thread is joined.
-    const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
-    bool hasGpuShaders = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
-    bool isManualMode = manualLoadMode_;
-
     bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
-    bool skyRendering = config_.constrainedConfig.skyRendering;
-    auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
 
-    zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>>(
-        [this, zonePath, computations,
-         deferredAssetLoading, lazyPfsLoading,
-         enableAtlas, atlasPathCopy, zoneNameCopy,
-         eqClientPathCopy, meshMemoryBudget,
-         treeIdentifier, hasGpuShaders, isManualMode,
-         skipObjectBuild, skyRendering, skyDomeMode](ZoneLoadRequest&&) -> ZoneLoadResult {
-        // 1. S3D parse — skip _chr (always duplicate of RaceModelLoader), gate combined geometry
-        //    and objects based on mode
+    zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneStepRequest, ZoneStepResult>>(
+        [](ZoneStepRequest&& req) -> ZoneStepResult {
+            if (req.work) req.work();
+            return ZoneStepResult{true};
+        }, backgroundThreadPool_.get(), 0);
+
+    zoneLoadQueue_->submit(ZoneStepRequest{[this, zonePath, meshMemoryBudget, skipObjectBuild]() {
+        // Step 1: S3D parse only — skip _chr, gate combined geometry and objects
         S3DLoadOptions loadOptions;
-        loadOptions.loadCharacters = false;                            // Always skip — duplicate of RaceModelLoader
-        loadOptions.computeCombinedGeometry = (meshMemoryBudget == 0); // Skip on constrained path
-        loadOptions.loadObjects = !isManualMode && !skipObjectBuild;   // Defer or skip entirely
+        loadOptions.loadCharacters = false;
+        loadOptions.computeCombinedGeometry = (meshMemoryBudget == 0);
+        loadOptions.loadObjects = !skipObjectBuild;
 
         S3DLoader loader;
         if (!loader.loadZone(zonePath, loadOptions)) {
             LOG_ERROR(MOD_GRAPHICS, "Background S3D load failed: {}", loader.getError());
-            return ZoneLoadResult{false};
+            return;
         }
         pendingZoneData_ = loader.getZone();
-        auto zone = pendingZoneData_;
+    }});
 
-        // 2-5: CPU-only post-processing on background thread
-        if (zone->wldLoader) {
-            auto bspTree = zone->wldLoader->getBspTree();
-            if (bspTree && !bspTree->regions.empty() && zone->wldLoader->hasPvsData()) {
+    LOG_INFO(MOD_GRAPHICS, "Background S3D load started: {}", zonePath);
+}
 
+// launchDeferredBackgroundWork() — DELETED
+// Background work is now submitted per-step via zoneLoadQueue_ submit lambdas
+// in the P02_Bsp_Submit, P03_Atlas_Submit, P05_Assets_Submit, P10_Sky_Submit phases.
+
+void IrrlichtRenderer::storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
+                                              const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
+                                              const float fogMinClip[4], const float fogMaxClip[4]) {
+    storedZoneEnvironment_.skyType = skyType;
+    storedZoneEnvironment_.zoneType = zoneType;
+    for (int i = 0; i < 4; ++i) {
+        storedZoneEnvironment_.fogR[i] = fogRed[i];
+        storedZoneEnvironment_.fogG[i] = fogGreen[i];
+        storedZoneEnvironment_.fogB[i] = fogBlue[i];
+        storedZoneEnvironment_.fogMinClip[i] = fogMinClip[i];
+        storedZoneEnvironment_.fogMaxClip[i] = fogMaxClip[i];
+    }
+    storedZoneEnvironment_.pending = true;
+}
+
+void IrrlichtRenderer::applyStoredZoneEnvironment() {
+    if (storedZoneEnvironment_.pending) {
+        setZoneEnvironment(storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
+                           storedZoneEnvironment_.fogR, storedZoneEnvironment_.fogG, storedZoneEnvironment_.fogB,
+                           storedZoneEnvironment_.fogMinClip, storedZoneEnvironment_.fogMaxClip);
+        storedZoneEnvironment_.pending = false;
+        LOG_INFO(MOD_GRAPHICS, "Applied stored zone environment (sky={}, ztype={})",
+                 storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
+    }
+}
+
+void IrrlichtRenderer::advanceBackgroundZoneLoad() {
+    // Loading screen progress is updated by processFrameProgressiveLoad()
+    // which runs earlier in the frame — no need to duplicate here.
+
+    auto stepStart = std::chrono::steady_clock::now();
+
+    switch (zoneLoadPhase_) {
+
+    // ── Step 1: S3D — parse zone archive ─────────────────────────────────
+    case ZoneLoadPhase::P01_S3d_Poll: {
+        phaseState_ = PhaseState::Running;
+        ZoneStepResult zoneResult;
+        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(zoneResult)) {
+            zoneLoadQueue_->stop();
+            zoneLoadQueue_.reset();
+
+            phaseState_ = PhaseState::Finished;
+            if (pendingZoneData_) {
+                zoneLoadPhase_ = ZoneLoadPhase::P01_S3d_Install;
+                LOG_INFO(MOD_GRAPHICS, "S3D data + computations received on main thread for zone '{}'",
+                         currentZoneName_);
+            } else {
+                pendingZoneComputations_.reset();
+                zoneLoadPhase_ = ZoneLoadPhase::Complete;
+                LOG_ERROR(MOD_GRAPHICS, "S3D background load produced no data");
+            }
+        }
+        break;
+    }
+
+    case ZoneLoadPhase::P01_S3d_Install: {
+        phaseState_ = PhaseState::Running;
+        // Install zone data and notify subsystems
+        currentZone_ = pendingZoneData_;
+        pendingZoneData_.reset();
+
+        if (entityRenderer_) entityRenderer_->setCurrentZone(currentZoneName_);
+        if (doorManager_) {
+            doorManager_->setZone(currentZone_);
+            if (constrainedTextureCache_)
+                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        }
+
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P02_Bsp_Submit;
+        logAssetBuildTime("data_notify", 0, stepStart);
+        break;
+    }
+
+    // ── Step 2: BSP — compute spatial data ────────────────────────────────
+    case ZoneLoadPhase::P02_Bsp_Submit: {
+        phaseState_ = PhaseState::Running;
+
+        // Capture values for background thread
+        auto* computations = pendingZoneComputations_.get();
+        auto zone = currentZone_;  // shared_ptr copy
+        size_t meshMemoryBudget = config_.constrainedConfig.meshMemoryBytes;
+        bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+        const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
+
+        if (!zone || !zone->wldLoader) {
+            // No zone data — skip BSP computation
+            LOG_INFO(MOD_GRAPHICS, "No zone/WLD data for BSP computation, skipping");
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P02_Bsp_Install;
+            break;
+        }
+
+        zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneStepRequest, ZoneStepResult>>(
+            [](ZoneStepRequest&& req) -> ZoneStepResult {
+                if (req.work) req.work();
+                return ZoneStepResult{true};
+            }, backgroundThreadPool_.get(), 0);
+
+        zoneLoadQueue_->submit(ZoneStepRequest{[computations, zone, meshMemoryBudget,
+                                                 skipObjectBuild, treeIdentifier]() {
+            auto wldLoader = zone->wldLoader;
+            auto bspTree = wldLoader->getBspTree();
+
+            if (bspTree && !bspTree->regions.empty() && wldLoader->hasPvsData()) {
                 // 2. Compute region bounding boxes (CPU-only)
                 for (size_t i = 0; i < bspTree->regions.size(); ++i) {
-                    auto geom = zone->wldLoader->getGeometryForRegion(i);
+                    auto geom = wldLoader->getGeometryForRegion(i);
                     if (!geom || geom->vertices.empty()) continue;
 
                     float vMinX = std::numeric_limits<float>::max();
@@ -3961,31 +3862,33 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                          computations->zoneLightRegions.size());
             }
 
-            // 5. Index objects (CPU-only) — build (objectIndex, bspRegion) pairs
-            // Note: tree filtering happens on main thread since treeManager_ is not thread-safe
-            if (bspTree) {
-                for (size_t i = 0; i < zone->objects.size(); ++i) {
-                    const auto& objInstance = zone->objects[i];
-                    if (!objInstance.geometry || !objInstance.placeable) continue;
+            // 5. Index objects with BSP regions (CPU-only)
+            if (!skipObjectBuild) {
+                auto bspTree = zone->wldLoader ? zone->wldLoader->getBspTree() : nullptr;
+                if (bspTree) {
+                    for (size_t i = 0; i < zone->objects.size(); ++i) {
+                        const auto& objInstance = zone->objects[i];
+                        if (!objInstance.geometry || !objInstance.placeable) continue;
 
-                    float x = objInstance.placeable->getX();
-                    float y = objInstance.placeable->getY();
-                    float z = objInstance.placeable->getZ();
-                    size_t bspRegion = bspTree->findRegionIndexForPoint(x, y, z);
-                    computations->deferredObjectEntries.emplace_back(i, bspRegion);
+                        float x = objInstance.placeable->getX();
+                        float y = objInstance.placeable->getY();
+                        float z = objInstance.placeable->getZ();
+                        size_t bspRegion = bspTree->findRegionIndexForPoint(x, y, z);
+                        computations->deferredObjectEntries.emplace_back(i, bspRegion);
+                    }
+                    LOG_INFO(MOD_GRAPHICS, "Background: indexed {} objects with BSP regions",
+                             computations->deferredObjectEntries.size());
                 }
-                LOG_INFO(MOD_GRAPHICS, "Background: indexed {} objects with BSP regions",
-                         computations->deferredObjectEntries.size());
             }
 
             // 5a. Pre-build ConstrainedMeshCache with all regions registered (CPU-only)
             if (meshMemoryBudget > 0 && !computations->regionBoundingBoxes.empty()) {
+                auto bspTree = zone->wldLoader ? zone->wldLoader->getBspTree() : nullptr;
                 auto prebuilt = std::make_unique<PendingZoneComputations::PrebuiltMeshCacheData>();
                 prebuilt->cache = std::make_unique<ConstrainedMeshCache>(meshMemoryBudget);
                 for (auto& [regionIdx, bounds] : computations->regionBoundingBoxes) {
                     prebuilt->cache->registerRegion(regionIdx);
                 }
-                // Count regions with geometry
                 if (bspTree) {
                     for (size_t i = 0; i < bspTree->regions.size(); ++i) {
                         if (zone->wldLoader->getGeometryForRegion(i)) prebuilt->regionsWithGeometry++;
@@ -4004,13 +3907,12 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                     if (!objInstance.geometry || !objInstance.placeable) continue;
 
                     // Tree filter using captured const TreeIdentifier
-                    // Only skip trees on software path — GPU path keeps them for wind shader
                     if (treeIdentifier) {
                         const std::string& objName = objInstance.placeable->getName();
                         std::string primaryTexture;
                         if (!objInstance.geometry->textureNames().empty())
                             primaryTexture = objInstance.geometry->textureNames()[0];
-                        if (treeIdentifier->isTreeMesh(objName, primaryTexture) && !hasGpuShaders)
+                        if (treeIdentifier->isTreeMesh(objName, primaryTexture))
                             continue;
                     }
 
@@ -4019,7 +3921,6 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                     deferred.bspRegion = bspRegion;
                     deferred.meshBuilt = false;
 
-                    // Estimate world bounds
                     float x = objInstance.placeable->getX();
                     float y = objInstance.placeable->getY();
                     float z = objInstance.placeable->getZ();
@@ -4039,578 +3940,194 @@ void IrrlichtRenderer::startBackgroundZoneLoad(const std::string& zoneName, cons
                 LOG_INFO(MOD_GRAPHICS, "Background: pre-built {} deferred objects (tree-filtered from {} entries)",
                          computations->prebuiltDeferredObjects.size(), computations->deferredObjectEntries.size());
             }
-        }
+        }});
 
-        // Manual mode: stop after S3D + CPU work. Phases 6-10 (archive index, sky, weather,
-        // display, atlas) are deferred to launchDeferredBackgroundWork() when /load data runs.
-        if (isManualMode) {
-            LOG_INFO(MOD_GRAPHICS, "Manual mode: background thread stopping after S3D + CPU work");
-            return ZoneLoadResult{true};
-        }
-
-        // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
-        preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
-                              enableAtlas, skipObjectBuild, skyRendering, skyDomeMode,
-                              atlasPathCopy, zoneNameCopy, eqClientPathCopy});
-
-        return ZoneLoadResult{true};
-    }, backgroundThreadPool_.get(), 0);
-    zoneLoadQueue_->submit(ZoneLoadRequest{});
-
-    LOG_INFO(MOD_GRAPHICS, "Background S3D load started (with CPU post-processing): {}", zonePath);
-}
-
-void IrrlichtRenderer::launchDeferredBackgroundWork() {
-    if (deferredWorkQueue_) return;  // Already running
-
-    auto* computations = pendingZoneComputations_.get();
-    if (!computations) {
-        LOG_WARN(MOD_GRAPHICS, "launchDeferredBackgroundWork: no pending computations");
-        return;
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P02_Bsp_Poll;
+        logAssetBuildTime("bsp_submit", 0, stepStart);
+        break;
     }
 
-    // Capture config values by copy for background thread
-    bool deferredAssetLoading = config_.constrainedConfig.deferredAssetLoading;
-    bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
-    bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
-    bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
-    bool skyRendering = config_.constrainedConfig.skyRendering;
-    auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
-    std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
-    std::string zoneNameCopy = currentZoneName_;
-    std::string eqClientPathCopy = config_.eqClientPath;
-    if (!eqClientPathCopy.empty() && eqClientPathCopy.back() != '/' && eqClientPathCopy.back() != '\\')
-        eqClientPathCopy += '/';
-
-    // Load objects if they were deferred in manual mode
-    auto zone = pendingZoneData_;
-    std::string zonePath = eqClientPathCopy + zoneNameCopy + ".s3d";
-
-    deferredWorkQueue_ = std::make_unique<BackgroundWorkQueue<DeferredWorkRequest, DeferredWorkResult>>(
-        [computations,
-         deferredAssetLoading, lazyPfsLoading,
-         enableAtlas, atlasPathCopy, zoneNameCopy,
-         eqClientPathCopy, zone, zonePath,
-         skipObjectBuild, skyRendering, skyDomeMode](DeferredWorkRequest&&) -> DeferredWorkResult {
-        // Load objects that were skipped in manual S3d step
-        if (zone && zone->objects.empty() && !skipObjectBuild) {
-            S3DLoader objLoader;
-            objLoader.setZone(zone);
-            objLoader.loadObjects(zonePath);
-            LOG_INFO(MOD_GRAPHICS, "Deferred: loaded {} objects from _obj.s3d",
-                     zone->objects.size());
-        }
-
-        // Phases 6-10: shared asset preload (archive index, sky, weather, display, atlas)
-        preloadDeferredAssets({computations, deferredAssetLoading, lazyPfsLoading,
-                              enableAtlas, skipObjectBuild, skyRendering, skyDomeMode,
-                              atlasPathCopy, zoneNameCopy, eqClientPathCopy});
-
-        LOG_INFO(MOD_GRAPHICS, "Deferred background work complete");
-        return DeferredWorkResult{true};
-    }, backgroundThreadPool_.get(), 1);
-    deferredWorkQueue_->submit(DeferredWorkRequest{});
-
-    LOG_INFO(MOD_GRAPHICS, "Deferred background work queue launched");
-}
-
-void IrrlichtRenderer::storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
-                                              const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
-                                              const float fogMinClip[4], const float fogMaxClip[4]) {
-    storedZoneEnvironment_.skyType = skyType;
-    storedZoneEnvironment_.zoneType = zoneType;
-    for (int i = 0; i < 4; ++i) {
-        storedZoneEnvironment_.fogR[i] = fogRed[i];
-        storedZoneEnvironment_.fogG[i] = fogGreen[i];
-        storedZoneEnvironment_.fogB[i] = fogBlue[i];
-        storedZoneEnvironment_.fogMinClip[i] = fogMinClip[i];
-        storedZoneEnvironment_.fogMaxClip[i] = fogMaxClip[i];
-    }
-    storedZoneEnvironment_.pending = true;
-}
-
-void IrrlichtRenderer::applyStoredZoneEnvironment() {
-    if (storedZoneEnvironment_.pending) {
-        setZoneEnvironment(storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
-                           storedZoneEnvironment_.fogR, storedZoneEnvironment_.fogG, storedZoneEnvironment_.fogB,
-                           storedZoneEnvironment_.fogMinClip, storedZoneEnvironment_.fogMaxClip);
-        storedZoneEnvironment_.pending = false;
-        LOG_INFO(MOD_GRAPHICS, "Applied stored zone environment (sky={}, ztype={})",
-                 storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
-    }
-}
-
-void IrrlichtRenderer::advanceBackgroundZoneLoad() {
-    // Loading screen progress is updated by processFrameProgressiveLoad()
-    // which runs earlier in the frame — no need to duplicate here.
-
-    auto stepStart = std::chrono::steady_clock::now();
-
-    switch (backgroundZoneLoadPhase_) {
-
-    // ── Loading: poll background work queue (no GREEN gate) ────────────────
-    case BackgroundZoneLoadPhase::Loading: {
+    case ZoneLoadPhase::P02_Bsp_Poll: {
         phaseState_ = PhaseState::Running;
-        ZoneLoadResult zoneResult;
-        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(zoneResult)) {
+        ZoneStepResult result;
+        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(result)) {
             zoneLoadQueue_->stop();
             zoneLoadQueue_.reset();
-
             phaseState_ = PhaseState::Finished;
-            if (pendingZoneData_) {
-                backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Notify;
-                LOG_INFO(MOD_GRAPHICS, "S3D data + computations received on main thread for zone '{}'",
-                         currentZoneName_);
-            } else {
-                pendingZoneComputations_.reset();
-                backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
-                LOG_ERROR(MOD_GRAPHICS, "S3D background load produced no data");
-            }
+            zoneLoadPhase_ = ZoneLoadPhase::P02_Bsp_Install;
+            logAssetBuildTime("bsp_poll", 0, stepStart);
         }
         break;
     }
 
-    // ── DataReady sub-steps ──────────────────────────────────────────────
-
-    case BackgroundZoneLoadPhase::DataReady_Notify: {
+    case ZoneLoadPhase::P02_Bsp_Install: {
         phaseState_ = PhaseState::Running;
-        // Install zone data and notify subsystems
-        currentZone_ = pendingZoneData_;
-        pendingZoneData_.reset();
-
-        if (entityRenderer_) entityRenderer_->setCurrentZone(currentZoneName_);
-        if (doorManager_) {
-            doorManager_->setZone(currentZone_);
-            if (constrainedTextureCache_)
-                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-        }
-
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_EntityRenderer;
-        logAssetBuildTime("data_notify", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_EntityRenderer: {
-        phaseState_ = PhaseState::Running;
-        createEntityRenderer();
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_ArchiveIndex;
-        logAssetBuildTime("entity_renderer_init", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_ArchiveIndex: {
-        phaseState_ = PhaseState::Running;
-        // Wait for deferred work queue if still processing (manual mode)
-        if (deferredWorkQueue_ && !deferredWorkQueue_->isIdle()) {
-            break;  // Spin until deferred background work finishes
-        }
-        if (deferredWorkQueue_) {
-            DeferredWorkResult deferredResult;
-            deferredWorkQueue_->pollOne(deferredResult);  // Drain result
-            deferredWorkQueue_->stop();
-            deferredWorkQueue_.reset();
-        }
-
-        if (pendingZoneComputations_ && pendingZoneComputations_->archiveIndex) {
-            // Background or deferred thread built the index — just move it
-            graphicsArchiveIndex_ = std::move(pendingZoneComputations_->archiveIndex);
-            if (entityRenderer_->getRaceModelLoader()) {
-                entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
-            }
-            LOG_INFO(MOD_GRAPHICS, "Graphics archive index adopted from background thread ({} race entries, {} archives)",
-                     graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
-        }
-        // No eager fallback — entities use placeholders via lazy-init if index build fails
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_GlobalAssets;
-        logAssetBuildTime("archive_index", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_GlobalAssets: {
-        phaseState_ = PhaseState::Running;
-        // Global character archives are no longer pre-loaded on the background thread.
-        // RaceModelLoader and EquipmentModelLoader self-init lazily when first needed.
-        if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
-            entityRenderer_->getRaceModelLoader()->setCurrentZone(currentZoneName_);
-        }
-        if (networkTickCallback_) networkTickCallback_();
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Equipment;
-        logAssetBuildTime("global_assets", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_Equipment: {
-        phaseState_ = PhaseState::Running;
-        // Adopt pre-built equipment index from background thread (no file I/O here)
-        if (pendingZoneComputations_ && pendingZoneComputations_->equipmentIndex &&
-            pendingZoneComputations_->equipmentIndex->loaded && entityRenderer_) {
-            if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
-                eml->adoptIndex(
-                    std::move(pendingZoneComputations_->equipmentIndex->modelIndex),
-                    std::move(pendingZoneComputations_->equipmentIndex->textureIndex),
-                    std::map<uint32_t, int>(itemToModelMap_));  // copy from app-startup cache
-                LOG_INFO(MOD_GRAPHICS, "Equipment index adopted from background thread");
-            }
-        }
-        if (networkTickCallback_) networkTickCallback_();
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_DoorManager;
-        logAssetBuildTime("equipment_models", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_DoorManager: {
-        phaseState_ = PhaseState::Running;
-        if (!doorManager_) {
-            doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
-            if (constrainedTextureCache_) {
-                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-            }
-            if (currentZone_) doorManager_->setZone(currentZone_);
-            if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
-            doorManager_->setPvsRegion(currentPvsRegion_);
-            if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_SkyCreate;
-        logAssetBuildTime("door_manager_init", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_SkyCreate: {
-        phaseState_ = PhaseState::Running;
-        bool hasBgData = pendingZoneComputations_ && pendingZoneComputations_->skyLoadData &&
-                         pendingZoneComputations_->skyLoadData->skyLoader;
-        if (!skyRenderer_) {
-            skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
-            if (constrainedTextureCache_) {
-                skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
-            }
-            if (hasBgData) {
-                // Adopt pre-loaded loader + config (lightweight pointer moves)
-                // NOTE: skyLoadData is NOT reset here — pre-decoded textures are
-                // still needed by the DataReady_Env_SkyTextures step later.
-                if (!skyRenderer_->initializeFromPreloaded(
-                        std::move(pendingZoneComputations_->skyLoadData->skyLoader),
-                        std::move(pendingZoneComputations_->skyLoadData->skyConfig))) {
-                    LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization from preloaded data failed");
-                } else {
-                    LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized from background data");
-                }
-            } else {
-                // No background sky data — sky creation skipped
-                LOG_INFO(MOD_GRAPHICS, "Sky renderer created without background data (sky textures will be missing)");
-            }
-        } else if (hasBgData) {
-            // Re-adopt fresh sky data on /loadzone (skyRenderer_ already exists)
-            skyRenderer_->initializeFromPreloaded(
-                std::move(pendingZoneComputations_->skyLoadData->skyLoader),
-                std::move(pendingZoneComputations_->skyLoadData->skyConfig));
-            LOG_INFO(MOD_GRAPHICS, "Sky renderer re-initialized from background data (zone reload)");
-        }
-        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
-            LOG_DEBUG(MOD_GRAPHICS, "SkyCreate: skyLoadData intact, {} pre-decoded textures, dome={}",
-                      pendingZoneComputations_->skyLoadData->preDecodedTextures.size(),
-                      pendingZoneComputations_->skyLoadData->precomputedDome ? "yes" : "no");
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_DetailManager;
-        logAssetBuildTime("sky_create", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_DetailManager: {
-        phaseState_ = PhaseState::Running;
-        if (!detailManager_) {
-            auto detailSettings = getDisplaySettings();
-            if (detailSettings.detailObjectsEnabled) {
-                detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-                detailManager_->setSurfaceMapsPath("data/detail/zones");
-                if (constrainedTextureCache_) {
-                    detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-                }
-                LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
-            }
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_ModelView;
-        logAssetBuildTime("detail_manager_init", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_ModelView: {
-        phaseState_ = PhaseState::Running;
-        // Model view init deferred to first inventory open (saves ~21ms during zone-in)
-        // Just store the loader pointers so WindowManager can lazy-init later
-        if (windowManager_ && entityRenderer_) {
-            windowManager_->storeModelViewDeps(smgr_,
-                                               entityRenderer_->getRaceModelLoader(),
-                                               entityRenderer_->getEquipmentModelLoader());
-        }
-        LOG_INFO(MOD_GRAPHICS, "Model view deps stored (deferred to first inventory open)");
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare;
-        logAssetBuildTime("model_view_deps", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyPrepare: {
-        phaseState_ = PhaseState::Running;
-        // Sky type config lookups only (no GL, no scene nodes) — ~2ms
-        if (storedZoneEnvironment_.pending) {
-            if (skyRenderer_ && skyRenderer_->isInitialized()) {
-                skyRenderer_->prepareSkyType(storedZoneEnvironment_.skyType, currentZoneName_);
-
-                bool isDungeon = (storedZoneEnvironment_.zoneType == 2);
-                isIndoorZone_ = isDungeon;
-
-                bool skySettingEnabled = getDisplaySettings().skyEnabled;
-                skyRenderer_->setEnabled(!isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering);
-            }
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_FogSetup;
-        logAssetBuildTime("env_sky_prepare", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_Env_FogSetup: {
-        phaseState_ = PhaseState::Running;
-        // Fog + clip plane + render distance (has GL call) — ~5-8ms
-        if (storedZoneEnvironment_.pending) {
-            zoneMaxClip_ = (storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
-                ? storedZoneEnvironment_.fogMaxClip[0] : 99999.0f;
-            setRenderDistance(userRenderDistance_);
-
-            if (driver_ && fogEnabled_) {
-                irr::video::SColor fogColor(255,
-                    storedZoneEnvironment_.fogR[0],
-                    storedZoneEnvironment_.fogG[0],
-                    storedZoneEnvironment_.fogB[0]);
-                float fogEnd = renderDistance_;
-                float fogStart = std::max(0.0f, renderDistance_ - fogThickness_);
-                driver_->setFog(fogColor, irr::video::EFT_FOG_LINEAR,
-                                fogStart, fogEnd, 0.0f, true, false);
-            }
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_WeatherApply;
-        logAssetBuildTime("env_fog_setup", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_Env_WeatherApply: {
-        phaseState_ = PhaseState::Running;
-        // Weather config apply (no GL, no file I/O — pre-loaded on background thread) — ~1ms
-        if (storedZoneEnvironment_.pending && weatherSystem_) {
-            if (pendingZoneComputations_ && pendingZoneComputations_->weatherConfig &&
-                pendingZoneComputations_->weatherConfig->loaded) {
-                weatherSystem_->setZoneConfig(pendingZoneComputations_->weatherConfig->config);
-            } else {
-                weatherSystem_->setWeatherFromZone(currentZoneName_);
-            }
-            LOG_INFO(MOD_GRAPHICS, "Applied zone environment config (sky={}, ztype={})",
-                     storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyTextures;
-        logAssetBuildTime("env_weather_apply", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyTextures: {
-        phaseState_ = PhaseState::Running;
-        // Upload pre-decoded sky textures from background thread to GPU.
-        // On first entry skyTexUploadIndex_ is 0; repeats until all are uploaded.
-
-        if (config_.constrainedConfig.skipSkyTextureUpload) {
-            // Skip all sky texture GPU uploads to reduce memory pressure.
-            // The sky dome mesh will still be created but with no textures.
-            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
-                pendingZoneComputations_->skyLoadData->preDecodedTextures.clear();
-                pendingZoneComputations_->skyLoadData->preDecodedTextures.shrink_to_fit();
-            }
-            LOG_INFO(MOD_GRAPHICS, "Sky texture upload skipped (skipSkyTextureUpload=true)");
-            skyTexUploadIndex_ = 0;
+        if (!currentZone_ || !currentZone_->wldLoader) {
+            LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no zone or WLD loader");
+            // Compute combined geometry on-demand if it was skipped during S3D parse
+            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
+                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
+            createZoneMesh();  // Fall back to combined mesh
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyRelease;
-            logAssetBuildTime("env_sky_textures_skipped", 0, stepStart);
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Submit;
             break;
         }
 
-        if (skyRenderer_ && pendingZoneComputations_ &&
-            pendingZoneComputations_->skyLoadData) {
-            auto& preTextures = pendingZoneComputations_->skyLoadData->preDecodedTextures;
-            size_t total = preTextures.size();
+        auto wldLoader = currentZone_->wldLoader;
+        auto bspTree = wldLoader->getBspTree();
 
-#ifdef EQT_HAS_GLES2
-            // GLES2 strip upload path: upload 1 strip (64 rows) per GREEN frame.
-            // Splits each 512x512 A8R8G8B8 texture into ~8 strips of ~2ms each,
-            // instead of one 12-21ms glTexImage2D call per texture.
-            while (skyTexUploadIndex_ < total) {
-                auto& preTex = preTextures[skyTexUploadIndex_];
+        if (!bspTree || bspTree->regions.empty() || !wldLoader->hasPvsData()) {
+            LOG_INFO(MOD_GRAPHICS, "Zone has no PVS data, using combined mesh");
+            // Compute combined geometry on-demand if it was skipped during S3D parse
+            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
+                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
+            createZoneMesh();
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Submit;
+            break;
+        }
 
-                if (!skyRenderer_->isStripActive()) {
-                    // Not currently uploading — start next texture or skip
-                    if (preTex.pixels.empty()) {
-                        skyTexUploadIndex_++;
-                        continue;  // Empty texture — skip, try next in same frame
-                    }
-                    if (skyRenderer_->beginStripUpload(
-                            preTex.name, preTex.pixels.data(), preTex.width, preTex.height)) {
-                        // Already cached — free data and skip
-                        preTex.pixels.clear();
-                        preTex.pixels.shrink_to_fit();
-                        skyTexUploadIndex_++;
-                        continue;  // Cache hit is free — try next in same frame
-                    }
-                    // Strip upload started (uploaded strip 0) — break for this frame
-                    break;
-                } else {
-                    // Continue uploading strips for current texture
-                    if (skyRenderer_->continueStripUpload()) {
-                        // All strips done — wrap as ITexture and cache
-                        skyRenderer_->finalizeStripUpload();
-                        preTex.pixels.clear();
-                        preTex.pixels.shrink_to_fit();
-                        skyTexUploadIndex_++;
-                    }
-                    break;  // One strip per frame
-                }
-            }
+        // Clean up existing mesh nodes
+        if (zoneMeshNode_) { zoneMeshNode_->remove(); zoneMeshNode_ = nullptr; }
+        for (auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node) { if (node->getParent()) node->remove(); else node->drop(); }
+        }
+        regionMeshNodes_.clear();
+        regionBoundingBoxes_.clear();
+        if (fallbackMeshNode_) {
+            if (fallbackMeshNode_->getParent()) fallbackMeshNode_->remove(); else fallbackMeshNode_->drop();
+            fallbackMeshNode_ = nullptr;
+        }
 
-            if (skyTexUploadIndex_ < total) {
-                logAssetBuildTime("env_sky_textures_strip", 1, stepStart);
-                break;  // More work — stay in this phase
-            }
-            logAssetBuildTime("env_sky_textures_strip", 0, stepStart);
-#else
-            // Desktop GL single-upload path: 1 whole texture per GREEN frame.
-            constexpr size_t SKY_TEX_BATCH_SIZE = 1;
-            size_t batchEnd = std::min(skyTexUploadIndex_ + SKY_TEX_BATCH_SIZE, total);
-            size_t uploaded = 0;
-
-            for (; skyTexUploadIndex_ < batchEnd; ++skyTexUploadIndex_) {
-                auto& preTex = preTextures[skyTexUploadIndex_];
-                if (!preTex.pixels.empty()) {
-                    skyRenderer_->uploadPreDecodedTexture(
-                        preTex.name, preTex.pixels.data(),
-                        preTex.width, preTex.height);
-                    preTex.pixels.clear();
-                    preTex.pixels.shrink_to_fit();
-                    ++uploaded;
-                }
-            }
-
-            if (skyTexUploadIndex_ < total) {
-                logAssetBuildTime("env_sky_textures_batch", uploaded, stepStart);
-                break;
-            }
-            logAssetBuildTime("env_sky_textures_batch", uploaded, stepStart);
-#endif
+        // Install BSP tree — preserve existing if already installed (e.g. from BSP preload)
+        if (!zoneBspTree_) {
+            zoneBspTree_ = bspTree;
+            usePvsCulling_ = true;
+            currentPvsRegion_ = SIZE_MAX;
         } else {
-            LOG_WARN(MOD_GRAPHICS, "env_sky_textures: condition failed — skyRenderer_={}, pendingComps={}, skyLoadData={}",
-                     skyRenderer_ ? "yes" : "no",
-                     pendingZoneComputations_ ? "yes" : "no",
-                     (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) ? "yes" : "no");
-            logAssetBuildTime("env_sky_textures", 0, stepStart);
+            LOG_INFO(MOD_GRAPHICS, "Preserving BSP tree ({} regions), PVS region {}",
+                     zoneBspTree_->regions.size(), currentPvsRegion_);
         }
-        skyTexUploadIndex_ = 0;
+
+        // Install pre-computed bounding boxes from background thread (if not already present)
+        if (regionBoundingBoxes_.empty() && pendingZoneComputations_ && !pendingZoneComputations_->regionBoundingBoxes.empty()) {
+            regionBoundingBoxes_ = std::move(pendingZoneComputations_->regionBoundingBoxes);
+            LOG_INFO(MOD_GRAPHICS, "Installed {} pre-computed region bounding boxes",
+                     regionBoundingBoxes_.size());
+        }
+
+        // Pass BSP tree and frustum culler to entity renderer and door manager
+        if (entityRenderer_) {
+            entityRenderer_->setBspTree(zoneBspTree_);
+            entityRenderer_->setFrustumCuller(frustumCuller_.get());
+        }
+        if (doorManager_) {
+            doorManager_->setBspTree(zoneBspTree_.get());
+            doorManager_->setPvsRegion(currentPvsRegion_);
+            doorManager_->setFrustumCuller(frustumCuller_.get());
+        }
+
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyRelease;
+        zoneLoadPhase_ = ZoneLoadPhase::P02_Bsp_Portal;
+        logAssetBuildTime("region_install_bsp", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyRelease: {
+    case ZoneLoadPhase::P02_Bsp_Portal: {
         phaseState_ = PhaseState::Running;
-        // Free the pre-decoded sky texture pixel data (already uploaded to GPU).
-        // Keep skyLoadData alive — precomputedDome is needed by DataReady_Env_SkyDome.
-        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
-            pendingZoneComputations_->skyLoadData->preDecodedTextures.clear();
-            pendingZoneComputations_->skyLoadData->preDecodedTextures.shrink_to_fit();
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyDome;
-        logAssetBuildTime("env_sky_release", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyDome: {
-        phaseState_ = PhaseState::Running;
-        // Create dome mesh node from pre-computed vertex/index data + set material.
-        // Texture lookups hit cache (uploaded in env_sky_textures phase).
-        if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isSkyPrepared()) {
-            skyRenderer_->clearSkyForRebuild();
-            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
-                auto& skyData = *pendingZoneComputations_->skyLoadData;
-                if (skyData.precomputedWldDome) {
-                    skyRenderer_->createSkyDomeFromWldGeometry(
-                        skyData.precomputedWldDome->vertices,
-                        skyData.precomputedWldDome->indices);
-                } else if (skyData.precomputedDome) {
-                    skyRenderer_->createSkyDomeFromPrecomputed(
-                        skyData.precomputedDome->vertices,
-                        skyData.precomputedDome->indices);
-                } else {
-                    // Fallback: generate dome on render thread (no pre-computed data)
-                    LOG_WARN(MOD_GRAPHICS, "No pre-computed dome data, creating dome on render thread");
-                    skyRenderer_->applySkyType();
+        // Install pre-built portal system from background thread (preserve existing if already installed)
+        if (!portalSystem_) {
+            if (pendingZoneComputations_ && pendingZoneComputations_->portalSystem) {
+                portalSystem_ = std::move(pendingZoneComputations_->portalSystem);
+                portalOcclusionEligible_ = pendingZoneComputations_->portalOcclusionEligible;
+                portalBuildPending_ = false;
+                if (portalOcclusionEligible_) {
+                    LOG_INFO(MOD_GRAPHICS, "Portal occlusion installed from background thread ({} portals)",
+                             portalSystem_->getData().portals.size());
                 }
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "No pre-computed dome data, creating dome on render thread");
-                skyRenderer_->applySkyType();
+            } else if (zoneBspTree_ && !regionBoundingBoxes_.empty()) {
+                // No pre-built portal — mark as pending for checkProgressiveLoadingComplete()
+                portalBuildPending_ = true;
             }
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "Preserving portal system ({} portals)",
+                     portalSystem_->getData().portals.size());
         }
-        // Free both dome data structs now that they've been consumed
-        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
-            pendingZoneComputations_->skyLoadData->precomputedDome.reset();
-            pendingZoneComputations_->skyLoadData->precomputedWldDome.reset();
+
+        // Build region neighbor map for door PVS culling (1-depth expansion)
+        if (regionNeighbors_.empty()) {
+            buildRegionNeighborMap();
         }
+        if (doorManager_) {
+            doorManager_->setRegionNeighbors(
+                regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
+        }
+
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials;
-        logAssetBuildTime("env_sky_dome", 0, stepStart);
+        zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Submit;
+        logAssetBuildTime("region_install_portal", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyCelestials: {
+    // ── Step 3: Atlas — texture atlas ─────────────────────────────────────
+    case ZoneLoadPhase::P03_Atlas_Submit: {
         phaseState_ = PhaseState::Running;
-        // Create sun/moon billboard scene nodes (texture lookups are cache hits).
-        if (skyRenderer_ && skyRenderer_->isInitialized()) {
-            skyRenderer_->createCelestialBodiesOnly();
+
+        bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
+        std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
+        std::string zoneNameCopy = currentZoneName_;
+        bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
+        auto* computations = pendingZoneComputations_.get();
+
+        if (!enableAtlas || atlasPathCopy.empty() || !computations) {
+            LOG_INFO(MOD_GRAPHICS, "Atlas preload skipped (enableAtlas={}, atlasPath={})",
+                     enableAtlas, atlasPathCopy.empty() ? "empty" : "set");
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_ZoneUpload;
+            logAssetBuildTime("atlas_submit_skip", 0, stepStart);
+            break;
         }
+
+        zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneStepRequest, ZoneStepResult>>(
+            [](ZoneStepRequest&& req) -> ZoneStepResult {
+                if (req.work) req.work();
+                return ZoneStepResult{true};
+            }, backgroundThreadPool_.get(), 0);
+
+        zoneLoadQueue_->submit(ZoneStepRequest{[computations, atlasPathCopy, zoneNameCopy, skipObjectBuild]() {
+            std::string atlasDir = atlasPathCopy;
+            if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
+
+            std::string zoneAtlasFile = atlasDir + zoneNameCopy + ".atlas";
+            computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
+
+            if (!skipObjectBuild) {
+                std::string objAtlasFile = atlasDir + zoneNameCopy + "_obj.atlas";
+                computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+            }
+        }});
+
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::DataReady_Env_SkyColors;
-        logAssetBuildTime("env_sky_celestials", 0, stepStart);
+        zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Poll;
+        logAssetBuildTime("atlas_submit", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::DataReady_Env_SkyColors: {
+    case ZoneLoadPhase::P03_Atlas_Poll: {
         phaseState_ = PhaseState::Running;
-        // Calculate sky colors + update vertex alpha + celestial positions.
-        if (skyRenderer_ && skyRenderer_->isInitialized()) {
-            skyRenderer_->applyInitialColors();
-            skyRenderer_->consumeSkyPrepared();
+        ZoneStepResult result;
+        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(result)) {
+            zoneLoadQueue_->stop();
+            zoneLoadQueue_.reset();
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_ZoneUpload;
+            logAssetBuildTime("atlas_poll", 0, stepStart);
         }
-        if (storedZoneEnvironment_.pending) {
-            storedZoneEnvironment_.pending = false;
-        }
-        // Fully release sky load data now
-        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
-            pendingZoneComputations_->skyLoadData.reset();
-        }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Zone_Upload;
-        logAssetBuildTime("env_sky_colors", 0, stepStart);
         break;
     }
 
-    // ── Atlas sub-steps (preloaded on bg thread, 1 GL page upload per GREEN frame) ──
-
-    case BackgroundZoneLoadPhase::Atlas_Zone_Upload: {
+    case ZoneLoadPhase::P03_Atlas_ZoneUpload: {
         phaseState_ = PhaseState::Running;
         if (pendingZoneComputations_ && pendingZoneComputations_->zoneAtlasPreload.valid) {
             auto& preload = pendingZoneComputations_->zoneAtlasPreload;
@@ -4630,18 +4147,18 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 break;  // Stay in this phase — more pages to upload
             }
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Zone_Finalize;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_ZoneFinalize;
         } else {
             // No zone atlas preloaded — skip
             zoneAtlas_.reset();
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Object_Upload;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_ObjUpload;
             logAssetBuildTime("atlas_zone_skip", 0, stepStart);
         }
         break;
     }
 
-    case BackgroundZoneLoadPhase::Atlas_Zone_Finalize: {
+    case ZoneLoadPhase::P03_Atlas_ZoneFinalize: {
         phaseState_ = PhaseState::Running;
         if (zoneAtlas_ && pendingZoneComputations_) {
             zoneAtlas_->finalizePreload(pendingZoneComputations_->zoneAtlasPreload);
@@ -4649,12 +4166,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                      zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
         }
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Object_Upload;
+        zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_ObjUpload;
         logAssetBuildTime("atlas_zone_finalize", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Atlas_Object_Upload: {
+    case ZoneLoadPhase::P03_Atlas_ObjUpload: {
         phaseState_ = PhaseState::Running;
         if (pendingZoneComputations_ && pendingZoneComputations_->objAtlasPreload.valid) {
             auto& preload = pendingZoneComputations_->objAtlasPreload;
@@ -4674,18 +4191,18 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 break;  // Stay in this phase — more pages to upload
             }
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Object_Finalize;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_ObjFinalize;
         } else {
             // No object atlas preloaded — skip
             objAtlas_.reset();
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Shader;
+            zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Shader;
             logAssetBuildTime("atlas_obj_skip", 0, stepStart);
         }
         break;
     }
 
-    case BackgroundZoneLoadPhase::Atlas_Object_Finalize: {
+    case ZoneLoadPhase::P03_Atlas_ObjFinalize: {
         phaseState_ = PhaseState::Running;
         if (objAtlas_ && pendingZoneComputations_) {
             objAtlas_->finalizePreload(pendingZoneComputations_->objAtlasPreload);
@@ -4693,12 +4210,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                      objAtlas_->getPageCount(), objAtlas_->getTileCount());
         }
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Atlas_Shader;
+        zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Shader;
         logAssetBuildTime("atlas_obj_finalize", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Atlas_Shader: {
+    case ZoneLoadPhase::P03_Atlas_Shader: {
         phaseState_ = PhaseState::Running;
         // Set shader page textures for zone atlas
         if (zoneAtlas_ && zoneAtlas_->isLoaded() && zoneShader_ && zoneShader_->isAtlasAvailable()) {
@@ -4728,92 +4245,13 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
 #endif
 
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InstallBsp;
+        zoneLoadPhase_ = ZoneLoadPhase::P04_Regions_InitCache;
         logAssetBuildTime("atlas_shader", 0, stepStart);
         break;
     }
 
-    // ── Region mesh sub-steps ────────────────────────────────────────────
-
-    case BackgroundZoneLoadPhase::RegionMesh_InstallBsp: {
-        phaseState_ = PhaseState::Running;
-        if (!currentZone_ || !currentZone_->wldLoader) {
-            LOG_WARN(MOD_GRAPHICS, "Cannot create PVS mesh - no zone or WLD loader");
-            // Compute combined geometry on-demand if it was skipped during S3D parse
-            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
-                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
-            createZoneMesh();  // Fall back to combined mesh
-            phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
-            break;
-        }
-
-        auto wldLoader = currentZone_->wldLoader;
-        auto bspTree = wldLoader->getBspTree();
-
-        if (!bspTree || bspTree->regions.empty() || !wldLoader->hasPvsData()) {
-            LOG_INFO(MOD_GRAPHICS, "Zone has no PVS data, using combined mesh");
-            // Compute combined geometry on-demand if it was skipped during S3D parse
-            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
-                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
-            createZoneMesh();
-            phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
-            break;
-        }
-
-        // Clean up existing mesh nodes
-        if (zoneMeshNode_) { zoneMeshNode_->remove(); zoneMeshNode_ = nullptr; }
-        for (auto& [regionIdx, node] : regionMeshNodes_) {
-            if (node) { if (node->getParent()) node->remove(); else node->drop(); }
-        }
-        regionMeshNodes_.clear();
-        regionBoundingBoxes_.clear();
-        if (fallbackMeshNode_) {
-            if (fallbackMeshNode_->getParent()) fallbackMeshNode_->remove(); else fallbackMeshNode_->drop();
-            fallbackMeshNode_ = nullptr;
-        }
-
-        // Install BSP tree — preserve existing if already installed (e.g. from BSP preload)
-        // The BSP tree, PVS visibility sets, and region bounding boxes are derived from
-        // zone geometry (WLD data) which doesn't change during /loadzone. Preserving them
-        // keeps currentPvsRegion_ valid so PVS culling has no gap during scene rebuild.
-        if (!zoneBspTree_) {
-            zoneBspTree_ = bspTree;
-            usePvsCulling_ = true;
-            currentPvsRegion_ = SIZE_MAX;
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Preserving BSP tree ({} regions), PVS region {}",
-                     zoneBspTree_->regions.size(), currentPvsRegion_);
-        }
-
-        // Install pre-computed bounding boxes from background thread (if not already present)
-        if (regionBoundingBoxes_.empty() && pendingZoneComputations_ && !pendingZoneComputations_->regionBoundingBoxes.empty()) {
-            regionBoundingBoxes_ = std::move(pendingZoneComputations_->regionBoundingBoxes);
-            LOG_INFO(MOD_GRAPHICS, "Installed {} pre-computed region bounding boxes",
-                     regionBoundingBoxes_.size());
-        }
-
-        // Pass BSP tree and frustum culler to entity renderer and door manager
-        // (they may have been cleared during earlier phases of zone reload)
-        if (entityRenderer_) {
-            entityRenderer_->setBspTree(zoneBspTree_);
-            entityRenderer_->setFrustumCuller(frustumCuller_.get());
-            // Entity occlusion culling handled by SimulationWorker
-        }
-        if (doorManager_) {
-            doorManager_->setBspTree(zoneBspTree_.get());
-            doorManager_->setPvsRegion(currentPvsRegion_);
-            doorManager_->setFrustumCuller(frustumCuller_.get());
-        }
-
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InitCache;
-        logAssetBuildTime("region_install_bsp", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::RegionMesh_InitCache: {
+    // ── Step 4: Regions — zone meshes ─────────────────────────────────────
+    case ZoneLoadPhase::P04_Regions_InitCache: {
         phaseState_ = PhaseState::Running;
         auto wldLoader = currentZone_->wldLoader;
         auto bspTree = wldLoader->getBspTree();
@@ -4833,8 +4271,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
 
             // Batch: 200 regionMeshNodes_ insertions per GREEN frame
-            // Use emplace to avoid overwriting entries that P1 Critical may have
-            // already populated via rebuildRegionMesh() on an earlier frame.
             const size_t batchSize = 200;
             for (size_t i = 0; i < batchSize && regionMeshCacheInstallCursor_ != regionBoundingBoxes_.end(); ++i) {
                 regionMeshNodes_.emplace(regionMeshCacheInstallCursor_->first, nullptr);
@@ -4847,7 +4283,7 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                          regionBoundingBoxes_.size());
                 regionMeshCacheInstallStarted_ = false;
                 phaseState_ = PhaseState::Finished;
-                backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_SortSetup;
+                zoneLoadPhase_ = ZoneLoadPhase::P04_Regions_SortSetup;
                 logAssetBuildTime("region_init_cache", regionBoundingBoxes_.size(), stepStart);
             }
             // else: stay in same phase for next GREEN frame
@@ -4912,18 +4348,18 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
             LOG_INFO(MOD_GRAPHICS, "Lazy mode: registered {} regions (no meshes built yet)", registeredRegions);
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_SortSetup;
+            zoneLoadPhase_ = ZoneLoadPhase::P04_Regions_SortSetup;
         } else {
             regionBuildIndex_ = 0;
             regionBuildInitDone_ = true;
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_EagerBatch;
+            zoneLoadPhase_ = ZoneLoadPhase::P04_Regions_EagerBatch;
         }
         logAssetBuildTime("region_init_cache", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::RegionMesh_EagerBatch: {
+    case ZoneLoadPhase::P04_Regions_EagerBatch: {
         phaseState_ = PhaseState::Running;
         // Build a batch of region meshes per GREEN frame
         auto wldLoader = currentZone_->wldLoader;
@@ -5033,14 +4469,14 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (regionBuildIndex_ >= bspTree->regions.size()) {
             LOG_INFO(MOD_GRAPHICS, "Eager mode: built {} region meshes", regionMeshNodes_.size());
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_SortSetup;
+            zoneLoadPhase_ = ZoneLoadPhase::P04_Regions_SortSetup;
         }
-        // else: stay in RegionMesh_EagerBatch, build next batch on next GREEN frame
+        // else: stay in P04_Regions_EagerBatch, build next batch on next GREEN frame
         logAssetBuildTime("region_eager_batch", builtInBatch, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::RegionMesh_SortSetup: {
+    case ZoneLoadPhase::P04_Regions_SortSetup: {
         phaseState_ = PhaseState::Running;
         // Enable front-to-back sorted zone drawing for PVS zones
         if (usePvsCulling_ && !regionMeshNodes_.empty() && !config_.constrainedConfig.skipManualZoneDraw) {
@@ -5058,9 +4494,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                     renderPassTimer_->setRenderer(this);
                 }
                 // Remove zone mesh nodes from scene graph — manual draw path
-                // accesses them directly via regionMeshNodes_ map, so they don't
-                // need to be in the graph. This eliminates Irrlicht iterating
-                // hundreds of invisible nodes during drawAll().
                 for (auto& [regionIdx, node] : regionMeshNodes_) {
                     if (node && node->getParent()) { node->grab(); node->remove(); }
                 }
@@ -5072,132 +4505,162 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
         }
 
-        // Placeholder stays visible until progressive loading completes —
-        // Z-buffer occludes it behind real textured meshes as they load.
-        // destroyZonePlaceholder() is called in checkProgressiveLoadingComplete().
-
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::RegionMesh_InstallPortal;
+        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_Submit;
         logAssetBuildTime("region_sort_setup", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::RegionMesh_InstallPortal: {
+    // ── Step 5: Assets — build indexes, create subsystems ─────────────────
+    case ZoneLoadPhase::P05_Assets_Submit: {
         phaseState_ = PhaseState::Running;
-        // Install pre-built portal system from background thread (preserve existing if already installed)
-        if (!portalSystem_) {
-            if (pendingZoneComputations_ && pendingZoneComputations_->portalSystem) {
-                portalSystem_ = std::move(pendingZoneComputations_->portalSystem);
-                portalOcclusionEligible_ = pendingZoneComputations_->portalOcclusionEligible;
-                portalBuildPending_ = false;
-                if (portalOcclusionEligible_) {
-                    LOG_INFO(MOD_GRAPHICS, "Portal occlusion installed from background thread ({} portals)",
-                             portalSystem_->getData().portals.size());
+
+        auto* computations = pendingZoneComputations_.get();
+        bool deferredAssetLoading = config_.constrainedConfig.deferredAssetLoading;
+        bool lazyPfsLoading = config_.constrainedConfig.lazyPfsLoading;
+        std::string eqClientPathCopy = config_.eqClientPath;
+        if (!eqClientPathCopy.empty() && eqClientPathCopy.back() != '/' && eqClientPathCopy.back() != '\\')
+            eqClientPathCopy += '/';
+
+        if (!computations) {
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_EntityRenderer;
+            logAssetBuildTime("assets_submit_skip", 0, stepStart);
+            break;
+        }
+
+        zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneStepRequest, ZoneStepResult>>(
+            [](ZoneStepRequest&& req) -> ZoneStepResult {
+                if (req.work) req.work();
+                return ZoneStepResult{true};
+            }, backgroundThreadPool_.get(), 0);
+
+        zoneLoadQueue_->submit(ZoneStepRequest{[computations, deferredAssetLoading, lazyPfsLoading,
+                                                 eqClientPathCopy]() {
+            // 6. Build graphics archive index (filesystem I/O — no GL)
+            if (deferredAssetLoading) {
+                computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
+                if (computations->archiveIndex->buildIndex(eqClientPathCopy, lazyPfsLoading)) {
+                    LOG_INFO(MOD_GRAPHICS, "Preload: graphics archive index built ({} race entries, {} archives)",
+                             computations->archiveIndex->getRaceEntryCount(),
+                             computations->archiveIndex->getArchiveCount());
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "Preload: graphics archive index build failed");
+                    computations->archiveIndex.reset();
                 }
-            } else if (zoneBspTree_ && !regionBoundingBoxes_.empty()) {
-                // No pre-built portal — mark as pending for checkProgressiveLoadingComplete()
-                portalBuildPending_ = true;
             }
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Preserving portal system ({} portals)",
-                     portalSystem_->getData().portals.size());
-        }
 
-        // Build region neighbor map for door PVS culling (1-depth expansion)
-        if (regionNeighbors_.empty()) {
-            buildRegionNeighborMap();
-        }
-        if (doorManager_) {
-            doorManager_->setRegionNeighbors(
-                regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
-        }
+            // 6.5 Pre-build equipment index (S3D archive headers — no GL)
+            {
+                auto eqIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
+                if (EquipmentModelLoader::buildEquipmentIndex(eqClientPathCopy,
+                        eqIdx->modelIndex, eqIdx->textureIndex)) {
+                    eqIdx->loaded = true;
+                    LOG_INFO(MOD_GRAPHICS, "Preload: equipment index ({} models, {} textures)",
+                             eqIdx->modelIndex.size(), eqIdx->textureIndex.size());
+                }
+                computations->equipmentIndex = std::move(eqIdx);
+            }
+        }});
 
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_CreateNodes;
-        logAssetBuildTime("region_install_portal", 0, stepStart);
+        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_Poll;
+        logAssetBuildTime("assets_submit", 0, stepStart);
         break;
     }
 
-    // ── Lights & Objects sub-steps ───────────────────────────────────────
-
-    case BackgroundZoneLoadPhase::Lights_CreateNodes: {
+    case ZoneLoadPhase::P05_Assets_Poll: {
         phaseState_ = PhaseState::Running;
-        // Populate zone light data (no scene nodes — shader gets data from worker)
-        zoneLightData_.clear();
-        zoneLightPositions_.clear();
-        zoneLightRegions_.clear();
-        if (currentZone_ && !currentZone_->lights.empty()) {
-            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-                const auto& light = currentZone_->lights[i];
-                irr::core::vector3df pos(light->x, light->z, light->y);
-
-                ZoneLightData zld;
-                zld.radius = std::max(light->radius, 1.0f);
-                zld.attConstant = 1.0f;
-                zld.attLinear = 1.0f / zld.radius;
-                zld.attQuadratic = 1.0f / (zld.radius * zld.radius);
-                zld.baseDiffuseColor = irr::video::SColorf(light->r, light->g, light->b, 1.0f);
-
-                zoneLightData_.push_back(zld);
-                zoneLightPositions_.push_back(pos);
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "Created {} zone light data entries (no scene nodes)",
-                      zoneLightData_.size());
-            LOG_DEBUG(MOD_GRAPHICS, "  PVS state at Lights_CreateNodes: usePvsCulling_={}, currentPvsRegion_={}, bspTree={}",
-                      usePvsCulling_, currentPvsRegion_,
-                      zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) + " regions" : "null");
+        ZoneStepResult result;
+        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(result)) {
+            zoneLoadQueue_->stop();
+            zoneLoadQueue_.reset();
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_EntityRenderer;
+            logAssetBuildTime("assets_poll", 0, stepStart);
         }
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Lights_InstallRegions;
-        logAssetBuildTime("lights_create_nodes", zoneLightData_.size(), stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Lights_InstallRegions: {
+    case ZoneLoadPhase::P05_Assets_EntityRenderer: {
         phaseState_ = PhaseState::Running;
-        // Install pre-computed light BSP regions from background thread
-        if (pendingZoneComputations_ && !pendingZoneComputations_->zoneLightRegions.empty()) {
-            zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
-            size_t lightsWithRegion = 0;
-            size_t lightsNoRegion = 0;
-            for (auto r : zoneLightRegions_) {
-                if (r != SIZE_MAX) lightsWithRegion++;
-                else lightsNoRegion++;
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "Installed pre-computed BSP regions for {} of {} zone lights ({} have SIZE_MAX)",
-                      lightsWithRegion, zoneLightRegions_.size(), lightsNoRegion);
-        } else if (zoneBspTree_ && !zoneBspTree_->regions.empty() && currentZone_) {
-            // Fallback: compute on main thread
-            size_t lightsWithRegion = 0;
-            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-                const auto& light = currentZone_->lights[i];
-                size_t regionIdx = zoneBspTree_->findRegionIndexForPoint(light->x, light->y, light->z);
-                zoneLightRegions_.push_back(regionIdx);
-                if (regionIdx != SIZE_MAX) lightsWithRegion++;
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "Computed BSP regions for {} of {} zone lights (fallback)",
-                      lightsWithRegion, zoneLightRegions_.size());
-        } else {
-            zoneLightRegions_.resize(zoneLightData_.size(), SIZE_MAX);
-            LOG_DEBUG(MOD_GRAPHICS, "No BSP/zone data for light regions — all set to SIZE_MAX");
-        }
-
-        // Log PVS state
-        LOG_DEBUG(MOD_GRAPHICS, "Lights_InstallRegions PVS state: usePvsCulling_={}, currentPvsRegion_={}, "
-                  "bspTree={}, zoneLightData_={}, zoneLightRegions_={}",
-                  usePvsCulling_, currentPvsRegion_,
-                  zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) : "null",
-                  zoneLightData_.size(), zoneLightRegions_.size());
-
-        // No scene graph add/remove needed — worker handles visibility via lightVisible output
-
+        createEntityRenderer();
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Objects_Install;
-        logAssetBuildTime("lights_install_regions", 0, stepStart);
+        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_ArchiveIndex;
+        logAssetBuildTime("entity_renderer_init", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Objects_Install: {
+    case ZoneLoadPhase::P05_Assets_ArchiveIndex: {
+        phaseState_ = PhaseState::Running;
+
+        if (pendingZoneComputations_ && pendingZoneComputations_->archiveIndex) {
+            // Background thread built the index — just move it
+            graphicsArchiveIndex_ = std::move(pendingZoneComputations_->archiveIndex);
+            if (entityRenderer_->getRaceModelLoader()) {
+                entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
+            }
+            LOG_INFO(MOD_GRAPHICS, "Graphics archive index adopted from background thread ({} race entries, {} archives)",
+                     graphicsArchiveIndex_->getRaceEntryCount(), graphicsArchiveIndex_->getArchiveCount());
+        }
+        // No eager fallback — entities use placeholders via lazy-init if index build fails
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_Equipment;
+        logAssetBuildTime("archive_index", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P05_Assets_Equipment: {
+        phaseState_ = PhaseState::Running;
+        // Adopt pre-built equipment index from background thread (no file I/O here)
+        if (pendingZoneComputations_ && pendingZoneComputations_->equipmentIndex &&
+            pendingZoneComputations_->equipmentIndex->loaded && entityRenderer_) {
+            if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+                eml->adoptIndex(
+                    std::move(pendingZoneComputations_->equipmentIndex->modelIndex),
+                    std::move(pendingZoneComputations_->equipmentIndex->textureIndex),
+                    std::map<uint32_t, int>(itemToModelMap_));  // copy from app-startup cache
+                LOG_INFO(MOD_GRAPHICS, "Equipment index adopted from background thread");
+            }
+        }
+        if (networkTickCallback_) networkTickCallback_();
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_GlobalAssets;
+        logAssetBuildTime("equipment_models", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P05_Assets_GlobalAssets: {
+        phaseState_ = PhaseState::Running;
+        // Global character archives are no longer pre-loaded on the background thread.
+        // RaceModelLoader and EquipmentModelLoader self-init lazily when first needed.
+        if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
+            entityRenderer_->getRaceModelLoader()->setCurrentZone(currentZoneName_);
+        }
+        if (networkTickCallback_) networkTickCallback_();
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P05_Assets_ModelView;
+        logAssetBuildTime("global_assets", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P05_Assets_ModelView: {
+        phaseState_ = PhaseState::Running;
+        // Model view init deferred to first inventory open (saves ~21ms during zone-in)
+        if (windowManager_ && entityRenderer_) {
+            windowManager_->storeModelViewDeps(smgr_,
+                                               entityRenderer_->getRaceModelLoader(),
+                                               entityRenderer_->getEquipmentModelLoader());
+        }
+        LOG_INFO(MOD_GRAPHICS, "Model view deps stored (deferred to first inventory open)");
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P06_Objects_Install;
+        logAssetBuildTime("model_view_deps", 0, stepStart);
+        break;
+    }
+
+    // ── Step 6: Objects — zone objects ─────────────────────────────────────
+    case ZoneLoadPhase::P06_Objects_Install: {
         phaseState_ = PhaseState::Running;
         deferredObjects_.clear();
 
@@ -5254,12 +4717,12 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             indexObjectMeshes();
         }
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ZoneBounds;
+        zoneLoadPhase_ = ZoneLoadPhase::P06_Objects_Bounds;
         logAssetBuildTime("objects_install", deferredObjects_.size(), stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Misc_ZoneBounds: {
+    case ZoneLoadPhase::P06_Objects_Bounds: {
         phaseState_ = PhaseState::Running;
         if (currentZone_ && currentZone_->geometry) {
             zoneBoundsMinX_ = currentZone_->geometry->minX;
@@ -5269,7 +4732,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             zoneBoundsValid_ = true;
         } else if (!regionBoundingBoxes_.empty()) {
             // Fallback: compute bounds from per-region bounding boxes
-            // (combined geometry may be null when computeCombinedGeometry was skipped)
             float rMinX = std::numeric_limits<float>::max(), rMaxX = std::numeric_limits<float>::lowest();
             float rMinY = std::numeric_limits<float>::max(), rMaxY = std::numeric_limits<float>::lowest();
             for (const auto& [idx, bb] : regionBoundingBoxes_) {
@@ -5282,33 +4744,43 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             LOG_INFO(MOD_GRAPHICS, "Zone bounds computed from {} region bounding boxes", regionBoundingBoxes_.size());
         }
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_Fog;
+        zoneLoadPhase_ = ZoneLoadPhase::P07_Doors_Create;
         logAssetBuildTime("zone_bounds", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Misc_Fog: {
+    // ── Step 7: Doors — door meshes ───────────────────────────────────────
+    case ZoneLoadPhase::P07_Doors_Create: {
         phaseState_ = PhaseState::Running;
-        setupFog();
+        if (!doorManager_) {
+            doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
+            if (constrainedTextureCache_) {
+                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            }
+            if (currentZone_) doorManager_->setZone(currentZone_);
+            if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
+            doorManager_->setPvsRegion(currentPvsRegion_);
+            if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
+            doorManager_->setRegionNeighbors(
+                regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
+        }
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_DoorSetup;
-        logAssetBuildTime("fog_setup", 0, stepStart);
+        zoneLoadPhase_ = ZoneLoadPhase::P07_Doors_Rebuild;
+        logAssetBuildTime("door_manager_init", 0, stepStart);
         break;
     }
 
-    case BackgroundZoneLoadPhase::Misc_DoorSetup: {
+    case ZoneLoadPhase::P07_Doors_Rebuild: {
         phaseState_ = PhaseState::Running;
         if (!doorManager_) {
             phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ReleaseData;
+            zoneLoadPhase_ = ZoneLoadPhase::P08_Entities;
             break;
         }
 
         // First entry: collect the list of doors to rebuild
         if (doorRebuildList_.empty() && doorRebuildIndex_ == 0) {
-            // Collect all doors that need work: unbuilt doors + placeholder-swap doors
             doorManager_->getUnbuiltDoors(doorRebuildList_);
-            // Also add any already-built doors still using placeholders (mesh swap path)
             for (uint8_t id = 0; id < 255; ++id) {
                 const auto* door = doorManager_->getDoor(id);
                 if (door && door->meshBuilt && door->usePlaceholder) {
@@ -5317,9 +4789,8 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
             }
             doorRebuildIndex_ = 0;
             if (doorRebuildList_.empty()) {
-                // No doors to rebuild — advance immediately
                 phaseState_ = PhaseState::Finished;
-                backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ReleaseData;
+                zoneLoadPhase_ = ZoneLoadPhase::P08_Entities;
                 logAssetBuildTime("door_setup_init", 0, stepStart);
                 break;
             }
@@ -5332,7 +4803,6 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         if (doorRebuildIndex_ < doorRebuildList_.size()) {
             uint8_t doorId = doorRebuildList_[doorRebuildIndex_];
             bool rebuilt = doorManager_->rebuildSingleDoor(doorId);
-            // Track any textures that were pending async upload
             const auto& missing = doorManager_->getLastMissingTextures();
             if (!missing.empty()) {
                 for (const auto& texName : missing) {
@@ -5344,10 +4814,10 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                       doorRebuildIndex_ + 1, doorRebuildList_.size(), missing.size());
             logAssetBuildTime("door_rebuild_one", doorId, stepStart);
             ++doorRebuildIndex_;
-            break;  // Stay in Misc_DoorSetup phase, yield to next frame
+            break;  // Stay in P07_Doors_Rebuild phase, yield to next frame
         }
 
-        // All doors processed — log PVS summary and advance to next phase
+        // All doors processed
         if (doorManager_) {
             size_t totalDoors = doorManager_->getDoorCount();
             size_t visibleDoors = 0;
@@ -5373,19 +4843,879 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         doorRebuildIndex_ = 0;
         doorRebuildList_.clear();
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Misc_ReleaseData;
+        zoneLoadPhase_ = ZoneLoadPhase::P08_Entities;
         break;
     }
 
-    case BackgroundZoneLoadPhase::Misc_ReleaseData: {
+    // ── Step 8: Entities ──────────────────────────────────────────────────
+    case ZoneLoadPhase::P08_Entities: {
+        phaseState_ = PhaseState::Running;
+        // Create and start EntityPrepWorker
+        if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
+            && !config_.constrainedConfig.skipEntityBuild) {
+            entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
+                entityRenderer_->getRaceModelLoader(),
+                entityRenderer_->getEquipmentModelLoader());
+            entityPrepWorker_->setBackgroundThreadPool(backgroundThreadPool_.get());
+            entityPrepWorker_->start();
+            entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
+            LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started at P08_Entities phase");
+        }
+        entityPrepReady_ = true;
+        LOG_INFO(MOD_GRAPHICS, "Entity loading enabled (entityPrepReady=true)");
+
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P09_Collision;
+        break;
+    }
+
+    // ── Step 9: Collision ─────────────────────────────────────────────────
+    case ZoneLoadPhase::P09_Collision: {
+        phaseState_ = PhaseState::Running;
+        setupMinimalZoneCollision();
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Submit;
+        logAssetBuildTime("collision_rebuild", 0, stepStart);
+        break;
+    }
+
+    // ── Step 10: Sky — all sky, fog, weather ──────────────────────────────
+    case ZoneLoadPhase::P10_Sky_Submit: {
+        phaseState_ = PhaseState::Running;
+
+        auto* computations = pendingZoneComputations_.get();
+        bool skyRendering = config_.constrainedConfig.skyRendering;
+        auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
+        std::string zoneNameCopy = currentZoneName_;
+        std::string eqClientPathCopy = config_.eqClientPath;
+        if (!eqClientPathCopy.empty() && eqClientPathCopy.back() != '/' && eqClientPathCopy.back() != '\\')
+            eqClientPathCopy += '/';
+
+        if (!computations) {
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Create;
+            logAssetBuildTime("sky_submit_skip", 0, stepStart);
+            break;
+        }
+
+        zoneLoadQueue_ = std::make_unique<BackgroundWorkQueue<ZoneStepRequest, ZoneStepResult>>(
+            [](ZoneStepRequest&& req) -> ZoneStepResult {
+                if (req.work) req.work();
+                return ZoneStepResult{true};
+            }, backgroundThreadPool_.get(), 0);
+
+        zoneLoadQueue_->submit(ZoneStepRequest{[computations, skyRendering, skyDomeMode,
+                                                 zoneNameCopy, eqClientPathCopy]() {
+            // 7. Pre-load sky data (S3D archive + INI parsing — no GL)
+            if (skyRendering) {
+                auto skyData = std::make_unique<PendingZoneComputations::SkyLoadData>();
+                skyData->skyLoader = std::make_unique<SkyLoader>();
+                skyData->skyConfig = std::make_unique<SkyConfig>();
+
+                if (skyData->skyLoader->load(eqClientPathCopy)) {
+                    LOG_INFO(MOD_GRAPHICS, "Preload: sky.s3d loaded ({} textures)",
+                             skyData->skyLoader->getSkyData()->textures.size());
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "Preload: sky.s3d load failed");
+                }
+
+                std::string skyIniPath = eqClientPathCopy + "sky.ini";
+                if (skyData->skyConfig->loadFromFile(skyIniPath)) {
+                    LOG_INFO(MOD_GRAPHICS, "Preload: sky.ini loaded ({} zone configs)",
+                             skyData->skyConfig->getZoneCount());
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "Preload: sky.ini load failed, will use defaults");
+                }
+
+                // Pre-decode + upscale BMP sky textures on background thread (no GL)
+                if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
+                    std::set<std::string> neededSet;
+                    if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
+                        std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(zoneNameCopy);
+                        int skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
+                        auto neededTextures = skyData->skyLoader->getTextureNamesForSkyType(skyTypeId);
+                        neededSet.insert(neededTextures.begin(), neededTextures.end());
+                        LOG_INFO(MOD_GRAPHICS, "Preload: sky type {} needs {} textures (zone={}, weather={})",
+                                 skyTypeId, neededSet.size(), zoneNameCopy, weatherType);
+                    }
+
+                    const auto& textures = skyData->skyLoader->getSkyData()->textures;
+                    for (const auto& [texName, texInfo] : textures) {
+                        if (!texInfo || texInfo->data.size() < 2) continue;
+                        if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
+                        if (!neededSet.empty() && neededSet.find(texName) == neededSet.end()) continue;
+
+                        PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
+                        preTex.name = texName;
+
+                        uint32_t decW = 0, decH = 0;
+                        std::vector<uint8_t> decoded;
+                        if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
+                            LOG_WARN(MOD_GRAPHICS, "Preload: failed to decode BMP sky texture: {}", texName);
+                            continue;
+                        }
+
+                        if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
+                            const uint32_t targetSize = 512;
+                            bilinearUpscaleARGB(decoded.data(), decW, decH,
+                                                preTex.pixels, targetSize, targetSize);
+                            preTex.width = targetSize;
+                            preTex.height = targetSize;
+                            LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded + upscaled sky texture: {} ({}x{} -> {}x{})",
+                                     texName, decW, decH, targetSize, targetSize);
+                        } else {
+                            preTex.pixels = std::move(decoded);
+                            preTex.width = decW;
+                            preTex.height = decH;
+                            LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded sky texture: {} ({}x{})",
+                                     texName, decW, decH);
+                        }
+
+                        skyData->preDecodedTextures.push_back(std::move(preTex));
+                    }
+                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-decoded {} BMP sky textures",
+                             skyData->preDecodedTextures.size());
+                }
+
+                // Pre-compute dome mesh geometry (pure CPU, no GL)
+                using SkyDomeMode = ConstrainedRendererConfig::SkyDomeMode;
+                bool usedWldDome = false;
+
+                if (skyDomeMode == SkyDomeMode::Original &&
+                    skyData->skyLoader && skyData->skyLoader->isLoaded()) {
+                    int skyTypeId = 0;
+                    if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
+                        std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(zoneNameCopy);
+                        skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
+                    }
+                    auto layers = skyData->skyLoader->getLayersForSkyType(skyTypeId);
+                    std::shared_ptr<SkyLayer> bgLayer;
+                    for (const auto& layer : layers) {
+                        if (layer && layer->type == SkyLayerType::Background && layer->geometry) {
+                            bgLayer = layer;
+                            break;
+                        }
+                    }
+                    if (bgLayer && bgLayer->geometry && !bgLayer->geometry->vertices.empty()) {
+                        const auto& geom = *bgLayer->geometry;
+                        float maxExtent = 0.0f;
+                        for (const auto& v : geom.vertices) {
+                            float ext = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+                            if (ext > maxExtent) maxExtent = ext;
+                        }
+                        float scale = (maxExtent > 0.001f) ? (1800.0f / maxExtent) : 1.0f;
+
+                        auto wldDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedWldDome>();
+                        wldDome->vertices.resize(geom.vertices.size());
+                        for (size_t i = 0; i < geom.vertices.size(); ++i) {
+                            const auto& v = geom.vertices[i];
+                            auto& iv = wldDome->vertices[i];
+                            iv.Pos.X = v.x * scale;
+                            iv.Pos.Y = v.z * scale;
+                            iv.Pos.Z = v.y * scale;
+                            iv.Normal.X = -v.nx;
+                            iv.Normal.Y = -v.nz;
+                            iv.Normal.Z = -v.ny;
+                            iv.TCoords.X = v.u;
+                            iv.TCoords.Y = v.v;
+                            iv.Color = irr::video::SColor(255, 255, 255, 255);
+                        }
+                        wldDome->indices.reserve(geom.triangles.size() * 3);
+                        for (const auto& tri : geom.triangles) {
+                            wldDome->indices.push_back(static_cast<irr::u16>(tri.v1));
+                            wldDome->indices.push_back(static_cast<irr::u16>(tri.v2));
+                            wldDome->indices.push_back(static_cast<irr::u16>(tri.v3));
+                        }
+                        LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed WLD sky dome ({} verts, {} indices, scale={:.2f})",
+                                 wldDome->vertices.size(), wldDome->indices.size(), scale);
+                        skyData->precomputedWldDome = std::move(wldDome);
+                        usedWldDome = true;
+                    }
+                }
+
+                if (!usedWldDome) {
+                    skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
+                    SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
+                                                    skyData->precomputedDome->indices);
+                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-computed procedural sky dome ({} verts, {} indices)",
+                             skyData->precomputedDome->vertices.size(),
+                             skyData->precomputedDome->indices.size());
+                }
+
+                computations->skyLoadData = std::move(skyData);
+            } else {
+                LOG_INFO(MOD_GRAPHICS, "Preload: sky rendering disabled, skipping sky.s3d load");
+            }
+
+            // 8. Pre-load weather config (file I/O + JSON — no GL)
+            {
+                auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
+                ZoneWeatherConfig wconfig;
+                if (loadZoneWeatherConfig(zoneNameCopy, wconfig)) {
+                    weatherData->config = wconfig;
+                    weatherData->loaded = true;
+                    LOG_INFO(MOD_GRAPHICS, "Preload: pre-loaded weather config for '{}'", zoneNameCopy);
+                } else {
+                    weatherData->config.zoneName = zoneNameCopy;
+                    weatherData->config.defaultWeather = WeatherType::Normal;
+                    weatherData->config.enabled = true;
+                    weatherData->loaded = true;
+                    LOG_DEBUG(MOD_GRAPHICS, "Preload: default weather config for '{}'", zoneNameCopy);
+                }
+                computations->weatherConfig = std::move(weatherData);
+            }
+        }});
+
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Poll;
+        logAssetBuildTime("sky_submit", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P10_Sky_Poll: {
+        phaseState_ = PhaseState::Running;
+        ZoneStepResult result;
+        if (zoneLoadQueue_ && zoneLoadQueue_->pollOne(result)) {
+            zoneLoadQueue_->stop();
+            zoneLoadQueue_.reset();
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Create;
+            logAssetBuildTime("sky_poll", 0, stepStart);
+        }
+        break;
+    }
+
+    case ZoneLoadPhase::P10_Sky_Create: {
+        phaseState_ = PhaseState::Running;
+        // Consolidated: old SkyCreate + SkyPrepare + FogSetup + WeatherApply
+
+        // --- SkyCreate: create/adopt SkyRenderer ---
+        bool hasBgData = pendingZoneComputations_ && pendingZoneComputations_->skyLoadData &&
+                         pendingZoneComputations_->skyLoadData->skyLoader;
+        if (!skyRenderer_) {
+            skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
+            if (constrainedTextureCache_) {
+                skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            }
+            if (hasBgData) {
+                if (!skyRenderer_->initializeFromPreloaded(
+                        std::move(pendingZoneComputations_->skyLoadData->skyLoader),
+                        std::move(pendingZoneComputations_->skyLoadData->skyConfig))) {
+                    LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization from preloaded data failed");
+                } else {
+                    LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized from background data");
+                }
+            } else {
+                LOG_INFO(MOD_GRAPHICS, "Sky renderer created without background data (sky textures will be missing)");
+            }
+        } else if (hasBgData) {
+            skyRenderer_->initializeFromPreloaded(
+                std::move(pendingZoneComputations_->skyLoadData->skyLoader),
+                std::move(pendingZoneComputations_->skyLoadData->skyConfig));
+            LOG_INFO(MOD_GRAPHICS, "Sky renderer re-initialized from background data (zone reload)");
+        }
+        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+            LOG_DEBUG(MOD_GRAPHICS, "SkyCreate: skyLoadData intact, {} pre-decoded textures, dome={}",
+                      pendingZoneComputations_->skyLoadData->preDecodedTextures.size(),
+                      pendingZoneComputations_->skyLoadData->precomputedDome ? "yes" : "no");
+        }
+
+        // --- SkyPrepare: sky type config lookups (no GL, no scene nodes) ---
+        if (storedZoneEnvironment_.pending) {
+            if (skyRenderer_ && skyRenderer_->isInitialized()) {
+                skyRenderer_->prepareSkyType(storedZoneEnvironment_.skyType, currentZoneName_);
+
+                bool isDungeon = (storedZoneEnvironment_.zoneType == 2);
+                isIndoorZone_ = isDungeon;
+
+                bool skySettingEnabled = getDisplaySettings().skyEnabled;
+                skyRenderer_->setEnabled(!isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering);
+            }
+        }
+
+        // --- FogSetup: fog + clip plane + render distance ---
+        if (storedZoneEnvironment_.pending) {
+            zoneMaxClip_ = (storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
+                ? storedZoneEnvironment_.fogMaxClip[0] : 99999.0f;
+            setRenderDistance(userRenderDistance_);
+
+            if (driver_ && fogEnabled_) {
+                irr::video::SColor fogColor(255,
+                    storedZoneEnvironment_.fogR[0],
+                    storedZoneEnvironment_.fogG[0],
+                    storedZoneEnvironment_.fogB[0]);
+                float fogEnd = renderDistance_;
+                float fogStart = std::max(0.0f, renderDistance_ - fogThickness_);
+                driver_->setFog(fogColor, irr::video::EFT_FOG_LINEAR,
+                                fogStart, fogEnd, 0.0f, true, false);
+            }
+        }
+
+        // --- WeatherApply: weather config apply ---
+        if (storedZoneEnvironment_.pending && weatherSystem_) {
+            if (pendingZoneComputations_ && pendingZoneComputations_->weatherConfig &&
+                pendingZoneComputations_->weatherConfig->loaded) {
+                weatherSystem_->setZoneConfig(pendingZoneComputations_->weatherConfig->config);
+            } else {
+                weatherSystem_->setWeatherFromZone(currentZoneName_);
+            }
+            LOG_INFO(MOD_GRAPHICS, "Applied zone environment config (sky={}, ztype={})",
+                     storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
+        }
+
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Textures;
+        logAssetBuildTime("sky_create", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P10_Sky_Textures: {
+        phaseState_ = PhaseState::Running;
+        // Upload pre-decoded sky textures from background thread to GPU.
+
+        if (config_.constrainedConfig.skipSkyTextureUpload) {
+            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+                pendingZoneComputations_->skyLoadData->preDecodedTextures.clear();
+                pendingZoneComputations_->skyLoadData->preDecodedTextures.shrink_to_fit();
+            }
+            LOG_INFO(MOD_GRAPHICS, "Sky texture upload skipped (skipSkyTextureUpload=true)");
+            skyTexUploadIndex_ = 0;
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Finalize;
+            logAssetBuildTime("env_sky_textures_skipped", 0, stepStart);
+            break;
+        }
+
+        if (skyRenderer_ && pendingZoneComputations_ &&
+            pendingZoneComputations_->skyLoadData) {
+            auto& preTextures = pendingZoneComputations_->skyLoadData->preDecodedTextures;
+            size_t total = preTextures.size();
+
+#ifdef EQT_HAS_GLES2
+            // GLES2 strip upload path: upload 1 strip (64 rows) per GREEN frame.
+            while (skyTexUploadIndex_ < total) {
+                auto& preTex = preTextures[skyTexUploadIndex_];
+
+                if (!skyRenderer_->isStripActive()) {
+                    if (preTex.pixels.empty()) {
+                        skyTexUploadIndex_++;
+                        continue;
+                    }
+                    if (skyRenderer_->beginStripUpload(
+                            preTex.name, preTex.pixels.data(), preTex.width, preTex.height)) {
+                        preTex.pixels.clear();
+                        preTex.pixels.shrink_to_fit();
+                        skyTexUploadIndex_++;
+                        continue;
+                    }
+                    break;
+                } else {
+                    if (skyRenderer_->continueStripUpload()) {
+                        skyRenderer_->finalizeStripUpload();
+                        preTex.pixels.clear();
+                        preTex.pixels.shrink_to_fit();
+                        skyTexUploadIndex_++;
+                    }
+                    break;
+                }
+            }
+
+            if (skyTexUploadIndex_ < total) {
+                logAssetBuildTime("env_sky_textures_strip", 1, stepStart);
+                break;  // More work — stay in this phase
+            }
+            logAssetBuildTime("env_sky_textures_strip", 0, stepStart);
+#else
+            // Desktop GL single-upload path: 1 whole texture per GREEN frame.
+            constexpr size_t SKY_TEX_BATCH_SIZE = 1;
+            size_t batchEnd = std::min(skyTexUploadIndex_ + SKY_TEX_BATCH_SIZE, total);
+            size_t uploaded = 0;
+
+            for (; skyTexUploadIndex_ < batchEnd; ++skyTexUploadIndex_) {
+                auto& preTex = preTextures[skyTexUploadIndex_];
+                if (!preTex.pixels.empty()) {
+                    skyRenderer_->uploadPreDecodedTexture(
+                        preTex.name, preTex.pixels.data(),
+                        preTex.width, preTex.height);
+                    preTex.pixels.clear();
+                    preTex.pixels.shrink_to_fit();
+                    ++uploaded;
+                }
+            }
+
+            if (skyTexUploadIndex_ < total) {
+                logAssetBuildTime("env_sky_textures_batch", uploaded, stepStart);
+                break;
+            }
+            logAssetBuildTime("env_sky_textures_batch", uploaded, stepStart);
+#endif
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "env_sky_textures: condition failed — skyRenderer_={}, pendingComps={}, skyLoadData={}",
+                     skyRenderer_ ? "yes" : "no",
+                     pendingZoneComputations_ ? "yes" : "no",
+                     (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) ? "yes" : "no");
+            logAssetBuildTime("env_sky_textures", 0, stepStart);
+        }
+        skyTexUploadIndex_ = 0;
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P10_Sky_Finalize;
+        break;
+    }
+
+    case ZoneLoadPhase::P10_Sky_Finalize: {
+        phaseState_ = PhaseState::Running;
+        // Consolidated: old SkyRelease + SkyDome + SkyCelestials + SkyColors + Fog
+
+        // --- SkyRelease: Free pre-decoded sky texture pixel data ---
+        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+            pendingZoneComputations_->skyLoadData->preDecodedTextures.clear();
+            pendingZoneComputations_->skyLoadData->preDecodedTextures.shrink_to_fit();
+        }
+
+        // --- SkyDome: Create dome mesh node from pre-computed vertex/index data ---
+        if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isSkyPrepared()) {
+            skyRenderer_->clearSkyForRebuild();
+            if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+                auto& skyData = *pendingZoneComputations_->skyLoadData;
+                if (skyData.precomputedWldDome) {
+                    skyRenderer_->createSkyDomeFromWldGeometry(
+                        skyData.precomputedWldDome->vertices,
+                        skyData.precomputedWldDome->indices);
+                } else if (skyData.precomputedDome) {
+                    skyRenderer_->createSkyDomeFromPrecomputed(
+                        skyData.precomputedDome->vertices,
+                        skyData.precomputedDome->indices);
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "No pre-computed dome data, creating dome on render thread");
+                    skyRenderer_->applySkyType();
+                }
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "No pre-computed dome data, creating dome on render thread");
+                skyRenderer_->applySkyType();
+            }
+        }
+        // Free dome data
+        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+            pendingZoneComputations_->skyLoadData->precomputedDome.reset();
+            pendingZoneComputations_->skyLoadData->precomputedWldDome.reset();
+        }
+
+        // --- SkyCelestials: Create sun/moon billboard scene nodes ---
+        if (skyRenderer_ && skyRenderer_->isInitialized()) {
+            skyRenderer_->createCelestialBodiesOnly();
+        }
+
+        // --- SkyColors: Calculate sky colors + update vertex alpha + celestial positions ---
+        if (skyRenderer_ && skyRenderer_->isInitialized()) {
+            skyRenderer_->applyInitialColors();
+            skyRenderer_->consumeSkyPrepared();
+        }
+        if (storedZoneEnvironment_.pending) {
+            storedZoneEnvironment_.pending = false;
+        }
+        // Fully release sky load data now
+        if (pendingZoneComputations_ && pendingZoneComputations_->skyLoadData) {
+            pendingZoneComputations_->skyLoadData.reset();
+        }
+
+        // --- Fog: final fog setup ---
+        setupFog();
+
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_SimWorker;
+        logAssetBuildTime("sky_finalize", 0, stepStart);
+        break;
+    }
+
+    // ── Step 11: Env — environment subsystems (inlined DeferredInit) ──────
+    case ZoneLoadPhase::P11_Env_SimWorker: {
+        phaseState_ = PhaseState::Running;
+        startSimulationWorkerEarly();  // Start worker immediately with core data
+        LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (via background zone load)");
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_TreeConfig;
+        logAssetBuildTime("sim_worker_start", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_TreeConfig: {
+        phaseState_ = PhaseState::Running;
+        if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
+            treeManager_->loadConfig("", currentZoneName_);
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_TreeInit;
+        logAssetBuildTime("tree_config", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_TreeInit: {
+        phaseState_ = PhaseState::Running;
+        // On GPU path, trees are rendered as regular objects with wind shader —
+        // skip CPU-side AnimatedTreeManager initialization entirely
+        if (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO) {
+            LOG_INFO(MOD_GRAPHICS, "Tree wind system: GPU path (wind shader), skipping CPU tree init");
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P11_Env_DetailCreate;
+        } else if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
+            if (!treeManager_->isInitializing()) {
+                treeManager_->beginInitialize(currentZone_->objects, currentZone_->objectTextures);
+            }
+            if (treeManager_->initializeNextBatch(4)) {
+                LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
+                if (zoneBspTree_) {
+                    treeManager_->assignBspRegions(zoneBspTree_);
+                }
+                registerSimulationWorkerTreeData();
+                phaseState_ = PhaseState::Finished;
+                zoneLoadPhase_ = ZoneLoadPhase::P11_Env_DetailCreate;
+            }
+            // else: stay on P11_Env_TreeInit, process next batch next GREEN frame
+        } else {
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P11_Env_DetailCreate;
+        }
+        logAssetBuildTime("tree_init", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_DetailCreate: {
+        phaseState_ = PhaseState::Running;
+        if (!detailManager_) {
+            auto detailSettings = getDisplaySettings();
+            if (detailSettings.detailObjectsEnabled) {
+                detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
+                detailManager_->setSurfaceMapsPath("data/detail/zones");
+                if (constrainedTextureCache_) {
+                    detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+                }
+                LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
+            }
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_DetailZoneEnter;
+        logAssetBuildTime("detail_manager_init", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_DetailZoneEnter: {
+        phaseState_ = PhaseState::Running;
+        if (detailManager_ && terrainOnlySelector_) {
+            auto wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
+            auto zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
+            detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_,
+                                        zoneMeshNode_, wldLoader, zoneGeom);
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_DetailAddMeshNodes;
+        logAssetBuildTime("detail_zone_enter", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_DetailAddMeshNodes: {
+        phaseState_ = PhaseState::Running;
+        if (detailManager_ && !regionMeshNodes_.empty()) {
+            for (auto& [regionIdx, node] : regionMeshNodes_) {
+                if (node && node->getMesh()) {
+                    detailManager_->addMeshNodeForTextureLookup(node);
+                }
+            }
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_ParticleZoneEnter;
+        logAssetBuildTime("detail_mesh_nodes", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_ParticleZoneEnter: {
+        phaseState_ = PhaseState::Running;
+        if (particleManager_) {
+            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+            particleManager_->onZoneEnter(currentZoneName_, biome);
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_ParticleFireSetup;
+        logAssetBuildTime("particle_zone_enter", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_ParticleFireSetup: {
+        phaseState_ = PhaseState::Running;
+        if (particleManager_) {
+            // Collect fire sources from object lights and zone lights
+            std::vector<glm::vec3> fireSources;
+            std::vector<float> fireRadii;
+            for (const auto& objLight : objectLights_) {
+                if (objLight.isFireSource) {
+                    fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+                    fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
+                }
+            }
+            if (currentZone_) {
+                for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
+                    const auto& zl = currentZone_->lights[i];
+                    std::string upperName = zl->name;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    bool nameMatch = upperName.find("TORCH") != std::string::npos ||
+                                     upperName.find("FIRE") != std::string::npos ||
+                                     upperName.find("BRAZIER") != std::string::npos ||
+                                     upperName.find("FLAME") != std::string::npos ||
+                                     upperName.find("CANDLE") != std::string::npos;
+                    bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
+                    if (nameMatch || colorMatch) {
+                        fireSources.emplace_back(zl->x, zl->y, zl->z);
+                        fireRadii.push_back(zl->radius);
+                    }
+                }
+            }
+            LOG_INFO(MOD_GRAPHICS, "Fire sources: {} from objectLights, {} total (zone has {} zone lights)",
+                     std::count_if(objectLights_.begin(), objectLights_.end(),
+                                   [](const ObjectLight& ol) { return ol.isFireSource; }),
+                     fireSources.size(),
+                     currentZone_ ? currentZone_->lights.size() : 0);
+            if (!fireSources.empty()) {
+                particleManager_->setFireSources(fireSources);
+            }
+            if (detailManager_ && detailManager_->hasSurfaceMap()) {
+                particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+            }
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_ParticleUnifiedInit;
+        logAssetBuildTime("particle_fire_setup", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_ParticleUnifiedInit: {
+        phaseState_ = PhaseState::Running;
+        if (particleManager_) {
+            particleManager_->initUnifiedRenderer();
+            // Collect fire sources and enqueue emitter creation
+            std::vector<glm::vec3> fireSources;
+            std::vector<float> fireRadii;
+            for (const auto& objLight : objectLights_) {
+                if (objLight.isFireSource) {
+                    fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
+                    fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
+                }
+            }
+            if (currentZone_) {
+                for (const auto& zl : currentZone_->lights) {
+                    std::string upperName = zl->name;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    bool nameMatch = upperName.find("TORCH") != std::string::npos ||
+                                     upperName.find("FIRE") != std::string::npos ||
+                                     upperName.find("BRAZIER") != std::string::npos ||
+                                     upperName.find("FLAME") != std::string::npos ||
+                                     upperName.find("CANDLE") != std::string::npos;
+                    bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
+                    if (nameMatch || colorMatch) {
+                        fireSources.emplace_back(zl->x, zl->y, zl->z);
+                        fireRadii.push_back(zl->radius);
+                    }
+                }
+            }
+            if (!fireSources.empty()) {
+                particleManager_->createFireEmitters(fireSources, fireRadii);
+            }
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_BoidsInit;
+        logAssetBuildTime("particle_unified_init", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_BoidsInit: {
+        phaseState_ = PhaseState::Running;
+        if (boidsManager_) {
+            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+            if (zoneBoundsValid_) {
+                boidsManager_->onZoneEnter(currentZoneName_, biome,
+                    glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
+                    glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
+            } else {
+                boidsManager_->onZoneEnter(currentZoneName_, biome);
+            }
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_TumbleweedInit;
+        logAssetBuildTime("boids_init", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_TumbleweedInit: {
+        phaseState_ = PhaseState::Running;
+        if (tumbleweedManager_) {
+            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
+            tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_WeatherSurface;
+        logAssetBuildTime("tumbleweed_init", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_WeatherSurface: {
+        phaseState_ = PhaseState::Running;
+        if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap())
+            weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
+        applyEnvironmentalDisplaySettings();
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_ReleaseGeometry;
+        logAssetBuildTime("weather_settings", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_ReleaseGeometry: {
+        phaseState_ = PhaseState::Running;
+        // Release combined zone geometry vectors (only when detail system is disabled)
+        if (currentZone_ && currentZone_->geometry && !detailManager_) {
+            size_t before = currentZone_->geometry->getFullMemoryUsage();
+            currentZone_->geometry->vertices.clear();
+            currentZone_->geometry->vertices.shrink_to_fit();
+            currentZone_->geometry->triangles.clear();
+            currentZone_->geometry->triangles.shrink_to_fit();
+            size_t after = currentZone_->geometry->getFullMemoryUsage();
+            LOG_INFO(MOD_GRAPHICS, "Released combined zone geometry vectors: {:.1f} MB freed",
+                     (before - after) / (1024.0f * 1024.0f));
+        }
+        // Release raw texture data from model loaders (only if progressive loading is done)
+        if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_
+            && !progressiveLoadingActive_) {
+            size_t totalFreed = 0;
+            if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+                totalFreed += eml->releaseRawTextureData();
+            }
+            if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+                totalFreed += rml->releaseRawTextureData();
+            }
+            if (totalFreed > 0) {
+                LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of equipment/character texture data (post-upload)",
+                         totalFreed / (1024.0f * 1024.0f));
+            }
+        }
+        // Final governor reset — clean state for progressive loading
+        if (governor_) {
+            governor_->requestReset();
+            LOG_DEBUG(MOD_GRAPHICS, "Governor reset requested (deferred init complete)");
+        }
+        // Register vertex anim data with worker (flags, banners)
+        registerSimulationWorkerVertexAnimData();
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_WaitSimWorker;
+        logAssetBuildTime("release_geometry", 0, stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P11_Env_WaitSimWorker: {
+        phaseState_ = PhaseState::Running;
+        if (simulationWorker_ && simulationWorker_->isRunning()) {
+            bool pvsReady = (currentPvsRegion_ != SIZE_MAX && !regionPvsDepthMap_.empty());
+            if (pvsReady) {
+                LOG_INFO(MOD_GRAPHICS, "SimulationWorker PVS ready: region={}, depthMap={} entries",
+                         currentPvsRegion_, regionPvsDepthMap_.size());
+                phaseState_ = PhaseState::Finished;
+                zoneLoadPhase_ = ZoneLoadPhase::P12_Lights_Create;
+                LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "WaitForSimWorker: PVS not ready (region={}, depthMap={})",
+                          currentPvsRegion_, regionPvsDepthMap_.size());
+            }
+        } else {
+            LOG_INFO(MOD_GRAPHICS, "No simulation worker running — skipping WaitForSimWorker");
+            phaseState_ = PhaseState::Finished;
+            zoneLoadPhase_ = ZoneLoadPhase::P12_Lights_Create;
+            LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
+        }
+        logAssetBuildTime("wait_sim_worker", 0, stepStart);
+        break;
+    }
+
+    // ── Step 12: Lights — zone lighting ───────────────────────────────────
+    case ZoneLoadPhase::P12_Lights_Create: {
+        phaseState_ = PhaseState::Running;
+        // Populate zone light data (no scene nodes — shader gets data from worker)
+        zoneLightData_.clear();
+        zoneLightPositions_.clear();
+        zoneLightRegions_.clear();
+        if (currentZone_ && !currentZone_->lights.empty()) {
+            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
+                const auto& light = currentZone_->lights[i];
+                irr::core::vector3df pos(light->x, light->z, light->y);
+
+                ZoneLightData zld;
+                zld.radius = std::max(light->radius, 1.0f);
+                zld.attConstant = 1.0f;
+                zld.attLinear = 1.0f / zld.radius;
+                zld.attQuadratic = 1.0f / (zld.radius * zld.radius);
+                zld.baseDiffuseColor = irr::video::SColorf(light->r, light->g, light->b, 1.0f);
+
+                zoneLightData_.push_back(zld);
+                zoneLightPositions_.push_back(pos);
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "Created {} zone light data entries (no scene nodes)",
+                      zoneLightData_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "  PVS state at P12_Lights_Create: usePvsCulling_={}, currentPvsRegion_={}, bspTree={}",
+                      usePvsCulling_, currentPvsRegion_,
+                      zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) + " regions" : "null");
+        }
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P12_Lights_Regions;
+        logAssetBuildTime("lights_create_nodes", zoneLightData_.size(), stepStart);
+        break;
+    }
+
+    case ZoneLoadPhase::P12_Lights_Regions: {
+        phaseState_ = PhaseState::Running;
+        // Install pre-computed light BSP regions from background thread
+        if (pendingZoneComputations_ && !pendingZoneComputations_->zoneLightRegions.empty()) {
+            zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
+            size_t lightsWithRegion = 0;
+            size_t lightsNoRegion = 0;
+            for (auto r : zoneLightRegions_) {
+                if (r != SIZE_MAX) lightsWithRegion++;
+                else lightsNoRegion++;
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "Installed pre-computed BSP regions for {} of {} zone lights ({} have SIZE_MAX)",
+                      lightsWithRegion, zoneLightRegions_.size(), lightsNoRegion);
+        } else if (zoneBspTree_ && !zoneBspTree_->regions.empty() && currentZone_) {
+            // Fallback: compute on main thread
+            size_t lightsWithRegion = 0;
+            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
+                const auto& light = currentZone_->lights[i];
+                size_t regionIdx = zoneBspTree_->findRegionIndexForPoint(light->x, light->y, light->z);
+                zoneLightRegions_.push_back(regionIdx);
+                if (regionIdx != SIZE_MAX) lightsWithRegion++;
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "Computed BSP regions for {} of {} zone lights (fallback)",
+                      lightsWithRegion, zoneLightRegions_.size());
+        } else {
+            zoneLightRegions_.resize(zoneLightData_.size(), SIZE_MAX);
+            LOG_DEBUG(MOD_GRAPHICS, "No BSP/zone data for light regions — all set to SIZE_MAX");
+        }
+
+        // Log PVS state
+        LOG_DEBUG(MOD_GRAPHICS, "P12_Lights_Regions PVS state: usePvsCulling_={}, currentPvsRegion_={}, "
+                  "bspTree={}, zoneLightData_={}, zoneLightRegions_={}",
+                  usePvsCulling_, currentPvsRegion_,
+                  zoneBspTree_ ? std::to_string(zoneBspTree_->regions.size()) : "null",
+                  zoneLightData_.size(), zoneLightRegions_.size());
+
+        phaseState_ = PhaseState::Finished;
+        zoneLoadPhase_ = ZoneLoadPhase::P13_Cleanup;
+        logAssetBuildTime("lights_install_regions", 0, stepStart);
+        break;
+    }
+
+    // ── Step 13: Cleanup ──────────────────────────────────────────────────
+    case ZoneLoadPhase::P13_Cleanup: {
         phaseState_ = PhaseState::Running;
         if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_ && !constrainedMeshCache_) {
             size_t freed = currentZone_->releaseTexturePixelData();
             LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of texture pixel data (post-upload)",
                      freed / (1024.0f * 1024.0f));
         }
-        // Release duplicate character data from zone source. RaceModelLoader independently
-        // loads _chr.s3d into its own cache, so currentZone_->characters is an unused copy.
+        // Release duplicate character data from zone source.
         if (currentZone_) {
             currentZone_->clearCharacterData();
             LOG_INFO(MOD_GRAPHICS, "Released zone character data (loadzone path)");
@@ -5398,63 +5728,15 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
         // Clean up background computations — all data consumed
         pendingZoneComputations_.reset();
         phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::CollisionRebuild;
-        logAssetBuildTime("release_data", 0, stepStart);
-        break;
-    }
-
-    // ── Collision + Environment + Entity (unchanged) ─────────────────────
-
-    case BackgroundZoneLoadPhase::CollisionRebuild: {
-        phaseState_ = PhaseState::Running;
-        setupMinimalZoneCollision();
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EnvironmentInit;
-        logAssetBuildTime("collision_rebuild", 0, stepStart);
-        break;
-    }
-
-    case BackgroundZoneLoadPhase::EnvironmentInit:
-        if (!deferredInitActive_) {
-            phaseState_ = PhaseState::Running;
-            deferredInitActive_ = true;
-            deferredInitStep_ = DeferredInitStep::TreeConfig;
-            startSimulationWorkerEarly();  // Start worker immediately with core data
-            LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (via background zone load)");
-        }
-        advanceDeferredInit();
-        if (deferredInitStep_ == DeferredInitStep::Complete) {
-            deferredInitActive_ = false;
-            phaseState_ = PhaseState::Finished;
-            backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::EntityLoading;
-        }
-        break;
-
-    case BackgroundZoneLoadPhase::EntityLoading: {
-        phaseState_ = PhaseState::Running;
-        // Create and start EntityPrepWorker here (moved from beginZoneAssetLoad)
-        if (!entityPrepWorker_ && entityRenderer_ && entityRenderer_->getRaceModelLoader()
-            && !config_.constrainedConfig.skipEntityBuild) {
-            entityPrepWorker_ = std::make_unique<EntityPrepWorker>(
-                entityRenderer_->getRaceModelLoader(),
-                entityRenderer_->getEquipmentModelLoader());
-            entityPrepWorker_->setBackgroundThreadPool(backgroundThreadPool_.get());
-            entityPrepWorker_->start();
-            entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
-            LOG_INFO(MOD_GRAPHICS, "EntityPrepWorker started at EntityLoading phase");
-        }
-        entityPrepReady_ = true;
-        LOG_INFO(MOD_GRAPHICS, "Entity loading enabled (entityPrepReady=true)");
-
-        phaseState_ = PhaseState::Finished;
-        backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Complete;
+        zoneLoadPhase_ = ZoneLoadPhase::Complete;
         if (manualLoadMode_) {
             manualLoadMode_ = false;
-            currentManualStep_ = ManualLoadStep::None;
-            manualLoadPauseAt_ = BackgroundZoneLoadPhase::Idle;
+            currentManualStep_ = ZoneLoadStep::None;
+            manualLoadPauseAt_ = ZoneLoadPhase::Idle;
             LOG_INFO(MOD_GRAPHICS, "Manual zone load completed for zone '{}'", currentZoneName_);
         }
         LOG_INFO(MOD_GRAPHICS, "Background zone load pipeline complete for zone '{}'", currentZoneName_);
+        logAssetBuildTime("release_data", 0, stepStart);
         break;
     }
 
@@ -7733,6 +8015,7 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     }
 
     input.renderDistance = renderDistance_;
+    input.loadingActive = loadingScreenVisible_;
 
     // Player (EQ Z-up)
     input.playerX = playerX_;
@@ -9612,18 +9895,18 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
 
     // Background zone load state machine — one step per GREEN frame
     // This supersedes the old environmentInitPending_ path when active
-    if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle &&
-        backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Complete) {
+    if (zoneLoadPhase_ != ZoneLoadPhase::Idle &&
+        zoneLoadPhase_ != ZoneLoadPhase::Complete) {
 
         // Manual load pause check — stop advancing when we reach the target phase
         if (manualLoadMode_ && !manualLoadPauseReached_ &&
-            backgroundZoneLoadPhase_ == manualLoadPauseAt_) {
+            zoneLoadPhase_ == manualLoadPauseAt_) {
             manualLoadPauseReached_ = true;
             LOG_INFO(MOD_GRAPHICS, "Manual load paused at phase: {}",
-                     phaseToString(backgroundZoneLoadPhase_));
+                     phaseToString(zoneLoadPhase_));
             if (manualLoadPauseCallback_) {
                 std::string label = fmt::format("AFTER /load {}",
-                    manualLoadStepToString(currentManualStep_));
+                    stepToString(currentManualStep_));
                 manualLoadPauseCallback_(label);
             }
         }
@@ -9634,29 +9917,28 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         } else {
             // Loading phase polls without GREEN gate (just checking atomic bool)
             // All other phases require GREEN budget
-            if (backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Loading ||
+            if (zoneLoadPhase_ == ZoneLoadPhase::P01_S3d_Poll ||
                 !governor_ || loadingScreenVisible_ || governor_->getState() == BudgetState::Green) {
                 advanceBackgroundZoneLoad();
             }
         }
     }
 
-    // Deferred environment init — activate state machine once after game becomes playable
+    // Deferred environment init — activate via zone load pipeline once after game becomes playable
     // (Only used when NOT going through the background zone load pipeline)
     if (environmentInitPending_ && zoneReady_ &&
-        backgroundZoneLoadPhase_ == BackgroundZoneLoadPhase::Idle) {
+        zoneLoadPhase_ == ZoneLoadPhase::Idle) {
         environmentInitPending_ = false;
-        deferredInitActive_ = true;
-        deferredInitStep_ = DeferredInitStep::TreeConfig;
-        startSimulationWorkerEarly();  // Start worker immediately with core data
-        LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (multi-frame)");
+        zoneLoadPhase_ = ZoneLoadPhase::P11_Env_SimWorker;
+        LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (multi-frame, via zone load pipeline)");
     }
 
-    // Step through deferred init one step per GREEN frame
-    // (Only runs standalone when not driven by advanceBackgroundZoneLoad)
-    if (deferredInitActive_ && backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::EnvironmentInit) {
+    // Step through deferred env init one step per GREEN frame
+    // (Standalone path: P11_Env_* phases drive directly through advanceBackgroundZoneLoad)
+    if (zoneLoadPhase_ >= ZoneLoadPhase::P11_Env_SimWorker &&
+        zoneLoadPhase_ <= ZoneLoadPhase::P11_Env_WaitSimWorker) {
         if (!governor_ || governor_->getState() == BudgetState::Green) {
-            advanceDeferredInit();
+            advanceBackgroundZoneLoad();
         }
     }
 
@@ -9677,7 +9959,9 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     // Tier 2: Detail + Tree (~20Hz)
     // Skip while deferred init is still running — subsystems aren't ready yet
     {
-    bool runDetailTreeThisFrame = !deferredInitActive_ && runTier2_;
+    bool deferredEnvActive = (zoneLoadPhase_ >= ZoneLoadPhase::P11_Env_SimWorker &&
+                               zoneLoadPhase_ <= ZoneLoadPhase::P11_Env_WaitSimWorker);
+    bool runDetailTreeThisFrame = !deferredEnvActive && runTier2_;
     if (runDetailTreeThisFrame) {
         if (detailManager_ && detailManager_->isEnabled()) {
             irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
@@ -12038,7 +12322,7 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
 
     // NOTE: EntityPrepWorker is NOT created here — it is created during the
-    // EntityLoading phase (beginZoneAssetLoad) which runs after CollisionRebuild.
+    // P08_Entities phase (beginZoneAssetLoad) which runs after P09_Collision.
     // Creating it here would bypass the manual load gate.
 
     // Start background icon sheet worker if not already started
@@ -12112,275 +12396,6 @@ void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
     }
 }
 
-void IrrlichtRenderer::advanceDeferredInit() {
-    auto stepStart = std::chrono::steady_clock::now();
-    const char* stepName = "";
-
-    switch (deferredInitStep_) {
-        case DeferredInitStep::TreeConfig:
-            stepName = "tree_config";
-            if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
-                treeManager_->loadConfig("", currentZoneName_);
-            }
-            deferredInitStep_ = DeferredInitStep::TreeInit;
-            break;
-
-        case DeferredInitStep::TreeInit:
-            stepName = "tree_init";
-            // On GPU path, trees are rendered as regular objects with wind shader —
-            // skip CPU-side AnimatedTreeManager initialization entirely
-            if (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO) {
-                LOG_INFO(MOD_GRAPHICS, "Tree wind system: GPU path (wind shader), skipping CPU tree init");
-                deferredInitStep_ = DeferredInitStep::DetailZoneEnter;
-            } else if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
-                if (!treeManager_->isInitializing()) {
-                    // First call — start progressive init
-                    treeManager_->beginInitialize(currentZone_->objects, currentZone_->objectTextures);
-                }
-                if (treeManager_->initializeNextBatch(4)) {
-                    // All trees done — advance to next step
-                    LOG_INFO(MOD_GRAPHICS, "Tree wind system: {} animated trees", treeManager_->getAnimatedTreeCount());
-                    // Assign BSP regions for PVS culling
-                    if (zoneBspTree_) {
-                        treeManager_->assignBspRegions(zoneBspTree_);
-                    }
-                    registerSimulationWorkerTreeData();
-                    deferredInitStep_ = DeferredInitStep::DetailZoneEnter;
-                }
-                // else: stay on TreeInit, process next batch next GREEN frame
-            } else {
-                deferredInitStep_ = DeferredInitStep::DetailZoneEnter;
-            }
-            break;
-
-        case DeferredInitStep::DetailZoneEnter:
-            stepName = "detail_zone_enter";
-            if (detailManager_ && terrainOnlySelector_) {
-                auto wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
-                auto zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
-                detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_,
-                                            zoneMeshNode_, wldLoader, zoneGeom);
-            }
-            deferredInitStep_ = DeferredInitStep::DetailAddMeshNodes;
-            break;
-
-        case DeferredInitStep::DetailAddMeshNodes:
-            stepName = "detail_mesh_nodes";
-            if (detailManager_ && !regionMeshNodes_.empty()) {
-                for (auto& [regionIdx, node] : regionMeshNodes_) {
-                    if (node && node->getMesh()) {
-                        detailManager_->addMeshNodeForTextureLookup(node);
-                    }
-                }
-            }
-            deferredInitStep_ = DeferredInitStep::ParticleZoneEnter;
-            break;
-
-        case DeferredInitStep::ParticleZoneEnter:
-            stepName = "particle_zone_enter";
-            if (particleManager_) {
-                auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-                particleManager_->onZoneEnter(currentZoneName_, biome);
-            }
-            deferredInitStep_ = DeferredInitStep::ParticleFireSetup;
-            break;
-
-        case DeferredInitStep::ParticleFireSetup: {
-            stepName = "particle_fire_setup";
-            if (particleManager_) {
-                // Collect fire sources from object lights and zone lights
-                std::vector<glm::vec3> fireSources;
-                std::vector<float> fireRadii;
-                for (const auto& objLight : objectLights_) {
-                    if (objLight.isFireSource) {
-                        fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
-                        fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
-                    }
-                }
-                if (currentZone_) {
-                    for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-                        const auto& zl = currentZone_->lights[i];
-                        std::string upperName = zl->name;
-                        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-                        bool nameMatch = upperName.find("TORCH") != std::string::npos ||
-                                         upperName.find("FIRE") != std::string::npos ||
-                                         upperName.find("BRAZIER") != std::string::npos ||
-                                         upperName.find("FLAME") != std::string::npos ||
-                                         upperName.find("CANDLE") != std::string::npos;
-                        bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
-                        if (nameMatch || colorMatch) {
-                            fireSources.emplace_back(zl->x, zl->y, zl->z);
-                            fireRadii.push_back(zl->radius);
-                        }
-                    }
-                }
-                LOG_INFO(MOD_GRAPHICS, "Fire sources: {} from objectLights, {} total (zone has {} zone lights)",
-                         std::count_if(objectLights_.begin(), objectLights_.end(),
-                                       [](const ObjectLight& ol) { return ol.isFireSource; }),
-                         fireSources.size(),
-                         currentZone_ ? currentZone_->lights.size() : 0);
-                if (!fireSources.empty()) {
-                    particleManager_->setFireSources(fireSources);
-                }
-                if (detailManager_ && detailManager_->hasSurfaceMap()) {
-                    particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
-                }
-            }
-            deferredInitStep_ = DeferredInitStep::ParticleUnifiedInit;
-            break;
-        }
-
-        case DeferredInitStep::ParticleUnifiedInit: {
-            stepName = "particle_unified_init";
-            if (particleManager_) {
-                // Shader compilation moved to init() (under loading screen) to avoid
-                // ~260ms Mali 400 spike during progressive loading. This call is a
-                // no-op if already initialized (guarded by unifiedRendererInitialized_).
-                particleManager_->initUnifiedRenderer();
-                // Collect fire sources and enqueue emitter creation (~1-2ms CPU work)
-                std::vector<glm::vec3> fireSources;
-                std::vector<float> fireRadii;
-                for (const auto& objLight : objectLights_) {
-                    if (objLight.isFireSource) {
-                        fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
-                        fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
-                    }
-                }
-                if (currentZone_) {
-                    for (const auto& zl : currentZone_->lights) {
-                        std::string upperName = zl->name;
-                        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-                        bool nameMatch = upperName.find("TORCH") != std::string::npos ||
-                                         upperName.find("FIRE") != std::string::npos ||
-                                         upperName.find("BRAZIER") != std::string::npos ||
-                                         upperName.find("FLAME") != std::string::npos ||
-                                         upperName.find("CANDLE") != std::string::npos;
-                        bool colorMatch = (zl->r > 0.5f && zl->g > 0.2f && zl->b < 0.3f);
-                        if (nameMatch || colorMatch) {
-                            fireSources.emplace_back(zl->x, zl->y, zl->z);
-                            fireRadii.push_back(zl->radius);
-                        }
-                    }
-                }
-                if (!fireSources.empty()) {
-                    particleManager_->createFireEmitters(fireSources, fireRadii);
-                }
-            }
-            deferredInitStep_ = DeferredInitStep::BoidsInit;
-            break;
-        }
-
-        case DeferredInitStep::BoidsInit:
-            stepName = "boids_init";
-            if (boidsManager_) {
-                auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-                if (zoneBoundsValid_) {
-                    boidsManager_->onZoneEnter(currentZoneName_, biome,
-                        glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
-                        glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
-                } else {
-                    boidsManager_->onZoneEnter(currentZoneName_, biome);
-                }
-            }
-            deferredInitStep_ = DeferredInitStep::TumbleweedInit;
-            break;
-
-        case DeferredInitStep::TumbleweedInit:
-            stepName = "tumbleweed_init";
-            if (tumbleweedManager_) {
-                auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-                tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
-            }
-            deferredInitStep_ = DeferredInitStep::WeatherSurface;
-            break;
-
-        case DeferredInitStep::WeatherSurface:
-            stepName = "weather_settings";
-            if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap())
-                weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
-            applyEnvironmentalDisplaySettings();
-            deferredInitStep_ = DeferredInitStep::ReleaseGeometry;
-            break;
-
-        case DeferredInitStep::ReleaseGeometry:
-            stepName = "release_geometry";
-            // Release combined zone geometry vectors (only when detail system is disabled)
-            if (currentZone_ && currentZone_->geometry && !detailManager_) {
-                size_t before = currentZone_->geometry->getFullMemoryUsage();
-                currentZone_->geometry->vertices.clear();
-                currentZone_->geometry->vertices.shrink_to_fit();
-                currentZone_->geometry->triangles.clear();
-                currentZone_->geometry->triangles.shrink_to_fit();
-                size_t after = currentZone_->geometry->getFullMemoryUsage();
-                LOG_INFO(MOD_GRAPHICS, "Released combined zone geometry vectors: {:.1f} MB freed",
-                         (before - after) / (1024.0f * 1024.0f));
-            }
-            // Release raw texture data from model loaders (only if progressive loading is done)
-            if (config_.constrainedConfig.releaseTextureDataAfterUpload && entityRenderer_
-                && !progressiveLoadingActive_) {
-                size_t totalFreed = 0;
-                if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
-                    totalFreed += eml->releaseRawTextureData();
-                }
-                if (auto* rml = entityRenderer_->getRaceModelLoader()) {
-                    totalFreed += rml->releaseRawTextureData();
-                }
-                if (totalFreed > 0) {
-                    LOG_INFO(MOD_GRAPHICS, "Released {:.1f}MB of equipment/character texture data (post-upload)",
-                             totalFreed / (1024.0f * 1024.0f));
-                }
-            }
-            // Final governor reset — clean state for progressive loading
-            if (governor_) {
-                governor_->requestReset();
-                LOG_DEBUG(MOD_GRAPHICS, "Governor reset requested (deferred init complete)");
-            }
-            // Register vertex anim data with worker (flags, banners — set up by Objects_Install)
-            registerSimulationWorkerVertexAnimData();
-            deferredInitStep_ = DeferredInitStep::WaitForSimWorker;
-            break;
-
-        case DeferredInitStep::WaitForSimWorker:
-            stepName = "wait_sim_worker";
-            if (simulationWorker_ && simulationWorker_->isRunning()) {
-                // postSimulationInput() and applySimulationResults() run earlier in the
-                // frame loop, so by the time we get here, currentPvsRegion_ and
-                // regionPvsDepthMap_ reflect the latest SimulationWorker output.
-                //
-                // The SimulationWorker computes PVS atomically in one computeAll() call:
-                //   computeVisibility() → finds currentPvsRegion via BSP lookup
-                //   computeRegionDepthMap() → BFS portal walk populating regionPvsDepth
-                //   distance fallback → fills remaining regions with Euclidean depth
-                // So if currentPvsRegion_ is valid AND regionPvsDepthMap_ is populated,
-                // the entire PVS depth computation is complete.
-                bool pvsReady = (currentPvsRegion_ != SIZE_MAX && !regionPvsDepthMap_.empty());
-                if (pvsReady) {
-                    LOG_INFO(MOD_GRAPHICS, "SimulationWorker PVS ready: region={}, depthMap={} entries",
-                             currentPvsRegion_, regionPvsDepthMap_.size());
-                    deferredInitStep_ = DeferredInitStep::Complete;
-                    deferredInitActive_ = false;
-                    LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
-                } else {
-                    // Stay on this step — worker hasn't produced valid PVS yet
-                    LOG_DEBUG(MOD_GRAPHICS, "WaitForSimWorker: PVS not ready (region={}, depthMap={})",
-                              currentPvsRegion_, regionPvsDepthMap_.size());
-                }
-            } else {
-                // No simulation worker (e.g., non-PVS zone or worker not configured)
-                LOG_INFO(MOD_GRAPHICS, "No simulation worker running — skipping WaitForSimWorker");
-                deferredInitStep_ = DeferredInitStep::Complete;
-                deferredInitActive_ = false;
-                LOG_INFO(MOD_GRAPHICS, "Deferred environment init complete for zone '{}'", currentZoneName_);
-            }
-            break;
-
-        case DeferredInitStep::Complete:
-            deferredInitActive_ = false;
-            break;
-    }
-
-    logAssetBuildTime(stepName, 0, stepStart);
-}
 
 void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!progressiveLoadingActive_) return;
@@ -12415,7 +12430,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 
     // Update loading screen progress during asset loading.
     // Only after pipeline starts (not Idle) — eq.cpp owns 0–50% progress.
-    if (loadingScreenVisible_ && backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Idle) {
+    if (loadingScreenVisible_ && zoneLoadPhase_ != ZoneLoadPhase::Idle) {
         setLoadingProgress(getBackgroundLoadProgress(), getLoadingPhaseText());
     }
 
@@ -12820,7 +12835,7 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
 
     // Phase pipeline must reach Complete before we can declare progressive loading done.
     // Otherwise zero counts just mean "nothing queued yet" (pre-zone-load).
-    if (backgroundZoneLoadPhase_ != BackgroundZoneLoadPhase::Complete) return;
+    if (zoneLoadPhase_ != ZoneLoadPhase::Complete) return;
 
     // Count unbuilt assets
     size_t unbuiltEntities = 0;

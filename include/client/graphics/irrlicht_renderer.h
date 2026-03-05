@@ -122,21 +122,24 @@ enum class PhaseState : uint8_t {
     Finished  // Phase complete, all deferred work returned — safe to advance
 };
 
-// Deferred environment init steps — one step per GREEN frame
-enum class DeferredInitStep : uint8_t {
-    TreeConfig,         // treeManager_->loadConfig()
-    TreeInit,           // treeManager_->initialize()
-    DetailZoneEnter,    // detailManager_->onZoneEnter()
-    DetailAddMeshNodes, // detailManager_->addMeshNodeForTextureLookup() loop
-    ParticleZoneEnter,  // particleManager_->onZoneEnter()
-    ParticleFireSetup,  // Collect fire sources + createFireEmitters()
-    ParticleUnifiedInit,// particleManager_->initUnifiedRenderer()
-    BoidsInit,          // boidsManager_->onZoneEnter()
-    TumbleweedInit,     // tumbleweedManager_->onZoneEnter()
-    WeatherSurface,     // weatherEffects_->setSurfaceMap() + applyEnvironmentalDisplaySettings()
-    ReleaseGeometry,    // Release combined zone geometry vectors + governor reset
-    WaitForSimWorker,   // Wait for SimulationWorker's first valid PVS output
-    Complete            // Done
+// Zone load step enum — each step is functionally self-contained
+// Used by /load command for step-by-step zone loading with diagnostics
+enum class ZoneLoadStep : uint8_t {
+    None,
+    S3d,        // 1: Parse zone archive
+    Bsp,        // 2: Compute spatial data (region BBs, portals, light regions, object index)
+    Atlas,      // 3: Texture atlas upload
+    Regions,    // 4: Zone meshes
+    Assets,     // 5: Build indexes, create subsystems
+    Objects,    // 6: Zone objects
+    Doors,      // 7: Door meshes
+    Entities,   // 8: Entity prep worker
+    Collision,  // 9: Zone collision
+    Sky,        // 10: Sky, fog, weather
+    Env,        // 11: Environment subsystems
+    Lights,     // 12: Zone lighting
+    Cleanup,    // 13: Release data
+    All         // Run everything remaining
 };
 
 // Result from background BSP preload (WLD parse + bounding boxes + portals)
@@ -147,11 +150,13 @@ struct BspPreloadResult {
     bool portalOcclusionEligible = false;
 };
 
-// Single-shot work request/result types for BackgroundWorkQueue-based threads
-struct ZoneLoadRequest {};
-struct ZoneLoadResult { bool success = false; };
-struct DeferredWorkRequest {};
-struct DeferredWorkResult { bool success = false; };
+// Generic work carrier for zone loading pipeline (replaces typed request/result pairs)
+struct ZoneStepRequest {
+    std::function<void()> work;
+};
+struct ZoneStepResult { bool success = false; };
+
+// Legacy single-shot types (BSP preload only)
 struct BspPreloadRequest {};
 
 // Deferred/progressive object for lazy mesh building
@@ -230,73 +235,92 @@ struct PendingZoneComputations {
     std::unique_ptr<EquipmentIndexData> equipmentIndex;
 };
 
-// Background zone load state machine — S3D loads off-thread, then progressive setup on main thread
-// Each sub-phase does ONE small unit of work per GREEN frame to avoid frame spikes.
-enum class BackgroundZoneLoadPhase : uint8_t {
-    Idle,                    // No load in progress
-    Pending,                 // Waiting to start (setupInstantScene called)
-    Loading,                 // Background thread running (S3D parse + CPU post-processing)
-    // DataReady sub-steps — break loadGlobalAssets() into individual steps
-    DataReady_Notify,        // Install currentZone_, notify subsystems
-    DataReady_EntityRenderer,// Create/configure entity renderer
-    DataReady_ArchiveIndex,  // Build graphics archive index (or eager model load)
-    DataReady_GlobalAssets,  // Adopt pre-built global character assets from background thread
-    DataReady_Equipment,     // Load equipment models
-    DataReady_DoorManager,   // Create/configure door manager
-    DataReady_SkyCreate,     // Create SkyRenderer + adopt pre-loaded loader/config
-    DataReady_DetailManager, // Create detail manager (lightweight)
-    DataReady_ModelView,     // Mark global assets loaded (model view deferred to first inventory open)
-    DataReady_Env_SkyPrepare,    // Sky type config lookups (no GL)
-    DataReady_Env_FogSetup,      // Fog + render distance (GL call)
-    DataReady_Env_WeatherApply,  // Weather config apply (no GL, pre-loaded)
-    DataReady_Env_SkyTextures, // Upload pre-decoded sky textures to GPU (batched, repeats)
-    DataReady_Env_SkyRelease,// Free pre-decoded sky pixel data
-    DataReady_Env_SkyDome,   // Create dome mesh node from pre-computed data + set material
-    DataReady_Env_SkyCelestials, // Create sun/moon billboards
-    DataReady_Env_SkyColors, // Calculate colors + update vertex alpha + apply zone env
-    // Atlas sub-steps — preloaded on background thread, GL upload batched 1 page/GREEN frame
-    Atlas_Zone_Upload,       // Upload 1 zone atlas page per GREEN frame
-    Atlas_Zone_Finalize,     // Adopt zone atlas tile lookup, mark loaded
-    Atlas_Object_Upload,     // Upload 1 object atlas page per GREEN frame
-    Atlas_Object_Finalize,   // Adopt object atlas tile lookup, set page offset
-    Atlas_Shader,            // Set shader page textures, reset GL state
-    // Region mesh sub-steps
-    RegionMesh_InstallBsp,   // Install BSP from background computations, configure subsystems
-    RegionMesh_InitCache,    // Init mesh cache + register regions (lazy) OR start eager batch
-    RegionMesh_EagerBatch,   // Build batch of eager region meshes (repeats until done)
-    RegionMesh_SortSetup,    // Enable front-to-back sorting
-    RegionMesh_InstallPortal,// Install pre-built portal system from background thread
-    // Lights & Objects sub-steps
-    Lights_CreateNodes,      // Create zone light scene nodes
-    Lights_InstallRegions,   // Install pre-computed light BSP regions from background thread
-    Objects_Install,         // Install pre-computed deferred objects (with tree filtering)
-    Misc_ZoneBounds,         // Cache zone bounds
-    Misc_Fog,                // Setup fog
-    Misc_DoorSetup,          // Door shader materials + rebuildPlaceholderDoors()
-    Misc_ReleaseData,        // Release texture pixel data if applicable
-    // Collision + Environment + Entity (unchanged)
-    CollisionRebuild,        // setupMinimalZoneCollision()
-    EnvironmentInit,         // advanceDeferredInit() sub-steps (already broken down)
-    EntityLoading,           // Mark complete
-    Complete                 // Done
-};
+// Zone load phase state machine — each step has sub-phases prefixed with P{NN}_
+// Steps with BG work: Submit → Poll → Install pattern
+// Main-thread-only steps: one sub-step per GREEN frame
+enum class ZoneLoadPhase : uint8_t {
+    Idle,
+    Pending,
 
-// Manual zone load steps — each groups multiple BackgroundZoneLoadPhases
-// Used by /load command for step-by-step zone loading with diagnostics
-enum class ManualLoadStep : uint8_t {
-    None,
-    S3d,        // Spawns bg thread → Loading → DataReady_Notify
-    Data,       // DataReady_Notify → DataReady_ModelView → DataReady_Env_SkyPrepare
-    Sky,        // DataReady_Env_SkyPrepare → DataReady_Env_SkyColors → Atlas_Zone_Upload
-    Atlas,      // Atlas_Zone_Upload → Atlas_Shader → RegionMesh_InstallBsp
-    Regions,    // RegionMesh_InstallBsp → RegionMesh_InstallPortal → Lights_CreateNodes
-    Lights,     // Lights_CreateNodes → Lights_InstallRegions → Objects_Install
-    Objects,    // Objects_Install → Misc_ZoneBounds
-    Misc,       // Misc_ZoneBounds → Misc_ReleaseData → CollisionRebuild
-    Collision,  // CollisionRebuild → EnvironmentInit
-    Env,        // EnvironmentInit (all DeferredInitStep sub-steps) → EntityLoading
-    Entities,   // EntityLoading → Complete
-    All         // Run everything remaining without pausing
+    // Step 1: S3D — parse zone archive
+    P01_S3d_Submit,
+    P01_S3d_Poll,
+    P01_S3d_Install,         // Install currentZone_
+
+    // Step 2: BSP — compute spatial data
+    P02_Bsp_Submit,
+    P02_Bsp_Poll,
+    P02_Bsp_Install,         // Install BSP tree + bounding boxes
+    P02_Bsp_Portal,          // Install portal system, build neighbor map
+
+    // Step 3: Atlas — texture atlas
+    P03_Atlas_Submit,
+    P03_Atlas_Poll,
+    P03_Atlas_ZoneUpload,    // Upload zone atlas pages (repeats)
+    P03_Atlas_ZoneFinalize,
+    P03_Atlas_ObjUpload,     // Upload obj atlas pages (repeats)
+    P03_Atlas_ObjFinalize,
+    P03_Atlas_Shader,        // Set shader page textures, reset GL state
+
+    // Step 4: Regions — zone meshes
+    P04_Regions_InitCache,   // Init mesh cache + register regions (repeats for batch install)
+    P04_Regions_EagerBatch,  // Build eager region meshes (repeats)
+    P04_Regions_SortSetup,   // Enable front-to-back sorting
+
+    // Step 5: Assets — build indexes, create subsystems
+    P05_Assets_Submit,
+    P05_Assets_Poll,
+    P05_Assets_EntityRenderer,  // Create entity renderer
+    P05_Assets_ArchiveIndex,    // Adopt archive index
+    P05_Assets_Equipment,       // Adopt equipment index
+    P05_Assets_GlobalAssets,    // Set zone on RaceModelLoader, network tick
+    P05_Assets_ModelView,       // Store model view deps
+
+    // Step 6: Objects — zone objects
+    P06_Objects_Install,     // Install deferred objects
+    P06_Objects_Bounds,      // Cache zone bounds
+
+    // Step 7: Doors — door meshes
+    P07_Doors_Create,        // Create DoorManager, set zone/BSP/caches
+    P07_Doors_Rebuild,       // Progressive door rebuild (repeats)
+
+    // Step 8: Entities
+    P08_Entities,            // Create/start EntityPrepWorker
+
+    // Step 9: Collision
+    P09_Collision,           // setupMinimalZoneCollision()
+
+    // Step 10: Sky — all sky, fog, weather
+    P10_Sky_Submit,
+    P10_Sky_Poll,
+    P10_Sky_Create,          // Create SkyRenderer, adopt loader/config, prepare type, weather
+    P10_Sky_Textures,        // Upload pre-decoded textures (repeats until done)
+    P10_Sky_Finalize,        // Release tex data, dome, celestials, colors, fog
+
+    // Step 11: Env — environment subsystems
+    P11_Env_SimWorker,       // Start SimulationWorker
+    P11_Env_TreeConfig,
+    P11_Env_TreeInit,
+    P11_Env_DetailCreate,    // Create DetailManager
+    P11_Env_DetailZoneEnter,
+    P11_Env_DetailAddMeshNodes,
+    P11_Env_ParticleZoneEnter,
+    P11_Env_ParticleFireSetup,
+    P11_Env_ParticleUnifiedInit,
+    P11_Env_BoidsInit,
+    P11_Env_TumbleweedInit,
+    P11_Env_WeatherSurface,
+    P11_Env_ReleaseGeometry,
+    P11_Env_WaitSimWorker,
+
+    // Step 12: Lights — zone lighting
+    P12_Lights_Create,       // Create zone light data entries
+    P12_Lights_Regions,      // Install light BSP regions
+
+    // Step 13: Cleanup
+    P13_Cleanup,             // Release data, reset pendingZoneComputations_
+
+    Complete
 };
 
 // Callback fired when manual load reaches a pause point
@@ -723,8 +747,7 @@ public:
     void setupHCMapCollision();
     // Start background S3D load thread
     void startBackgroundZoneLoad(const std::string& zoneName, const std::string& eqClientPath);
-    // Launch deferred background work (phases 6-10) after manual /load data
-    void launchDeferredBackgroundWork();
+    // (launchDeferredBackgroundWork removed — each step submits its own BG work)
     // Advance background zone load state machine (one step per GREEN frame)
     void advanceBackgroundZoneLoad();
     // Store zone environment data for deferred application (after sky renderer init)
@@ -733,8 +756,8 @@ public:
                               const float fogMinClip[4], const float fogMaxClip[4]);
     // Apply stored zone environment (called when sky renderer is ready)
     void applyStoredZoneEnvironment();
-    // Get current background zone load phase
-    BackgroundZoneLoadPhase getBackgroundZoneLoadPhase() const { return backgroundZoneLoadPhase_; }
+    // Get current zone load phase
+    ZoneLoadPhase getZoneLoadPhase() const { return zoneLoadPhase_; }
     // Check if all deferred assets are built
     void checkProgressiveLoadingComplete();
     // Queue background prep requests for unbuilt entities
@@ -756,12 +779,12 @@ public:
 
     // Manual step-by-step zone loading (called by /load command)
     void beginManualZoneLoad(const std::string& eqClientPath);
-    bool advanceManualLoadStep(ManualLoadStep step);  // Returns false on error (wrong order)
+    bool advanceManualLoadStep(ZoneLoadStep step);  // Returns false on error (wrong order)
     bool isManualLoadMode() const { return manualLoadMode_; }
-    ManualLoadStep getNextExpectedStep() const;
+    ZoneLoadStep getNextExpectedStep() const;
     void setManualLoadPauseCallback(ManualLoadPauseCallback cb) { manualLoadPauseCallback_ = std::move(cb); }
-    static const char* phaseToString(BackgroundZoneLoadPhase phase);
-    static const char* manualLoadStepToString(ManualLoadStep step);
+    static const char* phaseToString(ZoneLoadPhase phase);
+    static const char* stepToString(ZoneLoadStep step);
     // Loading screen progress for automatic deferred loading (50%–100%)
     float getBackgroundLoadProgress() const;
     std::wstring getLoadingPhaseText() const;
@@ -1235,7 +1258,7 @@ private:
     void setupHUD();
     void updateHUD();
     void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
-    void advanceDeferredInit();              // One-step-per-GREEN-frame deferred environment init
+    // advanceDeferredInit() folded into P11_Env_* phases of advanceBackgroundZoneLoad()
     void createZoneMesh();
     void processFrameLazyLoad();   // FPS-budgeted lazy mesh loading (constrained mode)
     bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
@@ -1449,26 +1472,23 @@ private:
     // Shared background thread pool (replaces per-queue dedicated threads)
     std::unique_ptr<BackgroundThreadPool> backgroundThreadPool_;
 
-    // Background zone load state machine
-    BackgroundZoneLoadPhase backgroundZoneLoadPhase_ = BackgroundZoneLoadPhase::Idle;
+    // Zone load state machine
+    ZoneLoadPhase zoneLoadPhase_ = ZoneLoadPhase::Idle;
     PhaseState phaseState_ = PhaseState::Ready;
-    std::unique_ptr<BackgroundWorkQueue<ZoneLoadRequest, ZoneLoadResult>> zoneLoadQueue_;
+    std::unique_ptr<BackgroundWorkQueue<ZoneStepRequest, ZoneStepResult>> zoneLoadQueue_;
     std::shared_ptr<S3DZone> pendingZoneData_;  // Written by bg thread, read by main after poll
     std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;  // CPU-only results from bg thread
 
-    // Deferred background work queue (runs phases 6-10 when manual /load data triggers)
-    std::unique_ptr<BackgroundWorkQueue<DeferredWorkRequest, DeferredWorkResult>> deferredWorkQueue_;
-
     // Manual load step-by-step state
     bool manualLoadMode_ = false;
-    ManualLoadStep currentManualStep_ = ManualLoadStep::None;
-    BackgroundZoneLoadPhase manualLoadPauseAt_ = BackgroundZoneLoadPhase::Idle;
+    ZoneLoadStep currentManualStep_ = ZoneLoadStep::None;
+    ZoneLoadPhase manualLoadPauseAt_ = ZoneLoadPhase::Idle;
     bool manualLoadPauseReached_ = false;
     ManualLoadPauseCallback manualLoadPauseCallback_;
 
-    // Manual load step → phase mapping helpers
-    static BackgroundZoneLoadPhase getStepEndPhase(ManualLoadStep step);
-    static BackgroundZoneLoadPhase getStepStartPhase(ManualLoadStep step);
+    // Step → phase mapping helpers
+    static ZoneLoadPhase getStepEndPhase(ZoneLoadStep step);
+    static ZoneLoadPhase getStepStartPhase(ZoneLoadStep step);
 
     // Background BSP preload (WLD parse + bounding boxes + portals during placeholder mode)
     std::unique_ptr<BackgroundWorkQueue<BspPreloadRequest, BspPreloadResult>> bspPreloadQueue_;
@@ -1571,8 +1591,6 @@ private:
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
     bool environmentInitPending_ = false;  // Deferred init after game becomes playable
-    DeferredInitStep deferredInitStep_ = DeferredInitStep::TreeConfig;
-    bool deferredInitActive_ = false;  // True while stepping through deferred init
     bool networkReady_ = false;  // True when network packet exchange is complete
     bool entitiesLoaded_ = false;  // True when all entities have been loaded with models/textures
     size_t expectedEntityCount_ = 0;  // Expected number of entities from ZoneSpawns

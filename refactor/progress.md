@@ -71,3 +71,69 @@ refactoring plan, or were incompletely addressed.
 | C09 | ~~Dead code in zone_lines.cpp: 3 #if 0 blocks + hasBspZoneLines() + debugTestCoordinateMappings()~~ **DONE**: Removed 3 `#if 0` blocks (~130 lines), 2 dead functions (`hasBspZoneLines`, `debugTestCoordinateMappings`), `resolveZoneLine` helper, unused members (`bspTree_`, zone bounds, `wldZonePoints_`), `wld_loader.h` include, and debug call in eq.cpp. 267 lines deleted. | `1b1bc53` |
 | C10 | ~~Configurable thread counts not implemented~~ **DONE**: Added `--threads N` CLI flag to override per-preset `backgroundThreadCount` at launch time. Follows preset → JSON → CLI override chain. | `147115f` |
 | C11 | ~~RDP peer thread accumulation~~ **DONE**: Added `PeerThreadEntry` struct with `std::atomic<bool> finished` flag. `addPeerThread()` sweeps and joins completed threads before adding new ones via `cleanupFinishedPeerThreads()`. `peerThreadImpl()` sets `finished` flag at exit. `peerThreads_` changed from `vector<thread>` to `vector<unique_ptr<PeerThreadEntry>>`. | `938e947` |
+
+## Batch D — Game State Threading
+
+Decouple game state from rendering into separate threads via event/intent bridge.
+Full plan: `refactor/D_game_state_threading.md`.
+
+### Phase 1 — Event Infrastructure
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D01 | Define game event types | pending | |
+| D02 | Define renderer intent types | pending | |
+| D03 | Create GameStateBridge interface and IrrlichtBridge skeleton | pending | |
+
+### Phase 2 — Dual-Path Event Publishing
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D04 | Publish entity events alongside existing calls | pending | |
+| D05 | Publish chat, combat, and player stat events | pending | |
+| D06 | Publish inventory, loot, vendor, bank, trade events | pending | |
+| D07 | Publish door, group, pet, spell, skill events | pending | |
+| D08 | Publish world/environment events (time, weather) | pending | |
+
+### Phase 3 — Bridge Consumes Events
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D09 | IrrlichtBridge handles entity events | pending | |
+| D10 | IrrlichtBridge handles chat, combat, player stat events | pending | |
+| D11 | IrrlichtBridge handles inventory, loot, vendor, bank, trade events | pending | |
+| D12 | IrrlichtBridge handles door, group, pet, spell, skill events | pending | |
+| D13 | IrrlichtBridge handles world/environment events | pending | |
+
+### Phase 4 — Intent Handling
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D14 | Movement intent: renderer posts PlayerPositionChanged, game thread consumes | pending | |
+| D15 | Interaction intents: target, combat, door, loot, chat submit | pending | |
+| D16 | UI intents: vendor, bank, trade, spell, skill, pet, group | pending | |
+
+### Phase 5 — Remove Direct Coupling
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D17 | Remove direct renderer calls from entity packet handlers | pending | |
+| D18 | Remove direct renderer calls from UI packet handlers | pending | |
+| D19 | Remove direct renderer calls from remaining handlers | pending | |
+| D20 | Remove callback lambdas, remove m_renderer from EverQuest | pending | |
+
+### Phase 6 — Thread Separation
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D21 | Move EverQuest tick loop to dedicated game thread | pending | |
+| D22 | Synchronize bridge queues with proper threading | pending | |
+| D23 | Remove networkTickCallback_ and loading screen coupling | pending | |
+
+### Phase 7 — Cleanup and Optimization
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| D24 | Optimize high-frequency events (entity position batching) | pending | |
+| D25 | Add console bridge implementation | pending | |
+| D26 | Update documentation and CLAUDE.md | pending | |

@@ -307,6 +307,7 @@ struct SimulationInput {
     float entityRenderDistance = 200.0f;
     int maxVisibleEntities = 50;
     bool entityCullingEnabled = false;
+    bool loadingActive = false;
 
     // Name tag visibility
     float nameTagDistance = 200.0f;
@@ -759,6 +760,7 @@ private:
 
     // Compute functions (called on worker thread)
     void computeAll(const SimulationInput& input, SimulationOutput& output);
+    void calculateRegions(const SimulationInput& input, SimulationOutput& output);
     void computeVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeObjectVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeLightVisibility(const SimulationInput& input, SimulationOutput& output);
