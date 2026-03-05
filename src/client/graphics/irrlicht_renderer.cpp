@@ -4064,6 +4064,11 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
                 regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
         }
 
+        // Start SimulationWorker early — BSP + region BBs + portals are available.
+        // Objects, lights will be empty initially; worker handles that gracefully.
+        // This enables PVS visibility and front-to-back sorting from step 3 onward.
+        startSimulationWorkerEarly();
+
         phaseState_ = PhaseState::Finished;
         zoneLoadPhase_ = ZoneLoadPhase::P03_Atlas_Submit;
         logAssetBuildTime("region_install_portal", 0, stepStart);
@@ -5330,8 +5335,10 @@ void IrrlichtRenderer::advanceBackgroundZoneLoad() {
     // ── Step 11: Env — environment subsystems (inlined DeferredInit) ──────
     case ZoneLoadPhase::P11_Env_SimWorker: {
         phaseState_ = PhaseState::Running;
-        startSimulationWorkerEarly();  // Start worker immediately with core data
-        LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (via background zone load)");
+        // SimWorker normally started at P02_Bsp_Portal; this is fallback for standalone env init
+        startSimulationWorkerEarly();
+        LOG_INFO(MOD_GRAPHICS, "Deferred environment init started (SimWorker %s)",
+                 (simulationWorker_ && simulationWorker_->isRunning()) ? "already running" : "started");
         phaseState_ = PhaseState::Finished;
         zoneLoadPhase_ = ZoneLoadPhase::P11_Env_TreeConfig;
         logAssetBuildTime("sim_worker_start", 0, stepStart);
@@ -9934,9 +9941,14 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     }
 
     // Step through deferred env init one step per GREEN frame
-    // (Standalone path: P11_Env_* phases drive directly through advanceBackgroundZoneLoad)
+    // (Standalone path only — when environmentInitPending_ activated P11 above.
+    //  When the main pipeline is active, block at lines above already handles P11 phases.)
     if (zoneLoadPhase_ >= ZoneLoadPhase::P11_Env_SimWorker &&
-        zoneLoadPhase_ <= ZoneLoadPhase::P11_Env_WaitSimWorker) {
+        zoneLoadPhase_ <= ZoneLoadPhase::P11_Env_WaitSimWorker &&
+        !manualLoadMode_) {
+        // Only advance if the main pipeline block didn't already handle this frame.
+        // The main pipeline covers all phases when active; this standalone path only
+        // fires when environmentInitPending_ triggered P11 outside the pipeline.
         if (!governor_ || governor_->getState() == BudgetState::Green) {
             advanceBackgroundZoneLoad();
         }
