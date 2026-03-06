@@ -10,12 +10,16 @@
 // - Consistent output formatting with timestamps
 // - FATAL/ERROR always output at level NONE
 
+#include <algorithm>
 #include <iostream>
 #include <cstdint>
 #include <ctime>
 #include <chrono>
 #include <array>
+#include <atomic>
 #include <mutex>
+#include <thread>
+#include <vector>
 #include <fmt/format.h>
 
 // =============================================================================
@@ -135,6 +139,10 @@ public:
         return instance;
     }
 
+    ~LogManager() {
+        stopDrainThread();
+    }
+
     // Global log level - affects all modules unless overridden
     int GetGlobalLevel() const { return m_global_level; }
     void SetGlobalLevel(int level) { m_global_level = level; }
@@ -187,19 +195,160 @@ public:
         }
     }
 
-    // Get mutex for thread-safe output
+    // Get mutex for thread-safe output (used by FATAL/ERROR direct writes)
     std::mutex& GetMutex() { return m_mutex; }
+
+    // --- Drain thread and buffer registry ---
+
+    // Forward declaration — ThreadLogBuffer registers itself here
+    struct BufferEntry {
+        std::string* buffers;        // Pointer to the double-buffer array [2]
+        std::atomic<int>* activeIdx; // Pointer to the writer's active index
+    };
+
+    void registerBuffer(std::string* buffers, std::atomic<int>* activeIdx) {
+        std::lock_guard<std::mutex> lock(m_registry_mutex);
+        m_buffers.push_back({buffers, activeIdx});
+        ensureDrainThread();
+    }
+
+    void unregisterBuffer(std::string* buffers) {
+        std::lock_guard<std::mutex> lock(m_registry_mutex);
+        m_buffers.erase(
+            std::remove_if(m_buffers.begin(), m_buffers.end(),
+                [buffers](const BufferEntry& e) { return e.buffers == buffers; }),
+            m_buffers.end());
+    }
 
 private:
     LogManager() : m_global_level(LOG_NONE) {
-        // Initialize all module levels to -1 (use global)
         m_module_levels.fill(-1);
+    }
+
+    void ensureDrainThread() {
+        if (m_drain_running.load(std::memory_order_relaxed)) return;
+        m_drain_running.store(true, std::memory_order_release);
+        m_drain_thread = std::thread(&LogManager::drainLoop, this);
+    }
+
+    void stopDrainThread() {
+        if (!m_drain_running.load(std::memory_order_relaxed)) return;
+        m_drain_running.store(false, std::memory_order_release);
+        if (m_drain_thread.joinable()) m_drain_thread.join();
+        // Final drain
+        drainAllBuffers();
+    }
+
+    void drainLoop() {
+        while (m_drain_running.load(std::memory_order_relaxed)) {
+            drainAllBuffers();
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    void drainAllBuffers() {
+        std::lock_guard<std::mutex> lock(m_registry_mutex);
+        for (auto& entry : m_buffers) {
+            // Read the active index — the writer is using this side.
+            // We read the OTHER side (the one the writer flipped away from).
+            int active = entry.activeIdx->load(std::memory_order_acquire);
+            int drainSide = 1 - active;
+            std::string& drainBuf = entry.buffers[drainSide];
+            if (!drainBuf.empty()) {
+                // No mutex needed for stdout — drain thread is the only writer
+                std::cout << drainBuf;
+                drainBuf.clear();
+            }
+        }
     }
 
     int m_global_level;
     std::array<int, MOD_COUNT> m_module_levels;
     std::mutex m_mutex;
+
+    // Buffer registry
+    std::mutex m_registry_mutex;
+    std::vector<BufferEntry> m_buffers;
+
+    // Drain thread
+    std::thread m_drain_thread;
+    std::atomic<bool> m_drain_running{false};
 };
+
+// =============================================================================
+// Thread-Local Log Buffer — Lock-Free Double-Buffered Logging
+// =============================================================================
+// Each thread appends to its active buffer. FlushThreadLog() flips the active
+// index (one atomic store). A dedicated drain thread in LogManager reads the
+// inactive buffer and writes to stdout. No mutex or I/O on the calling thread.
+// FATAL/ERROR bypass the buffer for immediate visibility.
+
+struct ThreadLogBuffer {
+    std::string buffers[2];
+    std::atomic<int> activeIdx{0};
+    bool registered = false;
+
+    ThreadLogBuffer() = default;
+
+    ~ThreadLogBuffer() {
+        if (registered) {
+            LogManager::Instance().unregisterBuffer(buffers);
+        }
+    }
+
+    void ensureRegistered() {
+        if (!registered) {
+            registered = true;
+            LogManager::Instance().registerBuffer(buffers, &activeIdx);
+        }
+    }
+
+    std::string& active() { return buffers[activeIdx.load(std::memory_order_relaxed)]; }
+
+    void append(const char* ts, const char* level, const char* module,
+                const std::string& msg) {
+        ensureRegistered();
+        auto& data = active();
+        data += '[';
+        data += ts;
+        data += "] [";
+        data += level;
+        data += "] [";
+        data += module;
+        data += "] ";
+        data += msg;
+        data += '\n';
+    }
+
+    void appendEntity(const char* ts, uint16_t spawn_id,
+                      const std::string& msg) {
+        ensureRegistered();
+        auto& data = active();
+        data += '[';
+        data += ts;
+        data += "] [DEBUG] [ENTITY:";
+        data += std::to_string(spawn_id);
+        data += "] ";
+        data += msg;
+        data += '\n';
+    }
+
+    void flush() {
+        if (active().empty()) return;
+        // Flip the active index — drain thread will read the old side
+        int old = activeIdx.load(std::memory_order_relaxed);
+        activeIdx.store(1 - old, std::memory_order_release);
+    }
+};
+
+inline ThreadLogBuffer& GetThreadLogBuffer() {
+    thread_local ThreadLogBuffer buf;
+    return buf;
+}
+
+inline void FlushThreadLog() {
+    GetThreadLogBuffer().flush();
+}
 
 // =============================================================================
 // Convenience Functions
@@ -391,15 +540,23 @@ inline void FormatTimestamp(char* buffer, size_t size) {
         if (ShouldLog(module, level)) { \
             char _ts_buf[32]; \
             FormatTimestamp(_ts_buf, sizeof(_ts_buf)); \
-            std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
-            try { \
-                auto& _out = (level <= LOG_ERROR) ? std::cerr : std::cout; \
-                _out << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                     << GetModuleName(module) << "] " << fmt::format(__VA_ARGS__) << std::endl; \
-            } catch (...) { \
-                auto& _out = (level <= LOG_ERROR) ? std::cerr : std::cout; \
-                _out << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                     << GetModuleName(module) << "] (format error)" << std::endl; \
+            if (level <= LOG_ERROR) { \
+                std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
+                try { \
+                    std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
+                              << GetModuleName(module) << "] " << fmt::format(__VA_ARGS__) << '\n'; \
+                } catch (...) { \
+                    std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
+                              << GetModuleName(module) << "] (format error)" << '\n'; \
+                } \
+            } else { \
+                try { \
+                    GetThreadLogBuffer().append(_ts_buf, GetLevelName(level), \
+                        GetModuleName(module), fmt::format(__VA_ARGS__)); \
+                } catch (...) { \
+                    GetThreadLogBuffer().append(_ts_buf, GetLevelName(level), \
+                        GetModuleName(module), "(format error)"); \
+                } \
             } \
         } \
     } while(0)
@@ -439,11 +596,21 @@ inline void FormatTimestamp(char* buffer, size_t size) {
         if (GetLogLevel() >= level) { \
             char _ts_buf[32]; \
             FormatTimestamp(_ts_buf, sizeof(_ts_buf)); \
-            std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
-            try { \
-                std::cout << "[" << _ts_buf << "] [" level_name "] " << fmt::format(__VA_ARGS__) << std::endl; \
-            } catch (...) { \
-                std::cout << "[" << _ts_buf << "] [" level_name "] (format error)" << std::endl; \
+            if (level <= LOG_ERROR) { \
+                std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
+                try { \
+                    std::cerr << "[" << _ts_buf << "] [" level_name "] " << fmt::format(__VA_ARGS__) << '\n'; \
+                } catch (...) { \
+                    std::cerr << "[" << _ts_buf << "] [" level_name "] (format error)" << '\n'; \
+                } \
+            } else { \
+                try { \
+                    GetThreadLogBuffer().append(_ts_buf, level_name, \
+                        "MAIN", fmt::format(__VA_ARGS__)); \
+                } catch (...) { \
+                    GetThreadLogBuffer().append(_ts_buf, level_name, \
+                        "MAIN", "(format error)"); \
+                } \
             } \
         } \
     } while(0)
@@ -469,12 +636,12 @@ inline void FormatTimestamp(char* buffer, size_t size) {
         if (IsTrackedTarget(spawn_id) || ShouldLog(MOD_ENTITY, LOG_DEBUG)) { \
             char _ts_buf[32]; \
             FormatTimestamp(_ts_buf, sizeof(_ts_buf)); \
-            std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
             try { \
-                std::cout << "[" << _ts_buf << "] [DEBUG] [ENTITY:" << spawn_id << "] " \
-                          << fmt::format(__VA_ARGS__) << std::endl; \
+                GetThreadLogBuffer().appendEntity(_ts_buf, spawn_id, \
+                    fmt::format(__VA_ARGS__)); \
             } catch (...) { \
-                std::cout << "[" << _ts_buf << "] [DEBUG] [ENTITY:" << spawn_id << "] (format error)" << std::endl; \
+                GetThreadLogBuffer().appendEntity(_ts_buf, spawn_id, \
+                    "(format error)"); \
             } \
         } \
     } while(0)
@@ -493,10 +660,10 @@ inline void FormatTimestamp(char* buffer, size_t size) {
             std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
             try { \
                 std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                          << GetModuleName(module) << "] " << fmt::format(__VA_ARGS__) << std::endl; \
+                          << GetModuleName(module) << "] " << fmt::format(__VA_ARGS__) << '\n'; \
             } catch (...) { \
                 std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                          << GetModuleName(module) << "] (format error)" << std::endl; \
+                          << GetModuleName(module) << "] (format error)" << '\n'; \
             } \
         } \
     } while(0)
