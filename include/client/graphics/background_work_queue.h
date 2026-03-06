@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include "common/logging.h"
 #include <vector>
 
 namespace EQT {
@@ -200,6 +201,7 @@ private:
 
             if (onBatchEnd_)
                 onBatchEnd_();
+            FlushThreadLog();
         }
     }
 

@@ -3,6 +3,7 @@
 #include "client/graphics/environment/unified_particle_renderer.h"
 #include "common/logging.h"
 #include <cstring>
+#include <chrono>
 
 // GLES2 spec constants — fallback defines for older headers
 #ifndef GL_BLEND_SRC_RGB
@@ -246,6 +247,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                                       float screenHeight, GLuint atlasTexture) {
     if (!initialized_ || count <= 0 || !particles) return;
 
+    auto t0 = std::chrono::steady_clock::now();
+
     // Separate particles by blend mode and fill vertex arrays
     additiveVerts_.clear();
     alphaVerts_.clear();
@@ -281,6 +284,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     }
 
     if (additiveVerts_.empty() && alphaVerts_.empty()) return;
+
+    auto t1 = std::chrono::steady_clock::now();
 
     // ===== One-shot diagnostic =====
     static bool diagLogged = false;
@@ -332,6 +337,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &savedEBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
+    auto t2 = std::chrono::steady_clock::now();
+
     // ===== Set particle rendering state =====
     // Depth test ON (cull particles behind walls) but depth write OFF
     // (particles don't occlude each other or later transparent geometry)
@@ -367,15 +374,21 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     glBindTexture(GL_TEXTURE_2D, atlasTexture);
     if (uTexture_ >= 0) glUniform1i(uTexture_, 0);
 
+    auto t3 = std::chrono::steady_clock::now();
+
     // Render additive particles (1 draw call)
     if (!additiveVerts_.empty()) {
         renderBatch(additiveVerts_, UnifiedBlendMode::ADDITIVE);
     }
 
+    auto t4 = std::chrono::steady_clock::now();
+
     // Render alpha-blended particles (1 draw call)
     if (!alphaVerts_.empty()) {
         renderBatch(alphaVerts_, UnifiedBlendMode::ALPHA);
     }
+
+    auto t5 = std::chrono::steady_clock::now();
 
     // ===== Restore ALL GL state =====
     glDisableVertexAttribArray(0);
@@ -401,6 +414,24 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     if (savedActiveTexture != GL_TEXTURE0) glActiveTexture(savedActiveTexture);
 
     glUseProgram(savedProgram);
+
+    auto t6 = std::chrono::steady_clock::now();
+
+    // Log breakdown only on spike frames (>10ms total)
+    auto totalUs = std::chrono::duration_cast<std::chrono::microseconds>(t6 - t0).count();
+    if (totalUs > 10000) {
+        auto us = [](auto a, auto b) {
+            return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count();
+        };
+        LOG_WARN(MOD_GRAPHICS,
+                 "UnifiedParticle SPIKE: {:.1f}ms total | fillVerts={:.1f}ms stateSave={:.1f}ms "
+                 "setup={:.1f}ms drawAdd={:.1f}ms({}) drawAlpha={:.1f}ms({}) restore={:.1f}ms",
+                 totalUs / 1000.0f,
+                 us(t0, t1) / 1000.0f, us(t1, t2) / 1000.0f,
+                 us(t2, t3) / 1000.0f, us(t3, t4) / 1000.0f, additiveVerts_.size(),
+                 us(t4, t5) / 1000.0f, alphaVerts_.size(),
+                 us(t5, t6) / 1000.0f);
+    }
 }
 
 void UnifiedParticleRenderer::renderBatch(const std::vector<PointSpriteVertex>& verts,

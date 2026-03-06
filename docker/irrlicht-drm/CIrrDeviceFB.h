@@ -129,7 +129,6 @@ private:
     struct gbm_device* gbmDevice_;
     struct gbm_surface* gbmSurface_;
     struct gbm_bo* previousBo_;
-    uint32_t previousFb_;
 
     // EGL
     EGLDisplay eglDisplay_;

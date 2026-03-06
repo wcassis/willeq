@@ -262,6 +262,11 @@ void SimulationWorker::clearZoneData() {
     weatherZoneConfig_ = ZoneWeatherConfig();
 }
 
+void SimulationWorker::computeOnce(const SimulationInput& input, SimulationOutput& output) {
+    output = SimulationOutput();
+    computeAll(input, output);
+}
+
 // ============================================================================
 // Per-Frame Protocol
 // ============================================================================
@@ -350,9 +355,11 @@ void SimulationWorker::workerLoop() {
 
         // Signal results ready
         resultReady_.store(true, std::memory_order_release);
+        FlushThreadLog();
     }
 
     LOG_DEBUG(MOD_GRAPHICS, "SimulationWorker thread exiting");
+    FlushThreadLog();
 }
 
 // ============================================================================

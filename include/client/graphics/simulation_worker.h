@@ -730,6 +730,10 @@ public:
     void setZoneData(const SimulationZoneData& data);
     void clearZoneData();
 
+    // Synchronous one-shot computation (call from loading thread before start())
+    // Runs all compute functions inline without starting the worker thread.
+    void computeOnce(const SimulationInput& input, SimulationOutput& output);
+
     // Incremental zone data updates (call while worker is running, between frames)
     // Safe to call after swapAndGetResults() and before postInput() — worker is sleeping.
     void updateTreeData(std::vector<SimulationZoneData::AnimatedTreeData>&& trees);

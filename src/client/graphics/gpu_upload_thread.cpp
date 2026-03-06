@@ -217,6 +217,7 @@ void GPUUploadThread::workerLoop() {
         // Unbind context before sleeping — critical for avoiding
         // cross-context synchronization overhead in eglSwapBuffers
         eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        FlushThreadLog();
     }
 
     // Ensure context is unbound on exit (may already be unbound)

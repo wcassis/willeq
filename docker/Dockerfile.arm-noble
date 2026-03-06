@@ -315,8 +315,8 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     cmake /src \
         -DCMAKE_TOOLCHAIN_FILE=/src/cmake/toolchains/arm-linux-gnueabihf.cmake \
         -DARM_SYSROOT=${ARM_SYSROOT} \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_FLAGS_RELEASE='-O2 -DNDEBUG -static-libstdc++' \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_CXX_FLAGS_RELWITHDEBINFO='-O2 -g -DNDEBUG -static-libstdc++' \
         -DCMAKE_EXE_LINKER_FLAGS='-static-libstdc++' \
         -DCMAKE_CXX_STANDARD_LIBRARIES='-lglib-2.0 -lgthread-2.0 -lgomp -lffi -lpcre2-8 -lpthread -lm -ldl' \
         -DEQT_GRAPHICS=${ENABLE_GRAPHICS:-ON} \
@@ -334,7 +334,7 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     && cmake --build . --target test_gl_points -j$(nproc) \
     && cmake --build . --target gles2_derivatives_test -j$(nproc) \
     && cmake --build . --target gles2_npot_test -j$(nproc) \
-    && arm-linux-gnueabihf-strip bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test \
+    && echo 'Skipping strip — debug symbols retained for GDB' \
     && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test /output/ \
     && echo '=== Build complete ===' \
 "]

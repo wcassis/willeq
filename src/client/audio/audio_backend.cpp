@@ -138,6 +138,7 @@ void RDPAudioBackend::pumpThread() {
         // Sleep to maintain sample rate: 1024 frames / sampleRate seconds
         auto sleepUs = (BUFFER_FRAMES * 1000000ULL) / sampleRate_;
         std::this_thread::sleep_for(std::chrono::microseconds(sleepUs));
+        FlushThreadLog();
     }
 
     LOG_DEBUG(MOD_AUDIO, "RDP audio pump thread stopped");

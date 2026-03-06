@@ -1123,6 +1123,8 @@ private:
     void stopSimulationWorker();     // Stop worker (zone transition)
     void postSimulationInput(float deltaTime);  // Snapshot main thread state → worker input
     void applySimulationResults();   // Apply worker output → scene graph
+    void applySimulationOutput(const SimulationOutput& results);  // Apply output directly (loading thread or runtime)
+    SimulationZoneData buildSimulationZoneData();  // Build zone data snapshot for SimulationWorker
 
     void setupFog();
     void setupHUD();
@@ -1528,6 +1530,12 @@ private:
     irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
     bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
 
+    // Camera collision: small selector (player region + depth-1 neighbors + nearby doors/objects)
+    irr::scene::IMetaTriangleSelector* cameraCollisionSelector_ = nullptr;
+    size_t cameraCollisionRegion_ = SIZE_MAX;  // PVS region this was built for
+    std::unordered_map<size_t, irr::scene::ITriangleSelector*> regionSelectors_;  // cached per-region selectors
+    void rebuildCameraCollisionSelector();
+
     // Irrlicht collision methods
     bool checkCollisionIrrlicht(const irr::core::vector3df& start, const irr::core::vector3df& end,
                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
@@ -1688,8 +1696,11 @@ private:
         int64_t wmOverlays = 0;
         int64_t wmOther = 0;
         int64_t zoneLineOverlay = 0;
+        int64_t glFinish = 0;            // glFinish() before endScene (GPU pipeline drain)
         int64_t endScene = 0;
         int64_t totalFrame = 0;
+        int manualZoneRegionsDrawn = 0;  // Regions actually drawn in manual zone draw
+        int manualZoneDrawCalls = 0;     // Individual drawMeshBuffer calls
         // Fine-grained fields (Phase 2 timing gaps)
         int64_t playerMovement = 0;      // updatePlayerMovement() - collision during movement
         int64_t occlusionCulling = 0;    // Software occlusion rasterize + test (inside PVS)

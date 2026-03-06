@@ -1,4 +1,5 @@
 #include "client/graphics/background_thread_pool.h"
+#include "common/logging.h"
 
 namespace EQT {
 namespace Graphics {
@@ -57,6 +58,7 @@ void BackgroundThreadPool::workerLoop() {
             queue_.pop();
         }
         task();
+        FlushThreadLog();
     }
 }
 

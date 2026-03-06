@@ -2260,6 +2260,15 @@ void IrrlichtRenderer::unloadZone() {
     }
 
     // Now safe to remove zone collision selectors
+    if (cameraCollisionSelector_) {
+        cameraCollisionSelector_->drop();
+        cameraCollisionSelector_ = nullptr;
+    }
+    cameraCollisionRegion_ = SIZE_MAX;
+    for (auto& [idx, sel] : regionSelectors_) {
+        if (sel) sel->drop();
+    }
+    regionSelectors_.clear();
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
@@ -4916,6 +4925,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                  output.regionVisible.size(), output.objectVisible.size(),
                  output.lightVisible.size(), output.entityResults.size());
         logAssetBuildTime("seq_simulation", 0, stepStart);
+
+        // Build camera collision selector now that PVS region is known
+        rebuildCameraCollisionSelector();
     }
 
     // ── Step 13: Cleanup ───────────────────────────────────────────────────
@@ -5128,6 +5140,7 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         }
     };
 
+    int regionsDrawn = 0;
     for (const auto& entry : sortedZoneDrawList_) {
         if (!entry.node) continue;
 
@@ -5135,6 +5148,7 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         if (it == regionMeshNodes_.end() || !it->second) continue;
 
         collectMeshBuffers(it->second, entry.distanceSq);
+        regionsDrawn++;
     }
 
     // Add fallback mesh buffers (always drawn last — use max distance)
@@ -5159,6 +5173,9 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         driver_->setMaterial(de.buffer->getMaterial());
         driver_->drawMeshBuffer(de.buffer);
     }
+
+    frameTimings_.manualZoneRegionsDrawn = regionsDrawn;
+    frameTimings_.manualZoneDrawCalls = static_cast<int>(sortedDrawEntries_.size());
 }
 
 // ======== drawRegionMesh ========
@@ -8519,11 +8536,14 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 {"sceneSolid",       frameTimings_.sceneSolid},
                 {"sceneTransparent", frameTimings_.sceneTransparent},
                 {"manualZoneDraw",   frameTimings_.manualZoneDraw},
+                {"footprintRender",  frameTimings_.footprintRender},
                 {"targetBox",        frameTimings_.targetBox},
                 {"particles",        frameTimings_.particles},
                 {"weatherRender",    frameTimings_.weatherRender},
+                {"castingBars",      frameTimings_.castingBars},
                 {"guiDrawAll",       frameTimings_.guiDrawAll},
                 {"windowManager",    frameTimings_.windowManager},
+                {"glFinish",         frameTimings_.glFinish},
                 {"endScene",         frameTimings_.endScene},
                 {"postRender",       frameTimings_.postRender},
                 {"simWorkerApply",   frameTimings_.simWorkerApply},
@@ -8531,13 +8551,36 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             std::sort(std::begin(sections), std::end(sections),
                       [](const auto& a, const auto& b) { return a.us > b.us; });
 
-            // Log header with totals
+            // Log header with totals + scene composition
             LOG_WARN(MOD_GRAPHICS, "RED STATE: {:.1f}ms / {:.1f}ms budget ({:.0f}% over) — avg {:.1f}ms, stall {}/{} — ALL LOADING HALTED",
                      totalFrameMs, budgetMs,
                      (totalFrameMs / budgetMs - 1.0f) * 100.0f,
                      governor_->getAverageFrameTimeMs(),
                      governor_->getStallCounter(),
                      FrameBudgetGovernor::kStallThreshold);
+            // Scene composition: nodes, polys, manual draw stats
+            LOG_WARN(MOD_GRAPHICS, "  RED SCENE: {} sceneNodes, {} polys | manualDraw: {} regions, {} drawCalls | sortedList: {}",
+                     frameTimings_.sceneNodeCount, lastPolygonCount_,
+                     frameTimings_.manualZoneRegionsDrawn, frameTimings_.manualZoneDrawCalls,
+                     sortedZoneDrawList_.size());
+
+            // Scene graph node census
+            {
+                int totalNodes = 0, visibleNodes = 0;
+                std::function<void(irr::scene::ISceneNode*)> countNodes =
+                    [&](irr::scene::ISceneNode* node) {
+                        if (!node) return;
+                        totalNodes++;
+                        if (node->isVisible()) visibleNodes++;
+                        for (auto* child : node->getChildren())
+                            countNodes(child);
+                    };
+                if (smgr_ && smgr_->getRootSceneNode())
+                    countNodes(smgr_->getRootSceneNode());
+                LOG_WARN(MOD_GRAPHICS, "  RED GRAPH: {} total scene nodes, {} visible (drawAll traverses all)",
+                         totalNodes, visibleNodes);
+            }
+
             // Log every section that consumed >0.1ms, sorted by cost
             for (const auto& s : sections) {
                 if (s.us < 100) continue;  // Skip <0.1ms noise
@@ -8560,6 +8603,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 {"sceneDrawAll", frameTimings_.sceneDrawAll},
                 {"windowManager", frameTimings_.windowManager},
                 {"endScene", frameTimings_.endScene},
+                {"particles", frameTimings_.particles},
+                {"simWorkerApply", frameTimings_.simWorkerApply},
+                {"targetBox", frameTimings_.targetBox},
+                {"guiDrawAll", frameTimings_.guiDrawAll},
+                {"footprintRender", frameTimings_.footprintRender},
             };
             std::sort(std::begin(sections), std::end(sections),
                       [](const auto& a, const auto& b) { return a.us > b.us; });
@@ -8624,7 +8672,10 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.wmOverlays += frameTimings_.wmOverlays;
         frameTimingsAccum_.wmOther += frameTimings_.wmOther;
         frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
+        frameTimingsAccum_.glFinish += frameTimings_.glFinish;
         frameTimingsAccum_.endScene += frameTimings_.endScene;
+        frameTimingsAccum_.manualZoneRegionsDrawn += frameTimings_.manualZoneRegionsDrawn;
+        frameTimingsAccum_.manualZoneDrawCalls += frameTimings_.manualZoneDrawCalls;
         frameTimingsAccum_.totalFrame += frameTimings_.totalFrame;
         // New fine-grained fields
         frameTimingsAccum_.playerMovement += frameTimings_.playerMovement;
@@ -9633,6 +9684,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     frameTimings_.endScene = measureSection();
 
     LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+    FlushThreadLog();
     return true;
 }
 
@@ -10223,7 +10275,11 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.footprintRender), pct(frameTimingsAccum_.footprintRender));
     LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.postRender), pct(frameTimingsAccum_.postRender));
     LOG_INFO(MOD_GRAPHICS, "  SimWorker Apply:    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.simWorkerApply), pct(frameTimingsAccum_.simWorkerApply));
+    LOG_INFO(MOD_GRAPHICS, "  glFinish:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.glFinish), pct(frameTimingsAccum_.glFinish));
     LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.endScene), pct(frameTimingsAccum_.endScene));
+    LOG_INFO(MOD_GRAPHICS, "  Manual Zone Draw:   {} regions avg, {} drawCalls avg",
+             frameTimingsAccum_.manualZoneRegionsDrawn / std::max(1, frameTimingsSampleCount_),
+             frameTimingsAccum_.manualZoneDrawCalls / std::max(1, frameTimingsSampleCount_));
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
     LOG_INFO(MOD_GRAPHICS, "  Render EMA:         {:>8.0f} us | EssSim EMA: {:>6.0f} us",
              renderCostAvgUs_, essentialSimCostAvgUs_);
@@ -11431,6 +11487,15 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
 
 void IrrlichtRenderer::setupMinimalZoneCollision() {
     // Clean up old selectors
+    if (cameraCollisionSelector_) {
+        cameraCollisionSelector_->drop();
+        cameraCollisionSelector_ = nullptr;
+    }
+    cameraCollisionRegion_ = SIZE_MAX;
+    for (auto& [idx, sel] : regionSelectors_) {
+        if (sel) sel->drop();
+    }
+    regionSelectors_.clear();
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
@@ -11481,6 +11546,9 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
             if (terrainMeta) {
                 terrainMeta->addTriangleSelector(regionSelector);
             }
+            // Cache for camera collision (keep our own ref)
+            regionSelector->grab();
+            regionSelectors_[regionIdx] = regionSelector;
             regionSelector->drop();
             regionsAdded++;
         }
@@ -11504,9 +11572,8 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
 
     collisionManager_ = smgr_->getSceneCollisionManager();
 
-    if (cameraController_ && collisionManager_ && zoneTriangleSelector_) {
-        cameraController_->setCollisionManager(collisionManager_, zoneTriangleSelector_);
-    }
+    // Camera collision will be set by rebuildCameraCollisionSelector() when PVS region is known
+    // (uses a small subset of regions instead of all 1898 for performance)
 
     // Activate progressive loading
     progressiveLoadingActive_ = true;
@@ -11550,6 +11617,12 @@ void IrrlichtRenderer::addRegionToCollision(size_t regionIdx) {
             terrainMeta->addTriangleSelector(selector);
         }
 
+        // Cache for camera collision
+        selector->grab();
+        auto oldIt = regionSelectors_.find(regionIdx);
+        if (oldIt != regionSelectors_.end() && oldIt->second) oldIt->second->drop();
+        regionSelectors_[regionIdx] = selector;
+
         selector->drop();
     }
 }
@@ -11585,6 +11658,81 @@ void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
     }
 }
 
+void IrrlichtRenderer::rebuildCameraCollisionSelector() {
+    if (!smgr_ || currentPvsRegion_ == SIZE_MAX) return;
+    if (currentPvsRegion_ == cameraCollisionRegion_) return;  // no change
+
+    // Drop old selector
+    if (cameraCollisionSelector_) {
+        cameraCollisionSelector_->drop();
+        cameraCollisionSelector_ = nullptr;
+    }
+
+    auto* meta = smgr_->createMetaTriangleSelector();
+    if (!meta) return;
+
+    // Collect player region + depth-1 neighbors
+    std::unordered_set<size_t> regions;
+    regions.insert(currentPvsRegion_);
+    auto nIt = regionNeighbors_.find(currentPvsRegion_);
+    if (nIt != regionNeighbors_.end()) {
+        for (size_t neighbor : nIt->second) {
+            regions.insert(neighbor);
+        }
+    }
+
+    // Add cached region selectors
+    size_t regionsAdded = 0;
+    for (size_t regionIdx : regions) {
+        auto sIt = regionSelectors_.find(regionIdx);
+        if (sIt != regionSelectors_.end() && sIt->second) {
+            meta->addTriangleSelector(sIt->second);
+            regionsAdded++;
+        }
+    }
+
+    // Add doors in these regions
+    size_t doorsAdded = 0;
+    if (doorManager_) {
+        std::vector<uint8_t> doorIds;
+        doorManager_->getDoorsInRegions(regions, doorIds);
+        for (uint8_t doorId : doorIds) {
+            const auto* door = doorManager_->getDoor(doorId);
+            if (door && door->sceneNode && door->sceneNode->getMesh()) {
+                auto* sel = smgr_->createTriangleSelector(door->sceneNode->getMesh(), door->sceneNode);
+                if (sel) {
+                    meta->addTriangleSelector(sel);
+                    sel->drop();
+                    doorsAdded++;
+                }
+            }
+        }
+    }
+
+    // Add objects in these regions
+    size_t objectsAdded = 0;
+    for (size_t i = 0; i < objectRegions_.size() && i < objectNodes_.size(); i++) {
+        if (regions.count(objectRegions_[i]) && objectNodes_[i] && objectNodes_[i]->getMesh()) {
+            auto* sel = smgr_->createTriangleSelector(objectNodes_[i]->getMesh(), objectNodes_[i]);
+            if (sel) {
+                meta->addTriangleSelector(sel);
+                sel->drop();
+                objectsAdded++;
+            }
+        }
+    }
+
+    cameraCollisionSelector_ = meta;
+    cameraCollisionRegion_ = currentPvsRegion_;
+
+    // Update camera controller with the smaller selector
+    if (cameraController_ && collisionManager_) {
+        cameraController_->setCollisionManager(collisionManager_, cameraCollisionSelector_);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "Camera collision rebuilt for region {}: {} regions, {} doors, {} objects",
+              currentPvsRegion_, regionsAdded, doorsAdded, objectsAdded);
+}
 
 void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!progressiveLoadingActive_) return;
@@ -11949,6 +12097,9 @@ void IrrlichtRenderer::onPvsRegionChanged() {
     }
 #endif
     // meshLoadQueue_ and textureRebuildQueue_ are repopulated each frame — no action needed
+
+    // Rebuild camera collision with new region's neighbors
+    rebuildCameraCollisionSelector();
 }
 
 void IrrlichtRenderer::queueEntityPrepRequests() {

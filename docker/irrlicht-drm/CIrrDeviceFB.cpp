@@ -166,7 +166,7 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
     : CIrrDeviceStub(param),
       drmFd_(-1), crtcId_(0), connectorId_(0), savedCrtc_(nullptr),
       gbmDevice_(nullptr), gbmSurface_(nullptr),
-      previousBo_(nullptr), previousFb_(0),
+      previousBo_(nullptr),
       eglDisplay_(EGL_NO_DISPLAY), eglSurface_(EGL_NO_SURFACE),
       eglContext_(EGL_NO_CONTEXT), eglConfig_(nullptr),
       ttyFd_(-1), savedKbMode_(-1),
@@ -220,9 +220,8 @@ CIrrDeviceFB::~CIrrDeviceFB()
         eglTerminate(eglDisplay_);
     }
 
-    // Release GBM
+    // Release GBM (cached DRM FBs are cleaned up by gbm_bo user_data destructors)
     if (previousBo_) {
-        drmModeRmFB(drmFd_, previousFb_);
         gbm_surface_release_buffer(gbmSurface_, previousBo_);
     }
     if (gbmSurface_)
@@ -560,6 +559,46 @@ bool CIrrDeviceFB::initEGL()
 // DRM Page Flip
 // ============================================================
 
+// Per-bo cached framebuffer data, stored via gbm_bo_set_user_data().
+// GBM recycles a small pool of buffer objects (typically 2-3), so each bo
+// gets a DRM framebuffer created once and reused for thousands of frames.
+// The destructor callback runs when GBM actually frees the bo.
+struct DrmFbData {
+    int drmFd;
+    uint32_t fbId;
+};
+
+static void drmFbDestroyCallback(struct gbm_bo* bo, void* data) {
+    auto* fbData = static_cast<DrmFbData*>(data);
+    if (fbData) {
+        if (fbData->fbId)
+            drmModeRmFB(fbData->drmFd, fbData->fbId);
+        delete fbData;
+    }
+}
+
+static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint32_t height) {
+    // Check for cached FB on this bo
+    auto* existing = static_cast<DrmFbData*>(gbm_bo_get_user_data(bo));
+    if (existing)
+        return existing->fbId;
+
+    // First time seeing this bo — create a DRM framebuffer
+    uint32_t handle = gbm_bo_get_handle(bo).u32;
+    uint32_t stride = gbm_bo_get_stride(bo);
+    uint32_t fb = 0;
+
+    int ret = drmModeAddFB(drmFd, width, height, 24, 32, stride, handle, &fb);
+    if (ret) {
+        os::Printer::log("DRM: drmModeAddFB failed", ELL_WARNING);
+        return 0;
+    }
+
+    auto* fbData = new DrmFbData{drmFd, fb};
+    gbm_bo_set_user_data(bo, fbData, drmFbDestroyCallback);
+    return fb;
+}
+
 void CIrrDeviceFB::drmPageFlip()
 {
     eglSwapBuffers(eglDisplay_, eglSurface_);
@@ -570,40 +609,33 @@ void CIrrDeviceFB::drmPageFlip()
         return;
     }
 
-    uint32_t handle = gbm_bo_get_handle(bo).u32;
-    uint32_t stride = gbm_bo_get_stride(bo);
-    uint32_t fb = 0;
-
-    int ret = drmModeAddFB(drmFd_, Width, Height, 24, 32, stride, handle, &fb);
-    if (ret) {
-        os::Printer::log("DRM: drmModeAddFB failed", ELL_WARNING);
+    uint32_t fb = getOrCreateFb(bo, drmFd_, Width, Height);
+    if (!fb) {
         gbm_surface_release_buffer(gbmSurface_, bo);
         return;
     }
 
     if (firstFrame_) {
         // First frame: set the CRTC
-        ret = drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
+        int ret = drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
         if (ret) {
             os::Printer::log("DRM: drmModeSetCrtc failed", ELL_WARNING);
         }
         firstFrame_ = false;
     } else {
         // Subsequent frames: page flip (non-blocking)
-        ret = drmModePageFlip(drmFd_, crtcId_, fb, 0, nullptr);
+        int ret = drmModePageFlip(drmFd_, crtcId_, fb, 0, nullptr);
         if (ret) {
             // Page flip failed (e.g., previous flip still pending) - use SetCrtc as fallback
             drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
         }
     }
 
-    // Release previous buffer
+    // Release previous buffer (FB stays cached via gbm_bo user_data)
     if (previousBo_) {
-        drmModeRmFB(drmFd_, previousFb_);
         gbm_surface_release_buffer(gbmSurface_, previousBo_);
     }
     previousBo_ = bo;
-    previousFb_ = fb;
 }
 
 // ============================================================

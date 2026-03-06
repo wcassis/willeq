@@ -38,5 +38,6 @@ int main(int argc, char* argv[]) {
 
     app.run();
     app.shutdown();
+    FlushThreadLog();
     return 0;
 }

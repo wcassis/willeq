@@ -158,6 +158,7 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
         std::wstring text(textNarrow.begin(), textNarrow.end());
 
         drawLoadingFrame(driver, font, progress, title, text);
+        FlushThreadLog();
 
         // ~30 fps for the progress bar
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
@@ -177,6 +178,7 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
     if (activeCallback) {
         activeCallback(status);
     }
+    FlushThreadLog();
 
     // Release GL context before signaling completion
     releaseContext(handles);

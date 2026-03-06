@@ -475,7 +475,9 @@ void RDPServer::listenerThread() {
             LOG_ERROR(MOD_GRAPHICS, "Listener CheckFileDescriptor failed");
             break;
         }
+        FlushThreadLog();
     }
+    FlushThreadLog();
 }
 
 void RDPServer::peerThreadImpl(freerdp_peer* client, std::atomic<bool>* finished) {
@@ -652,6 +654,7 @@ void RDPServer::peerThreadImpl(freerdp_peer* client, std::atomic<bool>* finished
 
 cleanup:
     LOG_INFO(MOD_GRAPHICS, "RDP peer disconnecting: {}", client->hostname ? client->hostname : "unknown");
+    FlushThreadLog();
     client->Disconnect(client);
     freerdp_peer_context_free(client);
     freerdp_peer_free(client);

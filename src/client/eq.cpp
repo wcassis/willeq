@@ -15322,6 +15322,7 @@ void EverQuest::StartUpdateLoop()
 			// Sleep to maintain ~60 FPS
 			// std::this_thread::sleep_for(std::chrono::milliseconds(16));
 			std::this_thread::sleep_for(std::chrono::milliseconds(500));
+			FlushThreadLog();
 		}
 
 		if (s_debug_level >= 2) {
@@ -18916,7 +18917,10 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 
 	// Loading thread owns GL context — skip all rendering.
 	// Check for loading completion and join.
-	if (m_loading_thread && m_loading_thread->isRunning()) {
+	// Note: check m_loading_thread (not isRunning()) to avoid race where the
+	// thread sets running_=false before main thread polls. JoinLoadingThread()
+	// resets m_loading_thread to null, so subsequent iterations skip this block.
+	if (m_loading_thread) {
 		if (m_loading_status.loadingComplete.load(std::memory_order_acquire)) {
 			JoinLoadingThread();
 			OnGraphicsComplete();
