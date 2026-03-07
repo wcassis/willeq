@@ -82,6 +82,12 @@ public:
     // Set constrained texture cache (for memory-managed texture loading after pixel data release)
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
 
+    // Set custom shader material types for door mesh building
+    void setShaderMaterialTypes(irr::s32 solid, irr::s32 alphaTest) {
+        shaderMaterialSolid_ = solid;
+        shaderMaterialAlphaTest_ = alphaTest;
+    }
+
     // Set BSP tree for occlusion region lookup
     void setBspTree(const BspTree* tree) { bspTree_ = tree; }
 
@@ -197,6 +203,8 @@ private:
     mutable std::vector<std::string> lastMissingTextures_;  // Textures pending async upload from last findDoorMesh
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
+    irr::s32 shaderMaterialSolid_ = -1;
+    irr::s32 shaderMaterialAlphaTest_ = -1;
     std::shared_ptr<S3DZone> currentZone_;
     ConstrainedTextureCache* constrainedCache_ = nullptr;
     const BspTree* bspTree_ = nullptr;

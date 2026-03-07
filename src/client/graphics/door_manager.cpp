@@ -168,8 +168,8 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             upperDoorName, geomIt->second->vertices.size(), geomIt->second->triangles.size());
         ZoneMeshBuilder builder(smgr_, driver_, nullptr);
         if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
-        // No custom shader — doors use built-in EMT_SOLID/EMT_TRANSPARENT_ALPHA_CHANNEL_REF
-        // which route through the cheap Solid3D/AlphaTest3D programs (no per-node callback)
+        if (shaderMaterialSolid_ >= 0)
+            builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
         if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames().empty()) {
             mesh = builder.buildTexturedMesh(*geomIt->second, currentZone_->objectTextures);
         } else {
@@ -201,6 +201,8 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
                 upperDoorName, name, geom->vertices.size());
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
+            if (shaderMaterialSolid_ >= 0)
+                builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !geom->textureNames().empty()) {
                 mesh = builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
             } else {
@@ -233,6 +235,8 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (matched) {
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
+            if (shaderMaterialSolid_ >= 0)
+                builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
                 mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
@@ -252,6 +256,10 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
 }
 
 void DoorManager::invalidateMeshCache(const std::string& doorName) {
+    if (doorName.empty()) {
+        doorMeshCache_.clear();
+        return;
+    }
     std::string upper = doorName;
     std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
     doorMeshCache_.erase(upper);
@@ -1376,7 +1384,7 @@ std::vector<irr::scene::IMeshSceneNode*> DoorManager::getDoorSceneNodes() const
     std::vector<irr::scene::IMeshSceneNode*> nodes;
     nodes.reserve(doors_.size());
     for (const auto& [id, visual] : doors_) {
-        if (visual.sceneNode && visual.inSceneGraph) {
+        if (visual.sceneNode) {
             nodes.push_back(visual.sceneNode);
         }
     }

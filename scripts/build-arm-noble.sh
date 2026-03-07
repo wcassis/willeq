@@ -119,6 +119,10 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
         file "$OUTPUT_DIR/bin/gles2_npot_test"
         ls -lh "$OUTPUT_DIR/bin/gles2_npot_test"
     fi
+    if [ -f "$OUTPUT_DIR/bin/gles2_fog_volume_benchmark" ]; then
+        file "$OUTPUT_DIR/bin/gles2_fog_volume_benchmark"
+        ls -lh "$OUTPUT_DIR/bin/gles2_fog_volume_benchmark"
+    fi
     echo ""
     echo "Binaries: $OUTPUT_DIR/bin/willeq"
     echo "          $OUTPUT_DIR/bin/model_viewer"

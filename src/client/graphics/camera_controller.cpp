@@ -144,7 +144,9 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
         // Check for collision between player and camera
         float effectiveDistance = preferredFollowDistance_;
 
-        if (collisionManager_ && collisionSelector_) {
+        // Cache selector locally — it could be cleared by another thread between checks
+        auto* selector = collisionSelector_;
+        if (collisionManager_ && selector) {
             irr::core::vector3df hitPoint;
             irr::core::triangle3df hitTriangle;
             irr::scene::ISceneNode* hitNode = nullptr;
@@ -159,7 +161,7 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
             );
             irr::core::line3df ceilingRay(ceilingCheckStart, ceilingCheckEnd);
 
-            if (collisionManager_->getCollisionPoint(ceilingRay, collisionSelector_,
+            if (collisionManager_->getCollisionPoint(ceilingRay, selector,
                                                      hitPoint, hitTriangle, hitNode)) {
                 // Ceiling detected - limit camera height to below ceiling
                 float ceilingHeight = hitPoint.Y - CAMERA_COLLISION_OFFSET;
@@ -186,7 +188,7 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
             hitNode = nullptr;
             irr::core::line3df ray(playerEye, idealPos);
 
-            if (collisionManager_->getCollisionPoint(ray, collisionSelector_,
+            if (collisionManager_->getCollisionPoint(ray, selector,
                                                      hitPoint, hitTriangle, hitNode)) {
                 // Calculate distance from player eye to hit point
                 float hitDist = playerEye.getDistanceFrom(hitPoint);

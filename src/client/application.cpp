@@ -481,8 +481,11 @@ void Application::processInput(float deltaTime) {
         m_gameMode->update(deltaTime);
     }
 
-    // Process input through the action bridge
-    if (m_inputBridge) {
+    // Process input through the action bridge — but NOT when graphics handle input.
+    // IrrlichtRenderer owns all input via evdev/X11 and has its own chat-focus gating.
+    // Running the bridge in parallel would bypass that gating (ConsoleInputHandler reads
+    // stdin, which may receive duplicate keystrokes if K_OFF isn't active).
+    if (m_inputBridge && !m_graphicsInitialized) {
         m_inputBridge->update(deltaTime);
     }
 }

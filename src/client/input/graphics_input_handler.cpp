@@ -154,8 +154,8 @@ void GraphicsInputHandler::updateFromEventReceiver() {
         m_pendingActions[static_cast<size_t>(InputAction::CloseChat)] = true;
     }
 
-    // Check for jump (space key)
-    if (m_eventReceiver->wasKeyPressed(irr::KEY_SPACE)) {
+    // Check for jump (space key) — skip when chat input is focused
+    if (!m_eventReceiver->isChatInputFocused() && m_eventReceiver->wasKeyPressed(irr::KEY_SPACE)) {
         m_pendingActions[static_cast<size_t>(InputAction::Jump)] = true;
     }
 #endif

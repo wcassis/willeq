@@ -964,6 +964,35 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
     if (bestId == 0) return false;
 
     auto& vis = entities_[bestId];
+    auto entryPhase = vis.buildPhase;
+    auto stepStart = std::chrono::steady_clock::now();
+
+    static auto phaseName = [](EntityBuildPhase p) -> const char* {
+        switch (p) {
+            case EntityBuildPhase::Placeholder: return "Placeholder";
+            case EntityBuildPhase::TextureUploading: return "TextureUpload";
+            case EntityBuildPhase::VariantTextureUploading: return "VariantTexUpload";
+            case EntityBuildPhase::SceneNodeCreation: return "SceneNodeCreate";
+            case EntityBuildPhase::NodeSetup: return "NodeSetup";
+            case EntityBuildPhase::MeshFinalize: return "MeshFinalize";
+            case EntityBuildPhase::EquipTextureUploading: return "EquipTexUpload";
+            case EntityBuildPhase::EquipmentAttach: return "EquipAttach";
+            case EntityBuildPhase::Built: return "Built";
+        }
+        return "Unknown";
+    };
+
+    // RAII logger — fires when processOneEntityBuildStep returns
+    struct PhaseTimer {
+        uint16_t id; const char* name; EntityBuildPhase entry; EntityBuildPhase* current;
+        std::chrono::steady_clock::time_point start;
+        ~PhaseTimer() {
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            LOG_INFO(MOD_GRAPHICS, "EntityBuild: {} ({}) {} -> {} in {}us",
+                     id, name, phaseName(entry), phaseName(*current), us);
+        }
+    } phaseTimer{bestId, vis.name.c_str(), entryPhase, &vis.buildPhase, stepStart};
 
     for (;;) { // Loop to fall through trivial phase transitions without wasting frames
     switch (vis.buildPhase) {
@@ -2702,6 +2731,35 @@ void EntityRenderer::setNameTagsVisible(bool visible) {
             visual.nameNode->setVisible(visible);
         }
     }
+}
+
+void EntityRenderer::swapShaderMaterials(irr::s32 oldSolid, irr::s32 newSolid,
+                                         irr::s32 oldAlpha, irr::s32 newAlpha) {
+    if (oldSolid == newSolid && oldAlpha == newAlpha) return;
+
+    auto swapMat = [&](irr::video::SMaterial& mat) {
+        if (mat.MaterialType == static_cast<irr::video::E_MATERIAL_TYPE>(oldSolid))
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(newSolid);
+        else if (mat.MaterialType == static_cast<irr::video::E_MATERIAL_TYPE>(oldAlpha))
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(newAlpha);
+    };
+
+    auto swapSceneNode = [&](irr::scene::ISceneNode* node) {
+        if (!node) return;
+        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i)
+            swapMat(node->getMaterial(i));
+    };
+
+    int swapped = 0;
+    for (auto& [spawnId, visual] : entities_) {
+        swapSceneNode(visual.meshNode);
+        swapSceneNode(visual.animatedNode);
+        swapSceneNode(visual.primaryEquipNode);
+        swapSceneNode(visual.secondaryEquipNode);
+        ++swapped;
+    }
+    LOG_INFO(MOD_GRAPHICS, "EntityRenderer::swapShaderMaterials: {} entities swapped (old={}/{} new={}/{})",
+             swapped, oldSolid, oldAlpha, newSolid, newAlpha);
 }
 
 void EntityRenderer::setLightingEnabled(bool enabled) {

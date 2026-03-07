@@ -793,6 +793,10 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         if (frustumCuller_) {
             doorManager_->setFrustumCuller(frustumCuller_.get());
         }
+        if (zoneShader_ && zoneShader_->isAvailable()) {
+            doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                 zoneShader_->getActiveAlphaTest());
+        }
     }
 
     // Create sky renderer (if not already created)
@@ -3066,6 +3070,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         doorManager_->setZone(currentZone_);
         if (constrainedTextureCache_)
             doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        if (zoneShader_ && zoneShader_->isAvailable())
+            doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                 zoneShader_->getActiveAlphaTest());
     }
 
     // ── Step 2: BSP — compute spatial data ─────────────────────────────────
@@ -3805,6 +3812,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             doorManager_->setPvsRegion(currentPvsRegion_);
             if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
             doorManager_->setRegionNeighbors(regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
+            if (zoneShader_ && zoneShader_->isAvailable())
+                doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                                     zoneShader_->getActiveAlphaTest());
         }
 
         // Rebuild all doors at once
@@ -5445,10 +5455,12 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     bool hasAtlas = zoneAtlas_ && zoneAtlas_->isLoaded();
 
     LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} build config — shader={} atlas={} "
-             "hasTextures={} (count={}) hasTexNames={} hasAtlas={}",
+             "hasTextures={} (count={}) hasTexNames={} hasAtlas={} activeSolid={} activeAlpha={}",
              regionIdx, shaderAvail, atlasAvail,
              hasTextures, currentZone_->textures.size(),
-             hasTexNames, hasAtlas);
+             hasTexNames, hasAtlas,
+             shaderAvail ? zoneShader_->getActiveSolid() : -1,
+             shaderAvail ? zoneShader_->getActiveAlphaTest() : -1);
 
     irr::scene::IMesh* mesh = nullptr;
     const char* buildPath = "none";
@@ -9949,6 +9961,15 @@ void IrrlichtRenderer::togglePlayerLight() {
     // Toggle shader variant (GLES2 only — lightweight vs per-pixel player light)
     if (zoneShader_ && zoneShader_->isLightweightAvailable()) {
         zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
+        LOG_INFO(MOD_GRAPHICS, "plight toggle: pp solid={} alpha={} atlasSolid={} atlasAlpha={}",
+            zoneShader_->getMaterialTypeSolid(), zoneShader_->getMaterialTypeAlphaTest(),
+            zoneShader_->getMaterialTypeAtlasSolid(), zoneShader_->getMaterialTypeAtlasAlpha());
+        LOG_INFO(MOD_GRAPHICS, "plight toggle: lw solid={} alpha={} atlasSolid={} atlasAlpha={}",
+            zoneShader_->getMaterialTypeLWSolid(), zoneShader_->getMaterialTypeLWAlphaTest(),
+            zoneShader_->getMaterialTypeLWAtlasSolid(), zoneShader_->getMaterialTypeLWAtlasAlpha());
+        LOG_INFO(MOD_GRAPHICS, "plight toggle: active solid={} alpha={} atlasSolid={} atlasAlpha={}",
+            zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest(),
+            zoneShader_->getActiveAtlasSolid(), zoneShader_->getActiveAtlasAlpha());
         swapZoneMeshMaterials();
     }
     LOG_INFO(MOD_GRAPHICS, "Debug: Player light {}", debugPlayerLightEnabled_ ? "ENABLED" : "DISABLED");
@@ -9994,6 +10015,7 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
         return cur;  // Not a custom shader material — leave unchanged
     };
 
+    int swapTotal = 0, swapChanged = 0;
     auto swapNode = [&](irr::scene::IMeshSceneNode* node) {
         if (!node) return;
         auto* mesh = node->getMesh();
@@ -10002,8 +10024,10 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
             auto& mat = mesh->getMeshBuffer(i)->getMaterial();
             irr::s32 cur = mat.MaterialType;
             irr::s32 mapped = mapMaterial(cur);
+            ++swapTotal;
             if (mapped != cur) {
                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
+                ++swapChanged;
             }
         }
     };
@@ -10024,13 +10048,39 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
         swapNode(node);
     }
 
+    // Swap door mesh materials and update stored types for future door builds
+    int doorSwapped = 0;
+    if (doorManager_) {
+        doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
+                                             zoneShader_->getActiveAlphaTest());
+        // Swap materials on existing door scene nodes
+        for (auto* node : doorManager_->getDoorSceneNodes()) {
+            swapNode(node);
+            ++doorSwapped;
+        }
+        // Invalidate mesh cache so future rebuilds use the new material types
+        doorManager_->invalidateMeshCache("");
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "swapZoneMeshMaterials: swapped {}/{} mesh buffers (zone={} regions={} fallback={} objects={} doors={})",
+        swapChanged, swapTotal,
+        zoneMeshNode_ != nullptr, regionMeshNodes_.size(),
+        fallbackMeshNode_ != nullptr, objectNodes_.size(), doorSwapped);
+
     // Rebuild sorted draw list if manual zone draw is active (material keys changed)
     if (manualZoneDrawEnabled_) {
         sortedDrawEntries_.clear();
     }
 
-    // Update entity renderer and tree manager with new active material types
+    // Swap existing entity mesh materials and update future entity material types
     if (entityRenderer_ && zoneShader_->isAvailable()) {
+        entityRenderer_->swapShaderMaterials(
+            m.ppSolid, zoneShader_->getActiveSolid(),
+            m.ppAlpha, zoneShader_->getActiveAlphaTest());
+        // Also swap lw→active in case entities had lightweight materials
+        entityRenderer_->swapShaderMaterials(
+            m.lwSolid, zoneShader_->getActiveSolid(),
+            m.lwAlpha, zoneShader_->getActiveAlphaTest());
         entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                 zoneShader_->getActiveAlphaTest());
     }
@@ -11667,7 +11717,19 @@ void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
 }
 
 void IrrlichtRenderer::rebuildCameraCollisionSelector() {
-    if (!smgr_ || currentPvsRegion_ == SIZE_MAX) return;
+    if (!smgr_) return;
+    if (currentPvsRegion_ == SIZE_MAX) {
+        // Player outside zone bounds — clear collision selector to avoid stale pointers
+        if (cameraCollisionSelector_) {
+            cameraCollisionSelector_->drop();
+            cameraCollisionSelector_ = nullptr;
+            cameraCollisionRegion_ = SIZE_MAX;
+            if (cameraController_) {
+                cameraController_->setCollisionManager(collisionManager_, nullptr);
+            }
+        }
+        return;
+    }
     if (currentPvsRegion_ == cameraCollisionRegion_) return;  // no change
 
     // Drop old selector

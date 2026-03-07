@@ -290,6 +290,10 @@ public:
         shaderMaterialAlphaTest_ = alphaTestType;
     }
 
+    // Swap shader materials on all existing entity mesh nodes (old → new mapping)
+    void swapShaderMaterials(irr::s32 oldSolid, irr::s32 newSolid,
+                             irr::s32 oldAlpha, irr::s32 newAlpha);
+
     // Get race model loader (for preloading)
     RaceModelLoader* getRaceModelLoader() { return raceModelLoader_.get(); }
 
