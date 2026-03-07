@@ -408,7 +408,14 @@ All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS u
 
 Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQT_HAS_GLES2` is defined (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
 
-**Per-vertex lighting with wrap lighting**: All 8 point lights computed per-vertex. Player light (index 0, highest priority) uses wrap lighting formula `(NdotL+0.5)/1.5` for softer transitions on large zone triangles. Zone lights (indices 1-7: torches, campfires) use standard Lambertian `max(NdotL, 0.0)`. All lights use quadratic attenuation `1/(x + y*d + z*d² + ε)`. Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
+**Hybrid per-vertex/per-pixel lighting**: Zone lights (indices 1-7: torches, campfires) are computed per-vertex in the VS using standard Lambertian `max(NdotL, 0.0)` with quadratic attenuation. Player light (index 0) is computed per-pixel in the FS when `/plight` is enabled, using OPT C math: single `inversesqrt` for light direction, quadratic-only attenuation `1/(constant + quadratic*d²)`, no FS `normalize()` of normal (VS already normalizes). When `/plight` is disabled, lightweight shaders are used (all lights per-vertex, trivial FS). The renderer auto-swaps all zone mesh materials between per-pixel and lightweight variants via `swapZoneMeshMaterials()`. Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
+
+**Mali 400 shader optimization rules** (benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_benchmark`):
+- **FS branches are extremely expensive** even on uniforms. A simple `if (color > 0)` on Mali 400 fragment cores costs ~4.5ms at 1280x720 with only 224 triangles. Always use branchless shaders or specialized programs instead of runtime `if` checks.
+- **`length()` and `normalize()` are expensive in FS** — each requires `sqrt`/`inversesqrt`. Consolidate to a single `inversesqrt(dot(v,v))` when possible.
+- **VS branches and light count are free** — the Mali 400 vertex processor handles loops and branches efficiently. 0 VS lights vs 7 VS lights: identical performance.
+- **Program switching cost is negligible** — ~0.08ms per `glUseProgram` switch. Switching between 2-8 programs within a frame costs <1ms total.
+- **Total compiled program count has zero impact** — 9, 18, or 27 compiled programs show identical render performance. No instruction store pressure observed.
 
 ### Zone Rendering Optimizations
 
@@ -812,6 +819,7 @@ Graphics is enabled by default (`EQT_GRAPHICS=ON` in CMake). Requires EQ Titaniu
 - `merge_sf2.py` - SoundFont merger utility for combining multiple SF2 files
 - `generate_textures` - Offline procedural texture generator
 - GPU capability tools: `gpu_texture_formats`, `gles2_etc1_benchmark`, `egl_image_sharing_test`
+- Shader benchmarks: `gles2_shader_perpixel_benchmark` (FS optimization variants), `gles2_program_switch_benchmark` (per-light-count programs, switching cost, program count pressure)
 
 ### Model Loading Order
 

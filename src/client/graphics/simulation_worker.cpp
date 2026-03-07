@@ -1018,6 +1018,12 @@ void SimulationWorker::computeLightSelection(const SimulationInput& input, Simul
         if (c.isPlayerLight) {
             // Player light at current player position (elevated slightly)
             sl.position = irr::core::vector3df(input.playerX, input.playerZ + 3.0f, input.playerY);
+            sl.diffuseColor = input.playerLightColor;
+            sl.originalColor = input.playerLightColor;
+            sl.radius = input.playerLightRadius;
+            sl.attConstant = input.playerLightAttConstant;
+            sl.attLinear = input.playerLightAttLinear;
+            sl.attQuadratic = input.playerLightAttQuadratic;
             sl.isPlayerLight = true;
             sl.isZoneLight = false;
             sl.valid = true;

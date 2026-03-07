@@ -231,6 +231,11 @@ struct SimulationInput {
 
     // Player light
     uint8_t playerLightLevel = 0;
+    irr::video::SColorf playerLightColor;      // From playerLightNode_ diffuse
+    float playerLightRadius = 0;
+    float playerLightAttConstant = 1.0f;
+    float playerLightAttLinear = 0;
+    float playerLightAttQuadratic = 0;
 
     // Vision and weather modifiers (for zone light animation colors)
     uint8_t visionType = 0;               // 0=Normal, 1=Ultravision, 2=Infravision

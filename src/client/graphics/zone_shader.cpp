@@ -110,16 +110,13 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (skipped when color is zero — /plight off or no player light)
-    vec3 pLight = vec3(0.0);
-    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
-        vec3 pLv = uPlayerLightPos - vWorldPos;
-        float pLd = length(pLv) + 0.001;
-        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-        pLight = uPlayerLightColor * pLn * pLa;
-    }
+    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv) + 0.0001;
+    float invD = inversesqrt(d2);
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -146,15 +143,13 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
 
-    vec3 pLight = vec3(0.0);
-    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
-        vec3 pLv = uPlayerLightPos - vWorldPos;
-        float pLd = length(pLv) + 0.001;
-        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-        pLight = uPlayerLightColor * pLn * pLa;
-    }
+    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv) + 0.0001;
+    float invD = inversesqrt(d2);
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -184,15 +179,13 @@ void main() {
     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
     if (texColor.a < threshold) discard;
 
-    vec3 pLight = vec3(0.0);
-    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
-        vec3 pLv = uPlayerLightPos - vWorldPos;
-        float pLd = length(pLv) + 0.001;
-        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-        pLight = uPlayerLightColor * pLn * pLa;
-    }
+    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv) + 0.0001;
+    float invD = inversesqrt(d2);
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -290,15 +283,13 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLight = vec3(0.0);
-    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
-        vec3 pLv = uPlayerLightPos - vWorldPos;
-        float pLd = length(pLv) + 0.001;
-        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-        pLight = uPlayerLightColor * pLn * pLa;
-    }
+    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv) + 0.0001;
+    float invD = inversesqrt(d2);
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -327,15 +318,13 @@ void main() {
     if (alpha < 0.5) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLight = vec3(0.0);
-    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
-        vec3 pLv = uPlayerLightPos - vWorldPos;
-        float pLd = length(pLv) + 0.001;
-        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-        pLight = uPlayerLightColor * pLn * pLa;
-    }
+    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv) + 0.0001;
+    float invD = inversesqrt(d2);
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -367,15 +356,13 @@ void main() {
     if (alpha < threshold) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLight = vec3(0.0);
-    if (uPlayerLightColor.x + uPlayerLightColor.y + uPlayerLightColor.z > 0.0) {
-        vec3 pLv = uPlayerLightPos - vWorldPos;
-        float pLd = length(pLv) + 0.001;
-        float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.y * pLd
-                            + uPlayerLightAtten.z * pLd * pLd + 0.0001);
-        float pLn = max(dot(normalize(vWorldNormal), pLv / pLd), 0.0);
-        pLight = uPlayerLightColor * pLn * pLa;
-    }
+    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv) + 0.0001;
+    float invD = inversesqrt(d2);
+    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);

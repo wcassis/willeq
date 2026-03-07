@@ -7276,6 +7276,14 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
 
     // Player light
     input.playerLightLevel = playerLightLevel_;
+    if (playerLightNode_ && playerLightLevel_ > 0) {
+        const auto& ld = playerLightNode_->getLightData();
+        input.playerLightColor = ld.DiffuseColor;
+        input.playerLightRadius = ld.Radius;
+        input.playerLightAttConstant = ld.Attenuation.X;
+        input.playerLightAttLinear = ld.Attenuation.Y;
+        input.playerLightAttQuadratic = ld.Attenuation.Z;
+    }
 
     // Vision and weather modifiers (for zone light animation colors)
     input.visionType = static_cast<uint8_t>(currentVision_);
