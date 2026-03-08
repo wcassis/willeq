@@ -702,10 +702,147 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
 }
 
 // ============================================================================
-// Atlas Batched Mesh Building
+// Pre-Tessellation: Split triangles at integer UV boundaries
 // ============================================================================
 
 #ifdef EQT_HAS_TEXTURE_ATLAS
+
+// Interpolated vertex for pre-tessellation (position, normal, UV)
+struct TessVertex {
+    float x, y, z;
+    float nx, ny, nz;
+    float u, v;
+};
+
+// A triangle of interpolated vertices (result of tessellation)
+struct TessTriangle {
+    TessVertex v[3];
+};
+
+static TessVertex lerpVertex(const TessVertex& a, const TessVertex& b, float t) {
+    return {
+        a.x + t * (b.x - a.x),
+        a.y + t * (b.y - a.y),
+        a.z + t * (b.z - a.z),
+        a.nx + t * (b.nx - a.nx),
+        a.ny + t * (b.ny - a.ny),
+        a.nz + t * (b.nz - a.nz),
+        a.u + t * (b.u - a.u),
+        a.v + t * (b.v - a.v),
+    };
+}
+
+// Clip a convex polygon against one half-plane in UV space.
+// axis: 0 = clip by U, 1 = clip by V
+// clipVal: the integer boundary value
+// keepAbove: true = keep vertices where UV >= clipVal, false = keep UV <= clipVal
+static std::vector<TessVertex> clipPolygon(const std::vector<TessVertex>& poly,
+                                            int axis, float clipVal, bool keepAbove) {
+    if (poly.empty()) return {};
+    std::vector<TessVertex> out;
+    size_t n = poly.size();
+
+    for (size_t i = 0; i < n; ++i) {
+        const auto& cur = poly[i];
+        const auto& next = poly[(i + 1) % n];
+
+        float curUV = (axis == 0) ? cur.u : cur.v;
+        float nextUV = (axis == 0) ? next.u : next.v;
+
+        bool curInside = keepAbove ? (curUV >= clipVal - 1e-6f) : (curUV <= clipVal + 1e-6f);
+        bool nextInside = keepAbove ? (nextUV >= clipVal - 1e-6f) : (nextUV <= clipVal + 1e-6f);
+
+        if (curInside) {
+            out.push_back(cur);
+        }
+
+        if (curInside != nextInside) {
+            // Edge crosses the clip line — compute intersection
+            float denom = nextUV - curUV;
+            if (std::abs(denom) > 1e-8f) {
+                float t = (clipVal - curUV) / denom;
+                t = std::max(0.0f, std::min(1.0f, t));
+                out.push_back(lerpVertex(cur, next, t));
+            }
+        }
+    }
+    return out;
+}
+
+// Fan-triangulate a convex polygon (3+ vertices) into triangles
+static void fanTriangulate(const std::vector<TessVertex>& poly, std::vector<TessTriangle>& out) {
+    if (poly.size() < 3) return;
+    for (size_t i = 1; i + 1 < poly.size(); ++i) {
+        TessTriangle t;
+        t.v[0] = poly[0];
+        t.v[1] = poly[i];
+        t.v[2] = poly[i + 1];
+        out.push_back(t);
+    }
+}
+
+// Split a single triangle at integer UV boundaries so each sub-triangle
+// fits within one UV cell [floor, floor+1).
+// Returns the list of sub-triangles. For triangles already fitting in one cell,
+// returns a single triangle (no allocation overhead from the caller's perspective
+// since they check span first).
+static std::vector<TessTriangle> splitTriangleToUVCells(const TessVertex& v0,
+                                                         const TessVertex& v1,
+                                                         const TessVertex& v2) {
+    // Find the integer grid lines crossing the triangle's UV bounding box
+    float uMin = std::min({v0.u, v1.u, v2.u});
+    float uMax = std::max({v0.u, v1.u, v2.u});
+    float vMin = std::min({v0.v, v1.v, v2.v});
+    float vMax = std::max({v0.v, v1.v, v2.v});
+
+    // Integer boundaries that lie strictly inside the UV range
+    int uStart = static_cast<int>(std::floor(uMin)) + 1;
+    int uEnd   = static_cast<int>(std::ceil(uMax));
+    int vStart = static_cast<int>(std::floor(vMin)) + 1;
+    int vEnd   = static_cast<int>(std::ceil(vMax));
+
+    // Start with the original triangle as a polygon
+    std::vector<std::vector<TessVertex>> strips;
+    strips.push_back({v0, v1, v2});
+
+    // Clip by each integer U line, splitting polygons into vertical strips
+    for (int u = uStart; u < uEnd; ++u) {
+        float uVal = static_cast<float>(u);
+        std::vector<std::vector<TessVertex>> newStrips;
+        for (auto& poly : strips) {
+            auto left = clipPolygon(poly, 0, uVal, false);
+            auto right = clipPolygon(poly, 0, uVal, true);
+            if (left.size() >= 3) newStrips.push_back(std::move(left));
+            if (right.size() >= 3) newStrips.push_back(std::move(right));
+        }
+        strips = std::move(newStrips);
+    }
+
+    // Clip each strip by each integer V line
+    for (int v = vStart; v < vEnd; ++v) {
+        float vVal = static_cast<float>(v);
+        std::vector<std::vector<TessVertex>> newStrips;
+        for (auto& poly : strips) {
+            auto below = clipPolygon(poly, 1, vVal, false);
+            auto above = clipPolygon(poly, 1, vVal, true);
+            if (below.size() >= 3) newStrips.push_back(std::move(below));
+            if (above.size() >= 3) newStrips.push_back(std::move(above));
+        }
+        strips = std::move(newStrips);
+    }
+
+    // Fan-triangulate all resulting convex polygons
+    std::vector<TessTriangle> result;
+    for (auto& poly : strips) {
+        fanTriangulate(poly, result);
+    }
+    return result;
+}
+
+// ============================================================================
+// Atlas Batched Mesh Building
+// ============================================================================
+
 irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
     const ZoneGeometry& geometry,
     const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
@@ -723,12 +860,17 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
     const size_t MAX_VERTICES_PER_BUFFER = 65535;
 
     // Classify each texture index: atlas page or fallback
-    // Key: atlas page index (or -1 for non-atlased), Value: triangle indices
+    // Key: atlas page index (or -1 for non-atlased), Value: triangle indices + tessellated tris
+    struct TessTriData {
+        TessTriangle tri;
+        uint32_t textureIndex;
+    };
     struct PageBucket {
         int pageIndex;
         bool hasAlpha;
         uint16_t alphaPageIndex;
-        std::vector<size_t> triangleIndices;
+        std::vector<size_t> triangleIndices;            // Original tris that fit in one UV cell
+        std::vector<TessTriData> tessellatedTriangles;  // Sub-tris from UV cell splitting
     };
 
     // Map: atlas page index -> PageBucket
@@ -773,8 +915,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
         }
 
         // Check if triangle UVs span more than 1 cell in either dimension.
-        // If so, the atlas UV (tile->uvOffset + relUV * tileScale) would overflow
-        // into adjacent tiles. Send these to per-texture fallback rendering.
+        // If so, pre-tessellate at integer UV boundaries so each sub-triangle
+        // fits within one UV cell for correct atlas UV precomputation.
         {
             const auto& v0 = geometry.vertices[tri.v1];
             const auto& v1 = geometry.vertices[tri.v2];
@@ -783,26 +925,40 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
             float uMax = std::max({v0.u, v1.u, v2.u});
             float vMin = std::min({v0.v, v1.v, v2.v});
             float vMax = std::max({v0.v, v1.v, v2.v});
-            // relU = u - floor(uMin), so max relU = uMax - floor(uMin).
-            // If that exceeds 1.0, the atlas UV will sample outside the tile.
             float maxRelU = uMax - std::floor(uMin);
             float maxRelV = vMax - std::floor(vMin);
+
+            int pageIdx = tile->pageIndex;
+            auto& bucket = pageBuckets[pageIdx];
+            bucket.pageIndex = pageIdx;
+            bucket.hasAlpha = tile->hasAlpha;
+            bucket.alphaPageIndex = tile->alphaPageIndex;
+
             if (maxRelU > 1.0f || maxRelV > 1.0f) {
-                fallbackTriangles[texIdx].push_back(i);
-                continue;
+                // Triangle spans multiple UV cells — tessellate
+                TessVertex tv0 = {v0.x, v0.y, v0.z, v0.nx, v0.ny, v0.nz, v0.u, v0.v};
+                TessVertex tv1 = {v1.x, v1.y, v1.z, v1.nx, v1.ny, v1.nz, v1.u, v1.v};
+                TessVertex tv2 = {v2.x, v2.y, v2.z, v2.nx, v2.ny, v2.nz, v2.u, v2.v};
+                auto subTris = splitTriangleToUVCells(tv0, tv1, tv2);
+                for (auto& st : subTris) {
+                    bucket.tessellatedTriangles.push_back({st, texIdx});
+                }
+            } else {
+                // Fits in one cell — use original triangle index
+                bucket.triangleIndices.push_back(i);
             }
         }
-
-        int pageIdx = tile->pageIndex;
-        auto& bucket = pageBuckets[pageIdx];
-        bucket.pageIndex = pageIdx;
-        bucket.hasAlpha = tile->hasAlpha;
-        bucket.alphaPageIndex = tile->alphaPageIndex;
-        bucket.triangleIndices.push_back(i);
     }
 
-    LOG_INFO(MOD_GRAPHICS, "buildAtlasedMesh: {} atlas page buckets, {} fallback texture groups",
-             pageBuckets.size(), fallbackTriangles.size());
+    {
+        size_t totalOriginal = 0, totalTessellated = 0;
+        for (const auto& [pageIdx, bucket] : pageBuckets) {
+            totalOriginal += bucket.triangleIndices.size();
+            totalTessellated += bucket.tessellatedTriangles.size();
+        }
+        LOG_INFO(MOD_GRAPHICS, "buildAtlasedMesh: {} atlas page buckets ({} original + {} tessellated tris), {} fallback texture groups",
+                 pageBuckets.size(), totalOriginal, totalTessellated, fallbackTriangles.size());
+    }
 
     // Log which textures are atlas-batched vs fallback
     {
@@ -812,6 +968,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
                 uint32_t texIdx = geometry.triangles[triIdx].textureIndex;
                 if (texIdx < geometry.textureNames().size())
                     atlasedNames.insert(geometry.textureNames()[texIdx]);
+            }
+            for (const auto& td : bucket.tessellatedTriangles) {
+                if (td.textureIndex < geometry.textureNames().size())
+                    atlasedNames.insert(geometry.textureNames()[td.textureIndex]);
             }
         }
         for (const auto& [texIdx, triIndices] : fallbackTriangles) {
@@ -826,7 +986,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
 
     // Build mesh buffers for atlas page buckets using S3DVertex2TCoords
     for (const auto& [pageIdx, bucket] : pageBuckets) {
-        if (bucket.triangleIndices.empty()) continue;
+        if (bucket.triangleIndices.empty() && bucket.tessellatedTriangles.empty()) continue;
 
         // Get the atlas page GL texture handle
         // When deferTextures is true (background thread), skip this check —
@@ -920,6 +1080,53 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
                     currentSB.vertices.push_back(vertex);
                     currentSB.indices.push_back(localIdx);
                 }
+            }
+        }
+
+        // Emit tessellated sub-triangles (interpolated vertices, no dedup)
+        for (const auto& td : bucket.tessellatedTriangles) {
+            uint32_t texIdx = td.textureIndex;
+            std::string texName = geometry.textureNames()[texIdx];
+            std::string lowerName = texName;
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            const auto* tile = atlas.lookup(lowerName);
+            if (!tile) continue;
+
+            // Check sub-buffer space for 3 vertices
+            auto& sb = subBuffers.back();
+            if (sb.vertices.size() + 3 > MAX_VERTICES_PER_BUFFER) {
+                subBuffers.emplace_back();
+            }
+            auto& currentSB = subBuffers.back();
+
+            // Each tessellated sub-triangle fits within one UV cell
+            int cellU = static_cast<int>(std::floor(std::min({td.tri.v[0].u, td.tri.v[1].u, td.tri.v[2].u})));
+            int cellV = static_cast<int>(std::floor(std::min({td.tri.v[0].v, td.tri.v[1].v, td.tri.v[2].v})));
+            float tileScale = tile->uvScale;
+
+            for (int vi = 0; vi < 3; ++vi) {
+                const auto& tv = td.tri.v[vi];
+                irr::video::S3DVertex2TCoords vertex;
+                // Position: EQ Z-up -> Irrlicht Y-up
+                vertex.Pos.X = tv.x;
+                vertex.Pos.Y = tv.z;
+                vertex.Pos.Z = tv.y;
+                vertex.Normal.X = tv.nx;
+                vertex.Normal.Y = tv.nz;
+                vertex.Normal.Z = tv.ny;
+                vertex.TCoords.X = tv.u;
+                vertex.TCoords.Y = tv.v;
+                // Precomputed atlas UV
+                float relU = tv.u - static_cast<float>(cellU);
+                float relV = tv.v - static_cast<float>(cellV);
+                vertex.TCoords2.X = tile->uvOffsetU + relU * tileScale;
+                vertex.TCoords2.Y = tile->uvOffsetV + relV * tileScale;
+                vertex.Color = irr::video::SColor(255, 255, 255, 255);
+
+                irr::u16 localIdx = static_cast<irr::u16>(currentSB.vertices.size());
+                currentSB.vertices.push_back(vertex);
+                currentSB.indices.push_back(localIdx);
             }
         }
 

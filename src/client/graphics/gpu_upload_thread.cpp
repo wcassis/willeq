@@ -293,21 +293,48 @@ void GPUUploadThread::processCompressedTextureUpload(const UploadRequest& req) {
     glGenTextures(1, &texId);
     glBindTexture(GL_TEXTURE_2D, texId);
 
-    glCompressedTexImage2D(GL_TEXTURE_2D, 0,
-                           0x8D64,  // GL_ETC1_RGB8_OES
-                           req.width, req.height, 0,
-                           static_cast<GLsizei>(req.compressedSize),
-                           req.pixelData.data());
+    // Upload all mip levels from contiguous ETC1 data
+    {
+        uint32_t offset = 0;
+        int w = static_cast<int>(req.width);
+        int h = static_cast<int>(req.height);
+        int levels = std::max(static_cast<int>(req.mipLevels), 1);
+        for (int level = 0; level < levels; ++level) {
+            uint32_t blocksW = static_cast<uint32_t>(std::max(1, (w + 3) / 4));
+            uint32_t blocksH = static_cast<uint32_t>(std::max(1, (h + 3) / 4));
+            uint32_t levelSize = blocksW * blocksH * 8;
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            if (offset + levelSize > req.compressedSize) {
+                LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: mip level {} overflows data (offset={}, levelSize={}, total={})",
+                          level, offset, levelSize, req.compressedSize);
+                break;
+            }
+
+            glCompressedTexImage2D(GL_TEXTURE_2D, level,
+                                   0x8D64,  // GL_ETC1_RGB8_OES
+                                   w, h, 0,
+                                   static_cast<GLsizei>(levelSize),
+                                   req.pixelData.data() + offset);
+
+            offset += levelSize;
+            w = std::max(1, w / 2);
+            h = std::max(1, h / 2);
+        }
+    }
+
+    if (req.mipLevels > 1) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
-        LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: compressed texture upload GL error 0x{:04X} ({}x{}, {} bytes)",
-                  err, req.width, req.height, req.compressedSize);
+        LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: compressed texture upload GL error 0x{:04X} ({}x{}, {} bytes, {} levels)",
+                  err, req.width, req.height, req.compressedSize, req.mipLevels);
     }
 
     glFlush();

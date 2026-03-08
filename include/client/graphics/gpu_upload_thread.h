@@ -39,7 +39,8 @@ struct UploadRequest {
     uint32_t width = 0;
     uint32_t height = 0;
     std::vector<uint8_t> pixelData;     // RGBA8 or ETC1 compressed bytes
-    uint32_t compressedSize = 0;        // For ETC1: actual compressed data size
+    uint32_t compressedSize = 0;        // For ETC1: total compressed data size (all mip levels)
+    uint8_t mipLevels = 1;             // Number of mip levels (1 = no mipmaps)
     std::string textureName;            // For Irrlicht texture registration
 
     // VBO fields (VertexBuffer)

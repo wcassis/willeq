@@ -32,6 +32,7 @@ struct AtlasFileHeader {
     uint16_t atlasHeight;
     uint16_t tileSize;
     uint16_t tilesPerRow;
+    uint8_t  mipLevels;    // v2 only (not present in v1 files)
 };
 
 struct AtlasFilePageEntry {
@@ -85,15 +86,26 @@ TextureAtlas::PreloadData TextureAtlas::preloadFromFile(const std::string& atlas
         LOG_ERROR(MOD_GRAPHICS, "TextureAtlas::preload: Bad magic in {}", atlasPath);
         return result;
     }
-    if (header.version != ATLAS_VERSION) {
+    if (header.version != ATLAS_VERSION && header.version != ATLAS_VERSION_V1) {
         LOG_ERROR(MOD_GRAPHICS, "TextureAtlas::preload: Unsupported version {} in {}", header.version, atlasPath);
         return result;
+    }
+
+    // v1 files don't have the mipLevels field — the header is 1 byte shorter.
+    // Seek back and re-read only the v1 portion, then default mipLevels to 1.
+    if (header.version == ATLAS_VERSION_V1) {
+        // v1 header is sizeof(AtlasFileHeader) - 1 bytes (no mipLevels field)
+        size_t v1HeaderSize = sizeof(AtlasFileHeader) - sizeof(header.mipLevels);
+        file.seekg(0);
+        file.read(reinterpret_cast<char*>(&header), v1HeaderSize);
+        header.mipLevels = 1;
     }
 
     result.atlasWidth = header.atlasWidth;
     result.atlasHeight = header.atlasHeight;
     result.numPages = header.numPages;
     result.tileSize = header.tileSize;
+    result.mipLevels = header.mipLevels;
 
     // Read page entries
     std::vector<AtlasFilePageEntry> pageEntries(header.numPages);
@@ -194,22 +206,49 @@ bool TextureAtlas::uploadPreloadedPage(PreloadData& data, int pageIndex) {
                   errBind, pageIndex, pageTextures_[pageIndex]);
     }
 
-    LOG_INFO(MOD_GRAPHICS, "TextureAtlas: uploading page {} ETC1 {}x{} size={} texId={}",
-             pageIndex, data.atlasWidth, data.atlasHeight, page.dataSize, pageTextures_[pageIndex]);
+    LOG_INFO(MOD_GRAPHICS, "TextureAtlas: uploading page {} ETC1 {}x{} size={} texId={} mipLevels={}",
+             pageIndex, data.atlasWidth, data.atlasHeight, page.dataSize, pageTextures_[pageIndex], data.mipLevels);
 
-    glCompressedTexImage2D(GL_TEXTURE_2D, 0,
-                           GL_ETC1_RGB8_OES,
-                           data.atlasWidth, data.atlasHeight,
-                           0,
-                           static_cast<GLsizei>(page.dataSize),
-                           page.etc1Data.data());
-    GLenum errUpload = glGetError();
-    if (errUpload != GL_NO_ERROR) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: glCompressedTexImage2D error 0x{:04X} for page {} ({}x{}, {} bytes)",
-                  errUpload, pageIndex, data.atlasWidth, data.atlasHeight, page.dataSize);
+    // Upload all mip levels from the contiguous ETC1 data block
+    {
+        uint32_t offset = 0;
+        int w = data.atlasWidth;
+        int h = data.atlasHeight;
+        for (int level = 0; level < data.mipLevels; ++level) {
+            // ETC1 block size: ceil(w/4) * ceil(h/4) * 8 bytes
+            uint32_t blocksW = std::max(1, (w + 3) / 4);
+            uint32_t blocksH = std::max(1, (h + 3) / 4);
+            uint32_t levelSize = blocksW * blocksH * 8;
+
+            if (offset + levelSize > page.dataSize) {
+                LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: mip level {} overflows data (offset={}, levelSize={}, total={})",
+                          level, offset, levelSize, page.dataSize);
+                break;
+            }
+
+            glCompressedTexImage2D(GL_TEXTURE_2D, level,
+                                   GL_ETC1_RGB8_OES,
+                                   w, h, 0,
+                                   static_cast<GLsizei>(levelSize),
+                                   page.etc1Data.data() + offset);
+            GLenum errLevel = glGetError();
+            if (errLevel != GL_NO_ERROR) {
+                LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: glCompressedTexImage2D error 0x{:04X} for page {} level {} ({}x{}, {} bytes)",
+                          errLevel, pageIndex, level, w, h, levelSize);
+            }
+
+            offset += levelSize;
+            w = std::max(1, w / 2);
+            h = std::max(1, h / 2);
+        }
     }
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // Use trilinear filtering when mipmaps are available, bilinear otherwise
+    if (data.mipLevels > 1) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -259,6 +298,7 @@ bool TextureAtlas::uploadPreloadedPageAsync(PreloadData& data, int pageIndex,
     req.height = data.atlasHeight;
     req.pixelData = std::move(page.etc1Data);
     req.compressedSize = page.dataSize;
+    req.mipLevels = data.mipLevels;
     req.textureName = fmt::format("atlas_{}_{}", atlasType, pageIndex);
     // Encode atlas type + page index in callbackKey
     req.callbackKey = (static_cast<uint64_t>(atlasType) << 32) | static_cast<uint64_t>(pageIndex);

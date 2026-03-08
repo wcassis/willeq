@@ -16,7 +16,8 @@ class GPUUploadThread;
 
 // Atlas file format constants (must match zone_atlas_builder.cpp)
 static constexpr uint32_t ATLAS_MAGIC     = 0x54415145;  // "EQAT" little-endian
-static constexpr uint16_t ATLAS_VERSION   = 1;
+static constexpr uint16_t ATLAS_VERSION   = 2;
+static constexpr uint16_t ATLAS_VERSION_V1 = 1;  // Backwards compat: single-level, no mipmaps
 static constexpr int      ATLAS_TILE_SIZE = 256;
 static constexpr int      ATLAS_TILE_BORDER = 4;
 static constexpr int      ATLAS_TILE_INNER  = ATLAS_TILE_SIZE - 2 * ATLAS_TILE_BORDER; // 248
@@ -45,9 +46,10 @@ public:
         uint16_t atlasHeight = 0;
         uint16_t numPages = 0;
         uint16_t tileSize = 0;
+        uint8_t mipLevels = 1;  // v2: number of mip levels (1 for v1 files)
         struct PageData {
-            std::vector<uint8_t> etc1Data;  // Raw compressed bytes
-            uint32_t dataSize = 0;
+            std::vector<uint8_t> etc1Data;  // Raw compressed bytes (all mip levels contiguous)
+            uint32_t dataSize = 0;          // Total size of all mip levels
         };
         std::vector<PageData> pages;
         std::map<std::string, AtlasTileInfo> tileLookup;

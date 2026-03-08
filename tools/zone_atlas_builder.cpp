@@ -30,7 +30,7 @@ namespace fs = std::filesystem;
 
 // ── Atlas file format constants ──────────────────────────────────────────────
 static constexpr uint32_t ATLAS_MAGIC    = 0x54415145;  // "EQAT" little-endian
-static constexpr uint16_t ATLAS_VERSION  = 1;
+static constexpr uint16_t ATLAS_VERSION  = 2;
 static constexpr uint16_t ATLAS_WIDTH    = 2048;
 static constexpr uint16_t ATLAS_HEIGHT   = 2048;
 static constexpr uint16_t TILE_SIZE      = 256;
@@ -54,6 +54,7 @@ struct AtlasHeader {
     uint16_t atlasHeight;
     uint16_t tileSize;
     uint16_t tilesPerRow;
+    uint8_t  mipLevels;    // v2: number of ETC1 mip levels (e.g. 12 for 2048x2048)
 };
 
 struct AtlasPageEntry {
@@ -254,6 +255,45 @@ static bool decodeBMP(const std::vector<char>& data,
     return false;
 }
 
+// ── Mipmap generation (helpers before ETC1, mip chain generator after) ───────
+
+// Box-filter downsample RGBA image by 2x in each dimension
+static std::vector<uint8_t> downsample2x(const uint8_t* src, int srcW, int srcH) {
+    int dstW = std::max(1, srcW / 2);
+    int dstH = std::max(1, srcH / 2);
+    std::vector<uint8_t> dst(dstW * dstH * 4);
+
+    for (int y = 0; y < dstH; ++y) {
+        for (int x = 0; x < dstW; ++x) {
+            int sx = x * 2;
+            int sy = y * 2;
+            // Clamp for odd-sized sources
+            int sx1 = std::min(sx + 1, srcW - 1);
+            int sy1 = std::min(sy + 1, srcH - 1);
+
+            for (int c = 0; c < 4; ++c) {
+                int sum = src[(sy * srcW + sx) * 4 + c]
+                        + src[(sy * srcW + sx1) * 4 + c]
+                        + src[(sy1 * srcW + sx) * 4 + c]
+                        + src[(sy1 * srcW + sx1) * 4 + c];
+                dst[(y * dstW + x) * 4 + c] = static_cast<uint8_t>((sum + 2) / 4);
+            }
+        }
+    }
+    return dst;
+}
+
+// Compute number of mip levels for a given dimension (down to 1x1)
+static int computeMipLevels(int w, int h) {
+    int levels = 1;
+    while (w > 1 || h > 1) {
+        w = std::max(1, w / 2);
+        h = std::max(1, h / 2);
+        levels++;
+    }
+    return levels;
+}
+
 // ── ETC1 encoding using Etc2Comp ─────────────────────────────────────────────
 
 // Encode an RGBA atlas page (2048x2048) to ETC1 RGB.
@@ -328,6 +368,39 @@ static std::vector<uint8_t> encodeETC1_Alpha(const uint8_t* rgba, int width, int
         std::memcpy(result.data(), encodingBits, encodingBitsBytes);
         delete[] encodingBits;
     }
+    return result;
+}
+
+// ── Mipmap chain generation (uses ETC1 encoders above) ──────────────────────
+
+// Generate full mip chain from RGBA page and ETC1-encode each level.
+// Returns contiguous ETC1 data for all levels.
+static std::vector<uint8_t> generateMipChainETC1(const uint8_t* rgba, int width, int height,
+                                                   bool isAlpha) {
+    int levels = computeMipLevels(width, height);
+    std::vector<uint8_t> result;
+
+    // Level 0: encode the full-size page
+    auto level0 = isAlpha ? encodeETC1_Alpha(rgba, width, height)
+                          : encodeETC1_RGB(rgba, width, height);
+    result.insert(result.end(), level0.begin(), level0.end());
+
+    // Subsequent levels: downsample and encode
+    std::vector<uint8_t> current(rgba, rgba + width * height * 4);
+    int w = width, h = height;
+
+    for (int level = 1; level < levels; ++level) {
+        auto downsampled = downsample2x(current.data(), w, h);
+        w = std::max(1, w / 2);
+        h = std::max(1, h / 2);
+
+        auto encoded = isAlpha ? encodeETC1_Alpha(downsampled.data(), w, h)
+                               : encodeETC1_RGB(downsampled.data(), w, h);
+        result.insert(result.end(), encoded.begin(), encoded.end());
+
+        current = std::move(downsampled);
+    }
+
     return result;
 }
 
@@ -516,32 +589,35 @@ static bool buildAtlas(const std::string& eqPath,
 
     std::cout << "  Atlas pages: " << pages.size() << std::endl;
 
-    // Encode pages to ETC1
+    // Encode pages to ETC1 with full mip chains
+    int mipLevels = computeMipLevels(ATLAS_WIDTH, ATLAS_HEIGHT);
+    std::cout << "  Generating " << mipLevels << " mip levels per page" << std::endl;
+
     struct EncodedPage {
-        std::vector<uint8_t> etc1Data;
+        std::vector<uint8_t> etc1Data;  // All mip levels contiguous
         uint8_t format;
         int rgbPageIndex;  // For alpha pages
     };
     std::vector<EncodedPage> encodedPages;
 
-    // Encode RGB for all pages
+    // Encode RGB for all pages (with mip chain)
     for (size_t p = 0; p < pages.size(); ++p) {
-        std::cout << "  Encoding page " << p << " RGB..." << std::flush;
+        std::cout << "  Encoding page " << p << " RGB (mipmapped)..." << std::flush;
         EncodedPage ep;
-        ep.etc1Data = encodeETC1_RGB(pages[p].rgbaData.data(), ATLAS_WIDTH, ATLAS_HEIGHT);
+        ep.etc1Data = generateMipChainETC1(pages[p].rgbaData.data(), ATLAS_WIDTH, ATLAS_HEIGHT, false);
         ep.format = FORMAT_ETC1_RGB;
         ep.rgbPageIndex = 0xFFFF;
         encodedPages.push_back(std::move(ep));
         std::cout << " done (" << encodedPages.back().etc1Data.size() << " bytes)" << std::endl;
     }
 
-    // Encode alpha pages for pages containing alpha textures
+    // Encode alpha pages for pages containing alpha textures (with mip chain)
     for (size_t p = alphaRGBPageStart; p < pages.size(); ++p) {
-        std::cout << "  Encoding page " << p << " alpha..." << std::flush;
+        std::cout << "  Encoding page " << p << " alpha (mipmapped)..." << std::flush;
         EncodedPage ep;
-        ep.etc1Data = encodeETC1_Alpha(pages[p].rgbaData.data(), ATLAS_WIDTH, ATLAS_HEIGHT);
+        ep.etc1Data = generateMipChainETC1(pages[p].rgbaData.data(), ATLAS_WIDTH, ATLAS_HEIGHT, true);
         ep.format = FORMAT_ETC1_ALPHA;
-        ep.rgbPageIndex = static_cast<int>(p);  // Points to the RGB version of this page
+        ep.rgbPageIndex = static_cast<int>(p);
         int alphaPageIdx = static_cast<int>(encodedPages.size());
         encodedPages.push_back(std::move(ep));
         std::cout << " done" << std::endl;
@@ -571,6 +647,7 @@ static bool buildAtlas(const std::string& eqPath,
     header.atlasHeight = ATLAS_HEIGHT;
     header.tileSize = TILE_SIZE;
     header.tilesPerRow = TILES_PER_ROW;
+    header.mipLevels = static_cast<uint8_t>(mipLevels);
     out.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
     // Calculate data offsets
