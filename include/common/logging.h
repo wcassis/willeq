@@ -202,18 +202,43 @@ public:
 
     // Forward declaration — ThreadLogBuffer registers itself here
     struct BufferEntry {
-        std::string* buffers;        // Pointer to the double-buffer array [2]
+        std::string* buffers;        // Pointer to the double-buffer array [2] (stdout)
+        std::string* errBuffers;     // Pointer to the error double-buffer array [2] (stderr)
         std::atomic<int>* activeIdx; // Pointer to the writer's active index
     };
 
-    void registerBuffer(std::string* buffers, std::atomic<int>* activeIdx) {
+    void registerBuffer(std::string* buffers, std::string* errBuffers,
+                        std::atomic<int>* activeIdx) {
         std::lock_guard<std::mutex> lock(m_registry_mutex);
-        m_buffers.push_back({buffers, activeIdx});
+        m_buffers.push_back({buffers, errBuffers, activeIdx});
         ensureDrainThread();
     }
 
     void unregisterBuffer(std::string* buffers) {
         std::lock_guard<std::mutex> lock(m_registry_mutex);
+        // Drain any remaining content before removing — this runs under
+        // m_registry_mutex, the same lock the drain thread holds when
+        // writing to stdout/stderr, so no lock ordering issue.
+        bool wroteOut = false, wroteErr = false;
+        // Find the entry to get errBuffers pointer
+        std::string* errBufs = nullptr;
+        for (const auto& e : m_buffers) {
+            if (e.buffers == buffers) { errBufs = e.errBuffers; break; }
+        }
+        for (int i = 0; i < 2; ++i) {
+            if (!buffers[i].empty()) {
+                std::cout << buffers[i];
+                buffers[i].clear();
+                wroteOut = true;
+            }
+            if (errBufs && !errBufs[i].empty()) {
+                std::cerr << errBufs[i];
+                errBufs[i].clear();
+                wroteErr = true;
+            }
+        }
+        if (wroteOut) std::cout.flush();
+        if (wroteErr) std::cerr.flush();
         m_buffers.erase(
             std::remove_if(m_buffers.begin(), m_buffers.end(),
                 [buffers](const BufferEntry& e) { return e.buffers == buffers; }),
@@ -240,13 +265,20 @@ private:
     }
 
     void drainLoop() {
-        while (m_drain_running.load(std::memory_order_relaxed)) {
-            drainAllBuffers();
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        try {
+            while (m_drain_running.load(std::memory_order_relaxed)) {
+                drainAllBuffers();
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[FATAL] Log drain thread crashed: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "[FATAL] Log drain thread crashed with unknown exception" << std::endl;
         }
     }
 
     void drainAllBuffers() {
+        bool wroteOut = false, wroteErr = false;
         std::lock_guard<std::mutex> lock(m_registry_mutex);
         for (auto& entry : m_buffers) {
             // Read the active index — the writer is using this side.
@@ -255,11 +287,19 @@ private:
             int drainSide = 1 - active;
             std::string& drainBuf = entry.buffers[drainSide];
             if (!drainBuf.empty()) {
-                // No mutex needed for stdout — drain thread is the only writer
                 std::cout << drainBuf;
                 drainBuf.clear();
+                wroteOut = true;
+            }
+            std::string& drainErrBuf = entry.errBuffers[drainSide];
+            if (!drainErrBuf.empty()) {
+                std::cerr << drainErrBuf;
+                drainErrBuf.clear();
+                wroteErr = true;
             }
         }
+        if (wroteOut) std::cout.flush();
+        if (wroteErr) std::cerr.flush();
     }
 
     int m_global_level;
@@ -285,6 +325,7 @@ private:
 
 struct ThreadLogBuffer {
     std::string buffers[2];
+    std::string errBuffers[2];  // Separate buffer for ERROR/FATAL → stderr
     std::atomic<int> activeIdx{0};
     bool registered = false;
 
@@ -299,16 +340,33 @@ struct ThreadLogBuffer {
     void ensureRegistered() {
         if (!registered) {
             registered = true;
-            LogManager::Instance().registerBuffer(buffers, &activeIdx);
+            LogManager::Instance().registerBuffer(buffers, errBuffers, &activeIdx);
         }
     }
 
     std::string& active() { return buffers[activeIdx.load(std::memory_order_relaxed)]; }
+    std::string& activeErr() { return errBuffers[activeIdx.load(std::memory_order_relaxed)]; }
 
     void append(const char* ts, const char* level, const char* module,
                 const std::string& msg) {
         ensureRegistered();
         auto& data = active();
+        data += '[';
+        data += ts;
+        data += "] [";
+        data += level;
+        data += "] [";
+        data += module;
+        data += "] ";
+        data += msg;
+        data += '\n';
+    }
+
+    // ERROR/FATAL: appends to stderr buffer (drained to stderr by drain thread)
+    void appendError(const char* ts, const char* level, const char* module,
+                     const std::string& msg) {
+        ensureRegistered();
+        auto& data = activeErr();
         data += '[';
         data += ts;
         data += "] [";
@@ -334,9 +392,12 @@ struct ThreadLogBuffer {
     }
 
     void flush() {
-        if (active().empty()) return;
-        // Flip the active index — drain thread will read the old side
         int old = activeIdx.load(std::memory_order_relaxed);
+        if (active().empty() && activeErr().empty()) return;
+        // Only flip if the drain side has been drained (is empty).
+        // If it still has content, skip — prevents the writer from
+        // flipping back to the side the drain thread is reading.
+        if (!buffers[1 - old].empty() || !errBuffers[1 - old].empty()) return;
         activeIdx.store(1 - old, std::memory_order_release);
     }
 };
@@ -541,13 +602,12 @@ inline void FormatTimestamp(char* buffer, size_t size) {
             char _ts_buf[32]; \
             FormatTimestamp(_ts_buf, sizeof(_ts_buf)); \
             if (level <= LOG_ERROR) { \
-                std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
                 try { \
-                    std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                              << GetModuleName(module) << "] " << fmt::format(__VA_ARGS__) << '\n'; \
+                    GetThreadLogBuffer().appendError(_ts_buf, GetLevelName(level), \
+                        GetModuleName(module), fmt::format(__VA_ARGS__)); \
                 } catch (...) { \
-                    std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                              << GetModuleName(module) << "] (format error)" << '\n'; \
+                    GetThreadLogBuffer().appendError(_ts_buf, GetLevelName(level), \
+                        GetModuleName(module), "(format error)"); \
                 } \
             } else { \
                 try { \
@@ -562,7 +622,8 @@ inline void FormatTimestamp(char* buffer, size_t size) {
     } while(0)
 
 // New standard macros - use these for all new code
-#define LOG_FATAL(module, ...) EQT_LOG_IMPL(module, LOG_FATAL, __VA_ARGS__)
+// FATAL forces an immediate buffer flip so the drain thread picks it up ASAP
+#define LOG_FATAL(module, ...) do { EQT_LOG_IMPL(module, LOG_FATAL, __VA_ARGS__); FlushThreadLog(); } while(0)
 #define LOG_ERROR(module, ...) EQT_LOG_IMPL(module, LOG_ERROR, __VA_ARGS__)
 #define LOG_WARN(module, ...)  EQT_LOG_IMPL(module, LOG_WARN, __VA_ARGS__)
 #define LOG_INFO(module, ...)  EQT_LOG_IMPL(module, LOG_INFO, __VA_ARGS__)
@@ -597,11 +658,12 @@ inline void FormatTimestamp(char* buffer, size_t size) {
             char _ts_buf[32]; \
             FormatTimestamp(_ts_buf, sizeof(_ts_buf)); \
             if (level <= LOG_ERROR) { \
-                std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
                 try { \
-                    std::cerr << "[" << _ts_buf << "] [" level_name "] " << fmt::format(__VA_ARGS__) << '\n'; \
+                    GetThreadLogBuffer().appendError(_ts_buf, level_name, \
+                        "MAIN", fmt::format(__VA_ARGS__)); \
                 } catch (...) { \
-                    std::cerr << "[" << _ts_buf << "] [" level_name "] (format error)" << '\n'; \
+                    GetThreadLogBuffer().appendError(_ts_buf, level_name, \
+                        "MAIN", "(format error)"); \
                 } \
             } else { \
                 try { \
@@ -657,19 +719,18 @@ inline void FormatTimestamp(char* buffer, size_t size) {
         if (level <= LOG_ERROR && ShouldLog(module, level)) { \
             char _ts_buf[32]; \
             FormatTimestamp(_ts_buf, sizeof(_ts_buf)); \
-            std::lock_guard<std::mutex> _lock(LogManager::Instance().GetMutex()); \
             try { \
-                std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                          << GetModuleName(module) << "] " << fmt::format(__VA_ARGS__) << '\n'; \
+                GetThreadLogBuffer().appendError(_ts_buf, GetLevelName(level), \
+                    GetModuleName(module), fmt::format(__VA_ARGS__)); \
             } catch (...) { \
-                std::cerr << "[" << _ts_buf << "] [" << GetLevelName(level) << "] [" \
-                          << GetModuleName(module) << "] (format error)" << '\n'; \
+                GetThreadLogBuffer().appendError(_ts_buf, GetLevelName(level), \
+                    GetModuleName(module), "(format error)"); \
             } \
         } \
     } while(0)
 
 // New standard macros - FATAL/ERROR work in release, others are no-ops
-#define LOG_FATAL(module, ...) EQT_LOG_IMPL(module, LOG_FATAL, __VA_ARGS__)
+#define LOG_FATAL(module, ...) do { EQT_LOG_IMPL(module, LOG_FATAL, __VA_ARGS__); FlushThreadLog(); } while(0)
 #define LOG_ERROR(module, ...) EQT_LOG_IMPL(module, LOG_ERROR, __VA_ARGS__)
 #define LOG_WARN(module, ...)  ((void)0)
 #define LOG_INFO(module, ...)  ((void)0)

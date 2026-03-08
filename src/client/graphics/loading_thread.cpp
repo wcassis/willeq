@@ -175,8 +175,14 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
     LOG_INFO(MOD_GRAPHICS, "LoadingThread: graphicsLoadReady, entering active loading phase");
 
     // Execute the active loading callback (zone loading + renderer setup)
-    if (activeCallback) {
-        activeCallback(status);
+    try {
+        if (activeCallback) {
+            activeCallback(status);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[FATAL] LoadingThread crashed: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "[FATAL] LoadingThread crashed with unknown exception" << std::endl;
     }
     FlushThreadLog();
 

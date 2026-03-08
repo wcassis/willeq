@@ -1,0 +1,115 @@
+=== GLES2 Texture Read Cost Benchmark ===
+Resolution: 1280x720, Frames: 300 per test
+
+DRM: Using mode 1280x720@60Hz
+EGL 1.5 (DRM/GBM, GLES2)
+GL: Mali400
+GL: OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+
+Extensions: OES_texture_half_float = YES
+            OES_texture_half_float_linear = YES
+
+LUT textures created: FP16 64=2 256=3 1024=4, RGBA8 256=5
+
+Compiling shaders...
+  Programs compiled: 7
+
+============================================================
+PHASE 1: Texture read cost isolation
+============================================================
+
+--- Round 1 ---
+  No texture read (baseline)                  avg: 3.64 ms  (~275 FPS)
+  1 pipelined read (scene tex)                avg: 4.00 ms  (~250 FPS)
+  1 dependent read (LUT only)                 avg: 6.57 ms  (~152 FPS)
+  2 reads: pipelined + pipelined              avg: 6.16 ms  (~162 FPS)
+  2 reads: pipelined + dependent              avg: 9.98 ms  (~100 FPS)
+
+--- Round 2 ---
+  No texture read (baseline)                  avg: 3.84 ms  (~261 FPS)
+  1 pipelined read (scene tex)                avg: 4.08 ms  (~245 FPS)
+  1 dependent read (LUT only)                 avg: 6.58 ms  (~152 FPS)
+  2 reads: pipelined + pipelined              avg: 6.18 ms  (~162 FPS)
+  2 reads: pipelined + dependent              avg: 9.97 ms  (~100 FPS)
+
+--- PHASE 1 SUMMARY ---
+Test                                             ms      FPS   vs base
+----                                             --      ---   -------
+No texture read (baseline)                     3.74      268    +0.00ms
+1 pipelined read (scene tex)                   4.04      247    +0.30ms
+1 dependent read (LUT only)                    6.57      152    +2.84ms
+2 reads: pipelined + pipelined                 6.17      162    +2.43ms
+2 reads: pipelined + dependent                 9.97      100    +6.24ms
+
+============================================================
+PHASE 2: FP16 vs RGBA8 texture format
+============================================================
+
+--- Round 1 ---
+  Dependent read: FP16 256x1                  avg: 6.59 ms  (~152 FPS)
+  Dependent read: RGBA8 256x1                 avg: 6.59 ms  (~152 FPS)
+
+--- Round 2 ---
+  Dependent read: FP16 256x1                  avg: 6.58 ms  (~152 FPS)
+  Dependent read: RGBA8 256x1                 avg: 6.59 ms  (~152 FPS)
+
+--- PHASE 2 SUMMARY ---
+Test                                             ms      FPS
+----                                             --      ---
+Dependent read: FP16 256x1                     6.58      152
+Dependent read: RGBA8 256x1                    6.59      152
+
+============================================================
+PHASE 3: LUT size sensitivity (FP16)
+============================================================
+
+--- Round 1 ---
+  Dependent read: FP16 64x1                   avg: 6.57 ms  (~152 FPS)
+  Dependent read: FP16 256x1                  avg: 6.60 ms  (~152 FPS)
+  Dependent read: FP16 1024x1                 avg: 6.59 ms  (~152 FPS)
+
+--- Round 2 ---
+  Dependent read: FP16 64x1                   avg: 6.58 ms  (~152 FPS)
+  Dependent read: FP16 256x1                  avg: 6.59 ms  (~152 FPS)
+  Dependent read: FP16 1024x1                 avg: 6.59 ms  (~152 FPS)
+
+--- PHASE 3 SUMMARY ---
+Test                                             ms      FPS
+----                                             --      ---
+Dependent read: FP16 64x1                      6.58      152
+Dependent read: FP16 256x1                     6.59      152
+Dependent read: FP16 1024x1                    6.59      152
+
+============================================================
+PHASE 4: LUT vs ALU — full lighting math comparison
+============================================================
+
+--- Round 1 ---
+  ALU: inversesqrt + rcp (OPT C math)         avg: 14.67 ms  (~68 FPS)
+  LUT: FP16 texture (same result)             avg: 13.17 ms  (~76 FPS)
+
+--- Round 2 ---
+  ALU: inversesqrt + rcp (OPT C math)         avg: 14.67 ms  (~68 FPS)
+  LUT: FP16 texture (same result)             avg: 13.17 ms  (~76 FPS)
+
+--- PHASE 4 SUMMARY ---
+Test                                             ms      FPS     delta
+----                                             --      ---     -----
+ALU: inversesqrt + rcp (OPT C math)           14.67       68    +0.00ms
+LUT: FP16 texture (same result)               13.17       76    -1.50ms
+
+============================================================
+KEY FINDINGS
+============================================================
+
+Cost of 1 pipelined texture read:    +0.30 ms
+Cost of 1 dependent texture read:    +2.84 ms
+Dependent read penalty vs pipelined: +2.53 ms
+Cost of 2nd pipelined read:          +2.13 ms  (from 1-read baseline)
+Cost of 2nd dependent read:          +5.93 ms  (from 1-read baseline)
+
+LUT vs ALU (full lighting):
+  ALU (inversesqrt + rcp):  14.67 ms
+  LUT (FP16 texture):       13.17 ms
+  Delta:                    -1.50 ms (LUT WINS)
+

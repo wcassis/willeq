@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_DETAIL_MANAGER_H
 
 #include <irrlicht.h>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -55,9 +56,15 @@ public:
     float getDensity() const { return density_; }
     void adjustDensity(float delta);  // For keyboard +/- controls
 
+    // Ground query callback type: given Irrlicht (x, z), returns hit Y, normal, triangle
+    // Returns true if ground was found
+    using GroundRaycastFunc = std::function<bool(float x, float z, float startY,
+                                                 float& outY, irr::core::vector3df& outNormal,
+                                                 irr::core::triangle3df& outTriangle)>;
+
     // Zone lifecycle
     void onZoneEnter(const std::string& zoneName,
-                     irr::scene::ITriangleSelector* zoneSelector,
+                     const GroundRaycastFunc& groundRaycast,
                      irr::scene::IMeshSceneNode* zoneMeshNode,
                      const std::shared_ptr<WldLoader>& wldLoader = nullptr,
                      const std::shared_ptr<ZoneGeometry>& zoneGeometry = nullptr);
@@ -149,10 +156,9 @@ private:
     // Zone data
     ZoneDetailConfig config_;
     std::string currentZone_;
-    irr::scene::ITriangleSelector* zoneSelector_ = nullptr;
+    GroundRaycastFunc groundRaycast_;  // BSP-filtered ground query from renderer
     irr::scene::IMeshSceneNode* zoneMeshNode_ = nullptr;  // For texture lookups
     std::vector<irr::scene::IMeshSceneNode*> additionalMeshNodes_;  // Additional mesh nodes for PVS mode
-    irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
 
     // Pre-computed surface map for fast surface type lookups
     std::string surfaceMapsPath_;  // Directory containing <zonename>_surface.map files

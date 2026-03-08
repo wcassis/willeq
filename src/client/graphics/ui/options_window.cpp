@@ -289,7 +289,7 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
     y += SECTION_HEADER_HEIGHT + ROW_SPACING;
 
     renderCheckbox(driver, gui, L"Enable Detail Objects", displaySettings_.detailObjectsEnabled,
-                  baseX, y, hoveredCheckbox_ == 6);
+                  baseX, y, hoveredCheckbox_ == 7);
     y += ROW_HEIGHT + ROW_SPACING;
 
     // Density slider
@@ -305,16 +305,16 @@ void OptionsWindow::renderDisplayTab(irr::video::IVideoDriver* driver,
     // Category toggles in two columns
     // Row 1: Grass | Plants
     renderCheckbox(driver, gui, L"Grass", displaySettings_.detailGrass,
-                  indentX, y, hoveredCheckbox_ == 7);
+                  indentX, y, hoveredCheckbox_ == 8);
     renderCheckbox(driver, gui, L"Plants", displaySettings_.detailPlants,
-                  col2X, y, hoveredCheckbox_ == 8);
+                  col2X, y, hoveredCheckbox_ == 9);
     y += ROW_HEIGHT + ROW_SPACING;
 
     // Row 2: Rocks | Debris
     renderCheckbox(driver, gui, L"Rocks", displaySettings_.detailRocks,
-                  indentX, y, hoveredCheckbox_ == 9);
+                  indentX, y, hoveredCheckbox_ == 10);
     renderCheckbox(driver, gui, L"Debris", displaySettings_.detailDebris,
-                  col2X, y, hoveredCheckbox_ == 10);
+                  col2X, y, hoveredCheckbox_ == 11);
 }
 
 void OptionsWindow::renderAudioTab(irr::video::IVideoDriver* driver,
@@ -885,6 +885,9 @@ bool OptionsWindow::loadSettings(const std::string& path)
         displaySettings_.skyEnabled = env.get("skyEnabled", true).asBool();
         displaySettings_.animatedTrees = env.get("animatedTrees", true).asBool();
         displaySettings_.fireEffects = env.get("fireEffects", true).asBool();
+        displaySettings_.enableFireGlowLighting = env.get("enableFireGlowLighting", true).asBool();
+        displaySettings_.enableFireGlowIcospheres = env.get("enableFireGlowIcospheres", false).asBool();
+        displaySettings_.maxFireGlowLights = std::clamp(env.get("maxFireGlowLights", 4).asInt(), 1, 8);
         displaySettings_.environmentDensity = env.get("density", 0.5).asFloat();
     }
 
@@ -937,6 +940,9 @@ bool OptionsWindow::saveSettings(const std::string& path)
     env["skyEnabled"] = displaySettings_.skyEnabled;
     env["animatedTrees"] = displaySettings_.animatedTrees;
     env["fireEffects"] = displaySettings_.fireEffects;
+    env["enableFireGlowLighting"] = displaySettings_.enableFireGlowLighting;
+    env["enableFireGlowIcospheres"] = displaySettings_.enableFireGlowIcospheres;
+    env["maxFireGlowLights"] = displaySettings_.maxFireGlowLights;
     env["density"] = displaySettings_.environmentDensity;
     root["environmentEffects"] = env;
 

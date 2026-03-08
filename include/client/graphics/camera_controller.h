@@ -2,9 +2,14 @@
 #define EQT_GRAPHICS_CAMERA_CONTROLLER_H
 
 #include <irrlicht.h>
+#include <cstdint>
+#include <map>
+#include <vector>
 
 namespace EQT {
 namespace Graphics {
+
+struct BspTree;  // forward declare
 
 // Camera controller for FPS-style movement with EQ coordinate system
 class CameraController {
@@ -47,7 +52,13 @@ public:
     float getActualFollowDistance() const { return actualFollowDistance_; }
     void adjustFollowDistance(float delta);
 
-    // Collision detection for camera zoom
+    // BSP-based collision detection for camera zoom (replaces triangle selectors)
+    // regionBoundsY: per-region AABB in Irrlicht Y-up coords, indexed by BSP region index
+    void setBspCollision(const BspTree* bspTree,
+                         const std::map<size_t, irr::core::aabbox3df>* regionBounds);
+    void setBspPlayerRegion(size_t region);
+
+    // Legacy triangle selector collision (fallback for zones without BSP)
     void setCollisionManager(irr::scene::ISceneCollisionManager* mgr,
                              irr::scene::ITriangleSelector* selector);
 
@@ -80,9 +91,21 @@ private:
     static constexpr float MIN_FOLLOW_DISTANCE = 0.0f;
     static constexpr float MAX_FOLLOW_DISTANCE = 300.0f;
 
-    // Camera collision zoom
+    // BSP-based camera collision
+    const BspTree* bspTree_ = nullptr;
+    const std::map<size_t, irr::core::aabbox3df>* regionBoundsMap_ = nullptr;
+    size_t bspPlayerRegion_ = SIZE_MAX;
+
+    // Legacy collision (fallback)
     irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
     irr::scene::ITriangleSelector* collisionSelector_ = nullptr;
+
+    // BSP collision: check if a point is in a PVS-visible region from the player
+    bool isBspPointVisible(float eqX, float eqY, float eqZ) const;
+    // BSP collision: binary search along ray to find collision point
+    float bspFindCollisionDistance(float startEqX, float startEqY, float startEqZ,
+                                  float endEqX, float endEqY, float endEqZ) const;
+
     static constexpr float CAMERA_COLLISION_OFFSET = 0.5f;   // Distance to stay away from walls
     static constexpr float MIN_COLLISION_DISTANCE = 1.0f;    // Minimum zoom when colliding
     static constexpr float ZOOM_RECOVERY_SPEED = 30.0f;      // Units per second to zoom back out

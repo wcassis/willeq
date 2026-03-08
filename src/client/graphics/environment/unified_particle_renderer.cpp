@@ -85,15 +85,12 @@ varying vec2 vAtlasOffset;
 varying float vRotation;
 
 void main() {
-    // Optionally rotate gl_PointCoord for rain streaks
-    vec2 pc = gl_PointCoord;
-    if (vRotation != 0.0) {
-        pc -= 0.5;
-        float s = sin(vRotation);
-        float c = cos(vRotation);
-        pc = vec2(pc.x * c - pc.y * s, pc.x * s + pc.y * c);
-        pc += 0.5;
-    }
+    // Rotate gl_PointCoord (identity when vRotation=0: sin(0)=0, cos(0)=1)
+    // Always compute — Mali 400 FS branches cost more than the sin/cos they skip
+    vec2 pc = gl_PointCoord - 0.5;
+    float s = sin(vRotation);
+    float c = cos(vRotation);
+    pc = vec2(pc.x * c - pc.y * s, pc.x * s + pc.y * c) + 0.5;
 
     // Map rotated point coord [0,1] to atlas sub-region UV
     vec2 uv = vAtlasOffset + pc * uAtlasRegionSize;

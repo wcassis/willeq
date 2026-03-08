@@ -152,7 +152,7 @@ public:
     // Check if door mesh is built
     bool isDoorMeshBuilt(uint8_t doorId) const;
     // Get door IDs in given BSP regions where meshBuilt == false
-    void getDoorsInRegions(const std::unordered_set<size_t>& regions, std::vector<uint8_t>& out) const;
+    void getDoorsInRegions(const std::vector<bool>& regions, std::vector<uint8_t>& out) const;
     // Get all unbuilt door IDs
     void getUnbuiltDoors(std::vector<uint8_t>& out) const;
 

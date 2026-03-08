@@ -105,6 +105,7 @@ enum LinuxKey {
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <poll.h>
 #include <linux/kd.h>
 #include <linux/vt.h>
 
@@ -172,7 +173,7 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
       ttyFd_(-1), savedKbMode_(-1),
       keyboardFd_(-1), mouseFd_(-1),
       shiftDown_(false), ctrlDown_(false), altDown_(false),
-      Close(false), firstFrame_(true), useGLES2_(false)
+      Close(false), firstFrame_(true), flipPending_(false), useGLES2_(false)
 {
     Width = param.WindowSize.Width;
     Height = param.WindowSize.Height;
@@ -599,8 +600,45 @@ static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint
     return fb;
 }
 
+// Page flip event handler — called by drmHandleEvent when flip completes
+static void pageFlipHandler(int fd, unsigned int frame,
+                            unsigned int sec, unsigned int usec, void* data)
+{
+    bool* flipPending = static_cast<bool*>(data);
+    *flipPending = false;
+}
+
+void CIrrDeviceFB::waitForFlipComplete()
+{
+    if (!flipPending_) return;
+
+    drmEventContext evctx = {};
+    evctx.version = 2;
+    evctx.page_flip_handler = pageFlipHandler;
+
+    // Poll DRM fd until the flip event arrives
+    struct pollfd pfd = {};
+    pfd.fd = drmFd_;
+    pfd.events = POLLIN;
+
+    while (flipPending_) {
+        int ret = poll(&pfd, 1, 100);  // 100ms timeout (safety)
+        if (ret > 0 && (pfd.revents & POLLIN)) {
+            drmHandleEvent(drmFd_, &evctx);
+        } else if (ret == 0) {
+            // Timeout — flip event lost, force clear
+            flipPending_ = false;
+        }
+    }
+}
+
 void CIrrDeviceFB::drmPageFlip()
 {
+    // Wait for previous flip to complete before submitting a new one.
+    // This prevents drmModePageFlip from returning -EBUSY and falling
+    // back to the synchronous drmModeSetCrtc (which blocks ~35ms).
+    waitForFlipComplete();
+
     eglSwapBuffers(eglDisplay_, eglSurface_);
 
     struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmSurface_);
@@ -623,11 +661,14 @@ void CIrrDeviceFB::drmPageFlip()
         }
         firstFrame_ = false;
     } else {
-        // Subsequent frames: page flip (non-blocking)
-        int ret = drmModePageFlip(drmFd_, crtcId_, fb, 0, nullptr);
+        // Async page flip with event notification
+        int ret = drmModePageFlip(drmFd_, crtcId_, fb,
+                                  DRM_MODE_PAGE_FLIP_EVENT, &flipPending_);
         if (ret) {
-            // Page flip failed (e.g., previous flip still pending) - use SetCrtc as fallback
+            // Fallback: synchronous CRTC set (should rarely happen now)
             drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
+        } else {
+            flipPending_ = true;
         }
     }
 

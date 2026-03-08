@@ -38,7 +38,9 @@
       "terrainPrepMaxPvsDepth": 255,
       "objectPrepMaxPvsDepth": 255,
       "deferredAssetLoading": "automatic",
-      "backgroundThreadCount": 1
+      "backgroundThreadCount": 1,
+      "chrCacheMaxEntries": 8,
+      "pvsNeighborhoodHops": 3
     }
   }
 }

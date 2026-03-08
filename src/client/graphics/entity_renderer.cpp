@@ -766,6 +766,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         visual.collisionHeight = (collBbox.MaxEdge.Y - collBbox.MinEdge.Y) * scale;
         // Deck is at the top of the bounding box (server Z is center, so add half height)
         visual.deckZ = z + (visual.collisionHeight / 2.0f);
+        registerBoat(spawnId);
         LOG_DEBUG(MOD_GRAPHICS, "Boat collision: race {} radius={:.1f} height={:.1f} deckZ={:.1f}",
             raceId, visual.collisionRadius, visual.collisionHeight, visual.deckZ);
     }
@@ -1409,6 +1410,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 vis.collisionRadius = (bboxWidth / 2.0f) * scale;
                 vis.collisionHeight = (collBbox.MaxEdge.Y - collBbox.MinEdge.Y) * scale;
                 vis.deckZ = vis.lastZ + (vis.collisionHeight / 2.0f);
+                registerBoat(bestId);
             }
 
             // Track race model reference for cache eviction
@@ -2506,6 +2508,11 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
     // Remove from active entities tracking
     activeEntities_.erase(spawnId);
 
+    // Remove from boat tracking
+    if (it->second.hasCollision) {
+        unregisterBoat(spawnId);
+    }
+
     // Remove from spatial grid
     removeEntityFromGrid(spawnId);
 
@@ -2670,6 +2677,7 @@ void EntityRenderer::clearEntities() {
         }
     }
     entities_.clear();
+    boatSpawnIds_.clear();
 }
 
 bool EntityRenderer::hasEntity(uint16_t spawnId) const {
@@ -4501,45 +4509,59 @@ void EntityRenderer::setConstrainedConfig(const ConstrainedRendererConfig* confi
     }
 }
 
+void EntityRenderer::registerBoat(uint16_t spawnId) {
+    // Avoid duplicates (e.g., rebuild after appearance change)
+    for (uint16_t id : boatSpawnIds_) {
+        if (id == spawnId) return;
+    }
+    boatSpawnIds_.push_back(spawnId);
+    LOG_INFO(MOD_GRAPHICS, "EntityRenderer: registered boat spawnId={} (total boats={})",
+             spawnId, boatSpawnIds_.size());
+}
+
+void EntityRenderer::unregisterBoat(uint16_t spawnId) {
+    auto it = std::find(boatSpawnIds_.begin(), boatSpawnIds_.end(), spawnId);
+    if (it != boatSpawnIds_.end()) {
+        boatSpawnIds_.erase(it);
+        LOG_INFO(MOD_GRAPHICS, "EntityRenderer: unregistered boat spawnId={} (total boats={})",
+                 spawnId, boatSpawnIds_.size());
+    }
+}
+
 float EntityRenderer::findBoatDeckZ(float x, float y, float currentZ) const {
-    // BEST_Z_INVALID from hc_map.h
     constexpr float BEST_Z_INVALID = -999999.0f;
 
-    float bestDeckZ = BEST_Z_INVALID;
-    float bestDistance = 999999.0f;
+    // Early-out: no boats in zone (99% of zones)
+    if (boatSpawnIds_.empty()) return BEST_Z_INVALID;
 
-    // Check all entities with collision (boats)
-    for (const auto& [spawnId, visual] : entities_) {
-        if (!visual.hasCollision) {
+    float bestDeckZ = BEST_Z_INVALID;
+
+    for (uint16_t boatId : boatSpawnIds_) {
+        auto it = entities_.find(boatId);
+        if (it == entities_.end() || !it->second.hasCollision) continue;
+        const EntityVisual& boat = it->second;
+
+        // PVS check: skip if boat is not in a PVS-visible region from the camera
+        if (currentCameraRegion_ && boat.cachedBspRegion != SIZE_MAX
+            && boat.cachedBspRegion < currentCameraRegion_->visibleRegions.size()
+            && !currentCameraRegion_->visibleRegions[boat.cachedBspRegion]) {
             continue;
         }
 
-        // Check horizontal distance to boat center
-        float dx = x - visual.lastX;
-        float dy = y - visual.lastY;
-        float horizontalDist = std::sqrt(dx * dx + dy * dy);
+        // Simple XY distance check against boat collision radius
+        float dx = x - boat.lastX;
+        float dy = y - boat.lastY;
+        float distSq = dx * dx + dy * dy;
+        float radiusSq = boat.collisionRadius * boat.collisionRadius;
+        if (distSq > radiusSq) continue;
 
-        // If within boat's collision radius
-        if (horizontalDist <= visual.collisionRadius) {
-            // Deck Z is at the top of the boat model
-            float deckZ = visual.lastZ + (visual.collisionHeight / 2.0f);
-            // Bottom of boat (for checking if we're within the boat's vertical range)
-            float boatBottomZ = visual.lastZ - (visual.collisionHeight / 2.0f);
+        // Z range check: player must be within reasonable height of the deck
+        // (not far below or above the boat)
+        float deckZ = boat.deckZ;
+        if (currentZ < deckZ - boat.collisionHeight || currentZ > deckZ + 20.0f) continue;
 
-            // Allow standing on deck if:
-            // 1. We're on the deck (within small tolerance above)
-            // 2. We're below the deck but above the bottom of the boat (inside the boat's height)
-            // 3. We're slightly below the boat (allowing step up from water)
-            float zDiff = currentZ - deckZ;
-            // Allow up to 2 units above deck, or anywhere from deck down to 10 units below boat bottom
-            // This allows stepping onto boats from water level
-            if (zDiff <= 2.0f && currentZ >= (boatBottomZ - 10.0f)) {
-                // This boat is a valid floor - check if it's closer than previous best
-                if (horizontalDist < bestDistance) {
-                    bestDeckZ = deckZ;
-                    bestDistance = horizontalDist;
-                }
-            }
+        if (deckZ > bestDeckZ) {
+            bestDeckZ = deckZ;
         }
     }
 

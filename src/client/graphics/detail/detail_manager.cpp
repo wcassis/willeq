@@ -21,9 +21,7 @@ DetailManager::DetailManager(irr::scene::ISceneManager* smgr,
     : smgr_(smgr)
     , driver_(driver)
 {
-    if (smgr_) {
-        collisionManager_ = smgr_->getSceneCollisionManager();
-    }
+    // Ground raycast callback is set via onZoneEnter()
 
     // Initialize foliage disturbance manager with default config
     disturbanceManager_ = std::make_unique<FoliageDisturbanceManager>(disturbanceConfig_);
@@ -65,7 +63,7 @@ void DetailManager::setSurfaceMapsPath(const std::string& path) {
 }
 
 void DetailManager::onZoneEnter(const std::string& zoneName,
-                                irr::scene::ITriangleSelector* zoneSelector,
+                                const GroundRaycastFunc& groundRaycast,
                                 irr::scene::IMeshSceneNode* zoneMeshNode,
                                 const std::shared_ptr<WldLoader>& wldLoader,
                                 const std::shared_ptr<ZoneGeometry>& zoneGeometry) {
@@ -73,7 +71,7 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
     onZoneExit();
 
     currentZone_ = zoneName;
-    zoneSelector_ = zoneSelector;
+    groundRaycast_ = groundRaycast;
     zoneMeshNode_ = zoneMeshNode;
 
     // Try to load pre-computed surface map for fast surface type lookups
@@ -220,7 +218,7 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
         footprintManager_->setConfig(footprintConfig_);
         footprintManager_->setSurfaceMap(getSurfaceMap());
         footprintManager_->setAtlasTexture(atlasTexture_);
-        footprintManager_->setCollisionSelector(zoneSelector_);
+        footprintManager_->setGroundRaycast(groundRaycast_);
     }
 
     LOG_INFO(MOD_GRAPHICS, "DetailManager: Entered zone '{}', season: {}, {} detail types, density mult: {:.1f}, foliage disturb: {}, footprints: {}",
@@ -250,7 +248,7 @@ void DetailManager::onZoneExit() {
         footprintManager_->clear();
     }
 
-    zoneSelector_ = nullptr;
+    groundRaycast_ = nullptr;
     zoneMeshNode_ = nullptr;
     additionalMeshNodes_.clear();
     bspTree_.reset();
@@ -540,7 +538,7 @@ void DetailManager::loadChunk(const ChunkKey& key) {
 
     // Create ground query function
     GroundQueryFunc groundQuery = nullptr;
-    if (zoneSelector_ && collisionManager_) {
+    if (groundRaycast_) {
         groundQuery = [this](float x, float z, float& outY, irr::core::vector3df& outNormal,
                             SurfaceType& outSurfaceType) {
             return getGroundInfo(x, z, outY, outNormal, outSurfaceType);
@@ -631,25 +629,19 @@ void DetailManager::rebuildAllChunkMeshes() {
 bool DetailManager::getGroundInfo(float x, float z, float& outY,
                                   irr::core::vector3df& outNormal,
                                   SurfaceType& outSurfaceType) const {
-    if (!zoneSelector_ || !collisionManager_) {
-        LOG_DEBUG(MOD_GRAPHICS, "DetailManager::getGroundInfo: No selector or collision manager");
+    if (!groundRaycast_) {
+        LOG_DEBUG(MOD_GRAPHICS, "DetailManager::getGroundInfo: No ground raycast callback");
         return false;
     }
 
-    // Raycast DOWNWARD from above to find the ground surface
-    // Start from moderate height (below sky domes/ceilings but above terrain)
-    // Many zones have invisible ceilings at Y=80+ that we need to avoid hitting
-    irr::core::vector3df start(x, 60.0f, z);
-    irr::core::vector3df end(x, -500.0f, z);
-    irr::core::vector3df hitPoint;
+    // Use BSP-filtered ground raycast from renderer
+    // startY=60.0 — below sky domes/ceilings but above terrain
+    irr::core::vector3df hitNormal;
     irr::core::triangle3df hitTriangle;
-    irr::scene::ISceneNode* outNode = nullptr;
 
-    irr::core::line3df ray(start, end);
-    if (collisionManager_->getCollisionPoint(ray, zoneSelector_, hitPoint, hitTriangle, outNode)) {
-        outY = hitPoint.Y;
+    if (groundRaycast_(x, z, 60.0f, outY, hitNormal, hitTriangle)) {
         // Ensure normal points up (away from ground)
-        outNormal = hitTriangle.getNormal().normalize();
+        outNormal = hitNormal;
         if (outNormal.Y < 0) {
             outNormal = -outNormal;
         }
@@ -657,15 +649,15 @@ bool DetailManager::getGroundInfo(float x, float z, float& outY,
         // Get surface type - prefer pre-computed surface map (O(1) lookup)
         outSurfaceType = SurfaceType::Grass;  // Default
 
+        // Query position in Irrlicht coords: x=EQ_X, z=EQ_Y (the input params)
         if (surfaceMap_.isLoaded()) {
             // Fast path: use pre-computed surface map
-            // Note: Surface map uses EQ coordinates (X, Y horizontal, Z up)
-            // Irrlicht hit point is (X, Y, Z) where Y is up
-            // So we pass hitPoint.X (EQ X) and hitPoint.Z (EQ Y) to the surface map
-            outSurfaceType = surfaceMap_.getSurfaceType(hitPoint.X, hitPoint.Z);
+            // Surface map uses EQ coordinates (X, Y horizontal)
+            // Input x=EQ_X, z=EQ_Y
+            outSurfaceType = surfaceMap_.getSurfaceType(x, z);
 
             LOG_DEBUG(MOD_GRAPHICS, "DetailManager: Surface map lookup at ({:.1f}, {:.1f}) -> {}",
-                     hitPoint.X, hitPoint.Z, static_cast<int>(outSurfaceType));
+                     x, z, static_cast<int>(outSurfaceType));
         } else {
             // Slow path: on-the-fly texture detection (fallback if no surface map)
             static bool loggedZoneMeshStatus = false;
@@ -682,7 +674,7 @@ bool DetailManager::getGroundInfo(float x, float z, float& outY,
 
             // Fall back to zone geometry lookup if mesh lookup didn't find a specific texture
             if (outSurfaceType == SurfaceType::Grass) {
-                SurfaceType geomSurface = getSurfaceTypeAtPosition(hitPoint.X, hitPoint.Z);
+                SurfaceType geomSurface = getSurfaceTypeAtPosition(x, z);
                 // Only use geometry lookup if it found a specific non-default surface
                 if (geomSurface != SurfaceType::Grass) {
                     outSurfaceType = geomSurface;

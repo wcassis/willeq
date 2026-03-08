@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_DETAIL_FOOTPRINT_MANAGER_H
 
 #include <irrlicht.h>
+#include <functional>
 #include <vector>
 #include "client/graphics/detail/footprint_config.h"
 #include "client/graphics/detail/detail_types.h"
@@ -34,7 +35,11 @@ public:
     void setConfig(const FootprintConfig& config);
     void setSurfaceMap(const SurfaceMap* surfaceMap);
     void setAtlasTexture(irr::video::ITexture* atlas);
-    void setCollisionSelector(irr::scene::ITriangleSelector* selector);
+    // Ground raycast callback: given Irrlicht (x, z, startY), returns hit Y and normal
+    using GroundRaycastFunc = std::function<bool(float x, float z, float startY,
+                                                 float& outY, irr::core::vector3df& outNormal,
+                                                 irr::core::triangle3df& outTriangle)>;
+    void setGroundRaycast(const GroundRaycastFunc& func);
 
     // Called each frame with player position and movement state
     void update(float deltaTime,
@@ -75,7 +80,7 @@ private:
     irr::video::IVideoDriver* driver_;
     irr::video::ITexture* atlasTexture_ = nullptr;
     irr::video::SMaterial material_;
-    irr::scene::ITriangleSelector* collisionSelector_ = nullptr;
+    GroundRaycastFunc groundRaycast_;  // BSP-filtered ground query from renderer
 
     static constexpr size_t kMaxFootprints = 200;  // Limit for performance
 };

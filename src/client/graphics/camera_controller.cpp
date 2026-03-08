@@ -1,4 +1,5 @@
 #include "client/graphics/camera_controller.h"
+#include "client/graphics/eq/wld_loader.h"
 #include "common/logging.h"
 #include <cmath>
 
@@ -144,71 +145,95 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
         // Check for collision between player and camera
         float effectiveDistance = preferredFollowDistance_;
 
-        // Cache selector locally — it could be cleared by another thread between checks
-        auto* selector = collisionSelector_;
-        if (collisionManager_ && selector) {
-            irr::core::vector3df hitPoint;
-            irr::core::triangle3df hitTriangle;
-            irr::scene::ISceneNode* hitNode = nullptr;
+        if (bspTree_ && bspPlayerRegion_ != SIZE_MAX) {
+            // BSP-based collision: use region lookups instead of triangle intersection
 
-            // First, check for ceiling above player's head
-            // Cast a ray upward from player eye to intended camera height
-            irr::core::vector3df ceilingCheckStart = playerEye;
-            irr::core::vector3df ceilingCheckEnd(
-                eqX,
-                eqZ + effectiveHeightOffset + 1.0f,  // Check slightly above camera height
-                eqY
-            );
-            irr::core::line3df ceilingRay(ceilingCheckStart, ceilingCheckEnd);
-
-            if (collisionManager_->getCollisionPoint(ceilingRay, selector,
-                                                     hitPoint, hitTriangle, hitNode)) {
-                // Ceiling detected - limit camera height to below ceiling
-                float ceilingHeight = hitPoint.Y - CAMERA_COLLISION_OFFSET;
-                float maxHeightOffset = ceilingHeight - eqZ;
-                if (maxHeightOffset < effectiveHeightOffset) {
-                    effectiveHeightOffset = std::max(eyeHeight * 0.5f, maxHeightOffset);
-                    // Log ceiling detection (throttled)
-                    static int ceilingLogCount = 0;
-                    if (++ceilingLogCount % 60 == 1) {
-                        LOG_DEBUG(MOD_GRAPHICS, "Camera ceiling: limiting height to {:.1f} (ceiling at {:.1f})",
-                                  effectiveHeightOffset, ceilingHeight);
+            // Ceiling check: use player region's AABB max height
+            if (regionBoundsMap_) {
+                auto it = regionBoundsMap_->find(bspPlayerRegion_);
+                if (it != regionBoundsMap_->end()) {
+                    // AABB is in Irrlicht Y-up: MaxEdge.Y is the ceiling
+                    float ceilingHeight = it->second.MaxEdge.Y - CAMERA_COLLISION_OFFSET;
+                    float maxHeightOffset = ceilingHeight - eqZ;
+                    if (maxHeightOffset < effectiveHeightOffset) {
+                        effectiveHeightOffset = std::max(eyeHeight * 0.5f, maxHeightOffset);
+                        static int ceilingLogCount = 0;
+                        if (++ceilingLogCount % 60 == 1) {
+                            LOG_DEBUG(MOD_GRAPHICS, "BSP camera ceiling: limiting height to {:.1f} (ceiling at {:.1f})",
+                                      effectiveHeightOffset, ceilingHeight);
+                        }
                     }
                 }
             }
 
-            // Calculate ideal camera position at preferred distance with adjusted height
-            irr::core::vector3df idealPos(
-                eqX - std::sin(headingRad) * preferredFollowDistance_,
-                eqZ + effectiveHeightOffset,
-                eqY - std::cos(headingRad) * preferredFollowDistance_
-            );
+            // Wall check: test if camera's ideal position is in a PVS-visible region
+            // Camera ideal position in EQ coordinates (Z-up)
+            float camEqX = eqX - std::sin(headingRad) * preferredFollowDistance_;
+            float camEqY = eqY - std::cos(headingRad) * preferredFollowDistance_;
+            float camEqZ = eqZ + effectiveHeightOffset;
 
-            // Now check for wall/object collision along the path to camera
-            hitNode = nullptr;
-            irr::core::line3df ray(playerEye, idealPos);
+            if (isBspPointVisible(camEqX, camEqY, camEqZ)) {
+                // Camera position is in a visible region — no wall collision
+                if (actualFollowDistance_ < preferredFollowDistance_ && deltaTime > 0.0f) {
+                    actualFollowDistance_ = std::min(
+                        actualFollowDistance_ + ZOOM_RECOVERY_SPEED * deltaTime,
+                        preferredFollowDistance_);
+                }
+                effectiveDistance = actualFollowDistance_;
+            } else {
+                // Camera would be behind a wall — binary search for collision point
+                float collisionDist = bspFindCollisionDistance(
+                    eqX, eqY, eqZ + eyeHeight,  // start: player eye
+                    camEqX, camEqY, camEqZ);     // end: ideal camera pos
+                collisionDist = std::max(MIN_COLLISION_DISTANCE,
+                                         collisionDist - CAMERA_COLLISION_OFFSET);
 
-            if (collisionManager_->getCollisionPoint(ray, selector,
-                                                     hitPoint, hitTriangle, hitNode)) {
-                // Calculate distance from player eye to hit point
-                float hitDist = playerEye.getDistanceFrom(hitPoint);
-                // Back off from the wall slightly
-                float collisionDist = hitDist - CAMERA_COLLISION_OFFSET;
-                collisionDist = std::max(MIN_COLLISION_DISTANCE, collisionDist);
-
-                // Immediately zoom in if obstructed
                 if (collisionDist < actualFollowDistance_) {
-                    // Log significant zoom-ins (throttled)
                     static int collisionLogCount = 0;
                     if (++collisionLogCount % 30 == 1) {
-                        LOG_DEBUG(MOD_GRAPHICS, "Camera collision: zooming from {:.1f} to {:.1f} (hit at {:.1f})",
-                                  actualFollowDistance_, collisionDist, hitDist);
+                        LOG_DEBUG(MOD_GRAPHICS, "BSP camera collision: zooming from {:.1f} to {:.1f}",
+                                  actualFollowDistance_, collisionDist);
                     }
                     actualFollowDistance_ = collisionDist;
                 }
                 effectiveDistance = actualFollowDistance_;
+            }
+        } else if (collisionManager_ && collisionSelector_) {
+            // Legacy fallback: Irrlicht triangle selector collision
+            irr::core::vector3df hitPoint;
+            irr::core::triangle3df hitTriangle;
+            irr::scene::ISceneNode* hitNode = nullptr;
+
+            irr::core::vector3df ceilingCheckEnd(
+                eqX, eqZ + effectiveHeightOffset + 1.0f, eqY);
+            irr::core::line3df ceilingRay(playerEye, ceilingCheckEnd);
+
+            if (collisionManager_->getCollisionPoint(ceilingRay, collisionSelector_,
+                                                     hitPoint, hitTriangle, hitNode)) {
+                float ceilingHeight = hitPoint.Y - CAMERA_COLLISION_OFFSET;
+                float maxHeightOffset = ceilingHeight - eqZ;
+                if (maxHeightOffset < effectiveHeightOffset) {
+                    effectiveHeightOffset = std::max(eyeHeight * 0.5f, maxHeightOffset);
+                }
+            }
+
+            irr::core::vector3df idealPos(
+                eqX - std::sin(headingRad) * preferredFollowDistance_,
+                eqZ + effectiveHeightOffset,
+                eqY - std::cos(headingRad) * preferredFollowDistance_);
+            hitNode = nullptr;
+            irr::core::line3df ray(playerEye, idealPos);
+
+            if (collisionManager_->getCollisionPoint(ray, collisionSelector_,
+                                                     hitPoint, hitTriangle, hitNode)) {
+                float hitDist = playerEye.getDistanceFrom(hitPoint);
+                float collisionDist = std::max(MIN_COLLISION_DISTANCE,
+                                               hitDist - CAMERA_COLLISION_OFFSET);
+                if (collisionDist < actualFollowDistance_) {
+                    actualFollowDistance_ = collisionDist;
+                }
+                effectiveDistance = actualFollowDistance_;
             } else {
-                // No obstruction - smoothly restore to preferred distance
                 if (actualFollowDistance_ < preferredFollowDistance_ && deltaTime > 0.0f) {
                     actualFollowDistance_ = std::min(
                         actualFollowDistance_ + ZOOM_RECOVERY_SPEED * deltaTime,
@@ -217,7 +242,7 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
                 effectiveDistance = actualFollowDistance_;
             }
         } else {
-            // No collision manager - use preferred distance directly
+            // No collision system — use preferred distance directly
             actualFollowDistance_ = preferredFollowDistance_;
             effectiveDistance = preferredFollowDistance_;
         }
@@ -290,6 +315,72 @@ void CameraController::setFollowDistance(float distance) {
 
 void CameraController::adjustFollowDistance(float delta) {
     setFollowDistance(preferredFollowDistance_ + delta);
+}
+
+void CameraController::setBspCollision(const BspTree* bspTree,
+                                       const std::map<size_t, irr::core::aabbox3df>* regionBounds) {
+    bspTree_ = bspTree;
+    regionBoundsMap_ = regionBounds;
+    // Clear legacy collision when BSP is set
+    collisionManager_ = nullptr;
+    collisionSelector_ = nullptr;
+    LOG_DEBUG(MOD_GRAPHICS, "Camera BSP collision set (bspTree={}, regionBounds={})",
+              bspTree != nullptr, regionBounds != nullptr);
+}
+
+void CameraController::setBspPlayerRegion(size_t region) {
+    bspPlayerRegion_ = region;
+}
+
+bool CameraController::isBspPointVisible(float eqX, float eqY, float eqZ) const {
+    if (!bspTree_ || bspPlayerRegion_ == SIZE_MAX) return true;
+
+    size_t pointRegion = bspTree_->findRegionIndexForPoint(eqX, eqY, eqZ);
+
+    // Outside BSP entirely — not visible (behind a wall or above ceiling)
+    if (pointRegion == SIZE_MAX) return false;
+
+    // Same region as player — always visible
+    if (pointRegion == bspPlayerRegion_) return true;
+
+    // Check PVS: is pointRegion visible from playerRegion?
+    if (bspPlayerRegion_ < bspTree_->regions.size()) {
+        const auto& playerPvs = bspTree_->regions[bspPlayerRegion_]->visibleRegions;
+        if (pointRegion < playerPvs.size()) {
+            return playerPvs[pointRegion];
+        }
+    }
+
+    // No PVS data — conservatively treat as not visible
+    return false;
+}
+
+float CameraController::bspFindCollisionDistance(float startEqX, float startEqY, float startEqZ,
+                                                  float endEqX, float endEqY, float endEqZ) const {
+    // Binary search along the ray from start (player eye) to end (ideal camera pos)
+    // Find the furthest point that is still in a PVS-visible region
+    float lo = 0.0f, hi = 1.0f;
+
+    // 8 iterations gives ~1/256 precision along the ray (sub-unit accuracy for typical distances)
+    for (int i = 0; i < 8; ++i) {
+        float mid = (lo + hi) * 0.5f;
+        float mx = startEqX + (endEqX - startEqX) * mid;
+        float my = startEqY + (endEqY - startEqY) * mid;
+        float mz = startEqZ + (endEqZ - startEqZ) * mid;
+
+        if (isBspPointVisible(mx, my, mz)) {
+            lo = mid;  // midpoint is visible, search further out
+        } else {
+            hi = mid;  // midpoint is blocked, search closer
+        }
+    }
+
+    // Return the distance from start to the collision point
+    float dx = endEqX - startEqX;
+    float dy = endEqY - startEqY;
+    float dz = endEqZ - startEqZ;
+    float totalDist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    return lo * totalDist;
 }
 
 void CameraController::setCollisionManager(irr::scene::ISceneCollisionManager* mgr,

@@ -1,0 +1,85 @@
+=== GLES2 Icosphere Animation Benchmark ===
+Resolution: 1280x720, Frames: 300 per test
+
+DRM: Using mode 1280x720@60Hz
+EGL 1.5 (DRM/GBM, GLES2)
+GL: Mali400
+GL: OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+
+Zone: 205 verts, 288 tris
+Icosphere subdiv 1: 72 verts, 80 tris
+Icosphere subdiv 2: 312 verts, 320 tris
+
+Compiling shaders...
+  All programs compiled.
+
+============================================================
+PHASE 1: Zone-only baseline
+============================================================
+  avg: 7.54 ms  (~133 FPS)
+
+============================================================
+PHASE 2: Animation variants (4 emitters, 80 tri/sphere)
+============================================================
+
+  4 emitters x 80 tris = 320 total tris
+
+--- 2a: Static (no animation) ---
+  avg: 9.20 ms  (~109 FPS)  delta: +1.65 ms
+
+--- 2b: Scale pulsing (uniform radius oscillation) ---
+  avg: 9.17 ms  (~109 FPS)  delta: +1.63 ms
+
+--- 2c: Color flicker (CPU random per-emitter intensity) ---
+  avg: 9.07 ms  (~110 FPS)  delta: +1.53 ms
+
+--- 2d: Vertex jitter (VS normal displacement) ---
+  avg: 9.20 ms  (~109 FPS)  delta: +1.65 ms
+
+--- 2e: Combined (scale + flicker + jitter) ---
+  avg: 9.09 ms  (~110 FPS)  delta: +1.55 ms
+
+--- 2f: VBO re-upload (CPU rebuild colors every frame) ---
+  avg: 9.15 ms  (~109 FPS)  delta: +1.60 ms
+
+============================================================
+PHASE 3: Sphere count scaling (combined anim, 80 tri/sphere)
+============================================================
+
+--- 4 spheres (320 tris) ---
+  avg: 9.04 ms  (~111 FPS)  delta: +1.50 ms
+
+--- 8 spheres (640 tris) ---
+  avg: 9.31 ms  (~107 FPS)  delta: +1.77 ms
+
+--- 16 spheres (1280 tris) ---
+  avg: 11.38 ms  (~88 FPS)  delta: +3.84 ms
+
+============================================================
+PHASE 4: Subdivision scaling (4 emitters, combined anim)
+============================================================
+
+--- subdiv 1 (80 tri/sphere, 320 total) ---
+  avg: 9.11 ms  (~110 FPS)  delta: +1.56 ms
+
+--- subdiv 2 (320 tri/sphere, 1280 total) ---
+  avg: 9.27 ms  (~108 FPS)  delta: +1.72 ms
+
+============================================================
+SUMMARY
+============================================================
+
+Zone baseline: 7.54 ms (~133 FPS)
+
+Test                                                ms      FPS       delta
+----                                                --      ---       -----
+Zone baseline                                     7.54      133           -
+4x Static                                         9.20      109      +1.65ms
+4x Scale pulse                                    9.17      109      +1.63ms
+4x Color flicker                                  9.07      110      +1.53ms
+4x Vertex jitter                                  9.20      109      +1.65ms
+4x Combined (scale+flicker+jitter)                9.09      110      +1.55ms
+4x VBO re-upload (worst case)                     9.15      109      +1.60ms
+
+Frame budget: 33.3ms @ 30 FPS
+Combined 4x animation headroom: 24.2 ms (27% of budget)

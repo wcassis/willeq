@@ -339,7 +339,8 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     && cmake --build . --target gles2_fog_volume_benchmark -j$(nproc) \
     && cmake --build . --target gles2_fog_visual_compare -j$(nproc) \
     && cmake --build . --target gles2_icosphere_anim_benchmark -j$(nproc) \
+    && cmake --build . --target gles2_texture_read_benchmark -j$(nproc) \
     && echo 'Skipping strip — debug symbols retained for GDB' \
-    && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test bin/gles2_shader_perpixel_benchmark bin/gles2_program_switch_benchmark bin/gles2_fog_volume_benchmark bin/gles2_fog_visual_compare bin/gles2_icosphere_anim_benchmark /output/ \
+    && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test bin/gles2_shader_perpixel_benchmark bin/gles2_program_switch_benchmark bin/gles2_fog_volume_benchmark bin/gles2_fog_visual_compare bin/gles2_icosphere_anim_benchmark bin/gles2_texture_read_benchmark /output/ \
     && echo '=== Build complete ===' \
 "]

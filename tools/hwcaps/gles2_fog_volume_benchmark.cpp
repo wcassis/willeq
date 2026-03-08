@@ -34,6 +34,7 @@
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 
 #ifdef EQT_HAS_DRM
 #include <fcntl.h>
@@ -722,6 +723,171 @@ void main() {
 )";
 
 // ============================================================================
+// FP16 LUT helpers
+// ============================================================================
+
+static uint16_t floatToHalf(float f) {
+    uint32_t bits;
+    memcpy(&bits, &f, sizeof(bits));
+    uint32_t sign = (bits >> 16) & 0x8000;
+    int32_t exp = ((bits >> 23) & 0xFF) - 127;
+    uint32_t mant = bits & 0x7FFFFF;
+    if (exp > 15) return sign | 0x7C00;
+    if (exp < -14) return sign;
+    return sign | ((exp + 15) << 10) | (mant >> 13);
+}
+
+static bool hasHalfFloatTextures() {
+    const char* ext = (const char*)glGetString(GL_EXTENSIONS);
+    return ext && strstr(ext, "OES_texture_half_float") && strstr(ext, "OES_texture_half_float_linear");
+}
+
+// Create a 256x1 FP16 LUMINANCE LUT for sqrt(x), x ∈ [0, maxVal]
+static GLuint createSqrtLUT(float maxVal) {
+    uint16_t data[256];
+    for (int i = 0; i < 256; ++i) {
+        float x = maxVal * (static_cast<float>(i) + 0.5f) / 256.0f;
+        data[i] = floatToHalf(std::sqrt(x));
+    }
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 256, 1, 0,
+                 GL_LUMINANCE, GL_HALF_FLOAT_OES, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+// Create a 256x1 FP16 LUMINANCE LUT for exp(-x), x ∈ [0, maxVal]
+static GLuint createExpLUT(float maxVal) {
+    uint16_t data[256];
+    for (int i = 0; i < 256; ++i) {
+        float x = maxVal * (static_cast<float>(i) + 0.5f) / 256.0f;
+        data[i] = floatToHalf(std::exp(-x));
+    }
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 256, 1, 0,
+                 GL_LUMINANCE, GL_HALF_FLOAT_OES, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+// ============================================================================
+// LUT fog shader variants — replace sqrt + exp ALU with texture lookups
+// ============================================================================
+
+// LUT QUADRATIC: sqrt(disc) and exp(-density) replaced by FP16 LUT reads
+static const char* FS_FOG_LUT_QUADRATIC = R"(
+precision mediump float;
+
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+uniform highp float uSphereRadius;
+uniform sampler2D uSqrtLUT;
+uniform float uSqrtLUTScale;
+uniform sampler2D uExpLUT;
+uniform float uExpLUTScale;
+
+varying highp vec3 vRayOrigin;
+varying highp vec3 vRayDir;
+
+void main() {
+    vec3 rd = normalize(vRayDir);
+
+    float a_i = dot(rd, rd);
+    float b_i = 2.0 * dot(vRayOrigin, rd);
+    float c_i = dot(vRayOrigin, vRayOrigin) - 1.0;
+    float disc = b_i * b_i - 4.0 * a_i * c_i;
+
+    if (disc < 0.0) discard;
+
+    float sqrtDisc = texture2D(uSqrtLUT, vec2(disc * uSqrtLUTScale, 0.5)).r;
+    float tNear = max((-b_i - sqrtDisc) / (2.0 * a_i), 0.0);
+    float tFar = (-b_i + sqrtDisc) / (2.0 * a_i);
+    if (tFar < 0.0) discard;
+
+    vec3 o = vRayOrigin + rd * tNear;
+    float L = tFar - tNear;
+
+    float a = dot(rd, rd);
+    float b = 2.0 * dot(o, rd);
+    float c = dot(o, o);
+
+    float integral = L * ((1.0 - c) + L * (-b * 0.5 + L * (-a / 3.0)));
+
+    float density = uFogDensity * uSphereRadius * max(integral, 0.0);
+    float transmittance = texture2D(uExpLUT, vec2(density * uExpLUTScale, 0.5)).r;
+    float alpha = 1.0 - transmittance;
+
+    gl_FragColor = vec4(uFogColor * alpha, alpha);
+}
+)";
+
+// LUT QUARTIC: sqrt(disc) and exp(-density) replaced by FP16 LUT reads
+static const char* FS_FOG_LUT_QUARTIC = R"(
+precision mediump float;
+
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+uniform highp float uSphereRadius;
+uniform sampler2D uSqrtLUT;
+uniform float uSqrtLUTScale;
+uniform sampler2D uExpLUT;
+uniform float uExpLUTScale;
+
+varying highp vec3 vRayOrigin;
+varying highp vec3 vRayDir;
+
+void main() {
+    vec3 rd = normalize(vRayDir);
+
+    float a_i = dot(rd, rd);
+    float b_i = 2.0 * dot(vRayOrigin, rd);
+    float c_i = dot(vRayOrigin, vRayOrigin) - 1.0;
+    float disc = b_i * b_i - 4.0 * a_i * c_i;
+
+    if (disc < 0.0) discard;
+
+    float sqrtDisc = texture2D(uSqrtLUT, vec2(disc * uSqrtLUTScale, 0.5)).r;
+    float tNear = max((-b_i - sqrtDisc) / (2.0 * a_i), 0.0);
+    float tFar = (-b_i + sqrtDisc) / (2.0 * a_i);
+    if (tFar < 0.0) discard;
+
+    vec3 o = vRayOrigin + rd * tNear;
+    float L = tFar - tNear;
+
+    float a = dot(rd, rd);
+    float b = 2.0 * dot(o, rd);
+    float c = dot(o, o);
+
+    float h0 = 1.0 - c;
+    float c0 = h0 * h0;
+    float c1 = -2.0 * h0 * b;
+    float c2 = b * b - 2.0 * h0 * a;
+    float c3 = 2.0 * a * b;
+    float c4 = a * a;
+
+    float integral = L * (c0 + L * (c1 * 0.5 + L * (c2 / 3.0 + L * (c3 * 0.25 + L * c4 * 0.2))));
+
+    float density = uFogDensity * uSphereRadius * max(integral, 0.0);
+    float transmittance = texture2D(uExpLUT, vec2(density * uExpLUTScale, 0.5)).r;
+    float alpha = 1.0 - transmittance;
+
+    gl_FragColor = vec4(uFogColor * alpha, alpha);
+}
+)";
+
+// ============================================================================
 // Scene geometry (same alley as perpixel benchmark)
 // ============================================================================
 
@@ -1019,7 +1185,9 @@ static void drawZonePass(GLuint zoneProgram, GLuint zoneVbo, GLuint zoneIbo, int
 static void drawFogPass(GLuint fogProgram, GLuint fogVbo, GLuint fogIbo,
                          int numSpheres, float radius,
                          const float viewProj[16], const float cameraPos[3],
-                         const float cameraRight[3], const float cameraUp[3]) {
+                         const float cameraRight[3], const float cameraUp[3],
+                         GLuint sqrtLUT = 0, float sqrtLUTScale = 0.0f,
+                         GLuint expLUT = 0, float expLUTScale = 0.0f) {
     glUseProgram(fogProgram);
 
     // Fog volumes are alpha-blended, depth-tested but not depth-written
@@ -1042,6 +1210,25 @@ static void drawFogPass(GLuint fogProgram, GLuint fogVbo, GLuint fogIbo,
     if (locCamRight >= 0) glUniform3fv(locCamRight, 1, cameraRight);
     if (locCamUp >= 0) glUniform3fv(locCamUp, 1, cameraUp);
     if (locDensity >= 0) glUniform1f(locDensity, 2.0f);
+
+    // Bind LUT textures if the shader uses them
+    GLint locSqrtLUT = glGetUniformLocation(fogProgram, "uSqrtLUT");
+    GLint locSqrtScale = glGetUniformLocation(fogProgram, "uSqrtLUTScale");
+    GLint locExpLUT = glGetUniformLocation(fogProgram, "uExpLUT");
+    GLint locExpScale = glGetUniformLocation(fogProgram, "uExpLUTScale");
+    if (locSqrtLUT >= 0 && sqrtLUT > 0) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, sqrtLUT);
+        glUniform1i(locSqrtLUT, 0);
+    }
+    if (locSqrtScale >= 0) glUniform1f(locSqrtScale, sqrtLUTScale);
+    if (locExpLUT >= 0 && expLUT > 0) {
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, expLUT);
+        glUniform1i(locExpLUT, 1);
+        glActiveTexture(GL_TEXTURE0);
+    }
+    if (locExpScale >= 0) glUniform1f(locExpScale, expLUTScale);
 
     glBindBuffer(GL_ARRAY_BUFFER, fogVbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fogIbo);
@@ -1070,12 +1257,15 @@ static void drawFogPass(GLuint fogProgram, GLuint fogVbo, GLuint fogIbo,
 static BenchResult benchFogOnly(EGLState& state, GLuint fogProgram, GLuint fogVbo, GLuint fogIbo,
                                  int numSpheres, float radius, int numFrames,
                                  const float viewProj[16], const float cameraPos[3],
-                                 const float cameraRight[3], const float cameraUp[3]) {
+                                 const float cameraRight[3], const float cameraUp[3],
+                                 GLuint sqrtLUT = 0, float sqrtLUTScale = 0.0f,
+                                 GLuint expLUT = 0, float expLUTScale = 0.0f) {
     // Warmup
     for (int i = 0; i < 5; i++) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         drawFogPass(fogProgram, fogVbo, fogIbo, numSpheres, radius,
-                    viewProj, cameraPos, cameraRight, cameraUp);
+                    viewProj, cameraPos, cameraRight, cameraUp,
+                    sqrtLUT, sqrtLUTScale, expLUT, expLUTScale);
         glFinish();
     }
 
@@ -1087,7 +1277,8 @@ static BenchResult benchFogOnly(EGLState& state, GLuint fogProgram, GLuint fogVb
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         drawFogPass(fogProgram, fogVbo, fogIbo, numSpheres, radius,
-                    viewProj, cameraPos, cameraRight, cameraUp);
+                    viewProj, cameraPos, cameraRight, cameraUp,
+                    sqrtLUT, sqrtLUTScale, expLUT, expLUTScale);
         glFinish();
 
 #ifdef EQT_HAS_DRM
@@ -1113,7 +1304,9 @@ static BenchResult benchZonePlusFog(EGLState& state,
                                      GLuint fogProgram, GLuint fogVbo, GLuint fogIbo,
                                      int numSpheres, float radius, int numFrames, float aspect,
                                      const float viewProj[16], const float cameraPos[3],
-                                     const float cameraRight[3], const float cameraUp[3]) {
+                                     const float cameraRight[3], const float cameraUp[3],
+                                     GLuint sqrtLUT = 0, float sqrtLUTScale = 0.0f,
+                                     GLuint expLUT = 0, float expLUTScale = 0.0f) {
     glViewport(0, 0, state.width, state.height);
 
     // Warmup
@@ -1121,7 +1314,8 @@ static BenchResult benchZonePlusFog(EGLState& state,
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         drawZonePass(zoneProgram, zoneVbo, zoneIbo, zoneIndexCount, texture, aspect, viewProj);
         drawFogPass(fogProgram, fogVbo, fogIbo, numSpheres, radius,
-                    viewProj, cameraPos, cameraRight, cameraUp);
+                    viewProj, cameraPos, cameraRight, cameraUp,
+                    sqrtLUT, sqrtLUTScale, expLUT, expLUTScale);
         glFinish();
     }
 
@@ -1134,7 +1328,8 @@ static BenchResult benchZonePlusFog(EGLState& state,
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         drawZonePass(zoneProgram, zoneVbo, zoneIbo, zoneIndexCount, texture, aspect, viewProj);
         drawFogPass(fogProgram, fogVbo, fogIbo, numSpheres, radius,
-                    viewProj, cameraPos, cameraRight, cameraUp);
+                    viewProj, cameraPos, cameraRight, cameraUp,
+                    sqrtLUT, sqrtLUTScale, expLUT, expLUTScale);
         glFinish();
 
 #ifdef EQT_HAS_DRM
@@ -1274,15 +1469,40 @@ int main(int argc, char* argv[]) {
         const char* name;
         const char* fsSrc;
         GLuint program;
+        bool usesLUT;
     };
 
-    FogVariant fogVariants[] = {
-        {"QUADRATIC (1-r^2)",       FS_FOG_QUADRATIC, 0},
-        {"QUARTIC (1-r^2)^2",       FS_FOG_QUARTIC,   0},
-        {"LINEAR (1-r)",            FS_FOG_LINEAR,     0},
-        {"GAUSSIAN exp(-r^2)",      FS_FOG_GAUSSIAN,   0},
+    std::vector<FogVariant> fogVariants = {
+        {"QUADRATIC (1-r^2)",       FS_FOG_QUADRATIC,     0, false},
+        {"QUARTIC (1-r^2)^2",       FS_FOG_QUARTIC,       0, false},
+        {"LINEAR (1-r)",            FS_FOG_LINEAR,         0, false},
+        {"GAUSSIAN exp(-r^2)",      FS_FOG_GAUSSIAN,       0, false},
     };
-    const int numFogVariants = sizeof(fogVariants) / sizeof(fogVariants[0]);
+
+    // Create LUT textures for sqrt and exp (if FP16 textures supported)
+    GLuint sqrtLUT = 0, expLUT = 0;
+    float sqrtLUTScale = 0.0f, expLUTScale = 0.0f;
+    if (hasHalfFloatTextures()) {
+        // sqrt LUT: disc ∈ [0, 4] for unit sphere intersection
+        float sqrtMaxVal = 4.0f;
+        sqrtLUT = createSqrtLUT(sqrtMaxVal);
+        sqrtLUTScale = 1.0f / sqrtMaxVal;
+
+        // exp LUT: density = fogDensity(2.0) * radius * integral
+        // For radius=6 and max integral ~1, density up to ~12. Use 16 for headroom.
+        float expMaxVal = 16.0f;
+        expLUT = createExpLUT(expMaxVal);
+        expLUTScale = 1.0f / expMaxVal;
+
+        fogVariants.push_back({"LUT QUADRATIC (sqrt+exp)", FS_FOG_LUT_QUADRATIC, 0, true});
+        fogVariants.push_back({"LUT QUARTIC (sqrt+exp)",   FS_FOG_LUT_QUARTIC,   0, true});
+
+        printf("LUT: sqrt(256x1 FP16, maxVal=%.0f), exp(256x1 FP16, maxVal=%.0f)\n", sqrtMaxVal, expMaxVal);
+    } else {
+        printf("LUT: FP16 textures not available, skipping LUT variants\n");
+    }
+
+    int numFogVariants = static_cast<int>(fogVariants.size());
 
     for (int i = 0; i < numFogVariants; i++) {
         GLuint fs = compileShader(GL_FRAGMENT_SHADER, fogVariants[i].fsSrc);
@@ -1379,7 +1599,9 @@ int main(int argc, char* argv[]) {
         for (int c = 0; c < numFogConfigs; c++) {
             BenchResult r = benchFogOnly(state, fogVariants[v].program, fogVbo, fogIbo,
                                           fogConfigs[c].numSpheres, fogConfigs[c].radius,
-                                          numFrames, viewProj, cameraPos, cameraRight, cameraUp);
+                                          numFrames, viewProj, cameraPos, cameraRight, cameraUp,
+                                          fogVariants[v].usesLUT ? sqrtLUT : 0, sqrtLUTScale,
+                                          fogVariants[v].usesLUT ? expLUT : 0, expLUTScale);
             printf("  %-25s  avg: %6.2f ms  (~%.0f FPS)\n",
                    fogConfigs[c].label, r.avgMs, 1000.0 / r.avgMs);
             fogOnlyResults.push_back({fogVariants[v].name, fogConfigs[c].label, r});
@@ -1419,7 +1641,9 @@ int main(int argc, char* argv[]) {
                                               (int)zoneIndices.size(), texture,
                                               fogVariants[v].program, fogVbo, fogIbo,
                                               combinedConfigs[c].numSpheres, combinedConfigs[c].radius,
-                                              numFrames, aspect, viewProj, cameraPos, cameraRight, cameraUp);
+                                              numFrames, aspect, viewProj, cameraPos, cameraRight, cameraUp,
+                                              fogVariants[v].usesLUT ? sqrtLUT : 0, sqrtLUTScale,
+                                              fogVariants[v].usesLUT ? expLUT : 0, expLUTScale);
             double delta = r.avgMs - zoneBaseline.avgMs;
             printf("  %-25s  avg: %6.2f ms  (~%.0f FPS)  fog cost: %+.2f ms\n",
                    combinedConfigs[c].label, r.avgMs, 1000.0 / r.avgMs, delta);
@@ -1479,6 +1703,8 @@ int main(int argc, char* argv[]) {
     glDeleteBuffers(1, &zoneIbo);
     glDeleteBuffers(1, &fogVbo);
     glDeleteBuffers(1, &fogIbo);
+    if (sqrtLUT) glDeleteTextures(1, &sqrtLUT);
+    if (expLUT) glDeleteTextures(1, &expLUT);
 
     cleanup(state);
     return 0;

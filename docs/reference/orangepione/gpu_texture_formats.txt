@@ -1,0 +1,53 @@
+NOTE: THIS IS FOR AN OLD SETUP WHERE LIMA WAS PROVIDING DESKTOP->GLES TRANSLATION
+
+EGL 1.5 (DRM/GBM)
+GL Vendor:   Mesa
+GL Renderer: Mali400
+GL Version:  2.1 Mesa 25.2.8-0ubuntu0.24.04.1
+
+=== Driver-reported compressed texture formats: 3 ===
+  0x83F0  S3TC_DXT1 (BC1)
+  0x83F2  S3TC_DXT3 (BC2)
+  0x83F3  S3TC_DXT5 (BC3)
+
+=== Format presence in driver list ===
+  ETC1_RGB8_OES:  NO
+  S3TC_DXT1:      YES
+
+  Note: Formats in this list are ones the driver considers 'natively'
+  supported, but Mesa may still software-decode some of them.
+  The upload benchmark below gives a more definitive answer.
+
+=== Relevant GL extensions ===
+  GL_OES_compressed_ETC1_RGB8_texture              no
+  GL_EXT_texture_compression_s3tc                  YES
+  GL_EXT_texture_compression_dxt1                  YES
+  GL_ANGLE_texture_compression_dxt3                YES
+  GL_ANGLE_texture_compression_dxt5                YES
+  GL_ARB_texture_compression                       YES
+  GL_KHR_texture_compression_astc_ldr              YES
+  GL_ARB_ES2_compatibility                         YES
+
+=== Upload benchmark: 256x256 textures, 500 iterations ===
+
+RGBA8 (uncompressed)            262144 bytes     113.7 us/upload  (baseline)
+S3TC_DXT1 (BC1)                  32768 bytes    4079.3 us/upload  ratio=35.88x      SOFTWARE (slower than uncompressed)
+S3TC_DXT3 (BC2)                  65536 bytes    4604.8 us/upload  ratio=40.51x      SOFTWARE (slower than uncompressed)
+S3TC_DXT5 (BC3)                  65536 bytes    4717.5 us/upload  ratio=41.50x      SOFTWARE (slower than uncompressed)
+
+=== Probing formats not in driver list ===
+
+ETC1_RGB8_OES                 rejected (GL error) - not supported
+ETC2_RGB8                     rejected (GL error) - not supported
+ETC2_RGBA8_EAC                rejected (GL error) - not supported
+ASTC_4x4                         65536 bytes    1960.8 us/upload  ratio=17.25x      SOFTWARE (slower than uncompressed)
+  ^ Note: accepted despite NOT being in GL_COMPRESSED_TEXTURE_FORMATS
+
+=== Interpretation guide ===
+  ratio < 0.7x  : Compressed upload is significantly faster than RGBA upload.
+                  The GPU is decoding the format in hardware (less data to transfer,
+                  no CPU decode overhead).
+  ratio ~ 1.0x  : Similar speed. May be hardware-decoded but with overhead,
+                  or the test is bottlenecked elsewhere. Inconclusive.
+  ratio > 1.1x  : Compressed upload is slower than RGBA. The driver is
+                  software-decoding on the CPU before uploading to GPU.

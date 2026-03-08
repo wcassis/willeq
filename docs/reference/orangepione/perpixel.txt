@@ -1,0 +1,76 @@
+=== GLES2 Per-Pixel Lighting Benchmark ===
+Resolution: 1280x720, Frames: 300 per test
+
+DRM: Using mode 1280x720@60Hz
+EGL 1.5 (DRM/GBM, GLES2)
+GL: Mali400
+GL: OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+
+Scene: 160 vertices, 224 triangles (4 walls+floor, subdivided)
+
+Compiling shaders...
+  Programs compiled: 8
+
+=== ROUND 1 ===
+
+--- LIGHTWEIGHT (baseline) ---
+  avg: 7.19 ms  min: 7.05 ms  max: 14.71 ms  (~139 FPS)
+
+--- PP BRANCHED (original, if check) ---
+  avg: 27.82 ms  min: 27.76 ms  max: 28.04 ms  (~36 FPS)
+
+--- PP BRANCHLESS (current, no branch) ---
+  avg: 23.31 ms  min: 23.25 ms  max: 23.42 ms  (~43 FPS)
+
+--- OPT B: inversesqrt (skip normalize, 1 isqrt) ---
+  avg: 21.52 ms  min: 21.40 ms  max: 21.78 ms  (~46 FPS)
+
+--- OPT C: quadratic (isqrt + quad-only atten) ---
+  avg: 19.73 ms  min: 19.67 ms  max: 19.90 ms  (~51 FPS)
+
+--- OPT D: omni (distance-only, full atten) ---
+  avg: 16.91 ms  min: 16.69 ms  max: 17.20 ms  (~59 FPS)
+
+--- OPT E: omni+quad (no sqrt at all) ---
+  avg: 14.39 ms  min: 14.30 ms  max: 20.52 ms  (~69 FPS)
+
+--- OPT F: per-vertex plight (trivial FS) ---
+  avg: 9.74 ms  min: 9.60 ms  max: 10.05 ms  (~103 FPS)
+
+=== ROUND 2 (order bias check) ===
+
+--- LIGHTWEIGHT (baseline) ---
+  avg: 7.43 ms  min: 7.36 ms  max: 7.76 ms  (~135 FPS)
+
+--- PP BRANCHED (original, if check) ---
+  avg: 27.82 ms  min: 27.77 ms  max: 27.93 ms  (~36 FPS)
+
+--- PP BRANCHLESS (current, no branch) ---
+  avg: 23.31 ms  min: 23.26 ms  max: 23.41 ms  (~43 FPS)
+
+--- OPT B: inversesqrt (skip normalize, 1 isqrt) ---
+  avg: 21.51 ms  min: 21.45 ms  max: 21.62 ms  (~46 FPS)
+
+--- OPT C: quadratic (isqrt + quad-only atten) ---
+  avg: 19.73 ms  min: 19.67 ms  max: 20.06 ms  (~51 FPS)
+
+--- OPT D: omni (distance-only, full atten) ---
+  avg: 17.06 ms  min: 16.98 ms  max: 23.17 ms  (~59 FPS)
+
+--- OPT E: omni+quad (no sqrt at all) ---
+  avg: 14.35 ms  min: 14.30 ms  max: 14.55 ms  (~70 FPS)
+
+--- OPT F: per-vertex plight (trivial FS) ---
+  avg: 9.94 ms  min: 9.86 ms  max: 10.07 ms  (~101 FPS)
+
+=== SUMMARY ===
+Variant                                             ms      FPS     vs LW
+-------                                             --      ---     -----
+LIGHTWEIGHT (baseline)                            7.31      137    +0.00ms
+PP BRANCHED (original, if check)                 27.82       36   +20.51ms
+PP BRANCHLESS (current, no branch)               23.31       43   +16.00ms
+OPT B: inversesqrt (skip normalize, 1 isqrt)     21.52       46   +14.20ms
+OPT C: quadratic (isqrt + quad-only atten)       19.73       51   +12.42ms
+OPT D: omni (distance-only, full atten)          16.99       59    +9.68ms
+OPT E: omni+quad (no sqrt at all)                14.37       70    +7.06ms
+OPT F: per-vertex plight (trivial FS)             9.84      102    +2.53ms

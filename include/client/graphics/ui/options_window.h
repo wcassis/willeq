@@ -41,6 +41,9 @@ struct DisplaySettings {
     bool skyEnabled = true;
     bool animatedTrees = true;
     bool fireEffects = true;
+    bool enableFireGlowLighting = true;
+    bool enableFireGlowIcospheres = false;
+    int maxFireGlowLights = 4;   // 1-8, configurable in JSON
     float environmentDensity = 0.5f;
 
     // Detail Objects (grass, plants, debris)

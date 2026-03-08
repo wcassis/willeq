@@ -1,0 +1,128 @@
+=== GLES2 Program Switch Benchmark ===
+Resolution: 1280x720, Frames: 300 per test
+
+DRM: Using mode 1280x720@60Hz
+EGL 1.5 (DRM/GBM, GLES2)
+GL: Mali400
+GL: OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+
+Scene: 160 vertices, 224 triangles
+
+Compiling shaders...
+  Compiled: 1 lightweight + 8 per-pixel (0-7 VS lights) = 9 programs
+
+============================================================
+PHASE 1: Per-light-count programs (OPT C FS, unrolled VS)
+============================================================
+
+--- Lightweight (baseline, looped 8 VS lights) ---
+  R1: avg 7.12 ms (~140 FPS)
+  R2: avg 7.24 ms (~138 FPS)
+
+--- PP 0 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.72 ms (~51 FPS)
+  R2: avg 19.73 ms (~51 FPS)
+
+--- PP 1 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.73 ms (~51 FPS)
+  R2: avg 19.73 ms (~51 FPS)
+
+--- PP 2 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.76 ms (~51 FPS)
+  R2: avg 19.74 ms (~51 FPS)
+
+--- PP 3 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.74 ms (~51 FPS)
+  R2: avg 19.74 ms (~51 FPS)
+
+--- PP 4 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.75 ms (~51 FPS)
+  R2: avg 19.76 ms (~51 FPS)
+
+--- PP 5 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.65 ms (~51 FPS)
+  R2: avg 19.79 ms (~51 FPS)
+
+--- PP 6 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.67 ms (~51 FPS)
+  R2: avg 19.77 ms (~51 FPS)
+
+--- PP 7 VS lights (unrolled) + OPT C FS ---
+  R1: avg 19.67 ms (~51 FPS)
+  R2: avg 19.78 ms (~51 FPS)
+
+--- PHASE 1 SUMMARY ---
+Variant                               avg ms      FPS
+-------                               ------      ---
+Lightweight (8 VS lights, looped)       7.18      139
+PP 0 VS lights (unrolled) + OPT C      19.73       51
+PP 1 VS lights (unrolled) + OPT C      19.73       51
+PP 2 VS lights (unrolled) + OPT C      19.75       51
+PP 3 VS lights (unrolled) + OPT C      19.74       51
+PP 4 VS lights (unrolled) + OPT C      19.75       51
+PP 5 VS lights (unrolled) + OPT C      19.72       51
+PP 6 VS lights (unrolled) + OPT C      19.72       51
+PP 7 VS lights (unrolled) + OPT C      19.72       51
+
+============================================================
+PHASE 2: Program switching cost (multiple draws per frame)
+============================================================
+
+--- 10 draws, 1 program (PP0, no switch) ---
+  R1: avg 20.55 ms (~49 FPS)
+  R2: avg 20.54 ms (~49 FPS)
+
+--- 10 draws, 2 programs (PP0,PP3) ---
+  R1: avg 21.23 ms (~47 FPS)
+  R2: avg 21.24 ms (~47 FPS)
+
+--- 10 draws, 4 programs (PP0,PP1,PP3,PP5) ---
+  R1: avg 21.27 ms (~47 FPS)
+  R2: avg 21.27 ms (~47 FPS)
+
+--- 10 draws, 8 programs (PP0-PP7) ---
+  R1: avg 21.36 ms (~47 FPS)
+  R2: avg 21.37 ms (~47 FPS)
+
+--- 10 draws, PP0+LW alternating ---
+  R1: avg 21.33 ms (~47 FPS)
+  R2: avg 21.33 ms (~47 FPS)
+
+--- 10 draws, PP3+LW alternating ---
+  R1: avg 21.40 ms (~47 FPS)
+  R2: avg 21.40 ms (~47 FPS)
+
+--- PHASE 2 SUMMARY ---
+Scenario                                        avg ms      FPS   vs base
+--------                                        ------      ---   -------
+10 draws, 1 program (PP0, no switch)             20.55       49    +0.00ms
+10 draws, 2 programs (PP0,PP3)                   21.24       47    +0.69ms
+10 draws, 4 programs (PP0,PP1,PP3,PP5)           21.27       47    +0.72ms
+10 draws, 8 programs (PP0-PP7)                   21.36       47    +0.82ms
+10 draws, PP0+LW alternating                     21.33       47    +0.78ms
+10 draws, PP3+LW alternating                     21.40       47    +0.86ms
+
+============================================================
+PHASE 3: Program count pressure
+============================================================
+
+--- Baseline: PP0 with 9 programs compiled ---
+  avg: 19.73 ms (~51 FPS)
+
+Compiling 9 additional dummy programs (total: 18)...
+  Compiled 9 dummy programs
+--- PP0 with 18 programs compiled ---
+  avg: 19.64 ms (~51 FPS)
+
+Compiling 9 more dummy programs (total: 27)...
+  Total compiled: 27 programs
+--- PP0 with 27 programs compiled ---
+  avg: 19.64 ms (~51 FPS)
+
+--- PHASE 3 SUMMARY ---
+Total programs compiled          avg ms      FPS   vs base
+-----------------------          ------      ---   -------
+9 programs                        19.73       51    +0.00ms
+18 programs                       19.64       51    -0.09ms
+27 programs                       19.64       51    -0.09ms
+

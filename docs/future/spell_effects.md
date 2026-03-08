@@ -1,0 +1,23 @@
+The core problem with Irrlicht's billboard system is that each billboard is an individual scene node, which means a separate draw call with its own state setup, matrix upload, and texture bind. On desktop GPUs with beefy drivers this is merely inefficient, but on Mali-400 class hardware it's a killer — draw call overhead dominates and you can tank the framerate with just a few dozen particles on screen. Since you're writing the ES 2.0 renderer from scratch, you have the opportunity to avoid this entirely.
+
+Batched quad rendering is the single biggest win. Instead of one draw call per billboard, you maintain a dynamic vertex buffer that collects all billboards sharing the same texture into a single batch. Each frame you fill the buffer with pre-transformed quads (four vertices each, two triangles), then draw the entire batch in one call. A spell effect with 50 particles becomes one draw call instead of 50. On the Mali-400 you want to stay under roughly 100-150 total draw calls per frame, so this is essential.
+
+The workflow per frame would be: iterate through active particles, compute each quad's four screen-facing vertices, append them to the batch buffer, then submit once. You can do the billboard orientation math either on the CPU (straightforward — extract the camera's right and up vectors from the view matrix and build each quad from center + right * halfwidth + up * halfheight), or push it to the vertex shader by uploading particle centers and sizes and expanding quads in the shader using the inverse view matrix. The CPU approach is simpler and probably fine for the particle counts you'll see in classic EQ.
+
+Texture atlasing for spell effects is the natural companion to batching. If all your spell textures live in a single atlas (or a small number of atlases), you can batch particles from different spell effects together as long as they share an atlas page. Each particle just gets different UV coordinates within the atlas. This means a scene with fire, ice, and healing particles happening simultaneously might still be just two or three draw calls total rather than dozens.
+
+Point sprites are worth considering for the simplest particles — sparks, glowing dots, ambient effects. In ES 2.0 you render GL_POINTS and set gl_PointSize in the vertex shader, so each particle is a single vertex instead of four. The fragment shader samples the texture across the point. The limitation is that point sprites are always square and there's a hardware-dependent maximum size — on Mali-400 it's typically 256 or 512 pixels, which is plenty for small particles but not usable for large spell billboards. They're essentially free on the vertex pipeline though, so they're great for high-count ambient effects.
+
+Shader-based frame animation saves you from updating UV coordinates on the CPU for animated spell textures. Pass a time uniform and frame count, compute the UV offset in the vertex shader. The particle data in your buffer stays static except for position, and the animation runs entirely on the GPU.
+
+For a practical implementation strategy, I'd suggest building a simple particle system with three tiers:
+
+A point sprite renderer for small, numerous particles — sparks, rain, snow, ambient dust. One draw call per texture, hundreds or thousands of particles essentially for free.
+
+A batched quad renderer for medium particles that need non-square shapes or larger sizes — most spell effects like fire bolts, healing waves, poison clouds. One draw call per atlas page.
+
+A small number of individual quads for rare oversized effects that need special blending or render order — maybe full-screen flashes for certain spells.
+
+Pre-allocate your particle buffers with a fixed maximum count rather than dynamically allocating per spell cast. Classic EQ spell effects rarely exceeded 20-30 particles per spell, and you're unlikely to have more than a few spells active simultaneously in the Kunark/Velious era. A pre-allocated buffer of maybe 500-1000 particles total should be more than enough and avoids any allocation overhead during gameplay.
+
+Transparency sorting is the one area that requires some care. Spell particles need alpha blending and should be drawn back-to-front for correct visual results. Sorting a few hundred particles per frame is trivial on the CPU, but make sure you sort within your batched buffer before uploading rather than breaking the batch into individual sorted draw calls — that defeats the whole purpose. For cases where particles overlap heavily and sorting artifacts are visible, additive blending (GL_ONE, GL_ONE) avoids the sorting requirement entirely and looks good for fire, lightning, and magical glow effects, which covers a lot of EQ's spell repertoire.

@@ -376,11 +376,14 @@ public:
     // Get entities map for LOS checking (read-only access)
     const std::map<uint16_t, EntityVisual>& getEntities() const { return entities_; }
 
-    // Check for boat collision at a position
+    // Check for boat collision at a position (early-out if no boats in zone)
     // Returns the deck Z height if standing on a boat, or BEST_Z_INVALID if not on a boat
     // x, y: EQ coordinates to check
     // currentZ: current player Z position (to check if we're at boat level)
     float findBoatDeckZ(float x, float y, float currentZ) const;
+
+    // Returns true if any boats exist in the current zone (cheap bool check)
+    bool hasBoatsInZone() const { return !boatSpawnIds_.empty(); }
 
     // Debug: Set target ID for animation debugging output
     void setDebugTargetId(uint16_t spawnId);
@@ -714,6 +717,14 @@ private:
 
     // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)
     ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
+
+    // Boat tracking — avoid per-frame boat collision checks when no boats exist
+    // Populated at entity build time (both sequential and runtime paths)
+    std::vector<uint16_t> boatSpawnIds_;  // Spawn IDs of boat entities (race 72/73)
+
+    // Register/unregister a boat entity for collision tracking
+    void registerBoat(uint16_t spawnId);
+    void unregisterBoat(uint16_t spawnId);
 };
 
 } // namespace Graphics

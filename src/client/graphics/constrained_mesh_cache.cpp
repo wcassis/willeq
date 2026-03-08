@@ -114,7 +114,7 @@ irr::scene::IMeshSceneNode* ConstrainedMeshCache::getNode(size_t regionIdx) cons
 }
 
 std::vector<size_t> ConstrainedMeshCache::evictUntilAvailable(size_t bytesNeeded,
-    const std::unordered_set<size_t>& protectedRegions) {
+    const std::vector<bool>& protectedRegions) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<size_t> result;
     if (frozen_) return result;
@@ -134,7 +134,7 @@ std::vector<size_t> ConstrainedMeshCache::evictUntilAvailable(size_t bytesNeeded
         }
 
         // Skip protected or unloaded regions
-        if (protectedRegions.count(candidate) > 0 || !cacheIt->second.loaded) {
+        if ((candidate < protectedRegions.size() && protectedRegions[candidate]) || !cacheIt->second.loaded) {
             // Move to back of LRU and try next
             lruOrder_.pop_front();
             lruOrder_.push_back(candidate);

@@ -23,6 +23,7 @@
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 
 #ifdef EQT_HAS_DRM
 #include <fcntl.h>
@@ -760,6 +761,78 @@ void main() {
 )";
 
 // ============================================================================
+// Texture LUT variants — replace ALU (inversesqrt, reciprocal) with FP16
+// texture lookups. LUT is a 256x1 GL_LUMINANCE_ALPHA + GL_HALF_FLOAT_OES
+// texture where L = inversesqrt(d²), A = 1/(c + q*d²).
+// ============================================================================
+
+// LUT G: OPT C equivalent — directional NdotL + quadratic attenuation from LUT.
+// Replaces inversesqrt(d²) and 1/(c+q*d²) with a single texture2D lookup.
+// Same visual result as OPT C, but ALU → texture fetch.
+static const char* FS_LUT_QUADRATIC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform sampler2D uAttenLUT;
+uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform float uLUTScale;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float invD = lut.r;
+    float pLa = lut.a;
+    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * pLa;
+
+    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// LUT H: OPT E equivalent — omni + quadratic attenuation from LUT.
+// Replaces 1/(c+q*d²) with a single texture2D lookup. No inversesqrt needed.
+static const char* FS_LUT_OMNI_QUAD = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform sampler2D uAttenLUT;
+uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform float uLUTScale;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv);
+    float pLa = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5)).a;
+    vec3 pLight = uPlayerLightColor * pLa;
+
+    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// ============================================================================
 // Scene geometry: an alley (3 walls + floor, ~100 polys with subdivisions)
 // ============================================================================
 
@@ -863,6 +936,70 @@ static GLuint createCheckerTexture(int size) {
 }
 
 // ============================================================================
+// FP16 conversion and attenuation LUT creation
+// ============================================================================
+
+static uint16_t floatToHalf(float f) {
+    uint32_t x;
+    memcpy(&x, &f, sizeof(x));
+    uint16_t sign = (x >> 16) & 0x8000;
+    int exp = ((x >> 23) & 0xFF) - 127 + 15;
+    uint16_t frac = (x >> 13) & 0x03FF;
+    if (exp <= 0) return sign;       // underflow to zero
+    if (exp >= 31) return sign | 0x7C00;  // overflow to inf
+    return sign | (exp << 10) | frac;
+}
+
+// Check if GL_OES_texture_half_float and GL_OES_texture_half_float_linear are available
+static bool hasHalfFloatTextures() {
+    const char* ext = (const char*)glGetString(GL_EXTENSIONS);
+    if (!ext) return false;
+    return strstr(ext, "GL_OES_texture_half_float") != nullptr &&
+           strstr(ext, "GL_OES_texture_half_float_linear") != nullptr;
+}
+
+// Create a 256x1 GL_LUMINANCE_ALPHA FP16 attenuation LUT.
+// L channel = inversesqrt(d² + epsilon)
+// A channel = 1.0 / (attenConst + attenQuad * d² + epsilon)
+// d² is mapped to [0, maxD2] across the 256 texels.
+static GLuint createAttenLUT(float attenConst, float attenQuad, float maxD2) {
+    const int LUT_SIZE = 256;
+    // Each texel is 2 x FP16 = 4 bytes (luminance + alpha)
+    uint16_t data[LUT_SIZE * 2];
+
+    for (int i = 0; i < LUT_SIZE; i++) {
+        float t = (float)i / (float)(LUT_SIZE - 1);
+        float d2 = t * maxD2;
+        float d2e = d2 + 0.0001f;  // epsilon to match shader
+
+        float invD = 1.0f / sqrtf(d2e);
+        float atten = 1.0f / (attenConst + attenQuad * d2e + 0.0001f);
+
+        data[i * 2 + 0] = floatToHalf(invD);    // luminance
+        data[i * 2 + 1] = floatToHalf(atten);   // alpha
+    }
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, LUT_SIZE, 1, 0,
+                 GL_LUMINANCE_ALPHA, GL_HALF_FLOAT_OES, data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        fprintf(stderr, "LUT creation failed (GL error 0x%x)\n", err);
+        glDeleteTextures(1, &tex);
+        return 0;
+    }
+
+    return tex;
+}
+
+// ============================================================================
 // Simple 4x4 identity/projection matrices
 // ============================================================================
 
@@ -924,7 +1061,8 @@ struct BenchResult {
 
 static BenchResult runBenchmark(EGLState& state, GLuint program, GLuint vbo, GLuint ibo,
                                  int indexCount, GLuint texture, int numFrames,
-                                 float aspect, bool isPerPixel, int numPointLights = 2) {
+                                 float aspect, bool isPerPixel, int numPointLights = 2,
+                                 GLuint lutTexture = 0, float lutScale = 0.0f) {
     glUseProgram(program);
 
     // Camera: standing in the alley looking down it
@@ -997,6 +1135,17 @@ static BenchResult runBenchmark(EGLState& state, GLuint program, GLuint vbo, GLu
         if (locPLPos >= 0) glUniform3fv(locPLPos, 1, &lightPos[0]);
         if (locPLColor >= 0) glUniform3fv(locPLColor, 1, &lightColor[0]);
         if (locPLAtten >= 0) glUniform3fv(locPLAtten, 1, &lightAtten[0]);
+    }
+
+    // Bind LUT texture to unit 1 if available
+    if (lutTexture) {
+        GLint locAttenLUT = glGetUniformLocation(program, "uAttenLUT");
+        GLint locLUTScale = glGetUniformLocation(program, "uLUTScale");
+        if (locAttenLUT >= 0) glUniform1i(locAttenLUT, 1);
+        if (locLUTScale >= 0) glUniform1f(locLUTScale, lutScale);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, lutTexture);
+        glActiveTexture(GL_TEXTURE0);
     }
 
     // Bind geometry
@@ -1125,6 +1274,28 @@ int main(int argc, char* argv[]) {
 
     GLuint texture = createCheckerTexture(256);
 
+    // Create attenuation LUT (FP16) if half-float textures are supported
+    // Uses same attenuation params as player light: constant=1.0, quadratic=19/(52²)
+    float attenConst = 1.0f;
+    float attenQuad = 19.0f / (52.0f * 52.0f);
+    float lutMaxD2 = 4096.0f;  // 64 units range (covers well beyond light radius)
+    float lutScale = 1.0f / lutMaxD2;
+    GLuint lutTexture = 0;
+    bool hasLUT = false;
+
+    if (hasHalfFloatTextures()) {
+        lutTexture = createAttenLUT(attenConst, attenQuad, lutMaxD2);
+        if (lutTexture) {
+            hasLUT = true;
+            printf("LUT: Created 256x1 FP16 attenuation LUT (atten=%.1f+%.6f*d², maxD²=%.0f)\n",
+                   attenConst, attenQuad, lutMaxD2);
+        } else {
+            printf("LUT: FP16 texture creation failed, LUT tests skipped\n");
+        }
+    } else {
+        printf("LUT: GL_OES_texture_half_float/_linear not available, LUT tests skipped\n");
+    }
+
     // Compile shaders
     printf("Compiling shaders...\n");
 
@@ -1156,6 +1327,17 @@ int main(int argc, char* argv[]) {
     GLuint fsLightweight = compileShader(GL_FRAGMENT_SHADER, FS_LIGHTWEIGHT);
     GLuint progLightweight = (vsLightweight && fsLightweight) ? linkProgram(vsLightweight, fsLightweight) : 0;
 
+    // LUT shader variants (only if LUT texture was created successfully)
+    GLuint fsLUTQuad = 0, progLUTQuad = 0;
+    GLuint fsLUTOmniQuad = 0, progLUTOmniQuad = 0;
+    if (hasLUT) {
+        fsLUTQuad = compileShader(GL_FRAGMENT_SHADER, FS_LUT_QUADRATIC);
+        progLUTQuad = (vsPerPixel && fsLUTQuad) ? linkProgram(vsPerPixel, fsLUTQuad) : 0;
+
+        fsLUTOmniQuad = compileShader(GL_FRAGMENT_SHADER, FS_LUT_OMNI_QUAD);
+        progLUTOmniQuad = (vsPerPixel && fsLUTOmniQuad) ? linkProgram(vsPerPixel, fsLUTOmniQuad) : 0;
+    }
+
     if (!progBranched || !progBranchless || !progOptInvSqrt || !progOptQuad ||
         !progOptOmni || !progOptOmniQuad || !progPerVertexPL || !progLightweight) {
         fprintf(stderr, "Shader compilation failed\n");
@@ -1163,7 +1345,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    printf("  Programs compiled: 8\n\n");
+    int progCount = 8;
+    if (progLUTQuad) progCount++;
+    if (progLUTOmniQuad) progCount++;
+    printf("  Programs compiled: %d%s\n\n", progCount,
+           hasLUT ? " (including LUT variants)" : "");
 
     float aspect = (float)state.width / state.height;
 
@@ -1181,18 +1367,26 @@ int main(int argc, char* argv[]) {
         GLuint program;
         bool isPerPixel;
         int numLights;
+        GLuint lutTexture;
+        float lutScale;
     };
-    TestDef tests[] = {
-        {"LIGHTWEIGHT (baseline)",                      progLightweight,  false, 0},
-        {"PP BRANCHED (original, if check)",            progBranched,     true,  1},
-        {"PP BRANCHLESS (current, no branch)",          progBranchless,   true,  1},
-        {"OPT B: inversesqrt (skip normalize, 1 isqrt)", progOptInvSqrt, true,  1},
-        {"OPT C: quadratic (isqrt + quad-only atten)",  progOptQuad,     true,  1},
-        {"OPT D: omni (distance-only, full atten)",     progOptOmni,     true,  1},
-        {"OPT E: omni+quad (no sqrt at all)",           progOptOmniQuad, true,  1},
-        {"OPT F: per-vertex plight (trivial FS)",       progPerVertexPL, true,  1},
+    std::vector<TestDef> tests = {
+        {"LIGHTWEIGHT (baseline)",                      progLightweight,  false, 0, 0, 0.0f},
+        {"PP BRANCHED (original, if check)",            progBranched,     true,  1, 0, 0.0f},
+        {"PP BRANCHLESS (current, no branch)",          progBranchless,   true,  1, 0, 0.0f},
+        {"OPT B: inversesqrt (skip normalize, 1 isqrt)", progOptInvSqrt, true,  1, 0, 0.0f},
+        {"OPT C: quadratic (isqrt + quad-only atten)",  progOptQuad,     true,  1, 0, 0.0f},
+        {"OPT D: omni (distance-only, full atten)",     progOptOmni,     true,  1, 0, 0.0f},
+        {"OPT E: omni+quad (no sqrt at all)",           progOptOmniQuad, true,  1, 0, 0.0f},
+        {"OPT F: per-vertex plight (trivial FS)",       progPerVertexPL, true,  1, 0, 0.0f},
     };
-    const int numTests = sizeof(tests) / sizeof(tests[0]);
+    if (progLUTQuad) {
+        tests.push_back({"LUT G: OPT C via FP16 LUT (isqrt+atten)", progLUTQuad, true, 1, lutTexture, lutScale});
+    }
+    if (progLUTOmniQuad) {
+        tests.push_back({"LUT H: OPT E via FP16 LUT (atten only)",  progLUTOmniQuad, true, 1, lutTexture, lutScale});
+    }
+    const int numTests = (int)tests.size();
 
     std::vector<TestResult> results(numTests);
 
@@ -1203,7 +1397,8 @@ int main(int argc, char* argv[]) {
         results[i].name = tests[i].name;
         results[i].r1 = runBenchmark(state, tests[i].program, vbo, ibo,
                                       (int)indices.size(), texture, numFrames,
-                                      aspect, tests[i].isPerPixel, tests[i].numLights);
+                                      aspect, tests[i].isPerPixel, tests[i].numLights,
+                                      tests[i].lutTexture, tests[i].lutScale);
         printf("  avg: %.2f ms  min: %.2f ms  max: %.2f ms  (~%.0f FPS)\n\n",
                results[i].r1.avgMs, results[i].r1.minMs, results[i].r1.maxMs,
                1000.0 / results[i].r1.avgMs);
@@ -1215,7 +1410,8 @@ int main(int argc, char* argv[]) {
         printf("--- %s ---\n", tests[i].name);
         results[i].r2 = runBenchmark(state, tests[i].program, vbo, ibo,
                                       (int)indices.size(), texture, numFrames,
-                                      aspect, tests[i].isPerPixel, tests[i].numLights);
+                                      aspect, tests[i].isPerPixel, tests[i].numLights,
+                                      tests[i].lutTexture, tests[i].lutScale);
         printf("  avg: %.2f ms  min: %.2f ms  max: %.2f ms  (~%.0f FPS)\n\n",
                results[i].r2.avgMs, results[i].r2.minMs, results[i].r2.maxMs,
                1000.0 / results[i].r2.avgMs);
@@ -1242,6 +1438,8 @@ int main(int argc, char* argv[]) {
     glDeleteProgram(progOptOmniQuad);
     glDeleteProgram(progPerVertexPL);
     glDeleteProgram(progLightweight);
+    if (progLUTQuad) glDeleteProgram(progLUTQuad);
+    if (progLUTOmniQuad) glDeleteProgram(progLUTOmniQuad);
     glDeleteShader(vsPerPixel);
     glDeleteShader(fsBranched);
     glDeleteShader(fsBranchless);
@@ -1253,7 +1451,10 @@ int main(int argc, char* argv[]) {
     glDeleteShader(fsPerVertexPL);
     glDeleteShader(vsLightweight);
     glDeleteShader(fsLightweight);
+    if (fsLUTQuad) glDeleteShader(fsLUTQuad);
+    if (fsLUTOmniQuad) glDeleteShader(fsLUTOmniQuad);
     glDeleteTextures(1, &texture);
+    if (lutTexture) glDeleteTextures(1, &lutTexture);
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ibo);
 

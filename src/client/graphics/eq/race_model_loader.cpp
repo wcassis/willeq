@@ -485,23 +485,76 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
 
     std::shared_ptr<RaceModelData> modelData;
 
-    // Helper lambda: load an S3D archive from disk and search for the race model.
+    // Helper lambda: load an S3D archive into otherChrCaches_ (or use cached copy)
+    // and search for the race model. Respects maxChrCacheEntries_ LRU eviction.
     // Returns model data if found, nullptr otherwise. Merges textures into mergedTextures.
-    auto tryLoadFromDisk = [&](const std::string& s3dPath) -> std::shared_ptr<RaceModelData> {
-        S3DLoader loader;
-        if (!loader.loadZone(s3dPath)) return nullptr;
-        auto zone = loader.getZone();
-        if (!zone || zone->characters.empty()) return nullptr;
+    auto tryLoadFromArchive = [&](const std::string& s3dPath) -> std::shared_ptr<RaceModelData> {
+        // Extract filename for cache key
+        std::string filename = s3dPath;
+        auto lastSlash = filename.rfind('/');
+        if (lastSlash != std::string::npos) {
+            filename = filename.substr(lastSlash + 1);
+        }
+        std::string lowerFilename = filename;
+        std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+
+        auto cacheIt = otherChrCaches_.find(lowerFilename);
+        if (cacheIt != otherChrCaches_.end()) {
+            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache HIT for {} (race={} gender={})",
+                     lowerFilename, raceId, gender);
+        } else {
+            // Not cached — load from disk and store
+            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache MISS for {} — loading from disk (race={} gender={})",
+                     lowerFilename, raceId, gender);
+            S3DLoader loader;
+            if (!loader.loadZone(s3dPath)) {
+                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                return nullptr;
+            }
+            auto zone = loader.getZone();
+            if (!zone || zone->characters.empty()) {
+                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                return nullptr;
+            }
+
+            OtherChrCache& cache = otherChrCaches_[lowerFilename];
+            cache.characters = zone->characters;
+            cache.textures = zone->characterTextures;
+            mergedTexturesCacheValid_ = false;
+
+            // LRU eviction
+            if (maxChrCacheEntries_ > 0) {
+                chrCacheLruOrder_.push_front(lowerFilename);
+                while (otherChrCaches_.size() > maxChrCacheEntries_ &&
+                       chrCacheLruOrder_.size() > 1) {
+                    const std::string& oldest = chrCacheLruOrder_.back();
+                    otherChrCaches_.erase(oldest);
+                    chrCacheLruOrder_.pop_back();
+                    mergedTexturesCacheValid_ = false;
+                }
+            }
+
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: cached {} characters from {} (total cached: {})",
+                      cache.characters.size(), lowerFilename, otherChrCaches_.size());
+            cacheIt = otherChrCaches_.find(lowerFilename);
+        }
+
+        if (cacheIt == otherChrCaches_.end() || cacheIt->second.characters.empty()) {
+            return nullptr;
+        }
 
         // Merge archive textures with existing textures (existing take priority)
-        auto diskTextures = zone->characterTextures;
+        auto diskTextures = cacheIt->second.textures;
         for (const auto& [name, tex] : mergedTextures) {
             diskTextures[name] = tex;  // Existing textures override
         }
-        auto result = buildModelDataFromCharacters(zone->characters, diskTextures, raceId, gender);
+        auto result = buildModelDataFromCharacters(cacheIt->second.characters, diskTextures, raceId, gender);
         if (result) {
             // Add new textures from this archive to our merged set
-            for (const auto& [name, tex] : zone->characterTextures) {
+            for (const auto& [name, tex] : cacheIt->second.textures) {
                 if (mergedTextures.find(name) == mergedTextures.end()) {
                     mergedTextures[name] = tex;
                 }
@@ -524,23 +577,23 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
         }
     }
 
-    // 3. Try JSON-specified S3D file from disk
+    // 3. Try JSON-specified S3D file (cached in otherChrCaches_)
     if (!modelData && !clientPath_.empty()) {
         std::string jsonS3dFile = getRaceS3DFile(raceId);
         if (!jsonS3dFile.empty()) {
-            modelData = tryLoadFromDisk(clientPath_ + jsonS3dFile);
+            modelData = tryLoadFromArchive(clientPath_ + jsonS3dFile);
         }
     }
 
-    // 4. Try global_chr.s3d from disk (on-demand, ~300ms on ARM)
+    // 4. Try global_chr.s3d (cached in otherChrCaches_)
     if (!modelData && !clientPath_.empty()) {
-        modelData = tryLoadFromDisk(clientPath_ + "global_chr.s3d");
+        modelData = tryLoadFromArchive(clientPath_ + "global_chr.s3d");
     }
 
-    // 5. Try global2-7_chr.s3d from disk
+    // 5. Try global2-7_chr.s3d (cached in otherChrCaches_)
     if (!modelData && !clientPath_.empty()) {
         for (int num = 2; num <= 7 && !modelData; ++num) {
-            modelData = tryLoadFromDisk(clientPath_ + "global" + std::to_string(num) + "_chr.s3d");
+            modelData = tryLoadFromArchive(clientPath_ + "global" + std::to_string(num) + "_chr.s3d");
         }
     }
 
@@ -550,68 +603,93 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
     }
 
     // Animation merge: if this race shares animations with another (e.g., DWF uses HUM anims),
-    // load the source archive from disk to get the animation data.
+    // search the cached global_chr.s3d archive for the animation source character.
     if (modelData->skeleton) {
         std::string raceCode = getRaceCode(raceId);
         raceCode = getGenderedRaceCode(raceCode, gender);
         std::string animSourceCode = getAnimationSourceCode(raceCode);
 
         if (!animSourceCode.empty() && animSourceCode != raceCode) {
-            // Load global_chr.s3d from disk to find animation source character.
-            // This is the same archive we may have already loaded above, but we need
-            // the full character list to search for the animation source.
-            S3DLoader animLoader;
-            std::string globalChrPath = clientPath_ + "global_chr.s3d";
-            if (animLoader.loadZone(globalChrPath)) {
-                auto animZone = animLoader.getZone();
-                if (animZone) {
-                    for (const auto& sourceChar : animZone->characters) {
-                        if (!sourceChar) continue;
-                        std::string sourceName = sourceChar->name;
-                        std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
-                                       [](unsigned char c) { return std::toupper(c); });
-
-                        if (sourceName.find(animSourceCode) == std::string::npos) continue;
-                        if (!sourceChar->animatedSkeleton || sourceChar->animatedSkeleton->animations.empty()) continue;
-
-                        auto& ourSkel = modelData->skeleton;
-                        auto& sourceSkel = sourceChar->animatedSkeleton;
-
-                        std::string lowerCode = raceCode;
-                        std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
-                        std::string lowerSource = animSourceCode;
-                        std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
-
-                        int addedAnimations = 0;
-                        for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
-                            if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
-                                ourSkel->animations[animCode] = sourceAnim;
-                                addedAnimations++;
+            // Search otherChrCaches_ for global_chr.s3d (already loaded by tryLoadFromArchive above).
+            // If not cached (e.g., model came from zone_chr.s3d), load it now.
+            std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+            std::string globalKey = "global_chr.s3d";
+            auto cacheIt = otherChrCaches_.find(globalKey);
+            if (cacheIt != otherChrCaches_.end()) {
+                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: animation merge using cached global_chr.s3d for race={}", raceId);
+            } else if (!clientPath_.empty()) {
+                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: animation merge loading global_chr.s3d from disk for race={}", raceId);
+                // Load and cache global_chr.s3d for animation data
+                S3DLoader animLoader;
+                if (animLoader.loadZone(clientPath_ + globalKey)) {
+                    auto animZone = animLoader.getZone();
+                    if (animZone && !animZone->characters.empty()) {
+                        OtherChrCache& cache = otherChrCaches_[globalKey];
+                        cache.characters = animZone->characters;
+                        cache.textures = animZone->characterTextures;
+                        mergedTexturesCacheValid_ = false;
+                        if (maxChrCacheEntries_ > 0) {
+                            chrCacheLruOrder_.push_front(globalKey);
+                            while (otherChrCaches_.size() > maxChrCacheEntries_ &&
+                                   chrCacheLruOrder_.size() > 1) {
+                                const std::string& oldest = chrCacheLruOrder_.back();
+                                otherChrCaches_.erase(oldest);
+                                chrCacheLruOrder_.pop_back();
+                                mergedTexturesCacheValid_ = false;
                             }
                         }
+                    }
+                }
+                cacheIt = otherChrCaches_.find(globalKey);
+            }
 
-                        for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
-                            std::string mappedName = ourSkel->bones[i].name;
-                            size_t pos = mappedName.find(lowerCode);
-                            if (pos != std::string::npos) {
-                                mappedName.replace(pos, lowerCode.length(), lowerSource);
-                            }
-                            int sourceIdx = sourceSkel->getBoneIndex(mappedName);
-                            if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
-                                for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
-                                    if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
-                                        ourSkel->bones[i].animationTracks[trackCode] = trackDef;
-                                    }
+            if (cacheIt != otherChrCaches_.end() && !cacheIt->second.characters.empty()) {
+                for (const auto& sourceChar : cacheIt->second.characters) {
+                    if (!sourceChar) continue;
+                    std::string sourceName = sourceChar->name;
+                    std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                                   [](unsigned char c) { return std::toupper(c); });
+
+                    if (sourceName.find(animSourceCode) == std::string::npos) continue;
+                    if (!sourceChar->animatedSkeleton || sourceChar->animatedSkeleton->animations.empty()) continue;
+
+                    auto& ourSkel = modelData->skeleton;
+                    auto& sourceSkel = sourceChar->animatedSkeleton;
+
+                    std::string lowerCode = raceCode;
+                    std::transform(lowerCode.begin(), lowerCode.end(), lowerCode.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    std::string lowerSource = animSourceCode;
+                    std::transform(lowerSource.begin(), lowerSource.end(), lowerSource.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+
+                    int addedAnimations = 0;
+                    for (const auto& [animCode, sourceAnim] : sourceSkel->animations) {
+                        if (ourSkel->animations.find(animCode) == ourSkel->animations.end()) {
+                            ourSkel->animations[animCode] = sourceAnim;
+                            addedAnimations++;
+                        }
+                    }
+
+                    for (size_t i = 0; i < ourSkel->bones.size(); ++i) {
+                        std::string mappedName = ourSkel->bones[i].name;
+                        size_t pos = mappedName.find(lowerCode);
+                        if (pos != std::string::npos) {
+                            mappedName.replace(pos, lowerCode.length(), lowerSource);
+                        }
+                        int sourceIdx = sourceSkel->getBoneIndex(mappedName);
+                        if (sourceIdx >= 0 && sourceIdx < static_cast<int>(sourceSkel->bones.size())) {
+                            for (const auto& [trackCode, trackDef] : sourceSkel->bones[sourceIdx].animationTracks) {
+                                if (ourSkel->bones[i].animationTracks.find(trackCode) == ourSkel->bones[i].animationTracks.end()) {
+                                    ourSkel->bones[i].animationTracks[trackCode] = trackDef;
                                 }
                             }
                         }
-
-                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: merged {} animations from {} for race={}",
-                                  addedAnimations, animSourceCode, raceId);
-                        break;
                     }
+
+                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: merged {} animations from {} for race={}",
+                              addedAnimations, animSourceCode, raceId);
+                    break;
                 }
             }
         }

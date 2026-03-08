@@ -478,7 +478,6 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
     if (!zoneData_.bspTree || zoneData_.regionBounds.empty()) return;
 
     const auto& bsp = *zoneData_.bspTree;
-    size_t regionCount = zoneData_.regionBounds.size();
 
     // BSP lookup — find which region the camera is in (EQ Z-up coords)
     size_t cameraRegion = bsp.findRegionIndexForPoint(input.camEqX, input.camEqY, input.camEqZ);
@@ -488,26 +487,19 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
     output.meshLoadQueue.clear();
     output.protectedRegions.clear();
 
-    // Get PVS data for current region
-    const BspRegion* currentRegion = nullptr;
-    if (cameraRegion < bsp.regions.size() && bsp.regions[cameraRegion]) {
-        currentRegion = bsp.regions[cameraRegion].get();
-    }
-
     float renderDistSq = input.renderDistance * input.renderDistance;
 
-    for (size_t i = 0; i < regionCount; ++i) {
-        const auto& rb = zoneData_.regionBounds[i];
-        size_t regionIdx = rb.regionIdx;
-
-        // PVS check
-        if (zoneData_.usePvsCulling && currentRegion) {
-            if (!currentRegion->visibleRegions.empty() &&
-                regionIdx < currentRegion->visibleRegions.size() &&
-                !currentRegion->visibleRegions[regionIdx]) {
-                continue;
-            }
+    // Select candidate list: pre-computed PVS-visible indices (O(PVS)) or all indices (O(N))
+    const std::vector<size_t>* candidates = &zoneData_.allBoundsIndices;
+    if (zoneData_.usePvsCulling && cameraRegion != SIZE_MAX) {
+        auto it = zoneData_.pvsVisibleBoundsIndices.find(cameraRegion);
+        if (it != zoneData_.pvsVisibleBoundsIndices.end()) {
+            candidates = &it->second;
         }
+    }
+
+    for (size_t boundsIdx : *candidates) {
+        const auto& rb = zoneData_.regionBounds[boundsIdx];
 
         // Distance culling: nearest point on AABB to camera (EQ coords)
         float nearX = std::max(rb.minX, std::min(input.camEqX, rb.maxX));
@@ -521,10 +513,10 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
         if (distSq > renderDistSq) continue;
 
         // Queue for lazy mesh loading (PVS + distance only — orientation-independent)
-        output.meshLoadQueue.push_back({regionIdx, distSq});
+        output.meshLoadQueue.push_back({rb.regionIdx, distSq});
 
         // Track for mesh cache protection (all PVS+distance regions)
-        output.protectedRegions.push_back(regionIdx);
+        output.protectedRegions.push_back(rb.regionIdx);
     }
 
     // Sort mesh load queue nearest-first for priority preloading
@@ -554,36 +546,29 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
 
     size_t regionCount = zoneData_.regionBounds.size();
 
-    // Ensure output is sized correctly
+    // Ensure output is sized correctly and zeroed
     if (output.regionVisible.size() != regionCount) {
         output.regionVisible.resize(regionCount, 0);
+    } else {
+        std::fill(output.regionVisible.begin(), output.regionVisible.end(), 0);
     }
 
     // currentPvsRegion already set by calculateRegions()
     output.sortedRegions.clear();
 
-    // Get PVS data for current region
-    const auto& bsp = *zoneData_.bspTree;
-    const BspRegion* currentRegion = nullptr;
-    if (output.currentPvsRegion < bsp.regions.size() && bsp.regions[output.currentPvsRegion]) {
-        currentRegion = bsp.regions[output.currentPvsRegion].get();
-    }
-
     float renderDistSq = input.renderDistance * input.renderDistance;
 
-    for (size_t i = 0; i < regionCount; ++i) {
-        const auto& rb = zoneData_.regionBounds[i];
-        size_t regionIdx = rb.regionIdx;
-
-        // PVS check
-        if (zoneData_.usePvsCulling && currentRegion) {
-            if (!currentRegion->visibleRegions.empty() &&
-                regionIdx < currentRegion->visibleRegions.size() &&
-                !currentRegion->visibleRegions[regionIdx]) {
-                output.regionVisible[i] = 0;
-                continue;
-            }
+    // Select candidate list: pre-computed PVS-visible indices or all indices
+    const std::vector<size_t>* candidates = &zoneData_.allBoundsIndices;
+    if (zoneData_.usePvsCulling && output.currentPvsRegion != SIZE_MAX) {
+        auto it = zoneData_.pvsVisibleBoundsIndices.find(output.currentPvsRegion);
+        if (it != zoneData_.pvsVisibleBoundsIndices.end()) {
+            candidates = &it->second;
         }
+    }
+
+    for (size_t boundsIdx : *candidates) {
+        const auto& rb = zoneData_.regionBounds[boundsIdx];
 
         // Distance culling
         float nearX = std::max(rb.minX, std::min(input.camEqX, rb.maxX));
@@ -594,25 +579,21 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
         float dz = nearZ - input.camEqZ;
         float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (distSq > renderDistSq) {
-            output.regionVisible[i] = 0;
-            continue;
-        }
+        if (distSq > renderDistSq) continue;
 
         // Frustum culling (EQ Z-up coordinates)
         if (input.frustumValid) {
             if (!testFrustumAABB(input.frustumPlanes,
                                   rb.minX, rb.minY, rb.minZ,
                                   rb.maxX, rb.maxY, rb.maxZ)) {
-                output.regionVisible[i] = 0;
                 continue;
             }
         }
 
-        output.regionVisible[i] = 1;
+        output.regionVisible[boundsIdx] = 1;
 
         // Add to sorted draw list (frustum-visible only)
-        output.sortedRegions.push_back({regionIdx, distSq});
+        output.sortedRegions.push_back({rb.regionIdx, distSq});
     }
 
     // Sort front-to-back by distance

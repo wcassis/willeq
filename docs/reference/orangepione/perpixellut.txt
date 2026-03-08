@@ -1,0 +1,91 @@
+=== GLES2 Per-Pixel Lighting Benchmark ===
+Resolution: 1280x720, Frames: 300 per test
+
+DRM: Using mode 1280x720@60Hz
+EGL 1.5 (DRM/GBM, GLES2)
+GL: Mali400
+GL: OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+
+Scene: 160 vertices, 224 triangles (4 walls+floor, subdivided)
+
+LUT: Created 256x1 FP16 attenuation LUT (atten=1.0+0.007027*d², maxD²=4096)
+Compiling shaders...
+  Programs compiled: 10 (including LUT variants)
+
+=== ROUND 1 ===
+
+--- LIGHTWEIGHT (baseline) ---
+  avg: 7.23 ms  min: 7.04 ms  max: 14.75 ms  (~138 FPS)
+
+--- PP BRANCHED (original, if check) ---
+  avg: 27.83 ms  min: 27.69 ms  max: 28.01 ms  (~36 FPS)
+
+--- PP BRANCHLESS (current, no branch) ---
+  avg: 23.32 ms  min: 23.25 ms  max: 23.52 ms  (~43 FPS)
+
+--- OPT B: inversesqrt (skip normalize, 1 isqrt) ---
+  avg: 21.53 ms  min: 21.45 ms  max: 21.64 ms  (~46 FPS)
+
+--- OPT C: quadratic (isqrt + quad-only atten) ---
+  avg: 19.73 ms  min: 19.67 ms  max: 19.85 ms  (~51 FPS)
+
+--- OPT D: omni (distance-only, full atten) ---
+  avg: 17.04 ms  min: 16.99 ms  max: 17.29 ms  (~59 FPS)
+
+--- OPT E: omni+quad (no sqrt at all) ---
+  avg: 14.39 ms  min: 14.31 ms  max: 20.61 ms  (~69 FPS)
+
+--- OPT F: per-vertex plight (trivial FS) ---
+  avg: 9.95 ms  min: 9.88 ms  max: 10.06 ms  (~101 FPS)
+
+--- LUT G: OPT C via FP16 LUT (isqrt+atten) ---
+  avg: 17.95 ms  min: 17.82 ms  max: 18.11 ms  (~56 FPS)
+
+--- LUT H: OPT E via FP16 LUT (atten only) ---
+  avg: 13.48 ms  min: 13.42 ms  max: 13.65 ms  (~74 FPS)
+
+=== ROUND 2 (order bias check) ===
+
+--- LIGHTWEIGHT (baseline) ---
+  avg: 7.42 ms  min: 7.34 ms  max: 7.58 ms  (~135 FPS)
+
+--- PP BRANCHED (original, if check) ---
+  avg: 27.83 ms  min: 27.76 ms  max: 27.95 ms  (~36 FPS)
+
+--- PP BRANCHLESS (current, no branch) ---
+  avg: 23.32 ms  min: 23.26 ms  max: 23.48 ms  (~43 FPS)
+
+--- OPT B: inversesqrt (skip normalize, 1 isqrt) ---
+  avg: 21.55 ms  min: 21.47 ms  max: 27.57 ms  (~46 FPS)
+
+--- OPT C: quadratic (isqrt + quad-only atten) ---
+  avg: 19.73 ms  min: 19.68 ms  max: 19.82 ms  (~51 FPS)
+
+--- OPT D: omni (distance-only, full atten) ---
+  avg: 17.04 ms  min: 16.99 ms  max: 17.17 ms  (~59 FPS)
+
+--- OPT E: omni+quad (no sqrt at all) ---
+  avg: 14.37 ms  min: 14.31 ms  max: 14.49 ms  (~70 FPS)
+
+--- OPT F: per-vertex plight (trivial FS) ---
+  avg: 9.94 ms  min: 9.87 ms  max: 10.08 ms  (~101 FPS)
+
+--- LUT G: OPT C via FP16 LUT (isqrt+atten) ---
+  avg: 17.94 ms  min: 17.88 ms  max: 18.14 ms  (~56 FPS)
+
+--- LUT H: OPT E via FP16 LUT (atten only) ---
+  avg: 13.48 ms  min: 13.42 ms  max: 13.61 ms  (~74 FPS)
+
+=== SUMMARY ===
+Variant                                             ms      FPS     vs LW
+-------                                             --      ---     -----
+LIGHTWEIGHT (baseline)                            7.33      136    +0.00ms
+PP BRANCHED (original, if check)                 27.83       36   +20.50ms
+PP BRANCHLESS (current, no branch)               23.32       43   +15.99ms
+OPT B: inversesqrt (skip normalize, 1 isqrt)     21.54       46   +14.21ms
+OPT C: quadratic (isqrt + quad-only atten)       19.73       51   +12.40ms
+OPT D: omni (distance-only, full atten)          17.04       59    +9.72ms
+OPT E: omni+quad (no sqrt at all)                14.38       70    +7.05ms
+OPT F: per-vertex plight (trivial FS)             9.94      101    +2.62ms
+LUT G: OPT C via FP16 LUT (isqrt+atten)          17.95       56   +10.62ms
+LUT H: OPT E via FP16 LUT (atten only)           13.48       74    +6.16ms

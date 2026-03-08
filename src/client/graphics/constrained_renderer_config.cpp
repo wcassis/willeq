@@ -25,8 +25,10 @@ void ConstrainedRendererConfig::calculateMemoryLimits() {
             meshMemoryBytes = totalMemoryBudgetBytes / 5;
         }
 
-        // Keep at most 4 other-zone _chr.s3d caches
-        chrCacheMaxEntries = 4;
+        // Default: keep at most 4 other-zone _chr.s3d caches (overridable via JSON)
+        if (chrCacheMaxEntries == 0) {
+            chrCacheMaxEntries = 4;
+        }
     }
 }
 
@@ -221,6 +223,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityPrepMaxPvsDepth = 2;
             config.terrainPrepMaxPvsDepth = 5;
             config.objectPrepMaxPvsDepth = 3;
+            config.pvsNeighborhoodHops = 3;
             // Use lower-poly WLD dome mesh instead of procedural hemisphere
             config.skyDomeMode = SkyDomeMode::Original;
             break;
@@ -430,6 +433,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         terrainPrepMaxPvsDepth = preset["terrainPrepMaxPvsDepth"].asInt();
     if (preset.isMember("objectPrepMaxPvsDepth"))
         objectPrepMaxPvsDepth = preset["objectPrepMaxPvsDepth"].asInt();
+    if (preset.isMember("pvsNeighborhoodHops"))
+        pvsNeighborhoodHops = preset["pvsNeighborhoodHops"].asInt();
     if (preset.isMember("deferredAssetLoading")) {
         std::string mode = preset["deferredAssetLoading"].asString();
         std::string lowerMode = mode;
@@ -488,6 +493,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         frameTimingEnabled = preset["frameTimingEnabled"].asBool();
     if (preset.isMember("enableItemIcons"))
         enableItemIcons = preset["enableItemIcons"].asBool();
+    if (preset.isMember("chrCacheMaxEntries"))
+        chrCacheMaxEntries = static_cast<size_t>(preset["chrCacheMaxEntries"].asUInt());
 
     return true;
 }

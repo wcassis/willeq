@@ -84,6 +84,7 @@ struct ConstrainedRendererConfig {
     int entityPrepMaxPvsDepth = 0;         // Max PVS portal depth for entity prep queueing (0 = same region only)
     int terrainPrepMaxPvsDepth = 255;      // Max PVS depth for region mesh building (255 = no limit)
     int objectPrepMaxPvsDepth = 255;       // Max PVS depth for object + door building (255 = no limit)
+    int pvsNeighborhoodHops = 3;           // Portal hops for PVS neighborhood (suppresses re-prioritization within neighborhood)
 
     // Software occlusion culling
     int occlusionBufferWidth = 0;              // Depth buffer width (0 = disabled)

@@ -2,6 +2,7 @@
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 #elif defined(EQT_HAS_DRM)
 #include <GL/gl.h>
 #endif
@@ -46,6 +47,12 @@ uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 uniform int uNumPointLights;
 
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
+
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
@@ -82,7 +89,20 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -99,7 +119,8 @@ uniform sampler2D uTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -110,13 +131,12 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv) + 0.0001;
-    float invD = inversesqrt(d2);
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
-    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -131,7 +151,8 @@ uniform sampler2D uTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -143,13 +164,12 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
 
-    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv) + 0.0001;
-    float invD = inversesqrt(d2);
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
-    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -166,7 +186,8 @@ uniform sampler2D uTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -179,13 +200,12 @@ void main() {
     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
     if (texColor.a < threshold) discard;
 
-    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv) + 0.0001;
-    float invD = inversesqrt(d2);
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
-    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -217,6 +237,12 @@ uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 uniform int uNumPointLights;
+
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -256,7 +282,20 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -272,7 +311,8 @@ uniform sampler2D uTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -283,13 +323,12 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv) + 0.0001;
-    float invD = inversesqrt(d2);
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
-    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -305,7 +344,8 @@ uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -318,13 +358,12 @@ void main() {
     if (alpha < 0.5) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv) + 0.0001;
-    float invD = inversesqrt(d2);
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
-    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -342,7 +381,8 @@ uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
-uniform vec3 uPlayerLightAtten;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -356,13 +396,12 @@ void main() {
     if (alpha < threshold) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (OPT C: single inversesqrt, quadratic-only attenuation)
+    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv) + 0.0001;
-    float invD = inversesqrt(d2);
-    float pLa = 1.0 / (uPlayerLightAtten.x + uPlayerLightAtten.z * d2 + 0.0001);
-    float pLn = max(dot(vWorldNormal, pLv * invD), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * pLa;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -397,6 +436,12 @@ uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 uniform int uNumPointLights;
+
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -466,7 +511,20 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
 
     // Linear fog factor
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -506,6 +564,12 @@ uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
+
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
@@ -535,7 +599,20 @@ void main() {
         pointLighting += uLightColor[i] * nl * atten;
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -566,6 +643,12 @@ uniform float uFogEnd;
 uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
+
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -598,7 +681,20 @@ void main() {
         pointLighting += uLightColor[i] * nl * atten;
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -687,6 +783,12 @@ uniform vec3 uLightPos[8];
 uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
+
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
 uniform vec2 uMeshYBounds;  // minY, maxY in local mesh space (Irrlicht Y-up)
@@ -745,7 +847,20 @@ void main() {
         pointLighting += uLightColor[i] * nl * atten;
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting, 0.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
 
     // Linear fog factor
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -778,15 +893,17 @@ uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 uniform int uNumPointLights;
 
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
+
 varying vec4 vColor;
 varying float vFogFactor;
 
 void main() {
     gl_Position = mWorldViewProj * gl_Vertex;
-    // Use gl_TexCoord (built-in varying) instead of a custom varying vec2.
-    // On Mali 400, built-in texture coordinate varyings may be routed through
-    // dedicated interpolation hardware with higher precision than the generic
-    // FP16 varying interpolators, avoiding blocky texture artifacts.
     gl_TexCoord[0] = gl_MultiTexCoord0;
 
     vec3 worldPos = (mWorld * gl_Vertex).xyz;
@@ -810,7 +927,20 @@ void main() {
         }
     }
 
-    vColor = vec4(lighting * uTintColor, 1.0) * gl_Color;
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(lighting * uTintColor + fogGlow, 1.0) * gl_Color;
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * gl_Vertex).xyz);
@@ -891,14 +1021,18 @@ uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 uniform int uNumPointLights;
 
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
+
 varying vec4 vColor;
 varying float vFogFactor;
 
 void main() {
     gl_Position = mWorldViewProj * gl_Vertex;
 
-    // Pass precomputed atlas UV through built-in varying for
-    // high-precision interpolation on Mali 400.
     gl_TexCoord[0] = gl_MultiTexCoord1;
 
     vec3 worldPos = (mWorld * gl_Vertex).xyz;
@@ -922,7 +1056,20 @@ void main() {
         }
     }
 
-    vColor = vec4(lighting * uTintColor, 1.0);
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(lighting * uTintColor + fogGlow, 1.0);
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * gl_Vertex).xyz);
@@ -990,6 +1137,12 @@ uniform vec3 uLightColor[8];
 uniform vec3 uLightAtten[8];
 uniform int uNumPointLights;
 
+uniform vec3 uFireGlowLightPos[8];
+uniform vec3 uFireGlowLightColor[8];
+uniform float uFireGlowLightRadius[8];
+uniform float uFireGlowLightIntensity[8];
+uniform int uNumFireGlowLights;
+
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
 uniform vec2 uMeshYBounds;  // minY, maxY in local mesh space (Irrlicht Y-up)
@@ -1048,13 +1201,57 @@ void main() {
         }
     }
 
-    vColor = vec4(lighting * uTintColor, 1.0) * gl_Color;
+    // Fire glow lighting (omnidirectional warm glow, quartic falloff)
+    vec3 fogGlow = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumFireGlowLights) break;
+        vec3 toEmitter = uFireGlowLightPos[i] - worldPos;
+        float d2 = dot(toEmitter, toEmitter);
+        float r2 = uFireGlowLightRadius[i] * uFireGlowLightRadius[i];
+        if (d2 < r2) {
+            float t = 1.0 - d2 / r2;
+            fogGlow += uFireGlowLightColor[i] * (t * t) * uFireGlowLightIntensity[i];
+        }
+    }
+
+    vColor = vec4(lighting * uTintColor + fogGlow, 1.0) * gl_Color;
 
     // Linear fog factor
     float fogDist = length((mWorldViewProj * pos).xyz);
     vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
 }
 )";
+
+#endif // EQT_HAS_GLES2
+
+// ============================================================================
+// FP16 attenuation LUT helpers (GLES2)
+// ============================================================================
+#ifdef EQT_HAS_GLES2
+
+static uint16_t floatToHalf(float f) {
+    uint32_t bits;
+    std::memcpy(&bits, &f, sizeof(bits));
+    uint32_t sign = (bits >> 16) & 0x8000;
+    int32_t exp = ((bits >> 23) & 0xFF) - 127;
+    uint32_t mant = bits & 0x7FFFFF;
+    if (exp > 15) return sign | 0x7C00;      // Inf
+    if (exp < -14) return sign;                // Zero (flush denormals)
+    return sign | ((exp + 15) << 10) | (mant >> 13);
+}
+
+// Create or update the 256x1 FP16 LUMINANCE_ALPHA attenuation LUT.
+// L = inversesqrt(d² + eps), A = 1/(c + q*d² + eps)
+static void fillAttenLUT(uint16_t* data, float attenConst, float attenQuad, float maxD2) {
+    const float eps = 0.0001f;
+    for (int i = 0; i < 256; ++i) {
+        float d2 = maxD2 * (static_cast<float>(i) + 0.5f) / 256.0f;
+        float invD = 1.0f / std::sqrt(d2 + eps);
+        float atten = 1.0f / (attenConst + attenQuad * d2 + eps);
+        data[i * 2]     = floatToHalf(invD);
+        data[i * 2 + 1] = floatToHalf(atten);
+    }
+}
 
 #endif // EQT_HAS_GLES2
 
@@ -1100,7 +1297,14 @@ public:
             locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
+            locAttenLUT_         = glGetUniformLocation(prog, "uAttenLUT");
+            locLUTScale_         = glGetUniformLocation(prog, "uLUTScale");
             locNumPointLights_   = glGetUniformLocation(prog, "uNumPointLights");
+            locFireGlowLightPos_    = glGetUniformLocation(prog, "uFireGlowLightPos[0]");
+            locFireGlowLightColor_  = glGetUniformLocation(prog, "uFireGlowLightColor[0]");
+            locFireGlowLightRadius_ = glGetUniformLocation(prog, "uFireGlowLightRadius[0]");
+            locFireGlowLightIntensity_ = glGetUniformLocation(prog, "uFireGlowLightIntensity[0]");
+            locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
         }
 
         // Per-node uniforms (change every node — depend on World matrix)
@@ -1130,11 +1334,25 @@ public:
             if (locFogColor_ >= 0)   glUniform4fv(locFogColor_, 1, owner_->fogColor());
             if (locTexture_ >= 0)    glUniform1i(locTexture_, 0);
 
-            // Per-pixel player light (FS uniforms)
+            // Per-pixel player light (FS uniforms + LUT texture)
             if (locPlayerLightPos_ >= 0)   glUniform3fv(locPlayerLightPos_, 1, owner_->playerLightPos());
             if (locPlayerLightColor_ >= 0) glUniform3fv(locPlayerLightColor_, 1, owner_->playerLightColor());
             if (locPlayerLightAtten_ >= 0) glUniform3fv(locPlayerLightAtten_, 1, owner_->playerLightAtten());
+            if (locAttenLUT_ >= 0 && owner_->attenLutTexture() > 0) {
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_2D, owner_->attenLutTexture());
+                glActiveTexture(GL_TEXTURE0);
+                glUniform1i(locAttenLUT_, 2);
+            }
+            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutScale());
             if (locNumPointLights_ >= 0)   glUniform1i(locNumPointLights_, owner_->numPointLights());
+
+            // Fire glow fog emitters
+            if (locFireGlowLightPos_ >= 0)    glUniform3fv(locFireGlowLightPos_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightPos());
+            if (locFireGlowLightColor_ >= 0)  glUniform3fv(locFireGlowLightColor_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightColor());
+            if (locFireGlowLightRadius_ >= 0) glUniform1fv(locFireGlowLightRadius_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightRadius());
+            if (locFireGlowLightIntensity_ >= 0) glUniform1fv(locFireGlowLightIntensity_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightIntensity());
+            if (locNumFireGlowLights_ >= 0)   glUniform1i(locNumFireGlowLights_, owner_->numFireGlowLights());
         }
 #else
         // Desktop GL path — use string-based setVertexShaderConstant (no perf concern)
@@ -1174,6 +1392,14 @@ public:
 
         irr::s32 numLights = owner_->numPointLights();
         services->setVertexShaderConstant("uNumPointLights", &numLights, 1);
+
+        // Fire glow fog emitters
+        services->setVertexShaderConstant("uFireGlowLightPos[0]", owner_->fireGlowLightPos(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS * 3);
+        services->setVertexShaderConstant("uFireGlowLightColor[0]", owner_->fireGlowLightColor(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS * 3);
+        services->setVertexShaderConstant("uFireGlowLightRadius[0]", owner_->fireGlowLightRadius(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+        services->setVertexShaderConstant("uFireGlowLightIntensity[0]", owner_->fireGlowLightIntensity(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+        irr::s32 numFireGlowLights = owner_->numFireGlowLights();
+        services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
 #endif
     }
 
@@ -1187,7 +1413,11 @@ private:
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
     GLint locFogColor_ = -2, locTexture_ = -2;
     GLint locPlayerLightPos_ = -2, locPlayerLightColor_ = -2, locPlayerLightAtten_ = -2;
+    GLint locAttenLUT_ = -2, locLUTScale_ = -2;
     GLint locNumPointLights_ = -2;
+    GLint locFireGlowLightPos_ = -2, locFireGlowLightColor_ = -2;
+    GLint locFireGlowLightRadius_ = -2, locFireGlowLightIntensity_ = -2;
+    GLint locNumFireGlowLights_ = -2;
     uint64_t lastFrameId_ = 0;
 #endif
 };
@@ -1264,7 +1494,14 @@ public:
             locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
+            locAttenLUT_         = glGetUniformLocation(prog, "uAttenLUT");
+            locLUTScale_         = glGetUniformLocation(prog, "uLUTScale");
             locNumPointLights_   = glGetUniformLocation(prog, "uNumPointLights");
+            locFireGlowLightPos_    = glGetUniformLocation(prog, "uFireGlowLightPos[0]");
+            locFireGlowLightColor_  = glGetUniformLocation(prog, "uFireGlowLightColor[0]");
+            locFireGlowLightRadius_ = glGetUniformLocation(prog, "uFireGlowLightRadius[0]");
+            locFireGlowLightIntensity_ = glGetUniformLocation(prog, "uFireGlowLightIntensity[0]");
+            locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
         }
 
         // Per-node uniforms
@@ -1281,7 +1518,6 @@ public:
         // Per-frame uniforms
         if (lastFrameId_ != owner_->frameId()) {
             lastFrameId_ = owner_->frameId();
-            // Reset texture bind tracking — other rendering may have changed bound textures
             lastBoundRgbTex_ = 0;
             lastBoundAlphaTex_ = 0;
 
@@ -1299,11 +1535,25 @@ public:
             if (hasAlphaTexture_ && locAlphaTex_ >= 0)
                 glUniform1i(locAlphaTex_, 1);
 
-            // Per-pixel player light (FS uniforms)
+            // Per-pixel player light (FS uniforms + LUT texture)
             if (locPlayerLightPos_ >= 0)   glUniform3fv(locPlayerLightPos_, 1, owner_->playerLightPos());
             if (locPlayerLightColor_ >= 0) glUniform3fv(locPlayerLightColor_, 1, owner_->playerLightColor());
             if (locPlayerLightAtten_ >= 0) glUniform3fv(locPlayerLightAtten_, 1, owner_->playerLightAtten());
+            if (locAttenLUT_ >= 0 && owner_->attenLutTexture() > 0) {
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_2D, owner_->attenLutTexture());
+                glActiveTexture(GL_TEXTURE0);
+                glUniform1i(locAttenLUT_, 2);
+            }
+            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutScale());
             if (locNumPointLights_ >= 0)   glUniform1i(locNumPointLights_, owner_->numPointLights());
+
+            // Fire glow fog emitters
+            if (locFireGlowLightPos_ >= 0)    glUniform3fv(locFireGlowLightPos_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightPos());
+            if (locFireGlowLightColor_ >= 0)  glUniform3fv(locFireGlowLightColor_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightColor());
+            if (locFireGlowLightRadius_ >= 0) glUniform1fv(locFireGlowLightRadius_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightRadius());
+            if (locFireGlowLightIntensity_ >= 0) glUniform1fv(locFireGlowLightIntensity_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightIntensity());
+            if (locNumFireGlowLights_ >= 0)   glUniform1i(locNumFireGlowLights_, owner_->numFireGlowLights());
         }
 #else
         // Desktop GL path
@@ -1347,6 +1597,14 @@ public:
 
         irr::s32 numLights = owner_->numPointLights();
         services->setVertexShaderConstant("uNumPointLights", &numLights, 1);
+
+        // Fire glow fog emitters
+        services->setVertexShaderConstant("uFireGlowLightPos[0]", owner_->fireGlowLightPos(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS * 3);
+        services->setVertexShaderConstant("uFireGlowLightColor[0]", owner_->fireGlowLightColor(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS * 3);
+        services->setVertexShaderConstant("uFireGlowLightRadius[0]", owner_->fireGlowLightRadius(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+        services->setVertexShaderConstant("uFireGlowLightIntensity[0]", owner_->fireGlowLightIntensity(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+        irr::s32 numFireGlowLights = owner_->numFireGlowLights();
+        services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
 #endif
     }
 
@@ -1356,7 +1614,7 @@ private:
     int currentPageIndex_ = 0;
     int currentAlphaPageIndex_ = 0;
     int bindLogCount_ = 0;
-    uint32_t lastBoundRgbTex_ = 0;    // Skip redundant glBindTexture for same atlas page
+    uint32_t lastBoundRgbTex_ = 0;
     uint32_t lastBoundAlphaTex_ = 0;
 #ifdef EQT_HAS_GLES2
     GLint locWVP_ = -2, locWorld_ = -2;
@@ -1365,7 +1623,11 @@ private:
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
     GLint locFogColor_ = -2, locTexture_ = -2, locAlphaTex_ = -2;
     GLint locPlayerLightPos_ = -2, locPlayerLightColor_ = -2, locPlayerLightAtten_ = -2;
+    GLint locAttenLUT_ = -2, locLUTScale_ = -2;
     GLint locNumPointLights_ = -2;
+    GLint locFireGlowLightPos_ = -2, locFireGlowLightColor_ = -2;
+    GLint locFireGlowLightRadius_ = -2, locFireGlowLightIntensity_ = -2;
+    GLint locNumFireGlowLights_ = -2;
     uint64_t lastFrameId_ = 0;
 #endif
 };
@@ -1406,7 +1668,14 @@ public:
             locWindTime_   = glGetUniformLocation(prog, "uWindTime");
             locWindParams_ = glGetUniformLocation(prog, "uWindParams");
             locMeshYBounds_ = glGetUniformLocation(prog, "uMeshYBounds");
+            locAttenLUT_   = glGetUniformLocation(prog, "uAttenLUT");
+            locLUTScale_   = glGetUniformLocation(prog, "uLUTScale");
             locNumPointLights_ = glGetUniformLocation(prog, "uNumPointLights");
+            locFireGlowLightPos_    = glGetUniformLocation(prog, "uFireGlowLightPos[0]");
+            locFireGlowLightColor_  = glGetUniformLocation(prog, "uFireGlowLightColor[0]");
+            locFireGlowLightRadius_ = glGetUniformLocation(prog, "uFireGlowLightRadius[0]");
+            locFireGlowLightIntensity_ = glGetUniformLocation(prog, "uFireGlowLightIntensity[0]");
+            locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
         }
 
         // Per-node uniforms
@@ -1443,7 +1712,22 @@ public:
             if (locTexture_ >= 0)    glUniform1i(locTexture_, 0);
             if (locWindTime_ >= 0)   glUniform1f(locWindTime_, owner_->windTime());
             if (locWindParams_ >= 0) glUniform4fv(locWindParams_, 1, owner_->windParams());
+            // LUT texture for per-pixel player light FS
+            if (locAttenLUT_ >= 0 && owner_->attenLutTexture() > 0) {
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_2D, owner_->attenLutTexture());
+                glActiveTexture(GL_TEXTURE0);
+                glUniform1i(locAttenLUT_, 2);
+            }
+            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutScale());
             if (locNumPointLights_ >= 0) glUniform1i(locNumPointLights_, owner_->numPointLights());
+
+            // Fire glow fog emitters
+            if (locFireGlowLightPos_ >= 0)    glUniform3fv(locFireGlowLightPos_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightPos());
+            if (locFireGlowLightColor_ >= 0)  glUniform3fv(locFireGlowLightColor_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightColor());
+            if (locFireGlowLightRadius_ >= 0) glUniform1fv(locFireGlowLightRadius_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightRadius());
+            if (locFireGlowLightIntensity_ >= 0) glUniform1fv(locFireGlowLightIntensity_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightIntensity());
+            if (locNumFireGlowLights_ >= 0)   glUniform1i(locNumFireGlowLights_, owner_->numFireGlowLights());
         }
 #else
         // Desktop GL path
@@ -1485,6 +1769,14 @@ public:
 
         irr::s32 numLights = owner_->numPointLights();
         services->setVertexShaderConstant("uNumPointLights", &numLights, 1);
+
+        // Fire glow fog emitters
+        services->setVertexShaderConstant("uFireGlowLightPos[0]", owner_->fireGlowLightPos(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS * 3);
+        services->setVertexShaderConstant("uFireGlowLightColor[0]", owner_->fireGlowLightColor(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS * 3);
+        services->setVertexShaderConstant("uFireGlowLightRadius[0]", owner_->fireGlowLightRadius(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+        services->setVertexShaderConstant("uFireGlowLightIntensity[0]", owner_->fireGlowLightIntensity(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+        irr::s32 numFireGlowLights = owner_->numFireGlowLights();
+        services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
 #endif
     }
 
@@ -1499,7 +1791,11 @@ private:
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
     GLint locFogColor_ = -2, locTexture_ = -2;
     GLint locWindTime_ = -2, locWindParams_ = -2, locMeshYBounds_ = -2;
+    GLint locAttenLUT_ = -2, locLUTScale_ = -2;
     GLint locNumPointLights_ = -2;
+    GLint locFireGlowLightPos_ = -2, locFireGlowLightColor_ = -2;
+    GLint locFireGlowLightRadius_ = -2, locFireGlowLightIntensity_ = -2;
+    GLint locNumFireGlowLights_ = -2;
     uint64_t lastFrameId_ = 0;
 #endif
 };
@@ -1677,7 +1973,59 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
                  materialLWSolid_, materialLWAlphaTest_,
                  materialLWAtlasSolid_, materialLWAtlasAlpha_, materialLWWindAlphaTest_);
     }
+
+    // Create FP16 attenuation LUT texture for per-pixel player light
+    // Replaces inversesqrt + division with a single texture lookup (1.78ms savings on Mali 400)
+    {
+        glGenTextures(1, &attenLutTexture_);
+        if (attenLutTexture_ > 0) {
+            glBindTexture(GL_TEXTURE_2D, attenLutTexture_);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            // Initialize with default attenuation (will be updated on first beginFrame)
+            uint16_t data[256 * 2];
+            fillAttenLUT(data, playerLightAtten_[0], playerLightAtten_[2], lutMaxD2_);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, 256, 1, 0,
+                         GL_LUMINANCE_ALPHA, GL_HALF_FLOAT_OES, data);
+            lutBakedConst_ = playerLightAtten_[0];
+            lutBakedQuad_ = playerLightAtten_[2];
+            lutDirty_ = false;
+            glBindTexture(GL_TEXTURE_2D, 0);
+            LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: FP16 attenuation LUT created (256x1, maxD²={}, scale={})",
+                     lutMaxD2_, lutScale_);
+        }
+    }
 #endif // EQT_HAS_GLES2
+}
+
+ZoneShaderManager::~ZoneShaderManager() {
+#ifdef EQT_HAS_GLES2
+    if (attenLutTexture_ > 0) {
+        glDeleteTextures(1, &attenLutTexture_);
+        attenLutTexture_ = 0;
+    }
+#endif
+}
+
+void ZoneShaderManager::beginFrame() {
+    ++frameId_;
+#ifdef EQT_HAS_GLES2
+    // Regenerate LUT if player light attenuation params changed
+    if (lutDirty_ && attenLutTexture_ > 0) {
+        uint16_t data[256 * 2];
+        fillAttenLUT(data, playerLightAtten_[0], playerLightAtten_[2], lutMaxD2_);
+        glBindTexture(GL_TEXTURE_2D, attenLutTexture_);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1,
+                        GL_LUMINANCE_ALPHA, GL_HALF_FLOAT_OES, data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        lutBakedConst_ = playerLightAtten_[0];
+        lutBakedQuad_ = playerLightAtten_[2];
+        lutDirty_ = false;
+    }
+#endif
 }
 
 // ============================================================================
@@ -1754,6 +2102,29 @@ void ZoneShaderManager::setCameraPos(float x, float y, float z) {
     cameraPos_[0] = x;
     cameraPos_[1] = y;
     cameraPos_[2] = z;
+}
+
+void ZoneShaderManager::setFireGlowLight(int index, float px, float py, float pz,
+                                          float cr, float cg, float cb,
+                                          float radius, float intensity) {
+    if (index < 0 || index >= MAX_FIRE_GLOW_LIGHTS) return;
+    int i3 = index * 3;
+    fireGlowLightPos_[i3] = px; fireGlowLightPos_[i3+1] = py; fireGlowLightPos_[i3+2] = pz;
+    fireGlowLightColor_[i3] = cr; fireGlowLightColor_[i3+1] = cg; fireGlowLightColor_[i3+2] = cb;
+    fireGlowLightRadius_[index] = radius;
+    fireGlowLightIntensity_[index] = intensity;
+}
+
+void ZoneShaderManager::setNumFireGlowLights(int count) {
+    numFireGlowLights_ = (count < 0) ? 0 : (count > MAX_FIRE_GLOW_LIGHTS ? MAX_FIRE_GLOW_LIGHTS : count);
+}
+
+void ZoneShaderManager::clearFireGlowLights() {
+    numFireGlowLights_ = 0;
+    std::memset(fireGlowLightPos_, 0, sizeof(fireGlowLightPos_));
+    std::memset(fireGlowLightColor_, 0, sizeof(fireGlowLightColor_));
+    std::memset(fireGlowLightRadius_, 0, sizeof(fireGlowLightRadius_));
+    std::memset(fireGlowLightIntensity_, 0, sizeof(fireGlowLightIntensity_));
 }
 
 } // namespace Graphics

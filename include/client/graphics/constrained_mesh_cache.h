@@ -43,7 +43,7 @@ public:
     // protectedRegions are skipped (visible + buffer ring).
     // Returns evicted region indices (caller handles scene cleanup).
     std::vector<size_t> evictUntilAvailable(size_t bytesNeeded,
-        const std::unordered_set<size_t>& protectedRegions);
+        const std::vector<bool>& protectedRegions);
 
     // Get all registered-but-not-loaded region indices.
     void getUnloadedRegions(std::vector<size_t>& out) const;

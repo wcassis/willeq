@@ -123,6 +123,12 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
         file "$OUTPUT_DIR/bin/gles2_fog_volume_benchmark"
         ls -lh "$OUTPUT_DIR/bin/gles2_fog_volume_benchmark"
     fi
+    for bench in gles2_shader_perpixel_benchmark gles2_program_switch_benchmark gles2_icosphere_anim_benchmark gles2_texture_read_benchmark; do
+        if [ -f "$OUTPUT_DIR/bin/$bench" ]; then
+            file "$OUTPUT_DIR/bin/$bench"
+            ls -lh "$OUTPUT_DIR/bin/$bench"
+        fi
+    done
     echo ""
     echo "Binaries: $OUTPUT_DIR/bin/willeq"
     echo "          $OUTPUT_DIR/bin/model_viewer"
@@ -132,9 +138,14 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     echo "          $OUTPUT_DIR/bin/test_gl_points"
     echo "          $OUTPUT_DIR/bin/gles2_derivatives_test"
     echo "          $OUTPUT_DIR/bin/gles2_npot_test"
+    echo "          $OUTPUT_DIR/bin/gles2_shader_perpixel_benchmark"
+    echo "          $OUTPUT_DIR/bin/gles2_program_switch_benchmark"
+    echo "          $OUTPUT_DIR/bin/gles2_fog_volume_benchmark"
+    echo "          $OUTPUT_DIR/bin/gles2_icosphere_anim_benchmark"
+    echo "          $OUTPUT_DIR/bin/gles2_texture_read_benchmark"
     echo ""
     echo "Deploy to Orange Pi (Armbian Noble):"
-    echo "  scp $OUTPUT_DIR/bin/willeq $OUTPUT_DIR/bin/model_viewer $OUTPUT_DIR/bin/gpu_texture_formats $OUTPUT_DIR/bin/gles2_etc1_benchmark $OUTPUT_DIR/bin/egl_image_sharing_test $OUTPUT_DIR/bin/test_gl_points $OUTPUT_DIR/bin/gles2_derivatives_test $OUTPUT_DIR/bin/gles2_npot_test orangepi:~/willeq/"
+    echo "  scp $OUTPUT_DIR/bin/{willeq,model_viewer,gpu_texture_formats,gles2_etc1_benchmark,egl_image_sharing_test,test_gl_points,gles2_derivatives_test,gles2_npot_test,gles2_shader_perpixel_benchmark,gles2_program_switch_benchmark,gles2_fog_volume_benchmark,gles2_icosphere_anim_benchmark,gles2_texture_read_benchmark} orangepi:~/willeq/"
     echo ""
     echo "Run on Orange Pi (DRM/KMS, Lima GPU, Mesa GL 2.1 - no X11 needed):"
     echo "  ./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600"

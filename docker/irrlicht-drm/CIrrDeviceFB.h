@@ -162,6 +162,10 @@ private:
     // First frame flag for DRM
     bool firstFrame_;
 
+    // Page flip synchronization
+    bool flipPending_;          // True if a page flip event hasn't been received yet
+    void waitForFlipComplete(); // Poll DRM fd for page flip completion event
+
     // GLES2 mode (set before construction, affects EGL init and driver creation)
     bool useGLES2_;
 };

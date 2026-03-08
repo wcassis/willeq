@@ -1,0 +1,150 @@
+=== GLES2 Analytic Fog Volume Benchmark ===
+Resolution: 1280x720, Frames: 300 per test
+
+DRM: Using mode 1280x720@60Hz
+EGL 1.5 (DRM/GBM, GLES2)
+GL: Mali400
+GL: OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1
+
+Zone scene: 205 vertices, 288 triangles (5 walls+floor+ceiling, subdivided)
+Compiling shaders...
+  Zone program: 1, Fog programs: 4
+
+============================================================
+PHASE 1: Zone-only baseline (lightweight, 8 VS lights)
+============================================================
+
+  avg: 7.57 ms  min: 7.37 ms  max: 15.04 ms  (~132 FPS)
+
+============================================================
+PHASE 2: Fog-only (no zone geometry, isolate FS cost)
+============================================================
+
+--- QUADRATIC (1-r^2) ---
+  1 sphere, r=3 (small)      avg:  32.58 ms  (~31 FPS)
+  1 sphere, r=6 (large)      avg:  32.64 ms  (~31 FPS)
+  2 spheres, r=3             avg:  53.37 ms  (~19 FPS)
+  4 spheres, r=3             avg:  76.01 ms  (~13 FPS)
+  4 spheres, r=6             avg: 115.00 ms  (~9 FPS)
+  8 spheres, r=3             avg:  94.32 ms  (~11 FPS)
+  8 spheres, r=6             avg: 177.06 ms  (~6 FPS)
+
+--- QUARTIC (1-r^2)^2 ---
+  1 sphere, r=3 (small)      avg:  39.64 ms  (~25 FPS)
+  1 sphere, r=6 (large)      avg:  39.72 ms  (~25 FPS)
+  2 spheres, r=3             avg:  64.68 ms  (~15 FPS)
+  4 spheres, r=3             avg:  91.92 ms  (~11 FPS)
+  4 spheres, r=6             avg: 140.36 ms  (~7 FPS)
+  8 spheres, r=3             avg: 113.81 ms  (~9 FPS)
+  8 spheres, r=6             avg: 215.22 ms  (~5 FPS)
+
+--- LINEAR (1-r) ---
+  1 sphere, r=3 (small)      avg:  48.20 ms  (~21 FPS)
+  1 sphere, r=6 (large)      avg:  48.24 ms  (~21 FPS)
+  2 spheres, r=3             avg:  79.06 ms  (~13 FPS)
+  4 spheres, r=3             avg: 112.55 ms  (~9 FPS)
+  4 spheres, r=6             avg: 172.14 ms  (~6 FPS)
+  8 spheres, r=3             avg: 139.53 ms  (~7 FPS)
+  8 spheres, r=6             avg: 264.23 ms  (~4 FPS)
+
+--- GAUSSIAN exp(-r^2) ---
+  1 sphere, r=3 (small)      avg:  55.03 ms  (~18 FPS)
+  1 sphere, r=6 (large)      avg:  55.04 ms  (~18 FPS)
+  2 spheres, r=3             avg:  90.47 ms  (~11 FPS)
+  4 spheres, r=3             avg: 129.10 ms  (~8 FPS)
+  4 spheres, r=6             avg: 197.37 ms  (~5 FPS)
+  8 spheres, r=3             avg: 160.05 ms  (~6 FPS)
+  8 spheres, r=6             avg: 303.37 ms  (~3 FPS)
+
+============================================================
+PHASE 3: Zone + fog combined (realistic frame)
+============================================================
+
+--- QUADRATIC (1-r^2) ---
+  2 spheres, r=3             avg:  51.51 ms  (~19 FPS)  fog cost: +43.94 ms
+  4 spheres, r=3             avg:  64.26 ms  (~16 FPS)  fog cost: +56.69 ms
+  4 spheres, r=6             avg:  70.03 ms  (~14 FPS)  fog cost: +62.46 ms
+  8 spheres, r=3             avg:  75.95 ms  (~13 FPS)  fog cost: +68.38 ms
+
+--- QUARTIC (1-r^2)^2 ---
+  2 spheres, r=3             avg:  60.76 ms  (~16 FPS)  fog cost: +53.19 ms
+  4 spheres, r=3             avg:  76.13 ms  (~13 FPS)  fog cost: +68.56 ms
+  4 spheres, r=6             avg:  83.44 ms  (~12 FPS)  fog cost: +75.87 ms
+  8 spheres, r=3             avg:  90.35 ms  (~11 FPS)  fog cost: +82.78 ms
+
+--- LINEAR (1-r) ---
+  2 spheres, r=3             avg:  72.96 ms  (~14 FPS)  fog cost: +65.39 ms
+  4 spheres, r=3             avg:  91.92 ms  (~11 FPS)  fog cost: +84.35 ms
+  4 spheres, r=6             avg: 100.81 ms  (~10 FPS)  fog cost: +93.24 ms
+  8 spheres, r=3             avg: 109.34 ms  (~9 FPS)  fog cost: +101.77 ms
+
+--- GAUSSIAN exp(-r^2) ---
+  2 spheres, r=3             avg:  82.69 ms  (~12 FPS)  fog cost: +75.12 ms
+  4 spheres, r=3             avg: 104.45 ms  (~10 FPS)  fog cost: +96.88 ms
+  4 spheres, r=6             avg: 114.59 ms  (~9 FPS)  fog cost: +107.02 ms
+  8 spheres, r=3             avg: 124.53 ms  (~8 FPS)  fog cost: +116.96 ms
+
+============================================================
+SUMMARY
+============================================================
+
+Zone baseline: 7.57 ms (~132 FPS)
+
+--- Fog-only (isolated FS cost) ---
+Density Function           Config                          ms      FPS
+----------------           ------                          --      ---
+QUADRATIC (1-r^2)          1 sphere, r=3 (small)        32.58       31
+QUADRATIC (1-r^2)          1 sphere, r=6 (large)        32.64       31
+QUADRATIC (1-r^2)          2 spheres, r=3               53.37       19
+QUADRATIC (1-r^2)          4 spheres, r=3               76.01       13
+QUADRATIC (1-r^2)          4 spheres, r=6              115.00        9
+QUADRATIC (1-r^2)          8 spheres, r=3               94.32       11
+QUADRATIC (1-r^2)          8 spheres, r=6              177.06        6
+QUARTIC (1-r^2)^2          1 sphere, r=3 (small)        39.64       25
+QUARTIC (1-r^2)^2          1 sphere, r=6 (large)        39.72       25
+QUARTIC (1-r^2)^2          2 spheres, r=3               64.68       15
+QUARTIC (1-r^2)^2          4 spheres, r=3               91.92       11
+QUARTIC (1-r^2)^2          4 spheres, r=6              140.36        7
+QUARTIC (1-r^2)^2          8 spheres, r=3              113.81        9
+QUARTIC (1-r^2)^2          8 spheres, r=6              215.22        5
+LINEAR (1-r)               1 sphere, r=3 (small)        48.20       21
+LINEAR (1-r)               1 sphere, r=6 (large)        48.24       21
+LINEAR (1-r)               2 spheres, r=3               79.06       13
+LINEAR (1-r)               4 spheres, r=3              112.55        9
+LINEAR (1-r)               4 spheres, r=6              172.14        6
+LINEAR (1-r)               8 spheres, r=3              139.53        7
+LINEAR (1-r)               8 spheres, r=6              264.23        4
+GAUSSIAN exp(-r^2)         1 sphere, r=3 (small)        55.03       18
+GAUSSIAN exp(-r^2)         1 sphere, r=6 (large)        55.04       18
+GAUSSIAN exp(-r^2)         2 spheres, r=3               90.47       11
+GAUSSIAN exp(-r^2)         4 spheres, r=3              129.10        8
+GAUSSIAN exp(-r^2)         4 spheres, r=6              197.37        5
+GAUSSIAN exp(-r^2)         8 spheres, r=3              160.05        6
+GAUSSIAN exp(-r^2)         8 spheres, r=6              303.37        3
+
+--- Zone + fog combined (production scenario) ---
+Density Function           Config                          ms      FPS    fog cost
+----------------           ------                          --      ---    --------
+QUADRATIC (1-r^2)          2 spheres, r=3               51.51       19     +43.94ms
+QUADRATIC (1-r^2)          4 spheres, r=3               64.26       16     +56.69ms
+QUADRATIC (1-r^2)          4 spheres, r=6               70.03       14     +62.46ms
+QUADRATIC (1-r^2)          8 spheres, r=3               75.95       13     +68.38ms
+QUARTIC (1-r^2)^2          2 spheres, r=3               60.76       16     +53.19ms
+QUARTIC (1-r^2)^2          4 spheres, r=3               76.13       13     +68.56ms
+QUARTIC (1-r^2)^2          4 spheres, r=6               83.44       12     +75.87ms
+QUARTIC (1-r^2)^2          8 spheres, r=3               90.35       11     +82.78ms
+LINEAR (1-r)               2 spheres, r=3               72.96       14     +65.39ms
+LINEAR (1-r)               4 spheres, r=3               91.92       11     +84.35ms
+LINEAR (1-r)               4 spheres, r=6              100.81       10     +93.24ms
+LINEAR (1-r)               8 spheres, r=3              109.34        9    +101.77ms
+GAUSSIAN exp(-r^2)         2 spheres, r=3               82.69       12     +75.12ms
+GAUSSIAN exp(-r^2)         4 spheres, r=3              104.45       10     +96.88ms
+GAUSSIAN exp(-r^2)         4 spheres, r=6              114.59        9    +107.02ms
+GAUSSIAN exp(-r^2)         8 spheres, r=3              124.53        8    +116.96ms
+
+--- Budget analysis (33.3ms frame budget @ 30 FPS) ---
+Zone baseline uses 7.6 ms (23% of budget)
+
+Best-case fog cost (QUADRATIC, 4 spheres r=3):
+  Combined: 64.3 ms (193% of budget), fog adds 56.7 ms
+  Headroom remaining: -31.0 ms

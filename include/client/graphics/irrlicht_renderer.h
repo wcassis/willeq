@@ -1136,7 +1136,6 @@ private:
     bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
     // updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
-    void refreshShaderLightColors();  // Push updated fire-flicker colors to GLSL shader
 
     // Loading screen
     void drawLoadingScreen(float progress, const std::wstring& stageText);
@@ -1245,13 +1244,20 @@ private:
     std::unordered_map<size_t, std::vector<size_t>> regionNeighbors_;
     void buildRegionNeighborMap();
 
-    // Portal-based entity culling (walks portal graph from camera room)
-    std::unordered_set<size_t> portalVisibleRegions_;
+    // Portal-based entity culling — pointer to SimulationOutput front buffer (no copy)
+    const std::unordered_set<size_t>* portalVisibleRegions_ = nullptr;
 
-    // PVS depth map: region index → portal BFS depth (0 = camera, 1+ = adjacent)
-    std::unordered_map<size_t, uint8_t> regionPvsDepthMap_;
+    // PVS depth map — pointer to SimulationOutput front buffer (no copy)
+    const std::unordered_map<size_t, uint8_t>* regionPvsDepthMap_ = nullptr;
     uint8_t getRegionPvsDepth(size_t regionIdx) const;
     void onPvsRegionChanged();
+
+    // PVS neighborhood cache: suppress onPvsRegionChanged() when moving within
+    // a cluster of adjacent regions. Only fire when leaving the neighborhood.
+    std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
+    size_t pvsNeighborhoodAnchor_ = SIZE_MAX;
+    void rebuildPvsNeighborhood(size_t anchorRegion);
+    bool isInPvsNeighborhood(size_t regionIdx) const;
 
     void drawZoneGeometryWithPortals();
     void drawRegionMesh(size_t regionIdx);
@@ -1276,7 +1282,7 @@ private:
         float distance;  // for priority sorting
     };
     std::vector<MeshLoadEntry> meshLoadQueue_;
-    std::unordered_set<size_t> protectedRegions_;  // visible + buffer ring (skip during eviction)
+    std::vector<bool> protectedRegions_;  // bitvector indexed by region index (true = protected from eviction)
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
     // Regions waiting for async fallback textures to complete GPU upload.
@@ -1383,7 +1389,7 @@ private:
     std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
-    std::vector<irr::scene::ILightSceneNode*> activeLightNodes_;  // Currently enabled lights (max 8)
+    int activeLightCount_ = 0;  // Number of active shader lights from last SimulationOutput
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
     irr::scene::ILightSceneNode* sunLight_ = nullptr;  // Directional sun light
     float ambientMultiplier_ = 1.0f;  // User-adjustable ambient light multiplier (Page Up/Down)
@@ -1446,7 +1452,44 @@ private:
     bool debugPlayerLightEnabled_ = true;    // /plight toggle
     bool debugObjectLightsEnabled_ = true;   // /olight toggle
     bool debugDirectionalLightEnabled_ = true; // /zlight toggle
-    bool fireEffectsEnabled_ = true;  // Fire light flickering and ember/smoke particles
+    bool fireEffectsEnabled_ = true;      // Fire light flickering and ember/smoke particles
+    bool fireGlowLightingEnabled_ = true;  // Fire glow lighting (per-vertex warm glow on zone geometry)
+    bool fireGlowIcospheresEnabled_ = false; // Fire glow icospheres (animated translucent volumes)
+    int maxFireGlowLights_ = 4;            // Max active fire glow lights (1-8, from config)
+
+    // Fire glow light data (collected during zone load)
+    struct FireGlowLight {
+        irr::core::vector3df position;  // Irrlicht Y-up
+        float r, g, b;                 // Fire color
+        float radius;                  // Glow radius
+        float flickerPhase;            // Random phase offset for animation
+        float flickerSpeed;            // Random speed multiplier
+    };
+    std::vector<FireGlowLight> fireGlowLights_;
+    float fireGlowTime_ = 0.0f;       // Animation time accumulator
+
+    // Icosphere rendering (animated fire glow volumes)
+    void buildIcosphereMesh();
+    void compileIcosphereShader();
+    void renderFireGlowIcospheres();
+    void updateFireGlowLighting();  // Select nearest N and set shader uniforms
+    std::vector<float> icosphereVertices_;   // 3 floats per vertex (unit sphere positions)
+    std::vector<uint16_t> icosphereIndices_;
+#ifdef EQT_HAS_DRM
+    uint32_t icosphereVBO_ = 0;
+    uint32_t icosphereIBO_ = 0;
+    uint32_t icosphereProgram_ = 0;
+    int32_t icoLocViewProj_ = -1;
+    int32_t icoLocCenter_ = -1;
+    int32_t icoLocRadius_ = -1;
+    int32_t icoLocTime_ = -1;
+    int32_t icoLocJitterAmt_ = -1;
+    int32_t icoLocColor_ = -1;
+    int32_t icoLocFogStart_ = -1;
+    int32_t icoLocFogEnd_ = -1;
+    int32_t icoLocFogColor_ = -1;
+#endif
+
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
     // Zone geometry bounds cache (survives geometry vector release)
@@ -1525,22 +1568,52 @@ private:
     TargetInfo currentTargetInfo_;  // Extended target info for HUD display
 
     // Irrlicht-based collision (using zone geometry directly)
-    irr::scene::ITriangleSelector* zoneTriangleSelector_ = nullptr;  // Full selector (terrain + objects + doors)
-    irr::scene::ITriangleSelector* terrainOnlySelector_ = nullptr;   // Terrain only (for detail system ground queries)
+    // Legacy meta selectors — only used by HCMap fallback/debug path (no BSP)
+    irr::scene::ITriangleSelector* zoneTriangleSelector_ = nullptr;
+    irr::scene::ITriangleSelector* terrainOnlySelector_ = nullptr;
     irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
+
+    // BSP-filtered collision: pre-transformed world-space triangles — no matrix math per query
+    // All collision paths (movement, detail, footprints, LOS) use direct Möller–Trumbore intersection
+    std::map<size_t, std::vector<irr::core::triangle3df>> regionWorldTriangles_;  // Zone geometry per BSP region
+    std::map<size_t, std::vector<irr::core::triangle3df>> objectWorldTriangles_;  // Placeable objects per BSP region
+
+    // Pre-baked door collision: open + closed world-space triangles per door
+    // During animation (opening/closing), door has no collision (walk-through, matching original EQ behavior)
+    struct DoorCollisionData {
+        std::vector<irr::core::triangle3df> closedTriangles;
+        std::vector<irr::core::triangle3df> openTriangles;
+        size_t bspRegion = SIZE_MAX;
+        bool hasCollision = true;  // false for invisible, teleporter, spinning, lifts, hazardous
+    };
+    std::map<uint8_t, DoorCollisionData> doorCollisionData_;
     bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
 
-    // Camera collision: small selector (player region + depth-1 neighbors + nearby doors/objects)
-    irr::scene::IMetaTriangleSelector* cameraCollisionSelector_ = nullptr;
-    size_t cameraCollisionRegion_ = SIZE_MAX;  // PVS region this was built for
-    std::unordered_map<size_t, irr::scene::ITriangleSelector*> regionSelectors_;  // cached per-region selectors
-    void rebuildCameraCollisionSelector();
-
-    // Irrlicht collision methods
+    // Irrlicht collision methods (full meta selector — cold path: LOS, detail)
     bool checkCollisionIrrlicht(const irr::core::vector3df& start, const irr::core::vector3df& end,
                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
     // Find ground Z at position. currentZ is model center (server Z), modelYOffset is offset from center to feet.
     float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
+
+    // BSP-filtered collision methods (hot path: movement) — tests only source+dest region + doors/objects
+    bool checkCollisionBspFiltered(const irr::core::vector3df& start, const irr::core::vector3df& end,
+                                   irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
+    float findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset);
+    // Direct ray-triangle intersection on pre-transformed world-space triangles (no matrix math)
+    static bool rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+                                      const irr::core::vector3df& rayDir, float rayLen,
+                                      const std::vector<irr::core::triangle3df>& triangles,
+                                      irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
+                                      float& hitDistSq);
+    // Helper: test ray against all doors+objects in a BSP region (direct Möller–Trumbore)
+    bool rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
+                                const irr::core::vector3df& rayDir, float rayLen,
+                                size_t bspRegion,
+                                irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
+                                float& hitDistSq);
+    // Helper: extract world-space triangles from a mesh node (called once at build time)
+    static std::vector<irr::core::triangle3df> extractWorldTriangles(
+        irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node);
 
     // Debug visualization for collision rays
     struct CollisionDebugLine {
@@ -1710,6 +1783,11 @@ private:
         int64_t footprintRender = 0;     // detailManager_->renderFootprints()
         int64_t postRender = 0;          // RDP capture + cursor + screenshot
         int64_t simWorkerApply = 0;      // SimulationWorker result application
+        int64_t drainQueues = 0;         // GLES2 upload drain + texture cache drain
+        int64_t visibility = 0;          // processFrameVisibility() - frustum update
+        int64_t postSimInput = 0;        // postSimulationInput() - worker input posting
+        int64_t postLoadWork = 0;        // Post-loading priority work (GREEN-gated)
+        int64_t entityHousekeeping = 0;  // Entity prep promote/scan/dispatch
     };
     FrameTimings frameTimings_;
     FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames

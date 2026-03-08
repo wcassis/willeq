@@ -2025,6 +2025,15 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         treeManager_->setEnabled(settings.animatedTrees);
         LOG_DEBUG(MOD_GRAPHICS, "Applied tree animation settings: enabled={}", settings.animatedTrees);
     }
+
+    // --- Fire Glow Lighting + Icospheres ---
+    // fireEffects is the master gate for all fire-based effects
+    fireGlowLightingEnabled_ = settings.fireEffects && settings.enableFireGlowLighting;
+    fireGlowIcospheresEnabled_ = settings.fireEffects && settings.enableFireGlowIcospheres;
+    maxFireGlowLights_ = settings.maxFireGlowLights;
+    if (!fireGlowLightingEnabled_ && zoneShader_) {
+        zoneShader_->clearFireGlowLights();
+    }
 }
 
 void IrrlichtRenderer::setupHUD() {
@@ -2232,9 +2241,9 @@ void IrrlichtRenderer::unloadZone() {
     // Reset animated texture manager (removes its textures from driver)
     animatedTextureManager_.reset();
 
-    // Clear camera collision selector FIRST to prevent use-after-free during zone transitions
-    // This must happen BEFORE dropping zoneTriangleSelector_ to avoid race conditions
+    // Clear camera collision FIRST to prevent use-after-free during zone transitions
     if (cameraController_) {
+        cameraController_->setBspCollision(nullptr, nullptr);
         cameraController_->setCollisionManager(nullptr, nullptr);
     }
 
@@ -2263,16 +2272,10 @@ void IrrlichtRenderer::unloadZone() {
         tumbleweedManager_->onZoneLeave();
     }
 
-    // Now safe to remove zone collision selectors
-    if (cameraCollisionSelector_) {
-        cameraCollisionSelector_->drop();
-        cameraCollisionSelector_ = nullptr;
-    }
-    cameraCollisionRegion_ = SIZE_MAX;
-    for (auto& [idx, sel] : regionSelectors_) {
-        if (sel) sel->drop();
-    }
-    regionSelectors_.clear();
+    // Now safe to remove zone collision data
+    regionWorldTriangles_.clear();
+    objectWorldTriangles_.clear();
+    doorCollisionData_.clear();
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
@@ -2335,6 +2338,10 @@ void IrrlichtRenderer::unloadZone() {
     }
     meshLoadQueue_.clear();
     protectedRegions_.clear();
+    portalVisibleRegions_ = nullptr;
+    regionPvsDepthMap_ = nullptr;
+    pvsNeighborhood_.clear();
+    pvsNeighborhoodAnchor_ = SIZE_MAX;
     pendingTextureRegions_.clear();
     textureRebuildQueue_.clear();
     pendingTextureDoors_.clear();
@@ -2833,6 +2840,10 @@ void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float play
 void IrrlichtRenderer::setupHCMapCollision() {
     if (!smgr_) return;
 
+    // Clean up all collision data
+    regionWorldTriangles_.clear();
+    objectWorldTriangles_.clear();
+    doorCollisionData_.clear();
     if (zoneTriangleSelector_) { zoneTriangleSelector_->drop(); zoneTriangleSelector_ = nullptr; }
     if (terrainOnlySelector_) { terrainOnlySelector_->drop(); terrainOnlySelector_ = nullptr; }
 
@@ -3026,6 +3037,20 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     };
 
     // ── Setup ────────────────────────────────────────────────────────────────
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: zone='{}', eqClientPath='{}'", currentZoneName_, eqClientPath);
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: particleManager_={}, windowManager_={}, zoneShader_={}, "
+              "simulationWorker_={}, entityRenderer_={}, doorManager_={}",
+              (bool)particleManager_, (bool)windowManager_, (bool)zoneShader_,
+              (bool)simulationWorker_, (bool)entityRenderer_, (bool)doorManager_);
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, "
+              "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
+              fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
+              maxFireGlowLights_, fireEffectsEnabled_, fireGlowLights_.size());
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, enableTextureAtlas={}, "
+              "atlasPath='{}', deferredAssetLoading={}",
+              config_.constrainedConfig.skipObjectBuild, config_.constrainedConfig.enableTextureAtlas,
+              config_.constrainedConfig.atlasPath, config_.constrainedConfig.deferredAssetLoading);
+
     stopSimulationWorker();
     progressiveLoadingActive_ = true;
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
@@ -3043,11 +3068,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     {
         auto stepStart = std::chrono::steady_clock::now();
         std::string zonePath = eqPath + currentZoneName_ + ".s3d";
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: loading S3D from '{}'", zonePath);
 
         S3DLoadOptions loadOptions;
         loadOptions.loadCharacters = false;
         loadOptions.computeCombinedGeometry = true;
         loadOptions.loadObjects = !config_.constrainedConfig.skipObjectBuild;
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: loadOptions: chars={}, combinedGeom={}, objects={}",
+                  loadOptions.loadCharacters, loadOptions.computeCombinedGeometry, loadOptions.loadObjects);
 
         S3DLoader loader;
         if (!loader.loadZone(zonePath, loadOptions)) {
@@ -3056,8 +3084,16 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             return;
         }
         currentZone_ = loader.getZone();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: S3D loaded: objects={}, lights={}, textures={}, "
+                  "wldLoader={}, geometry={}",
+                  currentZone_ ? currentZone_->objects.size() : 0,
+                  currentZone_ ? currentZone_->lights.size() : 0,
+                  currentZone_ ? currentZone_->textures.size() : 0,
+                  currentZone_ ? (bool)currentZone_->wldLoader : false,
+                  currentZone_ ? (bool)currentZone_->geometry : false);
         logAssetBuildTime("seq_s3d_parse", 0, stepStart);
     }
+    FlushThreadLog();
 
     // Install S3D data
     if (!currentZone_) {
@@ -3084,6 +3120,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         auto zone = currentZone_;
         bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
         const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: zone={}, wldLoader={}, skipObjectBuild={}, treeIdentifier={}",
+                  (bool)zone, zone ? (bool)zone->wldLoader : false, skipObjectBuild, (bool)treeIdentifier);
 
         if (zone && zone->wldLoader) {
             auto wldLoader = zone->wldLoader;
@@ -3111,7 +3149,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     worldBounds.MaxEdge = irr::core::vector3df(vMaxX, vMaxY, vMaxZ);
                     computations->regionBoundingBoxes[i] = worldBounds;
                 }
-                LOG_INFO(MOD_GRAPHICS, "Sequential: computed {} region bounding boxes",
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: computed {} region bounding boxes",
                          computations->regionBoundingBoxes.size());
 
                 // Build portal system
@@ -3119,6 +3157,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 computations->portalSystem->buildFromBsp(*bspTree, computations->regionBoundingBoxes);
                 computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
                     (computations->portalSystem->getData().portals.size() > 10);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: portal system: hasPortals={}, portalCount={}, occlusionEligible={}",
+                          computations->portalSystem->hasPortals(),
+                          computations->portalSystem->getData().portals.size(),
+                          computations->portalOcclusionEligible);
 
                 // Cache zone light BSP regions
                 for (size_t i = 0; i < zone->lights.size(); ++i) {
@@ -3126,6 +3168,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     size_t regionIdx = bspTree->findRegionIndexForPoint(light->x, light->y, light->z);
                     computations->zoneLightRegions.push_back(regionIdx);
                 }
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: cached {} zone light BSP regions", computations->zoneLightRegions.size());
             }
 
             // Index objects with BSP regions
@@ -3179,10 +3222,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         x + halfW, z + halfH, y + halfW);
                     computations->prebuiltDeferredObjects.push_back(deferred);
                 }
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: {} deferred object entries, {} after tree filtering",
+                          computations->deferredObjectEntries.size(), computations->prebuiltDeferredObjects.size());
             }
         }
         logAssetBuildTime("seq_bsp_compute", 0, stepStart);
     }
+    FlushThreadLog();
 
     // Install BSP data
     {
@@ -3217,6 +3263,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     zoneBspTree_ = bspTree;
                     usePvsCulling_ = true;
                     currentPvsRegion_ = SIZE_MAX;
+                    // Size protectedRegions bitvector to cover all BSP regions
+                    protectedRegions_.resize(bspTree->regions.size(), false);
                 }
 
                 // Install pre-computed bounding boxes
@@ -3249,8 +3297,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (doorManager_)
             doorManager_->setRegionNeighbors(regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
 
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: zoneBspTree_={}, usePvsCulling_={}, "
+                  "regionBoundingBoxes_={}, portalSystem_={}, portalOcclusionEligible_={}, regionNeighbors_={}",
+                  (bool)zoneBspTree_, usePvsCulling_, regionBoundingBoxes_.size(),
+                  (bool)portalSystem_, portalOcclusionEligible_, regionNeighbors_.size());
         logAssetBuildTime("seq_bsp_install", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 3: Atlas — texture atlas ──────────────────────────────────────
     updateProgress(60, "Building texture atlases...");
@@ -3261,6 +3314,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
         bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
         auto* computations = pendingZoneComputations_.get();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: enableAtlas={}, atlasPath='{}', skipObjectBuild={}",
+                  enableAtlas, atlasPathCopy, skipObjectBuild);
 
         // Preload atlas data inline (was background thread)
         if (enableAtlas && !atlasPathCopy.empty() && computations) {
@@ -3302,6 +3357,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                      zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
         } else {
             zoneAtlas_.reset();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: no zone atlas (preload invalid or atlas disabled)");
         }
 
         // Upload object atlas pages with per-page progress
@@ -3324,6 +3380,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                      objAtlas_->getPageCount(), objAtlas_->getTileCount());
         } else {
             objAtlas_.reset();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: no obj atlas (preload invalid or atlas disabled)");
         }
 
         // Set shader page textures
@@ -3348,12 +3405,15 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 #endif
         logAssetBuildTime("seq_atlas", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 4: Regions — build ALL zone meshes eagerly ────────────────────
     updateProgress(63, "Building zone meshes...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: currentZone_={}, wldLoader={}, zoneBspTree_={}",
+                  (bool)currentZone_, currentZone_ ? (bool)currentZone_->wldLoader : false, (bool)zoneBspTree_);
 
         if (currentZone_ && currentZone_->wldLoader && zoneBspTree_) {
             auto wldLoader = currentZone_->wldLoader;
@@ -3452,6 +3512,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         }
         logAssetBuildTime("seq_regions", regionMeshNodes_.size(), stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 5: Assets — build indexes, create subsystems ──────────────────
     updateProgress(71, "Building asset indexes...");
@@ -3459,6 +3520,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: deferredAssetLoading={}, entityRenderer_={}",
+                  config_.constrainedConfig.deferredAssetLoading, (bool)entityRenderer_);
 
         // Build archive index inline (was background thread)
         if (computations && config_.constrainedConfig.deferredAssetLoading) {
@@ -3517,12 +3580,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         }
         logAssetBuildTime("seq_assets", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 6: Objects — zone objects ──────────────────────────────────────
     updateProgress(75, "Installing zone objects...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ before={}", objectLights_.size());
         deferredObjects_.clear();
 
         if (pendingZoneComputations_ && !pendingZoneComputations_->prebuiltDeferredObjects.empty()) {
@@ -3795,14 +3860,22 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: built all {} object meshes eagerly", objectsBuilt);
         }
+        {
+            int fireSrcCount = 0;
+            for (const auto& ol : objectLights_) { if (ol.isFireSource) ++fireSrcCount; }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ after={}, fire sources from objects={}",
+                      objectLights_.size(), fireSrcCount);
+        }
         logAssetBuildTime("seq_objects", deferredObjects_.size(), stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 7: Doors — door meshes ────────────────────────────────────────
     updateProgress(78, "Building door meshes...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager_={}", (bool)doorManager_);
         if (!doorManager_) {
             doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
             // Do NOT set constrained texture cache yet — sequential builds use
@@ -3851,12 +3924,15 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
         logAssetBuildTime("seq_doors", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 8: Entities — inline prep + build (no background threads) ────
     updateProgress(80, "Preparing entity models...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityRenderer_={}, skipEntityBuild={}",
+                  (bool)entityRenderer_, config_.constrainedConfig.skipEntityBuild);
 
         if (entityRenderer_ && entityRenderer_->getRaceModelLoader()
             && !config_.constrainedConfig.skipEntityBuild) {
@@ -3867,8 +3943,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             size_t totalEntities = entities.size();
             size_t prepCount = 0;
             size_t buildCount = 0;
+            size_t modelCacheHits = 0;
+            size_t modelDiskLoads = 0;
 
-            LOG_INFO(MOD_GRAPHICS, "Sequential: preparing {} entities inline", totalEntities);
+            LOG_INFO(MOD_GRAPHICS, "Sequential: preparing {} entities inline (chrCacheMaxEntries={})",
+                     totalEntities, config_.constrainedConfig.chrCacheMaxEntries);
 
             // Collect spawn IDs (iterate copy since we modify visuals)
             std::vector<uint16_t> spawnIds;
@@ -3901,11 +3980,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
                 if (alreadyCached) {
                     success = true;
+                    ++modelCacheHits;
                 } else {
                     auto prepStart = std::chrono::steady_clock::now();
                     success = modelLoader->preloadModelData(vis.raceId, vis.gender);
                     auto prepMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - prepStart).count();
+                    if (success) ++modelDiskLoads;
                     LOG_INFO(MOD_GRAPHICS, "Sequential: preload race={} gender={} took {}ms success={}",
                              vis.raceId, vis.gender, prepMs, success);
                 }
@@ -4210,38 +4291,56 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 ++prepCount;
             }
 
-            LOG_INFO(MOD_GRAPHICS, "Sequential: prepped {} entities, built {} meshes",
-                     prepCount, buildCount);
+            bool hasBoats = entityRenderer_->hasBoatsInZone();
+            LOG_INFO(MOD_GRAPHICS, "Sequential: prepped {} entities, built {} meshes (model cache hits={}, disk loads={}, hasBoats={})",
+                     prepCount, buildCount, modelCacheHits, modelDiskLoads, hasBoats);
+            if (hasBoats) {
+                LOG_INFO(MOD_GRAPHICS, "Sequential: zone has boats — boat collision checks enabled");
+            } else {
+                LOG_INFO(MOD_GRAPHICS, "Sequential: no boats in zone — boat collision checks disabled (zero per-frame cost)");
+            }
         }
         entityPrepReady_ = true;
         logAssetBuildTime("seq_entities", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 9: Collision ──────────────────────────────────────────────────
     updateProgress(88, "Setting up collision...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
+                  (bool)smgr_, regionWorldTriangles_.size(), objectNodes_.size(), (bool)zoneBspTree_);
         setupMinimalZoneCollision();
 
-        // Add eagerly-built objects to collision (inline addObjectToCollision)
-        if (smgr_ && zoneTriangleSelector_) {
-            auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
+        // Add eagerly-built objects as pre-transformed world-space triangles per BSP region
+        size_t objectsAdded = 0;
+        size_t totalObjectTriangles = 0;
+        if (smgr_) {
             for (size_t oi = 0; oi < objectNodes_.size(); ++oi) {
                 auto* node = objectNodes_[oi];
                 if (node && node->getMesh()) {
-                    irr::scene::ITriangleSelector* selector =
-                        smgr_->createTriangleSelector(node->getMesh(), node);
-                    if (selector) {
-                        metaSelector->addTriangleSelector(selector);
-                        selector->drop();
+                    auto triangles = extractWorldTriangles(smgr_, node);
+                    if (!triangles.empty()) {
+                        size_t region = (oi < objectRegions_.size()) ? objectRegions_[oi] : SIZE_MAX;
+                        auto& regionTris = objectWorldTriangles_[region];
+                        totalObjectTriangles += triangles.size();
+                        regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
+                        objectsAdded++;
                     }
                 }
             }
-            LOG_INFO(MOD_GRAPHICS, "Sequential: added {} objects to collision", objectNodes_.size());
+            LOG_INFO(MOD_GRAPHICS, "Sequential: {} objects -> {} world-space triangles across {} regions",
+                     objectsAdded, totalObjectTriangles, objectWorldTriangles_.size());
         }
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: collision setup complete, "
+                  "regionWorldTriangles_={}, objectWorldTriangles_={}, doorCollisionData_={}, bspFiltered={}",
+                  regionWorldTriangles_.size(), objectWorldTriangles_.size(),
+                  doorCollisionData_.size(), (bool)(zoneBspTree_ && !regionWorldTriangles_.empty()));
         logAssetBuildTime("seq_collision", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 10: Sky — all sky, fog, weather ───────────────────────────────
     updateProgress(90, "Loading sky and weather...");
@@ -4251,6 +4350,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         auto* computations = pendingZoneComputations_.get();
         bool skyRendering = config_.constrainedConfig.skyRendering;
         auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: computations={}, skyRendering={}, skyDomeMode={}, "
+                  "storedZoneEnv.pending={}, skyRenderer_={}, weatherSystem_={}",
+                  (bool)computations, skyRendering, (int)skyDomeMode,
+                  storedZoneEnvironment_.pending, (bool)skyRenderer_, (bool)weatherSystem_);
 
         // Load sky data inline (was background thread)
         if (computations) {
@@ -4392,6 +4495,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         }
 
         if (storedZoneEnvironment_.pending) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: applying stored zone env: skyType={}, zoneType={}, "
+                      "fogR={}, fogG={}, fogB={}, fogMaxClip={}",
+                      storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
+                      storedZoneEnvironment_.fogR[0], storedZoneEnvironment_.fogG[0],
+                      storedZoneEnvironment_.fogB[0], storedZoneEnvironment_.fogMaxClip[0]);
             if (skyRenderer_ && skyRenderer_->isInitialized()) {
                 skyRenderer_->prepareSkyType(storedZoneEnvironment_.skyType, currentZoneName_);
                 bool isDungeon = (storedZoneEnvironment_.zoneType == 2);
@@ -4489,14 +4597,29 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (storedZoneEnvironment_.pending) storedZoneEnvironment_.pending = false;
         if (computations && computations->skyLoadData) computations->skyLoadData.reset();
         setupFog();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: complete, skyRenderer_={}, skyInit={}, skyEnabled={}, "
+                  "isIndoorZone_={}, fogEnabled_={}, renderDistance_={:.0f}, weatherSystem_={}",
+                  (bool)skyRenderer_,
+                  skyRenderer_ ? skyRenderer_->isInitialized() : false,
+                  skyRenderer_ ? skyRenderer_->isEnabled() : false,
+                  isIndoorZone_, fogEnabled_, renderDistance_, (bool)weatherSystem_);
         logAssetBuildTime("seq_sky", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 11: Env — environment subsystems ──────────────────────────────
     updateProgress(93, "Initializing environment...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_={}, detailManager_={}, particleManager_={}, "
+                  "boidsManager_={}, tumbleweedManager_={}, weatherEffects_={}",
+                  (bool)treeManager_, (bool)detailManager_, (bool)particleManager_,
+                  (bool)boidsManager_, (bool)tumbleweedManager_, (bool)weatherEffects_);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE fire glow flags: lightingEnabled={}, icospheresEnabled={}, "
+                  "maxLights={}, fireEffectsEnabled_={}",
+                  fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
+                  maxFireGlowLights_, fireEffectsEnabled_);
 
         // Trees
         if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
@@ -4510,6 +4633,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
         }
 
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: trees done, treeManager_ initialized={}",
+                  treeManager_ ? treeManager_->isInitializing() : false);
+
         // Detail manager
         if (!detailManager_) {
             auto detailSettings = getDisplaySettings();
@@ -4520,10 +4646,65 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
             }
         }
-        if (detailManager_ && terrainOnlySelector_) {
+        if (detailManager_ && zoneBspTree_ && !regionWorldTriangles_.empty()) {
+            // Create BSP-filtered ground raycast callback for detail/footprint systems
+            // Uses pre-transformed world-space triangles with direct Möller–Trumbore intersection
+            auto groundRaycast = [this](float x, float z, float startY,
+                                        float& outY, irr::core::vector3df& outNormal,
+                                        irr::core::triangle3df& outTriangle) -> bool {
+                // Find BSP region at query point (Irrlicht x,z → EQ x,y)
+                // startY is in Irrlicht Y-up coords = EQ Z
+                size_t queryRegion = zoneBspTree_->findRegionIndexForPoint(x, z, startY);
+
+                irr::core::vector3df rayStart(x, startY, z);
+                irr::core::vector3df rayDir(0.0f, -1.0f, 0.0f);  // Cast down
+                float rayLen = 560.0f;
+
+                irr::core::vector3df hitPoint;
+                irr::core::triangle3df hitTri;
+                bool hit = false;
+                float closestDistSq = std::numeric_limits<float>::max();
+
+                // Test query region world triangles (direct, no matrix math)
+                if (queryRegion != SIZE_MAX) {
+                    auto it = regionWorldTriangles_.find(queryRegion);
+                    if (it != regionWorldTriangles_.end()) {
+                        float distSq;
+                        if (rayIntersectTriangles(rayStart, rayDir, rayLen, it->second, hitPoint, hitTri, distSq)) {
+                            if (distSq < closestDistSq) {
+                                closestDistSq = distSq;
+                                outY = hitPoint.Y;
+                                outNormal = hitTri.getNormal();
+                                outNormal.normalize();
+                                outTriangle = hitTri;
+                                hit = true;
+                            }
+                        }
+                    }
+                }
+
+                // Test doors and objects in query region (direct Möller–Trumbore)
+                if (queryRegion != SIZE_MAX) {
+                    irr::core::vector3df hp;
+                    irr::core::triangle3df ht;
+                    float distSq;
+                    if (rayTestDoorsAndObjects(rayStart, rayDir, rayLen, queryRegion, hp, ht, distSq)) {
+                        if (distSq < closestDistSq) {
+                            outY = hp.Y;
+                            outNormal = ht.getNormal();
+                            outNormal.normalize();
+                            outTriangle = ht;
+                            hit = true;
+                        }
+                    }
+                }
+
+                return hit;
+            };
+
             auto wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
             auto zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
-            detailManager_->onZoneEnter(currentZoneName_, terrainOnlySelector_,
+            detailManager_->onZoneEnter(currentZoneName_, groundRaycast,
                                         zoneMeshNode_, wldLoader, zoneGeom);
         }
         if (detailManager_ && !regionMeshNodes_.empty()) {
@@ -4533,21 +4714,30 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
         }
 
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_={}, regionWorldTriangles_={}, regionMeshNodes_={}",
+                  (bool)detailManager_, regionWorldTriangles_.size(), regionMeshNodes_.size());
+
         // Particles
         if (particleManager_) {
             auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
             particleManager_->onZoneEnter(currentZoneName_, biome);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ onZoneEnter done, biome={}",
+                      Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
 
             // Fire sources
             std::vector<glm::vec3> fireSources;
             std::vector<float> fireRadii;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: objectLights_ count={}", objectLights_.size());
             for (const auto& objLight : objectLights_) {
                 if (objLight.isFireSource) {
                     fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
                     fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
                 }
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fire sources from objectLights_: {} sources, {} radii",
+                      fireSources.size(), fireRadii.size());
             if (currentZone_) {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: currentZone_->lights count={}", currentZone_->lights.size());
                 for (const auto& zl : currentZone_->lights) {
                     std::string upperName = zl->name;
                     std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
@@ -4563,6 +4753,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     }
                 }
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: total fireSources={} (objectLights + zone lights)",
+                      fireSources.size());
             if (!fireSources.empty()) particleManager_->setFireSources(fireSources);
             if (detailManager_ && detailManager_->hasSurfaceMap())
                 particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
@@ -4570,6 +4762,28 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             particleManager_->initUnifiedRenderer();
             if (!fireSources.empty())
                 particleManager_->createFireEmitters(fireSources, fireRadii);
+
+            // Collect fire glow lights (same sources as fire particles)
+            // Positions in fireSources are EQ coords (Z-up); convert to Irrlicht (Y-up)
+            fireGlowLights_.clear();
+            uint32_t rngState = 0x12345678u;
+            for (size_t i = 0; i < fireSources.size(); ++i) {
+                FireGlowLight e;
+                // EQ(x,y,z) -> Irrlicht(x,z,y)
+                e.position = irr::core::vector3df(fireSources[i].x, fireSources[i].z, fireSources[i].y);
+                e.r = 0.15f; e.g = 0.09f; e.b = 0.02f;  // warm fire color (subtle)
+                e.radius = fireRadii[i] * 0.3f;  // compact glow around fire source
+                // Random flicker phase/speed per emitter
+                rngState ^= rngState << 13; rngState ^= rngState >> 17; rngState ^= rngState << 5;
+                e.flickerPhase = static_cast<float>(rngState & 0xFFFF) / 65535.0f * 6.28f;
+                rngState ^= rngState << 13; rngState ^= rngState >> 17; rngState ^= rngState << 5;
+                e.flickerSpeed = 0.8f + static_cast<float>(rngState & 0xFFFF) / 65535.0f * 0.4f;
+                fireGlowLights_.push_back(e);
+            }
+            LOG_INFO(MOD_GRAPHICS, "Collected {} fire glow lights for zone", fireGlowLights_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fireGlowLights_ collected={}", fireGlowLights_.size());
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ is NULL — skipping fire source collection entirely");
         }
 
         // Boids
@@ -4592,7 +4806,40 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Weather surface + display settings
         if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap())
             weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvironmentalDisplaySettings: windowManager_={}, "
+                  "optionsWindow={}",
+                  (bool)windowManager_,
+                  windowManager_ ? (bool)windowManager_->getOptionsWindow() : false);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvSettings: fireGlowLightingEnabled_={}, "
+                  "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
+                  fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
+                  maxFireGlowLights_, fireEffectsEnabled_);
         applyEnvironmentalDisplaySettings();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: POST applyEnvSettings: fireGlowLightingEnabled_={}, "
+                  "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
+                  fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
+                  maxFireGlowLights_, fireEffectsEnabled_);
+
+        // Build icosphere mesh + shader for fire glow volumes
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere check: fireEffectsEnabled_={}, "
+                  "fireGlowIcospheresEnabled_={}, fireGlowLights_.size()={}, icosphereVertices_.empty()={}",
+                  fireEffectsEnabled_, fireGlowIcospheresEnabled_,
+                  fireGlowLights_.size(), icosphereVertices_.empty());
+#ifdef EQT_HAS_DRM
+        if (fireEffectsEnabled_ && fireGlowIcospheresEnabled_ && !fireGlowLights_.empty() && icosphereVertices_.empty()) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: building icosphere mesh + shader");
+            buildIcosphereMesh();
+            compileIcosphereShader();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build done: vertices={}, indices={}, "
+                      "VBO={}, IBO={}, program={}",
+                      icosphereVertices_.size(), icosphereIndices_.size(),
+                      icosphereVBO_, icosphereIBO_, icosphereProgram_);
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build SKIPPED");
+        }
+#else
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: EQT_HAS_DRM not defined, icosphere build skipped");
+#endif
 
         // Release combined zone geometry (if detail system disabled)
         if (currentZone_ && currentZone_->geometry && !detailManager_) {
@@ -4653,14 +4900,19 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             LOG_INFO(MOD_GRAPHICS, "Sequential: applied tree/animated fixup to {} objects", deferredObjects_.size());
         }
 
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: complete");
         logAssetBuildTime("seq_env", 0, stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 12: Lights — zone lighting ────────────────────────────────────
     updateProgress(96, "Setting up lighting...");
     if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: currentZone_={}, lights count={}",
+                  (bool)currentZone_,
+                  currentZone_ ? currentZone_->lights.size() : 0);
         zoneLightData_.clear();
         zoneLightPositions_.clear();
         zoneLightRegions_.clear();
@@ -4692,8 +4944,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             zoneLightRegions_.resize(zoneLightData_.size(), SIZE_MAX);
         }
 
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: zoneLightData_={}, zoneLightPositions_={}, zoneLightRegions_={}",
+                  zoneLightData_.size(), zoneLightPositions_.size(), zoneLightRegions_.size());
         logAssetBuildTime("seq_lights", zoneLightData_.size(), stepStart);
     }
+    FlushThreadLog();
 
     // ── Step 12b: SimulationWorker first-frame computation ──────────────────
     // Create SimulationWorker, set zone data, and run one synchronous computation
@@ -4702,9 +4957,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     updateProgress(99, "Computing scene...");
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: simulationWorker_={}, frustumCuller_={}, camera_={}",
+                  (bool)simulationWorker_, (bool)frustumCuller_, (bool)camera_);
 
         if (!simulationWorker_) {
             simulationWorker_ = std::make_unique<SimulationWorker>();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: created SimulationWorker");
         }
 
         // Build and register zone data
@@ -4917,8 +5175,16 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         }
 
         // Run synchronous computation
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: SimulationInput: entitySnapshots={}, frustumValid={}, "
+                  "particleInput.fireEnabled={}, skyEnabled={}, weatherEnabled={}, renderDist={:.0f}",
+                  input.entitySnapshots.size(), input.frustumValid,
+                  input.particleInput.fireEnabled, input.skyEnabled,
+                  input.weatherEnabled, input.renderDistance);
         SimulationOutput output;
         simulationWorker_->computeOnce(input, output);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: SimulationOutput: regions={}, objects={}, lights={}, entities={}",
+                  output.regionVisible.size(), output.objectVisible.size(),
+                  output.lightVisible.size(), output.entityResults.size());
 
         // Apply results to renderer state
         applySimulationOutput(output);
@@ -4930,20 +5196,35 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // set it correctly from its persistent double-buffered output.
         particleRenderBuffer_ = nullptr;
 
+        // Update door PVS visibility now that currentPvsRegion_ is set
+        if (doorManager_) {
+            doorManager_->setPvsRegion(currentPvsRegion_);
+            doorManager_->update(0.0f);
+        }
+
         LOG_INFO(MOD_GRAPHICS, "Sequential: SimulationWorker first-frame computed and applied "
                  "(regions={}, objects={}, lights={}, entities={})",
                  output.regionVisible.size(), output.objectVisible.size(),
                  output.lightVisible.size(), output.entityResults.size());
         logAssetBuildTime("seq_simulation", 0, stepStart);
+        FlushThreadLog();
 
-        // Build camera collision selector now that PVS region is known
-        rebuildCameraCollisionSelector();
+        // Set up BSP-based camera collision now that PVS region is known
+        if (cameraController_ && zoneBspTree_) {
+            cameraController_->setBspCollision(zoneBspTree_.get(), &regionBoundingBoxes_);
+            cameraController_->setBspPlayerRegion(currentPvsRegion_);
+            LOG_INFO(MOD_GRAPHICS, "Camera BSP collision initialized for region {}", currentPvsRegion_);
+        }
     }
 
     // ── Step 13: Cleanup ───────────────────────────────────────────────────
     updateProgress(100, "Finalizing...");
     {
         auto stepStart = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: releaseTextureDataAfterUpload={}, currentZone_={}, "
+                  "pendingZoneComputations_={}",
+                  config_.constrainedConfig.releaseTextureDataAfterUpload,
+                  (bool)currentZone_, (bool)pendingZoneComputations_);
         if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_) {
             size_t freed = currentZone_->releaseTexturePixelData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released {:.1f}MB texture pixel data", freed / (1024.0f * 1024.0f));
@@ -4959,11 +5240,18 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         pendingZoneComputations_.reset();
         logAssetBuildTime("seq_cleanup", 0, stepStart);
     }
+    FlushThreadLog();
 
     sequentialLoadComplete_ = true;
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "
+              "fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}",
+              fireGlowLights_.size(), fireGlowLightingEnabled_,
+              fireGlowIcospheresEnabled_, maxFireGlowLights_);
     auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - totalStart).count();
     LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: complete for zone '{}' in {}ms", currentZoneName_, totalMs);
+    dumpScene();
+    FlushThreadLog();
 }
 
 void IrrlichtRenderer::createZoneMesh() {
@@ -6844,7 +7132,7 @@ void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
             // Fire flickering: modulate intensity with layered sine waves
             if (objLight.isFireSource && fireEffectsEnabled_) {
                 objLight.flickerPhase += objLight.flickerSpeed * deltaTime;
-                float flicker = 0.85f + 0.10f * std::sin(objLight.flickerPhase * 6.7f)
+                float flicker = 0.70f + 0.10f * std::sin(objLight.flickerPhase * 6.7f)
                                       + 0.05f * std::sin(objLight.flickerPhase * 13.1f);
                 r *= flicker;
                 g *= flicker;
@@ -6854,28 +7142,6 @@ void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
             irr::video::SLight& lightData = objLight.node->getLightData();
             lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
         }
-    }
-
-}
-
-void IrrlichtRenderer::refreshShaderLightColors() {
-    if (!zoneShader_ || !zoneShader_->isAvailable() || activeLightNodes_.empty()) return;
-
-    for (int i = 0; i < static_cast<int>(activeLightNodes_.size()); ++i) {
-        auto* node = activeLightNodes_[i];
-        if (!node) continue;
-        const irr::video::SLight& ld = node->getLightData();
-        if (ld.Type != irr::video::ELT_POINT) continue;
-        // Use getPosition() — root-level nodes, AbsoluteTransformation may be stale
-        irr::core::vector3df pos = node->getPosition();
-        // Boost: player light (index 0) = 3x, zone torches = 1.5x
-        float boost = (i == 0) ? 3.0f : 1.5f;
-        zoneShader_->setPointLight(i,
-            pos.X, pos.Y, pos.Z,
-            ld.DiffuseColor.r * boost,
-            ld.DiffuseColor.g * boost,
-            ld.DiffuseColor.b * boost,
-            ld.Attenuation.X, ld.Attenuation.Y, ld.Attenuation.Z);
     }
 
 }
@@ -7064,6 +7330,44 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
         rb.maxY = bbox.MaxEdge.Y;
         rb.maxZ = bbox.MaxEdge.Z;
         zoneData.regionBounds.push_back(rb);
+    }
+
+    // Build reverse lookup: regionIdx → index in regionBounds vector
+    for (size_t i = 0; i < zoneData.regionBounds.size(); ++i) {
+        zoneData.regionBoundsIndex[zoneData.regionBounds[i].regionIdx] = i;
+    }
+
+    // Build fallback list (all indices, for no-PVS zones)
+    zoneData.allBoundsIndices.resize(zoneData.regionBounds.size());
+    for (size_t i = 0; i < zoneData.regionBounds.size(); ++i) {
+        zoneData.allBoundsIndices[i] = i;
+    }
+
+    // Pre-compute PVS visible region lists per camera region.
+    // For each BspRegion with PVS data, extract its visibleRegions bitvector
+    // into a compact list of regionBounds indices.
+    if (zoneData.usePvsCulling && zoneData.bspTree) {
+        const auto& bsp = *zoneData.bspTree;
+        for (size_t camRegion = 0; camRegion < bsp.regions.size(); ++camRegion) {
+            if (!bsp.regions[camRegion]) continue;
+            const auto& pvs = bsp.regions[camRegion]->visibleRegions;
+            if (pvs.empty()) continue;
+
+            std::vector<size_t> indices;
+            // Walk the bitvector, collect regionBounds indices for visible regions
+            for (size_t regionIdx = 0; regionIdx < pvs.size(); ++regionIdx) {
+                if (!pvs[regionIdx]) continue;
+                auto it = zoneData.regionBoundsIndex.find(regionIdx);
+                if (it != zoneData.regionBoundsIndex.end()) {
+                    indices.push_back(it->second);
+                }
+            }
+            if (!indices.empty()) {
+                zoneData.pvsVisibleBoundsIndices[camRegion] = std::move(indices);
+            }
+        }
+        LOG_INFO(MOD_GRAPHICS, "PVS lookup tables built: {} camera regions with PVS data, {} total region bounds",
+                 zoneData.pvsVisibleBoundsIndices.size(), zoneData.regionBounds.size());
     }
 
     // Copy object data
@@ -7614,12 +7918,22 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         size_t prevPvsRegion = currentPvsRegion_;
         currentPvsRegion_ = results->currentPvsRegion;
 
-        // Apply PVS depth map from simulation worker
-        regionPvsDepthMap_ = results->regionPvsDepth;
+        // Point to PVS depth map in front buffer (no copy — stable until next swap)
+        regionPvsDepthMap_ = &results->regionPvsDepth;
 
-        // Re-prioritize pending queues on PVS region change
+        // Re-prioritize pending queues only when leaving the PVS neighborhood.
+        // Small region crossings within the neighborhood are suppressed to avoid
+        // expensive re-prioritization cascades on every boundary crossing.
         if (currentPvsRegion_ != prevPvsRegion && prevPvsRegion != SIZE_MAX) {
-            onPvsRegionChanged();
+            // Camera collision update is cheap and always needed
+            if (cameraController_) {
+                cameraController_->setBspPlayerRegion(currentPvsRegion_);
+            }
+            // Full re-prioritization only when leaving neighborhood
+            if (!isInPvsNeighborhood(currentPvsRegion_)) {
+                rebuildPvsNeighborhood(currentPvsRegion_);
+                onPvsRegionChanged();
+            }
         }
 
         // Always log PVS state from worker (throttled to every 30 frames)
@@ -7632,11 +7946,11 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                       results->regionVisible.size());
         }
 
-        // Apply portal visible regions from worker
-        portalVisibleRegions_ = results->portalVisibleRegions;
+        // Point to portal visible regions in front buffer (no copy — stable until next swap)
+        portalVisibleRegions_ = &results->portalVisibleRegions;
         if (entityRenderer_) {
             entityRenderer_->setPortalVisibleRegions(
-                portalVisibleRegions_.empty() ? nullptr : &portalVisibleRegions_);
+                portalVisibleRegions_->empty() ? nullptr : portalVisibleRegions_);
         }
 
         // Copy mesh load queue and protected regions for constrained mesh cache
@@ -7655,9 +7969,13 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                           meshLoadQueue_.size(), needBuildCount,
                           constrainedMeshCache_->getLoadedCount());
             }
-            protectedRegions_.clear();
-            protectedRegions_.insert(results->protectedRegions.begin(),
-                                     results->protectedRegions.end());
+            // Rebuild bitvector: clear all bits, then set protected ones
+            std::fill(protectedRegions_.begin(), protectedRegions_.end(), false);
+            for (size_t regionIdx : results->protectedRegions) {
+                if (regionIdx < protectedRegions_.size()) {
+                    protectedRegions_[regionIdx] = true;
+                }
+            }
         }
 
         // Apply sorted region draw list for front-to-back zone rendering
@@ -7699,13 +8017,12 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
 
     // Apply light selection to shader
     if (results->activeLightCount > 0 && zoneShader_ && zoneShader_->isAvailable()) {
-        activeLightNodes_.clear();
         bool playerLightSet = false;
         for (int i = 0; i < results->activeLightCount; ++i) {
             const auto& sl = results->selectedLights[i];
             if (!sl.valid) continue;
 
-            float boost = (i == 0 && sl.isPlayerLight) ? 3.0f : 1.5f;
+            float boost = (i == 0 && sl.isPlayerLight) ? 3.0f : 1.0f;
             zoneShader_->setPointLight(i,
                 sl.position.X, sl.position.Y, sl.position.Z,
                 sl.diffuseColor.r * boost,
@@ -7755,6 +8072,7 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         }
 
         zoneShader_->setNumPointLights(effectiveLightCount);
+        activeLightCount_ = effectiveLightCount;
     }
 
     // Apply object light PVS visibility (scene graph add/remove)
@@ -7946,15 +8264,17 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                     visual.lightNode->setPosition(irr::core::vector3df(
                         er.posX, er.posZ + visual.modelYOffset + 3.0f, er.posY));
                 }
-                // Boat collision fixup (rare)
-                float boatZ = entityRenderer_->findBoatDeckZ(er.posX, er.posY, er.posZ);
-                if (boatZ > -999000.0f) {
-                    float targetZ = boatZ;
-                    if (std::abs(targetZ - er.posZ) < 20.0f) {
-                        visual.lastZ = targetZ;
-                        if (visual.sceneNode) {
-                            visual.sceneNode->setPosition(irr::core::vector3df(
-                                er.posX, targetZ + visual.modelYOffset, er.posY));
+                // Boat collision fixup — only checked when boats exist in zone
+                if (entityRenderer_->hasBoatsInZone()) {
+                    float boatZ = entityRenderer_->findBoatDeckZ(er.posX, er.posY, er.posZ);
+                    if (boatZ > -999000.0f) {
+                        float targetZ = boatZ;
+                        if (std::abs(targetZ - er.posZ) < 20.0f) {
+                            visual.lastZ = targetZ;
+                            if (visual.sceneNode) {
+                                visual.sceneNode->setPosition(irr::core::vector3df(
+                                    er.posX, targetZ + visual.modelYOffset, er.posY));
+                            }
                         }
                     }
                 }
@@ -8267,6 +8587,35 @@ void IrrlichtRenderer::dumpScene() const {
         }
     }
 
+    // --- Fire Glow ---
+    {
+        unsigned int icoProgram = 0;
+#ifdef EQT_HAS_DRM
+        icoProgram = icosphereProgram_;
+#endif
+        LOG_INFO(MOD_GRAPHICS, "  FIRE GLOW: lights={}, lightingEnabled={}, icospheresEnabled={}, "
+                 "maxLights={}, fireEffectsEnabled={}, icosphereProgram={}",
+                 fireGlowLights_.size(), fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
+                 maxFireGlowLights_, fireEffectsEnabled_, icoProgram);
+    }
+
+    // --- Visibility counts (from SimulationWorker output applied to scene) ---
+    {
+        size_t visRegions = 0, visObjects = 0;
+        for (const auto& [regionIdx, node] : regionMeshNodes_) {
+            if (node && node->isVisible()) visRegions++;
+        }
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            if (objectNodes_[i] && i < objectInSceneGraph_.size() && objectInSceneGraph_[i])
+                visObjects++;
+        }
+        size_t visEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
+        LOG_INFO(MOD_GRAPHICS, "  VISIBLE: regions={}/{}, objects={}/{}, lights={}, entities={}",
+                 visRegions, regionMeshNodes_.size(),
+                 visObjects, objectNodes_.size(),
+                 activeLightCount_, visEntities);
+    }
+
     LOG_INFO(MOD_GRAPHICS, "=== END SCENE DUMP ===");
 }
 
@@ -8327,6 +8676,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     processFrameInput(deltaTime);
 
     // ─── Always: drain queues (cheap data moves, no GL) ───
+    sectionStart_ = std::chrono::steady_clock::now();
 #ifdef EQT_HAS_GLES2
     if (progressiveLoadingActive_) {
         // Loading screen: batch process freely (§4.2: no governor restriction)
@@ -8343,17 +8693,20 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             constrainedTextureCache_->drainDecodedQueue();   // drain only (no GL)
         }
     }
+    frameTimings_.drainQueues = measureSection();
 
     // SimulationWorker: apply results from previous frame, then post new input
-    sectionStart_ = std::chrono::steady_clock::now();
     applySimulationResults();
     frameTimings_.simWorkerApply = measureSection();
 
     // Phase 2: Visibility
+    sectionStart_ = std::chrono::steady_clock::now();
     processFrameVisibility();
+    frameTimings_.visibility = measureSection();
 
     // SimulationWorker: post new input after frustum planes are updated
     postSimulationInput(deltaTime);
+    frameTimings_.postSimInput = measureSection();
 
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (progressiveLoadingActive_) {
@@ -8362,6 +8715,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 
     // ─── Post-loading: all work GREEN-gated, 1 unit per GREEN frame ───
+    sectionStart_ = std::chrono::steady_clock::now();
     if (!progressiveLoadingActive_) {
         // Drain bg mesh results (cheap mutex swap, no GL)
         drainMeshResults();
@@ -8469,7 +8823,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             if (++entityPrepScanCounter_ % 10 == 0) queueEntityPrepRequests();
             if (entityPrepWorker_->isIdle()) entityPrepWorker_->dispatchOne();
         }
+        frameTimings_.entityHousekeeping = measureSection();
     }
+    frameTimings_.postLoadWork = measureSection();
 
     // Phase 3: Simulation
     processFrameSimulation(deltaTime);
@@ -8525,6 +8881,61 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
         float totalFrameMs = frameTimings_.totalFrame / 1000.0f;
         float budgetMs = governor_ ? governor_->getTargetFrameTimeMs() : 33.3f;
+
+        // ===== SPIKE DETECTOR: unconditional, fires on any frame >50ms =====
+        // Logs every section >1ms sorted by cost. Independent of governor state.
+        if (totalFrameMs > 50.0f) {
+            struct SectionCost { const char* name; int64_t us; };
+            SectionCost spikeSections[] = {
+                {"inputHandling",      frameTimings_.inputHandling},
+                {"playerMovement",     frameTimings_.playerMovement},
+                {"cameraUpdate",       frameTimings_.cameraUpdate},
+                {"drainQueues",        frameTimings_.drainQueues},
+                {"simWorkerApply",     frameTimings_.simWorkerApply},
+                {"visibility",         frameTimings_.visibility},
+                {"postSimInput",       frameTimings_.postSimInput},
+                {"meshLoading",        frameTimings_.meshLoading},
+                {"postLoadWork",       frameTimings_.postLoadWork},
+                {"entityHousekeeping", frameTimings_.entityHousekeeping},
+                {"wmUpdate",           frameTimings_.windowManagerUpdate},
+                {"entityUpdate",       frameTimings_.entityUpdate},
+                {"doorUpdate",         frameTimings_.doorUpdate},
+                {"spellVfxUpdate",     frameTimings_.spellVfxUpdate},
+                {"animatedTextures",   frameTimings_.animatedTextures},
+                {"vertexAnimations",   frameTimings_.vertexAnimations},
+                {"tier2Update",        frameTimings_.tier2Update},
+                {"tier3Update",        frameTimings_.tier3Update},
+                {"hudUpdate",          frameTimings_.hudUpdate},
+                {"sceneDrawAll",       frameTimings_.sceneDrawAll},
+                {"footprintRender",    frameTimings_.footprintRender},
+                {"targetBox",          frameTimings_.targetBox},
+                {"particles",          frameTimings_.particles},
+                {"boids",              frameTimings_.boids},
+                {"weatherRender",      frameTimings_.weatherRender},
+                {"debugOverlays",      frameTimings_.debugOverlays},
+                {"castingBars",        frameTimings_.castingBars},
+                {"guiDrawAll",         frameTimings_.guiDrawAll},
+                {"windowManager",      frameTimings_.windowManager},
+                {"zoneLineOverlay",    frameTimings_.zoneLineOverlay},
+                {"endScene",           frameTimings_.endScene},
+                {"postRender",         frameTimings_.postRender},
+            };
+            std::sort(std::begin(spikeSections), std::end(spikeSections),
+                      [](const auto& a, const auto& b) { return a.us > b.us; });
+
+            // Sum all measured sections to find unaccounted time
+            int64_t accountedUs = 0;
+            for (const auto& s : spikeSections) accountedUs += s.us;
+            int64_t unaccountedUs = frameTimings_.totalFrame - accountedUs;
+
+            LOG_WARN(MOD_GRAPHICS, "SPIKE: {:.1f}ms frame (unaccounted: {:.1f}ms):",
+                     totalFrameMs, unaccountedUs / 1000.0f);
+            for (const auto& s : spikeSections) {
+                if (s.us < 1000) break;  // Skip <1ms
+                LOG_WARN(MOD_GRAPHICS, "  SPIKE: {:>20s} = {:>7.1f}ms",
+                         s.name, s.us / 1000.0f);
+            }
+        }
 
         // RED STATE: Full diagnostic dump — every section, every frame, so we can
         // trace exactly which subsystem is the budget hog and eliminate it.
@@ -8706,6 +9117,11 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.footprintRender += frameTimings_.footprintRender;
         frameTimingsAccum_.postRender += frameTimings_.postRender;
         frameTimingsAccum_.simWorkerApply += frameTimings_.simWorkerApply;
+        frameTimingsAccum_.drainQueues += frameTimings_.drainQueues;
+        frameTimingsAccum_.visibility += frameTimings_.visibility;
+        frameTimingsAccum_.postSimInput += frameTimings_.postSimInput;
+        frameTimingsAccum_.postLoadWork += frameTimings_.postLoadWork;
+        frameTimingsAccum_.entityHousekeeping += frameTimings_.entityHousekeeping;
         frameTimingsSampleCount_++;
 
         // Log every 60 frames (~2 seconds at 30fps)
@@ -9445,6 +9861,19 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
 #endif
     frameTimings_.particles = measureSection();
+
+    // Fire glow: update per-vertex lighting uniforms + render icospheres
+#ifdef EQT_HAS_DRM
+    if (fireEffectsEnabled_ && !fireGlowLights_.empty() && zoneReady_ && have3DTransforms_) {
+        fireGlowTime_ += deltaTime;
+        if (fireGlowLightingEnabled_) {
+            updateFireGlowLighting();
+        }
+        if (fireGlowIcospheresEnabled_ && icosphereProgram_ != 0) {
+            renderFireGlowIcospheres();
+        }
+    }
+#endif
 
     LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
     // Render ambient creatures (render every frame, update at Tier 3)
@@ -10273,7 +10702,7 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
     if (portalSystem_ && portalSystem_->hasPortals()) {
         LOG_INFO(MOD_GRAPHICS, "    Portal Entity Cull: {} visible regions, {} entities culled",
-                 portalVisibleRegions_.size(),
+                 portalVisibleRegions_ ? portalVisibleRegions_->size() : 0,
                  entityRenderer_ ? entityRenderer_->getPortalCulledCount() : 0);
     }
     LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
@@ -10794,11 +11223,12 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                   (isSwimMoving ? " [SWIMMING]" : ""));
         LOG_TRACE(MOD_MOVEMENT, "Collision: {}, Irrlicht: {}, Map: {}",
                   (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
-                  (useIrrlichtCollision_ && zoneTriangleSelector_ ? "YES" : "NO"),
+                  (useIrrlichtCollision_ && !regionWorldTriangles_.empty() ? "YES" : "NO"),
                   (collisionMap_ ? "LOADED" : "NONE"));
 
         // Determine which collision system to use
-        bool useIrrlicht = useIrrlichtCollision_ && zoneTriangleSelector_ && collisionManager_;
+        // BSP-filtered uses regionWorldTriangles_ directly, no meta selector needed
+        bool useIrrlicht = useIrrlichtCollision_ && !regionWorldTriangles_.empty();
         bool useHCMap = collisionMap_ != nullptr;
         bool hasCollision = playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
 
@@ -10812,6 +11242,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
         if (hasCollision && useIrrlicht) {
             // --- Irrlicht-based collision (using actual zone geometry) ---
+            // When BSP tree is available, use BSP-filtered collision (tests only source+dest
+            // region selectors + doors/objects) instead of the full ~1900-region meta selector.
+            bool useBspFiltered = zoneBspTree_ && !regionWorldTriangles_.empty();
 
             // Check horizontal collision first
             // Convert EQ coords to Irrlicht: EQ(x,y,z) -> Irr(x,z,y)
@@ -10821,7 +11254,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
             irr::core::vector3df hitPoint;
             irr::core::triangle3df hitTriangle;
-            bool blocked = checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
+            bool blocked = useBspFiltered
+                ? checkCollisionBspFiltered(rayStart, rayEnd, hitPoint, hitTriangle)
+                : checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
 
             if (playerConfig_.collisionDebug) {
                 // Extend the ray visually so it's easier to see (movement per frame is tiny)
@@ -10856,7 +11291,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
 
             if (!blocked) {
                 // Path is clear, now find ground at new position
-                float groundZ = findGroundZIrrlicht(newX, newY, newZ, modelYOffset);
+                float groundZ = useBspFiltered
+                    ? findGroundZBspFiltered(newX, newY, newZ, modelYOffset)
+                    : findGroundZIrrlicht(newX, newY, newZ, modelYOffset);
 
                 LOG_TRACE(MOD_MOVEMENT, "Ground at target: {}, playerZ: {}, newZ: {}", groundZ, playerZ_, newZ);
 
@@ -10894,7 +11331,8 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                         LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: from Z={} to Z={} (delta={}), ray ({},{},{}) -> ({},{},{})",
                             playerZ_, newZ, deltaZ, headStart.X, headStart.Y, headStart.Z, headEnd.X, headEnd.Y, headEnd.Z);
 
-                        if (checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri)) {
+                        if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
+                                             : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
                             // Hit ceiling - clamp newZ to just below the hit point
                             // ceilingHit.Y is in Irrlicht coords (EQ Z)
                             // Player center should be headHeight below the ceiling hit
@@ -10950,7 +11388,9 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 // Horizontal movement blocked - try wall sliding or continue jump/swim vertically
                 if (playerMovement_.isJumping) {
                     // Even if horizontal is blocked, continue vertical jump movement
-                    float groundZ = findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
+                    float groundZ = useBspFiltered
+                        ? findGroundZBspFiltered(playerX_, playerY_, newZ, modelYOffset)
+                        : findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
                     float feetZ = newZ - modelYOffset;
                     if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
                         // Landed - snap center to be modelYOffset above ground
@@ -10978,7 +11418,8 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                         irr::core::vector3df ceilingHit;
                         irr::core::triangle3df ceilingTri;
 
-                        if (checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri)) {
+                        if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
+                                             : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
                             float maxZ = ceilingHit.Y - headHeight - 0.1f;
                             if (newZ > maxZ) {
                                 newZ = maxZ;
@@ -10990,8 +11431,10 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     }
 
                     // Check floor collision
-                    // Note: findGroundZIrrlicht returns feetZ+1000 as a "blocked" sentinel when hitting a ceiling
-                    float groundZ = findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
+                    // Note: findGroundZ returns feetZ+1000 as a "blocked" sentinel when hitting a ceiling
+                    float groundZ = useBspFiltered
+                        ? findGroundZBspFiltered(playerX_, playerY_, newZ, modelYOffset)
+                        : findGroundZIrrlicht(playerX_, playerY_, newZ, modelYOffset);
                     float feetZ = newZ - modelYOffset;
                     float maxReasonableGround = playerZ_ + 100.0f;
                     if (groundZ < maxReasonableGround && feetZ < groundZ) {
@@ -11004,8 +11447,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                 } else {
                     // Try wall sliding - X only
                     irr::core::vector3df rayEndX(newX, playerZ_ + checkHeight, playerY_);
-                    if (!checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle)) {
-                        float groundZ = findGroundZIrrlicht(newX, playerY_, playerZ_, modelYOffset);
+                    if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)
+                                         : checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle))) {
+                        float groundZ = useBspFiltered
+                            ? findGroundZBspFiltered(newX, playerY_, playerZ_, modelYOffset)
+                            : findGroundZIrrlicht(newX, playerY_, playerZ_, modelYOffset);
                         float currentFeetZ = playerZ_ - modelYOffset;
                         float stepHeight = groundZ - currentFeetZ;
                         // Only limit stepping UP - can always step down
@@ -11019,8 +11465,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                     // Try wall sliding - Y only
                     if (!positionChanged) {
                         irr::core::vector3df rayEndY(playerX_, playerZ_ + checkHeight, newY);
-                        if (!checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle)) {
-                            float groundZ = findGroundZIrrlicht(playerX_, newY, playerZ_, modelYOffset);
+                        if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)
+                                              : checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle))) {
+                            float groundZ = useBspFiltered
+                                ? findGroundZBspFiltered(playerX_, newY, playerZ_, modelYOffset)
+                                : findGroundZIrrlicht(playerX_, newY, playerZ_, modelYOffset);
                             float currentFeetZ = playerZ_ - modelYOffset;
                             float stepHeight = groundZ - currentFeetZ;
                             // Only limit stepping UP - can always step down
@@ -11514,23 +11963,19 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
         }
     }
 
-    // Check for boat collision - boats act as elevated platforms
-    float boatDeckZ = BEST_Z_INVALID;
-    if (entityRenderer_) {
-        boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, currentZ);
-    }
-
-    // Determine final ground Z
-    // If standing on a boat deck, use the higher of boat deck or zone ground
-    if (boatDeckZ != BEST_Z_INVALID) {
-        if (groundZ == BEST_Z_INVALID || boatDeckZ > groundZ) {
-            if (playerConfig_.collisionDebug) {
-                // Yellow line showing boat deck hit
-                irr::core::vector3df irrFrom(x, currentZ, y);
-                irr::core::vector3df irrTo(x, boatDeckZ, y);
-                addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
+    // Check for boat collision — only when boats exist in zone
+    if (entityRenderer_ && entityRenderer_->hasBoatsInZone()) {
+        float boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, currentZ);
+        if (boatDeckZ != BEST_Z_INVALID) {
+            if (groundZ == BEST_Z_INVALID || boatDeckZ > groundZ) {
+                if (playerConfig_.collisionDebug) {
+                    // Yellow line showing boat deck hit
+                    irr::core::vector3df irrFrom(x, currentZ, y);
+                    irr::core::vector3df irrTo(x, boatDeckZ, y);
+                    addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
+                }
+                return boatDeckZ;
             }
-            return boatDeckZ;
         }
     }
 
@@ -11544,16 +11989,11 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
 // --- Irrlicht-based Collision Detection (using zone mesh) ---
 
 void IrrlichtRenderer::setupMinimalZoneCollision() {
-    // Clean up old selectors
-    if (cameraCollisionSelector_) {
-        cameraCollisionSelector_->drop();
-        cameraCollisionSelector_ = nullptr;
-    }
-    cameraCollisionRegion_ = SIZE_MAX;
-    for (auto& [idx, sel] : regionSelectors_) {
-        if (sel) sel->drop();
-    }
-    regionSelectors_.clear();
+    // Clean up old collision data
+    regionWorldTriangles_.clear();
+    objectWorldTriangles_.clear();
+    doorCollisionData_.clear();
+    // Legacy meta selectors (only used by HCMap fallback path now)
     if (zoneTriangleSelector_) {
         zoneTriangleSelector_->drop();
         zoneTriangleSelector_ = nullptr;
@@ -11579,59 +12019,27 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
         }
     }
 
-    // Create meta selector and populate with ALL loaded region meshes
-    irr::scene::IMetaTriangleSelector* metaSelector = smgr_->createMetaTriangleSelector();
-    if (!metaSelector) {
-        return;
-    }
-
-    // Also create a terrain-only selector and populate with zone geometry
-    // (DetailManager uses this for ground raycasts when generating detail objects)
-    terrainOnlySelector_ = smgr_->createMetaTriangleSelector();
-    auto* terrainMeta = terrainOnlySelector_
-        ? static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_)
-        : nullptr;
-
-    // Add ALL loaded region meshes to collision (not just player's region)
-    // By step 9, step 4 has already built all PVS-visible regions
+    // Build pre-transformed world-space triangles per region for BSP-filtered collision
+    // All collision paths (movement, detail, footprints, LOS) use these via BSP region lookup
+    // Direct Möller–Trumbore ray-triangle intersection — no matrix math per query
     size_t regionsAdded = 0;
+    size_t totalRegionTriangles = 0;
     for (const auto& [regionIdx, node] : regionMeshNodes_) {
         if (!node || !node->getMesh()) continue;
-        irr::scene::ITriangleSelector* regionSelector =
-            smgr_->createTriangleSelector(node->getMesh(), node);
-        if (regionSelector) {
-            metaSelector->addTriangleSelector(regionSelector);
-            if (terrainMeta) {
-                terrainMeta->addTriangleSelector(regionSelector);
-            }
-            // Cache for camera collision (keep our own ref)
-            regionSelector->grab();
-            regionSelectors_[regionIdx] = regionSelector;
-            regionSelector->drop();
+        auto triangles = extractWorldTriangles(smgr_, node);
+        if (!triangles.empty()) {
+            totalRegionTriangles += triangles.size();
             regionsAdded++;
+            regionWorldTriangles_[regionIdx] = std::move(triangles);
         }
     }
 
-    // Also add fallback mesh if it exists
-    if (fallbackMeshNode_ && fallbackMeshNode_->getMesh()) {
-        irr::scene::ITriangleSelector* fallbackSelector =
-            smgr_->createTriangleSelector(fallbackMeshNode_->getMesh(), fallbackMeshNode_);
-        if (fallbackSelector) {
-            metaSelector->addTriangleSelector(fallbackSelector);
-            if (terrainMeta) {
-                terrainMeta->addTriangleSelector(fallbackSelector);
-            }
-            fallbackSelector->drop();
-        }
-    }
-
-    zoneTriangleSelector_ = metaSelector;
-    LOG_INFO(MOD_GRAPHICS, "Collision selectors populated with {} loaded regions", regionsAdded);
+    LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles)",
+             regionsAdded, totalRegionTriangles);
 
     collisionManager_ = smgr_->getSceneCollisionManager();
 
-    // Camera collision will be set by rebuildCameraCollisionSelector() when PVS region is known
-    // (uses a small subset of regions instead of all 1898 for performance)
+    // Camera collision uses BSP directly (no triangle selectors)
 
     // Activate progressive loading
     progressiveLoadingActive_ = true;
@@ -11658,150 +12066,87 @@ size_t IrrlichtRenderer::findBspRegionForPoint(float x, float y, float z) {
 }
 
 void IrrlichtRenderer::addRegionToCollision(size_t regionIdx) {
-    if (!smgr_ || !zoneTriangleSelector_) return;
+    if (!smgr_) return;
 
     auto regionIt = regionMeshNodes_.find(regionIdx);
     if (regionIt == regionMeshNodes_.end() || !regionIt->second || !regionIt->second->getMesh()) return;
 
-    auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
-    irr::scene::ITriangleSelector* selector =
-        smgr_->createTriangleSelector(regionIt->second->getMesh(), regionIt->second);
-    if (selector) {
-        metaSelector->addTriangleSelector(selector);
-
-        // Also add to terrain-only selector (used by DetailManager for ground raycasts)
-        if (terrainOnlySelector_) {
-            auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_);
-            terrainMeta->addTriangleSelector(selector);
-        }
-
-        // Cache for camera collision
-        selector->grab();
-        auto oldIt = regionSelectors_.find(regionIdx);
-        if (oldIt != regionSelectors_.end() && oldIt->second) oldIt->second->drop();
-        regionSelectors_[regionIdx] = selector;
-
-        selector->drop();
+    auto triangles = extractWorldTriangles(smgr_, regionIt->second);
+    if (!triangles.empty()) {
+        regionWorldTriangles_[regionIdx] = std::move(triangles);
     }
 }
 
 void IrrlichtRenderer::addDoorToCollision(uint8_t doorId) {
-    if (!smgr_ || !zoneTriangleSelector_ || !doorManager_) return;
+    if (!smgr_ || !doorManager_) return;
 
     const auto* door = doorManager_->getDoor(doorId);
-    if (door && door->sceneNode && door->sceneNode->getMesh()) {
-        auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
-        irr::scene::ITriangleSelector* selector =
-            smgr_->createTriangleSelector(door->sceneNode->getMesh(), door->sceneNode);
-        if (selector) {
-            metaSelector->addTriangleSelector(selector);
-            selector->drop();
-        }
+    if (!door || !door->sceneNode || !door->sceneNode->getMesh() || !door->pivotNode) return;
+
+    DoorCollisionData data;
+    data.bspRegion = door->bspRegion;
+
+    // Classify door type — skip collision for spinning, lifts, hazardous, invisible, teleporters
+    uint8_t ot = door->opentype;
+    bool isSpinning = (ot >= 30 && ot <= 44) || (ot >= 100 && ot <= 107);
+    bool isLift = (ot == 59 || ot == 60);
+    bool isHazardous = (ot >= 115 && ot <= 152);
+    bool isInvisible = (ot == 50 || ot == 53 || ot == 54 || ot == 57);
+    if (isSpinning || isLift || isHazardous || isInvisible) {
+        data.hasCollision = false;
+        doorCollisionData_[doorId] = std::move(data);
+        LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={}: no collision ({})",
+                  doorId, ot, isSpinning ? "spinning" : isLift ? "lift" : isHazardous ? "hazardous" : "invisible");
+        return;
     }
+
+    // Save current pivot rotation
+    irr::core::vector3df savedRotation = door->pivotNode->getRotation();
+
+    // Extract CLOSED state triangles
+    float closedIrrRot = -door->openHeading * 360.0f / 512.0f + 90.0f;
+    door->pivotNode->setRotation(irr::core::vector3df(0, closedIrrRot, 0));
+    door->pivotNode->updateAbsolutePosition();
+    door->sceneNode->updateAbsolutePosition();
+    data.closedTriangles = extractWorldTriangles(smgr_, door->sceneNode);
+
+    // Extract OPEN state triangles
+    float openIrrRot = -door->closedHeading * 360.0f / 512.0f + 90.0f;
+    door->pivotNode->setRotation(irr::core::vector3df(0, openIrrRot, 0));
+    door->pivotNode->updateAbsolutePosition();
+    door->sceneNode->updateAbsolutePosition();
+    data.openTriangles = extractWorldTriangles(smgr_, door->sceneNode);
+
+    // Restore original rotation
+    door->pivotNode->setRotation(savedRotation);
+    door->pivotNode->updateAbsolutePosition();
+    door->sceneNode->updateAbsolutePosition();
+
+    LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={} region={}: {} closed tris, {} open tris",
+              doorId, ot, data.bspRegion, data.closedTriangles.size(), data.openTriangles.size());
+
+    doorCollisionData_[doorId] = std::move(data);
 }
 
 void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
-    if (!smgr_ || !zoneTriangleSelector_) return;
+    if (!smgr_) return;
     if (objIdx >= objectNodes_.size()) return;
 
     auto* node = objectNodes_[objIdx];
-    if (node && node->getMesh()) {
-        auto* metaSelector = static_cast<irr::scene::IMetaTriangleSelector*>(zoneTriangleSelector_);
-        irr::scene::ITriangleSelector* selector =
-            smgr_->createTriangleSelector(node->getMesh(), node);
-        if (selector) {
-            metaSelector->addTriangleSelector(selector);
-            selector->drop();
-        }
-    }
-}
+    if (!node || !node->getMesh()) return;
 
-void IrrlichtRenderer::rebuildCameraCollisionSelector() {
-    if (!smgr_) return;
-    if (currentPvsRegion_ == SIZE_MAX) {
-        // Player outside zone bounds — clear collision selector to avoid stale pointers
-        if (cameraCollisionSelector_) {
-            cameraCollisionSelector_->drop();
-            cameraCollisionSelector_ = nullptr;
-            cameraCollisionRegion_ = SIZE_MAX;
-            if (cameraController_) {
-                cameraController_->setCollisionManager(collisionManager_, nullptr);
-            }
-        }
-        return;
-    }
-    if (currentPvsRegion_ == cameraCollisionRegion_) return;  // no change
+    auto triangles = extractWorldTriangles(smgr_, node);
+    if (triangles.empty()) return;
 
-    // Drop old selector
-    if (cameraCollisionSelector_) {
-        cameraCollisionSelector_->drop();
-        cameraCollisionSelector_ = nullptr;
+    // Determine BSP region for this object
+    size_t region = SIZE_MAX;
+    if (objIdx < objectRegions_.size()) {
+        region = objectRegions_[objIdx];
     }
 
-    auto* meta = smgr_->createMetaTriangleSelector();
-    if (!meta) return;
-
-    // Collect player region + depth-1 neighbors
-    std::unordered_set<size_t> regions;
-    regions.insert(currentPvsRegion_);
-    auto nIt = regionNeighbors_.find(currentPvsRegion_);
-    if (nIt != regionNeighbors_.end()) {
-        for (size_t neighbor : nIt->second) {
-            regions.insert(neighbor);
-        }
-    }
-
-    // Add cached region selectors
-    size_t regionsAdded = 0;
-    for (size_t regionIdx : regions) {
-        auto sIt = regionSelectors_.find(regionIdx);
-        if (sIt != regionSelectors_.end() && sIt->second) {
-            meta->addTriangleSelector(sIt->second);
-            regionsAdded++;
-        }
-    }
-
-    // Add doors in these regions
-    size_t doorsAdded = 0;
-    if (doorManager_) {
-        std::vector<uint8_t> doorIds;
-        doorManager_->getDoorsInRegions(regions, doorIds);
-        for (uint8_t doorId : doorIds) {
-            const auto* door = doorManager_->getDoor(doorId);
-            if (door && door->sceneNode && door->sceneNode->getMesh()) {
-                auto* sel = smgr_->createTriangleSelector(door->sceneNode->getMesh(), door->sceneNode);
-                if (sel) {
-                    meta->addTriangleSelector(sel);
-                    sel->drop();
-                    doorsAdded++;
-                }
-            }
-        }
-    }
-
-    // Add objects in these regions
-    size_t objectsAdded = 0;
-    for (size_t i = 0; i < objectRegions_.size() && i < objectNodes_.size(); i++) {
-        if (regions.count(objectRegions_[i]) && objectNodes_[i] && objectNodes_[i]->getMesh()) {
-            auto* sel = smgr_->createTriangleSelector(objectNodes_[i]->getMesh(), objectNodes_[i]);
-            if (sel) {
-                meta->addTriangleSelector(sel);
-                sel->drop();
-                objectsAdded++;
-            }
-        }
-    }
-
-    cameraCollisionSelector_ = meta;
-    cameraCollisionRegion_ = currentPvsRegion_;
-
-    // Update camera controller with the smaller selector
-    if (cameraController_ && collisionManager_) {
-        cameraController_->setCollisionManager(collisionManager_, cameraCollisionSelector_);
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "Camera collision rebuilt for region {}: {} regions, {} doors, {} objects",
-              currentPvsRegion_, regionsAdded, doorsAdded, objectsAdded);
+    // Append to per-region object triangles
+    auto& regionTris = objectWorldTriangles_[region];
+    regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
 }
 
 void IrrlichtRenderer::processFrameProgressiveLoad() {
@@ -12047,7 +12392,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (!didWork) {
         size_t totalPvsObjects = 0, builtPvsObjects = 0;
         for (const auto& obj : deferredObjects_) {
-            if (protectedRegions_.count(obj.bspRegion) > 0 &&
+            if (obj.bspRegion < protectedRegions_.size() && protectedRegions_[obj.bspRegion] &&
                 getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) {
                 totalPvsObjects++;
                 if (obj.meshBuilt) builtPvsObjects++;
@@ -12057,7 +12402,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         std::vector<std::pair<size_t, float>> objCandidates;
         for (size_t i = 0; i < deferredObjects_.size(); ++i) {
             if (deferredObjects_[i].meshBuilt) continue;
-            if (protectedRegions_.count(deferredObjects_[i].bspRegion) == 0) continue;
+            if (deferredObjects_[i].bspRegion >= protectedRegions_.size() || !protectedRegions_[deferredObjects_[i].bspRegion]) continue;
             // PVS depth gate
             if (getRegionPvsDepth(deferredObjects_[i].bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) continue;
             auto center = deferredObjects_[i].worldBounds.getCenter();
@@ -12135,8 +12480,43 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 }
 
 uint8_t IrrlichtRenderer::getRegionPvsDepth(size_t regionIdx) const {
-    auto it = regionPvsDepthMap_.find(regionIdx);
-    return (it != regionPvsDepthMap_.end()) ? it->second : 255;
+    if (!regionPvsDepthMap_) return 255;
+    auto it = regionPvsDepthMap_->find(regionIdx);
+    return (it != regionPvsDepthMap_->end()) ? it->second : 255;
+}
+
+void IrrlichtRenderer::rebuildPvsNeighborhood(size_t anchorRegion) {
+    pvsNeighborhood_.clear();
+    pvsNeighborhoodAnchor_ = anchorRegion;
+    if (anchorRegion == SIZE_MAX || regionNeighbors_.empty()) return;
+
+    const int K = config_.constrainedConfig.pvsNeighborhoodHops;
+    if (K <= 0) return;  // Disabled: fire onPvsRegionChanged on every crossing
+
+    struct Entry { size_t region; int depth; };
+    std::vector<Entry> queue;
+    queue.push_back({anchorRegion, 0});
+    pvsNeighborhood_.insert(anchorRegion);
+
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [fromRegion, depth] = queue[head++];
+        if (depth >= K) continue;
+        auto it = regionNeighbors_.find(fromRegion);
+        if (it == regionNeighbors_.end()) continue;
+        for (size_t neighbor : it->second) {
+            if (pvsNeighborhood_.insert(neighbor).second) {
+                queue.push_back({neighbor, depth + 1});
+            }
+        }
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "PVS neighborhood rebuilt: anchor={}, {} regions (K={})",
+              anchorRegion, pvsNeighborhood_.size(), K);
+}
+
+bool IrrlichtRenderer::isInPvsNeighborhood(size_t regionIdx) const {
+    return pvsNeighborhoodAnchor_ != SIZE_MAX &&
+           pvsNeighborhood_.count(regionIdx) > 0;
 }
 
 void IrrlichtRenderer::onPvsRegionChanged() {
@@ -12167,9 +12547,8 @@ void IrrlichtRenderer::onPvsRegionChanged() {
     }
 #endif
     // meshLoadQueue_ and textureRebuildQueue_ are repopulated each frame — no action needed
-
-    // Rebuild camera collision with new region's neighbors
-    rebuildCameraCollisionSelector();
+    // Note: camera BSP collision (setBspPlayerRegion) is updated inline in applySimulationOutput
+    // on every region change, not gated by the neighborhood.
 }
 
 void IrrlichtRenderer::queueEntityPrepRequests() {
@@ -12279,7 +12658,7 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     }
 
     for (const auto& obj : deferredObjects_) {
-        if (!obj.meshBuilt && protectedRegions_.count(obj.bspRegion) > 0 &&
+        if (!obj.meshBuilt && obj.bspRegion < protectedRegions_.size() && protectedRegions_[obj.bspRegion] &&
             getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth))
             unbuiltObjects++;
     }
@@ -12408,135 +12787,362 @@ bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,
                                                const irr::core::vector3df& end,
                                                irr::core::vector3df& hitPoint,
                                                irr::core::triangle3df& hitTriangle) {
-    if (!collisionManager_ || !zoneTriangleSelector_) {
-        return false;  // No collision system = no collision
-    }
-
-    irr::core::line3df ray(start, end);
-    irr::core::vector3df outCollisionPoint;
-    irr::core::triangle3df outTriangle;
-    irr::scene::ISceneNode* outNode = nullptr;
-
-    bool hit = collisionManager_->getCollisionPoint(ray, zoneTriangleSelector_,
-                                                      outCollisionPoint, outTriangle, outNode);
-
-    if (hit) {
-        hitPoint = outCollisionPoint;
-        hitTriangle = outTriangle;
-    }
-
-    return hit;
+    // DIAGNOSTIC: This should NOT be called on the hot path anymore.
+    // BSP-filtered collision should be used instead for movement.
+    LOG_WARN(MOD_GRAPHICS, "checkCollisionIrrlicht CALLED — old meta selector path! "
+             "ray ({},{},{}) -> ({},{},{})",
+             start.X, start.Y, start.Z, end.X, end.Y, end.Z);
+    return false;
 }
 
 float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
-    if (!collisionManager_ || !zoneTriangleSelector_) {
+    // DIAGNOSTIC: This should NOT be called on the hot path anymore.
+    // BSP-filtered collision should be used instead for movement.
+    LOG_WARN(MOD_GRAPHICS, "findGroundZIrrlicht CALLED — old meta selector path! "
+             "pos ({},{},{})", x, y, currentZ);
+    return currentZ - modelYOffset;
+}
+
+// updateNameTagsWithLOS removed — name tag visibility now computed by SimulationWorker
+
+// --- BSP-Filtered Collision (hot path: movement) ---
+// Uses pre-transformed world-space triangles per region — no matrix math.
+// Door/object selector still uses Irrlicht (few triangles, dynamic transforms).
+
+std::vector<irr::core::triangle3df> IrrlichtRenderer::extractWorldTriangles(
+    irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node) {
+    std::vector<irr::core::triangle3df> result;
+    if (!smgr || !node || !node->getMesh()) return result;
+
+    // Create a temporary selector to extract world-space triangles
+    irr::scene::ITriangleSelector* sel = smgr->createTriangleSelector(node->getMesh(), node);
+    if (!sel) return result;
+
+    int count = sel->getTriangleCount();
+    if (count > 0) {
+        result.resize(count);
+        irr::s32 outCount = 0;
+        sel->getTriangles(result.data(), count, outCount);
+        result.resize(outCount);
+    }
+    sel->drop();
+    return result;
+}
+
+bool IrrlichtRenderer::rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+                                              const irr::core::vector3df& rayDir, float rayLen,
+                                              const std::vector<irr::core::triangle3df>& triangles,
+                                              irr::core::vector3df& hitPoint,
+                                              irr::core::triangle3df& hitTriangle,
+                                              float& hitDistSq) {
+    // Möller–Trumbore ray-triangle intersection — no matrix math
+    constexpr float EPSILON = 0.000001f;
+    bool anyHit = false;
+    float closestT = rayLen + 1.0f;
+
+    for (const auto& tri : triangles) {
+        const irr::core::vector3df& v0 = tri.pointA;
+        const irr::core::vector3df edge1 = tri.pointB - v0;
+        const irr::core::vector3df edge2 = tri.pointC - v0;
+
+        const irr::core::vector3df h = rayDir.crossProduct(edge2);
+        float a = edge1.dotProduct(h);
+        if (a > -EPSILON && a < EPSILON) continue;  // Parallel
+
+        float f = 1.0f / a;
+        const irr::core::vector3df s = rayOrigin - v0;
+        float u = f * s.dotProduct(h);
+        if (u < 0.0f || u > 1.0f) continue;
+
+        const irr::core::vector3df q = s.crossProduct(edge1);
+        float v = f * rayDir.dotProduct(q);
+        if (v < 0.0f || u + v > 1.0f) continue;
+
+        float t = f * edge2.dotProduct(q);
+        if (t > EPSILON && t < closestT) {
+            closestT = t;
+            hitPoint = rayOrigin + rayDir * t;
+            hitTriangle = tri;
+            anyHit = true;
+        }
+    }
+
+    if (anyHit) {
+        hitDistSq = hitPoint.getDistanceFromSQ(rayOrigin);
+    }
+    return anyHit;
+}
+
+bool IrrlichtRenderer::rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
+                                                const irr::core::vector3df& rayDir, float rayLen,
+                                                size_t bspRegion,
+                                                irr::core::vector3df& hitPoint,
+                                                irr::core::triangle3df& hitTriangle,
+                                                float& hitDistSq) {
+    bool anyHit = false;
+
+    // Test objects in this BSP region
+    auto objIt = objectWorldTriangles_.find(bspRegion);
+    if (objIt != objectWorldTriangles_.end()) {
+        if (rayIntersectTriangles(rayOrigin, rayDir, rayLen, objIt->second, hitPoint, hitTriangle, hitDistSq)) {
+            anyHit = true;
+        }
+    }
+
+    // Test doors in this BSP region (skip animating doors — walk-through during animation)
+    for (const auto& [doorId, doorData] : doorCollisionData_) {
+        if (!doorData.hasCollision) continue;
+        if (doorData.bspRegion != bspRegion) continue;
+
+        // Get current door state from door manager
+        const auto* door = doorManager_ ? doorManager_->getDoor(doorId) : nullptr;
+        if (!door) continue;
+        if (door->isAnimating) continue;  // Walk-through during animation (original EQ behavior)
+
+        const auto& tris = door->isOpen ? doorData.openTriangles : doorData.closedTriangles;
+        if (tris.empty()) continue;
+
+        irr::core::vector3df hp;
+        irr::core::triangle3df ht;
+        float distSq;
+        if (rayIntersectTriangles(rayOrigin, rayDir, rayLen, tris, hp, ht, distSq)) {
+            if (!anyHit || distSq < hitDistSq) {
+                hitPoint = hp;
+                hitTriangle = ht;
+                hitDistSq = distSq;
+                anyHit = true;
+            }
+        }
+    }
+
+    return anyHit;
+}
+
+bool IrrlichtRenderer::checkCollisionBspFiltered(const irr::core::vector3df& start,
+                                                  const irr::core::vector3df& end,
+                                                  irr::core::vector3df& hitPoint,
+                                                  irr::core::triangle3df& hitTriangle) {
+    if (!zoneBspTree_) return false;
+
+    irr::core::vector3df rayDir = end - start;
+    float rayLen = rayDir.getLength();
+    if (rayLen < 0.0001f) return false;
+    rayDir /= rayLen;  // Normalize
+
+    bool anyHit = false;
+    float closestDistSq = std::numeric_limits<float>::max();
+    irr::core::vector3df bestHit;
+    irr::core::triangle3df bestTri;
+
+    // Find source and destination BSP regions
+    // Irrlicht coords (x, z, y) -> EQ coords (x, y, z): eqX=irrX, eqY=irrZ, eqZ=irrY
+    size_t srcRegion = zoneBspTree_->findRegionIndexForPoint(start.X, start.Z, start.Y);
+    size_t dstRegion = zoneBspTree_->findRegionIndexForPoint(end.X, end.Z, end.Y);
+
+    // Test source region triangles (direct, no matrix math)
+    if (srcRegion != SIZE_MAX) {
+        auto it = regionWorldTriangles_.find(srcRegion);
+        if (it != regionWorldTriangles_.end()) {
+            irr::core::vector3df hp;
+            irr::core::triangle3df ht;
+            float distSq;
+            if (rayIntersectTriangles(start, rayDir, rayLen, it->second, hp, ht, distSq)) {
+                if (distSq < closestDistSq) {
+                    closestDistSq = distSq;
+                    bestHit = hp;
+                    bestTri = ht;
+                    anyHit = true;
+                }
+            }
+        }
+    }
+
+    // Test destination region triangles (if different from source)
+    if (dstRegion != SIZE_MAX && dstRegion != srcRegion) {
+        auto it = regionWorldTriangles_.find(dstRegion);
+        if (it != regionWorldTriangles_.end()) {
+            irr::core::vector3df hp;
+            irr::core::triangle3df ht;
+            float distSq;
+            if (rayIntersectTriangles(start, rayDir, rayLen, it->second, hp, ht, distSq)) {
+                if (distSq < closestDistSq) {
+                    closestDistSq = distSq;
+                    bestHit = hp;
+                    bestTri = ht;
+                    anyHit = true;
+                }
+            }
+        }
+    }
+
+    // Test doors and objects in source region (direct Möller–Trumbore, no matrix math)
+    if (srcRegion != SIZE_MAX) {
+        irr::core::vector3df hp;
+        irr::core::triangle3df ht;
+        float distSq;
+        if (rayTestDoorsAndObjects(start, rayDir, rayLen, srcRegion, hp, ht, distSq)) {
+            if (distSq < closestDistSq) {
+                closestDistSq = distSq;
+                bestHit = hp;
+                bestTri = ht;
+                anyHit = true;
+            }
+        }
+    }
+
+    // Test doors and objects in destination region (if different)
+    if (dstRegion != SIZE_MAX && dstRegion != srcRegion) {
+        irr::core::vector3df hp;
+        irr::core::triangle3df ht;
+        float distSq;
+        if (rayTestDoorsAndObjects(start, rayDir, rayLen, dstRegion, hp, ht, distSq)) {
+            if (distSq < closestDistSq) {
+                closestDistSq = distSq;
+                bestHit = hp;
+                bestTri = ht;
+                anyHit = true;
+            }
+        }
+    }
+
+    if (anyHit) {
+        hitPoint = bestHit;
+        hitTriangle = bestTri;
+    }
+    return anyHit;
+}
+
+float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset) {
+    if (!zoneBspTree_) {
         return currentZ - modelYOffset;  // Return current feet position
     }
 
-    // currentZ is the model center (server Z), modelYOffset is the POSITIVE distance from center to feet
-    // Feet position = currentZ - modelYOffset (feet are BELOW center)
-    // Head position = currentZ + modelYOffset (approximately, assuming symmetric model)
     float feetZ = currentZ - modelYOffset;
-    float headZ = currentZ + modelYOffset;  // Approximate head position (mirror of feet offset)
+    float headZ = currentZ + modelYOffset;
     float maxStepUp = playerConfig_.collisionStepHeight;
     float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
 
-    // Irrlicht coords: (x, y, z) where Y is up
-    // Input is EQ coords where Z is up, so we convert: EQ(x,y,z) -> Irr(x,z,y)
+    // Find BSP region at query point
+    size_t queryRegion = zoneBspTree_->findRegionIndexForPoint(x, y, currentZ);
+
+    // PHASE 1: Short raycast near current level
+    irr::core::vector3df nearStart(x, feetZ + maxStepUp, y);
+    irr::core::vector3df rayDir(0.0f, -1.0f, 0.0f);  // Cast down
+    float nearRayLen = maxStepUp + maxStepDown;
 
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
+    bool nearHit = false;
+    float closestDistSq = std::numeric_limits<float>::max();
+    irr::core::vector3df bestHit;
 
-    // PHASE 1: Short raycast to find ground near current level
-    // This prevents falling through mesh gaps by looking for nearby ground first
-    irr::core::vector3df nearStart(x, feetZ + maxStepUp, y);  // Start at max step-up above feet
-    irr::core::vector3df nearEnd(x, feetZ - maxStepDown, y);  // Look down to max step-down below feet
+    // Test query region world triangles (direct, no matrix math)
+    if (queryRegion != SIZE_MAX) {
+        auto it = regionWorldTriangles_.find(queryRegion);
+        if (it != regionWorldTriangles_.end()) {
+            float distSq;
+            if (rayIntersectTriangles(nearStart, rayDir, nearRayLen, it->second, hitPoint, hitTriangle, distSq)) {
+                if (distSq < closestDistSq) {
+                    closestDistSq = distSq;
+                    bestHit = hitPoint;
+                    nearHit = true;
+                }
+            }
+        }
+    }
 
-    bool nearHit = checkCollisionIrrlicht(nearStart, nearEnd, hitPoint, hitTriangle);
+    // Test doors and objects in query region (direct Möller–Trumbore)
+    if (queryRegion != SIZE_MAX) {
+        irr::core::vector3df hp;
+        irr::core::triangle3df ht;
+        float distSq;
+        if (rayTestDoorsAndObjects(nearStart, rayDir, nearRayLen, queryRegion, hp, ht, distSq)) {
+            if (distSq < closestDistSq) {
+                closestDistSq = distSq;
+                bestHit = hp;
+                nearHit = true;
+            }
+        }
+    }
 
     if (nearHit) {
-        float floorZ = hitPoint.Y;
-        // Check if this is valid ground (not a ceiling)
+        float floorZ = bestHit.Y;
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
-            // Found nearby ground - use it
             if (playerConfig_.collisionDebug) {
-                // Green line showing nearby ground hit (preferred)
-                addCollisionDebugLine(nearStart, hitPoint, irr::video::SColor(255, 0, 255, 128), 0.2f);
-                float markerSize = 0.5f;
-                addCollisionDebugLine(
-                    irr::core::vector3df(hitPoint.X - markerSize, hitPoint.Y, hitPoint.Z),
-                    irr::core::vector3df(hitPoint.X + markerSize, hitPoint.Y, hitPoint.Z),
-                    irr::video::SColor(255, 0, 255, 128), 0.2f);
+                addCollisionDebugLine(nearStart, bestHit, irr::video::SColor(255, 0, 255, 128), 0.2f);
             }
             return floorZ;
         }
     }
 
     // PHASE 2: Full raycast if no nearby ground found
-    // This handles cases like jumping off ledges, falling, etc.
-    irr::core::vector3df rayStart(x, headZ + 2.0f, y);  // Start slightly above head
-    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);  // Cast down far below feet
+    irr::core::vector3df rayStart(x, headZ + 2.0f, y);
+    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);
+    float fullRayLen = (headZ + 2.0f) - (feetZ - 500.0f);
 
-    bool hit = checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
+    bool hit = false;
+    closestDistSq = std::numeric_limits<float>::max();
+    bestHit = irr::core::vector3df();
+
+    if (queryRegion != SIZE_MAX) {
+        auto it = regionWorldTriangles_.find(queryRegion);
+        if (it != regionWorldTriangles_.end()) {
+            float distSq;
+            if (rayIntersectTriangles(rayStart, rayDir, fullRayLen, it->second, hitPoint, hitTriangle, distSq)) {
+                if (distSq < closestDistSq) {
+                    closestDistSq = distSq;
+                    bestHit = hitPoint;
+                    hit = true;
+                }
+            }
+        }
+    }
+
+    if (queryRegion != SIZE_MAX) {
+        irr::core::vector3df hp;
+        irr::core::triangle3df ht;
+        float distSq;
+        if (rayTestDoorsAndObjects(rayStart, rayDir, fullRayLen, queryRegion, hp, ht, distSq)) {
+            if (distSq < closestDistSq) {
+                closestDistSq = distSq;
+                bestHit = hp;
+                hit = true;
+            }
+        }
+    }
 
     // Debug visualization
     if (playerConfig_.collisionDebug) {
         if (hit) {
-            float floorZ = hitPoint.Y;
-            // Valid floor: at or below feet + step height, and not above head (ceiling)
+            float floorZ = bestHit.Y;
             bool validFloor = (floorZ <= feetZ + maxStepUp + 0.1f);
-            bool isCeiling = (floorZ > feetZ + maxStepUp + 0.1f);
-
-            if (validFloor && !isCeiling) {
-                // Cyan line showing valid ground ray hit
-                addCollisionDebugLine(rayStart, hitPoint, irr::video::SColor(255, 0, 255, 255), 0.2f);
-
-                // Small cyan cross at ground point
-                float markerSize = 0.5f;
-                addCollisionDebugLine(
-                    irr::core::vector3df(hitPoint.X - markerSize, hitPoint.Y, hitPoint.Z),
-                    irr::core::vector3df(hitPoint.X + markerSize, hitPoint.Y, hitPoint.Z),
-                    irr::video::SColor(255, 0, 255, 255), 0.2f);
-                addCollisionDebugLine(
-                    irr::core::vector3df(hitPoint.X, hitPoint.Y, hitPoint.Z - markerSize),
-                    irr::core::vector3df(hitPoint.X, hitPoint.Y, hitPoint.Z + markerSize),
-                    irr::video::SColor(255, 0, 255, 255), 0.2f);
+            if (validFloor) {
+                addCollisionDebugLine(rayStart, bestHit, irr::video::SColor(255, 0, 255, 255), 0.2f);
             } else {
-                // Orange line showing ceiling/obstruction hit (player won't fit)
-                addCollisionDebugLine(rayStart, hitPoint, irr::video::SColor(255, 255, 165, 0), 0.2f);
-                LOG_TRACE(MOD_MOVEMENT, "Ray hit obstruction at {} (head at {}, feet at {})", floorZ, headZ, feetZ);
+                addCollisionDebugLine(rayStart, bestHit, irr::video::SColor(255, 255, 165, 0), 0.2f);
+                LOG_TRACE(MOD_MOVEMENT, "BSP ray hit obstruction at {} (head at {}, feet at {})", bestHit.Y, headZ, feetZ);
             }
         } else {
-            // Magenta line showing no ground found
             addCollisionDebugLine(rayStart, rayEnd, irr::video::SColor(255, 255, 0, 255), 0.2f);
         }
     }
 
     float groundZ = feetZ;  // Default to current feet position
     if (hit) {
-        float floorZ = hitPoint.Y;
-
-        // Only accept as valid ground if:
-        // 1. It's at or below our feet + step height (we can step up to it)
-        // 2. It's not a ceiling (above our feet + step tolerance)
+        float floorZ = bestHit.Y;
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
             groundZ = floorZ;
         } else {
-            // Hit a ceiling/obstruction - player can't fit, block movement
-            // Return an invalid value to signal blocked (return as if ground is way above)
-            return feetZ + 1000.0f;
+            return feetZ + 1000.0f;  // Ceiling sentinel
         }
     }
 
-    // Check for boat collision - boats act as elevated platforms
-    // This uses feetZ (currentZ - modelYOffset) as the player position
-    if (entityRenderer_) {
+    // Check for boat collision — only when boats exist in zone
+    if (entityRenderer_ && entityRenderer_->hasBoatsInZone()) {
         float boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, feetZ);
         if (boatDeckZ != BEST_Z_INVALID) {
-            // Use the higher of boat deck or zone ground
             if (boatDeckZ > groundZ) {
                 if (playerConfig_.collisionDebug) {
-                    // Yellow line showing boat deck
                     irr::core::vector3df irrFrom(x, feetZ, y);
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
                     addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
@@ -12548,8 +13154,6 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
 
     return groundZ;
 }
-
-// updateNameTagsWithLOS removed — name tag visibility now computed by SimulationWorker
 
 // --- Collision Debug Visualization ---
 
@@ -13282,25 +13886,34 @@ uint16_t IrrlichtRenderer::getEntityAtScreenPos(int screenX, int screenY) {
 }
 
 bool IrrlichtRenderer::checkEntityLOS(const irr::core::vector3df& cameraPos, const irr::core::vector3df& entityPos) {
-    // If we don't have collision detection, assume visible
-    if (!collisionManager_ || !zoneTriangleSelector_) {
-        return true;
+    if (!zoneBspTree_) {
+        return true;  // No BSP data — can't do collision, assume visible
     }
 
-    // Create ray from camera to entity
-    irr::core::line3df ray(cameraPos, entityPos);
+    // BSP PVS check first — if target region isn't visible from camera region, blocked by zone geometry
+    if (zoneBspTree_) {
+        // Irrlicht (x, y, z) -> EQ (x, z, y)
+        size_t camRegion = zoneBspTree_->findRegionIndexForPoint(cameraPos.X, cameraPos.Z, cameraPos.Y);
+        size_t entRegion = zoneBspTree_->findRegionIndexForPoint(entityPos.X, entityPos.Z, entityPos.Y);
 
+        if (camRegion != SIZE_MAX && entRegion != SIZE_MAX && camRegion != entRegion) {
+            if (camRegion < zoneBspTree_->regions.size()) {
+                const auto& pvs = zoneBspTree_->regions[camRegion]->visibleRegions;
+                if (entRegion < pvs.size() && !pvs[entRegion]) {
+                    return false;  // Not PVS-visible — wall between camera and entity
+                }
+            }
+        }
+    }
+
+    // PVS says visible (or no BSP) — raycast against BSP-filtered region geometry + doors/objects
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
-    irr::scene::ISceneNode* outNode = nullptr;
 
-    // Check if ray hits zone geometry before reaching entity
-    bool hit = collisionManager_->getCollisionPoint(ray, zoneTriangleSelector_,
-                                                     hitPoint, hitTriangle, outNode);
+    bool hit = checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
 
     if (!hit) {
-        // No obstruction - entity is visible
-        return true;
+        return true;  // No obstruction
     }
 
     // Check if hit point is closer than entity
@@ -14530,6 +15143,351 @@ void IrrlichtRenderer::handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y) {
 }
 
 #endif // WITH_RDP
+
+// ============================================================================
+// Fire Glow: icosphere mesh + shader + rendering
+// ============================================================================
+
+#ifdef EQT_HAS_DRM
+
+// GLES2 spec constants — fallback defines for older headers
+#ifndef GL_BLEND_SRC_RGB
+#define GL_BLEND_SRC_RGB 0x80C9
+#endif
+#ifndef GL_BLEND_DST_RGB
+#define GL_BLEND_DST_RGB 0x80C8
+#endif
+#ifndef GL_DEPTH_WRITEMASK
+#define GL_DEPTH_WRITEMASK 0x0B72
+#endif
+#ifndef GL_CURRENT_PROGRAM
+#define GL_CURRENT_PROGRAM 0x8B8D
+#endif
+
+void IrrlichtRenderer::buildIcosphereMesh() {
+    // Build subdivision 2 icosphere (312 verts, 320 tris) on unit sphere
+    const float t = (1.0f + sqrtf(5.0f)) / 2.0f;
+    float icoV[][3] = {
+        {-1,t,0},{1,t,0},{-1,-t,0},{1,-t,0},
+        {0,-1,t},{0,1,t},{0,-1,-t},{0,1,-t},
+        {t,0,-1},{t,0,1},{-t,0,-1},{-t,0,1},
+    };
+    for (int i = 0; i < 12; i++) {
+        float l = sqrtf(icoV[i][0]*icoV[i][0]+icoV[i][1]*icoV[i][1]+icoV[i][2]*icoV[i][2]);
+        icoV[i][0]/=l; icoV[i][1]/=l; icoV[i][2]/=l;
+    }
+    int icoI[] = {
+        0,11,5, 0,5,1, 0,1,7, 0,7,10, 0,10,11,
+        1,5,9, 5,11,4, 11,10,2, 10,7,6, 7,1,8,
+        3,9,4, 3,4,2, 3,2,6, 3,6,8, 3,8,9,
+        4,9,5, 2,4,11, 6,2,10, 8,6,7, 9,8,1,
+    };
+
+    struct Tri { int i0, i1, i2; };
+    std::vector<float> pts;
+    for (int i = 0; i < 12; i++) { pts.push_back(icoV[i][0]); pts.push_back(icoV[i][1]); pts.push_back(icoV[i][2]); }
+    std::vector<Tri> tris;
+    for (int i = 0; i < 20; i++) tris.push_back({icoI[i*3], icoI[i*3+1], icoI[i*3+2]});
+
+    // Subdivide 2 times
+    for (int s = 0; s < 2; s++) {
+        std::vector<Tri> newTris;
+        for (const auto& tri : tris) {
+            auto mid = [&](int a, int b) -> int {
+                int idx = static_cast<int>(pts.size()) / 3;
+                float mx=(pts[a*3]+pts[b*3])*0.5f, my=(pts[a*3+1]+pts[b*3+1])*0.5f, mz=(pts[a*3+2]+pts[b*3+2])*0.5f;
+                float l=sqrtf(mx*mx+my*my+mz*mz);
+                pts.push_back(mx/l); pts.push_back(my/l); pts.push_back(mz/l);
+                return idx;
+            };
+            int m01=mid(tri.i0,tri.i1), m12=mid(tri.i1,tri.i2), m20=mid(tri.i2,tri.i0);
+            newTris.push_back({tri.i0,m01,m20}); newTris.push_back({tri.i1,m12,m01});
+            newTris.push_back({tri.i2,m20,m12}); newTris.push_back({m01,m12,m20});
+        }
+        tris = newTris;
+    }
+
+    // Store vertices (position only — normal == position for unit sphere)
+    icosphereVertices_.clear();
+    icosphereVertices_ = std::move(pts);
+
+    icosphereIndices_.clear();
+    for (const auto& tri : tris) {
+        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i0));
+        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i1));
+        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i2));
+    }
+
+    // Upload to GPU
+    glGenBuffers(1, &icosphereVBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
+    glBufferData(GL_ARRAY_BUFFER,
+                 icosphereVertices_.size() * sizeof(float),
+                 icosphereVertices_.data(), GL_STATIC_DRAW);
+
+    glGenBuffers(1, &icosphereIBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, icosphereIBO_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 icosphereIndices_.size() * sizeof(uint16_t),
+                 icosphereIndices_.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    LOG_INFO(MOD_GRAPHICS, "Built icosphere mesh: {} verts, {} tris, VBO={}, IBO={}",
+             static_cast<int>(icosphereVertices_.size()) / 3,
+             static_cast<int>(icosphereIndices_.size()) / 3,
+             icosphereVBO_, icosphereIBO_);
+}
+
+void IrrlichtRenderer::compileIcosphereShader() {
+    // Vertex shader: scale pulse + vertex jitter, fog distance
+    static const char* VS_SRC = R"(
+precision highp float;
+attribute vec3 aPosition;
+
+uniform mat4 uViewProj;
+uniform vec3 uCenter;
+uniform float uRadius;
+uniform float uTime;
+uniform float uJitterAmount;
+uniform vec4 uColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+
+varying vec4 vColor;
+varying float vFogFactor;
+
+void main() {
+    // Per-vertex jitter using position components as pseudo-random phase
+    float phase = aPosition.x * 7.13 + aPosition.y * 11.37 + aPosition.z * 5.79;
+    float jitter = sin(uTime * 4.0 + phase) * uJitterAmount;
+
+    vec3 worldPos = uCenter + aPosition * uRadius * (1.0 + jitter);
+    vec4 clipPos = uViewProj * vec4(worldPos, 1.0);
+    gl_Position = clipPos;
+    vColor = uColor;
+
+    float fogDist = length(clipPos.xyz);
+    vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
+}
+)";
+
+    // Fragment shader: trivial output with fog
+    static const char* FS_SRC = R"(
+precision mediump float;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying float vFogFactor;
+void main() {
+    gl_FragColor = vColor * vFogFactor;
+}
+)";
+
+    // Compile VS
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &VS_SRC, nullptr);
+    glCompileShader(vs);
+    GLint ok = 0;
+    glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        glGetShaderInfoLog(vs, sizeof(log), nullptr, log);
+        LOG_ERROR(MOD_GRAPHICS, "Icosphere VS compile error: {}", log);
+        glDeleteShader(vs);
+        return;
+    }
+
+    // Compile FS
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &FS_SRC, nullptr);
+    glCompileShader(fs);
+    glGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
+        LOG_ERROR(MOD_GRAPHICS, "Icosphere FS compile error: {}", log);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return;
+    }
+
+    // Link
+    icosphereProgram_ = glCreateProgram();
+    glAttachShader(icosphereProgram_, vs);
+    glAttachShader(icosphereProgram_, fs);
+    glBindAttribLocation(icosphereProgram_, 0, "aPosition");
+    glLinkProgram(icosphereProgram_);
+    glGetProgramiv(icosphereProgram_, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        glGetProgramInfoLog(icosphereProgram_, sizeof(log), nullptr, log);
+        LOG_ERROR(MOD_GRAPHICS, "Icosphere program link error: {}", log);
+        glDeleteProgram(icosphereProgram_);
+        icosphereProgram_ = 0;
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return;
+    }
+    glDetachShader(icosphereProgram_, vs);
+    glDetachShader(icosphereProgram_, fs);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    // Cache uniform locations
+    icoLocViewProj_ = glGetUniformLocation(icosphereProgram_, "uViewProj");
+    icoLocCenter_ = glGetUniformLocation(icosphereProgram_, "uCenter");
+    icoLocRadius_ = glGetUniformLocation(icosphereProgram_, "uRadius");
+    icoLocTime_ = glGetUniformLocation(icosphereProgram_, "uTime");
+    icoLocJitterAmt_ = glGetUniformLocation(icosphereProgram_, "uJitterAmount");
+    icoLocColor_ = glGetUniformLocation(icosphereProgram_, "uColor");
+    icoLocFogStart_ = glGetUniformLocation(icosphereProgram_, "uFogStart");
+    icoLocFogEnd_ = glGetUniformLocation(icosphereProgram_, "uFogEnd");
+    icoLocFogColor_ = glGetUniformLocation(icosphereProgram_, "uFogColor");
+
+    LOG_INFO(MOD_GRAPHICS, "Compiled icosphere shader program={}", icosphereProgram_);
+}
+
+void IrrlichtRenderer::updateFireGlowLighting() {
+    if (!zoneShader_ || fireGlowLights_.empty()) return;
+
+    // Get camera position in Irrlicht coords (Y-up)
+    irr::core::vector3df camPos = camera_ ? camera_->getAbsolutePosition()
+                                          : irr::core::vector3df(0, 0, 0);
+
+    // Sort emitters by distance to camera, select nearest N
+    int maxN = std::min(maxFireGlowLights_,
+                        static_cast<int>(fireGlowLights_.size()));
+    maxN = std::min(maxN, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
+
+    // Build index + distance array for partial sort
+    struct EmitterDist { int index; float distSq; };
+    std::vector<EmitterDist> dists(fireGlowLights_.size());
+    for (size_t i = 0; i < fireGlowLights_.size(); ++i) {
+        float dx = fireGlowLights_[i].position.X - camPos.X;
+        float dy = fireGlowLights_[i].position.Y - camPos.Y;
+        float dz = fireGlowLights_[i].position.Z - camPos.Z;
+        dists[i] = { static_cast<int>(i), dx*dx + dy*dy + dz*dz };
+    }
+    std::partial_sort(dists.begin(), dists.begin() + maxN, dists.end(),
+                      [](const EmitterDist& a, const EmitterDist& b) { return a.distSq < b.distSq; });
+
+    zoneShader_->clearFireGlowLights();
+    zoneShader_->setNumFireGlowLights(maxN);
+
+    for (int i = 0; i < maxN; ++i) {
+        const auto& e = fireGlowLights_[dists[i].index];
+        // Fire glow light uniforms are in Irrlicht coords (Y-up) — matches zone VS worldPos
+        zoneShader_->setFireGlowLight(i,
+            e.position.X, e.position.Y, e.position.Z,
+            e.r, e.g, e.b,
+            e.radius, 1.0f);
+    }
+}
+
+void IrrlichtRenderer::renderFireGlowIcospheres() {
+    if (icosphereVBO_ == 0 || icosphereProgram_ == 0 || fireGlowLights_.empty()) return;
+
+    // Get camera position for nearest-N selection (reuse fire glow light selection)
+    irr::core::vector3df camPos = camera_ ? camera_->getAbsolutePosition()
+                                          : irr::core::vector3df(0, 0, 0);
+
+    int maxN = std::min(maxFireGlowLights_,
+                        static_cast<int>(fireGlowLights_.size()));
+
+    // Build distance-sorted indices
+    struct EmitterDist { int index; float distSq; };
+    std::vector<EmitterDist> dists(fireGlowLights_.size());
+    for (size_t i = 0; i < fireGlowLights_.size(); ++i) {
+        float dx = fireGlowLights_[i].position.X - camPos.X;
+        float dy = fireGlowLights_[i].position.Y - camPos.Y;
+        float dz = fireGlowLights_[i].position.Z - camPos.Z;
+        dists[i] = { static_cast<int>(i), dx*dx + dy*dy + dz*dz };
+    }
+    std::partial_sort(dists.begin(), dists.begin() + maxN, dists.end(),
+                      [](const EmitterDist& a, const EmitterDist& b) { return a.distSq < b.distSq; });
+
+    // Build ViewProj matrix from captured 3D transforms
+    irr::core::matrix4 viewProj = captured3DProj_ * captured3DView_;
+    float vpMat[16];
+    for (int i = 0; i < 16; i++) vpMat[i] = viewProj[i];
+
+    // Save GL state
+    GLint prevProgram = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
+    GLint prevBlendSrc = 0, prevBlendDst = 0;
+    glGetIntegerv(GL_BLEND_SRC_RGB, &prevBlendSrc);
+    glGetIntegerv(GL_BLEND_DST_RGB, &prevBlendDst);
+    GLboolean prevDepthWrite = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthWrite);
+    GLboolean prevCullFace = glIsEnabled(GL_CULL_FACE);
+    GLboolean prevBlend = glIsEnabled(GL_BLEND);
+
+    // Set render state: additive blend, depth test ON, depth write OFF, no cull
+    glUseProgram(icosphereProgram_);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_DEPTH_TEST);
+
+    // Set shared uniforms
+    glUniformMatrix4fv(icoLocViewProj_, 1, GL_FALSE, vpMat);
+    glUniform1f(icoLocTime_, fireGlowTime_);
+    glUniform1f(icoLocJitterAmt_, 0.08f);
+
+    float fogStart = zoneShader_ ? zoneShader_->fogStart() : 999999.0f;
+    float fogEnd = zoneShader_ ? zoneShader_->fogEnd() : 999999.0f;
+    const float* fogCol = zoneShader_ ? zoneShader_->fogColor() : nullptr;
+    glUniform1f(icoLocFogStart_, fogStart);
+    glUniform1f(icoLocFogEnd_, fogEnd);
+    if (fogCol) glUniform4f(icoLocFogColor_, fogCol[0], fogCol[1], fogCol[2], fogCol[3]);
+    else glUniform4f(icoLocFogColor_, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    // Bind icosphere VBO/IBO
+    glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, icosphereIBO_);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    // Disable other attribs that zone shaders may have left enabled
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
+    glDisableVertexAttribArray(3);
+    glDisableVertexAttribArray(4);
+
+    int indexCount = static_cast<int>(icosphereIndices_.size());
+
+    // xorshift RNG for per-emitter color flicker (deterministic per frame from time)
+    uint32_t flickerRng = static_cast<uint32_t>(fireGlowTime_ * 1000.0f) ^ 0xDEADBEEF;
+
+    for (int i = 0; i < maxN; ++i) {
+        const auto& e = fireGlowLights_[dists[i].index];
+
+        // Color flicker: random intensity variation per light per frame
+        flickerRng ^= flickerRng << 13; flickerRng ^= flickerRng >> 17; flickerRng ^= flickerRng << 5;
+        float flickerIntensity = 0.6f + 0.4f * static_cast<float>(flickerRng & 0xFFFF) / 65535.0f;
+
+        float alpha = 0.25f * flickerIntensity;  // subtle additive glow
+
+        glUniform3f(icoLocCenter_, e.position.X, e.position.Y, e.position.Z);
+        glUniform1f(icoLocRadius_, e.radius);
+        glUniform4f(icoLocColor_, e.r * alpha, e.g * alpha, e.b * alpha, alpha);
+
+        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_SHORT, nullptr);
+    }
+
+    // Restore GL state
+    glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glDepthMask(prevDepthWrite);
+    if (prevCullFace) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (prevBlend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    glBlendFunc(prevBlendSrc, prevBlendDst);
+    glUseProgram(prevProgram);
+}
+
+#endif // EQT_HAS_DRM
 
 } // namespace Graphics
 } // namespace EQT

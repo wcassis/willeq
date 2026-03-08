@@ -625,6 +625,20 @@ struct SimulationZoneData {
     };
     std::vector<RegionBounds> regionBounds;
 
+    // Reverse lookup: regionIdx → index in regionBounds vector
+    // (regionVisible[] output is indexed by vector position, not region index)
+    std::unordered_map<size_t, size_t> regionBoundsIndex;
+
+    // Pre-computed PVS visible region lists per camera region.
+    // For each region that has PVS data, stores the list of regionBounds vector
+    // indices whose regionIdx is in that region's visibleRegions bitvector.
+    // At runtime, iterate only this list instead of scanning all ~1900 regions.
+    // Key: camera region index. Value: vector of indices into regionBounds.
+    std::unordered_map<size_t, std::vector<size_t>> pvsVisibleBoundsIndices;
+
+    // Flat list of all regionBounds indices (fallback for no-PVS zones)
+    std::vector<size_t> allBoundsIndices;
+
     // Object data for visibility culling
     struct ObjectData {
         irr::core::aabbox3df boundingBox;  // Irrlicht Y-up

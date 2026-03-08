@@ -7,7 +7,7 @@
     "grass" : true,
     "plants" : true,
     "rocks" : true,
-    "viewDistance" : 200
+    "viewDistance" : 200.0
   },
   "environmentEffects" : 
   {
@@ -15,7 +15,10 @@
     "animatedTrees" : true,
     "atmosphericParticles" : false,
     "density" : 0.0,
+    "enableFireGlowIcospheres" : true,
+    "enableFireGlowLighting" : true,
     "fireEffects" : true,
+    "maxFireGlowLights" : 8,
     "quality" : "low",
     "reactiveFoliage" : true,
     "rollingObjects" : true,

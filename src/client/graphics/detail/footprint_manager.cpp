@@ -37,8 +37,8 @@ void FootprintManager::setAtlasTexture(irr::video::ITexture* atlas) {
     material_.setTexture(0, atlas);
 }
 
-void FootprintManager::setCollisionSelector(irr::scene::ITriangleSelector* selector) {
-    collisionSelector_ = selector;
+void FootprintManager::setGroundRaycast(const GroundRaycastFunc& func) {
+    groundRaycast_ = func;
 }
 
 void FootprintManager::update(float deltaTime,
@@ -258,27 +258,14 @@ void FootprintManager::clear() {
 
 bool FootprintManager::getGroundHeightAndNormal(float x, float z, float startY,
                                                   float& outHeight, irr::core::vector3df& outNormal) {
-    if (!collisionSelector_ || !smgr_) {
+    if (!groundRaycast_) {
         return false;
     }
 
-    // Raycast from above the player position down to find ground
-    // Irrlicht coords: X=EQ_X, Y=EQ_Z (up), Z=EQ_Y
-    float rayStartY = startY + 50.0f;  // Start well above player
-    irr::core::vector3df start(x, rayStartY, z);
-    irr::core::vector3df end(x, rayStartY - 200.0f, z);  // Cast down 200 units
-    irr::core::line3df ray(start, end);
-
-    irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTri;
-    irr::scene::ISceneNode* hitNode = nullptr;
+    float rayStartY = startY + 50.0f;  // Start well above player
 
-    if (smgr_->getSceneCollisionManager()->getCollisionPoint(
-            ray, collisionSelector_, hitPoint, hitTri, hitNode)) {
-        outHeight = hitPoint.Y;
-        // Calculate normal from hit triangle
-        outNormal = hitTri.getNormal();
-        outNormal.normalize();
+    if (groundRaycast_(x, z, rayStartY, outHeight, outNormal, hitTri)) {
         // Make sure normal points up (not down)
         if (outNormal.Y < 0) {
             outNormal = -outNormal;
