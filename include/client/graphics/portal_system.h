@@ -12,13 +12,19 @@ namespace Graphics {
 
 struct BspTree;
 
-// A portal is a quad connecting two adjacent BSP regions (typically a doorway).
+// A portal is a convex polygon connecting two adjacent BSP regions.
+// Extracted from BSP split planes — represents the exact boundary between regions.
 struct Portal {
-    size_t regionA, regionB;            // Connected region indices
-    float vertices[4][3];               // Quad corners (EQ Z-up coords)
-    float normalX, normalY, normalZ;    // Plane normal (A toward B)
+    size_t regionA, regionB;            // Connected region indices (0-based)
+    std::vector<float> vertices;        // Polygon vertices, packed xyz (N*3 floats)
+    float normalX, normalY, normalZ;    // Split plane normal (A toward B)
     float centerX, centerY, centerZ;
     float area;
+
+    size_t vertexCount() const { return vertices.size() / 3; }
+    float vx(size_t i) const { return vertices[i * 3 + 0]; }
+    float vy(size_t i) const { return vertices[i * 3 + 1]; }
+    float vz(size_t i) const { return vertices[i * 3 + 2]; }
 };
 
 // All portal data for a zone
@@ -32,10 +38,11 @@ class PortalSystem {
 public:
     PortalSystem() = default;
 
-    // Build portals from BSP tree and region bounding boxes (EQ Z-up coords)
-    // regionBoundingBoxes: map of regionIdx -> AABB (Irrlicht coords stored as EQ coords)
+    // Build portals from BSP tree split planes.
+    // zoneBoundsMin/Max: zone geometry bounds in EQ Z-up coords (used to create initial windings)
     void buildFromBsp(const BspTree& bsp,
-                      const std::map<size_t, irr::core::aabbox3df>& regionBoundingBoxes);
+                      float boundsMinX, float boundsMinY, float boundsMinZ,
+                      float boundsMaxX, float boundsMaxY, float boundsMaxZ);
 
     // Check if any portals were extracted
     bool hasPortals() const { return !data_.portals.empty(); }
@@ -53,13 +60,6 @@ public:
 private:
     ZonePortalData data_;
     std::vector<size_t> emptyList_;  // Returned for regions with no portals
-
-    // Generate a portal quad from the overlap of two AABBs
-    bool generatePortalFromOverlap(
-        size_t regionA, size_t regionB,
-        const irr::core::aabbox3df& bboxA,
-        const irr::core::aabbox3df& bboxB,
-        Portal& outPortal);
 };
 
 } // namespace Graphics

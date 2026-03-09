@@ -56,6 +56,7 @@ struct ModeConfig {
 
     // Paths
     std::string eqClientPath;  // Path to EQ client files
+    std::string regionMapsPath = "data/region_maps";  // Per-zone indoor region classification
 
     // Rendering options (for graphical mode)
     bool lighting = false;

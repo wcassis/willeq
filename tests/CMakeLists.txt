@@ -167,21 +167,21 @@ ADD_EXECUTABLE(test_formatted_message
 TARGET_LINK_LIBRARIES(test_formatted_message GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_formatted_message)
 
-# Test frustum culler (pure math, no external dependencies)
+# Test frustum culler (pure math + logging for diagnostics)
 ADD_EXECUTABLE(test_frustum_culler
     test_frustum_culler.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
 )
-TARGET_LINK_LIBRARIES(test_frustum_culler GTest::gtest_main)
+TARGET_LINK_LIBRARIES(test_frustum_culler GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_frustum_culler)
 
-# Test SIMD math optimizations (pure math, no external dependencies)
+# Test SIMD math optimizations (pure math + logging for diagnostics)
 ADD_EXECUTABLE(test_simd_math
     test_simd_math.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
 )
-TARGET_LINK_LIBRARIES(test_simd_math GTest::gtest_main)
+TARGET_LINK_LIBRARIES(test_simd_math GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_simd_math)
 
 # Test BackgroundWorkQueue abstraction (pool-backed mode needs background_thread_pool.cpp)

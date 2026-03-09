@@ -99,6 +99,9 @@ bool Application::initialize(const ApplicationConfig& config) {
         if (!config.eqClientPath.empty()) {
             m_eqClient->SetEQClientPath(config.eqClientPath);
         }
+        if (!config.regionMapsPath.empty()) {
+            m_eqClient->SetRegionMapsPath(config.regionMapsPath);
+        }
         m_eqClient->SetConfigPath(config.configFile);
 #endif
 
@@ -142,6 +145,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     modeConfig.height = config.displayHeight;
     modeConfig.fullscreen = config.fullscreen;
     modeConfig.eqClientPath = config.eqClientPath;
+    modeConfig.regionMapsPath = config.regionMapsPath;
 
     LOG_INFO(MOD_MAIN, "Creating game mode with renderer type: {}",
         config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU ? "OpenGL" : "Software");
@@ -1102,6 +1106,9 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
         }
         if (clientConfig.isMember("eq_client_path")) {
             config.eqClientPath = clientConfig["eq_client_path"].asString();
+        }
+        if (clientConfig.isMember("region_maps_path")) {
+            config.regionMapsPath = clientConfig["region_maps_path"].asString();
         }
 
         config.configFile = configFile;

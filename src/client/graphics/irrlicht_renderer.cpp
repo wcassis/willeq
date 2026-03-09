@@ -57,6 +57,7 @@ extern void gles2DeleteAllStaticHWBuffers(void* driver);
 extern size_t gles2GetHWBufferMemoryUsage(void* driver);
 extern size_t gles2GetHWBufferCount(void* driver);
 extern size_t gles2GetGpuTextureMemoryUsage(void* driver);
+extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount);
 extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
                                unsigned int width, unsigned int height,
                                unsigned int gpuBytes = 0);
@@ -2339,6 +2340,7 @@ void IrrlichtRenderer::unloadZone() {
     meshLoadQueue_.clear();
     protectedRegions_.clear();
     portalVisibleRegions_ = nullptr;
+    indoorRegions_.clear();
     regionPvsDepthMap_ = nullptr;
     pvsNeighborhood_.clear();
     pvsNeighborhoodAnchor_ = SIZE_MAX;
@@ -2795,6 +2797,7 @@ void IrrlichtRenderer::createEntityRenderer() {
 
 void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float playerX, float playerY, float playerZ) {
     currentZoneName_ = zoneName;
+    loadIndoorRegionMap(zoneName);
 
     // Create entity renderer for placeholder cubes (no model loading yet)
     createEntityRenderer();
@@ -3101,14 +3104,23 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         pendingZoneComputations_.reset();
         return;
     }
-    if (entityRenderer_) entityRenderer_->setCurrentZone(currentZoneName_);
+    if (entityRenderer_) {
+        entityRenderer_->setCurrentZone(currentZoneName_);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: entityRenderer_ zone set to '{}'", currentZoneName_);
+    }
     if (doorManager_) {
         doorManager_->setZone(currentZone_);
-        if (constrainedTextureCache_)
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: doorManager_ zone set");
+        if (constrainedTextureCache_) {
             doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-        if (zoneShader_ && zoneShader_->isAvailable())
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: doorManager_ constrained texture cache set");
+        }
+        if (zoneShader_ && zoneShader_->isAvailable()) {
             doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                  zoneShader_->getActiveAlphaTest());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: doorManager_ shader materials set (solid={}, alphaTest={})",
+                      zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
+        }
     }
 
     // ── Step 2: BSP — compute spatial data ─────────────────────────────────
@@ -3127,11 +3139,15 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             auto wldLoader = zone->wldLoader;
             auto bspTree = wldLoader->getBspTree();
 
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: bspTree={}, regions={}, hasPvsData={}",
+                      (bool)bspTree, bspTree ? bspTree->regions.size() : 0,
+                      wldLoader->hasPvsData());
             if (bspTree && !bspTree->regions.empty() && wldLoader->hasPvsData()) {
                 // Compute region bounding boxes
+                size_t regionsSkipped = 0;
                 for (size_t i = 0; i < bspTree->regions.size(); ++i) {
                     auto geom = wldLoader->getGeometryForRegion(i);
-                    if (!geom || geom->vertices.empty()) continue;
+                    if (!geom || geom->vertices.empty()) { ++regionsSkipped; continue; }
 
                     float vMinX = std::numeric_limits<float>::max();
                     float vMinY = vMinX, vMinZ = vMinX;
@@ -3149,12 +3165,20 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     worldBounds.MaxEdge = irr::core::vector3df(vMaxX, vMaxY, vMaxZ);
                     computations->regionBoundingBoxes[i] = worldBounds;
                 }
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: computed {} region bounding boxes",
-                         computations->regionBoundingBoxes.size());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: computed {} region bounding boxes ({} regions skipped, no geometry)",
+                         computations->regionBoundingBoxes.size(), regionsSkipped);
 
-                // Build portal system
+                // Compute zone bounds from region bounding boxes (EQ coords)
+                float zbMinX = std::numeric_limits<float>::max(), zbMinY = zbMinX, zbMinZ = zbMinX;
+                float zbMaxX = std::numeric_limits<float>::lowest(), zbMaxY = zbMaxX, zbMaxZ = zbMaxX;
+                for (const auto& [idx, bbox] : computations->regionBoundingBoxes) {
+                    zbMinX = std::min(zbMinX, bbox.MinEdge.X); zbMinY = std::min(zbMinY, bbox.MinEdge.Y); zbMinZ = std::min(zbMinZ, bbox.MinEdge.Z);
+                    zbMaxX = std::max(zbMaxX, bbox.MaxEdge.X); zbMaxY = std::max(zbMaxY, bbox.MaxEdge.Y); zbMaxZ = std::max(zbMaxZ, bbox.MaxEdge.Z);
+                }
+
+                // Build portal system from BSP split planes
                 computations->portalSystem = std::make_unique<PortalSystem>();
-                computations->portalSystem->buildFromBsp(*bspTree, computations->regionBoundingBoxes);
+                computations->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
                 computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
                     (computations->portalSystem->getData().portals.size() > 10);
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: portal system: hasPortals={}, portalCount={}, occlusionEligible={}",
@@ -3185,6 +3209,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         computations->deferredObjectEntries.emplace_back(i, bspRegion);
                     }
                 }
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: object BSP indexing: {} objects, {} entries (bspTree={})",
+                          zone->objects.size(), computations->deferredObjectEntries.size(), (bool)bspTree2);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: object BSP indexing skipped (skipObjectBuild=true)");
             }
 
             // Pre-build deferred objects with tree filtering + world bounds
@@ -3234,19 +3262,28 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     {
         auto stepStart = std::chrono::steady_clock::now();
         if (!currentZone_ || !currentZone_->wldLoader) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: no wldLoader, fallback to single zone mesh");
             if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
                 currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
             createZoneMesh();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-wldLoader fallback), zoneMeshNode_={}",
+                      (bool)zoneMeshNode_);
         } else {
             auto wldLoader = currentZone_->wldLoader;
             auto bspTree = wldLoader->getBspTree();
 
             if (!bspTree || bspTree->regions.empty() || !wldLoader->hasPvsData()) {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: no BSP/PVS data, fallback to single zone mesh "
+                          "(bspTree={}, regions={}, hasPvs={})",
+                          (bool)bspTree, bspTree ? bspTree->regions.size() : 0, wldLoader->hasPvsData());
                 if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
                     currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
                 createZoneMesh();
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-BSP/PVS fallback), zoneMeshNode_={}",
+                          (bool)zoneMeshNode_);
             } else {
                 // Clean up existing mesh nodes
+                size_t oldRegionNodes = regionMeshNodes_.size();
                 if (zoneMeshNode_) { zoneMeshNode_->remove(); zoneMeshNode_ = nullptr; }
                 for (auto& [regionIdx, node] : regionMeshNodes_) {
                     if (node) { if (node->getParent()) node->remove(); else node->drop(); }
@@ -3257,6 +3294,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     if (fallbackMeshNode_->getParent()) fallbackMeshNode_->remove(); else fallbackMeshNode_->drop();
                     fallbackMeshNode_ = nullptr;
                 }
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: cleaned up existing mesh nodes "
+                          "(zoneMeshNode removed, {} region nodes removed, fallback removed)",
+                          oldRegionNodes);
 
                 // Install BSP tree
                 if (!zoneBspTree_) {
@@ -3265,22 +3305,29 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     currentPvsRegion_ = SIZE_MAX;
                     // Size protectedRegions bitvector to cover all BSP regions
                     protectedRegions_.resize(bspTree->regions.size(), false);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: BSP tree installed, usePvsCulling=true, "
+                              "regions={}, protectedRegions size={}",
+                              bspTree->regions.size(), protectedRegions_.size());
                 }
 
                 // Install pre-computed bounding boxes
                 if (regionBoundingBoxes_.empty() && pendingZoneComputations_ &&
                     !pendingZoneComputations_->regionBoundingBoxes.empty()) {
                     regionBoundingBoxes_ = std::move(pendingZoneComputations_->regionBoundingBoxes);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: installed {} region bounding boxes",
+                              regionBoundingBoxes_.size());
                 }
 
                 if (entityRenderer_) {
                     entityRenderer_->setBspTree(zoneBspTree_);
                     entityRenderer_->setFrustumCuller(frustumCuller_.get());
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: entityRenderer BSP tree and frustum culler set");
                 }
                 if (doorManager_) {
                     doorManager_->setBspTree(zoneBspTree_.get());
                     doorManager_->setPvsRegion(currentPvsRegion_);
                     doorManager_->setFrustumCuller(frustumCuller_.get());
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: doorManager BSP tree, PVS region, and frustum culler set");
                 }
             }
         }
@@ -3290,12 +3337,48 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             portalSystem_ = std::move(pendingZoneComputations_->portalSystem);
             portalOcclusionEligible_ = pendingZoneComputations_->portalOcclusionEligible;
             portalBuildPending_ = false;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system installed, occlusionEligible={}",
+                      portalOcclusionEligible_);
+
+            // Auto-enable portal occlusion from config.
+            // When per-region indoor map is loaded, portal occlusion is dynamically
+            // toggled per-frame based on camera region (see simulation output apply).
+            // Otherwise, use zone-level portal-to-region ratio heuristic.
+            if (portalOcclusionEligible_ && config_.constrainedConfig.portalOcclusion &&
+                config_.constrainedConfig.enableStencilBuffer) {
+                if (!indoorRegions_.empty()) {
+                    // Per-region mode: start disabled, will auto-enable when camera enters indoor region
+                    LOG_INFO(MOD_GRAPHICS, "Portal occlusion: per-region mode ({} indoor regions loaded, will toggle dynamically)",
+                             indoorRegions_.size());
+                } else {
+                    // Fallback: zone-level heuristic. Outdoor zones have ~7+ portals/region
+                    // (BSP adjacency artifacts); indoor zones have ~1-2 (actual doorways).
+                    size_t portalCount = portalSystem_->getData().portals.size();
+                    size_t regionCount = regionBoundingBoxes_.size();
+                    float portalRatio = regionCount > 0 ? static_cast<float>(portalCount) / regionCount : 999.0f;
+                    if (portalRatio <= 3.0f) {
+                        portalOcclusionEnabled_ = true;
+                        LOG_INFO(MOD_GRAPHICS, "Portal occlusion auto-enabled: {}/{} portals/regions = {:.1f} ratio (indoor zone)",
+                                 portalCount, regionCount, portalRatio);
+                    } else {
+                        LOG_INFO(MOD_GRAPHICS, "Portal occlusion NOT auto-enabled: {}/{} portals/regions = {:.1f} ratio (outdoor zone, threshold 3.0)",
+                                 portalCount, regionCount, portalRatio);
+                    }
+                }
+            }
         } else if (zoneBspTree_ && !regionBoundingBoxes_.empty() && !portalSystem_) {
             portalBuildPending_ = true;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending=true)");
         }
-        if (regionNeighbors_.empty()) buildRegionNeighborMap();
-        if (doorManager_)
+        if (regionNeighbors_.empty()) {
+            buildRegionNeighborMap();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: built region neighbor map, {} entries", regionNeighbors_.size());
+        }
+        if (doorManager_) {
             doorManager_->setRegionNeighbors(regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: doorManager region neighbors set ({})",
+                      regionNeighbors_.empty() ? "null" : std::to_string(regionNeighbors_.size()));
+        }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: zoneBspTree_={}, usePvsCulling_={}, "
                   "regionBoundingBoxes_={}, portalSystem_={}, portalOcclusionEligible_={}, regionNeighbors_={}",
@@ -3324,10 +3407,16 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
             std::string zoneAtlasFile = atlasDir + currentZoneName_ + ".atlas";
             computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: zone atlas preload '{}': valid={}, pages={}",
+                      zoneAtlasFile, computations->zoneAtlasPreload.valid,
+                      computations->zoneAtlasPreload.numPages);
 
             if (!skipObjectBuild) {
                 std::string objAtlasFile = atlasDir + currentZoneName_ + "_obj.atlas";
                 computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj atlas preload '{}': valid={}, pages={}",
+                          objAtlasFile, computations->objAtlasPreload.valid,
+                          computations->objAtlasPreload.numPages);
             }
         }
 
@@ -3389,12 +3478,15 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             for (uint16_t p = 0; p < zoneAtlas_->getPageCount(); ++p)
                 pageTextures.push_back(zoneAtlas_->getPageTexture(p));
             zoneShader_->setAtlasPageTextures(pageTextures);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: zone shader atlas page textures set, {} pages", pageTextures.size());
         }
         if (objAtlas_ && objAtlas_->isLoaded() && zoneShader_ && zoneShader_->isAtlasAvailable()) {
             std::vector<uint32_t> objPageTextures;
             for (uint16_t p = 0; p < objAtlas_->getPageCount(); ++p)
                 objPageTextures.push_back(objAtlas_->getPageTexture(p));
             objAtlasPageOffset_ = zoneShader_->appendAtlasPageTextures(objPageTextures);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj shader atlas page textures appended, {} pages, offset={}",
+                      objPageTextures.size(), objAtlasPageOffset_);
         }
 #ifdef EQT_HAS_GLES2
         glActiveTexture(GL_TEXTURE0);
@@ -3424,31 +3516,53 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             // The constrained cache defers to background threads and returns nullptr
             // on first call, which breaks single-pass mesh building. The unconstrained
             // path does synchronous DDS decode + driver_->addTexture() inline.
-            if (zoneShader_ && zoneShader_->isAvailable())
+            if (zoneShader_ && zoneShader_->isAvailable()) {
                 builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                zoneShader_->getActiveAlphaTest());
-            if (zoneShader_ && zoneShader_->isAtlasAvailable())
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: builder shader materials set (solid={}, alphaTest={})",
+                          zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
+            }
+            if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
                 builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
                                                      zoneShader_->getActiveAtlasAlpha());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: builder atlas shader materials set (solid={}, alpha={})",
+                          zoneShader_->getActiveAtlasSolid(), zoneShader_->getActiveAtlasAlpha());
+            }
             bool useZoneAtlas = zoneAtlas_ && zoneAtlas_->isLoaded() &&
                                 zoneShader_ && zoneShader_->isAtlasAvailable();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: useZoneAtlas={}, totalRegions={}",
+                      useZoneAtlas, bspTree->regions.size());
 
             size_t totalRegions = bspTree->regions.size();
             size_t regionsBuilt = 0;
+            size_t regionsSkipped = 0;
+            size_t meshBuildFailed = 0;
+            size_t nodeFailed = 0;
             for (size_t i = 0; i < totalRegions; ++i) {
                 auto geom = wldLoader->getGeometryForRegion(i);
-                if (!geom || geom->vertices.empty()) { ++regionsBuilt; continue; }
+                if (!geom || geom->vertices.empty()) { ++regionsBuilt; ++regionsSkipped; continue; }
 
                 irr::scene::IMesh* mesh = nullptr;
                 if (!currentZone_->textures.empty() && !geom->textureNames().empty()) {
-                    if (useZoneAtlas)
+                    if (useZoneAtlas) {
                         mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
-                    else
+                        LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built atlased mesh, texNames={}, verts={}",
+                                  i, geom->textureNames().size(), geom->vertices.size());
+                    } else {
                         mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+                        LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built textured mesh, texNames={}, verts={}",
+                                  i, geom->textureNames().size(), geom->vertices.size());
+                    }
                 } else {
                     mesh = builder.buildColoredMesh(*geom);
+                    LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built colored mesh (no textures), verts={}",
+                              i, geom->vertices.size());
                 }
-                if (!mesh) continue;
+                if (!mesh) {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step4: region[{}] mesh build returned null — skipping", i);
+                    ++meshBuildFailed;
+                    continue;
+                }
 
                 irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(mesh);
                 if (node) {
@@ -3471,6 +3585,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     uploadMeshHardwareBuffers(node);
                     if (regionBoundingBoxes_.find(i) == regionBoundingBoxes_.end())
                         regionBoundingBoxes_[i] = node->getTransformedBoundingBox();
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step4: region[{}] addMeshSceneNode failed — mesh dropped", i);
+                    ++nodeFailed;
                 }
                 mesh->drop();
                 ++regionsBuilt;
@@ -3481,8 +3598,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                         + "/" + std::to_string(totalRegions) + "]");
                 }
             }
-            LOG_INFO(MOD_GRAPHICS, "Sequential: built all {} region meshes eagerly",
-                     regionMeshNodes_.size());
+            LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
+                     regionMeshNodes_.size(), regionsSkipped, meshBuildFailed, nodeFailed);
         }
 
         // Setup front-to-back sorting
@@ -3497,8 +3614,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     renderPassTimer_ = new RenderPassTimer();
                     renderPassTimer_->setRenderer(this);
                     smgr_->setLightManager(renderPassTimer_);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: created RenderPassTimer and installed as light manager");
                 } else if (renderPassTimer_) {
                     renderPassTimer_->setRenderer(this);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: reused existing RenderPassTimer");
                 }
                 for (auto& [regionIdx, node] : regionMeshNodes_) {
                     if (node && node->getParent()) { node->grab(); node->remove(); }
@@ -3508,6 +3627,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 }
                 LOG_INFO(MOD_GRAPHICS, "Sequential: front-to-back sorting enabled ({} regions)",
                          regionMeshNodes_.size());
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: manual zone draw disabled (software renderer)");
             }
         }
         logAssetBuildTime("seq_regions", regionMeshNodes_.size(), stepStart);
@@ -3531,6 +3652,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                          computations->archiveIndex->getRaceEntryCount(),
                          computations->archiveIndex->getArchiveCount());
             } else {
+                LOG_WARN(MOD_GRAPHICS, "SEQ Step5: archive index build failed, discarded");
                 computations->archiveIndex.reset();
             }
         }
@@ -3544,17 +3666,25 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 LOG_INFO(MOD_GRAPHICS, "Sequential: equipment index ({} models, {} textures)",
                          eqIdx->modelIndex.size(), eqIdx->textureIndex.size());
             }
+            if (!eqIdx->loaded) {
+                LOG_WARN(MOD_GRAPHICS, "SEQ Step5: equipment index build failed");
+            }
             computations->equipmentIndex = std::move(eqIdx);
         }
 
         // Create entity renderer
         createEntityRenderer();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: createEntityRenderer done, entityRenderer_={}", (bool)entityRenderer_);
 
         // Install archive index
         if (computations && computations->archiveIndex) {
             graphicsArchiveIndex_ = std::move(computations->archiveIndex);
-            if (entityRenderer_ && entityRenderer_->getRaceModelLoader())
+            bool setOnRml = false;
+            if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
                 entityRenderer_->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
+                setOnRml = true;
+            }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: archive index installed, setOnRaceModelLoader={}", setOnRml);
         }
 
         // Install equipment index
@@ -3565,18 +3695,24 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     std::move(computations->equipmentIndex->modelIndex),
                     std::move(computations->equipmentIndex->textureIndex),
                     std::map<uint32_t, int>(itemToModelMap_));
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: equipment index installed on EquipmentModelLoader");
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "SEQ Step5: equipment index built but EquipmentModelLoader is null — cannot install");
             }
         }
 
         // Set zone on RaceModelLoader
-        if (entityRenderer_ && entityRenderer_->getRaceModelLoader())
+        if (entityRenderer_ && entityRenderer_->getRaceModelLoader()) {
             entityRenderer_->getRaceModelLoader()->setCurrentZone(currentZoneName_);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: RaceModelLoader zone set to '{}'", currentZoneName_);
+        }
 
         // Store model view deps
         if (windowManager_ && entityRenderer_) {
             windowManager_->storeModelViewDeps(smgr_,
                                                entityRenderer_->getRaceModelLoader(),
                                                entityRenderer_->getEquipmentModelLoader());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: window manager model view deps stored");
         }
         logAssetBuildTime("seq_assets", 0, stepStart);
     }
@@ -3592,6 +3728,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
         if (pendingZoneComputations_ && !pendingZoneComputations_->prebuiltDeferredObjects.empty()) {
             deferredObjects_ = std::move(pendingZoneComputations_->prebuiltDeferredObjects);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: using prebuilt deferred objects, count={}", deferredObjects_.size());
         } else if (pendingZoneComputations_ && !pendingZoneComputations_->deferredObjectEntries.empty() && currentZone_) {
             for (auto& [objIdx, bspRegion] : pendingZoneComputations_->deferredObjectEntries) {
                 if (objIdx >= currentZone_->objects.size()) continue;
@@ -3617,8 +3754,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     x + halfW, z + halfH, y + halfW);
                 deferredObjects_.push_back(deferred);
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: built deferred objects from entries, count={}", deferredObjects_.size());
         } else {
             indexObjectMeshes();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: used indexObjectMeshes() fallback");
         }
 
         // Zone bounds
@@ -3628,6 +3767,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             zoneBoundsMinY_ = currentZone_->geometry->minY;
             zoneBoundsMaxY_ = currentZone_->geometry->maxY;
             zoneBoundsValid_ = true;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from geometry: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
+                      zoneBoundsMinX_, zoneBoundsMaxX_, zoneBoundsMinY_, zoneBoundsMaxY_);
         } else if (!regionBoundingBoxes_.empty()) {
             float rMinX = std::numeric_limits<float>::max(), rMaxX = std::numeric_limits<float>::lowest();
             float rMinY = std::numeric_limits<float>::max(), rMaxY = std::numeric_limits<float>::lowest();
@@ -3638,6 +3779,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             zoneBoundsMinX_ = rMinX; zoneBoundsMaxX_ = rMaxX;
             zoneBoundsMinY_ = rMinY; zoneBoundsMaxY_ = rMaxY;
             zoneBoundsValid_ = true;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from regionBoundingBoxes: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
+                      zoneBoundsMinX_, zoneBoundsMaxX_, zoneBoundsMinY_, zoneBoundsMaxY_);
         }
 
         // Build all object meshes eagerly inline (no deferred/PVS-gated build at runtime)
@@ -3645,14 +3788,21 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             ZoneMeshBuilder objBuilder(smgr_, driver_, device_->getFileSystem());
             // Do NOT set constrained texture cache — use synchronous unconstrained path
             // (same rationale as region mesh building above).
-            if (zoneShader_ && zoneShader_->isAvailable())
+            if (zoneShader_ && zoneShader_->isAvailable()) {
                 objBuilder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                    zoneShader_->getActiveAlphaTest());
-            if (zoneShader_ && zoneShader_->isAtlasAvailable())
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder shader materials set (solid={}, alphaTest={})",
+                          zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
+            }
+            if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
                 objBuilder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
                                                          zoneShader_->getActiveAtlasAlpha());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder atlas shader materials set (solid={}, alpha={})",
+                          zoneShader_->getActiveAtlasSolid(), zoneShader_->getActiveAtlasAlpha());
+            }
             bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
                                zoneShader_ && zoneShader_->isAtlasAvailable();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: useObjAtlas={}, totalObjects={}", useObjAtlas, deferredObjects_.size());
 
             size_t totalObjects = deferredObjects_.size();
             size_t objectsBuilt = 0;
@@ -3676,13 +3826,19 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 // Build mesh
                 irr::scene::IMesh* objMesh = nullptr;
                 if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
-                    if (useObjAtlas)
+                    if (useObjAtlas) {
                         objMesh = objBuilder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
                                                                *objAtlas_, objAtlasPageOffset_);
-                    else
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built atlased mesh, texNames={}",
+                                  oi, objName, objInstance.geometry->textureNames().size());
+                    } else {
                         objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
+                                  oi, objName, objInstance.geometry->textureNames().size());
+                    }
                 } else {
                     objMesh = objBuilder.buildColoredMesh(*objInstance.geometry);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built colored mesh (no textures)", oi, objName);
                 }
 
                 // Track missing textures for rebuild when they arrive
@@ -3690,12 +3846,20 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (!missingObjTex.empty()) {
                     for (const auto& texName : missingObjTex)
                         pendingTextureObjects_[texName].insert(oi);
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' has {} missing textures queued for later rebuild",
+                             oi, objName, missingObjTex.size());
                 }
 
-                if (!objMesh) { deferred.meshBuilt = true; ++objectsBuilt; continue; }
+                if (!objMesh) {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' mesh build returned null — skipping", oi, objName);
+                    deferred.meshBuilt = true; ++objectsBuilt; continue;
+                }
 
                 irr::scene::IMeshSceneNode* objNode = smgr_->addMeshSceneNode(objMesh);
-                if (!objNode) { objMesh->drop(); deferred.meshBuilt = true; ++objectsBuilt; continue; }
+                if (!objNode) {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addMeshSceneNode failed — mesh dropped", oi, objName);
+                    objMesh->drop(); deferred.meshBuilt = true; ++objectsBuilt; continue;
+                }
 
                 // Transform
                 float scaleX = objInstance.placeable->getScaleX();
@@ -3744,6 +3908,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 bool pvsVisible = isRegionPvsVisible(objectRegions_.back());
                 if (!pvsVisible) {
                     objNode->remove();
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
+                              oi, objName, objectRegions_.back());
                 }
                 objectInSceneGraph_.push_back(pvsVisible);
 
@@ -3845,6 +4011,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         objectLightInSceneGraph_.push_back(lightPvsVis);
 
                         objectLights_.push_back(objLight);
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' light created: pos=({:.1f},{:.1f},{:.1f}) "
+                                  "radius={:.0f} fire={} pvsVisible={} region={}",
+                                  oi, objName, lightPos.X, lightPos.Y, lightPos.Z,
+                                  lightRadius, objLight.isFireSource, lightPvsVis, objLight.bspRegion);
+                    } else {
+                        LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addLightSceneNode failed", oi, objName);
                     }
                 }
 
@@ -3888,27 +4060,44 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             if (zoneShader_ && zoneShader_->isAvailable())
                 doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                      zoneShader_->getActiveAlphaTest());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: created DoorManager (zone={}, bsp={}, frustum={}, neighbors={}, shader={})",
+                      (bool)currentZone_, (bool)zoneBspTree_, (bool)frustumCuller_,
+                      !regionNeighbors_.empty(), zoneShader_ && zoneShader_->isAvailable());
         }
 
         // Rebuild all doors at once
         if (doorManager_) {
             std::vector<uint8_t> doorList;
             doorManager_->getUnbuiltDoors(doorList);
+            size_t unbuiltCount = doorList.size();
+            size_t placeholderCount = 0;
             for (uint8_t id = 0; id < 255; ++id) {
                 const auto* door = doorManager_->getDoor(id);
-                if (door && door->meshBuilt && door->usePlaceholder)
+                if (door && door->meshBuilt && door->usePlaceholder) {
                     doorList.push_back(id);
+                    ++placeholderCount;
+                }
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: door rebuild list: {} unbuilt + {} placeholder = {} total",
+                      unbuiltCount, placeholderCount, doorList.size());
             size_t totalDoors = doorList.size();
             size_t doorsBuilt = 0;
+            size_t doorsFailed = 0;
+            size_t doorsWithMissingTex = 0;
             for (uint8_t doorId : doorList) {
                 bool rebuilt = doorManager_->rebuildSingleDoor(doorId);
+                if (!rebuilt) {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} rebuildSingleDoor failed", doorId);
+                    ++doorsFailed;
+                }
                 const auto& missing = doorManager_->getLastMissingTextures();
                 if (!missing.empty()) {
                     for (const auto& texName : missing)
                         pendingTextureDoors_[texName].insert(doorId);
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} has {} missing textures queued for later rebuild",
+                             doorId, missing.size());
+                    ++doorsWithMissingTex;
                 }
-                (void)rebuilt;
                 ++doorsBuilt;
                 // Update progress every 10 doors (78-80%)
                 if (doorsBuilt % 10 == 0 && totalDoors > 0) {
@@ -3917,11 +4106,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                         + "/" + std::to_string(totalDoors) + "]");
                 }
             }
-            LOG_INFO(MOD_GRAPHICS, "Sequential: rebuilt {} doors", totalDoors);
+            LOG_INFO(MOD_GRAPHICS, "Sequential: rebuilt {} doors ({} failed, {} with missing textures)",
+                     totalDoors, doorsFailed, doorsWithMissingTex);
         }
         // Now set constrained cache for runtime door rebuilds (texture arrivals, etc.)
-        if (doorManager_ && constrainedTextureCache_)
+        if (doorManager_ && constrainedTextureCache_) {
             doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager constrained texture cache set for runtime");
+        }
         logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();
@@ -3977,6 +4169,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 uint32_t key = (static_cast<uint32_t>(vis.raceId) << 8) | vis.gender;
                 bool alreadyCached = modelLoader->isModelDataCached(key);
                 bool success = false;
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} cacheKey={} cached={}",
+                          spawnId, vis.name, vis.raceId, vis.gender, key, alreadyCached);
 
                 if (alreadyCached) {
                     success = true;
@@ -4002,10 +4196,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     }
                     if (headVariant != 0 || bodyVariant != 0) {
                         modelLoader->preloadVariantModel(vis.raceId, vis.gender, headVariant, bodyVariant);
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8b: entity {} ({}) preloadVariantModel head={} body={}",
+                                  spawnId, vis.name, headVariant, bodyVariant);
                     }
                 }
 
                 if (!success) {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} preload FAILED — skipping",
+                             spawnId, vis.name, vis.raceId, vis.gender);
                     ++prepCount;
                     continue;
                 }
@@ -4014,6 +4212,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 std::vector<DecodedTexture> variantTextures;
                 {
                     auto modelData = modelLoader->getRaceModelData(vis.raceId, vis.gender);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) appearance.texture={} helm={} modelData={}",
+                              spawnId, vis.name, vis.appearance.texture, vis.appearance.helm, (bool)modelData);
                     if (vis.appearance.texture != 0 || vis.appearance.helm != 0) {
                         std::string raceCode = RaceModelLoader::getRaceCode(vis.raceId);
                         std::string lowerRaceCode = raceCode;
@@ -4033,7 +4233,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                 DecodedTexture decoded;
                                 decoded.name = texName;
                                 DecodedImage img = DDSDecoder::decode(texInfo->data);
-                                if (!img.isValid()) return;
+                                if (!img.isValid()) {
+                                    LOG_WARN(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) variant texture '{}' DDS decode FAILED (size={})",
+                                             spawnId, vis.name, texName, texInfo->data.size());
+                                    return;
+                                }
                                 decoded.width = img.width;
                                 decoded.height = img.height;
                                 decoded.argbPixels.resize(img.width * img.height);
@@ -4146,6 +4350,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     }
                 }
 
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) decoded {} variant textures",
+                          spawnId, vis.name, variantTextures.size());
+
                 // Step 8d: Equipment model extraction + texture decode
                 struct EquipPrepData {
                     int modelId = 0;
@@ -4166,9 +4373,17 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         int modelId = equipLoader->getModelIdForItem(equipmentId);
                         if (modelId < 0) modelId = static_cast<int>(equipmentId);
                         const EquipmentModelLoader::EquipmentModelRef* modelRef = equipLoader->getModelRef(modelId);
-                        if (!modelRef) return;
+                        if (!modelRef) {
+                            LOG_WARN(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment {} ({}) modelId={} — model ref not found",
+                                     spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                            return;
+                        }
                         auto equipData2 = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
-                        if (!equipData2) return;
+                        if (!equipData2) {
+                            LOG_WARN(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment {} ({}) modelId={} — extraction FAILED",
+                                     spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                            return;
+                        }
 
                         EquipPrepData prepData;
                         prepData.modelId = modelId;
@@ -4206,6 +4421,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                         if (a < 255) decoded.hasAlpha = true;
                                     }
                                     prepData.decodedTextures.push_back(std::move(decoded));
+                                } else {
+                                    LOG_WARN(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment {} texture '{}' DDS decode FAILED (size={})",
+                                             spawnId, vis.name, prepData.equipmentId, texName, texInfo->data.size());
                                 }
                             }
                         }
@@ -4214,6 +4432,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
                     prepOneEquip(primaryId, true);
                     prepOneEquip(secondaryId, false);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment: primary={} secondary={} extracted={}",
+                              spawnId, vis.name, vis.appearance.equipment[7], vis.appearance.equipment[8], equipmentData.size());
                 }
 
                 // Step 8e: Distribute prep results to EntityVisual
@@ -4222,7 +4442,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     // We need a mutable reference — use const_cast since we own the renderer
                     auto& mutableEntities = const_cast<std::map<uint16_t, EntityVisual>&>(entityRenderer_->getEntities());
                     auto visIt = mutableEntities.find(spawnId);
-                    if (visIt != mutableEntities.end()) {
+                    if (visIt == mutableEntities.end()) {
+                        LOG_WARN(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) vanished before distribution — prep work discarded "
+                                 "(variantTex={}, equipData={})",
+                                 spawnId, vis.name, variantTextures.size(), equipmentData.size());
+                    } else {
                         auto& mvis = visIt->second;
                         mvis.variantTextures = std::move(variantTextures);
 
@@ -4274,19 +4498,30 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                             mvis.texturesSubmittedToGpu = true;
                         }
                         mvis.entityPrepComplete = true;
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) distributed: variantTex={} equipTex={} equipStaging={} "
+                                  "baseTex={} submittedToGpu={}",
+                                  spawnId, vis.name, mvis.variantTextures.size(), mvis.equipmentTextures.size(),
+                                  mvis.equipmentStaging.size(),
+                                  modelLoader->getRaceModelData(mvis.raceId, mvis.gender)
+                                      ? modelLoader->getRaceModelData(mvis.raceId, mvis.gender)->decodedTextures.size() : 0,
+                                  mvis.texturesSubmittedToGpu);
                     }
                 }
 
                 // Flush constrained texture cache uploads (we have GL context)
-                if (constrainedTextureCache_)
+                if (constrainedTextureCache_) {
                     constrainedTextureCache_->processUploadQueue();
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) flushed texture cache uploads", spawnId, vis.name);
+                }
 
                 // Promote prepared models so buildEntityMesh finds them
                 modelLoader->promotePreparedModels();
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8f: entity {} ({}) promoted prepared models", spawnId, vis.name);
 
                 // Step 8f: Build entity mesh (GL work — scene node, materials, name tag)
-                if (entityRenderer_->buildEntityMesh(spawnId))
-                    ++buildCount;
+                bool meshBuilt = entityRenderer_->buildEntityMesh(spawnId);
+                if (meshBuilt) ++buildCount;
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8f: entity {} ({}) buildEntityMesh result={}", spawnId, vis.name, meshBuilt);
 
                 ++prepCount;
             }
@@ -4301,6 +4536,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
         }
         entityPrepReady_ = true;
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityPrepReady_=true");
         logAssetBuildTime("seq_entities", 0, stepStart);
     }
     FlushThreadLog();
@@ -4365,9 +4601,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (skyData->skyLoader->load(eqPath)) {
                     LOG_INFO(MOD_GRAPHICS, "Sequential: sky.s3d loaded ({} textures)",
                              skyData->skyLoader->getSkyData()->textures.size());
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step10: sky.s3d load failed from '{}'", eqPath);
                 }
                 std::string skyIniPath = eqPath + "sky.ini";
-                skyData->skyConfig->loadFromFile(skyIniPath);
+                bool skyIniLoaded = skyData->skyConfig->loadFromFile(skyIniPath);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky.ini '{}': loaded={}", skyIniPath, skyIniLoaded);
 
                 // Pre-decode sky textures
                 if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
@@ -4388,7 +4627,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         preTex.name = texName;
                         uint32_t decW = 0, decH = 0;
                         std::vector<uint8_t> decoded;
-                        if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) continue;
+                        if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
+                            LOG_WARN(MOD_GRAPHICS, "SEQ Step10: sky texture '{}' BMP decode FAILED (size={})",
+                                     texName, texInfo->data.size());
+                            continue;
+                        }
                         if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
                             const uint32_t targetSize = 512;
                             bilinearUpscaleARGB(decoded.data(), decW, decH,
@@ -4402,6 +4645,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         }
                         skyData->preDecodedTextures.push_back(std::move(preTex));
                     }
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: pre-decoded {} sky textures", skyData->preDecodedTextures.size());
                 }
 
                 // Pre-compute dome mesh
@@ -4449,12 +4693,22 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         }
                         skyData->precomputedWldDome = std::move(wldDome);
                         usedWldDome = true;
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: precomputed WLD dome mesh: {} verts, {} indices",
+                                  skyData->precomputedWldDome->vertices.size(),
+                                  skyData->precomputedWldDome->indices.size());
+                    } else {
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: WLD dome mode requested but no background layer geometry found "
+                                  "(bgLayer={}, hasGeom={}) — will use procedural dome",
+                                  (bool)bgLayer, bgLayer ? (bool)bgLayer->geometry : false);
                     }
                 }
                 if (!usedWldDome) {
                     skyData->precomputedDome = std::make_unique<PendingZoneComputations::SkyLoadData::PrecomputedSkyDome>();
                     SkyRenderer::precomputeDomeMesh(skyData->precomputedDome->vertices,
                                                     skyData->precomputedDome->indices);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: precomputed procedural dome mesh: {} verts, {} indices",
+                              skyData->precomputedDome->vertices.size(),
+                              skyData->precomputedDome->indices.size());
                 }
 
                 computations->skyLoadData = std::move(skyData);
@@ -4467,11 +4721,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (loadZoneWeatherConfig(currentZoneName_, wconfig)) {
                     weatherData->config = wconfig;
                     weatherData->loaded = true;
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: loaded zone weather config for '{}'", currentZoneName_);
                 } else {
                     weatherData->config.zoneName = currentZoneName_;
                     weatherData->config.defaultWeather = WeatherType::Normal;
                     weatherData->config.enabled = true;
                     weatherData->loaded = true;
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: using default weather config for '{}'", currentZoneName_);
                 }
                 computations->weatherConfig = std::move(weatherData);
             }
@@ -4488,10 +4744,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     std::move(computations->skyLoadData->skyLoader),
                     std::move(computations->skyLoadData->skyConfig));
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: created skyRenderer (hasBgData={}, constrainedCache={})",
+                      hasBgData, (bool)constrainedTextureCache_);
         } else if (hasBgData) {
             skyRenderer_->initializeFromPreloaded(
                 std::move(computations->skyLoadData->skyLoader),
                 std::move(computations->skyLoadData->skyConfig));
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: reused skyRenderer, applied preloaded data");
         }
 
         if (storedZoneEnvironment_.pending) {
@@ -4506,6 +4765,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 isIndoorZone_ = isDungeon;
                 bool skySettingEnabled = getDisplaySettings().skyEnabled;
                 skyRenderer_->setEnabled(!isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering);
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "SEQ Step10: stored zone env pending but skyRenderer not ready "
+                         "(skyRenderer_={}, initialized={}) — sky type/dungeon detection skipped",
+                         (bool)skyRenderer_, skyRenderer_ ? skyRenderer_->isInitialized() : false);
             }
 
             zoneMaxClip_ = (storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
@@ -4521,10 +4784,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
 
             if (weatherSystem_) {
-                if (computations && computations->weatherConfig && computations->weatherConfig->loaded)
+                if (computations && computations->weatherConfig && computations->weatherConfig->loaded) {
                     weatherSystem_->setZoneConfig(computations->weatherConfig->config);
-                else
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem zone config applied");
+                } else {
                     weatherSystem_->setWeatherFromZone(currentZoneName_);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem fallback to zone name '{}'", currentZoneName_);
+                }
             }
         }
 
@@ -4532,6 +4798,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (!config_.constrainedConfig.skipSkyTextureUpload && skyRenderer_ &&
             computations && computations->skyLoadData) {
             auto& preTextures = computations->skyLoadData->preDecodedTextures;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: uploading {} sky textures", preTextures.size());
 #ifdef EQT_HAS_GLES2
             for (size_t i = 0; i < preTextures.size(); ++i) {
                 auto& preTex = preTextures[i];
@@ -4575,14 +4842,18 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (skyData.precomputedWldDome) {
                     skyRenderer_->createSkyDomeFromWldGeometry(
                         skyData.precomputedWldDome->vertices, skyData.precomputedWldDome->indices);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized from WLD geometry");
                 } else if (skyData.precomputedDome) {
                     skyRenderer_->createSkyDomeFromPrecomputed(
                         skyData.precomputedDome->vertices, skyData.precomputedDome->indices);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized from precomputed mesh");
                 } else {
                     skyRenderer_->applySkyType();
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized via applySkyType (no precomputed data)");
                 }
             } else {
                 skyRenderer_->applySkyType();
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized via applySkyType (no skyLoadData)");
             }
         }
         if (computations && computations->skyLoadData) {
@@ -4593,6 +4864,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             skyRenderer_->createCelestialBodiesOnly();
             skyRenderer_->applyInitialColors();
             skyRenderer_->consumeSkyPrepared();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky celestial bodies created, initial colors applied, sky consumed");
         }
         if (storedZoneEnvironment_.pending) storedZoneEnvironment_.pending = false;
         if (computations && computations->skyLoadData) computations->skyLoadData.reset();
@@ -4624,13 +4896,36 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Trees
         if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
             treeManager_->loadConfig("", currentZoneName_);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_ loadConfig for zone '{}'", currentZoneName_);
             if (driver_->getDriverType() == irr::video::EDT_BURNINGSVIDEO) {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software renderer tree init path, objects={}", currentZone_->objects.size());
                 // Software path: initialize CPU tree wind
-                if (!treeManager_->isInitializing())
+                if (!treeManager_->isInitializing()) {
                     treeManager_->beginInitialize(currentZone_->objects, currentZone_->objectTextures);
-                while (!treeManager_->initializeNextBatch(100)) {}
-                if (zoneBspTree_) treeManager_->assignBspRegions(zoneBspTree_);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: beginInitialize started, objects={}, textures={}",
+                              currentZone_->objects.size(), currentZone_->objectTextures.size());
+                } else {
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_ already initializing, skipping beginInitialize");
+                }
+                size_t batchCount = 0;
+                while (!treeManager_->initializeNextBatch(100)) { ++batchCount; }
+                ++batchCount;
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree init batches={}", batchCount);
+                if (zoneBspTree_) {
+                    treeManager_->assignBspRegions(zoneBspTree_);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree assignBspRegions done");
+                } else {
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: no zoneBspTree_, skipping assignBspRegions");
+                }
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree init complete");
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, tree wind via shader fixup pass (driver={})",
+                          (int)driver_->getDriverType());
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree init SKIPPED: treeManager_={}, currentZone_={}, objects={}",
+                      (bool)treeManager_, (bool)currentZone_,
+                      currentZone_ ? currentZone_->objects.size() : 0);
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: trees done, treeManager_ initialized={}",
@@ -4644,6 +4939,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 detailManager_->setSurfaceMapsPath("data/detail/zones");
                 if (constrainedTextureCache_)
                     detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: created DetailManager, surfaceMapsPath='data/detail/zones', "
+                          "constrainedTextureCache={}", (bool)constrainedTextureCache_);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: DetailManager NOT created, detailObjectsEnabled=false");
             }
         }
         if (detailManager_ && zoneBspTree_ && !regionWorldTriangles_.empty()) {
@@ -4706,12 +5005,18 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             auto zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
             detailManager_->onZoneEnter(currentZoneName_, groundRaycast,
                                         zoneMeshNode_, wldLoader, zoneGeom);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_ onZoneEnter called for zone '{}'", currentZoneName_);
         }
         if (detailManager_ && !regionMeshNodes_.empty()) {
+            size_t nodesAdded = 0;
             for (auto& [regionIdx, node] : regionMeshNodes_) {
-                if (node && node->getMesh())
+                if (node && node->getMesh()) {
                     detailManager_->addMeshNodeForTextureLookup(node);
+                    ++nodesAdded;
+                }
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: added {} mesh nodes for detail texture lookup (of {} total)",
+                      nodesAdded, regionMeshNodes_.size());
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_={}, regionWorldTriangles_={}, regionMeshNodes_={}",
@@ -4755,13 +5060,25 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: total fireSources={} (objectLights + zone lights)",
                       fireSources.size());
-            if (!fireSources.empty()) particleManager_->setFireSources(fireSources);
-            if (detailManager_ && detailManager_->hasSurfaceMap())
+            if (!fireSources.empty()) {
+                particleManager_->setFireSources(fireSources);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ setFireSources count={}", fireSources.size());
+            }
+            if (detailManager_ && detailManager_->hasSurfaceMap()) {
                 particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ setSurfaceMap from detailManager_");
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ no surface map (detailManager_={}, hasSurfaceMap={})",
+                          (bool)detailManager_, detailManager_ ? detailManager_->hasSurfaceMap() : false);
+            }
 
             particleManager_->initUnifiedRenderer();
-            if (!fireSources.empty())
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ initUnifiedRenderer complete");
+            if (!fireSources.empty()) {
                 particleManager_->createFireEmitters(fireSources, fireRadii);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ createFireEmitters called, sources={}, radii={}",
+                          fireSources.size(), fireRadii.size());
+            }
 
             // Collect fire glow lights (same sources as fire particles)
             // Positions in fireSources are EQ coords (Z-up); convert to Irrlicht (Y-up)
@@ -4789,23 +5106,32 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Boids
         if (boidsManager_) {
             auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            if (zoneBoundsValid_)
+            if (zoneBoundsValid_) {
                 boidsManager_->onZoneEnter(currentZoneName_, biome,
                     glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
                     glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
-            else
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: boidsManager_ onZoneEnter with bounds, biome={}",
+                          Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
+            } else {
                 boidsManager_->onZoneEnter(currentZoneName_, biome);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: boidsManager_ onZoneEnter without bounds, biome={}",
+                          Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
+            }
         }
 
         // Tumbleweed
         if (tumbleweedManager_) {
             auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
             tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tumbleweedManager_ onZoneEnter, biome={}",
+                      Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
         }
 
         // Weather surface + display settings
-        if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap())
+        if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap()) {
             weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: weatherEffects_ setSurfaceMap from detailManager_");
+        }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvironmentalDisplaySettings: windowManager_={}, "
                   "optionsWindow={}",
                   (bool)windowManager_,
@@ -4843,6 +5169,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
         // Release combined zone geometry (if detail system disabled)
         if (currentZone_ && currentZone_->geometry && !detailManager_) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: releasing combined zone geometry (detailManager_ inactive), "
+                      "vertices={}, triangles={}",
+                      currentZone_->geometry->vertices.size(), currentZone_->geometry->triangles.size());
             currentZone_->geometry->vertices.clear();
             currentZone_->geometry->vertices.shrink_to_fit();
             currentZone_->geometry->triangles.clear();
@@ -4850,30 +5179,51 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         }
 
         // Governor reset
-        if (governor_) governor_->requestReset();
+        if (governor_) {
+            governor_->requestReset();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: governor_ reset requested");
+        }
 
         // Fixup pass: apply tree wind shaders and animated textures to objects
         // built eagerly in Step 6 (before treeManager_ / animatedTextureManager_ existed)
         if (treeManager_ || animatedTextureManager_) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup pass starting, deferredObjects_={}, treeManager_={}, "
+                      "animatedTextureManager_={}, zoneShader_={}, windAvailable={}",
+                      deferredObjects_.size(), (bool)treeManager_, (bool)animatedTextureManager_,
+                      (bool)zoneShader_, zoneShader_ ? zoneShader_->isWindAvailable() : false);
+            size_t fixupProcessed = 0, fixupSkipNotBuilt = 0, fixupSkipBadIndex = 0;
+            size_t fixupSkipNullNode = 0, fixupSkipNoGeomPlaceable = 0;
+            size_t treesFound = 0, treesWindApplied = 0, treesNullMesh = 0;
+            size_t animatedApplied = 0;
+            bool windCheckEnabled = treeManager_ && zoneShader_ && zoneShader_->isWindAvailable();
+            if (!windCheckEnabled) {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup wind shader check DISABLED: treeManager_={}, "
+                          "zoneShader_={}, windAvailable={}",
+                          (bool)treeManager_, (bool)zoneShader_,
+                          zoneShader_ ? zoneShader_->isWindAvailable() : false);
+            }
             for (size_t oi = 0; oi < deferredObjects_.size(); ++oi) {
                 const auto& deferred = deferredObjects_[oi];
-                if (!deferred.meshBuilt || deferred.nodeIndex == SIZE_MAX) continue;
-                if (deferred.nodeIndex >= objectNodes_.size()) continue;
-                if (deferred.objectIndex >= currentZone_->objects.size()) continue;
+                if (!deferred.meshBuilt || deferred.nodeIndex == SIZE_MAX) { ++fixupSkipNotBuilt; continue; }
+                if (deferred.nodeIndex >= objectNodes_.size()) { ++fixupSkipBadIndex; continue; }
+                if (deferred.objectIndex >= currentZone_->objects.size()) { ++fixupSkipBadIndex; continue; }
 
                 auto* objNode = objectNodes_[deferred.nodeIndex];
-                if (!objNode) continue;
+                if (!objNode) { ++fixupSkipNullNode; continue; }
                 const auto& objInstance = currentZone_->objects[deferred.objectIndex];
-                if (!objInstance.geometry || !objInstance.placeable) continue;
+                if (!objInstance.geometry || !objInstance.placeable) { ++fixupSkipNoGeomPlaceable; continue; }
 
+                ++fixupProcessed;
                 const std::string& objName = objInstance.placeable->getName();
 
                 // Wind shader for trees
-                if (treeManager_ && zoneShader_ && zoneShader_->isWindAvailable()) {
+                if (windCheckEnabled) {
                     std::string primaryTexture;
                     if (!objInstance.geometry->textureNames().empty())
                         primaryTexture = objInstance.geometry->textureNames()[0];
-                    if (treeManager_->isTreeObject(objName, primaryTexture)) {
+                    bool isTree = treeManager_->isTreeObject(objName, primaryTexture);
+                    if (isTree) {
+                        ++treesFound;
                         irr::scene::IMesh* treeMesh = objNode->getMesh();
                         if (treeMesh) {
                             irr::core::aabbox3df meshBbox = treeMesh->getBoundingBox();
@@ -4884,6 +5234,16 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                 objNode->getMaterial(mi).MaterialTypeParam2 = meshBbox.MaxEdge.Y;
                                 objNode->getMaterial(mi).BackfaceCulling = false;
                             }
+                            ++treesWindApplied;
+                            LOG_TRACE(MOD_GRAPHICS, "SEQ Step11: fixup tree wind applied: '{}' tex='{}' "
+                                      "materials={} bboxY=[{:.1f},{:.1f}] materialType={}",
+                                      objName, primaryTexture, objNode->getMaterialCount(),
+                                      meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y,
+                                      zoneShader_->getActiveWindAlphaTest());
+                        } else {
+                            ++treesNullMesh;
+                            LOG_WARN(MOD_GRAPHICS, "SEQ Step11: tree '{}' identified but getMesh() returned null, "
+                                     "wind shader NOT applied", objName);
                         }
                     }
                 }
@@ -4894,10 +5254,19 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     if (objMesh) {
                         animatedTextureManager_->addMesh(*objInstance.geometry, currentZone_->objectTextures, objMesh);
                         animatedTextureManager_->addSceneNode(objNode);
+                        ++animatedApplied;
                     }
                 }
             }
-            LOG_INFO(MOD_GRAPHICS, "Sequential: applied tree/animated fixup to {} objects", deferredObjects_.size());
+            LOG_INFO(MOD_GRAPHICS, "Sequential: fixup pass: processed={}/{} objects, trees found={}, "
+                     "wind applied={}, null mesh={}, animated={}, skipped: notBuilt={}, badIndex={}, "
+                     "nullNode={}, noGeomPlaceable={}",
+                     fixupProcessed, deferredObjects_.size(), treesFound, treesWindApplied,
+                     treesNullMesh, animatedApplied, fixupSkipNotBuilt, fixupSkipBadIndex,
+                     fixupSkipNullNode, fixupSkipNoGeomPlaceable);
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup pass SKIPPED: treeManager_={}, animatedTextureManager_={}",
+                      (bool)treeManager_, (bool)animatedTextureManager_);
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: complete");
@@ -4928,20 +5297,33 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 zld.baseDiffuseColor = irr::video::SColorf(light->r, light->g, light->b, 1.0f);
                 zoneLightData_.push_back(zld);
                 zoneLightPositions_.push_back(pos);
+                LOG_TRACE(MOD_GRAPHICS, "SEQ Step12: light[{}]: pos=({:.1f},{:.1f},{:.1f}) radius={:.1f} "
+                          "color=({:.2f},{:.2f},{:.2f}) attLin={:.4f} attQuad={:.6f}",
+                          i, light->x, light->y, light->z, zld.radius,
+                          light->r, light->g, light->b, zld.attLinear, zld.attQuadratic);
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: no lights to process (currentZone_={}, lights={})",
+                      (bool)currentZone_, currentZone_ ? currentZone_->lights.size() : 0);
         }
 
         // Install light BSP regions
         if (pendingZoneComputations_ && !pendingZoneComputations_->zoneLightRegions.empty()) {
             zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions from precomputed (count={})", zoneLightRegions_.size());
         } else if (zoneBspTree_ && !zoneBspTree_->regions.empty() && currentZone_) {
             for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
                 const auto& light = currentZone_->lights[i];
                 size_t regionIdx = zoneBspTree_->findRegionIndexForPoint(light->x, light->y, light->z);
                 zoneLightRegions_.push_back(regionIdx);
+                LOG_TRACE(MOD_GRAPHICS, "SEQ Step12: light[{}] BSP region={} pos=({:.1f},{:.1f},{:.1f})",
+                          i, regionIdx == SIZE_MAX ? -1 : (int)regionIdx,
+                          light->x, light->y, light->z);
             }
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions computed via findRegionIndexForPoint (count={})", zoneLightRegions_.size());
         } else {
             zoneLightRegions_.resize(zoneLightData_.size(), SIZE_MAX);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions fallback SIZE_MAX (no BSP), count={}", zoneLightRegions_.size());
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: zoneLightData_={}, zoneLightPositions_={}, zoneLightRegions_={}",
@@ -4967,7 +5349,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
         // Build and register zone data
         SimulationZoneData zoneData = buildSimulationZoneData();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: buildSimulationZoneData: regions={}, objects={}, zoneLights={}",
+                  zoneData.regionBounds.size(), zoneData.objects.size(), zoneData.zoneLights.size());
         simulationWorker_->setZoneData(zoneData);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: setZoneData installed on SimulationWorker");
 
         // Update frustum culler with current camera so frustum planes are valid
         if (frustumCuller_ && camera_) {
@@ -4982,6 +5367,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             cameraController_->getPositionEQ(camX, camY, camZ);
             frustumCuller_->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
                 fovV, aspect, 1.0f, renderDistance_);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: frustumCuller updated, fov={:.2f}, aspect={:.2f}, renderDist={:.0f}",
+                      fovV, aspect, renderDistance_);
         }
 
         // Build SimulationInput from current state
@@ -5126,7 +5513,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             pi.windDirection = particleManager_->getWindDirection();
             pi.windStrength = particleManager_->getWindStrength();
             pi.fireEnabled = particleManager_->isUnifiedFireEnabled();
+            pi.commands = particleManager_->drainCommands();
             pi.unifiedRendererInitialized = true;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: particleInput assembled: fireEnabled={}, "
+                      "unifiedRendererInitialized={}, commands={}, windStrength={:.2f}",
+                      pi.fireEnabled, pi.unifiedRendererInitialized,
+                      pi.commands.size(), pi.windStrength);
         }
 
         // Boids system input
@@ -5188,6 +5580,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
         // Apply results to renderer state
         applySimulationOutput(output);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: applySimulationOutput applied, currentPvsRegion_={}", currentPvsRegion_);
 
         // CRITICAL: applySimulationOutput sets particleRenderBuffer_ to point
         // into output.particleOutput.renderBuffer. But 'output' is a local
@@ -5200,6 +5593,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (doorManager_) {
             doorManager_->setPvsRegion(currentPvsRegion_);
             doorManager_->update(0.0f);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: doorManager_ PVS region set to {}, initial update done", currentPvsRegion_);
         }
 
         LOG_INFO(MOD_GRAPHICS, "Sequential: SimulationWorker first-frame computed and applied "
@@ -5228,6 +5622,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_) {
             size_t freed = currentZone_->releaseTexturePixelData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released {:.1f}MB texture pixel data", freed / (1024.0f * 1024.0f));
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: texture pixel data retained (releaseTextureDataAfterUpload={}, currentZone_={})",
+                      config_.constrainedConfig.releaseTextureDataAfterUpload, (bool)currentZone_);
         }
         if (currentZone_) {
             currentZone_->clearCharacterData();
@@ -5236,8 +5633,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (currentZone_ && currentZone_->wldLoader) {
             currentZone_->wldLoader->releasePostLoadData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released WLD post-load data");
+        } else if (currentZone_ && !currentZone_->wldLoader) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: wldLoader is null, skipping releasePostLoadData");
         }
         pendingZoneComputations_.reset();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: pendingZoneComputations_ released");
         logAssetBuildTime("seq_cleanup", 0, stepStart);
     }
     FlushThreadLog();
@@ -5438,9 +5838,21 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         }
     };
 
+    // When portal vis is enabled via BFS (no stencil), filter to portal-visible regions
+    const bool useBfsPortalCulling = portalVisibleRegions_ && !portalVisibleRegions_->empty() &&
+                                     config_.constrainedConfig.portalOcclusion &&
+                                     !config_.constrainedConfig.enableStencilBuffer;
+
     int regionsDrawn = 0;
+    int portalCulled = 0;
     for (const auto& entry : sortedZoneDrawList_) {
         if (!entry.node) continue;
+
+        // BFS portal culling: skip regions not reachable through portal walk
+        if (useBfsPortalCulling && portalVisibleRegions_->count(entry.regionIdx) == 0) {
+            portalCulled++;
+            continue;
+        }
 
         auto it = regionMeshNodes_.find(entry.regionIdx);
         if (it == regionMeshNodes_.end() || !it->second) continue;
@@ -5512,14 +5924,17 @@ void IrrlichtRenderer::drawRegionMesh(size_t regionIdx) {
 }
 
 // ======== drawPortalQuad ========
-// Draws a portal quad as 2 triangles (for stencil write/clear).
+// Draws a portal polygon as a triangle fan (for stencil write/clear).
 // Portal vertices are in EQ Z-up coords, converted to Irrlicht Y-up: (x,y,z) -> (x,z,y)
 void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
-    irr::video::S3DVertex verts[4];
-    for (int i = 0; i < 4; ++i) {
-        verts[i].Pos.X = portal.vertices[i][0];
-        verts[i].Pos.Y = portal.vertices[i][2];  // EQ Z -> Irrlicht Y
-        verts[i].Pos.Z = portal.vertices[i][1];  // EQ Y -> Irrlicht Z
+    size_t n = portal.vertexCount();
+    if (n < 3) return;
+
+    std::vector<irr::video::S3DVertex> verts(n);
+    for (size_t i = 0; i < n; ++i) {
+        verts[i].Pos.X = portal.vx(i);
+        verts[i].Pos.Y = portal.vz(i);  // EQ Z -> Irrlicht Y
+        verts[i].Pos.Z = portal.vy(i);  // EQ Y -> Irrlicht Z
         verts[i].Color = irr::video::SColor(255, 255, 255, 255);
         verts[i].TCoords.X = 0.0f;
         verts[i].TCoords.Y = 0.0f;
@@ -5528,7 +5943,14 @@ void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
         verts[i].Normal.Z = portal.normalY;
     }
 
-    irr::u16 indices[6] = { 0, 1, 2, 0, 2, 3 };
+    // Fan triangulation: (0,1,2), (0,2,3), (0,3,4), ...
+    std::vector<irr::u16> indices;
+    indices.reserve((n - 2) * 3);
+    for (size_t i = 1; i + 1 < n; ++i) {
+        indices.push_back(0);
+        indices.push_back(static_cast<irr::u16>(i));
+        indices.push_back(static_cast<irr::u16>(i + 1));
+    }
 
     // Identity world transform
     irr::core::matrix4 identity;
@@ -5543,7 +5965,8 @@ void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
     mat.MaterialType = irr::video::EMT_SOLID;
     driver_->setMaterial(mat);
 
-    driver_->drawVertexPrimitiveList(verts, 4, indices, 2,
+    driver_->drawVertexPrimitiveList(verts.data(), static_cast<irr::u32>(n),
+        indices.data(), static_cast<irr::u32>(n - 2),
         irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
 }
 
@@ -7450,6 +7873,11 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
         zoneData.portalSystem = portalSystem_.get();
     }
 
+    // Portal visibility config
+    zoneData.enablePortalVis = config_.constrainedConfig.portalOcclusion;
+    zoneData.enableStencilBuffer = config_.constrainedConfig.enableStencilBuffer;
+    zoneData.indoorRegions = indoorRegions_;
+
     // Collision map for entity ground snapping (immutable after zone load)
     if (collisionMap_ && collisionMap_->IsLoaded()) {
         zoneData.hcMap = collisionMap_;
@@ -7947,10 +8375,22 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         }
 
         // Point to portal visible regions in front buffer (no copy — stable until next swap)
+        // Used for geometry stencil masking only (not entity/light culling)
         portalVisibleRegions_ = &results->portalVisibleRegions;
-        if (entityRenderer_) {
-            entityRenderer_->setPortalVisibleRegions(
-                portalVisibleRegions_->empty() ? nullptr : portalVisibleRegions_);
+
+        // Per-region portal occlusion: enable/disable based on camera's indoor status
+        // When indoor region map is loaded, dynamically toggle portal occlusion as
+        // the player moves between indoor and outdoor regions within the same zone.
+        if (portalOcclusionEligible_ && config_.constrainedConfig.portalOcclusion &&
+            config_.constrainedConfig.enableStencilBuffer && !indoorRegions_.empty()) {
+            bool wasEnabled = portalOcclusionEnabled_;
+            portalOcclusionEnabled_ = results->cameraInIndoorRegion;
+            if (portalOcclusionEnabled_ != wasEnabled) {
+                LOG_DEBUG(MOD_GRAPHICS, "Portal occlusion {} (camera region {} is {})",
+                          portalOcclusionEnabled_ ? "ON" : "OFF",
+                          currentPvsRegion_,
+                          results->cameraInIndoorRegion ? "indoor" : "outdoor");
+            }
         }
 
         // Copy mesh load queue and protected regions for constrained mesh cache
@@ -9722,7 +10162,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (skyRenderer_ && skyRenderer_->isEnabled() && skyRenderer_->isInitialized()) {
         clearColor = skyRenderer_->getCurrentClearColor();
     }
-    LOG_DEBUG(MOD_GRAPHICS, "PRE-DRAW checkpoint 0: beginScene");
+    LOG_TRACE(MOD_GRAPHICS, "PRE-DRAW checkpoint 0: beginScene");
     driver_->beginScene(true, true, clearColor);
     sectionStart_ = std::chrono::steady_clock::now();
     if (renderPassTimer_) renderPassTimer_->reset();
@@ -9761,11 +10201,11 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
     // Track polygon count for constrained mode budget
     lastPolygonCount_ = driver_->getPrimitiveCountDrawn();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 2: footprints (detail={})", detailManager_ != nullptr);
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 2: footprints (detail={})", detailManager_ != nullptr);
     // Render footprints (after terrain, before UI)
     if (detailManager_ && detailManager_->isFootprintEnabled()) {
         detailManager_->renderFootprints();
@@ -9826,7 +10266,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 #endif
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
     // Draw selection indicator around targeted entity
 #ifdef EQT_HAS_GLES2
     drawTargetOutline();
@@ -9835,14 +10275,14 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 #endif
     frameTimings_.targetBox = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
               particleManager_ != nullptr,
               particleManager_ ? particleManager_->isEnabled() : false,
               zoneReady_);
     // Render environmental particles (render every frame, update at Tier 3)
     if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
     // Unified particle system (fire point sprites, GLES2 only)
     // Not gated by isEnabled() — fire has its own toggle (unifiedFireEnabled_)
 #ifdef EQT_HAS_GLES2
@@ -9875,12 +10315,12 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
 #endif
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
     // Render ambient creatures (render every frame, update at Tier 3)
     if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) boidsManager_->render();
     frameTimings_.boids = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
     // Render weather effects
     if (weatherEffects_ && weatherEffects_->isEnabled()) weatherEffects_->render();
     frameTimings_.weatherRender = measureSection();
@@ -9996,44 +10436,66 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         drawNavmeshOverlay();
     }
 
-    // Portal wireframe debug overlay
-    if (portalDebugDraw_ && portalSystem_ && portalSystem_->hasPortals()) {
-        irr::video::SMaterial portalMat;
-        portalMat.Lighting = false;
-        portalMat.ZBuffer = irr::video::ECFN_ALWAYS;
-        portalMat.ZWriteEnable = false;
-        portalMat.BackfaceCulling = false;
-        portalMat.Thickness = 2.0f;
-        driver_->setMaterial(portalMat);
-        driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
-
+    // Portal wireframe debug overlay — batched into a single GL_LINES draw call.
+    // Draws all portals within distance of camera (not limited to current region).
+    if (portalDebugDraw_ && portalSystem_ && portalSystem_->hasPortals() && have3DTransforms_) {
+#ifdef EQT_HAS_GLES2
         const auto& portalData = portalSystem_->getData();
+
+        // Camera position in EQ coords
+        float camEqX = playerX_;
+        float camEqY = playerZ_;  // Irrlicht Z -> EQ Y
+        float camEqZ = playerY_;  // Irrlicht Y -> EQ Z
+        const float maxDistSq = 500.0f * 500.0f;
+
+        // Batch all lines: 2 vertices per line, 7 floats per vertex (xyz + rgba)
+        std::vector<float> lineBuf;
+        lineBuf.reserve(4096);
+        size_t lineCount = 0;
+
+        auto pushLine = [&](float x1, float y1, float z1, float x2, float y2, float z2,
+                            float r, float g, float b) {
+            // EQ (x,y,z) -> Irrlicht (x,z,y)
+            lineBuf.push_back(x1); lineBuf.push_back(z1); lineBuf.push_back(y1);
+            lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
+            lineBuf.push_back(x2); lineBuf.push_back(z2); lineBuf.push_back(y2);
+            lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
+            lineCount++;
+        };
+
         for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
             const auto& portal = portalData.portals[pi];
+            size_t n = portal.vertexCount();
+            if (n < 3) continue;
 
-            // Cyan for portals adjacent to camera's room, orange for others
+            // Distance cull by portal center
+            float dx = portal.centerX - camEqX;
+            float dy = portal.centerY - camEqY;
+            float dz = portal.centerZ - camEqZ;
+            if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
+
             bool isAdjacentToCamera = (portal.regionA == currentPvsRegion_ ||
                                        portal.regionB == currentPvsRegion_);
-            irr::video::SColor color = isAdjacentToCamera ?
-                irr::video::SColor(255, 0, 255, 255) :    // Cyan
-                irr::video::SColor(255, 255, 165, 0);     // Orange
+            float r, g, b;
+            if (isAdjacentToCamera) { r = 0.0f; g = 1.0f; b = 1.0f; }  // Cyan
+            else { r = 1.0f; g = 0.647f; b = 0.0f; }                    // Orange
 
-            // Convert portal vertices: EQ (x,y,z) -> Irrlicht (x,z,y)
-            irr::core::vector3df v[4];
-            for (int i = 0; i < 4; ++i) {
-                v[i] = irr::core::vector3df(portal.vertices[i][0],
-                                             portal.vertices[i][2],
-                                             portal.vertices[i][1]);
+            for (size_t vi = 0; vi < n; ++vi) {
+                size_t vj = (vi + 1) % n;
+                pushLine(portal.vx(vi), portal.vy(vi), portal.vz(vi),
+                         portal.vx(vj), portal.vy(vj), portal.vz(vj), r, g, b);
             }
-
-            // Draw quad wireframe
-            driver_->draw3DLine(v[0], v[1], color);
-            driver_->draw3DLine(v[1], v[2], color);
-            driver_->draw3DLine(v[2], v[3], color);
-            driver_->draw3DLine(v[3], v[0], color);
-            // Diagonal for visibility
-            driver_->draw3DLine(v[0], v[2], color);
         }
+
+        if (lineCount > 0) {
+            // Restore 3D camera transforms (2D draws during drawAll() overwrite them)
+            driver_->setTransform(irr::video::ETS_VIEW, captured3DView_);
+            driver_->setTransform(irr::video::ETS_PROJECTION, captured3DProj_);
+            driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+
+            gles2Draw3DLinesBatch(driver_, lineBuf.data(), static_cast<unsigned int>(lineCount));
+        }
+#endif
     }
 
     // Stencil buffer debug overlay (show stencil levels as colored fullscreen rects)
@@ -10063,19 +10525,19 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     frameTimings_.debugOverlays = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", entityRenderer_ != nullptr);
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", entityRenderer_ != nullptr);
     // Draw entity casting bars
     if (!allUIHidden_ && entityRenderer_) entityRenderer_->renderEntityCastingBars(driver_, guienv_, camera_);
     frameTimings_.castingBars = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
     if (!allUIHidden_) {
         guienv_->drawAll();
         drawFPSCounter();
     }
     frameTimings_.guiDrawAll = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager");
     // Render inventory UI windows (on top of HUD)
     if (!allUIHidden_ && windowManager_) windowManager_->render();
     frameTimings_.windowManager = measureSection();
@@ -10128,11 +10590,11 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
     frameTimings_.postRender = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
     driver_->endScene();
     frameTimings_.endScene = measureSection();
 
-    LOG_DEBUG(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
     FlushThreadLog();
     return true;
 }
@@ -10621,6 +11083,44 @@ void IrrlichtRenderer::toggleManualZoneDraw() {
              manualZoneDrawEnabled_ ? "ENABLED" : "DISABLED");
 }
 
+bool IrrlichtRenderer::loadIndoorRegionMap(const std::string& zoneName) {
+    indoorRegions_.clear();
+
+    std::string regionMapsPath = config_.regionMapsPath;
+    if (regionMapsPath.empty()) regionMapsPath = "data/region_maps";
+
+    std::string mapFile = regionMapsPath + "/" + zoneName + ".json";
+    std::ifstream ifs(mapFile);
+    if (!ifs.is_open()) {
+        LOG_DEBUG(MOD_GRAPHICS, "No region map file: {} (portal vis will use zone-level heuristic)", mapFile);
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, ifs, &root, &errors)) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to parse region map {}: {}", mapFile, errors);
+        return false;
+    }
+
+    const auto& regions = root["regions"];
+    if (!regions.isArray()) {
+        LOG_WARN(MOD_GRAPHICS, "Region map {} has no 'regions' array", mapFile);
+        return false;
+    }
+
+    for (const auto& r : regions) {
+        if (r.isMember("indoor") && r["indoor"].asBool()) {
+            indoorRegions_.insert(static_cast<size_t>(r["region"].asUInt()));
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Loaded region map: {} ({} indoor regions out of {} total)",
+             mapFile, indoorRegions_.size(), regions.size());
+    return true;
+}
+
 void IrrlichtRenderer::togglePortalOcclusion() {
     if (isLoading()) return;
     if (!portalOcclusionEligible_) {
@@ -10700,11 +11200,6 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
     LOG_INFO(MOD_GRAPHICS, "  WM Update (sim):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManagerUpdate), pct(frameTimingsAccum_.windowManagerUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
-    if (portalSystem_ && portalSystem_->hasPortals()) {
-        LOG_INFO(MOD_GRAPHICS, "    Portal Entity Cull: {} visible regions, {} entities culled",
-                 portalVisibleRegions_ ? portalVisibleRegions_->size() : 0,
-                 entityRenderer_ ? entityRenderer_->getPortalCulledCount() : 0);
-    }
     LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.animatedTextures), pct(frameTimingsAccum_.animatedTextures));
@@ -12742,13 +13237,38 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         // is an optimization (~472ms build cost) — deferred from loadZone to avoid
         // poisoning the governor during progressive loading.
         if (portalBuildPending_ && zoneBspTree_ && !regionBoundingBoxes_.empty()) {
+            // Compute zone bounds from region bounding boxes (EQ coords)
+            float zbMinX = std::numeric_limits<float>::max(), zbMinY = zbMinX, zbMinZ = zbMinX;
+            float zbMaxX = std::numeric_limits<float>::lowest(), zbMaxY = zbMaxX, zbMaxZ = zbMaxX;
+            for (const auto& [idx, bbox] : regionBoundingBoxes_) {
+                zbMinX = std::min(zbMinX, bbox.MinEdge.X); zbMinY = std::min(zbMinY, bbox.MinEdge.Y); zbMinZ = std::min(zbMinZ, bbox.MinEdge.Z);
+                zbMaxX = std::max(zbMaxX, bbox.MaxEdge.X); zbMaxY = std::max(zbMaxY, bbox.MaxEdge.Y); zbMaxZ = std::max(zbMaxZ, bbox.MaxEdge.Z);
+            }
             portalSystem_ = std::make_unique<PortalSystem>();
-            portalSystem_->buildFromBsp(*zoneBspTree_, regionBoundingBoxes_);
+            portalSystem_->buildFromBsp(*zoneBspTree_, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
             portalOcclusionEligible_ = portalSystem_->hasPortals() &&
                                        (portalSystem_->getData().portals.size() > 10);
             if (portalOcclusionEligible_) {
                 LOG_INFO(MOD_GRAPHICS, "Portal occlusion eligible: {} portals (post-load build)",
                          portalSystem_->getData().portals.size());
+                // Auto-enable portal occlusion (post-load path)
+                if (config_.constrainedConfig.portalOcclusion &&
+                    config_.constrainedConfig.enableStencilBuffer) {
+                    if (!indoorRegions_.empty()) {
+                        LOG_INFO(MOD_GRAPHICS, "Portal occlusion: per-region mode (post-load, {} indoor regions)",
+                                 indoorRegions_.size());
+                    } else {
+                        size_t portalCount = portalSystem_->getData().portals.size();
+                        size_t regionCount = regionBoundingBoxes_.size();
+                        float portalRatio = regionCount > 0 ? static_cast<float>(portalCount) / regionCount : 999.0f;
+                        if (portalRatio <= 3.0f) {
+                            portalOcclusionEnabled_ = true;
+                            LOG_INFO(MOD_GRAPHICS, "Portal occlusion auto-enabled (post-load): {:.1f} ratio (indoor)", portalRatio);
+                        } else {
+                            LOG_INFO(MOD_GRAPHICS, "Portal occlusion NOT auto-enabled (post-load): {:.1f} ratio (outdoor)", portalRatio);
+                        }
+                    }
+                }
             }
             portalBuildPending_ = false;
         }

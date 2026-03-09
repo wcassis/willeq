@@ -21,6 +21,7 @@
       "playerLight": true,
       "objectLights": true,
       "directionalLight": true,
+      "portalOcclusion": false,
       "fireEffects": true,
       "skyRendering": true,
       "skyTextures": "original",

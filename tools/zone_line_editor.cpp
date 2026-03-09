@@ -30,12 +30,17 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <memory>
 #include <cmath>
+#include <limits>
 #include <json/json.h>
 
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/wld_loader.h"
+#include "client/graphics/portal_system.h"
+#include "client/graphics/portal_geometry_clipper.h"
+#include "client/hc_map.h"
 
 using namespace irr;
 using namespace core;
@@ -69,6 +74,9 @@ struct EditorState {
     std::string zone_name;
     std::string zone_long_name;
     std::string eq_path;
+    std::string maps_path;
+    float debug_x1 = 0, debug_y1 = 0, debug_x2 = 0, debug_y2 = 0;
+    bool debug_area_enabled = false;
     std::vector<ZoneLineBounds> zone_lines;
     int selected_index = -1;
 
@@ -105,6 +113,7 @@ struct EditorState {
     bool show_grid = true;
     bool show_geometry = true;
     bool show_points = true;
+    bool show_portals = false;  // R key toggle
 
     // Z value for zone line placement (adjusted by zoom keys in increments of 10)
     float placement_z = 0.0f;
@@ -196,10 +205,20 @@ private:
 
 class ZoneLineEditor {
 public:
-    ZoneLineEditor(const std::string& zone_name, const std::string& eq_path)
+    ZoneLineEditor(const std::string& zone_name, const std::string& eq_path,
+                   const std::string& maps_path = "")
     {
         state_.zone_name = zone_name;
         state_.eq_path = eq_path;
+        state_.maps_path = maps_path;
+    }
+
+    void setDebugArea(float x1, float y1, float x2, float y2) {
+        state_.debug_area_enabled = true;
+        state_.debug_x1 = x1;
+        state_.debug_y1 = y1;
+        state_.debug_x2 = x2;
+        state_.debug_y2 = y2;
     }
 
     bool init() {
@@ -267,15 +286,15 @@ private:
         }
         test.close();
 
-        // Load zone using WldLoader
-        WldLoader loader;
-        if (!loader.parseFromArchive(s3d_path, wld_name)) {
+        // Load zone using WldLoader (keep alive for per-region geometry access)
+        wld_loader_ = std::make_unique<WldLoader>();
+        if (!wld_loader_->parseFromArchive(s3d_path, wld_name)) {
             std::cerr << "Failed to parse zone archive" << std::endl;
             return false;
         }
 
         // Get combined geometry
-        zone_geometry_ = loader.getCombinedGeometry();
+        zone_geometry_ = wld_loader_->getCombinedGeometry();
         if (!zone_geometry_) {
             std::cerr << "No geometry found in zone" << std::endl;
             return false;
@@ -296,7 +315,160 @@ private:
                   << "Y[" << state_.zone_min_y << ", " << state_.zone_max_y << "] "
                   << "Z[" << state_.zone_min_z << ", " << state_.zone_max_z << "]" << std::endl;
 
+        // Load portal data if BSP + PVS available
+        loadPortalData();
+
         return true;
+    }
+
+    void loadPortalData() {
+        auto bspTree = wld_loader_->getBspTree();
+        if (!bspTree || !wld_loader_->hasPvsData()) {
+            std::cout << "No BSP/PVS data — portal overlay unavailable" << std::endl;
+            return;
+        }
+
+        // Load HCMap collision mesh
+        std::unique_ptr<HCMap> hcmap;
+        if (!state_.maps_path.empty()) {
+            hcmap.reset(HCMap::LoadMapFile(state_.zone_name, state_.maps_path));
+            if (hcmap && hcmap->IsLoaded()) {
+                auto stats = hcmap->GetMemoryStats();
+                std::cout << "HCMap loaded: " << stats.vertexCount << " vertices, "
+                          << stats.faceCount << " faces" << std::endl;
+            } else {
+                std::cout << "Warning: Failed to load HCMap from " << state_.maps_path << std::endl;
+                hcmap.reset();
+            }
+        } else {
+            std::cout << "No --maps-path specified — portal clipping disabled" << std::endl;
+            return;
+        }
+
+        size_t numRegions = bspTree->regions.size();
+        float bMinX = state_.zone_min_x, bMinY = state_.zone_min_y, bMinZ = state_.zone_min_z;
+        float bMaxX = state_.zone_max_x, bMaxY = state_.zone_max_y, bMaxZ = state_.zone_max_z;
+
+        // Extract BSP boundary portals
+        PortalSystem portalSystem;
+        portalSystem.buildFromBsp(*bspTree, bMinX, bMinY, bMinZ, bMaxX, bMaxY, bMaxZ);
+        const auto& portalData = portalSystem.getData();
+
+        std::cout << "BSP portals: " << portalData.portals.size() << std::endl;
+
+        // Compute region AABBs and classify
+        struct AABB { float minX, minY, minZ, maxX, maxY, maxZ; };
+        std::map<size_t, AABB> regionAABBs;
+
+        for (size_t i = 0; i < numRegions; ++i) {
+            auto geom = wld_loader_->getGeometryForRegion(i);
+            if (!geom || geom->vertices.empty()) continue;
+            AABB aabb;
+            aabb.minX = aabb.minY = aabb.minZ = std::numeric_limits<float>::max();
+            aabb.maxX = aabb.maxY = aabb.maxZ = std::numeric_limits<float>::lowest();
+            for (const auto& v : geom->vertices) {
+                float wx = geom->centerX + v.x, wy = geom->centerY + v.y, wz = geom->centerZ + v.z;
+                aabb.minX = std::min(aabb.minX, wx); aabb.minY = std::min(aabb.minY, wy); aabb.minZ = std::min(aabb.minZ, wz);
+                aabb.maxX = std::max(aabb.maxX, wx); aabb.maxY = std::max(aabb.maxY, wy); aabb.maxZ = std::max(aabb.maxZ, wz);
+            }
+            regionAABBs[i] = aabb;
+        }
+
+        // Clip portals against HCMap collision mesh
+        std::unordered_map<size_t, float> regionOpeningArea;
+        std::unordered_map<size_t, int> regionDoorwayCount;
+        float rayLength = 15.0f;
+        float gridSpacing = 0.5f;
+
+        int processed = 0;
+        int progressStep = std::max(1, (int)portalData.portals.size() / 10);
+
+        int skippedOutside = 0;
+        for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
+            const auto& portal = portalData.portals[pi];
+
+            // If debug area is set, skip portals outside it
+            if (state_.debug_area_enabled) {
+                float daMinX = std::min(state_.debug_x1, state_.debug_x2);
+                float daMaxX = std::max(state_.debug_x1, state_.debug_x2);
+                float daMinY = std::min(state_.debug_y1, state_.debug_y2);
+                float daMaxY = std::max(state_.debug_y1, state_.debug_y2);
+                if (portal.centerX < daMinX || portal.centerX > daMaxX ||
+                    portal.centerY < daMinY || portal.centerY > daMaxY) {
+                    skippedOutside++;
+                    continue;
+                }
+            }
+
+            ClippedPortalResult clipped = clipPortalAgainstGeometry(
+                portal, hcmap.get(), rayLength, gridSpacing);
+
+            PortalOverlayEntry entry;
+            entry.regionA = portal.regionA;
+            entry.regionB = portal.regionB;
+            entry.centerX = portal.centerX;
+            entry.centerY = portal.centerY;
+            entry.centerZ = portal.centerZ;
+            entry.area = portal.area;
+            entry.boundaryVerts = portal.vertices;
+
+            if (clipped.isFullyOpen()) {
+                entry.classification = "open-air";
+            } else if (clipped.isFullyCovered()) {
+                entry.classification = "wall";
+            } else {
+                entry.classification = "doorway";
+                regionOpeningArea[portal.regionA] += clipped.totalOpeningArea;
+                regionOpeningArea[portal.regionB] += clipped.totalOpeningArea;
+                regionDoorwayCount[portal.regionA]++;
+                regionDoorwayCount[portal.regionB]++;
+
+                for (auto& opening : clipped.openings) {
+                    entry.openingVerts.push_back(std::move(opening.vertices));
+                }
+            }
+
+            portal_overlays_.push_back(std::move(entry));
+
+            if (++processed % progressStep == 0) {
+                std::cout << "  Portal clipping: " << processed << " / " << portalData.portals.size() << std::endl;
+            }
+        }
+
+        if (state_.debug_area_enabled) {
+            std::cout << "  Debug area: processed " << processed << " portals, skipped " << skippedOutside << " outside area" << std::endl;
+        }
+
+        // Classify regions
+        float threshold = 0.3f;
+        for (const auto& [idx, aabb] : regionAABBs) {
+            float surfArea = 2.0f * ((aabb.maxX-aabb.minX)*(aabb.maxY-aabb.minY) +
+                                      (aabb.maxX-aabb.minX)*(aabb.maxZ-aabb.minZ) +
+                                      (aabb.maxY-aabb.minY)*(aabb.maxZ-aabb.minZ));
+            float ratio = surfArea > 0 ? regionOpeningArea[idx] / surfArea : 999.0f;
+            bool indoor = (ratio <= threshold && regionDoorwayCount[idx] > 0);
+
+            RegionOverlayEntry re;
+            re.regionIndex = idx;
+            re.indoor = indoor;
+            re.minX = aabb.minX; re.minY = aabb.minY; re.minZ = aabb.minZ;
+            re.maxX = aabb.maxX; re.maxY = aabb.maxY; re.maxZ = aabb.maxZ;
+            region_overlays_.push_back(re);
+        }
+
+        int indoorCount = 0;
+        for (const auto& r : region_overlays_) if (r.indoor) indoorCount++;
+
+        int wallCount = 0, doorwayCount = 0, openAirCount = 0;
+        for (const auto& p : portal_overlays_) {
+            if (p.classification == "wall") wallCount++;
+            else if (p.classification == "doorway") doorwayCount++;
+            else openAirCount++;
+        }
+
+        std::cout << "Portal overlay ready: " << portal_overlays_.size() << " portals ("
+                  << openAirCount << " open-air, " << wallCount << " wall, " << doorwayCount << " doorway), "
+                  << indoorCount << "/" << region_overlays_.size() << " indoor regions" << std::endl;
     }
 
     void loadZoneLineData() {
@@ -463,6 +635,10 @@ private:
                     break;
                 case KEY_KEY_P:
                     state_.show_points = !state_.show_points;
+                    break;
+                case KEY_KEY_R:
+                    state_.show_portals = !state_.show_portals;
+                    std::cout << "Portal overlay: " << (state_.show_portals ? "ON" : "OFF") << std::endl;
                     break;
                 case KEY_TAB:
                     // Cycle through zone lines
@@ -736,6 +912,10 @@ private:
             renderZoneGeometry();
         }
 
+        if (state_.show_portals) {
+            renderPortalOverlay();
+        }
+
         if (state_.show_points) {
             renderZoneLines();
         }
@@ -878,6 +1058,75 @@ private:
                                               std::max(sx1, sx2), std::max(sy1, sy2)), draw_color);
     }
 
+    void renderPortalOverlay() {
+        // Draw region AABBs as filled rectangles (top-down XY projection)
+        for (const auto& reg : region_overlays_) {
+            // Z-depth filtering
+            if (state_.z_filter_enabled) {
+                if (reg.minZ > state_.placement_z) continue;
+            }
+
+            int sx1, sy1, sx2, sy2;
+            worldToScreen(reg.minX, reg.minY, sx1, sy1);
+            worldToScreen(reg.maxX, reg.maxY, sx2, sy2);
+
+            // Indoor = blue tint, outdoor = no fill
+            if (reg.indoor) {
+                SColor fill(30, 60, 60, 200);
+                driver_->draw2DRectangle(fill, recti(std::min(sx1, sx2), std::min(sy1, sy2),
+                                                      std::max(sx1, sx2), std::max(sy1, sy2)));
+            }
+        }
+
+        // Draw portal boundaries and openings
+        for (const auto& p : portal_overlays_) {
+            // Z-depth filtering: skip portals above placement Z
+            if (state_.z_filter_enabled && p.centerZ > state_.placement_z) continue;
+
+            // Choose color by classification
+            SColor color;
+            if (p.classification == "open-air") {
+                color = SColor(60, 255, 165, 0);   // Orange, very transparent
+            } else if (p.classification == "wall") {
+                color = SColor(120, 255, 0, 0);     // Red
+            } else {
+                color = SColor(180, 255, 255, 0);   // Yellow for doorway boundary
+            }
+
+            // Draw BSP boundary polygon edges (top-down: use X,Y, ignore Z)
+            size_t nv = p.boundaryVerts.size() / 3;
+            if (nv >= 3 && p.classification != "open-air") {
+                for (size_t i = 0; i < nv; ++i) {
+                    size_t j = (i + 1) % nv;
+                    float x0 = p.boundaryVerts[i * 3 + 0], y0 = p.boundaryVerts[i * 3 + 1];
+                    float x1 = p.boundaryVerts[j * 3 + 0], y1 = p.boundaryVerts[j * 3 + 1];
+                    int sx0, sy0, sx1, sy1;
+                    worldToScreen(x0, y0, sx0, sy0);
+                    worldToScreen(x1, y1, sx1, sy1);
+                    driver_->draw2DLine(position2d<s32>(sx0, sy0), position2d<s32>(sx1, sy1), color);
+                }
+            }
+
+            // Draw opening polygons in green
+            if (!p.openingVerts.empty()) {
+                SColor openColor(220, 0, 255, 0);  // Bright green
+                for (const auto& opening : p.openingVerts) {
+                    size_t onv = opening.size() / 3;
+                    if (onv < 3) continue;
+                    for (size_t i = 0; i < onv; ++i) {
+                        size_t j = (i + 1) % onv;
+                        float x0 = opening[i * 3 + 0], y0 = opening[i * 3 + 1];
+                        float x1 = opening[j * 3 + 0], y1 = opening[j * 3 + 1];
+                        int sx0, sy0, sx1, sy1;
+                        worldToScreen(x0, y0, sx0, sy0);
+                        worldToScreen(x1, y1, sx1, sy1);
+                        driver_->draw2DLine(position2d<s32>(sx0, sy0), position2d<s32>(sx1, sy1), openColor);
+                    }
+                }
+            }
+        }
+    }
+
     void renderUI() {
         IGUIFont* font = guienv_->getBuiltInFont();
         if (!font) return;
@@ -958,7 +1207,7 @@ private:
         y += 15;
         font->draw(L"  Tab - Cycle zone lines    Ctrl+S - Save", recti(10, y, 500, y + 20), help_color);
         y += 15;
-        font->draw(L"  G - Grid    Z - Geometry    P - Points", recti(10, y, 500, y + 20), help_color);
+        font->draw(L"  G - Grid    Z - Geometry    P - Points    R - Portals", recti(10, y, 600, y + 20), help_color);
         y += 15;
         font->draw(L"  M - Cycle draw mode    [/] - Z thickness", recti(10, y, 500, y + 20), help_color);
         y += 15;
@@ -978,12 +1227,32 @@ private:
 
     EditorState state_;
     std::shared_ptr<ZoneGeometry> zone_geometry_;
+
+    // Portal overlay data
+    struct PortalOverlayEntry {
+        size_t regionA, regionB;
+        float centerX, centerY, centerZ;
+        float area;
+        std::string classification;  // "open-air", "wall", "doorway"
+        // BSP boundary polygon vertices (EQ coords: x,y,z packed)
+        std::vector<float> boundaryVerts;
+        // Opening polygon vertices (EQ coords)
+        std::vector<std::vector<float>> openingVerts;
+    };
+    struct RegionOverlayEntry {
+        size_t regionIndex;
+        bool indoor;
+        float minX, minY, minZ, maxX, maxY, maxZ;  // AABB in EQ coords
+    };
+    std::vector<PortalOverlayEntry> portal_overlays_;
+    std::vector<RegionOverlayEntry> region_overlays_;
+    std::unique_ptr<WldLoader> wld_loader_;  // Keep alive for per-region geometry access
 };
 
 void printUsage(const char* program) {
-    std::cout << "Usage: " << program << " <zone_name> [--eq-path /path/to/EQ]" << std::endl;
+    std::cout << "Usage: " << program << " <zone_name> [--eq-path /path/to/EQ] [--maps-path /path/to/maps]" << std::endl;
     std::cout << std::endl;
-    std::cout << "Example: " << program << " qeynos2 --eq-path /home/user/EverQuest" << std::endl;
+    std::cout << "Example: " << program << " qeynos2 --eq-path /home/user/EverQuest --maps-path /path/to/maps/base" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -994,21 +1263,37 @@ int main(int argc, char* argv[]) {
 
     std::string zone_name = argv[1];
     std::string eq_path = "/home/user/projects/claude/EverQuestP1999";  // Default path
+    std::string maps_path;
+    float debug_x1 = 0, debug_y1 = 0, debug_x2 = 0, debug_y2 = 0;
+    bool debug_area = false;
 
     // Parse arguments
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--eq-path" && i + 1 < argc) {
             eq_path = argv[++i];
+        } else if (arg == "--maps-path" && i + 1 < argc) {
+            maps_path = argv[++i];
+        } else if (arg == "--debug-area" && i + 4 < argc) {
+            debug_x1 = std::stof(argv[++i]);
+            debug_y1 = std::stof(argv[++i]);
+            debug_x2 = std::stof(argv[++i]);
+            debug_y2 = std::stof(argv[++i]);
+            debug_area = true;
         }
     }
 
     std::cout << "Zone Line Editor" << std::endl;
     std::cout << "Zone: " << zone_name << std::endl;
     std::cout << "EQ Path: " << eq_path << std::endl;
+    if (!maps_path.empty())
+        std::cout << "Maps Path: " << maps_path << std::endl;
     std::cout << std::endl;
 
-    ZoneLineEditor editor(zone_name, eq_path);
+    ZoneLineEditor editor(zone_name, eq_path, maps_path);
+    if (debug_area) {
+        editor.setDebugArea(debug_x1, debug_y1, debug_x2, debug_y2);
+    }
     if (!editor.init()) {
         return 1;
     }

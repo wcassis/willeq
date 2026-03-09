@@ -712,7 +712,11 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
 
             if (DDSDecoder::isDDS(rawData)) {
                 DecodedImage img = DDSDecoder::decode(rawData);
-                if (!img.isValid()) continue;
+                if (!img.isValid()) {
+                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: DDS decode failed for '{}' race={} gender={}",
+                             texName, raceId, gender);
+                    continue;
+                }
                 decoded.width = img.width;
                 decoded.height = img.height;
                 decoded.argbPixels.resize(img.width * img.height);
@@ -727,9 +731,83 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
                                             static_cast<uint32_t>(b);
                     if (a < 255) decoded.hasAlpha = true;
                 }
+            } else if (rawData.size() >= 54 && rawData[0] == 'B' && rawData[1] == 'M') {
+                // BMP decode: parse header, palette, and pixel data to ARGB
+                uint32_t dataOffset = *reinterpret_cast<const uint32_t*>(&rawData[10]);
+                uint32_t headerSize = *reinterpret_cast<const uint32_t*>(&rawData[14]);
+                int32_t width = *reinterpret_cast<const int32_t*>(&rawData[18]);
+                int32_t height = *reinterpret_cast<const int32_t*>(&rawData[22]);
+                uint16_t bpp = *reinterpret_cast<const uint16_t*>(&rawData[28]);
+                uint32_t compression = *reinterpret_cast<const uint32_t*>(&rawData[30]);
+                bool bottomUp = (height > 0);
+                uint32_t absHeight = bottomUp ? height : -height;
+
+                if (width <= 0 || absHeight == 0 || width > 4096 || absHeight > 4096) {
+                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: BMP invalid dimensions {}x{} for '{}' race={} gender={}",
+                             width, absHeight, texName, raceId, gender);
+                    continue;
+                }
+
+                decoded.width = static_cast<uint32_t>(width);
+                decoded.height = absHeight;
+                decoded.argbPixels.resize(decoded.width * decoded.height);
+
+                if (bpp == 8 && compression == 0) {
+                    // 8-bit paletted BMP
+                    uint32_t paletteOffset = 14 + headerSize;
+                    uint32_t paletteEntries = (dataOffset - paletteOffset) / 4;
+                    if (paletteEntries > 256) paletteEntries = 256;
+                    if (paletteOffset + paletteEntries * 4 > rawData.size() || dataOffset >= rawData.size()) {
+                        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: BMP palette/data out of bounds for '{}' race={} gender={}",
+                                 texName, raceId, gender);
+                        continue;
+                    }
+
+                    // Read BGRA palette
+                    uint32_t palette[256] = {};
+                    for (uint32_t i = 0; i < paletteEntries; ++i) {
+                        uint8_t b = rawData[paletteOffset + i * 4 + 0];
+                        uint8_t g = rawData[paletteOffset + i * 4 + 1];
+                        uint8_t r = rawData[paletteOffset + i * 4 + 2];
+                        palette[i] = 0xFF000000u | (static_cast<uint32_t>(r) << 16) |
+                                     (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
+                    }
+
+                    // BMP rows are padded to 4-byte boundaries
+                    uint32_t rowStride = (decoded.width + 3) & ~3u;
+                    for (uint32_t y = 0; y < decoded.height; ++y) {
+                        uint32_t srcRow = bottomUp ? (decoded.height - 1 - y) : y;
+                        size_t rowOffset = dataOffset + static_cast<size_t>(srcRow) * rowStride;
+                        if (rowOffset + decoded.width > rawData.size()) break;
+                        for (uint32_t x = 0; x < decoded.width; ++x) {
+                            uint8_t idx = rawData[rowOffset + x];
+                            decoded.argbPixels[y * decoded.width + x] = palette[idx];
+                        }
+                    }
+                } else if (bpp == 24 && compression == 0) {
+                    // 24-bit RGB BMP
+                    uint32_t rowStride = (decoded.width * 3 + 3) & ~3u;
+                    for (uint32_t y = 0; y < decoded.height; ++y) {
+                        uint32_t srcRow = bottomUp ? (decoded.height - 1 - y) : y;
+                        size_t rowOffset = dataOffset + static_cast<size_t>(srcRow) * rowStride;
+                        if (rowOffset + decoded.width * 3 > rawData.size()) break;
+                        for (uint32_t x = 0; x < decoded.width; ++x) {
+                            uint8_t b = rawData[rowOffset + x * 3 + 0];
+                            uint8_t g = rawData[rowOffset + x * 3 + 1];
+                            uint8_t r = rawData[rowOffset + x * 3 + 2];
+                            decoded.argbPixels[y * decoded.width + x] =
+                                0xFF000000u | (static_cast<uint32_t>(r) << 16) |
+                                (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
+                        }
+                    }
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: BMP unsupported format bpp={} compression={} for '{}' race={} gender={}",
+                             bpp, compression, texName, raceId, gender);
+                    continue;
+                }
             } else {
-                // BMP textures: try to decode via Irrlicht's BMP reader path
-                // These are uncommon for entity textures; leave as raw data for main-thread decode
+                LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: unknown texture format for '{}' (size={}, magic=0x{:02x}{:02x}) race={} gender={}",
+                         texName, rawData.size(), rawData[0], rawData[1], raceId, gender);
                 continue;
             }
 

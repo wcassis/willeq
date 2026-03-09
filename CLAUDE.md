@@ -176,9 +176,6 @@ The client connects through three stages, each with its own connection manager:
 - `SkillData` - Skill properties (value, category, cooldown, requirements)
 - `skill_constants.h` - Skill IDs, names, categories, animation mappings
 
-**EverQuest Client Files**
-- `/home/user/projects/claude/EverQuestP1999` - Official Titanium Edition EverQuest Client
-
 ### Packet Structures
 
 Titanium-specific packet structures are defined in `include/common/packet_structs.h`. These are binary-compatible with the Titanium client protocol.

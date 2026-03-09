@@ -194,9 +194,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.entityRenderDistance = 300.0f;
             config.maxVisibleEntities = 40;
             config.maxPolygonsPerFrame = 80000;
-            // Software occlusion culling disabled — portal BFS walk handles
-            // entity visibility, and PVS + frustum handles region visibility.
+            // Software occlusion culling disabled — PVS + frustum handles region
+            // visibility, stencil portal masking handles geometry in indoor zones.
             // The CPU rasterizer costs 130ms+ per Tier2 frame on ARM.
+            config.portalOcclusion = true;     // Auto-enable stencil portal vis in indoor zones
             config.occlusionBufferWidth = 0;
             config.occlusionBufferHeight = 0;
             config.occlusionMaxOccluderRegions = 0;

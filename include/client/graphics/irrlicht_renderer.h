@@ -338,6 +338,7 @@ struct RendererConfig {
     bool fullscreen = false;
     std::string windowTitle = "WillEQ";
     std::string eqClientPath;      // Path to EQ client files
+    std::string regionMapsPath = "data/region_maps";  // Per-zone indoor region classification
 
     // Rendering options
     bool lighting = false;         // Fullbright mode by default
@@ -1239,6 +1240,10 @@ private:
     std::unique_ptr<PortalSystem> portalSystem_;
     bool portalOcclusionEnabled_ = false;
     bool portalOcclusionEligible_ = false;
+
+    // Per-region indoor classification (loaded from data/region_maps/<zone>.json)
+    std::unordered_set<size_t> indoorRegions_;
+    bool loadIndoorRegionMap(const std::string& zoneName);
 
     // Region neighbor map (built from portal system for 1-depth PVS expansion)
     std::unordered_map<size_t, std::vector<size_t>> regionNeighbors_;

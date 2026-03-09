@@ -223,6 +223,13 @@ public:
                                   bool useAlphaChannelOfTexture=false);
 
     // 3D drawing
+    virtual void draw3DLine(const core::vector3df& start,
+                            const core::vector3df& end,
+                            SColor color=SColor(255,255,255,255));
+
+    // Batch draw 3D lines. vertices: packed [x,y,z, r,g,b,a] per vertex, 2 vertices per line.
+    void draw3DLinesBatch(const f32* vertices, u32 lineCount);
+
     virtual void drawVertexPrimitiveList(const void* vertices, u32 vertexCount,
                                          const void* indexList, u32 primitiveCount,
                                          E_VERTEX_TYPE vType=EVT_STANDARD,

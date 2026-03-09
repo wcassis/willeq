@@ -408,6 +408,7 @@ struct SimulationOutput {
     std::vector<uint8_t> lightVisible;      // 1=visible, 0=hidden
     std::vector<uint8_t> objectLightVisible; // 1=visible, 0=hidden (object lights)
     size_t currentPvsRegion = SIZE_MAX;     // Camera's current BSP region
+    bool cameraInIndoorRegion = false;      // Whether camera is in a classified indoor region
 
     // Portal-visible regions (BFS walk from camera room through portal graph)
     std::unordered_set<size_t> portalVisibleRegions;
@@ -680,6 +681,14 @@ struct SimulationZoneData {
     // Portal system (non-owning, immutable after zone load)
     const PortalSystem* portalSystem = nullptr;
 
+    // Portal visibility config (from ConstrainedRendererConfig)
+    bool enablePortalVis = false;       // portalOcclusion config flag
+    bool enableStencilBuffer = false;   // Whether stencil buffer is available
+
+    // Per-region indoor classification (from zone_region_classifier tool)
+    // Empty = no classification data, treat all regions as outdoor
+    std::unordered_set<size_t> indoorRegions;
+
     // Collision map for ground snapping (non-owning, immutable after zone load)
     const ::HCMap* hcMap = nullptr;
 
@@ -858,6 +867,9 @@ private:
         bool active;  // Has velocity (in active set)
     };
     std::unordered_map<uint16_t, WorkerEntityState> workerEntities_;
+
+    // Previous frame entity visibility (for transition logging)
+    std::unordered_map<uint16_t, bool> prevEntityVisibility_;
 
     // Fire flicker state (owned by worker thread)
     std::vector<float> flickerPhases_;      // Per object light

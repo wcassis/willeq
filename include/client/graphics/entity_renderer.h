@@ -475,13 +475,6 @@ public:
     // Set occlusion-culled regions (non-owning pointer, cleared each frame)
     void setOcclusionCulledRegions(const std::unordered_set<size_t>* regions) { occlusionCulledRegions_ = regions; }
 
-    // Set portal-visible regions for entity culling (non-owning pointer, cleared each frame)
-    // When set, entities in BSP regions NOT in this set are culled (more reliable than SW occlusion)
-    void setPortalVisibleRegions(const std::unordered_set<size_t>* regions) { portalVisibleRegions_ = regions; }
-
-    // Get number of entities culled by portal visibility this frame
-    int getPortalCulledCount() const { return portalCulledCount_; }
-
     // Set software occlusion culler for per-entity depth buffer testing
     void setOcclusionCuller(SoftwareOcclusionCuller* culler) { occlusionCuller_ = culler; }
 
@@ -590,10 +583,6 @@ private:
 
     // Occlusion-culled regions (non-owning pointer, owned by IrrlichtRenderer)
     const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
-
-    // Portal-visible regions (non-owning pointer, owned by IrrlichtRenderer)
-    const std::unordered_set<size_t>* portalVisibleRegions_ = nullptr;
-    int portalCulledCount_ = 0;  // Debug: entities culled by portal visibility this frame
 
     // Per-entity occlusion culler (non-owning pointer, owned by IrrlichtRenderer)
     SoftwareOcclusionCuller* occlusionCuller_ = nullptr;

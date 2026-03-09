@@ -18095,6 +18095,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	config.width = width;
 	config.height = height;
 	config.eqClientPath = m_eq_client_path;
+	config.regionMapsPath = m_region_maps_path;
 	config.windowTitle = "WillEQ - " + m_character;
 	config.lighting = false;  // Fullbright mode
 	config.constrainedPreset = m_constrained_preset;  // Constrained rendering mode (startup-only)

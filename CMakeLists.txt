@@ -754,6 +754,27 @@ IF(EQT_GRAPHICS)
         fmt::fmt
     )
 
+    ADD_EXECUTABLE(zone_region_classifier
+        tools/zone_region_classifier.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/portal_system.cpp
+        src/client/graphics/portal_geometry_clipper.cpp
+        src/client/hc_map.cpp
+        src/client/raycast_mesh.cpp
+        src/common/util/compression.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(zone_region_classifier PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+        ${GLM_INCLUDE_DIR}
+    )
+    TARGET_LINK_LIBRARIES(zone_region_classifier
+        ${ZLIB_LIBRARIES}
+        fmt::fmt
+    )
+
     ADD_EXECUTABLE(region_poly_audit
         tools/region_poly_audit.cpp
         src/client/graphics/eq/pfs.cpp
@@ -901,6 +922,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/background_thread_pool.cpp
+        src/client/graphics/portal_system.cpp
+        src/client/graphics/portal_geometry_clipper.cpp
+        src/client/hc_map.cpp
+        src/client/raycast_mesh.cpp
+        src/common/util/compression.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(zone_line_editor PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -908,6 +934,7 @@ IF(EQT_GRAPHICS)
         ${ZLIB_INCLUDE_DIRS}
         ${IRRLICHT_INCLUDE_DIR}
         ${JSONCPP_INCLUDE_DIRS}
+        ${GLM_INCLUDE_DIR}
     )
     TARGET_LINK_LIBRARIES(zone_line_editor
         ${ZLIB_LIBRARIES}

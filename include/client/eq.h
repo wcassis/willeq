@@ -977,6 +977,7 @@ public:
 	void ShutdownGraphics();
 	bool UpdateGraphics(float deltaTime);
 	void SetEQClientPath(const std::string& path);
+	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
 	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
 	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
@@ -1564,6 +1565,7 @@ private:
 	// Graphics renderer
 	std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
 	std::string m_eq_client_path;
+	std::string m_region_maps_path = "data/region_maps";
 	std::string m_config_path;  // Path to per-character config file
 	bool m_graphics_initialized = false;
 	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)

@@ -483,6 +483,11 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
     size_t cameraRegion = bsp.findRegionIndexForPoint(input.camEqX, input.camEqY, input.camEqZ);
     output.currentPvsRegion = cameraRegion;
 
+    // Check if camera is in an indoor region (for per-region portal occlusion)
+    output.cameraInIndoorRegion = !zoneData_.indoorRegions.empty() &&
+                                   cameraRegion != SIZE_MAX &&
+                                   zoneData_.indoorRegions.count(cameraRegion) > 0;
+
     // Clear prep-layer outputs
     output.meshLoadQueue.clear();
     output.protectedRegions.clear();
@@ -599,6 +604,9 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
     // Sort front-to-back by distance
     std::sort(output.sortedRegions.begin(), output.sortedRegions.end(),
               [](const auto& a, const auto& b) { return a.distanceSq < b.distanceSq; });
+
+    LOG_DEBUG(MOD_GRAPHICS, "RegionVis: {}/{} visible (candidates={}, frustumValid={})",
+              output.sortedRegions.size(), regionCount, candidates->size(), input.frustumValid);
 }
 
 // ============================================================================
@@ -607,6 +615,13 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
 
 void SimulationWorker::computePortalVisibility(const SimulationInput& input, SimulationOutput& output) {
     output.portalVisibleRegions.clear();
+
+    // BFS walk is the CPU fallback for portal visibility when stencil masking is
+    // not available. When stencil IS available, the GPU does recursive stencil
+    // masking at render time (drawZoneGeometryWithPortals) — no BFS needed.
+    if (!zoneData_.enablePortalVis || zoneData_.enableStencilBuffer) {
+        return;
+    }
 
     const auto* portalSystem = zoneData_.portalSystem;
     if (!portalSystem || !portalSystem->hasPortals() || output.currentPvsRegion == SIZE_MAX) {
@@ -654,16 +669,18 @@ void SimulationWorker::computePortalVisibility(const SimulationInput& input, Sim
 
             // Frustum check: is the portal opening visible?
             if (input.frustumValid) {
-                float minX = portal.vertices[0][0], maxX = portal.vertices[0][0];
-                float minY = portal.vertices[0][1], maxY = portal.vertices[0][1];
-                float minZ = portal.vertices[0][2], maxZ = portal.vertices[0][2];
-                for (int v = 1; v < 4; ++v) {
-                    if (portal.vertices[v][0] < minX) minX = portal.vertices[v][0];
-                    if (portal.vertices[v][0] > maxX) maxX = portal.vertices[v][0];
-                    if (portal.vertices[v][1] < minY) minY = portal.vertices[v][1];
-                    if (portal.vertices[v][1] > maxY) maxY = portal.vertices[v][1];
-                    if (portal.vertices[v][2] < minZ) minZ = portal.vertices[v][2];
-                    if (portal.vertices[v][2] > maxZ) maxZ = portal.vertices[v][2];
+                size_t nv = portal.vertexCount();
+                if (nv == 0) continue;
+                float minX = portal.vx(0), maxX = minX;
+                float minY = portal.vy(0), maxY = minY;
+                float minZ = portal.vz(0), maxZ = minZ;
+                for (size_t v = 1; v < nv; ++v) {
+                    if (portal.vx(v) < minX) minX = portal.vx(v);
+                    if (portal.vx(v) > maxX) maxX = portal.vx(v);
+                    if (portal.vy(v) < minY) minY = portal.vy(v);
+                    if (portal.vy(v) > maxY) maxY = portal.vy(v);
+                    if (portal.vz(v) < minZ) minZ = portal.vz(v);
+                    if (portal.vz(v) > maxZ) maxZ = portal.vz(v);
                 }
                 if (!testFrustumAABB(input.frustumPlanes, minX, minY, minZ, maxX, maxY, maxZ)) {
                     continue;
@@ -743,6 +760,7 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
     }
 
     float renderDistSq = input.renderDistance * input.renderDistance;
+    int objVisible = 0, objDistCulled = 0, objPvsCulled = 0, objFrustumCulled = 0, objNoNode = 0;
 
     // Camera position in Irrlicht Y-up for AABB distance checks
     const auto& camPos = input.cameraPos;
@@ -751,6 +769,7 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
         const auto& obj = zoneData_.objects[i];
         if (!obj.hasNode) {
             output.objectVisible[i] = 0;
+            objNoNode++;
             continue;
         }
 
@@ -766,6 +785,7 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
 
         if (distSq > renderDistSq) {
             output.objectVisible[i] = 0;
+            objDistCulled++;
             continue;
         }
 
@@ -777,6 +797,7 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
                 const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
                 if (!pvs.empty() && obj.bspRegion < pvs.size() && !pvs[obj.bspRegion]) {
                     output.objectVisible[i] = 0;
+                    objPvsCulled++;
                     continue;
                 }
             }
@@ -789,12 +810,17 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
                                   bb.MinEdge.X, bb.MinEdge.Z, bb.MinEdge.Y,
                                   bb.MaxEdge.X, bb.MaxEdge.Z, bb.MaxEdge.Y)) {
                 output.objectVisible[i] = 0;
+                objFrustumCulled++;
                 continue;
             }
         }
 
         output.objectVisible[i] = 1;
+        objVisible++;
     }
+
+    LOG_DEBUG(MOD_GRAPHICS, "ObjectVis: {}/{} visible (noNode={}, dist={}, pvs={}, frustum={})",
+              objVisible, objectCount, objNoNode, objDistCulled, objPvsCulled, objFrustumCulled);
 }
 
 // ============================================================================
@@ -811,6 +837,7 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
 
     float renderDistSq = input.renderDistance * input.renderDistance;
     const auto& camPos = input.cameraPos;
+    int ltVisible = 0, ltDistCulled = 0, ltPvsCulled = 0, ltFrustumCulled = 0;
 
     for (size_t i = 0; i < lightCount; ++i) {
         const auto& light = zoneData_.zoneLights[i];
@@ -823,6 +850,7 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
 
         if (distSq > renderDistSq) {
             output.lightVisible[i] = 0;
+            ltDistCulled++;
             continue;
         }
 
@@ -834,6 +862,7 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
                 const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
                 if (!pvs.empty() && light.bspRegion < pvs.size() && !pvs[light.bspRegion]) {
                     output.lightVisible[i] = 0;
+                    ltPvsCulled++;
                     continue;
                 }
             }
@@ -850,12 +879,17 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
                                   eqX - testRadius, eqY - testRadius, eqZ - testRadius,
                                   eqX + testRadius, eqY + testRadius, eqZ + testRadius)) {
                 output.lightVisible[i] = 0;
+                ltFrustumCulled++;
                 continue;
             }
         }
 
         output.lightVisible[i] = 1;
+        ltVisible++;
     }
+
+    LOG_DEBUG(MOD_GRAPHICS, "ZoneLightVis: {}/{} visible (dist={}, pvs={}, frustum={})",
+              ltVisible, lightCount, ltDistCulled, ltPvsCulled, ltFrustumCulled);
 }
 
 // ============================================================================
@@ -872,6 +906,7 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
 
     float renderDistSq = input.renderDistance * input.renderDistance;
     const auto& camPos = input.cameraPos;
+    int olVisible = 0, olDistCulled = 0, olPvsCulled = 0, olFrustumCulled = 0;
 
     for (size_t i = 0; i < lightCount; ++i) {
         const auto& light = zoneData_.objectLights[i];
@@ -884,6 +919,7 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
 
         if (distSq > renderDistSq) {
             output.objectLightVisible[i] = 0;
+            olDistCulled++;
             continue;
         }
 
@@ -895,16 +931,9 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
                 const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
                 if (!pvs.empty() && light.bspRegion < pvs.size() && !pvs[light.bspRegion]) {
                     output.objectLightVisible[i] = 0;
+                    olPvsCulled++;
                     continue;
                 }
-            }
-        }
-
-        // Portal culling
-        if (!output.portalVisibleRegions.empty() && light.bspRegion != SIZE_MAX) {
-            if (output.portalVisibleRegions.find(light.bspRegion) == output.portalVisibleRegions.end()) {
-                output.objectLightVisible[i] = 0;
-                continue;
             }
         }
 
@@ -918,12 +947,17 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
                                   eqX - testRadius, eqY - testRadius, eqZ - testRadius,
                                   eqX + testRadius, eqY + testRadius, eqZ + testRadius)) {
                 output.objectLightVisible[i] = 0;
+                olFrustumCulled++;
                 continue;
             }
         }
 
         output.objectLightVisible[i] = 1;
+        olVisible++;
     }
+
+    LOG_DEBUG(MOD_GRAPHICS, "ObjLightVis: {}/{} visible (dist={}, pvs={}, frustum={})",
+              olVisible, lightCount, olDistCulled, olPvsCulled, olFrustumCulled);
 }
 
 // ============================================================================
@@ -2893,12 +2927,15 @@ void SimulationWorker::computeEntityVisibility(const SimulationInput& input, Sim
               });
 
     int visibleCount = 0;
+    int entNoState = 0, entMaxCap = 0, entDistCulled = 0, entFrustumCulled = 0;
+    int entPvsCulled = 0, entOcclusionCulled = 0;
 
     for (const auto& ed : distances) {
         auto& er = output.entityResults[ed.resultIdx];
         auto wit = workerEntities_.find(er.spawnId);
         if (wit == workerEntities_.end()) {
             er.shouldBeVisible = false;
+            entNoState++;
             continue;
         }
         const auto& state = wit->second;
@@ -2910,9 +2947,22 @@ void SimulationWorker::computeEntityVisibility(const SimulationInput& input, Sim
             continue;
         }
 
-        bool visible = (visibleCount < maxEntities) && (ed.distanceSq <= maxDistSq);
+        // Track culling reason for TRACE logging
+        const char* cullReason = nullptr;
+
+        bool visible = true;
+        if (visibleCount >= maxEntities) {
+            visible = false;
+            cullReason = "maxCap";
+            entMaxCap++;
+        } else if (ed.distanceSq > maxDistSq) {
+            visible = false;
+            cullReason = "distance";
+            entDistCulled++;
+        }
 
         // Frustum culling
+        int frustumFailPlane = -1;
         if (visible && input.frustumValid) {
             // Simple sphere test using frustum planes
             float cx = er.posX, cy = er.posY, cz = er.posZ;
@@ -2923,41 +2973,87 @@ void SimulationWorker::computeEntityVisibility(const SimulationInput& input, Sim
                             input.frustumPlanes[p][1] * cy +
                             input.frustumPlanes[p][2] * cz +
                             input.frustumPlanes[p][3];
-                if (dot < -radius) insideFrustum = false;
+                if (dot < -radius) {
+                    insideFrustum = false;
+                    frustumFailPlane = p;
+                }
             }
-            if (!insideFrustum) visible = false;
+            if (!insideFrustum) {
+                visible = false;
+                cullReason = "frustum";
+                entFrustumCulled++;
+            }
         }
 
-        // Portal culling — check if entity's BSP region is portal-visible
-        if (visible && !output.portalVisibleRegions.empty() && zoneData_.bspTree) {
+        // PVS culling — check if entity's BSP region is PVS-visible from camera region
+        // (Portal BFS walk is too aggressive for entities — entities should follow the same
+        // PVS visibility as their containing region's geometry, matching 1999-era best practice)
+        if (visible && zoneData_.usePvsCulling && zoneData_.bspTree &&
+            output.currentPvsRegion != SIZE_MAX) {
             // Re-lookup BSP region if dirty
             if (state.bspRegionDirty || state.cachedBspRegion == SIZE_MAX) {
-                // Can't write to state here safely since we're iterating,
-                // but we can do a local lookup
                 size_t entityRegion = zoneData_.bspTree->findRegionIndexForPoint(
                     er.posX, er.posY, er.posZ);
                 er.cachedBspRegion = entityRegion;
                 er.bspRegionDirty = false;
             }
-            if (er.cachedBspRegion != SIZE_MAX &&
-                output.portalVisibleRegions.find(er.cachedBspRegion) == output.portalVisibleRegions.end()) {
-                visible = false;
+            if (er.cachedBspRegion != SIZE_MAX) {
+                const auto& regions = zoneData_.bspTree->regions;
+                if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
+                    const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
+                    if (!pvs.empty() && er.cachedBspRegion < pvs.size() && !pvs[er.cachedBspRegion]) {
+                        visible = false;
+                        cullReason = "pvs";
+                        entPvsCulled++;
+                    }
+                }
             }
         }
 
-        // Occlusion test (when portals not active)
-        if (visible && output.portalVisibleRegions.empty() &&
-            workerOcclusionCuller_ && workerOcclusionCuller_->isEnabled()) {
+        // Occlusion test
+        if (visible && workerOcclusionCuller_ && workerOcclusionCuller_->isEnabled()) {
             if (workerOcclusionCuller_->testPoint(er.posX, er.posY, er.posZ + 3.0f)) {
                 visible = false;
+                cullReason = "occlusion";
+                entOcclusionCulled++;
             }
+        }
+
+        // Log visibility transitions (entity was visible last frame but not now, or vice versa)
+        bool wasVisible = (prevEntityVisibility_.count(er.spawnId) && prevEntityVisibility_[er.spawnId]);
+        if (wasVisible && !visible) {
+            LOG_DEBUG(MOD_GRAPHICS, "EntityVis: spawn={} HIDDEN by {} pos=({:.1f},{:.1f},{:.1f}) dist={:.0f}{}",
+                      er.spawnId, cullReason ? cullReason : "unknown",
+                      er.posX, er.posY, er.posZ, std::sqrt(ed.distanceSq),
+                      frustumFailPlane >= 0 ? fmt::format(" plane={}", frustumFailPlane) : "");
+        } else if (!wasVisible && visible) {
+            LOG_DEBUG(MOD_GRAPHICS, "EntityVis: spawn={} SHOWN pos=({:.1f},{:.1f},{:.1f}) dist={:.0f}",
+                      er.spawnId, er.posX, er.posY, er.posZ, std::sqrt(ed.distanceSq));
+        }
+
+        // Per-entity TRACE logging
+        if (!visible) {
+            LOG_TRACE(MOD_GRAPHICS, "EntityVis: spawn={} culled={} pos=({:.1f},{:.1f},{:.1f}) dist={:.0f}{}",
+                      er.spawnId, cullReason ? cullReason : "unknown",
+                      er.posX, er.posY, er.posZ, std::sqrt(ed.distanceSq),
+                      frustumFailPlane >= 0 ? fmt::format(" plane={}", frustumFailPlane) : "");
         }
 
         er.shouldBeVisible = visible;
         if (visible) visibleCount++;
     }
 
+    // Update previous visibility map for transition detection
+    prevEntityVisibility_.clear();
+    for (const auto& er : output.entityResults) {
+        prevEntityVisibility_[er.spawnId] = er.shouldBeVisible;
+    }
+
     output.entityVisibleCount = visibleCount;
+
+    LOG_DEBUG(MOD_GRAPHICS, "EntityVis: {}/{} visible (noState={}, maxCap={}, dist={}, frustum={}, pvs={}, occl={})",
+              visibleCount, output.entityResults.size(), entNoState, entMaxCap,
+              entDistCulled, entFrustumCulled, entPvsCulled, entOcclusionCulled);
 }
 
 // ============================================================================
@@ -3004,18 +3100,8 @@ void SimulationWorker::computeNameTagVisibility(const SimulationInput& input, Si
             }
         }
 
-        // Portal culling
-        if (visible && !output.portalVisibleRegions.empty()) {
-            size_t entityRegion = er.cachedBspRegion;
-            if (entityRegion != SIZE_MAX &&
-                output.portalVisibleRegions.find(entityRegion) == output.portalVisibleRegions.end()) {
-                visible = false;
-            }
-        }
-
-        // Occlusion test (when portals not active)
-        if (visible && output.portalVisibleRegions.empty() &&
-            workerOcclusionCuller_ && workerOcclusionCuller_->isEnabled()) {
+        // Occlusion test
+        if (visible && workerOcclusionCuller_ && workerOcclusionCuller_->isEnabled()) {
             if (workerOcclusionCuller_->testPoint(er.posX, er.posY, er.posZ + 3.0f)) {
                 visible = false;
             }

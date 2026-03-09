@@ -78,6 +78,7 @@ struct ApplicationConfig {
     // Constrained rendering
     std::string constrainedPreset;
     std::string atlasPath;  // Directory containing .atlas files for texture atlasing
+    std::string regionMapsPath = "data/region_maps";  // Directory containing per-zone region classification JSON
     int backgroundThreadCount = 0;  // 0 = use preset default
     int zoneLoadMode = -1;  // -1 = use preset default, 0 = manual (all at load), 1 = automatic (progressive)
 

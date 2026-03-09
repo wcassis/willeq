@@ -4488,7 +4488,6 @@ void EntityRenderer::invalidateOcclusionCache() {
         }
     }
     frustumCulledCount_ = 0;
-    portalCulledCount_ = 0;
     occlusionTestedCount_ = 0;
     occlusionHiddenCount_ = 0;
     occlusionFrameCounter_++;

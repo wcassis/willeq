@@ -1,5 +1,6 @@
 #include "client/graphics/frustum_culler.h"
 #include "common/simd_detect.h"
+#include "common/logging.h"
 #include <cmath>
 
 namespace EQT {
@@ -28,9 +29,27 @@ void FrustumCuller::update(float camX, float camY, float camZ,
     lastFov_ = fovRadV; lastAspect_ = aspectRatio;
     lastNear_ = nearDist; lastFar_ = farDist;
 
+    // Validate inputs
+    if (std::isnan(camX) || std::isnan(camY) || std::isnan(camZ) ||
+        std::isnan(fwdX) || std::isnan(fwdY) || std::isnan(fwdZ) ||
+        std::isnan(fovRadV) || std::isnan(aspectRatio)) {
+        LOG_WARN(MOD_GRAPHICS, "FrustumCuller::update: NaN input! cam=({},{},{}) fwd=({},{},{}) fov={} aspect={}",
+                 camX, camY, camZ, fwdX, fwdY, fwdZ, fovRadV, aspectRatio);
+        return;
+    }
+    if (std::isinf(fwdX) || std::isinf(fwdY) || std::isinf(fwdZ)) {
+        LOG_WARN(MOD_GRAPHICS, "FrustumCuller::update: Inf forward vector! fwd=({},{},{})",
+                 fwdX, fwdY, fwdZ);
+        return;
+    }
+
     // Normalize forward direction
     float fwdLen = std::sqrt(fwdX*fwdX + fwdY*fwdY + fwdZ*fwdZ);
-    if (fwdLen < 0.0001f) return; // Degenerate direction
+    if (fwdLen < 0.0001f) {
+        LOG_WARN(MOD_GRAPHICS, "FrustumCuller::update: degenerate forward vector len={:.6f} fwd=({},{},{})",
+                 fwdLen, fwdX, fwdY, fwdZ);
+        return;
+    }
     fwdX /= fwdLen; fwdY /= fwdLen; fwdZ /= fwdLen;
 
     // Right direction = forward x worldUp, where worldUp = (0, 0, 1) in EQ Z-up
@@ -125,6 +144,23 @@ void FrustumCuller::update(float camX, float camY, float camZ,
     planes_[5][3] = -(-fwdX * (camX + fwdX * farDist) +
                        -fwdY * (camY + fwdY * farDist) +
                        -fwdZ * (camZ + fwdZ * farDist));
+
+    // Validate computed planes for NaN/Inf
+    for (int i = 0; i < 6; ++i) {
+        if (std::isnan(planes_[i][0]) || std::isnan(planes_[i][1]) ||
+            std::isnan(planes_[i][2]) || std::isnan(planes_[i][3])) {
+            LOG_WARN(MOD_GRAPHICS, "FrustumCuller: plane[{}] has NaN! n=({},{},{}) d={} "
+                     "cam=({:.1f},{:.1f},{:.1f}) fwd=({:.3f},{:.3f},{:.3f}) fov={:.3f} aspect={:.3f}",
+                     i, planes_[i][0], planes_[i][1], planes_[i][2], planes_[i][3],
+                     camX, camY, camZ, fwdX, fwdY, fwdZ, fovRadV, aspectRatio);
+            return;
+        }
+    }
+
+    LOG_TRACE(MOD_GRAPHICS, "FrustumCuller: cam=({:.1f},{:.1f},{:.1f}) fwd=({:.3f},{:.3f},{:.3f}) "
+              "halfH={:.1f}deg halfV={:.1f}deg aspect={:.3f}",
+              camX, camY, camZ, fwdX, fwdY, fwdZ,
+              halfHFov / DEG2RAD, halfVFov / DEG2RAD, aspectRatio);
 }
 
 bool FrustumCuller::testAABB(float minX, float minY, float minZ,

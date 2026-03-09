@@ -594,6 +594,85 @@ void COpenGLES2Driver::draw2DLine(const core::position2d<s32>& start,
     glDrawArrays(GL_LINES, 0, 2);
 }
 
+void COpenGLES2Driver::draw3DLine(const core::vector3df& start,
+                                   const core::vector3df& end,
+                                   SColor color)
+{
+    // Unbind VBO/EBO — using client-side CPU pointers
+    if (state_.boundVBO != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    if (state_.boundEBO != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
+
+    shaderManager_.useProgram(EOGLES2SP_COLOR2D);
+
+    core::matrix4 wvp = Matrices[ETS_PROJECTION];
+    wvp *= Matrices[ETS_VIEW];
+    wvp *= Matrices[ETS_WORLD];
+    const SOGLES2ProgramUniforms& u = shaderManager_.getUniforms();
+    if (u.mWorldViewProj >= 0)
+        glUniformMatrix4fv(u.mWorldViewProj, 1, GL_FALSE, wvp.pointer());
+
+    f32 r = color.getRed() / 255.0f;
+    f32 g = color.getGreen() / 255.0f;
+    f32 b = color.getBlue() / 255.0f;
+    f32 a = color.getAlpha() / 255.0f;
+
+    f32 vertices[2 * 7] = {
+        start.X, start.Y, start.Z, r, g, b, a,
+        end.X,   end.Y,   end.Z,   r, g, b, a
+    };
+
+    glVertexAttribPointer(EOGLES2VA_POSITION, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(f32), vertices);
+    glEnableVertexAttribArray(EOGLES2VA_POSITION);
+    glVertexAttribPointer(EOGLES2VA_COLOR, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(f32), vertices + 3);
+    glEnableVertexAttribArray(EOGLES2VA_COLOR);
+    glDisableVertexAttribArray(EOGLES2VA_NORMAL);
+    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD0);
+    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD1);
+
+    glDrawArrays(GL_LINES, 0, 2);
+}
+
+void COpenGLES2Driver::draw3DLinesBatch(const f32* vertices, u32 lineCount)
+{
+    if (!vertices || lineCount == 0) return;
+
+    // Unbind VBO/EBO — using client-side CPU pointers
+    if (state_.boundVBO != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    if (state_.boundEBO != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
+
+    shaderManager_.useProgram(EOGLES2SP_COLOR2D);
+
+    core::matrix4 wvp = Matrices[ETS_PROJECTION];
+    wvp *= Matrices[ETS_VIEW];
+    wvp *= Matrices[ETS_WORLD];
+    const SOGLES2ProgramUniforms& u = shaderManager_.getUniforms();
+    if (u.mWorldViewProj >= 0)
+        glUniformMatrix4fv(u.mWorldViewProj, 1, GL_FALSE, wvp.pointer());
+
+    // Vertex layout: x, y, z, r, g, b, a (7 floats per vertex)
+    glVertexAttribPointer(EOGLES2VA_POSITION, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(f32), vertices);
+    glEnableVertexAttribArray(EOGLES2VA_POSITION);
+    glVertexAttribPointer(EOGLES2VA_COLOR, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(f32), vertices + 3);
+    glEnableVertexAttribArray(EOGLES2VA_COLOR);
+    glDisableVertexAttribArray(EOGLES2VA_NORMAL);
+    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD0);
+    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD1);
+
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lineCount * 2));
+}
+
 // ============================================================================
 // 2D Textured Drawing (Phase 2)
 // ============================================================================
@@ -1830,6 +1909,12 @@ size_t gles2GetGpuTextureMemoryUsage(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     return d->getGpuTextureMemoryUsage();
+}
+
+void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    d->draw3DLinesBatch(vertices, lineCount);
 }
 
 void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
