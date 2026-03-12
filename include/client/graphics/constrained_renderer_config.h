@@ -131,6 +131,14 @@ struct ConstrainedRendererConfig {
     // Frame budget governor target FPS (controls loading throttle)
     float targetFps = 60.0f;  // Default 60 for Max/TNT, overridden per preset
 
+    // Validate all config fields. Returns true if valid.
+    // On failure, populates 'errors' with all validation failures.
+    bool validate(std::string& errors) const;
+
+    // Validate that the given resolution fits within framebuffer budget.
+    // Returns true if valid. On failure, populates 'error' with details.
+    bool validateResolution(int width, int height, std::string& error) const;
+
     // Compute memory-related derived limits from totalMemoryBudgetBytes
     void calculateMemoryLimits();
 

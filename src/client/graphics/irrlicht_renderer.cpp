@@ -87,32 +87,36 @@ namespace Graphics {
 
 // Read display settings directly from config/display_settings.json
 // Used during early initialization before WindowManager/OptionsWindow exist
+// This file is optional — missing file uses defaults (everything enabled)
 static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
     eqt::ui::DisplaySettings settings;  // defaults: everything enabled
 
-    for (const auto& path : {"config/display_settings.json", "../config/display_settings.json"}) {
-        std::ifstream file(path);
-        if (!file.is_open()) continue;
+    std::ifstream file("config/display_settings.json");
+    if (!file.is_open()) {
+        LOG_INFO(MOD_GRAPHICS, "No display_settings.json found, using defaults");
+        return settings;
+    }
 
-        Json::Value root;
-        Json::CharReaderBuilder builder;
-        std::string errors;
-        if (!Json::parseFromStream(builder, file, &root, &errors)) break;
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to parse display_settings.json: {}", errors);
+        return settings;
+    }
 
-        if (root.isMember("environmentEffects")) {
-            const Json::Value& env = root["environmentEffects"];
-            settings.atmosphericParticles = env.get("atmosphericParticles", true).asBool();
-            settings.ambientCreatures = env.get("ambientCreatures", true).asBool();
-            settings.rollingObjects = env.get("rollingObjects", true).asBool();
-            settings.skyEnabled = env.get("skyEnabled", true).asBool();
-            settings.animatedTrees = env.get("animatedTrees", true).asBool();
-            settings.fireEffects = env.get("fireEffects", true).asBool();
-        }
-        if (root.isMember("detailObjects")) {
-            const Json::Value& detail = root["detailObjects"];
-            settings.detailObjectsEnabled = detail.get("enabled", true).asBool();
-        }
-        break;
+    if (root.isMember("environmentEffects")) {
+        const Json::Value& env = root["environmentEffects"];
+        settings.atmosphericParticles = env.get("atmosphericParticles", true).asBool();
+        settings.ambientCreatures = env.get("ambientCreatures", true).asBool();
+        settings.rollingObjects = env.get("rollingObjects", true).asBool();
+        settings.skyEnabled = env.get("skyEnabled", true).asBool();
+        settings.animatedTrees = env.get("animatedTrees", true).asBool();
+        settings.fireEffects = env.get("fireEffects", true).asBool();
+    }
+    if (root.isMember("detailObjects")) {
+        const Json::Value& detail = root["detailObjects"];
+        settings.detailObjectsEnabled = detail.get("enabled", true).asBool();
     }
 
     return settings;
@@ -503,19 +507,17 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         displaySettingsCached_ = true;
     }
 
-    // One-time race mappings load (JSON file I/O)
+    // One-time race mappings load (validated at startup by S03)
     if (!areRaceMappingsLoaded()) {
-        for (const auto& path : {"config/race_models.json", "../config/race_models.json",
-                                  "../../config/race_models.json"}) {
-            if (loadRaceMappings(path)) break;
+        if (!loadRaceMappings("config/race_models.json")) {
+            LOG_FATAL(MOD_GRAPHICS, "Failed to load race model mappings: config/race_models.json");
         }
     }
 
-    // Pre-load item-to-model mapping (tiny JSON, never changes)
+    // Pre-load item-to-model mapping (validated at startup by S03)
     if (itemToModelMap_.empty()) {
-        for (const auto& path : {"data/item_models.json", "../data/item_models.json"}) {
-            if (EquipmentModelLoader::loadItemModelMappingStatic(path, itemToModelMap_) >= 0)
-                break;
+        if (EquipmentModelLoader::loadItemModelMappingStatic("data/item_models.json", itemToModelMap_) < 0) {
+            LOG_FATAL(MOD_GRAPHICS, "Failed to load item model mappings: data/item_models.json");
         }
     }
 
@@ -662,8 +664,38 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Setup HUD (needed for loading screen text)
     setupHUD();
 
-    // NOTE: We do NOT create entity renderer or load models here.
-    // That happens in loadGlobalAssets() which is called during graphics loading phase.
+    // S05: Pre-allocate renderer-lifetime subsystems (survive zone changes)
+
+    // Create entity renderer (needed for entity model loading during zone load)
+    createEntityRenderer();
+
+    // Create sky renderer (skyRendering preset flag controls whether it renders, not whether it exists)
+    skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
+    if (constrainedTextureCache_) {
+        skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+    if (!skyRenderer_->initialize(config_.eqClientPath)) {
+        LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed - sky will not be rendered");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized");
+    }
+
+    // Create detail manager (detailObjectsEnabled controls whether it renders, not whether it exists)
+    detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
+    detailManager_->setSurfaceMapsPath("data/detail/zones");
+    if (constrainedTextureCache_) {
+        detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+    }
+    LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
+
+    // Create simulation worker (zone data configured later via setZoneData())
+    simulationWorker_ = std::make_unique<SimulationWorker>();
+    LOG_INFO(MOD_GRAPHICS, "Simulation worker initialized");
+
+    // Create render pass timer (Irrlicht-owned via ref counting)
+    renderPassTimer_ = new RenderPassTimer();
+    renderPassTimer_->setRenderer(this);
+    LOG_INFO(MOD_GRAPHICS, "Render pass timer initialized");
 
     // Create tree wind animation manager (needed before zone loading)
     if (!treeManager_) {
@@ -764,14 +796,13 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         return false;
     }
 
-    // loadGlobalAssets() is idempotent — entity renderer check serves as guard
-    if (entityRenderer_) {
+    // S05: entityRenderer_ already created in initLoadingScreen()
+    // loadGlobalAssets() is idempotent — use a flag to track
+    if (globalAssetsLoaded_) {
         LOG_DEBUG(MOD_GRAPHICS, "Global assets already loaded, skipping");
         return true;
     }
-
-    // Create entity renderer
-    createEntityRenderer();
+    globalAssetsLoaded_ = true;
 
     // All S3D archive loading (global characters, numbered globals, equipment)
     // is handled by the background thread via DataReady_ArchiveIndex and
@@ -800,34 +831,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         }
     }
 
-    // Create sky renderer (if not already created)
-    if (!skyRenderer_) {
-        skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
-        if (constrainedTextureCache_) {
-            skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
-        }
-        if (!skyRenderer_->initialize(config_.eqClientPath)) {
-            LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed - sky will not be rendered");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized");
-        }
-    }
-
-    // Create detail manager (grass, plants, debris) - only if enabled in settings
-    if (!detailManager_) {
-        auto detailSettings = getDisplaySettings();
-
-        if (detailSettings.detailObjectsEnabled) {
-            detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-            detailManager_->setSurfaceMapsPath("data/detail/zones");
-            if (constrainedTextureCache_) {
-                detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-            }
-            LOG_INFO(MOD_GRAPHICS, "Detail manager initialized (detail objects enabled in settings)");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Detail manager skipped (detail objects disabled in settings)");
-        }
-    }
+    // S05: skyRenderer_ and detailManager_ already created in initLoadingScreen()
 
     // Initialize inventory window model view now that entity renderer is available
     // This must happen after entityRenderer_ is created since it needs the race model loader
@@ -2761,9 +2765,7 @@ void IrrlichtRenderer::destroyZonePlaceholder() {
 }
 
 void IrrlichtRenderer::createEntityRenderer() {
-    if (entityRenderer_) return;
-    if (!smgr_ || !driver_ || !device_) return;
-
+    // S05: Called once from initLoadingScreen(). No lazy-init guard needed.
     entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
     entityRenderer_->setClientPath(config_.eqClientPath);
     entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
@@ -2799,11 +2801,7 @@ void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float play
     currentZoneName_ = zoneName;
     loadIndoorRegionMap(zoneName);
 
-    // Create entity renderer for placeholder cubes (no model loading yet)
-    createEntityRenderer();
-    if (entityRenderer_) {
-        LOG_INFO(MOD_GRAPHICS, "Entity renderer created for instant scene (placeholder cubes only)");
-    }
+    // S05: entityRenderer_ already created in initLoadingScreen()
 
     // Create door manager for placeholder cubes (no model loading yet)
     if (!doorManager_ && smgr_ && driver_) {
@@ -3082,7 +3080,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
         S3DLoader loader;
         if (!loader.loadZone(zonePath, loadOptions)) {
-            LOG_ERROR(MOD_GRAPHICS, "loadZoneSequential: S3D load failed: {}", loader.getError());
+            LOG_FATAL(MOD_GRAPHICS, "Failed to load zone S3D archive: {} ({})", zonePath, loader.getError());
             pendingZoneComputations_.reset();
             return;
         }
@@ -3407,6 +3405,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
             std::string zoneAtlasFile = atlasDir + currentZoneName_ + ".atlas";
             computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
+            if (!computations->zoneAtlasPreload.valid) {
+                LOG_FATAL(MOD_GRAPHICS, "Failed to load texture atlas: {} (atlas enabled in preset but file missing or invalid)", zoneAtlasFile);
+                pendingZoneComputations_.reset();
+                return;
+            }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: zone atlas preload '{}': valid={}, pages={}",
                       zoneAtlasFile, computations->zoneAtlasPreload.valid,
                       computations->zoneAtlasPreload.numPages);
@@ -3414,6 +3417,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             if (!skipObjectBuild) {
                 std::string objAtlasFile = atlasDir + currentZoneName_ + "_obj.atlas";
                 computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
+                if (!computations->objAtlasPreload.valid) {
+                    LOG_FATAL(MOD_GRAPHICS, "Failed to load object texture atlas: {} (atlas enabled in preset but file missing or invalid)", objAtlasFile);
+                    pendingZoneComputations_.reset();
+                    return;
+                }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj atlas preload '{}': valid={}, pages={}",
                           objAtlasFile, computations->objAtlasPreload.valid,
                           computations->objAtlasPreload.numPages);
@@ -3610,14 +3618,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             manualZoneDrawEnabled_ = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
 #endif
             if (manualZoneDrawEnabled_) {
-                if (smgr_ && !renderPassTimer_) {
-                    renderPassTimer_ = new RenderPassTimer();
+                // S05: renderPassTimer_ already created in initLoadingScreen()
+                if (smgr_ && renderPassTimer_) {
                     renderPassTimer_->setRenderer(this);
                     smgr_->setLightManager(renderPassTimer_);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: created RenderPassTimer and installed as light manager");
-                } else if (renderPassTimer_) {
-                    renderPassTimer_->setRenderer(this);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: reused existing RenderPassTimer");
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: installed RenderPassTimer as light manager");
                 }
                 for (auto& [regionIdx, node] : regionMeshNodes_) {
                     if (node && node->getParent()) { node->grab(); node->remove(); }
@@ -3672,9 +3677,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             computations->equipmentIndex = std::move(eqIdx);
         }
 
-        // Create entity renderer
-        createEntityRenderer();
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: createEntityRenderer done, entityRenderer_={}", (bool)entityRenderer_);
+        // S05: entityRenderer_ already created in initLoadingScreen()
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: entityRenderer_={}", (bool)entityRenderer_);
 
         // Install archive index
         if (computations && computations->archiveIndex) {
@@ -4180,7 +4184,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     success = modelLoader->preloadModelData(vis.raceId, vis.gender);
                     auto prepMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - prepStart).count();
-                    if (success) ++modelDiskLoads;
+                    if (success) {
+                        ++modelDiskLoads;
+                    } else {
+                        LOG_FATAL(MOD_GRAPHICS, "Failed to load race model: race={} gender={} (not found in any S3D archive)", vis.raceId, vis.gender);
+                        pendingZoneComputations_.reset();
+                        return;
+                    }
                     LOG_INFO(MOD_GRAPHICS, "Sequential: preload race={} gender={} took {}ms success={}",
                              vis.raceId, vis.gender, prepMs, success);
                 }
@@ -4234,8 +4244,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                 decoded.name = texName;
                                 DecodedImage img = DDSDecoder::decode(texInfo->data);
                                 if (!img.isValid()) {
-                                    LOG_WARN(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) variant texture '{}' DDS decode FAILED (size={})",
-                                             spawnId, vis.name, texName, texInfo->data.size());
+                                    LOG_FATAL(MOD_GRAPHICS, "Failed to decode variant texture: '{}' for entity {} ({}) (DDS decode failed, size={})",
+                                              texName, spawnId, vis.name, texInfo->data.size());
                                     return;
                                 }
                                 decoded.width = img.width;
@@ -4374,14 +4384,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         if (modelId < 0) modelId = static_cast<int>(equipmentId);
                         const EquipmentModelLoader::EquipmentModelRef* modelRef = equipLoader->getModelRef(modelId);
                         if (!modelRef) {
-                            LOG_WARN(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment {} ({}) modelId={} — model ref not found",
-                                     spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                            LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model ref: entity {} ({}) equipment {} ({}) modelId={} (not found in item_models.json)",
+                                      spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
                             return;
                         }
                         auto equipData2 = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
                         if (!equipData2) {
-                            LOG_WARN(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment {} ({}) modelId={} — extraction FAILED",
-                                     spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                            LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model: entity {} ({}) equipment {} ({}) modelId={}", spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
                             return;
                         }
 
@@ -4422,8 +4431,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                     }
                                     prepData.decodedTextures.push_back(std::move(decoded));
                                 } else {
-                                    LOG_WARN(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment {} texture '{}' DDS decode FAILED (size={})",
-                                             spawnId, vis.name, prepData.equipmentId, texName, texInfo->data.size());
+                                    LOG_FATAL(MOD_GRAPHICS, "Failed to decode equipment texture: '{}' for entity {} ({}) equipment {} (DDS decode failed, size={})",
+                                              texName, spawnId, vis.name, prepData.equipmentId, texInfo->data.size());
                                 }
                             }
                         }
@@ -4602,10 +4611,17 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     LOG_INFO(MOD_GRAPHICS, "Sequential: sky.s3d loaded ({} textures)",
                              skyData->skyLoader->getSkyData()->textures.size());
                 } else {
-                    LOG_WARN(MOD_GRAPHICS, "SEQ Step10: sky.s3d load failed from '{}'", eqPath);
+                    LOG_FATAL(MOD_GRAPHICS, "Failed to load sky S3D archive: {}sky.s3d (sky rendering enabled in preset)", eqPath);
+                    pendingZoneComputations_.reset();
+                    return;
                 }
                 std::string skyIniPath = eqPath + "sky.ini";
                 bool skyIniLoaded = skyData->skyConfig->loadFromFile(skyIniPath);
+                if (!skyIniLoaded) {
+                    LOG_FATAL(MOD_GRAPHICS, "Failed to load sky config: {} (sky rendering enabled in preset)", skyIniPath);
+                    pendingZoneComputations_.reset();
+                    return;
+                }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky.ini '{}': loaded={}", skyIniPath, skyIniLoaded);
 
                 // Pre-decode sky textures
@@ -4628,8 +4644,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         uint32_t decW = 0, decH = 0;
                         std::vector<uint8_t> decoded;
                         if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
-                            LOG_WARN(MOD_GRAPHICS, "SEQ Step10: sky texture '{}' BMP decode FAILED (size={})",
-                                     texName, texInfo->data.size());
+                            LOG_FATAL(MOD_GRAPHICS, "Failed to decode sky texture: '{}' (BMP decode failed, size={})",
+                                      texName, texInfo->data.size());
                             continue;
                         }
                         if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
@@ -4733,24 +4749,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
         }
 
-        // Create sky renderer + apply config (P10_Sky_Create)
+        // S05: skyRenderer_ already created in initLoadingScreen() — apply zone-specific data
         bool hasBgData = computations && computations->skyLoadData && computations->skyLoadData->skyLoader;
-        if (!skyRenderer_) {
-            skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
-            if (constrainedTextureCache_)
-                skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
-            if (hasBgData) {
-                skyRenderer_->initializeFromPreloaded(
-                    std::move(computations->skyLoadData->skyLoader),
-                    std::move(computations->skyLoadData->skyConfig));
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: created skyRenderer (hasBgData={}, constrainedCache={})",
-                      hasBgData, (bool)constrainedTextureCache_);
-        } else if (hasBgData) {
+        if (skyRenderer_ && hasBgData) {
             skyRenderer_->initializeFromPreloaded(
                 std::move(computations->skyLoadData->skyLoader),
                 std::move(computations->skyLoadData->skyConfig));
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: reused skyRenderer, applied preloaded data");
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: applied preloaded sky data");
         }
 
         if (storedZoneEnvironment_.pending) {
@@ -4931,20 +4936,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: trees done, treeManager_ initialized={}",
                   treeManager_ ? treeManager_->isInitializing() : false);
 
-        // Detail manager
-        if (!detailManager_) {
-            auto detailSettings = getDisplaySettings();
-            if (detailSettings.detailObjectsEnabled) {
-                detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-                detailManager_->setSurfaceMapsPath("data/detail/zones");
-                if (constrainedTextureCache_)
-                    detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: created DetailManager, surfaceMapsPath='data/detail/zones', "
-                          "constrainedTextureCache={}", (bool)constrainedTextureCache_);
-            } else {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: DetailManager NOT created, detailObjectsEnabled=false");
-            }
-        }
+        // S05: detailManager_ already created in initLoadingScreen()
         if (detailManager_ && zoneBspTree_ && !regionWorldTriangles_.empty()) {
             // Create BSP-filtered ground raycast callback for detail/footprint systems
             // Uses pre-transformed world-space triangles with direct Möller–Trumbore intersection
@@ -5342,10 +5334,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: simulationWorker_={}, frustumCuller_={}, camera_={}",
                   (bool)simulationWorker_, (bool)frustumCuller_, (bool)camera_);
 
-        if (!simulationWorker_) {
-            simulationWorker_ = std::make_unique<SimulationWorker>();
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: created SimulationWorker");
-        }
+        // S05: simulationWorker_ already created in initLoadingScreen()
 
         // Build and register zone data
         SimulationZoneData zoneData = buildSimulationZoneData();
@@ -7895,11 +7884,8 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
 }
 
 void IrrlichtRenderer::startSimulationWorkerEarly() {
-    if (simulationWorker_ && simulationWorker_->isRunning()) return;  // Already running
-
-    if (!simulationWorker_) {
-        simulationWorker_ = std::make_unique<SimulationWorker>();
-    }
+    // S05: simulationWorker_ already created in initLoadingScreen()
+    if (!simulationWorker_ || simulationWorker_->isRunning()) return;
 
     SimulationZoneData zoneData = buildSimulationZoneData();
     simulationWorker_->setZoneData(zoneData);
@@ -11053,10 +11039,8 @@ void IrrlichtRenderer::toggleManualZoneDraw() {
     }
     manualZoneDrawEnabled_ = !manualZoneDrawEnabled_;
     if (manualZoneDrawEnabled_) {
-        // Ensure render pass timer is installed
-        if (smgr_ && !renderPassTimer_) {
-            renderPassTimer_ = new RenderPassTimer();
-            renderPassTimer_->setRenderer(this);
+        // S05: renderPassTimer_ already created in initLoadingScreen() — just install
+        if (smgr_ && renderPassTimer_) {
             smgr_->setLightManager(renderPassTimer_);
         }
         // Remove zone mesh nodes from scene graph — manual draw accesses them directly
@@ -11154,10 +11138,8 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
         frameTimings_ = FrameTimings();
         frameTimingsAccum_ = FrameTimings();
         frameTimingsSampleCount_ = 0;
-        // Install render pass timer for per-pass breakdown of drawAll()
-        if (smgr_ && !renderPassTimer_) {
-            renderPassTimer_ = new RenderPassTimer();
-            renderPassTimer_->setRenderer(this);
+        // S05: renderPassTimer_ already created in initLoadingScreen() — just install
+        if (smgr_ && renderPassTimer_) {
             smgr_->setLightManager(renderPassTimer_);
         }
         // Enable per-window timing in WindowManager

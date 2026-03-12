@@ -11,6 +11,86 @@
 namespace EQT {
 namespace Graphics {
 
+static bool isPowerOf2(int v) {
+    return v > 0 && (v & (v - 1)) == 0;
+}
+
+bool ConstrainedRendererConfig::validate(std::string& errors) const {
+    errors.clear();
+
+    // Framebuffer
+    if (colorDepthBits != 16 && colorDepthBits != 32)
+        errors += fmt::format("  - colorDepthBits: {} (must be 16 or 32)\n", colorDepthBits);
+    if (framebufferMemoryBytes == 0)
+        errors += "  - framebufferMemoryBytes: must be > 0\n";
+
+    // Texture memory
+    if (textureMemoryBytes == 0)
+        errors += "  - textureMemoryBytes: must be > 0\n";
+    if (!isPowerOf2(maxTextureDimension) || maxTextureDimension < 64 || maxTextureDimension > 2048)
+        errors += fmt::format("  - maxTextureDimension: {} (must be power of 2 in [64, 2048])\n", maxTextureDimension);
+
+    // Rendering
+    if (clipDistance <= 0)
+        errors += fmt::format("  - clipDistance: {} (must be > 0)\n", clipDistance);
+    if (entityRenderDistance <= 0)
+        errors += fmt::format("  - entityRenderDistance: {} (must be > 0)\n", entityRenderDistance);
+    if (maxVisibleEntities <= 0)
+        errors += fmt::format("  - maxVisibleEntities: {} (must be > 0)\n", maxVisibleEntities);
+    if (maxPolygonsPerFrame <= 0)
+        errors += fmt::format("  - maxPolygonsPerFrame: {} (must be > 0)\n", maxPolygonsPerFrame);
+    if (fogStartRatio < 0.0f || fogStartRatio > 1.0f)
+        errors += fmt::format("  - fogStartRatio: {} (must be in [0, 1])\n", fogStartRatio);
+    if (fogEndRatio < 0.0f || fogEndRatio > 1.0f)
+        errors += fmt::format("  - fogEndRatio: {} (must be in [0, 1])\n", fogEndRatio);
+    if (fogEndRatio <= fogStartRatio)
+        errors += fmt::format("  - fogEndRatio: {} must be > fogStartRatio: {}\n", fogEndRatio, fogStartRatio);
+    if (targetFps <= 0)
+        errors += fmt::format("  - targetFps: {} (must be > 0)\n", targetFps);
+    if (backgroundThreadCount < 1)
+        errors += fmt::format("  - backgroundThreadCount: {} (must be >= 1)\n", backgroundThreadCount);
+
+    // PVS/occlusion
+    if (entityPrepMaxPvsDepth < 0 || entityPrepMaxPvsDepth > 255)
+        errors += fmt::format("  - entityPrepMaxPvsDepth: {} (must be in [0, 255])\n", entityPrepMaxPvsDepth);
+    if (terrainPrepMaxPvsDepth < 0 || terrainPrepMaxPvsDepth > 255)
+        errors += fmt::format("  - terrainPrepMaxPvsDepth: {} (must be in [0, 255])\n", terrainPrepMaxPvsDepth);
+    if (objectPrepMaxPvsDepth < 0 || objectPrepMaxPvsDepth > 255)
+        errors += fmt::format("  - objectPrepMaxPvsDepth: {} (must be in [0, 255])\n", objectPrepMaxPvsDepth);
+    if (pvsNeighborhoodHops < 0)
+        errors += fmt::format("  - pvsNeighborhoodHops: {} (must be >= 0)\n", pvsNeighborhoodHops);
+    if (antiAliasLevel != 0 && !isPowerOf2(antiAliasLevel))
+        errors += fmt::format("  - antiAliasLevel: {} (must be 0 or power of 2)\n", antiAliasLevel);
+    if (anisotropicFilterLevel != 0 && !isPowerOf2(anisotropicFilterLevel))
+        errors += fmt::format("  - anisotropicFilterLevel: {} (must be 0 or power of 2)\n", anisotropicFilterLevel);
+
+    // Derived limits
+    if (totalMemoryBudgetBytes > 0) {
+        if (totalMemoryBudgetBytes < textureMemoryBytes + framebufferMemoryBytes)
+            errors += fmt::format("  - totalMemoryBudgetBytes: {} < textureMemoryBytes ({}) + framebufferMemoryBytes ({})\n",
+                                  totalMemoryBudgetBytes, textureMemoryBytes, framebufferMemoryBytes);
+        if (meshMemoryBytes == 0)
+            errors += "  - meshMemoryBytes: must be > 0 when totalMemoryBudgetBytes is set\n";
+    }
+
+    return errors.empty();
+}
+
+bool ConstrainedRendererConfig::validateResolution(int width, int height, std::string& error) const {
+    size_t usage = calculateFramebufferUsage(width, height);
+    if (usage > framebufferMemoryBytes) {
+        int colorBytes = colorDepthBits / 8;
+        int depthStencilBytes = enableStencilBuffer ? 4 : 2;
+        int bytesPerPixel = (2 * colorBytes) + depthStencilBytes;
+        error = fmt::format(
+            "Resolution {}x{} requires {} bytes ({}x{}x{} bpp) but framebufferMemoryBytes is {} bytes. "
+            "Reduce resolution or increase framebuffer budget.",
+            width, height, usage, width, height, bytesPerPixel, framebufferMemoryBytes);
+        return false;
+    }
+    return true;
+}
+
 void ConstrainedRendererConfig::calculateMemoryLimits() {
     if (totalMemoryBudgetBytes > 0) {
         lazyPfsLoading = true;

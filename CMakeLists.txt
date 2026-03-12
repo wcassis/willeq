@@ -181,6 +181,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq.cpp
     src/client/combat.cpp
     src/client/trade_manager.cpp
+    src/client/door_state_manager.cpp
     src/client/ucs.cpp
     src/client/position.cpp
     src/client/world_object.cpp

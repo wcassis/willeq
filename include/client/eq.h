@@ -6,6 +6,7 @@
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
 #include "client/string_database.h"
+#include "client/door_state_manager.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -611,20 +612,8 @@ struct Entity
 	uint8_t anon_status = 0;      // AT_ANONYMOUS: 0=normal, 1=anonymous, 2=roleplay
 };
 
-// Door state information (parsed from Door_Struct packets)
-struct Door
-{
-	uint8_t door_id;           // Unique door identifier
-	std::string name;          // Model name (matches zone object)
-	float x, y, z;             // Position in EQ coords
-	float heading;             // Closed rotation (0-360 degrees)
-	uint32_t incline;          // Open rotation offset
-	uint16_t size;             // Scale (100 = normal)
-	uint8_t opentype;          // Door behavior type
-	uint8_t state;             // 0=closed, 1=open
-	bool invert_state;         // If true, door normally spawns open
-	uint32_t door_param;       // Lock type / key item ID
-};
+// S06: Door struct replaced by DoorState (include/client/door_state.h)
+// and DoorStateManager (include/client/door_state_manager.h)
 
 // Maximum group size (leader + 5 members)
 static constexpr int MAX_GROUP_MEMBERS = 6;
@@ -736,7 +725,7 @@ public:
 
 	// Door interaction
 	void SendClickDoor(uint8_t door_id, uint32_t item_id = 0);
-	const std::map<uint8_t, Door>& GetDoors() const { return m_doors; }
+	const EQT::DoorStateManager& GetDoorStateManager() const { return m_door_state_manager; }
 
 	// World object / Tradeskill interaction
 	void SendClickObject(uint32_t drop_id);
@@ -970,6 +959,10 @@ public:
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
 	const EQT::StringDatabase& GetStringDatabase() const { return m_string_db; }
+
+	// S04: Pre-allocate spell system at startup (spell DB, buff manager, spell effects, spell type processor)
+	// Must be called after SetEQClientPath(). Returns false if spell DB fails to load.
+	bool InitializeSpellSystem(const std::string& eqClientPath);
 
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer methods
@@ -1278,8 +1271,8 @@ private:
 	// String database for EQ message lookups (works in all modes)
 	EQT::StringDatabase m_string_db;
 
-	// Door tracking
-	std::map<uint8_t, Door> m_doors;
+	// S06: Door game state (replaces std::map<uint8_t, Door> m_doors)
+	EQT::DoorStateManager m_door_state_manager;
 	std::set<uint8_t> m_pending_door_clicks;  // Doors clicked by user, awaiting server response
 
 	// World object tracking (forges, looms, groundspawns, etc.)

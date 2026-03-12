@@ -258,96 +258,99 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         return nullptr;  // Debug: do NOT fall through to unconstrained path
     }
 
-    // Check cache first (unconstrained mode)
-    auto it = textureCache_.find(name);
-    if (it != textureCache_.end()) {
-        return it->second;
-    }
+    // DISABLED: unconstrained Path B — all textures must go through constrained cache
+    LOG_INFO(MOD_GRAPHICS, "loadTextureFromBMP: BLOCKED unconstrained texture load '{}' ({} bytes)", name, data.size());
 
-    // Check if file is DDS format (EQ .bmp files are often DDS compressed)
-    if (DDSDecoder::isDDS(data)) {
-        // Decode DDS to RGBA pixels
-        DecodedImage decoded = DDSDecoder::decode(data);
-        if (!decoded.isValid()) {
-            // Failed to decode - cache as nullptr
-            textureCache_[name] = nullptr;
-            return nullptr;
-        }
-
-        uint32_t width = decoded.width;
-        uint32_t height = decoded.height;
-
-        // Check if texture has any transparency (alpha < 255)
-        bool hasTransparency = false;
-        for (size_t i = 3; i < decoded.pixels.size(); i += 4) {
-            if (decoded.pixels[i] < 255) {
-                hasTransparency = true;
-                break;
-            }
-        }
-
-        // Convert RGBA to ARGB format (Irrlicht's native format)
-        std::vector<uint32_t> argbPixels(width * height);
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                size_t srcIdx = (y * width + x) * 4;
-                uint8_t r = decoded.pixels[srcIdx + 0];
-                uint8_t g = decoded.pixels[srcIdx + 1];
-                uint8_t b = decoded.pixels[srcIdx + 2];
-                uint8_t a = decoded.pixels[srcIdx + 3];
-
-                // ARGB format: A in high byte
-                argbPixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
-            }
-        }
-
-        // Create Irrlicht image directly from ARGB data to preserve alpha
-        irr::video::IImage* image = driver_->createImageFromData(
-            irr::video::ECF_A8R8G8B8,
-            irr::core::dimension2d<irr::u32>(width, height),
-            argbPixels.data(),
-            false,  // Don't own the data (we have our own copy)
-            false   // Don't delete on drop
-        );
-
-        if (!image) {
-            textureCache_[name] = nullptr;
-            return nullptr;
-        }
-
-        // Create texture from image
-        std::string texName = "dds_" + name;
-        irr::video::ITexture* texture = driver_->addTexture(texName.c_str(), image);
-        image->drop();
-
-        if (texture && hasTransparency) {
-            texturesWithAlpha_.insert(name);
-        }
-
-        textureCache_[name] = texture;
-        return texture;
-    }
-
-    // Check for valid BMP header
-    if (data.size() >= 2 && data[0] == 'B' && data[1] == 'M') {
-        // Standard BMP file - write to temp and load
-        std::string tempPath = "/tmp/eqt_tex_" + name;
-
-        std::ofstream outFile(tempPath, std::ios::binary);
-        if (!outFile) {
-            textureCache_[name] = nullptr;
-            return nullptr;
-        }
-        outFile.write(data.data(), data.size());
-        outFile.close();
-
-        irr::video::ITexture* texture = driver_->getTexture(tempPath.c_str());
-        textureCache_[name] = texture;
-        return texture;
-    }
-
-    // Unknown format
-    textureCache_[name] = nullptr;
+    // // Check cache first (unconstrained mode)
+    // auto it = textureCache_.find(name);
+    // if (it != textureCache_.end()) {
+    //     return it->second;
+    // }
+    //
+    // // Check if file is DDS format (EQ .bmp files are often DDS compressed)
+    // if (DDSDecoder::isDDS(data)) {
+    //     // Decode DDS to RGBA pixels
+    //     DecodedImage decoded = DDSDecoder::decode(data);
+    //     if (!decoded.isValid()) {
+    //         // Failed to decode - cache as nullptr
+    //         textureCache_[name] = nullptr;
+    //         return nullptr;
+    //     }
+    //
+    //     uint32_t width = decoded.width;
+    //     uint32_t height = decoded.height;
+    //
+    //     // Check if texture has any transparency (alpha < 255)
+    //     bool hasTransparency = false;
+    //     for (size_t i = 3; i < decoded.pixels.size(); i += 4) {
+    //         if (decoded.pixels[i] < 255) {
+    //             hasTransparency = true;
+    //             break;
+    //         }
+    //     }
+    //
+    //     // Convert RGBA to ARGB format (Irrlicht's native format)
+    //     std::vector<uint32_t> argbPixels(width * height);
+    //     for (uint32_t y = 0; y < height; ++y) {
+    //         for (uint32_t x = 0; x < width; ++x) {
+    //             size_t srcIdx = (y * width + x) * 4;
+    //             uint8_t r = decoded.pixels[srcIdx + 0];
+    //             uint8_t g = decoded.pixels[srcIdx + 1];
+    //             uint8_t b = decoded.pixels[srcIdx + 2];
+    //             uint8_t a = decoded.pixels[srcIdx + 3];
+    //
+    //             // ARGB format: A in high byte
+    //             argbPixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
+    //         }
+    //     }
+    //
+    //     // Create Irrlicht image directly from ARGB data to preserve alpha
+    //     irr::video::IImage* image = driver_->createImageFromData(
+    //         irr::video::ECF_A8R8G8B8,
+    //         irr::core::dimension2d<irr::u32>(width, height),
+    //         argbPixels.data(),
+    //         false,  // Don't own the data (we have our own copy)
+    //         false   // Don't delete on drop
+    //     );
+    //
+    //     if (!image) {
+    //         textureCache_[name] = nullptr;
+    //         return nullptr;
+    //     }
+    //
+    //     // Create texture from image
+    //     std::string texName = "dds_" + name;
+    //     irr::video::ITexture* texture = driver_->addTexture(texName.c_str(), image);
+    //     image->drop();
+    //
+    //     if (texture && hasTransparency) {
+    //         texturesWithAlpha_.insert(name);
+    //     }
+    //
+    //     textureCache_[name] = texture;
+    //     return texture;
+    // }
+    //
+    // // Check for valid BMP header
+    // if (data.size() >= 2 && data[0] == 'B' && data[1] == 'M') {
+    //     // Standard BMP file - write to temp and load
+    //     std::string tempPath = "/tmp/eqt_tex_" + name;
+    //
+    //     std::ofstream outFile(tempPath, std::ios::binary);
+    //     if (!outFile) {
+    //         textureCache_[name] = nullptr;
+    //         return nullptr;
+    //     }
+    //     outFile.write(data.data(), data.size());
+    //     outFile.close();
+    //
+    //     irr::video::ITexture* texture = driver_->getTexture(tempPath.c_str());
+    //     textureCache_[name] = texture;
+    //     return texture;
+    // }
+    //
+    // // Unknown format
+    // textureCache_[name] = nullptr;
     return nullptr;
 }
 
@@ -934,8 +937,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
             bucket.hasAlpha = tile->hasAlpha;
             bucket.alphaPageIndex = tile->alphaPageIndex;
 
-            if (maxRelU > 1.0f || maxRelV > 1.0f) {
-                // Triangle spans multiple UV cells — tessellate
+            if (maxRelU >= 1.0f || maxRelV >= 1.0f) {
+                // Triangle spans or touches UV cell boundary — tessellate.
+                // Must use >= not > because a vertex at exactly UV=N.0 maps
+                // to relU=1.0, which lands in the adjacent atlas tile's padding.
                 TessVertex tv0 = {v0.x, v0.y, v0.z, v0.nx, v0.ny, v0.nz, v0.u, v0.v};
                 TessVertex tv1 = {v1.x, v1.y, v1.z, v1.nx, v1.ny, v1.nz, v1.u, v1.v};
                 TessVertex tv2 = {v2.x, v2.y, v2.z, v2.nx, v2.ny, v2.nz, v2.u, v2.v};

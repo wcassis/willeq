@@ -1434,6 +1434,7 @@ private:
     std::map<uint32_t, int> itemToModelMap_;
 
     bool initialized_ = false;
+    bool globalAssetsLoaded_ = false;  // S05: loadGlobalAssets() idempotency guard
     std::atomic<bool> loading_{false};   // True while loading thread owns GL context
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input

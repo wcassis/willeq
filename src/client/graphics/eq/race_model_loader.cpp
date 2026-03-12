@@ -336,7 +336,10 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
 
     irr::scene::IMesh* mesh = nullptr;
     if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames().empty()) {
-        mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);  // flipV for character models
+        // DISABLED: unconstrained Path B — all textures must go through constrained cache
+        // mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);
+        LOG_INFO(MOD_GRAPHICS, "getMeshForRace: BLOCKED unconstrained buildTexturedMesh for race={} ({} textures, {} textureNames)",
+                 raceId, modelData->textures.size(), modelData->combinedGeometry->textureNames().size());
     } else {
         mesh = meshBuilder_->buildColoredMesh(*modelData->combinedGeometry);
     }

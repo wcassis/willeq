@@ -105,20 +105,13 @@ void EquipmentModelLoader::ensureIndexLoaded() {
                  equipmentModelIndex_.size(), textureIndex_.size());
     }
 
-    // Load item-to-model mapping
-    std::vector<std::string> searchPaths = {
-        "data/item_models.json",
-        "../data/item_models.json",
-        clientPath_ + "../data/item_models.json",
-        clientPath_ + "../../eqt-irrlicht/data/item_models.json"
-    };
-    for (const auto& path : searchPaths) {
-        if (loadItemModelMappingStatic(path, itemToModelMap_) >= 0) {
-            LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: lazy-init loaded {} item-to-model mappings from {}",
-                     itemToModelMap_.size(), path);
-            mappingLoaded_ = true;
-            break;
-        }
+    // Load item-to-model mapping (file validated at startup by S03)
+    if (loadItemModelMappingStatic("data/item_models.json", itemToModelMap_) >= 0) {
+        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: loaded {} item-to-model mappings",
+                 itemToModelMap_.size());
+        mappingLoaded_ = true;
+    } else {
+        LOG_FATAL(MOD_GRAPHICS, "EquipmentModelLoader: Failed to load data/item_models.json");
     }
 
     archivesLoaded_ = true;
@@ -555,63 +548,66 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
         buffer->Material.Lighting = true;
         buffer->Material.BackfaceCulling = false;
 
-        // Try to load texture
+        // DISABLED: unconstrained Path B — all textures must go through constrained cache
         if (!texName.empty()) {
             std::string lowerTexName = texName;
             std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),
                           [](unsigned char c) { return std::tolower(c); });
 
-            auto texIt = textures.find(lowerTexName);
-            if (texIt != textures.end() && texIt->second) {
-                const auto& texInfo = texIt->second;
-                if (!texInfo->data.empty()) {
-                    irr::video::ITexture* tex = nullptr;
+            LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader::buildMeshFromGeometry: BLOCKED unconstrained texture load \"{}\"",
+                     lowerTexName);
 
-                    // Check if this is a DDS file and decode it
-                    if (DDSDecoder::isDDS(texInfo->data)) {
-                        DecodedImage decoded = DDSDecoder::decode(texInfo->data);
-                        if (decoded.isValid()) {
-                            // Convert RGBA to ARGB (Irrlicht's ECF_A8R8G8B8 format)
-                            std::vector<uint8_t> argbPixels(decoded.pixels.size());
-                            for (size_t i = 0; i < decoded.pixels.size(); i += 4) {
-                                argbPixels[i + 0] = decoded.pixels[i + 2];  // B
-                                argbPixels[i + 1] = decoded.pixels[i + 1];  // G
-                                argbPixels[i + 2] = decoded.pixels[i + 0];  // R
-                                argbPixels[i + 3] = decoded.pixels[i + 3];  // A
-                            }
-
-                            // Create Irrlicht image from converted ARGB data
-                            irr::video::IImage* img = driver_->createImageFromData(
-                                irr::video::ECF_A8R8G8B8,
-                                irr::core::dimension2d<irr::u32>(decoded.width, decoded.height),
-                                argbPixels.data(), false, false);
-                            if (img) {
-                                tex = driver_->addTexture(texInfo->name.c_str(), img);
-                                img->drop();
-                            }
-                        }
-                    } else {
-                        // Non-DDS file, try loading directly
-                        irr::io::IReadFile* memFile = fileSystem_->createMemoryReadFile(
-                            texInfo->data.data(), static_cast<irr::s32>(texInfo->data.size()),
-                            texInfo->name.c_str(), false);
-                        if (memFile) {
-                            tex = driver_->getTexture(memFile);
-                            memFile->drop();
-                        }
-                    }
-
-                    if (tex) {
-                        if (constrainedTextureCache_) {
-                            auto texSize = tex->getSize();
-                            size_t bytes = static_cast<size_t>(texSize.Width) * texSize.Height * 4;
-                            constrainedTextureCache_->registerTexture(lowerTexName, tex, bytes, false);
-                        }
-                        buffer->Material.setTexture(0, tex);
-                        buffer->Material.MaterialType = irr::video::EMT_SOLID;
-                    }
-                }
-            }
+            // auto texIt = textures.find(lowerTexName);
+            // if (texIt != textures.end() && texIt->second) {
+            //     const auto& texInfo = texIt->second;
+            //     if (!texInfo->data.empty()) {
+            //         irr::video::ITexture* tex = nullptr;
+            //
+            //         // Check if this is a DDS file and decode it
+            //         if (DDSDecoder::isDDS(texInfo->data)) {
+            //             DecodedImage decoded = DDSDecoder::decode(texInfo->data);
+            //             if (decoded.isValid()) {
+            //                 // Convert RGBA to ARGB (Irrlicht's ECF_A8R8G8B8 format)
+            //                 std::vector<uint8_t> argbPixels(decoded.pixels.size());
+            //                 for (size_t i = 0; i < decoded.pixels.size(); i += 4) {
+            //                     argbPixels[i + 0] = decoded.pixels[i + 2];  // B
+            //                     argbPixels[i + 1] = decoded.pixels[i + 1];  // G
+            //                     argbPixels[i + 2] = decoded.pixels[i + 0];  // R
+            //                     argbPixels[i + 3] = decoded.pixels[i + 3];  // A
+            //                 }
+            //
+            //                 // Create Irrlicht image from converted ARGB data
+            //                 irr::video::IImage* img = driver_->createImageFromData(
+            //                     irr::video::ECF_A8R8G8B8,
+            //                     irr::core::dimension2d<irr::u32>(decoded.width, decoded.height),
+            //                     argbPixels.data(), false, false);
+            //                 if (img) {
+            //                     tex = driver_->addTexture(texInfo->name.c_str(), img);
+            //                     img->drop();
+            //                 }
+            //             }
+            //         } else {
+            //             // Non-DDS file, try loading directly
+            //             irr::io::IReadFile* memFile = fileSystem_->createMemoryReadFile(
+            //                 texInfo->data.data(), static_cast<irr::s32>(texInfo->data.size()),
+            //                 texInfo->name.c_str(), false);
+            //             if (memFile) {
+            //                 tex = driver_->getTexture(memFile);
+            //                 memFile->drop();
+            //             }
+            //         }
+            //
+            //         if (tex) {
+            //             if (constrainedTextureCache_) {
+            //                 auto texSize = tex->getSize();
+            //                 size_t bytes = static_cast<size_t>(texSize.Width) * texSize.Height * 4;
+            //                 constrainedTextureCache_->registerTexture(lowerTexName, tex, bytes, false);
+            //             }
+            //             buffer->Material.setTexture(0, tex);
+            //             buffer->Material.MaterialType = irr::video::EMT_SOLID;
+            //         }
+            //     }
+            // }
         }
 
         buffer->recalculateBoundingBox();
@@ -644,18 +640,19 @@ void EquipmentModelLoader::removeMeshRef(int modelId) {
                 // Remove associated textures from driver
                 auto modelIt = equipmentModels_.find(modelId);
                 if (modelIt != equipmentModels_.end() && modelIt->second) {
-                    for (const auto& texName : modelIt->second->textureNames) {
-                        std::string lowerName = texName;
-                        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                      [](unsigned char c) { return std::tolower(c); });
-                        if (constrainedTextureCache_ && constrainedTextureCache_->hasTexture(lowerName)) {
-                            continue;  // Cache owns this texture — leave it for LRU eviction
-                        }
-                        auto* tex = driver_->getTexture(lowerName.c_str());
-                        if (tex) {
-                            driver_->removeTexture(tex);
-                        }
-                    }
+                    // DISABLED: unconstrained Path B cleanup — no unconstrained textures to remove
+                    // for (const auto& texName : modelIt->second->textureNames) {
+                    //     std::string lowerName = texName;
+                    //     std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                    //                   [](unsigned char c) { return std::tolower(c); });
+                    //     if (constrainedTextureCache_ && constrainedTextureCache_->hasTexture(lowerName)) {
+                    //         continue;  // Cache owns this texture — leave it for LRU eviction
+                    //     }
+                    //     auto* tex = driver_->getTexture(lowerName.c_str());
+                    //     if (tex) {
+                    //         driver_->removeTexture(tex);
+                    //     }
+                    // }
                 }
                 meshIt->second->drop();
             }
@@ -921,16 +918,14 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractEquipmentModelO
     // Open the archive (own file handle — thread-safe)
     PfsArchive archive;
     if (!archive.open(ref.archivePath)) {
-        LOG_WARN(MOD_GRAPHICS, "extractEquipmentModelOffThread: Failed to open archive for IT{}: {}",
-                 modelId, ref.archivePath);
+        LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment archive: {} (model IT{})", ref.archivePath, modelId);
         return nullptr;
     }
 
     // Parse WLD (creates own WldLoader — thread-safe)
     WldLoader wldLoader;
     if (!wldLoader.parseFromArchive(ref.archivePath, ref.wldName)) {
-        LOG_WARN(MOD_GRAPHICS, "extractEquipmentModelOffThread: Failed to parse WLD for IT{}: {}",
-                 modelId, ref.wldName);
+        LOG_FATAL(MOD_GRAPHICS, "Failed to parse equipment WLD: {} in {} (model IT{})", ref.wldName, ref.archivePath, modelId);
         return nullptr;
     }
 

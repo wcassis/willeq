@@ -1,0 +1,512 @@
+  ---                                           
+  Phase 0: Process Startup (main.cpp:5)   
+                                                   
+  0a: Parse CLI Arguments                                                                             
+                                                                                                                                                                                                            
+  - Application::parseArguments() — parses --host, --port, --user, --pass, --server, --character, --config, --gles2, --drm, --constrained, --atlas-path, --threads, --no-graphics, -r WxH, -d, etc.
+                                                                                                      
+  0b: Initialize Logging                                                                              
+                                                                                                      
+  - InitLogging(argc, argv) — configures module-based log filtering from --log-level and --log-module                                                                                                       
+  - EverQuest::SetDebugLevel() — sets packet debug verbosity                                                                                                                                                
+                                                                                                      
+  0c: Load Config File                                                                                
+                                                                                                      
+  - Application::loadConfigFile() — reads willeq.json (or specified config), populates ApplicationConfig with eq_client_path, host, port, user, pass, server, character, audio settings, RDP config, etc.
+                                                                                                      
+  ---                                              
+  Phase 1: Application Initialize (application.cpp:60)                                                                                                                                                      
+                                                   
+  1a: Signal Handlers                              
+                                                   
+  - Registers SIGUSR1/SIGUSR2 (log level toggle), SIGHUP (graphics reset)
+                                                                                                      
+  1b: Create Game State                                                                               
+                                                                                                      
+  - GameState — tracks world connection state, player data                                 
+                                                                                                      
+  1c: Create EverQuest Client (eq.cpp:936)         
+                                                                                                                                                                                                            
+  - Constructor stores connection params (host, port, user, pass, server, character)                  
+  - Creates CombatManager (auto-attack, targeting, looting)            
+  - Creates TradeManager (player-to-player trading) + sets up callbacks                               
+  - Creates SpellManager (spell casting, gem state, cooldowns)
+  - Creates SkillManager (skill tracking, activation)                                                                                                                                                       
+  - Does NOT connect — connection deferred to avoid login server timeout during graphics init                                                                                                               
+                                                                                                                                                                                                            
+  1d: Configure EQ Client                                                                             
+                                                                                                      
+  - Sets pathfinding mode, navmesh/maps paths                                                         
+  - Sets EQ client path, region maps path, config path                                                
+  - Sets audio config (enabled, volumes, soundfont)
+                                                                                        
+  1e: Create Action System                         
+                                                                                                                                                                                                            
+  - EqActionHandler — adapter bridging game actions to EQ client methods                                                                                                                                    
+  - ActionDispatcher — routes actions through game state                                            
+  - CommandProcessor — parses /slash commands
+
+  1f: Create Game Mode
+
+  - mode::createMode() — creates GraphicalInteractiveMode or HeadlessInteractiveMode
+  - m_gameMode->initialize() — initializes mode-specific input/rendering
+
+  1g: Connect Input System
+
+  - InputActionBridge — translates raw input events into game actions
+  - Connects InputHandler → InputActionBridge
+  - Connects CommandProcessor → renderer output
+  - connectRendererCallbacks() — wires renderer UI events to action dispatcher
+
+  1h: Initialize Graphics (eq.cpp:18082, if graphical mode)
+
+  1h-i: Build Constrained Config
+
+  - Parses --constrained preset name (or defaults to OrangePi)
+  - Loads base preset values (ConstrainedRendererConfig::fromPreset())
+  - Applies JSON overrides from config/constrained_presets.json
+  - Applies CLI overrides: --opengl/--gles2/--drm/--atlas-path/--threads/--zone-load
+  - Validates GLES2 availability (EQT_HAS_GLES2 compile flag)
+
+  1h-ii: Create IrrlichtRenderer
+
+  - m_renderer = std::make_unique<IrrlichtRenderer>()
+
+  1h-iii: initLoadingScreen() (irrlicht_renderer.cpp:457)
+
+  This is a large initialization function that creates the window and all subsystems:
+
+  - Apply constrained config: Calculate max resolution, memory limits, clamp resolution to framebuffer budget
+  - Create frame budget governor (target FPS → frame time budget)
+  - Create background thread pool (configurable thread count)
+  - Load display settings (one-time JSON read: cached for render thread)
+  - Load race mappings (config/race_models.json)
+  - Load item-to-model mapping (data/item_models.json)
+  - Choose video driver (GLES2 → EDT_OGLES2, OpenGL → EDT_OPENGL, Software → EDT_BURNINGSVIDEO)
+  - Create Irrlicht device (irr::createDeviceEx()) — creates window/surface, EGL context (DRM) or X11/GLX context (desktop)
+  - Get driver/scene manager/GUI (device_->getVideoDriver(), getSceneManager(), getGUIEnvironment())
+  - Log driver details (GL version, extensions, max texture size)
+  - Create software cursor (DRM mode has no hardware cursor)
+  - Configure mipmaps on driver
+  - Create constrained texture cache (LRU-evicting, memory budget, placeholder texture)
+  - Create event receiver (keyboard/mouse input)
+  - Setup camera (FPS-style camera node)
+  - Setup lighting (ambient light, directional sun)
+  - Apply initial display settings (wireframe, fog, player light)
+  - Initialize GLSL shaders (ZoneShaderManager — compiles 6+ shader programs: Solid3D, AlphaTest3D, AtlasSolid3D, AtlasAlpha3D, etc.)
+  - Initialize GPU upload thread (GLES2 only — creates shared EGL context for async texture/VBO uploads)
+  - Setup HUD (text overlay, FPS counter)
+  - Create AnimatedTreeManager (tree wind animation, render distance, shader materials)
+  - Create WeatherSystem (weather state machine, callbacks to tree manager)
+  - Create ParticleManager (point-sprite particle system, compiles particle shader, atmospheric toggle)
+  - Create BoidsManager (ambient creatures, if enabled in settings)
+  - Create TumbleweedManager (rolling objects, if enabled in settings)
+  - Create WeatherEffectsController (screen-space rain/snow, storm clouds, lightning)
+  - Set initialized_ = true, loadingScreenVisible_ = true
+
+  1h-iv: Pump Network
+
+  - TickNetwork() — process any pending login packets (Irrlicht device creation can take 0.5-1s on ARM)
+
+  1h-v: Set Up Callbacks
+
+  - HUD callback: lambda returning player HP/Mana bars as wstring
+  - Movement callback: OnGraphicsMovement() for Player Mode position sync
+  - Target callback: setTargetCallback() for mouse click targeting + trade initiation
+  - Chat callbacks: chat message forwarding, system messages
+  - Spell/buff/inventory callbacks: UI integration for spell gems, buffs, inventory windows
+  - Item link callback: clickable item links in chat
+
+  1h-vi: Initialize Audio (if enabled)
+
+  - InitializeAudio() — creates audio manager, loads soundfont for MIDI
+
+  1h-vii: Start Loading Thread (eq.cpp:19058)
+
+  - Extract GL handles from Irrlicht device (EGL display/context/surface or GLX display/context/drawable)
+  - Reset loading status (atomic progress counters)
+  - Release GL context on main thread (eglMakeCurrent(EGL_NO_CONTEXT))
+  - Set renderer loading flag (main thread skips GL calls)
+  - Spawn loading thread with LoadZoneGraphicsOnLoadingThread as active phase callback
+
+  Loading Thread — Passive Phase
+
+  - Acquires GL context
+  - Enters display loop: renders loading screen at 0-45% progress, ~30 FPS
+  - Polls graphicsLoadReady atomic — waits for network handshake to complete
+  - Main thread continues running mainLoop() (network tick, input, game state updates — NO GL calls)
+
+  1i: Start Login Connection (AFTER graphics init)
+
+  - m_eqClient->ConnectToLogin() — creates UDP transport + DaybreakConnectionManager, connects to login server
+  - Sets LoadingPhase::LOGIN_CONNECTING
+
+  ---
+  Phase 2: Main Loop (application.cpp:386)
+
+  The main loop runs on the main thread while the loading thread renders the progress bar:
+
+  Each iteration:
+  1. processNetworkEvents() → m_eqClient->TickNetwork() — pumps login/world/zone connection managers
+  2. Input processing at ~60fps (disabled when graphics handle input)
+  3. updateGameState() → UpdateMovement(), syncGameStateFromClient(), updateLoadingProgress()
+  4. render() → UpdateGraphics() — but returns early when loading thread is active (m_loading_thread != null)
+  5. Check quit request
+  6. sleep_for(1ms) (unconditional)
+
+  ---
+  Phase 3: Login Server (eq.cpp:965-1370)
+
+  All driven by TickNetwork() → LoginOnPacketRecv():
+
+  3a: Connect (LOGIN_CONNECTING)
+
+  - UDP connection established → LoginOnStatusChangeReconnectEnabled() fires
+  - Sends SessionReady packet
+
+  3b: Authenticate (LOGIN_AUTHENTICATING)
+
+  - Server sends ChatMessage → client sends Login (encrypted user/pass)
+  - Server sends LoginAccepted → extracts session key, DBID
+  - Client requests server list
+
+  3c: Server Selection
+
+  - Server sends ServerListResponse → client finds matching server by name
+  - Client sends PlayEverquest request for selected server
+
+  3d: World Redirect
+
+  - Server sends PlayEverquestResponse → extracts world server IP address
+  - Client calls ConnectToWorld(world_address)
+
+  ---
+  Phase 4: World Server (eq.cpp:1370-1815)
+
+  4a: Connect (WORLD_CONNECTING)
+
+  - Creates new DaybreakConnectionManager, connects to world server port 9000
+  - On connected: sends client auth (session key, character name)
+
+  4b: Character Select (WORLD_CHARACTER_SELECT)
+
+  - Server sends CharacterSelect → client parses 10 character slots
+  - Finds matching character by name
+
+  4c: Enter World
+
+  - Server sends ApproveWorld (zone name, zone server IP/port)
+  - Client sends EnterWorld with character name
+  - Stores zone server address and port
+  - Calls ConnectToZone()
+
+  ---
+  Phase 5: Zone Server (eq.cpp:1815-7175)
+
+  5a: Connect (ZONE_CONNECTING)
+
+  - Initializes InventoryManager + sets up inventory callbacks
+  - Initializes SpellManager + loads spell database from EQ client files
+  - Creates BuffManager
+  - Creates DaybreakConnectionManager (CRC validation skipped), connects to zone server
+  - On connected: sends StreamIdentify, AckPacket, ZoneEntry
+
+  5b: Receive Player Profile (ZONE_RECEIVING_PROFILE)
+
+  - Server sends PlayerProfile → extracts player stats (HP, mana, level, class, race, skills, spells, AAs, inventory, buffs, bind points, position, zone ID, etc.)
+
+  5c: Zone Request Phase (ZONE_REQUEST_PHASE)
+
+  - Server sends a burst of zone setup data:
+    - NewZone — zone geometry params, fog settings, sky type, gravity, safe coords
+    - ZoneSpawns (ZONE_RECEIVING_SPAWNS) — all entities in zone (can be multiple packets)
+    - DoorSpawns — all door objects
+    - SendAATable, RespondAA — AA data
+    - TributeInfo, SendGuildTributes — tribute data
+    - Weather, ZonePoints, SpawnAppearance, etc.
+
+  5d: Check Completion (CheckZoneRequestPhaseComplete())
+
+  - Waits until ALL required packets received: NewZone + at least one AA table + tribute + guild tribute
+  - Sends ReqClientSpawn → triggers server to send remaining spawn data
+
+  5e: Player Spawn Phase (ZONE_PLAYER_READY → ZONE_AWAITING_CONFIRM)
+
+  - Server sends GuildMOTD (last packet in SendZoneInPackets)
+  - Client sends SetServerFilter + ClientReady
+  - Waits for first ClientUpdate with player's own spawn ID
+
+  5f: Game State Complete
+
+  - First own ClientUpdate received → confirms player position
+  - StartUpdateLoop() — begins periodic position/movement updates
+  - Sets renderer networkReady = true, expectedEntityCount
+  - Calls OnGameStateComplete() (eq.cpp:1106)
+
+  ---
+  Phase 6: Trigger Active Loading (eq.cpp:1106)
+
+  OnGameStateComplete():
+  - Sets LoadingPhase::GRAPHICS_LOADING_ZONE
+  - Sets m_loading_status.graphicsLoadReady = true (atomic release)
+  - This wakes the loading thread from its passive display loop
+
+  ---
+  Phase 7: Loading Thread — Active Phase (eq.cpp:19111)
+
+  LoadZoneGraphicsOnLoadingThread() — runs on loading thread, owns GL context:
+
+  7a: Set Collision Map
+
+  - Passes HCMap to renderer for camera collision
+
+  7b: Zone Lines
+
+  - Expands zone line data to geometry (for zone transition detection/visualization)
+
+  7c: Setup Instant Scene (irrlicht_renderer.cpp:2798)
+
+  - Sets currentZoneName_
+  - Loads indoor region map (for per-region portal occlusion toggling)
+  - Creates EntityRenderer (placeholder cubes only)
+  - Creates DoorManager (placeholder cubes only)
+  - Builds zone placeholder mesh from HCMap around player position
+  - Sets up HCMap collision for player movement
+  - Sets zoneReady_ = true
+
+  7d: Store Zone Environment
+
+  - Passes sky type, zone type, fog RGB, fog min/max clip to renderer
+
+  7e: Register All Entities
+
+  - Sets player level on entity renderer
+  - Iterates all m_entities, calls registerEntity() for each (spawn ID, race, name, position, heading, appearance, equipment, NPC/corpse flags)
+  - Sets player spawn ID, entity lights
+
+  7f: Register Doors
+
+  - Iterates all m_doors, calls registerDoor() for each
+
+  7g: Camera Setup
+
+  - Sets camera to Follow mode
+  - Sets player position with heading
+
+  7h: Hotbar Callback
+
+  - Connects hotbar changed callback for auto-save
+
+  7i: Sequential Zone Loading
+
+  - Calls m_renderer->loadZoneSequential(m_eq_client_path, status) — the 13-step sequential loader begins here
+
+  ---
+  Phase 8: After Sequential Loading Completes
+
+  Back on the main thread:
+  - UpdateGraphics() detects loadingComplete flag
+  - Calls JoinLoadingThread() — joins thread, reacquires GL context on main thread, clears loading flag
+  - Calls OnGraphicsComplete() — sets LoadingPhase::COMPLETE, setZoneReady(true), hideLoadingScreen()
+  - Normal frame rendering begins
+
+
+
+
+  loadZoneSequential() — All Steps                                                                                                                                                                          
+                                                                                                                                                                                                            
+  Setup (line 3042)                                                                                                                                                                                         
+  - Stop any existing SimulationWorker                                                                                                                                                                      
+  - Initialize progressive loading flags and PendingZoneComputations                                                                                                                                        
+  - Normalize EQ client path                                                                                                                                                                                
+                                                                                                                                                                                                            
+  ---                                                                                                                                                                                                       
+  Step 1: S3D Parse (50%) — line 3068                                                                                                                                                                       
+                                                                                                                                                                                                            
+  Parses the zone's .s3d archive file.                                                                                                                                                                      
+  - Loads zone S3D via S3DLoader::loadZone() with options (skip characters, compute combined geometry, optionally load objects)                                                                             
+  - Stores result in currentZone_                                                                                                                                                                           
+  - Sets zone name on entityRenderer_ and doorManager_                                                                                                                                                      
+  - Configures doorManager_ with constrained texture cache and shader material types                                                                                                                        
+                                                                                                      
+  Step 2: BSP Spatial Data (55%) — line 3126                                                          
+                                                                                                      
+  Computes all spatial indexing from the BSP tree.                                                    
+                                                                                                                                                                                                            
+  Compute phase:                                                                                      
+  - Computes per-region AABB bounding boxes from vertex data
+  - Computes overall zone bounds from region AABBs                                                    
+  - Builds PortalSystem from BSP split planes (winding extraction)
+  - Determines portal occlusion eligibility (>10 portals)                                       
+  - Caches zone light BSP region assignments                                                                                                                                                                
+  - Indexes objects with BSP region lookups                                                                                                                                                                 
+  - Pre-builds DeferredObject entries with world bounds, filtering out trees
+                                                                                                      
+  Install phase:                                                                                      
+  - Cleans up existing mesh nodes (zone, region, fallback)                                    
+  - Installs BSP tree (zoneBspTree_, usePvsCulling_, protectedRegions_)
+  - Installs pre-computed region bounding boxes                                                       
+  - Sets BSP tree + frustum culler on entityRenderer_ and doorManager_
+  - Installs portal system, auto-enables portal occlusion (indoor zones via ratio heuristic or per-region indoor map)                                                                                       
+  - Builds region neighbor map for door adjacency
+                                                                                                      
+  Step 3: Atlas — Texture Atlas (60%) — line 3391                                                     
+                                                                                                      
+  Loads and uploads pre-built ETC1 texture atlases.
+  - Preloads zone atlas from <atlasPath>/<zoneName>.atlas     
+  - Preloads object atlas from <atlasPath>/<zoneName>_obj.atlas
+  - Uploads zone atlas pages via glCompressedTexImage2D with per-page progress (60-62%)
+  - Uploads object atlas pages
+  - Sets atlas page textures on zone shader (zone pages + appended object pages)
+  - Resets GL texture binding state                                                                                                                                                                         
+                                                                                                      
+  Step 4: Regions — Zone Meshes (63-70%) — line 3502                                                  
+                                                                                                      
+  Eagerly builds ALL zone region meshes.           
+  - Creates ZoneMeshBuilder with shader material types (non-atlas and atlas variants)
+  - For each BSP region (~hundreds to thousands):                                                     
+    - Gets region geometry from WLD loader                                                            
+    - Builds mesh: buildAtlasedMesh() (if atlas loaded), buildTexturedMesh(), or buildColoredMesh()
+    - Creates IMeshSceneNode, sets position (with updateAbsolutePosition()), configures materials
+    - Uploads hardware buffers (static VBOs)                                                                                                                                                                
+    - Stores in regionMeshNodes_                                                                                                                                                                            
+  - Sets up front-to-back manual draw: removes nodes from scene graph (grabbed + removed), installs RenderPassTimer as light manager                                                                        
+                                                                                                      
+  Step 5: Assets — Indexes & Subsystems (71%) — line 3638
+
+  Builds archive/equipment indexes and creates entity renderer.
+  - Builds GraphicsArchiveIndex (indexes all race S3D archives for deferred loading)
+  - Builds EquipmentModelLoader index (model index + texture index from gequip S3Ds)
+  - Calls createEntityRenderer()
+  - Installs archive index on RaceModelLoader
+  - Installs equipment index on EquipmentModelLoader with item-to-model map
+  - Sets zone on RaceModelLoader
+  - Stores model view dependencies on WindowManager
+
+  Step 6: Objects — Zone Objects (75-78%) — line 3721                                                                                                                                      01:20:59 [40/143]
+                                                                                                                                                                                                            
+  Builds all zone object meshes (furniture, torches, bridges, etc.).                                                                                                                                        
+  - Installs pre-built deferred objects from Step 2                                                                                                                                                         
+  - Computes zone bounds (from geometry or region AABBs)                                                                                                                                                    
+  - For each deferred object:
+    - Builds mesh: buildAtlasedMesh() (if obj atlas), buildTexturedMesh(), or buildColoredMesh()
+    - Tracks missing textures for later rebuild
+    - Creates scene node with position, rotation, scale transforms
+    - Configures materials (lighting, fog, wireframe, etc.)
+    - Assigns BSP region, manages PVS visibility (removes from scene graph if hidden)
+    - Detects light-emitting objects (torch, fire, brazier, lantern, candle) by name/texture
+    - Creates point light scene nodes for light sources with color, radius, flicker parameters
+    - Matches light sources to nearby zone lights for elevated position
+
+  Step 7: Doors — Door Meshes (78-80%) — line 4045
+
+  Builds all door meshes.
+  - Creates DoorManager if not yet created, configures with zone/BSP/frustum/shader data
+  - Gets list of unbuilt + placeholder doors
+  - Rebuilds each door via rebuildSingleDoor()
+  - Tracks missing textures for later rebuild
+  - Sets constrained texture cache for runtime door rebuilds
+
+  Step 8: Entities — Inline Prep + Build (80-88%) — line 4121
+
+  Prepares and builds all entity (character/NPC) models. Per entity:
+
+  Step 8a: Base Race Model Prep — line 4168
+  - Checks if race/gender model data is cached
+  - If not cached, calls preloadModelData() — loads race S3D, parses WLD, merges animations
+
+  Step 8b: Variant Model Prep — line 4188
+  - Determines head variant (helm) and body variant (robe check)
+  - Calls preloadVariantModel() for zone-specific S3D with head/body variants
+
+  Step 8c: Variant Texture Decode — line 4211
+  - Decodes variant textures (body-part overrides based on appearance)
+  - Builds variant prefixes from texture/helm appearance values (cloak, chest, upper arm, forearm, head, leg, foot)
+  - Searches model textures and variant model textures for matching prefixes
+  - Decodes DDS and BMP textures to ARGB pixel arrays
+
+  Step 8d: Equipment Model Extraction — line 4356
+  - For primary and secondary equipment slots:
+    - Looks up model ID from item-to-model map
+    - Extracts geometry via extractEquipmentModelOffThread()
+    - Decodes equipment DDS textures to ARGB
+
+  Step 8e: Distribute Prep Results — line 4439
+  - Moves variant textures, equipment textures, and equipment staging data into EntityVisual
+  - Submits all decoded textures (base race, variant, equipment) to ConstrainedTextureCache via queueDecodedARGB()
+  - Flushes texture cache upload queue (GL uploads)
+  - Promotes prepared models in RaceModelLoader
+
+  Step 8f: Build Entity Mesh — line 4521
+  - Calls entityRenderer_->buildEntityMesh() — creates scene node, applies materials, creates name tag
+
+  Step 9: Collision (88%) — line 4544
+
+  Sets up zone collision data.
+  - Calls setupMinimalZoneCollision() — builds world-space triangles per BSP region from zone meshes
+  - Extracts world-space triangles from all object nodes, grouped by BSP region into objectWorldTriangles_
+
+  Step 10: Sky, Fog, Weather (90%) — line 4581
+
+  Loads and initializes all sky/atmosphere systems.
+  - Loads sky.s3d archive (sky geometry + textures)
+  - Loads sky.ini (per-zone sky type configuration)
+  - Pre-decodes sky textures (BMP to ARGB, upscales small textures to 512x512)
+  - Pre-computes dome mesh (WLD geometry from sky.s3d, or procedural dome fallback)
+  - Loads zone weather config
+  - Creates/initializes SkyRenderer with preloaded data
+  - Applies stored zone environment (sky type, dungeon detection, fog colors, render distance)
+  - Configures fog (linear fog start/end from render distance)
+  - Uploads sky textures via strip upload (GLES2) or direct upload (desktop GL)
+  - Finalizes sky dome (from WLD geometry or procedural), creates celestial bodies, applies initial colors
+  - Calls setupFog()
+
+  Step 11: Environment Subsystems (93%) — line 4882
+
+  Initializes all environmental subsystems.
+  - Trees: Loads tree config, initializes CPU tree wind (software renderer) or defers to shader fixup
+  - Detail Manager: Creates if enabled, sets surface maps path, calls onZoneEnter() with BSP-filtered ground raycast callback (Möller-Trumbore intersection), adds mesh nodes for texture lookup
+  - Particles: Calls onZoneEnter(), collects fire sources from object lights + zone lights, sets surface map, initializes unified renderer, creates fire emitters
+  - Fire Glow Lights: Collects fire glow light positions with random flicker phase/speed
+  - Boids: Calls onZoneEnter() with zone bounds and biome
+  - Tumbleweed: Calls onZoneEnter() with biome
+  - Weather Effects: Sets surface map
+  - Display Settings: Applies environmental display settings
+  - Icosphere: Builds icosphere mesh + compiles shader for fire glow volumes (DRM only)
+  - Memory Release: Releases combined zone geometry vectors if detail system disabled
+  - Governor Reset: Resets frame governor
+  - Fixup Pass: Iterates all objects from Step 6 and applies tree wind shaders (getActiveWindAlphaTest() material) and animated texture manager registrations (since treeManager_/animatedTextureManager_
+  didn't exist during Step 6)
+
+  Step 12: Lights — Zone Lighting (96%) — line 5277
+
+  Sets up zone light data.
+  - Builds zoneLightData_ array: position (EQ→Irrlicht coord swap), radius, attenuation coefficients, diffuse color
+  - Installs light BSP region assignments (from pre-computed Step 2 data, or computed via findRegionIndexForPoint)
+
+  Step 12b: SimulationWorker First-Frame (99%) — line 5335
+
+  Runs one synchronous simulation computation so the first rendered frame has no pop-in.
+  - Creates SimulationWorker
+  - Builds SimulationZoneData (regions, objects, lights) and installs on worker
+  - Updates frustum culler with current camera
+  - Builds comprehensive SimulationInput: camera, frustum planes, player position/heading, time of day, lighting, vision, weather, entity snapshots, sky state, particle input, boids input, tumbleweed
+  input, weather system input, detail wind input
+  - Calls computeOnce() for synchronous simulation
+  - Applies output via applySimulationOutput() (PVS culling, draw list, lighting, entity visibility)
+  - Nulls particleRenderBuffer_ (local output about to go out of scope)
+  - Updates door PVS visibility
+  - Sets up BSP-based camera collision with current PVS region
+
+  Step 13: Cleanup (100%) — line 5614
+
+  Releases temporary data.
+  - Optionally releases texture pixel data (releaseTexturePixelData()) — only if constrained mesh cache is NOT active
+  - Releases zone character data (clearCharacterData())
+  - Releases WLD post-load data (releasePostLoadData())
+  - Releases pendingZoneComputations_
+  - Sets sequentialLoadComplete_ = true
+  - Dumps scene graph for debugging
+  - Logs total elapsed time
+
+

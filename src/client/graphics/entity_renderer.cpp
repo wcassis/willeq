@@ -3172,32 +3172,12 @@ bool EntityRenderer::loadEquipmentModels() {
         return false;
     }
 
-    // Load item ID to model ID mapping
-    // Try multiple paths to find item_models.json
-    std::vector<std::string> searchPaths = {
-        "data/item_models.json",                      // Run from project root
-        "../data/item_models.json",                   // Run from build directory
-        clientPath_ + "../data/item_models.json",    // Relative to EQ client path
-        clientPath_ + "../../eqt-irrlicht/data/item_models.json"  // EQ client in sibling dir
-    };
-
-    int mappingCount = -1;
-    std::string successPath;
-    for (const auto& path : searchPaths) {
-        mappingCount = equipmentModelLoader_->loadItemModelMapping(path);
-        if (mappingCount >= 0) {
-            successPath = path;
-            break;
-        }
-    }
-
+    // Load item ID to model ID mapping (file validated at startup by S03)
+    int mappingCount = equipmentModelLoader_->loadItemModelMapping("data/item_models.json");
     if (mappingCount < 0) {
-        LOG_ERROR(MOD_ENTITY, "EntityRenderer: Failed to load item model mapping from any path");
-        for (const auto& path : searchPaths) {
-            LOG_ERROR(MOD_ENTITY, "  - {}", path);
-        }
+        LOG_FATAL(MOD_ENTITY, "EntityRenderer: Failed to load data/item_models.json");
     } else {
-        LOG_INFO(MOD_ENTITY, "EntityRenderer: Loaded {} item-to-model mappings from {}", mappingCount, successPath);
+        LOG_INFO(MOD_ENTITY, "EntityRenderer: Loaded {} item-to-model mappings", mappingCount);
     }
 
     // Load equipment archives

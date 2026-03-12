@@ -957,9 +957,46 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// Initialize skill manager
 	m_skill_manager = std::make_unique<EQ::SkillManager>(this);
 
+	// S04: Create inventory manager at startup (was lazy-init in ConnectToZone/InitGraphics)
+#ifdef EQT_HAS_GRAPHICS
+	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
+	SetupInventoryCallbacks();
+	LOG_DEBUG(MOD_INVENTORY, "Inventory manager initialized");
+
+	// S04: Create command registry at startup (was lazy-init in ProcessChatInput)
+	m_command_registry = std::make_unique<eqt::ui::CommandRegistry>();
+	RegisterCommands();
+	LOG_DEBUG(MOD_MAIN, "Command registry initialized");
+#endif
+
 	// Connection is deferred to ConnectToLogin() so that graphics initialization
 	// (which can take several seconds on slow devices like Orange Pi) completes first.
 	// This prevents the login server from timing out while waiting for a response.
+}
+
+bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
+{
+	// S04: Initialize spell database — FATAL if fails (file was validated in S03)
+	if (!m_spell_manager->initialize(eqClientPath)) {
+		return false;
+	}
+	LOG_DEBUG(MOD_SPELL, "Spell database loaded");
+
+	// S04: Create buff manager (depends on spell DB)
+	m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
+	LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
+
+	// S04: Create spell effects processor (depends on spell DB + buff manager)
+	m_spell_effects = std::make_unique<EQ::SpellEffects>(
+		this, &m_spell_manager->getDatabase(), m_buff_manager.get());
+	LOG_DEBUG(MOD_SPELL, "Spell effects processor initialized");
+
+	// S04: Create spell type processor (depends on spell DB + spell effects)
+	m_spell_type_processor = std::make_unique<EQ::SpellTypeProcessor>(
+		this, &m_spell_manager->getDatabase(), m_spell_effects.get());
+	LOG_DEBUG(MOD_SPELL, "Spell type processor initialized");
+
+	return true;
 }
 
 void EverQuest::ConnectToLogin()
@@ -1819,29 +1856,8 @@ void EverQuest::ConnectToZone()
 
 	SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 
-	// Initialize inventory manager before zone connection so CharInventory packet can be processed
-	// This must exist before packets arrive, independent of graphics initialization
-	if (!m_inventory_manager) {
-		m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
-		SetupInventoryCallbacks();
-		LOG_DEBUG(MOD_INVENTORY, "Inventory manager initialized");
-	}
-
-	// Initialize spell manager and load spell database before zone packets arrive
-	// This is needed so buff info in PlayerProfile can be processed
-	if (m_spell_manager && !m_spell_manager->isInitialized()) {
-		if (m_spell_manager->initialize(m_eq_client_path)) {
-			LOG_DEBUG(MOD_SPELL, "Spell database loaded");
-		} else {
-			LOG_WARN(MOD_SPELL, "Could not load spell database - spell system will be limited");
-		}
-	}
-
-	// Initialize buff manager with spell database (needed for PlayerProfile buff processing)
-	if (m_spell_manager && m_spell_manager->isInitialized() && !m_buff_manager) {
-		m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
-		LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
-	}
+	// S04: inventory_manager, spell DB, buff_manager, spell_effects, spell_type_processor
+	// are all pre-allocated in EverQuest constructor / Application::initialize()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
 	zone_opts.skip_crc_validation = true;  // TODO: Remove after CRC bug is fixed
@@ -5607,8 +5623,8 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + offset;
 		const EQT::Door_Struct* door_data = reinterpret_cast<const EQT::Door_Struct*>(data);
 
-		Door door;
-		door.door_id = door_data->doorId;
+		EQT::DoorState door;
+		door.doorId = door_data->doorId;
 
 		// Extract name (null-terminated, max 32 chars)
 		char name_buf[33] = {0};
@@ -5623,31 +5639,29 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 		door.incline = door_data->incline;
 		door.size = door_data->size;
 		door.opentype = door_data->opentype;
-		door.state = door_data->state_at_spawn;
-		door.invert_state = (door_data->invert_state != 0);
-		door.door_param = door_data->door_param;
+		door.invertState = (door_data->invert_state != 0);
+		door.doorParam = door_data->door_param;
 
-		// Store in door map
-		m_doors[door.door_id] = door;
+		// Compute initial open state: XOR of spawn state and invert flag
+		door.isOpen = (door_data->state_at_spawn != 0) != door.invertState;
+
+		// Store in door state manager
+		m_door_state_manager.addDoor(door);
 
 		// Debug: dump raw bytes at critical offsets (60-68)
 		LOG_DEBUG(MOD_ENTITY, "Door {} raw bytes @60-67: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
 		         i, data[60], data[61], data[62], data[63], data[64], data[65], data[66], data[67]);
 
-		LOG_DEBUG(MOD_ENTITY, "Door {}: '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} incline={} size={} type={} state={} invert={}",
-		         door.door_id, door.name, door.x, door.y, door.z, door.heading,
-		         door.incline, door.size, door.opentype, door.state, door.invert_state ? 1 : 0);
+		LOG_DEBUG(MOD_ENTITY, "Door {}: '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} incline={} size={} type={} state_at_spawn={} invert={}",
+		         door.doorId, door.name, door.x, door.y, door.z, door.heading,
+		         door.incline, door.size, door.opentype, door_data->state_at_spawn, door.invertState ? 1 : 0);
 
 #ifdef EQT_HAS_GRAPHICS
 		// Notify renderer to create door visual
-		// state_at_spawn: 0=closed, 1=open
-		// invert_state: if true, the meaning of state is inverted
-		// XOR logic: initiallyOpen = (state != 0) XOR invert_state
-		bool initiallyOpen = (door.state != 0) != door.invert_state;
 		if (m_renderer) {
-			m_renderer->createDoor(door.door_id, door.name, door.x, door.y, door.z,
+			m_renderer->createDoor(door.doorId, door.name, door.x, door.y, door.z,
 			                       door.heading, door.incline, door.size, door.opentype,
-			                       initiallyOpen);
+			                       door.isOpen);
 		}
 #endif
 	}
@@ -7457,11 +7471,7 @@ void EverQuest::ProcessChatInput(const std::string &input)
 	}
 
 #ifdef EQT_HAS_GRAPHICS
-	// Ensure command registry is initialized
-	if (!m_command_registry) {
-		m_command_registry = std::make_unique<eqt::ui::CommandRegistry>();
-		RegisterCommands();
-	}
+	// S04: command_registry is pre-allocated in EverQuest constructor
 
 	// Check if it's a command (starts with /)
 	if (input[0] == '/') {
@@ -7574,8 +7584,8 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 
 	ext.entityCount = m_entities.size();
 	ext.entityEstimateBytes = m_entities.size() * sizeof(Entity);
-	ext.doorCount = m_doors.size();
-	ext.doorEstimateBytes = m_doors.size() * sizeof(Door);
+	ext.doorCount = m_door_state_manager.getDoorCount();
+	ext.doorEstimateBytes = m_door_state_manager.getDoorCount() * sizeof(EQT::DoorState);
 	if (m_spell_manager) {
 		ext.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
 		ext.spellDbEstimateBytes = ext.spellDbCount * 512;
@@ -12401,11 +12411,11 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 	uint8_t door_id = p.GetUInt8(2);
 	uint8_t action = p.GetUInt8(3);
 
-	// Update door state in our tracking
-	auto it = m_doors.find(door_id);
-	if (it != m_doors.end()) {
+	// Update door state in game state manager
+	const EQT::DoorState* door = m_door_state_manager.getDoor(door_id);
+	if (door) {
 		bool is_open = (action == 0x03);
-		it->second.state = is_open ? 1 : 0;
+		m_door_state_manager.setDoorState(door_id, is_open);
 
 		// Check if this was a user-initiated door click
 		bool user_initiated = (m_pending_door_clicks.erase(door_id) > 0);
@@ -12420,15 +12430,14 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 #ifdef WITH_AUDIO
 		// Play door sound only if player is close to the door
 		if (m_audio_manager) {
-			const Door& door = it->second;
-			glm::vec3 doorPos(door.x, door.y, door.z);
+			glm::vec3 doorPos(door->x, door->y, door->z);
 			glm::vec3 playerPos(m_x, m_y, m_z);
 			float distance = glm::distance(doorPos, playerPos);
 
 			// Only play door sounds within 10 units
 			constexpr float DOOR_SOUND_MAX_DISTANCE = 10.0f;
 			if (distance <= DOOR_SOUND_MAX_DISTANCE) {
-				EQT::Audio::DoorType doorType = getDoorTypeFromName(door.name);
+				EQT::Audio::DoorType doorType = getDoorTypeFromName(door->name);
 				uint32_t soundId = EQT::Audio::DoorSounds::getDoorSound(doorType, is_open);
 				m_audio_manager->playSound(soundId, doorPos);
 			}
@@ -13456,7 +13465,7 @@ void EverQuest::CleanupZone()
 	m_game_state.entities().clear();
 
 	// Clear door data
-	m_doors.clear();
+	m_door_state_manager.clear();
 
 	// Clear pet state (pet won't exist in new zone)
 	if (m_pet_spawn_id != 0) {
@@ -14255,13 +14264,13 @@ void EverQuest::SendClickDoor(uint8_t door_id, uint32_t item_id)
 	}
 
 	// Check if door exists
-	auto it = m_doors.find(door_id);
-	if (it == m_doors.end()) {
+	const EQT::DoorState* door = m_door_state_manager.getDoor(door_id);
+	if (!door) {
 		LOG_WARN(MOD_ENTITY, "Attempted to click unknown door {}", door_id);
 		return;
 	}
 
-	LOG_INFO(MOD_ENTITY, "Clicking door {} ('{}')", door_id, it->second.name);
+	LOG_INFO(MOD_ENTITY, "Clicking door {} ('{}')", door_id, door->name);
 
 	// Track this as a user-initiated door click
 	m_pending_door_clicks.insert(door_id);
@@ -18411,12 +18420,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 		m_renderer->setCollisionMap(m_zone_map.get());
 	}
 
-	// Initialize inventory manager if not already done (normally created in ConnectToZone)
-	if (!m_inventory_manager) {
-		m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
-		SetupInventoryCallbacks();
-		LOG_DEBUG(MOD_INVENTORY, "Inventory manager initialized for graphics");
-	}
+	// S04: inventory_manager is pre-allocated in EverQuest constructor
 
 	// Connect inventory manager to renderer
 	if (m_renderer && m_inventory_manager) {
@@ -18442,21 +18446,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Set up tradeskill container callbacks
 	SetupTradeskillCallbacks();
 
-	// Initialize spell database if not already done
-	if (m_spell_manager && !m_spell_manager->isInitialized()) {
-		if (!m_spell_manager->initialize(m_eq_client_path)) {
-			LOG_WARN(MOD_SPELL, "Could not load spell database - spell system will be limited");
-		}
-		// Pump network after spell DB loading (can take ~1s on ARM)
-		TickNetwork();
-	}
+	// S04: spell DB, buff_manager, spell_effects, spell_type_processor are all
+	// pre-allocated in Application::initialize() via InitializeSpellSystem()
 
-	// Initialize buff manager with spell database
-	if (m_spell_manager && m_spell_manager->isInitialized() && !m_buff_manager) {
-		m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
-		LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
-
-		// Set up buff fade callback to handle vision buff expiration
+	// Set up buff fade callback to handle vision buff expiration (needs m_renderer)
+	if (m_buff_manager) {
 		m_buff_manager->setBuffFadeCallback([this](uint16_t entity_id, uint32_t spell_id) {
 			// Only handle player vision buffs
 			if (entity_id != 0) return;
@@ -18489,20 +18483,6 @@ bool EverQuest::InitGraphics(int width, int height) {
 				}
 			}
 		});
-	}
-
-	// Initialize spell effects processor
-	if (m_spell_manager && m_spell_manager->isInitialized() && m_buff_manager && !m_spell_effects) {
-		m_spell_effects = std::make_unique<EQ::SpellEffects>(
-			this, &m_spell_manager->getDatabase(), m_buff_manager.get());
-		LOG_DEBUG(MOD_SPELL, "Spell effects processor initialized");
-	}
-
-	// Initialize spell type processor (handles targeting and multi-target spells)
-	if (m_spell_manager && m_spell_manager->isInitialized() && m_spell_effects && !m_spell_type_processor) {
-		m_spell_type_processor = std::make_unique<EQ::SpellTypeProcessor>(
-			this, &m_spell_manager->getDatabase(), m_spell_effects.get());
-		LOG_DEBUG(MOD_SPELL, "Spell type processor initialized");
 	}
 
 	// Set up spell gem panel
@@ -19188,11 +19168,10 @@ void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& st
 	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: {} registered, {} failed", registered, failed);
 
 	// 6. Register doors
-	for (const auto& [door_id, door] : m_doors) {
-		bool initiallyOpen = (door.state != 0) != door.invert_state;
-		m_renderer->registerDoor(door.door_id, door.name, door.x, door.y, door.z,
+	for (const auto& [door_id, door] : m_door_state_manager.getAllDoors()) {
+		m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
 		                         door.heading, door.incline, door.size, door.opentype,
-		                         initiallyOpen);
+		                         door.isOpen);
 	}
 
 	// 7. Camera
@@ -19302,11 +19281,10 @@ void EverQuest::LoadZoneGraphics() {
 	         m_renderer->getEntityRenderer() ? m_renderer->getEntityRenderer()->getEntityCount() : 0);
 
 	// 6. Register doors (metadata only)
-	for (const auto& [door_id, door] : m_doors) {
-		bool initiallyOpen = (door.state != 0) != door.invert_state;
-		m_renderer->registerDoor(door.door_id, door.name, door.x, door.y, door.z,
+	for (const auto& [door_id, door] : m_door_state_manager.getAllDoors()) {
+		m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
 		                         door.heading, door.incline, door.size, door.opentype,
-		                         initiallyOpen);
+		                         door.isOpen);
 	}
 
 	// 7. Camera to player position

@@ -81,33 +81,50 @@ during zone load. Full plan: `refactor/L_loading_thread.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L01 | LoadingStatus struct, LoadingThread class, GL context transfer | done | (uncommitted) |
-| L02 | Renderer `isLoading()` guard on all public entry points | done | (uncommitted) |
+| L01 | LoadingStatus struct, LoadingThread class, GL context transfer | done | `58f0791` |
+| L02 | Renderer `isLoading()` guard on all public entry points | done | `58f0791` |
 
 ### Phase L2 — Sequential Zone Loading
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L03 | Sequential zone loading function (replaces advanceBackgroundZoneLoad) | done | (uncommitted) |
-| L04 | Loading screen progress updates from sequential loader | done | (uncommitted) |
+| L03 | Sequential zone loading function (replaces advanceBackgroundZoneLoad) | done | `58f0791` |
+| L04 | Loading screen progress updates from sequential loader | done | `58f0791` |
 
 ### Phase L3 — Integration
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L05 | Initial zone load via loading thread | done | (uncommitted) |
-| L06 | Re-zone via loading thread | done | (uncommitted) |
+| L05 | Initial zone load via loading thread | done | `58f0791` |
+| L06 | Re-zone via loading thread | done | `58f0791` |
 
 ### Phase L4 — Cleanup
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| L07 | Remove old loading state machine (advanceBackgroundZoneLoad) | done | (uncommitted) |
-| L08 | Remove networkTickCallback_, update docs | done | (uncommitted) |
+| L07 | Remove old loading state machine (advanceBackgroundZoneLoad) | done | `58f0791` |
+| L08 | Remove networkTickCallback_, update docs | done | `58f0791` |
 
 ---
 
-## Batch D — Game State Threading (after Batch L)
+## Batch S — Startup Validation & Pre-allocation (prerequisite for Batch D)
+
+Enforce strict resource control at application startup. All settings validated,
+all buffers pre-allocated, fail-fast on any error. Full plan: `refactor/S_startup_validation.md`.
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| S01 | Mandatory config validation (credentials, eqClientPath, preset) | done | `58f0791` |
+| S02 | Preset value validation (framebuffer budget, all field bounds) | done | `58f0791` |
+| S03 | Global file validation (race_models.json, item_models.json, spell DB) | done | `58f0791` |
+| S04 | Pre-allocate game state managers (inventory, buff, spell DB, commands) | done | `58f0791` |
+| S05 | Pre-allocate renderer-lifetime subsystems (entity renderer, sky, sim, etc.) | done | `58f0791` |
+| S06 | Door state separation (DoorStateManager game-state class) | done | `58f0791` |
+| S07 | File I/O failure enforcement (FATAL on missing gameplay files) | done | `58f0791` |
+
+---
+
+## Batch D — Game State Threading (after Batch S)
 
 Decouple game state from rendering into separate threads via event/intent bridge.
 Full plan: `refactor/D_game_state_threading.md`.

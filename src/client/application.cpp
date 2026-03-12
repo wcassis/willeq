@@ -16,6 +16,7 @@
 #include <iostream>
 #include <thread>
 #include <algorithm>
+#include <sys/stat.h>
 
 #ifndef _WIN32
 #include <signal.h>
@@ -61,6 +62,64 @@ bool Application::initialize(const ApplicationConfig& config) {
     m_config = config;
 
     LOG_INFO(MOD_MAIN, "Initializing application...");
+
+    // S01: Mandatory config validation — fail fast on missing settings
+    {
+        std::string errors;
+        if (config.host.empty()) errors += "  - host: must not be empty\n";
+        if (config.port < 1 || config.port > 65535) errors += fmt::format("  - port: {} is not in range 1-65535\n", config.port);
+        if (config.user.empty()) errors += "  - user: must not be empty\n";
+        if (config.pass.empty()) errors += "  - pass: must not be empty\n";
+        if (config.server.empty()) errors += "  - server: must not be empty\n";
+        if (config.character.empty()) errors += "  - character: must not be empty\n";
+
+#ifdef EQT_HAS_GRAPHICS
+        if (config.graphicsEnabled) {
+            if (config.eqClientPath.empty()) {
+                errors += "  - eqClientPath: must not be empty when graphics are enabled\n";
+            } else {
+                struct stat st;
+                if (stat(config.eqClientPath.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+                    errors += fmt::format("  - eqClientPath: '{}' is not a valid directory\n", config.eqClientPath);
+                }
+            }
+        }
+#endif
+
+        if (!errors.empty()) {
+            LOG_FATAL(MOD_MAIN, "Invalid configuration:\n{}", errors);
+            return false;
+        }
+
+        if (config.constrainedPreset.empty()) {
+            LOG_INFO(MOD_MAIN, "No constrained preset specified, defaulting to 'orangepi'");
+        }
+    }
+
+    // S03: Global file validation — verify all required files exist before proceeding
+#ifdef EQT_HAS_GRAPHICS
+    if (config.graphicsEnabled) {
+        std::string missing;
+        auto checkFile = [&missing](const std::string& path, const char* what) {
+            struct stat st;
+            if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+                missing += fmt::format("  - {}: {}\n", what, path);
+            }
+        };
+        checkFile("config/constrained_presets.json", "constrained presets config");
+        checkFile("config/race_models.json", "race model mappings");
+        checkFile("data/item_models.json", "item model mappings");
+        checkFile(config.eqClientPath + "/eqstr_us.txt", "EQ string database");
+        checkFile(config.eqClientPath + "/dbstr_us.txt", "EQ database strings");
+        checkFile(config.eqClientPath + "/spells_us.txt", "spell database");
+
+        if (!missing.empty()) {
+            LOG_FATAL(MOD_MAIN, "Required files missing:\n{}", missing);
+            return false;
+        }
+    }
+#endif
+
     LOG_INFO(MOD_MAIN, "Config: host={}, server={}, character={}",
         config.host, config.server, config.character);
 
@@ -126,6 +185,16 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
     EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
 
+    // S04: Initialize spell system at startup (spell DB, buff manager, spell effects, spell type processor)
+    // Must happen after SetEQClientPath() and before any gameplay packets arrive.
+    // Spell file was validated in S03, so failure here is FATAL.
+    if (!config.eqClientPath.empty()) {
+        if (!m_eqClient->InitializeSpellSystem(config.eqClientPath)) {
+            LOG_FATAL(MOD_SPELL, "Failed to load spell database from '{}'", config.eqClientPath);
+            return false;
+        }
+    }
+
     // Create action handler adapter
     m_actionHandler = std::make_unique<EqActionHandler>(*m_eqClient);
     LOG_DEBUG(MOD_MAIN, "Action handler created");
@@ -188,127 +257,142 @@ bool Application::initialize(const ApplicationConfig& config) {
     // Initialize graphics if graphical mode
     m_graphicsInitialized = false;
     if (config.graphicsEnabled && config.operatingMode == mode::OperatingMode::GraphicalInteractive) {
-        if (!config.eqClientPath.empty()) {
-            // Build constrained config: preset → JSON overrides → CLI overrides
-            {
-                EQT::Graphics::ConstrainedRendererConfig builtConfig;
-                bool customMemorySpec = false;
+        // eqClientPath already validated in S01 block above
+        // Build constrained config: preset → JSON overrides → CLI overrides
+        {
+            EQT::Graphics::ConstrainedRendererConfig builtConfig;
+            bool customMemorySpec = false;
 
-                if (!config.constrainedPreset.empty()) {
-                    if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
-                        customMemorySpec = true;
-                        builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
-                    } else {
-                        auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
-                        builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
-                        builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
-                    }
+            if (!config.constrainedPreset.empty()) {
+                if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
+                    customMemorySpec = true;
+                    builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                 } else {
-                    // Default to OrangePi preset
-                    builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
-                        EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
-                    builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
-                }
-
-                // CLI overrides: --opengl/--gpu sets backend to OpenGL
-                if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
-                    builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
-                }
-                // CLI override: --gles2 sets backend to GLES2
-                if (config.useGLES2) {
-                    builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::GLES2;
-                }
-                // CLI override: --drm sets DRM mode
-                if (config.useDRM) {
-                    builtConfig.useDRM = true;
-                }
-                // CLI override: --atlas-path
-                if (!config.atlasPath.empty()) {
-                    builtConfig.atlasPath = config.atlasPath;
-                }
-                // CLI override: --threads
-                if (config.backgroundThreadCount > 0) {
-                    builtConfig.backgroundThreadCount = config.backgroundThreadCount;
-                }
-                // CLI override: --zone-load
-                if (config.zoneLoadMode >= 0) {
-                    builtConfig.deferredAssetLoading = (config.zoneLoadMode == 1);
-                }
-
-                // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
-#ifndef EQT_HAS_GLES2
-                if (builtConfig.renderingBackend == EQT::Graphics::RenderingBackend::GLES2) {
-                    LOG_WARN(MOD_GRAPHICS, "GLES2 backend requested but EQT_HAS_GLES2 not defined; falling back to OpenGL");
-                    builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
-                }
-#endif
-
-                m_eqClient->SetConstrainedConfig(builtConfig);
-
-                // Derive graphicalRendererType for mode creation
-                if (builtConfig.renderingBackend != EQT::Graphics::RenderingBackend::Software) {
-                    m_config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
-                }
-
-                LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
-                         EQT::Graphics::backendName(builtConfig.renderingBackend),
-                         builtConfig.useDRM ? "yes" : "no");
-            }
-
-            LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
-            EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
-            if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight)) {
-                m_graphicsInitialized = true;
-                LOG_INFO(MOD_GRAPHICS, "Graphics initialized");
-
-                // Set initial loading state
-                auto* eqRenderer = m_eqClient->GetRenderer();
-                if (eqRenderer) {
-                    eqRenderer->setLoadingTitle(L"EverQuest");
-                    eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
-
-                    if (config.frameTimingEnabled) {
-                        eqRenderer->setFrameTimingEnabled(true);
-                    }
-                    if (config.sceneProfileEnabled) {
-                        eqRenderer->runSceneProfile();
-                    }
-
-                    // Create GraphicsInputHandler from renderer's event receiver
-                    // and connect it to InputActionBridge for game action routing
-                    auto* eventReceiver = eqRenderer->getEventReceiver();
-                    if (eventReceiver && m_inputBridge) {
-                        m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
-                        m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
-                        LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
-                    }
-
-#ifdef WITH_RDP
-                    // Initialize and start RDP server if enabled
-                    if (config.rdpEnabled) {
-                        LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
-                        if (eqRenderer->initRDP(config.rdpPort)) {
-                            if (eqRenderer->startRDPServer()) {
-                                LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
-                                m_eqClient->SetupRDPAudio();
-                            } else {
-                                LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
-                            }
-                        } else {
-                            LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
-                        }
-                    }
-#endif
+                    auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
+                    builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
+                    builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                 }
             } else {
-                LOG_WARN(MOD_GRAPHICS, "Failed to initialize graphics - running headless");
-                m_config.graphicsEnabled = false;
+                // Default to OrangePi preset
+                builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+                    EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
+                builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
             }
-            EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "No eq_client_path - running headless");
-            m_config.graphicsEnabled = false;
+
+            // CLI overrides: --opengl/--gpu sets backend to OpenGL
+            if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
+                builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
+            }
+            // CLI override: --gles2 sets backend to GLES2
+            if (config.useGLES2) {
+                builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::GLES2;
+            }
+            // CLI override: --drm sets DRM mode
+            if (config.useDRM) {
+                builtConfig.useDRM = true;
+            }
+            // CLI override: --atlas-path
+            if (!config.atlasPath.empty()) {
+                builtConfig.atlasPath = config.atlasPath;
+            }
+            // CLI override: --threads
+            if (config.backgroundThreadCount > 0) {
+                builtConfig.backgroundThreadCount = config.backgroundThreadCount;
+            }
+            // CLI override: --zone-load
+            if (config.zoneLoadMode >= 0) {
+                builtConfig.deferredAssetLoading = (config.zoneLoadMode == 1);
+            }
+
+            // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
+#ifndef EQT_HAS_GLES2
+            if (builtConfig.renderingBackend == EQT::Graphics::RenderingBackend::GLES2) {
+                LOG_WARN(MOD_GRAPHICS, "GLES2 backend requested but EQT_HAS_GLES2 not defined; falling back to OpenGL");
+                builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
+            }
+#endif
+
+            // S02: Validate preset values
+            {
+                std::string presetErrors;
+                if (!builtConfig.validate(presetErrors)) {
+                    LOG_FATAL(MOD_GRAPHICS, "Invalid constrained renderer config:\n{}", presetErrors);
+                    return false;
+                }
+            }
+
+            // S02: Validate framebuffer budget vs requested resolution
+            {
+                std::string fbError;
+                if (!builtConfig.validateResolution(config.displayWidth, config.displayHeight, fbError)) {
+                    LOG_FATAL(MOD_GRAPHICS, "Framebuffer budget exceeded: {}", fbError);
+                    return false;
+                }
+            }
+
+            m_eqClient->SetConstrainedConfig(builtConfig);
+
+            // Derive graphicalRendererType for mode creation
+            if (builtConfig.renderingBackend != EQT::Graphics::RenderingBackend::Software) {
+                m_config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
+            }
+
+            LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
+                     EQT::Graphics::backendName(builtConfig.renderingBackend),
+                     builtConfig.useDRM ? "yes" : "no");
         }
+
+        LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
+        EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
+        if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight)) {
+            m_graphicsInitialized = true;
+            LOG_INFO(MOD_GRAPHICS, "Graphics initialized");
+
+            // Set initial loading state
+            auto* eqRenderer = m_eqClient->GetRenderer();
+            if (eqRenderer) {
+                eqRenderer->setLoadingTitle(L"EverQuest");
+                eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
+
+                if (config.frameTimingEnabled) {
+                    eqRenderer->setFrameTimingEnabled(true);
+                }
+                if (config.sceneProfileEnabled) {
+                    eqRenderer->runSceneProfile();
+                }
+
+                // Create GraphicsInputHandler from renderer's event receiver
+                // and connect it to InputActionBridge for game action routing
+                auto* eventReceiver = eqRenderer->getEventReceiver();
+                if (eventReceiver && m_inputBridge) {
+                    m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
+                    m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
+                    LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
+                }
+
+#ifdef WITH_RDP
+                // Initialize and start RDP server if enabled
+                if (config.rdpEnabled) {
+                    LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
+                    if (eqRenderer->initRDP(config.rdpPort)) {
+                        if (eqRenderer->startRDPServer()) {
+                            LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
+                            m_eqClient->SetupRDPAudio();
+                        } else {
+                            LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
+                        }
+                    } else {
+                        LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
+                    }
+                }
+#endif
+            }
+        } else {
+            EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
+            LOG_FATAL(MOD_GRAPHICS, "Failed to initialize graphics");
+            return false;
+        }
+        EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
     }
 #endif
 
