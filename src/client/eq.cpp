@@ -4531,21 +4531,25 @@ void EverQuest::SetupLootCallbacks()
 	// Set callback for when player clicks Loot on a single item
 	windowManager->setOnLootItem([this](uint16_t corpseId, int16_t slot) {
 		LootItemFromCorpse(corpseId, slot);
+		if (m_bridge) m_bridge->pushIntent(eqt::events::LootItemIntent{corpseId, static_cast<uint8_t>(slot)});
 	});
 
 	// Set callback for when player clicks Loot All
 	windowManager->setOnLootAll([this](uint16_t corpseId) {
 		LootAllFromCorpse(corpseId);
+		if (m_bridge) m_bridge->pushIntent(eqt::events::LootAllIntent{corpseId});
 	});
 
 	// Set callback for when player clicks Destroy All
 	windowManager->setOnDestroyAll([this](uint16_t corpseId) {
 		DestroyAllCorpseLoot(corpseId);
+		if (m_bridge) m_bridge->pushIntent(eqt::events::DestroyAllLootIntent{corpseId});
 	});
 
 	// Set callback for when player closes the loot window
 	windowManager->setOnLootClose([this](uint16_t corpseId) {
 		CloseLootWindow(corpseId);
+		if (m_bridge) m_bridge->pushIntent(eqt::events::CloseLootIntent{corpseId});
 	});
 
 	if (s_debug_level >= 2) {
@@ -4564,16 +4568,19 @@ void EverQuest::SetupVendorCallbacks()
 	// Set callback for when player clicks Buy on an item
 	windowManager->setOnVendorBuy([this](uint16_t npcId, uint32_t itemSlot, uint32_t quantity) {
 		BuyFromVendor(npcId, itemSlot, quantity);
+		if (m_bridge) m_bridge->pushIntent(eqt::events::VendorBuyIntent{npcId, static_cast<uint16_t>(itemSlot), static_cast<uint8_t>(quantity)});
 	});
 
 	// Set callback for when player clicks Sell on an item
 	windowManager->setOnVendorSell([this](uint16_t npcId, uint32_t itemSlot, uint32_t quantity) {
 		SellToVendor(npcId, itemSlot, quantity);
+		if (m_bridge) m_bridge->pushIntent(eqt::events::VendorSellIntent{npcId, static_cast<uint16_t>(itemSlot), static_cast<uint8_t>(quantity)});
 	});
 
 	// Set callback for when player closes the vendor window
 	windowManager->setOnVendorClose([this](uint16_t npcId) {
 		CloseVendorWindow();
+		if (m_bridge) m_bridge->pushIntent(eqt::events::CloseVendorIntent{npcId});
 	});
 
 	if (s_debug_level >= 2) {
@@ -4592,6 +4599,7 @@ void EverQuest::SetupBankCallbacks()
 	// Set callback for when player closes the bank window
 	windowManager->setOnBankClose([this]() {
 		CloseBankWindow();
+		if (m_bridge) m_bridge->pushIntent(eqt::events::CloseBankIntent{});
 	});
 
 	// Set callback for currency movement between bank and inventory
@@ -4678,6 +4686,7 @@ void EverQuest::SetupBankCallbacks()
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::BankCurrencyMoveIntent{static_cast<uint8_t>(coinType), amount, fromBank});
 	});
 
 	// Set callback for currency conversion in bank (cp->sp->gp->pp)
@@ -4755,6 +4764,7 @@ void EverQuest::SetupBankCallbacks()
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{static_cast<uint8_t>(fromCoinType), amount});
 	});
 
 	if (s_debug_level >= 2) {
@@ -4778,6 +4788,7 @@ void EverQuest::SetupTradeWindowCallbacks()
 		if (m_trade_manager) {
 			m_trade_manager->clickAccept();
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::TradeAcceptIntent{});
 	});
 
 	// Set callback for when player clicks Cancel in trade window
@@ -4785,6 +4796,7 @@ void EverQuest::SetupTradeWindowCallbacks()
 		if (m_trade_manager) {
 			m_trade_manager->cancelTrade();
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::TradeCancelIntent{});
 	});
 
 	// Set callback for when player accepts trade request
@@ -4792,6 +4804,7 @@ void EverQuest::SetupTradeWindowCallbacks()
 		if (m_trade_manager) {
 			m_trade_manager->acceptTradeRequest();
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::TradeAcceptIntent{});
 	});
 
 	// Set callback for when player declines trade request
@@ -4799,6 +4812,7 @@ void EverQuest::SetupTradeWindowCallbacks()
 		if (m_trade_manager) {
 			m_trade_manager->rejectTradeRequest();
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::DeclineInviteIntent{});
 	});
 
 	// Set callback for trade error messages
@@ -19345,6 +19359,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 				LOG_DEBUG(MOD_SPELL, "Spell gem {} cast failed: {}", gemSlot + 1, static_cast<int>(result));
 			}
 		}
+		if (m_bridge) m_bridge->pushIntent(eqt::events::CastSpellIntent{gemSlot});
 	});
 
 	// Set collision map for Player Mode (will be updated when zone loads)
@@ -19469,6 +19484,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			} else if (result == EQ::CastResult::Stunned) {
 				AddChatSystemMessage("You are stunned");
 			}
+			if (m_bridge) m_bridge->pushIntent(eqt::events::CastSpellIntent{gemSlot});
 		});
 
 		// Set up gem forget callback (right-click)
@@ -19477,6 +19493,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			if (m_spell_manager->forgetSpell(gemSlot)) {
 				AddChatSystemMessage(fmt::format("Forgot spell in gem {}", gemSlot + 1));
 			}
+			if (m_bridge) m_bridge->pushIntent(eqt::events::ForgetSpellIntent{gemSlot});
 		});
 
 		// Set up spellbook open/close callback to send appearance animation
@@ -19485,12 +19502,14 @@ bool EverQuest::InitGraphics(int width, int height) {
 			SendSpawnAppearance(AT_ANIMATION, isOpen ? 110 : 100);
 			LOG_DEBUG(MOD_SPELL, "Spellbook {} - sent appearance animation {}",
 				isOpen ? "opened" : "closed", isOpen ? 110 : 100);
+			if (m_bridge) m_bridge->pushIntent(eqt::events::SpellbookStateIntent{isOpen});
 		});
 
 		// Set up scribe spell request callback
 		windowManager->setScribeSpellRequestCallback(
 			[this](uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot) {
 				ScribeSpellFromScroll(spellId, bookSlot, sourceSlot);
+				if (m_bridge) m_bridge->pushIntent(eqt::events::ScribeSpellIntent{spellId, static_cast<uint8_t>(bookSlot), sourceSlot});
 			}
 		);
 
@@ -19509,6 +19528,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 				m_buff_manager->removeBuffBySlot(0, slot);  // 0 = player
 				AddChatSystemMessage(fmt::format("Buff in slot {} cancelled", slot + 1));
 			}
+			if (m_bridge) m_bridge->pushIntent(eqt::events::BuffCancelIntent{slot});
 		});
 
 		LOG_DEBUG(MOD_SPELL, "Buff window initialized");
@@ -19526,6 +19546,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			if (m_skill_manager) {
 				m_skill_manager->activateSkill(skill_id);
 			}
+			if (m_bridge) m_bridge->pushIntent(eqt::events::SkillActivateIntent{static_cast<uint32_t>(skill_id)});
 		});
 
 		windowManager->setHotbarCreateCallback([this, windowManager](uint8_t skill_id) {
@@ -19584,6 +19605,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 				if (it != m_entities.end()) {
 					SendGroupInvite(it->second.name);
 					AddChatSystemMessage(fmt::format("Inviting {} to group", it->second.name));
+					if (m_bridge) m_bridge->pushIntent(eqt::events::GroupInviteIntent{it->second.name});
 				}
 			} else {
 				AddChatSystemMessage("No target selected");
@@ -19598,6 +19620,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 					SendLeaveGroup();
 				}
 			}
+			if (m_bridge) m_bridge->pushIntent(eqt::events::DisbandIntent{});
 		});
 
 		windowManager->setGroupAcceptCallback([this]() {
@@ -19606,6 +19629,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 		windowManager->setGroupDeclineCallback([this]() {
 			DeclineGroupInvite();
+			if (m_bridge) m_bridge->pushIntent(eqt::events::DeclineInviteIntent{});
 		});
 
 		LOG_DEBUG(MOD_MAIN, "Group window initialized");
@@ -19619,6 +19643,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 		// Set up pet command callback
 		windowManager->setPetCommandCallback([this](EQT::PetCommand command, uint16_t targetId) {
 			SendPetCommand(command, targetId);
+			if (m_bridge) m_bridge->pushIntent(eqt::events::PetCommandIntent{static_cast<uint8_t>(command), targetId});
 		});
 
 		LOG_DEBUG(MOD_MAIN, "Pet window initialized");
@@ -20139,6 +20164,7 @@ void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& st
 	if (windowMgr) {
 		windowMgr->setHotbarChangedCallback([this]() {
 			SaveHotbarConfig();
+			if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
 		});
 	}
 
@@ -20252,6 +20278,7 @@ void EverQuest::LoadZoneGraphics() {
 	if (windowMgr) {
 		windowMgr->setHotbarChangedCallback([this]() {
 			SaveHotbarConfig();
+			if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
 		});
 	}
 
@@ -20757,8 +20784,119 @@ void EverQuest::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
 				LOG_TRACE(MOD_MAIN, "Bridge intent: ReadItemIntent type={}", i.type);
 			}
+			// ================================================================
+			// D16: UI intents (dual-path — callbacks handle primary,
+			// intents logged here as secondary. Phase 5 activates intent-only.)
+			// ================================================================
+			// Spell intents
+			else if constexpr (std::is_same_v<T, eqt::events::CastSpellIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: CastSpellIntent gem={}", i.gemSlot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::ForgetSpellIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: ForgetSpellIntent gem={}", i.gemSlot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::ScribeSpellIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: ScribeSpellIntent spell={}", i.spellId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::SpellbookStateIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: SpellbookStateIntent open={}", i.isOpen);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::InterruptSpellIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: InterruptSpellIntent");
+			}
+			// Buff/skill intents
+			else if constexpr (std::is_same_v<T, eqt::events::BuffCancelIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: BuffCancelIntent slot={}", i.slot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::SkillActivateIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: SkillActivateIntent skill={}", i.skillId);
+			}
+			// Loot intents
+			else if constexpr (std::is_same_v<T, eqt::events::LootItemIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: LootItemIntent corpse={} slot={}", i.corpseId, i.slot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::LootAllIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: LootAllIntent corpse={}", i.corpseId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::DestroyAllLootIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: DestroyAllLootIntent corpse={}", i.corpseId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::CloseLootIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: CloseLootIntent corpse={}", i.corpseId);
+			}
+			// Vendor intents
+			else if constexpr (std::is_same_v<T, eqt::events::VendorBuyIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: VendorBuyIntent npc={} slot={}", i.npcId, i.slot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::VendorSellIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: VendorSellIntent npc={} slot={}", i.npcId, i.slot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::CloseVendorIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: CloseVendorIntent npc={}", i.npcId);
+			}
+			// Bank intents
+			else if constexpr (std::is_same_v<T, eqt::events::CloseBankIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: CloseBankIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyMoveIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: BankCurrencyMoveIntent type={} amt={}", i.coinType, i.amount);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyConvertIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: BankCurrencyConvertIntent from={} amt={}", i.fromCoinType, i.amount);
+			}
+			// Trade intents
+			else if constexpr (std::is_same_v<T, eqt::events::TradeRequestIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: TradeRequestIntent target={}", i.targetId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::TradeAcceptIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: TradeAcceptIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::TradeCancelIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: TradeCancelIntent");
+			}
+			// Pet/group intents
+			else if constexpr (std::is_same_v<T, eqt::events::PetCommandIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: PetCommandIntent cmd={}", i.command);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::GroupInviteIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: GroupInviteIntent target={}", i.targetName);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::DisbandIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: DisbandIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::DeclineInviteIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: DeclineInviteIntent");
+			}
+			// General intents
+			else if constexpr (std::is_same_v<T, eqt::events::RequestCampIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestCampIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::RequestQuitIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestQuitIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::HotbarChangedIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: HotbarChangedIntent");
+			}
+			// Debug/diagnostic intents
+			else if constexpr (std::is_same_v<T, eqt::events::SlashCommandIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: SlashCommandIntent cmd={}", i.fullCommand);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::RequestMemoryReport>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestMemoryReport");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::RequestSceneDump>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestSceneDump");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::ToggleAutoAttackIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: ToggleAutoAttackIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::AttackIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: AttackIntent target={}", i.targetId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: MemorizeSpellIntent gem={} spell={}", i.gemSlot, i.spellId);
+			}
 			else {
-				// D16+ intents will be handled later
 				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");
 			}
 		}, intent);
