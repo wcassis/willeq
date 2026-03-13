@@ -24,7 +24,10 @@ GameState::GameState() {
         data.y = door.y;
         data.z = door.z;
         data.heading = door.heading;
-        data.state = door.isOpen ? 1 : 0;
+        data.incline = door.incline;
+        data.size = door.size;
+        data.opentype = door.opentype;
+        data.isOpen = door.isOpen;
         m_eventBus.publish(GameEventType::DoorSpawned, data);
     });
     m_doorManager.setDoorStateChangeCallback([this](uint8_t doorId, bool isOpen) {

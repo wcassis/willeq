@@ -905,6 +905,8 @@ public:
 
 	// Additional public methods
 	uint16_t GetMySpawnID() const { return m_my_spawn_id; }
+	uint16_t GetCurrentTargetId() const { return m_current_target_id; }
+	void SetCurrentTargetId(uint16_t id) { m_current_target_id = id; }
 
 	// Game state access (new state management system)
 	eqt::state::GameState& GetGameState() { return m_game_state; }
@@ -1275,6 +1277,9 @@ private:
 	std::map<uint16_t, Entity> m_entities;
 	uint16_t m_my_spawn_id = 0;
 	bool m_player_graphics_entity_pending = false;  // True when player entity needs to be created on renderer after zoning
+
+	// Target tracking (server-authoritative — renderer is a consumer, not the source of truth)
+	uint16_t m_current_target_id = 0;
 
 	// Pet tracking
 	uint16_t m_pet_spawn_id = 0;                                      // Our pet's spawn ID (0 = no pet)

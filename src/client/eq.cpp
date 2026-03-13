@@ -1167,16 +1167,38 @@ void EverQuest::OnGameStateComplete() {
 	} else {
 		// No graphics mode - we're done
 		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
+		if (m_bridge) {
+			eqt::state::ZoneLoadedData data;
+			data.zoneName = m_current_zone_name;
+			data.zoneId = m_current_zone_id;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::ZoneLoaded, std::move(data)));
+		}
 	}
 #else
 	// No graphics mode - we're done
 	SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
+	if (m_bridge) {
+		eqt::state::ZoneLoadedData data;
+		data.zoneName = m_current_zone_name;
+		data.zoneId = m_current_zone_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
+	}
 #endif
 }
 
 void EverQuest::OnGraphicsComplete() {
 	SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
 	LOG_INFO(MOD_MAIN, "[LOADING] Graphics loading complete. Game ready!");
+
+	if (m_bridge) {
+		eqt::state::ZoneLoadedData data;
+		data.zoneName = m_current_zone_name;
+		data.zoneId = m_current_zone_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
+	}
 
 #ifdef EQT_HAS_GRAPHICS
 	if (m_renderer) {
@@ -3262,6 +3284,16 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		}
 		m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
 	}
+	if (m_bridge) {
+		float heading512 = m_heading * 512.0f / 360.0f;
+		eqt::state::PlayerMovedData data;
+		data.x = m_x; data.y = m_y; data.z = m_z;
+		data.heading = heading512;
+		data.dx = 0; data.dy = 0; data.dz = 0;
+		data.isMoving = false;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMoved, std::move(data)));
+	}
 #endif
 
 	// Store character stats (update both local members and GameState during migration)
@@ -3334,6 +3366,10 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			}
 			m_skill_manager->updateAllSkills(skills, EQT::MAX_PP_SKILL);
 			LOG_INFO(MOD_MAIN, "Loaded {} skills from PlayerProfile ({} non-zero)", EQT::MAX_PP_SKILL, nonzero_count);
+			if (m_bridge) {
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::SkillsRefreshed, eqt::state::SkillsRefreshedData{}));
+			}
 		} else {
 			LOG_WARN(MOD_MAIN, "PlayerProfile too small for skills: {} < {}",
 				p.Length(), base + skill_offset + (EQT::MAX_PP_SKILL * 4));
@@ -4276,13 +4312,10 @@ void EverQuest::SetupTradeManagerCallbacks()
 			m_renderer->getWindowManager()->closeTradeWindow(false);  // Don't send cancel on completion
 		}
 
-		// Publish TradeCompleted (reuse TradeAcceptStateChangedData as carrier)
+		// Publish TradeCompleted event to bridge
 		if (m_bridge) {
-			eqt::state::TradeAcceptStateChangedData tdata;
-			tdata.ownAccepted = true;
-			tdata.partnerAccepted = true;
 			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::TradeCompleted, std::move(tdata)));
+				eqt::state::GameEventType::TradeCompleted, eqt::state::TradeCompletedData{}));
 		}
 	});
 
@@ -4292,13 +4325,10 @@ void EverQuest::SetupTradeManagerCallbacks()
 			m_renderer->getWindowManager()->closeTradeWindow(true);  // Send cancel
 		}
 
-		// Publish TradeCancelled (reuse TradeAcceptStateChangedData as carrier)
+		// Publish TradeCancelled event to bridge
 		if (m_bridge) {
-			eqt::state::TradeAcceptStateChangedData tdata;
-			tdata.ownAccepted = false;
-			tdata.partnerAccepted = false;
 			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::TradeCancelled, std::move(tdata)));
+				eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));
 		}
 	});
 #endif
@@ -5816,9 +5846,19 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 					float heading512 = m_heading * 512.0f / 360.0f;
 					m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
 				}
+				if (m_bridge) {
+					float heading512 = m_heading * 512.0f / 360.0f;
+					eqt::state::PlayerMovedData pdata;
+					pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
+					pdata.heading = heading512;
+					pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
+					pdata.isMoving = false;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+				}
 #endif
 			}
-			
+
 			// Add to entity list (sync to both local map and EntityManager)
 			m_entities[entity.spawn_id] = entity;
 			SyncEntityToGameState(entity);
@@ -5974,7 +6014,10 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 			data.y = door.y;
 			data.z = door.z;
 			data.heading = door.heading;
-			data.state = door.isOpen ? 1 : 0;
+			data.incline = door.incline;
+			data.size = door.size;
+			data.opentype = door.opentype;
+			data.isOpen = door.isOpen;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::DoorSpawned, std::move(data)));
 		}
@@ -6878,6 +6921,16 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 				float heading512 = m_heading * 512.0f / 360.0f;
 				m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
 			}
+			if (m_bridge) {
+				float heading512 = m_heading * 512.0f / 360.0f;
+				eqt::state::PlayerMovedData pdata;
+				pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
+				pdata.heading = heading512;
+				pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
+				pdata.isMoving = false;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+			}
 #endif
 		}
 
@@ -7293,6 +7346,38 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				// Update inventory model view with player appearance
 				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 
+				// Publish EntitySpawned for player entity to bridge
+				if (m_bridge) {
+					eqt::state::EntitySpawnedData data;
+					data.spawnId = m_my_spawn_id;
+					data.name = entity.name;
+					data.x = x;
+					data.y = y;
+					data.z = z;
+					data.heading = h_player;
+					data.raceId = entity.race_id;
+					data.classId = entity.class_id;
+					data.level = entity.level;
+					data.gender = entity.gender;
+					data.npcType = entity.npc_type;
+					data.isCorpse = false;
+					data.isPlayer = true;
+					data.serverSize = entity.size;
+					data.face = entity.face;
+					data.haircolor = entity.haircolor;
+					data.hairstyle = entity.hairstyle;
+					data.beardcolor = entity.beardcolor;
+					data.beard = entity.beard;
+					data.texture = entity.equip_chest2;
+					data.helm = entity.helm;
+					for (int i = 0; i < 9; i++) {
+						data.equipment[i] = entity.equipment[i];
+						data.equipmentTint[i] = entity.equipment_tint[i];
+					}
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::EntitySpawned, std::move(data)));
+				}
+
 				// Player entity has been created, clear the pending flag
 				m_player_graphics_entity_pending = false;
 			} else {
@@ -7486,7 +7571,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		}
 #ifdef EQT_HAS_GRAPHICS
 		// Update renderer target HP if this is our current target
-		if (m_renderer && m_renderer->getCurrentTargetId() == spawn_id) {
+		if (m_renderer && m_current_target_id == spawn_id) {
 			m_renderer->updateCurrentTargetHP(hp_percent);
 		}
 #endif
@@ -7499,6 +7584,28 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 			data.maxMana = 0;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityStatsChanged, std::move(data)));
+			// If this entity is the current target, push TargetChanged with updated HP
+			if (m_current_target_id == spawn_id) {
+				eqt::state::TargetChangedData tdata;
+				tdata.spawnId = spawn_id;
+				tdata.hpPercent = hp_percent;
+				tdata.name = it->second.name;
+				tdata.level = it->second.level;
+				tdata.raceId = it->second.race_id;
+				tdata.gender = it->second.gender;
+				tdata.classId = it->second.class_id;
+				tdata.bodyType = it->second.bodytype;
+				tdata.npcType = it->second.npc_type;
+				tdata.helm = it->second.helm;
+				tdata.showHelm = it->second.showhelm;
+				tdata.texture = it->second.equip_chest2;
+				for (int i = 0; i < 9; ++i) {
+					tdata.equipment[i] = it->second.equipment[i];
+					tdata.equipmentTint[i] = it->second.equipment_tint[i];
+				}
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::TargetChanged, std::move(tdata)));
+			}
 		}
 	}
 }
@@ -9110,6 +9217,15 @@ void EverQuest::RegisterCommands()
 				m_renderer->setPlayerPosition(x, y, z, m_heading);
 			}
 #endif
+			if (m_bridge) {
+				eqt::state::PlayerMovedData pdata;
+				pdata.x = x; pdata.y = y; pdata.z = z;
+				pdata.heading = m_heading;
+				pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
+				pdata.isMoving = false;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+			}
 
 			AddChatSystemMessage(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
 		}
@@ -12192,6 +12308,15 @@ void EverQuest::UpdateMovement()
 		m_renderer->setPlayerPosition(m_x, m_y, m_z, m_heading);
 	}
 #endif
+	if (m_bridge) {
+		eqt::state::PlayerMovedData pdata;
+		pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
+		pdata.heading = m_heading;
+		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
+		pdata.isMoving = true;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+	}
 
 	// Set animation based on actual movement distance
 	// Don't change animation if we're jumping
@@ -12984,6 +13109,7 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 			eqt::state::DoorStateChangedData data;
 			data.doorId = door_id;
 			data.isOpen = is_open;
+			data.userInitiated = user_initiated;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::DoorStateChanged, std::move(data)));
 		}
@@ -13074,7 +13200,6 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 		data.casterId = spawn_id;
 		data.spellId = spell_id;
 		data.castTimeMs = cast_time;
-		data.targetId = 0;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::SpellCastStarted, std::move(data)));
 	}
@@ -13222,6 +13347,10 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 					data.slot = static_cast<uint8_t>(slot_id);
 					data.spellId = buff.spellid;
 					data.ticksLeft = static_cast<uint32_t>(buff.duration);
+					auto caster_it = m_entities.find(static_cast<uint16_t>(buff.player_id));
+					if (caster_it != m_entities.end()) {
+						data.casterName = EQT::toDisplayName(caster_it->second.name);
+					}
 					m_bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::BuffUpdated, std::move(data)));
 				}
@@ -14756,7 +14885,14 @@ void EverQuest::SetMovementMode(MovementMode mode)
 	}
 	
 	m_movement_mode = mode;
-	
+
+	if (m_bridge) {
+		eqt::state::PlayerMovementModeChangedData data;
+		data.mode = static_cast<uint8_t>(mode);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMovementModeChanged, std::move(data)));
+	}
+
 	// Update movement speed based on mode
 	switch (mode) {
 		case MOVE_MODE_RUN:
@@ -14785,7 +14921,14 @@ void EverQuest::SetPositionState(PositionState state)
 	}
 	
 	m_position_state = state;
-	
+
+	if (m_bridge) {
+		eqt::state::PlayerPositionStateChangedData data;
+		data.state = static_cast<uint8_t>(state);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerPositionStateChanged, std::move(data)));
+	}
+
 	switch (state) {
 		case POS_STANDING:
 			SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
@@ -18939,6 +19082,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			if (m_combat_manager->SetTarget(spawnId)) {
 				// Set tracked target for debug logging
 				SetTrackedTargetId(spawnId);
+				m_current_target_id = spawnId;
 
 				// Update renderer with full target info
 				auto it = m_entities.find(spawnId);
@@ -18969,15 +19113,25 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 					// Publish TargetChanged event to bridge
 					if (m_bridge) {
-						eqt::state::CombatEventData data;
-						data.type = eqt::state::CombatEventData::Type::Hit;  // Reuse for target
-						data.sourceId = m_my_spawn_id;
-						data.targetId = spawnId;
-						data.damage = 0;
-						data.sourceName = m_character;
-						data.targetName = e.name;
+						eqt::state::TargetChangedData tdata;
+						tdata.spawnId = e.spawn_id;
+						tdata.name = e.name;
+						tdata.level = e.level;
+						tdata.hpPercent = e.hp_percent;
+						tdata.raceId = e.race_id;
+						tdata.gender = e.gender;
+						tdata.classId = e.class_id;
+						tdata.bodyType = e.bodytype;
+						tdata.npcType = e.npc_type;
+						tdata.helm = e.helm;
+						tdata.showHelm = e.showhelm;
+						tdata.texture = e.equip_chest2;
+						for (int i = 0; i < 9; ++i) {
+							tdata.equipment[i] = e.equipment[i];
+							tdata.equipmentTint[i] = e.equipment_tint[i];
+						}
 						m_bridge->pushEvent(eqt::state::GameEvent(
-							eqt::state::GameEventType::TargetChanged, std::move(data)));
+							eqt::state::GameEventType::TargetChanged, std::move(tdata)));
 					}
 
 					LOG_DEBUG(MOD_ENTITY, "=== TARGET SELECTED: {} ===", e.name);
@@ -19700,9 +19854,8 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		m_target_update_timer += deltaTime;
 		if (m_target_update_timer >= 1.0f) {
 			m_target_update_timer = 0.0f;
-			uint16_t targetId = m_renderer->getCurrentTargetId();
-			if (targetId != 0) {
-				auto it = m_entities.find(targetId);
+			if (m_current_target_id != 0) {
+				auto it = m_entities.find(m_current_target_id);
 				if (it != m_entities.end()) {
 					// Update the target HP from current entity data
 					m_renderer->updateCurrentTargetHP(it->second.hp_percent);
@@ -20158,6 +20311,19 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		data.gender = entity.gender;
 		data.npcType = entity.npc_type;
 		data.isCorpse = isCorpse;
+		data.isPlayer = false;
+		data.serverSize = entity.size;
+		data.face = entity.face;
+		data.haircolor = entity.haircolor;
+		data.hairstyle = entity.hairstyle;
+		data.beardcolor = entity.beardcolor;
+		data.beard = entity.beard;
+		data.texture = entity.equip_chest2;
+		data.helm = entity.helm;
+		for (int i = 0; i < 9; i++) {
+			data.equipment[i] = entity.equipment[i];
+			data.equipmentTint[i] = entity.equipment_tint[i];
+		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntitySpawned, std::move(data)));
 	}
@@ -20354,20 +20520,17 @@ void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 	}
 
 	// Clear target if this entity was targeted
-	if (m_renderer->getCurrentTargetId() == spawn_id) {
+	if (m_current_target_id == spawn_id) {
+		m_current_target_id = 0;
 		m_renderer->clearCurrentTarget();
 		if (m_combat_manager) {
 			m_combat_manager->ClearTarget();
 		}
 		// Publish TargetChanged (clear) event
 		if (m_bridge) {
-			eqt::state::CombatEventData data;
-			data.type = eqt::state::CombatEventData::Type::Hit;
-			data.sourceId = m_my_spawn_id;
-			data.targetId = 0;
-			data.damage = 0;
+			eqt::state::TargetChangedData tdata;  // spawnId=0 = target cleared
 			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::TargetChanged, std::move(data)));
+				eqt::state::GameEventType::TargetChanged, std::move(tdata)));
 		}
 	}
 
@@ -20409,6 +20572,15 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 		// Convert heading from degrees (0-360) to EQ format (0-512) for setPlayerPosition
 		float heading_512 = heading * 512.0f / 360.0f;
 		m_renderer->setPlayerPosition(x, y, z, heading_512);
+		if (m_bridge) {
+			eqt::state::PlayerMovedData pdata;
+			pdata.x = x; pdata.y = y; pdata.z = z;
+			pdata.heading = heading_512;
+			pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
+			pdata.isMoving = (dx != 0 || dy != 0 || dz != 0);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+		}
 	}
 
 	m_renderer->updateEntity(spawn_id, x, y, z, heading, dx, dy, dz, animation);
@@ -20539,6 +20711,14 @@ void EverQuest::UpdateInventoryStats() {
 
 		// Propagate weapon skill types to renderer
 		m_renderer->setEntityWeaponSkills(m_my_spawn_id, primaryWeaponSkill, secondaryWeaponSkill);
+		if (m_bridge) {
+			eqt::state::EntityWeaponSkillsChangedData data;
+			data.spawnId = m_my_spawn_id;
+			data.primaryWeaponSkill = primaryWeaponSkill;
+			data.secondaryWeaponSkill = secondaryWeaponSkill;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityWeaponSkillsChanged, std::move(data)));
+		}
 	}
 
 	// Calculate total stats (base + equipment)
@@ -20563,7 +20743,7 @@ void EverQuest::UpdateInventoryStats() {
 		m_cur_hp, m_max_hp,
 		m_mana, m_max_mana,
 		m_endurance, m_max_endurance,
-		0, 0,  // AC/ATK: not yet implemented
+		equipStats.ac, equipStats.atk,
 		totalStr, totalSta, totalAgi, totalDex, totalWis, totalInt, totalCha,
 		equipStats.poisonResist, equipStats.magicResist, equipStats.diseaseResist,
 		equipStats.fireResist, equipStats.coldResist,
@@ -20594,8 +20774,8 @@ void EverQuest::UpdateInventoryStats() {
 
 		// Publish EquipmentStatsChanged
 		eqt::state::EquipmentStatsChangedData edata;
-		edata.ac = 0;  // Not yet implemented
-		edata.atk = 0;
+		edata.ac = equipStats.ac;
+		edata.atk = equipStats.atk;
 		edata.hp = equipStats.hp;
 		edata.mana = equipStats.mana;
 		edata.weight = m_weight;

@@ -224,6 +224,7 @@ bool CombatManager::SetTarget(uint16_t entity_id) {
 	for (const auto& [id, entity] : entities) {
 		if (id == entity_id) {
 			m_current_target_id = entity_id;
+			m_eq->SetCurrentTargetId(entity_id);
 
 			// Create target info
 			m_current_target_info = std::make_unique<CombatTarget>();
@@ -270,6 +271,7 @@ bool CombatManager::SetTarget(const std::string& name) {
 void CombatManager::ClearTarget() {
 	m_current_target_id = 0;
 	m_current_target_info.reset();
+	m_eq->SetCurrentTargetId(0);
 
 	// Send clear target packet
 	EQ::Net::DynamicPacket packet;

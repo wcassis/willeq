@@ -152,6 +152,7 @@ void SpellState::setMemorizing(bool memorizing, uint8_t gemSlot, uint32_t spellI
         m_gems[gemSlot].state = SpellGemState::MemorizeProgress;
         fireSpellGemChangedEvent(gemSlot);
     }
+    fireSpellMemorizingEvent();
 }
 
 void SpellState::updateMemorizeProgress(uint32_t remainingMs) {
@@ -257,6 +258,20 @@ void SpellState::fireCastingStateChangedEvent() {
     event.castTimeRemainingMs = m_castTimeRemaining;
     event.castTimeTotalMs = m_castTimeTotal;
     m_eventBus->publish(GameEventType::CastingStateChanged, event);
+}
+
+void SpellState::fireSpellMemorizingEvent() {
+    if (!m_eventBus) {
+        return;
+    }
+
+    SpellMemorizingData event;
+    event.isMemorizing = m_isMemorizing;
+    event.gemSlot = m_memorizingGemSlot;
+    event.spellId = m_memorizingSpellId;
+    event.progressMs = m_memorizeTimeTotal - m_memorizeTimeRemaining;
+    event.totalMs = m_memorizeTimeTotal;
+    m_eventBus->publish(GameEventType::SpellMemorizing, event);
 }
 
 } // namespace state

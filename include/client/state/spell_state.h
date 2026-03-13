@@ -230,6 +230,7 @@ public:
 private:
     void fireSpellGemChangedEvent(uint8_t gemSlot);
     void fireCastingStateChangedEvent();
+    void fireSpellMemorizingEvent();
 
     EventBus* m_eventBus = nullptr;
 

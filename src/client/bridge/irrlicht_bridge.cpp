@@ -1,6 +1,10 @@
 #include "client/bridge/irrlicht_bridge.h"
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/ui/window_manager.h"
+#include "client/graphics/ui/chat_window.h"
+#include "client/graphics/ui/chat_message_buffer.h"
 #include "common/logging.h"
+#include <ctime>
 
 namespace eqt {
 namespace bridge {
@@ -17,7 +21,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
     case state::GameEventType::PlayerStatsChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerStatsChanged");
+        // D10: PlayerStatsChanged carries HP/mana/endurance/level only.
+        // The renderer's updateCharacterStats() requires all stats (AC, ATK,
+        // attributes, resistances, weight, currency) which arrive via separate
+        // events (EquipmentStatsChanged, CurrencyChanged — D11a scope).
+        // Full bridge-driven stat updates will be wired when all events are combined.
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerStatsChanged (partial — awaiting D11a)");
         break;
     case state::GameEventType::PlayerPositionStateChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerPositionStateChanged");
@@ -32,10 +41,27 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::EntitySpawned:
         if (renderer_) {
             auto& d = std::get<state::EntitySpawnedData>(event.data);
-            renderer_->createEntity(d.spawnId, d.raceId, d.name,
-                d.x, d.y, d.z, d.heading, false,
-                d.gender, EQT::Graphics::EntityAppearance(),
-                d.npcType == 1, d.isCorpse);
+            EQT::Graphics::EntityAppearance appearance;
+            appearance.face = d.face;
+            appearance.haircolor = d.haircolor;
+            appearance.hairstyle = d.hairstyle;
+            appearance.beardcolor = d.beardcolor;
+            appearance.beard = d.beard;
+            appearance.texture = d.texture;
+            appearance.helm = d.helm;
+            for (int i = 0; i < 9; i++) {
+                appearance.equipment[i] = d.equipment[i];
+                appearance.equipment_tint[i] = d.equipmentTint[i];
+            }
+            bool isNPC = (d.npcType == 1 || d.npcType == 3);
+            renderer_->registerEntity(d.spawnId, d.raceId, d.name,
+                d.x, d.y, d.z, d.heading, d.isPlayer,
+                d.gender, appearance, isNPC, d.isCorpse, d.serverSize,
+                d.level);
+            if (d.isPlayer) {
+                renderer_->setPlayerSpawnId(d.spawnId);
+                renderer_->updatePlayerAppearance(d.raceId, d.gender, appearance);
+            }
         }
         break;
     case state::GameEventType::EntityDespawned:
@@ -118,7 +144,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     // ========================================================================
-    // Stubs — to be wired in D10-D13
+    // Stubs — to be wired in D11-D13
     // ========================================================================
 
     // Door events (D12)
@@ -142,26 +168,83 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Chat events (D10)
     case state::GameEventType::ChatMessage:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: ChatMessage");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto* chatWindow = wm->getChatWindow();
+                if (chatWindow) {
+                    auto& d = std::get<state::ChatMessageData>(event.data);
+                    eqt::ui::ChatMessage msg;
+                    msg.sender = d.sender;
+                    msg.text = d.message;
+                    msg.channel = static_cast<eqt::ui::ChatChannel>(d.channelType);
+                    msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
+                    msg.color = eqt::ui::getChannelColor(msg.channel);
+                    chatWindow->addMessage(std::move(msg));
+                }
+            }
+        }
         break;
     case state::GameEventType::SystemMessage:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: SystemMessage");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto* chatWindow = wm->getChatWindow();
+                if (chatWindow) {
+                    auto& d = std::get<state::ChatMessageData>(event.data);
+                    chatWindow->addSystemMessage(d.message);
+                }
+            }
+        }
         break;
 
     // Combat events (D10)
     case state::GameEventType::CombatEvent:
+        // CombatEvent carries combat text (hit/miss/dodge etc.) — no dedicated
+        // renderer call; combat text is routed through chat window by eq.cpp
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CombatEvent");
         break;
     case state::GameEventType::TargetChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TargetChanged");
+        if (renderer_) {
+            auto& d = std::get<state::TargetChangedData>(event.data);
+            if (d.spawnId == 0) {
+                renderer_->clearCurrentTarget();
+            } else {
+                EQT::Graphics::TargetInfo info;
+                info.spawnId = d.spawnId;
+                info.name = d.name;
+                info.level = d.level;
+                info.hpPercent = d.hpPercent;
+                info.raceId = d.raceId;
+                info.gender = d.gender;
+                info.classId = d.classId;
+                info.bodyType = d.bodyType;
+                info.npcType = d.npcType;
+                info.helm = d.helm;
+                info.showHelm = d.showHelm;
+                info.texture = d.texture;
+                for (int i = 0; i < 9; i++) {
+                    info.equipment[i] = d.equipment[i];
+                    info.equipmentTint[i] = d.equipmentTint[i];
+                }
+                renderer_->setCurrentTargetInfo(info);
+            }
+        }
         break;
     case state::GameEventType::DamageEvent:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: DamageEvent");
+        if (renderer_) {
+            auto& d = std::get<state::DamageEventData>(event.data);
+            renderer_->queueReceivedDamageAnimation(d.targetId);
+        }
         break;
     case state::GameEventType::SpellCastStarted:
+        // No direct renderer call — spell casting UI is handled through
+        // SpellManager callbacks and CastingStateChanged events (D12)
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellCastStarted");
         break;
     case state::GameEventType::SpellCastComplete:
+        // No direct renderer call — spell completion UI is handled through
+        // SpellManager callbacks and CastingStateChanged events (D12)
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellCastComplete");
         break;
 
@@ -193,12 +276,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     case state::GameEventType::PetButtonStateChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PetButtonStateChanged");
-        break;
-    case state::GameEventType::PetWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PetWindowOpened");
-        break;
-    case state::GameEventType::PetWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PetWindowClosed");
         break;
 
     // Window events (D11b, D11c, D12)

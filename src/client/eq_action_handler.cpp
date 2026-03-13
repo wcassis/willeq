@@ -22,6 +22,7 @@ CombatManager* EqActionHandler::getCombatManager() {
 }
 
 void EqActionHandler::updateRendererTargetInfo(uint16_t spawnId) {
+    m_eq.SetCurrentTargetId(spawnId);
 #ifdef EQT_HAS_GRAPHICS
     auto* renderer = m_eq.GetRenderer();
     if (!renderer) return;

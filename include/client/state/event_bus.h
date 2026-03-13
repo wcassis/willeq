@@ -27,6 +27,7 @@ enum class GameEventType {
     EntityAppearanceChanged,
     EntityLightChanged,
     EntityAnimationEvent,
+    EntityWeaponSkillsChanged,
     EntityPoseStateChanged,
     EntityDeathAnimation,
     CorpseDecayStarted,
@@ -65,8 +66,6 @@ enum class GameEventType {
     PetRemoved,
     PetStatsChanged,
     PetButtonStateChanged,
-    PetWindowOpened,
-    PetWindowClosed,
 
     // Window events (vendor, bank, trainer, tradeskill)
     VendorWindowOpened,
@@ -146,6 +145,14 @@ struct PlayerStatsChangedData {
     uint8_t level;
 };
 
+struct PlayerPositionStateChangedData {
+    uint8_t state;  // PositionState enum value
+};
+
+struct PlayerMovementModeChangedData {
+    uint8_t mode;  // MovementMode enum value
+};
+
 // --- Entity events ---
 
 struct EntitySpawnedData {
@@ -159,6 +166,18 @@ struct EntitySpawnedData {
     uint8_t gender;
     uint8_t npcType;  // 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
     bool isCorpse;
+    bool isPlayer = false;
+    float serverSize = 0.0f;
+    // Appearance
+    uint8_t face = 0;
+    uint8_t haircolor = 0;
+    uint8_t hairstyle = 0;
+    uint8_t beardcolor = 0;
+    uint8_t beard = 0;
+    uint8_t texture = 0;     // equip_chest2
+    uint8_t helm = 0;
+    uint32_t equipment[9] = {0};
+    uint32_t equipmentTint[9] = {0};
 };
 
 struct EntityDespawnedData {
@@ -171,7 +190,7 @@ struct EntityMovedData {
     float x, y, z;
     float heading;
     float dx, dy, dz;
-    uint8_t animation;
+    int32_t animation;
 };
 
 struct EntityStatsChangedData {
@@ -211,6 +230,12 @@ struct EntityAnimationEventData {
     bool playThrough;
 };
 
+struct EntityWeaponSkillsChangedData {
+    uint16_t spawnId;
+    uint8_t primaryWeaponSkill;
+    uint8_t secondaryWeaponSkill;
+};
+
 struct EntityPoseStateChangedData {
     uint16_t spawnId;
     uint8_t poseState;
@@ -239,12 +264,16 @@ struct DoorSpawnedData {
     std::string name;
     float x, y, z;
     float heading;
-    uint8_t state;  // 0=closed, 1=open
+    uint32_t incline = 0;
+    uint16_t size = 0;
+    uint8_t opentype = 0;
+    bool isOpen = false;
 };
 
 struct DoorStateChangedData {
     uint8_t doorId;
     bool isOpen;
+    bool userInitiated = false;
 };
 
 // --- Zone events ---
@@ -261,6 +290,11 @@ struct ZoneLoadingData {
     uint16_t zoneId;
     float progress;  // 0.0 to 1.0
     std::string statusMessage;
+};
+
+struct ZoneLoadedData {
+    std::string zoneName;
+    uint16_t zoneId;
 };
 
 // --- Chat events ---
@@ -293,6 +327,23 @@ struct CombatEventData {
     std::string targetName;
 };
 
+struct TargetChangedData {
+    uint16_t spawnId = 0;     // 0 = target cleared
+    std::string name;
+    uint8_t level = 0;
+    uint8_t hpPercent = 100;
+    uint16_t raceId = 0;
+    uint8_t gender = 0;
+    uint8_t classId = 0;
+    uint8_t bodyType = 0;
+    uint8_t npcType = 0;      // 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
+    uint8_t helm = 0;
+    uint8_t showHelm = 0;
+    uint8_t texture = 0;      // equip_chest2
+    uint32_t equipment[9] = {0};
+    uint32_t equipmentTint[9] = {0};
+};
+
 struct DamageEventData {
     uint16_t sourceId;
     uint16_t targetId;
@@ -305,7 +356,6 @@ struct SpellCastStartedData {
     uint16_t casterId;
     uint32_t spellId;
     uint32_t castTimeMs;
-    uint16_t targetId;
 };
 
 struct SpellCastCompleteData {
@@ -481,6 +531,10 @@ struct TradeAcceptStateChangedData {
     bool partnerAccepted;
 };
 
+struct TradeCancelledData {};
+
+struct TradeCompletedData {};
+
 // --- Spell events ---
 
 struct SpellGemChangedData {
@@ -589,6 +643,8 @@ using EventData = std::variant<
     // Player
     PlayerMovedData,
     PlayerStatsChangedData,
+    PlayerPositionStateChangedData,
+    PlayerMovementModeChangedData,
     // Entity
     EntitySpawnedData,
     EntityDespawnedData,
@@ -597,6 +653,7 @@ using EventData = std::variant<
     EntityAppearanceChangedData,
     EntityLightChangedData,
     EntityAnimationEventData,
+    EntityWeaponSkillsChangedData,
     EntityPoseStateChangedData,
     EntityDeathAnimationData,
     CorpseDecayStartedData,
@@ -607,10 +664,12 @@ using EventData = std::variant<
     // Zone
     ZoneChangedData,
     ZoneLoadingData,
+    ZoneLoadedData,
     // Chat
     ChatMessageData,
     // Combat
     CombatEventData,
+    TargetChangedData,
     DamageEventData,
     SpellCastStartedData,
     SpellCastCompleteData,
@@ -645,6 +704,8 @@ using EventData = std::variant<
     TradeStartedData,
     TradeItemUpdatedData,
     TradeAcceptStateChangedData,
+    TradeCancelledData,
+    TradeCompletedData,
     // Spell
     SpellGemChangedData,
     CastingStateChangedData,
