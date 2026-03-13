@@ -133,15 +133,15 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D01 | Extend existing EventBus with missing event types + consolidate door state | pending | |
-| D02 | Define renderer intent types (reconcile with ActionDispatcher) | pending | |
-| D03 | Create GameStateBridge interface and IrrlichtBridge skeleton | pending | |
+| D01 | Extend existing EventBus with missing event types + consolidate door state | done | `ed6ae49` |
+| D02 | Define renderer intent types (reconcile with ActionDispatcher) | done | `4cc784d` |
+| D03 | Create GameStateBridge interface and IrrlichtBridge skeleton | done | `e398f9d` |
 
 ### Phase 2 — Dual-Path Event Publishing
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D04 | Publish entity events alongside existing calls | pending | |
+| D04 | Publish entity events alongside existing calls | done | `393a617` |
 | D05 | Publish chat, combat, and player stat events | pending | |
 | D06a | Publish inventory + currency events | pending | |
 | D06b | Publish loot + vendor events | pending | |
