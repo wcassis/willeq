@@ -6677,6 +6677,14 @@ void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 		m_renderer->setExpProgress(CalculateExpProgress(m_exp, m_level));
 	}
 #endif
+
+	// Publish ExpProgressChanged event
+	if (m_bridge) {
+		eqt::state::ExpProgressChangedData data;
+		data.progress = CalculateExpProgress(m_exp, m_level);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ExpProgressChanged, std::move(data)));
+	}
 }
 
 void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
@@ -7138,6 +7146,16 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 			m_renderer->updateCurrentTargetHP(hp_percent);
 		}
 #endif
+		// Publish EntityStatsChanged event
+		if (m_bridge) {
+			eqt::state::EntityStatsChangedData data;
+			data.spawnId = spawn_id;
+			data.hpPercent = hp_percent;
+			data.curMana = 0;
+			data.maxMana = 0;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityStatsChanged, std::move(data)));
+		}
 	}
 }
 
@@ -7201,6 +7219,20 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 		UpdateInventoryStats();
 	}
 #endif
+
+	// Publish PlayerStatsChanged when our own HP changes
+	if (is_self && m_bridge) {
+		eqt::state::PlayerStatsChangedData data;
+		data.curHP = m_cur_hp;
+		data.maxHP = m_max_hp;
+		data.curMana = m_mana;
+		data.maxMana = m_max_mana;
+		data.curEndurance = m_endurance;
+		data.maxEndurance = m_max_endurance;
+		data.level = m_level;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
+	}
 }
 
 void EverQuest::CheckZoneRequestPhaseComplete()
@@ -7362,6 +7394,25 @@ void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 		}
 	}
 #endif
+
+	// Publish ChatMessage event to bridge
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.sender = sender;
+		data.message = message;
+		data.channelType = channel;
+		data.channelName =
+			channel == CHAT_CHANNEL_SAY ? "say" :
+			channel == CHAT_CHANNEL_TELL ? "tell" :
+			channel == CHAT_CHANNEL_SHOUT ? "shout" :
+			channel == CHAT_CHANNEL_OOC ? "ooc" :
+			channel == CHAT_CHANNEL_GROUP ? "group" :
+			channel == CHAT_CHANNEL_GUILD ? "guild" :
+			channel == CHAT_CHANNEL_AUCTION ? "auction" :
+			channel == CHAT_CHANNEL_EMOTE ? "emote" : "other";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
+	}
 }
 
 void EverQuest::SendChatMessage(const std::string &message, const std::string &channel_name, const std::string &target)
@@ -7422,6 +7473,15 @@ void EverQuest::AddChatSystemMessage(const std::string &text)
 		}
 	}
 #endif
+	// Publish SystemMessage event to bridge
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = text;
+		data.channelType = 0;
+		data.channelName = "system";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::SystemMessage, std::move(data)));
+	}
 	// Also print to console
 	LOG_INFO(MOD_MAIN, "{}", text);
 }
@@ -7450,6 +7510,15 @@ void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
 #else
 	LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: EQT_HAS_GRAPHICS not defined");
 #endif
+	// Publish ChatMessage event to bridge (combat channel)
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = text;
+		data.channelType = 0;
+		data.channelName = is_self ? "combat_self" : "combat";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
+	}
 	// Also print to console
 	LOG_DEBUG(MOD_COMBAT, "{}", text);
 }
@@ -7467,6 +7536,15 @@ void EverQuest::AddChatMissMessage(const std::string &text)
 		}
 	}
 #endif
+	// Publish ChatMessage event to bridge (combat miss channel)
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = text;
+		data.channelType = 0;
+		data.channelName = "combat_miss";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
+	}
 	LOG_DEBUG(MOD_COMBAT, "{}", text);
 }
 
@@ -12672,6 +12750,20 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	// Update inventory window stats when player mana/endurance changes
 	UpdateInventoryStats();
 #endif
+
+	// Publish PlayerStatsChanged when mana/endurance changes
+	if (m_bridge) {
+		eqt::state::PlayerStatsChangedData data;
+		data.curHP = m_cur_hp;
+		data.maxHP = m_max_hp;
+		data.curMana = new_mana;
+		data.maxMana = m_max_mana;
+		data.curEndurance = stamina;
+		data.maxEndurance = m_max_endurance;
+		data.level = m_level;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
+	}
 }
 
 void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
@@ -17783,6 +17875,17 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	}
 #endif
 
+	// Publish DamageEvent to bridge
+	if (m_bridge && damage_amount > 0) {
+		eqt::state::DamageEventData data;
+		data.sourceId = source_id;
+		data.targetId = target_id;
+		data.amount = damage_amount;
+		data.type = damage_type;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::DamageEvent, std::move(data)));
+	}
+
 #ifdef EQT_HAS_GRAPHICS
 	// Queue combat animation for buffered processing (handles double/triple attack, dual wield)
 	// Melee damage (type 0-79) is buffered; spells/DoT/environmental are processed immediately
@@ -18324,6 +18427,19 @@ bool EverQuest::InitGraphics(int width, int height) {
 						info.equipmentTint[i] = e.equipment_tint[i];
 					}
 					m_renderer->setCurrentTargetInfo(info);
+
+					// Publish TargetChanged event to bridge
+					if (m_bridge) {
+						eqt::state::CombatEventData data;
+						data.type = eqt::state::CombatEventData::Type::Hit;  // Reuse for target
+						data.sourceId = m_my_spawn_id;
+						data.targetId = spawnId;
+						data.damage = 0;
+						data.sourceName = m_character;
+						data.targetName = e.name;
+						m_bridge->pushEvent(eqt::state::GameEvent(
+							eqt::state::GameEventType::TargetChanged, std::move(data)));
+					}
 
 					LOG_DEBUG(MOD_ENTITY, "=== TARGET SELECTED: {} ===", e.name);
 					LOG_DEBUG(MOD_ENTITY, "  spawn_id={} race_id={} gender={} level={} class_id={}",
@@ -19662,6 +19778,16 @@ void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 		if (m_combat_manager) {
 			m_combat_manager->ClearTarget();
 		}
+		// Publish TargetChanged (clear) event
+		if (m_bridge) {
+			eqt::state::CombatEventData data;
+			data.type = eqt::state::CombatEventData::Type::Hit;
+			data.sourceId = m_my_spawn_id;
+			data.targetId = 0;
+			data.damage = 0;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TargetChanged, std::move(data)));
+		}
 	}
 
 	// Check if this is a corpse - corpses should fade out instead of vanishing instantly
@@ -19870,6 +19996,20 @@ void EverQuest::UpdateInventoryStats() {
 			inv->setRegenHP(equipStats.hpRegen);
 			inv->setRegenMana(equipStats.manaRegen);
 		}
+	}
+
+	// Publish PlayerStatsChanged after full stat recalculation
+	if (m_bridge) {
+		eqt::state::PlayerStatsChangedData data;
+		data.curHP = m_cur_hp;
+		data.maxHP = m_max_hp;
+		data.curMana = m_mana;
+		data.maxMana = m_max_mana;
+		data.curEndurance = m_endurance;
+		data.maxEndurance = m_max_endurance;
+		data.level = m_level;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 	}
 }
 
