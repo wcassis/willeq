@@ -144,7 +144,7 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D04 | Publish entity events alongside existing calls | done | `393a617` |
 | D05 | Publish chat, combat, and player stat events | done | `a5d3418` |
 | D06a | Publish inventory + currency events | done | `ee0d95d` |
-| D06b | Publish loot + vendor events | pending | |
+| D06b | Publish loot + vendor events | done | `bcef15a` |
 | D06c | Publish bank + trade events | pending | |
 | D07 | Publish door, group, pet, spell, skill events | pending | |
 | D08 | Publish world/environment + zone lifecycle events | pending | |
