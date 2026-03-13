@@ -146,7 +146,7 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D06a | Publish inventory + currency events | done | `ee0d95d` |
 | D06b | Publish loot + vendor events | done | `bcef15a` |
 | D06c | Publish bank + trade events | done | `f953f89` |
-| D07 | Publish door, group, pet, spell, skill events | pending | |
+| D07 | Publish door, group, pet, spell, skill events | done | `99c89ee` |
 | D08 | Publish world/environment + zone lifecycle events | pending | |
 
 ### Phase 3 — Bridge Consumes Events
