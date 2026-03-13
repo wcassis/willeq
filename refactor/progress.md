@@ -133,8 +133,8 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D01 | Define game event types | pending | |
-| D02 | Define renderer intent types | pending | |
+| D01 | Extend existing EventBus with missing event types + consolidate door state | pending | |
+| D02 | Define renderer intent types (reconcile with ActionDispatcher) | pending | |
 | D03 | Create GameStateBridge interface and IrrlichtBridge skeleton | pending | |
 
 ### Phase 2 — Dual-Path Event Publishing
@@ -143,9 +143,11 @@ Full plan: `refactor/D_game_state_threading.md`.
 |------|-------------|--------|--------|
 | D04 | Publish entity events alongside existing calls | pending | |
 | D05 | Publish chat, combat, and player stat events | pending | |
-| D06 | Publish inventory, loot, vendor, bank, trade events | pending | |
+| D06a | Publish inventory + currency events | pending | |
+| D06b | Publish loot + vendor events | pending | |
+| D06c | Publish bank + trade events | pending | |
 | D07 | Publish door, group, pet, spell, skill events | pending | |
-| D08 | Publish world/environment events (time, weather) | pending | |
+| D08 | Publish world/environment + zone lifecycle events | pending | |
 
 ### Phase 3 — Bridge Consumes Events
 
@@ -153,34 +155,41 @@ Full plan: `refactor/D_game_state_threading.md`.
 |------|-------------|--------|--------|
 | D09 | IrrlichtBridge handles entity events | pending | |
 | D10 | IrrlichtBridge handles chat, combat, player stat events | pending | |
-| D11 | IrrlichtBridge handles inventory, loot, vendor, bank, trade events | pending | |
+| D11a | IrrlichtBridge handles inventory + currency events | pending | |
+| D11b | IrrlichtBridge handles loot + vendor events | pending | |
+| D11c | IrrlichtBridge handles bank + trade events | pending | |
 | D12 | IrrlichtBridge handles door, group, pet, spell, skill events | pending | |
-| D13 | IrrlichtBridge handles world/environment events | pending | |
+| D13 | IrrlichtBridge handles world/environment + zone lifecycle events | pending | |
 
 ### Phase 4 — Intent Handling
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | D14 | Movement intent: renderer posts PlayerPositionChanged, game thread consumes | pending | |
-| D15 | Interaction intents: target, combat, door, loot, chat submit | pending | |
-| D16 | UI intents: vendor, bank, trade, spell, skill, pet, group | pending | |
+| D15 | Interaction intents: target, door, loot, vendor, banker, trainer, world object, zoning, chat, read item | pending | |
+| D16 | UI intents: spell, buff, skill, loot actions, vendor buy/sell, bank, trade, pet, group, camp/quit, hotbar | pending | |
 
 ### Phase 5 — Remove Direct Coupling
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | D17 | Remove direct renderer calls from entity packet handlers | pending | |
-| D18 | Remove direct renderer calls from UI packet handlers | pending | |
+| D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | pending | |
+| D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | pending | |
 | D19 | Remove direct renderer calls from remaining handlers | pending | |
-| D20 | Remove callback lambdas, remove m_renderer from EverQuest | pending | |
+| D20a | Remove callback lambdas from InitGraphics() | pending | |
+| D20b | Remove raw pointer coupling from InitGraphics() | pending | |
+| D20c | Remove m_renderer from EverQuest | pending | |
+| D20d | Remove debug/toggle slash commands from EverQuest | pending | |
 
 ### Phase 6 — Thread Separation
+
+*D23 (Remove networkTickCallback_) deleted — already completed by Batch L (`58f0791`).*
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | D21 | Move EverQuest tick loop to dedicated game thread | pending | |
 | D22 | Synchronize bridge queues with proper threading | pending | |
-| D23 | Remove networkTickCallback_ and loading screen coupling | pending | |
 
 ### Phase 7 — Cleanup and Optimization
 

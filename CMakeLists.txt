@@ -199,7 +199,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/state/world_state.cpp
     src/client/state/combat_state.cpp
     src/client/state/group_state.cpp
-    src/client/state/door_state.cpp
+
     src/client/state/pet_state.cpp
     src/client/state/tradeskill_state.cpp
     src/client/state/inventory_state.cpp

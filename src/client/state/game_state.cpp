@@ -10,17 +10,35 @@ GameState::GameState() {
     m_worldState.setEventBus(&m_eventBus);
     m_combatState.setEventBus(&m_eventBus);
     m_groupState.setEventBus(&m_eventBus);
-    m_doorState.setEventBus(&m_eventBus);
     m_petState.setEventBus(&m_eventBus);
     m_tradeskillState.setEventBus(&m_eventBus);
     m_inventoryState.setEventBus(&m_eventBus);
     m_spellState.setEventBus(&m_eventBus);
+
+    // Wire door manager callbacks to fire EventBus events
+    m_doorManager.setDoorSpawnCallback([this](const EQT::DoorState& door) {
+        DoorSpawnedData data;
+        data.doorId = door.doorId;
+        data.name = door.name;
+        data.x = door.x;
+        data.y = door.y;
+        data.z = door.z;
+        data.heading = door.heading;
+        data.state = door.isOpen ? 1 : 0;
+        m_eventBus.publish(GameEventType::DoorSpawned, data);
+    });
+    m_doorManager.setDoorStateChangeCallback([this](uint8_t doorId, bool isOpen) {
+        DoorStateChangedData data;
+        data.doorId = doorId;
+        data.isOpen = isOpen;
+        m_eventBus.publish(GameEventType::DoorStateChanged, data);
+    });
 }
 
 void GameState::resetForZoneChange() {
     // Clear zone-specific state
     m_entityManager.clear();
-    m_doorState.clear();
+    m_doorManager.clear();
     m_worldState.resetZoneState();
     m_combatState.reset();
     m_petState.reset();
@@ -50,7 +68,7 @@ void GameState::resetForZoneChange() {
 void GameState::clearAll() {
     // Clear all state
     m_entityManager.clear();
-    m_doorState.clear();
+    m_doorManager.clear();
     m_worldState.resetZoneState();
     m_combatState.reset();
     m_groupState.clearGroup();
@@ -72,7 +90,6 @@ void GameState::clearAll() {
     m_worldState.setEventBus(&m_eventBus);
     m_combatState.setEventBus(&m_eventBus);
     m_groupState.setEventBus(&m_eventBus);
-    m_doorState.setEventBus(&m_eventBus);
     m_petState.setEventBus(&m_eventBus);
     m_tradeskillState.setEventBus(&m_eventBus);
     m_inventoryState.setEventBus(&m_eventBus);

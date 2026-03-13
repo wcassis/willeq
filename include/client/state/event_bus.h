@@ -11,29 +11,6 @@
 namespace eqt {
 namespace state {
 
-// Forward declarations for event data structures
-struct PlayerMovedData;
-struct PlayerStatsChangedData;
-struct EntitySpawnedData;
-struct EntityDespawnedData;
-struct EntityMovedData;
-struct EntityStatsChangedData;
-struct DoorStateChangedData;
-struct DoorSpawnedData;
-struct ZoneChangedData;
-struct ZoneLoadingData;
-struct ChatMessageData;
-struct CombatEventData;
-struct GroupChangedData;
-struct GroupMemberUpdatedData;
-struct TimeOfDayChangedData;
-struct PetCreatedData;
-struct PetRemovedData;
-struct PetStatsChangedData;
-struct PetButtonStateChangedData;
-struct WindowOpenedData;
-struct WindowClosedData;
-
 // Event types enum
 enum class GameEventType {
     // Player events
@@ -48,6 +25,12 @@ enum class GameEventType {
     EntityMoved,
     EntityStatsChanged,
     EntityAppearanceChanged,
+    EntityLightChanged,
+    EntityAnimationEvent,
+    EntityPoseStateChanged,
+    EntityDeathAnimation,
+    CorpseDecayStarted,
+    CombatAnimation,
 
     // Door events
     DoorSpawned,
@@ -65,6 +48,9 @@ enum class GameEventType {
     // Combat events
     CombatEvent,
     TargetChanged,
+    DamageEvent,
+    SpellCastStarted,
+    SpellCastComplete,
 
     // Group events
     GroupChanged,
@@ -79,10 +65,13 @@ enum class GameEventType {
     PetRemoved,
     PetStatsChanged,
     PetButtonStateChanged,
+    PetWindowOpened,
+    PetWindowClosed,
 
     // Window events (vendor, bank, trainer, tradeskill)
     VendorWindowOpened,
     VendorWindowClosed,
+    VendorItemAdded,
     BankWindowOpened,
     BankWindowClosed,
     TrainerWindowOpened,
@@ -94,14 +83,54 @@ enum class GameEventType {
     InventorySlotChanged,
     CursorItemChanged,
     EquipmentStatsChanged,
+    CurrencyChanged,
+    BankCurrencyChanged,
+
+    // Loot events
+    LootWindowOpened,
+    LootWindowClosed,
+    LootItemAdded,
+    LootItemRemoved,
+
+    // Trade events
+    TradeStarted,
+    TradeItemUpdated,
+    TradeAcceptStateChanged,
+    TradeCancelled,
+    TradeCompleted,
 
     // Spell events
     SpellGemChanged,
     CastingStateChanged,
     SpellMemorizing,
+    BuffUpdated,
+    BuffRemoved,
+    VisionChanged,
+
+    // Skill events
+    SkillValueChanged,
+    SkillsRefreshed,
+
+    // World/environment events
+    WeatherChanged,
+    SwimmingStateChanged,
+
+    // Zone lifecycle events
+    CollisionMapChanged,
+    ZoneLineBoundingBoxes,
+
+    // UI/misc events
+    ExpProgressChanged,
+    CharacterInfoChanged,
+    WorldObjectSpawned,
+    NoteWindowOpened,
 };
 
+// ============================================================================
 // Event data structures
+// ============================================================================
+
+// --- Player events ---
 
 struct PlayerMovedData {
     float x, y, z;
@@ -116,6 +145,8 @@ struct PlayerStatsChangedData {
     uint32_t curEndurance, maxEndurance;
     uint8_t level;
 };
+
+// --- Entity events ---
 
 struct EntitySpawnedData {
     uint16_t spawnId;
@@ -150,6 +181,49 @@ struct EntityStatsChangedData {
     uint16_t maxMana;
 };
 
+struct EntityAppearanceChangedData {
+    uint16_t spawnId;
+    uint16_t raceId;
+    uint8_t gender;
+    uint16_t appearanceType;  // SpawnAppearanceType value
+    uint32_t appearanceValue;
+};
+
+struct EntityLightChangedData {
+    uint16_t spawnId;
+    uint8_t lightLevel;
+};
+
+struct EntityAnimationEventData {
+    uint16_t spawnId;
+    uint8_t animCode;
+    bool loop;
+    bool playThrough;
+};
+
+struct EntityPoseStateChangedData {
+    uint16_t spawnId;
+    uint8_t poseState;
+};
+
+struct EntityDeathAnimationData {
+    uint16_t spawnId;
+};
+
+struct CorpseDecayStartedData {
+    uint16_t spawnId;
+};
+
+struct CombatAnimationData {
+    uint16_t sourceId;
+    uint16_t targetId;
+    uint8_t damageType;
+    int32_t damageAmount;
+    uint8_t damagePercent;
+};
+
+// --- Door events ---
+
 struct DoorSpawnedData {
     uint8_t doorId;
     std::string name;
@@ -162,6 +236,8 @@ struct DoorStateChangedData {
     uint8_t doorId;
     bool isOpen;
 };
+
+// --- Zone events ---
 
 struct ZoneChangedData {
     std::string zoneName;
@@ -177,12 +253,16 @@ struct ZoneLoadingData {
     std::string statusMessage;
 };
 
+// --- Chat events ---
+
 struct ChatMessageData {
     std::string sender;
     std::string message;
     uint32_t channelType;
     std::string channelName;
 };
+
+// --- Combat events ---
 
 struct CombatEventData {
     enum class Type {
@@ -203,6 +283,29 @@ struct CombatEventData {
     std::string targetName;
 };
 
+struct DamageEventData {
+    uint16_t sourceId;
+    uint16_t targetId;
+    int32_t amount;
+    uint8_t type;
+    std::string spellName;
+};
+
+struct SpellCastStartedData {
+    uint16_t casterId;
+    uint32_t spellId;
+    uint32_t castTimeMs;
+    uint16_t targetId;
+};
+
+struct SpellCastCompleteData {
+    uint16_t casterId;
+    uint32_t spellId;
+    uint8_t result;  // 0=success, non-zero=failure reason
+};
+
+// --- Group events ---
+
 struct GroupChangedData {
     bool inGroup;
     bool isLeader;
@@ -221,6 +324,8 @@ struct GroupMemberUpdatedData {
     bool inZone;
 };
 
+// --- Time events ---
+
 struct TimeOfDayChangedData {
     uint8_t hour;
     uint8_t minute;
@@ -228,6 +333,8 @@ struct TimeOfDayChangedData {
     uint8_t month;
     uint16_t year;
 };
+
+// --- Pet events ---
 
 struct PetCreatedData {
     uint16_t spawnId;
@@ -251,6 +358,8 @@ struct PetButtonStateChangedData {
     bool state;
 };
 
+// --- Window events ---
+
 struct WindowOpenedData {
     uint16_t npcId;
     std::string npcName;
@@ -259,6 +368,14 @@ struct WindowOpenedData {
 
 struct WindowClosedData {
     uint16_t npcId;
+};
+
+struct VendorItemAddedData {
+    uint16_t vendorSlot;
+    uint32_t itemId;
+    std::string itemName;
+    int32_t price;
+    int32_t quantity;
 };
 
 struct TradeskillContainerOpenedEvent {
@@ -275,6 +392,8 @@ struct TradeskillContainerClosedEvent {
     uint32_t objectId;
     int16_t inventorySlot;
 };
+
+// --- Inventory events ---
 
 struct InventorySlotChangedData {
     int16_t slotId;
@@ -294,6 +413,65 @@ struct EquipmentStatsChangedData {
     int32_t mana;
     float weight;
 };
+
+struct CurrencyChangedData {
+    int32_t platinum;
+    int32_t gold;
+    int32_t silver;
+    int32_t copper;
+};
+
+struct BankCurrencyChangedData {
+    int32_t platinum;
+    int32_t gold;
+    int32_t silver;
+    int32_t copper;
+};
+
+// --- Loot events ---
+
+struct LootWindowOpenedData {
+    uint16_t corpseId;
+    std::string corpseName;
+};
+
+struct LootWindowClosedData {
+    uint16_t corpseId;
+};
+
+struct LootItemAddedData {
+    uint16_t corpseId;
+    uint8_t slot;
+    uint32_t itemId;
+    std::string itemName;
+};
+
+struct LootItemRemovedData {
+    uint16_t corpseId;
+    uint8_t slot;
+};
+
+// --- Trade events ---
+
+struct TradeStartedData {
+    uint16_t partnerId;
+    std::string partnerName;
+    bool isNpc;
+};
+
+struct TradeItemUpdatedData {
+    uint8_t who;  // 0=self, 1=partner
+    uint8_t slot;
+    uint32_t itemId;
+    std::string itemName;
+};
+
+struct TradeAcceptStateChangedData {
+    bool ownAccepted;
+    bool partnerAccepted;
+};
+
+// --- Spell events ---
 
 struct SpellGemChangedData {
     uint8_t gemSlot;
@@ -318,37 +496,166 @@ struct SpellMemorizingData {
     uint32_t totalMs;
 };
 
+struct BuffUpdatedData {
+    uint8_t slot;
+    uint32_t spellId;
+    uint32_t ticksLeft;
+    std::string casterName;
+};
+
+struct BuffRemovedData {
+    uint8_t slot;
+};
+
+struct VisionChangedData {
+    uint8_t visionType;  // 0=normal, 1=ultravision, 2=infravision
+};
+
+// --- Skill events ---
+
+struct SkillValueChangedData {
+    uint16_t skillId;
+    uint16_t value;
+};
+
+struct SkillsRefreshedData {
+    // Full skill refresh — consumer should re-query all skills
+};
+
+// --- World/environment events ---
+
+struct WeatherChangedData {
+    uint8_t type;       // 0=none, 1=rain, 2=snow
+    uint8_t intensity;  // 0-255
+};
+
+struct SwimmingStateChangedData {
+    bool isSwimming;
+    float swimSpeed;
+    bool isLevitating;
+};
+
+// --- Zone lifecycle events ---
+
+struct CollisionMapChangedData {
+    void* map;  // Opaque pointer — consumer casts to HCMap*
+};
+
+struct ZoneLineBoundingBoxesData {
+    // Consumer should re-query zone lines from game state
+};
+
+// --- UI/misc events ---
+
+struct ExpProgressChangedData {
+    float progress;  // 0.0 to 1.0
+};
+
+struct CharacterInfoChangedData {
+    std::string name;
+    uint8_t level;
+    std::string className;
+    std::string deity;
+};
+
+struct WorldObjectSpawnedData {
+    uint32_t dropId;
+    float x, y, z;
+    float heading;
+    std::string modelName;
+    uint8_t objectType;
+};
+
+struct NoteWindowOpenedData {
+    std::string text;
+    uint8_t type;  // 0=book, 1=note
+};
+
+// ============================================================================
 // Variant type for all event data
+// ============================================================================
+
 using EventData = std::variant<
+    // Player
     PlayerMovedData,
     PlayerStatsChangedData,
+    // Entity
     EntitySpawnedData,
     EntityDespawnedData,
     EntityMovedData,
     EntityStatsChangedData,
+    EntityAppearanceChangedData,
+    EntityLightChangedData,
+    EntityAnimationEventData,
+    EntityPoseStateChangedData,
+    EntityDeathAnimationData,
+    CorpseDecayStartedData,
+    CombatAnimationData,
+    // Door
     DoorSpawnedData,
     DoorStateChangedData,
+    // Zone
     ZoneChangedData,
     ZoneLoadingData,
+    // Chat
     ChatMessageData,
+    // Combat
     CombatEventData,
+    DamageEventData,
+    SpellCastStartedData,
+    SpellCastCompleteData,
+    // Group
     GroupChangedData,
     GroupMemberUpdatedData,
+    // Time
     TimeOfDayChangedData,
+    // Pet
     PetCreatedData,
     PetRemovedData,
     PetStatsChangedData,
     PetButtonStateChangedData,
+    // Window
     WindowOpenedData,
     WindowClosedData,
+    VendorItemAddedData,
     TradeskillContainerOpenedEvent,
     TradeskillContainerClosedEvent,
+    // Inventory
     InventorySlotChangedData,
     CursorItemChangedData,
     EquipmentStatsChangedData,
+    CurrencyChangedData,
+    BankCurrencyChangedData,
+    // Loot
+    LootWindowOpenedData,
+    LootWindowClosedData,
+    LootItemAddedData,
+    LootItemRemovedData,
+    // Trade
+    TradeStartedData,
+    TradeItemUpdatedData,
+    TradeAcceptStateChangedData,
+    // Spell
     SpellGemChangedData,
     CastingStateChangedData,
-    SpellMemorizingData
+    SpellMemorizingData,
+    BuffUpdatedData,
+    BuffRemovedData,
+    VisionChangedData,
+    // Skill
+    SkillValueChangedData,
+    SkillsRefreshedData,
+    // World
+    WeatherChangedData,
+    SwimmingStateChangedData,
+    // Zone lifecycle
+    CollisionMapChangedData,
+    ZoneLineBoundingBoxesData,
+    // UI/misc
+    ExpProgressChangedData,
+    CharacterInfoChangedData,
+    WorldObjectSpawnedData,
+    NoteWindowOpenedData
 >;
 
 // Game event combining type and data

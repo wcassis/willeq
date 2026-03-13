@@ -6,7 +6,7 @@
 #include "client/state/world_state.h"
 #include "client/state/combat_state.h"
 #include "client/state/group_state.h"
-#include "client/state/door_state.h"
+#include "client/door_state_manager.h"
 #include "client/state/pet_state.h"
 #include "client/state/tradeskill_state.h"
 #include "client/state/inventory_state.h"
@@ -91,10 +91,10 @@ public:
     const GroupState& group() const { return m_groupState; }
 
     /**
-     * Get the door state.
+     * Get the door state manager.
      */
-    DoorState& doors() { return m_doorState; }
-    const DoorState& doors() const { return m_doorState; }
+    EQT::DoorStateManager& doors() { return m_doorManager; }
+    const EQT::DoorStateManager& doors() const { return m_doorManager; }
 
     /**
      * Get the pet state.
@@ -166,7 +166,7 @@ private:
     WorldState m_worldState;
     CombatState m_combatState;
     GroupState m_groupState;
-    DoorState m_doorState;
+    EQT::DoorStateManager m_doorManager;
     PetState m_petState;
     TradeskillState m_tradeskillState;
     InventoryState m_inventoryState;
