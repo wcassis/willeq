@@ -591,7 +591,7 @@ struct BuffRemovedData {
 };
 
 struct VisionChangedData {
-    uint8_t visionType;  // 0=normal, 1=ultravision, 2=infravision
+    uint8_t visionType;  // 0=normal, 1=infravision, 2=ultravision
 };
 
 // --- Skill events ---

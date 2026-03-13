@@ -5,6 +5,7 @@
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/skill_trainer_window.h"
+#include "client/graphics/ui/group_window.h"
 #include "common/logging.h"
 #include <ctime>
 #include <memory>
@@ -152,10 +153,17 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Door events (D12)
     case state::GameEventType::DoorSpawned:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: DoorSpawned");
+        if (renderer_) {
+            auto& d = std::get<state::DoorSpawnedData>(event.data);
+            renderer_->createDoor(d.doorId, d.name, d.x, d.y, d.z,
+                                  d.heading, d.incline, d.size, d.opentype, d.isOpen);
+        }
         break;
     case state::GameEventType::DoorStateChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: DoorStateChanged");
+        if (renderer_) {
+            auto& d = std::get<state::DoorStateChangedData>(event.data);
+            renderer_->setDoorState(d.doorId, d.isOpen, d.userInitiated);
+        }
         break;
 
     // Zone events (D13)
@@ -253,13 +261,25 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Group events (D12)
     case state::GameEventType::GroupChanged:
+        // GroupWindow polls group state via update() each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupChanged");
         break;
     case state::GameEventType::GroupMemberUpdated:
+        // GroupWindow polls member data via update() each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupMemberUpdated");
         break;
     case state::GameEventType::GroupInviteReceived:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupInviteReceived");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::GroupChangedData>(event.data);
+                auto* groupWindow = wm->getGroupWindow();
+                if (groupWindow) {
+                    groupWindow->showPendingInvite(d.leaderName);
+                }
+                wm->openGroupWindow();
+            }
+        }
         break;
 
     // Time events (D13)
@@ -269,15 +289,27 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Pet events (D12)
     case state::GameEventType::PetCreated:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PetCreated");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->openPetWindow();
+            }
+        }
         break;
     case state::GameEventType::PetRemoved:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PetRemoved");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closePetWindow();
+            }
+        }
         break;
     case state::GameEventType::PetStatsChanged:
+        // PetWindow polls pet stats via update() each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PetStatsChanged");
         break;
     case state::GameEventType::PetButtonStateChanged:
+        // PetWindow polls button state via update() each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PetButtonStateChanged");
         break;
 
@@ -526,29 +558,44 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Spell events (D12)
     case state::GameEventType::SpellGemChanged:
+        // Spell gem panel polls gem state from SpellState each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellGemChanged");
         break;
     case state::GameEventType::CastingStateChanged:
+        // Casting bar is driven by direct SpellManager → WindowManager calls
+        // (startCast/cancelCast/completeCast). Event struct lacks spell name
+        // required by startCast(). Deferred to Phase 5 renderer refactor.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CastingStateChanged");
         break;
     case state::GameEventType::SpellMemorizing:
+        // Memorize bar is driven by direct SpellManager → WindowManager calls
+        // (startMemorize/cancelMemorize/completeMemorize). Event struct lacks
+        // spell name. Deferred to Phase 5 renderer refactor.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellMemorizing");
         break;
     case state::GameEventType::BuffUpdated:
+        // BuffWindow polls buff data from BuffManager each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: BuffUpdated");
         break;
     case state::GameEventType::BuffRemoved:
+        // BuffWindow polls buff data from BuffManager each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: BuffRemoved");
         break;
     case state::GameEventType::VisionChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VisionChanged");
+        if (renderer_) {
+            auto& d = std::get<state::VisionChangedData>(event.data);
+            renderer_->setVisionType(
+                static_cast<EQT::Graphics::VisionType>(d.visionType));
+        }
         break;
 
     // Skill events (D12)
     case state::GameEventType::SkillValueChanged:
+        // SkillsWindow polls skill values from SkillManager each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillValueChanged");
         break;
     case state::GameEventType::SkillsRefreshed:
+        // SkillsWindow polls skill values from SkillManager each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillsRefreshed");
         break;
 
