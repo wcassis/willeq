@@ -1093,6 +1093,17 @@ void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
 		m_renderer->setLoadingProgress(progress, wstatus.c_str());
 	}
 #endif
+
+	// Publish ZoneLoading event to bridge
+	if (m_bridge) {
+		eqt::state::ZoneLoadingData data;
+		data.zoneName = m_current_zone_name;
+		data.zoneId = m_current_zone_id;
+		data.progress = progress;
+		data.statusMessage = m_loading_status_text ? m_loading_status_text : "";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ZoneLoading, std::move(data)));
+	}
 }
 
 float EverQuest::GetLoadingProgress() const {
@@ -3054,6 +3065,19 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		// Phase 7.3: Also update WorldState
 		m_game_state.world().setZone(m_current_zone_name, m_current_zone_id);
 
+		// Publish ZoneChanged event to bridge
+		if (m_bridge) {
+			eqt::state::ZoneChangedData data;
+			data.zoneName = m_current_zone_name;
+			data.zoneId = m_current_zone_id;
+			data.x = m_safe_x;
+			data.y = m_safe_y;
+			data.z = m_safe_z;
+			data.heading = 0.0f;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::ZoneChanged, std::move(data)));
+		}
+
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data for: {} (zone_id={})",
 				m_current_zone_name, m_current_zone_id);
@@ -3527,6 +3551,17 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		UpdateInventoryStats();
 	}
 #endif
+
+	// Publish CharacterInfoChanged event to bridge
+	if (m_bridge) {
+		eqt::state::CharacterInfoChangedData data;
+		data.name = m_character;
+		data.level = m_level;
+		data.className = GetClassName(m_class);
+		data.deity = GetDeityName(m_deity);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
+	}
 }
 
 void EverQuest::ZoneProcessCharInventory(const EQ::Net::Packet &p)
@@ -3937,6 +3972,15 @@ void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
 		m_renderer->showNoteWindow(bookText, type);
 	}
 #endif
+
+	// Publish NoteWindowOpened event to bridge
+	if (m_bridge) {
+		eqt::state::NoteWindowOpenedData data;
+		data.text = bookText;
+		data.type = type;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::NoteWindowOpened, std::move(data)));
+	}
 }
 
 #ifdef EQT_HAS_GRAPHICS
@@ -5833,6 +5877,18 @@ void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 	// Phase 7.3: Also update WorldState
 	m_game_state.world().setTimeOfDay(m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
 
+	// Publish TimeOfDayChanged event to bridge
+	if (m_bridge) {
+		eqt::state::TimeOfDayChangedData data;
+		data.hour = m_time_hour;
+		data.minute = m_time_minute;
+		data.day = m_time_day;
+		data.month = m_time_month;
+		data.year = m_time_year;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
+	}
+
 #ifdef WITH_AUDIO
 	// Phase 13: Update day/night state for audio
 	UpdateDayNightState();
@@ -5970,6 +6026,13 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 		}
 
 		m_zone_lines->setServerZonePoints(zonePoints);
+
+		// Publish ZoneLineBoundingBoxes event to bridge
+		if (m_bridge) {
+			eqt::state::ZoneLineBoundingBoxesData data;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::ZoneLineBoundingBoxes, std::move(data)));
+		}
 
 		LOG_DEBUG(MOD_ZONE, "Stored {} zone points in ZoneLines", zonePoints.size());
 	}
@@ -6594,6 +6657,20 @@ void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 	}
 #endif
 
+	// Publish WorldObjectSpawned event to bridge
+	if (m_bridge) {
+		eqt::state::WorldObjectSpawnedData wdata;
+		wdata.dropId = worldObj.drop_id;
+		wdata.x = worldObj.x;
+		wdata.y = worldObj.y;
+		wdata.z = worldObj.z;
+		wdata.heading = worldObj.heading;
+		wdata.modelName = worldObj.name;
+		wdata.objectType = static_cast<uint8_t>(worldObj.object_type);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::WorldObjectSpawned, std::move(wdata)));
+	}
+
 	if (worldObj.isTradeskillContainer()) {
 		LOG_DEBUG(MOD_ENTITY, "Tradeskill object spawned: id={} name='{}' type={} ({}) at ({:.1f}, {:.1f}, {:.1f})",
 			worldObj.drop_id, worldObj.name, worldObj.object_type,
@@ -6626,6 +6703,15 @@ void EverQuest::ZoneProcessWeather(const EQ::Net::Packet &p)
 			m_renderer->setWeather(type, intensity);
 		}
 #endif
+
+		// Publish WeatherChanged event to bridge
+		if (m_bridge) {
+			eqt::state::WeatherChangedData data;
+			data.type = type;
+			data.intensity = intensity;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::WeatherChanged, std::move(data)));
+		}
 	}
 
 	// Weather is the last packet in Zone Entry phase
@@ -14347,9 +14433,17 @@ void EverQuest::LoadZoneMap(const std::string& zone_name)
 	LOG_DEBUG(MOD_MAIN, "LoadZoneMap: Using maps path: {}", maps_path);
 	
 	m_zone_map.reset(HCMap::LoadMapFile(zone_name, maps_path));
-	
+
 	if (!m_zone_map) {
 		LOG_WARN(MOD_MAP, "Failed to load map for zone: {}", zone_name);
+	}
+
+	// Publish CollisionMapChanged event to bridge
+	if (m_bridge) {
+		eqt::state::CollisionMapChangedData data;
+		data.map = m_zone_map.get();
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CollisionMapChanged, std::move(data)));
 	}
 }
 
@@ -16044,6 +16138,22 @@ void EverQuest::UpdateWaterState()
 			OnEnterWater();
 		} else if (oldState != WaterState::NotInWater && newState == WaterState::NotInWater) {
 			OnExitWater();
+		}
+
+		// Publish SwimmingStateChanged event to bridge (only on state change)
+		if (m_bridge) {
+			float swimSpd = GetSwimSpeed();
+			bool lev = false;
+			auto me = m_entities.find(m_my_spawn_id);
+			if (me != m_entities.end() && me->second.flymode == 2) {
+				lev = true;
+			}
+			eqt::state::SwimmingStateChangedData data;
+			data.isSwimming = (newState != WaterState::NotInWater);
+			data.swimSpeed = swimSpd;
+			data.isLevitating = lev;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::SwimmingStateChanged, std::move(data)));
 		}
 	}
 
