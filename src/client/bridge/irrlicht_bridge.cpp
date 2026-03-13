@@ -1,17 +1,20 @@
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/graphics/irrlicht_renderer.h"
 #include "common/logging.h"
 
 namespace eqt {
 namespace bridge {
 
 void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
-    // Stub implementation — log event type at TRACE level.
-    // Actual renderer calls will be wired in Phase 3 (D09-D13).
-
     switch (event.type) {
-    // Player events
+    // ========================================================================
+    // Player events (D09)
+    // ========================================================================
     case state::GameEventType::PlayerMoved:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerMoved");
+        if (renderer_) {
+            auto& d = std::get<state::PlayerMovedData>(event.data);
+            renderer_->setPlayerPosition(d.x, d.y, d.z, d.heading);
+        }
         break;
     case state::GameEventType::PlayerStatsChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerStatsChanged");
@@ -23,42 +26,102 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerMovementModeChanged");
         break;
 
-    // Entity events
+    // ========================================================================
+    // Entity events (D09)
+    // ========================================================================
     case state::GameEventType::EntitySpawned:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntitySpawned");
+        if (renderer_) {
+            auto& d = std::get<state::EntitySpawnedData>(event.data);
+            renderer_->createEntity(d.spawnId, d.raceId, d.name,
+                d.x, d.y, d.z, d.heading, false,
+                d.gender, EQT::Graphics::EntityAppearance(),
+                d.npcType == 1, d.isCorpse);
+        }
         break;
     case state::GameEventType::EntityDespawned:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityDespawned");
+        if (renderer_) {
+            auto& d = std::get<state::EntityDespawnedData>(event.data);
+            renderer_->removeEntity(d.spawnId);
+        }
         break;
     case state::GameEventType::EntityMoved:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityMoved");
+        if (renderer_) {
+            auto& d = std::get<state::EntityMovedData>(event.data);
+            renderer_->updateEntity(d.spawnId, d.x, d.y, d.z, d.heading,
+                d.dx, d.dy, d.dz, d.animation);
+        }
         break;
     case state::GameEventType::EntityStatsChanged:
+        // HP bars are drawn from entity data, no dedicated renderer call
         LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityStatsChanged");
         break;
     case state::GameEventType::EntityAppearanceChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityAppearanceChanged");
+        if (renderer_) {
+            auto& d = std::get<state::EntityAppearanceChangedData>(event.data);
+            EQT::Graphics::EntityAppearance appearance;
+            appearance.face = d.face;
+            appearance.haircolor = d.haircolor;
+            appearance.hairstyle = d.hairstyle;
+            appearance.beardcolor = d.beardcolor;
+            appearance.beard = d.beard;
+            appearance.texture = d.texture;
+            appearance.helm = d.helm;
+            for (int i = 0; i < 9; i++) {
+                appearance.equipment[i] = d.equipment[i];
+                appearance.equipment_tint[i] = d.equipmentTint[i];
+            }
+            renderer_->updateEntityAppearance(d.spawnId, d.raceId, d.gender, appearance);
+            if (d.isPlayer) {
+                renderer_->updatePlayerAppearance(d.raceId, d.gender, appearance);
+            }
+        }
         break;
     case state::GameEventType::EntityLightChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityLightChanged");
+        if (renderer_) {
+            auto& d = std::get<state::EntityLightChangedData>(event.data);
+            renderer_->setEntityLight(d.spawnId, d.lightLevel);
+        }
         break;
     case state::GameEventType::EntityAnimationEvent:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityAnimationEvent");
+        if (renderer_) {
+            auto& d = std::get<state::EntityAnimationEventData>(event.data);
+            if (!d.animName.empty()) {
+                renderer_->setEntityAnimation(d.spawnId, d.animName, d.loop, d.playThrough);
+            }
+        }
         break;
     case state::GameEventType::EntityPoseStateChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityPoseStateChanged");
+        if (renderer_) {
+            auto& d = std::get<state::EntityPoseStateChangedData>(event.data);
+            renderer_->setEntityPoseState(d.spawnId,
+                static_cast<EQT::Graphics::IrrlichtRenderer::EntityPoseState>(d.poseState));
+        }
         break;
     case state::GameEventType::EntityDeathAnimation:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EntityDeathAnimation");
+        if (renderer_) {
+            auto& d = std::get<state::EntityDeathAnimationData>(event.data);
+            renderer_->playEntityDeathAnimation(d.spawnId);
+        }
         break;
     case state::GameEventType::CorpseDecayStarted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CorpseDecayStarted");
+        if (renderer_) {
+            auto& d = std::get<state::CorpseDecayStartedData>(event.data);
+            renderer_->startCorpseDecay(d.spawnId);
+        }
         break;
     case state::GameEventType::CombatAnimation:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CombatAnimation");
+        if (renderer_) {
+            auto& d = std::get<state::CombatAnimationData>(event.data);
+            renderer_->queueCombatAnimation(d.sourceId, d.targetId,
+                d.damageType, d.damageAmount, d.damagePercent);
+        }
         break;
 
-    // Door events
+    // ========================================================================
+    // Stubs — to be wired in D10-D13
+    // ========================================================================
+
+    // Door events (D12)
     case state::GameEventType::DoorSpawned:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: DoorSpawned");
         break;
@@ -66,7 +129,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: DoorStateChanged");
         break;
 
-    // Zone events
+    // Zone events (D13)
     case state::GameEventType::ZoneChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneChanged");
         break;
@@ -77,7 +140,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLoaded");
         break;
 
-    // Chat events
+    // Chat events (D10)
     case state::GameEventType::ChatMessage:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ChatMessage");
         break;
@@ -85,7 +148,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SystemMessage");
         break;
 
-    // Combat events
+    // Combat events (D10)
     case state::GameEventType::CombatEvent:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CombatEvent");
         break;
@@ -102,7 +165,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellCastComplete");
         break;
 
-    // Group events
+    // Group events (D12)
     case state::GameEventType::GroupChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupChanged");
         break;
@@ -113,12 +176,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupInviteReceived");
         break;
 
-    // Time events
+    // Time events (D13)
     case state::GameEventType::TimeOfDayChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TimeOfDayChanged");
         break;
 
-    // Pet events
+    // Pet events (D12)
     case state::GameEventType::PetCreated:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PetCreated");
         break;
@@ -138,7 +201,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PetWindowClosed");
         break;
 
-    // Window events
+    // Window events (D11b, D11c, D12)
     case state::GameEventType::VendorWindowOpened:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowOpened");
         break;
@@ -167,7 +230,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerClosed");
         break;
 
-    // Inventory events
+    // Inventory events (D11a)
     case state::GameEventType::InventorySlotChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: InventorySlotChanged");
         break;
@@ -184,7 +247,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: BankCurrencyChanged");
         break;
 
-    // Loot events
+    // Loot events (D11b)
     case state::GameEventType::LootWindowOpened:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowOpened");
         break;
@@ -198,7 +261,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemRemoved");
         break;
 
-    // Trade events
+    // Trade events (D11c)
     case state::GameEventType::TradeStarted:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeStarted");
         break;
@@ -215,7 +278,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCompleted");
         break;
 
-    // Spell events
+    // Spell events (D12)
     case state::GameEventType::SpellGemChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellGemChanged");
         break;
@@ -235,7 +298,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: VisionChanged");
         break;
 
-    // Skill events
+    // Skill events (D12)
     case state::GameEventType::SkillValueChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillValueChanged");
         break;
@@ -243,7 +306,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillsRefreshed");
         break;
 
-    // World/environment events
+    // World/environment events (D13)
     case state::GameEventType::WeatherChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: WeatherChanged");
         break;
@@ -251,7 +314,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SwimmingStateChanged");
         break;
 
-    // Zone lifecycle events
+    // Zone lifecycle events (D13)
     case state::GameEventType::CollisionMapChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CollisionMapChanged");
         break;
@@ -259,7 +322,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLineBoundingBoxes");
         break;
 
-    // UI/misc events
+    // UI/misc events (D13)
     case state::GameEventType::ExpProgressChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ExpProgressChanged");
         break;

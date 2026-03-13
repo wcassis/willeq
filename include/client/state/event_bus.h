@@ -185,8 +185,17 @@ struct EntityAppearanceChangedData {
     uint16_t spawnId;
     uint16_t raceId;
     uint8_t gender;
-    uint16_t appearanceType;  // SpawnAppearanceType value
-    uint32_t appearanceValue;
+    bool isPlayer;  // true if this is the local player (update paperdoll too)
+    // Full appearance data for renderer replay
+    uint8_t face = 0;
+    uint8_t haircolor = 0;
+    uint8_t hairstyle = 0;
+    uint8_t beardcolor = 0;
+    uint8_t beard = 0;
+    uint8_t texture = 0;     // equip_chest2
+    uint8_t helm = 0;
+    uint32_t equipment[9] = {0};
+    uint32_t equipmentTint[9] = {0};
 };
 
 struct EntityLightChangedData {
@@ -197,6 +206,7 @@ struct EntityLightChangedData {
 struct EntityAnimationEventData {
     uint16_t spawnId;
     uint8_t animCode;
+    std::string animName;  // Animation string (e.g. "c01", "o02", "d02")
     bool loop;
     bool playThrough;
 };

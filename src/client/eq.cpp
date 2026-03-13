@@ -6146,7 +6146,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 					if (m_bridge) {
 						eqt::state::EntityAnimationEventData data;
 						data.spawnId = spawn_id;
-						data.animCode = 0;  // String-based anim, code not applicable
+						data.animCode = 0;
+						data.animName = animCode;
 						data.loop = loop;
 						data.playThrough = playThrough;
 						m_bridge->pushEvent(eqt::state::GameEvent(
@@ -6582,6 +6583,7 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 				eqt::state::EntityAnimationEventData data;
 				data.spawnId = spawn_id;
 				data.animCode = anim_id;
+				data.animName = animCode;
 				data.loop = loop;
 				data.playThrough = playThrough;
 				m_bridge->pushEvent(eqt::state::GameEvent(
@@ -12663,8 +12665,18 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 				data.spawnId = spawn_id;
 				data.raceId = entity.race_id;
 				data.gender = entity.gender;
-				data.appearanceType = 0;
-				data.appearanceValue = 0;
+				data.isPlayer = (spawn_id == m_my_spawn_id);
+				data.face = appearance.face;
+				data.haircolor = appearance.haircolor;
+				data.hairstyle = appearance.hairstyle;
+				data.beardcolor = appearance.beardcolor;
+				data.beard = appearance.beard;
+				data.texture = appearance.texture;
+				data.helm = appearance.helm;
+				for (int j = 0; j < 9; j++) {
+					data.equipment[j] = appearance.equipment[j];
+					data.equipmentTint[j] = appearance.equipment_tint[j];
+				}
 				m_bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 			}
@@ -12752,8 +12764,18 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 		data.spawnId = m_my_spawn_id;
 		data.raceId = entity.race_id;
 		data.gender = entity.gender;
-		data.appearanceType = 0;
-		data.appearanceValue = 0;
+		data.isPlayer = true;
+		data.face = appearance.face;
+		data.haircolor = appearance.haircolor;
+		data.hairstyle = appearance.hairstyle;
+		data.beardcolor = appearance.beardcolor;
+		data.beard = appearance.beard;
+		data.texture = appearance.texture;
+		data.helm = appearance.helm;
+		for (int j = 0; j < 9; j++) {
+			data.equipment[j] = appearance.equipment[j];
+			data.equipmentTint[j] = appearance.equipment_tint[j];
+		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 	}
@@ -12840,8 +12862,18 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 			data.spawnId = static_cast<uint16_t>(spawn_id);
 			data.raceId = entity.race_id;
 			data.gender = entity.gender;
-			data.appearanceType = 0;
-			data.appearanceValue = 0;
+			data.isPlayer = (spawn_id == m_my_spawn_id);
+			data.face = appearance.face;
+			data.haircolor = appearance.haircolor;
+			data.hairstyle = appearance.hairstyle;
+			data.beardcolor = appearance.beardcolor;
+			data.beard = appearance.beard;
+			data.texture = appearance.texture;
+			data.helm = appearance.helm;
+			for (int j = 0; j < 9; j++) {
+				data.equipment[j] = appearance.equipment[j];
+				data.equipmentTint[j] = appearance.equipment_tint[j];
+			}
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 		}
@@ -18452,6 +18484,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 				eqt::state::EntityAnimationEventData data;
 				data.spawnId = target_id;
 				data.animCode = 0;
+				data.animName = damageAnim;
 				data.loop = false;
 				data.playThrough = true;
 				m_bridge->pushEvent(eqt::state::GameEvent(
@@ -20175,6 +20208,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 				eqt::state::EntityAnimationEventData animData;
 				animData.spawnId = entity.spawn_id;
 				animData.animCode = entity.animation;
+				animData.animName = animCode;
 				animData.loop = true;
 				animData.playThrough = false;
 				m_bridge->pushEvent(eqt::state::GameEvent(
