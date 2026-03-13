@@ -4070,9 +4070,28 @@ void EverQuest::SetupTradeManagerCallbacks()
 			wm->openTradeWindow(m_trade_manager->getPartnerSpawnId(),
 			                    m_trade_manager->getPartnerName(),
 			                    m_trade_manager->isNpcTrade());
+
+			// Publish TradeStarted
+			if (m_bridge) {
+				eqt::state::TradeStartedData tdata;
+				tdata.partnerId = m_trade_manager->getPartnerSpawnId();
+				tdata.partnerName = m_trade_manager->getPartnerName();
+				tdata.isNpc = m_trade_manager->isNpcTrade();
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::TradeStarted, std::move(tdata)));
+			}
 		} else if (state == TradeState::None) {
 			// Only close on None state (cancel) - Completed is handled by m_on_completed
 			wm->closeTradeWindow();
+
+			// Publish TradeCancelled (reuse TradeAcceptStateChangedData as carrier)
+			if (m_bridge) {
+				eqt::state::TradeAcceptStateChangedData tdata;
+				tdata.ownAccepted = false;
+				tdata.partnerAccepted = false;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::TradeCancelled, std::move(tdata)));
+			}
 		}
 	});
 
@@ -4088,8 +4107,29 @@ void EverQuest::SetupTradeManagerCallbacks()
 				// Make a copy for the UI
 				auto itemCopy = std::make_unique<eqt::inventory::ItemInstance>(*item);
 				wm->setTradePartnerItem(slot, std::move(itemCopy));
+
+				// Publish TradeItemUpdated for partner item
+				if (m_bridge) {
+					eqt::state::TradeItemUpdatedData tdata;
+					tdata.who = 1;  // partner
+					tdata.slot = static_cast<uint8_t>(slot);
+					tdata.itemId = item->itemId;
+					tdata.itemName = item->name;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
+				}
 			} else {
 				wm->clearTradePartnerItem(slot);
+
+				// Publish TradeItemUpdated for cleared partner slot
+				if (m_bridge) {
+					eqt::state::TradeItemUpdatedData tdata;
+					tdata.who = 1;  // partner
+					tdata.slot = static_cast<uint8_t>(slot);
+					tdata.itemId = 0;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
+				}
 			}
 		}
 		// Own items are displayed from inventory trade slots
@@ -4117,6 +4157,15 @@ void EverQuest::SetupTradeManagerCallbacks()
 		if (m_renderer && m_renderer->getWindowManager()) {
 			m_renderer->getWindowManager()->setTradeOwnAccepted(ownAccepted);
 			m_renderer->getWindowManager()->setTradePartnerAccepted(partnerAccepted);
+		}
+
+		// Publish TradeAcceptStateChanged
+		if (m_bridge) {
+			eqt::state::TradeAcceptStateChangedData tdata;
+			tdata.ownAccepted = ownAccepted;
+			tdata.partnerAccepted = partnerAccepted;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeAcceptStateChanged, std::move(tdata)));
 		}
 	});
 
@@ -4173,12 +4222,30 @@ void EverQuest::SetupTradeManagerCallbacks()
 		if (m_renderer && m_renderer->getWindowManager()) {
 			m_renderer->getWindowManager()->closeTradeWindow(false);  // Don't send cancel on completion
 		}
+
+		// Publish TradeCompleted (reuse TradeAcceptStateChangedData as carrier)
+		if (m_bridge) {
+			eqt::state::TradeAcceptStateChangedData tdata;
+			tdata.ownAccepted = true;
+			tdata.partnerAccepted = true;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeCompleted, std::move(tdata)));
+		}
 	});
 
 	m_trade_manager->setOnCancelled([this]() {
 		AddChatSystemMessage("Trade cancelled.");
 		if (m_renderer && m_renderer->getWindowManager()) {
 			m_renderer->getWindowManager()->closeTradeWindow(true);  // Send cancel
+		}
+
+		// Publish TradeCancelled (reuse TradeAcceptStateChangedData as carrier)
+		if (m_bridge) {
+			eqt::state::TradeAcceptStateChangedData tdata;
+			tdata.ownAccepted = false;
+			tdata.partnerAccepted = false;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeCancelled, std::move(tdata)));
 		}
 	});
 #endif
@@ -5173,6 +5240,17 @@ void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
 		m_renderer->getWindowManager()->openBankWindow();
 	}
 
+	// Publish BankWindowOpened
+	if (m_bridge) {
+		eqt::state::WindowOpenedData data;
+		data.npcId = m_banker_npc_id;
+		auto it = m_entities.find(m_banker_npc_id);
+		data.npcName = (it != m_entities.end()) ? EQT::toDisplayName(it->second.name) : "Banker";
+		data.sellRate = 0.0f;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::BankWindowOpened, std::move(data)));
+	}
+
 #ifdef WITH_AUDIO
 	// Start vendor/bank music (context-based, will restore on close)
 	if (m_audio_manager) {
@@ -5194,6 +5272,14 @@ void EverQuest::CloseBankWindow()
 	// Close the bank window UI and all bank bag windows
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeBankWindow();
+	}
+
+	// Publish BankWindowClosed (before clearing m_banker_npc_id)
+	if (m_bridge) {
+		eqt::state::WindowClosedData data;
+		data.npcId = m_banker_npc_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::BankWindowClosed, std::move(data)));
 	}
 
 #ifdef WITH_AUDIO
