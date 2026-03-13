@@ -20,8 +20,7 @@ namespace events {
 struct PlayerPositionChanged {
     float x, y, z;
     float heading;
-    uint8_t animation;
-    bool isMoving;
+    float dx, dy, dz;  // Velocity/delta (animation derived on game thread from velocity + water state)
 };
 
 // --- Targeting ---

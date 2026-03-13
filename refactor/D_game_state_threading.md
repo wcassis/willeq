@@ -461,7 +461,7 @@ This replaces the current callback lambdas that capture `this`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D14 | Movement intent: renderer posts PlayerPositionChanged, game thread consumes | pending | |
+| D14 | Movement intent: renderer posts PlayerPositionChanged, game thread consumes | done | |
 | D15 | Interaction intents: target, combat, door, loot, chat, vendor, banker, trainer, world object, zoning, read item | pending | |
 | D16 | UI intents: spell, buff, skill, loot actions, vendor buy/sell, bank, trade, pet, group, camp/quit, hotbar | pending | |
 

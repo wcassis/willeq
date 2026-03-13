@@ -44,6 +44,7 @@
 #endif
 
 #include "client/bridge/game_state_bridge.h"
+#include "client/bridge/irrlicht_bridge.h"
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
@@ -19001,6 +19002,12 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
 
+	// D14: Create and wire up the game state bridge
+	m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
+	m_irrlichtBridge->setRenderer(m_renderer.get());
+	m_renderer->setBridge(m_irrlichtBridge.get());
+	m_bridge = m_irrlichtBridge.get();
+
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
@@ -19809,6 +19816,10 @@ void EverQuest::ShutdownGraphics() {
 		m_inventory_manager->clearAll();
 		m_inventory_manager.reset();
 	}
+	// D14: Tear down bridge before renderer (bridge holds renderer pointer)
+	m_bridge = nullptr;
+	m_irrlichtBridge.reset();
+
 	if (m_renderer) {
 		m_renderer->shutdown();
 		m_renderer.reset();
@@ -19896,6 +19907,9 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		if (zone_transition_logging) {
 			LOG_TRACE(MOD_GRAPHICS, "Time updated, calling processFrame...");
 		}
+
+		// D14: Drain bridge events and apply to renderer (D09-D13 consumers)
+		ProcessBridgeEvents();
 
 		// Process a frame
 		bool result = m_renderer->processFrame(deltaTime);
@@ -20684,6 +20698,41 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 
 	// SendPositionUpdate has internal 250ms throttling
 	SendPositionUpdate();
+}
+
+void EverQuest::ProcessBridgeIntents() {
+	if (!m_bridge) return;
+
+	auto intents = m_bridge->drainIntents();
+	for (const auto& intent : intents) {
+		std::visit([this](const auto& i) {
+			using T = std::decay_t<decltype(i)>;
+			if constexpr (std::is_same_v<T, eqt::events::PlayerPositionChanged>) {
+				// D14: Movement intent — same logic as movementCallback_ path
+				EQT::Graphics::PlayerPositionUpdate update;
+				update.x = i.x;
+				update.y = i.y;
+				update.z = i.z;
+				update.heading = i.heading;
+				update.dx = i.dx;
+				update.dy = i.dy;
+				update.dz = i.dz;
+				OnGraphicsMovement(update);
+			} else {
+				// Other intents will be handled in D15/D16
+				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");
+			}
+		}, intent);
+	}
+}
+
+void EverQuest::ProcessBridgeEvents() {
+	if (!m_bridge) return;
+
+	auto events = m_bridge->drainEvents();
+	for (const auto& event : events) {
+		m_bridge->applyEvent(event);
+	}
 }
 
 void EverQuest::UpdateInventoryStats() {

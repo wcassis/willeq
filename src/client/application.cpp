@@ -579,6 +579,11 @@ void Application::processInput(float deltaTime) {
 }
 
 void Application::updateGameState(float deltaTime) {
+    // D14: Process renderer intents (movement, targeting, etc.)
+    if (m_eqClient) {
+        m_eqClient->ProcessBridgeIntents();
+    }
+
     // Update movement in EverQuest
     if (m_eqClient) {
         m_eqClient->UpdateMovement();

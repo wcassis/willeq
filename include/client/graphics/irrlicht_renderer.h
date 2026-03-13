@@ -59,10 +59,11 @@ class PathfinderNavmesh;
 // Forward declaration for zone lines
 namespace EQT { struct ZoneLineBoundingBox; }
 
-// Forward declarations for inventory UI
+// Forward declarations for inventory UI and bridge
 namespace eqt {
 namespace ui { class WindowManager; }
 namespace inventory { class InventoryManager; }
+namespace bridge { class GameStateBridge; }
 }
 
 // Forward declaration for spell visual effects
@@ -906,6 +907,9 @@ public:
     using MovementCallback = std::function<void(const PlayerPositionUpdate& update)>;
     void setMovementCallback(MovementCallback callback) { movementCallback_ = callback; }
 
+    // Bridge for cross-thread game state ↔ renderer communication (D14+)
+    void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
+
     // Target selection callback (called when player clicks on an entity)
     using TargetCallback = std::function<void(uint16_t spawnId)>;
     void setTargetCallback(TargetCallback callback) { targetCallback_ = callback; }
@@ -1552,6 +1556,7 @@ private:
     PlayerMovementState playerMovement_;
     PlayerModeConfig playerConfig_;
     MovementCallback movementCallback_;
+    eqt::bridge::GameStateBridge* bridge_ = nullptr;  // For pushing intents (D14+)
 
     // Collision detection for player mode
     HCMap* collisionMap_ = nullptr;

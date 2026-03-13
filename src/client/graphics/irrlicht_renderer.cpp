@@ -23,6 +23,7 @@
 #ifdef EQT_HAS_NAVMESH
 #include "client/pathfinder_nav_mesh.h"
 #endif
+#include "client/bridge/game_state_bridge.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -12281,6 +12282,20 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
             update.dz = playerZ_ - prevZ;
         }
         movementCallback_(update);
+
+        // D14: Also push movement intent to bridge (dual path with callback)
+        if (bridge_) {
+            eqt::events::PlayerPositionChanged intent;
+            intent.x = update.x;
+            intent.y = update.y;
+            intent.z = update.z;
+            intent.heading = update.heading;
+            intent.dx = update.dx;
+            intent.dy = update.dy;
+            intent.dz = update.dz;
+            bridge_->pushIntent(std::move(intent));
+        }
+
         lastCallbackTime = now;
 
         // Update previous position only when we actually send an update

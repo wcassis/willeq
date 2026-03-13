@@ -53,6 +53,7 @@ namespace EQT {
 namespace eqt {
 namespace bridge {
     class GameStateBridge;
+    class IrrlichtBridge;
 }
 }
 
@@ -912,8 +913,10 @@ public:
 	eqt::state::GameState& GetGameState() { return m_game_state; }
 	const eqt::state::GameState& GetGameState() const { return m_game_state; }
 
-	// Bridge for cross-thread game state → renderer communication
+	// Bridge for cross-thread game state ↔ renderer communication
 	void setBridge(eqt::bridge::GameStateBridge* bridge) { m_bridge = bridge; }
+	void ProcessBridgeIntents();  // Drain and process intents from the renderer (D14+)
+	void ProcessBridgeEvents();   // Drain and apply events to the renderer (D14+)
 
 	// Keyboard control methods
 	void StartMoveForward();
@@ -1572,8 +1575,9 @@ private:
 	void WorldProcessChannelMessage(const EQ::Net::Packet &p);
 
 #ifdef EQT_HAS_GRAPHICS
-	// Graphics renderer
+	// Graphics renderer and bridge
 	std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
+	std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;  // Owns the bridge lifetime
 	std::string m_eq_client_path;
 	std::string m_region_maps_path = "data/region_maps";
 	std::string m_config_path;  // Path to per-character config file
