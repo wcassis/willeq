@@ -50,6 +50,12 @@ namespace EQT {
     struct CancelTrade_Struct;
 }
 
+namespace eqt {
+namespace bridge {
+    class GameStateBridge;
+}
+}
+
 #ifdef WITH_AUDIO
 namespace EQT {
 namespace Audio {
@@ -904,6 +910,9 @@ public:
 	eqt::state::GameState& GetGameState() { return m_game_state; }
 	const eqt::state::GameState& GetGameState() const { return m_game_state; }
 
+	// Bridge for cross-thread game state → renderer communication
+	void setBridge(eqt::bridge::GameStateBridge* bridge) { m_bridge = bridge; }
+
 	// Keyboard control methods
 	void StartMoveForward();
 	void StartMoveBackward();
@@ -995,6 +1004,9 @@ private:
 	// During the transition period, both m_game_state and the legacy member variables
 	// exist. New code should use m_game_state; existing code is gradually migrated.
 	eqt::state::GameState m_game_state;
+
+	// Bridge for cross-thread game state → renderer communication (Phase 2+)
+	eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
 	// Utility functions
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);

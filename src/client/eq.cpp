@@ -43,6 +43,8 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #endif
 
+#include "client/bridge/game_state_bridge.h"
+
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
 #include "client/audio/zone_audio_manager.h"
@@ -5813,8 +5815,24 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 					// Set pose state BEFORE animation to prevent updateEntity from overriding
 					if (setPose) {
 						m_renderer->setEntityPoseState(spawn_id, poseState);
+						if (m_bridge) {
+							eqt::state::EntityPoseStateChangedData data;
+							data.spawnId = spawn_id;
+							data.poseState = static_cast<uint8_t>(poseState);
+							m_bridge->pushEvent(eqt::state::GameEvent(
+								eqt::state::GameEventType::EntityPoseStateChanged, std::move(data)));
+						}
 					}
 					m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
+					if (m_bridge) {
+						eqt::state::EntityAnimationEventData data;
+						data.spawnId = spawn_id;
+						data.animCode = 0;  // String-based anim, code not applicable
+						data.loop = loop;
+						data.playThrough = playThrough;
+						m_bridge->pushEvent(eqt::state::GameEvent(
+							eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
+					}
 					LogTargetEntity(spawn_id, "SpawnAppearance set animation '{}' pose={} on spawn_id={}",
 						animCode, static_cast<int>(poseState), spawn_id);
 				}
@@ -5830,6 +5848,12 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 			m_renderer->playEntityDeathAnimation(spawn_id);
 		}
 #endif
+		if (m_bridge) {
+			eqt::state::EntityDeathAnimationData data;
+			data.spawnId = spawn_id;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityDeathAnimation, std::move(data)));
+		}
 		break;
 
 	case AT_HP_UPDATE:
@@ -5962,6 +5986,13 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 					m_renderer->setEntityLight(spawn_id, static_cast<uint8_t>(parameter));
 				}
 #endif
+				if (m_bridge) {
+					eqt::state::EntityLightChangedData data;
+					data.spawnId = spawn_id;
+					data.lightLevel = static_cast<uint8_t>(parameter);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::EntityLightChanged, std::move(data)));
+				}
 			}
 		}
 		break;
@@ -6228,6 +6259,15 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 
 		if (!animCode.empty()) {
 			m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
+			if (m_bridge) {
+				eqt::state::EntityAnimationEventData data;
+				data.spawnId = spawn_id;
+				data.animCode = anim_id;
+				data.loop = loop;
+				data.playThrough = playThrough;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
+			}
 			if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 				LOG_DEBUG(MOD_ENTITY, "[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
 					animCode, spawn_id, anim_id, primaryWeaponSkill);
@@ -12196,6 +12236,18 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 			if (spawn_id == m_my_spawn_id) {
 				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 			}
+
+			// Publish EntityAppearanceChanged event
+			if (m_bridge) {
+				eqt::state::EntityAppearanceChangedData data;
+				data.spawnId = spawn_id;
+				data.raceId = entity.race_id;
+				data.gender = entity.gender;
+				data.appearanceType = 0;
+				data.appearanceValue = 0;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
+			}
 		}
 #endif
 	}
@@ -12274,6 +12326,18 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 	m_renderer->updateEntityAppearance(m_my_spawn_id, entity.race_id, entity.gender, appearance);
 	m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 
+	// Publish EntityAppearanceChanged event
+	if (m_bridge) {
+		eqt::state::EntityAppearanceChangedData data;
+		data.spawnId = m_my_spawn_id;
+		data.raceId = entity.race_id;
+		data.gender = entity.gender;
+		data.appearanceType = 0;
+		data.appearanceValue = 0;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
+	}
+
 	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Updated player appearance");
 #endif
 }
@@ -12349,6 +12413,18 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 		// Update the entity's model in the renderer
 		m_renderer->updateEntityAppearance(static_cast<uint16_t>(spawn_id),
 		                                    entity.race_id, entity.gender, appearance);
+
+		// Publish EntityAppearanceChanged event
+		if (m_bridge) {
+			eqt::state::EntityAppearanceChangedData data;
+			data.spawnId = static_cast<uint16_t>(spawn_id);
+			data.raceId = entity.race_id;
+			data.gender = entity.gender;
+			data.appearanceType = 0;
+			data.appearanceValue = 0;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
+		}
 	}
 #endif
 }
@@ -13032,8 +13108,14 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 			m_renderer->playEntityDeathAnimation(victim_id);
 		}
 #endif
+		if (m_bridge) {
+			eqt::state::EntityDeathAnimationData data;
+			data.spawnId = victim_id;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityDeathAnimation, std::move(data)));
+		}
 	}
-	
+
 	if (s_debug_level >= 1) {
 		// spell_id of 0, 0xFFFF (65535), or 0xFFFFFFFF means no spell was used
 		bool hasValidSpell = spell_id > 0 && spell_id != 0xFFFF && spell_id != 0xFFFFFFFF;
@@ -17725,6 +17807,18 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			// Queue combat animation - will be processed after 50ms buffer window
 			m_renderer->queueCombatAnimation(source_id, target_id, damage_type, damage_amount, damagePercent);
 
+			// Publish CombatAnimation event
+			if (m_bridge) {
+				eqt::state::CombatAnimationData data;
+				data.sourceId = source_id;
+				data.targetId = target_id;
+				data.damageType = damage_type;
+				data.damageAmount = damage_amount;
+				data.damagePercent = static_cast<uint8_t>(damagePercent);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatAnimation, std::move(data)));
+			}
+
 			if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Queued melee anim: source={} target={} skill={} dmg={} pct={:.1f}%",
 					source_id, target_id, damage_type, damage_amount, damagePercent);
@@ -17745,6 +17839,15 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			const char* damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
 
 			m_renderer->setEntityAnimation(target_id, damageAnim, false, true);
+			if (m_bridge) {
+				eqt::state::EntityAnimationEventData data;
+				data.spawnId = target_id;
+				data.animCode = 0;
+				data.loop = false;
+				data.playThrough = true;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
+			}
 			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Damage reaction '{}' on target={} (dmg={}, pct={:.1f}%, type={})",
 					damageAnim, target_id, damage_amount, damagePercent, damage_type);
@@ -19372,9 +19475,35 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	                           false, entity.gender, appearance, isNPC, isCorpse, entity.size,
 	                           entity.level);
 
+	// Publish EntitySpawned event to bridge
+	if (m_bridge) {
+		eqt::state::EntitySpawnedData data;
+		data.spawnId = entity.spawn_id;
+		data.name = entity.name;
+		data.x = entity.x;
+		data.y = entity.y;
+		data.z = entity.z;
+		data.heading = entity.heading;
+		data.raceId = entity.race_id;
+		data.classId = entity.class_id;
+		data.level = entity.level;
+		data.gender = entity.gender;
+		data.npcType = entity.npc_type;
+		data.isCorpse = isCorpse;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntitySpawned, std::move(data)));
+	}
+
 	// Set entity light source if equipped
 	if (entity.light > 0) {
 		m_renderer->setEntityLight(entity.spawn_id, entity.light);
+		if (m_bridge) {
+			eqt::state::EntityLightChangedData data;
+			data.spawnId = entity.spawn_id;
+			data.lightLevel = entity.light;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityLightChanged, std::move(data)));
+		}
 	}
 
 	// Set initial pose state from spawn animation value
@@ -19402,6 +19531,20 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		if (setPose) {
 			m_renderer->setEntityPoseState(entity.spawn_id, poseState);
 			m_renderer->setEntityAnimation(entity.spawn_id, animCode, true, false);
+			if (m_bridge) {
+				eqt::state::EntityPoseStateChangedData poseData;
+				poseData.spawnId = entity.spawn_id;
+				poseData.poseState = static_cast<uint8_t>(poseState);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntityPoseStateChanged, std::move(poseData)));
+				eqt::state::EntityAnimationEventData animData;
+				animData.spawnId = entity.spawn_id;
+				animData.animCode = entity.animation;
+				animData.loop = true;
+				animData.playThrough = false;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntityAnimationEvent, std::move(animData)));
+			}
 			LOG_DEBUG(MOD_ENTITY, "Set initial pose for {} (ID: {}) to {} (anim={})",
 			          entity.name, entity.spawn_id, animCode, entity.animation);
 		}
@@ -19525,8 +19668,25 @@ void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 	auto it = m_entities.find(spawn_id);
 	if (it != m_entities.end() && it->second.is_corpse) {
 		m_renderer->startCorpseDecay(spawn_id);
+		if (m_bridge) {
+			eqt::state::CorpseDecayStartedData data;
+			data.spawnId = spawn_id;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::CorpseDecayStarted, std::move(data)));
+		}
 	} else {
 		m_renderer->removeEntity(spawn_id);
+	}
+
+	// Publish EntityDespawned event
+	if (m_bridge) {
+		eqt::state::EntityDespawnedData data;
+		data.spawnId = spawn_id;
+		if (it != m_entities.end()) {
+			data.name = it->second.name;
+		}
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityDespawned, std::move(data)));
 	}
 }
 
@@ -19545,6 +19705,22 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 	}
 
 	m_renderer->updateEntity(spawn_id, x, y, z, heading, dx, dy, dz, animation);
+
+	// Publish EntityMoved event to bridge
+	if (m_bridge) {
+		eqt::state::EntityMovedData data;
+		data.spawnId = spawn_id;
+		data.x = x;
+		data.y = y;
+		data.z = z;
+		data.heading = heading;
+		data.dx = dx;
+		data.dy = dy;
+		data.dz = dz;
+		data.animation = static_cast<uint8_t>(animation);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityMoved, std::move(data)));
+	}
 }
 
 void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& update) {
