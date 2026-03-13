@@ -5498,10 +5498,23 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 
 	// Publish TrainerWindowOpened event to bridge
 	if (m_bridge) {
-		eqt::state::WindowOpenedData data;
+		eqt::state::TrainerWindowOpenedData data;
 		data.npcId = m_trainer_npc_id;
 		data.npcName = m_trainer_name;
-		data.sellRate = 0.0f;
+		data.platinum = GetPlatinum();
+		data.gold = GetGold();
+		data.silver = GetSilver();
+		data.copper = GetCopper();
+		data.practicePoints = GetPracticePoints();
+		for (const auto& entry : skillEntries) {
+			eqt::state::TrainerSkillEntryData skill;
+			skill.skillId = entry.skill_id;
+			skill.name = std::string(entry.name.begin(), entry.name.end());
+			skill.currentValue = entry.current_value;
+			skill.maxTrainable = entry.max_trainable;
+			skill.cost = entry.cost;
+			data.skills.push_back(std::move(skill));
+		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::TrainerWindowOpened, std::move(data)));
 	}

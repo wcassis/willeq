@@ -155,9 +155,9 @@ Full plan: `refactor/D_game_state_threading.md`.
 |------|-------------|--------|--------|
 | D09 | IrrlichtBridge handles entity events | done | `f97ff45` |
 | D10 | IrrlichtBridge handles chat, combat, player stat events | done | |
-| D11a | IrrlichtBridge handles inventory + currency events | pending | |
-| D11b | IrrlichtBridge handles loot + vendor events | pending | |
-| D11c | IrrlichtBridge handles bank + trade events | pending | |
+| D11a | IrrlichtBridge handles inventory + currency events | done | |
+| D11b | IrrlichtBridge handles loot + vendor events | done | |
+| D11c | IrrlichtBridge handles bank + trade events | done | |
 | D12 | IrrlichtBridge handles door, group, pet, spell, skill events | pending | |
 | D13 | IrrlichtBridge handles world/environment + zone lifecycle events | pending | |
 

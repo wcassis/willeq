@@ -227,13 +227,8 @@ void PlayerState::setTrainer(uint16_t npcId, const std::string& name) {
     m_trainerNpcId = npcId;
     m_trainerName = name;
 
-    if (m_eventBus && npcId != 0) {
-        WindowOpenedData data;
-        data.npcId = npcId;
-        data.npcName = name;
-        data.sellRate = 1.0f;
-        m_eventBus->publish(GameEventType::TrainerWindowOpened, data);
-    }
+    // Note: TrainerWindowOpened event is published from eq.cpp with full skill data.
+    // This method only tracks state for polling.
 }
 
 void PlayerState::clearTrainer() {

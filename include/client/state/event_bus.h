@@ -426,6 +426,25 @@ struct WindowOpenedData {
     float sellRate;  // For vendor window
 };
 
+struct TrainerSkillEntryData {
+    uint8_t skillId;
+    std::string name;
+    uint32_t currentValue;
+    uint32_t maxTrainable;
+    uint32_t cost;  // In copper
+};
+
+struct TrainerWindowOpenedData {
+    uint16_t npcId;
+    std::string npcName;
+    std::vector<TrainerSkillEntryData> skills;
+    uint32_t platinum;
+    uint32_t gold;
+    uint32_t silver;
+    uint32_t copper;
+    uint32_t practicePoints;
+};
+
 struct WindowClosedData {
     uint16_t npcId;
 };
@@ -685,6 +704,7 @@ using EventData = std::variant<
     PetButtonStateChangedData,
     // Window
     WindowOpenedData,
+    TrainerWindowOpenedData,
     WindowClosedData,
     VendorItemAddedData,
     TradeskillContainerOpenedEvent,

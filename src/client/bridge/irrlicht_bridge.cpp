@@ -3,8 +3,11 @@
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/chat_window.h"
 #include "client/graphics/ui/chat_message_buffer.h"
+#include "client/graphics/ui/item_instance.h"
+#include "client/graphics/ui/skill_trainer_window.h"
 #include "common/logging.h"
 #include <ctime>
+#include <memory>
 
 namespace eqt {
 namespace bridge {
@@ -280,79 +283,245 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Window events (D11b, D11c, D12)
     case state::GameEventType::VendorWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowOpened");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::WindowOpenedData>(event.data);
+                wm->openVendorWindow(d.npcId, d.npcName, d.sellRate);
+            }
+        }
         break;
     case state::GameEventType::VendorWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowClosed");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeVendorWindow();
+            }
+        }
         break;
     case state::GameEventType::VendorItemAdded:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorItemAdded");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::VendorItemAddedData>(event.data);
+                auto item = std::make_unique<eqt::inventory::ItemInstance>();
+                item->itemId = d.itemId;
+                item->name = d.itemName;
+                item->price = d.price;
+                item->quantity = d.quantity;
+                wm->addVendorItem(d.vendorSlot, std::move(item));
+            }
+        }
         break;
     case state::GameEventType::BankWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankWindowOpened");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->openBankWindow();
+            }
+        }
         break;
     case state::GameEventType::BankWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankWindowClosed");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeBankWindow();
+            }
+        }
         break;
     case state::GameEventType::TrainerWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowOpened");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TrainerWindowOpenedData>(event.data);
+                std::wstring trainerName(d.npcName.begin(), d.npcName.end());
+                std::vector<eqt::ui::TrainerSkillEntry> skills;
+                skills.reserve(d.skills.size());
+                for (const auto& s : d.skills) {
+                    eqt::ui::TrainerSkillEntry entry;
+                    entry.skill_id = s.skillId;
+                    entry.name = std::wstring(s.name.begin(), s.name.end());
+                    entry.current_value = s.currentValue;
+                    entry.max_trainable = s.maxTrainable;
+                    entry.cost = s.cost;
+                    skills.push_back(std::move(entry));
+                }
+                wm->openSkillTrainerWindow(d.npcId, trainerName, skills);
+                wm->updateSkillTrainerMoney(d.platinum, d.gold, d.silver, d.copper);
+                wm->updateSkillTrainerPracticePoints(d.practicePoints);
+            }
+        }
         break;
     case state::GameEventType::TrainerWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowClosed");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeSkillTrainerWindow();
+            }
+        }
         break;
     case state::GameEventType::TradeskillContainerOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerOpened");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TradeskillContainerOpenedEvent>(event.data);
+                if (d.isWorldObject) {
+                    wm->openTradeskillContainer(d.objectId, d.containerName,
+                        d.containerType, d.slotCount);
+                } else {
+                    wm->openTradeskillContainerForItem(d.inventorySlot, d.containerName,
+                        d.containerType, d.slotCount);
+                }
+            }
+        }
         break;
     case state::GameEventType::TradeskillContainerClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerClosed");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeTradeskillContainer();
+            }
+        }
         break;
 
     // Inventory events (D11a)
     case state::GameEventType::InventorySlotChanged:
+        // No dedicated renderer call — inventory UI reads state directly
         LOG_TRACE(MOD_GRAPHICS, "Bridge: InventorySlotChanged");
         break;
     case state::GameEventType::CursorItemChanged:
+        // No dedicated renderer call — cursor state read directly by UI
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CursorItemChanged");
         break;
     case state::GameEventType::EquipmentStatsChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: EquipmentStatsChanged");
+        // Equipment stats (AC, ATK, HP, mana, weight) are part of the monolithic
+        // updateCharacterStats() call. Bridge-driven stat updates require combining
+        // PlayerStatsChanged + EquipmentStatsChanged + CurrencyChanged into a
+        // single renderer call. Deferred until Phase 5 refactors the renderer
+        // to accept granular stat updates.
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: EquipmentStatsChanged (deferred — monolithic renderer API)");
         break;
     case state::GameEventType::CurrencyChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CurrencyChanged");
+        // Currency display is context-dependent (vendor window, inventory window).
+        // The monolithic updateCharacterStats() includes currency. Deferred with
+        // EquipmentStatsChanged above.
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: CurrencyChanged (deferred — monolithic renderer API)");
         break;
     case state::GameEventType::BankCurrencyChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankCurrencyChanged");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::BankCurrencyChangedData>(event.data);
+                wm->updateBankCurrency(
+                    static_cast<uint32_t>(d.platinum),
+                    static_cast<uint32_t>(d.gold),
+                    static_cast<uint32_t>(d.silver),
+                    static_cast<uint32_t>(d.copper));
+            }
+        }
+        break;
+    case state::GameEventType::EntityWeaponSkillsChanged:
+        if (renderer_) {
+            auto& d = std::get<state::EntityWeaponSkillsChangedData>(event.data);
+            renderer_->setEntityWeaponSkills(d.spawnId, d.primaryWeaponSkill, d.secondaryWeaponSkill);
+        }
         break;
 
     // Loot events (D11b)
     case state::GameEventType::LootWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowOpened");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::LootWindowOpenedData>(event.data);
+                wm->openLootWindow(d.corpseId, d.corpseName);
+            }
+        }
         break;
     case state::GameEventType::LootWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowClosed");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeLootWindow();
+            }
+        }
         break;
     case state::GameEventType::LootItemAdded:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemAdded");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::LootItemAddedData>(event.data);
+                auto item = std::make_unique<eqt::inventory::ItemInstance>();
+                item->itemId = d.itemId;
+                item->name = d.itemName;
+                wm->addLootItem(static_cast<int16_t>(d.slot), std::move(item));
+            }
+        }
         break;
     case state::GameEventType::LootItemRemoved:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemRemoved");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::LootItemRemovedData>(event.data);
+                wm->removeLootItem(static_cast<int16_t>(d.slot));
+            }
+        }
         break;
 
     // Trade events (D11c)
     case state::GameEventType::TradeStarted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeStarted");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TradeStartedData>(event.data);
+                wm->openTradeWindow(d.partnerId, d.partnerName, d.isNpc);
+            }
+        }
         break;
     case state::GameEventType::TradeItemUpdated:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeItemUpdated");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TradeItemUpdatedData>(event.data);
+                if (d.who == 1) {
+                    // Partner item update
+                    if (d.itemId != 0) {
+                        auto item = std::make_unique<eqt::inventory::ItemInstance>();
+                        item->itemId = d.itemId;
+                        item->name = d.itemName;
+                        wm->setTradePartnerItem(d.slot, std::move(item));
+                    } else {
+                        wm->clearTradePartnerItem(d.slot);
+                    }
+                }
+                // who==0 (self) items are managed locally by the trade window
+            }
+        }
         break;
     case state::GameEventType::TradeAcceptStateChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeAcceptStateChanged");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TradeAcceptStateChangedData>(event.data);
+                wm->setTradeOwnAccepted(d.ownAccepted);
+                wm->setTradePartnerAccepted(d.partnerAccepted);
+            }
+        }
         break;
     case state::GameEventType::TradeCancelled:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCancelled");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeTradeWindow(false);
+            }
+        }
         break;
     case state::GameEventType::TradeCompleted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCompleted");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->closeTradeWindow(false);
+            }
+        }
         break;
 
     // Spell events (D12)
