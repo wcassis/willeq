@@ -426,11 +426,11 @@ both the direct calls AND the bridge calls drive the renderer (redundant but ver
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D09 | IrrlichtBridge handles entity events | pending | |
-| D10 | IrrlichtBridge handles chat, combat, player stat events | done | |
-| D11a | IrrlichtBridge handles inventory + currency events | done | |
-| D11b | IrrlichtBridge handles loot + vendor events | done | |
-| D11c | IrrlichtBridge handles bank + trade events | done | |
+| D09 | IrrlichtBridge handles entity events | done | `f97ff45` |
+| D10 | IrrlichtBridge handles chat, combat, player stat events | done | `69589ce` |
+| D11a | IrrlichtBridge handles inventory + currency events | done | `69589ce` |
+| D11b | IrrlichtBridge handles loot + vendor events | done | `69589ce` |
+| D11c | IrrlichtBridge handles bank + trade events | done | `69589ce` |
 | D12 | IrrlichtBridge handles door, group, pet, spell, skill events | pending | |
 | D13 | IrrlichtBridge handles world/environment + zone lifecycle events | pending | |
 
