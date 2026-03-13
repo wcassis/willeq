@@ -19730,11 +19730,15 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Set up chat submit callback
 	m_renderer->setChatSubmitCallback([this](const std::string& text) {
 		ProcessChatInput(text);
+		// D15: Push intent (from callback since ChatWindow doesn't have bridge access)
+		if (m_bridge) m_bridge->pushIntent(eqt::events::ChatSubmitIntent{text});
 	});
 
 	// Set up read item callback for book/note reading
 	m_renderer->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
 		RequestReadBook(bookText, bookType);
+		// D15: Push intent (from callback since UI windows don't have bridge access)
+		if (m_bridge) m_bridge->pushIntent(eqt::events::ReadItemIntent{bookText, bookType});
 	});
 
 	// Set up auto-completion for chat window
@@ -20718,8 +20722,43 @@ void EverQuest::ProcessBridgeIntents() {
 				update.dy = i.dy;
 				update.dz = i.dz;
 				OnGraphicsMovement(update);
-			} else {
-				// Other intents will be handled in D15/D16
+			}
+			// ================================================================
+			// D15: Interaction intents (dual-path — callbacks handle primary,
+			// intents logged here as secondary. Phase 5 activates intent-only.)
+			// ================================================================
+			else if constexpr (std::is_same_v<T, eqt::events::TargetIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: TargetIntent spawnId={}", i.spawnId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::LootCorpseIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: LootCorpseIntent spawnId={}", i.spawnId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::DoorInteractIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: DoorInteractIntent doorId={}", i.doorId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::VendorToggleIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: VendorToggleIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::BankerInteractIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: BankerInteractIntent npcId={}", i.npcId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::TrainerToggleIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: TrainerToggleIntent");
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::WorldObjectInteractIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: WorldObjectInteractIntent dropId={}", i.dropId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::ZoningEnabledIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: ZoningEnabledIntent enabled={}", i.enabled);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::ChatSubmitIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: ChatSubmitIntent len={}", i.text.size());
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
+				LOG_TRACE(MOD_MAIN, "Bridge intent: ReadItemIntent type={}", i.type);
+			}
+			else {
+				// D16+ intents will be handled later
 				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");
 			}
 		}, intent);

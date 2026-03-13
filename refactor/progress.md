@@ -166,7 +166,7 @@ Full plan: `refactor/D_game_state_threading.md`.
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | D14 | Movement intent: renderer posts PlayerPositionChanged, game thread consumes | done | |
-| D15 | Interaction intents: target, door, loot, vendor, banker, trainer, world object, zoning, chat, read item | pending | |
+| D15 | Interaction intents: target, door, loot, vendor, banker, trainer, world object, zoning, chat, read item | done | |
 | D16 | UI intents: spell, buff, skill, loot actions, vendor buy/sell, bank, trade, pet, group, camp/quit, hotbar | pending | |
 
 ### Phase 5 — Remove Direct Coupling

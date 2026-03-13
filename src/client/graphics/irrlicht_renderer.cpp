@@ -9660,25 +9660,28 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
         switch (event.action) {
             case RA::ToggleVendor:
                 if (vendorToggleCallback_) vendorToggleCallback_();
+                if (bridge_) bridge_->pushIntent(eqt::events::VendorToggleIntent{});
                 break;
             case RA::ToggleTrainer:
                 if (trainerToggleCallback_) trainerToggleCallback_();
+                if (bridge_) bridge_->pushIntent(eqt::events::TrainerToggleIntent{});
                 break;
             case RA::DoorInteract:
-                if (doorManager_ && doorInteractCallback_) {
+                if (doorManager_) {
                     uint8_t doorId = doorManager_->getNearestDoor(playerX_, playerY_, playerZ_, playerHeading_);
                     if (doorId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "Door interaction: ID {}", doorId);
-                        doorInteractCallback_(doorId);
+                        if (doorInteractCallback_) doorInteractCallback_(doorId);
+                        if (bridge_) bridge_->pushIntent(eqt::events::DoorInteractIntent{doorId});
                     }
                 }
                 break;
-            case RA::WorldObjectInteract:
-                if (worldObjectInteractCallback_) {
+            case RA::WorldObjectInteract: {
                     uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
                     if (objectId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "World object interaction: dropId {}", objectId);
-                        worldObjectInteractCallback_(objectId);
+                        if (worldObjectInteractCallback_) worldObjectInteractCallback_(objectId);
+                        if (bridge_) bridge_->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
                     }
                 }
                 break;
@@ -9926,6 +9929,7 @@ void IrrlichtRenderer::processChatInput() {
             if (eventReceiver_->escapeKeyPressed() && !moneyDialogShown) {
                 if (windowManager_->isVendorWindowOpen()) {
                     if (vendorToggleCallback_) vendorToggleCallback_();
+                    if (bridge_) bridge_->pushIntent(eqt::events::VendorToggleIntent{});
                 } else if (currentTargetId_ != 0) {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
                     clearCurrentTarget();
@@ -14297,12 +14301,14 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
                     if (lootCorpseCallback_) {
                         lootCorpseCallback_(targetId);
                     }
+                    if (bridge_) bridge_->pushIntent(eqt::events::LootCorpseIntent{targetId});
                 } else if (ctrlHeld && visual.isNPC && !visual.isCorpse) {
                     // Ctrl+click on NPC - banker interaction
                     LOG_INFO(MOD_GRAPHICS, "Ctrl+click on NPC: {} (ID: {})", visual.name, targetId);
                     if (bankerInteractCallback_) {
                         bankerInteractCallback_(targetId);
                     }
+                    if (bridge_) bridge_->pushIntent(eqt::events::BankerInteractIntent{targetId});
                 } else {
                     // Entity is visible - set as target
                     LOG_INFO(MOD_GRAPHICS, "Target selected: {} (ID: {})", visual.name, targetId);
@@ -14311,6 +14317,7 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
                     if (targetCallback_) {
                         targetCallback_(targetId);
                     }
+                    if (bridge_) bridge_->pushIntent(eqt::events::TargetIntent{targetId});
                 }
             } else {
                 LOG_DEBUG(MOD_GRAPHICS, "Cannot target {} - obstructed", visual.name);
@@ -14319,21 +14326,23 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
     } else {
         // No entity found - check for door click
         bool handledClick = false;
-        if (doorManager_ && doorInteractCallback_) {
+        if (doorManager_) {
             uint8_t doorId = doorManager_->getDoorAtScreenPos(clickX, clickY, camera_, collisionManager_);
             if (doorId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "Door clicked: ID {}", doorId);
-                doorInteractCallback_(doorId);
+                if (doorInteractCallback_) doorInteractCallback_(doorId);
+                if (bridge_) bridge_->pushIntent(eqt::events::DoorInteractIntent{doorId});
                 handledClick = true;
             }
         }
 
         // Check for world object (tradeskill container) click
-        if (!handledClick && worldObjectInteractCallback_) {
+        if (!handledClick) {
             uint32_t objectId = getWorldObjectAtScreenPos(clickX, clickY);
             if (objectId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "World object clicked: dropId {}", objectId);
-                worldObjectInteractCallback_(objectId);
+                if (worldObjectInteractCallback_) worldObjectInteractCallback_(objectId);
+                if (bridge_) bridge_->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
             }
         }
     }
@@ -14805,6 +14814,7 @@ void IrrlichtRenderer::toggleZoneLineVisualization() {
     if (zoningEnabledCallback_) {
         zoningEnabledCallback_(showZoneLineBoxes_);
     }
+    if (bridge_) bridge_->pushIntent(eqt::events::ZoningEnabledIntent{showZoneLineBoxes_});
 
     LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");
 }
