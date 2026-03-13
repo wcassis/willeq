@@ -2318,6 +2318,15 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 			}
 #endif
 
+			// Publish SkillValueChanged event to bridge
+			if (m_bridge) {
+				eqt::state::SkillValueChangedData sdata;
+				sdata.skillId = static_cast<uint16_t>(skill_id);
+				sdata.value = static_cast<uint16_t>(value);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::SkillValueChanged, std::move(sdata)));
+			}
+
 			if (s_debug_level >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
 			}
@@ -5412,6 +5421,16 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 		m_renderer->getWindowManager()->updateSkillTrainerPracticePoints(
 			GetPracticePoints());
 	}
+
+	// Publish TrainerWindowOpened event to bridge
+	if (m_bridge) {
+		eqt::state::WindowOpenedData data;
+		data.npcId = m_trainer_npc_id;
+		data.npcName = m_trainer_name;
+		data.sellRate = 0.0f;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::TrainerWindowOpened, std::move(data)));
+	}
 }
 
 void EverQuest::RequestTrainerWindow(uint16_t npcId)
@@ -5473,6 +5492,14 @@ void EverQuest::CloseTrainerWindow()
 	// Close the UI immediately (don't wait for server confirmation)
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeSkillTrainerWindow();
+	}
+
+	// Publish TrainerWindowClosed event to bridge (before clearing state)
+	if (m_bridge) {
+		eqt::state::WindowClosedData data;
+		data.npcId = m_trainer_npc_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::TrainerWindowClosed, std::move(data)));
 	}
 
 	// Clear trainer state
@@ -5881,6 +5908,20 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 			                       door.isOpen);
 		}
 #endif
+
+		// Publish DoorSpawned event to bridge
+		if (m_bridge) {
+			eqt::state::DoorSpawnedData data;
+			data.doorId = door.doorId;
+			data.name = door.name;
+			data.x = door.x;
+			data.y = door.y;
+			data.z = door.z;
+			data.heading = door.heading;
+			data.state = door.isOpen ? 1 : 0;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::DoorSpawned, std::move(data)));
+		}
 	}
 }
 
@@ -12819,6 +12860,15 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 			m_renderer->setDoorState(door_id, is_open, user_initiated);
 		}
 #endif
+
+		// Publish DoorStateChanged event to bridge
+		if (m_bridge) {
+			eqt::state::DoorStateChangedData data;
+			data.doorId = door_id;
+			data.isOpen = is_open;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::DoorStateChanged, std::move(data)));
+		}
 	} else {
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_ENTITY, "MoveDoor for unknown door {}", door_id);
@@ -12898,6 +12948,17 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 	// Notify spell manager about the cast
 	if (m_spell_manager) {
 		m_spell_manager->handleBeginCast(spawn_id, spell_id, cast_time);
+	}
+
+	// Publish SpellCastStarted event to bridge
+	if (m_bridge) {
+		eqt::state::SpellCastStartedData data;
+		data.casterId = spawn_id;
+		data.spellId = spell_id;
+		data.castTimeMs = cast_time;
+		data.targetId = 0;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::SpellCastStarted, std::move(data)));
 	}
 }
 
@@ -13021,6 +13082,14 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 			// Buff is fading
 			if (is_self) {
 				m_buff_manager->removePlayerBuffBySlot(static_cast<uint8_t>(slot_id));
+
+				// Publish BuffRemoved event to bridge
+				if (m_bridge) {
+					eqt::state::BuffRemovedData data;
+					data.slot = static_cast<uint8_t>(slot_id);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::BuffRemoved, std::move(data)));
+				}
 			} else {
 				m_buff_manager->removeBuffBySlot(static_cast<uint16_t>(entity_id), static_cast<uint8_t>(slot_id));
 			}
@@ -13028,6 +13097,16 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 			// Buff is being applied
 			if (is_self) {
 				m_buff_manager->setPlayerBuff(static_cast<uint8_t>(slot_id), buff);
+
+				// Publish BuffUpdated event to bridge
+				if (m_bridge) {
+					eqt::state::BuffUpdatedData data;
+					data.slot = static_cast<uint8_t>(slot_id);
+					data.spellId = buff.spellid;
+					data.ticksLeft = static_cast<uint32_t>(buff.duration);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::BuffUpdated, std::move(data)));
+				}
 			} else {
 				m_buff_manager->setEntityBuff(static_cast<uint16_t>(entity_id),
 					static_cast<uint8_t>(slot_id), buff);
@@ -15315,6 +15394,17 @@ void EverQuest::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
 			}
 		}
 #endif
+
+		// Publish GroupInviteReceived event to bridge
+		if (m_bridge) {
+			eqt::state::GroupChangedData data;
+			data.inGroup = m_in_group;
+			data.isLeader = m_is_group_leader;
+			data.leaderName = inviter_name;
+			data.memberCount = m_group_member_count;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::GroupInviteReceived, std::move(data)));
+		}
 	}
 }
 
@@ -15407,6 +15497,32 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			AddChatSystemMessage("Group updated");
 			LOG_INFO(MOD_MAIN, "Group update: {} members, leader: {}",
 					 m_group_member_count, m_group_leader_name);
+
+			// Publish GroupChanged event to bridge
+			if (m_bridge) {
+				eqt::state::GroupChangedData gdata;
+				gdata.inGroup = true;
+				gdata.isLeader = m_is_group_leader;
+				gdata.leaderName = m_group_leader_name;
+				gdata.memberCount = m_group_member_count;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::GroupChanged, std::move(gdata)));
+
+				// Publish GroupMemberUpdated for each member
+				for (int mi = 0; mi < m_group_member_count; mi++) {
+					eqt::state::GroupMemberUpdatedData mdata;
+					mdata.memberIndex = mi;
+					mdata.name = m_group_members[mi].name;
+					mdata.spawnId = m_group_members[mi].spawn_id;
+					mdata.level = m_group_members[mi].level;
+					mdata.classId = m_group_members[mi].class_id;
+					mdata.hpPercent = m_group_members[mi].hp_percent;
+					mdata.manaPercent = m_group_members[mi].mana_percent;
+					mdata.inZone = m_group_members[mi].in_zone;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::GroupMemberUpdated, std::move(mdata)));
+				}
+			}
 			break;
 		}
 
@@ -15433,6 +15549,17 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 				m_game_state.group().recalculateMemberCount();
 
 				AddChatSystemMessage(member_name + " has left the group");
+
+				// Publish GroupChanged event to bridge
+				if (m_bridge) {
+					eqt::state::GroupChangedData gdata;
+					gdata.inGroup = m_in_group;
+					gdata.isLeader = m_is_group_leader;
+					gdata.leaderName = m_group_leader_name;
+					gdata.memberCount = m_group_member_count;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::GroupChanged, std::move(gdata)));
+				}
 			}
 			break;
 		}
@@ -15440,6 +15567,17 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 		case EQT::GROUP_ACT_DISBAND:
 			ClearGroup();  // Also syncs to GameState
 			AddChatSystemMessage("Your group has been disbanded");
+
+			// Publish GroupChanged event to bridge
+			if (m_bridge) {
+				eqt::state::GroupChangedData gdata;
+				gdata.inGroup = false;
+				gdata.isLeader = false;
+				gdata.leaderName = "";
+				gdata.memberCount = 0;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::GroupChanged, std::move(gdata)));
+			}
 			break;
 
 		case EQT::GROUP_ACT_MAKE_LEADER:
@@ -15459,6 +15597,17 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			}
 
 			AddChatSystemMessage(new_leader + " is now the group leader");
+
+			// Publish GroupChanged event to bridge
+			if (m_bridge) {
+				eqt::state::GroupChangedData gdata;
+				gdata.inGroup = m_in_group;
+				gdata.isLeader = m_is_group_leader;
+				gdata.leaderName = m_group_leader_name;
+				gdata.memberCount = m_group_member_count;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::GroupChanged, std::move(gdata)));
+			}
 			break;
 		}
 
@@ -15473,6 +15622,17 @@ void EverQuest::ZoneProcessGroupDisband(const EQ::Net::Packet& p)
 	ClearGroup();
 	AddChatSystemMessage("Your group has been disbanded");
 	LOG_INFO(MOD_MAIN, "Group disbanded");
+
+	// Publish GroupChanged event to bridge
+	if (m_bridge) {
+		eqt::state::GroupChangedData gdata;
+		gdata.inGroup = false;
+		gdata.isLeader = false;
+		gdata.leaderName = "";
+		gdata.memberCount = 0;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
+	}
 
 #ifdef EQT_HAS_GRAPHICS
 	// Hide pending invite UI if shown
@@ -18924,6 +19084,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 			// Reset to base vision first
 			m_renderer->resetVisionToBase();
 
+			// Track final vision type for bridge event
+			uint8_t finalVisionType = 0;  // 0=normal
+
 			// Re-scan remaining buffs for vision effects and re-apply
 			for (const auto& buff : m_buff_manager->getPlayerBuffs()) {
 				const EQ::SpellData* buffSpell = m_spell_manager->getSpell(buff.spell_id);
@@ -18931,11 +19094,21 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 				if (buffSpell->hasEffect(EQ::SpellEffect::UltraVision)) {
 					m_renderer->setVisionType(EQT::Graphics::VisionType::Ultravision);
+					finalVisionType = 2;
 					break;  // Ultravision is best, no need to check more
 				} else if (buffSpell->hasEffect(EQ::SpellEffect::InfraVision)) {
 					m_renderer->setVisionType(EQT::Graphics::VisionType::Infravision);
+					finalVisionType = 1;
 					// Keep checking in case there's an Ultravision buff
 				}
+			}
+
+			// Publish VisionChanged event to bridge
+			if (m_bridge) {
+				eqt::state::VisionChangedData vdata;
+				vdata.visionType = finalVisionType;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::VisionChanged, std::move(vdata)));
 			}
 		});
 	}
@@ -19920,6 +20093,16 @@ void EverQuest::OnPetCreated(const Entity& pet) {
 	if (m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->openPetWindow();
 	}
+
+	// Publish PetCreated event to bridge
+	if (m_bridge) {
+		eqt::state::PetCreatedData data;
+		data.spawnId = pet.spawn_id;
+		data.name = pet.name;
+		data.level = pet.level;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PetCreated, std::move(data)));
+	}
 }
 
 void EverQuest::OnPetRemoved() {
@@ -19932,6 +20115,15 @@ void EverQuest::OnPetRemoved() {
 	// Close pet window when pet is removed
 	if (m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closePetWindow();
+	}
+
+	// Publish PetRemoved event to bridge
+	if (m_bridge) {
+		eqt::state::PetRemovedData data;
+		data.spawnId = m_pet_spawn_id;
+		data.name = "";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PetRemoved, std::move(data)));
 	}
 }
 
@@ -19953,6 +20145,15 @@ void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
 		}
 	}
 #endif
+
+	// Publish PetButtonStateChanged event to bridge
+	if (m_bridge) {
+		eqt::state::PetButtonStateChangedData data;
+		data.button = static_cast<uint8_t>(button);
+		data.state = state;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PetButtonStateChanged, std::move(data)));
+	}
 }
 
 void EverQuest::SaveEntityDataToFile(const std::string& filename) {
