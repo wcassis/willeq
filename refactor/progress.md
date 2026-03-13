@@ -159,7 +159,7 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D11b | IrrlichtBridge handles loot + vendor events | done | `69589ce` |
 | D11c | IrrlichtBridge handles bank + trade events | done | `69589ce` |
 | D12 | IrrlichtBridge handles door, group, pet, spell, skill events | done | |
-| D13 | IrrlichtBridge handles world/environment + zone lifecycle events | pending | |
+| D13 | IrrlichtBridge handles world/environment + zone lifecycle events | done | |
 
 ### Phase 4 — Intent Handling
 

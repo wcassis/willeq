@@ -6,6 +6,7 @@
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/skill_trainer_window.h"
 #include "client/graphics/ui/group_window.h"
+#include "client/graphics/ui/inventory_constants.h"
 #include "common/logging.h"
 #include <ctime>
 #include <memory>
@@ -168,12 +169,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Zone events (D13)
     case state::GameEventType::ZoneChanged:
+        // Zone change triggers full zone reload via loading thread — no bridge action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneChanged");
         break;
     case state::GameEventType::ZoneLoading:
+        // Loading screen progress driven by loading thread — no bridge action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLoading");
         break;
     case state::GameEventType::ZoneLoaded:
+        // Zone load completion handled by loading thread callbacks — no bridge action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLoaded");
         break;
 
@@ -284,6 +288,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Time events (D13)
     case state::GameEventType::TimeOfDayChanged:
+        // Sky renderer reads time from WorldState each frame — no bridge action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TimeOfDayChanged");
         break;
 
@@ -601,32 +606,61 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // World/environment events (D13)
     case state::GameEventType::WeatherChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: WeatherChanged");
+        if (renderer_) {
+            auto& d = std::get<state::WeatherChangedData>(event.data);
+            renderer_->setWeather(d.type, d.intensity);
+        }
         break;
     case state::GameEventType::SwimmingStateChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: SwimmingStateChanged");
+        if (renderer_) {
+            auto& d = std::get<state::SwimmingStateChangedData>(event.data);
+            renderer_->setSwimmingState(d.isSwimming, d.swimSpeed, d.isLevitating);
+        }
         break;
 
     // Zone lifecycle events (D13)
     case state::GameEventType::CollisionMapChanged:
+        // Collision map is set during zone loading via setCollisionMap(). The event
+        // carries a raw pointer — bridge should not duplicate zone-load infrastructure.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CollisionMapChanged");
         break;
     case state::GameEventType::ZoneLineBoundingBoxes:
+        // Zone line bounding boxes set during zone loading via setZoneLineBoundingBoxes().
+        // Bridge should not duplicate zone-load infrastructure.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLineBoundingBoxes");
         break;
 
     // UI/misc events (D13)
     case state::GameEventType::ExpProgressChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: ExpProgressChanged");
+        if (renderer_) {
+            auto& d = std::get<state::ExpProgressChangedData>(event.data);
+            renderer_->setExpProgress(d.progress);
+        }
         break;
     case state::GameEventType::CharacterInfoChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CharacterInfoChanged");
+        if (renderer_) {
+            auto& d = std::get<state::CharacterInfoChangedData>(event.data);
+            std::wstring wname(d.name.begin(), d.name.end());
+            std::wstring wclass(d.className.begin(), d.className.end());
+            std::wstring wdeity(d.deity.begin(), d.deity.end());
+            renderer_->setCharacterInfo(wname, d.level, wclass);
+            renderer_->setCharacterDeity(wdeity);
+        }
         break;
     case state::GameEventType::WorldObjectSpawned:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: WorldObjectSpawned");
+        if (renderer_) {
+            auto& d = std::get<state::WorldObjectSpawnedData>(event.data);
+            if (eqt::inventory::isTradeskillContainerType(d.objectType)) {
+                renderer_->addWorldObject(d.dropId, d.x, d.y, d.z,
+                    d.objectType, d.modelName);
+            }
+        }
         break;
     case state::GameEventType::NoteWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: NoteWindowOpened");
+        if (renderer_) {
+            auto& d = std::get<state::NoteWindowOpenedData>(event.data);
+            renderer_->showNoteWindow(d.text, d.type);
+        }
         break;
     }
 }
