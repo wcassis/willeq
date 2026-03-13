@@ -3556,6 +3556,25 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 
 	// Update stats after item movement (may affect equipped items)
 	UpdateInventoryStats();
+
+	// Publish InventorySlotChanged for both slots involved in the move
+	if (m_bridge && p.Length() >= 14) {
+		int16_t fromSlot = static_cast<int16_t>(p.GetUInt32(2));
+		int16_t toSlot = static_cast<int16_t>(p.GetUInt32(6));
+
+		auto publishSlot = [this](int16_t slot) {
+			eqt::state::InventorySlotChangedData data;
+			data.slotId = slot;
+			const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
+			data.hasItem = (item != nullptr && item->itemId != 0);
+			data.itemId = data.hasItem ? item->itemId : 0;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+		};
+
+		publishSlot(fromSlot);
+		publishSlot(toSlot);
+	}
 }
 
 void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
@@ -3571,6 +3590,17 @@ void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 	if (m_renderer && m_renderer->getWindowManager() &&
 	    m_renderer->getWindowManager()->isVendorWindowOpen()) {
 		m_renderer->getWindowManager()->refreshVendorSellableItems();
+	}
+
+	// Publish InventorySlotChanged for the deleted slot
+	if (m_bridge && p.Length() >= 6) {
+		int16_t slot = static_cast<int16_t>(p.GetUInt32(2));
+		eqt::state::InventorySlotChangedData data;
+		data.slotId = slot;
+		data.hasItem = false;
+		data.itemId = 0;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	}
 }
 
@@ -4458,6 +4488,25 @@ void EverQuest::SetupBankCallbacks()
 			coinType, amount, fromBank,
 			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
 			m_platinum, m_gold, m_silver, m_copper);
+
+		// Publish CurrencyChanged + BankCurrencyChanged
+		if (m_bridge) {
+			eqt::state::CurrencyChangedData cdata;
+			cdata.platinum = static_cast<int32_t>(m_platinum);
+			cdata.gold = static_cast<int32_t>(m_gold);
+			cdata.silver = static_cast<int32_t>(m_silver);
+			cdata.copper = static_cast<int32_t>(m_copper);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
+
+			eqt::state::BankCurrencyChangedData bdata;
+			bdata.platinum = static_cast<int32_t>(m_bank_platinum);
+			bdata.gold = static_cast<int32_t>(m_bank_gold);
+			bdata.silver = static_cast<int32_t>(m_bank_silver);
+			bdata.copper = static_cast<int32_t>(m_bank_copper);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
+		}
 	});
 
 	// Set callback for currency conversion in bank (cp->sp->gp->pp)
@@ -4524,6 +4573,17 @@ void EverQuest::SetupBankCallbacks()
 
 		LOG_DEBUG(MOD_INVENTORY, "Bank currency after conversion: {}pp {}gp {}sp {}cp",
 			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+		// Publish BankCurrencyChanged
+		if (m_bridge) {
+			eqt::state::BankCurrencyChangedData bdata;
+			bdata.platinum = static_cast<int32_t>(m_bank_platinum);
+			bdata.gold = static_cast<int32_t>(m_bank_gold);
+			bdata.silver = static_cast<int32_t>(m_bank_silver);
+			bdata.copper = static_cast<int32_t>(m_bank_copper);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
+		}
 	});
 
 	if (s_debug_level >= 2) {
@@ -4851,6 +4911,17 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 		}
 	}
 #endif
+
+	// Publish CurrencyChanged
+	if (m_bridge) {
+		eqt::state::CurrencyChangedData data;
+		data.platinum = static_cast<int32_t>(m_platinum);
+		data.gold = static_cast<int32_t>(m_gold);
+		data.silver = static_cast<int32_t>(m_silver);
+		data.copper = static_cast<int32_t>(m_copper);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CurrencyChanged, std::move(data)));
+	}
 }
 
 void EverQuest::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
@@ -20010,6 +20081,25 @@ void EverQuest::UpdateInventoryStats() {
 		data.level = m_level;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
+
+		// Publish EquipmentStatsChanged
+		eqt::state::EquipmentStatsChangedData edata;
+		edata.ac = 0;  // Not yet implemented
+		edata.atk = 0;
+		edata.hp = equipStats.hp;
+		edata.mana = equipStats.mana;
+		edata.weight = m_weight;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EquipmentStatsChanged, std::move(edata)));
+
+		// Publish CurrencyChanged (updateCharacterStats includes currency)
+		eqt::state::CurrencyChangedData cdata;
+		cdata.platinum = static_cast<int32_t>(m_platinum);
+		cdata.gold = static_cast<int32_t>(m_gold);
+		cdata.silver = static_cast<int32_t>(m_silver);
+		cdata.copper = static_cast<int32_t>(m_copper);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
 	}
 }
 
