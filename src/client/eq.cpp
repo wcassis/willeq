@@ -4275,6 +4275,17 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 					LOG_DEBUG(MOD_INVENTORY, "  stackSize/stackable parsing failed");
 				}
 
+				// Publish LootItemAdded before moving item
+				if (m_bridge) {
+					eqt::state::LootItemAddedData ldata;
+					ldata.corpseId = m_player_looting_corpse_id;
+					ldata.slot = static_cast<uint8_t>(slot_num);
+					ldata.itemId = item->itemId;
+					ldata.itemName = item->name;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::LootItemAdded, std::move(ldata)));
+				}
+
 				m_renderer->getWindowManager()->addLootItem(slot_num, std::move(item));
 			} else {
 				LOG_WARN(MOD_INVENTORY, "Cannot add loot item: renderer={} windowManager={} invManager={}",
@@ -4328,6 +4339,15 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->removeLootItem(expected_slot);
 		LOG_TRACE(MOD_INVENTORY, "Removed item from loot window slot {}", expected_slot);
+
+		// Publish LootItemRemoved
+		if (m_bridge) {
+			eqt::state::LootItemRemovedData data;
+			data.corpseId = m_player_looting_corpse_id;
+			data.slot = static_cast<uint8_t>(expected_slot);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::LootItemRemoved, std::move(data)));
+		}
 
 		// Refresh sellable items if vendor window is open
 		if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
@@ -4735,6 +4755,16 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 			m_renderer->getWindowManager()->getVendorWindow()->setPlayerMoney(pp, gp, sp, cp);
 		}
 
+		// Publish VendorWindowOpened
+		if (m_bridge) {
+			eqt::state::WindowOpenedData data;
+			data.npcId = m_vendor_npc_id;
+			data.npcName = m_vendor_name;
+			data.sellRate = m_vendor_sell_rate;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::VendorWindowOpened, std::move(data)));
+		}
+
 #ifdef WITH_AUDIO
 		// Start vendor/bank music (context-based, will restore on close)
 		if (m_audio_manager) {
@@ -4934,6 +4964,14 @@ void EverQuest::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
 		m_renderer->getWindowManager()->closeVendorWindow();
 	}
 
+	// Publish VendorWindowClosed
+	if (m_bridge) {
+		eqt::state::WindowClosedData data;
+		data.npcId = m_vendor_npc_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::VendorWindowClosed, std::move(data)));
+	}
+
 	// Clear vendor state
 	m_vendor_npc_id = 0;
 	m_vendor_sell_rate = 1.0f;
@@ -4971,6 +5009,18 @@ void EverQuest::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
 	// slotId from parser is the vendor slot number
 	uint32_t vendorSlot = static_cast<uint32_t>(slotId);
 	LOG_DEBUG(MOD_INVENTORY, "Creating vendor item: slot={} name='{}'", vendorSlot, item->name);
+
+	// Publish VendorItemAdded before moving item
+	if (m_bridge) {
+		eqt::state::VendorItemAddedData vdata;
+		vdata.vendorSlot = static_cast<uint16_t>(vendorSlot);
+		vdata.itemId = item->itemId;
+		vdata.itemName = item->name;
+		vdata.price = item->price;
+		vdata.quantity = item->quantity;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::VendorItemAdded, std::move(vdata)));
+	}
 
 	// Add to vendor window
 	if (m_renderer && m_renderer->getWindowManager()) {
@@ -5079,6 +5129,14 @@ void EverQuest::CloseVendorWindow()
 	// Close the UI immediately (don't wait for server confirmation)
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeVendorWindow();
+	}
+
+	// Publish VendorWindowClosed
+	if (m_bridge) {
+		eqt::state::WindowClosedData data;
+		data.npcId = m_vendor_npc_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::VendorWindowClosed, std::move(data)));
 	}
 
 #ifdef WITH_AUDIO
@@ -13331,6 +13389,13 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 			if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
 				m_renderer->getWindowManager()->closeVendorWindow();
 				LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");
+
+				if (m_bridge) {
+					eqt::state::WindowClosedData wdata;
+					wdata.npcId = m_vendor_npc_id;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::VendorWindowClosed, std::move(wdata)));
+				}
 			}
 		}
 #endif
@@ -13356,6 +13421,13 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		if (vendorWindow && vendorWindow->isOpen() && vendorWindow->getNpcId() == victim_id) {
 			m_renderer->getWindowManager()->closeVendorWindow();
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
+
+			if (m_bridge) {
+				eqt::state::WindowClosedData wdata;
+				wdata.npcId = m_vendor_npc_id;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::VendorWindowClosed, std::move(wdata)));
+			}
 		}
 	}
 #endif
@@ -13600,6 +13672,13 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 		if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
 			m_renderer->getWindowManager()->closeVendorWindow();
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to zone change");
+
+			if (m_bridge) {
+				eqt::state::WindowClosedData wdata;
+				wdata.npcId = m_vendor_npc_id;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::VendorWindowClosed, std::move(wdata)));
+			}
 		}
 	}
 #endif
@@ -20130,6 +20209,15 @@ void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 			corpseName = EQT::toDisplayName(it->second.name);
 		}
 		m_renderer->getWindowManager()->openLootWindow(corpseId, corpseName);
+
+		// Publish LootWindowOpened
+		if (m_bridge) {
+			eqt::state::LootWindowOpenedData data;
+			data.corpseId = corpseId;
+			data.corpseName = corpseName;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::LootWindowOpened, std::move(data)));
+		}
 	}
 }
 
@@ -20262,6 +20350,14 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	// Close the loot window in the UI
 	if (m_renderer && m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->closeLootWindow();
+	}
+
+	// Publish LootWindowClosed
+	if (m_bridge) {
+		eqt::state::LootWindowClosedData data;
+		data.corpseId = targetCorpseId;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::LootWindowClosed, std::move(data)));
 	}
 }
 
