@@ -974,6 +974,43 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// Initialize skill manager
 	m_skill_manager = std::make_unique<EQ::SkillManager>(this);
 
+	// D20b2: Skill activation feedback (game-state handler, not renderer)
+	m_skill_manager->setOnSkillActivated([this](uint8_t skill_id, bool success, const std::string& message) {
+		const char* skill_name = EQ::getSkillName(skill_id);
+		if (success) {
+			AddChatSystemMessage(fmt::format("You use {}!", skill_name));
+			// Calculate haste-adjusted cooldown
+			int32_t totalHaste = 0;
+			if (m_inventory_manager) {
+				auto equipStats = m_inventory_manager->calculateEquipmentStats();
+				totalHaste += equipStats.haste;
+			}
+			if (m_buff_manager) {
+				totalHaste += m_buff_manager->getPlayerStatMod(EQ::SpellEffect::AttackSpeed);
+			}
+			uint32_t adjustedCooldown = EQ::getAdjustedSkillRecastTime(skill_id, totalHaste);
+			// Publish SkillActivationFeedback to bridge (for UI cooldown)
+			if (m_bridge && adjustedCooldown > 0) {
+				eqt::state::SkillActivationFeedbackData data;
+				data.skillId = skill_id;
+				data.success = true;
+				data.cooldownMs = adjustedCooldown;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::SkillActivationFeedback, std::move(data)));
+			}
+		} else {
+			AddChatSystemMessage(fmt::format("Cannot use {}: {}", skill_name, message));
+		}
+	});
+
+	// D20b2: Skill-up notification (game-state handler, not renderer)
+	m_skill_manager->setOnSkillUpdate([this](uint8_t skill_id, uint32_t old_value, uint32_t new_value) {
+		if (new_value > old_value) {
+			const char* skill_name = EQ::getSkillName(skill_id);
+			AddChatSystemMessage(fmt::format("You have become better at {}! ({})", skill_name, new_value));
+		}
+	});
+
 	// S04: Create inventory manager at startup (was lazy-init in ConnectToZone/InitGraphics)
 #ifdef EQT_HAS_GRAPHICS
 	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
@@ -1002,6 +1039,32 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 	// S04: Create buff manager (depends on spell DB)
 	m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
 	LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
+
+	// D20b2: Buff fade callback for vision buff expiration (game-state handler, not renderer)
+	m_buff_manager->setBuffFadeCallback([this](uint16_t entity_id, uint32_t spell_id) {
+		if (entity_id != 0) return;  // Only handle player buffs
+		if (!m_spell_manager || !m_bridge) return;
+
+		const EQ::SpellData* spell = m_spell_manager->getSpell(spell_id);
+		if (!spell) return;
+
+		bool hadVisionEffect = spell->hasEffect(EQ::SpellEffect::UltraVision) ||
+		                       spell->hasEffect(EQ::SpellEffect::InfraVision);
+		if (!hadVisionEffect) return;
+
+		LOG_DEBUG(MOD_SPELL, "Vision buff faded (spell {}), recalculating vision", spell_id);
+		uint8_t finalVisionType = 0;
+		for (const auto& buff : m_buff_manager->getPlayerBuffs()) {
+			const EQ::SpellData* buffSpell = m_spell_manager->getSpell(buff.spell_id);
+			if (!buffSpell) continue;
+			if (buffSpell->hasEffect(EQ::SpellEffect::UltraVision)) { finalVisionType = 2; break; }
+			else if (buffSpell->hasEffect(EQ::SpellEffect::InfraVision)) { finalVisionType = 1; }
+		}
+		eqt::state::VisionChangedData vdata;
+		vdata.visionType = finalVisionType;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::VisionChanged, std::move(vdata)));
+	});
 
 	// S04: Create spell effects processor (depends on spell DB + buff manager)
 	m_spell_effects = std::make_unique<EQ::SpellEffects>(
@@ -18057,37 +18120,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
 	TickNetwork();
 
-	// Set up HUD callback to display player stats (HP/Mana bars)
-	// Zone, location, entities are displayed by the renderer HUD
-	m_renderer->setHUDCallback([this]() -> std::wstring {
-		std::wostringstream ss;
-		ss << L"--- PLAYER ---\n";
-		std::wstring char_w(m_character.begin(), m_character.end());
-		ss << char_w << L" (Lvl " << (int)m_level << L")\n";
-
-		// HP bar
-		ss << L"HP: [";
-		int barLen = 20;
-		int hpPercent = (m_max_hp > 0) ? (m_cur_hp * 100 / m_max_hp) : 100;
-		int filled = (hpPercent * barLen) / 100;
-		for (int i = 0; i < barLen; ++i) {
-			ss << (i < filled ? L"|" : L" ");
-		}
-		ss << L"] " << m_cur_hp << L"/" << m_max_hp << L" (" << hpPercent << L"%)\n";
-
-		// Mana bar (only for casters)
-		if (m_max_mana > 0) {
-			ss << L"MP: [";
-			int manaPercent = (m_max_mana > 0) ? (m_mana * 100 / m_max_mana) : 100;
-			filled = (manaPercent * barLen) / 100;
-			for (int i = 0; i < barLen; ++i) {
-				ss << (i < filled ? L"|" : L" ");
-			}
-			ss << L"] " << m_mana << L"/" << m_max_mana << L" (" << manaPercent << L"%)\n";
-		}
-
-		return ss.str();
-	});
+	// D20b2: HUD callback removed. Renderer builds HUD from PlayerStatsChanged events.
 
 	// D20a: Movement, target, interaction, and spell gem cast callbacks removed.
 	// All game logic now handled via ProcessBridgeIntents() intent handlers.
@@ -18126,45 +18159,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// S04: spell DB, buff_manager, spell_effects, spell_type_processor are all
 	// pre-allocated in Application::initialize() via InitializeSpellSystem()
 
-	// Set up buff fade callback to handle vision buff expiration
-	if (m_buff_manager) {
-		m_buff_manager->setBuffFadeCallback([this](uint16_t entity_id, uint32_t spell_id) {
-			// Only handle player vision buffs
-			if (entity_id != 0) return;
-			if (!m_spell_manager || !m_bridge) return;
-
-			// Check if the faded spell had vision effects
-			const EQ::SpellData* spell = m_spell_manager->getSpell(spell_id);
-			if (!spell) return;
-
-			bool hadVisionEffect = spell->hasEffect(EQ::SpellEffect::UltraVision) ||
-			                       spell->hasEffect(EQ::SpellEffect::InfraVision);
-			if (!hadVisionEffect) return;
-
-			LOG_DEBUG(MOD_SPELL, "Vision buff faded (spell {}), recalculating vision", spell_id);
-
-			// Determine final vision type from remaining buffs
-			uint8_t finalVisionType = 0;  // 0=normal
-			for (const auto& buff : m_buff_manager->getPlayerBuffs()) {
-				const EQ::SpellData* buffSpell = m_spell_manager->getSpell(buff.spell_id);
-				if (!buffSpell) continue;
-
-				if (buffSpell->hasEffect(EQ::SpellEffect::UltraVision)) {
-					finalVisionType = 2;
-					break;  // Ultravision is best, no need to check more
-				} else if (buffSpell->hasEffect(EQ::SpellEffect::InfraVision)) {
-					finalVisionType = 1;
-					// Keep checking in case there's an Ultravision buff
-				}
-			}
-
-			// Publish VisionChanged event to bridge
-			eqt::state::VisionChangedData vdata;
-			vdata.visionType = finalVisionType;
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::VisionChanged, std::move(vdata)));
-		});
-	}
+	// D20b2: Buff fade callback moved to SetupBuffFadeHandler() (called from constructor)
 
 	// Set up spell gem panel (D20b config only, callbacks removed by D20a)
 	if (m_spell_manager && m_renderer && m_renderer->getWindowManager()) {
@@ -18187,60 +18182,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 		windowManager->initPlayerStatusWindow(this);
 		windowManager->initSkillsWindow(m_skill_manager.get());
 
-		// D20a: Skill activate callback removed; intent handles it.
-		// Keep hotbar create callback (UI-only, no intent)
-		windowManager->setHotbarCreateCallback([this, windowManager](uint8_t skill_id) {
-			// Put skill on cursor for placement in hotbar
-			const char* skill_name = EQ::getSkillName(skill_id);
-			windowManager->setHotbarCursor(
-				eqt::ui::HotbarButtonType::Skill,
-				static_cast<uint32_t>(skill_id),
-				skill_name ? skill_name : "Unknown Skill",
-				0  // No icon ID for skills - will use text label
-			);
-			AddChatSystemMessage(fmt::format("Drag {} to a hotbar slot", skill_name ? skill_name : "skill"));
-		});
-
-		// Keep skill manager feedback callbacks (game->UI, not renderer->game)
-		if (m_skill_manager) {
-			m_skill_manager->setOnSkillActivated([this, windowManager](uint8_t skill_id, bool success, const std::string& message) {
-				const char* skill_name = EQ::getSkillName(skill_id);
-				if (success) {
-					AddChatSystemMessage(fmt::format("You use {}!", skill_name));
-					// Calculate adjusted cooldown with haste modifier
-					// Total haste = equipment haste + buff haste
-					int32_t totalHaste = 0;
-					if (m_inventory_manager) {
-						auto equipStats = m_inventory_manager->calculateEquipmentStats();
-						totalHaste += equipStats.haste;
-					}
-					if (m_buff_manager) {
-						totalHaste += m_buff_manager->getPlayerStatMod(EQ::SpellEffect::AttackSpeed);
-					}
-					// Get adjusted recast time with haste applied
-					uint32_t adjustedCooldown = EQ::getAdjustedSkillRecastTime(skill_id, totalHaste);
-					if (adjustedCooldown > 0) {
-						windowManager->startSkillCooldown(skill_id, adjustedCooldown);
-					}
-				} else {
-					AddChatSystemMessage(fmt::format("Cannot use {}: {}", skill_name, message));
-				}
-			});
-
-			// Set up skill-up notification callback
-			m_skill_manager->setOnSkillUpdate([this](uint8_t skill_id, uint32_t old_value, uint32_t new_value) {
-				if (new_value > old_value) {
-					const char* skill_name = EQ::getSkillName(skill_id);
-					AddChatSystemMessage(fmt::format("You have become better at {}! ({})", skill_name, new_value));
-				}
-			});
-		}
-
-		// D20a: Group invite, disband, decline callbacks removed; intents handle them.
-		// Keep group accept callback (no intent for accept)
-		windowManager->setGroupAcceptCallback([this]() {
-			AcceptGroupInvite();
-		});
+		// D20b2: Hotbar create, skill activated/update, and group accept callbacks
+		// removed. WindowManager handles hotbar create locally via bridge.
+		// Skill activation feedback via SkillActivationFeedback bridge event.
+		// Skill-up messages via SystemMessage bridge event.
+		// Group accept via GroupAcceptIntent.
 
 		LOG_DEBUG(MOD_MAIN, "Group window initialized");
 	}
@@ -18252,108 +18198,8 @@ bool EverQuest::InitGraphics(int width, int height) {
 		LOG_DEBUG(MOD_MAIN, "Pet window initialized");
 	}
 
-	// Set up hotbar activate callback
-	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* windowManager = m_renderer->getWindowManager();
-
-		windowManager->setHotbarActivateCallback([this, windowManager](int index, const eqt::ui::HotbarButton& button) {
-			switch (button.type) {
-				case eqt::ui::HotbarButtonType::Spell: {
-					// Cast spell by ID (find gem slot and cast)
-					if (m_spell_manager) {
-						// Find which gem slot has this spell
-						for (uint8_t gem = 0; gem < EQ::MAX_SPELL_GEMS; gem++) {
-							if (m_spell_manager->getMemorizedSpell(gem) == button.id) {
-								uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-								EQ::CastResult result = m_spell_manager->beginCastFromGem(gem, targetId);
-								if (result == EQ::CastResult::Success) {
-									const EQ::SpellData* spell = m_spell_manager->getSpell(button.id);
-									if (spell) {
-										AddChatSystemMessage(fmt::format("Casting {}", spell->name));
-									}
-								} else if (result == EQ::CastResult::NotEnoughMana) {
-									AddChatSystemMessage("Insufficient mana");
-								} else if (result == EQ::CastResult::GemCooldown) {
-									AddChatSystemMessage("Spell not ready");
-								} else if (result == EQ::CastResult::AlreadyCasting) {
-									AddChatSystemMessage("Already casting");
-								}
-								return;
-							}
-						}
-						AddChatSystemMessage("Spell not memorized");
-					}
-					break;
-				}
-				case eqt::ui::HotbarButtonType::Item: {
-					// Use item by ID - find in inventory and cast click effect
-					if (m_inventory_manager) {
-						int16_t slot = m_inventory_manager->findItemSlotByItemId(button.id);
-						if (slot == eqt::inventory::SLOT_INVALID) {
-							AddChatSystemMessage("Item not found in inventory");
-							break;
-						}
-
-						const eqt::inventory::ItemInstance* item = m_inventory_manager->getItem(slot);
-						if (!item) {
-							AddChatSystemMessage("Item not found");
-							break;
-						}
-
-						// Check if item has a click effect
-						if (item->clickEffect.effectId == 0) {
-							AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
-							break;
-						}
-
-						// Check if item must be equipped for click effect (type 5 = must be equipped)
-						if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
-							AddChatSystemMessage("You must equip this item to use its effect");
-							break;
-						}
-
-						// Send CastSpell packet with item slot
-						EQ::Net::DynamicPacket packet;
-						packet.Resize(20);  // CastSpell_Struct size
-						packet.PutUInt32(0, 10);  // slot = 10 for item clicks
-						packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));  // spell_id
-						packet.PutUInt32(8, static_cast<uint32_t>(slot));  // inventoryslot
-						uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-						packet.PutUInt32(12, targetId);  // target_id
-						packet.PutUInt32(16, 0);  // cs_unknown
-
-						QueuePacket(HC_OP_CastSpell, &packet);
-						AddChatSystemMessage(fmt::format("Using {}", item->name));
-
-						// Start cooldown on the hotbar button
-						if (item->clickEffect.recastDelay > 0) {
-							windowManager->startHotbarCooldown(index, item->clickEffect.recastDelay);
-						}
-					}
-					break;
-				}
-				case eqt::ui::HotbarButtonType::Emote: {
-					// Send emote text
-					if (!button.emoteText.empty()) {
-						ProcessChatInput(button.emoteText);
-					}
-					break;
-				}
-				case eqt::ui::HotbarButtonType::Skill: {
-					// Activate skill by ID
-					// Cooldown is handled by the onSkillActivated callback
-					if (m_skill_manager) {
-						m_skill_manager->activateSkill(static_cast<uint8_t>(button.id));
-					}
-					break;
-				}
-				default:
-					break;
-			}
-		});
-
-		LOG_DEBUG(MOD_MAIN, "Hotbar window callbacks initialized");
-	}
+	// D20b2: Hotbar activate callback removed. WindowManager pushes
+	// HotbarActivateIntent via bridge, handled in ProcessBridgeIntents().
 
 	// D20a: Chat submit and read item callbacks removed; intents handle these.
 
@@ -18377,30 +18223,9 @@ bool EverQuest::InitGraphics(int width, int height) {
 			return names;
 		});
 
-		// Handle link clicks in chat messages
-		chatWindow->setLinkClickCallback([this](const eqt::MessageLink& link) {
-			if (link.type == eqt::LinkType::NPCName) {
-				// Say the NPC name/keyword to trigger dialogue
-				LOG_DEBUG(MOD_ENTITY, "Clicked NPC link: '{}' - sending say", link.displayText);
-				ZoneSendChannelMessage(link.displayText, CHAT_CHANNEL_SAY, "");
-			} else if (link.type == eqt::LinkType::Item) {
-				// Look up item from cache and show tooltip
-				LOG_DEBUG(MOD_ENTITY, "Clicked item link: '{}' (ID: {})", link.displayText, link.itemId);
-				const eqt::inventory::ItemInstance* item = nullptr;
-				if (m_inventory_manager) {
-					item = m_inventory_manager->getItemById(link.itemId);
-				}
-				if (item && m_renderer && m_renderer->getWindowManager()) {
-					// Show tooltip at current mouse position
-					int mouseX = m_renderer->getMouseX();
-					int mouseY = m_renderer->getMouseY();
-					m_renderer->getWindowManager()->showItemTooltip(item, mouseX, mouseY);
-				} else {
-					// Item not in cache - show message with item name
-					AddChatSystemMessage(fmt::format("Item: {} (ID: {} - not in cache)", link.displayText, link.itemId));
-				}
-			}
-		});
+		// D20b2: Link click callback removed. WindowManager pushes
+		// ChatLinkClickIntent via bridge for NPC dialogue links.
+		// Item tooltip links handled locally by renderer (has inventory_manager).
 	}
 
 	m_graphics_initialized = true;
@@ -19755,6 +19580,91 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::HotbarChangedIntent>) {
 				LOG_TRACE(MOD_MAIN, "Bridge intent: HotbarChangedIntent");
+			}
+			// Group accept intent (D20b2)
+			else if constexpr (std::is_same_v<T, eqt::events::GroupAcceptIntent>) {
+				AcceptGroupInvite();
+			}
+			// Hotbar activate intent (D20b2)
+			else if constexpr (std::is_same_v<T, eqt::events::HotbarActivateIntent>) {
+				switch (i.buttonType) {
+				case 0: { // Spell
+					if (m_spell_manager) {
+						for (uint8_t gem = 0; gem < EQ::MAX_SPELL_GEMS; gem++) {
+							if (m_spell_manager->getMemorizedSpell(gem) == i.id) {
+								uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+								EQ::CastResult result = m_spell_manager->beginCastFromGem(gem, targetId);
+								if (result == EQ::CastResult::Success) {
+									const EQ::SpellData* spell = m_spell_manager->getSpell(i.id);
+									if (spell) AddChatSystemMessage(fmt::format("Casting {}", spell->name));
+								} else if (result == EQ::CastResult::NotEnoughMana) {
+									AddChatSystemMessage("Insufficient mana");
+								} else if (result == EQ::CastResult::GemCooldown) {
+									AddChatSystemMessage("Spell not ready");
+								} else if (result == EQ::CastResult::AlreadyCasting) {
+									AddChatSystemMessage("Already casting");
+								}
+								break;
+							}
+						}
+					}
+					break;
+				}
+				case 1: { // Item
+					if (m_inventory_manager) {
+						int16_t slot = m_inventory_manager->findItemSlotByItemId(i.id);
+						if (slot == eqt::inventory::SLOT_INVALID) {
+							AddChatSystemMessage("Item not found in inventory");
+							break;
+						}
+						const auto* item = m_inventory_manager->getItem(slot);
+						if (!item) { AddChatSystemMessage("Item not found"); break; }
+						if (item->clickEffect.effectId == 0) {
+							AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
+							break;
+						}
+						if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
+							AddChatSystemMessage("You must equip this item to use its effect");
+							break;
+						}
+						EQ::Net::DynamicPacket packet;
+						packet.Resize(20);
+						packet.PutUInt32(0, 10);  // slot = 10 for item clicks
+						packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));
+						packet.PutUInt32(8, static_cast<uint32_t>(slot));
+						uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+						packet.PutUInt32(12, targetId);
+						packet.PutUInt32(16, 0);
+						QueuePacket(HC_OP_CastSpell, &packet);
+						AddChatSystemMessage(fmt::format("Using {}", item->name));
+						// Send cooldown feedback to renderer
+						if (item->clickEffect.recastDelay > 0 && m_bridge) {
+							eqt::state::HotbarCooldownStartedData cd;
+							cd.index = i.index;
+							cd.durationMs = item->clickEffect.recastDelay;
+							m_bridge->pushEvent(eqt::state::GameEvent(
+								eqt::state::GameEventType::HotbarCooldownStarted, std::move(cd)));
+						}
+					}
+					break;
+				}
+				case 2: { // Emote
+					if (!i.emoteText.empty()) ProcessChatInput(i.emoteText);
+					break;
+				}
+				case 3: { // Skill
+					if (m_skill_manager) m_skill_manager->activateSkill(static_cast<uint8_t>(i.id));
+					break;
+				}
+				default: break;
+				}
+			}
+			// Chat link click intent (D20b2)
+			else if constexpr (std::is_same_v<T, eqt::events::ChatLinkClickIntent>) {
+				if (i.linkType == 0) {  // NPCName
+					ZoneSendChannelMessage(i.displayText, CHAT_CHANNEL_SAY, "");
+				}
+				// Item tooltip links handled on renderer side
 			}
 			// Tradeskill intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCombineIntent>) {

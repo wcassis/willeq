@@ -742,6 +742,26 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
         }
         break;
+    case state::GameEventType::HotbarCooldownStarted:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::HotbarCooldownStartedData>(event.data);
+                wm->startHotbarCooldown(d.index, d.durationMs);
+            }
+        }
+        break;
+    case state::GameEventType::SkillActivationFeedback:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::SkillActivationFeedbackData>(event.data);
+                if (d.success && d.cooldownMs > 0) {
+                    wm->startSkillCooldown(d.skillId, d.cooldownMs);
+                }
+            }
+        }
+        break;
     case state::GameEventType::ToggleSkillsWindow:
         if (renderer_) {
             auto* wm = renderer_->getWindowManager();

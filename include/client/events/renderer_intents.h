@@ -226,6 +226,27 @@ struct TrainSkillIntent {
 
 struct CloseTrainerIntent {};
 
+// --- Group ---
+
+struct GroupAcceptIntent {};
+
+// --- Hotbar ---
+
+struct HotbarActivateIntent {
+    int index;           // Hotbar slot index (for cooldown feedback)
+    uint8_t buttonType;  // HotbarButtonType value
+    uint32_t id;         // spell_id, item_id, or skill_id
+    std::string emoteText;  // For emote buttons
+};
+
+// --- Chat ---
+
+struct ChatLinkClickIntent {
+    uint8_t linkType;       // LinkType value
+    std::string displayText;
+    uint32_t itemId;        // For item links
+};
+
 // --- Inventory ---
 
 struct MoveItemIntent {
@@ -306,6 +327,12 @@ using RendererIntent = std::variant<
     RequestMemoryReport,
     RequestSceneDump,
     HotbarChangedIntent,
+    // Group (D20b2)
+    GroupAcceptIntent,
+    // Hotbar (D20b2)
+    HotbarActivateIntent,
+    // Chat links (D20b2)
+    ChatLinkClickIntent,
     // Tradeskill
     TradeskillCombineIntent,
     TradeskillCloseIntent,

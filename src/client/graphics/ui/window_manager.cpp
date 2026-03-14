@@ -1,6 +1,9 @@
 #include "client/graphics/ui/window_manager.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
+#include "client/state/event_bus.h"
+#include "client/skill/skill_constants.h"
+#include <fmt/format.h>
 #include "client/graphics/entity_renderer.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
@@ -122,6 +125,25 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     // Create chat window (visible by default)
     chatWindow_ = std::make_unique<ChatWindow>();
     chatWindow_->init(screenWidth, screenHeight);
+
+    // D20b2: Set up link click handler locally — NPC links push intent, item links stay on renderer
+    chatWindow_->setLinkClickCallback([this](const eqt::MessageLink& link) {
+        if (link.type == eqt::LinkType::NPCName) {
+            if (bridge_) {
+                bridge_->pushIntent(eqt::events::ChatLinkClickIntent{
+                    static_cast<uint8_t>(link.type), link.displayText, 0});
+            }
+        } else if (link.type == eqt::LinkType::Item) {
+            // Item tooltip handled locally — renderer has inventory_manager
+            if (invManager_) {
+                const auto* item = invManager_->getItemById(link.itemId);
+                if (item) {
+                    // TODO: show tooltip at mouse position (needs driver access)
+                    LOG_DEBUG(MOD_UI, "Item link clicked: {} (ID: {})", link.displayText, link.itemId);
+                }
+            }
+        }
+    });
 
     // Create tradeskill container window (initially hidden)
     tradeskillWindow_ = std::make_unique<TradeskillContainerWindow>(invManager_);
@@ -4237,9 +4259,10 @@ void WindowManager::initGroupWindow(EverQuest* eq) {
     if (groupDisbandCallback_) {
         groupWindow_->setDisbandCallback(groupDisbandCallback_);
     }
-    if (groupAcceptCallback_) {
-        groupWindow_->setAcceptCallback(groupAcceptCallback_);
-    }
+    // D20b2: Push GroupAcceptIntent via bridge instead of callback
+    groupWindow_->setAcceptCallback([this]() {
+        if (bridge_) bridge_->pushIntent(eqt::events::GroupAcceptIntent{});
+    });
     if (groupDeclineCallback_) {
         groupWindow_->setDeclineCallback(groupDeclineCallback_);
     }
@@ -4386,9 +4409,11 @@ void WindowManager::initHotbarWindow() {
     // This allows per-character hotbar configurations
 
     // Set up callbacks
+    // D20b2: Push HotbarActivateIntent via bridge instead of callback
     hotbarWindow_->setActivateCallback([this](int index, const HotbarButton& button) {
-        if (hotbarActivateCallback_) {
-            hotbarActivateCallback_(index, button);
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::HotbarActivateIntent{
+                index, static_cast<uint8_t>(button.type), button.id, button.emoteText});
         }
     });
 
@@ -4546,9 +4571,24 @@ void WindowManager::initSkillsWindow(EQ::SkillManager* skillMgr) {
     if (skillActivateCallback_) {
         skillsWindow_->setActivateCallback(skillActivateCallback_);
     }
-    if (hotbarCreateCallback_) {
-        skillsWindow_->setHotbarCallback(hotbarCreateCallback_);
-    }
+    // D20b2: Hotbar create handled locally — cursor placement is UI-only
+    skillsWindow_->setHotbarCallback([this](uint8_t skill_id) {
+        const char* skill_name = EQ::getSkillName(skill_id);
+        setHotbarCursor(
+            HotbarButtonType::Skill,
+            static_cast<uint32_t>(skill_id),
+            skill_name ? skill_name : "Unknown Skill",
+            0);
+        // Push chat message via bridge
+        if (bridge_) {
+            eqt::state::ChatMessageData data;
+            data.message = fmt::format("Drag {} to a hotbar slot", skill_name ? skill_name : "skill");
+            data.channelType = 0;
+            data.channelName = "system";
+            bridge_->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SystemMessage, std::move(data)));
+        }
+    });
 
     LOG_DEBUG(MOD_UI, "Skills window initialized");
 }

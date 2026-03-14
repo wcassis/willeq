@@ -132,6 +132,8 @@ enum class GameEventType {
     NoteWindowOpened,
     SpellScribeCompleted,
     ToggleSkillsWindow,
+    HotbarCooldownStarted,
+    SkillActivationFeedback,
 };
 
 // ============================================================================
@@ -709,6 +711,18 @@ struct SpellScribeCompletedData {
 
 struct ToggleSkillsWindowData {};
 
+struct HotbarCooldownStartedData {
+    int index;
+    uint32_t durationMs;
+};
+
+struct SkillActivationFeedbackData {
+    uint8_t skillId;
+    bool success;
+    std::string message;
+    uint32_t cooldownMs;  // 0 if no cooldown
+};
+
 
 // ============================================================================
 // Variant type for all event data
@@ -812,7 +826,9 @@ using EventData = std::variant<
     WorldObjectSpawnedData,
     NoteWindowOpenedData,
     SpellScribeCompletedData,
-    ToggleSkillsWindowData
+    ToggleSkillsWindowData,
+    HotbarCooldownStartedData,
+    SkillActivationFeedbackData
 >;
 
 // Game event combining type and data
