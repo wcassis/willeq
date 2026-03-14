@@ -1590,8 +1590,6 @@ private:
 	bool m_graphics_initialized = false;
 	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)
 	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
-	float m_target_update_timer = 0.0f;  // Timer for periodic target HP updates
-
 	// Loading thread — owns GL context during zone loading
 	std::unique_ptr<EQT::Graphics::LoadingThread> m_loading_thread;
 	EQT::Graphics::LoadingStatus m_loading_status;

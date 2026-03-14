@@ -208,6 +208,16 @@ struct RequestSceneDump {};
 
 struct HotbarChangedIntent {};
 
+// --- Volume ---
+
+struct MusicVolumeChangeIntent {
+    float delta;  // +/- volume change
+};
+
+struct EffectsVolumeChangeIntent {
+    float delta;  // +/- volume change
+};
+
 // --- Tradeskill ---
 
 struct TradeskillCombineIntent {
@@ -327,6 +337,9 @@ using RendererIntent = std::variant<
     RequestMemoryReport,
     RequestSceneDump,
     HotbarChangedIntent,
+    // Volume (D20c2)
+    MusicVolumeChangeIntent,
+    EffectsVolumeChangeIntent,
     // Group (D20b2)
     GroupAcceptIntent,
     // Hotbar (D20b2)

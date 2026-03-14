@@ -9879,6 +9879,18 @@ void IrrlichtRenderer::processInputDeltas(float deltaTime) {
             LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
         }
     }
+
+    // D20c2: Push volume hotkey changes as intents via bridge
+    if (bridge_) {
+        float musicDelta = eventReceiver_->getMusicVolumeDelta();
+        if (musicDelta != 0.0f) {
+            bridge_->pushIntent(eqt::events::MusicVolumeChangeIntent{musicDelta});
+        }
+        float effectsDelta = eventReceiver_->getEffectsVolumeDelta();
+        if (effectsDelta != 0.0f) {
+            bridge_->pushIntent(eqt::events::EffectsVolumeChangeIntent{effectsDelta});
+        }
+    }
 }
 
 void IrrlichtRenderer::processChatInput() {

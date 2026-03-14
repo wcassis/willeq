@@ -18232,33 +18232,15 @@ bool EverQuest::CheckLoadingComplete() {
 	return false;
 }
 
-// D20c1: Pre-render game state tick — spell/buff managers, target HP, time of day, bridge
+// D20c1: Pre-render game state tick — spell/buff managers + bridge
 void EverQuest::PreRenderTick(float deltaTime) {
 	if (!m_graphics_initialized) return;
 
-	// Periodic target HP update (~1 second interval)
-	m_target_update_timer += deltaTime;
-	if (m_target_update_timer >= 1.0f) {
-		m_target_update_timer = 0.0f;
-		if (m_current_target_id != 0 && m_bridge) {
-			auto it = m_entities.find(m_current_target_id);
-			if (it != m_entities.end()) {
-				eqt::state::TargetHPUpdatedData data;
-				data.hpPercent = it->second.hp_percent;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::TargetHPUpdated, std::move(data)));
-			}
-		}
-	}
+	// D20c2: Target HP poll removed — ZoneProcessMobHealth publishes TargetChanged
+	// event with updated HP when server sends health updates.
 
-	// Update time of day lighting via bridge
-	if (m_bridge) {
-		eqt::state::TimeOfDayChangedData data;
-		data.hour = m_time_hour;
-		data.minute = m_time_minute;
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
-	}
+	// D20c2: Per-frame time of day push removed — ZoneProcessTimeOfDay publishes
+	// TimeOfDayChanged event when server sends time updates.
 
 	// Update spell manager (cooldowns, memorization progress, cast timeouts)
 	if (m_spell_manager) {
@@ -18290,37 +18272,29 @@ void EverQuest::PostRenderTick(float deltaTime) {
 	}
 
 #ifdef WITH_AUDIO
+	// D20c2: Audio listener at player position, not camera position.
+	// The player's ears are at the player, not the camera. In third-person
+	// the camera can be far behind — placing audio there makes nearby
+	// NPCs sound distant. Player position is game state, no renderer query.
 	if (m_audio_manager) {
-		float posX, posY, posZ;
-		float forwardX, forwardY, forwardZ;
-		float upX, upY, upZ;
-		m_renderer->getCameraTransform(posX, posY, posZ,
-		                               forwardX, forwardY, forwardZ,
-		                               upX, upY, upZ);
+		// Convert EQ heading (0-512 clockwise from north) to forward vector
+		float headingRad = m_heading * (2.0f * static_cast<float>(M_PI)) / 512.0f;
+		float forwardX = std::sin(headingRad);
+		float forwardY = -std::cos(headingRad);
+		float forwardZ = 0.0f;
+
 		m_audio_manager->setListenerPosition(
-			glm::vec3(posX, posY, posZ),
+			glm::vec3(m_x, m_y, m_z),
 			glm::vec3(forwardX, forwardY, forwardZ),
-			glm::vec3(upX, upY, upZ)
+			glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
 		);
 
 		if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
-			m_zone_audio_manager->update(deltaTime, glm::vec3(posX, posY, posZ), m_is_daytime);
+			m_zone_audio_manager->update(deltaTime, glm::vec3(m_x, m_y, m_z), m_is_daytime);
 		}
 
-		// Volume hotkey adjustments
-		float musicDelta = m_renderer->getEventReceiver()->getMusicVolumeDelta();
-		if (musicDelta != 0.0f) {
-			float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getMusicVolume() + musicDelta));
-			m_audio_manager->setMusicVolume(newVol);
-			AddChatSystemMessage(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
-		}
-
-		float effectsDelta = m_renderer->getEventReceiver()->getEffectsVolumeDelta();
-		if (effectsDelta != 0.0f) {
-			float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getEffectsVolume() + effectsDelta));
-			m_audio_manager->setEffectsVolume(newVol);
-			AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
-		}
+		// D20c2: Volume hotkeys handled via intents from renderer
+		// (MusicVolumeChangeIntent / EffectsVolumeChangeIntent in ProcessBridgeIntents)
 	}
 #else
 	(void)deltaTime;
@@ -19471,6 +19445,25 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::HotbarChangedIntent>) {
 				LOG_TRACE(MOD_MAIN, "Bridge intent: HotbarChangedIntent");
+			}
+			// Volume change intents (D20c2)
+			else if constexpr (std::is_same_v<T, eqt::events::MusicVolumeChangeIntent>) {
+#ifdef WITH_AUDIO
+				if (m_audio_manager) {
+					float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getMusicVolume() + i.delta));
+					m_audio_manager->setMusicVolume(newVol);
+					AddChatSystemMessage(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
+				}
+#endif
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::EffectsVolumeChangeIntent>) {
+#ifdef WITH_AUDIO
+				if (m_audio_manager) {
+					float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getEffectsVolume() + i.delta));
+					m_audio_manager->setEffectsVolume(newVol);
+					AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
+				}
+#endif
 			}
 			// Group accept intent (D20b2)
 			else if constexpr (std::is_same_v<T, eqt::events::GroupAcceptIntent>) {
