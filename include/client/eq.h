@@ -7,6 +7,7 @@
 #include "client/pet_constants.h"
 #include "client/string_database.h"
 #include "client/door_state_manager.h"
+#include "client/zone_load_snapshot.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -989,6 +990,7 @@ public:
 	bool CheckLoadingComplete();  // Returns true if loading just completed
 	void PreRenderTick(float deltaTime);   // Spell/buff/target updates + bridge event push
 	void PostRenderTick(float deltaTime);  // Audio sync, progressive loading check
+	eqt::ZoneLoadSnapshot CreateZoneLoadSnapshot() const;  // D20c3: snapshot for loading thread
 	void SetEQClientPath(const std::string& path);
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
@@ -1598,6 +1600,7 @@ private:
 	void StartLoadingThread();
 	void JoinLoadingThread();
 	void LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& status);
+	eqt::ZoneLoadSnapshot m_zone_load_snapshot;  // D20c3: snapshot for loading thread
 
 	// Inventory manager
 	std::unique_ptr<eqt::inventory::InventoryManager> m_inventory_manager;

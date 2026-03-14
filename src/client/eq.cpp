@@ -13514,6 +13514,7 @@ void EverQuest::ProcessDeferredZoneChange()
 	// CleanupZone() already called unloadZone() while main thread held GL.
 	// Now transfer GL to loading thread for the passive display loop (0-45%).
 	// OnGameStateComplete() will signal graphicsLoadReady for the active phase.
+	m_zone_load_snapshot = CreateZoneLoadSnapshot();
 	StartLoadingThread();
 #endif
 
@@ -18196,6 +18197,7 @@ bool EverQuest::InitGraphics(int width, int height,
 	}
 
 	// Start loading thread — transfers GL context to loading thread for progress bar
+	m_zone_load_snapshot = CreateZoneLoadSnapshot();
 	StartLoadingThread();
 
 	return true;
@@ -18303,6 +18305,48 @@ void EverQuest::PostRenderTick(float deltaTime) {
 
 #ifdef EQT_HAS_GRAPHICS
 
+// D20c3: Create immutable snapshot of game state for zone loading thread
+eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
+	eqt::ZoneLoadSnapshot snap;
+	snap.zoneName = m_current_zone_name;
+	snap.zoneId = m_current_zone_id;
+	snap.playerX = m_x;
+	snap.playerY = m_y;
+	snap.playerZ = m_z;
+	snap.playerHeading = m_heading;
+	snap.playerSpawnId = m_my_spawn_id;
+	snap.playerName = m_character;
+	snap.playerLevel = m_level;
+	snap.skyType = m_zone_sky_type;
+	snap.zoneType = m_zone_type;
+	for (int i = 0; i < 4; i++) {
+		snap.fogRed[i] = m_zone_fog_red[i];
+		snap.fogGreen[i] = m_zone_fog_green[i];
+		snap.fogBlue[i] = m_zone_fog_blue[i];
+		snap.fogMinClip[i] = m_zone_fog_minclip[i];
+		snap.fogMaxClip[i] = m_zone_fog_maxclip[i];
+	}
+	// Copy entities
+	snap.entities.reserve(m_entities.size());
+	for (const auto& [id, entity] : m_entities) {
+		snap.entities.push_back(entity);
+	}
+	// Copy doors
+	for (const auto& [id, door] : m_door_state_manager.getAllDoors()) {
+		snap.doors.push_back(door);
+	}
+	// Zone lines (expand geometry + extract bounding boxes)
+	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+		if (m_zone_map) {
+			m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
+		}
+		snap.zoneLineBBoxes = m_zone_lines->getZoneLineBoundingBoxes();
+	}
+	snap.zoneMap = m_zone_map.get();
+	snap.eqClientPath = m_eq_client_path;
+	return snap;
+}
+
 void EverQuest::StartLoadingThread() {
 	if (!m_renderer || !m_graphics_initialized) return;
 	if (m_loading_thread && m_loading_thread->isRunning()) {
@@ -18357,51 +18401,47 @@ void EverQuest::JoinLoadingThread() {
 }
 
 void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& status) {
-	// This runs on the loading thread, which owns the GL context.
-	// Equivalent to LoadZoneGraphics() but called from loading thread.
+	// D20c3: Reads from m_zone_load_snapshot (immutable copy of game state),
+	// NOT from live EverQuest members. Any game state changes during loading
+	// are captured by bridge events and applied after JoinLoadingThread.
 
 	if (!m_renderer) return;
+	const auto& snap = m_zone_load_snapshot;
 
 	// Temporarily clear loading flag so renderer methods work on this thread.
-	// Main thread won't call renderer methods because UpdateGraphics() returns
-	// early when loading thread is active (checked before this point).
 	m_renderer->setLoading(false);
 
-	// 1. Collision map via bridge
-	if (m_zone_map && m_bridge) {
+	// 1. Collision map
+	if (snap.zoneMap && m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
+			eqt::state::CollisionMapChangedData{snap.zoneMap}));
 	}
 
 	// 2. Zone lines
-	if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map)
-		m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
-	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
-		auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
-		if (!boxes.empty())
-			m_renderer->setZoneLineBoundingBoxes(boxes);
+	if (!snap.zoneLineBBoxes.empty()) {
+		m_renderer->setZoneLineBoundingBoxes(snap.zoneLineBBoxes);
 	}
 
 	// 3. Build HCMap placeholder + minimal collision
-	m_renderer->setupInstantScene(m_current_zone_name, m_x, m_y, m_z);
+	m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
 
 	// 4. Zone environment data
-	if (!m_current_zone_name.empty()) {
-		m_renderer->storeZoneEnvironment(m_zone_sky_type, m_zone_type,
-			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
-			m_zone_fog_minclip, m_zone_fog_maxclip);
+	if (!snap.zoneName.empty()) {
+		m_renderer->storeZoneEnvironment(snap.skyType, snap.zoneType,
+			snap.fogRed, snap.fogGreen, snap.fogBlue,
+			snap.fogMinClip, snap.fogMaxClip);
 	}
 
-	// 5. Register all entities
+	// 5. Register all entities from snapshot
 	if (m_renderer->getEntityRenderer())
-		m_renderer->getEntityRenderer()->setPlayerLevel(m_level);
+		m_renderer->getEntityRenderer()->setPlayerLevel(snap.playerLevel);
 
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: registering {} entities", m_entities.size());
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: registering {} entities (from snapshot)", snap.entities.size());
 
 	size_t registered = 0, failed = 0;
-	for (const auto& [spawn_id, entity] : m_entities) {
-		bool isPlayer = (entity.name == m_character);
+	for (const auto& entity : snap.entities) {
+		bool isPlayer = (entity.name == snap.playerName);
 		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
 		if (!isCorpse && entity.name.find("corpse") != std::string::npos)
@@ -18420,26 +18460,26 @@ void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& st
 			appearance.equipment_tint[i] = entity.equipment_tint[i];
 		}
 
-		bool ok = m_renderer->registerEntity(spawn_id, entity.race_id, entity.name,
+		bool ok = m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
 		                           entity.x, entity.y, entity.z, entity.heading,
 		                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
 		                           entity.level);
 		if (ok) registered++; else failed++;
 
 		if (isPlayer) {
-			m_renderer->setPlayerSpawnId(m_my_spawn_id);
+			m_renderer->setPlayerSpawnId(snap.playerSpawnId);
 			if (entity.light > 0)
-				m_renderer->setEntityLight(spawn_id, entity.light);
+				m_renderer->setEntityLight(entity.spawn_id, entity.light);
 			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 		} else if (entity.light > 0) {
-			m_renderer->setEntityLight(spawn_id, entity.light);
+			m_renderer->setEntityLight(entity.spawn_id, entity.light);
 		}
 	}
 
 	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: {} registered, {} failed", registered, failed);
 
-	// 6. Register doors
-	for (const auto& [door_id, door] : m_door_state_manager.getAllDoors()) {
+	// 6. Register doors from snapshot
+	for (const auto& door : snap.doors) {
 		m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
 		                         door.heading, door.incline, door.size, door.opentype,
 		                         door.isOpen);
@@ -18447,8 +18487,8 @@ void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& st
 
 	// 7. Camera
 	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
-	float heading512 = m_heading * 512.0f / 360.0f;
-	m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
+	float heading512 = snap.playerHeading * 512.0f / 360.0f;
+	m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
 	// 8. Hotbar callback
 	auto* windowMgr = m_renderer->getWindowManager();
@@ -18462,13 +18502,14 @@ void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& st
 	m_player_graphics_entity_pending = true;
 
 	// 9. Sequential zone asset loading
-	m_renderer->loadZoneSequential(m_eq_client_path, status);
+	m_renderer->loadZoneSequential(snap.eqClientPath, status);
 
 	// Restore loading flag — will be cleared by JoinLoadingThread on main thread
 	m_renderer->setLoading(true);
 }
 
 void EverQuest::LoadZoneGraphics() {
+	// D20c3: Main-thread synchronous loading path. Uses snapshot like the threaded path.
 	if (!m_graphics_initialized || !m_renderer) {
 		LOG_WARN(MOD_GRAPHICS, "LoadZoneGraphics called but graphics not initialized");
 		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
@@ -18477,45 +18518,42 @@ void EverQuest::LoadZoneGraphics() {
 
 	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
 
-	// 1. Collision map via bridge (already loaded from .map file)
-	if (m_zone_map && m_bridge) {
+	// D20c3: Use snapshot (create if not already created by threaded path)
+	if (m_zone_load_snapshot.zoneName.empty()) {
+		m_zone_load_snapshot = CreateZoneLoadSnapshot();
+	}
+	const auto& snap = m_zone_load_snapshot;
+
+	// 1. Collision map
+	if (snap.zoneMap && m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
+			eqt::state::CollisionMapChangedData{snap.zoneMap}));
 	}
 
-	// 2. Zone lines (fast, uses collision map)
-	if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map) {
-		m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
-	}
-	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
-		auto boxes = m_zone_lines->getZoneLineBoundingBoxes();
-		if (!boxes.empty()) {
-			m_renderer->setZoneLineBoundingBoxes(boxes);
-		}
-	}
+	// 2. Zone lines
+	if (!snap.zoneLineBBoxes.empty())
+		m_renderer->setZoneLineBoundingBoxes(snap.zoneLineBBoxes);
 
-	// 3. Build HCMap placeholder + minimal collision for immediate gameplay
-	m_renderer->setupInstantScene(m_current_zone_name, m_x, m_y, m_z);
+	// 3. HCMap placeholder
+	m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
 
-	// 4. Store zone environment data for deferred application (after sky renderer init)
-	if (!m_current_zone_name.empty()) {
-		m_renderer->storeZoneEnvironment(m_zone_sky_type, m_zone_type,
-			m_zone_fog_red, m_zone_fog_green, m_zone_fog_blue,
-			m_zone_fog_minclip, m_zone_fog_maxclip);
+	// 4. Environment
+	if (!snap.zoneName.empty()) {
+		m_renderer->storeZoneEnvironment(snap.skyType, snap.zoneType,
+			snap.fogRed, snap.fogGreen, snap.fogBlue,
+			snap.fogMinClip, snap.fogMaxClip);
 	}
 
-	// 5. Register all entities as placeholders (metadata only, no mesh building)
-	if (m_renderer->getEntityRenderer()) {
-		m_renderer->getEntityRenderer()->setPlayerLevel(m_level);
-	}
+	// 5. Entities from snapshot
+	if (m_renderer->getEntityRenderer())
+		m_renderer->getEntityRenderer()->setPlayerLevel(snap.playerLevel);
 
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: registering {} entities (entityRenderer={})",
-	         m_entities.size(), m_renderer->getEntityRenderer() != nullptr);
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: registering {} entities (from snapshot)", snap.entities.size());
 
 	size_t registered = 0, failed = 0;
-	for (const auto& [spawn_id, entity] : m_entities) {
-		bool isPlayer = (entity.name == m_character);
+	for (const auto& entity : snap.entities) {
+		bool isPlayer = (entity.name == snap.playerName);
 		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
 		if (!isCorpse && entity.name.find("corpse") != std::string::npos)
@@ -18534,39 +18572,37 @@ void EverQuest::LoadZoneGraphics() {
 			appearance.equipment_tint[i] = entity.equipment_tint[i];
 		}
 
-		bool ok = m_renderer->registerEntity(spawn_id, entity.race_id, entity.name,
+		bool ok = m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
 		                           entity.x, entity.y, entity.z, entity.heading,
 		                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
 		                           entity.level);
 		if (ok) registered++; else failed++;
 
 		if (isPlayer) {
-			m_renderer->setPlayerSpawnId(m_my_spawn_id);
+			m_renderer->setPlayerSpawnId(snap.playerSpawnId);
 			if (entity.light > 0)
-				m_renderer->setEntityLight(spawn_id, entity.light);
+				m_renderer->setEntityLight(entity.spawn_id, entity.light);
 			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 		} else if (entity.light > 0) {
-			m_renderer->setEntityLight(spawn_id, entity.light);
+			m_renderer->setEntityLight(entity.spawn_id, entity.light);
 		}
 	}
 
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: entity registration complete — {} registered, {} failed, entityCount={}",
-	         registered, failed,
-	         m_renderer->getEntityRenderer() ? m_renderer->getEntityRenderer()->getEntityCount() : 0);
+	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: {} registered, {} failed", registered, failed);
 
-	// 6. Register doors (metadata only)
-	for (const auto& [door_id, door] : m_door_state_manager.getAllDoors()) {
+	// 6. Doors from snapshot
+	for (const auto& door : snap.doors) {
 		m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
 		                         door.heading, door.incline, door.size, door.opentype,
 		                         door.isOpen);
 	}
 
-	// 7. Camera to player position
+	// 7. Camera
 	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
-	float heading512 = m_heading * 512.0f / 360.0f;
-	m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
+	float heading512 = snap.playerHeading * 512.0f / 360.0f;
+	m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
-	// Set up hotbar changed callback to auto-save
+	// 8. Hotbar
 	auto* windowMgr = m_renderer->getWindowManager();
 	if (windowMgr) {
 		windowMgr->setHotbarChangedCallback([this]() {
@@ -18577,13 +18613,11 @@ void EverQuest::LoadZoneGraphics() {
 
 	m_player_graphics_entity_pending = true;
 
-	// 8. In automatic mode, keep loading screen visible during asset loading.
-	//    In manual mode, hide loading screen — user drives /loadzone.
 	if (m_renderer->isProgressiveLoadingActive()) {
-		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: automatic mode — loading screen remains visible during asset loading");
+		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: automatic mode — loading screen remains visible");
 	} else {
 		OnGraphicsComplete();
-		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: instant scene ready, awaiting /loadzone command");
+		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: instant scene ready");
 	}
 }
 #endif
