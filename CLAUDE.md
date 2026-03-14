@@ -129,6 +129,27 @@ Optional:
 
 ## Architecture
 
+### Threading Model (Batch D)
+
+The application runs two threads, decoupled via a thread-safe event/intent bridge:
+
+```
+Game Thread                         Render Thread (main)
+───────────                         ────────────────────
+Network events (TickNetwork)        Drain bridge events → applyEvent()
+Game state updates (GameTick)       processFrame() (Irrlicht render)
+Intent processing (bridge intents)  Loading thread management
+Audio updates                       Zone load completion detection
+```
+
+- **GameStateBridge** (`include/client/bridge/game_state_bridge.h`) — thread-safe queue pair using swap-vector pattern. Game thread pushes events (state changes), renderer pushes intents (user actions). D24 coalesces EntityMoved events per entity and PlayerPositionChanged intents.
+- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (839+ case switch)
+- **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
+- **Event types** (`include/client/state/event_bus.h`) — 140+ event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 50+ intent types for user actions
+
+**Key separation**: EverQuest has zero graphics dependencies. No `m_renderer` member, no `GetRenderer()` accessor, no graphics includes except `constrained_renderer_config.h` (preset enum). All renderer communication goes through the bridge. Application owns the renderer and wires it to EverQuest via bridge pointers.
+
 ### Connection Flow
 
 The client connects through three stages, each with its own connection manager:
@@ -138,11 +159,18 @@ The client connects through three stages, each with its own connection manager:
 
 ### Core Components
 
+**Application class** (`include/client/application.h`, `src/client/application.cpp`)
+- Top-level orchestrator — owns renderer, bridge, game thread, loading thread
+- Spawns game thread running EverQuest tick loop
+- Main thread runs render loop (or sleeps in headless mode)
+- Manages zone loading thread (GL context transfer, snapshot handoff)
+
 **EverQuest class** (`include/client/eq.h`, `src/client/eq.cpp`)
-- Main client class (~9000 lines)
+- Game state and network logic (~9000 lines)
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`
+- Zero graphics dependencies — communicates with renderer only via GameStateBridge
 
 **Network Stack** (`include/common/net/`, `src/common/net/`)
 - `DaybreakConnection` - UDP reliable protocol with sequencing, fragmentation, CRC, and compression
@@ -206,11 +234,14 @@ Audio tests and graphics integration tests are documented in their respective CL
 
 ## Key Patterns
 
+- **Bridge events/intents**: Game state changes are published as events via `m_bridge->pushEvent()`. Renderer user actions arrive as intents via `m_bridge->drainIntents()`. Never call renderer methods directly from EverQuest.
+- **Zone loading**: Application creates a `ZoneLoadSnapshot` (immutable copy of game state), starts a loading thread that owns the GL context, builds GPU resources, then signals completion. Game thread continues processing network packets during loading.
 - Zone connection requires specific packet sequencing - see `CheckZoneRequestPhaseComplete()` and the various `m_*_sent` / `m_*_received` flags
 - Movement updates require `SendPositionUpdate()` to sync with server
 - Entities tracked in `m_entities` map keyed by spawn_id
 - Doors tracked in `m_doors` map keyed by door_id
 - Friend class pattern: `CombatManager` is friend of `EverQuest` for internal access
+- **BSP tree** (`include/client/zone_bsp.h`): Zone spatial data shared between game state (water detection, zone lines) and renderer (PVS culling). No graphics dependencies.
 
 ## Configuration
 

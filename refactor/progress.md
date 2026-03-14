@@ -193,7 +193,7 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D20d | Move 30 renderer slash commands to renderer via RendererCommand bridge event | done | `bba5848` |
 | D20e | Remove m_renderer from EverQuest | done | `0ce550a` |
 | D20f | Move zone data loading to game state layer | done | `229e521` |
-| D20g | Decouple RDP server from renderer | done | |
+| D20g | Decouple RDP server from renderer | done | `86aedc4` |
 
 ### Phase 6 — Thread Separation
 
@@ -201,8 +201,8 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D21a | Split PreRenderTick — game-side tick vs render-side drain | done | |
-| D21b | Move game tick to dedicated thread with fixed-rate loop | done | |
+| D21a | Split PreRenderTick — game-side tick vs render-side drain | done | `35c96f8` |
+| D21b | Move game tick to dedicated thread with fixed-rate loop | done | `a26ba6a` |
 | D21c | Thread-safe zone load handoff (snapshot + loading thread) | done | `a26ba6a` |
 | D21d | Thread-safe quit/connect signaling between threads | done | `a26ba6a` |
 | D22 | Synchronize bridge queues with proper threading | done | `a26ba6a` |
@@ -211,6 +211,6 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D24 | Optimize high-frequency events (entity position batching) | done | |
-| D25 | Add console bridge implementation | done | |
-| D26 | Update documentation and CLAUDE.md | pending | |
+| D24 | Optimize high-frequency events (entity position batching) | done | `60a2cf9` |
+| D25 | Add console bridge implementation | done | `b94c825` |
+| D26 | Update documentation and CLAUDE.md | done | `c2613dc` |

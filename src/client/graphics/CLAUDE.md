@@ -123,17 +123,18 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - `loadZoneSequential()` — 13-step sequential zone loading function that replaces the old async state machine
 
 **Flow (initial zone load and re-zoning):**
-1. Main thread calls `StartLoadingThread()` — transfers GL context to loading thread
-2. Loading thread enters passive phase (renders loading screen at 0-45% while main thread completes network handshake)
-3. Main thread receives zone data packets, calls `OnGameStateComplete()` which signals `graphicsLoadReady`
+1. Application (render thread) calls `startLoadingThread()` — transfers GL context to loading thread
+2. Loading thread enters passive phase (renders loading screen at 0-45% while game thread completes network handshake)
+3. Game thread receives zone data packets, calls `OnGameStateComplete()` which signals `graphicsLoadReady`
 4. Loading thread enters active phase — runs `loadZoneSequential()` (45-100%), loading S3D archives, building meshes, uploading textures
-5. Loading thread completes, main thread calls `JoinLoadingThread()` — GL context returns to main thread
-6. Main thread calls `OnGraphicsComplete()` to finalize (hide loading screen, start simulation)
+5. Loading thread completes, Application calls `joinLoadingThread()` — GL context returns to render thread
+6. Application signals game thread, which calls `OnGraphicsComplete()` to finalize
 
 **Key design decisions:**
-- Network runs entirely on the main thread — no `networkTickCallback_` needed
+- Network runs on the game thread, rendering on the main thread (D21b)
 - GL context is exclusively owned by one thread at a time (never shared)
 - Loading thread renders the loading screen directly (no cross-thread render requests)
+- Zone load snapshot created on game thread, loading thread started on render thread (D21b mutex handoff)
 
 ## Model Loading Order
 
@@ -201,7 +202,7 @@ DISPLAY=:99 ./bin/test_inventory_model_view --gtest_filter="*ModelHasTextures*"
 2. Skip if DISPLAY not set: `if (!std::getenv("DISPLAY")) GTEST_SKIP()`
 3. Create client with `createClientWithGraphics()` helper
 4. Wait for zone-in with `waitForZoneIn()` and `waitForZoneReady()`
-5. Access renderer via `eq_->GetRenderer()`
+5. Access renderer via `renderer_.get()` (test fixture owns it directly)
 6. Process frames with `processFrames(count)` or `waitForWithGraphics(predicate)`
 
 **Debugging crashes during integration tests:**
