@@ -2209,12 +2209,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 			}
 			LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_player_looting_corpse_id={} m_vendor_npc_id={} pending_slots={}",
 				item_packet_type, m_player_looting_corpse_id, m_vendor_npc_id, m_pending_loot_slots.size());
-#ifdef EQT_HAS_GRAPHICS
 			// Check if this is a vendor item (type 100)
-			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && m_vendor_npc_id != 0 && m_renderer && m_renderer->getWindowManager()) {
-				// Vendor item - add to vendor window
+			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && m_vendor_npc_id != 0) {
+				// Vendor item - add to vendor window via bridge
 				ZoneProcessVendorItemToUI(p);
-			} else if (m_player_looting_corpse_id != 0 && m_renderer && m_renderer->getWindowManager()) {
+			} else if (m_player_looting_corpse_id != 0) {
 				// Player mode looting - check if this is a looted item or loot window population
 				if (!m_pending_loot_slots.empty()) {
 					// We have pending loot requests - this item is going to inventory
@@ -2223,9 +2222,7 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 					// No pending requests - this is loot window population
 					ZoneProcessLootItemToUI(p);
 				}
-			} else
-#endif
-			if (m_combat_manager && m_combat_manager->IsLooting()) {
+			} else if (m_combat_manager && m_combat_manager->IsLooting()) {
 				// Headless mode looting
 				ZoneProcessLootItem(p);
 			} else {
@@ -2660,15 +2657,13 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 					LOG_INFO(MOD_SPELL, "Successfully scribed spell {} ({}) to slot {}",
 						spellName, spell_id, slot);
 
-					// Refresh spellbook UI if open
-					if (m_renderer) {
-						auto* windowManager = m_renderer->getWindowManager();
-						if (windowManager) {
-							auto* spellBookWindow = windowManager->getSpellBookWindow();
-							if (spellBookWindow) {
-								spellBookWindow->refresh();
-							}
-						}
+					// Refresh spellbook UI via bridge
+					if (m_bridge) {
+						eqt::state::SpellScribeCompletedData sdata;
+						sdata.spellId = spell_id;
+						sdata.slot = static_cast<uint16_t>(slot);
+						m_bridge->pushEvent(eqt::state::GameEvent(
+							eqt::state::GameEventType::SpellScribeCompleted, std::move(sdata)));
 					}
 				} else {
 					LOG_WARN(MOD_SPELL, "Failed to add spell {} to spellbook slot {}",
@@ -4366,254 +4361,17 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 
 void EverQuest::SetupLootCallbacks()
 {
-	if (!m_renderer || !m_renderer->getWindowManager()) {
-		return;
-	}
-
-	auto* windowManager = m_renderer->getWindowManager();
-
-	// Set callback for when player clicks Loot on a single item
-	windowManager->setOnLootItem([this](uint16_t corpseId, int16_t slot) {
-		LootItemFromCorpse(corpseId, slot);
-		if (m_bridge) m_bridge->pushIntent(eqt::events::LootItemIntent{corpseId, static_cast<uint8_t>(slot)});
-	});
-
-	// Set callback for when player clicks Loot All
-	windowManager->setOnLootAll([this](uint16_t corpseId) {
-		LootAllFromCorpse(corpseId);
-		if (m_bridge) m_bridge->pushIntent(eqt::events::LootAllIntent{corpseId});
-	});
-
-	// Set callback for when player clicks Destroy All
-	windowManager->setOnDestroyAll([this](uint16_t corpseId) {
-		DestroyAllCorpseLoot(corpseId);
-		if (m_bridge) m_bridge->pushIntent(eqt::events::DestroyAllLootIntent{corpseId});
-	});
-
-	// Set callback for when player closes the loot window
-	windowManager->setOnLootClose([this](uint16_t corpseId) {
-		CloseLootWindow(corpseId);
-		if (m_bridge) m_bridge->pushIntent(eqt::events::CloseLootIntent{corpseId});
-	});
-
-	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_INVENTORY, "Loot callbacks set up");
-	}
+	/* D20a: intents handle loot actions */
 }
 
 void EverQuest::SetupVendorCallbacks()
 {
-	if (!m_renderer || !m_renderer->getWindowManager()) {
-		return;
-	}
-
-	auto* windowManager = m_renderer->getWindowManager();
-
-	// Set callback for when player clicks Buy on an item
-	windowManager->setOnVendorBuy([this](uint16_t npcId, uint32_t itemSlot, uint32_t quantity) {
-		BuyFromVendor(npcId, itemSlot, quantity);
-		if (m_bridge) m_bridge->pushIntent(eqt::events::VendorBuyIntent{npcId, static_cast<uint16_t>(itemSlot), static_cast<uint8_t>(quantity)});
-	});
-
-	// Set callback for when player clicks Sell on an item
-	windowManager->setOnVendorSell([this](uint16_t npcId, uint32_t itemSlot, uint32_t quantity) {
-		SellToVendor(npcId, itemSlot, quantity);
-		if (m_bridge) m_bridge->pushIntent(eqt::events::VendorSellIntent{npcId, static_cast<uint16_t>(itemSlot), static_cast<uint8_t>(quantity)});
-	});
-
-	// Set callback for when player closes the vendor window
-	windowManager->setOnVendorClose([this](uint16_t npcId) {
-		CloseVendorWindow();
-		if (m_bridge) m_bridge->pushIntent(eqt::events::CloseVendorIntent{npcId});
-	});
-
-	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_INVENTORY, "Vendor callbacks set up");
-	}
+	/* D20a: intents handle vendor actions */
 }
 
 void EverQuest::SetupBankCallbacks()
 {
-	if (!m_renderer || !m_renderer->getWindowManager()) {
-		return;
-	}
-
-	auto* windowManager = m_renderer->getWindowManager();
-
-	// Set callback for when player closes the bank window
-	windowManager->setOnBankClose([this]() {
-		CloseBankWindow();
-		if (m_bridge) m_bridge->pushIntent(eqt::events::CloseBankIntent{});
-	});
-
-	// Set callback for currency movement between bank and inventory
-	windowManager->setOnBankCurrencyMove([this, windowManager](int32_t coinType, int32_t amount, bool fromBank) {
-		// Build and send MoveCoin packet
-		EQT::MoveCoin_Struct move;
-		if (fromBank) {
-			// Moving from bank to inventory
-			move.from_slot = EQT::COINSLOT_BANK;
-			move.to_slot = EQT::COINSLOT_INVENTORY;
-		} else {
-			// Moving from inventory to bank
-			move.from_slot = EQT::COINSLOT_INVENTORY;
-			move.to_slot = EQT::COINSLOT_BANK;
-		}
-		move.cointype1 = coinType;
-		move.cointype2 = coinType;
-		move.amount = amount;
-
-		SendMoveCoin(move);
-
-		// Update local currency values (server will confirm, but update locally for responsiveness)
-		uint32_t* srcPlatinum = fromBank ? &m_bank_platinum : &m_platinum;
-		uint32_t* srcGold = fromBank ? &m_bank_gold : &m_gold;
-		uint32_t* srcSilver = fromBank ? &m_bank_silver : &m_silver;
-		uint32_t* srcCopper = fromBank ? &m_bank_copper : &m_copper;
-
-		uint32_t* dstPlatinum = fromBank ? &m_platinum : &m_bank_platinum;
-		uint32_t* dstGold = fromBank ? &m_gold : &m_bank_gold;
-		uint32_t* dstSilver = fromBank ? &m_silver : &m_bank_silver;
-		uint32_t* dstCopper = fromBank ? &m_copper : &m_bank_copper;
-
-		switch (coinType) {
-			case EQT::COINTYPE_PP:
-				if (*srcPlatinum >= static_cast<uint32_t>(amount)) {
-					*srcPlatinum -= amount;
-					*dstPlatinum += amount;
-				}
-				break;
-			case EQT::COINTYPE_GP:
-				if (*srcGold >= static_cast<uint32_t>(amount)) {
-					*srcGold -= amount;
-					*dstGold += amount;
-				}
-				break;
-			case EQT::COINTYPE_SP:
-				if (*srcSilver >= static_cast<uint32_t>(amount)) {
-					*srcSilver -= amount;
-					*dstSilver += amount;
-				}
-				break;
-			case EQT::COINTYPE_CP:
-				if (*srcCopper >= static_cast<uint32_t>(amount)) {
-					*srcCopper -= amount;
-					*dstCopper += amount;
-				}
-				break;
-		}
-
-		// Update UI displays
-		windowManager->updateBaseCurrency(m_platinum, m_gold, m_silver, m_copper);
-		windowManager->updateBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
-
-		LOG_DEBUG(MOD_INVENTORY, "Bank currency move: type={} amount={} fromBank={}, bank now: {}pp {}gp {}sp {}cp, inv now: {}pp {}gp {}sp {}cp",
-			coinType, amount, fromBank,
-			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
-			m_platinum, m_gold, m_silver, m_copper);
-
-		// Publish CurrencyChanged + BankCurrencyChanged
-		if (m_bridge) {
-			eqt::state::CurrencyChangedData cdata;
-			cdata.platinum = static_cast<int32_t>(m_platinum);
-			cdata.gold = static_cast<int32_t>(m_gold);
-			cdata.silver = static_cast<int32_t>(m_silver);
-			cdata.copper = static_cast<int32_t>(m_copper);
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
-
-			eqt::state::BankCurrencyChangedData bdata;
-			bdata.platinum = static_cast<int32_t>(m_bank_platinum);
-			bdata.gold = static_cast<int32_t>(m_bank_gold);
-			bdata.silver = static_cast<int32_t>(m_bank_silver);
-			bdata.copper = static_cast<int32_t>(m_bank_copper);
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::BankCurrencyMoveIntent{static_cast<uint8_t>(coinType), amount, fromBank});
-	});
-
-	// Set callback for currency conversion in bank (cp->sp->gp->pp)
-	windowManager->setOnBankCurrencyConvert([this, windowManager](int32_t fromCoinType, int32_t amount) {
-		// Conversion is always 10:1 ratio: 10 cp -> 1 sp, 10 sp -> 1 gp, 10 gp -> 1 pp
-		// fromCoinType: 0=copper, 1=silver, 2=gold (platinum can't be converted further)
-		// amount: number of source coins to convert (must be multiple of 10)
-
-		if (amount < 10 || (amount % 10) != 0) {
-			LOG_WARN(MOD_INVENTORY, "Invalid conversion amount: {} (must be multiple of 10)", amount);
-			return;
-		}
-
-		// Determine destination coin type (one tier higher)
-		int32_t toCoinType = fromCoinType + 1;
-		if (toCoinType > EQT::COINTYPE_PP) {
-			LOG_WARN(MOD_INVENTORY, "Cannot convert platinum further");
-			return;
-		}
-
-		// Build and send MoveCoin packet for conversion
-		// Server handles conversion automatically when cointype1 != cointype2
-		EQT::MoveCoin_Struct move;
-		move.from_slot = EQT::COINSLOT_BANK;
-		move.to_slot = EQT::COINSLOT_BANK;
-		move.cointype1 = fromCoinType;   // Source coin type
-		move.cointype2 = toCoinType;     // Destination coin type (one tier higher)
-		move.amount = amount;
-
-		SendMoveCoin(move);
-
-		LOG_DEBUG(MOD_INVENTORY, "Sent bank currency conversion: {} {} -> {} (cointype {} -> {})",
-			amount, (fromCoinType == EQT::COINTYPE_CP ? "copper" :
-			         fromCoinType == EQT::COINTYPE_SP ? "silver" : "gold"),
-			(toCoinType == EQT::COINTYPE_SP ? "silver" :
-			 toCoinType == EQT::COINTYPE_GP ? "gold" : "platinum"),
-			fromCoinType, toCoinType);
-
-		// Update local values for UI responsiveness (server will confirm)
-		uint32_t convertedAmount = amount / 10;
-		switch (fromCoinType) {
-			case EQT::COINTYPE_CP:  // Copper -> Silver
-				if (m_bank_copper >= static_cast<uint32_t>(amount)) {
-					m_bank_copper -= amount;
-					m_bank_silver += convertedAmount;
-				}
-				break;
-			case EQT::COINTYPE_SP:  // Silver -> Gold
-				if (m_bank_silver >= static_cast<uint32_t>(amount)) {
-					m_bank_silver -= amount;
-					m_bank_gold += convertedAmount;
-				}
-				break;
-			case EQT::COINTYPE_GP:  // Gold -> Platinum
-				if (m_bank_gold >= static_cast<uint32_t>(amount)) {
-					m_bank_gold -= amount;
-					m_bank_platinum += convertedAmount;
-				}
-				break;
-		}
-
-		// Update UI
-		windowManager->updateBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
-
-		LOG_DEBUG(MOD_INVENTORY, "Bank currency after conversion: {}pp {}gp {}sp {}cp",
-			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
-
-		// Publish BankCurrencyChanged
-		if (m_bridge) {
-			eqt::state::BankCurrencyChangedData bdata;
-			bdata.platinum = static_cast<int32_t>(m_bank_platinum);
-			bdata.gold = static_cast<int32_t>(m_bank_gold);
-			bdata.silver = static_cast<int32_t>(m_bank_silver);
-			bdata.copper = static_cast<int32_t>(m_bank_copper);
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{static_cast<uint8_t>(fromCoinType), amount});
-	});
-
-	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_INVENTORY, "Bank callbacks set up");
-	}
+	/* D20a: intents handle bank actions */
 }
 
 void EverQuest::SetupTradeWindowCallbacks()
@@ -4624,45 +4382,10 @@ void EverQuest::SetupTradeWindowCallbacks()
 
 	auto* windowManager = m_renderer->getWindowManager();
 
-	// Initialize trade window with trade manager
+	// Initialize trade window with trade manager (config, not a callback)
 	windowManager->initTradeWindow(m_trade_manager.get());
 
-	// Set callback for when player clicks Accept in trade window
-	windowManager->setOnTradeAccept([this]() {
-		if (m_trade_manager) {
-			m_trade_manager->clickAccept();
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::TradeAcceptIntent{});
-	});
-
-	// Set callback for when player clicks Cancel in trade window
-	windowManager->setOnTradeCancel([this]() {
-		if (m_trade_manager) {
-			m_trade_manager->cancelTrade();
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::TradeCancelIntent{});
-	});
-
-	// Set callback for when player accepts trade request
-	windowManager->setOnTradeRequestAccept([this]() {
-		if (m_trade_manager) {
-			m_trade_manager->acceptTradeRequest();
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::TradeAcceptIntent{});
-	});
-
-	// Set callback for when player declines trade request
-	windowManager->setOnTradeRequestDecline([this]() {
-		if (m_trade_manager) {
-			m_trade_manager->rejectTradeRequest();
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::DeclineInviteIntent{});
-	});
-
-	// Set callback for trade error messages
-	windowManager->setOnTradeError([this](const std::string& message) {
-		AddChatSystemMessage(message);
-	});
+	/* D20a: trade action callbacks removed, intents handle trade actions */
 
 	LOG_DEBUG(MOD_MAIN, "Trade window callbacks set up");
 }
@@ -7528,41 +7251,6 @@ void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 		}
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Route message to chat window
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				// Convert EQ channel to ChatChannel enum
-				eqt::ui::ChatChannel chatChannel;
-				switch (channel) {
-					case CHAT_CHANNEL_GUILD:   chatChannel = eqt::ui::ChatChannel::Guild; break;
-					case CHAT_CHANNEL_GROUP:   chatChannel = eqt::ui::ChatChannel::Group; break;
-					case CHAT_CHANNEL_SHOUT:   chatChannel = eqt::ui::ChatChannel::Shout; break;
-					case CHAT_CHANNEL_AUCTION: chatChannel = eqt::ui::ChatChannel::Auction; break;
-					case CHAT_CHANNEL_OOC:     chatChannel = eqt::ui::ChatChannel::OOC; break;
-					case CHAT_CHANNEL_TELL:    chatChannel = eqt::ui::ChatChannel::Tell; break;
-					case CHAT_CHANNEL_SAY:     chatChannel = eqt::ui::ChatChannel::Say; break;
-					case CHAT_CHANNEL_EMOTE:   chatChannel = eqt::ui::ChatChannel::Emote; break;
-					default:                   chatChannel = eqt::ui::ChatChannel::System; break;
-				}
-
-				// Create and add message
-				eqt::ui::ChatMessage chatMsg;
-				chatMsg.sender = sender;
-				chatMsg.text = message;
-				chatMsg.channel = chatChannel;
-				chatMsg.timestamp = static_cast<uint32_t>(std::time(nullptr));
-				chatMsg.color = eqt::ui::getChannelColor(chatChannel);
-
-				chatWindow->addMessage(std::move(chatMsg));
-			}
-		}
-	}
-#endif
-
 	// Publish ChatMessage event to bridge
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
@@ -7630,17 +7318,6 @@ void EverQuest::SendChatMessage(const std::string &message, const std::string &c
 
 void EverQuest::AddChatSystemMessage(const std::string &text)
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				chatWindow->addSystemMessage(text);
-			}
-		}
-	}
-#endif
 	// Publish SystemMessage event to bridge
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
@@ -7656,28 +7333,6 @@ void EverQuest::AddChatSystemMessage(const std::string &text)
 
 void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				eqt::ui::ChatChannel channel = is_self ?
-					eqt::ui::ChatChannel::CombatSelf :
-					eqt::ui::ChatChannel::Combat;
-				chatWindow->addSystemMessage(text, channel);
-			} else {
-				LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: chatWindow is null");
-			}
-		} else {
-			LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: windowManager is null");
-		}
-	} else {
-		LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: m_renderer is null");
-	}
-#else
-	LOG_DEBUG(MOD_COMBAT, "AddChatCombatMessage: EQT_HAS_GRAPHICS not defined");
-#endif
 	// Publish ChatMessage event to bridge (combat channel)
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
@@ -10030,15 +9685,13 @@ void EverQuest::RegisterCommands()
 	skills.description = "Toggle skills window";
 	skills.category = "Utility";
 	skills.handler = [this](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer && m_renderer->getWindowManager()) {
-			m_renderer->getWindowManager()->toggleSkillsWindow();
+		if (m_bridge) {
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::ToggleSkillsWindow,
+				eqt::state::ToggleSkillsWindowData{}));
 		} else {
 			AddChatSystemMessage("Skills window requires graphics mode");
 		}
-#else
-		AddChatSystemMessage("Skills window requires graphics mode");
-#endif
 	};
 	m_command_registry->registerCommand(skills);
 
@@ -13048,23 +12701,16 @@ void EverQuest::ZoneProcessColoredText(const EQ::Net::Packet &p)
 
 	LOG_DEBUG(MOD_ZONE, "ColoredText: color={}, message='{}'", color, message);
 
-	// Display in chat window
+	// Display in chat window via bridge
 	if (!message.empty()) {
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer && m_renderer->getWindowManager()) {
-			auto* chatWindow = m_renderer->getWindowManager()->getChatWindow();
-			if (chatWindow) {
-				// Create a ChatMessage for the spell fade text
-				eqt::ui::ChatMessage msg;
-				msg.text = message;
-				msg.channel = eqt::ui::ChatChannel::Spell;
-				msg.isSystemMessage = true;
-				msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
-				msg.color = eqt::ui::getChannelColor(eqt::ui::ChatChannel::Spell);
-				chatWindow->addMessage(msg);
-			}
+		if (m_bridge) {
+			eqt::state::ChatMessageData data;
+			data.message = message;
+			data.channelType = 0;
+			data.channelName = "spell";
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::SystemMessage, std::move(data)));
 		}
-#endif
 		if (s_debug_level >= 1) {
 			std::cout << message << std::endl;
 		}
@@ -13167,31 +12813,19 @@ void EverQuest::ZoneProcessFormattedMessage(const EQ::Net::Packet &p)
 		}
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				eqt::ui::ChatMessage chatMsg;
-				chatMsg.channel = channel;
-				chatMsg.sender = sender;
-				chatMsg.text = formatted_text;
-				chatMsg.color = eqt::ui::getChannelColor(channel);
-				chatMsg.isSystemMessage = isSystemMessage;
-				chatMsg.links = std::move(parsedArgs.links);
-
-				LOG_DEBUG(MOD_ZONE, "[FormattedMessage] Adding to chat: channel={}, sender='{}', text='{}'",
-					static_cast<int>(channel), sender, formatted_text);
-				chatWindow->addMessage(std::move(chatMsg));
-				return;
-			}
-		}
+	// Publish ChatMessage event to bridge
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.sender = sender;
+		data.message = formatted_text;
+		data.channelType = static_cast<uint32_t>(channel);
+		data.channelName = isSystemMessage ? "system" : "npc";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
 	}
-#endif
 
-	// Fallback: print to console if no chat window
-	LOG_INFO(MOD_ZONE, "[FormattedMessage] {}", formatted_text);
+	LOG_DEBUG(MOD_ZONE, "[FormattedMessage] channel={}, sender='{}', text='{}'",
+		static_cast<int>(channel), sender, formatted_text);
 }
 
 void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
@@ -13265,31 +12899,18 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 			break;
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				eqt::ui::ChatMessage chatMsg;
-				chatMsg.channel = channel;
-				chatMsg.sender = "";
-				chatMsg.text = message_text;
-				chatMsg.color = eqt::ui::getChannelColor(channel);
-				chatMsg.isSystemMessage = true;
-
-				LOG_DEBUG(MOD_ZONE, "[SimpleMessage] Adding to chat: channel={}, text='{}'",
-					static_cast<int>(channel), message_text);
-				chatWindow->addMessage(std::move(chatMsg));
-				return;
-			}
-		}
+	// Publish ChatMessage event to bridge
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = message_text;
+		data.channelType = static_cast<uint32_t>(channel);
+		data.channelName = "system";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
 	}
-#endif
 
-	// Fallback: print to console if no chat window
-	std::string type_name = GetChatTypeName(color_type);
-	std::cout << fmt::format("[{}] {}", type_name, message_text) << std::endl;
+	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] channel={}, text='{}'",
+		static_cast<int>(channel), message_text);
 }
 
 void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
@@ -14742,22 +14363,31 @@ void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 		// Store the active tradeskill object ID
 		m_active_tradeskill_object_id = action->drop_id;
 
-		// Tell WindowManager to open the tradeskill window
-		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
-		if (windowManager) {
-			// World containers have 10 slots (WORLD_BEGIN to WORLD_END)
-			windowManager->openTradeskillContainer(action->drop_id, objectName,
-				static_cast<uint8_t>(action->type), eqt::inventory::WORLD_COUNT);
+		// Open tradeskill container via bridge
+		if (m_bridge) {
+			eqt::state::TradeskillContainerOpenedEvent data;
+			data.isWorldObject = true;
+			data.objectId = action->drop_id;
+			data.inventorySlot = -1;
+			data.containerName = objectName;
+			data.containerType = static_cast<uint8_t>(action->type);
+			data.slotCount = eqt::inventory::WORLD_COUNT;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeskillContainerOpened, std::move(data)));
 		}
 	} else {
 		// Server is confirming container is closed
 		LOG_DEBUG(MOD_ENTITY, "Tradeskill container closed: drop_id={}", action->drop_id);
 		m_active_tradeskill_object_id = 0;
 
-		// Close the window if it's open
-		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
-		if (windowManager) {
-			windowManager->closeTradeskillContainer();
+		// Close tradeskill container via bridge
+		if (m_bridge) {
+			eqt::state::TradeskillContainerClosedEvent data;
+			data.wasWorldObject = true;
+			data.objectId = action->drop_id;
+			data.inventorySlot = -1;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeskillContainerClosed, std::move(data)));
 		}
 	}
 }
@@ -14773,17 +14403,6 @@ void EverQuest::ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p)
 	// These are already handled in their respective handlers.
 
 	LOG_DEBUG(MOD_ENTITY, "TradeSkillCombine acknowledgment received ({} bytes)", p.Length());
-
-	// Close tradeskill container window on combine completion
-#ifdef EQT_HAS_GRAPHICS
-	if (m_graphics_initialized && m_renderer) {
-		auto windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			// Optionally close the tradeskill window after combine
-			// (User may want to do multiple combines, so we don't auto-close)
-		}
-	}
-#endif
 }
 
 void EverQuest::SendApplyPoison(uint32_t inventory_slot)
@@ -15220,17 +14839,6 @@ void EverQuest::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
 
 		AddChatSystemMessage(inviter_name + " has invited you to join a group");
 
-#ifdef EQT_HAS_GRAPHICS
-		// Show pending invite in group window
-		if (m_renderer) {
-			auto* windowMgr = m_renderer->getWindowManager();
-			if (windowMgr && windowMgr->getGroupWindow()) {
-				windowMgr->getGroupWindow()->showPendingInvite(inviter_name);
-				windowMgr->openGroupWindow();
-			}
-		}
-#endif
-
 		// Publish GroupInviteReceived event to bridge
 		if (m_bridge) {
 			eqt::state::GroupInviteReceivedData data;
@@ -15275,14 +14883,6 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			m_has_pending_invite = false;
 			m_pending_inviter_name.clear();
 			m_game_state.group().clearPendingInvite();  // Phase 7.5
-#ifdef EQT_HAS_GRAPHICS
-			if (m_renderer) {
-				auto* windowMgr = m_renderer->getWindowManager();
-				if (windowMgr && windowMgr->getGroupWindow()) {
-					windowMgr->getGroupWindow()->hidePendingInvite();
-				}
-			}
-#endif
 
 			// Add self first
 			GroupMember self;
@@ -15466,16 +15066,6 @@ void EverQuest::ZoneProcessGroupDisband(const EQ::Net::Packet& p)
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 	}
-
-#ifdef EQT_HAS_GRAPHICS
-	// Hide pending invite UI if shown
-	if (m_renderer) {
-		auto* windowMgr = m_renderer->getWindowManager();
-		if (windowMgr && windowMgr->getGroupWindow()) {
-			windowMgr->getGroupWindow()->hidePendingInvite();
-		}
-	}
-#endif
 }
 
 void EverQuest::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
@@ -15489,15 +15079,16 @@ void EverQuest::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
 	AddChatSystemMessage("Group invite cancelled");
 	LOG_INFO(MOD_MAIN, "Group invite cancelled");
 
-#ifdef EQT_HAS_GRAPHICS
-	// Hide pending invite in group window
-	if (m_renderer) {
-		auto* windowMgr = m_renderer->getWindowManager();
-		if (windowMgr && windowMgr->getGroupWindow()) {
-			windowMgr->getGroupWindow()->hidePendingInvite();
-		}
+	// Publish GroupChanged to trigger bridge hidePendingInvite
+	if (m_bridge) {
+		eqt::state::GroupChangedData gdata;
+		gdata.inGroup = m_in_group;
+		gdata.isLeader = m_is_group_leader;
+		gdata.leaderName = m_group_leader_name;
+		gdata.memberCount = static_cast<int>(m_group_members.size());
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 	}
-#endif
 }
 
 void EverQuest::SendJump()
@@ -17837,38 +17428,29 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 
 	// Determine con color name and display color based on server level value
 	std::string con_color;
-	irr::video::SColor con_display_color(255, 255, 255, 255); // Default white
 	switch (con->level) {
-		case 2:  con_color = "green";      con_display_color = irr::video::SColor(255, 0, 255, 0); break;
-		case 4:  con_color = "blue";       con_display_color = irr::video::SColor(255, 0, 0, 255); break;
-		case 6:  con_color = "gray";       con_display_color = irr::video::SColor(255, 160, 160, 160); break;
-		case 10: con_color = "light blue"; con_display_color = irr::video::SColor(255, 100, 180, 255); break;
-		case 13: con_color = "red";        con_display_color = irr::video::SColor(255, 255, 0, 0); break;
-		case 15: con_color = "yellow";     con_display_color = irr::video::SColor(255, 255, 255, 0); break;
-		case 18: con_color = "light blue"; con_display_color = irr::video::SColor(255, 100, 180, 255); break;
-		case 20: con_color = "white";      con_display_color = irr::video::SColor(255, 255, 255, 255); break;
-		default: con_color = "white";      con_display_color = irr::video::SColor(255, 255, 255, 255); break;
+		case 2:  con_color = "green"; break;
+		case 4:  con_color = "blue"; break;
+		case 6:  con_color = "gray"; break;
+		case 10: con_color = "light blue"; break;
+		case 13: con_color = "red"; break;
+		case 15: con_color = "yellow"; break;
+		case 18: con_color = "light blue"; break;
+		case 20: con_color = "white"; break;
+		default: con_color = "white"; break;
 	}
 
 	// Format: "a gnoll scout regards you indifferently -- cons green"
 	std::string message = fmt::format("{} {} -- cons {}", target_name, faction_msg, con_color);
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				eqt::ui::ChatMessage chatMsg;
-				chatMsg.text = message;
-				chatMsg.channel = eqt::ui::ChatChannel::System;
-				chatMsg.color = con_display_color;
-				chatMsg.isSystemMessage = true;
-				chatMsg.timestamp = static_cast<uint32_t>(std::time(nullptr));
-				chatWindow->addMessage(std::move(chatMsg));
-			}
-		}
+	// Publish SystemMessage event to bridge
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = message;
+		data.channelType = 0;
+		data.channelName = "system";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::SystemMessage, std::move(data)));
 	}
-#endif
 	LOG_INFO(MOD_MAIN, "{}", message);
 }
 
@@ -18588,285 +18170,8 @@ bool EverQuest::InitGraphics(int width, int height) {
 		return ss.str();
 	});
 
-	// Set up movement callback for Player Mode server sync
-	m_renderer->setMovementCallback([this](const EQT::Graphics::PlayerPositionUpdate& update) {
-		OnGraphicsMovement(update);
-	});
-
-	// Set up target selection callback for mouse click targeting
-	m_renderer->setTargetCallback([this](uint16_t spawnId) {
-		// Check if we have a cursor item or cursor money and clicked on a player - initiate trade
-		if (m_inventory_manager && m_trade_manager) {
-			const auto* cursorItem = m_inventory_manager->getItem(eqt::inventory::CURSOR_SLOT);
-			bool hasCursorMoney = m_inventory_manager->hasCursorMoney();
-			if (cursorItem || hasCursorMoney) {
-				// We have an item or money on cursor - check if target is a player or NPC
-				auto it = m_entities.find(spawnId);
-				if (it != m_entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
-					// Target is a player (0) or NPC (1) - initiate trade request
-					bool isNpc = (it->second.npc_type == 1);
-					if (cursorItem) {
-						LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor item: {}, isNpc={})",
-						         it->second.name, cursorItem->name, isNpc);
-					} else {
-						LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor money, isNpc={})",
-						         it->second.name, isNpc);
-					}
-					m_trade_manager->requestTrade(spawnId, it->second.name, isNpc);
-					return;  // Don't target, we're initiating trade
-				}
-			}
-		}
-
-		if (m_combat_manager) {
-			if (m_combat_manager->SetTarget(spawnId)) {
-				// Set tracked target for debug logging
-				SetTrackedTargetId(spawnId);
-				m_current_target_id = spawnId;
-
-				// Update renderer with full target info
-				auto it = m_entities.find(spawnId);
-				if (it != m_entities.end()) {
-					const Entity& e = it->second;
-					EQT::Graphics::TargetInfo info;
-					info.spawnId = e.spawn_id;
-					info.name = e.name;
-					info.level = e.level;
-					info.hpPercent = e.hp_percent;
-					info.raceId = e.race_id;
-					info.gender = e.gender;
-					info.classId = e.class_id;
-					info.bodyType = e.bodytype;
-					info.helm = e.helm;
-					info.showHelm = e.showhelm;
-					info.texture = e.equip_chest2;
-					info.npcType = e.npc_type;
-					info.x = e.x;
-					info.y = e.y;
-					info.z = e.z;
-					info.heading = e.heading;
-					for (int i = 0; i < 9; ++i) {
-						info.equipment[i] = e.equipment[i];
-						info.equipmentTint[i] = e.equipment_tint[i];
-					}
-					m_renderer->setCurrentTargetInfo(info);
-
-					// Publish TargetChanged event to bridge
-					if (m_bridge) {
-						eqt::state::TargetChangedData tdata;
-						tdata.spawnId = e.spawn_id;
-						tdata.name = e.name;
-						tdata.level = e.level;
-						tdata.hpPercent = e.hp_percent;
-						tdata.raceId = e.race_id;
-						tdata.gender = e.gender;
-						tdata.classId = e.class_id;
-						tdata.bodyType = e.bodytype;
-						tdata.npcType = e.npc_type;
-						tdata.helm = e.helm;
-						tdata.showHelm = e.showhelm;
-						tdata.texture = e.equip_chest2;
-						for (int i = 0; i < 9; ++i) {
-							tdata.equipment[i] = e.equipment[i];
-							tdata.equipmentTint[i] = e.equipment_tint[i];
-						}
-						m_bridge->pushEvent(eqt::state::GameEvent(
-							eqt::state::GameEventType::TargetChanged, std::move(tdata)));
-					}
-
-					LOG_DEBUG(MOD_ENTITY, "=== TARGET SELECTED: {} ===", e.name);
-					LOG_DEBUG(MOD_ENTITY, "  spawn_id={} race_id={} gender={} level={} class_id={}",
-						spawnId, e.race_id, (int)e.gender, (int)e.level, (int)e.class_id);
-					LOG_DEBUG(MOD_ENTITY, "  npc_type={} (0=player,1=npc,2=pc_corpse,3=npc_corpse) bodytype={}",
-						(int)e.npc_type, (int)e.bodytype);
-					LOG_DEBUG(MOD_ENTITY, "  face={} haircolor={} hairstyle={} beardcolor={} beard={}",
-						(int)e.face, (int)e.haircolor, (int)e.hairstyle, (int)e.beardcolor, (int)e.beard);
-					LOG_DEBUG(MOD_ENTITY, "  texture(equip_chest2)={} helm={} showhelm={} light={}",
-						(int)e.equip_chest2, (int)e.helm, (int)e.showhelm, (int)e.light);
-					LOG_DEBUG(MOD_ENTITY, "  equipment[0-8]: head={} chest={} arms={} wrist={} hands={} legs={} feet={} primary={} secondary={}",
-						e.equipment[0], e.equipment[1], e.equipment[2], e.equipment[3],
-						e.equipment[4], e.equipment[5], e.equipment[6], e.equipment[7], e.equipment[8]);
-					LOG_DEBUG(MOD_ENTITY, "  equipment_tint[0-8]: {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}",
-						e.equipment_tint[0], e.equipment_tint[1], e.equipment_tint[2], e.equipment_tint[3],
-						e.equipment_tint[4], e.equipment_tint[5], e.equipment_tint[6], e.equipment_tint[7], e.equipment_tint[8]);
-				}
-			}
-		}
-	});
-
-	// Set up loot corpse callback (shift+click on corpse)
-	m_renderer->setLootCorpseCallback([this](uint16_t corpseId) {
-		RequestLootCorpse(corpseId);
-	});
-
-	// Set up zoning enabled callback (Z key toggles zone line visualization and zoning)
-	m_renderer->setZoningEnabledCallback([this](bool enabled) {
-		SetZoningEnabled(enabled);
-		LOG_INFO(MOD_ZONE, "Zoning {}", enabled ? "enabled" : "disabled");
-	});
-
-	// Set up vendor toggle callback (V key in Player Mode)
-	m_renderer->setVendorToggleCallback([this]() {
-		// If vendor window is open, close it
-		if (IsVendorWindowOpen()) {
-			CloseVendorWindow();
-			return;
-		}
-
-		// Check if we have a target
-		if (!m_combat_manager || !m_combat_manager->HasTarget()) {
-			LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: No target selected");
-			return;
-		}
-
-		uint16_t target_id = m_combat_manager->GetTargetId();
-		auto it = m_entities.find(target_id);
-		if (it == m_entities.end()) {
-			LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Target {} not found in entities", target_id);
-			return;
-		}
-
-		const Entity& target = it->second;
-
-		// Check if target is an NPC (not player, not corpse)
-		if (target.npc_type != 1) {
-			LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Target {} is not an NPC (type={})", target.name, target.npc_type);
-			return;
-		}
-
-		// Check if target is a merchant (class 41)
-		// Class 41 is the MERCHANT class in EQ
-		constexpr uint8_t CLASS_MERCHANT = 41;
-		if (target.class_id != CLASS_MERCHANT) {
-			LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Target {} is not a merchant (class={})", target.name, target.class_id);
-			return;
-		}
-
-		// Try to open vendor window
-		LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Opening vendor {} (id={})", target.name, target_id);
-		RequestOpenVendor(target_id);
-	});
-
-	// Set up banker interact callback (Ctrl+click on NPC in Player Mode)
-	m_renderer->setBankerInteractCallback([this](uint16_t npcId) {
-		// If bank window is already open, ignore
-		if (IsBankWindowOpen()) {
-			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Bank already open");
-			return;
-		}
-
-		auto it = m_entities.find(npcId);
-		if (it == m_entities.end()) {
-			LOG_DEBUG(MOD_INVENTORY, "Banker interact: NPC {} not found in entities", npcId);
-			return;
-		}
-
-		const Entity& target = it->second;
-
-		// Check if target is an NPC (not player, not corpse)
-		if (target.npc_type != 1) {
-			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not an NPC (type={})", target.name, target.npc_type);
-			return;
-		}
-
-		// Check distance to NPC
-		float distSq = CalculateDistance2D(m_x, m_y, target.x, target.y);
-		distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
-		if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
-			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
-			AddChatSystemMessage("You are too far away to interact with this NPC.");
-			return;
-		}
-
-		// Check if target is a banker (class 40 = GM_Banker in EQ)
-		constexpr uint8_t CLASS_BANKER = 40;
-		if (target.class_id != CLASS_BANKER) {
-			LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
-			AddChatSystemMessage("This NPC is not a banker.");
-			return;
-		}
-
-		// Open the bank window
-		LOG_INFO(MOD_INVENTORY, "Opening bank window for {} (id={})", target.name, npcId);
-		OpenBankWindow(npcId);
-	});
-
-	// Set up trainer toggle callback (T key in Player Mode)
-	m_renderer->setTrainerToggleCallback([this]() {
-		// If trainer window is open, close it
-		if (IsTrainerWindowOpen()) {
-			CloseTrainerWindow();
-			return;
-		}
-
-		// Check if we have a target
-		if (!m_combat_manager || !m_combat_manager->HasTarget()) {
-			LOG_DEBUG(MOD_MAIN, "Trainer toggle: No target selected");
-			return;
-		}
-
-		uint16_t target_id = m_combat_manager->GetTargetId();
-		auto it = m_entities.find(target_id);
-		if (it == m_entities.end()) {
-			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} not found in entities", target_id);
-			return;
-		}
-
-		const Entity& target = it->second;
-
-		// Check if target is an NPC (not player, not corpse)
-		if (target.npc_type != 1) {
-			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not an NPC (type={})", target.name, target.npc_type);
-			return;
-		}
-
-		// Check if target is a guildmaster trainer (class 20-35)
-		// Reference: EQEmu classes.h - WarriorGM=20 through BerserkerGM=35
-		constexpr uint8_t CLASS_WARRIOR_GM = 20;
-		constexpr uint8_t CLASS_BERSERKER_GM = 35;
-		if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
-			LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not a trainer (class={})", target.name, target.class_id);
-			AddChatSystemMessage("That is not a trainer.");
-			return;
-		}
-
-		// Request trainer window from server
-		LOG_DEBUG(MOD_MAIN, "Trainer toggle: Requesting trainer {} (id={}, class={})", target.name, target_id, target.class_id);
-		RequestTrainerWindow(target_id);
-	});
-
-	// Set up door interaction callback (left-click on door or U key in Player Mode)
-	m_renderer->setDoorInteractCallback([this](uint8_t doorId) {
-		SendClickDoor(doorId);
-	});
-
-	// Set up world object (tradeskill container) interaction callback (left-click on object or O key)
-	m_renderer->setWorldObjectInteractCallback([this](uint32_t dropId) {
-		// Find the world object to check if it's a tradeskill container
-		auto it = m_world_objects.find(dropId);
-		if (it != m_world_objects.end() && it->second.isTradeskillContainer()) {
-			LOG_INFO(MOD_INVENTORY, "Clicking tradeskill container: dropId={} name='{}' type={}",
-				dropId, it->second.name, it->second.object_type);
-			SendClickObject(dropId);
-		} else if (it != m_world_objects.end()) {
-			LOG_DEBUG(MOD_ENTITY, "World object {} is not a tradeskill container (type={})",
-				dropId, it->second.object_type);
-		}
-	});
-
-	// Set up spell gem cast callback (1-8 keys in Player Mode)
-	m_renderer->setSpellGemCastCallback([this](uint8_t gemSlot) {
-		if (m_spell_manager) {
-			// Get current target for spell casting
-			uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-			EQ::CastResult result = m_spell_manager->beginCastFromGem(gemSlot, targetId);
-			if (result != EQ::CastResult::Success) {
-				// Log or display error message
-				LOG_DEBUG(MOD_SPELL, "Spell gem {} cast failed: {}", gemSlot + 1, static_cast<int>(result));
-			}
-		}
-		if (m_bridge) m_bridge->pushIntent(eqt::events::CastSpellIntent{gemSlot});
-	});
+	// D20a: Movement, target, interaction, and spell gem cast callbacks removed.
+	// All game logic now handled via ProcessBridgeIntents() intent handlers.
 
 	// Set collision map for Player Mode (will be updated when zone loads)
 	if (m_zone_map) {
@@ -18942,110 +18247,29 @@ bool EverQuest::InitGraphics(int width, int height) {
 		});
 	}
 
-	// Set up spell gem panel
+	// Set up spell gem panel (D20b config only, callbacks removed by D20a)
 	if (m_spell_manager && m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
 		windowManager->initSpellGemPanel(m_spell_manager.get());
-
-		// Set up gem cast callback
-		windowManager->setGemCastCallback([this](uint8_t gemSlot) {
-			LOG_DEBUG(MOD_SPELL, "Gem cast callback invoked for gem {} m_spell_manager={:p}",
-				gemSlot + 1, static_cast<void*>(m_spell_manager.get()));
-			if (!m_spell_manager) {
-				LOG_WARN(MOD_SPELL, "Gem cast callback: spell manager is null");
-				return;
-			}
-			uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-			EQ::CastResult result = m_spell_manager->beginCastFromGem(gemSlot, targetId);
-			LOG_DEBUG(MOD_SPELL, "beginCastFromGem result: {} targetId={}", static_cast<int>(result), targetId);
-			if (result == EQ::CastResult::Success) {
-				uint32_t spellId = m_spell_manager->getMemorizedSpell(gemSlot);
-				const EQ::SpellData* spell = m_spell_manager->getSpell(spellId);
-				if (spell) {
-					AddChatSystemMessage(fmt::format("Casting {}", spell->name));
-				}
-			} else if (result == EQ::CastResult::NotMemorized) {
-				AddChatSystemMessage(fmt::format("No spell in gem {}", gemSlot + 1));
-			} else if (result == EQ::CastResult::NotEnoughMana) {
-				AddChatSystemMessage("Insufficient mana");
-			} else if (result == EQ::CastResult::GemCooldown) {
-				AddChatSystemMessage("Spell not ready");
-			} else if (result == EQ::CastResult::AlreadyCasting) {
-				AddChatSystemMessage("Already casting");
-			} else if (result == EQ::CastResult::OutOfRange) {
-				AddChatSystemMessage("Target out of range");
-			} else if (result == EQ::CastResult::InvalidTarget) {
-				AddChatSystemMessage("Invalid target");
-			} else if (result == EQ::CastResult::NoLineOfSight) {
-				AddChatSystemMessage("You cannot see your target");
-			} else if (result == EQ::CastResult::Stunned) {
-				AddChatSystemMessage("You are stunned");
-			}
-			if (m_bridge) m_bridge->pushIntent(eqt::events::CastSpellIntent{gemSlot});
-		});
-
-		// Set up gem forget callback (right-click)
-		windowManager->setGemForgetCallback([this](uint8_t gemSlot) {
-			if (!m_spell_manager) return;
-			if (m_spell_manager->forgetSpell(gemSlot)) {
-				AddChatSystemMessage(fmt::format("Forgot spell in gem {}", gemSlot + 1));
-			}
-			if (m_bridge) m_bridge->pushIntent(eqt::events::ForgetSpellIntent{gemSlot});
-		});
-
-		// Set up spellbook open/close callback to send appearance animation
-		windowManager->setSpellbookStateCallback([this](bool isOpen) {
-			// Send spawn appearance to server: animation 110 = sitting/spellbook, 100 = standing
-			SendSpawnAppearance(AT_ANIMATION, isOpen ? 110 : 100);
-			LOG_DEBUG(MOD_SPELL, "Spellbook {} - sent appearance animation {}",
-				isOpen ? "opened" : "closed", isOpen ? 110 : 100);
-			if (m_bridge) m_bridge->pushIntent(eqt::events::SpellbookStateIntent{isOpen});
-		});
-
-		// Set up scribe spell request callback
-		windowManager->setScribeSpellRequestCallback(
-			[this](uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot) {
-				ScribeSpellFromScroll(spellId, bookSlot, sourceSlot);
-				if (m_bridge) m_bridge->pushIntent(eqt::events::ScribeSpellIntent{spellId, static_cast<uint8_t>(bookSlot), sourceSlot});
-			}
-		);
-
 		LOG_DEBUG(MOD_SPELL, "Spell gem panel initialized");
 	}
 
-	// Set up buff window
+	// Set up buff window (D20b config only, callbacks removed by D20a)
 	if (m_buff_manager && m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
 		windowManager->initBuffWindow(m_buff_manager.get());
-
-		// Set up buff cancel callback (right-click to remove buff)
-		windowManager->setBuffCancelCallback([this](uint8_t slot) {
-			// In EQ, right-clicking a buff removes it (for player's own buffs)
-			if (m_buff_manager) {
-				m_buff_manager->removeBuffBySlot(0, slot);  // 0 = player
-				AddChatSystemMessage(fmt::format("Buff in slot {} cancelled", slot + 1));
-			}
-			if (m_bridge) m_bridge->pushIntent(eqt::events::BuffCancelIntent{slot});
-		});
-
 		LOG_DEBUG(MOD_SPELL, "Buff window initialized");
 	}
 
-	// Set up group window
+	// Set up group window, player status, skills
 	if (m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
 		windowManager->initGroupWindow(this);
 		windowManager->initPlayerStatusWindow(this);
 		windowManager->initSkillsWindow(m_skill_manager.get());
 
-		// Set up skills window callbacks
-		windowManager->setSkillActivateCallback([this](uint8_t skill_id) {
-			if (m_skill_manager) {
-				m_skill_manager->activateSkill(skill_id);
-			}
-			if (m_bridge) m_bridge->pushIntent(eqt::events::SkillActivateIntent{static_cast<uint32_t>(skill_id)});
-		});
-
+		// D20a: Skill activate callback removed; intent handles it.
+		// Keep hotbar create callback (UI-only, no intent)
 		windowManager->setHotbarCreateCallback([this, windowManager](uint8_t skill_id) {
 			// Put skill on cursor for placement in hotbar
 			const char* skill_name = EQ::getSkillName(skill_id);
@@ -19058,7 +18282,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 			AddChatSystemMessage(fmt::format("Drag {} to a hotbar slot", skill_name ? skill_name : "skill"));
 		});
 
-		// Set up skill activation feedback callback
+		// Keep skill manager feedback callbacks (game->UI, not renderer->game)
 		if (m_skill_manager) {
 			m_skill_manager->setOnSkillActivated([this, windowManager](uint8_t skill_id, bool success, const std::string& message) {
 				const char* skill_name = EQ::getSkillName(skill_id);
@@ -19093,56 +18317,19 @@ bool EverQuest::InitGraphics(int width, int height) {
 			});
 		}
 
-		// Set up group window callbacks
-		windowManager->setGroupInviteCallback([this]() {
-			// Invite current target to group
-			if (m_combat_manager && m_combat_manager->HasTarget()) {
-				uint16_t target_id = m_combat_manager->GetTargetId();
-				auto it = m_entities.find(target_id);
-				if (it != m_entities.end()) {
-					SendGroupInvite(it->second.name);
-					AddChatSystemMessage(fmt::format("Inviting {} to group", it->second.name));
-					if (m_bridge) m_bridge->pushIntent(eqt::events::GroupInviteIntent{it->second.name});
-				}
-			} else {
-				AddChatSystemMessage("No target selected");
-			}
-		});
-
-		windowManager->setGroupDisbandCallback([this]() {
-			if (m_in_group) {
-				if (m_is_group_leader) {
-					SendGroupDisband();
-				} else {
-					SendLeaveGroup();
-				}
-			}
-			if (m_bridge) m_bridge->pushIntent(eqt::events::DisbandIntent{});
-		});
-
+		// D20a: Group invite, disband, decline callbacks removed; intents handle them.
+		// Keep group accept callback (no intent for accept)
 		windowManager->setGroupAcceptCallback([this]() {
 			AcceptGroupInvite();
-		});
-
-		windowManager->setGroupDeclineCallback([this]() {
-			DeclineGroupInvite();
-			if (m_bridge) m_bridge->pushIntent(eqt::events::DeclineInviteIntent{});
 		});
 
 		LOG_DEBUG(MOD_MAIN, "Group window initialized");
 	}
 
-	// Set up pet window
+	// Set up pet window (D20a: pet command callback removed, intent handles it)
 	if (m_renderer && m_renderer->getWindowManager()) {
 		auto* windowManager = m_renderer->getWindowManager();
 		windowManager->initPetWindow(this, m_buff_manager.get());
-
-		// Set up pet command callback
-		windowManager->setPetCommandCallback([this](EQT::PetCommand command, uint16_t targetId) {
-			SendPetCommand(command, targetId);
-			if (m_bridge) m_bridge->pushIntent(eqt::events::PetCommandIntent{static_cast<uint8_t>(command), targetId});
-		});
-
 		LOG_DEBUG(MOD_MAIN, "Pet window initialized");
 	}
 
@@ -19249,19 +18436,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 		LOG_DEBUG(MOD_MAIN, "Hotbar window callbacks initialized");
 	}
 
-	// Set up chat submit callback
-	m_renderer->setChatSubmitCallback([this](const std::string& text) {
-		ProcessChatInput(text);
-		// D15: Push intent (from callback since ChatWindow doesn't have bridge access)
-		if (m_bridge) m_bridge->pushIntent(eqt::events::ChatSubmitIntent{text});
-	});
-
-	// Set up read item callback for book/note reading
-	m_renderer->setReadItemCallback([this](const std::string& bookText, uint8_t bookType) {
-		RequestReadBook(bookText, bookType);
-		// D15: Push intent (from callback since UI windows don't have bridge access)
-		if (m_bridge) m_bridge->pushIntent(eqt::events::ReadItemIntent{bookText, bookType});
-	});
+	// D20a: Chat submit and read item callbacks removed; intents handle these.
 
 	// Set up auto-completion for chat window
 	if (auto* chatWindow = m_renderer->getWindowManager()->getChatWindow()) {
@@ -19442,6 +18617,9 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		if (zone_transition_logging) {
 			LOG_TRACE(MOD_GRAPHICS, "Time updated, calling processFrame...");
 		}
+
+		// D20a: Process intents from renderer's previous frame before pushing new events
+		ProcessBridgeIntents();
 
 		// D14: Drain bridge events and apply to renderer (D09-D13 consumers)
 		ProcessBridgeEvents();
@@ -19922,19 +19100,10 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 }
 
 void EverQuest::OnPetCreated(const Entity& pet) {
-	if (!m_graphics_initialized || !m_renderer) {
-		return;
-	}
-
 	LOG_DEBUG(MOD_MAIN, "Pet window: Pet created - {} (ID: {}) Level {}",
 	          pet.name, pet.spawn_id, pet.level);
 
-	// Open pet window when pet is created
-	if (m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->openPetWindow();
-	}
-
-	// Publish PetCreated event to bridge
+	// Publish PetCreated event to bridge (bridge handler opens pet window)
 	if (m_bridge) {
 		eqt::state::PetCreatedData data;
 		data.spawnId = pet.spawn_id;
@@ -19961,21 +19130,6 @@ void EverQuest::OnPetRemoved() {
 void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
 	LOG_DEBUG(MOD_MAIN, "Pet button state changed: {} = {}",
 	          EQT::GetPetButtonName(button), state ? "ON" : "OFF");
-
-	// Pet button state is tracked here, pet window will read state during render
-	// The window's update() method polls pet state from EQ each frame
-#ifdef EQT_HAS_GRAPHICS
-	if (m_graphics_initialized && m_renderer) {
-		auto windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto petWindow = windowManager->getPetWindow();
-			if (petWindow) {
-				// PetWindow::update() is called each frame and reads current state
-				// Button visual state will update automatically on next render
-			}
-		}
-	}
-#endif
 
 	// Publish PetButtonStateChanged event to bridge
 	if (m_bridge) {
@@ -20199,150 +19353,515 @@ void EverQuest::ProcessBridgeIntents() {
 				OnGraphicsMovement(update);
 			}
 			// ================================================================
-			// D15: Interaction intents (dual-path — callbacks handle primary,
-			// intents logged here as secondary. Phase 5 activates intent-only.)
+			// D15: Interaction intents (D20a — intent-only, callbacks removed)
 			// ================================================================
 			else if constexpr (std::is_same_v<T, eqt::events::TargetIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: TargetIntent spawnId={}", i.spawnId);
+				// Check if we have a cursor item or cursor money and clicked on a player - initiate trade
+				if (m_inventory_manager && m_trade_manager) {
+					const auto* cursorItem = m_inventory_manager->getItem(eqt::inventory::CURSOR_SLOT);
+					bool hasCursorMoney = m_inventory_manager->hasCursorMoney();
+					if (cursorItem || hasCursorMoney) {
+						auto it = m_entities.find(i.spawnId);
+						if (it != m_entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
+							bool isNpc = (it->second.npc_type == 1);
+							if (cursorItem) {
+								LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor item: {}, isNpc={})",
+								         it->second.name, cursorItem->name, isNpc);
+							} else {
+								LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor money, isNpc={})",
+								         it->second.name, isNpc);
+							}
+							m_trade_manager->requestTrade(i.spawnId, it->second.name, isNpc);
+							return;  // Don't target, we're initiating trade
+						}
+					}
+				}
+
+				if (m_combat_manager) {
+					if (m_combat_manager->SetTarget(i.spawnId)) {
+						SetTrackedTargetId(i.spawnId);
+						m_current_target_id = i.spawnId;
+
+						auto it = m_entities.find(i.spawnId);
+						if (it != m_entities.end()) {
+							const Entity& e = it->second;
+
+							// Publish TargetChanged event to bridge (handles renderer update)
+							if (m_bridge) {
+								eqt::state::TargetChangedData tdata;
+								tdata.spawnId = e.spawn_id;
+								tdata.name = e.name;
+								tdata.level = e.level;
+								tdata.hpPercent = e.hp_percent;
+								tdata.raceId = e.race_id;
+								tdata.gender = e.gender;
+								tdata.classId = e.class_id;
+								tdata.bodyType = e.bodytype;
+								tdata.npcType = e.npc_type;
+								tdata.helm = e.helm;
+								tdata.showHelm = e.showhelm;
+								tdata.texture = e.equip_chest2;
+								for (int j = 0; j < 9; ++j) {
+									tdata.equipment[j] = e.equipment[j];
+									tdata.equipmentTint[j] = e.equipment_tint[j];
+								}
+								m_bridge->pushEvent(eqt::state::GameEvent(
+									eqt::state::GameEventType::TargetChanged, std::move(tdata)));
+							}
+
+							LOG_DEBUG(MOD_ENTITY, "=== TARGET SELECTED: {} ===", e.name);
+							LOG_DEBUG(MOD_ENTITY, "  spawn_id={} race_id={} gender={} level={} class_id={}",
+								i.spawnId, e.race_id, (int)e.gender, (int)e.level, (int)e.class_id);
+							LOG_DEBUG(MOD_ENTITY, "  npc_type={} (0=player,1=npc,2=pc_corpse,3=npc_corpse) bodytype={}",
+								(int)e.npc_type, (int)e.bodytype);
+							LOG_DEBUG(MOD_ENTITY, "  face={} haircolor={} hairstyle={} beardcolor={} beard={}",
+								(int)e.face, (int)e.haircolor, (int)e.hairstyle, (int)e.beardcolor, (int)e.beard);
+							LOG_DEBUG(MOD_ENTITY, "  texture(equip_chest2)={} helm={} showhelm={} light={}",
+								(int)e.equip_chest2, (int)e.helm, (int)e.showhelm, (int)e.light);
+							LOG_DEBUG(MOD_ENTITY, "  equipment[0-8]: head={} chest={} arms={} wrist={} hands={} legs={} feet={} primary={} secondary={}",
+								e.equipment[0], e.equipment[1], e.equipment[2], e.equipment[3],
+								e.equipment[4], e.equipment[5], e.equipment[6], e.equipment[7], e.equipment[8]);
+							LOG_DEBUG(MOD_ENTITY, "  equipment_tint[0-8]: {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}",
+								e.equipment_tint[0], e.equipment_tint[1], e.equipment_tint[2], e.equipment_tint[3],
+								e.equipment_tint[4], e.equipment_tint[5], e.equipment_tint[6], e.equipment_tint[7], e.equipment_tint[8]);
+						}
+					}
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::LootCorpseIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: LootCorpseIntent spawnId={}", i.spawnId);
+				RequestLootCorpse(i.spawnId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DoorInteractIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: DoorInteractIntent doorId={}", i.doorId);
+				SendClickDoor(i.doorId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::VendorToggleIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: VendorToggleIntent");
+				// If vendor window is open, close it
+				if (IsVendorWindowOpen()) {
+					CloseVendorWindow();
+					return;
+				}
+
+				// Check if we have a target
+				if (!m_combat_manager || !m_combat_manager->HasTarget()) {
+					LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: No target selected");
+					return;
+				}
+
+				uint16_t target_id = m_combat_manager->GetTargetId();
+				auto it = m_entities.find(target_id);
+				if (it == m_entities.end()) {
+					LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Target {} not found in entities", target_id);
+					return;
+				}
+
+				const Entity& target = it->second;
+
+				if (target.npc_type != 1) {
+					LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Target {} is not an NPC (type={})", target.name, target.npc_type);
+					return;
+				}
+
+				constexpr uint8_t CLASS_MERCHANT = 41;
+				if (target.class_id != CLASS_MERCHANT) {
+					LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Target {} is not a merchant (class={})", target.name, target.class_id);
+					return;
+				}
+
+				LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Opening vendor {} (id={})", target.name, target_id);
+				RequestOpenVendor(target_id);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankerInteractIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: BankerInteractIntent npcId={}", i.npcId);
+				// If bank window is already open, ignore
+				if (IsBankWindowOpen()) {
+					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Bank already open");
+					return;
+				}
+
+				auto it = m_entities.find(i.npcId);
+				if (it == m_entities.end()) {
+					LOG_DEBUG(MOD_INVENTORY, "Banker interact: NPC {} not found in entities", i.npcId);
+					return;
+				}
+
+				const Entity& target = it->second;
+
+				if (target.npc_type != 1) {
+					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not an NPC (type={})", target.name, target.npc_type);
+					return;
+				}
+
+				// Check distance to NPC
+				float distSq = CalculateDistance2D(m_x, m_y, target.x, target.y);
+				distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
+				if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
+					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
+					AddChatSystemMessage("You are too far away to interact with this NPC.");
+					return;
+				}
+
+				constexpr uint8_t CLASS_BANKER = 40;
+				if (target.class_id != CLASS_BANKER) {
+					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
+					AddChatSystemMessage("This NPC is not a banker.");
+					return;
+				}
+
+				LOG_INFO(MOD_INVENTORY, "Opening bank window for {} (id={})", target.name, i.npcId);
+				OpenBankWindow(i.npcId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TrainerToggleIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: TrainerToggleIntent");
+				// If trainer window is open, close it
+				if (IsTrainerWindowOpen()) {
+					CloseTrainerWindow();
+					return;
+				}
+
+				if (!m_combat_manager || !m_combat_manager->HasTarget()) {
+					LOG_DEBUG(MOD_MAIN, "Trainer toggle: No target selected");
+					return;
+				}
+
+				uint16_t target_id = m_combat_manager->GetTargetId();
+				auto it = m_entities.find(target_id);
+				if (it == m_entities.end()) {
+					LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} not found in entities", target_id);
+					return;
+				}
+
+				const Entity& target = it->second;
+
+				if (target.npc_type != 1) {
+					LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not an NPC (type={})", target.name, target.npc_type);
+					return;
+				}
+
+				constexpr uint8_t CLASS_WARRIOR_GM = 20;
+				constexpr uint8_t CLASS_BERSERKER_GM = 35;
+				if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
+					LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not a trainer (class={})", target.name, target.class_id);
+					AddChatSystemMessage("That is not a trainer.");
+					return;
+				}
+
+				LOG_DEBUG(MOD_MAIN, "Trainer toggle: Requesting trainer {} (id={}, class={})", target.name, target_id, target.class_id);
+				RequestTrainerWindow(target_id);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::WorldObjectInteractIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: WorldObjectInteractIntent dropId={}", i.dropId);
+				auto it = m_world_objects.find(i.dropId);
+				if (it != m_world_objects.end() && it->second.isTradeskillContainer()) {
+					LOG_INFO(MOD_INVENTORY, "Clicking tradeskill container: dropId={} name='{}' type={}",
+						i.dropId, it->second.name, it->second.object_type);
+					SendClickObject(i.dropId);
+				} else if (it != m_world_objects.end()) {
+					LOG_DEBUG(MOD_ENTITY, "World object {} is not a tradeskill container (type={})",
+						i.dropId, it->second.object_type);
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ZoningEnabledIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: ZoningEnabledIntent enabled={}", i.enabled);
+				SetZoningEnabled(i.enabled);
+				LOG_INFO(MOD_ZONE, "Zoning {}", i.enabled ? "enabled" : "disabled");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ChatSubmitIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: ChatSubmitIntent len={}", i.text.size());
+				ProcessChatInput(i.text);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: ReadItemIntent type={}", i.type);
+				RequestReadBook(i.bookText, i.type);
 			}
 			// ================================================================
-			// D16: UI intents (dual-path — callbacks handle primary,
-			// intents logged here as secondary. Phase 5 activates intent-only.)
+			// D16: UI intents (D20a — intent-only, callbacks removed)
 			// ================================================================
 			// Spell intents
 			else if constexpr (std::is_same_v<T, eqt::events::CastSpellIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: CastSpellIntent gem={}", i.gemSlot);
+				if (!m_spell_manager) return;
+				uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+				EQ::CastResult result = m_spell_manager->beginCastFromGem(i.gemSlot, targetId);
+				if (result == EQ::CastResult::Success) {
+					uint32_t spellId = m_spell_manager->getMemorizedSpell(i.gemSlot);
+					const EQ::SpellData* spell = m_spell_manager->getSpell(spellId);
+					if (spell) AddChatSystemMessage(fmt::format("Casting {}", spell->name));
+				} else if (result == EQ::CastResult::NotMemorized) {
+					AddChatSystemMessage(fmt::format("No spell in gem {}", i.gemSlot + 1));
+				} else if (result == EQ::CastResult::NotEnoughMana) {
+					AddChatSystemMessage("Insufficient mana");
+				} else if (result == EQ::CastResult::GemCooldown) {
+					AddChatSystemMessage("Spell not ready");
+				} else if (result == EQ::CastResult::AlreadyCasting) {
+					AddChatSystemMessage("Already casting");
+				} else if (result == EQ::CastResult::OutOfRange) {
+					AddChatSystemMessage("Target out of range");
+				} else if (result == EQ::CastResult::InvalidTarget) {
+					AddChatSystemMessage("Invalid target");
+				} else if (result == EQ::CastResult::NoLineOfSight) {
+					AddChatSystemMessage("You cannot see your target");
+				} else if (result == EQ::CastResult::Stunned) {
+					AddChatSystemMessage("You are stunned");
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ForgetSpellIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: ForgetSpellIntent gem={}", i.gemSlot);
+				if (m_spell_manager && m_spell_manager->forgetSpell(i.gemSlot)) {
+					AddChatSystemMessage(fmt::format("Forgot spell in gem {}", i.gemSlot + 1));
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ScribeSpellIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: ScribeSpellIntent spell={}", i.spellId);
+				ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SpellbookStateIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: SpellbookStateIntent open={}", i.isOpen);
+				SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::InterruptSpellIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: InterruptSpellIntent");
+				if (m_spell_manager) m_spell_manager->interruptCast();
 			}
 			// Buff/skill intents
 			else if constexpr (std::is_same_v<T, eqt::events::BuffCancelIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: BuffCancelIntent slot={}", i.slot);
+				if (m_buff_manager) {
+					m_buff_manager->removeBuffBySlot(0, i.slot);
+					AddChatSystemMessage(fmt::format("Buff in slot {} cancelled", i.slot + 1));
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SkillActivateIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: SkillActivateIntent skill={}", i.skillId);
+				if (m_skill_manager) {
+					m_skill_manager->activateSkill(static_cast<uint8_t>(i.skillId));
+				}
 			}
 			// Loot intents
 			else if constexpr (std::is_same_v<T, eqt::events::LootItemIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: LootItemIntent corpse={} slot={}", i.corpseId, i.slot);
+				LootItemFromCorpse(i.corpseId, i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::LootAllIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: LootAllIntent corpse={}", i.corpseId);
+				LootAllFromCorpse(i.corpseId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DestroyAllLootIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: DestroyAllLootIntent corpse={}", i.corpseId);
+				DestroyAllCorpseLoot(i.corpseId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::CloseLootIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: CloseLootIntent corpse={}", i.corpseId);
+				CloseLootWindow(i.corpseId);
 			}
 			// Vendor intents
 			else if constexpr (std::is_same_v<T, eqt::events::VendorBuyIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: VendorBuyIntent npc={} slot={}", i.npcId, i.slot);
+				BuyFromVendor(i.npcId, i.slot, i.quantity);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::VendorSellIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: VendorSellIntent npc={} slot={}", i.npcId, i.slot);
+				SellToVendor(i.npcId, i.slot, i.quantity);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::CloseVendorIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: CloseVendorIntent npc={}", i.npcId);
+				CloseVendorWindow();
 			}
 			// Bank intents
 			else if constexpr (std::is_same_v<T, eqt::events::CloseBankIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: CloseBankIntent");
+				CloseBankWindow();
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyMoveIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: BankCurrencyMoveIntent type={} amt={}", i.coinType, i.amount);
+				// Build and send MoveCoin packet
+				EQT::MoveCoin_Struct move;
+				if (i.fromBank) {
+					move.from_slot = EQT::COINSLOT_BANK;
+					move.to_slot = EQT::COINSLOT_INVENTORY;
+				} else {
+					move.from_slot = EQT::COINSLOT_INVENTORY;
+					move.to_slot = EQT::COINSLOT_BANK;
+				}
+				move.cointype1 = i.coinType;
+				move.cointype2 = i.coinType;
+				move.amount = i.amount;
+
+				SendMoveCoin(move);
+
+				// Update local currency values (server will confirm, but update locally for responsiveness)
+				uint32_t* srcPlatinum = i.fromBank ? &m_bank_platinum : &m_platinum;
+				uint32_t* srcGold = i.fromBank ? &m_bank_gold : &m_gold;
+				uint32_t* srcSilver = i.fromBank ? &m_bank_silver : &m_silver;
+				uint32_t* srcCopper = i.fromBank ? &m_bank_copper : &m_copper;
+
+				uint32_t* dstPlatinum = i.fromBank ? &m_platinum : &m_bank_platinum;
+				uint32_t* dstGold = i.fromBank ? &m_gold : &m_bank_gold;
+				uint32_t* dstSilver = i.fromBank ? &m_silver : &m_bank_silver;
+				uint32_t* dstCopper = i.fromBank ? &m_copper : &m_bank_copper;
+
+				switch (i.coinType) {
+					case EQT::COINTYPE_PP:
+						if (*srcPlatinum >= static_cast<uint32_t>(i.amount)) {
+							*srcPlatinum -= i.amount;
+							*dstPlatinum += i.amount;
+						}
+						break;
+					case EQT::COINTYPE_GP:
+						if (*srcGold >= static_cast<uint32_t>(i.amount)) {
+							*srcGold -= i.amount;
+							*dstGold += i.amount;
+						}
+						break;
+					case EQT::COINTYPE_SP:
+						if (*srcSilver >= static_cast<uint32_t>(i.amount)) {
+							*srcSilver -= i.amount;
+							*dstSilver += i.amount;
+						}
+						break;
+					case EQT::COINTYPE_CP:
+						if (*srcCopper >= static_cast<uint32_t>(i.amount)) {
+							*srcCopper -= i.amount;
+							*dstCopper += i.amount;
+						}
+						break;
+				}
+
+				LOG_DEBUG(MOD_INVENTORY, "Bank currency move: type={} amount={} fromBank={}, bank now: {}pp {}gp {}sp {}cp, inv now: {}pp {}gp {}sp {}cp",
+					i.coinType, i.amount, i.fromBank,
+					m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
+					m_platinum, m_gold, m_silver, m_copper);
+
+				// Publish CurrencyChanged + BankCurrencyChanged (bridge events handle UI updates)
+				if (m_bridge) {
+					eqt::state::CurrencyChangedData cdata;
+					cdata.platinum = static_cast<int32_t>(m_platinum);
+					cdata.gold = static_cast<int32_t>(m_gold);
+					cdata.silver = static_cast<int32_t>(m_silver);
+					cdata.copper = static_cast<int32_t>(m_copper);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
+
+					eqt::state::BankCurrencyChangedData bdata;
+					bdata.platinum = static_cast<int32_t>(m_bank_platinum);
+					bdata.gold = static_cast<int32_t>(m_bank_gold);
+					bdata.silver = static_cast<int32_t>(m_bank_silver);
+					bdata.copper = static_cast<int32_t>(m_bank_copper);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyConvertIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: BankCurrencyConvertIntent from={} amt={}", i.fromCoinType, i.amount);
+				// Conversion is always 10:1 ratio: 10 cp -> 1 sp, 10 sp -> 1 gp, 10 gp -> 1 pp
+				if (i.amount < 10 || (i.amount % 10) != 0) {
+					LOG_WARN(MOD_INVENTORY, "Invalid conversion amount: {} (must be multiple of 10)", i.amount);
+					return;
+				}
+
+				int32_t toCoinType = i.fromCoinType + 1;
+				if (toCoinType > EQT::COINTYPE_PP) {
+					LOG_WARN(MOD_INVENTORY, "Cannot convert platinum further");
+					return;
+				}
+
+				EQT::MoveCoin_Struct move;
+				move.from_slot = EQT::COINSLOT_BANK;
+				move.to_slot = EQT::COINSLOT_BANK;
+				move.cointype1 = i.fromCoinType;
+				move.cointype2 = toCoinType;
+				move.amount = i.amount;
+
+				SendMoveCoin(move);
+
+				LOG_DEBUG(MOD_INVENTORY, "Sent bank currency conversion: {} {} -> {} (cointype {} -> {})",
+					i.amount, (i.fromCoinType == EQT::COINTYPE_CP ? "copper" :
+					           i.fromCoinType == EQT::COINTYPE_SP ? "silver" : "gold"),
+					(toCoinType == EQT::COINTYPE_SP ? "silver" :
+					 toCoinType == EQT::COINTYPE_GP ? "gold" : "platinum"),
+					i.fromCoinType, toCoinType);
+
+				// Update local values for UI responsiveness (server will confirm)
+				uint32_t convertedAmount = i.amount / 10;
+				switch (i.fromCoinType) {
+					case EQT::COINTYPE_CP:
+						if (m_bank_copper >= static_cast<uint32_t>(i.amount)) {
+							m_bank_copper -= i.amount;
+							m_bank_silver += convertedAmount;
+						}
+						break;
+					case EQT::COINTYPE_SP:
+						if (m_bank_silver >= static_cast<uint32_t>(i.amount)) {
+							m_bank_silver -= i.amount;
+							m_bank_gold += convertedAmount;
+						}
+						break;
+					case EQT::COINTYPE_GP:
+						if (m_bank_gold >= static_cast<uint32_t>(i.amount)) {
+							m_bank_gold -= i.amount;
+							m_bank_platinum += convertedAmount;
+						}
+						break;
+				}
+
+				LOG_DEBUG(MOD_INVENTORY, "Bank currency after conversion: {}pp {}gp {}sp {}cp",
+					m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+				// Publish BankCurrencyChanged (bridge event handles UI update)
+				if (m_bridge) {
+					eqt::state::BankCurrencyChangedData bdata;
+					bdata.platinum = static_cast<int32_t>(m_bank_platinum);
+					bdata.gold = static_cast<int32_t>(m_bank_gold);
+					bdata.silver = static_cast<int32_t>(m_bank_silver);
+					bdata.copper = static_cast<int32_t>(m_bank_copper);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
+				}
 			}
 			// Trade intents
 			else if constexpr (std::is_same_v<T, eqt::events::TradeRequestIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: TradeRequestIntent target={}", i.targetId);
+				if (m_trade_manager) {
+					auto it = m_entities.find(static_cast<uint16_t>(i.targetId));
+					if (it != m_entities.end()) {
+						bool isNpc = (it->second.npc_type == 1);
+						m_trade_manager->requestTrade(static_cast<uint16_t>(i.targetId), it->second.name, isNpc);
+					}
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TradeAcceptIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: TradeAcceptIntent");
+				if (m_trade_manager) m_trade_manager->clickAccept();
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TradeCancelIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: TradeCancelIntent");
+				if (m_trade_manager) m_trade_manager->cancelTrade();
 			}
 			// Pet/group intents
 			else if constexpr (std::is_same_v<T, eqt::events::PetCommandIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: PetCommandIntent cmd={}", i.command);
+				SendPetCommand(static_cast<EQT::PetCommand>(i.command), i.targetId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::GroupInviteIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: GroupInviteIntent target={}", i.targetName);
+				SendGroupInvite(i.targetName);
+				AddChatSystemMessage(fmt::format("Inviting {} to group", i.targetName));
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DisbandIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: DisbandIntent");
+				if (m_in_group) {
+					if (m_is_group_leader) SendGroupDisband();
+					else SendLeaveGroup();
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DeclineInviteIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: DeclineInviteIntent");
+				DeclineGroupInvite();
 			}
 			// General intents
 			else if constexpr (std::is_same_v<T, eqt::events::RequestCampIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestCampIntent");
+				ProcessChatInput("/camp");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::RequestQuitIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestQuitIntent");
+				ProcessChatInput("/q");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::HotbarChangedIntent>) {
 				LOG_TRACE(MOD_MAIN, "Bridge intent: HotbarChangedIntent");
 			}
 			// Debug/diagnostic intents
 			else if constexpr (std::is_same_v<T, eqt::events::SlashCommandIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: SlashCommandIntent cmd={}", i.fullCommand);
+				ProcessChatInput(i.fullCommand);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::RequestMemoryReport>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestMemoryReport");
+				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestMemoryReport (D20d)");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::RequestSceneDump>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestSceneDump");
+				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestSceneDump (D20d)");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ToggleAutoAttackIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: ToggleAutoAttackIntent");
+				if (m_combat_manager) {
+					if (m_combat_manager->IsAutoAttackEnabled()) {
+						m_combat_manager->DisableAutoAttack();
+					} else if (m_combat_manager->HasTarget()) {
+						m_combat_manager->EnableAutoAttack();
+					}
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::AttackIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: AttackIntent target={}", i.targetId);
+				if (m_combat_manager) m_combat_manager->SetTarget(static_cast<uint16_t>(i.targetId));
+				if (m_combat_manager && m_combat_manager->HasTarget()) m_combat_manager->EnableAutoAttack();
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: MemorizeSpellIntent gem={} spell={}", i.gemSlot, i.spellId);
+				if (m_spell_manager) m_spell_manager->memorizeSpell(i.gemSlot, i.spellId);
 			}
 			else {
 				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");

@@ -569,16 +569,18 @@ no longer includes any renderer headers.
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | D17a | Add missing entity event types + fix weapon skill state ownership | done | |
-| D17b | Remove direct renderer calls from entity packet handlers | pending | |
-| D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | pending | |
-| D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | pending | |
-| D19a | Remove direct renderer calls from small handlers (chat, combat, spell, skill, pet, group, door, world, swimming, weather, time) | pending | |
-| D19b | Remove direct renderer calls from zone lifecycle functions | pending | |
-| D20a | Remove callback lambdas + activate intent processing | pending | |
-| D20b | Remove raw pointer coupling from InitGraphics() | pending | |
-| D20c | Refactor UpdateGraphics / zone loading ownership | pending | |
+| D17b | Remove direct renderer calls from entity packet handlers | done | |
+| D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | done | |
+| D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | done | |
+| D19a | Remove direct renderer calls from small handlers (chat, combat, spell, skill, pet, group, door, world, swimming, weather, time) | done | |
+| D19b | Remove direct renderer calls from zone lifecycle functions | done | |
+| D19c | Remove remaining packet handler and chat routing renderer calls | pending | |
+| D20a | Remove callback lambdas + activate intent processing | done | |
+| D20b | Remove raw pointer coupling, remaining callbacks, and renderer lifecycle from InitGraphics() | pending | |
+| D20c | Refactor UpdateGraphics, zone loading ownership, and game-side renderer queries | pending | |
 | D20d | Remove debug/toggle slash commands from EverQuest | pending | |
 | D20e | Remove m_renderer from EverQuest | pending | |
+| D20f | Decouple RDP server from renderer | pending | |
 
 ### D17a: Add missing entity event types + fix weapon skill state ownership
 
@@ -716,16 +718,63 @@ Acceptance criteria:
 - Loading screen, progress updates, and zone-ready notification all function
 - Both loading-thread and instant-load paths work
 
+### D19c: Remove remaining packet handler and chat routing renderer calls
+
+Remove all remaining `m_renderer->` calls from packet handlers and chat routing
+functions that were not covered by D17-D19b. These are dual-path calls where
+bridge events already carry the same data — the `m_renderer` blocks are redundant.
+
+**Chat routing (7 call sites) — remove `#ifdef EQT_HAS_GRAPHICS` / `m_renderer` blocks:**
+- `AddChatMessage()` (lines 7260-7279) — routes channel chat to chatWindow via renderer
+- `AddChatSystemMessage()` (lines 7362-7370) — routes system messages via renderer
+- `AddChatCombatMessage()` (lines 7388-7405) — routes combat messages via renderer
+- Spell fade handler (lines 12782-12792) — spell wear-off via renderer chatWindow
+- Formatted message handler (lines 12899-12918) — NPC dialogue via renderer chatWindow
+- Formatted message handler (lines 12997-12998) — second path via renderer chatWindow
+- `ZoneProcessConsider()` (line 17585) — consider results with colored text
+
+All 7 already publish bridge events (ChatMessage, SystemMessage, etc.) — the renderer
+blocks are dead dual-path code left from the incremental migration.
+
+**Packet handler calls (6 call sites):**
+- `ZoneProcessItemPlayerPacketContainer()` (lines 2214-2217) — item display in vendor/loot
+  window via renderer. Need new bridge events: `VendorItemReceived`, `LootItemReceived`
+- `ZoneProcessItemPacketContainer()` (line 2665) — spell scribe → spellBookWindow refresh.
+  Need new bridge event: `SpellScribeCompleted`
+- `ZoneProcessClickObjectAction()` (line 14474) — tradeskill container open via renderer.
+  Need new bridge event: `TradeskillContainerOpened`
+- `ZoneProcessClickObjectAction()` (line 14486) — tradeskill container close via renderer.
+  Need new bridge event: `TradeskillContainerClosed`
+- `ZoneProcessTradeSkillCombine()` (lines 14507-14508) — **dead code** (empty body). Remove.
+- `/skills` slash command (line 9762-9763) — `toggleSkillsWindow()` via renderer.
+  Need new bridge event: `ToggleSkillsWindow`
+
+**Group window calls (4 call sites) — redundant, bridge events already exist:**
+- `ZoneProcessGroupInvite()` (lines 14954-14959) — `showPendingInvite()` + `openGroupWindow()`
+- `ZoneProcessGroupUpdate()` (lines 15008-15012) — `hidePendingInvite()`
+- `ZoneProcessGroupDisband()` (lines 15201-15205) — `hidePendingInvite()`
+- `ZoneProcessGroupCancelInvite()` (lines 15223-15227) — `hidePendingInvite()`
+
+**Pet window calls (2 call sites) — redundant, bridge events already exist:**
+- `OnPetCreated()` (lines 19257-19258) — `openPetWindow()` via renderer
+- `OnPetButtonStateChanged()` (lines 19292-19299) — **dead code** (body does nothing). Remove.
+
+Acceptance criteria:
+- Zero `m_renderer->` calls in chat routing functions
+- Zero `m_renderer->` calls in item, tradeskill, group, pet packet handlers
+- Dead code removed (tradeskill combine ack, OnPetButtonStateChanged)
+- All rendering driven solely through bridge events
+- `#ifdef EQT_HAS_GRAPHICS` blocks removed from these functions
+
 ### D20a: Remove callback lambdas + activate intent processing
 
-Remove all callback lambdas from InitGraphics() and activate the intent handlers
-in `ProcessBridgeIntents()` that were logged as stubs in D15/D16. After this unit,
-intents are the sole path for renderer→game communication.
+Remove direct renderer callback lambdas from InitGraphics() and activate the intent
+handlers in `ProcessBridgeIntents()` that were logged as stubs in D15/D16. After
+this unit, intents are the sole path for renderer→game communication.
 
-**Callback lambdas to remove (25+ total):**
+**What D20a actually completed:**
 
-*Direct renderer callbacks (11):*
-- `setHUDCallback` — replace with `PlayerStatsChanged` event (renderer maintains own state copy)
+*Direct renderer callbacks removed (11):*
 - `setMovementCallback` — replaced by `PlayerPositionChanged` intent (D14)
 - `setTargetCallback` — replaced by `TargetIntent` (D15)
 - `setLootCorpseCallback` — replaced by `LootCorpseIntent` (D15)
@@ -736,53 +785,56 @@ intents are the sole path for renderer→game communication.
 - `setDoorInteractCallback` — replaced by `DoorInteractIntent` (D15)
 - `setWorldObjectInteractCallback` — replaced by `WorldObjectInteractIntent` (D15)
 - `setSpellGemCastCallback` — replaced by `CastSpellIntent` (D16)
+- `setReadItemCallback` — replaced by `ReadItemIntent` (D15)
 
-*WindowManager callbacks (14+):*
+*WindowManager callbacks removed (10):*
 - `setGemCastCallback`, `setGemForgetCallback`, `setSpellbookStateCallback`,
   `setScribeSpellRequestCallback` — spell intents (D16)
 - `setBuffCancelCallback` — `BuffCancelIntent` (D16)
-- `setSkillActivateCallback`, `setHotbarCreateCallback` — skill intents (D16)
-- `setGroupInviteCallback`, `setGroupDisbandCallback`, `setGroupAcceptCallback`,
+- `setSkillActivateCallback` — `SkillActivateIntent` (D16)
+- `setGroupInviteCallback`, `setGroupDisbandCallback`,
   `setGroupDeclineCallback` — group intents (D16)
 - `setPetCommandCallback` — `PetCommandIntent` (D16)
-- `setHotbarActivateCallback` — hotbar intents (D16)
-- `setChatSubmitCallback`, `setReadItemCallback` — chat/read intents (D15)
+- `setChatSubmitCallback` — `ChatSubmitIntent` (D15)
 
-*Chat window callbacks:*
-- `setEntityNameProvider` — renderer maintains own entity name cache from events
-- `setLinkClickCallback` — `ChatLinkClickIntent` (new, or route through SlashCommandIntent)
-- `setCommandRegistry` — renderer owns command tab-completion
+*Setup*Callbacks() emptied (4 functions):*
+- `SetupLootCallbacks` — body emptied (intents handle actions)
+- `SetupVendorCallbacks` — body emptied
+- `SetupBankCallbacks` — body emptied
+- `SetupTradeWindowCallbacks` — callbacks removed, `initTradeWindow` config retained
 
-*Manager callbacks:*
-- buff_manager `buff_fade_callback` — bridge event for vision change
-- skill_manager `setOnSkillActivated`, `setOnSkillUpdate` — bridge events
+*Intent activation:* All 30+ intent handlers in `ProcessBridgeIntents()` activated
+with real game logic. Only 3 remain as stubs: `HotbarChangedIntent` (UI-only),
+`RequestMemoryReport` (D20d), `RequestSceneDump` (D20d).
 
-**Setup*Callbacks() to remove (8 functions):**
-- `SetupLootCallbacks` (line 4523, called from InitGraphics)
-- `SetupVendorCallbacks` (line 4560, called from InitGraphics)
-- `SetupBankCallbacks` (line 4591, called from InitGraphics)
-- `SetupTradeWindowCallbacks` (line 4775, called from InitGraphics)
-- `SetupTradeskillCallbacks` (line 4826, called from InitGraphics)
-- `SetupTrainerCallbacks` (line 5399, called from InitGraphics)
-- `SetupInventoryCallbacks` (line 3688, called from **constructor** line 955)
-- `SetupTradeManagerCallbacks` (line 4110, called from **constructor** line 955)
-
-**Intent activation:** All 42 stub intent handlers in `ProcessBridgeIntents()` must
-be activated with real game logic (moved from the callback lambdas). This is the
-bulk of the work — each stub becomes a real handler calling the same game logic
-the callback currently calls.
+**Deferred to D20b (still present in InitGraphics):**
+- `setHUDCallback` — complex HUD string builder from game state
+- `setHotbarActivateCallback` — complex: spell cast, item use, emote, skill
+- `setGroupAcceptCallback` — no intent yet
+- `setHotbarCreateCallback` — hotbar creation handler
+- `setLinkClickCallback` — chat link click handler
+- `setEntityNameProvider` — lambda captures `m_entities`
+- `setCommandRegistry(m_command_registry.get())` — raw pointer
+- `setBuffFadeCallback` — vision buff handler
+- `setOnSkillActivated`, `setOnSkillUpdate` — skill feedback callbacks
+- `SetupTradeskillCallbacks()` — 2 callbacks still fully implemented
+- `SetupTrainerCallbacks()` — 2 callbacks still fully implemented
+- `SetupInventoryCallbacks()` — 3 callbacks still fully implemented
+- `SetupTradeManagerCallbacks()` — 8 callbacks still fully implemented
 
 Acceptance criteria:
-- Zero callback lambdas in InitGraphics() or constructor
-- Zero Setup*Callbacks() function calls or implementations
-- All 43 intent types in ProcessBridgeIntents() have real processing (no stubs)
+- Direct renderer callbacks removed (11 of 12 — `setHUDCallback` deferred to D20b)
+- WindowManager callbacks removed (10 of 14+ — 4 deferred to D20b)
+- Setup*Callbacks: 4 emptied, 4 deferred to D20b
+- All 30+ activated intent types in ProcessBridgeIntents() have real processing
 - All existing functionality preserved through intent-only path
 
-### D20b: Remove raw pointer coupling from InitGraphics()
+### D20b: Remove raw pointer coupling, remaining callbacks, and renderer lifecycle from InitGraphics()
 
-Remove direct pointer passing that couples renderer to game state:
+Remove direct pointer passing that couples renderer to game state, plus all
+remaining callback registrations deferred from D20a.
 
-*Listed in original plan:*
+**Raw pointer coupling to remove (originally planned):**
 - Remove `setInventoryManager(m_inventory_manager.get())` — bridge pushes
   `InventoryItemUpdated` events instead
 - Remove `setCollisionMap(m_zone_map.get())` — bridge pushes `CollisionMapChanged`
@@ -796,14 +848,52 @@ Remove direct pointer passing that couples renderer to game state:
 - Remove `initPlayerStatusWindow(this)` — bridge pushes `PlayerStatsChanged` events
 - Remove `initSkillsWindow(m_skill_manager.get())` — bridge pushes `SkillValueChanged`
   events
-
-*Missing from original plan (added by audit):*
 - Remove `initPetWindow(this, m_buff_manager.get())` — passes both `EverQuest*` and
   `BuffManager*`; bridge pushes pet buff events instead
+- Remove `initTradeWindow(m_trade_manager.get())` in `SetupTradeWindowCallbacks()`
+
+**Chat window pointer/lambda coupling to remove:**
 - Remove `chatWindow->setCommandRegistry(m_command_registry.get())` — renderer owns
   its own command tab-completion (or receives command list via event)
 - Remove `chatWindow->setEntityNameProvider(...)` — lambda accesses `m_entities`;
   renderer maintains entity name cache from `EntitySpawned`/`EntityDespawned` events
+- Remove `chatWindow->setLinkClickCallback(...)` — lambda captures `this`;
+  convert to `ChatLinkClickIntent` (new intent type)
+
+**Remaining callbacks deferred from D20a:**
+
+*InitGraphics callbacks (need new intents):*
+- Remove `setHUDCallback` — renderer maintains own HUD state from `PlayerStatsChanged`
+  events; complex HUD string builder moves to renderer
+- Remove `setHotbarActivateCallback` (lines 18486-18580) — complex handler for spell
+  cast, item use, emote execution, skill activation. Convert to `HotbarActivateIntent`
+  (new intent type carrying slot index + action type)
+- Remove `setGroupAcceptCallback` — convert to `GroupAcceptIntent` (new intent type)
+- Remove `setHotbarCreateCallback` — convert to `HotbarCreateIntent` (new intent type)
+
+*Manager callbacks (need new bridge events):*
+- Remove `setBuffFadeCallback` (lines 18357-18394) — vision buff expiration handler.
+  Convert to `BuffFadedEvent` bridge event; renderer handles vision state locally
+- Remove `setOnSkillActivated` (lines 18433-18455) — skill activation feedback with
+  cooldown calculation. Convert to `SkillActivatedEvent` bridge event
+- Remove `setOnSkillUpdate` (lines 18458-18463) — skill-up notification.
+  Convert to `SkillUpdatedEvent` bridge event
+
+*Setup*Callbacks still fully implemented (need intents + removal):*
+- Remove `SetupTradeskillCallbacks()` — 2 callbacks (`setOnTradeskillCombine`,
+  `setOnTradeskillClose`). Convert to `TradeskillCombineIntent`, `TradeskillCloseIntent`
+- Remove `SetupTrainerCallbacks()` — 2 callbacks (`setSkillTrainCallback`,
+  `setTrainerCloseCallback`). Convert to `TrainSkillIntent`, `CloseTrainerIntent`
+- Remove `SetupInventoryCallbacks()` — 3 callbacks (`setMoveItemCallback`,
+  `setDeleteItemCallback`, `setEquipmentChangedCallback`). Convert to
+  `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`
+- Remove `SetupTradeManagerCallbacks()` — 8 callbacks covering trade network
+  protocol. Convert to trade intents or move trade network calls to bridge
+
+**Renderer lifecycle in InitGraphics:**
+- Remove `m_renderer->setBridge(m_irrlichtBridge.get())` — Application handles this
+- Remove `m_renderer->initLoadingScreen(config)` — Application handles this
+- Remove `m_renderer->shutdown()` in `ShutdownGraphics()` — Application handles this
 
 **Note:** Three windows hold raw `EverQuest*` back-pointers (group, player status,
 pet). These windows must be refactored to work from event-driven state copies instead
@@ -812,13 +902,17 @@ lists, pet window queries buff data, player status window queries full stats.
 
 Acceptance criteria:
 - Zero raw game-state pointers passed to renderer or UI windows
+- Zero callback lambdas remaining in InitGraphics() or constructor
+- Zero Setup*Callbacks() function calls or implementations
 - All UI windows work from event-driven local state copies
 - `setCollisionMap()` replaced by `CollisionMapChanged` event at all 4 call sites
+- All new intent types added and handled in `ProcessBridgeIntents()`
 
-### D20c: Refactor UpdateGraphics / zone loading ownership
+### D20c: Refactor UpdateGraphics, zone loading ownership, and game-side renderer queries
 
 Restructure `UpdateGraphics()` and zone loading so the renderer owns its own frame
-loop and loading pipeline. This is prerequisite for removing `m_renderer` (D20e).
+loop and loading pipeline. Also remove remaining game-side queries to renderer state.
+This is prerequisite for removing `m_renderer` (D20e).
 
 **UpdateGraphics() refactoring:**
 Currently `Application::mainLoop()` calls `m_eqClient->UpdateGraphics(deltaTime)`,
@@ -841,6 +935,30 @@ Per-frame state pushes that currently happen in UpdateGraphics() must become eve
 - Game thread publishes zone data through events; renderer manages its own loading
 - `OnGraphicsComplete()` replaced by renderer notifying game thread via intent when
   zone assets are ready
+- Zone cleanup synchronous calls (`setNavmesh(nullptr)`, `setCollisionMap(nullptr)`,
+  `unloadZone()`, `showLoadingScreen()`, `setZoneReady(false)`) at lines 13498-13564
+  move to renderer-managed lifecycle
+
+**BSP tree water detection (line 15549):**
+`CheckWaterState()` calls `m_renderer->getZoneBspTree()` — the game thread queries
+renderer-owned BSP tree data to detect water regions. Options:
+  (a) Renderer pushes water region data at zone load via event — game thread maintains
+      own region lookup
+  (b) Renderer handles water detection and pushes `WaterStateChanged` intent when
+      player enters/exits water
+  (c) Game thread maintains own BSP region copy from zone data
+Option (b) is preferred — renderer already has player position and BSP tree.
+
+**requestQuit calls (2 sites):**
+- `/quit` slash command (line 8923) — `m_renderer->requestQuit()`
+- `ZoneProcessLogoutReply()` (line 15842) — `m_renderer->requestQuit()`
+Convert to `RequestQuitIntent` via bridge, or have Application own quit signaling.
+
+**Hotbar config save/load (2 sites):**
+- `SaveHotbarConfig()` (line 20309) — reads hotbar state from renderer windowManager
+- `LoadHotbarConfig()` (line 20352) — writes hotbar state to renderer windowManager
+After D20b, hotbar state lives in renderer. Save/load moves to renderer or uses
+bridge round-trip (game pushes `SaveHotbarConfigIntent`, renderer saves).
 
 **Application class changes:**
 - `Application` owns the renderer directly (not via EverQuest)
@@ -853,31 +971,55 @@ Acceptance criteria:
 - Zone loading pipeline works through bridge events
 - Per-frame polls converted to change-driven events
 - Audio positioning solved (event or render-side)
+- Zero game-side queries to renderer state (BSP tree, hotbar config, quit)
+- `requestQuit` works through bridge or Application-level signaling
 
 ### D20d: Remove debug/toggle slash commands from EverQuest
 
-Move renderer-specific commands to the renderer (~19 commands):
+Move renderer-specific commands to the renderer (~26 commands):
+
+*Toggle/debug commands (~19, originally listed):*
 - `/sort`, `/upload`, `/portal`, `/stencil`, `/governor`, `/plight`, `/olight`,
   `/zlight`, `/fire`, `/renderdist`, `/clipdist`, `/sky`, `/skytype`, `/time`,
-  `/detail`, `/togglegrass`, `/toggleplants`, `/skills` (window toggle), `/filter`
+  `/skills` (window toggle), `/filter`, `/timestamp`, `/particlereload`,
+  `/weatherreload`
+
+*Detail manager commands (7, added by audit):*
+- `/detail`, `/togglegrass`, `/toggleplants`, `/togglerocks`, `/toggledebris`,
+  `/season`, `/detailinfo`
+- All 7 access `m_renderer->getDetailManager()` (lines 10058-10215)
+
+*Diagnostic commands (added by audit):*
+- `/pmem` — `runPmemDiagnostics()` (lines 7519-7611). Game thread collects its stats
+  (process RSS, entity count, connection stats, audio metrics), pushes event. Renderer
+  merges with its stats (`getMemoryReport()`), displays combined report. Needs
+  `RequestMemoryReport` intent handler (currently stub) and `MemoryReportEvent`
+- `/loaddump` — `runLoadDiagnostics()` (line 7624). `m_renderer->dumpScene()`. Needs
+  `RequestSceneDump` intent handler (currently stub)
+
+*Implementation approach:*
 - Game thread posts `SlashCommandIntent { fullCommand }` through bridge
 - Renderer handles renderer-specific commands directly
 - Game-affecting commands (`/camp`, `/quit`, `/who`, `/tell`, etc.) stay on game thread
-- `/pmem` becomes a bridge round-trip: game thread collects its stats, pushes event,
-  renderer collects its stats, merges, displays
 - `/filter` needs special handling — accesses chat window state (may need intent)
 
 Acceptance criteria:
 - Zero renderer-specific slash commands in EverQuest
-- All toggle/debug commands work through bridge
+- Zero `m_renderer->getDetailManager()` calls in EverQuest
+- Zero `m_renderer->getMemoryReport()` / `dumpScene()` calls in EverQuest
+- All toggle/debug/detail/diagnostic commands work through bridge
+- `RequestMemoryReport` and `RequestSceneDump` intent stubs activated
 
 ### D20e: Remove m_renderer from EverQuest
 
-The final decoupling (after D20a-D20d are complete):
-- Remove `m_renderer` member from EverQuest class
-- Remove `GetRenderer()` accessor from eq.h
+The final decoupling (after D19c and D20a-D20d are complete):
+- Remove `m_renderer` member from EverQuest class (eq.h line 1579)
+- Remove `GetRenderer()` accessor from eq.h (line 997)
 - Remove `#include` of all renderer/graphics headers from eq.h/eq.cpp
   (currently: `constrained_renderer_config.h`, `loading_thread.h`)
+- Move `inventory_constants.h` out of `graphics/ui/` to `include/client/state/`
+  (it contains pure game-state constants — slot IDs, equipment enums, container counts —
+  with zero rendering dependencies, but is trapped in the graphics directory tree)
 - Replace `InitGraphics()` with `attachBridge(GameStateBridge*)`
 - `ShutdownGraphics()` reduced to `detachBridge()` (renderer cleanup owned by Application)
 - EverQuest communicates solely through bridge
@@ -887,6 +1029,23 @@ Acceptance criteria:
 - eq.cpp has zero references to `IrrlichtRenderer`
 - EverQuest can be instantiated with no renderer (headless mode works via null bridge)
 - All existing functionality preserved through bridge path
+
+### D20f: Decouple RDP server from renderer
+
+`SetupRDPAudio()` (lines 20487-20493) accesses `m_renderer->getRDPServer()` to
+connect audio transport to the RDP server. The RDP server should not be accessed
+through the renderer.
+
+Options:
+  (a) Application owns RDP server directly (not via renderer) — RDP server created
+      at startup, passed to renderer for frame delivery, passed to audio for transport
+  (b) Renderer exposes audio transport interface via bridge event — game thread
+      receives `AudioTransportAvailable` event with connection info
+
+Acceptance criteria:
+- Zero `m_renderer->getRDPServer()` calls in EverQuest
+- RDP audio setup works without renderer access
+- RDP and VNC can still run simultaneously
 
 ---
 

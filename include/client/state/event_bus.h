@@ -130,6 +130,8 @@ enum class GameEventType {
     CharacterInfoChanged,
     WorldObjectSpawned,
     NoteWindowOpened,
+    SpellScribeCompleted,
+    ToggleSkillsWindow,
 };
 
 // ============================================================================
@@ -700,6 +702,14 @@ struct NoteWindowOpenedData {
     uint8_t type;  // 0=book, 1=note
 };
 
+struct SpellScribeCompletedData {
+    uint32_t spellId;
+    uint16_t slot;
+};
+
+struct ToggleSkillsWindowData {};
+
+
 // ============================================================================
 // Variant type for all event data
 // ============================================================================
@@ -800,7 +810,9 @@ using EventData = std::variant<
     ExpProgressChangedData,
     CharacterInfoChangedData,
     WorldObjectSpawnedData,
-    NoteWindowOpenedData
+    NoteWindowOpenedData,
+    SpellScribeCompletedData,
+    ToggleSkillsWindowData
 >;
 
 // Game event combining type and data

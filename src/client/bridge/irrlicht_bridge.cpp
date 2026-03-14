@@ -7,6 +7,7 @@
 #include "client/graphics/ui/skill_trainer_window.h"
 #include "client/graphics/ui/group_window.h"
 #include "client/graphics/ui/inventory_constants.h"
+#include "client/graphics/ui/spell_book_window.h"
 #include "common/logging.h"
 #include <ctime>
 #include <memory>
@@ -301,8 +302,16 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Group events (D12)
     case state::GameEventType::GroupChanged:
-        // GroupWindow polls group state via update() each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupChanged");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto* groupWindow = wm->getGroupWindow();
+                if (groupWindow) {
+                    // Hide pending invite on any group state change (join, disband, cancel)
+                    groupWindow->hidePendingInvite();
+                }
+            }
+        }
         break;
     case state::GameEventType::GroupMemberUpdated:
         // GroupWindow polls member data via update() each frame — no action needed.
@@ -720,6 +729,25 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::NoteWindowOpenedData>(event.data);
             renderer_->showNoteWindow(d.text, d.type);
+        }
+        break;
+    case state::GameEventType::SpellScribeCompleted:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto* spellBookWindow = wm->getSpellBookWindow();
+                if (spellBookWindow) {
+                    spellBookWindow->refresh();
+                }
+            }
+        }
+        break;
+    case state::GameEventType::ToggleSkillsWindow:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->toggleSkillsWindow();
+            }
         }
         break;
     }
