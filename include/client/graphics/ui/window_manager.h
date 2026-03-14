@@ -34,6 +34,8 @@
 
 class TradeManager;
 
+namespace eqt { namespace bridge { class GameStateBridge; } }
+
 namespace EQ {
 struct ActiveBuff;
 class SpellDatabase;
@@ -63,6 +65,9 @@ class WindowManager {
 public:
     WindowManager();
     ~WindowManager();
+
+    // Bridge for pushing intents to game thread (D20b1)
+    void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
 
     // Initialize with Irrlicht components
     void init(irr::video::IVideoDriver* driver,
@@ -545,6 +550,9 @@ private:
     void addToZOrder(WindowBase* window);
     void removeFromZOrder(WindowBase* window);
     std::vector<WindowBase*> windowZOrder_;  // Windows in z-order (back = topmost)
+
+    // Bridge for pushing intents (D20b1)
+    eqt::bridge::GameStateBridge* bridge_ = nullptr;
 
     // Irrlicht components
     irr::video::IVideoDriver* driver_ = nullptr;

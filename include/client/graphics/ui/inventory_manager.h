@@ -16,6 +16,8 @@ class Packet;
 }
 }
 
+namespace eqt { namespace bridge { class GameStateBridge; } }
+
 namespace eqt {
 namespace inventory {
 
@@ -95,6 +97,9 @@ class InventoryManager {
 public:
     InventoryManager();
     ~InventoryManager();
+
+    // Bridge for pushing intents to game thread (D20b1)
+    void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
 
     // Player info for validation
     void setPlayerInfo(uint32_t race, uint32_t classId, uint8_t level);
@@ -260,7 +265,10 @@ private:
     // Change counter - bumped on every mutation
     uint32_t changeCounter_ = 0;
 
-    // Callbacks
+    // Bridge for pushing intents (D20b1)
+    eqt::bridge::GameStateBridge* bridge_ = nullptr;
+
+    // Callbacks (legacy — being replaced by bridge intents)
     MoveItemCallback moveItemCallback_;
     DeleteItemCallback deleteItemCallback_;
     EquipmentChangedCallback equipmentChangedCallback_;

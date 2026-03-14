@@ -3621,31 +3621,7 @@ void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 
 void EverQuest::SetupInventoryCallbacks()
 {
-	if (!m_inventory_manager) {
-		return;
-	}
-
-	// Set callback for when player moves an item
-	m_inventory_manager->setMoveItemCallback(
-		[this](int16_t fromSlot, int16_t toSlot, uint32_t quantity) {
-			SendMoveItem(fromSlot, toSlot, quantity);
-		}
-	);
-
-	// Set callback for when player destroys an item
-	m_inventory_manager->setDeleteItemCallback(
-		[this](int16_t slot) {
-			SendDeleteItem(slot);
-		}
-	);
-
-	// Set callback for when player equipment slot changes (for appearance updates)
-	m_inventory_manager->setEquipmentChangedCallback(
-		[this](int16_t slotId) {
-			LOG_DEBUG(MOD_INVENTORY, "Equipment slot {} changed, updating appearance", slotId);
-			UpdatePlayerAppearanceFromInventory();
-		}
-	);
+	/* D20b1: InventoryManager pushes MoveItemIntent/DeleteItemIntent/EquipmentChangedIntent via bridge */
 }
 
 void EverQuest::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity)
@@ -4392,54 +4368,7 @@ void EverQuest::SetupTradeWindowCallbacks()
 
 void EverQuest::SetupTradeskillCallbacks()
 {
-	auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
-	if (!windowManager) {
-		LOG_WARN(MOD_MAIN, "Cannot set up tradeskill callbacks - window manager not available");
-		return;
-	}
-
-	// Set callback for when player clicks Combine in tradeskill container
-	windowManager->setOnTradeskillCombine([this]() {
-		// Get the tradeskill window to determine if it's a world container or inventory container
-		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
-		if (!windowManager) return;
-
-		auto* tradeskillWindow = windowManager->getTradeskillContainerWindow();
-		if (!tradeskillWindow || !tradeskillWindow->isOpen()) return;
-
-		if (tradeskillWindow->isWorldContainer()) {
-			// For world containers, send combine to the world container slot
-			SendTradeSkillCombine(eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE);
-			LOG_DEBUG(MOD_INVENTORY, "Sent tradeskill combine for world container");
-		} else {
-			// For inventory containers, send combine to the container's slot
-			int16_t containerSlot = tradeskillWindow->getContainerSlot();
-			SendTradeSkillCombine(containerSlot);
-			LOG_DEBUG(MOD_INVENTORY, "Sent tradeskill combine for inventory container at slot {}", containerSlot);
-		}
-	});
-
-	// Set callback for when tradeskill container window is closed
-	windowManager->setOnTradeskillClose([this]() {
-		auto* windowManager = m_renderer ? m_renderer->getWindowManager() : nullptr;
-		if (!windowManager) return;
-
-		auto* tradeskillWindow = windowManager->getTradeskillContainerWindow();
-		if (!tradeskillWindow) return;
-
-		if (tradeskillWindow->isWorldContainer()) {
-			// For world containers, notify server that we're closing
-			uint32_t dropId = tradeskillWindow->getWorldObjectId();
-			if (dropId != 0) {
-				SendCloseContainer(dropId);
-				LOG_DEBUG(MOD_INVENTORY, "Sent close container for world object dropId={}", dropId);
-			}
-			m_active_tradeskill_object_id = 0;
-		}
-		// For inventory containers, nothing special needed - items are already in inventory
-	});
-
-	LOG_DEBUG(MOD_MAIN, "Tradeskill container callbacks set up");
+	/* D20b1: WindowManager pushes TradeskillCombineIntent/TradeskillCloseIntent via bridge */
 }
 
 void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
@@ -4891,25 +4820,7 @@ void EverQuest::CloseBankWindow()
 
 void EverQuest::SetupTrainerCallbacks()
 {
-	if (!m_renderer || !m_renderer->getWindowManager()) {
-		return;
-	}
-
-	auto* windowManager = m_renderer->getWindowManager();
-
-	// Set callback for when player clicks Train button
-	windowManager->setSkillTrainCallback([this](uint8_t skillId) {
-		TrainSkill(skillId);
-	});
-
-	// Set callback for when player closes the trainer window
-	windowManager->setTrainerCloseCallback([this]() {
-		CloseTrainerWindow();
-	});
-
-	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Trainer callbacks set up");
-	}
+	/* D20b1: WindowManager pushes TrainSkillIntent/CloseTrainerIntent via bridge */
 }
 
 void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
@@ -18110,6 +18021,14 @@ bool EverQuest::InitGraphics(int width, int height) {
 	m_renderer->setBridge(m_irrlichtBridge.get());
 	m_bridge = m_irrlichtBridge.get();
 
+	// D20b1: Wire bridge to WindowManager and InventoryManager for intent pushing
+	if (m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->setBridge(m_bridge);
+	}
+	if (m_inventory_manager) {
+		m_inventory_manager->setBridge(m_bridge);
+	}
+
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
@@ -19836,6 +19755,33 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::HotbarChangedIntent>) {
 				LOG_TRACE(MOD_MAIN, "Bridge intent: HotbarChangedIntent");
+			}
+			// Tradeskill intents (D20b1)
+			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCombineIntent>) {
+				SendTradeSkillCombine(i.containerSlot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCloseIntent>) {
+				if (i.dropId != 0) {
+					SendCloseContainer(i.dropId);
+				}
+				m_active_tradeskill_object_id = 0;
+			}
+			// Trainer intents (D20b1)
+			else if constexpr (std::is_same_v<T, eqt::events::TrainSkillIntent>) {
+				TrainSkill(i.skillId);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::CloseTrainerIntent>) {
+				CloseTrainerWindow();
+			}
+			// Inventory intents (D20b1)
+			else if constexpr (std::is_same_v<T, eqt::events::MoveItemIntent>) {
+				SendMoveItem(i.fromSlot, i.toSlot, i.quantity);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::DeleteItemIntent>) {
+				SendDeleteItem(i.slot);
+			}
+			else if constexpr (std::is_same_v<T, eqt::events::EquipmentChangedIntent>) {
+				UpdatePlayerAppearanceFromInventory();
 			}
 			// Debug/diagnostic intents
 			else if constexpr (std::is_same_v<T, eqt::events::SlashCommandIntent>) {

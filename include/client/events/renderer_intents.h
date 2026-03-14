@@ -208,6 +208,40 @@ struct RequestSceneDump {};
 
 struct HotbarChangedIntent {};
 
+// --- Tradeskill ---
+
+struct TradeskillCombineIntent {
+    int16_t containerSlot;  // SLOT_TRADESKILL_EXPERIMENT_COMBINE for world containers
+};
+
+struct TradeskillCloseIntent {
+    uint32_t dropId;  // World object drop ID (0 for inventory containers)
+};
+
+// --- Trainer ---
+
+struct TrainSkillIntent {
+    uint8_t skillId;
+};
+
+struct CloseTrainerIntent {};
+
+// --- Inventory ---
+
+struct MoveItemIntent {
+    int16_t fromSlot;
+    int16_t toSlot;
+    uint32_t quantity;  // 0 = move entire stack
+};
+
+struct DeleteItemIntent {
+    int16_t slot;
+};
+
+struct EquipmentChangedIntent {
+    int16_t slotId;
+};
+
 // ============================================================================
 // Variant type for all renderer intents
 // ============================================================================
@@ -271,7 +305,17 @@ using RendererIntent = std::variant<
     SlashCommandIntent,
     RequestMemoryReport,
     RequestSceneDump,
-    HotbarChangedIntent
+    HotbarChangedIntent,
+    // Tradeskill
+    TradeskillCombineIntent,
+    TradeskillCloseIntent,
+    // Trainer
+    TrainSkillIntent,
+    CloseTrainerIntent,
+    // Inventory
+    MoveItemIntent,
+    DeleteItemIntent,
+    EquipmentChangedIntent
 >;
 
 } // namespace events

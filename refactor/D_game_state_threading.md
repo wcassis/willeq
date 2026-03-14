@@ -831,82 +831,147 @@ Acceptance criteria:
 
 ### D20b: Remove raw pointer coupling, remaining callbacks, and renderer lifecycle from InitGraphics()
 
-Remove direct pointer passing that couples renderer to game state, plus all
-remaining callback registrations deferred from D20a.
+Split into 5 sub-units (D20b1–D20b5) due to scope.
 
-**Raw pointer coupling to remove (originally planned):**
-- Remove `setInventoryManager(m_inventory_manager.get())` — bridge pushes
-  `InventoryItemUpdated` events instead
-- Remove `setCollisionMap(m_zone_map.get())` — bridge pushes `CollisionMapChanged`
-  event instead (also 2 `setCollisionMap(nullptr)` at zone cleanup lines 14261, 14599)
-- Remove `initGroupWindow(this)` — bridge pushes `GroupMemberAdded/Removed` events
-  instead; window no longer holds `EverQuest*`
-- Remove `initSpellGemPanel(m_spell_manager.get())` — bridge pushes `SpellGemUpdated`
-  events instead
-- Remove `initBuffWindow(m_buff_manager.get())` — bridge pushes `BuffUpdated/Removed`
-  events instead
-- Remove `initPlayerStatusWindow(this)` — bridge pushes `PlayerStatsChanged` events
-- Remove `initSkillsWindow(m_skill_manager.get())` — bridge pushes `SkillValueChanged`
-  events
-- Remove `initPetWindow(this, m_buff_manager.get())` — passes both `EverQuest*` and
-  `BuffManager*`; bridge pushes pet buff events instead
-- Remove `initTradeWindow(m_trade_manager.get())` in `SetupTradeWindowCallbacks()`
+#### D20b1: Remaining Setup*Callbacks → intents
 
-**Chat window pointer/lambda coupling to remove:**
-- Remove `chatWindow->setCommandRegistry(m_command_registry.get())` — renderer owns
-  its own command tab-completion (or receives command list via event)
-- Remove `chatWindow->setEntityNameProvider(...)` — lambda accesses `m_entities`;
-  renderer maintains entity name cache from `EntitySpawned`/`EntityDespawned` events
-- Remove `chatWindow->setLinkClickCallback(...)` — lambda captures `this`;
-  convert to `ChatLinkClickIntent` (new intent type)
+Convert all remaining renderer→game callback lambdas in Setup*Callbacks functions
+to intent types. Add intent structs, push from renderer WindowManager, handle in
+ProcessBridgeIntents(), then empty the callback bodies.
 
-**Remaining callbacks deferred from D20a:**
+**SetupTradeskillCallbacks (2 callbacks):**
+- `setOnTradeskillCombine` → `TradeskillCombineIntent` (new intent). Lambda calls
+  `SendTradeSkillCombine()` with slot determined by querying tradeskill window state
+  (world container vs inventory). Intent carries `isWorldContainer` + `containerSlot`.
+- `setOnTradeskillClose` → `TradeskillCloseIntent` (new intent). Lambda calls
+  `SendCloseContainer()` for world containers. Intent carries `dropId`.
 
-*InitGraphics callbacks (need new intents):*
-- Remove `setHUDCallback` — renderer maintains own HUD state from `PlayerStatsChanged`
-  events; complex HUD string builder moves to renderer
-- Remove `setHotbarActivateCallback` (lines 18486-18580) — complex handler for spell
-  cast, item use, emote execution, skill activation. Convert to `HotbarActivateIntent`
-  (new intent type carrying slot index + action type)
-- Remove `setGroupAcceptCallback` — convert to `GroupAcceptIntent` (new intent type)
-- Remove `setHotbarCreateCallback` — convert to `HotbarCreateIntent` (new intent type)
+**SetupTrainerCallbacks (2 callbacks):**
+- `setSkillTrainCallback` → `TrainSkillIntent` (new intent, carries `skillId`)
+- `setTrainerCloseCallback` → `CloseTrainerIntent` (new intent)
 
-*Manager callbacks (need new bridge events):*
-- Remove `setBuffFadeCallback` (lines 18357-18394) — vision buff expiration handler.
-  Convert to `BuffFadedEvent` bridge event; renderer handles vision state locally
-- Remove `setOnSkillActivated` (lines 18433-18455) — skill activation feedback with
-  cooldown calculation. Convert to `SkillActivatedEvent` bridge event
-- Remove `setOnSkillUpdate` (lines 18458-18463) — skill-up notification.
-  Convert to `SkillUpdatedEvent` bridge event
+**SetupInventoryCallbacks (3 callbacks):**
+- `setMoveItemCallback` → `MoveItemIntent` (new intent, carries `fromSlot`, `toSlot`)
+- `setDeleteItemCallback` → `DeleteItemIntent` (new intent, carries `slot`)
+- `setEquipmentChangedCallback` → `EquipmentChangedIntent` (new intent)
 
-*Setup*Callbacks still fully implemented (need intents + removal):*
-- Remove `SetupTradeskillCallbacks()` — 2 callbacks (`setOnTradeskillCombine`,
-  `setOnTradeskillClose`). Convert to `TradeskillCombineIntent`, `TradeskillCloseIntent`
-- Remove `SetupTrainerCallbacks()` — 2 callbacks (`setSkillTrainCallback`,
-  `setTrainerCloseCallback`). Convert to `TrainSkillIntent`, `CloseTrainerIntent`
-- Remove `SetupInventoryCallbacks()` — 3 callbacks (`setMoveItemCallback`,
-  `setDeleteItemCallback`, `setEquipmentChangedCallback`). Convert to
-  `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`
-- Remove `SetupTradeManagerCallbacks()` — 8 callbacks covering trade network
-  protocol. Convert to trade intents or move trade network calls to bridge
-
-**Renderer lifecycle in InitGraphics:**
-- Remove `m_renderer->setBridge(m_irrlichtBridge.get())` — Application handles this
-- Remove `m_renderer->initLoadingScreen(config)` — Application handles this
-- Remove `m_renderer->shutdown()` in `ShutdownGraphics()` — Application handles this
-
-**Note:** Three windows hold raw `EverQuest*` back-pointers (group, player status,
-pet). These windows must be refactored to work from event-driven state copies instead
-of querying game state directly. This is non-trivial — group window queries member
-lists, pet window queries buff data, player status window queries full stats.
+**SetupTradeManagerCallbacks (network callbacks):**
+- Trade manager callbacks (sendTradeRequest, sendTradeRequestAck, sendTradeCoins,
+  sendTradeAcceptClick, sendCancelTrade, sendMoveCoin, etc.) call network methods
+  directly. These already have corresponding intent types (TradeRequestIntent,
+  TradeAcceptIntent, TradeCancelIntent) or are responses to bridge events. Move
+  network sending to ProcessBridgeIntents handlers and empty the function.
 
 Acceptance criteria:
-- Zero raw game-state pointers passed to renderer or UI windows
-- Zero callback lambdas remaining in InitGraphics() or constructor
-- Zero Setup*Callbacks() function calls or implementations
-- All UI windows work from event-driven local state copies
-- `setCollisionMap()` replaced by `CollisionMapChanged` event at all 4 call sites
-- All new intent types added and handled in `ProcessBridgeIntents()`
+- All 4 Setup*Callbacks functions have empty bodies
+- New intent types added to renderer_intents.h and RendererIntent variant
+- ProcessBridgeIntents handles all new intent types
+- WindowManager pushes intents instead of calling lambdas
+
+#### D20b2: InitGraphics callbacks → intents + events
+
+Remove remaining callback registrations from InitGraphics.
+
+**Action callbacks → intents (renderer→game):**
+- `setHotbarActivateCallback` → `HotbarActivateIntent` (new intent carrying slot
+  index + action type). Complex handler for spell cast, item use, emote, skill
+  activation. Logic moves to ProcessBridgeIntents.
+- `setGroupAcceptCallback` → `GroupAcceptIntent` (new intent)
+- `setHotbarCreateCallback` → `HotbarCreateIntent` (new intent, carries `skillId`)
+- `chatWindow->setLinkClickCallback` → `ChatLinkClickIntent` (new intent, carries
+  link type + data)
+
+**Notification callbacks → bridge events (game→renderer):**
+- `setHUDCallback` → remove. Renderer builds HUD from PlayerStatsChanged events.
+  Complex HUD string builder moves to renderer side.
+- `setBuffFadeCallback` → already publishes VisionChanged bridge event. Remove the
+  callback registration; buff manager publishes VisionChanged directly.
+- `setOnSkillActivated` on skill_manager → skill activation feedback with cooldown.
+  Already have SkillValueChanged event; add cooldown data or separate event.
+- `setOnSkillUpdate` on skill_manager → skill-up notification. Already have
+  SkillValueChanged event.
+
+Acceptance criteria:
+- Zero callback lambdas registered in InitGraphics
+- All action callbacks converted to intents
+- Notification callbacks replaced by direct bridge event publishing
+- HUD string builder logic moved to renderer
+
+#### D20b3: Chat window + collision map decoupling
+
+**Chat window coupling (3 points):**
+- `setCommandRegistry(m_command_registry.get())` → renderer creates its own
+  CommandRegistry populated from a command list event, or command auto-completion
+  is driven by intent round-trip
+- `setEntityNameProvider(...)` → renderer builds entity name cache from
+  EntitySpawned/EntityDespawned events (names already in event data)
+- Remove these 2 pointer passes from InitGraphics
+
+**Collision map (5 call sites):**
+- 2 clearing calls (`setCollisionMap(nullptr)` before zone map reset) — remove
+  `#ifdef` blocks, renderer clears its own collision map on ZoneChanged event
+- 3 setting calls (`setCollisionMap(m_zone_map.get())`) — renderer receives
+  collision map pointer via CollisionMapChanged event (already defined in event_bus.h)
+- Renderer holds its own `HCMap*` updated via bridge events
+
+Acceptance criteria:
+- Zero chat window pointer/lambda coupling in eq.cpp
+- Zero `setCollisionMap()` calls in eq.cpp
+- Renderer manages its own collision map pointer via events
+
+#### D20b4: Window pointer decoupling
+
+Refactor UI windows to maintain local state copies driven by bridge events instead
+of polling game state via raw pointers. This is the hardest part — 3 windows hold
+`EverQuest*` back-pointers, and 5 windows hold manager pointers.
+
+**Manager pointer windows (poll manager each frame):**
+- `initSpellGemPanel(m_spell_manager)` → SpellGemPanel maintains local gem state
+  from SpellGemChanged events
+- `initBuffWindow(m_buff_manager)` → BuffWindow maintains local buff list from
+  BuffUpdated/BuffRemoved events
+- `initSkillsWindow(m_skill_manager)` → SkillsWindow maintains local skill values
+  from SkillValueChanged/SkillsRefreshed events
+- `initTradeWindow(m_trade_manager)` → TradeWindow already receives trade events;
+  remove direct manager access
+
+**EverQuest* back-pointer windows (poll EQ each frame):**
+- `initGroupWindow(this)` → GroupWindow maintains local member list from
+  GroupChanged/GroupMemberUpdated events. Currently queries m_group_members,
+  m_group_leader_name, m_is_group_leader, m_group_member_count.
+- `initPlayerStatusWindow(this)` → PlayerStatusWindow maintains local stats from
+  PlayerStatsChanged/CharacterInfoChanged events. Currently queries HP, mana,
+  endurance, level, class, name, AC, ATK, weight, currency.
+- `initPetWindow(this, m_buff_manager)` → PetWindow maintains local pet state from
+  PetCreated/PetStatsChanged/PetButtonStateChanged events. Currently queries
+  pet spawn ID, name, level, HP, buff data.
+
+**Inventory manager:**
+- `setInventoryManager(m_inventory_manager)` → renderer manages its own inventory
+  view state from InventorySlotChanged/CursorItemChanged events
+
+Acceptance criteria:
+- Zero raw game-state pointers passed to any UI window
+- All windows work from event-driven local state copies
+- All init*Window calls removed from InitGraphics
+
+#### D20b5: Renderer lifecycle cleanup
+
+Move renderer lifecycle management from EverQuest to Application.
+
+- Remove `m_irrlichtBridge` creation from InitGraphics — Application creates bridge
+  and passes to both EverQuest (as GameStateBridge*) and renderer
+- Remove `m_renderer->setBridge(m_irrlichtBridge.get())` — Application handles this
+- Remove `m_renderer->initLoadingScreen(config)` — Application handles this
+- Simplify `ShutdownGraphics()` — renderer shutdown owned by Application;
+  EverQuest only calls `detachBridge()` to stop publishing events
+- Remove loading thread management from EverQuest — renderer owns its loading thread
+
+Acceptance criteria:
+- EverQuest does not create, configure, or destroy the renderer
+- InitGraphics() reduced to `attachBridge(GameStateBridge*)` or equivalent
+- ShutdownGraphics() reduced to `detachBridge()`
+- Application owns full renderer lifecycle
 
 ### D20c: Refactor UpdateGraphics, zone loading ownership, and game-side renderer queries
 

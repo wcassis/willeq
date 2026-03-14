@@ -1,4 +1,6 @@
 #include "client/graphics/ui/inventory_manager.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/events/renderer_intents.h"
 #include "common/net/packet.h"
 #include <iostream>
 #include "common/logging.h"
@@ -764,13 +766,13 @@ bool InventoryManager::pickupItem(int16_t slotId) {
 
     // Notify server of pickup (move from slot to cursor)
     // quantity = 0 means move entire item/stack
-    if (moveItemCallback_) {
-        moveItemCallback_(slotId, CURSOR_SLOT, 0);
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::MoveItemIntent{slotId, CURSOR_SLOT, 0});
     }
 
     // Notify equipment change callback if picking up from equipment slot
-    if (isEquipmentSlot(slotId) && equipmentChangedCallback_) {
-        equipmentChangedCallback_(slotId);
+    if (isEquipmentSlot(slotId) && bridge_) {
+        bridge_->pushIntent(eqt::events::EquipmentChangedIntent{slotId});
     }
 
     return true;
@@ -828,13 +830,13 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // Notify server of swap - use CURSOR_SLOT as source since item is on cursor
         // quantity = 0 means move entire item/stack
         LOG_DEBUG(MOD_UI, "InventoryManager Swapped items: cursor(from {}) <-> {}", cursorSourceSlot_, targetSlot);
-        if (moveItemCallback_) {
-            moveItemCallback_(CURSOR_SLOT, targetSlot, 0);
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, targetSlot, 0});
         }
 
         // Notify equipment change callback if target is an equipment slot
-        if (isEquipmentSlot(targetSlot) && equipmentChangedCallback_) {
-            equipmentChangedCallback_(targetSlot);
+        if (isEquipmentSlot(targetSlot) && bridge_) {
+            bridge_->pushIntent(eqt::events::EquipmentChangedIntent{targetSlot});
         }
     } else {
         // Slot is empty - just place
@@ -855,16 +857,16 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
 
         // Notify server - use CURSOR_SLOT as source since item is on cursor
         // quantity = 0 means move entire item/stack
-        if (moveItemCallback_) {
-            moveItemCallback_(CURSOR_SLOT, targetSlot, 0);
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, targetSlot, 0});
         }
 
         // If queue still has items, send pop notification to server
         if (!cursorQueue_.empty()) {
             LOG_DEBUG(MOD_UI, "InventoryManager Cursor queue has {} more items, sending pop notification", cursorQueue_.size());
-            if (moveItemCallback_) {
+            if (bridge_) {
                 // Send cursor-to-cursor move to pop the next item on server
-                moveItemCallback_(CURSOR_SLOT, CURSOR_SLOT, 0);
+                bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, CURSOR_SLOT, 0});
             }
             cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
         } else {
@@ -872,8 +874,8 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         }
 
         // Notify equipment change callback if target is an equipment slot
-        if (isEquipmentSlot(targetSlot) && equipmentChangedCallback_) {
-            equipmentChangedCallback_(targetSlot);
+        if (isEquipmentSlot(targetSlot) && bridge_) {
+            bridge_->pushIntent(eqt::events::EquipmentChangedIntent{targetSlot});
         }
     }
 
@@ -923,8 +925,8 @@ bool InventoryManager::pickupPartialStack(int16_t slotId, int32_t quantity) {
     cursorSourceSlot_ = slotId;
 
     // Notify server of partial pickup
-    if (moveItemCallback_) {
-        moveItemCallback_(slotId, CURSOR_SLOT, quantity);
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::MoveItemIntent{slotId, CURSOR_SLOT, quantity});
     }
 
     return true;
@@ -971,8 +973,8 @@ bool InventoryManager::placeOnMatchingStack(int16_t targetSlot) {
               toTransfer, targetSlot, targetItem->quantity);
 
     // Notify server of stack operation
-    if (moveItemCallback_) {
-        moveItemCallback_(CURSOR_SLOT, targetSlot, toTransfer);
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, targetSlot, toTransfer});
     }
 
     // If cursor item is now empty, remove it from cursor
@@ -1029,9 +1031,9 @@ void InventoryManager::popCursorItem() {
     // If queue still has items, send pop notification to server
     if (!cursorQueue_.empty()) {
         LOG_DEBUG(MOD_UI, "InventoryManager popCursorItem: {} items remaining in cursor queue", cursorQueue_.size());
-        if (moveItemCallback_) {
+        if (bridge_) {
             // Send cursor-to-cursor move to pop the next item on server
-            moveItemCallback_(CURSOR_SLOT, CURSOR_SLOT, 0);
+            bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, CURSOR_SLOT, 0});
         }
         cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
     } else {
@@ -1119,8 +1121,8 @@ bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
     }
 
     // Notify server - quantity = 0 means move entire item/stack
-    if (moveItemCallback_) {
-        moveItemCallback_(fromSlot, toSlot, 0);
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, 0});
     }
 
     return true;
@@ -1727,8 +1729,8 @@ bool InventoryManager::destroyItem(int16_t slotId) {
     removeItem(slotId);
 
     // Notify server
-    if (deleteItemCallback_) {
-        deleteItemCallback_(slotId);
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::DeleteItemIntent{slotId});
     }
 
     return true;
@@ -1755,15 +1757,15 @@ bool InventoryManager::destroyCursorItem() {
         cursorSourceSlot_ = SLOT_INVALID;
     } else {
         // If more items in queue, send pop notification
-        if (moveItemCallback_) {
-            moveItemCallback_(CURSOR_SLOT, CURSOR_SLOT, 0);
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, CURSOR_SLOT, 0});
         }
         cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
     }
 
     // Notify server - item is on CURSOR_SLOT, not the original source slot
-    if (deleteItemCallback_) {
-        deleteItemCallback_(CURSOR_SLOT);
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::DeleteItemIntent{CURSOR_SLOT});
     }
 
     return true;

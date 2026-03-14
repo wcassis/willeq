@@ -1,4 +1,6 @@
 #include "client/graphics/ui/window_manager.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/events/renderer_intents.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
@@ -4662,13 +4664,13 @@ void WindowManager::initSkillTrainerWindow() {
         skillTrainerWindow_->positionDefault(screenWidth_, screenHeight_);
     }
 
-    // Set up callbacks
-    if (skillTrainCallback_) {
-        skillTrainerWindow_->setTrainCallback(skillTrainCallback_);
-    }
-    if (trainerCloseCallback_) {
-        skillTrainerWindow_->setCloseCallback(trainerCloseCallback_);
-    }
+    // Set up bridge-based callbacks (D20b1)
+    skillTrainerWindow_->setTrainCallback([this](uint8_t skillId) {
+        if (bridge_) bridge_->pushIntent(eqt::events::TrainSkillIntent{skillId});
+    });
+    skillTrainerWindow_->setCloseCallback([this]() {
+        if (bridge_) bridge_->pushIntent(eqt::events::CloseTrainerIntent{});
+    });
 
     LOG_DEBUG(MOD_UI, "Skill trainer window initialized");
 }
@@ -4778,15 +4780,18 @@ void WindowManager::openTradeskillContainer(uint32_t dropId, const std::string& 
         return;
     }
 
-    // Set up callbacks before opening
+    // Set up bridge-based callbacks (D20b1)
     tradeskillWindow_->setCombineCallback([this]() {
-        if (tradeskillCombineCallback_) {
-            tradeskillCombineCallback_();
+        if (bridge_ && tradeskillWindow_) {
+            int16_t slot = tradeskillWindow_->isWorldContainer()
+                ? eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE
+                : tradeskillWindow_->getContainerSlot();
+            bridge_->pushIntent(eqt::events::TradeskillCombineIntent{slot});
         }
     });
     tradeskillWindow_->setCloseCallback([this]() {
-        if (tradeskillCloseCallback_) {
-            tradeskillCloseCallback_();
+        if (bridge_ && tradeskillWindow_ && tradeskillWindow_->isWorldContainer()) {
+            bridge_->pushIntent(eqt::events::TradeskillCloseIntent{tradeskillWindow_->getWorldObjectId()});
         }
     });
 
@@ -4810,15 +4815,18 @@ void WindowManager::openTradeskillContainerForItem(int16_t containerSlot, const 
         return;
     }
 
-    // Set up callbacks before opening
+    // Set up bridge-based callbacks (D20b1)
     tradeskillWindow_->setCombineCallback([this]() {
-        if (tradeskillCombineCallback_) {
-            tradeskillCombineCallback_();
+        if (bridge_ && tradeskillWindow_) {
+            int16_t slot = tradeskillWindow_->isWorldContainer()
+                ? eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE
+                : tradeskillWindow_->getContainerSlot();
+            bridge_->pushIntent(eqt::events::TradeskillCombineIntent{slot});
         }
     });
     tradeskillWindow_->setCloseCallback([this]() {
-        if (tradeskillCloseCallback_) {
-            tradeskillCloseCallback_();
+        if (bridge_ && tradeskillWindow_ && tradeskillWindow_->isWorldContainer()) {
+            bridge_->pushIntent(eqt::events::TradeskillCloseIntent{tradeskillWindow_->getWorldObjectId()});
         }
     });
 

@@ -179,11 +179,17 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | done | |
 | D19a | Remove direct renderer calls from small handlers (chat, combat, door, world, weather, etc.) | done | |
 | D19b | Remove direct renderer calls from zone lifecycle functions | done | |
-| D20a | Remove callback lambdas + activate intent processing | pending | |
-| D20b | Remove raw pointer coupling from InitGraphics() | pending | |
-| D20c | Refactor UpdateGraphics / zone loading ownership | pending | |
+| D19c | Remove remaining packet handler and chat routing renderer calls | done | `76a86c1` |
+| D20a | Remove callback lambdas + activate intent processing | done | `76a86c1` |
+| D20b1 | Remaining Setup*Callbacks → intents (tradeskill, trainer, inventory, trade manager) | pending | |
+| D20b2 | InitGraphics callbacks → intents + events (hotbar, group accept, HUD, buff fade, skill, chat link) | pending | |
+| D20b3 | Chat window + collision map decoupling | pending | |
+| D20b4 | Window pointer decoupling (spell gem, buff, skills, group, player status, pet, trade, inventory) | pending | |
+| D20b5 | Renderer lifecycle cleanup (bridge/loading/shutdown → Application ownership) | pending | |
+| D20c | Refactor UpdateGraphics, zone loading ownership, and game-side renderer queries | pending | |
 | D20d | Remove debug/toggle slash commands from EverQuest | pending | |
 | D20e | Remove m_renderer from EverQuest | pending | |
+| D20f | Decouple RDP server from renderer | pending | |
 
 ### Phase 6 — Thread Separation
 
