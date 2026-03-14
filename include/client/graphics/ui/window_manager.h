@@ -69,6 +69,14 @@ public:
     // Bridge for pushing intents to game thread (D20b1)
     void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
 
+    // Entity name tracking for chat auto-completion (D20b3)
+    void addEntityName(const std::string& name);
+    void removeEntityName(const std::string& name);
+    void setPlayerName(const std::string& name);
+
+    // Command registry for chat auto-completion (D20b3)
+    void setCommandRegistry(CommandRegistry* registry);
+
     // Initialize with Irrlicht components
     void init(irr::video::IVideoDriver* driver,
               irr::gui::IGUIEnvironment* gui,
@@ -553,6 +561,10 @@ private:
 
     // Bridge for pushing intents (D20b1)
     eqt::bridge::GameStateBridge* bridge_ = nullptr;
+
+    // Entity name cache for chat auto-completion (D20b3)
+    std::vector<std::string> entityNames_;
+    std::string playerName_;
 
     // Irrlicht components
     irr::video::IVideoDriver* driver_ = nullptr;

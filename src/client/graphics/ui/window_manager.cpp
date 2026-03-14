@@ -19,6 +19,30 @@ namespace eqt {
 namespace ui {
 
 WindowManager::WindowManager() = default;
+
+// D20b3: Entity name tracking for chat auto-completion
+void WindowManager::addEntityName(const std::string& name) {
+    if (!name.empty()) {
+        entityNames_.push_back(name);
+    }
+}
+
+void WindowManager::removeEntityName(const std::string& name) {
+    auto it = std::find(entityNames_.begin(), entityNames_.end(), name);
+    if (it != entityNames_.end()) {
+        entityNames_.erase(it);
+    }
+}
+
+void WindowManager::setPlayerName(const std::string& name) {
+    playerName_ = name;
+}
+
+void WindowManager::setCommandRegistry(CommandRegistry* registry) {
+    if (chatWindow_) {
+        chatWindow_->setCommandRegistry(registry);
+    }
+}
 WindowManager::~WindowManager() {
     if (lockIndicatorRT_ && driver_) {
         driver_->removeTexture(lockIndicatorRT_);
@@ -125,6 +149,15 @@ void WindowManager::init(irr::video::IVideoDriver* driver,
     // Create chat window (visible by default)
     chatWindow_ = std::make_unique<ChatWindow>();
     chatWindow_->init(screenWidth, screenHeight);
+
+    // D20b3: Entity name provider — uses local cache instead of game state pointer
+    chatWindow_->setEntityNameProvider([this]() -> std::vector<std::string> {
+        std::vector<std::string> names = entityNames_;
+        if (!playerName_.empty()) {
+            names.push_back(playerName_);
+        }
+        return names;
+    });
 
     // D20b2: Set up link click handler locally — NPC links push intent, item links stay on renderer
     chatWindow_->setLinkClickCallback([this](const eqt::MessageLink& link) {

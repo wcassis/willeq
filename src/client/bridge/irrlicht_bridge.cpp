@@ -12,6 +12,8 @@
 #include <ctime>
 #include <memory>
 
+class HCMap;
+
 namespace eqt {
 namespace bridge {
 
@@ -68,12 +70,23 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->setPlayerSpawnId(d.spawnId);
                 renderer_->updatePlayerAppearance(d.raceId, d.gender, appearance);
             }
+            // D20b3: Track entity name for chat auto-completion
+            auto* wm = renderer_->getWindowManager();
+            if (wm && !d.name.empty()) {
+                wm->addEntityName(d.name);
+                if (d.isPlayer) wm->setPlayerName(d.name);
+            }
         }
         break;
     case state::GameEventType::EntityDespawned:
         if (renderer_) {
             auto& d = std::get<state::EntityDespawnedData>(event.data);
             renderer_->removeEntity(d.spawnId);
+            // D20b3: Remove entity name from chat auto-completion cache
+            auto* wm = renderer_->getWindowManager();
+            if (wm && !d.name.empty()) {
+                wm->removeEntityName(d.name);
+            }
         }
         break;
     case state::GameEventType::EntityMoved:
@@ -689,9 +702,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Zone lifecycle events (D13)
     case state::GameEventType::CollisionMapChanged:
-        // Collision map is set during zone loading via setCollisionMap(). The event
-        // carries a raw pointer — bridge should not duplicate zone-load infrastructure.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CollisionMapChanged");
+        if (renderer_) {
+            auto& d = std::get<state::CollisionMapChangedData>(event.data);
+            renderer_->setCollisionMap(static_cast<HCMap*>(d.map));
+        }
         break;
     case state::GameEventType::ZoneLineBoundingBoxes:
         // Zone line bounding boxes set during zone loading via setZoneLineBoundingBoxes().

@@ -13410,12 +13410,12 @@ void EverQuest::CleanupZone()
 #endif
 	m_pathfinder.reset();
 
-	// Clear zone map - but first clear renderer's reference to avoid dangling pointer
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setCollisionMap(nullptr);
+	// Clear collision map via bridge, then reset zone map
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CollisionMapChanged,
+			eqt::state::CollisionMapChangedData{nullptr}));
 	}
-#endif
 	m_zone_map.reset();
 
 	// Clear zone lines
@@ -13748,12 +13748,12 @@ void EverQuest::LoadZoneMap(const std::string& zone_name)
 	
 	LOG_DEBUG(MOD_MAIN, "LoadZoneMap: Loading map for zone '{}'", zone_name);
 
-	// Release previous map if any - first clear renderer's reference to avoid dangling pointer
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setCollisionMap(nullptr);
+	// Clear collision map via bridge, then reset zone map
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CollisionMapChanged,
+			eqt::state::CollisionMapChangedData{nullptr}));
 	}
-#endif
 	m_zone_map.reset();
 	
 	// Use custom maps path if set, otherwise try common locations
@@ -18125,9 +18125,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// D20a: Movement, target, interaction, and spell gem cast callbacks removed.
 	// All game logic now handled via ProcessBridgeIntents() intent handlers.
 
-	// Set collision map for Player Mode (will be updated when zone loads)
-	if (m_zone_map) {
-		m_renderer->setCollisionMap(m_zone_map.get());
+	// Set collision map via bridge (will be updated when zone loads)
+	if (m_zone_map && m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CollisionMapChanged,
+			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
 	}
 
 	// S04: inventory_manager is pre-allocated in EverQuest constructor
@@ -18201,31 +18203,12 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// D20b2: Hotbar activate callback removed. WindowManager pushes
 	// HotbarActivateIntent via bridge, handled in ProcessBridgeIntents().
 
-	// D20a: Chat submit and read item callbacks removed; intents handle these.
-
-	// Set up auto-completion for chat window
-	if (auto* chatWindow = m_renderer->getWindowManager()->getChatWindow()) {
-		// Provide command registry for command completion
-		chatWindow->setCommandRegistry(m_command_registry.get());
-
-		// Provide entity names for player name completion
-		chatWindow->setEntityNameProvider([this]() -> std::vector<std::string> {
-			std::vector<std::string> names;
-			for (const auto& [id, entity] : m_entities) {
-				if (!entity.name.empty()) {
-					names.push_back(entity.name);
-				}
-			}
-			// Also add our own name
-			if (!m_character.empty()) {
-				names.push_back(m_character);
-			}
-			return names;
-		});
-
-		// D20b2: Link click callback removed. WindowManager pushes
-		// ChatLinkClickIntent via bridge for NPC dialogue links.
-		// Item tooltip links handled locally by renderer (has inventory_manager).
+	// D20b3: Chat window coupling moved to WindowManager.
+	// Command registry forwarded via WindowManager. Entity names tracked by
+	// bridge from EntitySpawned/Despawned events. Link clicks handled locally.
+	if (m_renderer->getWindowManager()) {
+		m_renderer->getWindowManager()->setCommandRegistry(m_command_registry.get());
+		m_renderer->getWindowManager()->setPlayerName(m_character);
 	}
 
 	m_graphics_initialized = true;
@@ -18507,9 +18490,12 @@ void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& st
 	// early when loading thread is active (checked before this point).
 	m_renderer->setLoading(false);
 
-	// 1. Collision map
-	if (m_zone_map)
-		m_renderer->setCollisionMap(m_zone_map.get());
+	// 1. Collision map via bridge
+	if (m_zone_map && m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CollisionMapChanged,
+			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
+	}
 
 	// 2. Zone lines
 	if (m_zone_lines && m_zone_lines->hasZoneLines() && m_zone_map)
@@ -18614,9 +18600,11 @@ void EverQuest::LoadZoneGraphics() {
 
 	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
 
-	// 1. Collision map (already loaded from .map file, just set reference)
-	if (m_zone_map) {
-		m_renderer->setCollisionMap(m_zone_map.get());
+	// 1. Collision map via bridge (already loaded from .map file)
+	if (m_zone_map && m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CollisionMapChanged,
+			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
 	}
 
 	// 2. Zone lines (fast, uses collision map)
