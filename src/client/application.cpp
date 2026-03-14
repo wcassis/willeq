@@ -506,42 +506,25 @@ void Application::requestQuit() {
     }
 }
 
-void Application::mainLoop() {
-    static int loop_counter = 0;
-    LOG_TRACE(MOD_MAIN, "Entering main loop");
+// D21b: Game thread loop — network, game state, intent processing
+void Application::gameThreadLoop() {
+    LOG_INFO(MOD_MAIN, "Game thread started");
+    auto lastTick = std::chrono::steady_clock::now();
 
     while (m_running.load()) {
         try {
-            loop_counter++;
-
-            // Log zone change activity
-            bool zone_change_happening = m_eqClient && m_eqClient->IsZoneChangeApproved();
-            if (loop_counter % 100 == 0 || zone_change_happening) {
-                LOG_TRACE(MOD_MAIN, "Main loop iteration {} running={} zone_change={}",
-                          loop_counter, m_running.load(), zone_change_happening);
-            }
-
-            // Process network events with performance tracking
-            auto eventLoopStart = std::chrono::steady_clock::now();
+            // Process network events
             processNetworkEvents();
-            auto eventLoopEnd = std::chrono::steady_clock::now();
-            auto eventLoopMs = std::chrono::duration_cast<std::chrono::milliseconds>(eventLoopEnd - eventLoopStart).count();
-            if (eventLoopMs > 50) {
-                LOG_WARN(MOD_MAIN, "PERF: EventLoop::Process() took {} ms", eventLoopMs);
-            }
 
-            // Check for zone connection
+            // Check for zone connection state changes
             bool isConnected = m_eqClient && m_eqClient->IsFullyZonedIn();
 
             if (isConnected && !m_fullyConnected) {
                 LOG_INFO(MOD_MAIN, "Fully connected to zone!");
                 m_fullyConnected = true;
-                m_gameState->world().setZoneConnected(true);
+                if (m_gameState) m_gameState->world().setZoneConnected(true);
 
 #ifdef EQT_HAS_GRAPHICS
-                // NOTE: Zone graphics are now loaded automatically via the LoadingPhase system.
-                // LoadZoneGraphics() is called from OnGameStateComplete() when the game state is ready.
-                // We only need to load the hotbar config here.
                 if (m_config.graphicsEnabled && m_graphicsInitialized && m_eqClient) {
                     m_eqClient->LoadHotbarConfig();
                 }
@@ -550,51 +533,88 @@ void Application::mainLoop() {
 
             if (!isConnected && m_fullyConnected) {
                 m_fullyConnected = false;
-                m_gameState->world().setZoneConnected(false);
+                if (m_gameState) m_gameState->world().setZoneConnected(false);
             }
 
-            // Calculate delta time
+            // Fixed-rate game tick (~60 Hz)
             auto now = std::chrono::steady_clock::now();
-            float deltaTime = std::chrono::duration<float>(now - m_lastUpdate).count();
+            float deltaTime = std::chrono::duration<float>(now - lastTick).count();
 
-            // Process input and update game state at ~60 fps
             if (deltaTime >= 1.0f / 60.0f) {
                 processInput(deltaTime);
-
-                // Update movement with performance tracking
-                auto movementStart = std::chrono::steady_clock::now();
                 updateGameState(deltaTime);
-                auto movementEnd = std::chrono::steady_clock::now();
-                auto movementMs = std::chrono::duration_cast<std::chrono::milliseconds>(movementEnd - movementStart).count();
-                if (movementMs > 50) {
-                    LOG_WARN(MOD_MAIN, "PERF: UpdateMovement() took {} ms", movementMs);
-                }
-
-                m_lastUpdate = now;
+                lastTick = now;
             }
 
-            // Render
-            render(deltaTime);
+#ifdef EQT_HAS_GRAPHICS
+            // D21b: Check if EverQuest requested a zone load (re-zone)
+            // Create snapshot on game thread (reads game state), signal render thread
+            if (m_eqClient && m_eqClient->ConsumeZoneLoadRequest()) {
+                std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+                m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+                m_zoneLoadReady.store(true, std::memory_order_release);
+            }
 
-            // Check if mode requested quit
+            // D21b: Pick up graphics complete signal from render thread
+            if (m_graphicsCompleteReady.load(std::memory_order_acquire)) {
+                if (m_eqClient) {
+                    {
+                        std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+                        m_eqClient->SetZoneBspTree(std::move(m_pendingBspTree));
+                    }
+                    m_eqClient->OnGraphicsComplete();
+                }
+                m_graphicsCompleteReady.store(false, std::memory_order_release);
+            }
+#endif
+
+            // Check quit requests
             if (m_gameMode && m_gameMode->isQuitRequested()) {
                 m_running.store(false);
             }
-
-            // D20c4: Check if game client requested quit
             if (m_eqClient && m_eqClient->IsQuitRequested()) {
                 m_running.store(false);
             }
 
-            // Small sleep to prevent CPU spinning
+            // Sleep to target ~60 Hz game tick without spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
         } catch (const std::exception& e) {
-            LOG_ERROR(MOD_MAIN, "Exception in main loop: {}", e.what());
+            LOG_ERROR(MOD_MAIN, "Exception in game thread: {}", e.what());
         }
     }
 
-    LOG_TRACE(MOD_MAIN, "Exited main loop running={} loop_counter={}", m_running.load(), loop_counter);
+    LOG_INFO(MOD_MAIN, "Game thread stopped");
+}
+
+// D21b: Main loop is now render-only (main thread)
+void Application::mainLoop() {
+    LOG_INFO(MOD_MAIN, "Starting game thread");
+    m_gameThread = std::make_unique<std::thread>(&Application::gameThreadLoop, this);
+
+    LOG_INFO(MOD_MAIN, "Entering render loop (main thread)");
+
+    while (m_running.load()) {
+        try {
+            // Render
+            render(0.0f);  // deltaTime computed inside render()
+
+            // If no graphics, sleep to avoid spinning
+            if (!m_graphicsInitialized) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            }
+
+        } catch (const std::exception& e) {
+            LOG_ERROR(MOD_MAIN, "Exception in render loop: {}", e.what());
+        }
+    }
+
+    LOG_INFO(MOD_MAIN, "Render loop exited, joining game thread");
+    if (m_gameThread && m_gameThread->joinable()) {
+        m_gameThread->join();
+    }
+    m_gameThread.reset();
+    LOG_INFO(MOD_MAIN, "Game thread joined");
 }
 
 void Application::processNetworkEvents() {
@@ -660,10 +680,11 @@ void Application::render(float deltaTime) {
                 return;  // Loading thread owns GL context
             }
 
-            // D20e2: Check if EverQuest requested a zone load (re-zone)
-            if (m_eqClient->ConsumeZoneLoadRequest()) {
-                m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+            // D21b: Pick up zone load snapshot from game thread
+            if (m_zoneLoadReady.load(std::memory_order_acquire)) {
+                // Snapshot already created by game thread under lock
                 startLoadingThread();
+                m_zoneLoadReady.store(false, std::memory_order_release);
             }
 
             // D21a: Pre-render — drain bridge events, apply to renderer
@@ -672,13 +693,16 @@ void Application::render(float deltaTime) {
             // Render frame
             bool result = m_renderer->processFrame(gfxDeltaTime);
 
-            // Progressive loading check
+            // D21b: Progressive loading check — signal game thread to finalize
             if (m_renderer->isLoadingScreenVisible() &&
                 !m_renderer->isProgressiveLoadingActive() &&
-                m_eqClient->GetLoadingPhase() >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
-                m_eqClient->GetLoadingPhase() < LoadingPhase::COMPLETE) {
-                m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
-                m_eqClient->OnGraphicsComplete();
+                !m_graphicsCompleteReady.load(std::memory_order_acquire)) {
+                // Render thread detects loading complete, game thread finalizes
+                {
+                    std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+                    m_pendingBspTree = m_renderer->getZoneBspTree();
+                }
+                m_graphicsCompleteReady.store(true, std::memory_order_release);
             }
 
             if (!result) {
@@ -755,11 +779,12 @@ bool Application::checkLoadingComplete() {
     if (!m_loadingThread) return false;
     if (m_loadingStatus.loadingComplete.load(std::memory_order_acquire)) {
         joinLoadingThread();
-        // D20f2: Pass typed BSP tree from renderer to game state
-        if (m_eqClient && m_renderer) {
-            m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
+        // D21b: Signal game thread to finalize (BSP tree + OnGraphicsComplete)
+        if (m_renderer) {
+            std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+            m_pendingBspTree = m_renderer->getZoneBspTree();
         }
-        if (m_eqClient) m_eqClient->OnGraphicsComplete();
+        m_graphicsCompleteReady.store(true, std::memory_order_release);
         return true;
     }
     return false;
@@ -964,11 +989,12 @@ void Application::loadZoneGraphics() {
     if (m_renderer->isProgressiveLoadingActive()) {
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: automatic mode — loading screen remains visible");
     } else {
-        // D20f2: Pass typed BSP tree from renderer to game state
+        // D21b: Signal game thread to finalize
         if (m_renderer) {
-            m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
+            std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+            m_pendingBspTree = m_renderer->getZoneBspTree();
         }
-        m_eqClient->OnGraphicsComplete();
+        m_graphicsCompleteReady.store(true, std::memory_order_release);
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: instant scene ready");
     }
 }

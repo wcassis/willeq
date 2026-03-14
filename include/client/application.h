@@ -15,10 +15,12 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include <thread>
+#include <mutex>
 
 // Forward declarations
 class EverQuest;
-namespace EQT { namespace Graphics { class IrrlichtRenderer; } }
+namespace EQT { namespace Graphics { class IrrlichtRenderer; struct BspTree; } }
 namespace eqt { namespace bridge { class IrrlichtBridge; class GameStateBridge; } }
 
 namespace eqt {
@@ -214,7 +216,8 @@ public:
 private:
     // ========== Main Loop Stages ==========
 
-    void mainLoop();
+    void mainLoop();          // Render thread (main) — render loop
+    void gameThreadLoop();    // D21b: Game thread — network + game state
     void processNetworkEvents();
     void processInput(float deltaTime);
     void updateGameState(float deltaTime);
@@ -295,9 +298,18 @@ private:
     // ========== State ==========
 
     std::atomic<bool> m_running{false};
-    bool m_fullyConnected = false;
-    bool m_graphicsInitialized = false;
+    bool m_fullyConnected = false;           // Game thread only
+    bool m_graphicsInitialized = false;      // Set once at init, read by both (safe)
     ApplicationConfig m_config;
+
+    // D21b: Game thread
+    std::unique_ptr<std::thread> m_gameThread;
+
+    // D21b: Zone load handoff (game thread creates snapshot, render thread starts loading)
+    std::mutex m_zoneLoadMutex;
+    std::atomic<bool> m_zoneLoadReady{false};          // Set by game thread, consumed by render thread
+    std::atomic<bool> m_graphicsCompleteReady{false};  // Set by render thread, consumed by game thread
+    std::shared_ptr<EQT::Graphics::BspTree> m_pendingBspTree;  // Protected by m_zoneLoadMutex
 
     // Timing
     std::chrono::steady_clock::time_point m_lastUpdate;
