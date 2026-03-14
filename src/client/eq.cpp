@@ -1099,17 +1099,10 @@ void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
 	LOG_INFO(MOD_MAIN, "[LOADING][Phase {}/15] ({:.0f}%) {}",
 	         phaseNum, progress * 100.0f, m_loading_status_text);
 
-#ifdef EQT_HAS_GRAPHICS
 	// Write to LoadingStatus for the loading thread's passive display loop
 	m_loading_status.setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
 
-	if (m_renderer && !m_renderer->isLoading()) {
-		std::wstring wstatus(m_loading_status_text, m_loading_status_text + strlen(m_loading_status_text));
-		m_renderer->setLoadingProgress(progress, wstatus.c_str());
-	}
-#endif
-
-	// Publish ZoneLoading event to bridge
+	// Publish ZoneLoading event to bridge (also drives loading screen progress via bridge handler)
 	if (m_bridge) {
 		eqt::state::ZoneLoadingData data;
 		data.zoneName = m_current_zone_name;
@@ -1207,6 +1200,7 @@ void EverQuest::OnGraphicsComplete() {
 	SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
 	LOG_INFO(MOD_MAIN, "[LOADING] Graphics loading complete. Game ready!");
 
+	// ZoneLoaded bridge event drives setZoneReady(true) + hideLoadingScreen() via bridge handler
 	if (m_bridge) {
 		eqt::state::ZoneLoadedData data;
 		data.zoneName = m_current_zone_name;
@@ -1214,13 +1208,6 @@ void EverQuest::OnGraphicsComplete() {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 	}
-
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setZoneReady(true);
-		m_renderer->hideLoadingScreen();
-	}
-#endif
 }
 
 void EverQuest::LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
@@ -2342,19 +2329,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 				m_skill_manager->updateSkill(skill_id, value);
 			}
 
-#ifdef EQT_HAS_GRAPHICS
-			// Update trainer window if open
-			if (m_renderer && m_renderer->getWindowManager() &&
-				m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
-				m_renderer->getWindowManager()->updateSkillTrainerSkill(skill_id, value);
-				// Decrement practice points since training succeeded (both local and GameState)
-				m_renderer->getWindowManager()->decrementSkillTrainerPracticePoints();
-				if (m_practice_points > 0) {
-					--m_practice_points;
-					m_game_state.player().decrementPracticePoints();
-				}
+			// Decrement practice points if trainer window is open (training succeeded)
+			if (m_trainer_npc_id != 0 && m_practice_points > 0) {
+				--m_practice_points;
+				m_game_state.player().decrementPracticePoints();
 			}
-#endif
 
 			// Publish SkillValueChanged event to bridge
 			if (m_bridge) {
@@ -3278,19 +3257,13 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			server_x, server_y, z, m_x, m_y, m_z);
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Sync initial position to renderer (important for Player mode)
-	// Convert m_heading from degrees (0-360) to EQ format (0-512)
-	if (m_renderer) {
-		float heading512 = m_heading * 512.0f / 360.0f;
-		if (s_debug_level >= 1) {
-			LOG_INFO(MOD_ZONE, "[ZONE-IN] Calling setPlayerPosition from PlayerProfile: ({:.2f},{:.2f},{:.2f}) heading={:.2f}deg -> {:.2f} (512 fmt)",
-			         m_x, m_y, m_z, m_heading, heading512);
-		}
-		m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
-	}
+	// Sync initial position to bridge (important for Player mode)
 	if (m_bridge) {
 		float heading512 = m_heading * 512.0f / 360.0f;
+		if (s_debug_level >= 1) {
+			LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerMoved from PlayerProfile: ({:.2f},{:.2f},{:.2f}) heading={:.2f}deg -> {:.2f} (512 fmt)",
+			         m_x, m_y, m_z, m_heading, heading512);
+		}
 		eqt::state::PlayerMovedData data;
 		data.x = m_x; data.y = m_y; data.z = m_z;
 		data.heading = heading512;
@@ -3299,7 +3272,6 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerMoved, std::move(data)));
 	}
-#endif
 
 	// Store character stats (update both local members and GameState during migration)
 	m_level = level;
@@ -3565,33 +3537,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		}
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Update renderer with character info and stats
-	if (m_renderer) {
-		// Convert name and class to wstring for UI
-		std::wstring wname;
-		for (char c : m_character) {
-			wname += static_cast<wchar_t>(c);
-		}
-		std::wstring wclass;
-		std::string classStr = GetClassName(m_class);
-		for (char c : classStr) {
-			wclass += static_cast<wchar_t>(c);
-		}
-		std::wstring wdeity;
-		std::string deityName = GetDeityName(m_deity);
-		for (char c : deityName) {
-			wdeity += static_cast<wchar_t>(c);
-		}
-
-		m_renderer->setCharacterInfo(wname, m_level, wclass);
-		m_renderer->setCharacterDeity(wdeity);
-		m_renderer->setExpProgress(CalculateExpProgress(m_exp, m_level));
-
-		// Calculate stats from equipment and update
-		UpdateInventoryStats();
-	}
-#endif
+	// Calculate stats from equipment and update
+	UpdateInventoryStats();
 
 	// Publish CharacterInfoChanged event to bridge
 	if (m_bridge) {
@@ -3995,13 +3942,6 @@ void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
 	LOG_DEBUG(MOD_MAIN, "ReadBook response: window={} type={} textLen={}", window, type, bookText.length());
 	LOG_TRACE(MOD_MAIN, "Book text: '{}'", bookText);
 
-#ifdef EQT_HAS_GRAPHICS
-	// Show the note window in the renderer
-	if (m_renderer) {
-		m_renderer->showNoteWindow(bookText, type);
-	}
-#endif
-
 	// Publish NoteWindowOpened event to bridge
 	if (m_bridge) {
 		eqt::state::NoteWindowOpenedData data;
@@ -4126,11 +4066,14 @@ void EverQuest::SetupTradeManagerCallbacks()
 		SendCancelTrade(cancel);
 	});
 
-#ifdef EQT_HAS_GRAPHICS
-	// Set up UI callbacks
+	// Set up UI callbacks (via bridge events)
 	m_trade_manager->setOnRequestReceived([this](uint32_t spawnId, const std::string& name) {
-		if (m_renderer && m_renderer->getWindowManager()) {
-			m_renderer->getWindowManager()->showTradeRequest(spawnId, name);
+		if (m_bridge) {
+			eqt::state::TradeRequestReceivedData tdata;
+			tdata.spawnId = spawnId;
+			tdata.name = name;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeRequestReceived, std::move(tdata)));
 		}
 	});
 
@@ -4144,15 +4087,7 @@ void EverQuest::SetupTradeManagerCallbacks()
 			}
 		}
 
-		if (!m_renderer || !m_renderer->getWindowManager()) {
-			return;
-		}
-		auto* wm = m_renderer->getWindowManager();
 		if (state == TradeState::Active) {
-			wm->openTradeWindow(m_trade_manager->getPartnerSpawnId(),
-			                    m_trade_manager->getPartnerName(),
-			                    m_trade_manager->isNpcTrade());
-
 			// Publish TradeStarted
 			if (m_bridge) {
 				eqt::state::TradeStartedData tdata;
@@ -4164,84 +4099,43 @@ void EverQuest::SetupTradeManagerCallbacks()
 			}
 		} else if (state == TradeState::None) {
 			// Only close on None state (cancel) - Completed is handled by m_on_completed
-			wm->closeTradeWindow();
-
-			// Publish TradeCancelled (reuse TradeAcceptStateChangedData as carrier)
 			if (m_bridge) {
-				eqt::state::TradeAcceptStateChangedData tdata;
-				tdata.ownAccepted = false;
-				tdata.partnerAccepted = false;
 				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::TradeCancelled, std::move(tdata)));
+					eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));
 			}
 		}
 	});
 
 	m_trade_manager->setOnItemUpdated([this](bool isOwn, int slot) {
-		if (!m_renderer || !m_renderer->getWindowManager()) {
-			return;
-		}
-		auto* wm = m_renderer->getWindowManager();
-		if (!isOwn) {
-			// Partner item updated - get from trade manager
+		if (!isOwn && m_bridge) {
+			// Partner item updated - publish to bridge
 			const auto* item = m_trade_manager->getPartnerItem(slot);
-			if (item) {
-				// Make a copy for the UI
-				auto itemCopy = std::make_unique<eqt::inventory::ItemInstance>(*item);
-				wm->setTradePartnerItem(slot, std::move(itemCopy));
-
-				// Publish TradeItemUpdated for partner item
-				if (m_bridge) {
-					eqt::state::TradeItemUpdatedData tdata;
-					tdata.who = 1;  // partner
-					tdata.slot = static_cast<uint8_t>(slot);
-					tdata.itemId = item->itemId;
-					tdata.itemName = item->name;
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
-				}
-			} else {
-				wm->clearTradePartnerItem(slot);
-
-				// Publish TradeItemUpdated for cleared partner slot
-				if (m_bridge) {
-					eqt::state::TradeItemUpdatedData tdata;
-					tdata.who = 1;  // partner
-					tdata.slot = static_cast<uint8_t>(slot);
-					tdata.itemId = 0;
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
-				}
-			}
+			eqt::state::TradeItemUpdatedData tdata;
+			tdata.who = 1;  // partner
+			tdata.slot = static_cast<uint8_t>(slot);
+			tdata.itemId = item ? item->itemId : 0;
+			tdata.itemName = item ? item->name : "";
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
 		}
 		// Own items are displayed from inventory trade slots
 	});
 
 	m_trade_manager->setOnMoneyUpdated([this](bool isOwn) {
-		if (!m_renderer || !m_renderer->getWindowManager()) {
-			return;
-		}
-		auto* wm = m_renderer->getWindowManager();
-		if (isOwn) {
-			wm->setTradeOwnMoney(m_trade_manager->getOwnMoney().platinum,
-			                     m_trade_manager->getOwnMoney().gold,
-			                     m_trade_manager->getOwnMoney().silver,
-			                     m_trade_manager->getOwnMoney().copper);
-		} else {
-			wm->setTradePartnerMoney(m_trade_manager->getPartnerMoney().platinum,
-			                         m_trade_manager->getPartnerMoney().gold,
-			                         m_trade_manager->getPartnerMoney().silver,
-			                         m_trade_manager->getPartnerMoney().copper);
+		if (m_bridge) {
+			eqt::state::TradeMoneyUpdatedData tdata;
+			tdata.who = isOwn ? 0 : 1;
+			const auto& money = isOwn ? m_trade_manager->getOwnMoney() : m_trade_manager->getPartnerMoney();
+			tdata.platinum = money.platinum;
+			tdata.gold = money.gold;
+			tdata.silver = money.silver;
+			tdata.copper = money.copper;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeMoneyUpdated, std::move(tdata)));
 		}
 	});
 
 	m_trade_manager->setOnAcceptStateChanged([this](bool ownAccepted, bool partnerAccepted) {
-		if (m_renderer && m_renderer->getWindowManager()) {
-			m_renderer->getWindowManager()->setTradeOwnAccepted(ownAccepted);
-			m_renderer->getWindowManager()->setTradePartnerAccepted(partnerAccepted);
-		}
-
-		// Publish TradeAcceptStateChanged
 		if (m_bridge) {
 			eqt::state::TradeAcceptStateChangedData tdata;
 			tdata.ownAccepted = ownAccepted;
@@ -4301,10 +4195,6 @@ void EverQuest::SetupTradeManagerCallbacks()
 			}
 		}
 
-		if (m_renderer && m_renderer->getWindowManager()) {
-			m_renderer->getWindowManager()->closeTradeWindow(false);  // Don't send cancel on completion
-		}
-
 		// Publish TradeCompleted event to bridge
 		if (m_bridge) {
 			m_bridge->pushEvent(eqt::state::GameEvent(
@@ -4314,9 +4204,6 @@ void EverQuest::SetupTradeManagerCallbacks()
 
 	m_trade_manager->setOnCancelled([this]() {
 		AddChatSystemMessage("Trade cancelled.");
-		if (m_renderer && m_renderer->getWindowManager()) {
-			m_renderer->getWindowManager()->closeTradeWindow(true);  // Send cancel
-		}
 
 		// Publish TradeCancelled event to bridge
 		if (m_bridge) {
@@ -4324,7 +4211,6 @@ void EverQuest::SetupTradeManagerCallbacks()
 				eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));
 		}
 	});
-#endif
 }
 
 void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
@@ -5227,14 +5113,6 @@ void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
 
 	LOG_DEBUG(MOD_INVENTORY, "Opening bank window (banker NPC: {})", m_banker_npc_id);
 
-	// Open the bank window UI
-	if (m_renderer && m_renderer->getWindowManager()) {
-		// Update bank currency before opening window
-		m_renderer->getWindowManager()->updateBankCurrency(
-			m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
-		m_renderer->getWindowManager()->openBankWindow();
-	}
-
 	// Publish BankWindowOpened
 	if (m_bridge) {
 		eqt::state::WindowOpenedData data;
@@ -5263,11 +5141,6 @@ void EverQuest::CloseBankWindow()
 	}
 
 	LOG_DEBUG(MOD_INVENTORY, "Closing bank window (banker NPC: {})", m_banker_npc_id);
-
-	// Close the bank window UI and all bank bag windows
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->closeBankWindow();
-	}
 
 	// Publish BankWindowClosed (before clearing m_banker_npc_id)
 	if (m_bridge) {
@@ -5393,21 +5266,6 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={}) with {} trainable skills",
 		m_trainer_name, m_trainer_npc_id, skillEntries.size());
 
-	// Open the trainer window
-	if (m_renderer && m_renderer->getWindowManager()) {
-		std::wstring trainer_name_wstr(m_trainer_name.begin(), m_trainer_name.end());
-		m_renderer->getWindowManager()->openSkillTrainerWindow(
-			m_trainer_npc_id, trainer_name_wstr, skillEntries);
-
-		// Update player money in trainer window
-		m_renderer->getWindowManager()->updateSkillTrainerMoney(
-			GetPlatinum(), GetGold(), GetSilver(), GetCopper());
-
-		// Update practice points (free training sessions)
-		m_renderer->getWindowManager()->updateSkillTrainerPracticePoints(
-			GetPracticePoints());
-	}
-
 	// Publish TrainerWindowOpened event to bridge
 	if (m_bridge) {
 		eqt::state::TrainerWindowOpenedData data;
@@ -5487,11 +5345,6 @@ void EverQuest::CloseTrainerWindow()
 	end.playerid = m_my_spawn_id;
 	pkt.PutData(0, &end, sizeof(end));
 	QueuePacket(HC_OP_GMEndTraining, &pkt);
-
-	// Close the UI immediately (don't wait for server confirmation)
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->closeSkillTrainerWindow();
-	}
 
 	// Publish TrainerWindowClosed event to bridge (before clearing state)
 	if (m_bridge) {
@@ -5767,12 +5620,7 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 					         m_x, m_y, m_z, entity.z, m_heading);
 				}
 
-#ifdef EQT_HAS_GRAPHICS
-				// Update renderer with corrected feet Z position
-				if (m_renderer) {
-					float heading512 = m_heading * 512.0f / 360.0f;
-					m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
-				}
+				// Update bridge with corrected feet Z position
 				if (m_bridge) {
 					float heading512 = m_heading * 512.0f / 360.0f;
 					eqt::state::PlayerMovedData pdata;
@@ -5783,7 +5631,6 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 					m_bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 				}
-#endif
 			}
 
 			// Add to entity list (sync to both local map and EntityManager)
@@ -5922,15 +5769,6 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_ENTITY, "Door {}: '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} incline={} size={} type={} state_at_spawn={} invert={}",
 		         door.doorId, door.name, door.x, door.y, door.z, door.heading,
 		         door.incline, door.size, door.opentype, door_data->state_at_spawn, door.invertState ? 1 : 0);
-
-#ifdef EQT_HAS_GRAPHICS
-		// Notify renderer to create door visual
-		if (m_renderer) {
-			m_renderer->createDoor(door.doorId, door.name, door.x, door.y, door.z,
-			                       door.heading, door.incline, door.size, door.opentype,
-			                       door.isOpen);
-		}
-#endif
 
 		// Publish DoorSpawned event to bridge
 		if (m_bridge) {
@@ -6259,11 +6097,6 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 			if (it != m_entities.end()) {
 				it->second.light = static_cast<uint8_t>(parameter);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} light set to {}", spawn_id, parameter);
-#ifdef EQT_HAS_GRAPHICS
-				if (m_renderer) {
-					m_renderer->setEntityLight(spawn_id, static_cast<uint8_t>(parameter));
-				}
-#endif
 				if (m_bridge) {
 					eqt::state::EntityLightChangedData data;
 					data.spawnId = spawn_id;
@@ -6625,14 +6458,6 @@ void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 	// Store the world object
 	m_world_objects[worldObj.drop_id] = worldObj;
 
-	// Add tradeskill containers to renderer for click detection
-#ifdef EQT_HAS_GRAPHICS
-	if (worldObj.isTradeskillContainer() && m_renderer) {
-		m_renderer->addWorldObject(worldObj.drop_id, worldObj.x, worldObj.y, worldObj.z,
-			worldObj.object_type, worldObj.name);
-	}
-#endif
-
 	// Publish WorldObjectSpawned event to bridge
 	if (m_bridge) {
 		eqt::state::WorldObjectSpawnedData wdata;
@@ -6672,13 +6497,6 @@ void EverQuest::ZoneProcessWeather(const EQ::Net::Packet &p)
 		uint8_t intensity = p.GetUInt8(6);
 
 		LOG_INFO(MOD_ZONE, "Weather packet: type={}, intensity={}", type, intensity);
-
-		// Forward weather to renderer
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->setWeather(type, intensity);
-		}
-#endif
 
 		// Publish WeatherChanged event to bridge
 		if (m_bridge) {
@@ -6846,12 +6664,7 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 					m_x, m_y, m_z, entity.z);
 			}
 
-#ifdef EQT_HAS_GRAPHICS
-			// Update renderer with corrected feet Z position
-			if (m_renderer) {
-				float heading512 = m_heading * 512.0f / 360.0f;
-				m_renderer->setPlayerPosition(m_x, m_y, m_z, heading512);
-			}
+			// Update bridge with corrected feet Z position
 			if (m_bridge) {
 				float heading512 = m_heading * 512.0f / 360.0f;
 				eqt::state::PlayerMovedData pdata;
@@ -6862,7 +6675,6 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 				m_bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 			}
-#endif
 		}
 
 		// Store pet info in entity (for deferred pet detection)
@@ -7001,12 +6813,6 @@ void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 
 	m_exp = exp;
 	m_exp_aa = aaxp;
-
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setExpProgress(CalculateExpProgress(m_exp, m_level));
-	}
-#endif
 
 	// Publish ExpProgressChanged event
 	if (m_bridge) {
@@ -9122,12 +8928,6 @@ void EverQuest::RegisterCommands()
 			// Send position update to server
 			SendPositionUpdate();
 
-#ifdef EQT_HAS_GRAPHICS
-			// Update graphics position
-			if (m_renderer) {
-				m_renderer->setPlayerPosition(x, y, z, m_heading);
-			}
-#endif
 			if (m_bridge) {
 				eqt::state::PlayerMovedData pdata;
 				pdata.x = x; pdata.y = y; pdata.z = z;
@@ -10023,9 +9823,13 @@ void EverQuest::RegisterCommands()
 				m_time_hour = static_cast<uint8_t>(hour);
 				m_time_minute = 0;
 
-				// Update renderer
-				if (m_renderer) {
-					m_renderer->updateTimeOfDay(m_time_hour, m_time_minute);
+				// Publish TimeOfDayChanged
+				if (m_bridge) {
+					eqt::state::TimeOfDayChangedData tdata;
+					tdata.hour = m_time_hour;
+					tdata.minute = m_time_minute;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::TimeOfDayChanged, std::move(tdata)));
 				}
 
 				AddChatSystemMessage(fmt::format("Time set to {:02d}:00", m_time_hour));
@@ -12213,12 +12017,7 @@ void EverQuest::UpdateMovement()
 	// Update heading
 	m_heading = CalculateHeading(m_x - dx * factor, m_y - dy * factor, m_x, m_y);
 
-	// Update renderer position for console-driven movement (moveto, follow, etc.)
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setPlayerPosition(m_x, m_y, m_z, m_heading);
-	}
-#endif
+	// Update bridge position for console-driven movement (moveto, follow, etc.)
 	if (m_bridge) {
 		eqt::state::PlayerMovedData pdata;
 		pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
@@ -12930,13 +12729,6 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 				uint32_t soundId = EQT::Audio::DoorSounds::getDoorSound(doorType, is_open);
 				m_audio_manager->playSound(soundId, doorPos);
 			}
-		}
-#endif
-
-#ifdef EQT_HAS_GRAPHICS
-		// Notify renderer to animate the door
-		if (m_renderer) {
-			m_renderer->setDoorState(door_id, is_open, user_initiated);
 		}
 #endif
 
@@ -14009,9 +13801,7 @@ void EverQuest::CleanupZone()
 		if (m_buff_manager) {
 			m_buff_manager->clearPetBuffs();
 		}
-#ifdef EQT_HAS_GRAPHICS
 		OnPetRemoved();
-#endif
 	}
 
 	// Clear world objects (forges, looms, groundspawns)
@@ -14450,12 +14240,6 @@ void EverQuest::CheckZoneLine()
 {
 	// Skip if not fully zoned in or no zone lines loaded
 	if (!IsFullyZonedIn() || !m_zone_lines || !m_zone_lines->hasZoneLines()) {
-#ifdef EQT_HAS_GRAPHICS
-		// Clear zone line visual indicator
-		if (m_renderer) {
-			m_renderer->setZoneLineDebug(false);
-		}
-#endif
 		return;
 	}
 
@@ -14521,15 +14305,7 @@ void EverQuest::CheckZoneLine()
 		// We're in a zone line
 		auto now = std::chrono::steady_clock::now();
 
-#ifdef EQT_HAS_GRAPHICS
-		// Set zone line visual indicator
-		if (m_renderer) {
-			std::string debugText = fmt::format("pos=({:.1f}, {:.1f}, {:.1f})", m_x, m_y, m_z);
-			m_renderer->setZoneLineDebug(true, result.targetZoneId, debugText);
-		}
-#endif
-
-		// Skip actual zone trigger if zoning is disabled (visual indicator still shows)
+		// Skip actual zone trigger if zoning is disabled
 		if (!m_zoning_enabled) {
 			return;
 		}
@@ -14570,13 +14346,6 @@ void EverQuest::CheckZoneLine()
 		// Send zone change request to server
 		RequestZoneChange(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
 	} else {
-#ifdef EQT_HAS_GRAPHICS
-		// Clear zone line visual indicator
-		if (m_renderer) {
-			m_renderer->setZoneLineDebug(false);
-		}
-#endif
-
 		// Not in a zone line - clear the triggered flag if we were previously in one
 		if (m_zone_line_triggered) {
 			// Check if enough time has passed and we're no longer in a zone line
@@ -16034,8 +15803,7 @@ void EverQuest::UpdateJump()
 
 void EverQuest::UpdateWaterState()
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (!m_renderer || !IsFullyZonedIn()) {
+	if (!IsFullyZonedIn()) {
 		return;
 	}
 
@@ -16127,18 +15895,6 @@ void EverQuest::UpdateWaterState()
 		}
 	}
 
-	// Update renderer's swimming state
-	float swimSpeed = GetSwimSpeed();
-
-	// Check if player is levitating (flymode 2)
-	bool isLevitating = false;
-	auto myEntity = m_entities.find(m_my_spawn_id);
-	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
-		isLevitating = true;
-	}
-
-	m_renderer->setSwimmingState(m_water_state != WaterState::NotInWater, swimSpeed, isLevitating);
-#endif
 }
 
 void EverQuest::OnEnterWater()
@@ -19146,12 +18902,12 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// S04: spell DB, buff_manager, spell_effects, spell_type_processor are all
 	// pre-allocated in Application::initialize() via InitializeSpellSystem()
 
-	// Set up buff fade callback to handle vision buff expiration (needs m_renderer)
+	// Set up buff fade callback to handle vision buff expiration
 	if (m_buff_manager) {
 		m_buff_manager->setBuffFadeCallback([this](uint16_t entity_id, uint32_t spell_id) {
 			// Only handle player vision buffs
 			if (entity_id != 0) return;
-			if (!m_spell_manager || !m_renderer) return;
+			if (!m_spell_manager || !m_bridge) return;
 
 			// Check if the faded spell had vision effects
 			const EQ::SpellData* spell = m_spell_manager->getSpell(spell_id);
@@ -19163,35 +18919,26 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 			LOG_DEBUG(MOD_SPELL, "Vision buff faded (spell {}), recalculating vision", spell_id);
 
-			// Reset to base vision first
-			m_renderer->resetVisionToBase();
-
-			// Track final vision type for bridge event
+			// Determine final vision type from remaining buffs
 			uint8_t finalVisionType = 0;  // 0=normal
-
-			// Re-scan remaining buffs for vision effects and re-apply
 			for (const auto& buff : m_buff_manager->getPlayerBuffs()) {
 				const EQ::SpellData* buffSpell = m_spell_manager->getSpell(buff.spell_id);
 				if (!buffSpell) continue;
 
 				if (buffSpell->hasEffect(EQ::SpellEffect::UltraVision)) {
-					m_renderer->setVisionType(EQT::Graphics::VisionType::Ultravision);
 					finalVisionType = 2;
 					break;  // Ultravision is best, no need to check more
 				} else if (buffSpell->hasEffect(EQ::SpellEffect::InfraVision)) {
-					m_renderer->setVisionType(EQT::Graphics::VisionType::Infravision);
 					finalVisionType = 1;
 					// Keep checking in case there's an Ultravision buff
 				}
 			}
 
 			// Publish VisionChanged event to bridge
-			if (m_bridge) {
-				eqt::state::VisionChangedData vdata;
-				vdata.visionType = finalVisionType;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::VisionChanged, std::move(vdata)));
-			}
+			eqt::state::VisionChangedData vdata;
+			vdata.visionType = finalVisionType;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::VisionChanged, std::move(vdata)));
 		});
 	}
 
@@ -19658,11 +19405,13 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 		m_target_update_timer += deltaTime;
 		if (m_target_update_timer >= 1.0f) {
 			m_target_update_timer = 0.0f;
-			if (m_current_target_id != 0) {
+			if (m_current_target_id != 0 && m_bridge) {
 				auto it = m_entities.find(m_current_target_id);
 				if (it != m_entities.end()) {
-					// Update the target HP from current entity data
-					m_renderer->updateCurrentTargetHP(it->second.hp_percent);
+					eqt::state::TargetHPUpdatedData data;
+					data.hpPercent = it->second.hp_percent;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::TargetHPUpdated, std::move(data)));
 				}
 			}
 		}
@@ -19671,8 +19420,14 @@ bool EverQuest::UpdateGraphics(float deltaTime) {
 			LOG_TRACE(MOD_GRAPHICS, "Target updated, updating time...");
 		}
 
-		// Update time of day lighting
-		m_renderer->updateTimeOfDay(m_time_hour, m_time_minute);
+		// Update time of day lighting via bridge
+		if (m_bridge) {
+			eqt::state::TimeOfDayChangedData data;
+			data.hour = m_time_hour;
+			data.minute = m_time_minute;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
+		}
 
 		// Update spell manager (cooldowns, memorization progress, cast timeouts)
 		if (m_spell_manager) {
@@ -20191,18 +19946,9 @@ void EverQuest::OnPetCreated(const Entity& pet) {
 }
 
 void EverQuest::OnPetRemoved() {
-	if (!m_graphics_initialized || !m_renderer) {
-		return;
-	}
-
 	LOG_DEBUG(MOD_MAIN, "Pet window: Pet removed");
 
-	// Close pet window when pet is removed
-	if (m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->closePetWindow();
-	}
-
-	// Publish PetRemoved event to bridge
+	// PetRemoved bridge event drives closePetWindow() via bridge handler
 	if (m_bridge) {
 		eqt::state::PetRemovedData data;
 		data.spawnId = m_pet_spawn_id;

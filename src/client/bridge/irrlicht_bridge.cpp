@@ -198,12 +198,17 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneChanged");
         break;
     case state::GameEventType::ZoneLoading:
-        // Loading screen progress driven by loading thread — no bridge action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLoading");
+        if (renderer_) {
+            auto& d = std::get<state::ZoneLoadingData>(event.data);
+            std::wstring wstatus(d.statusMessage.begin(), d.statusMessage.end());
+            renderer_->setLoadingProgress(d.progress, wstatus);
+        }
         break;
     case state::GameEventType::ZoneLoaded:
-        // Zone load completion handled by loading thread callbacks — no bridge action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: ZoneLoaded");
+        if (renderer_) {
+            renderer_->setZoneReady(true);
+            renderer_->hideLoadingScreen();
+        }
         break;
 
     // Chat events (D10)
@@ -271,6 +276,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
         }
         break;
+    case state::GameEventType::TargetHPUpdated:
+        if (renderer_) {
+            auto& d = std::get<state::TargetHPUpdatedData>(event.data);
+            renderer_->updateCurrentTargetHP(d.hpPercent);
+        }
+        break;
     case state::GameEventType::DamageEvent:
         if (renderer_) {
             auto& d = std::get<state::DamageEventData>(event.data);
@@ -313,8 +324,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Time events (D13)
     case state::GameEventType::TimeOfDayChanged:
-        // Sky renderer reads time from WorldState each frame — no bridge action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TimeOfDayChanged");
+        if (renderer_) {
+            auto& d = std::get<state::TimeOfDayChangedData>(event.data);
+            renderer_->updateTimeOfDay(d.hour, d.minute);
+        }
         break;
 
     // Pet events (D12)
@@ -530,6 +543,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     // Trade events (D11c)
+    case state::GameEventType::TradeRequestReceived:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TradeRequestReceivedData>(event.data);
+                wm->showTradeRequest(d.spawnId, d.name);
+            }
+        }
+        break;
     case state::GameEventType::TradeStarted:
         if (renderer_) {
             auto* wm = renderer_->getWindowManager();
@@ -556,6 +578,19 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                     }
                 }
                 // who==0 (self) items are managed locally by the trade window
+            }
+        }
+        break;
+    case state::GameEventType::TradeMoneyUpdated:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::TradeMoneyUpdatedData>(event.data);
+                if (d.who == 0) {
+                    wm->setTradeOwnMoney(d.platinum, d.gold, d.silver, d.copper);
+                } else {
+                    wm->setTradePartnerMoney(d.platinum, d.gold, d.silver, d.copper);
+                }
             }
         }
         break;

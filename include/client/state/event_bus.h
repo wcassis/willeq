@@ -53,6 +53,7 @@ enum class GameEventType {
     // Combat events
     CombatEvent,
     TargetChanged,
+    TargetHPUpdated,
     DamageEvent,
     SpellCastStarted,
     SpellCastComplete,
@@ -96,8 +97,10 @@ enum class GameEventType {
     LootItemRemoved,
 
     // Trade events
+    TradeRequestReceived,
     TradeStarted,
     TradeItemUpdated,
+    TradeMoneyUpdated,
     TradeAcceptStateChanged,
     TradeCancelled,
     TradeCompleted,
@@ -366,6 +369,10 @@ struct TargetChangedData {
     uint32_t equipmentTint[9] = {0};
 };
 
+struct TargetHPUpdatedData {
+    uint8_t hpPercent = 100;
+};
+
 struct DamageEventData {
     uint16_t sourceId;
     uint16_t targetId;
@@ -558,6 +565,11 @@ struct LootItemRemovedData {
 
 // --- Trade events ---
 
+struct TradeRequestReceivedData {
+    uint32_t spawnId;
+    std::string name;
+};
+
 struct TradeStartedData {
     uint16_t partnerId;
     std::string partnerName;
@@ -569,6 +581,14 @@ struct TradeItemUpdatedData {
     uint8_t slot;
     uint32_t itemId;
     std::string itemName;
+};
+
+struct TradeMoneyUpdatedData {
+    uint8_t who;  // 0=self, 1=partner
+    uint32_t platinum;
+    uint32_t gold;
+    uint32_t silver;
+    uint32_t copper;
 };
 
 struct TradeAcceptStateChangedData {
@@ -719,6 +739,7 @@ using EventData = std::variant<
     // Combat
     CombatEventData,
     TargetChangedData,
+    TargetHPUpdatedData,
     DamageEventData,
     SpellCastStartedData,
     SpellCastCompleteData,
@@ -752,8 +773,10 @@ using EventData = std::variant<
     LootItemAddedData,
     LootItemRemovedData,
     // Trade
+    TradeRequestReceivedData,
     TradeStartedData,
     TradeItemUpdatedData,
+    TradeMoneyUpdatedData,
     TradeAcceptStateChangedData,
     TradeCancelledData,
     TradeCompletedData,

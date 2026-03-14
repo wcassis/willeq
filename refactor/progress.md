@@ -176,9 +176,9 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D17a | Add missing entity event types + fix weapon skill state ownership | done | |
 | D17b | Remove direct renderer calls from entity packet handlers | done | |
 | D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | done | |
-| D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | pending | |
-| D19a | Remove direct renderer calls from small handlers (chat, combat, door, world, weather, etc.) | pending | |
-| D19b | Remove direct renderer calls from zone lifecycle functions | pending | |
+| D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | done | |
+| D19a | Remove direct renderer calls from small handlers (chat, combat, door, world, weather, etc.) | done | |
+| D19b | Remove direct renderer calls from zone lifecycle functions | done | |
 | D20a | Remove callback lambdas + activate intent processing | pending | |
 | D20b | Remove raw pointer coupling from InitGraphics() | pending | |
 | D20c | Refactor UpdateGraphics / zone loading ownership | pending | |
