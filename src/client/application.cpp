@@ -31,6 +31,7 @@
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/bridge/console_bridge.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/state/event_bus.h"
@@ -421,6 +422,14 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
 #endif
 
+    // D25: Attach console bridge in headless mode for event logging
+    if (!m_graphicsInitialized && !m_bridge) {
+        m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
+        m_bridge = m_consoleBridge.get();
+        m_eqClient->setBridge(m_bridge);
+        LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
+    }
+
     // Start login connection AFTER graphics init to avoid timeout on slow devices.
     // DRM/EGL initialization can take 4-5 seconds on first run (Orange Pi), and the
     // login server will disconnect if no network pumping occurs during that window.
@@ -662,6 +671,11 @@ void Application::updateGameState(float deltaTime) {
     // D21a: Audio update (was in PostRenderTick — game thread responsibility)
     if (m_eqClient && m_graphicsInitialized) {
         m_eqClient->PostRenderTick(deltaTime);
+    }
+
+    // D25: In headless mode, drain and apply events to the console bridge
+    if (m_eqClient && m_consoleBridge && !m_graphicsInitialized) {
+        m_eqClient->ProcessBridgeEvents();
     }
 }
 

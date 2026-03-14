@@ -222,6 +222,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/mode/graphical_mode.cpp
     # Bridge sources
     src/client/bridge/irrlicht_bridge.cpp
+    src/client/bridge/console_bridge.cpp
     # Action system sources
     src/client/action/action_dispatcher.cpp
     src/client/action/input_action_bridge.cpp

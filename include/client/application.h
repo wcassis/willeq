@@ -21,7 +21,7 @@
 // Forward declarations
 class EverQuest;
 namespace EQT { namespace Graphics { class IrrlichtRenderer; struct BspTree; } }
-namespace eqt { namespace bridge { class IrrlichtBridge; class GameStateBridge; } }
+namespace eqt { namespace bridge { class IrrlichtBridge; class ConsoleBridge; class GameStateBridge; } }
 
 namespace eqt {
 
@@ -284,6 +284,7 @@ private:
     // D20b5: Renderer and bridge owned by Application
     std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
     std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;
+    std::unique_ptr<eqt::bridge::ConsoleBridge> m_consoleBridge;  // D25: headless mode
     eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
     // Graphics input handler (bridges RendererEventReceiver → InputActionBridge)
