@@ -984,7 +984,11 @@ public:
 	                  EQT::Graphics::IrrlichtRenderer* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
-	bool UpdateGraphics(float deltaTime);
+	// D20c1: UpdateGraphics split — Application calls renderer directly
+	bool IsLoadingThreadActive() const { return m_loading_thread != nullptr; }
+	bool CheckLoadingComplete();  // Returns true if loading just completed
+	void PreRenderTick(float deltaTime);   // Spell/buff/target updates + bridge event push
+	void PostRenderTick(float deltaTime);  // Audio sync, progressive loading check
 	void SetEQClientPath(const std::string& path);
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }

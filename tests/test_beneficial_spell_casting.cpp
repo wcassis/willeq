@@ -199,9 +199,10 @@ protected:
             if (eq_) {
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
-                // Process graphics frame via UpdateGraphics which also updates spell manager cooldowns
+                // D20c1: Process frame via split API
                 float deltaTime = getDeltaTime();
-                if (!eq_->UpdateGraphics(deltaTime)) {
+                eq_->PreRenderTick(deltaTime);
+                if (!renderer_->processFrame(deltaTime)) {
                     // Window was closed
                     std::cerr << "Graphics window closed unexpectedly" << std::endl;
                     return false;
@@ -225,9 +226,9 @@ protected:
             if (eq_) {
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
-                // Process graphics frame via UpdateGraphics which also updates spell manager cooldowns
                 float deltaTime = getDeltaTime();
-                eq_->UpdateGraphics(deltaTime);
+                eq_->PreRenderTick(deltaTime);
+                renderer_->processFrame(deltaTime);
 #endif
             }
             std::this_thread::sleep_for(16ms);

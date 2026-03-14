@@ -975,66 +975,112 @@ Acceptance criteria:
 
 ### D20c: Refactor UpdateGraphics, zone loading ownership, and game-side renderer queries
 
-Restructure `UpdateGraphics()` and zone loading so the renderer owns its own frame
-loop and loading pipeline. Also remove remaining game-side queries to renderer state.
-This is prerequisite for removing `m_renderer` (D20e).
+Split into 4 sub-units (D20c1–D20c4) due to scope.
 
-**UpdateGraphics() refactoring:**
-Currently `Application::mainLoop()` calls `m_eqClient->UpdateGraphics(deltaTime)`,
-which calls `m_renderer->processFrame()`. After D20c, Application calls the renderer
-directly — EverQuest has no UpdateGraphics() method.
+#### D20c1: Move UpdateGraphics to Application
 
-Per-frame state pushes that currently happen in UpdateGraphics() must become events:
-- `updateCurrentTargetHP()` (line 19914) — convert to `TargetHPChanged` event,
-  published when HP actually changes (not polled per-frame)
-- `updateTimeOfDay()` (line 19924) — convert to `TimeOfDayChanged` event, published
-  from game thread when server sends time update
-- Camera transform query (lines 19969-19971) for audio positioning — renderer pushes
-  `CameraPositionChanged` event, or audio moves to render side
-- Event receiver volume delta queries (lines 19984, 19992) — renderer pushes volume
-  change intents
+Application calls the renderer directly instead of going through EverQuest.
 
-**Zone loading ownership transfer:**
-- `LoadZoneGraphicsOnLoadingThread()` and `LoadZoneGraphics()` move to the renderer
-- `StartLoadingThread()` / `JoinLoadingThread()` move to the renderer
-- Game thread publishes zone data through events; renderer manages its own loading
-- `OnGraphicsComplete()` replaced by renderer notifying game thread via intent when
-  zone assets are ready
-- Zone cleanup synchronous calls (`setNavmesh(nullptr)`, `setCollisionMap(nullptr)`,
-  `unloadZone()`, `showLoadingScreen()`, `setZoneReady(false)`) at lines 13498-13564
-  move to renderer-managed lifecycle
+**What moves to Application::render():**
+- `m_renderer->processFrame(deltaTime)` — the main render call
+- Loading thread join/complete detection — checking if loading thread finished,
+  calling JoinLoadingThread() + OnGraphicsComplete()
+- `ProcessBridgeIntents()` / `ProcessBridgeEvents()` — drain bridge queues per-frame
 
-**BSP tree water detection (line 15549):**
-`CheckWaterState()` calls `m_renderer->getZoneBspTree()` — the game thread queries
-renderer-owned BSP tree data to detect water regions. Options:
-  (a) Renderer pushes water region data at zone load via event — game thread maintains
-      own region lookup
-  (b) Renderer handles water detection and pushes `WaterStateChanged` intent when
-      player enters/exits water
-  (c) Game thread maintains own BSP region copy from zone data
-Option (b) is preferred — renderer already has player position and BSP tree.
+**What stays in EverQuest (called from Application before render):**
+- `m_spell_manager->update(deltaTime)` — spell cooldowns, memorization timeouts
+- `m_buff_manager->update(deltaTime)` — buff duration ticking
 
-**requestQuit calls (2 sites):**
-- `/quit` slash command (line 8923) — `m_renderer->requestQuit()`
-- `ZoneProcessLogoutReply()` (line 15842) — `m_renderer->requestQuit()`
-Convert to `RequestQuitIntent` via bridge, or have Application own quit signaling.
+**EverQuest changes:**
+- Remove `UpdateGraphics()` method entirely
+- Add `TickManagers(float deltaTime)` for spell/buff updates (called by Application)
 
-**Hotbar config save/load (2 sites):**
-- `SaveHotbarConfig()` (line 20309) — reads hotbar state from renderer windowManager
-- `LoadHotbarConfig()` (line 20352) — writes hotbar state to renderer windowManager
-After D20b, hotbar state lives in renderer. Save/load moves to renderer or uses
-bridge round-trip (game pushes `SaveHotbarConfigIntent`, renderer saves).
-
-**Application class changes:**
-- `Application` owns the renderer directly (not via EverQuest)
-- Main loop: render on main thread, game state on game thread (prepared for D21)
-- Startup sequencing: game connects first, renderer initialized when needed
+**Application changes:**
+- `Application::render()` calls `m_renderer->processFrame()` directly
+- Calls `ProcessBridgeIntents()` / `ProcessBridgeEvents()` before processFrame
+- Handles loading thread lifecycle (join detection, OnGraphicsComplete)
 
 Acceptance criteria:
-- `EverQuest` has no `UpdateGraphics()` method
-- Renderer owns its frame loop (called by Application, not EverQuest)
-- Zone loading pipeline works through bridge events
-- Per-frame polls converted to change-driven events
+- EverQuest has no UpdateGraphics() method
+- Application calls renderer->processFrame() directly
+- Spell/buff manager ticking called from Application
+
+#### D20c2: Convert per-frame renderer polls to events
+
+Remove per-frame state pushes from UpdateGraphics that should be change-driven.
+
+**Target HP polling:**
+- Currently: UpdateGraphics polls target HP on a 1-second timer, pushes
+  TargetHPUpdated event
+- Fix: publish TargetHPUpdated from packet handlers when HP actually changes
+  (ZoneProcessMobHealth already publishes EntityStatsChanged). Remove the poll.
+
+**Time of day:**
+- Currently: UpdateGraphics pushes TimeOfDayChanged every frame
+- Fix: only push when server sends time update (already done in ZoneProcessTimeOfDay).
+  Remove the per-frame push.
+
+**Audio listener sync (camera position):**
+- Currently: UpdateGraphics queries camera transform from renderer for audio
+- Fix: renderer pushes camera position as part of processFrame output, or audio
+  manager moves to renderer side. For now, Application reads camera after render.
+
+**Volume hotkeys:**
+- Currently: UpdateGraphics reads `[`/`]` key state from renderer event receiver
+- Fix: renderer pushes VolumeChangeIntent when keys are pressed
+
+Acceptance criteria:
+- No per-frame state polls in the render path
+- Target HP and time of day changes are event-driven only
+- Audio sync handled by Application or renderer
+
+#### D20c3: Zone loading pipeline through bridge
+
+Move zone loading functions from EverQuest to renderer-managed lifecycle.
+
+**Functions to move:**
+- `LoadZoneGraphicsOnLoadingThread()` / `LoadZoneGraphics()` — zone asset loading
+  moves to renderer (it already runs on renderer's loading thread)
+- `StartLoadingThread()` / `JoinLoadingThread()` — loading thread management
+  moves to renderer (Application coordinates via bridge events)
+- `OnGraphicsComplete()` — post-load setup. Renderer notifies completion via
+  intent/event, game thread handles game-state side
+
+**Zone cleanup:**
+- Zone cleanup calls (`unloadZone()`, `showLoadingScreen()`, `setZoneReady(false)`,
+  `setCollisionMap(nullptr)`) currently in BeginZoneChange — renderer handles via
+  ZoneChanged bridge event
+
+**BSP water detection:**
+- `CheckWaterState()` references `m_renderer->getZoneBspTree()` — currently this
+  function doesn't exist in the codebase. If/when implemented, renderer should handle
+  water detection and push SwimmingStateChanged via bridge.
+
+Acceptance criteria:
+- Zone loading functions live in renderer, not EverQuest
+- Loading thread owned by renderer
+- Zone cleanup triggered by bridge events
+
+#### D20c4: Remove remaining game-side renderer queries
+
+Remove the last direct `m_renderer->` calls from EverQuest that aren't zone loading.
+
+**requestQuit (2 call sites):**
+- `/quit` slash command and `ZoneProcessLogoutReply()` call
+  `m_renderer->requestQuit()`. Replace with Application-level quit signaling
+  (EverQuest calls `m_bridge->pushIntent(RequestQuitIntent{})`, Application
+  checks for quit requests, or Application exposes a quit callback).
+
+**Hotbar config save/load:**
+- `SaveHotbarConfig()` reads hotbar state from renderer's WindowManager
+- `LoadHotbarConfig()` writes hotbar state to renderer's WindowManager
+- Move to renderer side: renderer saves/loads its own hotbar config, triggered
+  by a bridge event or during renderer init/shutdown
+
+Acceptance criteria:
+- Zero `m_renderer->requestQuit()` calls in EverQuest
+- Hotbar save/load does not access renderer from game thread
+- All remaining m_renderer-> calls are zone loading (D20c3 scope) or removed
 - Audio positioning solved (event or render-side)
 - Zero game-side queries to renderer state (BSP tree, hotbar config, quit)
 - `requestQuit` works through bridge or Application-level signaling

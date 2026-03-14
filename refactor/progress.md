@@ -181,12 +181,15 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D19b | Remove direct renderer calls from zone lifecycle functions | done | |
 | D19c | Remove remaining packet handler and chat routing renderer calls | done | `76a86c1` |
 | D20a | Remove callback lambdas + activate intent processing | done | `76a86c1` |
-| D20b1 | Remaining Setup*Callbacks → intents (tradeskill, trainer, inventory, trade manager) | pending | |
-| D20b2 | InitGraphics callbacks → intents + events (hotbar, group accept, HUD, buff fade, skill, chat link) | pending | |
-| D20b3 | Chat window + collision map decoupling | pending | |
-| D20b4 | Window pointer decoupling (spell gem, buff, skills, group, player status, pet, trade, inventory) | pending | |
-| D20b5 | Renderer lifecycle cleanup (bridge/loading/shutdown → Application ownership) | pending | |
-| D20c | Refactor UpdateGraphics, zone loading ownership, and game-side renderer queries | pending | |
+| D20b1 | Remaining Setup*Callbacks → intents (tradeskill, trainer, inventory) | done | `29e058e` |
+| D20b2 | InitGraphics callbacks → intents + events (hotbar, group accept, HUD, buff fade, skill, chat link) | done | `a8bc154` |
+| D20b3 | Chat window + collision map decoupling | done | `a962792` |
+| D20b4 | Window pointer decoupling — EverQuest* + manager pointers removed from all UI windows | done | `556efbb` |
+| D20b5 | Renderer lifecycle cleanup (bridge/loading/shutdown → Application ownership) | done | `846a6a3` |
+| D20c1 | Move UpdateGraphics to Application (renderer->processFrame called directly) | pending | |
+| D20c2 | Convert per-frame renderer polls to events (target HP, time of day, audio, volume) | pending | |
+| D20c3 | Zone loading pipeline through bridge (loading thread + zone cleanup to renderer) | pending | |
+| D20c4 | Remove remaining game-side renderer queries (requestQuit, hotbar save/load) | pending | |
 | D20d | Remove debug/toggle slash commands from EverQuest | pending | |
 | D20e | Remove m_renderer from EverQuest | pending | |
 | D20f | Decouple RDP server from renderer | pending | |

@@ -18221,171 +18221,110 @@ void EverQuest::ShutdownGraphics() {
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
 }
 
-bool EverQuest::UpdateGraphics(float deltaTime) {
-	static int graphics_frame_counter = 0;
-	graphics_frame_counter++;
-
-	// Extra logging when zone is not connected (during zone transition)
-	bool zone_transition_logging = !m_zone_connected;
-	if (zone_transition_logging) {
-		LOG_TRACE(MOD_GRAPHICS, "UpdateGraphics (zone transition) frame {}", graphics_frame_counter);
+// D20c1: Loading thread completion check — called by Application before render
+bool EverQuest::CheckLoadingComplete() {
+	if (!m_loading_thread) return false;
+	if (m_loading_status.loadingComplete.load(std::memory_order_acquire)) {
+		JoinLoadingThread();
+		OnGraphicsComplete();
+		return true;
 	}
+	return false;
+}
 
-	if (!m_graphics_initialized || !m_renderer) {
-		if (graphics_frame_counter % 100 == 0 || zone_transition_logging) {
-			LOG_TRACE(MOD_GRAPHICS, "UpdateGraphics: no renderer (initialized={})", m_graphics_initialized);
-		}
-		return true;  // No renderer, just return success
-	}
+// D20c1: Pre-render game state tick — spell/buff managers, target HP, time of day, bridge
+void EverQuest::PreRenderTick(float deltaTime) {
+	if (!m_graphics_initialized) return;
 
-	// Loading thread owns GL context — skip all rendering.
-	// Check for loading completion and join.
-	// Note: check m_loading_thread (not isRunning()) to avoid race where the
-	// thread sets running_=false before main thread polls. JoinLoadingThread()
-	// resets m_loading_thread to null, so subsequent iterations skip this block.
-	if (m_loading_thread) {
-		if (m_loading_status.loadingComplete.load(std::memory_order_acquire)) {
-			JoinLoadingThread();
-			OnGraphicsComplete();
-		}
-		return true;  // Loading thread active, no GL work on main thread
-	}
-
-	if (zone_transition_logging) {
-		LOG_TRACE(MOD_GRAPHICS, "Renderer exists, checking mode...");
-	}
-
-	// Log periodically
-	if (graphics_frame_counter % 500 == 0) {
-		LOG_TRACE(MOD_GRAPHICS, "UpdateGraphics frame {} zone_connected={}", graphics_frame_counter, m_zone_connected);
-	}
-
-	try {
-		// Update player position in renderer (only in Admin mode)
-		// In Player/Repair mode, the renderer drives position via OnGraphicsMovement callback
-		if (zone_transition_logging) {
-			LOG_TRACE(MOD_GRAPHICS, "Position set, updating target...");
-		}
-
-		// Periodic target HP update (~1 second interval)
-		m_target_update_timer += deltaTime;
-		if (m_target_update_timer >= 1.0f) {
-			m_target_update_timer = 0.0f;
-			if (m_current_target_id != 0 && m_bridge) {
-				auto it = m_entities.find(m_current_target_id);
-				if (it != m_entities.end()) {
-					eqt::state::TargetHPUpdatedData data;
-					data.hpPercent = it->second.hp_percent;
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::TargetHPUpdated, std::move(data)));
-				}
+	// Periodic target HP update (~1 second interval)
+	m_target_update_timer += deltaTime;
+	if (m_target_update_timer >= 1.0f) {
+		m_target_update_timer = 0.0f;
+		if (m_current_target_id != 0 && m_bridge) {
+			auto it = m_entities.find(m_current_target_id);
+			if (it != m_entities.end()) {
+				eqt::state::TargetHPUpdatedData data;
+				data.hpPercent = it->second.hp_percent;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::TargetHPUpdated, std::move(data)));
 			}
 		}
+	}
 
-		if (zone_transition_logging) {
-			LOG_TRACE(MOD_GRAPHICS, "Target updated, updating time...");
-		}
+	// Update time of day lighting via bridge
+	if (m_bridge) {
+		eqt::state::TimeOfDayChangedData data;
+		data.hour = m_time_hour;
+		data.minute = m_time_minute;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
+	}
 
-		// Update time of day lighting via bridge
-		if (m_bridge) {
-			eqt::state::TimeOfDayChangedData data;
-			data.hour = m_time_hour;
-			data.minute = m_time_minute;
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
-		}
+	// Update spell manager (cooldowns, memorization progress, cast timeouts)
+	if (m_spell_manager) {
+		m_spell_manager->update(deltaTime);
+	}
 
-		// Update spell manager (cooldowns, memorization progress, cast timeouts)
-		if (m_spell_manager) {
-			m_spell_manager->update(deltaTime);
-		}
+	// Update buff manager (buff durations, expirations)
+	if (m_buff_manager) {
+		m_buff_manager->update(deltaTime);
+	}
 
-		// Update buff manager (buff durations, expirations)
-		if (m_buff_manager) {
-			m_buff_manager->update(deltaTime);
-		}
+	// Process intents from renderer's previous frame
+	ProcessBridgeIntents();
 
-		if (zone_transition_logging) {
-			LOG_TRACE(MOD_GRAPHICS, "Time updated, calling processFrame...");
-		}
+	// Drain bridge events and apply to renderer
+	ProcessBridgeEvents();
+}
 
-		// D20a: Process intents from renderer's previous frame before pushing new events
-		ProcessBridgeIntents();
+// D20c1: Post-render tick — audio sync, progressive loading check
+void EverQuest::PostRenderTick(float deltaTime) {
+	if (!m_graphics_initialized || !m_renderer) return;
 
-		// D14: Drain bridge events and apply to renderer (D09-D13 consumers)
-		ProcessBridgeEvents();
-
-		// Process a frame
-		bool result = m_renderer->processFrame(deltaTime);
-
-		// Check if automatic asset loading completed behind loading screen.
-		// progressiveLoadingActive goes false only after all entities, doors,
-		// objects, and regions are built — not just when the phase pipeline finishes.
-		// Guard: only fires when we're actually in the graphics loading phases,
-		// not at startup when the loading screen is visible but no zone load
-		// has started yet.
-		if (m_renderer->isLoadingScreenVisible() &&
-		    !m_renderer->isProgressiveLoadingActive() &&
-		    m_loading_phase >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
-		    m_loading_phase < LoadingPhase::COMPLETE) {
-			OnGraphicsComplete();
-		}
-
-		if (zone_transition_logging) {
-			LOG_TRACE(MOD_GRAPHICS, "processFrame returned {}", result);
-		}
+	// Check if progressive loading completed behind loading screen
+	if (m_renderer->isLoadingScreenVisible() &&
+	    !m_renderer->isProgressiveLoadingActive() &&
+	    m_loading_phase >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
+	    m_loading_phase < LoadingPhase::COMPLETE) {
+		OnGraphicsComplete();
+	}
 
 #ifdef WITH_AUDIO
-		// Update audio listener position to match camera
-		if (m_audio_manager && result) {
-			float posX, posY, posZ;
-			float forwardX, forwardY, forwardZ;
-			float upX, upY, upZ;
-			m_renderer->getCameraTransform(posX, posY, posZ,
-			                               forwardX, forwardY, forwardZ,
-			                               upX, upY, upZ);
-			m_audio_manager->setListenerPosition(
-				glm::vec3(posX, posY, posZ),
-				glm::vec3(forwardX, forwardY, forwardZ),
-				glm::vec3(upX, upY, upZ)
-			);
+	if (m_audio_manager) {
+		float posX, posY, posZ;
+		float forwardX, forwardY, forwardZ;
+		float upX, upY, upZ;
+		m_renderer->getCameraTransform(posX, posY, posZ,
+		                               forwardX, forwardY, forwardZ,
+		                               upX, upY, upZ);
+		m_audio_manager->setListenerPosition(
+			glm::vec3(posX, posY, posZ),
+			glm::vec3(forwardX, forwardY, forwardZ),
+			glm::vec3(upX, upY, upZ)
+		);
 
-			// Phase 13: Update zone sound emitters
-			if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
-				m_zone_audio_manager->update(deltaTime, glm::vec3(posX, posY, posZ), m_is_daytime);
-			}
-
-			// Handle music volume hotkey adjustments ([ and ])
-			float musicDelta = m_renderer->getEventReceiver()->getMusicVolumeDelta();
-			if (musicDelta != 0.0f) {
-				float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getMusicVolume() + musicDelta));
-				m_audio_manager->setMusicVolume(newVol);
-				AddChatSystemMessage(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
-			}
-
-			// Handle effects volume hotkey adjustments (Shift+[ and Shift+])
-			float effectsDelta = m_renderer->getEventReceiver()->getEffectsVolumeDelta();
-			if (effectsDelta != 0.0f) {
-				float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getEffectsVolume() + effectsDelta));
-				m_audio_manager->setEffectsVolume(newVol);
-				AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
-			}
+		if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
+			m_zone_audio_manager->update(deltaTime, glm::vec3(posX, posY, posZ), m_is_daytime);
 		}
+
+		// Volume hotkey adjustments
+		float musicDelta = m_renderer->getEventReceiver()->getMusicVolumeDelta();
+		if (musicDelta != 0.0f) {
+			float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getMusicVolume() + musicDelta));
+			m_audio_manager->setMusicVolume(newVol);
+			AddChatSystemMessage(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
+		}
+
+		float effectsDelta = m_renderer->getEventReceiver()->getEffectsVolumeDelta();
+		if (effectsDelta != 0.0f) {
+			float newVol = std::max(0.0f, std::min(1.0f, m_audio_manager->getEffectsVolume() + effectsDelta));
+			m_audio_manager->setEffectsVolume(newVol);
+			AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
+		}
+	}
+#else
+	(void)deltaTime;
 #endif
-
-		if (!result) {
-			LOG_DEBUG(MOD_GRAPHICS, "processFrame returned false - window may have been closed");
-		}
-		return result;
-	}
-	catch (const std::exception& e) {
-		LOG_ERROR(MOD_GRAPHICS, "Exception in UpdateGraphics: {}", e.what());
-		return false;
-	}
-	catch (...) {
-		LOG_ERROR(MOD_GRAPHICS, "Unknown exception in UpdateGraphics");
-		return false;
-	}
 }
 
 #ifdef EQT_HAS_GRAPHICS

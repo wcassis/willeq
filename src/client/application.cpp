@@ -616,13 +616,29 @@ void Application::updateGameState(float deltaTime) {
 
 void Application::render(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
-    if (m_graphicsInitialized && m_eqClient) {
+    if (m_graphicsInitialized && m_eqClient && m_renderer) {
         auto now = std::chrono::steady_clock::now();
         float gfxDeltaTime = std::chrono::duration<float>(now - m_lastGraphicsUpdate).count();
 
         if (gfxDeltaTime >= 1.0f / 60.0f) {
-            if (!m_eqClient->UpdateGraphics(gfxDeltaTime)) {
-                // Graphics window closed
+            // D20c1: Application orchestrates render loop directly
+            // 1. Check if loading thread completed
+            if (m_eqClient->IsLoadingThreadActive()) {
+                m_eqClient->CheckLoadingComplete();
+                m_lastGraphicsUpdate = now;
+                return;  // Loading thread owns GL context
+            }
+
+            // 2. Pre-render: game state updates + bridge event drain
+            m_eqClient->PreRenderTick(gfxDeltaTime);
+
+            // 3. Render frame (Application calls renderer directly)
+            bool result = m_renderer->processFrame(gfxDeltaTime);
+
+            // 4. Post-render: audio sync, progressive loading check
+            m_eqClient->PostRenderTick(gfxDeltaTime);
+
+            if (!result) {
                 LOG_DEBUG(MOD_GRAPHICS, "Graphics window closed");
                 m_running.store(false);
             }
