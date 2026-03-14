@@ -8857,25 +8857,26 @@ void EverQuest::RegisterCommands()
 	};
 	m_command_registry->registerCommand(debug);
 
+	// D20d: Helper — renderer commands push RendererCommand event via bridge
+	auto rendererCmd = [this](const std::string& cmdName) {
+		return [this, cmdName](const std::string& args) {
+			if (m_bridge) {
+				std::string fullCmd = "/" + cmdName;
+				if (!args.empty()) fullCmd += " " + args;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::RendererCommand,
+					eqt::state::RendererCommandData{fullCmd}));
+			}
+		};
+	};
+
 	Command timestamp;
 	timestamp.name = "timestamp";
 	timestamp.aliases = {"timestamps", "ts"};
 	timestamp.usage = "/timestamp";
 	timestamp.description = "Toggle timestamps in chat";
 	timestamp.category = "Utility";
-	timestamp.handler = [this](const std::string& args) {
-		if (m_renderer) {
-			if (auto* chatWindow = m_renderer->getWindowManager()->getChatWindow()) {
-				chatWindow->toggleTimestamps();
-				chatWindow->saveSettings();  // Persist the setting
-				if (chatWindow->getShowTimestamps()) {
-					AddChatSystemMessage("Timestamps enabled");
-				} else {
-					AddChatSystemMessage("Timestamps disabled");
-				}
-			}
-		}
-	};
+	timestamp.handler = rendererCmd("timestamp");
 	m_command_registry->registerCommand(timestamp);
 
 	Command perf;
@@ -8910,14 +8911,7 @@ void EverQuest::RegisterCommands()
 	reloadeffects.usage = "/reloadeffects";
 	reloadeffects.description = "Reload environment effects settings from config/environment_effects.json";
 	reloadeffects.category = "Utility";
-	reloadeffects.handler = [this](const std::string& args) {
-		if (m_renderer && m_renderer->getParticleManager()) {
-			m_renderer->getParticleManager()->reloadSettings();
-			AddChatSystemMessage("Environment effects settings reloaded");
-		} else {
-			AddChatSystemMessage("Particle system not available");
-		}
-	};
+	reloadeffects.handler = rendererCmd("reloadeffects");
 	m_command_registry->registerCommand(reloadeffects);
 
 	Command reloadspells;
@@ -8938,17 +8932,7 @@ void EverQuest::RegisterCommands()
 	reloadweather.usage = "/reloadweather";
 	reloadweather.description = "Reload weather effects settings from config/weather_effects.json";
 	reloadweather.category = "Utility";
-	reloadweather.handler = [this](const std::string& args) {
-		if (m_renderer && m_renderer->getWeatherEffects()) {
-			if (m_renderer->getWeatherEffects()->reloadConfig()) {
-				AddChatSystemMessage("Weather effects settings reloaded");
-			} else {
-				AddChatSystemMessage("Failed to reload weather settings");
-			}
-		} else {
-			AddChatSystemMessage("Weather effects system not available");
-		}
-	};
+	reloadweather.handler = rendererCmd("reloadweather");
 	m_command_registry->registerCommand(reloadweather);
 
 	Command weatherquality;
@@ -8986,16 +8970,7 @@ void EverQuest::RegisterCommands()
 	frametiming.usage = "/frametiming";
 	frametiming.description = "Toggle frame timing profiler (outputs breakdown every 60 frames)";
 	frametiming.category = "Utility";
-	frametiming.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		bool newState = !m_renderer->isFrameTimingEnabled();
-		m_renderer->setFrameTimingEnabled(newState);
-		if (newState) {
-			AddChatSystemMessage("Frame timing profiler ENABLED - check console for breakdown every ~2 seconds");
-		} else {
-			AddChatSystemMessage("Frame timing profiler DISABLED");
-		}
-	};
+	frametiming.handler = rendererCmd("frametiming");
 	m_command_registry->registerCommand(frametiming);
 
 	Command simworkercmd;
@@ -9004,13 +8979,7 @@ void EverQuest::RegisterCommands()
 	simworkercmd.usage = "/simworker";
 	simworkercmd.description = "Show simulation worker thread status";
 	simworkercmd.category = "Utility";
-	simworkercmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto lines = m_renderer->getSimWorkerDebugInfo();
-		for (const auto& line : lines) {
-			AddChatSystemMessage(line);
-		}
-	};
+	simworkercmd.handler = rendererCmd("simworker");
 	m_command_registry->registerCommand(simworkercmd);
 
 	Command sceneprofile;
@@ -9019,11 +8988,7 @@ void EverQuest::RegisterCommands()
 	sceneprofile.usage = "/sceneprofile";
 	sceneprofile.description = "Profile scene rendering by category (zone, entities, objects, doors)";
 	sceneprofile.category = "Utility";
-	sceneprofile.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->runSceneProfile();
-		AddChatSystemMessage("Scene profile running - check console for breakdown");
-	};
+	sceneprofile.handler = rendererCmd("sceneprofile");
 	m_command_registry->registerCommand(sceneprofile);
 
 	Command dumpscenecmd;
@@ -9032,11 +8997,7 @@ void EverQuest::RegisterCommands()
 	dumpscenecmd.usage = "/dumpscene";
 	dumpscenecmd.description = "Dump all scene graph nodes with positions and PVS regions to console";
 	dumpscenecmd.category = "Utility";
-	dumpscenecmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->dumpScene();
-		AddChatSystemMessage("Scene dump written to console log");
-	};
+	dumpscenecmd.handler = rendererCmd("dumpscene");
 	m_command_registry->registerCommand(dumpscenecmd);
 
 	Command sortcmd;
@@ -9045,12 +9006,7 @@ void EverQuest::RegisterCommands()
 	sortcmd.usage = "/sort";
 	sortcmd.description = "Toggle front-to-back zone geometry sorting (manual draw vs scene graph)";
 	sortcmd.category = "Utility";
-	sortcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->toggleManualZoneDraw();
-		AddChatSystemMessage(fmt::format("Front-to-back zone sorting: {}",
-			m_renderer->isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	sortcmd.handler = rendererCmd("sort");
 	m_command_registry->registerCommand(sortcmd);
 
 	Command uploadcmd;
@@ -9059,12 +9015,7 @@ void EverQuest::RegisterCommands()
 	uploadcmd.usage = "/upload";
 	uploadcmd.description = "Toggle GPU upload thread (async texture/VBO uploads)";
 	uploadcmd.category = "Utility";
-	uploadcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->toggleGPUUploadThread();
-		AddChatSystemMessage(fmt::format("GPU upload thread: {}",
-			m_renderer->isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	uploadcmd.handler = rendererCmd("upload");
 	m_command_registry->registerCommand(uploadcmd);
 
 	Command portalcmd;
@@ -9073,18 +9024,7 @@ void EverQuest::RegisterCommands()
 	portalcmd.usage = "/portal [on|off|debug]";
 	portalcmd.description = "Toggle portal occlusion or portal debug overlay";
 	portalcmd.category = "Utility";
-	portalcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		if (args == "debug") {
-			m_renderer->togglePortalDebugDraw();
-			AddChatSystemMessage(fmt::format("Portal debug overlay: {}",
-				m_renderer->isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
-		} else {
-			m_renderer->togglePortalOcclusion();
-			AddChatSystemMessage(fmt::format("Portal occlusion: {}",
-				m_renderer->isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
-		}
-	};
+	portalcmd.handler = rendererCmd("portal");
 	m_command_registry->registerCommand(portalcmd);
 
 	Command stencilcmd;
@@ -9093,12 +9033,7 @@ void EverQuest::RegisterCommands()
 	stencilcmd.usage = "/stencil";
 	stencilcmd.description = "Toggle stencil buffer debug overlay";
 	stencilcmd.category = "Utility";
-	stencilcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->toggleStencilDebugDraw();
-		AddChatSystemMessage(fmt::format("Stencil debug overlay: {}",
-			m_renderer->isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	stencilcmd.handler = rendererCmd("stencil");
 	m_command_registry->registerCommand(stencilcmd);
 
 	Command governorcmd;
@@ -9107,67 +9042,7 @@ void EverQuest::RegisterCommands()
 	governorcmd.usage = "/governor [status|fps <N>|force green|yellow|red|auto]";
 	governorcmd.description = "Frame budget governor: controls loading throttle based on FPS";
 	governorcmd.category = "Utility";
-	governorcmd.handler = [this](const std::string& args) {
-		if (!m_renderer || !m_renderer->getGovernor()) {
-			AddChatSystemMessage("Governor not available");
-			return;
-		}
-		auto* gov = m_renderer->getGovernor();
-
-		if (args.empty() || args == "status") {
-			AddChatSystemMessage(fmt::format("Governor: {} | avg {:.1f}ms | target {:.1f}ms ({:.0f} fps) | ratio {:.2f}{}",
-				gov->getStateName(),
-				gov->getAverageFrameTimeMs(),
-				gov->getTargetFrameTimeMs(),
-				gov->getTargetFps(),
-				gov->getBudgetRatio(),
-				gov->isForced() ? " (FORCED)" : ""));
-			return;
-		}
-
-		// Parse "fps <N>"
-		if (args.substr(0, 4) == "fps ") {
-			try {
-				float fps = std::stof(args.substr(4));
-				if (fps < 10.0f || fps > 120.0f) {
-					AddChatSystemMessage("FPS must be between 10 and 120");
-					return;
-				}
-				gov->setTargetFps(fps);
-				AddChatSystemMessage(fmt::format("Governor target FPS set to {:.0f} ({:.1f}ms budget)",
-					fps, gov->getTargetFrameTimeMs()));
-			} catch (...) {
-				AddChatSystemMessage("Usage: /governor fps <10-120>");
-			}
-			return;
-		}
-
-		// Parse "force green|yellow|red"
-		if (args.substr(0, 6) == "force ") {
-			std::string state = args.substr(6);
-			if (state == "green") {
-				gov->forceState(EQT::Graphics::BudgetState::Green);
-				AddChatSystemMessage("Governor forced to GREEN (all loading allowed)");
-			} else if (state == "yellow") {
-				gov->forceState(EQT::Graphics::BudgetState::Yellow);
-				AddChatSystemMessage("Governor forced to YELLOW (light loading only)");
-			} else if (state == "red") {
-				gov->forceState(EQT::Graphics::BudgetState::Red);
-				AddChatSystemMessage("Governor forced to RED (critical loading only)");
-			} else {
-				AddChatSystemMessage("Usage: /governor force green|yellow|red");
-			}
-			return;
-		}
-
-		if (args == "auto") {
-			gov->clearForcedState();
-			AddChatSystemMessage("Governor set to AUTO (state determined by frame times)");
-			return;
-		}
-
-		AddChatSystemMessage("Usage: /governor [status|fps <N>|force green|yellow|red|auto]");
-	};
+	governorcmd.handler = rendererCmd("governor");
 	m_command_registry->registerCommand(governorcmd);
 
 	Command placeholdercmd;
@@ -9176,15 +9051,7 @@ void EverQuest::RegisterCommands()
 	placeholdercmd.usage = "/placeholder";
 	placeholdercmd.description = "Toggle zone placeholder mesh visibility (debug)";
 	placeholdercmd.category = "Utility";
-	placeholdercmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		// Build or destroy the placeholder based on current state
-		// If placeholder exists, destroy it. If not, try to build it.
-		if (m_renderer->getGovernor()) {
-			// Use as toggle: just inform user about the state
-			AddChatSystemMessage("Zone placeholder is managed automatically during progressive loading");
-		}
-	};
+	placeholdercmd.handler = rendererCmd("placeholder");
 	m_command_registry->registerCommand(placeholdercmd);
 
 	Command plightcmd;
@@ -9193,12 +9060,7 @@ void EverQuest::RegisterCommands()
 	plightcmd.usage = "/plight";
 	plightcmd.description = "Toggle per-pixel player light (debug: isolate FPS impact)";
 	plightcmd.category = "Utility";
-	plightcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->togglePlayerLight();
-		AddChatSystemMessage(fmt::format("Player light: {}",
-			m_renderer->isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	plightcmd.handler = rendererCmd("plight");
 	m_command_registry->registerCommand(plightcmd);
 
 	Command olightcmd;
@@ -9207,12 +9069,7 @@ void EverQuest::RegisterCommands()
 	olightcmd.usage = "/olight";
 	olightcmd.description = "Toggle object/torch point lights (debug: isolate FPS impact)";
 	olightcmd.category = "Utility";
-	olightcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->toggleObjectLights();
-		AddChatSystemMessage(fmt::format("Object lights: {}",
-			m_renderer->isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	olightcmd.handler = rendererCmd("olight");
 	m_command_registry->registerCommand(olightcmd);
 
 	Command zlightcmd;
@@ -9221,12 +9078,7 @@ void EverQuest::RegisterCommands()
 	zlightcmd.usage = "/zlight";
 	zlightcmd.description = "Toggle directional sun/ambient lighting (debug: isolate FPS impact)";
 	zlightcmd.category = "Utility";
-	zlightcmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		m_renderer->toggleDirectionalLight();
-		AddChatSystemMessage(fmt::format("Directional/ambient light: {}",
-			m_renderer->isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	zlightcmd.handler = rendererCmd("zlight");
 	m_command_registry->registerCommand(zlightcmd);
 
 	Command firecmd;
@@ -9235,14 +9087,7 @@ void EverQuest::RegisterCommands()
 	firecmd.usage = "/fire";
 	firecmd.description = "Toggle unified fire particle effects (point sprite emitters)";
 	firecmd.category = "Utility";
-	firecmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* pm = m_renderer->getParticleManager();
-		if (!pm) return;
-		pm->toggleUnifiedFire();
-		AddChatSystemMessage(fmt::format("Unified fire particles: {}",
-			pm->isUnifiedFireEnabled() ? "ENABLED" : "DISABLED"));
-	};
+	firecmd.handler = rendererCmd("fire");
 	m_command_registry->registerCommand(firecmd);
 
 	Command renderdist;
@@ -9251,32 +9096,7 @@ void EverQuest::RegisterCommands()
 	renderdist.usage = "/renderdist [distance]";
 	renderdist.description = "Get or set render distance for entities, objects, and zone geometry";
 	renderdist.category = "Utility";
-	renderdist.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* entityRenderer = m_renderer->getEntityRenderer();
-
-		if (args.empty()) {
-			float renderDist = m_renderer->getRenderDistance();
-			float fogThickness = m_renderer->getFogThickness();
-			AddChatSystemMessage(fmt::format("Render distance: {:.0f} units, fog thickness: {:.0f} units", renderDist, fogThickness));
-		} else {
-			try {
-				float dist = std::stof(args);
-				if (dist < 50.0f) dist = 50.0f;
-				if (dist > 10000.0f) dist = 10000.0f;
-
-				// Set unified render distance (affects everything: zone, objects, entities, fog)
-				m_renderer->setRenderDistance(dist);
-				if (entityRenderer) {
-					entityRenderer->setRenderDistance(dist);
-				}
-
-				AddChatSystemMessage(fmt::format("Render distance set to {:.0f} units", dist));
-			} catch (...) {
-				AddChatSystemMessage("Usage: /renderdist [50-10000]");
-			}
-		}
-	};
+	renderdist.handler = rendererCmd("renderdist");
 	m_command_registry->registerCommand(renderdist);
 
 	Command clipdist;
@@ -9285,22 +9105,7 @@ void EverQuest::RegisterCommands()
 	clipdist.usage = "/clipdist [distance]";
 	clipdist.description = "Get or set camera clip distance (far plane)";
 	clipdist.category = "Utility";
-	clipdist.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-
-		if (args.empty()) {
-			float dist = m_renderer->getClipDistance();
-			AddChatSystemMessage(fmt::format("Clip distance: {:.0f} units", dist));
-		} else {
-			try {
-				float dist = std::stof(args);
-				m_renderer->setClipDistance(dist);
-				AddChatSystemMessage(fmt::format("Clip distance set to {:.0f} units", dist));
-			} catch (...) {
-				AddChatSystemMessage("Usage: /clipdist [100-50000]");
-			}
-		}
-	};
+	clipdist.handler = rendererCmd("clipdist");
 	m_command_registry->registerCommand(clipdist);
 
 	Command filter;
@@ -9309,85 +9114,7 @@ void EverQuest::RegisterCommands()
 	filter.description = "Toggle chat channel filter";
 	filter.detailedHelp = "Channels: say, tell, group, guild, shout, auction, ooc, emote, combat, miss, exp, loot, npc, all";
 	filter.category = "Utility";
-	filter.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* chatWindow = m_renderer->getWindowManager()->getChatWindow();
-		if (!chatWindow) return;
-
-		if (args.empty()) {
-			// Show current filter status
-			AddChatSystemMessage("=== Chat Filter Status ===");
-			AddChatSystemMessage(fmt::format("Say: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Say) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Tell: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Tell) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Group: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Group) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Guild: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Guild) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Shout: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Shout) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Auction: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Auction) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("OOC: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::OOC) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Emote: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Emote) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Combat: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Combat) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Miss: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::CombatMiss) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Exp: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Experience) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("Loot: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::Loot) ? "ON" : "OFF"));
-			AddChatSystemMessage(fmt::format("NPC: {}", chatWindow->isChannelEnabled(eqt::ui::ChatChannel::NPCDialogue) ? "ON" : "OFF"));
-			AddChatSystemMessage("Type /filter <channel> to toggle.");
-			return;
-		}
-
-		std::string channel = args;
-		std::transform(channel.begin(), channel.end(), channel.begin(), ::tolower);
-
-		eqt::ui::ChatChannel ch;
-		bool found = true;
-		if (channel == "say" || channel == "s") {
-			ch = eqt::ui::ChatChannel::Say;
-		} else if (channel == "tell" || channel == "t") {
-			ch = eqt::ui::ChatChannel::Tell;
-		} else if (channel == "group" || channel == "g") {
-			ch = eqt::ui::ChatChannel::Group;
-		} else if (channel == "guild" || channel == "gu") {
-			ch = eqt::ui::ChatChannel::Guild;
-		} else if (channel == "shout" || channel == "sho") {
-			ch = eqt::ui::ChatChannel::Shout;
-		} else if (channel == "auction" || channel == "auc") {
-			ch = eqt::ui::ChatChannel::Auction;
-		} else if (channel == "ooc" || channel == "o") {
-			ch = eqt::ui::ChatChannel::OOC;
-		} else if (channel == "emote" || channel == "em") {
-			ch = eqt::ui::ChatChannel::Emote;
-		} else if (channel == "combat") {
-			ch = eqt::ui::ChatChannel::Combat;
-		} else if (channel == "miss" || channel == "misses") {
-			ch = eqt::ui::ChatChannel::CombatMiss;
-		} else if (channel == "exp" || channel == "experience") {
-			ch = eqt::ui::ChatChannel::Experience;
-		} else if (channel == "loot") {
-			ch = eqt::ui::ChatChannel::Loot;
-		} else if (channel == "npc") {
-			ch = eqt::ui::ChatChannel::NPCDialogue;
-		} else if (channel == "all") {
-			chatWindow->enableAllChannels();
-			chatWindow->saveSettings();
-			AddChatSystemMessage("All channels enabled");
-			return;
-		} else if (channel == "none") {
-			chatWindow->disableAllChannels();
-			chatWindow->saveSettings();
-			AddChatSystemMessage("All channels disabled (except system)");
-			return;
-		} else {
-			found = false;
-		}
-
-		if (found) {
-			chatWindow->toggleChannel(ch);
-			chatWindow->saveSettings();
-			const char* chName = eqt::ui::getChannelName(ch);
-			AddChatSystemMessage(fmt::format("{} filter: {}", chName, chatWindow->isChannelEnabled(ch) ? "ON" : "OFF"));
-		} else {
-			AddChatSystemMessage(fmt::format("Unknown channel: {}. Use /filter for list.", args));
-		}
-	};
+	filter.handler = rendererCmd("filter");
 	m_command_registry->registerCommand(filter);
 
 	// === Sky Commands ===
@@ -9397,12 +9124,7 @@ void EverQuest::RegisterCommands()
 	sky.usage = "/sky";
 	sky.description = "Toggle sky rendering on/off";
 	sky.category = "Utility";
-	sky.handler = [this](const std::string& args) {
-		if (m_renderer) {
-			m_renderer->toggleSky();
-			AddChatSystemMessage(fmt::format("Sky rendering: {}", m_renderer->isSkyEnabled() ? "ON" : "OFF"));
-		}
-	};
+	sky.handler = rendererCmd("sky");
 	m_command_registry->registerCommand(sky);
 
 	Command skytype;
@@ -9411,20 +9133,7 @@ void EverQuest::RegisterCommands()
 	skytype.description = "Force sky type (0=default, 6=luclin, 10=grey, 11=fire, 12=storms)";
 	skytype.category = "Utility";
 	skytype.requiresArgs = true;
-	skytype.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		try {
-			int id = std::stoi(args);
-			if (id < 0 || id > 255) {
-				AddChatSystemMessage("Sky type must be 0-255");
-				return;
-			}
-			m_renderer->forceSkyType(static_cast<uint8_t>(id));
-			AddChatSystemMessage(fmt::format("Forced sky type to {}", id));
-		} catch (...) {
-			AddChatSystemMessage("Usage: /skytype <0-255>");
-		}
-	};
+	skytype.handler = rendererCmd("skytype");
 	m_command_registry->registerCommand(skytype);
 
 	Command time_cmd;
@@ -9948,28 +9657,7 @@ void EverQuest::RegisterCommands()
 	detailCmd.usage = "/detail [0-100]";
 	detailCmd.description = "Set or show detail density (grass, plants)";
 	detailCmd.category = "Utility";
-	detailCmd.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-
-		if (args.empty()) {
-			AddChatSystemMessage(fmt::format("Detail density: {}%",
-				static_cast<int>(dm->getDensity() * 100)));
-		} else {
-			try {
-				int value = std::stoi(args);
-				value = std::clamp(value, 0, 100);
-				dm->setDensity(value / 100.0f);
-				AddChatSystemMessage(fmt::format("Detail density set to {}%", value));
-			} catch (...) {
-				AddChatSystemMessage("Usage: /detail [0-100]");
-			}
-		}
-	};
+	detailCmd.handler = rendererCmd("detail");
 	m_command_registry->registerCommand(detailCmd);
 
 	Command togglegrass;
@@ -9977,18 +9665,7 @@ void EverQuest::RegisterCommands()
 	togglegrass.usage = "/togglegrass";
 	togglegrass.description = "Toggle grass rendering on/off";
 	togglegrass.category = "Utility";
-	togglegrass.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-		using EQT::Graphics::Detail::DetailCategory;
-		bool enabled = dm->isCategoryEnabled(DetailCategory::Grass);
-		dm->setCategoryEnabled(DetailCategory::Grass, !enabled);
-		AddChatSystemMessage(fmt::format("Grass: {}", !enabled ? "enabled" : "disabled"));
-	};
+	togglegrass.handler = rendererCmd("togglegrass");
 	m_command_registry->registerCommand(togglegrass);
 
 	Command toggleplants;
@@ -9996,18 +9673,7 @@ void EverQuest::RegisterCommands()
 	toggleplants.usage = "/toggleplants";
 	toggleplants.description = "Toggle plants rendering on/off";
 	toggleplants.category = "Utility";
-	toggleplants.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-		using EQT::Graphics::Detail::DetailCategory;
-		bool enabled = dm->isCategoryEnabled(DetailCategory::Plants);
-		dm->setCategoryEnabled(DetailCategory::Plants, !enabled);
-		AddChatSystemMessage(fmt::format("Plants: {}", !enabled ? "enabled" : "disabled"));
-	};
+	toggleplants.handler = rendererCmd("toggleplants");
 	m_command_registry->registerCommand(toggleplants);
 
 	Command togglerocks;
@@ -10015,18 +9681,7 @@ void EverQuest::RegisterCommands()
 	togglerocks.usage = "/togglerocks";
 	togglerocks.description = "Toggle rocks rendering on/off";
 	togglerocks.category = "Utility";
-	togglerocks.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-		using EQT::Graphics::Detail::DetailCategory;
-		bool enabled = dm->isCategoryEnabled(DetailCategory::Rocks);
-		dm->setCategoryEnabled(DetailCategory::Rocks, !enabled);
-		AddChatSystemMessage(fmt::format("Rocks: {}", !enabled ? "enabled" : "disabled"));
-	};
+	togglerocks.handler = rendererCmd("togglerocks");
 	m_command_registry->registerCommand(togglerocks);
 
 	Command toggledebris;
@@ -10034,18 +9689,7 @@ void EverQuest::RegisterCommands()
 	toggledebris.usage = "/toggledebris";
 	toggledebris.description = "Toggle debris rendering on/off";
 	toggledebris.category = "Utility";
-	toggledebris.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-		using EQT::Graphics::Detail::DetailCategory;
-		bool enabled = dm->isCategoryEnabled(DetailCategory::Debris);
-		dm->setCategoryEnabled(DetailCategory::Debris, !enabled);
-		AddChatSystemMessage(fmt::format("Debris: {}", !enabled ? "enabled" : "disabled"));
-	};
+	toggledebris.handler = rendererCmd("toggledebris");
 	m_command_registry->registerCommand(toggledebris);
 
 	Command season;
@@ -10053,51 +9697,7 @@ void EverQuest::RegisterCommands()
 	season.usage = "/season [default|snow|autumn|desert|swamp|auto]";
 	season.description = "Override seasonal detail variant";
 	season.category = "Utility";
-	season.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-		using EQT::Graphics::Detail::Season;
-		using EQT::Graphics::Detail::SeasonalController;
-
-		if (args.empty()) {
-			// Show current season
-			Season current = dm->getCurrentSeason();
-			AddChatSystemMessage(fmt::format("Current season: {}",
-				SeasonalController::getSeasonName(current)));
-			return;
-		}
-
-		std::string lower = args;
-		std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-		if (lower == "auto" || lower == "clear") {
-			dm->clearSeasonOverride();
-			Season detected = dm->getCurrentSeason();
-			AddChatSystemMessage(fmt::format("Season: automatic detection ({})",
-				SeasonalController::getSeasonName(detected)));
-		} else if (lower == "default" || lower == "normal") {
-			dm->setSeasonOverride(Season::Default);
-			AddChatSystemMessage("Season override: Default");
-		} else if (lower == "snow" || lower == "winter") {
-			dm->setSeasonOverride(Season::Snow);
-			AddChatSystemMessage("Season override: Snow");
-		} else if (lower == "autumn" || lower == "fall") {
-			dm->setSeasonOverride(Season::Autumn);
-			AddChatSystemMessage("Season override: Autumn");
-		} else if (lower == "desert" || lower == "dry") {
-			dm->setSeasonOverride(Season::Desert);
-			AddChatSystemMessage("Season override: Desert");
-		} else if (lower == "swamp" || lower == "marsh") {
-			dm->setSeasonOverride(Season::Swamp);
-			AddChatSystemMessage("Season override: Swamp");
-		} else {
-			AddChatSystemMessage("Usage: /season [default|snow|autumn|desert|swamp|auto]");
-		}
-	};
+	season.handler = rendererCmd("season");
 	m_command_registry->registerCommand(season);
 
 	Command detailinfo;
@@ -10105,17 +9705,7 @@ void EverQuest::RegisterCommands()
 	detailinfo.usage = "/detailinfo";
 	detailinfo.description = "Show detail system debug info";
 	detailinfo.category = "Utility";
-	detailinfo.handler = [this](const std::string& args) {
-		if (!m_renderer) return;
-		auto* dm = m_renderer->getDetailManager();
-		if (!dm) {
-			AddChatSystemMessage("Detail system not available");
-			return;
-		}
-		AddChatSystemMessage(dm->getDebugInfo());
-		AddChatSystemMessage(fmt::format("  Chunks: {}, Placements: {}",
-			dm->getActiveChunkCount(), dm->getVisiblePlacementCount()));
-	};
+	detailinfo.handler = rendererCmd("detailinfo");
 	m_command_registry->registerCommand(detailinfo);
 
 	Command pmem;
@@ -10124,14 +9714,7 @@ void EverQuest::RegisterCommands()
 	pmem.usage = "/pmem";
 	pmem.description = "Show memory usage breakdown across all subsystems";
 	pmem.category = "Utility";
-	pmem.handler = [this](const std::string& args) {
-		if (!m_renderer) {
-			AddChatSystemMessage("Graphics renderer not available");
-			return;
-		}
-		runPmemDiagnostics("");
-		AddChatSystemMessage("Memory report written to console.");
-	};
+	pmem.handler = rendererCmd("pmem");
 	m_command_registry->registerCommand(pmem);
 
 #ifdef WITH_AUDIO

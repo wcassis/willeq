@@ -24,7 +24,13 @@
 #include "client/pathfinder_nav_mesh.h"
 #endif
 #include "client/bridge/game_state_bridge.h"
+#include "client/state/event_bus.h"
+#include "client/events/renderer_intents.h"
+#include "client/graphics/detail/detail_manager.h"
+#include "client/graphics/detail/detail_types.h"
+#include "client/graphics/detail/seasonal_controller.h"
 #include "common/logging.h"
+#include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 #include <cstdio>
@@ -888,6 +894,293 @@ void IrrlichtRenderer::hideLoadingScreen() {
     // loads _chr.s3d into its own cache, so currentZone_->characters is an unused copy.
     if (currentZone_) {
         currentZone_->clearCharacterData();
+    }
+}
+
+// D20d: Handle renderer-specific slash commands forwarded from game thread
+void IrrlichtRenderer::processSlashCommand(const std::string& command) {
+    // Parse command name and args
+    std::string cmd, args;
+    size_t spacePos = command.find(' ');
+    if (spacePos != std::string::npos) {
+        cmd = command.substr(0, spacePos);
+        args = command.substr(spacePos + 1);
+    } else {
+        cmd = command;
+    }
+
+    // Helper to push chat feedback via bridge
+    auto chat = [this](const std::string& msg) {
+        if (bridge_) {
+            eqt::state::ChatMessageData data;
+            data.message = msg;
+            data.channelType = 0;
+            data.channelName = "system";
+            bridge_->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SystemMessage, std::move(data)));
+        }
+    };
+
+    // --- Visual rendering ---
+    if (cmd == "/sort") {
+        toggleManualZoneDraw();
+        chat(fmt::format("Front-to-back zone sorting: {}", isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/upload") {
+        toggleGPUUploadThread();
+        chat(fmt::format("GPU upload thread: {}", isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/portal") {
+        if (args == "debug") {
+            togglePortalDebugDraw();
+            chat(fmt::format("Portal debug overlay: {}", isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
+        } else {
+            togglePortalOcclusion();
+            chat(fmt::format("Portal occlusion: {}", isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
+        }
+    } else if (cmd == "/stencil") {
+        toggleStencilDebugDraw();
+        chat(fmt::format("Stencil debug overlay: {}", isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/plight") {
+        togglePlayerLight();
+        chat(fmt::format("Per-pixel player light: {}", isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/olight") {
+        toggleObjectLights();
+        chat(fmt::format("Object lights: {}", isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/zlight") {
+        toggleDirectionalLight();
+        chat(fmt::format("Directional light: {}", isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/fire") {
+        if (auto* pm = getParticleManager()) {
+            pm->toggleUnifiedFire();
+            chat("Fire particles toggled");
+        }
+    } else if (cmd == "/sky") {
+        toggleSky();
+        chat(fmt::format("Sky rendering: {}", isSkyEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/skytype") {
+        if (!args.empty()) {
+            int type = std::atoi(args.c_str());
+            forceSkyType(static_cast<uint8_t>(type));
+            chat(fmt::format("Sky type forced to {}", type));
+        } else {
+            chat("Usage: /skytype <0-255>");
+        }
+    }
+    // --- Distance ---
+    else if (cmd == "/renderdist") {
+        if (!args.empty()) {
+            float dist = std::atof(args.c_str());
+            if (dist >= 50.0f && dist <= 10000.0f) {
+                setRenderDistance(dist);
+                chat(fmt::format("Render distance: {:.0f}", dist));
+            } else {
+                chat("Render distance must be between 50 and 10000");
+            }
+        } else {
+            chat(fmt::format("Render distance: {:.0f}", getRenderDistance()));
+        }
+    } else if (cmd == "/clipdist") {
+        if (!args.empty()) {
+            float dist = std::atof(args.c_str());
+            setClipDistance(dist);
+            chat(fmt::format("Clip distance: {:.0f}", dist));
+        } else {
+            chat(fmt::format("Clip distance: {:.0f}", getClipDistance()));
+        }
+    }
+    // --- Profiling/debug ---
+    else if (cmd == "/frametiming") {
+        bool newState = !isFrameTimingEnabled();
+        setFrameTimingEnabled(newState);
+        if (newState) {
+            chat("Frame timing profiler ENABLED - check console for breakdown every ~2 seconds");
+        } else {
+            chat("Frame timing profiler DISABLED");
+        }
+    } else if (cmd == "/sceneprofile") {
+        runSceneProfile();
+        chat("Scene profile running - check console for breakdown");
+    } else if (cmd == "/dumpscene") {
+        dumpScene();
+        chat("Scene dump written to console log");
+    } else if (cmd == "/simworker") {
+        auto info = getSimWorkerDebugInfo();
+        for (const auto& line : info) chat(line);
+    } else if (cmd == "/pmem") {
+        MemoryReportInput ext{};  // Empty external data — game thread pushes its own stats
+        auto report = getMemoryReport(ext);
+        for (const auto& line : report) chat(line);
+    }
+    // --- UI ---
+    else if (cmd == "/timestamp" || cmd == "/timestamps") {
+        if (auto* wm = getWindowManager()) {
+            if (auto* cw = wm->getChatWindow()) {
+                cw->toggleTimestamps();
+                cw->saveSettings();
+                chat(fmt::format("Timestamps {}", cw->getShowTimestamps() ? "enabled" : "disabled"));
+            }
+        }
+    } else if (cmd == "/filter") {
+        if (auto* wm = getWindowManager()) {
+            if (auto* cw = wm->getChatWindow()) {
+                if (args.empty()) {
+                    chat("=== Chat Filter Status ===");
+                    chat(fmt::format("Say: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Say) ? "ON" : "OFF"));
+                    chat(fmt::format("Tell: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Tell) ? "ON" : "OFF"));
+                    chat(fmt::format("Group: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Group) ? "ON" : "OFF"));
+                    chat(fmt::format("Guild: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Guild) ? "ON" : "OFF"));
+                    chat(fmt::format("Shout: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Shout) ? "ON" : "OFF"));
+                    chat(fmt::format("Auction: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Auction) ? "ON" : "OFF"));
+                    chat(fmt::format("OOC: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::OOC) ? "ON" : "OFF"));
+                    chat(fmt::format("Emote: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Emote) ? "ON" : "OFF"));
+                    chat(fmt::format("Combat: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Combat) ? "ON" : "OFF"));
+                    chat(fmt::format("Miss: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::CombatMiss) ? "ON" : "OFF"));
+                    chat(fmt::format("Exp: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Experience) ? "ON" : "OFF"));
+                    chat(fmt::format("Loot: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Loot) ? "ON" : "OFF"));
+                    chat(fmt::format("NPC: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::NPCDialogue) ? "ON" : "OFF"));
+                    chat("Type /filter <channel> to toggle.");
+                } else {
+                    std::string channel = args;
+                    std::transform(channel.begin(), channel.end(), channel.begin(), ::tolower);
+                    eqt::ui::ChatChannel ch;
+                    bool found = true;
+                    if (channel == "say" || channel == "s") ch = eqt::ui::ChatChannel::Say;
+                    else if (channel == "tell" || channel == "t") ch = eqt::ui::ChatChannel::Tell;
+                    else if (channel == "group" || channel == "g") ch = eqt::ui::ChatChannel::Group;
+                    else if (channel == "guild" || channel == "gu") ch = eqt::ui::ChatChannel::Guild;
+                    else if (channel == "shout" || channel == "sho") ch = eqt::ui::ChatChannel::Shout;
+                    else if (channel == "auction" || channel == "auc") ch = eqt::ui::ChatChannel::Auction;
+                    else if (channel == "ooc" || channel == "o") ch = eqt::ui::ChatChannel::OOC;
+                    else if (channel == "emote" || channel == "em") ch = eqt::ui::ChatChannel::Emote;
+                    else if (channel == "combat") ch = eqt::ui::ChatChannel::Combat;
+                    else if (channel == "miss" || channel == "misses") ch = eqt::ui::ChatChannel::CombatMiss;
+                    else if (channel == "exp" || channel == "experience") ch = eqt::ui::ChatChannel::Experience;
+                    else if (channel == "loot") ch = eqt::ui::ChatChannel::Loot;
+                    else if (channel == "npc") ch = eqt::ui::ChatChannel::NPCDialogue;
+                    else if (channel == "all") {
+                        cw->enableAllChannels(); cw->saveSettings();
+                        chat("All channels enabled"); found = false;
+                    } else if (channel == "none") {
+                        cw->disableAllChannels(); cw->saveSettings();
+                        chat("All channels disabled (except system)"); found = false;
+                    } else {
+                        chat(fmt::format("Unknown channel: {}. Use /filter for list.", args));
+                        found = false;
+                    }
+                    if (found) {
+                        cw->toggleChannel(ch); cw->saveSettings();
+                        const char* chName = eqt::ui::getChannelName(ch);
+                        chat(fmt::format("{} filter: {}", chName, cw->isChannelEnabled(ch) ? "ON" : "OFF"));
+                    }
+                }
+            }
+        }
+    } else if (cmd == "/reloadeffects" || cmd == "/particlereload") {
+        if (auto* pm = getParticleManager()) {
+            pm->reloadSettings();
+            chat("Environment effects settings reloaded");
+        } else {
+            chat("Particle system not available");
+        }
+    } else if (cmd == "/reloadweather" || cmd == "/weatherreload") {
+        if (auto* we = getWeatherEffects()) {
+            if (we->reloadConfig()) {
+                chat("Weather effects settings reloaded");
+            } else {
+                chat("Failed to reload weather settings");
+            }
+        } else {
+            chat("Weather effects system not available");
+        }
+    }
+    // --- Detail ---
+    else if (cmd == "/detail") {
+        if (auto* dm = getDetailManager()) {
+            if (!args.empty()) {
+                float density = std::atof(args.c_str()) / 100.0f;
+                dm->setDensity(std::max(0.0f, std::min(1.0f, density)));
+                chat(fmt::format("Detail density: {}%", static_cast<int>(dm->getDensity() * 100)));
+            } else {
+                chat(fmt::format("Detail density: {}%", static_cast<int>(dm->getDensity() * 100)));
+            }
+        }
+    } else if (cmd == "/togglegrass") {
+        if (auto* dm = getDetailManager()) {
+            using DC = Detail::DetailCategory;
+            dm->setCategoryEnabled(DC::Grass, !dm->isCategoryEnabled(DC::Grass));
+            chat(fmt::format("Grass: {}", dm->isCategoryEnabled(DC::Grass) ? "ON" : "OFF"));
+        }
+    } else if (cmd == "/toggleplants") {
+        if (auto* dm = getDetailManager()) {
+            using DC = Detail::DetailCategory;
+            dm->setCategoryEnabled(DC::Plants, !dm->isCategoryEnabled(DC::Plants));
+            chat(fmt::format("Plants: {}", dm->isCategoryEnabled(DC::Plants) ? "ON" : "OFF"));
+        }
+    } else if (cmd == "/togglerocks") {
+        if (auto* dm = getDetailManager()) {
+            using DC = Detail::DetailCategory;
+            dm->setCategoryEnabled(DC::Rocks, !dm->isCategoryEnabled(DC::Rocks));
+            chat(fmt::format("Rocks: {}", dm->isCategoryEnabled(DC::Rocks) ? "ON" : "OFF"));
+        }
+    } else if (cmd == "/toggledebris") {
+        if (auto* dm = getDetailManager()) {
+            using DC = Detail::DetailCategory;
+            dm->setCategoryEnabled(DC::Debris, !dm->isCategoryEnabled(DC::Debris));
+            chat(fmt::format("Debris: {}", dm->isCategoryEnabled(DC::Debris) ? "ON" : "OFF"));
+        }
+    } else if (cmd == "/season") {
+        if (auto* dm = getDetailManager()) {
+            if (!args.empty()) {
+                Detail::Season season = Detail::Season::Default;
+                if (args == "snow" || args == "winter") season = Detail::Season::Snow;
+                else if (args == "autumn" || args == "fall") season = Detail::Season::Autumn;
+                else if (args == "desert") season = Detail::Season::Desert;
+                else if (args == "swamp") season = Detail::Season::Swamp;
+                dm->setSeasonOverride(season);
+                chat(fmt::format("Season override: {}", args));
+            } else {
+                chat("Usage: /season [snow|autumn|desert|swamp|default]");
+            }
+        }
+    } else if (cmd == "/detailinfo") {
+        if (auto* dm = getDetailManager()) {
+            chat(dm->getDebugInfo());
+        }
+    }
+    // --- Governor ---
+    else if (cmd == "/governor") {
+        auto* gov = getGovernor();
+        if (!gov) { chat("Governor not available"); return; }
+        if (args.empty() || args == "status") {
+            chat(fmt::format("Governor: {} | avg {:.1f}ms | target {:.1f}ms ({:.0f} fps) | ratio {:.2f}{}",
+                gov->getStateName(), gov->getAverageFrameTimeMs(),
+                gov->getTargetFrameTimeMs(), gov->getTargetFps(),
+                gov->getBudgetRatio(), gov->isForced() ? " (FORCED)" : ""));
+        } else if (args.substr(0, 4) == "fps ") {
+            try {
+                float fps = std::stof(args.substr(4));
+                if (fps < 10.0f || fps > 120.0f) { chat("FPS must be between 10 and 120"); return; }
+                gov->setTargetFps(fps);
+                chat(fmt::format("Governor target FPS set to {:.0f} ({:.1f}ms budget)", fps, gov->getTargetFrameTimeMs()));
+            } catch (...) { chat("Usage: /governor fps <10-120>"); }
+        } else if (args.substr(0, 6) == "force ") {
+            std::string state = args.substr(6);
+            if (state == "green") { gov->forceState(EQT::Graphics::BudgetState::Green); chat("Governor forced to GREEN (all loading allowed)"); }
+            else if (state == "yellow") { gov->forceState(EQT::Graphics::BudgetState::Yellow); chat("Governor forced to YELLOW (light loading only)"); }
+            else if (state == "red") { gov->forceState(EQT::Graphics::BudgetState::Red); chat("Governor forced to RED (critical loading only)"); }
+            else { chat("Usage: /governor force green|yellow|red"); }
+        } else if (args == "auto") {
+            gov->clearForcedState();
+            chat("Governor set to AUTO (state determined by frame times)");
+        } else {
+            chat("Usage: /governor [status|fps <N>|force green|yellow|red|auto]");
+        }
+    } else if (cmd == "/placeholder") {
+        if (getGovernor()) {
+            chat("Zone placeholder is managed automatically during progressive loading");
+        }
+    }
+    else {
+        LOG_WARN(MOD_GRAPHICS, "Unknown renderer command: {}", command);
     }
 }
 

@@ -821,6 +821,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
         }
         break;
+    case state::GameEventType::RendererCommand:
+        if (renderer_) {
+            auto& d = std::get<state::RendererCommandData>(event.data);
+            renderer_->processSlashCommand(d.command);
+        }
+        break;
     case state::GameEventType::ToggleSkillsWindow:
         if (renderer_) {
             auto* wm = renderer_->getWindowManager();

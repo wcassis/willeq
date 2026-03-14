@@ -540,6 +540,9 @@ public:
     void hideLoadingScreen();
     bool isLoadingScreenVisible() const { return loadingScreenVisible_; }
 
+    // D20d: Process renderer-specific slash commands forwarded from game thread
+    void processSlashCommand(const std::string& command);
+
     // Shutdown the renderer
     void shutdown();
 

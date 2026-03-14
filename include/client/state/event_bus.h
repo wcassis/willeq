@@ -134,6 +134,7 @@ enum class GameEventType {
     ToggleSkillsWindow,
     HotbarCooldownStarted,
     SkillActivationFeedback,
+    RendererCommand,  // D20d: slash command forwarded to renderer
 };
 
 // ============================================================================
@@ -720,6 +721,10 @@ struct HotbarCooldownStartedData {
     uint32_t durationMs;
 };
 
+struct RendererCommandData {
+    std::string command;  // Full command string (e.g., "/sort", "/renderdist 500")
+};
+
 struct SkillActivationFeedbackData {
     uint8_t skillId;
     bool success;
@@ -832,7 +837,8 @@ using EventData = std::variant<
     SpellScribeCompletedData,
     ToggleSkillsWindowData,
     HotbarCooldownStartedData,
-    SkillActivationFeedbackData
+    SkillActivationFeedbackData,
+    RendererCommandData
 >;
 
 // Game event combining type and data
