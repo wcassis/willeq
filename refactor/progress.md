@@ -186,13 +186,14 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D20b3 | Chat window + collision map decoupling | done | `a962792` |
 | D20b4 | Window pointer decoupling — EverQuest* + manager pointers removed from all UI windows | done | `556efbb` |
 | D20b5 | Renderer lifecycle cleanup (bridge/loading/shutdown → Application ownership) | done | `846a6a3` |
-| D20c1 | Move UpdateGraphics to Application (renderer->processFrame called directly) | pending | |
-| D20c2 | Convert per-frame renderer polls to events (target HP, time of day, audio, volume) | pending | |
-| D20c3 | Zone loading pipeline through bridge (loading thread + zone cleanup to renderer) | pending | |
-| D20c4 | Remove remaining game-side renderer queries (requestQuit, hotbar save/load) | pending | |
-| D20d | Remove debug/toggle slash commands from EverQuest | pending | |
-| D20e | Remove m_renderer from EverQuest | pending | |
-| D20f | Decouple RDP server from renderer | pending | |
+| D20c1 | Move UpdateGraphics to Application (renderer->processFrame called directly) | done | `9323d27` |
+| D20c2 | Convert per-frame polls to events (target HP, time of day, audio→player pos, volume→intents) | done | `c47767f` |
+| D20c3 | Zone loading reads from snapshot, not live game state (bridge event queue handles delta) | done | `861f5f4` |
+| D20c4 | Remove requestQuit renderer calls; hotbar config deferred to D20e | done | `ba9a849` |
+| D20d | Move 30 renderer slash commands to renderer via RendererCommand bridge event | done | `bba5848` |
+| D20e | Remove m_renderer from EverQuest | done | |
+| D20f | Move zone data loading to game state layer | pending | |
+| D20g | Decouple RDP server from renderer | pending | |
 
 ### Phase 6 — Thread Separation
 

@@ -14,8 +14,9 @@
 #include "skill_constants.h"
 #include "common/packet_structs.h"  // For MAX_PP_SKILL
 
-// Forward declaration
+// Forward declarations
 class EverQuest;
+namespace eqt { namespace bridge { class GameStateBridge; } }
 
 namespace EQ {
 
@@ -125,8 +126,12 @@ public:
     // Called when a skill is activated
     void setOnSkillActivated(SkillActivatedCallback callback);
 
+    // D20e1: Bridge for visual events (set by EverQuest::InitGraphics)
+    void setBridge(eqt::bridge::GameStateBridge* bridge) { m_bridge = bridge; }
+
 private:
     EverQuest* m_eq;
+    eqt::bridge::GameStateBridge* m_bridge = nullptr;  // D20e1
 
     // All skills indexed by skill_id
     std::array<SkillData, EQT::MAX_PP_SKILL> m_skills;

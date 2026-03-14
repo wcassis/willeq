@@ -298,10 +298,9 @@ protected:
                 }
 #ifdef EQT_HAS_GRAPHICS
                 // Process graphics frame
-                auto* renderer = eq_->GetRenderer();
-                if (renderer) {
+                if (renderer_) {
                     float deltaTime = getDeltaTime();
-                    if (!renderer->processFrame(deltaTime)) {
+                    if (!renderer_->processFrame(deltaTime)) {
                         // Window was closed
                         std::cerr << "Graphics window closed unexpectedly" << std::endl;
                         return false;
@@ -328,8 +327,7 @@ protected:
     // Wait until graphics zone is ready (zone geometry loaded, player entity created)
     bool waitForZoneReady(int timeoutMs = 30000) {
         return waitForWithGraphics([this]() {
-            auto* renderer = eq_->GetRenderer();
-            return renderer && renderer->isZoneReady();
+            return renderer_ && renderer_->isZoneReady();
         }, timeoutMs);
     }
 #endif
@@ -424,9 +422,8 @@ TEST_F(ZoningGraphicsIntegrationTest, InitialZoneInWithGraphics) {
     // Track final phase
     trackPhase(eq_->GetLoadingPhase());
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr) << "Renderer is null";
-    EXPECT_TRUE(renderer->isZoneReady()) << "Zone graphics not ready";
+    ASSERT_NE(renderer_.get(), nullptr) << "Renderer is null";
+    EXPECT_TRUE(renderer_->isZoneReady()) << "Zone graphics not ready";
 
     std::cout << "Graphics zone ready!" << std::endl;
 
@@ -503,10 +500,9 @@ TEST_F(ZoningGraphicsIntegrationTest, ZoneTransitionWithGraphics) {
         eq_->UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
 #ifdef EQT_HAS_GRAPHICS
-        auto* renderer = eq_->GetRenderer();
-        if (renderer) {
+        if (renderer_) {
             float deltaTime = getDeltaTime();
-            renderer->processFrame(deltaTime);
+            renderer_->processFrame(deltaTime);
         }
 #endif
         if (i % 20 == 0) {
@@ -555,9 +551,8 @@ TEST_F(ZoningGraphicsIntegrationTest, ZoneTransitionWithGraphics) {
     // Track final phase
     trackPhase(eq_->GetLoadingPhase());
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr) << "Renderer is null after zoning";
-    EXPECT_TRUE(renderer->isZoneReady()) << "Zone graphics not ready after zoning";
+    ASSERT_NE(renderer_.get(), nullptr) << "Renderer is null after zoning";
+    EXPECT_TRUE(renderer_->isZoneReady()) << "Zone graphics not ready after zoning";
 
     std::cout << "Graphics zone ready in " << newZone << "!" << std::endl;
 
@@ -635,9 +630,8 @@ TEST_F(ZoningGraphicsIntegrationTest, MultipleZoneTransitionsWithGraphics) {
             eq_->UpdateMovement();
             trackPhase(eq_->GetLoadingPhase());
 #ifdef EQT_HAS_GRAPHICS
-            auto* renderer = eq_->GetRenderer();
-            if (renderer) {
-                renderer->processFrame(getDeltaTime());
+            if (renderer_) {
+                renderer_->processFrame(getDeltaTime());
             }
 #endif
             std::this_thread::sleep_for(16ms);
@@ -677,8 +671,7 @@ TEST_F(ZoningGraphicsIntegrationTest, MultipleZoneTransitionsWithGraphics) {
         EXPECT_TRUE(eq_->IsFullyZonedIn()) << "Not fully zoned in after transition " << (transition + 1);
         EXPECT_GT(eq_->GetMySpawnID(), 0) << "Spawn ID is 0 after transition " << (transition + 1);
 #ifdef EQT_HAS_GRAPHICS
-        auto* renderer = eq_->GetRenderer();
-        EXPECT_TRUE(renderer && renderer->isZoneReady())
+        EXPECT_TRUE(renderer_ && renderer_->isZoneReady())
             << "Zone not ready after transition " << (transition + 1);
         EXPECT_TRUE(eq_->IsGraphicsReady())
             << "IsGraphicsReady() false after transition " << (transition + 1);
@@ -719,8 +712,7 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr) << "Renderer is null";
+    ASSERT_NE(renderer_.get(), nullptr) << "Renderer is null";
 
     std::string currentZone = eq_->GetCurrentZoneName();
     std::cout << "Initial zone: " << currentZone << std::endl;
@@ -734,7 +726,7 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
     std::cout << "Testing camera safety during zone transition to " << zoneLine.destinationZone << std::endl;
 
     // Set camera mode to Follow (which uses collision detection)
-    renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+    renderer_->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
 
     // Move player position near the zone line
     eq_->SetPosition(zoneLine.x, zoneLine.y, zoneLine.z);
@@ -754,7 +746,7 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
 
         // Process graphics frame - this is where the crash would occur
         float deltaTime = getDeltaTime();
-        bool frameOk = renderer->processFrame(deltaTime);
+        bool frameOk = renderer_->processFrame(deltaTime);
         frameCount++;
 
         if (!frameOk) {
@@ -797,7 +789,7 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
 
     // Verify we're in a different zone or same zone (zone line may loop back)
     EXPECT_TRUE(eq_->IsFullyZonedIn()) << "Not fully zoned in after transition";
-    EXPECT_TRUE(renderer->isZoneReady()) << "Zone graphics not ready after transition";
+    EXPECT_TRUE(renderer_->isZoneReady()) << "Zone graphics not ready after transition";
 #endif
 }
 

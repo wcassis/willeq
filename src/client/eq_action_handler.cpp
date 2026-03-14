@@ -5,10 +5,6 @@
 #include "common/logging.h"
 #include "common/name_utils.h"
 
-#ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#endif
-
 namespace eqt {
 
 EqActionHandler::EqActionHandler(EverQuest& eq)
@@ -22,32 +18,10 @@ CombatManager* EqActionHandler::getCombatManager() {
 }
 
 void EqActionHandler::updateRendererTargetInfo(uint16_t spawnId) {
+    // D20e1: TargetChanged event is already published by ProcessBridgeIntents
+    // handler in eq.cpp when TargetIntent is processed. This method only
+    // needs to update the game-state target ID.
     m_eq.SetCurrentTargetId(spawnId);
-#ifdef EQT_HAS_GRAPHICS
-    auto* renderer = m_eq.GetRenderer();
-    if (!renderer) return;
-
-    if (spawnId == 0) {
-        renderer->clearCurrentTarget();
-        return;
-    }
-
-    const auto& entities = m_eq.GetEntities();
-    auto it = entities.find(spawnId);
-    if (it != entities.end()) {
-        const auto& e = it->second;
-        EQT::Graphics::TargetInfo info;
-        info.spawnId = e.spawn_id;
-        info.name = e.name;
-        info.level = e.level;
-        info.hpPercent = e.hp_percent;
-        info.raceId = e.race_id;
-        info.gender = e.gender;
-        info.classId = e.class_id;
-        info.npcType = e.npc_type;
-        renderer->setCurrentTargetInfo(info);
-    }
-#endif
 }
 
 std::string EqActionHandler::channelToString(action::ChatChannel channel) {

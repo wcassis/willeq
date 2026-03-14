@@ -8,6 +8,9 @@
 #include "client/action/command_processor.h"
 #include "client/input/input_handler.h"
 
+#include "client/graphics/loading_thread.h"
+#include "client/zone_load_snapshot.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -252,6 +255,16 @@ private:
      */
     void connectRendererCallbacks();
 
+    // ========== D20e2: Zone Loading (moved from EverQuest) ==========
+
+    void startLoadingThread();
+    void joinLoadingThread();
+    void loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status);
+    void loadZoneGraphics();  // Synchronous path
+    bool isLoadingThreadActive() const { return m_loadingThread != nullptr; }
+    bool checkLoadingComplete();
+    void setupHotbarCallback();  // Wire hotbar changed callback to renderer
+
     // ========== Components ==========
 
     std::unique_ptr<state::GameState> m_gameState;
@@ -271,6 +284,12 @@ private:
 
     // Graphics input handler (bridges RendererEventReceiver → InputActionBridge)
     std::unique_ptr<input::GraphicsInputHandler> m_graphicsInputHandler;
+
+    // D20e2: Loading thread (moved from EverQuest)
+    std::unique_ptr<EQT::Graphics::LoadingThread> m_loadingThread;
+    EQT::Graphics::LoadingStatus m_loadingStatus;
+    EQT::Graphics::GLContextHandles m_glHandles;
+    eqt::ZoneLoadSnapshot m_zoneLoadSnapshot;
 
     // ========== State ==========
 

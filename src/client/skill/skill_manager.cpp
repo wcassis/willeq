@@ -5,12 +5,10 @@
 #include "client/skill/skill_manager.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/state/event_bus.h"
 #include "common/logging.h"
 #include "common/net/packet.h"
-
-#ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#endif
 
 namespace EQ {
 
@@ -494,22 +492,22 @@ void SkillManager::playSkillAnimation(uint8_t skill_id) {
         m_eq->SendAnimation(anim_id);
     }
 
-#ifdef EQT_HAS_GRAPHICS
-    // Play the skill-specific animation locally for immediate visual feedback
-    // This ensures monk skills (t07, t08, t09) and other skill-specific animations
-    // are played correctly, rather than relying on the server's generic attack animation
-    if (animCode != nullptr) {
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer) {
-            uint16_t playerSpawnId = m_eq->GetMySpawnID();
-            if (playerSpawnId != 0) {
-                renderer->setEntityAnimation(playerSpawnId, animCode, false, true);
-                LOG_DEBUG(MOD_MAIN, "Playing skill animation '{}' for skill {} on player {}",
-                          animCode, skill_id, playerSpawnId);
-            }
+    // D20e1: Play skill animation via bridge event
+    if (animCode != nullptr && m_bridge) {
+        uint16_t playerSpawnId = m_eq->GetMySpawnID();
+        if (playerSpawnId != 0) {
+            eqt::state::EntityAnimationEventData d;
+            d.spawnId = playerSpawnId;
+            d.animCode = 0;
+            d.animName = animCode;
+            d.loop = false;
+            d.playThrough = true;
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::EntityAnimationEvent, std::move(d)));
+            LOG_DEBUG(MOD_MAIN, "Playing skill animation '{}' for skill {} on player {}",
+                      animCode, skill_id, playerSpawnId);
         }
     }
-#endif
 }
 
 bool SkillManager::checkCombatRequirement(uint8_t skill_id) const {

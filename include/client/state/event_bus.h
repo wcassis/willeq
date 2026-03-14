@@ -135,6 +135,23 @@ enum class GameEventType {
     HotbarCooldownStarted,
     SkillActivationFeedback,
     RendererCommand,  // D20d: slash command forwarded to renderer
+
+    // D20e1: Spell visual events (replaces direct SpellManager → Renderer calls)
+    SpellCastVisualStarted,
+    SpellCastVisualComplete,
+    SpellCastVisualInterrupted,
+    SpellMemorizeVisualStarted,
+    SpellMemorizeVisualComplete,
+
+    // D20e1: Zone lifecycle events (replaces direct EverQuest → Renderer calls)
+    ZoneUnloading,
+
+    // D20e1: Navmesh changed (replaces direct m_renderer->setNavmesh calls)
+    NavmeshChanged,
+
+    // D20e1: Diagnostics (replaces direct m_renderer->getMemoryReport/dumpScene calls)
+    DiagnosticsMemoryReport,
+    DiagnosticsSceneDump,
 };
 
 // ============================================================================
@@ -732,6 +749,89 @@ struct SkillActivationFeedbackData {
     uint32_t cooldownMs;  // 0 if no cooldown
 };
 
+// D20e1: Spell visual FX events (game thread → renderer)
+struct SpellCastVisualStartedData {
+    uint16_t casterId;
+    uint32_t spellId;
+    uint32_t castTimeMs;
+    std::string spellName;
+    std::string casterName;
+    bool isPlayerCast;          // true if caster is the local player
+    bool isTargetCast;          // true if caster is the player's current target
+    // Completion animation info (for NPC casts)
+    std::string completionAnim; // empty = no animation on start
+};
+
+struct SpellCastVisualCompleteData {
+    uint16_t casterId;
+    uint16_t targetId;
+    uint32_t spellId;
+    std::string spellName;
+    bool isSuccess;             // effect_flag == 4
+    bool isPlayerCast;
+    bool isTargetCast;
+    std::string completionAnim; // Animation to play on caster (e.g. "c03", "c04")
+};
+
+struct SpellCastVisualInterruptedData {
+    uint16_t casterId;
+    uint32_t spellId;
+    bool isPlayerCast;
+    bool isTargetCast;
+};
+
+struct SpellMemorizeVisualStartedData {
+    std::string spellName;
+    uint32_t durationMs;
+};
+
+struct SpellMemorizeVisualCompleteData {};
+
+// D20e1: Zone lifecycle
+struct ZoneUnloadingData {};
+
+// D20e1: Navmesh changed
+struct NavmeshChangedData {
+    void* navmesh;  // Opaque pointer — consumer casts to PathfinderNavmesh*
+};
+
+// D20e1: Diagnostics
+struct DiagnosticsMemoryReportData {
+    // External memory info collected by game thread, passed to renderer for full report
+    size_t processRssBytes = 0;
+    size_t processVmBytes = 0;
+    size_t sharedLibBytes = 0;
+    size_t anonBytes = 0;
+    size_t stackBytes = 0;
+    bool audioAvailable = false;
+    size_t soundBufferCacheBytes = 0;
+    size_t soundBufferCacheMaxBytes = 0;
+    size_t soundFontEstimateBytes = 0;
+    size_t musicDecodedBytes = 0;
+    size_t audioPfsArchiveBytes = 0;
+    size_t sfxCacheBytes = 0;
+    size_t zoneEmitterCount = 0;
+    size_t activeEmitterCount = 0;
+    size_t entityCount = 0;
+    size_t entityEstimateBytes = 0;
+    size_t doorCount = 0;
+    size_t doorEstimateBytes = 0;
+    size_t spellDbCount = 0;
+    size_t spellDbEstimateBytes = 0;
+    struct ConnectionInfo {
+        std::string name;
+        uint64_t recvBytes = 0;
+        uint64_t sentBytes = 0;
+        double avgPing = 0.0;
+    };
+    std::vector<ConnectionInfo> connections;
+    std::string label;
+};
+
+struct DiagnosticsSceneDumpData {
+    std::string label;
+};
+
 
 // ============================================================================
 // Variant type for all event data
@@ -838,7 +938,17 @@ using EventData = std::variant<
     ToggleSkillsWindowData,
     HotbarCooldownStartedData,
     SkillActivationFeedbackData,
-    RendererCommandData
+    RendererCommandData,
+    // D20e1
+    SpellCastVisualStartedData,
+    SpellCastVisualCompleteData,
+    SpellCastVisualInterruptedData,
+    SpellMemorizeVisualStartedData,
+    SpellMemorizeVisualCompleteData,
+    ZoneUnloadingData,
+    NavmeshChangedData,
+    DiagnosticsMemoryReportData,
+    DiagnosticsSceneDumpData
 >;
 
 // Game event combining type and data

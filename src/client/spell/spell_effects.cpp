@@ -6,7 +6,8 @@
 #include <client/spell/spell_database.h>
 #include <client/spell/buff_manager.h>
 #include <client/eq.h>
-#include <client/graphics/irrlicht_renderer.h>
+#include <client/bridge/game_state_bridge.h>
+#include <client/state/event_bus.h>
 #include <common/logging.h>
 #include <algorithm>
 #include <cmath>
@@ -735,13 +736,8 @@ void SpellEffects::handleUltraVision(uint16_t target_id)
     // Only affects player's vision
     if (!isPlayer(target_id)) return;
 
-    if (m_eq) {
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer) {
-            renderer->setVisionType(EQT::Graphics::VisionType::Ultravision);
-            LOG_INFO(MOD_SPELL, "Player vision upgraded to Ultravision");
-        }
-    }
+    // D20e1: VisionChanged already published by buff system — just log
+    LOG_INFO(MOD_SPELL, "Player vision upgraded to Ultravision");
 }
 
 void SpellEffects::handleInfraVision(uint16_t target_id)
@@ -751,13 +747,8 @@ void SpellEffects::handleInfraVision(uint16_t target_id)
     // Only affects player's vision
     if (!isPlayer(target_id)) return;
 
-    if (m_eq) {
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer) {
-            renderer->setVisionType(EQT::Graphics::VisionType::Infravision);
-            LOG_INFO(MOD_SPELL, "Player vision upgraded to Infravision");
-        }
-    }
+    // D20e1: VisionChanged already published by buff system — just log
+    LOG_INFO(MOD_SPELL, "Player vision upgraded to Infravision");
 }
 
 // ============================================================================

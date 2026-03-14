@@ -21,6 +21,7 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/loading_thread.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_config_loader.h"
@@ -1163,7 +1164,9 @@ void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
 	         phaseNum, progress * 100.0f, m_loading_status_text);
 
 	// Write to LoadingStatus for the loading thread's passive display loop
-	m_loading_status.setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
+	if (m_loading_status_ptr) {
+		m_loading_status_ptr->setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
+	}
 
 	// Publish ZoneLoading event to bridge (also drives loading screen progress via bridge handler)
 	if (m_bridge) {
@@ -1229,11 +1232,11 @@ void EverQuest::OnGameStateComplete() {
 	         m_my_spawn_id, m_current_zone_name);
 
 #ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
+	if (m_graphics_initialized) {
 		SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
 
-		// Signal loading thread to enter active phase (zone loading)
-		m_loading_status.graphicsLoadReady.store(true, std::memory_order_release);
+		// D20e2: Signal Application's loading thread to enter active phase
+		SignalGraphicsLoadReady();
 		LOG_INFO(MOD_GRAPHICS, "OnGameStateComplete: signaled graphicsLoadReady to loading thread");
 	} else {
 		// No graphics mode - we're done
@@ -4415,18 +4418,8 @@ void EverQuest::SetupBankCallbacks()
 
 void EverQuest::SetupTradeWindowCallbacks()
 {
-	if (!m_renderer || !m_renderer->getWindowManager()) {
-		return;
-	}
-
-	auto* windowManager = m_renderer->getWindowManager();
-
-	// Initialize trade window with trade manager (config, not a callback)
-	windowManager->initTradeWindow(m_trade_manager.get());
-
-	/* D20a: trade action callbacks removed, intents handle trade actions */
-
-	LOG_DEBUG(MOD_MAIN, "Trade window callbacks set up");
+	// D20e3: Trade window init moved to InitGraphics (needs renderer)
+	// This stub remains for the call in InitGraphics; actual init is done there.
 }
 
 void EverQuest::SetupTradeskillCallbacks()
@@ -7322,17 +7315,7 @@ void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
 
 void EverQuest::AddChatMissMessage(const std::string &text)
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		auto* windowManager = m_renderer->getWindowManager();
-		if (windowManager) {
-			auto* chatWindow = windowManager->getChatWindow();
-			if (chatWindow) {
-				chatWindow->addSystemMessage(text, eqt::ui::ChatChannel::CombatMiss);
-			}
-		}
-	}
-#endif
+	// D20e1: Bridge already handles ChatMessage → chat window display.
 	// Publish ChatMessage event to bridge (combat miss channel)
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
@@ -7417,9 +7400,10 @@ void EverQuest::ProcessChatInput(const std::string &input)
 // ── Manual zone load diagnostics helpers ────────────────────────────────────
 
 void EverQuest::runPmemDiagnostics(const std::string& label) {
-	if (!m_renderer) return;
+	if (!m_bridge) return;
 
-	EQT::Graphics::MemoryReportInput ext;
+	eqt::state::DiagnosticsMemoryReportData d;
+	d.label = label;
 
 #ifdef __linux__
 	{
@@ -7428,8 +7412,8 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 			unsigned long vm = 0, rss = 0;
 			if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
 				long ps = sysconf(_SC_PAGESIZE);
-				ext.processRssBytes = static_cast<size_t>(rss) * ps;
-				ext.processVmBytes = static_cast<size_t>(vm) * ps;
+				d.processRssBytes = static_cast<size_t>(rss) * ps;
+				d.processVmBytes = static_cast<size_t>(vm) * ps;
 			}
 			fclose(f);
 		}
@@ -7443,9 +7427,9 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 				unsigned long kb = 0;
 				if (sscanf(line, "Shared_Clean: %lu kB", &kb) == 1 ||
 				    sscanf(line, "Shared_Dirty: %lu kB", &kb) == 1) {
-					ext.sharedLibBytes += static_cast<size_t>(kb) * 1024;
+					d.sharedLibBytes += static_cast<size_t>(kb) * 1024;
 				} else if (sscanf(line, "Anonymous: %lu kB", &kb) == 1) {
-					ext.anonBytes = static_cast<size_t>(kb) * 1024;
+					d.anonBytes = static_cast<size_t>(kb) * 1024;
 				}
 			}
 			fclose(f);
@@ -7456,7 +7440,7 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 			while (fgets(line, sizeof(line), f)) {
 				unsigned long kb = 0;
 				if (sscanf(line, "VmStk: %lu kB", &kb) == 1) {
-					ext.stackBytes = static_cast<size_t>(kb) * 1024;
+					d.stackBytes = static_cast<size_t>(kb) * 1024;
 					break;
 				}
 			}
@@ -7467,52 +7451,47 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 
 #ifdef WITH_AUDIO
 	if (m_audio_manager && m_audio_manager->isInitialized()) {
-		ext.audioAvailable = true;
-		ext.soundBufferCacheBytes = m_audio_manager->getSoundBufferCacheBytes();
-		ext.soundBufferCacheMaxBytes = m_audio_manager->getSoundBufferCacheMaxBytes();
-		ext.soundFontEstimateBytes = m_audio_manager->getSoundFontMemoryEstimate();
-		ext.musicDecodedBytes = m_audio_manager->getMusicDecodedBytes();
-		ext.audioPfsArchiveBytes = m_audio_manager->getPfsArchiveCacheBytes();
+		d.audioAvailable = true;
+		d.soundBufferCacheBytes = m_audio_manager->getSoundBufferCacheBytes();
+		d.soundBufferCacheMaxBytes = m_audio_manager->getSoundBufferCacheMaxBytes();
+		d.soundFontEstimateBytes = m_audio_manager->getSoundFontMemoryEstimate();
+		d.musicDecodedBytes = m_audio_manager->getMusicDecodedBytes();
+		d.audioPfsArchiveBytes = m_audio_manager->getPfsArchiveCacheBytes();
 		if (auto* sfx = m_audio_manager->getSfxManager()) {
-			ext.sfxCacheBytes = sfx->getCacheSize();
+			d.sfxCacheBytes = sfx->getCacheSize();
 		}
 	}
 	if (m_zone_audio_manager) {
-		ext.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
-		ext.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
+		d.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
+		d.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
 	}
 #endif
 
 	auto addConn = [&](const std::string& name, std::shared_ptr<EQ::Net::DaybreakConnection> conn) {
 		if (!conn) return;
 		auto stats = conn->GetStats();
-		EQT::Graphics::MemoryReportInput::ConnectionInfo ci;
+		eqt::state::DiagnosticsMemoryReportData::ConnectionInfo ci;
 		ci.name = name;
 		ci.recvBytes = stats.recv_bytes;
 		ci.sentBytes = stats.sent_bytes;
 		ci.avgPing = conn->GetRollingPing();
-		ext.connections.push_back(std::move(ci));
+		d.connections.push_back(std::move(ci));
 	};
 	addConn("Zone", m_zone_connection);
 	addConn("World", m_world_connection);
 	addConn("Login", m_login_connection);
 
-	ext.entityCount = m_entities.size();
-	ext.entityEstimateBytes = m_entities.size() * sizeof(Entity);
-	ext.doorCount = m_door_state_manager.getDoorCount();
-	ext.doorEstimateBytes = m_door_state_manager.getDoorCount() * sizeof(EQT::DoorState);
+	d.entityCount = m_entities.size();
+	d.entityEstimateBytes = m_entities.size() * sizeof(Entity);
+	d.doorCount = m_door_state_manager.getDoorCount();
+	d.doorEstimateBytes = m_door_state_manager.getDoorCount() * sizeof(EQT::DoorState);
 	if (m_spell_manager) {
-		ext.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
-		ext.spellDbEstimateBytes = ext.spellDbCount * 512;
+		d.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
+		d.spellDbEstimateBytes = d.spellDbCount * 512;
 	}
 
-	if (!label.empty()) {
-		LOG_INFO(MOD_MAIN, "=== /pmem [{}] ===", label);
-	}
-	auto report = m_renderer->getMemoryReport(ext);
-	for (const auto& line : report) {
-		LOG_INFO(MOD_MAIN, "{}", line);
-	}
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::DiagnosticsMemoryReport, std::move(d)));
 }
 
 void EverQuest::runLoadDiagnostics(const std::string& label) {
@@ -7521,10 +7500,14 @@ void EverQuest::runLoadDiagnostics(const std::string& label) {
 	LOG_INFO(MOD_MAIN, "║ LOAD DIAGNOSTICS: {}", label);
 	LOG_INFO(MOD_MAIN, "╚══════════════════════════════════════════════════════════════");
 
-	// Scene dump
-	m_renderer->dumpScene();
+	// Scene dump via bridge
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::DiagnosticsSceneDump,
+			eqt::state::DiagnosticsSceneDumpData{label}));
+	}
 
-	// Memory report
+	// Memory report via bridge
 	runPmemDiagnostics(label);
 
 	LOG_INFO(MOD_MAIN, "══════════════════════════════════════════════════════════════");
@@ -12939,10 +12922,11 @@ void EverQuest::CleanupZone()
 	SetLoadingPhase(LoadingPhase::DISCONNECTED, "Leaving zone...");
 
 #ifdef EQT_HAS_GRAPHICS
-	// Zone is no longer ready - show loading screen during transition
-	if (m_renderer) {
-		m_renderer->setZoneReady(false);
-		m_renderer->showLoadingScreen();
+	// D20e1: Zone is no longer ready - show loading screen via bridge
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ZoneUnloading,
+			eqt::state::ZoneUnloadingData{}));
 	}
 #endif
 
@@ -12981,12 +12965,12 @@ void EverQuest::CleanupZone()
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
 
-	// Clear pathfinding data - first clear renderer's reference to avoid dangling pointer
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setNavmesh(nullptr);
+	// Clear pathfinding data — notify renderer to clear navmesh reference
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::NavmeshChanged,
+			eqt::state::NavmeshChangedData{nullptr}));
 	}
-#endif
 	m_pathfinder.reset();
 
 	// Clear collision map via bridge, then reset zone map
@@ -13005,9 +12989,11 @@ void EverQuest::CleanupZone()
 	m_zone_change_requested = false;
 
 #ifdef EQT_HAS_GRAPHICS
-	// Unload zone graphics
-	if (m_renderer) {
-		m_renderer->unloadZone();
+	// D20e3: Unload zone graphics via bridge
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::RendererCommand,
+			eqt::state::RendererCommandData{"/unloadzone_internal"}));
 	}
 	// Player entity will need to be recreated on renderer after zoning
 	m_player_graphics_entity_pending = true;
@@ -13089,12 +13075,9 @@ void EverQuest::ProcessDeferredZoneChange()
 	LOG_TRACE(MOD_ZONE, "Step 1 complete: Zone disconnected");
 
 #ifdef EQT_HAS_GRAPHICS
-	// Start loading thread to render loading screen during world reconnection.
-	// CleanupZone() already called unloadZone() while main thread held GL.
-	// Now transfer GL to loading thread for the passive display loop (0-45%).
-	// OnGameStateComplete() will signal graphicsLoadReady for the active phase.
-	m_zone_load_snapshot = CreateZoneLoadSnapshot();
-	StartLoadingThread();
+	// D20e2: Signal Application to start a new loading thread for the re-zone.
+	// Application checks m_zone_load_requested in its render loop.
+	m_zone_load_requested = true;
 #endif
 
 	// Reconnect to world server to get new zone info
@@ -13139,12 +13122,12 @@ void EverQuest::LoadPathfinder(const std::string& zone_name)
 	
 	LOG_DEBUG(MOD_MAIN, "LoadPathfinder: Loading pathfinder for zone '{}'", zone_name);
 
-	// Release previous pathfinder if any - first clear renderer's reference
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->setNavmesh(nullptr);
+	// Release previous pathfinder if any - clear renderer's reference via bridge
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::NavmeshChanged,
+			eqt::state::NavmeshChangedData{nullptr}));
 	}
-#endif
 	m_pathfinder.reset();
 	m_current_path.clear();
 	m_current_path_index = 0;
@@ -13166,11 +13149,13 @@ void EverQuest::LoadPathfinder(const std::string& zone_name)
 					zone_name, test_path.empty() ? "NavMesh" : "Null");
 			}
 
-#if defined(EQT_HAS_GRAPHICS) && defined(EQT_HAS_NAVMESH)
-			// Pass navmesh to renderer for visualization overlay
-			if (m_renderer) {
+#if defined(EQT_HAS_NAVMESH)
+			// Pass navmesh to renderer via bridge for visualization overlay
+			if (m_bridge) {
 				PathfinderNavmesh* navmesh = dynamic_cast<PathfinderNavmesh*>(m_pathfinder.get());
-				m_renderer->setNavmesh(navmesh);  // nullptr if not a PathfinderNavmesh
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::NavmeshChanged,
+					eqt::state::NavmeshChangedData{navmesh}));
 			}
 #endif
 		} else {
@@ -14962,8 +14947,8 @@ void EverQuest::UpdateWaterState()
 	if (isFullyUnderwaterZone) {
 		newState = WaterState::Submerged;
 	} else {
-		// Normal water detection via BSP regions
-		auto bspTree = m_renderer->getZoneBspTree();
+		// Normal water detection via BSP regions (D20e: reads game-state-owned BSP tree)
+		auto bspTree = std::static_pointer_cast<EQT::Graphics::BspTree>(m_zone_bsp_tree);
 		if (bspTree) {
 			// Check the region at current player position
 			// In EQ, the "head" is approximately 6 units above feet position
@@ -17655,16 +17640,22 @@ bool EverQuest::InitGraphics(int width, int height,
 		return false;
 	}
 
-	// D20b5: Renderer and bridge created by Application, passed in
-	m_renderer = renderer;
+	// D20e3: Store bridge only — renderer is owned by Application.
 	m_bridge = bridge;
 
-	// Wire bridge to WindowManager and InventoryManager for intent pushing
-	if (m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->setBridge(m_bridge);
+	// Wire bridge to subsystems for intent pushing
+	if (renderer->getWindowManager()) {
+		renderer->getWindowManager()->setBridge(m_bridge);
+		m_hotbar_window_manager = renderer->getWindowManager();
 	}
 	if (m_inventory_manager) {
 		m_inventory_manager->setBridge(m_bridge);
+	}
+	if (m_spell_manager) {
+		m_spell_manager->setBridge(m_bridge);
+	}
+	if (m_skill_manager) {
+		m_skill_manager->setBridge(m_bridge);
 	}
 
 	EQT::Graphics::RendererConfig config;
@@ -17673,79 +17664,45 @@ bool EverQuest::InitGraphics(int width, int height,
 	config.eqClientPath = m_eq_client_path;
 	config.regionMapsPath = m_region_maps_path;
 	config.windowTitle = "WillEQ - " + m_character;
-	config.lighting = false;  // Fullbright mode
-	config.constrainedPreset = m_constrained_preset;  // Constrained rendering mode (startup-only)
+	config.lighting = false;
+	config.constrainedPreset = m_constrained_preset;
 	if (m_constrained_config) {
 		config.constrainedPreset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
 		config.constrainedConfig = *m_constrained_config;
 	}
 
-	// Use initLoadingScreen() for early progress display - only creates window + progress bar
-	// Model loading is deferred to loadGlobalAssets() which is called during graphics loading phase
-	if (!m_renderer->initLoadingScreen(config)) {
+	if (!renderer->initLoadingScreen(config)) {
 		LOG_ERROR(MOD_GRAPHICS, "Failed to initialize renderer loading screen");
-		m_renderer = nullptr;
 		m_bridge = nullptr;
 		return false;
 	}
 
-	// NOTE: Global character models are NOT loaded here anymore.
-	// They are loaded in loadGlobalAssets() during GRAPHICS_LOADING_MODELS phase.
-	// This allows the progress bar to show during the entire loading process.
-
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
 	TickNetwork();
 
-	// D20b2: HUD callback removed. Renderer builds HUD from PlayerStatsChanged events.
-
-	// D20a: Movement, target, interaction, and spell gem cast callbacks removed.
-	// All game logic now handled via ProcessBridgeIntents() intent handlers.
-
-	// Set collision map via bridge (will be updated when zone loads)
+	// Set collision map via bridge
 	if (m_zone_map && m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged,
 			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
 	}
 
-	// S04: inventory_manager is pre-allocated in EverQuest constructor
-
 	// Connect inventory manager to renderer
-	if (m_renderer && m_inventory_manager) {
-		m_renderer->setInventoryManager(m_inventory_manager.get());
-		LOG_TRACE(MOD_GRAPHICS, "Inventory manager connected to renderer");
+	if (renderer && m_inventory_manager) {
+		renderer->setInventoryManager(m_inventory_manager.get());
 	}
 
-	// Set up loot window callbacks
+	// Setup window callbacks (all empty stubs since D20a/D20b1)
 	SetupLootCallbacks();
-
-	// Set up vendor window callbacks
 	SetupVendorCallbacks();
-
-	// Set up bank window callbacks
 	SetupBankCallbacks();
-
-	// Set up trainer window callbacks
 	SetupTrainerCallbacks();
-
-	// Set up trade window callbacks
 	SetupTradeWindowCallbacks();
-
-	// Set up tradeskill container callbacks
 	SetupTradeskillCallbacks();
 
-	// S04: spell DB, buff_manager, spell_effects, spell_type_processor are all
-	// pre-allocated in Application::initialize() via InitializeSpellSystem()
-
-	// D20b2: Buff fade callback moved to SetupBuffFadeHandler() (called from constructor)
-
-	// D20b4: Initialize UI windows via WindowManager.
-	// EverQuest* and BuffManager* parameters are no longer used by windows —
-	// group, player status, and pet windows receive data via bridge events.
-	// Manager pointers (spell, buff, skill) still used by spell gem panel,
-	// buff window, and skills window for polling.
-	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* wm = m_renderer->getWindowManager();
+	// Initialize UI windows via WindowManager
+	if (renderer->getWindowManager()) {
+		auto* wm = renderer->getWindowManager();
 		wm->setCommandRegistry(m_command_registry.get());
 		wm->setPlayerName(m_character);
 		wm->initSpellGemPanel(m_spell_manager.get());
@@ -17759,12 +17716,11 @@ bool EverQuest::InitGraphics(int width, int height,
 	m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);
 
-	// Initialize audio system (uses EQ client path from graphics config)
 #ifdef WITH_AUDIO
 	InitializeAudio();
 #endif
 
-	// If zone is already fully connected when graphics init, set zone ready (D17b: bridge-only)
+	// If zone is already fully connected when graphics init, set zone ready
 	if (IsFullyZonedIn() && m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NetworkReady,
@@ -17772,42 +17728,30 @@ bool EverQuest::InitGraphics(int width, int height,
 		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering with {} entities", m_entities.size());
 	}
 
-	// Start loading thread — transfers GL context to loading thread for progress bar
-	m_zone_load_snapshot = CreateZoneLoadSnapshot();
-	StartLoadingThread();
-
 	return true;
 }
 
-void EverQuest::ShutdownGraphics() {
-	// Join loading thread before detaching (it may own the GL context)
-	if (m_loading_thread && m_loading_thread->isRunning()) {
-		m_loading_status.quitRequested.store(true, std::memory_order_release);
-		JoinLoadingThread();
+void EverQuest::SignalGraphicsLoadReady() {
+	if (m_loading_status_ptr) {
+		m_loading_status_ptr->graphicsLoadReady.store(true, std::memory_order_release);
 	}
-	m_loading_thread.reset();
+}
+
+void EverQuest::ShutdownGraphics() {
+	// D20e2: Loading thread now owned by Application — it joins before calling this.
 
 	if (m_inventory_manager) {
 		m_inventory_manager->clearAll();
 		m_inventory_manager.reset();
 	}
 
-	// D20b5: Detach bridge — Application owns renderer + bridge destruction
+	// D20e3: Detach bridge and window pointers — Application owns renderer lifecycle
 	m_bridge = nullptr;
-	m_renderer = nullptr;
+	m_hotbar_window_manager = nullptr;
+	m_rdp_server = nullptr;
+	m_loading_status_ptr = nullptr;
 	m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
-}
-
-// D20c1: Loading thread completion check — called by Application before render
-bool EverQuest::CheckLoadingComplete() {
-	if (!m_loading_thread) return false;
-	if (m_loading_status.loadingComplete.load(std::memory_order_acquire)) {
-		JoinLoadingThread();
-		OnGraphicsComplete();
-		return true;
-	}
-	return false;
 }
 
 // D20c1: Pre-render game state tick — spell/buff managers + bridge
@@ -17839,15 +17783,7 @@ void EverQuest::PreRenderTick(float deltaTime) {
 
 // D20c1: Post-render tick — audio sync, progressive loading check
 void EverQuest::PostRenderTick(float deltaTime) {
-	if (!m_graphics_initialized || !m_renderer) return;
-
-	// Check if progressive loading completed behind loading screen
-	if (m_renderer->isLoadingScreenVisible() &&
-	    !m_renderer->isProgressiveLoadingActive() &&
-	    m_loading_phase >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
-	    m_loading_phase < LoadingPhase::COMPLETE) {
-		OnGraphicsComplete();
-	}
+	if (!m_graphics_initialized) return;
 
 #ifdef WITH_AUDIO
 	// D20c2: Audio listener at player position, not camera position.
@@ -17923,279 +17859,9 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	return snap;
 }
 
-void EverQuest::StartLoadingThread() {
-	if (!m_renderer || !m_graphics_initialized) return;
-	if (m_loading_thread && m_loading_thread->isRunning()) {
-		LOG_WARN(MOD_GRAPHICS, "StartLoadingThread: loading thread already running");
-		return;
-	}
+// D20e2: StartLoadingThread, JoinLoadingThread moved to Application
 
-	// Extract GL handles while main thread still owns context
-	m_gl_handles = EQT::Graphics::LoadingThread::extractGLHandles(
-		m_renderer->getDevice(), m_renderer->getDriver());
-
-	// Reset loading status
-	m_loading_status.reset();
-
-	// Get font for loading screen
-	irr::gui::IGUIFont* font = nullptr;
-	if (m_renderer->getGUIEnvironment())
-		font = m_renderer->getGUIEnvironment()->getBuiltInFont();
-
-	// Release GL context on main thread
-	EQT::Graphics::LoadingThread::releaseContext(m_gl_handles);
-
-	// Set the renderer loading flag so main thread skips GL calls
-	m_renderer->setLoading(true);
-
-	// Start loading thread with active phase callback
-	m_loading_thread = std::make_unique<EQT::Graphics::LoadingThread>();
-	m_loading_thread->start(
-		m_renderer->getDevice(), m_renderer->getDriver(), font, m_gl_handles,
-		m_loading_status,
-		[this](EQT::Graphics::LoadingStatus& status) {
-			LoadZoneGraphicsOnLoadingThread(status);
-		});
-
-	LOG_INFO(MOD_GRAPHICS, "StartLoadingThread: loading thread started, GL context transferred");
-}
-
-void EverQuest::JoinLoadingThread() {
-	if (!m_loading_thread) return;
-
-	m_loading_thread->join();
-	m_loading_thread.reset();
-
-	// Reacquire GL context on main thread
-	EQT::Graphics::LoadingThread::acquireContext(m_gl_handles);
-
-	// Clear loading flag
-	if (m_renderer)
-		m_renderer->setLoading(false);
-
-	LOG_INFO(MOD_GRAPHICS, "JoinLoadingThread: loading thread joined, GL context reacquired");
-}
-
-void EverQuest::LoadZoneGraphicsOnLoadingThread(EQT::Graphics::LoadingStatus& status) {
-	// D20c3: Reads from m_zone_load_snapshot (immutable copy of game state),
-	// NOT from live EverQuest members. Any game state changes during loading
-	// are captured by bridge events and applied after JoinLoadingThread.
-
-	if (!m_renderer) return;
-	const auto& snap = m_zone_load_snapshot;
-
-	// Temporarily clear loading flag so renderer methods work on this thread.
-	m_renderer->setLoading(false);
-
-	// 1. Collision map
-	if (snap.zoneMap && m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{snap.zoneMap}));
-	}
-
-	// 2. Zone lines
-	if (!snap.zoneLineBBoxes.empty()) {
-		m_renderer->setZoneLineBoundingBoxes(snap.zoneLineBBoxes);
-	}
-
-	// 3. Build HCMap placeholder + minimal collision
-	m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
-
-	// 4. Zone environment data
-	if (!snap.zoneName.empty()) {
-		m_renderer->storeZoneEnvironment(snap.skyType, snap.zoneType,
-			snap.fogRed, snap.fogGreen, snap.fogBlue,
-			snap.fogMinClip, snap.fogMaxClip);
-	}
-
-	// 5. Register all entities from snapshot
-	if (m_renderer->getEntityRenderer())
-		m_renderer->getEntityRenderer()->setPlayerLevel(snap.playerLevel);
-
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: registering {} entities (from snapshot)", snap.entities.size());
-
-	size_t registered = 0, failed = 0;
-	for (const auto& entity : snap.entities) {
-		bool isPlayer = (entity.name == snap.playerName);
-		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
-		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-		if (!isCorpse && entity.name.find("corpse") != std::string::npos)
-			isCorpse = true;
-
-		EQT::Graphics::EntityAppearance appearance;
-		appearance.face = entity.face;
-		appearance.haircolor = entity.haircolor;
-		appearance.hairstyle = entity.hairstyle;
-		appearance.beardcolor = entity.beardcolor;
-		appearance.beard = entity.beard;
-		appearance.texture = entity.equip_chest2;
-		appearance.helm = entity.helm;
-		for (int i = 0; i < 9; i++) {
-			appearance.equipment[i] = entity.equipment[i];
-			appearance.equipment_tint[i] = entity.equipment_tint[i];
-		}
-
-		bool ok = m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
-		                           entity.x, entity.y, entity.z, entity.heading,
-		                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
-		                           entity.level);
-		if (ok) registered++; else failed++;
-
-		if (isPlayer) {
-			m_renderer->setPlayerSpawnId(snap.playerSpawnId);
-			if (entity.light > 0)
-				m_renderer->setEntityLight(entity.spawn_id, entity.light);
-			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-		} else if (entity.light > 0) {
-			m_renderer->setEntityLight(entity.spawn_id, entity.light);
-		}
-	}
-
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphicsOnLoadingThread: {} registered, {} failed", registered, failed);
-
-	// 6. Register doors from snapshot
-	for (const auto& door : snap.doors) {
-		m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
-		                         door.heading, door.incline, door.size, door.opentype,
-		                         door.isOpen);
-	}
-
-	// 7. Camera
-	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
-	float heading512 = snap.playerHeading * 512.0f / 360.0f;
-	m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
-
-	// 8. Hotbar callback
-	auto* windowMgr = m_renderer->getWindowManager();
-	if (windowMgr) {
-		windowMgr->setHotbarChangedCallback([this]() {
-			SaveHotbarConfig();
-			if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
-		});
-	}
-
-	m_player_graphics_entity_pending = true;
-
-	// 9. Sequential zone asset loading
-	m_renderer->loadZoneSequential(snap.eqClientPath, status);
-
-	// Restore loading flag — will be cleared by JoinLoadingThread on main thread
-	m_renderer->setLoading(true);
-}
-
-void EverQuest::LoadZoneGraphics() {
-	// D20c3: Main-thread synchronous loading path. Uses snapshot like the threaded path.
-	if (!m_graphics_initialized || !m_renderer) {
-		LOG_WARN(MOD_GRAPHICS, "LoadZoneGraphics called but graphics not initialized");
-		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
-		return;
-	}
-
-	SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
-
-	// D20c3: Use snapshot (create if not already created by threaded path)
-	if (m_zone_load_snapshot.zoneName.empty()) {
-		m_zone_load_snapshot = CreateZoneLoadSnapshot();
-	}
-	const auto& snap = m_zone_load_snapshot;
-
-	// 1. Collision map
-	if (snap.zoneMap && m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{snap.zoneMap}));
-	}
-
-	// 2. Zone lines
-	if (!snap.zoneLineBBoxes.empty())
-		m_renderer->setZoneLineBoundingBoxes(snap.zoneLineBBoxes);
-
-	// 3. HCMap placeholder
-	m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
-
-	// 4. Environment
-	if (!snap.zoneName.empty()) {
-		m_renderer->storeZoneEnvironment(snap.skyType, snap.zoneType,
-			snap.fogRed, snap.fogGreen, snap.fogBlue,
-			snap.fogMinClip, snap.fogMaxClip);
-	}
-
-	// 5. Entities from snapshot
-	if (m_renderer->getEntityRenderer())
-		m_renderer->getEntityRenderer()->setPlayerLevel(snap.playerLevel);
-
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: registering {} entities (from snapshot)", snap.entities.size());
-
-	size_t registered = 0, failed = 0;
-	for (const auto& entity : snap.entities) {
-		bool isPlayer = (entity.name == snap.playerName);
-		bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
-		bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-		if (!isCorpse && entity.name.find("corpse") != std::string::npos)
-			isCorpse = true;
-
-		EQT::Graphics::EntityAppearance appearance;
-		appearance.face = entity.face;
-		appearance.haircolor = entity.haircolor;
-		appearance.hairstyle = entity.hairstyle;
-		appearance.beardcolor = entity.beardcolor;
-		appearance.beard = entity.beard;
-		appearance.texture = entity.equip_chest2;
-		appearance.helm = entity.helm;
-		for (int i = 0; i < 9; i++) {
-			appearance.equipment[i] = entity.equipment[i];
-			appearance.equipment_tint[i] = entity.equipment_tint[i];
-		}
-
-		bool ok = m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
-		                           entity.x, entity.y, entity.z, entity.heading,
-		                           isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
-		                           entity.level);
-		if (ok) registered++; else failed++;
-
-		if (isPlayer) {
-			m_renderer->setPlayerSpawnId(snap.playerSpawnId);
-			if (entity.light > 0)
-				m_renderer->setEntityLight(entity.spawn_id, entity.light);
-			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-		} else if (entity.light > 0) {
-			m_renderer->setEntityLight(entity.spawn_id, entity.light);
-		}
-	}
-
-	LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: {} registered, {} failed", registered, failed);
-
-	// 6. Doors from snapshot
-	for (const auto& door : snap.doors) {
-		m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
-		                         door.heading, door.incline, door.size, door.opentype,
-		                         door.isOpen);
-	}
-
-	// 7. Camera
-	m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
-	float heading512 = snap.playerHeading * 512.0f / 360.0f;
-	m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
-
-	// 8. Hotbar
-	auto* windowMgr = m_renderer->getWindowManager();
-	if (windowMgr) {
-		windowMgr->setHotbarChangedCallback([this]() {
-			SaveHotbarConfig();
-			if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
-		});
-	}
-
-	m_player_graphics_entity_pending = true;
-
-	if (m_renderer->isProgressiveLoadingActive()) {
-		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: automatic mode — loading screen remains visible");
-	} else {
-		OnGraphicsComplete();
-		LOG_INFO(MOD_GRAPHICS, "LoadZoneGraphics: instant scene ready");
-	}
-}
+// D20e2: LoadZoneGraphicsOnLoadingThread and LoadZoneGraphics moved to Application
 #endif
 
 // NOTE: OnZoneLoadedGraphics() has been removed. Graphics loading is now handled
@@ -18485,7 +18151,7 @@ void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& up
 	// Called by the renderer when the player moves in Player Mode
 	// This syncs the player's position with the server
 
-	if (!m_renderer) {
+	if (!m_bridge) {
 		return;
 	}
 
@@ -19213,6 +18879,19 @@ void EverQuest::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				if (m_spell_manager) m_spell_manager->memorizeSpell(i.gemSlot, i.spellId);
 			}
+			// D20e: BSP tree for water detection
+			else if constexpr (std::is_same_v<T, eqt::events::BspTreeAvailableIntent>) {
+				if (i.bspTree) {
+					// Copy the shared_ptr from the opaque pointer
+					auto* ptr = static_cast<std::shared_ptr<EQT::Graphics::BspTree>*>(i.bspTree);
+					m_zone_bsp_tree = *ptr;
+					LOG_DEBUG(MOD_GRAPHICS, "BSP tree received for water detection ({} regions)",
+						static_cast<EQT::Graphics::BspTree*>(m_zone_bsp_tree.get()) ?
+						static_cast<EQT::Graphics::BspTree*>(m_zone_bsp_tree.get())->regions.size() : 0);
+				} else {
+					m_zone_bsp_tree.reset();
+				}
+			}
 			else {
 				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");
 			}
@@ -19485,8 +19164,9 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 }
 
 void EverQuest::SaveHotbarConfig() {
-	if (m_config_path.empty() || !m_renderer) return;
-	auto* windowMgr = m_renderer->getWindowManager();
+	if (m_config_path.empty() || !m_bridge) return;
+	// D20e3: Get window manager via bridge's renderer (Application wires this)
+	auto* windowMgr = m_hotbar_window_manager;
 	if (!windowMgr) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
@@ -19528,8 +19208,8 @@ void EverQuest::SaveHotbarConfig() {
 }
 
 void EverQuest::LoadHotbarConfig() {
-	if (m_config_path.empty() || !m_renderer) return;
-	auto* windowMgr = m_renderer->getWindowManager();
+	if (m_config_path.empty() || !m_bridge) return;
+	auto* windowMgr = m_hotbar_window_manager;
 	if (!windowMgr) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
@@ -19664,13 +19344,13 @@ void EverQuest::SetupRDPAudio() {
 		return;
 	}
 
-	if (!m_renderer || !m_renderer->getRDPServer()) {
+	if (!m_rdp_server) {
 		printf("[AUDIO] SetupRDPAudio: RDP server not available\n"); fflush(stdout);
 		LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - RDP server not available");
 		return;
 	}
 
-	auto* rdpServer = m_renderer->getRDPServer();
+	auto* rdpServer = m_rdp_server;
 	printf("[AUDIO] SetupRDPAudio: calling enableLoopbackMode()\n"); fflush(stdout);
 
 	// Switch to loopback mode for RDP audio streaming

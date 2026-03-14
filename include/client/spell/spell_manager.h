@@ -19,6 +19,7 @@
 
 // Forward declarations
 class EverQuest;
+namespace eqt { namespace bridge { class GameStateBridge; } }
 
 namespace EQ {
 
@@ -151,6 +152,9 @@ public:
     // Database Access
     // ========================================================================
 
+    // D20e1: Bridge for visual events (set by EverQuest::InitGraphics)
+    void setBridge(eqt::bridge::GameStateBridge* bridge) { m_bridge = bridge; }
+
     const SpellDatabase& getDatabase() const { return m_spell_db; }
     SpellDatabase& getDatabase() { return m_spell_db; }
 
@@ -214,6 +218,7 @@ private:
     // ========================================================================
 
     EverQuest* m_eq;
+    eqt::bridge::GameStateBridge* m_bridge = nullptr;  // D20e1
     SpellDatabase m_spell_db;
     bool m_initialized = false;
 

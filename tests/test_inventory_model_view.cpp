@@ -197,10 +197,9 @@ protected:
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
                 // Process graphics frame
-                auto* renderer = eq_->GetRenderer();
-                if (renderer) {
+                if (renderer_) {
                     float deltaTime = getDeltaTime();
-                    if (!renderer->processFrame(deltaTime)) {
+                    if (!renderer_->processFrame(deltaTime)) {
                         // Window was closed
                         std::cerr << "Graphics window closed unexpectedly" << std::endl;
                         return false;
@@ -227,20 +226,18 @@ protected:
     // Wait until graphics zone is ready (zone geometry loaded, player entity created)
     bool waitForZoneReady(int timeoutMs = 30000) {
         return waitForWithGraphics([this]() {
-            auto* renderer = eq_->GetRenderer();
-            return renderer && renderer->isZoneReady();
+            return renderer_ && renderer_->isZoneReady();
         }, timeoutMs);
     }
 
     // Process a number of frames (for animation testing)
     void processFrames(int count, float frameTimeMs = 16.67f) {
-        auto* renderer = eq_->GetRenderer();
-        if (!renderer) return;
+        if (!renderer_) return;
 
         for (int i = 0; i < count; i++) {
             eq_->TickNetwork();
             eq_->UpdateMovement();
-            renderer->processFrame(frameTimeMs / 1000.0f);
+            renderer_->processFrame(frameTimeMs / 1000.0f);
             std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(frameTimeMs)));
         }
     }
@@ -260,10 +257,9 @@ TEST_F(InventoryModelViewTest, ModelViewInitializesAndLoadsCharacter) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr) << "Renderer is null";
+    ASSERT_NE(renderer_.get(), nullptr) << "Renderer is null";
 
-    auto* windowManager = renderer->getWindowManager();
+    auto* windowManager = renderer_->getWindowManager();
     ASSERT_NE(windowManager, nullptr) << "WindowManager is null";
 
     auto* inventoryWindow = windowManager->getInventoryWindow();
@@ -310,10 +306,9 @@ TEST_F(InventoryModelViewTest, ModelHasTexturesApplied) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr);
+    ASSERT_NE(renderer_.get(), nullptr);
 
-    auto* windowManager = renderer->getWindowManager();
+    auto* windowManager = renderer_->getWindowManager();
     ASSERT_NE(windowManager, nullptr);
 
     auto* inventoryWindow = windowManager->getInventoryWindow();
@@ -348,10 +343,9 @@ TEST_F(InventoryModelViewTest, ModelAnimatesProperly) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr);
+    ASSERT_NE(renderer_.get(), nullptr);
 
-    auto* windowManager = renderer->getWindowManager();
+    auto* windowManager = renderer_->getWindowManager();
     ASSERT_NE(windowManager, nullptr);
 
     auto* inventoryWindow = windowManager->getInventoryWindow();
@@ -392,10 +386,9 @@ TEST_F(InventoryModelViewTest, EquippedWeaponsShowOnModel) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr);
+    ASSERT_NE(renderer_.get(), nullptr);
 
-    auto* windowManager = renderer->getWindowManager();
+    auto* windowManager = renderer_->getWindowManager();
     ASSERT_NE(windowManager, nullptr);
 
     auto* inventoryWindow = windowManager->getInventoryWindow();
@@ -441,10 +434,9 @@ TEST_F(InventoryModelViewTest, ModelRendersToTexture) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr);
+    ASSERT_NE(renderer_.get(), nullptr);
 
-    auto* windowManager = renderer->getWindowManager();
+    auto* windowManager = renderer_->getWindowManager();
     ASSERT_NE(windowManager, nullptr);
 
     auto* inventoryWindow = windowManager->getInventoryWindow();
@@ -491,10 +483,9 @@ TEST_F(InventoryModelViewTest, ModelViewSurvivesZoneTransition) {
     ASSERT_TRUE(waitForZoneReady(30000))
         << "Timed out waiting for graphics zone ready";
 
-    auto* renderer = eq_->GetRenderer();
-    ASSERT_NE(renderer, nullptr);
+    ASSERT_NE(renderer_.get(), nullptr);
 
-    auto* windowManager = renderer->getWindowManager();
+    auto* windowManager = renderer_->getWindowManager();
     ASSERT_NE(windowManager, nullptr);
 
     auto* inventoryWindow = windowManager->getInventoryWindow();

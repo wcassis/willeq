@@ -1,5 +1,7 @@
 #include "client/bridge/irrlicht_bridge.h"
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/entity_renderer.h"
+#include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/chat_window.h"
 #include "client/graphics/ui/chat_message_buffer.h"
@@ -824,7 +826,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::RendererCommand:
         if (renderer_) {
             auto& d = std::get<state::RendererCommandData>(event.data);
-            renderer_->processSlashCommand(d.command);
+            // D20e3: Internal commands not exposed as slash commands
+            if (d.command == "/unloadzone_internal") {
+                renderer_->unloadZone();
+            } else {
+                renderer_->processSlashCommand(d.command);
+            }
         }
         break;
     case state::GameEventType::ToggleSkillsWindow:
@@ -833,6 +840,189 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             if (wm) {
                 wm->toggleSkillsWindow();
             }
+        }
+        break;
+
+    // ========================================================================
+    // D20e1: Spell visual FX events
+    // ========================================================================
+    case state::GameEventType::SpellCastVisualStarted:
+        if (renderer_) {
+            auto& d = std::get<state::SpellCastVisualStartedData>(event.data);
+            // Create cast glow effect
+            if (renderer_->getSpellVisualFX()) {
+                renderer_->getSpellVisualFX()->createCastGlow(d.casterId, d.spellId, d.castTimeMs);
+            }
+            if (d.isPlayerCast) {
+                // Show player's casting bar
+                auto* wm = renderer_->getWindowManager();
+                if (wm) {
+                    wm->startCast(d.spellName, d.castTimeMs);
+                }
+            } else {
+                // Start entity casting bar (shows above the entity's head)
+                if (renderer_->getEntityRenderer()) {
+                    renderer_->getEntityRenderer()->startEntityCast(
+                        d.casterId, d.spellId, d.spellName, d.castTimeMs);
+                }
+                // If this is our current target, show target casting bar
+                if (d.isTargetCast) {
+                    auto* wm = renderer_->getWindowManager();
+                    if (wm) {
+                        wm->startTargetCast(d.casterName, d.spellName, d.castTimeMs);
+                    }
+                }
+            }
+        }
+        break;
+
+    case state::GameEventType::SpellCastVisualComplete:
+        if (renderer_) {
+            auto& d = std::get<state::SpellCastVisualCompleteData>(event.data);
+            // Remove cast glow from caster
+            if (renderer_->getSpellVisualFX()) {
+                renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
+            }
+            // Complete entity casting bar
+            if (renderer_->getEntityRenderer()) {
+                renderer_->getEntityRenderer()->completeEntityCast(d.casterId);
+            }
+            // Spell completion visual effects (only on success packet)
+            if (d.isSuccess && renderer_->getSpellVisualFX()) {
+                renderer_->getSpellVisualFX()->createSpellComplete(d.casterId, d.spellId);
+                renderer_->getSpellVisualFX()->createImpact(d.targetId, d.spellId);
+            }
+            // Play completion animation on NPC casters
+            if (!d.completionAnim.empty()) {
+                renderer_->setEntityAnimation(d.casterId, d.completionAnim, false, true);
+            }
+            // Complete target casting bar if this was our target
+            if (d.isTargetCast) {
+                auto* wm = renderer_->getWindowManager();
+                if (wm) {
+                    wm->completeTargetCast();
+                }
+            }
+            // Complete player's casting bar
+            if (d.isPlayerCast) {
+                auto* wm = renderer_->getWindowManager();
+                if (wm) {
+                    wm->completeCast();
+                }
+            }
+        }
+        break;
+
+    case state::GameEventType::SpellCastVisualInterrupted:
+        if (renderer_) {
+            auto& d = std::get<state::SpellCastVisualInterruptedData>(event.data);
+            // Remove cast glow
+            if (renderer_->getSpellVisualFX()) {
+                renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
+            }
+            // Cancel entity casting bar
+            if (renderer_->getEntityRenderer()) {
+                renderer_->getEntityRenderer()->cancelEntityCast(d.casterId);
+            }
+            // Cancel target casting bar if applicable
+            if (d.isTargetCast) {
+                auto* wm = renderer_->getWindowManager();
+                if (wm) {
+                    wm->cancelTargetCast();
+                }
+            }
+            // Cancel player's casting bar
+            if (d.isPlayerCast) {
+                auto* wm = renderer_->getWindowManager();
+                if (wm) {
+                    wm->cancelCast();
+                }
+            }
+        }
+        break;
+
+    case state::GameEventType::SpellMemorizeVisualStarted:
+        if (renderer_) {
+            auto& d = std::get<state::SpellMemorizeVisualStartedData>(event.data);
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->startMemorize(d.spellName, d.durationMs);
+            }
+        }
+        break;
+
+    case state::GameEventType::SpellMemorizeVisualComplete:
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                wm->completeMemorize();
+            }
+        }
+        break;
+
+    // ========================================================================
+    // D20e1: Zone lifecycle events
+    // ========================================================================
+    case state::GameEventType::ZoneUnloading:
+        if (renderer_) {
+            renderer_->setZoneReady(false);
+            renderer_->showLoadingScreen();
+        }
+        break;
+
+    case state::GameEventType::NavmeshChanged:
+        // Handled by renderer if navmesh visualization is active
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: NavmeshChanged");
+        break;
+
+    // ========================================================================
+    // D20e1: Diagnostics events
+    // ========================================================================
+    case state::GameEventType::DiagnosticsMemoryReport:
+        if (renderer_) {
+            auto& d = std::get<state::DiagnosticsMemoryReportData>(event.data);
+            EQT::Graphics::MemoryReportInput ext;
+            ext.processRssBytes = d.processRssBytes;
+            ext.processVmBytes = d.processVmBytes;
+            ext.sharedLibBytes = d.sharedLibBytes;
+            ext.anonBytes = d.anonBytes;
+            ext.stackBytes = d.stackBytes;
+            ext.audioAvailable = d.audioAvailable;
+            ext.soundBufferCacheBytes = d.soundBufferCacheBytes;
+            ext.soundBufferCacheMaxBytes = d.soundBufferCacheMaxBytes;
+            ext.soundFontEstimateBytes = d.soundFontEstimateBytes;
+            ext.musicDecodedBytes = d.musicDecodedBytes;
+            ext.audioPfsArchiveBytes = d.audioPfsArchiveBytes;
+            ext.sfxCacheBytes = d.sfxCacheBytes;
+            ext.zoneEmitterCount = d.zoneEmitterCount;
+            ext.activeEmitterCount = d.activeEmitterCount;
+            ext.entityCount = d.entityCount;
+            ext.entityEstimateBytes = d.entityEstimateBytes;
+            ext.doorCount = d.doorCount;
+            ext.doorEstimateBytes = d.doorEstimateBytes;
+            ext.spellDbCount = d.spellDbCount;
+            ext.spellDbEstimateBytes = d.spellDbEstimateBytes;
+            for (const auto& ci : d.connections) {
+                EQT::Graphics::MemoryReportInput::ConnectionInfo c;
+                c.name = ci.name;
+                c.recvBytes = ci.recvBytes;
+                c.sentBytes = ci.sentBytes;
+                c.avgPing = ci.avgPing;
+                ext.connections.push_back(std::move(c));
+            }
+            if (!d.label.empty()) {
+                LOG_INFO(MOD_MAIN, "=== /pmem [{}] ===", d.label);
+            }
+            auto report = renderer_->getMemoryReport(ext);
+            for (const auto& line : report) {
+                LOG_INFO(MOD_MAIN, "{}", line);
+            }
+        }
+        break;
+
+    case state::GameEventType::DiagnosticsSceneDump:
+        if (renderer_) {
+            renderer_->dumpScene();
         }
         break;
     }

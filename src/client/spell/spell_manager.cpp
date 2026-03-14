@@ -5,17 +5,13 @@
 #include "client/spell/spell_manager.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/state/event_bus.h"
 #include "common/net/packet.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include <algorithm>
 #include <cmath>
-
-#ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#include "client/graphics/ui/window_manager.h"
-#include "client/graphics/spell_visual_fx.h"
-#endif
 
 namespace EQ {
 
@@ -100,12 +96,18 @@ void SpellManager::update(float delta_time)
             // Complete the cast (assume success for spells like pet summons)
             completeCast(true);
 
-#ifdef EQT_HAS_GRAPHICS
-            auto* renderer = m_eq->GetRenderer();
-            if (renderer && renderer->getWindowManager()) {
-                renderer->getWindowManager()->completeCast();
+            // D20e1: Signal visual completion via bridge
+            if (m_bridge) {
+                eqt::state::SpellCastVisualCompleteData d;
+                d.casterId = m_eq->GetEntityID();
+                d.targetId = m_current_target_id;
+                d.spellId = m_current_spell_id;
+                d.isSuccess = true;
+                d.isPlayerCast = true;
+                d.isTargetCast = false;
+                m_bridge->pushEvent(eqt::state::GameEvent(
+                    eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
             }
-#endif
         }
     }
 }
@@ -147,12 +149,12 @@ void SpellManager::updateMemorization(float delta_time)
         LOG_INFO(MOD_SPELL, "Memorized spell '{}' in gem {}",
             spell ? spell->name : "Unknown", m_memorize_slot + 1);
 
-#ifdef EQT_HAS_GRAPHICS
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer && renderer->getWindowManager()) {
-            renderer->getWindowManager()->completeMemorize();
+        // D20e1: Signal memorize completion via bridge
+        if (m_bridge) {
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SpellMemorizeVisualComplete,
+                eqt::state::SpellMemorizeVisualCompleteData{}));
         }
-#endif
     }
 }
 
@@ -649,12 +651,14 @@ bool SpellManager::memorizeSpell(uint32_t spell_id, uint8_t gem_slot)
     LOG_INFO(MOD_SPELL, "Starting memorization of '{}' in gem {} ({}ms)",
         spell->name, gem_slot + 1, m_memorize_duration_ms);
 
-#ifdef EQT_HAS_GRAPHICS
-    auto* renderer = m_eq->GetRenderer();
-    if (renderer && renderer->getWindowManager()) {
-        renderer->getWindowManager()->startMemorize(spell->name, m_memorize_duration_ms);
+    // D20e1: Signal memorize start via bridge
+    if (m_bridge) {
+        eqt::state::SpellMemorizeVisualStartedData d;
+        d.spellName = spell->name;
+        d.durationMs = m_memorize_duration_ms;
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SpellMemorizeVisualStarted, std::move(d)));
     }
-#endif
 
     return true;
 }
@@ -909,21 +913,19 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             LOG_INFO(MOD_SPELL, "Item/other cast started: '{}'", spell_name);
         }
 
-#ifdef EQT_HAS_GRAPHICS
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer) {
-            // Show player's casting bar
-            if (renderer->getWindowManager()) {
-                renderer->getWindowManager()->startCast(spell_name, cast_time_ms);
-            }
-
-            // Create cast glow effect for the player too
-            if (renderer->getSpellVisualFX()) {
-                renderer->getSpellVisualFX()->setSpellDatabase(&m_spell_db);
-                renderer->getSpellVisualFX()->createCastGlow(caster_id, spell_id, cast_time_ms);
-            }
+        // D20e1: Signal cast visual start via bridge
+        if (m_bridge) {
+            eqt::state::SpellCastVisualStartedData d;
+            d.casterId = caster_id;
+            d.spellId = spell_id;
+            d.castTimeMs = cast_time_ms;
+            d.spellName = spell_name;
+            d.casterName = "";
+            d.isPlayerCast = true;
+            d.isTargetCast = false;
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
-#endif
     } else {
         // NPC or other player casting
         // Show chat message
@@ -931,7 +933,6 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             showBeginCastMessage(caster_id, spell);
         }
 
-#ifdef EQT_HAS_GRAPHICS
         // Get caster name for target casting bar (converted to display format)
         std::string caster_name = "Unknown";
         const auto& entities = m_eq->GetEntities();
@@ -940,33 +941,28 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             caster_name = EQT::toDisplayName(it->second.name);
         }
 
-        // If this is our current target, show target casting bar
+        // Check if this is our current target
+        bool isTargetCast = false;
         CombatManager* combat = m_eq->GetCombatManager();
         if (combat && caster_id == combat->GetTargetId()) {
             m_target_caster_id = caster_id;
             m_target_spell_id = spell_id;
-
-            auto* renderer = m_eq->GetRenderer();
-            if (renderer && renderer->getWindowManager()) {
-                renderer->getWindowManager()->startTargetCast(caster_name, spell_name, cast_time_ms);
-            }
+            isTargetCast = true;
         }
 
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer) {
-            // Don't change animation during cast - entity stays in idle
-            // The particle effects and casting bar indicate the cast is in progress
-
-            // Start entity casting bar (shows above the entity's head)
-            renderer->getEntityRenderer()->startEntityCast(caster_id, spell_id, spell_name, cast_time_ms);
-
-            // Create cast glow effect with spiraling particles
-            if (renderer->getSpellVisualFX()) {
-                renderer->getSpellVisualFX()->setSpellDatabase(&m_spell_db);
-                renderer->getSpellVisualFX()->createCastGlow(caster_id, spell_id, cast_time_ms);
-            }
+        // D20e1: Signal cast visual start via bridge (NPC/other player)
+        if (m_bridge) {
+            eqt::state::SpellCastVisualStartedData d;
+            d.casterId = caster_id;
+            d.spellId = spell_id;
+            d.castTimeMs = cast_time_ms;
+            d.spellName = spell_name;
+            d.casterName = caster_name;
+            d.isPlayerCast = false;
+            d.isTargetCast = isTargetCast;
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
-#endif
     }
 }
 
@@ -993,53 +989,41 @@ void SpellManager::handleAction(const EQT::Action_Struct& action)
     // Resists are communicated via separate message packets, not effect_flag
     bool is_success_packet = (action.effect_flag == 4);
 
-#ifdef EQT_HAS_GRAPHICS
-    auto* renderer = m_eq->GetRenderer();
-    if (renderer) {
-        // Remove cast glow from caster
-        if (renderer->getSpellVisualFX()) {
-            renderer->getSpellVisualFX()->removeCastGlow(caster_id);
-        }
-
-        // Complete entity casting bar (shown above entity's head)
-        renderer->getEntityRenderer()->completeEntityCast(caster_id);
-
-        // Create spell completion effect (spiraling particles that burst outward)
-        if (is_success_packet && renderer->getSpellVisualFX()) {
-            renderer->getSpellVisualFX()->setSpellDatabase(&m_spell_db);
-            renderer->getSpellVisualFX()->createSpellComplete(caster_id, spell_id);
-            // Create impact effect at target
-            renderer->getSpellVisualFX()->createImpact(target_id, spell_id);
-        }
-
-        // Play completion animation on the caster (only for other entities, not player)
-        // Animation depends on spell type: damage spells use combat animation, buffs use prayer
-        if (is_success_packet && spell && caster_id != m_eq->GetEntityID()) {
-            std::string completion_anim;
-            if (spell->isDamageSpell() || spell->isDetrimental()) {
-                // Damage/detrimental spells: combat cast animation
-                completion_anim = "c03";
-            } else if (spell->is_beneficial) {
-                // Beneficial spells (buffs, heals): prayer cast animation
-                completion_anim = "c04";
-            } else {
-                // Default: standard cast animation
-                completion_anim = "c01";
-            }
-            // Play as non-looping with playThrough so it completes before returning to idle
-            renderer->setEntityAnimation(caster_id, completion_anim, false, true);
+    // Determine completion animation for NPC casts
+    std::string completion_anim;
+    if (is_success_packet && spell && caster_id != m_eq->GetEntityID()) {
+        if (spell->isDamageSpell() || spell->isDetrimental()) {
+            completion_anim = "c03";
+        } else if (spell->is_beneficial) {
+            completion_anim = "c04";
+        } else {
+            completion_anim = "c01";
         }
     }
 
-    // Complete target casting bar if this was our target
-    if (caster_id == m_target_caster_id && spell_id == m_target_spell_id) {
-        if (renderer && renderer->getWindowManager()) {
-            renderer->getWindowManager()->completeTargetCast();
-        }
+    // Check if this was our target's cast
+    bool isTargetCast = (caster_id == m_target_caster_id && spell_id == m_target_spell_id);
+    if (isTargetCast) {
         m_target_caster_id = 0;
         m_target_spell_id = SPELL_UNKNOWN;
     }
-#endif
+
+    bool isPlayerCast = (caster_id == m_eq->GetEntityID());
+
+    // D20e1: Signal cast visual completion via bridge
+    if (m_bridge) {
+        eqt::state::SpellCastVisualCompleteData d;
+        d.casterId = caster_id;
+        d.targetId = target_id;
+        d.spellId = spell_id;
+        d.spellName = spell_name;
+        d.isSuccess = is_success_packet;
+        d.isPlayerCast = isPlayerCast;
+        d.isTargetCast = isTargetCast;
+        d.completionAnim = completion_anim;
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
+    }
 
     // Display spell landing messages only on success packet
     if (spell && is_success_packet) {
@@ -1047,16 +1031,8 @@ void SpellManager::handleAction(const EQT::Action_Struct& action)
     }
 
     // If this is our cast completing
-    if (caster_id == m_eq->GetEntityID() && m_is_casting) {
+    if (isPlayerCast && m_is_casting) {
         completeCast(true);
-
-#ifdef EQT_HAS_GRAPHICS
-        // Complete player's casting bar
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer && renderer->getWindowManager()) {
-            renderer->getWindowManager()->completeCast();
-        }
-#endif
     }
 
     // Notify callback
@@ -1070,30 +1046,28 @@ void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_
     LOG_DEBUG(MOD_SPELL, "Interrupt: caster={}, spell={}, type={}",
         caster_id, spell_id, message_type);
 
-#ifdef EQT_HAS_GRAPHICS
-    auto* renderer = m_eq->GetRenderer();
-    if (renderer) {
-        // Remove cast glow from caster
-        if (renderer->getSpellVisualFX()) {
-            renderer->getSpellVisualFX()->removeCastGlow(caster_id);
-        }
-
-        // Cancel entity casting bar (shown above entity's head)
-        renderer->getEntityRenderer()->cancelEntityCast(caster_id);
-    }
-
-    // Cancel target casting bar if this was our target
-    if (caster_id == m_target_caster_id && spell_id == m_target_spell_id) {
-        if (renderer && renderer->getWindowManager()) {
-            renderer->getWindowManager()->cancelTargetCast();
-        }
+    // Check if this was our target's cast
+    bool isTargetCast = (caster_id == m_target_caster_id && spell_id == m_target_spell_id);
+    if (isTargetCast) {
         m_target_caster_id = 0;
         m_target_spell_id = SPELL_UNKNOWN;
     }
-#endif
+
+    bool isPlayerCast = (caster_id == m_eq->GetEntityID());
+
+    // D20e1: Signal cast visual interrupt via bridge
+    if (m_bridge) {
+        eqt::state::SpellCastVisualInterruptedData d;
+        d.casterId = caster_id;
+        d.spellId = spell_id;
+        d.isPlayerCast = isPlayerCast;
+        d.isTargetCast = isTargetCast;
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SpellCastVisualInterrupted, std::move(d)));
+    }
 
     // If this is our cast being interrupted
-    if (caster_id == m_eq->GetEntityID() && m_is_casting) {
+    if (isPlayerCast && m_is_casting) {
         m_is_casting = false;
         m_waiting_for_server_confirm = false;
 
@@ -1107,14 +1081,6 @@ void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_
         if (message_type == 2) {
             result = CastResult::Fizzle;
         }
-
-#ifdef EQT_HAS_GRAPHICS
-        // Cancel player's casting bar
-        auto* renderer = m_eq->GetRenderer();
-        if (renderer && renderer->getWindowManager()) {
-            renderer->getWindowManager()->cancelCast();
-        }
-#endif
 
         // Notify callback
         if (m_on_cast_complete) {

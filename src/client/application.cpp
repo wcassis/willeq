@@ -24,12 +24,16 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/ui_settings.h"
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/events/renderer_intents.h"
+#include "client/state/event_bus.h"
 #endif
 
 namespace eqt {
@@ -381,6 +385,11 @@ bool Application::initialize(const ApplicationConfig& config) {
                     LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
                 }
 
+                // D20e2: Wire loading status + start loading thread
+                m_eqClient->SetLoadingStatus(&m_loadingStatus);
+                m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+                startLoadingThread();
+
 #ifdef WITH_RDP
                 // Initialize and start RDP server if enabled
                 if (config.rdpEnabled) {
@@ -388,6 +397,7 @@ bool Application::initialize(const ApplicationConfig& config) {
                     if (eqRenderer->initRDP(config.rdpPort)) {
                         if (eqRenderer->startRDPServer()) {
                             LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
+                            m_eqClient->SetRDPServer(eqRenderer->getRDPServer());
                             m_eqClient->SetupRDPAudio();
                         } else {
                             LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
@@ -444,6 +454,13 @@ void Application::shutdown() {
         }
     }
 #endif
+    // D20e2: Join loading thread before shutdown (it may own GL context)
+    if (m_loadingThread && m_loadingThread->isRunning()) {
+        m_loadingStatus.quitRequested.store(true, std::memory_order_release);
+        joinLoadingThread();
+    }
+    m_loadingThread.reset();
+
     // D20b5: EverQuest detaches bridge, Application destroys renderer
     if (m_eqClient) {
         m_eqClient->ShutdownGraphics();
@@ -626,12 +643,18 @@ void Application::render(float deltaTime) {
         float gfxDeltaTime = std::chrono::duration<float>(now - m_lastGraphicsUpdate).count();
 
         if (gfxDeltaTime >= 1.0f / 60.0f) {
-            // D20c1: Application orchestrates render loop directly
+            // D20e2: Application owns loading thread
             // 1. Check if loading thread completed
-            if (m_eqClient->IsLoadingThreadActive()) {
-                m_eqClient->CheckLoadingComplete();
+            if (isLoadingThreadActive()) {
+                checkLoadingComplete();
                 m_lastGraphicsUpdate = now;
                 return;  // Loading thread owns GL context
+            }
+
+            // D20e2: Check if EverQuest requested a zone load (re-zone)
+            if (m_eqClient->ConsumeZoneLoadRequest()) {
+                m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+                startLoadingThread();
             }
 
             // 2. Pre-render: game state updates + bridge event drain
@@ -640,7 +663,15 @@ void Application::render(float deltaTime) {
             // 3. Render frame (Application calls renderer directly)
             bool result = m_renderer->processFrame(gfxDeltaTime);
 
-            // 4. Post-render: audio sync, progressive loading check
+            // D20e3: Progressive loading check (was in PostRenderTick)
+            if (m_renderer->isLoadingScreenVisible() &&
+                !m_renderer->isProgressiveLoadingActive() &&
+                m_eqClient->GetLoadingPhase() >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
+                m_eqClient->GetLoadingPhase() < LoadingPhase::COMPLETE) {
+                m_eqClient->OnGraphicsComplete();
+            }
+
+            // 4. Post-render: audio sync
             m_eqClient->PostRenderTick(gfxDeltaTime);
 
             if (!result) {
@@ -654,6 +685,289 @@ void Application::render(float deltaTime) {
     (void)deltaTime;
 #endif
 }
+
+// =============================================================================
+// D20e2: Zone Loading (moved from EverQuest)
+// =============================================================================
+
+#ifdef EQT_HAS_GRAPHICS
+void Application::startLoadingThread() {
+    if (!m_renderer || !m_graphicsInitialized) return;
+    if (m_loadingThread && m_loadingThread->isRunning()) {
+        LOG_WARN(MOD_GRAPHICS, "startLoadingThread: loading thread already running");
+        return;
+    }
+
+    // Extract GL handles while main thread still owns context
+    m_glHandles = EQT::Graphics::LoadingThread::extractGLHandles(
+        m_renderer->getDevice(), m_renderer->getDriver());
+
+    // Reset loading status
+    m_loadingStatus.reset();
+
+    // Get font for loading screen
+    irr::gui::IGUIFont* font = nullptr;
+    if (m_renderer->getGUIEnvironment())
+        font = m_renderer->getGUIEnvironment()->getBuiltInFont();
+
+    // Release GL context on main thread
+    EQT::Graphics::LoadingThread::releaseContext(m_glHandles);
+
+    // Set the renderer loading flag so main thread skips GL calls
+    m_renderer->setLoading(true);
+
+    // Start loading thread with active phase callback
+    m_loadingThread = std::make_unique<EQT::Graphics::LoadingThread>();
+    m_loadingThread->start(
+        m_renderer->getDevice(), m_renderer->getDriver(), font, m_glHandles,
+        m_loadingStatus,
+        [this](EQT::Graphics::LoadingStatus& status) {
+            loadZoneGraphicsOnThread(status);
+        });
+
+    LOG_INFO(MOD_GRAPHICS, "startLoadingThread: loading thread started, GL context transferred");
+}
+
+void Application::joinLoadingThread() {
+    if (!m_loadingThread) return;
+
+    m_loadingThread->join();
+    m_loadingThread.reset();
+
+    // Reacquire GL context on main thread
+    EQT::Graphics::LoadingThread::acquireContext(m_glHandles);
+
+    // Clear loading flag
+    if (m_renderer)
+        m_renderer->setLoading(false);
+
+    LOG_INFO(MOD_GRAPHICS, "joinLoadingThread: loading thread joined, GL context reacquired");
+}
+
+bool Application::checkLoadingComplete() {
+    if (!m_loadingThread) return false;
+    if (m_loadingStatus.loadingComplete.load(std::memory_order_acquire)) {
+        joinLoadingThread();
+        if (m_eqClient) m_eqClient->OnGraphicsComplete();
+        return true;
+    }
+    return false;
+}
+
+void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status) {
+    if (!m_renderer || !m_eqClient) return;
+    const auto& snap = m_zoneLoadSnapshot;
+
+    // Temporarily clear loading flag so renderer methods work on this thread.
+    m_renderer->setLoading(false);
+
+    // 1. Collision map
+    if (snap.zoneMap && m_bridge) {
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::CollisionMapChanged,
+            eqt::state::CollisionMapChangedData{snap.zoneMap}));
+    }
+
+    // 2. Zone lines
+    if (!snap.zoneLineBBoxes.empty()) {
+        m_renderer->setZoneLineBoundingBoxes(snap.zoneLineBBoxes);
+    }
+
+    // 3. Build HCMap placeholder + minimal collision
+    m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
+
+    // 4. Zone environment data
+    if (!snap.zoneName.empty()) {
+        m_renderer->storeZoneEnvironment(snap.skyType, snap.zoneType,
+            snap.fogRed, snap.fogGreen, snap.fogBlue,
+            snap.fogMinClip, snap.fogMaxClip);
+    }
+
+    // 5. Register all entities from snapshot
+    if (m_renderer->getEntityRenderer())
+        m_renderer->getEntityRenderer()->setPlayerLevel(snap.playerLevel);
+
+    LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: registering {} entities (from snapshot)", snap.entities.size());
+
+    size_t registered = 0, failed = 0;
+    for (const auto& entity : snap.entities) {
+        bool isPlayer = (entity.name == snap.playerName);
+        bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
+        bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
+        if (!isCorpse && entity.name.find("corpse") != std::string::npos)
+            isCorpse = true;
+
+        EQT::Graphics::EntityAppearance appearance;
+        appearance.face = entity.face;
+        appearance.haircolor = entity.haircolor;
+        appearance.hairstyle = entity.hairstyle;
+        appearance.beardcolor = entity.beardcolor;
+        appearance.beard = entity.beard;
+        appearance.texture = entity.equip_chest2;
+        appearance.helm = entity.helm;
+        for (int i = 0; i < 9; i++) {
+            appearance.equipment[i] = entity.equipment[i];
+            appearance.equipment_tint[i] = entity.equipment_tint[i];
+        }
+
+        bool ok = m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
+                                   entity.x, entity.y, entity.z, entity.heading,
+                                   isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
+                                   entity.level);
+        if (ok) registered++; else failed++;
+
+        if (isPlayer) {
+            m_renderer->setPlayerSpawnId(snap.playerSpawnId);
+            if (entity.light > 0)
+                m_renderer->setEntityLight(entity.spawn_id, entity.light);
+            m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+        } else if (entity.light > 0) {
+            m_renderer->setEntityLight(entity.spawn_id, entity.light);
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: {} registered, {} failed", registered, failed);
+
+    // 6. Register doors from snapshot
+    for (const auto& door : snap.doors) {
+        m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
+                                 door.heading, door.incline, door.size, door.opentype,
+                                 door.isOpen);
+    }
+
+    // 7. Camera
+    m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+    float heading512 = snap.playerHeading * 512.0f / 360.0f;
+    m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
+
+    // 8. Hotbar callback
+    setupHotbarCallback();
+
+    m_eqClient->SetPlayerGraphicsEntityPending(true);
+
+    // 9. Sequential zone asset loading
+    m_renderer->loadZoneSequential(snap.eqClientPath, status);
+
+    // Restore loading flag — will be cleared by joinLoadingThread on main thread
+    m_renderer->setLoading(true);
+}
+
+void Application::loadZoneGraphics() {
+    if (!m_graphicsInitialized || !m_renderer || !m_eqClient) {
+        LOG_WARN(MOD_GRAPHICS, "loadZoneGraphics called but graphics not initialized");
+        m_eqClient->SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
+        return;
+    }
+
+    m_eqClient->SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
+
+    // Use snapshot (create if not already created by threaded path)
+    if (m_zoneLoadSnapshot.zoneName.empty()) {
+        m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+    }
+    const auto& snap = m_zoneLoadSnapshot;
+
+    // 1. Collision map
+    if (snap.zoneMap && m_bridge) {
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::CollisionMapChanged,
+            eqt::state::CollisionMapChangedData{snap.zoneMap}));
+    }
+
+    // 2. Zone lines
+    if (!snap.zoneLineBBoxes.empty())
+        m_renderer->setZoneLineBoundingBoxes(snap.zoneLineBBoxes);
+
+    // 3. HCMap placeholder
+    m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
+
+    // 4. Environment
+    if (!snap.zoneName.empty()) {
+        m_renderer->storeZoneEnvironment(snap.skyType, snap.zoneType,
+            snap.fogRed, snap.fogGreen, snap.fogBlue,
+            snap.fogMinClip, snap.fogMaxClip);
+    }
+
+    // 5. Entities from snapshot
+    if (m_renderer->getEntityRenderer())
+        m_renderer->getEntityRenderer()->setPlayerLevel(snap.playerLevel);
+
+    LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: registering {} entities (from snapshot)", snap.entities.size());
+
+    size_t registered = 0, failed = 0;
+    for (const auto& entity : snap.entities) {
+        bool isPlayer = (entity.name == snap.playerName);
+        bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
+        bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
+        if (!isCorpse && entity.name.find("corpse") != std::string::npos)
+            isCorpse = true;
+
+        EQT::Graphics::EntityAppearance appearance;
+        appearance.face = entity.face;
+        appearance.haircolor = entity.haircolor;
+        appearance.hairstyle = entity.hairstyle;
+        appearance.beardcolor = entity.beardcolor;
+        appearance.beard = entity.beard;
+        appearance.texture = entity.equip_chest2;
+        appearance.helm = entity.helm;
+        for (int i = 0; i < 9; i++) {
+            appearance.equipment[i] = entity.equipment[i];
+            appearance.equipment_tint[i] = entity.equipment_tint[i];
+        }
+
+        bool ok = m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
+                                   entity.x, entity.y, entity.z, entity.heading,
+                                   isPlayer, entity.gender, appearance, isNPC, isCorpse, entity.size,
+                                   entity.level);
+        if (ok) registered++; else failed++;
+
+        if (isPlayer) {
+            m_renderer->setPlayerSpawnId(snap.playerSpawnId);
+            if (entity.light > 0)
+                m_renderer->setEntityLight(entity.spawn_id, entity.light);
+            m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+        } else if (entity.light > 0) {
+            m_renderer->setEntityLight(entity.spawn_id, entity.light);
+        }
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: {} registered, {} failed", registered, failed);
+
+    // 6. Doors from snapshot
+    for (const auto& door : snap.doors) {
+        m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
+                                 door.heading, door.incline, door.size, door.opentype,
+                                 door.isOpen);
+    }
+
+    // 7. Camera
+    m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+    float heading512 = snap.playerHeading * 512.0f / 360.0f;
+    m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
+
+    // 8. Hotbar
+    setupHotbarCallback();
+
+    m_eqClient->SetPlayerGraphicsEntityPending(true);
+
+    if (m_renderer->isProgressiveLoadingActive()) {
+        LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: automatic mode — loading screen remains visible");
+    } else {
+        m_eqClient->OnGraphicsComplete();
+        LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: instant scene ready");
+    }
+}
+
+void Application::setupHotbarCallback() {
+    auto* windowMgr = m_renderer->getWindowManager();
+    if (windowMgr) {
+        windowMgr->setHotbarChangedCallback([this]() {
+            if (m_eqClient) m_eqClient->SaveHotbarConfig();
+            if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
+        });
+    }
+}
+#endif
 
 void Application::syncGameStateFromClient() {
     if (!m_eqClient || !m_gameState) {

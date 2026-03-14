@@ -244,8 +244,7 @@ protected:
     // Wait until graphics zone is ready (zone geometry loaded, player entity created)
     bool waitForZoneReady(int timeoutMs = 30000) {
         return waitForWithGraphics([this]() {
-            auto* renderer = eq_->GetRenderer();
-            return renderer && renderer->isZoneReady();
+            return renderer_ && renderer_->isZoneReady();
         }, timeoutMs);
     }
 #endif
