@@ -201,7 +201,10 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D21 | Move EverQuest tick loop to dedicated game thread | pending | |
+| D21a | Split PreRenderTick — game-side tick vs render-side drain | done | |
+| D21b | Move game tick to dedicated thread with fixed-rate loop | pending | |
+| D21c | Thread-safe zone load handoff (snapshot + loading thread) | pending | |
+| D21d | Thread-safe quit/connect signaling between threads | pending | |
 | D22 | Synchronize bridge queues with proper threading | pending | |
 
 ### Phase 7 — Cleanup and Optimization

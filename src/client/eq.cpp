@@ -17755,14 +17755,9 @@ void EverQuest::ShutdownGraphics() {
 }
 
 // D20c1: Pre-render game state tick — spell/buff managers + bridge
-void EverQuest::PreRenderTick(float deltaTime) {
+// D21a: Game-side tick — runs on game thread (spell/buff updates + intent processing)
+void EverQuest::GameTick(float deltaTime) {
 	if (!m_graphics_initialized) return;
-
-	// D20c2: Target HP poll removed — ZoneProcessMobHealth publishes TargetChanged
-	// event with updated HP when server sends health updates.
-
-	// D20c2: Per-frame time of day push removed — ZoneProcessTimeOfDay publishes
-	// TimeOfDayChanged event when server sends time updates.
 
 	// Update spell manager (cooldowns, memorization progress, cast timeouts)
 	if (m_spell_manager) {
@@ -17776,6 +17771,11 @@ void EverQuest::PreRenderTick(float deltaTime) {
 
 	// Process intents from renderer's previous frame
 	ProcessBridgeIntents();
+}
+
+// D21a: Render-side tick — runs on render thread (applies events to renderer)
+void EverQuest::PreRenderTick(float /*deltaTime*/) {
+	if (!m_graphics_initialized) return;
 
 	// Drain bridge events and apply to renderer
 	ProcessBridgeEvents();

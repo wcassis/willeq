@@ -993,9 +993,10 @@ public:
 	                  EQT::Graphics::IrrlichtRenderer* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
-	// D20e2: Loading thread owned by Application
-	void PreRenderTick(float deltaTime);   // Spell/buff/target updates + bridge event push
-	void PostRenderTick(float deltaTime);  // Audio sync
+	// D21a: Split tick — game thread vs render thread
+	void GameTick(float deltaTime);        // Game thread: spell/buff updates + intent processing
+	void PreRenderTick(float deltaTime);   // Render thread: drain events, apply to renderer
+	void PostRenderTick(float deltaTime);  // Game thread: audio sync
 	eqt::ZoneLoadSnapshot CreateZoneLoadSnapshot() const;  // D20c3: snapshot for loading thread
 	void SetEQClientPath(const std::string& path);
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }

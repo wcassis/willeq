@@ -623,9 +623,9 @@ void Application::processInput(float deltaTime) {
 }
 
 void Application::updateGameState(float deltaTime) {
-    // D14: Process renderer intents (movement, targeting, etc.)
-    if (m_eqClient) {
-        m_eqClient->ProcessBridgeIntents();
+    // D21a: Game-side tick (spell/buff updates + intent processing)
+    if (m_eqClient && m_graphicsInitialized) {
+        m_eqClient->GameTick(deltaTime);
     }
 
     // Update movement in EverQuest
@@ -638,6 +638,11 @@ void Application::updateGameState(float deltaTime) {
 
     // Update loading progress
     updateLoadingProgress();
+
+    // D21a: Audio update (was in PostRenderTick — game thread responsibility)
+    if (m_eqClient && m_graphicsInitialized) {
+        m_eqClient->PostRenderTick(deltaTime);
+    }
 }
 
 void Application::render(float deltaTime) {
@@ -661,24 +666,20 @@ void Application::render(float deltaTime) {
                 startLoadingThread();
             }
 
-            // 2. Pre-render: game state updates + bridge event drain
+            // D21a: Pre-render — drain bridge events, apply to renderer
             m_eqClient->PreRenderTick(gfxDeltaTime);
 
-            // 3. Render frame (Application calls renderer directly)
+            // Render frame
             bool result = m_renderer->processFrame(gfxDeltaTime);
 
-            // D20e3: Progressive loading check (was in PostRenderTick)
+            // Progressive loading check
             if (m_renderer->isLoadingScreenVisible() &&
                 !m_renderer->isProgressiveLoadingActive() &&
                 m_eqClient->GetLoadingPhase() >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
                 m_eqClient->GetLoadingPhase() < LoadingPhase::COMPLETE) {
-                // D20f2: Pass typed BSP tree from renderer to game state
                 m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
                 m_eqClient->OnGraphicsComplete();
             }
-
-            // 4. Post-render: audio sync
-            m_eqClient->PostRenderTick(gfxDeltaTime);
 
             if (!result) {
                 LOG_DEBUG(MOD_GRAPHICS, "Graphics window closed");
