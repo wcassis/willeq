@@ -36,6 +36,10 @@
 #include "client/state/event_bus.h"
 #endif
 
+#ifdef WITH_AUDIO
+#include "client/audio/audio_manager.h"
+#endif
+
 namespace eqt {
 
 // ========== Signal Handlers ==========
@@ -397,8 +401,8 @@ bool Application::initialize(const ApplicationConfig& config) {
                     if (eqRenderer->initRDP(config.rdpPort)) {
                         if (eqRenderer->startRDPServer()) {
                             LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
-                            m_eqClient->SetRDPServer(eqRenderer->getRDPServer());
-                            m_eqClient->SetupRDPAudio();
+                            // D20g: RDP audio setup moved to Application
+                            setupRDPAudio(eqRenderer->getRDPServer());
                         } else {
                             LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
                         }
@@ -976,6 +980,36 @@ void Application::setupHotbarCallback() {
             if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
         });
     }
+}
+
+void Application::setupRDPAudio([[maybe_unused]] void* rdpServerPtr) {
+#if defined(WITH_RDP) && defined(WITH_AUDIO)
+    if (!m_eqClient) return;
+    auto* audioMgr = m_eqClient->GetAudioManager();
+    if (!audioMgr) {
+        LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - audio manager not initialized");
+        return;
+    }
+    if (!rdpServerPtr) {
+        LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - RDP server not available");
+        return;
+    }
+
+    auto* rdpServer = static_cast<EQT::Graphics::RDPServer*>(rdpServerPtr);
+    if (audioMgr->enableLoopbackMode()) {
+        audioMgr->setAudioOutputCallback(
+            [rdpServer](const int16_t* samples, size_t count,
+                        uint32_t sampleRate, uint8_t channels) {
+                if (rdpServer && rdpServer->isRunning()) {
+                    rdpServer->sendAudioSamples(samples, count, sampleRate, channels);
+                }
+            }
+        );
+        LOG_INFO(MOD_AUDIO, "RDP audio streaming enabled (loopback mode)");
+    } else {
+        LOG_WARN(MOD_AUDIO, "Failed to enable loopback mode for RDP audio streaming");
+    }
+#endif
 }
 #endif
 

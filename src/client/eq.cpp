@@ -17749,7 +17749,6 @@ void EverQuest::ShutdownGraphics() {
 	// D20e3: Detach bridge and window pointers — Application owns renderer lifecycle
 	m_bridge = nullptr;
 	m_hotbar_window_manager = nullptr;
-	m_rdp_server = nullptr;
 	m_loading_status_ptr = nullptr;
 	m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
@@ -19321,48 +19320,7 @@ void EverQuest::ShutdownAudio() {
 	}
 }
 
-void EverQuest::SetupRDPAudio() {
-	printf("[AUDIO] SetupRDPAudio() called\n"); fflush(stdout);
-#if defined(WITH_RDP) && defined(EQT_HAS_GRAPHICS)
-	// Set up RDP audio streaming callback
-	// This must be called AFTER the RDP server is started
-	if (!m_audio_manager) {
-		printf("[AUDIO] SetupRDPAudio: audio manager not initialized\n"); fflush(stdout);
-		LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - audio manager not initialized");
-		return;
-	}
-
-	if (!m_rdp_server) {
-		printf("[AUDIO] SetupRDPAudio: RDP server not available\n"); fflush(stdout);
-		LOG_WARN(MOD_AUDIO, "Cannot setup RDP audio - RDP server not available");
-		return;
-	}
-
-	auto* rdpServer = m_rdp_server;
-	printf("[AUDIO] SetupRDPAudio: calling enableLoopbackMode()\n"); fflush(stdout);
-
-	// Switch to loopback mode for RDP audio streaming
-	// This captures mixed audio and sends it to the callback instead of hardware
-	if (m_audio_manager->enableLoopbackMode()) {
-		printf("[AUDIO] SetupRDPAudio: loopback mode enabled, setting callback\n"); fflush(stdout);
-		m_audio_manager->setAudioOutputCallback(
-			[rdpServer](const int16_t* samples, size_t count,
-			            uint32_t sampleRate, uint8_t channels) {
-				if (rdpServer && rdpServer->isRunning()) {
-					rdpServer->sendAudioSamples(samples, count, sampleRate, channels);
-				}
-			}
-		);
-		printf("[AUDIO] SetupRDPAudio: RDP audio streaming enabled!\n"); fflush(stdout);
-		LOG_INFO(MOD_AUDIO, "RDP audio streaming enabled (loopback mode)");
-	} else {
-		printf("[AUDIO] SetupRDPAudio: enableLoopbackMode() FAILED\n"); fflush(stdout);
-		LOG_WARN(MOD_AUDIO, "Failed to enable loopback mode for RDP audio streaming");
-	}
-#else
-	LOG_DEBUG(MOD_AUDIO, "RDP audio not available (compiled without RDP support)");
-#endif
-}
+// D20g: SetupRDPAudio moved to Application::setupRDPAudio()
 
 void EverQuest::UpdateDayNightState() {
 	// EverQuest day/night cycle:

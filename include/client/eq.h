@@ -74,7 +74,6 @@ namespace Audio {
 namespace EQT {
 namespace Graphics {
     class IrrlichtRenderer;
-    class RDPServer;
     struct PlayerPositionUpdate;
     enum class ConstrainedRenderingPreset;
     enum class ZoneLoadStep : uint8_t;
@@ -1018,8 +1017,7 @@ public:
 	bool ConsumeZoneLoadRequest() { bool v = m_zone_load_requested; m_zone_load_requested = false; return v; }
 	// D20e3: WindowManager pointer for hotbar config (set by Application)
 	void SetWindowManager(eqt::ui::WindowManager* wm) { m_hotbar_window_manager = wm; }
-	// D20e3: RDP server pointer (set by Application after RDP init)
-	void SetRDPServer(EQT::Graphics::RDPServer* rdp) { m_rdp_server = rdp; }
+	// D20g: SetRDPServer removed — RDP audio setup moved to Application
 	// D20f2: Typed BSP tree for water detection / zone lines
 	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) { m_zone_bsp_tree = std::move(bsp); }
 	// Phase 7.3: Zone accessors read from GameState
@@ -1619,7 +1617,7 @@ private:
 	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
 	bool m_zone_load_requested = false;  // Set by re-zone, consumed by Application
 	eqt::ui::WindowManager* m_hotbar_window_manager = nullptr;  // D20e3: Set by Application
-	EQT::Graphics::RDPServer* m_rdp_server = nullptr;  // D20e3: Set by Application
+	// D20g: m_rdp_server removed — Application owns RDP setup
 
 	// Inventory manager
 	std::unique_ptr<eqt::inventory::InventoryManager> m_inventory_manager;
@@ -1770,7 +1768,7 @@ public:
 	std::unique_ptr<EQT::Audio::ZoneAudioManager> m_zone_audio_manager;
 	void InitializeAudio();
 	void ShutdownAudio();
-	void SetupRDPAudio();  // Call after RDP server is started
+	// D20g: SetupRDPAudio moved to Application
 
 	// Day/night state for audio (calculated from game time)
 	bool m_is_daytime = true;

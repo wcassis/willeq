@@ -191,9 +191,9 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D20c3 | Zone loading reads from snapshot, not live game state (bridge event queue handles delta) | done | `861f5f4` |
 | D20c4 | Remove requestQuit renderer calls; hotbar config deferred to D20e | done | `ba9a849` |
 | D20d | Move 30 renderer slash commands to renderer via RendererCommand bridge event | done | `bba5848` |
-| D20e | Remove m_renderer from EverQuest | done | |
-| D20f | Move zone data loading to game state layer | done | |
-| D20g | Decouple RDP server from renderer | pending | |
+| D20e | Remove m_renderer from EverQuest | done | `0ce550a` |
+| D20f | Move zone data loading to game state layer | done | `229e521` |
+| D20g | Decouple RDP server from renderer | done | |
 
 ### Phase 6 — Thread Separation
 
