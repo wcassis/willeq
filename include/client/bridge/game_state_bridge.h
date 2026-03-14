@@ -4,6 +4,7 @@
 #include "client/events/renderer_intents.h"
 #include <mutex>
 #include <vector>
+#include <unordered_map>
 
 namespace eqt {
 namespace bridge {
@@ -40,6 +41,7 @@ public:
      * Drain all pending intents from the renderer.
      * Thread-safe. Called from the game thread.
      * Returns the intents and clears the queue atomically.
+     * D24: Coalesces consecutive PlayerPositionChanged intents (keeps latest).
      */
     std::vector<events::RendererIntent> drainIntents() {
         std::vector<events::RendererIntent> result;
@@ -47,6 +49,7 @@ public:
             std::lock_guard<std::mutex> lock(intentMutex_);
             result.swap(intentQueue_);
         }
+        coalesceIntents(result);
         return result;
     }
 
@@ -65,6 +68,7 @@ public:
      * Drain all pending events from the game thread.
      * Thread-safe. Called from the renderer thread.
      * Returns the events and clears the queue atomically.
+     * D24: Coalesces consecutive EntityMoved events per spawnId (keeps latest).
      */
     std::vector<state::GameEvent> drainEvents() {
         std::vector<state::GameEvent> result;
@@ -72,6 +76,7 @@ public:
             std::lock_guard<std::mutex> lock(eventMutex_);
             result.swap(eventQueue_);
         }
+        coalesceEvents(result);
         return result;
     }
 
@@ -88,6 +93,62 @@ private:
 
     std::mutex intentMutex_;
     std::vector<events::RendererIntent> intentQueue_;
+
+    // D24: Coalesce EntityMoved events — keep only the latest per spawnId.
+    // Preserves ordering of non-EntityMoved events and the final EntityMoved per entity.
+    static void coalesceEvents(std::vector<state::GameEvent>& events) {
+        if (events.size() < 2) return;
+
+        // Find the last EntityMoved index per spawnId
+        std::unordered_map<uint16_t, size_t> lastMoveIndex;
+        for (size_t i = 0; i < events.size(); ++i) {
+            if (events[i].type == state::GameEventType::EntityMoved) {
+                auto& d = std::get<state::EntityMovedData>(events[i].data);
+                lastMoveIndex[d.spawnId] = i;
+            }
+        }
+
+        if (lastMoveIndex.empty()) return;
+
+        // Remove earlier EntityMoved events for entities that have a later one
+        std::vector<state::GameEvent> filtered;
+        filtered.reserve(events.size());
+        for (size_t i = 0; i < events.size(); ++i) {
+            if (events[i].type == state::GameEventType::EntityMoved) {
+                auto& d = std::get<state::EntityMovedData>(events[i].data);
+                if (lastMoveIndex[d.spawnId] != i) continue;  // Skip — superseded
+            }
+            filtered.push_back(std::move(events[i]));
+        }
+        events = std::move(filtered);
+    }
+
+    // D24: Coalesce PlayerPositionChanged intents — keep only the latest.
+    static void coalesceIntents(std::vector<events::RendererIntent>& intents) {
+        if (intents.size() < 2) return;
+
+        // Find the last PlayerPositionChanged
+        int lastPosIdx = -1;
+        for (int i = static_cast<int>(intents.size()) - 1; i >= 0; --i) {
+            if (std::holds_alternative<events::PlayerPositionChanged>(intents[i])) {
+                lastPosIdx = i;
+                break;
+            }
+        }
+
+        if (lastPosIdx < 0) return;
+
+        // Remove earlier PlayerPositionChanged intents
+        std::vector<events::RendererIntent> filtered;
+        filtered.reserve(intents.size());
+        for (int i = 0; i < static_cast<int>(intents.size()); ++i) {
+            if (std::holds_alternative<events::PlayerPositionChanged>(intents[i]) && i != lastPosIdx) {
+                continue;  // Skip — superseded
+            }
+            filtered.push_back(std::move(intents[i]));
+        }
+        intents = std::move(filtered);
+    }
 };
 
 } // namespace bridge

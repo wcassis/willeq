@@ -211,6 +211,6 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D24 | Optimize high-frequency events (entity position batching) | pending | |
+| D24 | Optimize high-frequency events (entity position batching) | done | |
 | D25 | Add console bridge implementation | pending | |
 | D26 | Update documentation and CLAUDE.md | pending | |
