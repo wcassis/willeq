@@ -728,6 +728,10 @@ public:
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
 	uint16_t GetEntityID() const { return m_my_spawn_id; }
+
+	// D20c4: Quit signaling — Application checks this flag
+	bool IsQuitRequested() const { return m_quit_requested; }
+	void RequestQuit() { m_quit_requested = true; }
 	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
 
@@ -1590,6 +1594,7 @@ private:
 	std::string m_region_maps_path = "data/region_maps";
 	std::string m_config_path;  // Path to per-character config file
 	bool m_graphics_initialized = false;
+	bool m_quit_requested = false;  // D20c4: Application checks this flag
 	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)
 	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
 	// Loading thread — owns GL context during zone loading

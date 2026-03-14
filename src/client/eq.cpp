@@ -8819,11 +8819,7 @@ void EverQuest::RegisterCommands()
 	q.description = "Exit the game immediately";
 	q.category = "Utility";
 	q.handler = [this](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
-		if (m_renderer) {
-			m_renderer->requestQuit();
-		}
-#endif
+		RequestQuit();  // D20c4: Application checks quit flag
 	};
 	m_command_registry->registerCommand(q);
 
@@ -15675,11 +15671,8 @@ void EverQuest::ZoneProcessLogoutReply(const EQ::Net::Packet &p)
 	// Server confirmed logout - now we can safely disconnect
 	LOG_INFO(MOD_MAIN, "Logout confirmed by server");
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		m_renderer->requestQuit();
-	}
-#endif
+	// D20c4: Signal quit via flag — Application checks and exits
+	RequestQuit();
 
 	// In headless mode, disconnect from zone
 	DisconnectFromZone();

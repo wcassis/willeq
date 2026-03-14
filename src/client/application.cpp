@@ -560,6 +560,11 @@ void Application::mainLoop() {
                 m_running.store(false);
             }
 
+            // D20c4: Check if game client requested quit
+            if (m_eqClient && m_eqClient->IsQuitRequested()) {
+                m_running.store(false);
+            }
+
             // Small sleep to prevent CPU spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
