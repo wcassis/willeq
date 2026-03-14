@@ -202,6 +202,20 @@ const char* eqcrypt_block(const char *buffer_in, size_t buffer_in_sz, char* buff
 	return buffer_out;
 }
 
+std::string EverQuest::FormatPrice(int32_t copperAmount) {
+	if (copperAmount <= 0) return "Free";
+	std::string result;
+	int32_t pp = copperAmount / 1000; copperAmount %= 1000;
+	int32_t gp = copperAmount / 100;  copperAmount %= 100;
+	int32_t sp = copperAmount / 10;
+	int32_t cp = copperAmount % 10;
+	if (pp > 0) result += fmt::format("{}p", pp);
+	if (gp > 0) { if (!result.empty()) result += ' '; result += fmt::format("{}g", gp); }
+	if (sp > 0) { if (!result.empty()) result += ' '; result += fmt::format("{}s", sp); }
+	if (cp > 0 || result.empty()) { if (!result.empty()) result += ' '; result += fmt::format("{}c", cp); }
+	return result;
+}
+
 std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 	// Login opcodes
 	switch (opcode) {
@@ -2165,15 +2179,10 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 
 			// Check if loot window is empty (no items to loot)
 			// If empty, auto-complete the loot session immediately
-#ifdef EQT_HAS_GRAPHICS
-			if (m_player_looting_corpse_id != 0 && m_renderer && m_renderer->getWindowManager()) {
-				auto* lootWindow = m_renderer->getWindowManager()->getLootWindow();
-				if (lootWindow && lootWindow->getLootItems().empty()) {
-					LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
-					CloseLootWindow(static_cast<uint16_t>(corpse_id));
-				}
+			if (m_player_looting_corpse_id != 0 && m_loot_items.empty()) {
+				LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
+				CloseLootWindow(static_cast<uint16_t>(corpse_id));
 			}
-#endif
 		}
 		break;
 	case HC_OP_LootItem:
@@ -2243,11 +2252,6 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 					// Regular inventory item packet - pass to inventory manager
 					if (m_inventory_manager) {
 						m_inventory_manager->processItemPacket(p);
-						// Refresh sellable items if vendor window is open
-						if (m_renderer && m_renderer->getWindowManager() &&
-						    m_renderer->getWindowManager()->isVendorWindowOpen()) {
-							m_renderer->getWindowManager()->refreshVendorSellableItems();
-						}
 					}
 				}
 #endif
@@ -3629,16 +3633,10 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 		m_inventory_manager->processMoveItemResponse(p);
 	}
 
-	// Refresh sellable items if vendor window is open (items may have moved in/out of sellable slots)
-	if (m_renderer && m_renderer->getWindowManager() &&
-	    m_renderer->getWindowManager()->isVendorWindowOpen()) {
-		m_renderer->getWindowManager()->refreshVendorSellableItems();
-	}
-
 	// Update stats after item movement (may affect equipped items)
 	UpdateInventoryStats();
 
-	// Publish InventorySlotChanged for both slots involved in the move
+	// Publish InventorySlotChanged for both slots involved in the move (D18a: bridge-only)
 	if (m_bridge && p.Length() >= 14) {
 		int16_t fromSlot = static_cast<int16_t>(p.GetUInt32(2));
 		int16_t toSlot = static_cast<int16_t>(p.GetUInt32(6));
@@ -3667,13 +3665,7 @@ void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 		m_inventory_manager->processDeleteItemResponse(p);
 	}
 
-	// Refresh sellable items if vendor window is open (item may have been deleted from sellable slots)
-	if (m_renderer && m_renderer->getWindowManager() &&
-	    m_renderer->getWindowManager()->isVendorWindowOpen()) {
-		m_renderer->getWindowManager()->refreshVendorSellableItems();
-	}
-
-	// Publish InventorySlotChanged for the deleted slot
+	// Publish InventorySlotChanged for the deleted slot (D18a: bridge-only)
 	if (m_bridge && p.Length() >= 6) {
 		int16_t slot = static_cast<int16_t>(p.GetUInt32(2));
 		eqt::state::InventorySlotChangedData data;
@@ -4389,60 +4381,39 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 
 			LOG_DEBUG(MOD_INVENTORY, "Creating loot item: slot={} name='{}'", slot_num, item_name);
 
-			// Create an ItemInstance for the loot window
-			if (m_renderer && m_renderer->getWindowManager() && m_inventory_manager) {
-				auto item = std::make_unique<eqt::inventory::ItemInstance>();
-				item->name = item_name;
+			// Parse item data and publish via bridge (D18a: bridge is sole path to renderer)
+			uint32_t itemId = 0;
+			uint32_t icon = 0;
 
-				// Parse icon from static data field[11] (absolute field[22])
-				// Loot packet format: 11 instance fields (0-10), then static data starting at field[11]
-				// Static field indices: [0]=ItemClass, [1]=name, ..., [11]=icon
-				try {
-					if (fields.size() > 22) {
-						item->icon = static_cast<uint32_t>(std::stoi(fields[22]));
-						LOG_TRACE(MOD_INVENTORY, "  icon={} (from field[22])", item->icon);
-					}
-				} catch (...) {
-					LOG_DEBUG(MOD_INVENTORY, "  icon parsing failed for field[22]='{}'",
-						(fields.size() > 22 ? fields[22] : "N/A"));
+			// Parse icon from static data field[11] (absolute field[22])
+			try {
+				if (fields.size() > 22) {
+					icon = static_cast<uint32_t>(std::stoi(fields[22]));
+					LOG_TRACE(MOD_INVENTORY, "  icon={} (from field[22])", icon);
 				}
+			} catch (...) {
+				LOG_DEBUG(MOD_INVENTORY, "  icon parsing failed for field[22]='{}'",
+					(fields.size() > 22 ? fields[22] : "N/A"));
+			}
 
-				// Parse item ID from static data field[4] (absolute field[15])
-				try {
-					item->itemId = static_cast<uint32_t>(std::stoi(fields[15]));
-					LOG_TRACE(MOD_INVENTORY, "  itemId={} (from field[15])", item->itemId);
-				} catch (...) {}
+			// Parse item ID from static data field[4] (absolute field[15])
+			try {
+				itemId = static_cast<uint32_t>(std::stoi(fields[15]));
+				LOG_TRACE(MOD_INVENTORY, "  itemId={} (from field[15])", itemId);
+			} catch (...) {}
 
-				// Parse stackSize from static data field[131] (absolute field[142])
-				// and stackable from static data field[133] (absolute field[144])
-				try {
-					if (fields.size() > 144) {
-						item->stackSize = std::stoi(fields[142]);
-						item->stackable = std::stoi(fields[144]) != 0;
-						LOG_TRACE(MOD_INVENTORY, "  stackSize={} stackable={} (from fields[142], [144])",
-							item->stackSize, item->stackable);
-					}
-				} catch (...) {
-					LOG_DEBUG(MOD_INVENTORY, "  stackSize/stackable parsing failed");
-				}
+			// Track loot item in game state (D18a: game-side loot item tracking)
+			m_loot_items[slot_num] = GameLootItem{itemId, item_name};
 
-				// Publish LootItemAdded before moving item
-				if (m_bridge) {
-					eqt::state::LootItemAddedData ldata;
-					ldata.corpseId = m_player_looting_corpse_id;
-					ldata.slot = static_cast<uint8_t>(slot_num);
-					ldata.itemId = item->itemId;
-					ldata.itemName = item->name;
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::LootItemAdded, std::move(ldata)));
-				}
-
-				m_renderer->getWindowManager()->addLootItem(slot_num, std::move(item));
-			} else {
-				LOG_WARN(MOD_INVENTORY, "Cannot add loot item: renderer={} windowManager={} invManager={}",
-					(m_renderer ? "ok" : "null"),
-					(m_renderer && m_renderer->getWindowManager() ? "ok" : "null"),
-					(m_inventory_manager ? "ok" : "null"));
+			// Publish LootItemAdded
+			if (m_bridge) {
+				eqt::state::LootItemAddedData ldata;
+				ldata.corpseId = m_player_looting_corpse_id;
+				ldata.slot = static_cast<uint8_t>(slot_num);
+				ldata.itemId = itemId;
+				ldata.itemName = item_name;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::LootItemAdded, std::move(ldata)));
 			}
 		} catch (const std::exception& e) {
 			LOG_WARN(MOD_INVENTORY, "Failed to parse loot item data: {}", e.what());
@@ -4464,11 +4435,6 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: No pending loot slots! Treating as inventory item.");
 		if (m_inventory_manager) {
 			m_inventory_manager->processItemPacket(p);
-			// Refresh sellable items if vendor window is open
-			if (m_renderer && m_renderer->getWindowManager() &&
-			    m_renderer->getWindowManager()->isVendorWindowOpen()) {
-				m_renderer->getWindowManager()->refreshVendorSellableItems();
-			}
 		}
 		return;
 	}
@@ -4486,25 +4452,17 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 		m_inventory_manager->processItemPacket(p);
 	}
 
-	// Remove the item from the loot window and refresh sellable items
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->removeLootItem(expected_slot);
-		LOG_TRACE(MOD_INVENTORY, "Removed item from loot window slot {}", expected_slot);
+	// Remove from game-side loot tracking and publish event
+	m_loot_items.erase(expected_slot);
 
-		// Publish LootItemRemoved
-		if (m_bridge) {
-			eqt::state::LootItemRemovedData data;
-			data.corpseId = m_player_looting_corpse_id;
-			data.slot = static_cast<uint8_t>(expected_slot);
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::LootItemRemoved, std::move(data)));
-		}
-
-		// Refresh sellable items if vendor window is open
-		if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
-			m_renderer->getWindowManager()->refreshVendorSellableItems();
-		}
+	if (m_bridge) {
+		eqt::state::LootItemRemovedData data;
+		data.corpseId = m_player_looting_corpse_id;
+		data.slot = static_cast<uint8_t>(expected_slot);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::LootItemRemoved, std::move(data)));
 	}
+	LOG_TRACE(MOD_INVENTORY, "Removed item from loot window slot {}", expected_slot);
 
 	// Continue loot-all operation if there are more items to loot
 	if (m_loot_all_in_progress && !m_loot_all_remaining_slots.empty() && m_player_looting_corpse_id != 0) {
@@ -4908,19 +4866,7 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 			m_vendor_name = "Merchant";
 		}
 
-		// Open the vendor window
-		if (m_renderer && m_renderer->getWindowManager()) {
-			m_renderer->getWindowManager()->openVendorWindow(m_vendor_npc_id, m_vendor_name, m_vendor_sell_rate);
-
-			// Update player money in vendor window
-			int32_t pp = static_cast<int32_t>(GetPlatinum());
-			int32_t gp = static_cast<int32_t>(GetGold());
-			int32_t sp = static_cast<int32_t>(GetSilver());
-			int32_t cp = static_cast<int32_t>(GetCopper());
-			m_renderer->getWindowManager()->getVendorWindow()->setPlayerMoney(pp, gp, sp, cp);
-		}
-
-		// Publish VendorWindowOpened
+		// Publish VendorWindowOpened (D18a: bridge is sole path to renderer)
 		if (m_bridge) {
 			eqt::state::WindowOpenedData data;
 			data.npcId = m_vendor_npc_id;
@@ -4961,46 +4907,36 @@ void EverQuest::ZoneProcessShopPlayerBuy(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_INVENTORY, "ShopPlayerBuy: npc_id={} player_id={} slot={} qty={} action={}",
 		npc_id, player_id, itemslot, quantity, action);
 
-	// Display purchase confirmation in chat and update money
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* vendorWindow = m_renderer->getWindowManager()->getVendorWindow();
-		if (vendorWindow && vendorWindow->isOpen()) {
-			const auto* item = vendorWindow->getItem(itemslot);
-			if (item) {
-				int32_t price = vendorWindow->getItemPrice(itemslot);
-				int32_t totalPrice = price * static_cast<int32_t>(quantity);
-				std::string priceStr = vendorWindow->formatPrice(totalPrice);
-				if (quantity > 1) {
-					AddChatSystemMessage(fmt::format("You purchased {} x{} for {}", item->name, quantity, priceStr));
-				} else {
-					AddChatSystemMessage(fmt::format("You purchased {} for {}", item->name, priceStr));
-				}
-
-				// Deduct money from local currency (server confirms purchase = money spent)
-				int64_t totalCopper = static_cast<int64_t>(m_platinum) * 1000 +
-				                      static_cast<int64_t>(m_gold) * 100 +
-				                      static_cast<int64_t>(m_silver) * 10 +
-				                      static_cast<int64_t>(m_copper);
-				totalCopper -= totalPrice;
-				if (totalCopper < 0) totalCopper = 0;
-
-				// Convert back to currency (update both local and GameState)
-				m_platinum = static_cast<uint32_t>(totalCopper / 1000);
-				totalCopper %= 1000;
-				m_gold = static_cast<uint32_t>(totalCopper / 100);
-				totalCopper %= 100;
-				m_silver = static_cast<uint32_t>(totalCopper / 10);
-				m_copper = static_cast<uint32_t>(totalCopper % 10);
-				m_game_state.player().setCurrency(m_platinum, m_gold, m_silver, m_copper);
-
-				// Update vendor window with new money
-				vendorWindow->setPlayerMoney(m_platinum, m_gold, m_silver, m_copper);
-				LOG_DEBUG(MOD_INVENTORY, "Updated money: {}pp {}gp {}sp {}cp", m_platinum, m_gold, m_silver, m_copper);
-			}
+	// Display purchase confirmation and update money (D18a: uses game-side vendor items)
+	auto vendorIt = m_vendor_items.find(itemslot);
+	if (vendorIt != m_vendor_items.end()) {
+		int32_t totalPrice = vendorIt->second.price * static_cast<int32_t>(quantity);
+		std::string priceStr = FormatPrice(totalPrice);
+		if (quantity > 1) {
+			AddChatSystemMessage(fmt::format("You purchased {} x{} for {}", vendorIt->second.name, quantity, priceStr));
+		} else {
+			AddChatSystemMessage(fmt::format("You purchased {} for {}", vendorIt->second.name, priceStr));
 		}
+
+		// Deduct money from local currency (server confirms purchase = money spent)
+		int64_t totalCopper = static_cast<int64_t>(m_platinum) * 1000 +
+		                      static_cast<int64_t>(m_gold) * 100 +
+		                      static_cast<int64_t>(m_silver) * 10 +
+		                      static_cast<int64_t>(m_copper);
+		totalCopper -= totalPrice;
+		if (totalCopper < 0) totalCopper = 0;
+
+		// Convert back to currency (update both local and GameState)
+		m_platinum = static_cast<uint32_t>(totalCopper / 1000);
+		totalCopper %= 1000;
+		m_gold = static_cast<uint32_t>(totalCopper / 100);
+		totalCopper %= 100;
+		m_silver = static_cast<uint32_t>(totalCopper / 10);
+		m_copper = static_cast<uint32_t>(totalCopper % 10);
+		m_game_state.player().setCurrency(m_platinum, m_gold, m_silver, m_copper);
+
+		LOG_DEBUG(MOD_INVENTORY, "Updated money: {}pp {}gp {}sp {}cp", m_platinum, m_gold, m_silver, m_copper);
 	}
-#endif
 
 	// ItemPacket with type 103 (inventory) handles the actual item placement
 	// and stack quantity updates via InventoryManager::setItem()
@@ -5021,44 +4957,34 @@ void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 	LOG_INFO(MOD_INVENTORY, "Sold {} items from slot {} for {} copper",
 		resp->quantity, resp->itemslot, resp->price);
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* vendorWindow = m_renderer->getWindowManager()->getVendorWindow();
-		if (vendorWindow && vendorWindow->isOpen()) {
-			// Format and display sale confirmation
-			std::string priceStr = vendorWindow->formatPrice(static_cast<int32_t>(resp->price));
-			if (resp->quantity > 1) {
-				AddChatSystemMessage(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
-			} else {
-				AddChatSystemMessage(fmt::format("You sold item for {}", priceStr));
-			}
+	// Display sale confirmation and update inventory (D18a: no renderer dependency)
+	{
+		std::string priceStr = FormatPrice(static_cast<int32_t>(resp->price));
+		if (resp->quantity > 1) {
+			AddChatSystemMessage(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
+		} else {
+			AddChatSystemMessage(fmt::format("You sold item for {}", priceStr));
+		}
 
-			// Remove item from local inventory
-			int16_t invSlot = static_cast<int16_t>(resp->itemslot);
-			if (m_inventory_manager) {
-				const auto* item = m_inventory_manager->getItem(invSlot);
-				if (item) {
-					if (item->stackable && item->quantity > static_cast<int32_t>(resp->quantity)) {
-						// Reduce stack quantity
-						auto* mutableItem = m_inventory_manager->getItemMutable(invSlot);
-						if (mutableItem) {
-							mutableItem->quantity -= static_cast<int32_t>(resp->quantity);
-							LOG_DEBUG(MOD_INVENTORY, "Reduced stack at slot {} to {} items",
-								invSlot, mutableItem->quantity);
-						}
-					} else {
-						// Remove entire item
-						m_inventory_manager->removeItem(invSlot);
-						LOG_DEBUG(MOD_INVENTORY, "Removed item from slot {}", invSlot);
+		// Remove item from local inventory
+		int16_t invSlot = static_cast<int16_t>(resp->itemslot);
+		if (m_inventory_manager) {
+			const auto* item = m_inventory_manager->getItem(invSlot);
+			if (item) {
+				if (item->stackable && item->quantity > static_cast<int32_t>(resp->quantity)) {
+					auto* mutableItem = m_inventory_manager->getItemMutable(invSlot);
+					if (mutableItem) {
+						mutableItem->quantity -= static_cast<int32_t>(resp->quantity);
+						LOG_DEBUG(MOD_INVENTORY, "Reduced stack at slot {} to {} items",
+							invSlot, mutableItem->quantity);
 					}
+				} else {
+					m_inventory_manager->removeItem(invSlot);
+					LOG_DEBUG(MOD_INVENTORY, "Removed item from slot {}", invSlot);
 				}
 			}
-
-			// Refresh sellable items list
-			m_renderer->getWindowManager()->refreshVendorSellableItems();
 		}
 	}
-#endif
 }
 
 void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
@@ -5083,31 +5009,7 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_INVENTORY, "Money updated: {}pp {}gp {}sp {}cp",
 		m_platinum, m_gold, m_silver, m_copper);
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer && m_renderer->getWindowManager()) {
-		// Update base currency in window manager (for inventory display)
-		m_renderer->getWindowManager()->updateBaseCurrency(
-			m_platinum, m_gold, m_silver, m_copper);
-
-		// Update vendor window money display
-		auto* vendorWindow = m_renderer->getWindowManager()->getVendorWindow();
-		if (vendorWindow && vendorWindow->isOpen()) {
-			vendorWindow->setPlayerMoney(
-				static_cast<int32_t>(m_platinum),
-				static_cast<int32_t>(m_gold),
-				static_cast<int32_t>(m_silver),
-				static_cast<int32_t>(m_copper));
-		}
-
-		// Update trainer window money display
-		if (m_renderer->getWindowManager()->isSkillTrainerWindowOpen()) {
-			m_renderer->getWindowManager()->updateSkillTrainerMoney(
-				m_platinum, m_gold, m_silver, m_copper);
-		}
-	}
-#endif
-
-	// Publish CurrencyChanged
+	// Publish CurrencyChanged (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::CurrencyChangedData data;
 		data.platinum = static_cast<int32_t>(m_platinum);
@@ -5124,12 +5026,7 @@ void EverQuest::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
 	// Server confirms vendor session ended
 	LOG_DEBUG(MOD_INVENTORY, "ShopEndConfirm received, closing vendor window");
 
-	// Close the vendor window
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->closeVendorWindow();
-	}
-
-	// Publish VendorWindowClosed
+	// Publish VendorWindowClosed (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::WindowClosedData data;
 		data.npcId = m_vendor_npc_id;
@@ -5141,6 +5038,7 @@ void EverQuest::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
 	m_vendor_npc_id = 0;
 	m_vendor_sell_rate = 1.0f;
 	m_vendor_name.clear();
+	m_vendor_items.clear();
 }
 
 void EverQuest::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
@@ -5175,7 +5073,15 @@ void EverQuest::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
 	uint32_t vendorSlot = static_cast<uint32_t>(slotId);
 	LOG_DEBUG(MOD_INVENTORY, "Creating vendor item: slot={} name='{}'", vendorSlot, item->name);
 
-	// Publish VendorItemAdded before moving item
+	// Track vendor item in game state (D18a: game-side vendor item tracking)
+	GameVendorItem gvi;
+	gvi.itemId = item->itemId;
+	gvi.name = item->name;
+	gvi.price = item->price;
+	gvi.quantity = item->quantity;
+	m_vendor_items[vendorSlot] = std::move(gvi);
+
+	// Publish VendorItemAdded (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::VendorItemAddedData vdata;
 		vdata.vendorSlot = static_cast<uint16_t>(vendorSlot);
@@ -5185,11 +5091,6 @@ void EverQuest::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
 		vdata.quantity = item->quantity;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::VendorItemAdded, std::move(vdata)));
-	}
-
-	// Add to vendor window
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->addVendorItem(vendorSlot, std::move(item));
 	}
 }
 
@@ -5291,11 +5192,6 @@ void EverQuest::CloseVendorWindow()
 	pkt.PutData(0, &end, sizeof(end));
 	QueuePacket(HC_OP_ShopEnd, &pkt);
 
-	// Close the UI immediately (don't wait for server confirmation)
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->closeVendorWindow();
-	}
-
 	// Publish VendorWindowClosed
 	if (m_bridge) {
 		eqt::state::WindowClosedData data;
@@ -5315,6 +5211,7 @@ void EverQuest::CloseVendorWindow()
 	m_vendor_npc_id = 0;
 	m_vendor_sell_rate = 1.0f;
 	m_vendor_name.clear();
+	m_vendor_items.clear();
 }
 
 void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
@@ -5843,12 +5740,14 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 					LOG_DEBUG(MOD_ENTITY, "==============================");
 				}
 #ifdef EQT_HAS_GRAPHICS
-				// Notify renderer of player spawn ID
-				if (m_graphics_initialized && m_renderer) {
+				// Notify bridge of player spawn ID (D17b: bridge is sole path to renderer)
+				if (m_bridge) {
 					if (s_debug_level >= 1) {
-						LOG_INFO(MOD_ZONE, "[ZONE-IN] Calling setPlayerSpawnId({}) from ZoneSpawns", m_my_spawn_id);
+						LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerSpawnIdSet({}) from ZoneSpawns", m_my_spawn_id);
 					}
-					m_renderer->setPlayerSpawnId(m_my_spawn_id);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::PlayerSpawnIdSet,
+						eqt::state::PlayerSpawnIdSetData{m_my_spawn_id}));
 				}
 				// Mark player entity as pending creation - will be created when ClientUpdate arrives
 				// This ensures the loading screen stays visible until the player model is fully loaded
@@ -6149,8 +6048,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 				it->second.animation = static_cast<uint8_t>(parameter);
 			}
 
-#ifdef EQT_HAS_GRAPHICS
-			if (m_graphics_initialized && m_renderer) {
+			// Publish animation events via bridge (D17b: bridge is sole path to renderer)
+			if (m_bridge) {
 				// Map animation parameter to EQ model animation code
 				std::string animCode;
 				bool loop = true;
@@ -6158,33 +6057,33 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 
 				// Zone server animation values (100+) are pose/state animations
 				// Lower values are action animations
-				EQT::Graphics::IrrlichtRenderer::EntityPoseState poseState =
-					EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing;
+				uint8_t poseState = static_cast<uint8_t>(
+					EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing);
 				bool setPose = false;
 
 				switch (parameter) {
 				case ANIM_STANDING:
 				case ANIM_STAND:
 					animCode = "o01";  // Idle/standing
-					poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing;
+					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing);
 					setPose = true;
 					break;
 				case ANIM_SITTING:
 					animCode = "p02";  // Sitting idle pose
 					loop = false;      // Don't loop (holds on last frame automatically)
-					poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Sitting;
+					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Sitting);
 					setPose = true;
 					break;
 				case ANIM_CROUCHING:
 					animCode = "l08";  // Crouching
 					loop = false;      // Don't loop (holds on last frame automatically)
-					poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Crouching;
+					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Crouching);
 					setPose = true;
 					break;
 				case ANIM_LYING:
 					animCode = "d05";  // Lying down (death pose)
 					loop = false;      // Don't loop (holds on last frame automatically)
-					poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Lying;
+					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Lying);
 					setPose = true;
 					break;
 				case ANIM_FREEZE:
@@ -6204,41 +6103,29 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 				if (!animCode.empty()) {
 					// Set pose state BEFORE animation to prevent updateEntity from overriding
 					if (setPose) {
-						m_renderer->setEntityPoseState(spawn_id, poseState);
-						if (m_bridge) {
-							eqt::state::EntityPoseStateChangedData data;
-							data.spawnId = spawn_id;
-							data.poseState = static_cast<uint8_t>(poseState);
-							m_bridge->pushEvent(eqt::state::GameEvent(
-								eqt::state::GameEventType::EntityPoseStateChanged, std::move(data)));
-						}
-					}
-					m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
-					if (m_bridge) {
-						eqt::state::EntityAnimationEventData data;
+						eqt::state::EntityPoseStateChangedData data;
 						data.spawnId = spawn_id;
-						data.animCode = 0;
-						data.animName = animCode;
-						data.loop = loop;
-						data.playThrough = playThrough;
+						data.poseState = poseState;
 						m_bridge->pushEvent(eqt::state::GameEvent(
-							eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
+							eqt::state::GameEventType::EntityPoseStateChanged, std::move(data)));
 					}
+					eqt::state::EntityAnimationEventData data;
+					data.spawnId = spawn_id;
+					data.animCode = 0;
+					data.animName = animCode;
+					data.loop = loop;
+					data.playThrough = playThrough;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
 					LogTargetEntity(spawn_id, "SpawnAppearance set animation '{}' pose={} on spawn_id={}",
 						animCode, static_cast<int>(poseState), spawn_id);
 				}
 			}
-#endif
 		}
 		break;
 
 	case AT_DIE:
-		// Entity died - trigger death animation
-#ifdef EQT_HAS_GRAPHICS
-		if (m_graphics_initialized && m_renderer) {
-			m_renderer->playEntityDeathAnimation(spawn_id);
-		}
-#endif
+		// Entity died - trigger death animation (D17b: bridge-only)
 		if (m_bridge) {
 			eqt::state::EntityDeathAnimationData data;
 			data.spawnId = spawn_id;
@@ -6421,16 +6308,22 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		it->second.animation = anim_id;
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_graphics_initialized && m_renderer) {
+	// Publish animation events via bridge (D17b: bridge is sole path to renderer)
+	if (m_bridge) {
 		// Map animation ID to EQ model animation code
 		std::string animCode;
 		bool loop = false;
 		bool playThrough = true;  // Most emotes/attacks should play through
 
 		// Get entity's weapon skill types for weapon-based attack animations
-		uint8_t primaryWeaponSkill = m_renderer->getEntityPrimaryWeaponSkill(spawn_id);
-		uint8_t secondaryWeaponSkill = m_renderer->getEntitySecondaryWeaponSkill(spawn_id);
+		// Read from game state (entity struct) instead of querying the renderer (D17a)
+		uint8_t primaryWeaponSkill = 255;
+		uint8_t secondaryWeaponSkill = 255;
+		auto weaponIt = m_entities.find(spawn_id);
+		if (weaponIt != m_entities.end()) {
+			primaryWeaponSkill = weaponIt->second.primary_weapon_skill;
+			secondaryWeaponSkill = weaponIt->second.secondary_weapon_skill;
+		}
 
 		// Map common animation IDs to EQ model animation codes
 		// Combat animations (these are the key ones for NPC combat)
@@ -6452,7 +6345,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		// processed with proper priority alongside weapon attacks
 		case 10: // Round kick
 			if (spawn_id == m_my_spawn_id) {
-				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_ROUND_KICK);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatSkillAnimation,
+					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_ROUND_KICK}));
 				LOG_DEBUG(MOD_COMBAT, "Queued round kick animation for player");
 				break;
 			}
@@ -6460,7 +6355,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 		case 11: // ANIM_KICK
 			if (spawn_id == m_my_spawn_id) {
-				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_KICK);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatSkillAnimation,
+					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_KICK}));
 				LOG_DEBUG(MOD_COMBAT, "Queued kick animation for player");
 				break;
 			}
@@ -6468,7 +6365,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 		case 12: // ANIM_BASH
 			if (spawn_id == m_my_spawn_id) {
-				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_BASH);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatSkillAnimation,
+					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_BASH}));
 				LOG_DEBUG(MOD_COMBAT, "Queued bash animation for player");
 				break;
 			}
@@ -6476,7 +6375,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 		case 13: // Tiger Claw / Eagle Strike (rapid strikes)
 			if (spawn_id == m_my_spawn_id) {
-				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_TIGER_STRIKE);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatSkillAnimation,
+					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_TIGER_STRIKE}));
 				LOG_DEBUG(MOD_COMBAT, "Queued tiger claw/eagle strike animation for player");
 				break;
 			}
@@ -6484,7 +6385,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 		case 14: // Flying kick
 			if (spawn_id == m_my_spawn_id) {
-				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_FLYING_KICK);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatSkillAnimation,
+					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_FLYING_KICK}));
 				LOG_DEBUG(MOD_COMBAT, "Queued flying kick animation for player");
 				break;
 			}
@@ -6492,7 +6395,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			break;
 		case 15: // Dragon Punch
 			if (spawn_id == m_my_spawn_id) {
-				m_renderer->queueSkillAnimation(spawn_id, EQ::ANIM_DRAGON_PUNCH);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::CombatSkillAnimation,
+					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_DRAGON_PUNCH}));
 				LOG_DEBUG(MOD_COMBAT, "Queued dragon punch animation for player");
 				break;
 			}
@@ -6509,7 +6414,9 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 			if (spawn_id == m_my_spawn_id) {
 				// Queue received damage into player's combat buffer instead of playing immediately
 				// This allows the buffer processing to decide attack vs damage priority
-				m_renderer->queueReceivedDamageAnimation(spawn_id);
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::ReceivedDamageAnimation,
+					eqt::state::ReceivedDamageAnimationData{spawn_id}));
 				LOG_DEBUG(MOD_COMBAT, "Queued received damage animation for player (will process with combat buffer)");
 				break;  // Don't play immediately - buffer will handle it
 			}
@@ -6649,24 +6556,20 @@ void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
 		}
 
 		if (!animCode.empty()) {
-			m_renderer->setEntityAnimation(spawn_id, animCode, loop, playThrough);
-			if (m_bridge) {
-				eqt::state::EntityAnimationEventData data;
-				data.spawnId = spawn_id;
-				data.animCode = anim_id;
-				data.animName = animCode;
-				data.loop = loop;
-				data.playThrough = playThrough;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
-			}
+			eqt::state::EntityAnimationEventData data;
+			data.spawnId = spawn_id;
+			data.animCode = anim_id;
+			data.animName = animCode;
+			data.loop = loop;
+			data.playThrough = playThrough;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
 			if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 				LOG_DEBUG(MOD_ENTITY, "[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
 					animCode, spawn_id, anim_id, primaryWeaponSkill);
 			}
 		}
 	}
-#endif
 }
 
 void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
@@ -6975,9 +6878,11 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 
 #ifdef EQT_HAS_GRAPHICS
 		OnSpawnAddedGraphics(entity);
-		// Notify renderer of player spawn ID (after entity is created)
-		if (entity.name == m_character && m_graphics_initialized && m_renderer) {
-			m_renderer->setPlayerSpawnId(m_my_spawn_id);
+		// Notify bridge of player spawn ID (D17b: bridge is sole path to renderer)
+		if (entity.name == m_character && m_bridge) {
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::PlayerSpawnIdSet,
+				eqt::state::PlayerSpawnIdSetData{m_my_spawn_id}));
 		}
 #endif
 
@@ -7329,81 +7234,63 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			needPlayerEntityCreation = true;
 		}
 
-#ifdef EQT_HAS_GRAPHICS
 		// Also create player entity if it's pending (after zoning, entities were cleared)
 		if (m_player_graphics_entity_pending && m_my_spawn_id != 0) {
 			needPlayerEntityCreation = true;
 		}
 
-		// Now create the player entity - this is deferred from OnZoneLoadedGraphics
-		// to ensure all player data (inventory, appearance, position) has been received
-		if (needPlayerEntityCreation && m_graphics_initialized && m_renderer) {
+		// Now create the player entity via bridge (D17b: bridge is sole path to renderer)
+		// Deferred from OnZoneLoadedGraphics to ensure all player data has been received
+		if (needPlayerEntityCreation && m_bridge) {
 			auto playerIt = m_entities.find(m_my_spawn_id);
 			if (playerIt != m_entities.end()) {
 				const Entity& entity = playerIt->second;
-				EQT::Graphics::EntityAppearance appearance;
-				appearance.face = entity.face;
-				appearance.haircolor = entity.haircolor;
-				appearance.hairstyle = entity.hairstyle;
-				appearance.beardcolor = entity.beardcolor;
-				appearance.beard = entity.beard;
-				appearance.texture = entity.equip_chest2;
-				appearance.helm = entity.helm;
-				for (int i = 0; i < 9; i++) {
-					appearance.equipment[i] = entity.equipment[i];
-					appearance.equipment_tint[i] = entity.equipment_tint[i];
-				}
 
 				LOG_INFO(MOD_ENTITY, "Creating player entity {} ({}) from ClientUpdate - equipment: primary={} secondary={}",
-				         m_my_spawn_id, entity.name, appearance.equipment[7], appearance.equipment[8]);
+				         m_my_spawn_id, entity.name, entity.equipment[7], entity.equipment[8]);
 
-				// Create the player entity with current position from ClientUpdate
-				m_renderer->createEntity(m_my_spawn_id, entity.race_id, entity.name,
-				                         x, y, z, h_player,
-				                         true, entity.gender, appearance, false, false, entity.size);
-
-				// Set player spawn ID AFTER entity is created so the animated node
-				// can be marked for the player rotation fix
-				m_renderer->setPlayerSpawnId(m_my_spawn_id);
-
-				// Set entity light source if equipped (must be after setPlayerSpawnId)
-				if (entity.light > 0) {
-					m_renderer->setEntityLight(m_my_spawn_id, entity.light);
+				// Publish EntitySpawned for player entity
+				eqt::state::EntitySpawnedData data;
+				data.spawnId = m_my_spawn_id;
+				data.name = entity.name;
+				data.x = x;
+				data.y = y;
+				data.z = z;
+				data.heading = h_player;
+				data.raceId = entity.race_id;
+				data.classId = entity.class_id;
+				data.level = entity.level;
+				data.gender = entity.gender;
+				data.npcType = entity.npc_type;
+				data.isCorpse = false;
+				data.isPlayer = true;
+				data.serverSize = entity.size;
+				data.face = entity.face;
+				data.haircolor = entity.haircolor;
+				data.hairstyle = entity.hairstyle;
+				data.beardcolor = entity.beardcolor;
+				data.beard = entity.beard;
+				data.texture = entity.equip_chest2;
+				data.helm = entity.helm;
+				for (int i = 0; i < 9; i++) {
+					data.equipment[i] = entity.equipment[i];
+					data.equipmentTint[i] = entity.equipment_tint[i];
 				}
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntitySpawned, std::move(data)));
 
-				// Update inventory model view with player appearance
-				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
+				// Publish PlayerSpawnIdSet so renderer marks the player node
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::PlayerSpawnIdSet,
+					eqt::state::PlayerSpawnIdSetData{m_my_spawn_id}));
 
-				// Publish EntitySpawned for player entity to bridge
-				if (m_bridge) {
-					eqt::state::EntitySpawnedData data;
-					data.spawnId = m_my_spawn_id;
-					data.name = entity.name;
-					data.x = x;
-					data.y = y;
-					data.z = z;
-					data.heading = h_player;
-					data.raceId = entity.race_id;
-					data.classId = entity.class_id;
-					data.level = entity.level;
-					data.gender = entity.gender;
-					data.npcType = entity.npc_type;
-					data.isCorpse = false;
-					data.isPlayer = true;
-					data.serverSize = entity.size;
-					data.face = entity.face;
-					data.haircolor = entity.haircolor;
-					data.hairstyle = entity.hairstyle;
-					data.beardcolor = entity.beardcolor;
-					data.beard = entity.beard;
-					data.texture = entity.equip_chest2;
-					data.helm = entity.helm;
-					for (int i = 0; i < 9; i++) {
-						data.equipment[i] = entity.equipment[i];
-						data.equipmentTint[i] = entity.equipment_tint[i];
-					}
+				// Set entity light source if equipped
+				if (entity.light > 0) {
+					eqt::state::EntityLightChangedData lightData;
+					lightData.spawnId = m_my_spawn_id;
+					lightData.lightLevel = entity.light;
 					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::EntitySpawned, std::move(data)));
+						eqt::state::GameEventType::EntityLightChanged, std::move(lightData)));
 				}
 
 				// Player entity has been created, clear the pending flag
@@ -7412,7 +7299,6 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", m_my_spawn_id);
 			}
 		}
-#endif
 
 		// Start the update loop when we first receive our ClientUpdate
 		// This indicates we're fully in the game world
@@ -7421,15 +7307,13 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", m_my_spawn_id);
 			m_game_state.world().setZoneConnected(true);
 
-#ifdef EQT_HAS_GRAPHICS
-			// Signal renderer that network phase is complete and entities are ready
-			if (m_renderer) {
-				m_renderer->setExpectedEntityCount(m_entities.size());
-				m_renderer->setNetworkReady(true);
-				LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", m_entities.size(), 0);
-				LOG_DEBUG(MOD_GRAPHICS, "Network ready: true");
+			// Signal renderer that network phase is complete and entities are ready (D17b: bridge-only)
+			if (m_bridge) {
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::NetworkReady,
+					eqt::state::NetworkReadyData{static_cast<uint32_t>(m_entities.size()), true}));
+				LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, network ready: true", m_entities.size());
 			}
-#endif
 
 			StartUpdateLoop();
 			// Game state is now complete - trigger graphics loading if graphics mode
@@ -7509,11 +7393,14 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 			// If we're actively looting this corpse, close the loot window first
 			if (m_player_looting_corpse_id == spawn_id) {
 				LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) being deleted while looting, closing loot window", spawn_id, it->second.name);
-#ifdef EQT_HAS_GRAPHICS
-				if (m_renderer && m_renderer->getWindowManager()) {
-					m_renderer->getWindowManager()->closeLootWindow();
+				// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
+				if (m_bridge) {
+					eqt::state::LootWindowClosedData lwdata;
+					lwdata.corpseId = spawn_id;
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::LootWindowClosed, std::move(lwdata)));
 				}
-#endif
+				m_loot_items.clear();
 				m_player_looting_corpse_id = 0;
 				m_loot_all_in_progress = false;
 				m_loot_all_remaining_slots.clear();
@@ -7597,12 +7484,8 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 			LOG_DEBUG(MOD_ENTITY, "[HP] Entity {} ({}) health: {}% -> {}%", spawn_id, it->second.name, old_hp, hp_percent);
 		}
-#ifdef EQT_HAS_GRAPHICS
-		// Update renderer target HP if this is our current target
-		if (m_renderer && m_current_target_id == spawn_id) {
-			m_renderer->updateCurrentTargetHP(hp_percent);
-		}
-#endif
+		// Update target HP via bridge if this is our current target (D17b)
+		// Note: EntityStatsChanged event published below covers this
 		// Publish EntityStatsChanged event
 		if (m_bridge) {
 			eqt::state::EntityStatsChangedData data;
@@ -12787,61 +12670,33 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 			entity.equipment_tint[wear_slot] = color;
 		}
 
-#ifdef EQT_HAS_GRAPHICS
-		// Update entity appearance in the 3D world
-		if (m_graphics_initialized && m_renderer) {
-			// Build appearance from updated entity data
-			EQT::Graphics::EntityAppearance appearance;
-			appearance.face = entity.face;
-			appearance.haircolor = entity.haircolor;
-			appearance.hairstyle = entity.hairstyle;
-			appearance.beardcolor = entity.beardcolor;
-			appearance.beard = entity.beard;
-			appearance.texture = entity.equip_chest2;
-			appearance.helm = entity.helm;
-			for (int i = 0; i < 9; i++) {
-				appearance.equipment[i] = entity.equipment[i];
-				appearance.equipment_tint[i] = entity.equipment_tint[i];
+		// Publish EntityAppearanceChanged event (D17b: bridge is sole path to renderer)
+		if (m_bridge) {
+			eqt::state::EntityAppearanceChangedData data;
+			data.spawnId = spawn_id;
+			data.raceId = entity.race_id;
+			data.gender = entity.gender;
+			data.isPlayer = (spawn_id == m_my_spawn_id);
+			data.face = entity.face;
+			data.haircolor = entity.haircolor;
+			data.hairstyle = entity.hairstyle;
+			data.beardcolor = entity.beardcolor;
+			data.beard = entity.beard;
+			data.texture = entity.equip_chest2;
+			data.helm = entity.helm;
+			for (int j = 0; j < 9; j++) {
+				data.equipment[j] = entity.equipment[j];
+				data.equipmentTint[j] = entity.equipment_tint[j];
 			}
-
-			// Update the in-game 3D model for this entity
-			m_renderer->updateEntityAppearance(spawn_id, entity.race_id, entity.gender, appearance);
-
-			// If this is our player, also update the inventory paperdoll
-			if (spawn_id == m_my_spawn_id) {
-				m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-			}
-
-			// Publish EntityAppearanceChanged event
-			if (m_bridge) {
-				eqt::state::EntityAppearanceChangedData data;
-				data.spawnId = spawn_id;
-				data.raceId = entity.race_id;
-				data.gender = entity.gender;
-				data.isPlayer = (spawn_id == m_my_spawn_id);
-				data.face = appearance.face;
-				data.haircolor = appearance.haircolor;
-				data.hairstyle = appearance.hairstyle;
-				data.beardcolor = appearance.beardcolor;
-				data.beard = appearance.beard;
-				data.texture = appearance.texture;
-				data.helm = appearance.helm;
-				for (int j = 0; j < 9; j++) {
-					data.equipment[j] = appearance.equipment[j];
-					data.equipmentTint[j] = appearance.equipment_tint[j];
-				}
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
-			}
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 		}
-#endif
 	}
 }
 
 void EverQuest::UpdatePlayerAppearanceFromInventory()
 {
-#ifdef EQT_HAS_GRAPHICS
-	if (!m_graphics_initialized || !m_renderer || !m_inventory_manager) {
+	if (!m_bridge || !m_inventory_manager) {
 		return;
 	}
 
@@ -12854,20 +12709,24 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 
 	Entity& entity = it->second;
 
-	// Build appearance from inventory items
-	EQT::Graphics::EntityAppearance appearance;
-	appearance.face = entity.face;
-	appearance.haircolor = entity.haircolor;
-	appearance.hairstyle = entity.hairstyle;
-	appearance.beardcolor = entity.beardcolor;
-	appearance.beard = entity.beard;
-	appearance.texture = entity.equip_chest2;
-	appearance.helm = entity.helm;
+	// Build appearance data from inventory items (D17b: bridge is sole path to renderer)
+	eqt::state::EntityAppearanceChangedData data;
+	data.spawnId = m_my_spawn_id;
+	data.raceId = entity.race_id;
+	data.gender = entity.gender;
+	data.isPlayer = true;
+	data.face = entity.face;
+	data.haircolor = entity.haircolor;
+	data.hairstyle = entity.hairstyle;
+	data.beardcolor = entity.beardcolor;
+	data.beard = entity.beard;
+	data.texture = entity.equip_chest2;
+	data.helm = entity.helm;
 
 	// Initialize equipment arrays from entity (fallback)
 	for (int i = 0; i < 9; i++) {
-		appearance.equipment[i] = entity.equipment[i];
-		appearance.equipment_tint[i] = entity.equipment_tint[i];
+		data.equipment[i] = entity.equipment[i];
+		data.equipmentTint[i] = entity.equipment_tint[i];
 	}
 
 	// Mapping from inventory slots to equipment appearance indices
@@ -12894,47 +12753,23 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 		if (item) {
 			// Body armor: use material for texture variant and color for tint
 			if (mapping.equipSlotIndex < 7) {
-				appearance.equipment[mapping.equipSlotIndex] = item->material;
-				appearance.equipment_tint[mapping.equipSlotIndex] = item->color;
+				data.equipment[mapping.equipSlotIndex] = item->material;
+				data.equipmentTint[mapping.equipSlotIndex] = item->color;
 			} else {
 				// Weapons: use item ID for model lookup
-				appearance.equipment[mapping.equipSlotIndex] = item->itemId;
+				data.equipment[mapping.equipSlotIndex] = item->itemId;
 			}
 		} else {
 			// No item in slot - clear the appearance slot
-			appearance.equipment[mapping.equipSlotIndex] = 0;
-			appearance.equipment_tint[mapping.equipSlotIndex] = 0;
+			data.equipment[mapping.equipSlotIndex] = 0;
+			data.equipmentTint[mapping.equipSlotIndex] = 0;
 		}
 	}
 
-	// Update both the in-game entity and the inventory paperdoll
-	m_renderer->updateEntityAppearance(m_my_spawn_id, entity.race_id, entity.gender, appearance);
-	m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-
-	// Publish EntityAppearanceChanged event
-	if (m_bridge) {
-		eqt::state::EntityAppearanceChangedData data;
-		data.spawnId = m_my_spawn_id;
-		data.raceId = entity.race_id;
-		data.gender = entity.gender;
-		data.isPlayer = true;
-		data.face = appearance.face;
-		data.haircolor = appearance.haircolor;
-		data.hairstyle = appearance.hairstyle;
-		data.beardcolor = appearance.beardcolor;
-		data.beard = appearance.beard;
-		data.texture = appearance.texture;
-		data.helm = appearance.helm;
-		for (int j = 0; j < 9; j++) {
-			data.equipment[j] = appearance.equipment[j];
-			data.equipmentTint[j] = appearance.equipment_tint[j];
-		}
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
-	}
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 
 	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Updated player appearance");
-#endif
 }
 
 void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
@@ -12984,54 +12819,27 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 	entity.beard = illusion->beard;
 	entity.beardcolor = illusion->beardcolor;
 
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer) {
-		// Build new appearance from updated entity data
-		EQT::Graphics::EntityAppearance appearance;
-		appearance.face = entity.face;
-		appearance.haircolor = entity.haircolor;
-		appearance.hairstyle = entity.hairstyle;
-		appearance.beardcolor = entity.beardcolor;
-		appearance.beard = entity.beard;
-		appearance.texture = entity.equip_chest2;
-		appearance.helm = entity.helm;
-		for (int i = 0; i < 9; i++) {
-			appearance.equipment[i] = entity.equipment[i];
-			appearance.equipment_tint[i] = entity.equipment_tint[i];
+	// Publish EntityAppearanceChanged event (D17b: bridge is sole path to renderer)
+	if (m_bridge) {
+		eqt::state::EntityAppearanceChangedData data;
+		data.spawnId = static_cast<uint16_t>(spawn_id);
+		data.raceId = entity.race_id;
+		data.gender = entity.gender;
+		data.isPlayer = (spawn_id == m_my_spawn_id);
+		data.face = entity.face;
+		data.haircolor = entity.haircolor;
+		data.hairstyle = entity.hairstyle;
+		data.beardcolor = entity.beardcolor;
+		data.beard = entity.beard;
+		data.texture = entity.equip_chest2;
+		data.helm = entity.helm;
+		for (int j = 0; j < 9; j++) {
+			data.equipment[j] = entity.equipment[j];
+			data.equipmentTint[j] = entity.equipment_tint[j];
 		}
-
-		// If this is our player, update player appearance
-		if (spawn_id == m_my_spawn_id) {
-			m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
-		}
-
-		// Update the entity's model in the renderer
-		m_renderer->updateEntityAppearance(static_cast<uint16_t>(spawn_id),
-		                                    entity.race_id, entity.gender, appearance);
-
-		// Publish EntityAppearanceChanged event
-		if (m_bridge) {
-			eqt::state::EntityAppearanceChangedData data;
-			data.spawnId = static_cast<uint16_t>(spawn_id);
-			data.raceId = entity.race_id;
-			data.gender = entity.gender;
-			data.isPlayer = (spawn_id == m_my_spawn_id);
-			data.face = appearance.face;
-			data.haircolor = appearance.haircolor;
-			data.hairstyle = appearance.hairstyle;
-			data.beardcolor = appearance.beardcolor;
-			data.beard = appearance.beard;
-			data.texture = appearance.texture;
-			data.helm = appearance.helm;
-			for (int j = 0; j < 9; j++) {
-				data.equipment[j] = appearance.equipment[j];
-				data.equipmentTint[j] = appearance.equipment_tint[j];
-			}
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
-		}
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 	}
-#endif
 }
 
 // Helper function to determine door type from door name
@@ -13763,12 +13571,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		}
 #endif
 
-#ifdef EQT_HAS_GRAPHICS
-		// Trigger death animation in graphics
-		if (m_graphics_initialized && m_renderer) {
-			m_renderer->playEntityDeathAnimation(victim_id);
-		}
-#endif
+		// Trigger death animation via bridge (D17b: bridge is sole path to renderer)
 		if (m_bridge) {
 			eqt::state::EntityDeathAnimationData data;
 			data.spawnId = victim_id;
@@ -13823,22 +13626,12 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// If we died, log it prominently
 	if (victim_id == m_my_spawn_id) {
 		std::cout << "YOU HAVE BEEN SLAIN!" << std::endl;
-#ifdef EQT_HAS_GRAPHICS
 		// Close vendor window if open (can't shop while dead)
-		if (m_renderer && m_renderer->getWindowManager()) {
-			if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
-				m_renderer->getWindowManager()->closeVendorWindow();
-				LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");
-
-				if (m_bridge) {
-					eqt::state::WindowClosedData wdata;
-					wdata.npcId = m_vendor_npc_id;
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::VendorWindowClosed, std::move(wdata)));
-				}
-			}
+		if (IsVendorWindowOpen()) {
+			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");
+			CloseVendorWindow();
 		}
-#endif
+
 		// Cancel trade if we died
 		if (m_trade_manager && m_trade_manager->isTrading()) {
 			LOG_DEBUG(MOD_MAIN, "Player died during trade, canceling trade");
@@ -13855,22 +13648,10 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	}
 
 	// If the vendor NPC died, close vendor window
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* vendorWindow = m_renderer->getWindowManager()->getVendorWindow();
-		if (vendorWindow && vendorWindow->isOpen() && vendorWindow->getNpcId() == victim_id) {
-			m_renderer->getWindowManager()->closeVendorWindow();
-			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
-
-			if (m_bridge) {
-				eqt::state::WindowClosedData wdata;
-				wdata.npcId = m_vendor_npc_id;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::VendorWindowClosed, std::move(wdata)));
-			}
-		}
+	if (m_vendor_npc_id != 0 && m_vendor_npc_id == victim_id) {
+		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
+		CloseVendorWindow();
 	}
-#endif
 }
 
 void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
@@ -14107,21 +13888,10 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// 5. Send WorldComplete, world disconnects (normal)
 
 	// Close vendor window if open (we're leaving the zone)
-#ifdef EQT_HAS_GRAPHICS
-	if (m_renderer && m_renderer->getWindowManager()) {
-		if (m_renderer->getWindowManager()->isVendorWindowOpen()) {
-			m_renderer->getWindowManager()->closeVendorWindow();
-			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to zone change");
-
-			if (m_bridge) {
-				eqt::state::WindowClosedData wdata;
-				wdata.npcId = m_vendor_npc_id;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::VendorWindowClosed, std::move(wdata)));
-			}
-		}
+	if (IsVendorWindowOpen()) {
+		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to zone change");
+		CloseVendorWindow();
 	}
-#endif
 
 	// IMPORTANT: We cannot directly call DisconnectFromZone() here because we're
 	// inside a packet callback. Destroying the connection manager from within its
@@ -15694,11 +15464,8 @@ void EverQuest::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
 
 		// Publish GroupInviteReceived event to bridge
 		if (m_bridge) {
-			eqt::state::GroupChangedData data;
-			data.inGroup = m_in_group;
-			data.isLeader = m_is_group_leader;
-			data.leaderName = inviter_name;
-			data.memberCount = m_group_member_count;
+			eqt::state::GroupInviteReceivedData data;
+			data.inviterName = inviter_name;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::GroupInviteReceived, std::move(data)));
 		}
@@ -18595,10 +18362,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			eqt::state::GameEventType::DamageEvent, std::move(data)));
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Queue combat animation for buffered processing (handles double/triple attack, dual wield)
-	// Melee damage (type 0-79) is buffered; spells/DoT/environmental are processed immediately
-	if (m_graphics_initialized && m_renderer) {
+	// Publish combat animation events via bridge (D17b: bridge is sole path to renderer)
+	if (m_bridge) {
 		bool isMeleeDamage = (damage_type < 80);
 
 		// Don't animate dead entities
@@ -18616,20 +18381,14 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
 			}
 
-			// Queue combat animation - will be processed after 50ms buffer window
-			m_renderer->queueCombatAnimation(source_id, target_id, damage_type, damage_amount, damagePercent);
-
-			// Publish CombatAnimation event
-			if (m_bridge) {
-				eqt::state::CombatAnimationData data;
-				data.sourceId = source_id;
-				data.targetId = target_id;
-				data.damageType = damage_type;
-				data.damageAmount = damage_amount;
-				data.damagePercent = static_cast<uint8_t>(damagePercent);
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::CombatAnimation, std::move(data)));
-			}
+			eqt::state::CombatAnimationData data;
+			data.sourceId = source_id;
+			data.targetId = target_id;
+			data.damageType = damage_type;
+			data.damageAmount = damage_amount;
+			data.damagePercent = static_cast<uint8_t>(damagePercent);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::CombatAnimation, std::move(data)));
 
 			if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Queued melee anim: source={} target={} skill={} dmg={} pct={:.1f}%",
@@ -18650,29 +18409,20 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			bool isTrap = (damage_type == 254);
 			const char* damageAnim = EQ::getDamageAnimation(damagePercent, isDrowning, isTrap);
 
-			m_renderer->setEntityAnimation(target_id, damageAnim, false, true);
-			if (m_bridge) {
-				eqt::state::EntityAnimationEventData data;
-				data.spawnId = target_id;
-				data.animCode = 0;
-				data.animName = damageAnim;
-				data.loop = false;
-				data.playThrough = true;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
-			}
+			eqt::state::EntityAnimationEventData data;
+			data.spawnId = target_id;
+			data.animCode = 0;
+			data.animName = damageAnim;
+			data.loop = false;
+			data.playThrough = true;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
 			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Damage reaction '{}' on target={} (dmg={}, pct={:.1f}%, type={})",
 					damageAnim, target_id, damage_amount, damagePercent, damage_type);
 			}
 		}
-
-		// Trigger first-person attack animation when player attacks (including misses)
-		if (source_id == m_my_spawn_id && isMeleeDamage && m_renderer->isFirstPersonMode()) {
-			m_renderer->triggerFirstPersonAttack();
-		}
 	}
-#endif
 
 	// Check if target died
 	if (damage_amount > 0 && target_id != 0) {
@@ -19820,10 +19570,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 	InitializeAudio();
 #endif
 
-	// If zone is already fully connected when graphics init, set zone ready
-	if (IsFullyZonedIn() && m_renderer) {
-		m_renderer->setExpectedEntityCount(m_entities.size());
-		m_renderer->setNetworkReady(true);
+	// If zone is already fully connected when graphics init, set zone ready (D17b: bridge-only)
+	if (IsFullyZonedIn() && m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::NetworkReady,
+			eqt::state::NetworkReadyData{static_cast<uint32_t>(m_entities.size()), true}));
 		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering with {} entities", m_entities.size());
 	}
 
@@ -20301,7 +20052,7 @@ void EverQuest::LoadZoneGraphics() {
 // loading process from login to gameplay.
 
 void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
-	if (!m_graphics_initialized || !m_renderer) {
+	if (!m_bridge) {
 		return;
 	}
 
@@ -20324,7 +20075,6 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	}
 
 	// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
-	bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 	bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
 
 	// Fallback: Also detect corpse by name (server adds "'s corpse" or "_corpse" suffix)
@@ -20333,119 +20083,86 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		LOG_TRACE(MOD_ENTITY, "Entity {} ({}) detected as corpse by name (npc_type={})", entity.spawn_id, entity.name, (int)entity.npc_type);
 	}
 
-	// Build appearance from entity data
-	EQT::Graphics::EntityAppearance appearance;
-	appearance.face = entity.face;
-	appearance.haircolor = entity.haircolor;
-	appearance.hairstyle = entity.hairstyle;
-	appearance.beardcolor = entity.beardcolor;
-	appearance.beard = entity.beard;
-	appearance.texture = entity.equip_chest2;
-	appearance.helm = entity.helm;
+	// Publish EntitySpawned event to bridge (D17b: bridge is sole path to renderer)
+	eqt::state::EntitySpawnedData data;
+	data.spawnId = entity.spawn_id;
+	data.name = entity.name;
+	data.x = entity.x;
+	data.y = entity.y;
+	data.z = entity.z;
+	data.heading = entity.heading;
+	data.raceId = entity.race_id;
+	data.classId = entity.class_id;
+	data.level = entity.level;
+	data.gender = entity.gender;
+	data.npcType = entity.npc_type;
+	data.isCorpse = isCorpse;
+	data.isPlayer = (entity.spawn_id == m_my_spawn_id);
+	data.serverSize = entity.size;
+	data.face = entity.face;
+	data.haircolor = entity.haircolor;
+	data.hairstyle = entity.hairstyle;
+	data.beardcolor = entity.beardcolor;
+	data.beard = entity.beard;
+	data.texture = entity.equip_chest2;
+	data.helm = entity.helm;
 	for (int i = 0; i < 9; i++) {
-		appearance.equipment[i] = entity.equipment[i];
-		appearance.equipment_tint[i] = entity.equipment_tint[i];
+		data.equipment[i] = entity.equipment[i];
+		data.equipmentTint[i] = entity.equipment_tint[i];
 	}
-
-	// Register entity for multi-frame pipeline build (placeholder cube now,
-	// mesh built progressively over subsequent frames to avoid frame hitches)
-	m_renderer->registerEntity(entity.spawn_id, entity.race_id, entity.name,
-	                           entity.x, entity.y, entity.z, entity.heading,
-	                           false, entity.gender, appearance, isNPC, isCorpse, entity.size,
-	                           entity.level);
-
-	// Publish EntitySpawned event to bridge
-	if (m_bridge) {
-		eqt::state::EntitySpawnedData data;
-		data.spawnId = entity.spawn_id;
-		data.name = entity.name;
-		data.x = entity.x;
-		data.y = entity.y;
-		data.z = entity.z;
-		data.heading = entity.heading;
-		data.raceId = entity.race_id;
-		data.classId = entity.class_id;
-		data.level = entity.level;
-		data.gender = entity.gender;
-		data.npcType = entity.npc_type;
-		data.isCorpse = isCorpse;
-		data.isPlayer = false;
-		data.serverSize = entity.size;
-		data.face = entity.face;
-		data.haircolor = entity.haircolor;
-		data.hairstyle = entity.hairstyle;
-		data.beardcolor = entity.beardcolor;
-		data.beard = entity.beard;
-		data.texture = entity.equip_chest2;
-		data.helm = entity.helm;
-		for (int i = 0; i < 9; i++) {
-			data.equipment[i] = entity.equipment[i];
-			data.equipmentTint[i] = entity.equipment_tint[i];
-		}
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::EntitySpawned, std::move(data)));
-	}
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::EntitySpawned, std::move(data)));
 
 	// Set entity light source if equipped
 	if (entity.light > 0) {
-		m_renderer->setEntityLight(entity.spawn_id, entity.light);
-		if (m_bridge) {
-			eqt::state::EntityLightChangedData data;
-			data.spawnId = entity.spawn_id;
-			data.lightLevel = entity.light;
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::EntityLightChanged, std::move(data)));
-		}
+		eqt::state::EntityLightChangedData lightData;
+		lightData.spawnId = entity.spawn_id;
+		lightData.lightLevel = entity.light;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityLightChanged, std::move(lightData)));
 	}
 
 	// Set initial pose state from spawn animation value
-	// The animation field in spawn data may indicate sitting/standing/etc.
 	if (!isCorpse && entity.animation != 0) {
-		EQT::Graphics::IrrlichtRenderer::EntityPoseState poseState =
-			EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing;
+		uint8_t poseState = static_cast<uint8_t>(
+			EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing);
 		std::string animCode;
 		bool setPose = false;
 
 		if (entity.animation == ANIM_SITTING) {
-			poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Sitting;
-			animCode = "p02";  // Sitting idle
+			poseState = static_cast<uint8_t>(
+				EQT::Graphics::IrrlichtRenderer::EntityPoseState::Sitting);
+			animCode = "p02";
 			setPose = true;
 		} else if (entity.animation == ANIM_CROUCHING) {
-			poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Crouching;
-			animCode = "l08";  // Crouching
+			poseState = static_cast<uint8_t>(
+				EQT::Graphics::IrrlichtRenderer::EntityPoseState::Crouching);
+			animCode = "l08";
 			setPose = true;
 		} else if (entity.animation == ANIM_LYING) {
-			poseState = EQT::Graphics::IrrlichtRenderer::EntityPoseState::Lying;
-			animCode = "d05";  // Lying down
+			poseState = static_cast<uint8_t>(
+				EQT::Graphics::IrrlichtRenderer::EntityPoseState::Lying);
+			animCode = "d05";
 			setPose = true;
 		}
 
 		if (setPose) {
-			m_renderer->setEntityPoseState(entity.spawn_id, poseState);
-			m_renderer->setEntityAnimation(entity.spawn_id, animCode, true, false);
-			if (m_bridge) {
-				eqt::state::EntityPoseStateChangedData poseData;
-				poseData.spawnId = entity.spawn_id;
-				poseData.poseState = static_cast<uint8_t>(poseState);
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::EntityPoseStateChanged, std::move(poseData)));
-				eqt::state::EntityAnimationEventData animData;
-				animData.spawnId = entity.spawn_id;
-				animData.animCode = entity.animation;
-				animData.animName = animCode;
-				animData.loop = true;
-				animData.playThrough = false;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::EntityAnimationEvent, std::move(animData)));
-			}
+			eqt::state::EntityPoseStateChangedData poseData;
+			poseData.spawnId = entity.spawn_id;
+			poseData.poseState = poseState;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityPoseStateChanged, std::move(poseData)));
+			eqt::state::EntityAnimationEventData animData;
+			animData.spawnId = entity.spawn_id;
+			animData.animCode = entity.animation;
+			animData.animName = animCode;
+			animData.loop = true;
+			animData.playThrough = false;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityAnimationEvent, std::move(animData)));
 			LOG_DEBUG(MOD_ENTITY, "Set initial pose for {} (ID: {}) to {} (anim={})",
 			          entity.name, entity.spawn_id, animCode, entity.animation);
 		}
-	}
-
-	// If this is our player, also update the inventory model view
-	if (entity.spawn_id == m_my_spawn_id) {
-		m_renderer->updatePlayerAppearance(entity.race_id, entity.gender, appearance);
 	}
 }
 
@@ -20573,14 +20290,9 @@ void EverQuest::SaveEntityDataToFile(const std::string& filename) {
 }
 
 void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
-	if (!m_graphics_initialized || !m_renderer) {
-		return;
-	}
-
-	// Clear target if this entity was targeted
+	// Clear target if this entity was targeted (game state update)
 	if (m_current_target_id == spawn_id) {
 		m_current_target_id = 0;
-		m_renderer->clearCurrentTarget();
 		if (m_combat_manager) {
 			m_combat_manager->ClearTarget();
 		}
@@ -20592,72 +20304,62 @@ void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 		}
 	}
 
+	if (!m_bridge) {
+		return;
+	}
+
 	// Check if this is a corpse - corpses should fade out instead of vanishing instantly
 	auto it = m_entities.find(spawn_id);
 	if (it != m_entities.end() && it->second.is_corpse) {
-		m_renderer->startCorpseDecay(spawn_id);
-		if (m_bridge) {
-			eqt::state::CorpseDecayStartedData data;
-			data.spawnId = spawn_id;
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::CorpseDecayStarted, std::move(data)));
-		}
-	} else {
-		m_renderer->removeEntity(spawn_id);
+		eqt::state::CorpseDecayStartedData data;
+		data.spawnId = spawn_id;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CorpseDecayStarted, std::move(data)));
 	}
 
-	// Publish EntityDespawned event
-	if (m_bridge) {
-		eqt::state::EntityDespawnedData data;
-		data.spawnId = spawn_id;
-		if (it != m_entities.end()) {
-			data.name = it->second.name;
-		}
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::EntityDespawned, std::move(data)));
+	// Publish EntityDespawned event (D17b: bridge is sole path to renderer)
+	eqt::state::EntityDespawnedData data;
+	data.spawnId = spawn_id;
+	if (it != m_entities.end()) {
+		data.name = it->second.name;
 	}
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::EntityDespawned, std::move(data)));
 }
 
 void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
                                       float dx, float dy, float dz, int32_t animation) {
-	if (!m_graphics_initialized || !m_renderer) {
+	if (!m_bridge) {
 		return;
 	}
 
-	// If this is our player entity, update the renderer's local player position/heading
+	// If this is our player entity, publish player position update
 	// so the camera follows the server-authoritative position
 	if (spawn_id == m_my_spawn_id) {
-		// Convert heading from degrees (0-360) to EQ format (0-512) for setPlayerPosition
+		// Convert heading from degrees (0-360) to EQ format (0-512)
 		float heading_512 = heading * 512.0f / 360.0f;
-		m_renderer->setPlayerPosition(x, y, z, heading_512);
-		if (m_bridge) {
-			eqt::state::PlayerMovedData pdata;
-			pdata.x = x; pdata.y = y; pdata.z = z;
-			pdata.heading = heading_512;
-			pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
-			pdata.isMoving = (dx != 0 || dy != 0 || dz != 0);
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
-		}
-	}
-
-	m_renderer->updateEntity(spawn_id, x, y, z, heading, dx, dy, dz, animation);
-
-	// Publish EntityMoved event to bridge
-	if (m_bridge) {
-		eqt::state::EntityMovedData data;
-		data.spawnId = spawn_id;
-		data.x = x;
-		data.y = y;
-		data.z = z;
-		data.heading = heading;
-		data.dx = dx;
-		data.dy = dy;
-		data.dz = dz;
-		data.animation = static_cast<uint8_t>(animation);
+		eqt::state::PlayerMovedData pdata;
+		pdata.x = x; pdata.y = y; pdata.z = z;
+		pdata.heading = heading_512;
+		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
+		pdata.isMoving = (dx != 0 || dy != 0 || dz != 0);
 		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::EntityMoved, std::move(data)));
+			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 	}
+
+	// Publish EntityMoved event (D17b: bridge is sole path to renderer)
+	eqt::state::EntityMovedData data;
+	data.spawnId = spawn_id;
+	data.x = x;
+	data.y = y;
+	data.z = z;
+	data.heading = heading;
+	data.dx = dx;
+	data.dy = dy;
+	data.dz = dz;
+	data.animation = static_cast<uint8_t>(animation);
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::EntityMoved, std::move(data)));
 }
 
 void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& update) {
@@ -20913,9 +20615,6 @@ void EverQuest::ProcessBridgeEvents() {
 }
 
 void EverQuest::UpdateInventoryStats() {
-	if (!m_renderer) {
-		return;
-	}
 
 	// Calculate equipment bonuses from inventory
 	eqt::inventory::EquipmentStats equipStats;
@@ -20948,8 +20647,7 @@ void EverQuest::UpdateInventoryStats() {
 			it->second.secondary_weapon_skill = secondaryWeaponSkill;
 		}
 
-		// Propagate weapon skill types to renderer
-		m_renderer->setEntityWeaponSkills(m_my_spawn_id, primaryWeaponSkill, secondaryWeaponSkill);
+		// Propagate weapon skill types via bridge (D17b: bridge is sole path to renderer)
 		if (m_bridge) {
 			eqt::state::EntityWeaponSkillsChangedData data;
 			data.spawnId = m_my_spawn_id;
@@ -20977,28 +20675,7 @@ void EverQuest::UpdateInventoryStats() {
 	m_max_weight = maxWeight;
 	m_game_state.player().setWeight(m_weight, m_max_weight);
 
-	// Update renderer with all stats
-	m_renderer->updateCharacterStats(
-		m_cur_hp, m_max_hp,
-		m_mana, m_max_mana,
-		m_endurance, m_max_endurance,
-		equipStats.ac, equipStats.atk,
-		totalStr, totalSta, totalAgi, totalDex, totalWis, totalInt, totalCha,
-		equipStats.poisonResist, equipStats.magicResist, equipStats.diseaseResist,
-		equipStats.fireResist, equipStats.coldResist,
-		m_weight, m_max_weight,
-		m_platinum, m_gold, m_silver, m_copper);
-
-	// Update bonus stats (haste, regen)
-	if (auto* wm = m_renderer->getWindowManager()) {
-		if (auto* inv = wm->getInventoryWindow()) {
-			inv->setHaste(equipStats.haste);
-			inv->setRegenHP(equipStats.hpRegen);
-			inv->setRegenMana(equipStats.manaRegen);
-		}
-	}
-
-	// Publish PlayerStatsChanged after full stat recalculation
+	// Publish stats via bridge (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::PlayerStatsChangedData data;
 		data.curHP = m_cur_hp;
@@ -21050,24 +20727,21 @@ void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 	packet.PutUInt32(0, corpseId);
 	QueuePacket(HC_OP_LootRequest, &packet);
 
-	// Open the loot window in the UI
-	if (m_renderer && m_renderer->getWindowManager()) {
-		// Find the corpse entity to get its name (converted to display format)
+	// Clear game-side loot items for new corpse
+	m_loot_items.clear();
+
+	// Publish LootWindowOpened (D18a: bridge is sole path to renderer)
+	if (m_bridge) {
 		std::string corpseName = "Corpse";
 		auto it = m_entities.find(corpseId);
 		if (it != m_entities.end()) {
 			corpseName = EQT::toDisplayName(it->second.name);
 		}
-		m_renderer->getWindowManager()->openLootWindow(corpseId, corpseName);
-
-		// Publish LootWindowOpened
-		if (m_bridge) {
-			eqt::state::LootWindowOpenedData data;
-			data.corpseId = corpseId;
-			data.corpseName = corpseName;
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::LootWindowOpened, std::move(data)));
-		}
+		eqt::state::LootWindowOpenedData data;
+		data.corpseId = corpseId;
+		data.corpseName = corpseName;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::LootWindowOpened, std::move(data)));
 	}
 }
 
@@ -21121,36 +20795,22 @@ void EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoo
 void EverQuest::LootAllFromCorpse(uint16_t corpseId) {
 	LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: corpseId={}", corpseId);
 
-	// Get the loot window and validate looting is possible
-	if (!m_renderer || !m_renderer->getWindowManager()) {
-		LOG_WARN(MOD_INVENTORY, "LootAllFromCorpse: No renderer or window manager");
+	// Validate we're actively looting (D18a: uses game-side loot item tracking)
+	if (m_player_looting_corpse_id == 0) {
+		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Not currently looting");
 		return;
 	}
 
-	auto* lootWindow = m_renderer->getWindowManager()->getLootWindow();
-	if (!lootWindow || !lootWindow->isOpen()) {
-		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Loot window not open");
-		return;
-	}
-
-	// Check if we can loot all
-	if (!lootWindow->canLootAll()) {
-		std::string error = lootWindow->getLootAllError();
-		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Cannot loot all - {}", error);
-		return;
-	}
-
-	// Get items to loot - in Titanium, server closes loot session after each item,
-	// so we must loot one item at a time and re-request loot for remaining items
-	const auto& items = lootWindow->getLootItems();
-	if (items.empty()) {
+	if (m_loot_items.empty()) {
 		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: No items to loot");
 		return;
 	}
 
 	// Store remaining slots for sequential looting
+	// In Titanium, server closes loot session after each item,
+	// so we must loot one item at a time and re-request loot for remaining items
 	m_loot_all_remaining_slots.clear();
-	for (const auto& [slot, item] : items) {
+	for (const auto& [slot, item] : m_loot_items) {
 		m_loot_all_remaining_slots.push_back(slot);
 	}
 
@@ -21197,12 +20857,10 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	QueuePacket(HC_OP_EndLootRequest, &packet);
 	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId={}", targetCorpseId);
 
-	// Close the loot window in the UI
-	if (m_renderer && m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->closeLootWindow();
-	}
+	// Clear game-side loot items
+	m_loot_items.clear();
 
-	// Publish LootWindowClosed
+	// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::LootWindowClosedData data;
 		data.corpseId = targetCorpseId;

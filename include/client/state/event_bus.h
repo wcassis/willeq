@@ -32,6 +32,10 @@ enum class GameEventType {
     EntityDeathAnimation,
     CorpseDecayStarted,
     CombatAnimation,
+    CombatSkillAnimation,
+    ReceivedDamageAnimation,
+    PlayerSpawnIdSet,
+    NetworkReady,
 
     // Door events
     DoorSpawned,
@@ -56,7 +60,7 @@ enum class GameEventType {
     // Group events
     GroupChanged,
     GroupMemberUpdated,
-    GroupInviteReceived,
+    GroupInviteReceived,  // Uses GroupInviteReceivedData (not GroupChangedData)
 
     // Time events
     TimeOfDayChanged,
@@ -257,6 +261,24 @@ struct CombatAnimationData {
     uint8_t damagePercent;
 };
 
+struct CombatSkillAnimationData {
+    uint16_t spawnId;
+    std::string animCode;  // e.g. EQ::ANIM_KICK, EQ::ANIM_BASH
+};
+
+struct ReceivedDamageAnimationData {
+    uint16_t spawnId;
+};
+
+struct PlayerSpawnIdSetData {
+    uint16_t spawnId;
+};
+
+struct NetworkReadyData {
+    uint32_t expectedEntityCount;
+    bool ready;
+};
+
 // --- Door events ---
 
 struct DoorSpawnedData {
@@ -382,6 +404,10 @@ struct GroupMemberUpdatedData {
     uint8_t hpPercent;
     uint8_t manaPercent;
     bool inZone;
+};
+
+struct GroupInviteReceivedData {
+    std::string inviterName;
 };
 
 // --- Time events ---
@@ -677,6 +703,10 @@ using EventData = std::variant<
     EntityDeathAnimationData,
     CorpseDecayStartedData,
     CombatAnimationData,
+    CombatSkillAnimationData,
+    ReceivedDamageAnimationData,
+    PlayerSpawnIdSetData,
+    NetworkReadyData,
     // Door
     DoorSpawnedData,
     DoorStateChangedData,
@@ -695,6 +725,7 @@ using EventData = std::variant<
     // Group
     GroupChangedData,
     GroupMemberUpdatedData,
+    GroupInviteReceivedData,
     // Time
     TimeOfDayChangedData,
     // Pet

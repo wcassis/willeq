@@ -147,6 +147,31 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 d.damageType, d.damageAmount, d.damagePercent);
         }
         break;
+    case state::GameEventType::CombatSkillAnimation:
+        if (renderer_) {
+            auto& d = std::get<state::CombatSkillAnimationData>(event.data);
+            renderer_->queueSkillAnimation(d.spawnId, d.animCode);
+        }
+        break;
+    case state::GameEventType::ReceivedDamageAnimation:
+        if (renderer_) {
+            auto& d = std::get<state::ReceivedDamageAnimationData>(event.data);
+            renderer_->queueReceivedDamageAnimation(d.spawnId);
+        }
+        break;
+    case state::GameEventType::PlayerSpawnIdSet:
+        if (renderer_) {
+            auto& d = std::get<state::PlayerSpawnIdSetData>(event.data);
+            renderer_->setPlayerSpawnId(d.spawnId);
+        }
+        break;
+    case state::GameEventType::NetworkReady:
+        if (renderer_) {
+            auto& d = std::get<state::NetworkReadyData>(event.data);
+            renderer_->setExpectedEntityCount(d.expectedEntityCount);
+            renderer_->setNetworkReady(d.ready);
+        }
+        break;
 
     // ========================================================================
     // Stubs — to be wired in D11-D13
@@ -276,10 +301,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto* wm = renderer_->getWindowManager();
             if (wm) {
-                auto& d = std::get<state::GroupChangedData>(event.data);
+                auto& d = std::get<state::GroupInviteReceivedData>(event.data);
                 auto* groupWindow = wm->getGroupWindow();
                 if (groupWindow) {
-                    groupWindow->showPendingInvite(d.leaderName);
+                    groupWindow->showPendingInvite(d.inviterName);
                 }
                 wm->openGroupWindow();
             }

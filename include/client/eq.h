@@ -1606,17 +1606,32 @@ private:
 	void runPmemDiagnostics(const std::string& label);
 	void runLoadDiagnostics(const std::string& label);
 
-	// Player mode loot state
+	// Player mode loot state (game-side tracking, D18a)
 	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted in Player mode (0 = not looting)
 	std::vector<int16_t> m_pending_loot_slots;  // Corpse slots waiting for server confirmation
 	bool m_loot_all_in_progress = false;         // True if we're in the middle of a loot-all operation
 	std::vector<int16_t> m_loot_all_remaining_slots;  // Remaining slots to loot in loot-all
 	uint16_t m_loot_complete_corpse_id = 0;  // Corpse ID for which looting was completed (ready for deletion)
+	struct GameLootItem {
+		uint32_t itemId = 0;
+		std::string name;
+	};
+	std::map<int16_t, GameLootItem> m_loot_items;  // slot -> item data (game-side)
 
-	// Player mode vendor state
+	// Player mode vendor state (game-side tracking, D18a)
 	uint16_t m_vendor_npc_id = 0;     // NPC being traded with (0 = not trading)
 	float m_vendor_sell_rate = 1.0f;  // Price multiplier for this vendor
 	std::string m_vendor_name;        // Vendor NPC name
+	struct GameVendorItem {
+		uint32_t itemId = 0;
+		std::string name;
+		int32_t price = 0;        // Price in copper
+		int32_t quantity = -1;    // -1 = unlimited
+	};
+	std::map<uint32_t, GameVendorItem> m_vendor_items;  // slot -> item data (game-side)
+
+	// Format copper amount as currency string (e.g. "5p 3g 2s 1c")
+	static std::string FormatPrice(int32_t copperAmount);
 
 	// Player mode bank state
 	uint16_t m_banker_npc_id = 0;     // Banker NPC being interacted with (0 = bank closed)

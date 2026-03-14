@@ -568,51 +568,225 @@ no longer includes any renderer headers.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D17 | Remove direct renderer calls from entity packet handlers | pending | |
+| D17a | Add missing entity event types + fix weapon skill state ownership | done | |
+| D17b | Remove direct renderer calls from entity packet handlers | pending | |
 | D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | pending | |
 | D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | pending | |
-| D19 | Remove direct renderer calls from remaining handlers (chat, combat, spell, skill, pet, group, door, world, zone lifecycle, swimming, weather, time) | pending | |
-| D20a | Remove callback lambdas from InitGraphics() | pending | |
+| D19a | Remove direct renderer calls from small handlers (chat, combat, spell, skill, pet, group, door, world, swimming, weather, time) | pending | |
+| D19b | Remove direct renderer calls from zone lifecycle functions | pending | |
+| D20a | Remove callback lambdas + activate intent processing | pending | |
 | D20b | Remove raw pointer coupling from InitGraphics() | pending | |
-| D20c | Remove m_renderer from EverQuest | pending | |
+| D20c | Refactor UpdateGraphics / zone loading ownership | pending | |
 | D20d | Remove debug/toggle slash commands from EverQuest | pending | |
+| D20e | Remove m_renderer from EverQuest | pending | |
+
+### D17a: Add missing entity event types + fix weapon skill state ownership
+
+**Prerequisite for D17b.** Several entity-related `m_renderer->` calls have no
+corresponding bridge event, so the direct calls cannot be removed until events exist.
+
+**Missing event types to add:**
+- `EntityLightChanged` — already exists in event_bus.h but NOT published from
+  `ZoneProcessSpawnAppearance` (line 6377). Add `publishEvent()` there.
+- `PlayerSpawnIdSet { spawnId }` — new event. `setPlayerSpawnId()` is called at
+  4 sites (lines 5851, 6980, 7367, 20139/20251). The bridge needs this to mark
+  the player entity for special handling (camera follow, rotation fix).
+- `PlayerAppearanceChanged { raceId, gender, appearance }` — new event, distinct
+  from `EntityAppearanceChanged`. Called at lines 7375, 12812, 12911, 13005 for
+  the inventory paperdoll UI update.
+- `CombatSkillAnimation { spawnId, animCode }` — new event for the 6
+  `queueSkillAnimation()` calls in `ZoneProcessEmote` (kick, bash, tiger strike,
+  flying kick, dragon punch, round kick).
+- `ReceivedDamageAnimation { spawnId }` — new event for `queueReceivedDamageAnimation()`
+  (line 6512).
+- `ExpectedEntityCountChanged { count }` — new event for `setExpectedEntityCount()`
+  (lines 7427, 19825).
+- `EntityWeaponSkillsChanged { spawnId, primarySkill, secondarySkill }` — new event
+  for `setEntityWeaponSkills()` (line 20952).
+
+**Weapon skill state ownership fix:**
+`ZoneProcessEmote` (lines 6432-6433) calls `m_renderer->getEntityPrimaryWeaponSkill()`
+and `getEntitySecondaryWeaponSkill()` — the game thread queries renderer state. This
+violates the bridge model (game thread must not call renderer). Fix: track weapon
+skills in game state (they originate from spawn data in the entity struct). The emote
+handler reads from game state instead of querying the renderer.
+
+**Also fix:** `GroupInviteReceived` case in irrlicht_bridge.cpp (line 279) uses
+`GroupChangedData` instead of a dedicated struct. Add `GroupInviteReceivedData` with
+inviter name field.
+
+Acceptance criteria:
+- All entity-related `m_renderer->` calls have a corresponding bridge event published
+- Weapon skills tracked in entity game state, not queried from renderer
+- All new events handled in `IrrlichtBridge::applyEvent()`
+- Existing behavior unchanged (dual-path)
+
+### D17b: Remove direct renderer calls from entity packet handlers
+
+Remove all `m_renderer->` calls from entity packet handlers, relying solely on
+bridge events. Covers these functions/handlers:
+
+| Function/Handler | Calls to remove | Event coverage |
+|---|---|---|
+| `OnSpawnAddedGraphics()` | registerEntity, setEntityLight, setEntityPoseState, setEntityAnimation, updatePlayerAppearance | All covered |
+| `OnSpawnMovedGraphics()` | setPlayerPosition, updateEntity | PlayerMoved, EntityMoved |
+| `OnSpawnRemovedGraphics()` | clearCurrentTarget, startCorpseDecay, removeEntity | TargetChanged, CorpseDecayStarted, EntityDespawned |
+| `ZoneProcessSpawnAppearance` | setEntityPoseState, setEntityAnimation, playEntityDeathAnimation, setEntityLight | All covered (light added in D17a) |
+| `ZoneProcessEmote` | queueSkillAnimation (×6), queueReceivedDamageAnimation, setEntityAnimation, getEntity*WeaponSkill (×2) | Covered by D17a new events + state fix |
+| `ZoneProcessWearChange` | updateEntityAppearance, updatePlayerAppearance | EntityAppearanceChanged, PlayerAppearanceChanged (D17a) |
+| `ZoneProcessMobHealth` | updateCurrentTargetHP | EntityStatsChanged |
+| `ZoneProcessClientUpdate` | createEntity, setPlayerSpawnId, setEntityLight, updatePlayerAppearance, setExpectedEntityCount | EntitySpawned + D17a new events |
+| `ZoneProcessZoneSpawns` | setPlayerSpawnId, setPlayerPosition | PlayerSpawnIdSet (D17a), PlayerMoved |
+| `ZoneProcessDeleteSpawn` | closeLootWindow (via getWindowManager) | Assign to D18a (loot UI) |
+| Combat handlers | playEntityDeathAnimation (13769), setEntityAnimation (18653) | EntityDeathAnimation, EntityAnimationEvent |
+| `setEntityWeaponSkills` (20952) | setEntityWeaponSkills | EntityWeaponSkillsChanged (D17a) |
+
+After this unit, the `OnSpawnAddedGraphics()`, `OnSpawnMovedGraphics()`, and
+`OnSpawnRemovedGraphics()` helper functions can be reduced to event-publish-only
+(or inlined at call sites).
+
+Acceptance criteria:
+- Zero `m_renderer->` calls remain in entity packet handlers
+- All entity rendering driven solely through bridge events
+- Entity spawn, move, appearance, animation, death all work correctly
+- `#ifdef EQT_HAS_GRAPHICS` blocks in entity handlers contain only event publishing
 
 ### D18a: Remove inventory/loot/vendor direct calls
 
 Remove the ~57 `m_renderer->getWindowManager()` calls in inventory, loot, and vendor
 packet handlers. All communication now goes through bridge events only.
 
+Also includes `ZoneProcessDeleteSpawn` line 7510 (`closeLootWindow` on corpse despawn)
+which is entity-triggered but loot-UI-specific.
+
 ### D18b: Remove bank/trade/trainer direct calls
 
 Remove the ~35 `m_renderer->getWindowManager()` calls in bank, trade, and trainer
 handlers. All communication now goes through bridge events only.
 
-### D20a: Remove callback lambdas from InitGraphics()
+### D19a: Remove direct renderer calls from small handlers
 
-Remove all 15 `set*Callback()` calls:
-- `movementCallback_`, `targetCallback_`, `lootCorpseCallback_`, `zoningEnabledCallback_`
-- `vendorToggleCallback_`, `bankerInteractCallback_`, `trainerToggleCallback_`
-- `doorInteractCallback_`, `worldObjectInteractCallback_`
-- `spellGemCastCallback_`, `chatSubmitCallback_`, `readItemCallback_`
-- And others
+Remove `m_renderer->` calls from non-entity, non-UI-window packet handlers:
 
-Remove the 6 `Setup*Callbacks()` calls and their implementations:
-- `SetupLootCallbacks`
-- `SetupVendorCallbacks`
-- `SetupBankCallbacks`
-- `SetupTrainerCallbacks`
-- `SetupTradeWindowCallbacks`
-- `SetupTradeskillCallbacks`
+| Category | Calls | Event coverage |
+|---|---|---|
+| Chat | ~5 (showNoteWindow, getChatWindow) | Events exist |
+| Combat | 2 (playEntityDeathAnimation, setEntityAnimation for damage) | Events exist |
+| Door | 1 (createDoor at 6030) | DoorSpawned event exists |
+| World object | 1 (addWorldObject at 6728) | WorldObjectSpawned event exists |
+| Weather | 1 (setWeather at 6776) | WeatherChanged event exists |
+| Pet | ~4 (openPetWindow, closePetWindow) | Events exist |
+| Group | ~4 (invite windows) | Events exist |
+| Swimming | setSwimmingState calls | SwimmingStateChanged event exists |
+| Spell/skill | ~6 (getParticleManager, getWeatherEffects) | Partial — verify |
+| Player light | togglePlayerLight (9890) | Belongs in D20d (slash command) |
 
-All are replaced by intents from Phase 4.
+Acceptance criteria:
+- Zero `m_renderer->` calls in chat, combat, door, world, weather, pet, group,
+  swimming, spell/skill packet handlers
+- All rendering driven through bridge events
+
+### D19b: Remove direct renderer calls from zone lifecycle functions
+
+This is the largest and most complex removal. Covers the zone loading pipeline:
+
+**Functions in scope:**
+
+| Function | Lines | m_renderer calls | Notes |
+|---|---|---|---|
+| `LoadZoneGraphicsOnLoadingThread()` | 20071-20178 | ~20 (registerEntity bulk, setupInstantScene, loadZoneSequential, setCollisionMap, storeZoneEnvironment, registerDoor, setPlayerPosition, setCameraMode, etc.) | Runs on loading thread |
+| `LoadZoneGraphics()` | 20180-20295 | ~15 (same pattern as above, for non-loading-thread path) | Runs on main thread |
+| `StartLoadingThread()` | 20018-20053 | 4 (getDevice, getDriver, getGUIEnvironment, setLoading) | GL context transfer |
+| `JoinLoadingThread()` | 20055-20069 | 1 (setLoading) | GL context restore |
+| `OnGraphicsComplete()` | 1192-1210 | 2 (setZoneReady, hideLoadingScreen) | Loading completion |
+| Zone cleanup | 14261, 14599 | setCollisionMap(nullptr) | Zone end/reconnect |
+
+**New events needed for zone data transfer:**
+- `ZoneSetupData { zoneName, playerX/Y/Z, entities[], doors[], collisionMap, navmesh, zoneLineBBoxes, environment }` — a single comprehensive event carrying all zone-in data so the renderer can manage its own loading pipeline
+- Or decompose into multiple events with ordering guarantees
+
+**Key architectural change:** After D19b, the renderer owns `LoadZoneGraphicsOnLoadingThread()`
+and `LoadZoneGraphics()`. The game thread publishes zone data through events; the
+renderer decides how to load (loading thread vs instant). `StartLoadingThread()` and
+`JoinLoadingThread()` move to the renderer.
+
+Acceptance criteria:
+- Zero `m_renderer->` calls in zone lifecycle code
+- Zone loading works end-to-end through bridge events
+- Loading screen, progress updates, and zone-ready notification all function
+- Both loading-thread and instant-load paths work
+
+### D20a: Remove callback lambdas + activate intent processing
+
+Remove all callback lambdas from InitGraphics() and activate the intent handlers
+in `ProcessBridgeIntents()` that were logged as stubs in D15/D16. After this unit,
+intents are the sole path for renderer→game communication.
+
+**Callback lambdas to remove (25+ total):**
+
+*Direct renderer callbacks (11):*
+- `setHUDCallback` — replace with `PlayerStatsChanged` event (renderer maintains own state copy)
+- `setMovementCallback` — replaced by `PlayerPositionChanged` intent (D14)
+- `setTargetCallback` — replaced by `TargetIntent` (D15)
+- `setLootCorpseCallback` — replaced by `LootCorpseIntent` (D15)
+- `setZoningEnabledCallback` — replaced by `ZoningEnabledIntent` (D15)
+- `setVendorToggleCallback` — replaced by `VendorToggleIntent` (D15)
+- `setBankerInteractCallback` — replaced by `BankerInteractIntent` (D15)
+- `setTrainerToggleCallback` — replaced by `TrainerToggleIntent` (D15)
+- `setDoorInteractCallback` — replaced by `DoorInteractIntent` (D15)
+- `setWorldObjectInteractCallback` — replaced by `WorldObjectInteractIntent` (D15)
+- `setSpellGemCastCallback` — replaced by `CastSpellIntent` (D16)
+
+*WindowManager callbacks (14+):*
+- `setGemCastCallback`, `setGemForgetCallback`, `setSpellbookStateCallback`,
+  `setScribeSpellRequestCallback` — spell intents (D16)
+- `setBuffCancelCallback` — `BuffCancelIntent` (D16)
+- `setSkillActivateCallback`, `setHotbarCreateCallback` — skill intents (D16)
+- `setGroupInviteCallback`, `setGroupDisbandCallback`, `setGroupAcceptCallback`,
+  `setGroupDeclineCallback` — group intents (D16)
+- `setPetCommandCallback` — `PetCommandIntent` (D16)
+- `setHotbarActivateCallback` — hotbar intents (D16)
+- `setChatSubmitCallback`, `setReadItemCallback` — chat/read intents (D15)
+
+*Chat window callbacks:*
+- `setEntityNameProvider` — renderer maintains own entity name cache from events
+- `setLinkClickCallback` — `ChatLinkClickIntent` (new, or route through SlashCommandIntent)
+- `setCommandRegistry` — renderer owns command tab-completion
+
+*Manager callbacks:*
+- buff_manager `buff_fade_callback` — bridge event for vision change
+- skill_manager `setOnSkillActivated`, `setOnSkillUpdate` — bridge events
+
+**Setup*Callbacks() to remove (8 functions):**
+- `SetupLootCallbacks` (line 4523, called from InitGraphics)
+- `SetupVendorCallbacks` (line 4560, called from InitGraphics)
+- `SetupBankCallbacks` (line 4591, called from InitGraphics)
+- `SetupTradeWindowCallbacks` (line 4775, called from InitGraphics)
+- `SetupTradeskillCallbacks` (line 4826, called from InitGraphics)
+- `SetupTrainerCallbacks` (line 5399, called from InitGraphics)
+- `SetupInventoryCallbacks` (line 3688, called from **constructor** line 955)
+- `SetupTradeManagerCallbacks` (line 4110, called from **constructor** line 955)
+
+**Intent activation:** All 42 stub intent handlers in `ProcessBridgeIntents()` must
+be activated with real game logic (moved from the callback lambdas). This is the
+bulk of the work — each stub becomes a real handler calling the same game logic
+the callback currently calls.
+
+Acceptance criteria:
+- Zero callback lambdas in InitGraphics() or constructor
+- Zero Setup*Callbacks() function calls or implementations
+- All 43 intent types in ProcessBridgeIntents() have real processing (no stubs)
+- All existing functionality preserved through intent-only path
 
 ### D20b: Remove raw pointer coupling from InitGraphics()
 
 Remove direct pointer passing that couples renderer to game state:
+
+*Listed in original plan:*
 - Remove `setInventoryManager(m_inventory_manager.get())` — bridge pushes
   `InventoryItemUpdated` events instead
 - Remove `setCollisionMap(m_zone_map.get())` — bridge pushes `CollisionMapChanged`
-  event instead
+  event instead (also 2 `setCollisionMap(nullptr)` at zone cleanup lines 14261, 14599)
 - Remove `initGroupWindow(this)` — bridge pushes `GroupMemberAdded/Removed` events
   instead; window no longer holds `EverQuest*`
 - Remove `initSpellGemPanel(m_spell_manager.get())` — bridge pushes `SpellGemUpdated`
@@ -622,31 +796,93 @@ Remove direct pointer passing that couples renderer to game state:
 - Remove `initPlayerStatusWindow(this)` — bridge pushes `PlayerStatsChanged` events
 - Remove `initSkillsWindow(m_skill_manager.get())` — bridge pushes `SkillValueChanged`
   events
-- Remove `setHUDCallback` — renderer formats HUD from its own state copy
 
-### D20c: Remove m_renderer from EverQuest
+*Missing from original plan (added by audit):*
+- Remove `initPetWindow(this, m_buff_manager.get())` — passes both `EverQuest*` and
+  `BuffManager*`; bridge pushes pet buff events instead
+- Remove `chatWindow->setCommandRegistry(m_command_registry.get())` — renderer owns
+  its own command tab-completion (or receives command list via event)
+- Remove `chatWindow->setEntityNameProvider(...)` — lambda accesses `m_entities`;
+  renderer maintains entity name cache from `EntitySpawned`/`EntityDespawned` events
 
-The final decoupling:
-- Remove `m_renderer` member from EverQuest class
-- Remove `#include` of all renderer/graphics headers from eq.h/eq.cpp
-- Replace `InitGraphics()` with `attachBridge(GameStateBridge*)`
-- EverQuest communicates solely through bridge
-- `LoadZoneGraphicsOnLoadingThread()` is replaced by a `PlayerZoneChanged` event —
-  the renderer (via bridge) receives zone data and manages its own loading thread
+**Note:** Three windows hold raw `EverQuest*` back-pointers (group, player status,
+pet). These windows must be refactored to work from event-driven state copies instead
+of querying game state directly. This is non-trivial — group window queries member
+lists, pet window queries buff data, player status window queries full stats.
+
+Acceptance criteria:
+- Zero raw game-state pointers passed to renderer or UI windows
+- All UI windows work from event-driven local state copies
+- `setCollisionMap()` replaced by `CollisionMapChanged` event at all 4 call sites
+
+### D20c: Refactor UpdateGraphics / zone loading ownership
+
+Restructure `UpdateGraphics()` and zone loading so the renderer owns its own frame
+loop and loading pipeline. This is prerequisite for removing `m_renderer` (D20e).
+
+**UpdateGraphics() refactoring:**
+Currently `Application::mainLoop()` calls `m_eqClient->UpdateGraphics(deltaTime)`,
+which calls `m_renderer->processFrame()`. After D20c, Application calls the renderer
+directly — EverQuest has no UpdateGraphics() method.
+
+Per-frame state pushes that currently happen in UpdateGraphics() must become events:
+- `updateCurrentTargetHP()` (line 19914) — convert to `TargetHPChanged` event,
+  published when HP actually changes (not polled per-frame)
+- `updateTimeOfDay()` (line 19924) — convert to `TimeOfDayChanged` event, published
+  from game thread when server sends time update
+- Camera transform query (lines 19969-19971) for audio positioning — renderer pushes
+  `CameraPositionChanged` event, or audio moves to render side
+- Event receiver volume delta queries (lines 19984, 19992) — renderer pushes volume
+  change intents
+
+**Zone loading ownership transfer:**
+- `LoadZoneGraphicsOnLoadingThread()` and `LoadZoneGraphics()` move to the renderer
+- `StartLoadingThread()` / `JoinLoadingThread()` move to the renderer
+- Game thread publishes zone data through events; renderer manages its own loading
+- `OnGraphicsComplete()` replaced by renderer notifying game thread via intent when
+  zone assets are ready
+
+**Application class changes:**
+- `Application` owns the renderer directly (not via EverQuest)
+- Main loop: render on main thread, game state on game thread (prepared for D21)
+- Startup sequencing: game connects first, renderer initialized when needed
+
+Acceptance criteria:
+- `EverQuest` has no `UpdateGraphics()` method
+- Renderer owns its frame loop (called by Application, not EverQuest)
+- Zone loading pipeline works through bridge events
+- Per-frame polls converted to change-driven events
+- Audio positioning solved (event or render-side)
 
 ### D20d: Remove debug/toggle slash commands from EverQuest
 
-Move renderer-specific commands to the renderer:
-- The ~40 slash commands that toggle renderer features (`/sort`, `/portal`, `/plight`,
-  `/olight`, `/zlight`, `/fire`, `/sky`, `/frametiming`, `/stencil`, `/fog`, `/clip`,
-  `/detail`, `/togglegrass`, etc.) move to the renderer
+Move renderer-specific commands to the renderer (~19 commands):
+- `/sort`, `/upload`, `/portal`, `/stencil`, `/governor`, `/plight`, `/olight`,
+  `/zlight`, `/fire`, `/renderdist`, `/clipdist`, `/sky`, `/skytype`, `/time`,
+  `/detail`, `/togglegrass`, `/toggleplants`, `/skills` (window toggle), `/filter`
 - Game thread posts `SlashCommandIntent { fullCommand }` through bridge
 - Renderer handles renderer-specific commands directly
 - Game-affecting commands (`/camp`, `/quit`, `/who`, `/tell`, etc.) stay on game thread
 - `/pmem` becomes a bridge round-trip: game thread collects its stats, pushes event,
   renderer collects its stats, merges, displays
+- `/filter` needs special handling — accesses chat window state (may need intent)
 
-Acceptance criteria (all of D20):
+Acceptance criteria:
+- Zero renderer-specific slash commands in EverQuest
+- All toggle/debug commands work through bridge
+
+### D20e: Remove m_renderer from EverQuest
+
+The final decoupling (after D20a-D20d are complete):
+- Remove `m_renderer` member from EverQuest class
+- Remove `GetRenderer()` accessor from eq.h
+- Remove `#include` of all renderer/graphics headers from eq.h/eq.cpp
+  (currently: `constrained_renderer_config.h`, `loading_thread.h`)
+- Replace `InitGraphics()` with `attachBridge(GameStateBridge*)`
+- `ShutdownGraphics()` reduced to `detachBridge()` (renderer cleanup owned by Application)
+- EverQuest communicates solely through bridge
+
+Acceptance criteria:
 - eq.h has zero includes from `client/graphics/`
 - eq.cpp has zero references to `IrrlichtRenderer`
 - EverQuest can be instantiated with no renderer (headless mode works via null bridge)
@@ -698,6 +934,22 @@ and a packet burst doesn't cause frame hitches.
 The loading thread is managed by the renderer, not the game thread. The game thread
 posts `PlayerZoneChanged` through the bridge. The renderer spawns its loading thread,
 transfers GL context, loads assets, joins. The game thread is unaware of this.
+
+**Application class refactoring (prerequisite from D20c):**
+By D21, Application already owns the renderer directly (not via EverQuest). D21 adds:
+- Spawn game thread running `EverQuest::TickLoop()` (network + game state)
+- Main thread runs render loop: `drainEvents() → processFrame() → postIntents()`
+- Startup sequencing: Application creates renderer, creates EverQuest, attaches bridge,
+  spawns game thread, enters render loop
+- Shutdown sequencing: game thread signals stop, renderer finishes current frame,
+  both threads join, renderer destroyed, EverQuest destroyed
+
+**Zone loading handoff:**
+The game thread publishes `PlayerZoneChanged` with zone data through the bridge.
+The renderer receives this event and manages its own loading thread (GL context
+transfer, `loadZoneSequential()`, entity/door registration). The game thread
+continues processing network packets during loading — zone loading no longer blocks
+game state updates.
 
 ### D22: Queue Synchronization
 
@@ -775,7 +1027,10 @@ This validates that the game state truly has no renderer dependencies.
 | HUD callback reads private EverQuest state | Replace with `PlayerStatsChanged` event pushed from game thread (D05) |
 | Collision ownership unclear for edge cases | Renderer owns all collision; game thread only does distance-based checks (zone lines, aggro range) |
 | Regression in headless mode | Null bridge or no bridge attached — game state runs unchanged, just no events consumed |
-| InitGraphics() complexity (~500 lines, 15+ callbacks, raw pointer coupling) | Split into 4 sub-units (D20a-D20d) for incremental decoupling |
+| InitGraphics() complexity (~800 lines, 25+ callbacks, 13 raw pointer passes) | Split into 5 sub-units (D20a-D20e) for incremental decoupling |
+| Zone loading pipeline complexity (LoadZoneGraphics + LoadZoneGraphicsOnLoadingThread) | Dedicated D19b unit; zone data flows through bridge events; renderer owns loading thread |
+| UpdateGraphics per-frame polls (target HP, time of day, camera, volume) | D20c converts polls to change-driven events before renderer ownership transfer |
+| Weapon skill state owned by renderer, queried by game thread (ZoneProcessEmote) | D17a fixes ownership: game state tracks weapon skills from spawn data |
 
 ---
 
@@ -796,6 +1051,9 @@ This validates that the game state truly has no renderer dependencies.
 - ~1500 lines for bridge interface + IrrlichtBridge (D03, D09-D13)
 - ~351 call sites in eq.cpp migrated from direct to event-based (D04-D08, D17-D19)
 - ~25+ callbacks replaced with intents (D14-D16, D20a)
-- ~8 raw pointer couplings removed (D20b)
+- ~13 raw pointer couplings removed (D20b)
+- Zone loading pipeline restructured (D19b, D20c)
+- UpdateGraphics per-frame polls converted to events (D20c)
+- Application class refactored to own renderer directly (D20c, D21)
 - Net code reduction in eq.cpp once direct calls removed (Phase 5)
-- 31 total units (original 26, +5 from splits, -1 from D23 deletion)
+- 34 total units (original 26, +9 from splits/additions, -1 from D23 deletion)

@@ -173,14 +173,17 @@ Full plan: `refactor/D_game_state_threading.md`.
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
-| D17 | Remove direct renderer calls from entity packet handlers | pending | |
-| D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | pending | |
+| D17a | Add missing entity event types + fix weapon skill state ownership | done | |
+| D17b | Remove direct renderer calls from entity packet handlers | done | |
+| D18a | Remove direct renderer calls from inventory/loot/vendor packet handlers | done | |
 | D18b | Remove direct renderer calls from bank/trade/trainer packet handlers | pending | |
-| D19 | Remove direct renderer calls from remaining handlers | pending | |
-| D20a | Remove callback lambdas from InitGraphics() | pending | |
+| D19a | Remove direct renderer calls from small handlers (chat, combat, door, world, weather, etc.) | pending | |
+| D19b | Remove direct renderer calls from zone lifecycle functions | pending | |
+| D20a | Remove callback lambdas + activate intent processing | pending | |
 | D20b | Remove raw pointer coupling from InitGraphics() | pending | |
-| D20c | Remove m_renderer from EverQuest | pending | |
+| D20c | Refactor UpdateGraphics / zone loading ownership | pending | |
 | D20d | Remove debug/toggle slash commands from EverQuest | pending | |
+| D20e | Remove m_renderer from EverQuest | pending | |
 
 ### Phase 6 — Thread Separation
 
