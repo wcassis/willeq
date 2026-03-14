@@ -31,13 +31,13 @@ public:
     SkillsWindow();
     ~SkillsWindow() = default;
 
-    // Set skill manager reference
-    void setSkillManager(EQ::SkillManager* mgr) { skillMgr_ = mgr; }
+    // D20b4: Push skill data directly (called by WindowManager from bridge events)
+    void setSkills(std::vector<EQ::SkillData> skills);
 
     // Position window in default location
     void positionDefault(int screenWidth, int screenHeight);
 
-    // Refresh skill list from manager
+    // Refresh skill list (uses local cached data)
     void refresh();
 
     // Rendering
@@ -73,7 +73,7 @@ private:
                         irr::gui::IGUIEnvironment* gui);
     void renderSkillRow(irr::video::IVideoDriver* driver,
                        irr::gui::IGUIEnvironment* gui,
-                       const EQ::SkillData* skill,
+                       const EQ::SkillData& skill,
                        int rowIndex,
                        int yPos);
     void renderActionButtons(irr::video::IVideoDriver* driver,
@@ -94,11 +94,8 @@ private:
     // Calculate visible rows
     int getVisibleRowCount() const;
 
-    // Skill manager reference
-    EQ::SkillManager* skillMgr_ = nullptr;
-
-    // Cached skill list (sorted)
-    std::vector<const EQ::SkillData*> skills_;
+    // D20b4: Local skill data cache (no SkillManager* pointer)
+    std::vector<EQ::SkillData> skills_;
 
     // Selection state
     int8_t selectedSkillId_ = -1;

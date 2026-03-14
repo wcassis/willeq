@@ -19,6 +19,10 @@ public:
     BuffWindow(EQ::BuffManager* buffMgr, ItemIconLoader* iconLoader);
     ~BuffWindow();
 
+    // D20b4: Push buff data directly (called by bridge handlers)
+    void setPlayerBuffs(std::vector<EQ::ActiveBuff> buffs);
+    void setTargetBuffs(uint16_t targetId, std::vector<EQ::ActiveBuff> buffs);
+
     // Rendering
     void render(irr::video::IVideoDriver* driver,
                 irr::gui::IGUIEnvironment* gui) override;
@@ -76,8 +80,9 @@ private:
     void showBuffTooltip(irr::gui::IGUIEnvironment* gui,
                         const EQ::ActiveBuff& buff, int x, int y);
 
-    // Managers
-    EQ::BuffManager* buffMgr_;
+    // D20b4: Local buff cache (no BuffManager* pointer)
+    std::vector<EQ::ActiveBuff> playerBuffs_;
+    std::vector<EQ::ActiveBuff> targetBuffs_;
     ItemIconLoader* iconLoader_;
 
     // Layout constants - initialized from UISettings

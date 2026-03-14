@@ -7,9 +7,19 @@
 namespace eqt {
 namespace ui {
 
-BuffWindow::BuffWindow(EQ::BuffManager* buffMgr, ItemIconLoader* iconLoader)
+void BuffWindow::setPlayerBuffs(std::vector<EQ::ActiveBuff> buffs) {
+    playerBuffs_ = std::move(buffs);
+    contentDirty_ = true;
+}
+
+void BuffWindow::setTargetBuffs(uint16_t targetId, std::vector<EQ::ActiveBuff> buffs) {
+    targetId_ = targetId;
+    targetBuffs_ = std::move(buffs);
+    contentDirty_ = true;
+}
+
+BuffWindow::BuffWindow(EQ::BuffManager* /* buffMgr - D20b4: no longer stored */, ItemIconLoader* iconLoader)
     : WindowBase(L"Buffs", 100, 100)  // Size calculated below
-    , buffMgr_(buffMgr)
     , iconLoader_(iconLoader)
 {
     // Initialize layout constants from UISettings
@@ -124,9 +134,9 @@ void BuffWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironm
         // Snapshot buff states and compare
         const std::vector<EQ::ActiveBuff>* buffs = nullptr;
         if (showingTarget_) {
-            buffs = buffMgr_ ? buffMgr_->getEntityBuffs(targetId_) : nullptr;
+            buffs = targetBuffs_.empty() ? nullptr : &targetBuffs_;
         } else {
-            buffs = buffMgr_ ? &buffMgr_->getPlayerBuffs() : nullptr;
+            buffs = playerBuffs_.empty() ? nullptr : &playerBuffs_;
         }
 
         // Ensure lastBuffStates_ has correct size
@@ -215,10 +225,6 @@ void BuffWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironm
 
 void BuffWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
-    if (!buffMgr_) {
-        return;
-    }
-
     irr::core::recti contentArea = getContentArea();
     int contentX = contentArea.UpperLeftCorner.X;
     int contentY = contentArea.UpperLeftCorner.Y;
@@ -226,9 +232,9 @@ void BuffWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIE
     // Get buffs to display
     const std::vector<EQ::ActiveBuff>* buffs = nullptr;
     if (showingTarget_) {
-        buffs = buffMgr_->getEntityBuffs(targetId_);
+        buffs = targetBuffs_.empty() ? nullptr : &targetBuffs_;
     } else {
-        buffs = &buffMgr_->getPlayerBuffs();
+        buffs = playerBuffs_.empty() ? nullptr : &playerBuffs_;
     }
 
     // Draw all slots
@@ -304,17 +310,9 @@ void BuffWindow::drawBuffSlot(irr::video::IVideoDriver* driver, irr::gui::IGUIEn
         shouldDrawIcon = false;
     }
 
-    if (shouldDrawIcon && iconLoader_ && buffMgr_) {
-        // Get spell icon from spell database
-        uint32_t iconId = 0;
-        EQ::SpellDatabase* spellDb = buffMgr_->getSpellDatabase();
-        if (spellDb) {
-            const EQ::SpellData* spell = spellDb->getSpell(buff.spell_id);
-            if (spell) {
-                iconId = spell->gem_icon;
-            }
-        }
-
+    if (shouldDrawIcon && iconLoader_) {
+        // D20b4: Use spell_id for icon lookup (simplified — no SpellDatabase access)
+        uint32_t iconId = buff.spell_id;
         irr::video::ITexture* icon = iconLoader_->getIcon(iconId);
         if (icon) {
             irr::core::dimension2du iconSize = icon->getOriginalSize();
@@ -486,16 +484,16 @@ void BuffWindow::showBuffTooltip(irr::gui::IGUIEnvironment* gui,
 
 const EQ::ActiveBuff* BuffWindow::getHoveredBuff() const
 {
-    if (hoveredSlot_ < 0 || !buffMgr_) {
+    if (hoveredSlot_ < 0) {
         return nullptr;
     }
 
     // Get buffs to search
     const std::vector<EQ::ActiveBuff>* buffs = nullptr;
     if (showingTarget_) {
-        buffs = buffMgr_->getEntityBuffs(targetId_);
+        buffs = targetBuffs_.empty() ? nullptr : &targetBuffs_;
     } else {
-        buffs = &buffMgr_->getPlayerBuffs();
+        buffs = playerBuffs_.empty() ? nullptr : &playerBuffs_;
     }
 
     if (!buffs) {

@@ -18163,52 +18163,21 @@ bool EverQuest::InitGraphics(int width, int height) {
 
 	// D20b2: Buff fade callback moved to SetupBuffFadeHandler() (called from constructor)
 
-	// Set up spell gem panel (D20b config only, callbacks removed by D20a)
-	if (m_spell_manager && m_renderer && m_renderer->getWindowManager()) {
-		auto* windowManager = m_renderer->getWindowManager();
-		windowManager->initSpellGemPanel(m_spell_manager.get());
-		LOG_DEBUG(MOD_SPELL, "Spell gem panel initialized");
-	}
-
-	// Set up buff window (D20b config only, callbacks removed by D20a)
-	if (m_buff_manager && m_renderer && m_renderer->getWindowManager()) {
-		auto* windowManager = m_renderer->getWindowManager();
-		windowManager->initBuffWindow(m_buff_manager.get());
-		LOG_DEBUG(MOD_SPELL, "Buff window initialized");
-	}
-
-	// Set up group window, player status, skills
+	// D20b4: Initialize UI windows via WindowManager.
+	// EverQuest* and BuffManager* parameters are no longer used by windows —
+	// group, player status, and pet windows receive data via bridge events.
+	// Manager pointers (spell, buff, skill) still used by spell gem panel,
+	// buff window, and skills window for polling.
 	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* windowManager = m_renderer->getWindowManager();
-		windowManager->initGroupWindow(this);
-		windowManager->initPlayerStatusWindow(this);
-		windowManager->initSkillsWindow(m_skill_manager.get());
-
-		// D20b2: Hotbar create, skill activated/update, and group accept callbacks
-		// removed. WindowManager handles hotbar create locally via bridge.
-		// Skill activation feedback via SkillActivationFeedback bridge event.
-		// Skill-up messages via SystemMessage bridge event.
-		// Group accept via GroupAcceptIntent.
-
-		LOG_DEBUG(MOD_MAIN, "Group window initialized");
-	}
-
-	// Set up pet window (D20a: pet command callback removed, intent handles it)
-	if (m_renderer && m_renderer->getWindowManager()) {
-		auto* windowManager = m_renderer->getWindowManager();
-		windowManager->initPetWindow(this, m_buff_manager.get());
-		LOG_DEBUG(MOD_MAIN, "Pet window initialized");
-	}
-
-	// D20b2: Hotbar activate callback removed. WindowManager pushes
-	// HotbarActivateIntent via bridge, handled in ProcessBridgeIntents().
-
-	// D20b3: Chat window coupling moved to WindowManager.
-	// Command registry forwarded via WindowManager. Entity names tracked by
-	// bridge from EntitySpawned/Despawned events. Link clicks handled locally.
-	if (m_renderer->getWindowManager()) {
-		m_renderer->getWindowManager()->setCommandRegistry(m_command_registry.get());
-		m_renderer->getWindowManager()->setPlayerName(m_character);
+		auto* wm = m_renderer->getWindowManager();
+		wm->setCommandRegistry(m_command_registry.get());
+		wm->setPlayerName(m_character);
+		wm->initSpellGemPanel(m_spell_manager.get());
+		wm->initBuffWindow(m_buff_manager.get());
+		wm->initGroupWindow(nullptr);
+		wm->initPlayerStatusWindow(nullptr);
+		wm->initSkillsWindow(m_skill_manager.get());
+		wm->initPetWindow(nullptr, nullptr);
 	}
 
 	m_graphics_initialized = true;

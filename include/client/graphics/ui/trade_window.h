@@ -45,8 +45,7 @@ public:
     uint32_t getPartnerSpawnId() const { return partnerSpawnId_; }
     const std::string& getPartnerName() const { return partnerName_; }
 
-    // TradeManager reference (set by WindowManager during init)
-    void setTradeManager(TradeManager* tradeMgr) { tradeManager_ = tradeMgr; }
+    // D20b4: TradeManager pointer removed — trade data flows via events
 
     // Own item slots (display what we're trading)
     void updateOwnSlot(int slot, const inventory::ItemInstance* item);
@@ -152,7 +151,7 @@ private:
     // References
     inventory::InventoryManager* inventoryManager_;
     WindowManager* windowManager_;
-    TradeManager* tradeManager_ = nullptr;
+    // D20b4: TradeManager* removed — was only null-checked, never called
 
     // UI state
     int16_t highlightedSlot_ = inventory::SLOT_INVALID;

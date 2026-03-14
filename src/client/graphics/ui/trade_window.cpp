@@ -258,7 +258,7 @@ const inventory::ItemInstance* TradeWindow::getDisplayedItem(int slot, bool isOw
 
     if (isOwn) {
         // Own items come from trade manager via inventory
-        if (tradeManager_ && inventoryManager_) {
+        if (inventoryManager_) {
             return inventoryManager_->getItem(inventory::TRADE_BEGIN + slot);
         }
         return nullptr;

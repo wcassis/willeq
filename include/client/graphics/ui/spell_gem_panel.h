@@ -9,7 +9,7 @@
 #include "client/graphics/ui/hotbar_window.h"  // For HotbarButtonType
 
 namespace EQ {
-class SpellManager;
+class SpellManager;  // D20b4: kept for WindowManager init API compatibility
 }
 
 namespace eqt {
@@ -47,10 +47,26 @@ struct GemSlotLayout {
     bool isHovered = false;
 };
 
+// D20b4: Per-gem cached state (populated from SpellGemChanged bridge events)
+struct CachedGemData {
+    uint32_t spellId = 0;
+    uint8_t gemState = 0;  // GemState enum value
+    uint32_t cooldownEndMs = 0;    // Absolute time when cooldown ends
+    uint32_t cooldownTotalMs = 0;  // Total cooldown duration
+    uint32_t memorizeEndMs = 0;    // Absolute time when memorize ends
+    uint32_t memorizeTotalMs = 0;  // Total memorize duration
+    std::string spellName;
+    uint32_t iconId = 0;
+};
+
 class SpellGemPanel {
 public:
     SpellGemPanel(EQ::SpellManager* spellMgr, ItemIconLoader* iconLoader);
     ~SpellGemPanel();
+
+    // D20b4: Push gem state from bridge events
+    void setGemData(uint8_t slot, const CachedGemData& data);
+    void setCurrentTimeMs(uint32_t timeMs) { currentTimeMs_ = timeMs; }
 
     // Position (typically right side of screen, vertical layout)
     void setPosition(int x, int y);
@@ -132,8 +148,9 @@ private:
     bool lastSpellbookHovered_ = false;
     bool lastPanelHovered_ = false;
 
-    // Managers
-    EQ::SpellManager* spellMgr_;
+    // D20b4: Local gem state cache (no SpellManager* pointer)
+    std::array<CachedGemData, EQ::MAX_SPELL_GEMS> gemData_{};
+    uint32_t currentTimeMs_ = 0;
     ItemIconLoader* iconLoader_;
 
     // State

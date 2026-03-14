@@ -1,7 +1,5 @@
 #include "client/graphics/ui/pet_window.h"
 #include "client/graphics/ui/item_icon_loader.h"
-#include "client/eq.h"
-#include "client/combat.h"
 #include "client/spell/spell_database.h"
 #include "client/spell/spell_data.h"
 #include "common/name_utils.h"
@@ -137,29 +135,38 @@ void PetWindow::positionDefault(int screenWidth, int screenHeight)
 
 void PetWindow::update()
 {
-    if (!eq_) {
-        hasPet_ = false;
-        return;
-    }
+    // D20b4: No-op — data pushed by bridge via setPetInfo/setPetButtonState/setPetBuffs
+}
 
-    hasPet_ = eq_->HasPet();
-    if (!hasPet_) {
+void PetWindow::setPetInfo(const std::string& name, uint8_t level, uint8_t hpPercent, bool hasPet)
+{
+    hasPet_ = hasPet;
+    if (hasPet) {
+        petName_ = EQT::toDisplayNameW(name);
+        petLevel_ = level;
+        hpPercent_ = hpPercent;
+    } else {
         petName_.clear();
         petLevel_ = 0;
         hpPercent_ = 0;
         manaPercent_ = 0;
-        return;
     }
+    contentDirty_ = true;
+}
 
-    // Get pet data from EverQuest
-    std::string name = eq_->GetPetName();
-    petName_ = EQT::toDisplayNameW(name);
-    petLevel_ = eq_->GetPetLevel();
-    hpPercent_ = eq_->GetPetHpPercent();
+void PetWindow::setPetButtonState(EQT::PetButton button, bool state)
+{
+    auto idx = static_cast<size_t>(button);
+    if (idx < buttonStates_.size()) {
+        buttonStates_[idx] = state;
+        contentDirty_ = true;
+    }
+}
 
-    // Pet mana not currently tracked - show 0 for now
-    // Could be added if server sends pet mana updates
-    manaPercent_ = 0;
+void PetWindow::setPetBuffs(const std::vector<EQ::ActiveBuff>& buffs)
+{
+    petBuffs_ = buffs;
+    contentDirty_ = true;
 }
 
 PetWindow::~PetWindow()
@@ -240,8 +247,8 @@ void PetWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironme
 
         // Check pet buff states
         bool hasExpiringBuff = false;
-        if (buffMgr_) {
-            const std::vector<EQ::ActiveBuff>& petBuffs = buffMgr_->getPetBuffs();
+        {
+            const std::vector<EQ::ActiveBuff>& petBuffs = petBuffs_;
             for (int i = 0; i < MAX_VISIBLE_BUFFS; i++) {
                 CachedPetBuff current{};
                 for (const auto& b : petBuffs) {
@@ -389,18 +396,15 @@ void PetWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUIEn
     for (const auto& button : buttons_) {
         // Check if button is in pressed/toggle state
         bool pressed = false;
-        if (button.isToggle && button.buttonId < EQT::PET_BUTTON_COUNT && eq_) {
-            pressed = eq_->GetPetButtonState(button.buttonId);
+        if (button.isToggle && button.buttonId < EQT::PET_BUTTON_COUNT) {
+            pressed = buttonStates_[static_cast<size_t>(button.buttonId)];
         }
 
         // Attack button requires a target to be enabled
         bool enabled = true;
         if (button.command == EQT::PET_ATTACK) {
-            if (eq_) {
-                CombatManager* combat = eq_->GetCombatManager();
-                enabled = combat && combat->HasTarget();
-            } else {
-                enabled = false;
+            {
+                enabled = hasTarget_;
             }
         }
 
@@ -515,23 +519,12 @@ bool PetWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bool 
             // Check if button is enabled
             bool enabled = true;
             if (button.command == EQT::PET_ATTACK) {
-                if (eq_) {
-                    CombatManager* combat = eq_->GetCombatManager();
-                    enabled = combat && combat->HasTarget();
-                } else {
-                    enabled = false;
-                }
+                enabled = hasTarget_;
             }
 
             if (enabled && commandCallback_) {
-                // Get target ID for attack command
+                // Target ID is resolved on game thread from PetCommandIntent
                 uint16_t targetId = 0;
-                if (button.command == EQT::PET_ATTACK && eq_) {
-                    CombatManager* combat = eq_->GetCombatManager();
-                    if (combat && combat->HasTarget()) {
-                        targetId = combat->GetTargetId();
-                    }
-                }
                 commandCallback_(button.command, targetId);
             }
             return true;
@@ -588,14 +581,11 @@ void PetWindow::updateFlashTimer(uint32_t currentTimeMs)
 
 const EQ::ActiveBuff* PetWindow::getHoveredPetBuff() const
 {
-    if (hoveredBuffSlot_ < 0 || !buffMgr_) {
+    if (hoveredBuffSlot_ < 0) {
         return nullptr;
     }
 
-    const std::vector<EQ::ActiveBuff>& petBuffs = buffMgr_->getPetBuffs();
-
-    // Find buff in hovered slot
-    for (const auto& buff : petBuffs) {
+    for (const auto& buff : petBuffs_) {
         if (buff.slot >= 0 && buff.slot == hoveredBuffSlot_) {
             return &buff;
         }
@@ -605,10 +595,6 @@ const EQ::ActiveBuff* PetWindow::getHoveredPetBuff() const
 
 void PetWindow::drawBuffRow(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
 {
-    if (!buffMgr_) {
-        return;
-    }
-
     irr::core::recti contentArea = getContentArea();
     int contentX = contentArea.UpperLeftCorner.X;
     int contentY = contentArea.UpperLeftCorner.Y;
@@ -617,7 +603,7 @@ void PetWindow::drawBuffRow(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvi
     int buffRowX = contentX + buffRowBounds_.UpperLeftCorner.X;
     int buffRowY = contentY + buffRowBounds_.UpperLeftCorner.Y;
 
-    const std::vector<EQ::ActiveBuff>& petBuffs = buffMgr_->getPetBuffs();
+    const std::vector<EQ::ActiveBuff>& petBuffs = petBuffs_;
 
     // Draw each buff slot
     for (size_t i = 0; i < buffSlots_.size(); i++) {
@@ -676,16 +662,9 @@ void PetWindow::drawBuffSlot(irr::video::IVideoDriver* driver, irr::gui::IGUIEnv
         shouldDrawIcon = false;
     }
 
-    if (shouldDrawIcon && iconLoader_ && buffMgr_) {
-        // Get spell icon from spell database
-        uint32_t iconId = 0;
-        EQ::SpellDatabase* spellDb = buffMgr_->getSpellDatabase();
-        if (spellDb) {
-            const EQ::SpellData* spell = spellDb->getSpell(buff.spell_id);
-            if (spell) {
-                iconId = spell->gem_icon;
-            }
-        }
+    if (shouldDrawIcon && iconLoader_) {
+        // D20b4: Use spell_id as icon lookup (icon loader resolves)
+        uint32_t iconId = buff.spell_id;
 
         irr::video::ITexture* icon = iconLoader_->getIcon(iconId);
         if (icon) {

@@ -10,9 +10,6 @@
 #include <string>
 #include <vector>
 
-// Forward declaration
-class EverQuest;
-
 namespace eqt {
 namespace ui {
 class ItemIconLoader;
@@ -40,11 +37,11 @@ public:
     PetWindow();
     ~PetWindow();
 
-    // Set EverQuest reference for pet data
-    void setEQ(EverQuest* eq) { eq_ = eq; }
-
-    // Set buff manager for pet buffs
-    void setBuffManager(EQ::BuffManager* buffMgr) { buffMgr_ = buffMgr; }
+    // D20b4: Data-push methods (called by bridge handlers)
+    void setPetInfo(const std::string& name, uint8_t level, uint8_t hpPercent, bool hasPet);
+    void setPetButtonState(EQT::PetButton button, bool state);
+    void setPetBuffs(const std::vector<EQ::ActiveBuff>& buffs);
+    void setHasTarget(bool hasTarget) { hasTarget_ = hasTarget; }
 
     // Set icon loader for buff icons
     void setIconLoader(ItemIconLoader* iconLoader) { iconLoader_ = iconLoader; }
@@ -143,11 +140,12 @@ private:
     uint8_t manaPercent_ = 100;
     bool hasPet_ = false;
 
-    // State
-    EverQuest* eq_ = nullptr;
+    // D20b4: Local state — no EverQuest* or BuffManager* pointers
+    bool hasTarget_ = false;
+    std::array<bool, static_cast<size_t>(EQT::PetButton::PET_BUTTON_COUNT)> buttonStates_{};
+    std::vector<EQ::ActiveBuff> petBuffs_;
 
-    // Buff management
-    EQ::BuffManager* buffMgr_ = nullptr;
+    // Buff display
     ItemIconLoader* iconLoader_ = nullptr;
     int hoveredBuffSlot_ = -1;
 

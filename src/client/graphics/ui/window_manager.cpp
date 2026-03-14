@@ -1214,7 +1214,7 @@ void WindowManager::setOnVendorClose(VendorCloseCallback callback) {
 void WindowManager::initTradeWindow(TradeManager* tradeMgr) {
     tradeManager_ = tradeMgr;
     tradeWindow_ = std::make_unique<TradeWindow>(invManager_, this);
-    tradeWindow_->setTradeManager(tradeMgr);
+    // D20b4: TradeManager pointer removed from TradeWindow — trade data flows via events
     tradeWindow_->setIconLookupCallback([this](uint32_t iconId) -> irr::video::ITexture* {
         return iconLoader_.getIcon(iconId);
     });
@@ -4264,14 +4264,10 @@ void WindowManager::setBuffCancelCallback(BuffCancelCallback callback) {
 // Group Window Management
 // ============================================================================
 
-void WindowManager::initGroupWindow(EverQuest* eq) {
-    if (!eq) {
-        LOG_WARN(MOD_UI, "Cannot initialize group window - EverQuest is null");
-        return;
-    }
-
+void WindowManager::initGroupWindow(EverQuest*) {
+    // D20b4: EverQuest* parameter retained for API compatibility but not used.
+    // GroupWindow receives data via bridge event push (setGroupState/setMemberData).
     groupWindow_ = std::make_unique<GroupWindow>();
-    groupWindow_->setEQ(eq);
     groupWindow_->positionDefault(screenWidth_, screenHeight_);
 
     // Apply saved layout position if available
@@ -4360,15 +4356,10 @@ void WindowManager::setGroupDeclineCallback(GroupDeclineCallback callback) {
 // Pet Window Management
 // ============================================================================
 
-void WindowManager::initPetWindow(EverQuest* eq, EQ::BuffManager* buffMgr) {
-    if (!eq) {
-        LOG_WARN(MOD_UI, "Cannot initialize pet window - EverQuest is null");
-        return;
-    }
-
+void WindowManager::initPetWindow(EverQuest*, EQ::BuffManager*) {
+    // D20b4: EverQuest* and BuffManager* parameters retained for API compatibility but not used.
+    // PetWindow receives data via bridge event push (setPetInfo/setPetButtonState/setPetBuffs).
     petWindow_ = std::make_unique<PetWindow>();
-    petWindow_->setEQ(eq);
-    petWindow_->setBuffManager(buffMgr);
     petWindow_->setIconLoader(&iconLoader_);
     petWindow_->positionDefault(screenWidth_, screenHeight_);
 
@@ -4389,7 +4380,7 @@ void WindowManager::initPetWindow(EverQuest* eq, EQ::BuffManager* buffMgr) {
         petWindow_->setCommandCallback(petCommandCallback_);
     }
 
-    LOG_DEBUG(MOD_UI, "Pet window initialized with BuffManager={}", buffMgr ? "yes" : "no");
+    LOG_DEBUG(MOD_UI, "Pet window initialized");
 }
 
 void WindowManager::togglePetWindow() {
@@ -4583,13 +4574,20 @@ void WindowManager::clearHotbarCursor() {
 // ============================================================================
 
 void WindowManager::initSkillsWindow(EQ::SkillManager* skillMgr) {
-    if (!skillMgr) {
-        LOG_WARN(MOD_UI, "Cannot initialize skills window - SkillManager is null");
-        return;
-    }
-
+    // D20b4: skillMgr parameter kept for API compatibility.
+    // SkillsWindow no longer holds SkillManager* — data pushed via setSkills().
+    // Initial population happens when SkillsRefreshed event fires.
     skillsWindow_ = std::make_unique<SkillsWindow>();
-    skillsWindow_->setSkillManager(skillMgr);
+    // Populate initial skill data if manager available
+    if (skillMgr) {
+        auto allSkills = skillMgr->getAllSkills();
+        std::vector<EQ::SkillData> skillCopies;
+        skillCopies.reserve(allSkills.size());
+        for (const auto* s : allSkills) {
+            if (s) skillCopies.push_back(*s);
+        }
+        skillsWindow_->setSkills(std::move(skillCopies));
+    }
     skillsWindow_->setSettingsKey("skills");
 
     // Load position from settings or use default
@@ -5033,14 +5031,10 @@ void WindowManager::handleTradeskillSlotHover(int16_t slotId, int mouseX, int mo
 // Player Status Window Management
 // ============================================================================
 
-void WindowManager::initPlayerStatusWindow(EverQuest* eq) {
-    if (!eq) {
-        LOG_WARN(MOD_UI, "Cannot initialize player status window - EverQuest is null");
-        return;
-    }
-
+void WindowManager::initPlayerStatusWindow(EverQuest*) {
+    // D20b4: EverQuest* parameter retained for API compatibility but not used.
+    // PlayerStatusWindow receives data via bridge event push.
     playerStatusWindow_ = std::make_unique<PlayerStatusWindow>();
-    playerStatusWindow_->setEQ(eq);
 
     // Apply position from settings
     const auto& settings = UISettings::instance().playerStatus();

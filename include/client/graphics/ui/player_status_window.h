@@ -5,9 +5,6 @@
 #include <cstdint>
 #include <string>
 
-// Forward declaration
-class EverQuest;
-
 namespace eqt {
 namespace ui {
 
@@ -28,10 +25,15 @@ public:
     PlayerStatusWindow();
     ~PlayerStatusWindow();
 
-    // Set EverQuest reference for player data
-    void setEQ(EverQuest* eq) { eq_ = eq; }
+    // D20b4: Data-push methods (called by bridge handlers)
+    void setPlayerName(const std::string& name);
+    void setPlayerStats(uint32_t curHP, uint32_t maxHP, uint32_t curMana, uint32_t maxMana,
+                        uint32_t curEndurance, uint32_t maxEndurance);
+    void setTarget(const std::string& name, uint8_t hpPercent, uint16_t curMana, uint16_t maxMana);
+    void clearTarget();
+    void setAutoAttacking(bool attacking) { isAutoAttacking_ = attacking; contentDirty_ = true; }
 
-    // Update from player state (call each frame)
+    // Update from player state (call each frame) — now uses local cached data
     void update();
 
     // Target casting spell tracking
@@ -147,8 +149,10 @@ private:
     std::wstring lastCachedPlayerName_;
     bool lastWindowHovered_ = false;
 
-    // EverQuest reference
-    EverQuest* eq_ = nullptr;
+    // Combat state for border animation
+    bool isAutoAttacking_ = false;
+
+    // D20b4: No EverQuest* pointer — data pushed by bridge
 
     // Auto-attack border animation
     uint32_t lastAnimationTime_ = 0;

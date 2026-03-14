@@ -1,7 +1,6 @@
 #include "client/graphics/ui/spell_gem_panel.h"
 #include "client/graphics/ui/item_icon_loader.h"
 #include "client/graphics/ui/ui_settings.h"
-#include "client/spell/spell_manager.h"
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <set>
@@ -17,9 +16,14 @@ SpellGemPanel::~SpellGemPanel()
     }
 }
 
-SpellGemPanel::SpellGemPanel(EQ::SpellManager* spellMgr, ItemIconLoader* iconLoader)
-    : spellMgr_(spellMgr)
-    , iconLoader_(iconLoader)
+void SpellGemPanel::setGemData(uint8_t slot, const CachedGemData& data) {
+    if (slot >= EQ::MAX_SPELL_GEMS) return;
+    gemData_[slot] = data;
+    contentDirty_ = true;
+}
+
+SpellGemPanel::SpellGemPanel(EQ::SpellManager* /* spellMgr - D20b4: no longer stored */, ItemIconLoader* iconLoader)
+    : iconLoader_(iconLoader)
     , position_(0, 0)
 {
     // Initialize layout constants from UISettings
@@ -142,10 +146,10 @@ void SpellGemPanel::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvir
         // RTT path: check dirty, render to texture, blit
 
         // Check dirty: spell IDs, gem states (transitions only), hover state
-        if (spellMgr_ && !contentDirty_) {
+        if (!contentDirty_) {
             for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
-                uint32_t spellId = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(i));
-                int gemState = static_cast<int>(spellMgr_->getGemState(static_cast<uint8_t>(i)));
+                uint32_t spellId = gemData_[i].spellId;
+                int gemState = static_cast<int>(gemData_[i].gemState);
                 if (spellId != lastSpellIds_[i] || gemState != lastGemStates_[i]) {
                     contentDirty_ = true;
                     break;
@@ -173,10 +177,10 @@ void SpellGemPanel::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvir
                 contentRT_ = nullptr;
             } else {
                 // Save state for dirty detection
-                if (spellMgr_) {
+                {
                     for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
-                        lastSpellIds_[i] = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(i));
-                        lastGemStates_[i] = static_cast<int>(spellMgr_->getGemState(static_cast<uint8_t>(i)));
+                        lastSpellIds_[i] = gemData_[i].spellId;
+                        lastGemStates_[i] = static_cast<int>(gemData_[i].gemState);
                     }
                 }
                 lastHoveredGem_ = hoveredGem_;
@@ -263,22 +267,28 @@ void SpellGemPanel::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvir
 
 void SpellGemPanel::renderDynamicOverlays(irr::video::IVideoDriver* driver)
 {
-    if (!spellMgr_) return;
-
     for (int i = 0; i < EQ::MAX_SPELL_GEMS; i++) {
-        EQ::GemState state = spellMgr_->getGemState(static_cast<uint8_t>(i));
+        auto gemState = static_cast<EQ::GemState>(gemData_[i].gemState);
 
-        if (state == EQ::GemState::Refresh) {
-            float progress = spellMgr_->getGemCooldownProgress(static_cast<uint8_t>(i));
+        if (gemState == EQ::GemState::Refresh) {
+            float progress = 0.0f;
+            if (gemData_[i].cooldownTotalMs > 0 && currentTimeMs_ < gemData_[i].cooldownEndMs) {
+                uint32_t remaining = gemData_[i].cooldownEndMs - currentTimeMs_;
+                progress = static_cast<float>(remaining) / gemData_[i].cooldownTotalMs;
+            }
             drawCooldownOverlay(driver, gems_[i], progress);
         }
 
-        if (state == EQ::GemState::MemorizeProgress) {
-            float progress = spellMgr_->getMemorizeProgress(static_cast<uint8_t>(i));
+        if (gemState == EQ::GemState::MemorizeProgress) {
+            float progress = 0.0f;
+            if (gemData_[i].memorizeTotalMs > 0 && currentTimeMs_ < gemData_[i].memorizeEndMs) {
+                uint32_t remaining = gemData_[i].memorizeEndMs - currentTimeMs_;
+                progress = 1.0f - (static_cast<float>(remaining) / gemData_[i].memorizeTotalMs);
+            }
             drawMemorizeProgress(driver, gems_[i], progress);
         }
 
-        if (state == EQ::GemState::Casting) {
+        if (gemState == EQ::GemState::Casting) {
             drawCastingHighlight(driver, gems_[i]);
         }
     }
@@ -287,12 +297,8 @@ void SpellGemPanel::renderDynamicOverlays(irr::video::IVideoDriver* driver)
 void SpellGemPanel::drawGemBase(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui,
                                 uint8_t slot, const GemSlotLayout& gem)
 {
-    if (!spellMgr_) {
-        return;
-    }
-
-    uint32_t spellId = spellMgr_->getMemorizedSpell(slot);
-    EQ::GemState state = spellMgr_->getGemState(slot);
+    uint32_t spellId = gemData_[slot].spellId;
+    auto state = static_cast<EQ::GemState>(gemData_[slot].gemState);
 
     // Calculate absolute position (using current position_, which is origin during RTT render)
     irr::core::recti absRect(
@@ -338,30 +344,17 @@ void SpellGemPanel::drawGemBase(irr::video::IVideoDriver* driver, irr::gui::IGUI
         irr::video::SColor(255, 80, 80, 100);
     driver->draw2DRectangleOutline(absRect, borderColor);
 
-    // Draw spell icon if memorized
+    // Draw spell icon if memorized (D20b4: use cached icon ID)
     if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
-        const EQ::SpellData* spell = spellMgr_->getSpell(spellId);
-        if (!spell) {
-            static std::set<uint32_t> loggedMissing;
-            if (loggedMissing.find(spellId) == loggedMissing.end()) {
-                LOG_WARN(MOD_UI, "SpellGem slot {} - spell ID {} not found in database", slot, spellId);
-                loggedMissing.insert(spellId);
-            }
-        }
-        if (spell && iconLoader_) {
-            static std::set<uint8_t> loggedSlots;
-            if (loggedSlots.find(slot) == loggedSlots.end()) {
-                LOG_DEBUG(MOD_UI, "SpellGem slot {} spell '{}' (ID {}) requesting gem_icon {}",
-                         slot, spell->name, spellId, spell->gem_icon);
-                loggedSlots.insert(slot);
-            }
-            irr::video::ITexture* icon = iconLoader_->getIcon(spell->gem_icon);
+        uint32_t iconId = gemData_[slot].iconId;
+        if (iconId != 0 && iconLoader_) {
+            irr::video::ITexture* icon = iconLoader_->getIcon(iconId);
             if (!icon) {
-                static std::set<uint16_t> loggedMissingIcons;
-                if (loggedMissingIcons.find(spell->gem_icon) == loggedMissingIcons.end()) {
-                    LOG_WARN(MOD_UI, "SpellGem slot {} spell '{}' (ID {}) - icon not found for gem_icon {}",
-                             slot, spell->name, spellId, spell->gem_icon);
-                    loggedMissingIcons.insert(spell->gem_icon);
+                static std::set<uint32_t> loggedMissingIcons;
+                if (loggedMissingIcons.find(iconId) == loggedMissingIcons.end()) {
+                    LOG_WARN(MOD_UI, "SpellGem slot {} spell '{}' (ID {}) - icon not found for iconId {}",
+                             slot, gemData_[slot].spellName, spellId, iconId);
+                    loggedMissingIcons.insert(iconId);
                 }
             }
             if (icon) {
@@ -581,14 +574,11 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
 
         // Ctrl+click to pickup spell for hotbar
         if (ctrl && !shift) {
-            if (spellMgr_ && hotbarPickupCallback_) {
-                uint32_t spellId = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(gemIndex));
+            if (hotbarPickupCallback_) {
+                uint32_t spellId = gemData_[gemIndex].spellId;
                 if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
-                    const EQ::SpellData* spell = spellMgr_->getSpell(spellId);
-                    if (spell) {
-                        hotbarPickupCallback_(HotbarButtonType::Spell, spellId,
-                                             "", spell->gem_icon);
-                    }
+                    hotbarPickupCallback_(HotbarButtonType::Spell, spellId,
+                                         "", gemData_[gemIndex].iconId);
                 }
             }
             return true;
@@ -603,10 +593,10 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
         }
 
         // Check if gem is clickable (not on cooldown or empty)
-        if (spellMgr_) {
-            EQ::GemState state = spellMgr_->getGemState(static_cast<uint8_t>(gemIndex));
-            LOG_DEBUG(MOD_UI, "SpellGemPanel: gem {} state={} spellMgr_={:p}",
-                gemIndex + 1, static_cast<int>(state), static_cast<void*>(spellMgr_));
+        {
+            auto state = static_cast<EQ::GemState>(gemData_[gemIndex].gemState);
+            LOG_DEBUG(MOD_UI, "SpellGemPanel: gem {} state={}",
+                gemIndex + 1, static_cast<int>(state));
             if (state == EQ::GemState::Refresh || state == EQ::GemState::Empty ||
                 state == EQ::GemState::MemorizeProgress) {
                 // Gem is on cooldown, empty, or memorizing - don't cast
@@ -616,8 +606,6 @@ bool SpellGemPanel::handleMouseDown(int x, int y, bool leftButton, bool shift, b
                 return true;  // Still consume the click
             }
             LOG_DEBUG(MOD_UI, "SpellGem {} clicked: proceeding to castGem", gemIndex + 1);
-        } else {
-            LOG_WARN(MOD_UI, "SpellGemPanel: spellMgr_ is null, calling castGem anyway");
         }
         // Left-click to cast
         castGem(static_cast<uint8_t>(gemIndex));
@@ -673,8 +661,8 @@ bool SpellGemPanel::handleMouseMove(int x, int y)
             gems_[newHoveredGem].isHovered = true;
 
             // Trigger hover callback
-            if (hoverCallback_ && spellMgr_) {
-                uint32_t spellId = spellMgr_->getMemorizedSpell(static_cast<uint8_t>(newHoveredGem));
+            if (hoverCallback_) {
+                uint32_t spellId = gemData_[newHoveredGem].spellId;
                 if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
                     hoverCallback_(static_cast<uint8_t>(newHoveredGem), spellId, x, y);
                 }

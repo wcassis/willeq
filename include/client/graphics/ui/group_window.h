@@ -7,9 +7,6 @@
 #include <functional>
 #include <string>
 
-// Forward declaration
-class EverQuest;
-
 namespace eqt {
 namespace ui {
 
@@ -38,8 +35,14 @@ public:
     GroupWindow();
     ~GroupWindow();
 
-    // Set EverQuest reference for group data
-    void setEQ(EverQuest* eq) { eq_ = eq; }
+    // D20b4: Data-push methods (called by bridge handlers)
+    void setPlayerName(const std::string& name) { playerName_ = name; }
+    void setGroupState(bool inGroup, bool isLeader, const std::string& leaderName, int memberCount);
+    void setMemberData(int index, const std::string& name, uint8_t hpPercent,
+                       uint8_t manaPercent, bool inZone, bool isLeader);
+    void clearMembers();
+    void setTargetInfo(const std::string& name, bool isPlayer) { targetName_ = name; targetIsPlayer_ = isPlayer; }
+    void clearTargetInfo() { targetName_.clear(); targetIsPlayer_ = false; }
 
     // Position below buff window
     void positionDefault(int screenWidth, int screenHeight);
@@ -145,8 +148,13 @@ private:
     bool lastShowingPendingInvite_ = false;
     bool lastWindowHovered_ = false;
 
-    // State
-    EverQuest* eq_ = nullptr;
+    // Local state (D20b4: no EverQuest* pointer)
+    std::string playerName_;
+    std::string targetName_;
+    bool targetIsPlayer_ = false;
+    bool inGroup_ = false;
+    bool isLeader_ = false;
+    int memberCount_ = 0;
     bool showingPendingInvite_ = false;
     std::string pendingInviterName_;
 

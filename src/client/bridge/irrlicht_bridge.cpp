@@ -8,6 +8,8 @@
 #include "client/graphics/ui/group_window.h"
 #include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/spell_book_window.h"
+#include "client/graphics/ui/player_status_window.h"
+#include "client/pet_constants.h"
 #include "common/logging.h"
 #include <ctime>
 #include <memory>
@@ -29,12 +31,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
     case state::GameEventType::PlayerStatsChanged:
-        // D10: PlayerStatsChanged carries HP/mana/endurance/level only.
-        // The renderer's updateCharacterStats() requires all stats (AC, ATK,
-        // attributes, resistances, weight, currency) which arrive via separate
-        // events (EquipmentStatsChanged, CurrencyChanged — D11a scope).
-        // Full bridge-driven stat updates will be wired when all events are combined.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerStatsChanged (partial — awaiting D11a)");
+        if (renderer_) {
+            auto& d = std::get<state::PlayerStatsChangedData>(event.data);
+            auto* wm = renderer_->getWindowManager();
+            if (wm && wm->getPlayerStatusWindow()) {
+                wm->getPlayerStatusWindow()->setPlayerStats(
+                    d.curHP, d.maxHP, d.curMana, d.maxMana, d.curEndurance, d.maxEndurance);
+            }
+        }
         break;
     case state::GameEventType::PlayerPositionStateChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: PlayerPositionStateChanged");
@@ -266,8 +270,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::TargetChanged:
         if (renderer_) {
             auto& d = std::get<state::TargetChangedData>(event.data);
+            // D20b4: Push target info to windows that need it
+            auto* wm = renderer_->getWindowManager();
             if (d.spawnId == 0) {
                 renderer_->clearCurrentTarget();
+                if (wm) {
+                    if (wm->getGroupWindow()) wm->getGroupWindow()->clearTargetInfo();
+                    if (wm->getPlayerStatusWindow()) wm->getPlayerStatusWindow()->clearTarget();
+                }
             } else {
                 EQT::Graphics::TargetInfo info;
                 info.spawnId = d.spawnId;
@@ -287,6 +297,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                     info.equipmentTint[i] = d.equipmentTint[i];
                 }
                 renderer_->setCurrentTargetInfo(info);
+                // D20b4: Push target info to windows
+                if (wm) {
+                    bool isPlayer = (d.npcType == 0);
+                    if (wm->getGroupWindow()) wm->getGroupWindow()->setTargetInfo(d.name, isPlayer);
+                    if (wm->getPlayerStatusWindow()) {
+                        wm->getPlayerStatusWindow()->setTarget(d.name, d.hpPercent, 0, 0);
+                    }
+                }
             }
         }
         break;
@@ -320,15 +338,25 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             if (wm) {
                 auto* groupWindow = wm->getGroupWindow();
                 if (groupWindow) {
-                    // Hide pending invite on any group state change (join, disband, cancel)
+                    auto& d = std::get<state::GroupChangedData>(event.data);
+                    groupWindow->setGroupState(d.inGroup, d.isLeader, d.leaderName, d.memberCount);
                     groupWindow->hidePendingInvite();
                 }
             }
         }
         break;
     case state::GameEventType::GroupMemberUpdated:
-        // GroupWindow polls member data via update() each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupMemberUpdated");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto* groupWindow = wm->getGroupWindow();
+                if (groupWindow) {
+                    auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
+                    groupWindow->setMemberData(d.memberIndex, d.name, d.hpPercent,
+                        d.manaPercent, d.inZone, false);
+                }
+            }
+        }
         break;
     case state::GameEventType::GroupInviteReceived:
         if (renderer_) {
@@ -357,6 +385,9 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto* wm = renderer_->getWindowManager();
             if (wm) {
+                auto& d = std::get<state::PetCreatedData>(event.data);
+                auto* pw = wm->getPetWindow();
+                if (pw) pw->setPetInfo(d.name, d.level, 100, true);
                 wm->openPetWindow();
             }
         }
@@ -365,17 +396,31 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto* wm = renderer_->getWindowManager();
             if (wm) {
+                auto* pw = wm->getPetWindow();
+                if (pw) pw->setPetInfo("", 0, 0, false);
                 wm->closePetWindow();
             }
         }
         break;
     case state::GameEventType::PetStatsChanged:
-        // PetWindow polls pet stats via update() each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PetStatsChanged");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::PetStatsChangedData>(event.data);
+                auto* pw = wm->getPetWindow();
+                if (pw) pw->setPetInfo("", 0, d.hpPercent, true);
+            }
+        }
         break;
     case state::GameEventType::PetButtonStateChanged:
-        // PetWindow polls button state via update() each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: PetButtonStateChanged");
+        if (renderer_) {
+            auto* wm = renderer_->getWindowManager();
+            if (wm) {
+                auto& d = std::get<state::PetButtonStateChangedData>(event.data);
+                auto* pw = wm->getPetWindow();
+                if (pw) pw->setPetButtonState(static_cast<EQT::PetButton>(d.button), d.state);
+            }
+        }
         break;
 
     // Window events (D11b, D11c, D12)

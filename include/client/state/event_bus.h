@@ -611,6 +611,10 @@ struct SpellGemChangedData {
     uint32_t spellId;
     uint8_t gemState;  // SpellGemState value
     uint32_t cooldownRemainingMs;
+    uint32_t cooldownTotalMs;       // Total cooldown duration (for progress computation)
+    uint32_t memorizeTotalMs;       // Total memorize duration (for progress computation)
+    std::string spellName;          // Spell name (for tooltip/display)
+    uint32_t iconId;                // Spell gem icon ID
 };
 
 struct CastingStateChangedData {

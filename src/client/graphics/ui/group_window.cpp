@@ -1,6 +1,4 @@
 #include "client/graphics/ui/group_window.h"
-#include "client/eq.h"
-#include "client/combat.h"
 #include "common/name_utils.h"
 
 namespace eqt {
@@ -130,34 +128,66 @@ void GroupWindow::positionDefault(int screenWidth, int screenHeight)
 
 void GroupWindow::update()
 {
-    if (!eq_) return;
+    // D20b4: No-op — member data is pushed by bridge via setGroupState/setMemberData
+}
 
-    // Clear all slots first
+void GroupWindow::setGroupState(bool inGroup, bool isLeader, const std::string& leaderName, int memberCount)
+{
+    inGroup_ = inGroup;
+    isLeader_ = isLeader;
+    memberCount_ = memberCount;
+    if (!inGroup) {
+        clearMembers();
+    }
+    contentDirty_ = true;
+}
+
+void GroupWindow::setMemberData(int index, const std::string& name, uint8_t hpPercent,
+                                 uint8_t manaPercent, bool inZone, bool isLeader)
+{
+    // Skip self — only show other members
+    if (name == playerName_) return;
+
+    // Find first empty slot or matching slot
+    int targetSlot = -1;
+    for (int i = 0; i < MAX_MEMBERS; i++) {
+        if (!memberSlots_[i].isEmpty && memberSlots_[i].name == EQT::toDisplayNameW(name)) {
+            targetSlot = i;
+            break;
+        }
+    }
+    if (targetSlot < 0) {
+        // Find first empty slot
+        for (int i = 0; i < MAX_MEMBERS; i++) {
+            if (memberSlots_[i].isEmpty) {
+                targetSlot = i;
+                break;
+            }
+        }
+    }
+    if (targetSlot < 0) return;
+
+    auto& slot = memberSlots_[targetSlot];
+    slot.isEmpty = false;
+    slot.name = EQT::toDisplayNameW(name);
+    slot.hpPercent = hpPercent;
+    slot.manaPercent = manaPercent;
+    slot.isLeader = isLeader;
+    slot.inZone = inZone;
+    contentDirty_ = true;
+}
+
+void GroupWindow::clearMembers()
+{
     for (auto& slot : memberSlots_) {
         slot.isEmpty = true;
         slot.name.clear();
+        slot.hpPercent = 100;
+        slot.manaPercent = 100;
+        slot.isLeader = false;
+        slot.inZone = false;
     }
-
-    if (!eq_->IsInGroup()) {
-        return;
-    }
-
-    // Populate from EverQuest group state (skip self, show other 5 members)
-    std::string myName = eq_->GetMyName();
-    int slotIndex = 0;
-    for (int i = 0; i < 6 && slotIndex < MAX_MEMBERS; i++) {
-        const GroupMember* member = eq_->GetGroupMember(i);
-        if (member && !member->name.empty() && member->name != myName) {
-            auto& slot = memberSlots_[slotIndex];
-            slot.isEmpty = false;
-            slot.name = EQT::toDisplayNameW(member->name);
-            slot.hpPercent = member->hp_percent;
-            slot.manaPercent = member->mana_percent;
-            slot.isLeader = member->is_leader;
-            slot.inZone = member->in_zone;
-            slotIndex++;
-        }
-    }
+    contentDirty_ = true;
 }
 
 void GroupWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUIEnvironment* gui)
@@ -273,7 +303,7 @@ void GroupWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUI
     }
 
     // Draw buttons
-    bool canDisband = eq_ && eq_->IsInGroup();
+    bool canDisband = inGroup_;
 
     // Invite/Kick button logic:
     // - Default: "Invite" (disabled until player targeted)
@@ -281,7 +311,7 @@ void GroupWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUI
     std::wstring inviteLabel = L"Invite";
     bool inviteEnabled = false;
 
-    bool isLeader = eq_ && eq_->IsGroupLeader();
+    bool isLeader = isLeader_;
     bool targetIsGroupMember = isTargetGroupMember();
     bool targetIsPlayer = hasPlayerTarget();
 
@@ -293,7 +323,7 @@ void GroupWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUI
         // Show Invite button when targeting a player (not in group)
         inviteLabel = L"Invite";
         // Can only invite if not in group, or if leader with room
-        bool canInvite = !eq_->IsInGroup() || (isLeader && eq_->GetGroupMemberCount() < 6);
+        bool canInvite = !inGroup_ || (isLeader && memberCount_ < 6);
         inviteEnabled = canInvite && !targetIsGroupMember;
     }
 
@@ -306,7 +336,7 @@ void GroupWindow::renderContent(irr::video::IVideoDriver* driver, irr::gui::IGUI
     drawButton(driver, gui, inviteAbs, inviteLabel, inviteButtonHovered_, !inviteEnabled);
 
     // Disband/Leave button
-    std::wstring disbandLabel = (eq_ && eq_->IsGroupLeader()) ? L"Disband" : L"Leave";
+    std::wstring disbandLabel = isLeader_ ? L"Disband" : L"Leave";
 
     irr::core::recti disbandAbs(
         contentX + disbandButtonBounds_.UpperLeftCorner.X,
@@ -535,7 +565,7 @@ bool GroupWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, boo
             contentArea.UpperLeftCorner.Y + inviteButtonBounds_.LowerRightCorner.Y
         );
         if (inviteAbs.isPointInside(clickPos)) {
-            bool isLeader = eq_ && eq_->IsGroupLeader();
+            bool isLeader = isLeader_;
             bool targetIsGroupMember = isTargetGroupMember();
             bool targetIsPlayer = hasPlayerTarget();
 
@@ -546,7 +576,7 @@ bool GroupWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, boo
                 }
             } else if (targetIsPlayer) {
                 // Invite mode (only if enabled)
-                bool canInvite = !eq_->IsInGroup() || (isLeader && eq_->GetGroupMemberCount() < 6);
+                bool canInvite = !inGroup_ || (isLeader && memberCount_ < 6);
                 if (canInvite && !targetIsGroupMember && inviteCallback_) {
                     inviteCallback_();
                 }
@@ -562,7 +592,7 @@ bool GroupWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, boo
             contentArea.UpperLeftCorner.Y + disbandButtonBounds_.LowerRightCorner.Y
         );
         if (disbandAbs.isPointInside(clickPos)) {
-            if (disbandCallback_ && eq_ && eq_->IsInGroup()) {
+            if (disbandCallback_ && inGroup_) {
                 disbandCallback_();
             }
             return true;
@@ -633,31 +663,16 @@ void GroupWindow::hidePendingInvite()
 
 bool GroupWindow::hasPlayerTarget() const
 {
-    if (!eq_) return false;
-
-    CombatManager* combat = eq_->GetCombatManager();
-    if (!combat || !combat->HasTarget()) return false;
-
-    uint16_t targetId = combat->GetTargetId();
-    const auto& entities = eq_->GetEntities();
-    auto it = entities.find(targetId);
-    if (it == entities.end()) return false;
-
-    // npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
-    return it->second.npc_type == 0;
+    return targetIsPlayer_ && !targetName_.empty();
 }
 
 bool GroupWindow::isTargetGroupMember() const
 {
-    if (!eq_ || !eq_->IsInGroup()) return false;
+    if (!inGroup_ || targetName_.empty()) return false;
 
-    std::string targetName = getTargetName();
-    if (targetName.empty()) return false;
-
-    // Check if target is in our group
-    for (int i = 0; i < 6; i++) {
-        const GroupMember* member = eq_->GetGroupMember(i);
-        if (member && !member->name.empty() && member->name == targetName) {
+    std::wstring targetNameW = EQT::toDisplayNameW(targetName_);
+    for (int i = 0; i < MAX_MEMBERS; i++) {
+        if (!memberSlots_[i].isEmpty && memberSlots_[i].name == targetNameW) {
             return true;
         }
     }
@@ -666,17 +681,7 @@ bool GroupWindow::isTargetGroupMember() const
 
 std::string GroupWindow::getTargetName() const
 {
-    if (!eq_) return "";
-
-    CombatManager* combat = eq_->GetCombatManager();
-    if (!combat || !combat->HasTarget()) return "";
-
-    uint16_t targetId = combat->GetTargetId();
-    const auto& entities = eq_->GetEntities();
-    auto it = entities.find(targetId);
-    if (it == entities.end()) return "";
-
-    return it->second.name;
+    return targetName_;
 }
 
 } // namespace ui

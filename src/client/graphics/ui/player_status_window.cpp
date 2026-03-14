@@ -1,6 +1,4 @@
 #include "client/graphics/ui/player_status_window.h"
-#include "client/eq.h"
-#include "client/combat.h"
 #include "common/name_utils.h"
 #include <sstream>
 #include <iomanip>
@@ -86,86 +84,63 @@ void PlayerStatusWindow::ensureContentRT(irr::video::IVideoDriver* driver)
     }
 }
 
+// D20b4: Data-push methods — called by bridge handlers
+void PlayerStatusWindow::setPlayerName(const std::string& name)
+{
+    std::wstring wname(name.begin(), name.end());
+    if (playerName_ != wname) {
+        playerName_ = wname;
+        cachedContentWidth_ = 0;
+        contentDirty_ = true;
+    }
+}
+
+void PlayerStatusWindow::setPlayerStats(uint32_t curHP, uint32_t maxHP,
+    uint32_t curMana, uint32_t maxMana, uint32_t curEndurance, uint32_t maxEndurance)
+{
+    currentHP_ = curHP;
+    maxHP_ = maxHP;
+    currentMana_ = curMana;
+    maxMana_ = maxMana;
+    currentStamina_ = curEndurance;
+    maxStamina_ = maxEndurance;
+    contentDirty_ = true;
+}
+
+void PlayerStatusWindow::setTarget(const std::string& name, uint8_t hpPercent,
+    uint16_t curMana, uint16_t maxMana)
+{
+    hasTarget_ = true;
+    std::wstring wname = EQT::toDisplayNameW(name);
+    if (targetName_ != wname) {
+        targetName_ = wname;
+        cachedContentWidth_ = 0;
+    }
+    targetHpPercent_ = hpPercent;
+    targetCurrentMana_ = curMana;
+    targetMaxMana_ = maxMana;
+    contentDirty_ = true;
+}
+
+void PlayerStatusWindow::clearTarget()
+{
+    if (hasTarget_ || !targetName_.empty()) {
+        cachedContentWidth_ = 0;
+    }
+    hasTarget_ = false;
+    targetName_.clear();
+    targetHpPercent_ = 0;
+    targetCurrentMana_ = 0;
+    targetMaxMana_ = 0;
+    targetCastingSpell_.clear();
+    contentDirty_ = true;
+}
+
 void PlayerStatusWindow::update()
 {
-    if (!eq_) {
-        return;
-    }
-
-    // Get player name
-    std::string firstName = eq_->GetMyName();
-    std::string lastName = eq_->GetMyLastName();
-
-    // Build full name
-    std::wstring fullName;
-    for (char c : firstName) {
-        fullName += static_cast<wchar_t>(c);
-    }
-    if (!lastName.empty()) {
-        fullName += L" ";
-        for (char c : lastName) {
-            fullName += static_cast<wchar_t>(c);
-        }
-    }
-
-    // Invalidate cache if player name changed
-    if (playerName_ != fullName) {
-        playerName_ = fullName;
-        cachedContentWidth_ = 0;  // Force recalculation
-    }
-
-    // Get vital stats
-    currentHP_ = eq_->GetCurrentHP();
-    maxHP_ = eq_->GetMaxHP();
-    currentMana_ = eq_->GetCurrentMana();
-    maxMana_ = eq_->GetMaxMana();
-    currentStamina_ = eq_->GetCurrentEndurance();
-    maxStamina_ = eq_->GetMaxEndurance();
-
-    // Get target info
-    CombatManager* combat = eq_->GetCombatManager();
-    if (combat && combat->HasTarget()) {
-        uint16_t targetId = combat->GetTargetId();
-        const auto& entities = eq_->GetEntities();
-        auto it = entities.find(targetId);
-        if (it != entities.end()) {
-            hasTarget_ = true;
-            const Entity& target = it->second;
-
-            // Convert server name to display name
-            std::wstring newTargetName = EQT::toDisplayNameW(target.name);
-
-            // Invalidate cache if target name changed
-            if (targetName_ != newTargetName) {
-                targetName_ = newTargetName;
-                cachedContentWidth_ = 0;  // Force recalculation
-            }
-
-            targetHpPercent_ = target.hp_percent;
-            targetCurrentMana_ = target.cur_mana;
-            targetMaxMana_ = target.max_mana;
-        } else {
-            if (hasTarget_ || !targetName_.empty()) {
-                cachedContentWidth_ = 0;  // Force recalculation
-            }
-            hasTarget_ = false;
-            targetName_.clear();
-            targetHpPercent_ = 0;
-            targetCurrentMana_ = 0;
-            targetMaxMana_ = 0;
-            targetCastingSpell_.clear();
-        }
-    } else {
-        if (hasTarget_ || !targetName_.empty()) {
-            cachedContentWidth_ = 0;  // Force recalculation
-        }
-        hasTarget_ = false;
-        targetName_.clear();
-        targetHpPercent_ = 0;
-        targetCurrentMana_ = 0;
-        targetMaxMana_ = 0;
-        targetCastingSpell_.clear();
-    }
+    // D20b4: No-op — data pushed by bridge via setPlayerStats/setTarget/setPlayerName
+    // Rendering uses cached member variables directly.
+    // Keep this method for API compatibility (called each frame by WindowManager).
 }
 
 void PlayerStatusWindow::setTargetCastingSpell(const std::string& spellName)
@@ -200,8 +175,7 @@ void PlayerStatusWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUI
     if (!contentRT_) {
         // Fallback: render directly
         WindowBase::render(driver, gui);
-        CombatManager* combat = eq_ ? eq_->GetCombatManager() : nullptr;
-        if (combat && combat->IsAutoAttackEnabled()) {
+        if (isAutoAttacking_) {
             auto now = std::chrono::steady_clock::now();
             uint32_t currentTimeMs = static_cast<uint32_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -270,8 +244,7 @@ void PlayerStatusWindow::render(irr::video::IVideoDriver* driver, irr::gui::IGUI
 
     // Combat border helper lambda
     auto drawCombat = [&]() {
-        CombatManager* combat = eq_ ? eq_->GetCombatManager() : nullptr;
-        if (combat && combat->IsAutoAttackEnabled()) {
+        if (isAutoAttacking_) {
             auto now = std::chrono::steady_clock::now();
             uint32_t currentTimeMs = static_cast<uint32_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(

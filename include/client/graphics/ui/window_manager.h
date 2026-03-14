@@ -33,6 +33,7 @@
 #include <memory>
 
 class TradeManager;
+class EverQuest;
 
 namespace eqt { namespace bridge { class GameStateBridge; } }
 

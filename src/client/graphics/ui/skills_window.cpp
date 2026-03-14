@@ -3,7 +3,6 @@
  */
 
 #include "client/graphics/ui/skills_window.h"
-#include "client/skill/skill_manager.h"
 #include "client/skill/skill_data.h"
 #include "client/skill/skill_constants.h"
 #include <algorithm>
@@ -147,27 +146,23 @@ void SkillsWindow::positionDefault(int screenWidth, int screenHeight)
 // Skill Management
 // ============================================================================
 
-void SkillsWindow::refresh()
+void SkillsWindow::setSkills(std::vector<EQ::SkillData> skills)
 {
-    skills_.clear();
-
-    if (!skillMgr_) {
-        return;
-    }
-
-    // Get all skills from manager
-    skills_ = skillMgr_->getAllSkills();
-
+    skills_ = std::move(skills);
     // Sort by category, then by name
     std::sort(skills_.begin(), skills_.end(),
-        [](const EQ::SkillData* a, const EQ::SkillData* b) {
-            if (a->category != b->category) {
-                return static_cast<int>(a->category) < static_cast<int>(b->category);
+        [](const EQ::SkillData& a, const EQ::SkillData& b) {
+            if (a.category != b.category) {
+                return static_cast<int>(a.category) < static_cast<int>(b.category);
             }
-            return a->name < b->name;
+            return a.name < b.name;
         });
+    clampScrollOffset();
+}
 
-    // Clamp scroll offset
+void SkillsWindow::refresh()
+{
+    // D20b4: No-op — skills pushed via setSkills() from bridge events
     clampScrollOffset();
 }
 
@@ -193,9 +188,7 @@ void SkillsWindow::renderContent(irr::video::IVideoDriver* driver,
                                  irr::gui::IGUIEnvironment* gui)
 {
     // Refresh skill list if needed
-    if (skills_.empty() && skillMgr_) {
-        refresh();
-    }
+    // Skills populated via setSkills() from bridge events
 
     renderColumnHeaders(driver, gui);
     renderSkillList(driver, gui);
@@ -293,21 +286,19 @@ void SkillsWindow::renderSkillList(irr::video::IVideoDriver* driver,
 
 void SkillsWindow::renderSkillRow(irr::video::IVideoDriver* driver,
                                   irr::gui::IGUIEnvironment* gui,
-                                  const EQ::SkillData* skill,
+                                  const EQ::SkillData& skill,
                                   int rowIndex,
                                   int yPos)
 {
-    if (!skill) return;
-
     irr::core::recti contentArea = getContentArea();
     int contentX = contentArea.UpperLeftCorner.X;
     int contentY = contentArea.UpperLeftCorner.Y;
 
     // Row background
     irr::video::SColor bgColor;
-    if (skill->skill_id == selectedSkillId_) {
+    if (skill.skill_id == selectedSkillId_) {
         bgColor = getRowSelected();
-    } else if (skill->skill_id == hoveredSkillId_) {
+    } else if (skill.skill_id == hoveredSkillId_) {
         bgColor = getRowHovered();
     } else if (rowIndex % 2 == 0) {
         bgColor = getRowBackground();
@@ -330,7 +321,7 @@ void SkillsWindow::renderSkillRow(irr::video::IVideoDriver* driver,
     int textY = contentY + yPos + 3;
 
     // Skill name
-    std::wstring skillName(skill->name.begin(), skill->name.end());
+    std::wstring skillName(skill.name.begin(), skill.name.end());
     irr::core::recti nameCol(
         contentX + COLUMN_PADDING,
         textY,
@@ -340,7 +331,7 @@ void SkillsWindow::renderSkillRow(irr::video::IVideoDriver* driver,
     font->draw(skillName.c_str(), nameCol, getTextColor(), false, false);
 
     // Category
-    const char* catName = EQ::getSkillCategoryName(skill->category);
+    const char* catName = EQ::getSkillCategoryName(skill.category);
     std::wstring categoryName(catName, catName + strlen(catName));
     irr::core::recti catCol(
         contentX + NAME_COLUMN_WIDTH + COLUMN_PADDING,
@@ -351,8 +342,8 @@ void SkillsWindow::renderSkillRow(irr::video::IVideoDriver* driver,
     font->draw(categoryName.c_str(), catCol, getCategoryTextColor(), false, false);
 
     // Value (current / max)
-    std::wstring valueStr = std::to_wstring(skill->current_value) + L" / " +
-                           std::to_wstring(skill->max_value);
+    std::wstring valueStr = std::to_wstring(skill.current_value) + L" / " +
+                           std::to_wstring(skill.max_value);
     irr::core::recti valCol(
         contentX + NAME_COLUMN_WIDTH + CATEGORY_COLUMN_WIDTH + COLUMN_PADDING,
         textY,
@@ -362,20 +353,20 @@ void SkillsWindow::renderSkillRow(irr::video::IVideoDriver* driver,
     font->draw(valueStr.c_str(), valCol, getValueTextColor(), false, false);
 
     // Cooldown indicator for activatable skills
-    if (skill->is_activatable) {
+    if (skill.is_activatable) {
         int indicatorX = contentX + listBounds_.LowerRightCorner.X - SCROLLBAR_WIDTH - 18;
         int indicatorY = contentY + yPos + 3;
         int indicatorSize = ROW_HEIGHT - 6;
 
-        if (skill->isOnCooldown()) {
+        if (skill.isOnCooldown()) {
             // Draw red cooldown indicator
             irr::core::recti cdRect(indicatorX, indicatorY,
                                    indicatorX + indicatorSize, indicatorY + indicatorSize);
             driver->draw2DRectangle(irr::video::SColor(200, 200, 60, 60), cdRect);
 
             // Draw cooldown progress bar inside
-            uint32_t remaining = skill->getCooldownRemaining();
-            uint32_t total = skill->recast_time_ms;
+            uint32_t remaining = skill.getCooldownRemaining();
+            uint32_t total = skill.recast_time_ms;
             if (total > 0) {
                 float progress = 1.0f - (static_cast<float>(remaining) / total);
                 int progressHeight = static_cast<int>(indicatorSize * progress);
@@ -503,9 +494,13 @@ void SkillsWindow::renderActionButtons(irr::video::IVideoDriver* driver,
 
     // Check if a skill is selected and activatable
     bool canActivate = false;
-    if (selectedSkillId_ >= 0 && skillMgr_) {
-        const EQ::SkillData* skill = skillMgr_->getSkill(selectedSkillId_);
-        canActivate = skill && skill->is_activatable;
+    if (selectedSkillId_ >= 0) {
+        for (const auto& s : skills_) {
+            if (s.skill_id == static_cast<uint8_t>(selectedSkillId_)) {
+                canActivate = s.is_activatable;
+                break;
+            }
+        }
     }
 
     // Activate button (highlighted=false, we don't track pressed state)
@@ -586,7 +581,7 @@ bool SkillsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bo
     // Check skill list click
     int skillIndex = getSkillAtPosition(localX, localY);
     if (skillIndex >= 0 && skillIndex < static_cast<int>(skills_.size())) {
-        selectedSkillId_ = skills_[skillIndex]->skill_id;
+        selectedSkillId_ = skills_[skillIndex].skill_id;
         return true;
     }
 
@@ -599,9 +594,11 @@ bool SkillsWindow::handleMouseDown(int x, int y, bool leftButton, bool shift, bo
     );
     if (activateAbs.isPointInside(irr::core::vector2di(localX, localY))) {
         if (selectedSkillId_ >= 0 && activateCallback_) {
-            const EQ::SkillData* skill = skillMgr_ ? skillMgr_->getSkill(selectedSkillId_) : nullptr;
-            if (skill && skill->is_activatable) {
-                activateCallback_(selectedSkillId_);
+            for (const auto& s : skills_) {
+                if (s.skill_id == static_cast<uint8_t>(selectedSkillId_) && s.is_activatable) {
+                    activateCallback_(selectedSkillId_);
+                    break;
+                }
             }
         }
         return true;
@@ -675,9 +672,9 @@ bool SkillsWindow::handleMouseMove(int x, int y)
     // Check skill list hover
     int skillIndex = getSkillAtPosition(localX, localY);
     if (skillIndex >= 0 && skillIndex < static_cast<int>(skills_.size())) {
-        hoveredSkillId_ = skills_[skillIndex]->skill_id;
+        hoveredSkillId_ = skills_[skillIndex].skill_id;
         // Set tooltip for hovered skill
-        tooltip_.setSkill(skills_[skillIndex], x, y);
+        tooltip_.setSkill(&skills_[skillIndex], x, y);
     } else {
         hoveredSkillId_ = -1;
         tooltip_.clear();
