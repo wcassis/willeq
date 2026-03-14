@@ -18066,7 +18066,9 @@ void EverQuest::SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererCon
 	m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
 }
 
-bool EverQuest::InitGraphics(int width, int height) {
+bool EverQuest::InitGraphics(int width, int height,
+                             EQT::Graphics::IrrlichtRenderer* renderer,
+                             eqt::bridge::GameStateBridge* bridge) {
 	if (m_graphics_initialized) {
 		return true;
 	}
@@ -18076,15 +18078,11 @@ bool EverQuest::InitGraphics(int width, int height) {
 		return false;
 	}
 
-	m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
+	// D20b5: Renderer and bridge created by Application, passed in
+	m_renderer = renderer;
+	m_bridge = bridge;
 
-	// D14: Create and wire up the game state bridge
-	m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
-	m_irrlichtBridge->setRenderer(m_renderer.get());
-	m_renderer->setBridge(m_irrlichtBridge.get());
-	m_bridge = m_irrlichtBridge.get();
-
-	// D20b1: Wire bridge to WindowManager and InventoryManager for intent pushing
+	// Wire bridge to WindowManager and InventoryManager for intent pushing
 	if (m_renderer->getWindowManager()) {
 		m_renderer->getWindowManager()->setBridge(m_bridge);
 	}
@@ -18109,7 +18107,8 @@ bool EverQuest::InitGraphics(int width, int height) {
 	// Model loading is deferred to loadGlobalAssets() which is called during graphics loading phase
 	if (!m_renderer->initLoadingScreen(config)) {
 		LOG_ERROR(MOD_GRAPHICS, "Failed to initialize renderer loading screen");
-		m_renderer.reset();
+		m_renderer = nullptr;
+		m_bridge = nullptr;
 		return false;
 	}
 
@@ -18203,7 +18202,7 @@ bool EverQuest::InitGraphics(int width, int height) {
 }
 
 void EverQuest::ShutdownGraphics() {
-	// Join loading thread before destroying renderer (it may own the GL context)
+	// Join loading thread before detaching (it may own the GL context)
 	if (m_loading_thread && m_loading_thread->isRunning()) {
 		m_loading_status.quitRequested.store(true, std::memory_order_release);
 		JoinLoadingThread();
@@ -18214,16 +18213,12 @@ void EverQuest::ShutdownGraphics() {
 		m_inventory_manager->clearAll();
 		m_inventory_manager.reset();
 	}
-	// D14: Tear down bridge before renderer (bridge holds renderer pointer)
-	m_bridge = nullptr;
-	m_irrlichtBridge.reset();
 
-	if (m_renderer) {
-		m_renderer->shutdown();
-		m_renderer.reset();
-	}
+	// D20b5: Detach bridge — Application owns renderer + bridge destruction
+	m_bridge = nullptr;
+	m_renderer = nullptr;
 	m_graphics_initialized = false;
-	LOG_DEBUG(MOD_GRAPHICS, "Graphics shut down");
+	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
 }
 
 bool EverQuest::UpdateGraphics(float deltaTime) {

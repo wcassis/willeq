@@ -15,6 +15,8 @@
 
 // Forward declarations
 class EverQuest;
+namespace EQT { namespace Graphics { class IrrlichtRenderer; } }
+namespace eqt { namespace bridge { class IrrlichtBridge; class GameStateBridge; } }
 
 namespace eqt {
 
@@ -261,6 +263,11 @@ private:
     // EverQuest client and adapter
     std::unique_ptr<EverQuest> m_eqClient;
     std::unique_ptr<EqActionHandler> m_actionHandler;
+
+    // D20b5: Renderer and bridge owned by Application
+    std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
+    std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;
+    eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
     // Graphics input handler (bridges RendererEventReceiver → InputActionBridge)
     std::unique_ptr<input::GraphicsInputHandler> m_graphicsInputHandler;

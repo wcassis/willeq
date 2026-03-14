@@ -33,6 +33,8 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/bridge/irrlicht_bridge.h"
+#include "client/bridge/game_state_bridge.h"
 #endif
 
 using namespace std::chrono_literals;
@@ -58,6 +60,8 @@ protected:
 
     TestConfig config_;
     std::unique_ptr<EverQuest> eq_;
+    std::unique_ptr<EQT::Graphics::IrrlichtRenderer> renderer_;
+    std::unique_ptr<eqt::bridge::IrrlichtBridge> bridge_;
     std::chrono::steady_clock::time_point lastFrameTime_;
 
     // Phase tracking for verification
@@ -251,9 +255,12 @@ protected:
             eq_->SetEQClientPath(config_.eqClientPath);
 
 #ifdef EQT_HAS_GRAPHICS
-            // Initialize graphics with a small window size for testing
             std::cout << "Initializing graphics (800x600)..." << std::endl;
-            if (!eq_->InitGraphics(800, 600)) {
+            renderer_ = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
+            bridge_ = std::make_unique<eqt::bridge::IrrlichtBridge>();
+            bridge_->setRenderer(renderer_.get());
+            renderer_->setBridge(bridge_.get());
+            if (!eq_->InitGraphics(800, 600, renderer_.get(), bridge_.get())) {
                 std::cerr << "Failed to initialize graphics" << std::endl;
                 return false;
             }

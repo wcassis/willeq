@@ -28,6 +28,8 @@
 #include "client/graphics/ui/ui_settings.h"
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
+#include "client/bridge/irrlicht_bridge.h"
+#include "client/bridge/game_state_bridge.h"
 #endif
 
 namespace eqt {
@@ -344,12 +346,21 @@ bool Application::initialize(const ApplicationConfig& config) {
 
         LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
         EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
-        if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight)) {
+
+        // D20b5: Application creates renderer + bridge, passes to EverQuest
+        m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
+        m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
+        m_irrlichtBridge->setRenderer(m_renderer.get());
+        m_renderer->setBridge(m_irrlichtBridge.get());
+        m_bridge = m_irrlichtBridge.get();
+
+        if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight,
+                                      m_renderer.get(), m_bridge)) {
             m_graphicsInitialized = true;
             LOG_INFO(MOD_GRAPHICS, "Graphics initialized");
 
             // Set initial loading state
-            auto* eqRenderer = m_eqClient->GetRenderer();
+            auto* eqRenderer = m_renderer.get();
             if (eqRenderer) {
                 eqRenderer->setLoadingTitle(L"EverQuest");
                 eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
@@ -426,16 +437,23 @@ void Application::shutdown() {
 #ifdef EQT_HAS_GRAPHICS
     // Stop RDP server if running
 #ifdef WITH_RDP
-    if (m_graphicsInitialized && m_eqClient) {
-        auto* renderer = m_eqClient->GetRenderer();
-        if (renderer && renderer->isRDPRunning()) {
+    if (m_graphicsInitialized && m_renderer) {
+        if (m_renderer->isRDPRunning()) {
             LOG_INFO(MOD_GRAPHICS, "Stopping RDP server...");
-            renderer->stopRDPServer();
+            m_renderer->stopRDPServer();
         }
     }
 #endif
+    // D20b5: EverQuest detaches bridge, Application destroys renderer
     if (m_eqClient) {
         m_eqClient->ShutdownGraphics();
+    }
+    // Destroy bridge before renderer (bridge holds renderer pointer)
+    m_bridge = nullptr;
+    m_irrlichtBridge.reset();
+    if (m_renderer) {
+        m_renderer->shutdown();
+        m_renderer.reset();
     }
 #endif
 

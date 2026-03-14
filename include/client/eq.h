@@ -980,7 +980,9 @@ public:
 
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer methods
-	bool InitGraphics(int width = 800, int height = 600);
+	bool InitGraphics(int width, int height,
+	                  EQT::Graphics::IrrlichtRenderer* renderer,
+	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
 	bool UpdateGraphics(float deltaTime);
 	void SetEQClientPath(const std::string& path);
@@ -994,7 +996,7 @@ public:
 	const std::string& GetConfigPath() const { return m_config_path; }
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
 	void LoadHotbarConfig();  // Load hotbar assignments from config file
-	EQT::Graphics::IrrlichtRenderer* GetRenderer() { return m_renderer.get(); }
+	EQT::Graphics::IrrlichtRenderer* GetRenderer() { return m_renderer; }
 	// Phase 7.3: Zone accessors read from GameState
 	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
@@ -1576,8 +1578,8 @@ private:
 
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer and bridge
-	std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
-	std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;  // Owns the bridge lifetime
+	// D20b5: Raw pointers — Application owns renderer + bridge lifetime
+	EQT::Graphics::IrrlichtRenderer* m_renderer = nullptr;
 	std::string m_eq_client_path;
 	std::string m_region_maps_path = "data/region_maps";
 	std::string m_config_path;  // Path to per-character config file
