@@ -240,6 +240,7 @@ IF(EQT_GRAPHICS)
         test_wld.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
     )
     TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
     GTEST_DISCOVER_TESTS(test_wld)
@@ -340,6 +341,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/software_occlusion_culler.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp

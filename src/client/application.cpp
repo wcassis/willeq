@@ -668,6 +668,8 @@ void Application::render(float deltaTime) {
                 !m_renderer->isProgressiveLoadingActive() &&
                 m_eqClient->GetLoadingPhase() >= LoadingPhase::GRAPHICS_LOADING_ZONE &&
                 m_eqClient->GetLoadingPhase() < LoadingPhase::COMPLETE) {
+                // D20f2: Pass typed BSP tree from renderer to game state
+                m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
                 m_eqClient->OnGraphicsComplete();
             }
 
@@ -748,6 +750,10 @@ bool Application::checkLoadingComplete() {
     if (!m_loadingThread) return false;
     if (m_loadingStatus.loadingComplete.load(std::memory_order_acquire)) {
         joinLoadingThread();
+        // D20f2: Pass typed BSP tree from renderer to game state
+        if (m_eqClient && m_renderer) {
+            m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
+        }
         if (m_eqClient) m_eqClient->OnGraphicsComplete();
         return true;
     }
@@ -953,6 +959,10 @@ void Application::loadZoneGraphics() {
     if (m_renderer->isProgressiveLoadingActive()) {
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: automatic mode — loading screen remains visible");
     } else {
+        // D20f2: Pass typed BSP tree from renderer to game state
+        if (m_renderer) {
+            m_eqClient->SetZoneBspTree(m_renderer->getZoneBspTree());
+        }
         m_eqClient->OnGraphicsComplete();
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: instant scene ready");
     }

@@ -12965,7 +12965,8 @@ void EverQuest::CleanupZone()
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
 
-	// Clear pathfinding data — notify renderer to clear navmesh reference
+	// Clear pathfinding and BSP data
+	m_zone_bsp_tree.reset();
 	if (m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NavmeshChanged,
@@ -14947,8 +14948,8 @@ void EverQuest::UpdateWaterState()
 	if (isFullyUnderwaterZone) {
 		newState = WaterState::Submerged;
 	} else {
-		// Normal water detection via BSP regions (D20e: reads game-state-owned BSP tree)
-		auto bspTree = std::static_pointer_cast<EQT::Graphics::BspTree>(m_zone_bsp_tree);
+		// Normal water detection via BSP regions (D20f3: reads typed game-state BSP tree)
+		const auto& bspTree = m_zone_bsp_tree;
 		if (bspTree) {
 			// Check the region at current player position
 			// In EQ, the "head" is approximately 6 units above feet position
@@ -18878,19 +18879,6 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				if (m_spell_manager) m_spell_manager->memorizeSpell(i.gemSlot, i.spellId);
-			}
-			// D20e: BSP tree for water detection
-			else if constexpr (std::is_same_v<T, eqt::events::BspTreeAvailableIntent>) {
-				if (i.bspTree) {
-					// Copy the shared_ptr from the opaque pointer
-					auto* ptr = static_cast<std::shared_ptr<EQT::Graphics::BspTree>*>(i.bspTree);
-					m_zone_bsp_tree = *ptr;
-					LOG_DEBUG(MOD_GRAPHICS, "BSP tree received for water detection ({} regions)",
-						static_cast<EQT::Graphics::BspTree*>(m_zone_bsp_tree.get()) ?
-						static_cast<EQT::Graphics::BspTree*>(m_zone_bsp_tree.get())->regions.size() : 0);
-				} else {
-					m_zone_bsp_tree.reset();
-				}
 			}
 			else {
 				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");

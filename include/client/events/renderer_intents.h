@@ -208,10 +208,7 @@ struct RequestSceneDump {};
 
 struct HotbarChangedIntent {};
 
-// D20e: BSP tree available after zone loading (for water detection on game thread)
-struct BspTreeAvailableIntent {
-    void* bspTree;  // Opaque shared_ptr<BspTree>* — EverQuest casts and copies
-};
+// D20f4: BspTreeAvailableIntent removed — BSP tree set via typed setter
 
 // --- Volume ---
 
@@ -360,9 +357,7 @@ using RendererIntent = std::variant<
     // Inventory
     MoveItemIntent,
     DeleteItemIntent,
-    EquipmentChangedIntent,
-    // D20e: BSP tree for water detection
-    BspTreeAvailableIntent
+    EquipmentChangedIntent
 >;
 
 } // namespace events

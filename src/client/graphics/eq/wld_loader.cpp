@@ -2409,7 +2409,14 @@ std::optional<ZoneLineInfo> WldLoader::decodeZoneLineString(const std::string& r
 
 // BspTree implementation
 
-BspBounds BspTree::clipBoundsByPlane(const BspBounds& bounds,
+// D20f1: BspTree method implementations moved to src/client/zone_bsp.cpp
+
+} // namespace Graphics
+} // namespace EQT
+
+#if 0  // D20f1: removed — implementations now in src/client/zone_bsp.cpp
+namespace removed {
+BspBounds BspTree::clipBoundsByPlane_REMOVED(const BspBounds& bounds,
                                       float nx, float ny, float nz, float dist,
                                       bool frontSide) {
     if (!bounds.valid) return bounds;
@@ -2683,6 +2690,5 @@ std::optional<ZoneLineInfo> BspTree::checkZoneLine(float x, float y, float z) co
     }
     return std::nullopt;
 }
-
-} // namespace Graphics
-} // namespace EQT
+} // removed
+#endif // D20f1 removed code

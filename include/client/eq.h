@@ -81,8 +81,8 @@ namespace Graphics {
 }
 }
 #include "client/graphics/constrained_renderer_config.h"
-// D20e3: loading_thread.h no longer needed — forward declare LoadingStatus
-namespace EQT { namespace Graphics { struct LoadingStatus; } }
+// D20e3: forward declarations for types used as pointers/shared_ptr
+namespace EQT { namespace Graphics { struct LoadingStatus; struct BspTree; } }
 namespace eqt {
 namespace inventory {
     class InventoryManager;
@@ -1020,6 +1020,8 @@ public:
 	void SetWindowManager(eqt::ui::WindowManager* wm) { m_hotbar_window_manager = wm; }
 	// D20e3: RDP server pointer (set by Application after RDP init)
 	void SetRDPServer(EQT::Graphics::RDPServer* rdp) { m_rdp_server = rdp; }
+	// D20f2: Typed BSP tree for water detection / zone lines
+	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) { m_zone_bsp_tree = std::move(bsp); }
 	// Phase 7.3: Zone accessors read from GameState
 	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
@@ -1038,8 +1040,8 @@ private:
 	// Bridge for cross-thread game state → renderer communication (Phase 2+)
 	eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
-	// D20e: BSP tree for water detection (set by renderer via BspTreeAvailableIntent)
-	std::shared_ptr<void> m_zone_bsp_tree;  // Opaque — cast to BspTree* at usage site
+	// D20f2: Typed BSP tree for water detection, zone lines, collision
+	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
 
 	// Utility functions
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);

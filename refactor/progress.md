@@ -192,7 +192,7 @@ Full plan: `refactor/D_game_state_threading.md`.
 | D20c4 | Remove requestQuit renderer calls; hotbar config deferred to D20e | done | `ba9a849` |
 | D20d | Move 30 renderer slash commands to renderer via RendererCommand bridge event | done | `bba5848` |
 | D20e | Remove m_renderer from EverQuest | done | |
-| D20f | Move zone data loading to game state layer | pending | |
+| D20f | Move zone data loading to game state layer | done | |
 | D20g | Decouple RDP server from renderer | pending | |
 
 ### Phase 6 — Thread Separation

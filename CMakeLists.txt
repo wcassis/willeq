@@ -191,6 +191,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/pathfinder_null.cpp
     src/client/raycast_mesh.cpp
     src/client/hc_map.cpp
+    src/client/zone_bsp.cpp
     src/client/zone_lines.cpp
     # State management sources
     src/client/state/event_bus.cpp
@@ -534,6 +535,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         tools/model_viewer.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -677,6 +679,7 @@ IF(EQT_GRAPHICS)
         tools/s3d_dump.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -730,6 +733,7 @@ IF(EQT_GRAPHICS)
         tools/wld_dump.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(wld_dump PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -746,6 +750,7 @@ IF(EQT_GRAPHICS)
         tools/bsp_region_finder.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(bsp_region_finder PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -761,6 +766,7 @@ IF(EQT_GRAPHICS)
         tools/zone_region_classifier.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp
         src/client/hc_map.cpp
@@ -782,6 +788,7 @@ IF(EQT_GRAPHICS)
         tools/region_poly_audit.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(region_poly_audit PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -797,6 +804,7 @@ IF(EQT_GRAPHICS)
         tools/analyze_hum_model.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -819,6 +827,7 @@ IF(EQT_GRAPHICS)
         tools/test_animation.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -842,6 +851,7 @@ IF(EQT_GRAPHICS)
         tools/extract_zone_lines.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -865,6 +875,7 @@ IF(EQT_GRAPHICS)
         tools/bsp_coordinate_finder.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -888,6 +899,7 @@ IF(EQT_GRAPHICS)
         tools/generate_surface_map.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -919,6 +931,7 @@ IF(EQT_GRAPHICS)
         tools/zone_line_editor.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -990,6 +1003,7 @@ IF(EQT_GRAPHICS)
         tools/atlas_uv_audit.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/dds_decoder.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(atlas_uv_audit PRIVATE

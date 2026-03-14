@@ -2,219 +2,130 @@
 
 ## Context
 
-Zone S3D archives contain data that serves two distinct layers:
+Zone S3D archives contain data needed by both game state (collision, pathfinding,
+water detection) and the renderer (meshes, textures, PVS culling). Currently the
+renderer owns all S3D loading. D20e worked around this with opaque pointers.
 
-1. **Game state data** — BSP tree (water detection, zone lines), region types, light
-   positions. Needed by EverQuest for gameplay logic regardless of whether a renderer
-   is attached.
-2. **Renderer data** — per-region mesh geometry, textures, object meshes, character
-   models. Only meaningful when rendering.
+This refactor makes S3D/WLD-derived data structures available at the game state
+layer. The renderer still builds GPU resources but receives the parsed data as
+input rather than owning the parse.
 
-Currently, the entire S3D archive is loaded by the renderer's `loadZoneSequential()`
-on the loading thread. Game state code then reaches back into the renderer to access
-the BSP tree (`m_renderer->getZoneBspTree()`), creating a cross-boundary dependency
-that D20e had to work around with opaque pointers and intent hacks.
+**Key insight**: BspTree, BspNode, BspRegion, BspBounds already use neutral types
+(floats, ints, std::vector). No Irrlicht type neutralization needed — just a
+header reorganization.
 
-The loading thread exists only to keep the network pump alive during loading — the
-user cannot interact until loading completes. There are no player actions during
-loading, so no renderer→game events need to flow.
+## What game state needs from S3D
 
-**This refactor moves S3D archive parsing and BSP tree extraction to the game state
-layer.** The renderer receives the pre-parsed BSP tree and zone geometry as input,
-then builds GPU resources (meshes, textures, VBOs) during its sequential loading
-phase.
+1. **BSP tree** — water detection, zone lines, region membership
+2. **Zone mesh bounding boxes** — per-region AABB for coarse collision
+3. **Object bounding boxes** — placeables (trees, buildings, rocks) with position
+   and AABB for pathfinding/collision augmentation
+4. **Door bounding boxes** — doors are placeables with open/closed state that
+   affects collision. Includes lifts (moving platform floor), sliding doors,
+   swinging doors, and designer-placed world geometry (trees, buildings, rocks
+   used as "doors"). Store open and closed bounding boxes; while animating,
+   entities pass through. Lifts need a moveable floor bounding box.
+5. **Light positions/radii** — for audio emitter placement
 
-## Architecture After D20f
-
-```
-Game State Layer                    Renderer Layer
-───────────────                    ──────────────
-1. Open S3D PFS archive            (waiting)
-2. Parse WLD → BspTree             (waiting)
-3. Extract region types, lights    (waiting)
-4. Store in ZoneLoadSnapshot       (waiting)
-5. Signal loading thread      ───► 6. Receive BspTree + S3DZone via snapshot
-                                   7. Build meshes, upload textures
-                                   8. Install portal system, doors
-                                   9. Signal complete
-```
-
-The PFS archive reader, WLD parser, and S3D loader are pure file I/O + data
-structure construction — no GL context or renderer state needed.
-
-## Current Data Flow
-
-**S3D → WLD → BspTree creation** (all in renderer today):
-- `S3DLoader::loadZone()` opens PFS archive, creates `S3DZone`
-- `WldLoader::parseWldBuffer()` parses fragments, builds `BspTree`
-- Sequential loader Step 2 extracts BSP, computes region bounds
-- BSP tree stored in `IrrlichtRenderer::zoneBspTree_`
-
-**Game state uses of BSP tree:**
-- `EverQuest::UpdateWaterState()` — water/lava/swimming detection
-- `ZoneLines` — zone crossing detection via region types
-- Pathfinding — region-aware routing
-
-**Renderer uses of BSP tree:**
-- PVS culling — `visibleRegions` bitvector per region
-- Entity visibility — region membership check
-- Camera collision — BSP region bounds
-- Door manager — region assignment
-- Detail system — region-based placement
-- Portal system — built from BSP split planes
+Game state does NOT need: vertex data, texture data, animation tracks, UV coords,
+or any GPU-specific structures. Bounding boxes are sufficient for collision.
 
 ## Sub-units
 
-### D20f1: Extract S3D/WLD parsing into standalone library
+### D20f1: Extract BSP + zone data structs to shared header
 
-Move the S3D archive reader and WLD fragment parser out of the `client/graphics/eq/`
-directory into a location accessible to game state code.
+Move BSP-related structs out of `wld_loader.h` into a standalone header with no
+graphics dependencies. Both game state and renderer include it.
 
-**Files to move** (or make available outside graphics):
-- `pfs.h / pfs.cpp` — PFS archive reader (pure file I/O, no graphics deps)
-- `wld_loader.h / wld_loader.cpp` — WLD fragment parser (creates BspTree, extracts
-  geometry, lights, etc.)
-- `s3d_loader.h / s3d_loader.cpp` — Orchestrates PFS + WLD loading, produces S3DZone
+**New file**: `include/client/zone_bsp.h`
 
-**Approach**: Create `include/client/eq_data/` and `src/client/eq_data/` for the
-EQ-format file parsers. These are data format libraries, not renderer code. The
-renderer will include them from the new location.
+Contents (moved from `include/client/graphics/eq/wld_loader.h` lines 15-124):
+- `RegionType` enum
+- `ZoneLineType` enum
+- `ZoneLineInfo` struct
+- `BspNode` struct
+- `BspRegion` struct
+- `BspBounds` struct
+- `BspTree` struct (with findRegionForPoint, checkZoneLine, computeRegionBounds)
 
-**Key constraint**: The WLD parser currently creates Irrlicht-specific types
-(`irr::core::vector3df`, `irr::video::SColor`) in its output structs. These need to
-be replaced with neutral types (`glm::vec3`, `uint32_t` for RGBA) in the output
-data structures so game state code doesn't need Irrlicht headers.
+**New file**: `include/client/zone_object_data.h`
 
-**Structs to neutralize**:
-- `BspNode` — uses `irr::core::vector3df` for split plane normal/point
-- `BspRegion` — uses `irr::core::aabbox3df` for bounding box
-- `WldLight` — uses `irr::video::SColor` for color
-- `WldVertex` / geometry structs — used by renderer only, can stay Irrlicht-typed
-  (renderer copies them into mesh buffers)
+Game-state-friendly structs for objects and doors:
+- `ZoneObjectBounds` — AABB + position + name for a placeable object
+- `ZoneDoorBounds` — AABB for open state, AABB for closed state, current state,
+  position, heading, door type (normal/lift/sliding), lift floor Z range
+- `ZoneLightData` — position, radius, color (uint32_t RGBA)
 
-**Split strategy**: Separate the WLD output into two layers:
-1. **Game data structs** (neutral types): `BspTree`, `BspNode`, `BspRegion`,
-   `RegionType`, `ZoneLineInfo`, `WldLight` position/radius
-2. **Render data structs** (Irrlicht types): `WldGeometry`, `WldVertex`,
-   `WldTextureRef`, animation data
+**Modified**: `include/client/graphics/eq/wld_loader.h` — `#include "client/zone_bsp.h"`
+instead of defining BSP structs inline. Keeps render-specific structs (WldVertex,
+WldGeometry, etc.).
 
-The game data structs move to `include/client/eq_data/zone_data.h`.
-The render data structs stay in `include/client/graphics/eq/wld_loader.h`.
+**Implementation of BspTree methods**: Move `findRegionForPoint()` etc. to a new
+`src/client/zone_bsp.cpp` (or keep header-only if small enough). Currently they
+live in `src/client/graphics/eq/wld_loader.cpp`.
 
-**Files modified**:
-- New: `include/client/eq_data/zone_data.h` — BspTree, BspRegion, RegionType, etc.
-- New: `include/client/eq_data/pfs_archive.h/.cpp` — moved from graphics/eq/
-- New: `include/client/eq_data/wld_parser.h/.cpp` — WLD fragment parsing (BSP + metadata)
-- Modified: `include/client/graphics/eq/wld_loader.h` — imports zone_data.h, keeps
-  render-specific structs
-- Modified: `include/client/graphics/eq/s3d_loader.h` — imports from new location
-- Modified: CMakeLists.txt — new source files
+### D20f2: Populate zone data at game state layer
 
-### D20f2: Load BSP tree at game state layer
+After zone loading completes, extract bounding boxes from the parsed S3D data
+and store them in game state.
 
-Move S3D archive opening and BSP tree extraction into EverQuest's zone loading flow,
-before graphics loading starts.
+**New member on EverQuest**: `m_zone_bsp_tree` changes from `shared_ptr<void>` to
+`shared_ptr<BspTree>` (typed). Add `m_zone_objects` (vector<ZoneObjectBounds>)
+and `m_zone_door_bounds` (map<uint8_t, ZoneDoorBounds>).
 
-**New method**: `EverQuest::LoadZoneData(const std::string& zoneName)` — called from
-`OnGameStateComplete()` before signaling the loading thread.
+**Population flow**: The renderer already parses S3D and builds the BSP tree.
+After zone loading completes, Application extracts:
+- BSP tree from renderer (`getZoneBspTree()`)
+- Object bounding boxes from renderer's object list
+- Door bounding boxes from renderer's door manager
+And stores them in EverQuest via setters.
 
-This method:
-1. Opens the zone S3D archive (`<zoneName>.s3d`) via `PfsArchive`
-2. Parses the WLD file to extract `BspTree` + zone metadata (lights, region types)
-3. Stores results in EverQuest members:
-   - `m_zone_bsp_tree` (shared_ptr<BspTree>)
-   - `m_zone_lights` (vector<ZoneLight>) — positions/radii for audio emitters
-4. Updates `ZoneLoadSnapshot` to include the pre-parsed BSP tree
-
-**Impact on loading thread**: The sequential loader receives the BSP tree via the
-snapshot instead of parsing it from scratch. Step 1 (S3D Parse) still runs on the
-loading thread for the geometry/texture data, but the BSP tree is already available.
-
-Alternatively, the S3D archive can be opened once on the game thread and the open
-archive handle passed to the loading thread, avoiding double-open.
+This is the pragmatic first step — the renderer still does the parsing, but game
+state gets typed copies. D20f5 (future) can move parsing earlier if needed.
 
 **Files modified**:
-- `include/client/eq.h` — add `m_zone_bsp_tree`, `LoadZoneData()`
-- `src/client/eq.cpp` — implement `LoadZoneData()`, call from `OnGameStateComplete()`
-- `include/client/zone_load_snapshot.h` — add `bspTree` field
-- `src/client/graphics/irrlicht_renderer.cpp` — `loadZoneSequential()` Step 2 uses
-  pre-parsed BSP from snapshot instead of re-parsing
+- `include/client/eq.h` — typed BSP tree, zone objects, door bounds
+- `src/client/eq.cpp` — setters, UpdateWaterState uses typed BSP
+- `src/client/application.cpp` — extract and pass data after zone load
+- `include/client/zone_load_snapshot.h` — optional: add BSP tree field
 
 ### D20f3: Route water detection through game-state BSP tree
 
-Convert `UpdateWaterState()` to read from `m_zone_bsp_tree` directly instead of
-querying the renderer. This is the primary game-state consumer of the BSP tree.
+`UpdateWaterState()` reads from typed `m_zone_bsp_tree` directly.
 
-**Changes**:
-- `UpdateWaterState()` uses `m_zone_bsp_tree->findRegionForPoint()` directly
 - Remove the `BspTreeAvailableIntent` workaround from D20e
-- Remove `m_renderer->getZoneBspTree()` call
+- Remove `shared_ptr<void>` cast hack
+- Include `zone_bsp.h` in eq.cpp (already has wld_loader.h which will include it)
 
-**Files modified**:
-- `src/client/eq.cpp` — `UpdateWaterState()` reads `m_zone_bsp_tree`
+### D20f4: Clean up D20e workarounds
 
-### D20f4: Route zone line detection through game-state BSP tree
-
-Zone line detection currently uses a mix of BSP region types and JSON data.
-The BSP-based zone lines already work through the `ZoneLines` class.
-
-**Changes**:
-- `ZoneLines` receives BSP tree from game state, not renderer
-- Zone line bounding boxes extracted from BSP at game state layer
-
-**Files modified**:
-- `include/client/zone_lines.h` — accept BSP tree from game state
-- `src/client/eq.cpp` — pass `m_zone_bsp_tree` to zone line detection
-
-### D20f5: Clean up renderer BSP tree ownership
-
-After D20f2-f4, the renderer no longer owns the BSP tree — it receives it as input.
-
-**Changes**:
-- `loadZoneSequential()` receives BSP tree from snapshot, does not parse it
-- `zoneBspTree_` in renderer is set from input, not from WLD parsing
-- Remove duplicate BSP parsing code from renderer
-- Verify all renderer BSP consumers still work (PVS, entity visibility, camera
-  collision, door manager, detail system, portal system)
-
-**Files modified**:
-- `src/client/graphics/irrlicht_renderer.cpp` — receive BSP from snapshot
-- `include/client/graphics/irrlicht_renderer.h` — document BSP is input, not owned
+- Remove `BspTreeAvailableIntent` from renderer_intents.h and ProcessBridgeIntents
+- Remove `shared_ptr<void> m_zone_bsp_tree` (replaced by typed version in D20f2)
+- Remove `static_pointer_cast` in UpdateWaterState
 
 ## Acceptance Criteria
 
-1. S3D/WLD parsing code accessible to game state layer (no graphics includes)
-2. BSP tree created at game state layer before graphics loading starts
-3. `UpdateWaterState()` reads `m_zone_bsp_tree` directly (no renderer query)
-4. Zone line detection uses game-state BSP tree
-5. Renderer receives BSP tree as input via snapshot
-6. No Irrlicht types in BSP/region data structures
-7. Full build succeeds, all tests pass
-8. Functional: zone loads, water detection works, zone lines trigger, PVS culling
-   works, entities visible
+1. BSP structs in standalone header with no graphics includes
+2. Zone object/door bounding box structs defined for future collision use
+3. `m_zone_bsp_tree` is typed `shared_ptr<BspTree>` (no void cast)
+4. `UpdateWaterState()` reads BSP tree directly
+5. BspTreeAvailableIntent workaround removed
+6. Full build succeeds, all tests pass
+7. Functional: zone loads, water detection works, zone lines trigger
 
-## Risks
+## Non-goals (future work)
 
-- **WLD parser coupling**: The WLD parser interleaves game-data extraction (BSP,
-  lights) with render-data extraction (geometry, textures). Splitting it cleanly
-  may require significant refactoring of `WldLoader::parseWldBuffer()`.
-- **S3D double-open**: If game state opens the S3D to extract BSP and the renderer
-  opens it again for geometry, we double the file I/O. Mitigate by passing the open
-  archive handle through the snapshot.
-- **BspTree struct size**: The BSP tree includes `visibleRegions` bitvectors per
-  region (PVS data). This is renderer-specific. Consider splitting into
-  `BspTreeCore` (game) + `BspTreePvs` (renderer), or accepting that game state
-  carries PVS data it doesn't use.
+- Moving S3D file parsing from renderer to game state (larger refactor)
+- Building collision query API using bounding boxes
+- Lift/platform movement tracking
+- Populating door bounds from actual mesh geometry (needs mesh→AABB extraction)
 
 ## Verification
 
 ```bash
 cmake --build build -j24
-cd build && ctest --output-on-failure
-# Verify BSP tree is loaded at game state layer
-grep -n 'm_zone_bsp_tree' src/client/eq.cpp
-# Verify no renderer BSP query from game state
-grep -rn 'getZoneBspTree' src/client/eq.cpp
-# Verify water detection works
-# (functional test: enter zone with water, check swimming state)
+./build/bin/test_packet && ./build/bin/test_eq_client && ./build/bin/test_spell_database
+grep -n 'shared_ptr<void>' include/client/eq.h  # should be empty
+grep -n 'BspTreeAvailableIntent' include/client/events/renderer_intents.h  # should be empty
+grep -rn 'zone_bsp.h' include/ src/  # should show includes from both game state and graphics
 ```
