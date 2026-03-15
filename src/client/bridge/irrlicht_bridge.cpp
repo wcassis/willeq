@@ -849,12 +849,28 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
         }
         break;
+    case state::GameEventType::HotbarSlotAssigned:
+        if (renderer_) {
+            auto& d = std::get<state::HotbarSlotAssignedData>(event.data);
+            if (d.index >= 0 && d.index < EQT::Graphics::HotbarPanelState::SLOT_COUNT) {
+                auto& slot = renderer_->hotbarState_.slots[d.index];
+                slot.type = d.type;
+                slot.name = d.name;
+                slot.iconId = d.iconId;
+            }
+        }
+        break;
     case state::GameEventType::HotbarCooldownStarted:
         if (renderer_) {
+            auto& d = std::get<state::HotbarCooldownStartedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::HotbarCooldownStartedData>(event.data);
-                wm->startHotbarCooldown(d.index, d.durationMs);
+            if (wm) wm->startHotbarCooldown(d.index, d.durationMs);
+            // U06a: New UI
+            if (d.index >= 0 && d.index < EQT::Graphics::HotbarPanelState::SLOT_COUNT) {
+                auto& slot = renderer_->hotbarState_.slots[d.index];
+                slot.onCooldown = true;
+                slot.cooldownProgress = 0.0f;
             }
         }
         break;

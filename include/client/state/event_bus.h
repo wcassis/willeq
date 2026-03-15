@@ -133,6 +133,7 @@ enum class GameEventType {
     SpellScribeCompleted,
     ToggleSkillsWindow,
     HotbarCooldownStarted,
+    HotbarSlotAssigned,  // U00: hotbar slot content changed (client-side config)
     SkillActivationFeedback,
     RendererCommand,  // D20d: slash command forwarded to renderer
 
@@ -742,6 +743,15 @@ struct RendererCommandData {
     std::string command;  // Full command string (e.g., "/sort", "/renderdist 500")
 };
 
+// U00: Hotbar slot content assigned (from client-side config or user action)
+struct HotbarSlotAssignedData {
+    int index;              // Slot index (0-9)
+    uint8_t type;           // HotbarButtonType value (0=Empty, 1=Spell, 2=Skill, etc.)
+    uint32_t id;            // Spell/skill/item ID
+    std::string name;       // Display name
+    uint32_t iconId;        // Icon ID for display
+};
+
 struct SkillActivationFeedbackData {
     uint8_t skillId;
     bool success;
@@ -937,6 +947,7 @@ using EventData = std::variant<
     SpellScribeCompletedData,
     ToggleSkillsWindowData,
     HotbarCooldownStartedData,
+    HotbarSlotAssignedData,
     SkillActivationFeedbackData,
     RendererCommandData,
     // D20e1

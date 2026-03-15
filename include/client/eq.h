@@ -1014,6 +1014,7 @@ public:
 	// D20e2: Application owns loading status; EverQuest signals it via this pointer
 	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_loading_status_ptr = status; }
 	void SignalGraphicsLoadReady();  // Called from OnGameStateComplete
+	void PublishFullStateSnapshot(); // U00: Push all current state through bridge for new UI
 	// D20e2: Flag for Application to detect re-zone loading requests
 	bool ConsumeZoneLoadRequest() { bool v = m_zone_load_requested; m_zone_load_requested = false; return v; }
 	// D20e3: WindowManager pointer for hotbar config (set by Application)

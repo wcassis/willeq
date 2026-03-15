@@ -1274,6 +1274,153 @@ void EverQuest::OnGraphicsComplete() {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 	}
+
+	// U00: Publish full state snapshot so new UI panels have data on first frame
+	PublishFullStateSnapshot();
+}
+
+void EverQuest::PublishFullStateSnapshot() {
+	if (!m_bridge) return;
+
+	LOG_INFO(MOD_MAIN, "Publishing full state snapshot to bridge");
+
+	// --- Player stats ---
+	{
+		eqt::state::PlayerStatsChangedData data;
+		data.curHP = m_cur_hp;
+		data.maxHP = m_max_hp;
+		data.curMana = m_mana;
+		data.maxMana = m_max_mana;
+		data.curEndurance = m_endurance;
+		data.maxEndurance = m_max_endurance;
+		data.level = m_level;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
+	}
+
+	// --- Character info ---
+	{
+		eqt::state::CharacterInfoChangedData data;
+		data.name = m_character;
+		data.level = m_level;
+		data.className = GetClassName(m_class);
+		data.deity = GetDeityName(m_deity);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
+	}
+
+	// --- XP progress ---
+	{
+		// EQ XP is 0-330 for current level (330 = level up)
+		float progress = (m_exp > 0) ? static_cast<float>(m_exp % 330) / 330.0f : 0.0f;
+		eqt::state::ExpProgressChangedData data;
+		data.progress = progress;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ExpProgressChanged, std::move(data)));
+	}
+
+	// --- Currency ---
+	{
+		eqt::state::CurrencyChangedData data;
+		data.platinum = m_platinum;
+		data.gold = m_gold;
+		data.silver = m_silver;
+		data.copper = m_copper;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CurrencyChanged, std::move(data)));
+	}
+
+	// --- Spell gems ---
+	if (m_spell_manager) {
+		for (uint8_t i = 0; i < EQ::MAX_SPELL_GEMS; ++i) {
+			uint32_t spellId = m_spell_manager->getMemorizedSpell(i);
+			eqt::state::SpellGemChangedData data;
+			data.gemSlot = i;
+			data.spellId = spellId;
+			data.gemState = static_cast<uint8_t>(m_spell_manager->getGemState(i));
+			data.cooldownRemainingMs = m_spell_manager->getGemCooldownRemaining(i);
+			data.cooldownTotalMs = 0;
+			data.memorizeTotalMs = 0;
+			if (spellId != EQ::SPELL_UNKNOWN) {
+				const auto* spell = m_spell_manager->getSpell(spellId);
+				data.spellName = spell ? spell->name : "";
+				data.iconId = spell ? spell->gem_icon : 0;
+			}
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::SpellGemChanged, std::move(data)));
+		}
+	}
+
+	// --- Buffs ---
+	if (m_buff_manager) {
+		const auto& buffs = m_buff_manager->getPlayerBuffs();
+		for (size_t i = 0; i < buffs.size(); ++i) {
+			const auto& buff = buffs[i];
+			if (buff.spell_id == 0 || buff.spell_id == EQ::SPELL_UNKNOWN) continue;
+			eqt::state::BuffUpdatedData data;
+			data.slot = (buff.slot >= 0) ? static_cast<uint8_t>(buff.slot) : static_cast<uint8_t>(i);
+			data.spellId = buff.spell_id;
+			data.ticksLeft = buff.remaining_seconds / 6;  // Convert seconds to ticks (6s per tick)
+			data.casterName = "";  // Caster name not stored in ActiveBuff
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::BuffUpdated, std::move(data)));
+		}
+	}
+
+	// --- Inventory ---
+#ifdef EQT_HAS_GRAPHICS
+	if (m_inventory_manager) {
+		// Equipment slots (0-21) + general inventory (22-29)
+		for (int16_t slot = 0; slot < 30; ++slot) {
+			const auto* item = m_inventory_manager->getItem(slot);
+			eqt::state::InventorySlotChangedData data;
+			data.slotId = slot;
+			data.hasItem = (item != nullptr);
+			data.itemId = item ? item->itemId : 0;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+		}
+	}
+#endif
+
+	// --- Group ---
+	if (m_in_group) {
+		eqt::state::GroupChangedData data;
+		data.inGroup = true;
+		data.isLeader = m_is_group_leader;
+		data.leaderName = m_group_leader_name;
+		data.memberCount = 0;
+		for (int i = 0; i < 5; ++i) {
+			if (!m_group_members[i].name.empty()) data.memberCount++;
+		}
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::GroupChanged, std::move(data)));
+
+		for (int i = 0; i < 5; ++i) {
+			if (m_group_members[i].name.empty()) continue;
+			eqt::state::GroupMemberUpdatedData mdata;
+			mdata.memberIndex = i;
+			mdata.name = m_group_members[i].name;
+			mdata.level = m_group_members[i].level;
+			mdata.classId = m_group_members[i].class_id;
+			mdata.hpPercent = m_group_members[i].hp_percent;
+			mdata.inZone = m_group_members[i].in_zone;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::GroupMemberUpdated, std::move(mdata)));
+		}
+	}
+
+	// --- Pet ---
+	if (m_pet_spawn_id != 0) {
+		eqt::state::PetCreatedData data;
+		data.spawnId = m_pet_spawn_id;
+		data.name = GetPetName();
+		data.level = GetPetLevel();
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PetCreated, std::move(data)));
+	}
+
+	LOG_INFO(MOD_MAIN, "State snapshot published");
 }
 
 void EverQuest::LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
