@@ -11,6 +11,8 @@
 #include <string>
 #include <cstdint>
 
+namespace eqt { namespace ui { class ChatMessageBuffer; } }
+
 namespace EQT {
 namespace Graphics {
 
@@ -41,6 +43,19 @@ void renderPlayerStatus(UIRenderer& ui, const UILayout& layout,
 /** Render target info panel (HP bar + name). Only renders if target exists. */
 void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
                       const TargetInfoData& target);
+
+// Cached chat panel state
+struct ChatPanelState {
+    eqt::ui::ChatMessageBuffer* messageBuffer = nullptr;
+    int scrollOffset = 0;      // Lines scrolled up from bottom (0 = at bottom)
+    bool showTimestamps = false;
+    std::string inputText;     // Current input field text
+    int cursorPos = 0;
+};
+
+/** Render chat panel (message history + input field). */
+void renderChatPanel(UIRenderer& ui, const UILayout& layout,
+                     ChatPanelState& state);
 
 } // namespace Graphics
 } // namespace EQT

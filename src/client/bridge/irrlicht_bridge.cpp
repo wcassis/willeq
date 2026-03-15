@@ -240,31 +240,37 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     // Chat events (D10)
     case state::GameEventType::ChatMessage:
         if (renderer_) {
+            auto& d = std::get<state::ChatMessageData>(event.data);
+            eqt::ui::ChatMessage msg;
+            msg.sender = d.sender;
+            msg.text = d.message;
+            msg.channel = static_cast<eqt::ui::ChatChannel>(d.channelType);
+            msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
+            msg.color = eqt::ui::getChannelColor(msg.channel);
+            // Feed old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
                 auto* chatWindow = wm->getChatWindow();
-                if (chatWindow) {
-                    auto& d = std::get<state::ChatMessageData>(event.data);
-                    eqt::ui::ChatMessage msg;
-                    msg.sender = d.sender;
-                    msg.text = d.message;
-                    msg.channel = static_cast<eqt::ui::ChatChannel>(d.channelType);
-                    msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
-                    msg.color = eqt::ui::getChannelColor(msg.channel);
-                    chatWindow->addMessage(std::move(msg));
-                }
+                if (chatWindow) chatWindow->addMessage(msg);
+            }
+            // U04: Feed new UI
+            if (renderer_->newUIChatBuffer_) {
+                renderer_->newUIChatBuffer_->addMessage(std::move(msg));
             }
         }
         break;
     case state::GameEventType::SystemMessage:
         if (renderer_) {
+            auto& d = std::get<state::ChatMessageData>(event.data);
+            // Feed old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
                 auto* chatWindow = wm->getChatWindow();
-                if (chatWindow) {
-                    auto& d = std::get<state::ChatMessageData>(event.data);
-                    chatWindow->addSystemMessage(d.message);
-                }
+                if (chatWindow) chatWindow->addSystemMessage(d.message);
+            }
+            // U04: Feed new UI
+            if (renderer_->newUIChatBuffer_) {
+                renderer_->newUIChatBuffer_->addSystemMessage(d.message);
             }
         }
         break;

@@ -68,6 +68,7 @@ namespace bridge { class GameStateBridge; }
 
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
+namespace eqt { namespace ui { class ChatMessageBuffer; } }
 namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; } }
 // U03: included directly for layout struct and panel data structs (small, no deps)
 #include "client/graphics/ui/ui_layout.h"
@@ -1738,10 +1739,12 @@ private:
     UILayout uiLayout_;                       // U03a
     bool newUIEnabled_ = false;               // U03c: /newui toggle
 public:
-    // U03d: Cached data from bridge events for new static UI panels.
+    // U03d/U04: Cached data from bridge events for new static UI panels.
     // Public so IrrlichtBridge can update them directly.
     PlayerStatsData cachedPlayerStats_;
     TargetInfoData cachedTargetInfo_;
+    ChatPanelState chatPanelState_;  // U04
+    std::unique_ptr<eqt::ui::ChatMessageBuffer> newUIChatBuffer_;  // U04
 private:
 
     // World objects for click detection (tradeskill containers, etc.)

@@ -18,6 +18,7 @@
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_renderer.h"
+#include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
 #include "client/graphics/sky_config.h"
@@ -631,6 +632,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     uiRenderer_ = std::make_unique<UIRenderer>();
     uiRenderer_->init(driver_, uiAtlas_.get(), textBatch_.get());
     uiLayout_.computeLayout(config.width, config.height);
+    // U04: Create chat message buffer for new UI
+    newUIChatBuffer_ = std::make_unique<eqt::ui::ChatMessageBuffer>(500);
+    chatPanelState_.messageBuffer = newUIChatBuffer_.get();
     LOG_INFO(MOD_GRAPHICS, "UIRenderer initialized (newui=off, toggle with /newui)");
 
     // Configure mipmap generation based on constrained config
@@ -10895,6 +10899,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         uiRenderer_->beginFrame();
         renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
         renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
+        renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
         uiRenderer_->endFrame();
     }
 
