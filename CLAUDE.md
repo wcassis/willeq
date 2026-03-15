@@ -4,8 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
-- `include/client/graphics/ui/CLAUDE.md` - UI windows, key bindings, slash commands
+- `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 140+ event types
+- `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
+- `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
+- `docker/CLAUDE.md` - Cross-compilation, DRM/KMS device, GLES2 driver
 - `docs/CLAUDE.md` - Coordinate systems, heading conventions, docs layout
 
 ## Project Overview

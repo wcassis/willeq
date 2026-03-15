@@ -1,25 +1,42 @@
-# UI Components
+# Static UI System
 
-## Windows
+The old WindowManager/WindowBase draggable window system was completely removed (Batch U07c, ~35K lines deleted). The new UI uses static screen-region panels rendered via batched quads.
 
-- `WindowManager` - Manages all UI windows, handles input routing
-- `WindowBase` - Base class for draggable, resizable windows
-- `ChatWindow` - Scrollable chat with input field, channel filtering, clickable links
-- `InventoryWindow` - Player inventory grid with equipment slots
-- `BagWindow` - Container bag contents display
-- `LootWindow` - Corpse loot interface
-- `GroupWindow` - Group member display with HP/mana bars
-- `PetWindow` - Pet status display with command buttons
-- `VendorWindow` - Merchant buy/sell with sorting and pricing
-- `BankWindow` - Bank slots, shared bank, currency conversion
-- `TradeWindow` - Player trading interface with item/money slots
-- `TradeskillContainerWindow` - Tradeskill combines
-- `SkillsWindow` - Player skills list with activation and cooldown indicators
-- `SkillTooltip` - Skill details on hover (category, value, cooldown, requirements)
-- `ItemTooltip` - Item stat display on hover
-- `ItemIconLoader` - Loads item icons from EQ client files
-- `CommandRegistry` - Slash command registration and dispatch
-- `ChatMessageBuffer` - Ring buffer for chat history with channel support
+## Components
+
+- `UIRenderer` - Batched quad drawing API. Accumulates `SpriteQuad` structs per frame, flushes in `endFrame()`. Supports atlas-backed sprites or solid color fallback. Methods: `drawRect()`, `drawSprite()`, `drawBar()`, `drawPanel()`.
+- `UILayout` - Anchor-based screen region definitions. `computeLayout(width, height)` positions all panels for any resolution. Constants: MARGIN=4, BAR_HEIGHT=14, SLOT_SIZE=32.
+- `StaticPanels` - Free render functions (not a class hierarchy) for each panel. Each takes a `UIRenderer`, `UILayout`, and a plain data struct. No state ownership.
+- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems.
+- `UIAtlas` - Loads pre-generated sprite atlas (`ui_atlas.png` + `ui_atlas.json`). Provides `UISprite` enum (SlotBackground, BarHP, PanelBorder, etc.) with source rects.
+- `CommandRegistry` - Slash command registration and dispatch. Case-insensitive lookup, alias support, tab completion, category-based help.
+
+## Panels
+
+| Panel | Location | Data Struct | Render Function |
+|-------|----------|-------------|-----------------|
+| Player status | Top-left | `PlayerStatsData` | `renderPlayerStatus()` |
+| Target info | Top-right | `TargetInfoData` | `renderTargetInfo()` |
+| Chat | Bottom-left | `ChatPanelState` | `renderChatPanel()` |
+| Hotbar | Bottom-center | `HotbarPanelState` (10 slots) | `renderHotbar()` |
+| Spell gems | Bottom-right | `SpellGemPanelState` (8 gems) | `renderSpellGemPanel()` |
+| Buff bar | Above chat | `BuffBarState` (max 25) | `renderBuffBar()` |
+| Casting bar | Center-bottom | `CastingBarState` | `renderCastingBar()` |
+| Group | Left below player | `GroupPanelState` (5 members) | `renderGroupPanel()` |
+| Pet | Below group | `PetPanelState` | `renderPetPanel()` |
+| XP bar | Full width bottom | `XPBarState` | `renderXPBar()` |
+| Inventory | Center popup | `InventoryPanelState` | `renderInventoryPopup()` |
+| Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
+| Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
+
+Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share the same screen region and are mutually exclusive.
+
+## Design Patterns
+
+- **Data-driven rendering**: All panel data is cached in plain structs, updated via bridge events, passed to stateless render functions
+- **No class hierarchy**: Free functions replace the old WindowBase inheritance tree
+- **Atlas fallback**: UIRenderer draws atlas sprites when loaded, solid color rectangles otherwise
+- **Bridge-only input**: StaticUIInput sends intents to GameStateBridge, never accesses game state directly
 
 ## Key Bindings
 
@@ -74,6 +91,8 @@
 | Ctrl+Z | Toggle zone line visualization |
 | Enter | Open chat input |
 | / | Open chat with slash |
+
+Key bindings are configurable via `config/hotkeys.json` and managed by `HotkeyManager` (see `src/client/input/CLAUDE.md`).
 
 ## Slash Commands
 

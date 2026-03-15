@@ -17,6 +17,8 @@
 - `SpellVisualFX` - Spell casting effects: glow, projectile, impact, aura, rain, ground circle
 - `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
 - `SpellEffectsConfig` - JSON-configurable spell particle presets (`config/spell_effects.json`)
+- `GPUUploadThread` - Async texture/VBO uploads via shared EGL context (separate from render thread)
+- `BackgroundThreadPool` - Shared thread pool for deferred asset loading with unified `WorkPriorityKey` (PVS depth, asset type, distance)
 
 **GLES2 Driver** (`docker/irrlicht-drm/`)
 - `COpenGLES2Driver.h/.cpp` - Native GLES2 `IVideoDriver` (extends `CNullDriver`)
