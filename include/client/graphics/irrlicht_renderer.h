@@ -1750,6 +1750,7 @@ public:
     SpellGemPanelState spellGemState_;  // U06b
     BuffBarState buffBarState_;         // U06c
     CastingBarState castingBarState_;  // U06d
+    GroupPanelState groupPanelState_;  // U06e
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 

@@ -358,27 +358,46 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     // Group events (D12)
     case state::GameEventType::GroupChanged:
         if (renderer_) {
+            auto& d = std::get<state::GroupChangedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
                 auto* groupWindow = wm->getGroupWindow();
                 if (groupWindow) {
-                    auto& d = std::get<state::GroupChangedData>(event.data);
                     groupWindow->setGroupState(d.inGroup, d.isLeader, d.leaderName, d.memberCount);
                     groupWindow->hidePendingInvite();
                 }
+            }
+            // U06e: New UI
+            renderer_->groupPanelState_.inGroup = d.inGroup;
+            renderer_->groupPanelState_.isLeader = d.isLeader;
+            renderer_->groupPanelState_.leaderName = d.leaderName;
+            renderer_->groupPanelState_.memberCount = d.memberCount;
+            if (!d.inGroup) {
+                for (int i = 0; i < EQT::Graphics::GroupPanelState::MAX_MEMBERS; ++i)
+                    renderer_->groupPanelState_.members[i] = {};
             }
         }
         break;
     case state::GameEventType::GroupMemberUpdated:
         if (renderer_) {
+            auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
                 auto* groupWindow = wm->getGroupWindow();
                 if (groupWindow) {
-                    auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
                     groupWindow->setMemberData(d.memberIndex, d.name, d.hpPercent,
                         d.manaPercent, d.inZone, false);
                 }
+            }
+            // U06e: New UI
+            if (d.memberIndex >= 0 && d.memberIndex < EQT::Graphics::GroupPanelState::MAX_MEMBERS) {
+                auto& m = renderer_->groupPanelState_.members[d.memberIndex];
+                m.name = d.name;
+                m.hpPercent = d.hpPercent;
+                m.manaPercent = d.manaPercent;
+                m.inZone = d.inZone;
             }
         }
         break;

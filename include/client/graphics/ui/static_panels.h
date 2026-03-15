@@ -186,5 +186,26 @@ struct CastingBarState {
 void renderCastingBar(UIRenderer& ui, const UILayout& layout,
                       const CastingBarState& state);
 
+// Cached group member state
+struct GroupMemberDisplay {
+    std::string name;
+    uint8_t hpPercent = 100;
+    uint8_t manaPercent = 100;
+    bool inZone = false;
+};
+
+struct GroupPanelState {
+    bool inGroup = false;
+    bool isLeader = false;
+    std::string leaderName;
+    int memberCount = 0;
+    static constexpr int MAX_MEMBERS = 5;
+    GroupMemberDisplay members[5];
+};
+
+/** Render group panel (left side below player status). */
+void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
+                      const GroupPanelState& state);
+
 } // namespace Graphics
 } // namespace EQT

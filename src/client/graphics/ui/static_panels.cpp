@@ -472,5 +472,55 @@ void renderCastingBar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
+                      const GroupPanelState& state) {
+    if (!state.inGroup) return;
+
+    auto* tb = ui.getTextBatch();
+    constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
+    constexpr irr::s32 PAD = UILayout::MARGIN;
+
+    ui.drawPanel(layout.groupPanel);
+
+    if (tb) {
+        tb->addText("Group", layout.groupPanel.UpperLeftCorner.X + 4,
+            layout.groupPanel.UpperLeftCorner.Y + 2,
+            irr::video::SColor(255, 255, 215, 0));
+    }
+
+    irr::s32 x = layout.groupPanel.UpperLeftCorner.X + 4;
+    irr::s32 y = layout.groupPanel.UpperLeftCorner.Y + BAR_H + PAD;
+    irr::s32 barW = layout.groupPanel.getWidth() - 8;
+
+    for (int i = 0; i < GroupPanelState::MAX_MEMBERS; ++i) {
+        const auto& m = state.members[i];
+        if (m.name.empty()) continue;
+
+        // Name
+        if (tb) {
+            irr::video::SColor nameCol = m.inZone
+                ? irr::video::SColor(255, 200, 200, 200)
+                : irr::video::SColor(255, 120, 120, 120);
+            tb->addText(m.name, x, y, nameCol);
+        }
+        y += BAR_H;
+
+        // HP bar
+        irr::core::rect<irr::s32> hpRect(x, y, x + barW, y + BAR_H - 2);
+        float hpPct = m.hpPercent / 100.0f;
+        ui.drawBar(hpRect, hpPct,
+            irr::video::SColor(255, 40, 180, 40),
+            irr::video::SColor(200, 15, 15, 20));
+
+        if (tb) {
+            std::string hpText = fmt::format("{}%%", m.hpPercent);
+            tb->addTextCentered(hpText, hpRect,
+                irr::video::SColor(255, 255, 255, 255));
+        }
+
+        y += BAR_H + PAD;
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

@@ -237,7 +237,7 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U06b | Spell gem panel (8 gem slots) | done | |
 | U06c | Buff bar (icon row + duration text) | done | |
 | U06d | Casting bar (progress bar + spell name) | done | |
-| U06e | Group panel (5 member HP bars) | pending | |
+| U06e | Group panel (5 member HP bars) | done | |
 | U06f | Pet panel (HP bar + command buttons) | pending | |
 | U06g | Spellbook popup | pending | |
 | U06h | Skills popup | pending | |
